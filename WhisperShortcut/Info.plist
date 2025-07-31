@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>CFBundleDevelopmentRegion</key>
+        <string>en</string>
+        <key>CFBundleDisplayName</key>
+        <string>WhisperShortcut</string>
+        <key>CFBundleExecutable</key>
+        <string>WhisperShortcut</string>
+        <key>CFBundleIdentifier</key>
+        <string>com.whispershortcut.app</string>
+        <key>CFBundleInfoDictionaryVersion</key>
+        <string>6.0</string>
+        <key>CFBundleName</key>
+        <string>WhisperShortcut</string>
+        <key>CFBundlePackageType</key>
+        <string>APPL</string>
+        <key>CFBundleShortVersionString</key>
+        <string>1.0</string>
+        <key>CFBundleVersion</key>
+        <string>1</string>
+        <key>LSMinimumSystemVersion</key>
+        <string>13.0</string>
+        <key>LSUIElement</key>
+        <true />
+        <key>NSMicrophoneUsageDescription</key>
+        <string>This app needs microphone access to record audio for transcription.</string>
+        <key>NSKeychainUsageDescription</key>
+        <string>This app needs keychain access to securely store your OpenAI API key.</string>
+        <key>NSAppTransportSecurity</key>
+        <dict>
+            <key>NSAllowsArbitraryLoads</key>
+            <false />
+            <key>NSExceptionDomains</key>
+            <dict>
+                <key>api.openai.com</key>
+                <dict>
+                    <key>NSExceptionRequiresForwardSecrecy</key>
+                    <false />
+                    <key>NSExceptionMinimumTLSVersion</key>
+                    <string>TLSv1.2</string>
+                    <key>NSIncludesSubdomains</key>
+                    <true />
+                </dict>
+            </dict>
+        </dict>
+    </dict>
+</plist>

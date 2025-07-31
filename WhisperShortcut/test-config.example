@@ -1,0 +1,6 @@
+# Test Configuration for WhisperShortcut
+# Copy this file to 'test-config' and add your API key
+
+# OpenAI API Key for integration tests
+# Get yours from: https://platform.openai.com/api-keys
+OPENAI_API_KEY=sk-your-api-key-here
