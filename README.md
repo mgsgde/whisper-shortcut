@@ -2,6 +2,8 @@
 
 Simple macOS menu bar app for speech-to-text using OpenAI Whisper and Shortcuts.
 
+![WhisperShortcut Screenshot](screenshot.png)
+
 ## Security
 
 API keys are securely stored in the macOS Keychain with encrypted storage and access control. Keys are only accessible when the device is unlocked and are stored locally (no iCloud sync).
