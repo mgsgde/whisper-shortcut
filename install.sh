@@ -33,5 +33,5 @@ read -p "Launch now? (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
   open /Applications/WhisperShortcut.app
-  echo "✅ App launched! Look for ��️ in menu bar"
+  echo "✅ App launched! Look for 🎙️ in menu bar"
 fi 
