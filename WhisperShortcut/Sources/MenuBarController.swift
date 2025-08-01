@@ -11,6 +11,8 @@ class MenuBarController: NSObject {
 
   private var isRecording = false
   private var currentConfig: ShortcutConfig
+  private var blinkTimer: Timer?
+  private var isBlinking = false
 
   override init() {
     // Load current shortcut configuration
@@ -226,9 +228,45 @@ class MenuBarController: NSObject {
     }
   }
 
+  // MARK: - Blinking Animation
+  private func startBlinking() {
+    stopBlinking()  // Stop any existing blinking
+
+    isBlinking = true
+    blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+      self?.toggleBlinkState()
+    }
+  }
+
+  private func stopBlinking() {
+    blinkTimer?.invalidate()
+    blinkTimer = nil
+    isBlinking = false
+
+    // Ensure button is visible when stopping
+    if let button = statusItem?.button {
+      button.title = "⏳"
+      button.toolTip = "Transcribing audio... Please wait"
+    }
+  }
+
+  private func toggleBlinkState() {
+    guard isBlinking, let button = statusItem?.button else { return }
+
+    // Toggle between loading icon and empty space for blinking effect
+    if button.title == "⏳" {
+      button.title = " "
+      button.toolTip = "Transcribing audio... Please wait"
+    } else {
+      button.title = "⏳"
+      button.toolTip = "Transcribing audio... Please wait"
+    }
+  }
+
   func cleanup() {
     shortcuts?.cleanup()
     audioRecorder?.cleanup()
+    stopBlinking()
     statusItem = nil
     NotificationCenter.default.removeObserver(self)
   }
@@ -277,11 +315,8 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   private func showTranscribingStatus() {
-    // Show transcribing indicator in menu bar
-    if let button = statusItem?.button {
-      button.title = "⏳"
-      button.toolTip = "Transcribing audio... Please wait"
-    }
+    // Start blinking transcribing indicator in menu bar
+    startBlinking()
 
     // Update menu status
     if let menu = statusItem?.menu,
@@ -319,10 +354,28 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   private func showTemporarySuccess() {
-    // Show success indicator in menu bar
+    // Stop blinking and show success indicator in menu bar
+    stopBlinking()
+
     if let button = statusItem?.button {
-      button.title = "✅"
+      button.title = "✓"
       button.toolTip = "Transcription complete - text copied to clipboard"
+
+      // Make the success icon wider with green background for better visibility
+      let originalLength = statusItem?.length ?? NSStatusItem.variableLength
+      statusItem?.length = 40.0  // Make it wider temporarily
+
+      // Set green background
+      button.layer?.backgroundColor = NSColor.systemGreen.cgColor
+      button.layer?.cornerRadius = 4.0
+      button.layer?.masksToBounds = true
+
+      // Reset width and background after 3 seconds
+      DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+        self.statusItem?.length = originalLength
+        button.layer?.backgroundColor = nil
+        button.layer?.cornerRadius = 0
+      }
     }
 
     // Update menu status
