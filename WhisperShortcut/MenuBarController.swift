@@ -4,12 +4,13 @@ import UserNotifications
 
 class MenuBarController: NSObject {
   private var statusItem: NSStatusItem?
+  private var isRecording = false
   private var audioRecorder: AudioRecorder?
   private var shortcuts: SimpleShortcuts?
   private var transcriptionService: TranscriptionService?
   private var clipboardManager: ClipboardManager?
+  private var audioLevelTimer: Timer?
 
-  private var isRecording = false
   private var currentConfig: ShortcutConfig
   private var blinkTimer: Timer?
   private var isBlinking = false
@@ -130,10 +131,8 @@ class MenuBarController: NSObject {
     if let statusMenuItem = menu.item(withTag: 100) {
       if isRecording {
         statusMenuItem.title = "🔴 Recording..."
-      } else if hasAPIKey {
-        statusMenuItem.title = "Ready to record"
       } else {
-        statusMenuItem.title = "⚠️ API key required - click Settings"
+        statusMenuItem.title = "Ready to record"
       }
     }
 
@@ -181,16 +180,10 @@ class MenuBarController: NSObject {
   @objc private func startRecordingFromMenu() {
     guard !isRecording else { return }
 
-    // Check if API key is configured before starting recording
-    if KeychainManager.shared.hasAPIKey() {
-      print("Starting recording...")
-      isRecording = true
-      updateMenuState()
-      audioRecorder?.startRecording()
-    } else {
-      print("⚠️ No API key configured - opening Settings...")
-      SettingsManager.shared.showSettings()
-    }
+    print("Starting recording...")
+    isRecording = true
+    updateMenuState()
+    audioRecorder?.startRecording()
   }
 
   @objc private func stopRecordingFromMenu() {
@@ -275,18 +268,13 @@ class MenuBarController: NSObject {
 // MARK: - ShortcutDelegate
 extension MenuBarController: ShortcutDelegate {
   func startRecording() {
-    guard !isRecording else { return }
+    print("🎙️ Starting recording via shortcut...")
+    isRecording = true
+    updateMenuState()
+    audioRecorder?.startRecording()
 
-    // Check if API key is configured before starting recording
-    if KeychainManager.shared.hasAPIKey() {
-      print("🎙️ Starting recording via shortcut...")
-      isRecording = true
-      updateMenuState()
-      audioRecorder?.startRecording()
-    } else {
-      print("⚠️ No API key configured - opening Settings...")
-      SettingsManager.shared.showSettings()
-    }
+    // Start monitoring audio levels
+    startAudioLevelMonitoring()
   }
 
   func stopRecording() {
@@ -294,7 +282,27 @@ extension MenuBarController: ShortcutDelegate {
     print("⏹️ Stopping recording via shortcut...")
     isRecording = false
     updateMenuState()
+    stopAudioLevelMonitoring()
     audioRecorder?.stopRecording()
+  }
+
+  private func startAudioLevelMonitoring() {
+    // Monitor audio levels every 0.5 seconds during recording
+    audioLevelTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+      if let levels = self?.audioRecorder?.getAudioLevels() {
+        print("🎤 Audio levels - Average: \(levels.average)dB, Peak: \(levels.peak)dB")
+
+        // If levels are very low (below -50dB), warn about potential issues
+        if levels.average < -50 && levels.peak < -40 {
+          print("⚠️ Warning: Very low audio levels detected - check microphone input")
+        }
+      }
+    }
+  }
+
+  private func stopAudioLevelMonitoring() {
+    audioLevelTimer?.invalidate()
+    audioLevelTimer = nil
   }
 }
 
@@ -310,6 +318,14 @@ extension MenuBarController: AudioRecorderDelegate {
     transcriptionService?.transcribe(audioURL: audioURL) { [weak self] result in
       DispatchQueue.main.async {
         self?.handleTranscriptionResult(result)
+
+        // Clean up the audio file after transcription
+        do {
+          try FileManager.default.removeItem(at: audioURL)
+          print("✅ Cleaned up audio file after transcription")
+        } catch {
+          print("⚠️ Could not clean up audio file: \(error)")
+        }
       }
     }
   }
@@ -337,18 +353,36 @@ extension MenuBarController: AudioRecorderDelegate {
   private func handleTranscriptionResult(_ result: Result<String, Error>) {
     switch result {
     case .success(let transcription):
-      print("Transcription successful: \(transcription)")
+      print("Transcription result: \(transcription)")
 
-      // Copy to clipboard
-      clipboardManager?.copyToClipboard(text: transcription)
-
-      // Show success status temporarily - user sees ✅ in menu bar
-      self.showTemporarySuccess()
+      // Check if this is an error message (starts with ❌ or ⚠️)
+      if transcription.hasPrefix("❌") || transcription.hasPrefix("⚠️")
+        || transcription.hasPrefix("⏳")
+      {
+        print("Error message returned as transcription")
+        // Copy error message to clipboard
+        clipboardManager?.copyToClipboard(text: transcription)
+        // Show error status temporarily - user sees ❌ in menu bar
+        self.showTemporaryError()
+      } else {
+        print("Transcription successful")
+        // Copy to clipboard
+        clipboardManager?.copyToClipboard(text: transcription)
+        // Show success status temporarily - user sees ✅ in menu bar
+        self.showTemporarySuccess()
+      }
 
     case .failure(let error):
-      print("Transcription failed: \(error)")
+      print("Unexpected transcription failure: \(error)")
+      // This should not happen anymore, but handle it gracefully
+      let errorMessage = """
+        ❌ Unexpected error
 
-      // Show error status temporarily - user sees ❌ in menu bar
+        Error: \(error.localizedDescription)
+
+        Please try again.
+        """
+      clipboardManager?.copyToClipboard(text: errorMessage)
       self.showTemporaryError()
     }
   }
@@ -358,24 +392,15 @@ extension MenuBarController: AudioRecorderDelegate {
     stopBlinking()
 
     if let button = statusItem?.button {
-      button.title = "✓"
+      button.title = "✅"
       button.toolTip = "Transcription complete - text copied to clipboard"
 
-      // Make the success icon wider with green background for better visibility
-      let originalLength = statusItem?.length ?? NSStatusItem.variableLength
-      statusItem?.length = 40.0  // Make it wider temporarily
+      // Force immediate redraw to ensure visibility on all screens
+      button.needsDisplay = true
+      button.window?.displayIfNeeded()
 
-      // Set green background
-      button.layer?.backgroundColor = NSColor.systemGreen.cgColor
-      button.layer?.cornerRadius = 4.0
-      button.layer?.masksToBounds = true
-
-      // Reset width and background after 3 seconds
-      DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-        self.statusItem?.length = originalLength
-        button.layer?.backgroundColor = nil
-        button.layer?.cornerRadius = 0
-      }
+      // Also force the status item to update
+      statusItem?.button?.needsDisplay = true
     }
 
     // Update menu status
@@ -392,7 +417,9 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   private func showTemporaryError() {
-    // Show error indicator in menu bar
+    // Stop blinking and show error indicator in menu bar
+    stopBlinking()
+
     if let button = statusItem?.button {
       button.title = "❌"
       button.toolTip = "Transcription failed - check your connection and API key"

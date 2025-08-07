@@ -9,7 +9,7 @@
         <key>CFBundleExecutable</key>
         <string>WhisperShortcut</string>
         <key>CFBundleIdentifier</key>
-        <string>com.whispershortcut.app</string>
+        <string>com.magnusgoedde.whispershortcut</string>
         <key>CFBundleInfoDictionaryVersion</key>
         <string>6.0</string>
         <key>CFBundleName</key>
@@ -21,9 +21,11 @@
         <key>CFBundleVersion</key>
         <string>1</string>
         <key>LSMinimumSystemVersion</key>
-        <string>13.0</string>
+        <string>15.5</string>
         <key>LSUIElement</key>
         <true />
+        <key>LSApplicationCategoryType</key>
+        <string>public.app-category.productivity</string>
         <key>NSMicrophoneUsageDescription</key>
         <string>This app needs microphone access to record audio for transcription.</string>
         <key>NSKeychainUsageDescription</key>
@@ -45,5 +47,7 @@
                 </dict>
             </dict>
         </dict>
+        <key>ITSAppUsesNonExemptEncryption</key>
+        <false />
     </dict>
 </plist>

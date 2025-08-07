@@ -2,67 +2,62 @@
 
 Simple macOS menu bar app for speech-to-text using OpenAI Whisper and Shortcuts.
 
-![WhisperShortcut Screenshot](screenshot.png)
+![WhisperShortcut Screenshot](screenshots/dropdown.png)
 
 📹 **[Watch Demo Video](https://youtu.be/alx7H9NilJ4)**
 
-## Security
+## 🚀 Quick Start
 
-API keys are securely stored in the macOS Keychain with encrypted storage and access control. Keys are only accessible when the device is unlocked and are stored locally (no iCloud sync).
-
-## Quick Start
-
-### Development Mode (Local)
+### Build from Source (Recommended)
 
 ```bash
-./dev.sh
-```
-
-### Install to Applications
-
-```bash
+git clone https://github.com/mgsgde/WhisperShortcut.git
+cd WhisperShortcut
 ./install.sh
 ```
 
-## Setup
+This will build the app and install it to `/Applications/`.
 
-1. Right-click 🎙️ icon → Settings → Add your OpenAI API key
-2. Grant microphone permission when prompted  
-3. Use shortcuts: **⌘⌥R** (start), **⌘R** (stop & transcribe)
+### Configure API Key
 
-Text gets copied to clipboard automatically. Done! 🎉
+- Right-click the 🎙️ menu bar icon
+- Select "Settings..."
+- Enter your OpenAI API key
+- Click "Save"
 
-## Development
+### Start Recording
 
-### Running Tests
+- Press `⌘⌥R` (or your configured shortcut) to start recording
+- Press `⌘R` (or your configured shortcut) to stop and transcribe
+- The transcribed text is automatically copied to your clipboard
 
-```bash
-cd WhisperShortcut
-./test.sh                    # Run unit tests only
-./test.sh --integration      # Run all tests including integration tests
-```
+## 🔧 Requirements
 
-**Integration Tests**: For tests that make real API calls, copy `test-config.example` to `test-config` and add your OpenAI API key:
+- **macOS**: 15.5 (Sequoia) or later
+- **OpenAI API Key**: Required for transcription services
+- **Microphone Access**: Required for audio recording
 
-```bash
-cp test-config.example test-config
-# Edit test-config and add your API key
-```
+## 🏗️ Development
 
-### Scripts Available
+### Prerequisites
 
-- `./dev.sh` - Build and run the app locally for development
-- `./install.sh` - Build and install the app to Applications folder  
-- `./test.sh` - Clean, build, and run all Swift tests
+- Xcode 15.0 or later
+- macOS 15.5 or later
+- Swift 5.9 or later
 
-### Project Structure
+### Building from Source
 
-- `Sources/` - Swift source code
-  - `FullApp.swift` - Main application entry point
-  - `MenuBarController.swift` - Menu bar interface and controls
-  - `AudioRecorder.swift` - Audio recording functionality
-  - `TranscriptionService.swift` - OpenAI Whisper API integration
-  - `ClipboardManager.swift` - Clipboard operations and text formatting
-  - `SettingsWindow.swift` - Settings UI and API key management
-  - `SimpleShortcuts.swift` - Keyboard shortcut handling
-- `Tests/` - Unit tests for core functionality
+1. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/mgsgde/WhisperShortcut.git
+   cd WhisperShortcut
+   ```
+
+2. **Open in Xcode**
+
+   ```bash
+   open WhisperShortcut.xcodeproj
+   ```
+
+**Important**: If you're developing this project yourself, make sure to change the Team ID and Company Name in the project settings to match your own Apple Developer account

@@ -78,44 +78,111 @@ class TranscriptionService {
 
   func transcribe(audioURL: URL, completion: @escaping (Result<String, Error>) -> Void) {
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      let error = TranscriptionError.noAPIKey
-      completion(.failure(error))
+      let errorMessage = """
+        ⚠️ No API key configured
+
+        Please open Settings and add your OpenAI API key.
+
+        Without a valid API key, transcription cannot be performed.
+        """
+      print("❌ No API key configured - returning error message as transcription")
+      completion(.success(errorMessage))
       return
     }
+
+    print("🔑 API key found (length: \(apiKey.count) characters)")
+    print("🔍 Starting transcription for file: \(audioURL.path)")
 
     // Check file size (Whisper API has 25MB limit)
     do {
       let fileAttributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
       if let fileSize = fileAttributes[.size] as? Int64 {
         let maxSize: Int64 = 25 * 1024 * 1024  // 25MB
+        print("📁 Audio file size: \(fileSize) bytes")
         if fileSize > maxSize {
-          completion(.failure(TranscriptionError.fileTooLarge))
+          let errorMessage = """
+            ❌ Audiodatei zu groß
+
+            Die Audiodatei ist größer als 25MB und kann nicht transkribiert werden.
+            Bitte verwenden Sie eine kürzere Aufnahme.
+            """
+          print("❌ File too large - returning error message as transcription")
+          completion(.success(errorMessage))
+          return
+        }
+        if fileSize == 0 {
+          print("⚠️ Warning: Audio file is empty (0 bytes)")
+          let errorMessage = """
+            ❌ Leere Audiodatei
+
+            Die Aufnahme enthält keine Audio-Daten.
+            Bitte versuchen Sie es erneut.
+            """
+          completion(.success(errorMessage))
           return
         }
       }
     } catch {
-      completion(.failure(error))
+      let errorMessage = """
+        ❌ Error reading audio file
+
+        Error: \(error.localizedDescription)
+
+        Please try again.
+        """
+      print("❌ File read error - returning error message as transcription")
+      completion(.success(errorMessage))
       return
     }
 
     // Create multipart form data request
     let request = createMultipartRequest(audioURL: audioURL, apiKey: apiKey)
+    print("🌐 Making API request to OpenAI Whisper...")
 
     // Execute request
     session.dataTask(with: request) { data, response, error in
       if let error = error {
-        completion(.failure(error))
+        print("❌ Network error: \(error)")
+        let errorMessage = """
+          ❌ Network error
+
+          Error: \(error.localizedDescription)
+
+          Please check your internet connection and try again.
+          """
+        completion(.success(errorMessage))
         return
       }
 
       guard let httpResponse = response as? HTTPURLResponse else {
-        completion(.failure(TranscriptionError.invalidResponse))
+        print("❌ Invalid HTTP response")
+        let errorMessage = """
+          ❌ Ungültige Server-Antwort
+
+          Der Server hat eine ungültige Antwort gesendet.
+          Bitte versuchen Sie es erneut.
+          """
+        completion(.success(errorMessage))
         return
       }
 
+      print("📡 HTTP Status Code: \(httpResponse.statusCode)")
+
       guard let data = data else {
-        completion(.failure(TranscriptionError.noData))
+        print("❌ No data received from API")
+        let errorMessage = """
+          ❌ Keine Daten vom Server erhalten
+
+          Der Server hat keine Daten zurückgesendet.
+          Bitte versuchen Sie es erneut.
+          """
+        completion(.success(errorMessage))
         return
+      }
+
+      // Log response data for debugging
+      if let responseString = String(data: data, encoding: .utf8) {
+        print("📄 Raw API Response: \(responseString)")
       }
 
       // Handle response based on status code
@@ -123,14 +190,42 @@ class TranscriptionService {
       case 200:
         self.parseSuccessResponse(data: data, completion: completion)
       case 400:
-        completion(.failure(TranscriptionError.badRequest))
+        print("❌ Bad request - check audio format")
+        let errorMessage = """
+          ❌ Ungültige Anfrage
+
+          Das Audioformat wird nicht unterstützt.
+          Bitte verwenden Sie ein anderes Audioformat oder versuchen Sie es erneut.
+          """
+        completion(.success(errorMessage))
       case 401:
-        completion(.failure(TranscriptionError.unauthorized))
+        print("❌ Unauthorized - check API key")
+        let errorMessage = """
+          ❌ Ungültiger API-Schlüssel
+
+          Der API-Schlüssel ist ungültig oder abgelaufen.
+          Bitte überprüfen Sie Ihren OpenAI API-Schlüssel in den Einstellungen.
+          """
+        completion(.success(errorMessage))
       case 429:
-        completion(.failure(TranscriptionError.rateLimited))
+        print("❌ Rate limited")
+        let errorMessage = """
+          ⏳ Rate Limit erreicht
+
+          Sie haben das Anfrage-Limit erreicht.
+          Bitte warten Sie einen Moment und versuchen Sie es erneut.
+          """
+        completion(.success(errorMessage))
       default:
-        let error = TranscriptionError.httpError(httpResponse.statusCode)
-        completion(.failure(error))
+        let errorMessage = """
+          ❌ Server error
+
+          HTTP error: \(httpResponse.statusCode)
+
+          Please try again later.
+          """
+        print("❌ HTTP error: \(httpResponse.statusCode)")
+        completion(.success(errorMessage))
       }
     }.resume()
   }
@@ -180,9 +275,19 @@ class TranscriptionService {
   ) {
     do {
       let response = try JSONDecoder().decode(WhisperResponse.self, from: data)
+      print("✅ Parsed transcription: '\(response.text)'")
       completion(.success(response.text))
     } catch {
-      completion(.failure(TranscriptionError.parseError(error)))
+      print("❌ JSON parsing error: \(error)")
+      let errorMessage = """
+        ❌ Error processing server response
+
+        Error: \(error.localizedDescription)
+
+        The server response could not be processed.
+        Please try again.
+        """
+      completion(.success(errorMessage))
     }
   }
 }

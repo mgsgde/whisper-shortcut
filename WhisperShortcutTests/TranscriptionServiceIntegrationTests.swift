@@ -38,7 +38,8 @@ final class TranscriptionServiceIntegrationTests: XCTestCase {
     // Clear any existing API key
     mockKeychain.clear()
 
-    let expectation = XCTestExpectation(description: "Transcription failed with no API key")
+    let expectation = XCTestExpectation(
+      description: "Transcription returns error message with no API key")
     var transcriptionResult: Result<String, Error>?
 
     // Create a dummy audio URL for testing
@@ -64,16 +65,15 @@ final class TranscriptionServiceIntegrationTests: XCTestCase {
     }
 
     switch result {
-    case .success:
-      XCTFail("Transcription should have failed with no API key")
+    case .success(let transcription):
+      // Should return an error message as transcription
+      XCTAssertTrue(
+        transcription.contains("No API key configured"), "Should contain API key error message")
+      XCTAssertTrue(transcription.contains("⚠️"), "Should contain warning emoji")
+      print("✅ Test passed: Error message returned as transcription: '\(transcription)'")
+
     case .failure(let error):
-      if let transcriptionError = error as? TranscriptionError {
-        XCTAssertEqual(
-          transcriptionError, .noAPIKey,
-          "Should fail with noAPIKey error when API key is missing")
-      } else {
-        XCTFail("Expected TranscriptionError.noAPIKey, got: \(error)")
-      }
+      XCTFail("Should not fail, but return error message as transcription. Got error: \(error)")
     }
   }
 

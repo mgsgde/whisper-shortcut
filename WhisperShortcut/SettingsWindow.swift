@@ -173,6 +173,13 @@ class SettingsWindowController: NSWindowController {
     helpText.translatesAutoresizingMaskIntoConstraints = false
     contentView.addSubview(helpText)
 
+    // Skip button for users who want to configure later
+    let skipButton = NSButton(title: "Skip for now", target: self, action: #selector(skipSettings))
+    skipButton.translatesAutoresizingMaskIntoConstraints = false
+    skipButton.bezelStyle = .rounded
+    skipButton.keyEquivalent = "s"  // S key for skip
+    contentView.addSubview(skipButton)
+
     // Save button with better styling
     let saveButton = NSButton(title: "Save Settings", target: self, action: #selector(saveSettings))
     saveButton.translatesAutoresizingMaskIntoConstraints = false
@@ -184,6 +191,7 @@ class SettingsWindowController: NSWindowController {
     apiKeyField.tag = 100
     startShortcutField.tag = 101
     stopShortcutField.tag = 102
+    skipButton.tag = 199
     saveButton.tag = 200
 
     // Set up constraints with improved spacing and margins
@@ -234,12 +242,18 @@ class SettingsWindowController: NSWindowController {
       helpText.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
       helpText.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
 
-      // Save button
+      // Buttons
       saveButton.topAnchor.constraint(equalTo: helpText.bottomAnchor, constant: 20),
       saveButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
       saveButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32),
       saveButton.widthAnchor.constraint(equalToConstant: 120),
       saveButton.heightAnchor.constraint(equalToConstant: 32),
+
+      skipButton.topAnchor.constraint(equalTo: helpText.bottomAnchor, constant: 20),
+      skipButton.trailingAnchor.constraint(equalTo: saveButton.leadingAnchor, constant: -12),
+      skipButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32),
+      skipButton.widthAnchor.constraint(equalToConstant: 100),
+      skipButton.heightAnchor.constraint(equalToConstant: 32),
     ])
 
     // Set content view directly
@@ -253,6 +267,11 @@ class SettingsWindowController: NSWindowController {
     DispatchQueue.main.async {
       window.makeFirstResponder(apiKeyField)
     }
+  }
+
+  @objc private func skipSettings() {
+    print("⏭️ Skipping settings configuration")
+    window?.close()
   }
 
   @objc private func saveSettings() {

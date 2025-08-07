@@ -1,0 +1,39 @@
+{
+  "configurations" : [
+    {
+      "id" : "EA164305-35E2-449F-9435-BA82CBDCAB0A",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "environmentVariableEntries" : [
+      {
+        "key" : "IDEPreferLogStreaming",
+        "value" : "YES"
+      },
+      {
+        "key" : "OS_ACTIVITY_MODE",
+        "value" : "disable"
+      }
+    ],
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:WhisperShortcut.xcodeproj",
+      "identifier" : "BF3C90C52E3E0CC0001D325B",
+      "name" : "WhisperShortcut"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:WhisperShortcut.xcodeproj",
+        "identifier" : "BF3C90D32E3E0CC2001D325B",
+        "name" : "WhisperShortcutTests"
+      }
+    }
+  ],
+  "version" : 1
+}

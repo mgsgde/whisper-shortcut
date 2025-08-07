@@ -24,6 +24,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     print("   • Right-click menu bar icon for more options")
     print("")
 
+    // Microphone permission will be requested automatically when recording starts
+
     // Check Keychain status and API key configuration
     // (removed: KeychainManager.shared.checkKeychainStatus())
 
@@ -33,7 +35,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       // Now read the key (this will cache it and avoid future prompts)
       _ = KeychainManager.shared.getAPIKey()
     } else {
-      print("⚠️  No API key configured - opening Settings...")
+      print("⚠️  No API key configured - opening Settings with Skip option...")
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
         SettingsManager.shared.showSettings()
       }
