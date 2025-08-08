@@ -44,14 +44,22 @@ class TranscriptionService {
   // Method to validate API key by making a simple test request
   func validateAPIKey(_ apiKey: String, completion: @escaping (Result<Bool, Error>) -> Void) {
     guard !apiKey.isEmpty else {
-      completion(.failure(TranscriptionError.noAPIKey))
+      completion(
+        .failure(
+          NSError(
+            domain: "WhisperShortcut", code: 1001,
+            userInfo: [NSLocalizedDescriptionKey: "No API key provided"])))
       return
     }
 
     // Create a simple request to test the API key
     // We'll use the models endpoint which is lightweight and only requires authentication
     guard let url = URL(string: "https://api.openai.com/v1/models") else {
-      completion(.failure(TranscriptionError.invalidResponse))
+      completion(
+        .failure(
+          NSError(
+            domain: "WhisperShortcut", code: 1002,
+            userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
       return
     }
 
@@ -67,7 +75,11 @@ class TranscriptionService {
       }
 
       guard let httpResponse = response as? HTTPURLResponse else {
-        completion(.failure(TranscriptionError.invalidResponse))
+        completion(
+          .failure(
+            NSError(
+              domain: "WhisperShortcut", code: 1003,
+              userInfo: [NSLocalizedDescriptionKey: "Invalid HTTP response"])))
         return
       }
 
@@ -75,26 +87,32 @@ class TranscriptionService {
       case 200:
         completion(.success(true))
       case 401:
-        completion(.failure(TranscriptionError.unauthorized))
+        completion(
+          .failure(
+            NSError(
+              domain: "WhisperShortcut", code: 401,
+              userInfo: [NSLocalizedDescriptionKey: "Authentication failed - invalid API key"])))
       case 429:
-        completion(.failure(TranscriptionError.rateLimited))
+        completion(
+          .failure(
+            NSError(
+              domain: "WhisperShortcut", code: 429,
+              userInfo: [NSLocalizedDescriptionKey: "Rate limit exceeded"])))
       default:
-        completion(.failure(TranscriptionError.httpError(httpResponse.statusCode)))
+        completion(
+          .failure(
+            NSError(
+              domain: "WhisperShortcut", code: httpResponse.statusCode,
+              userInfo: [NSLocalizedDescriptionKey: "HTTP error: \(httpResponse.statusCode)"])))
       }
     }.resume()
   }
 
   func transcribe(audioURL: URL, completion: @escaping (Result<String, Error>) -> Void) {
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      let errorMessage = """
-        ⚠️ No API key configured
-
-        Please open Settings and add your OpenAI API key.
-
-        Without a valid API key, transcription cannot be performed.
-        """
+      let errorResult = TranscriptionErrorResult(type: .noAPIKey)
       print("❌ No API key configured - returning error message as transcription")
-      completion(.success(errorMessage))
+      completion(.success(errorResult.message))
       return
     }
 
@@ -108,38 +126,23 @@ class TranscriptionService {
         let maxSize: Int64 = 25 * 1024 * 1024  // 25MB
         print("📁 Audio file size: \(fileSize) bytes")
         if fileSize > maxSize {
-          let errorMessage = """
-            ❌ Audiodatei zu groß
-
-            Die Audiodatei ist größer als 25MB und kann nicht transkribiert werden.
-            Bitte verwenden Sie eine kürzere Aufnahme.
-            """
+          let errorResult = TranscriptionErrorResult(type: .fileTooLarge)
           print("❌ File too large - returning error message as transcription")
-          completion(.success(errorMessage))
+          completion(.success(errorResult.message))
           return
         }
         if fileSize == 0 {
           print("⚠️ Warning: Audio file is empty (0 bytes)")
-          let errorMessage = """
-            ❌ Leere Audiodatei
-
-            Die Aufnahme enthält keine Audio-Daten.
-            Bitte versuchen Sie es erneut.
-            """
-          completion(.success(errorMessage))
+          let errorResult = TranscriptionErrorResult(type: .emptyFile)
+          completion(.success(errorResult.message))
           return
         }
       }
     } catch {
-      let errorMessage = """
-        ❌ Error reading audio file
-
-        Error: \(error.localizedDescription)
-
-        Please try again.
-        """
+      let errorResult = TranscriptionErrorResult(
+        type: .internalServerError, details: error.localizedDescription)
       print("❌ File read error - returning error message as transcription")
-      completion(.success(errorMessage))
+      completion(.success(errorResult.message))
       return
     }
 
@@ -168,45 +171,21 @@ class TranscriptionService {
         print("⏰ Is timeout error: \(isTimeout)")
 
         if isTimeout {
-          let errorMessage = """
-            ⏰ Timeout Error
-
-            Die Anfrage hat zu lange gedauert und wurde abgebrochen.
-
-            Mögliche Ursachen:
-            • Langsame Internetverbindung
-            • Große Audiodatei
-            • OpenAI Server überlastet
-
-            Tipps:
-            • Versuchen Sie es erneut
-            • Verwenden Sie kürzere Aufnahmen
-            • Überprüfen Sie Ihre Internetverbindung
-            """
+          let errorResult = TranscriptionErrorResult(type: .timeout)
           print("⏰ Timeout error detected")
-          completion(.success(errorMessage))
+          completion(.success(errorResult.message))
         } else {
-          let errorMessage = """
-            ❌ Network error
-
-            Error: \(error.localizedDescription)
-
-            Please check your internet connection and try again.
-            """
-          completion(.success(errorMessage))
+          let errorResult = TranscriptionErrorResult(
+            type: .networkError, details: error.localizedDescription)
+          completion(.success(errorResult.message))
         }
         return
       }
 
       guard let httpResponse = response as? HTTPURLResponse else {
         print("❌ Invalid HTTP response")
-        let errorMessage = """
-          ❌ Ungültige Server-Antwort
-
-          Der Server hat eine ungültige Antwort gesendet.
-          Bitte versuchen Sie es erneut.
-          """
-        completion(.success(errorMessage))
+        let errorResult = TranscriptionErrorResult(type: .internalServerError)
+        completion(.success(errorResult.message))
         return
       }
 
@@ -214,13 +193,8 @@ class TranscriptionService {
 
       guard let data = data else {
         print("❌ No data received from API")
-        let errorMessage = """
-          ❌ Keine Daten vom Server erhalten
-
-          Der Server hat keine Daten zurückgesendet.
-          Bitte versuchen Sie es erneut.
-          """
-        completion(.success(errorMessage))
+        let errorResult = TranscriptionErrorResult(type: .internalServerError)
+        completion(.success(errorResult.message))
         return
       }
 
@@ -229,47 +203,44 @@ class TranscriptionService {
         print("📄 Raw API Response: \(responseString)")
       }
 
-      // Handle response based on status code
+      // Handle response based on status code (following OpenAI API error codes)
       switch httpResponse.statusCode {
       case 200:
         self.parseSuccessResponse(data: data, completion: completion)
       case 400:
         print("❌ Bad request - check audio format")
-        let errorMessage = """
-          ❌ Ungültige Anfrage
-
-          Das Audioformat wird nicht unterstützt.
-          Bitte verwenden Sie ein anderes Audioformat oder versuchen Sie es erneut.
-          """
-        completion(.success(errorMessage))
+        let errorResult = TranscriptionErrorResult(
+          type: .invalidRequest, details: "Bad request - check audio format")
+        completion(.success(errorResult.message))
       case 401:
         print("❌ Unauthorized - check API key")
-        let errorMessage = """
-          ❌ Ungültiger API-Schlüssel
-
-          Der API-Schlüssel ist ungültig oder abgelaufen.
-          Bitte überprüfen Sie Ihren OpenAI API-Schlüssel in den Einstellungen.
-          """
-        completion(.success(errorMessage))
+        let errorResult = TranscriptionErrorResult(type: .authenticationError)
+        completion(.success(errorResult.message))
+      case 403:
+        print("❌ Permission denied")
+        let errorResult = TranscriptionErrorResult(type: .permissionDenied)
+        completion(.success(errorResult.message))
+      case 404:
+        print("❌ Resource not found")
+        let errorResult = TranscriptionErrorResult(type: .notFound)
+        completion(.success(errorResult.message))
       case 429:
         print("❌ Rate limited")
-        let errorMessage = """
-          ⏳ Rate Limit erreicht
-
-          Sie haben das Anfrage-Limit erreicht.
-          Bitte warten Sie einen Moment und versuchen Sie es erneut.
-          """
-        completion(.success(errorMessage))
+        let errorResult = TranscriptionErrorResult(type: .rateLimitExceeded)
+        completion(.success(errorResult.message))
+      case 500:
+        print("❌ Internal server error")
+        let errorResult = TranscriptionErrorResult(type: .internalServerError)
+        completion(.success(errorResult.message))
+      case 503:
+        print("🔄 Service unavailable")
+        let errorResult = TranscriptionErrorResult(type: .serviceUnavailable)
+        completion(.success(errorResult.message))
       default:
-        let errorMessage = """
-          ❌ Server error
-
-          HTTP error: \(httpResponse.statusCode)
-
-          Please try again later.
-          """
+        let errorResult = TranscriptionErrorResult(
+          type: .internalServerError, details: "HTTP \(httpResponse.statusCode)")
         print("❌ HTTP error: \(httpResponse.statusCode)")
-        completion(.success(errorMessage))
+        completion(.success(errorResult.message))
       }
     }.resume()
   }
@@ -323,15 +294,55 @@ class TranscriptionService {
       completion(.success(response.text))
     } catch {
       print("❌ JSON parsing error: \(error)")
-      let errorMessage = """
-        ❌ Error processing server response
+      let errorResult = TranscriptionErrorResult(
+        type: .parseError, details: error.localizedDescription)
+      completion(.success(errorResult.message))
+    }
+  }
+}
 
-        Error: \(error.localizedDescription)
+// MARK: - Error Parsing Helper
+extension TranscriptionService {
+  /// Parse a transcription result to determine if it's an error and if it's retryable
+  static func parseTranscriptionResult(_ transcription: String) -> (
+    isError: Bool, isRetryable: Bool, errorType: TranscriptionErrorType?
+  ) {
+    // Check if this is an error message by looking for error emojis
+    let errorEmojis = ["❌", "⚠️", "⏰", "⏳", "🔄"]
+    let isError = errorEmojis.contains { transcription.hasPrefix($0) }
 
-        The server response could not be processed.
-        Please try again.
-        """
-      completion(.success(errorMessage))
+    if !isError {
+      return (isError: false, isRetryable: false, errorType: nil)
+    }
+
+    // Determine error type and retryability based on OpenAI API error codes
+    if transcription.contains("⏰ Request Timeout") {
+      return (isError: true, isRetryable: true, errorType: .timeout)
+    } else if transcription.contains("❌ Network Error") {
+      return (isError: true, isRetryable: true, errorType: .networkError)
+    } else if transcription.contains("❌ Internal Server Error") {
+      return (isError: true, isRetryable: true, errorType: .internalServerError)
+    } else if transcription.contains("⏳ Rate Limit Exceeded") {
+      return (isError: true, isRetryable: true, errorType: .rateLimitExceeded)
+    } else if transcription.contains("🔄 Service Unavailable") {
+      return (isError: true, isRetryable: true, errorType: .serviceUnavailable)
+    } else if transcription.contains("❌ Authentication Error") {
+      return (isError: true, isRetryable: false, errorType: .authenticationError)
+    } else if transcription.contains("❌ Invalid Request") {
+      return (isError: true, isRetryable: false, errorType: .invalidRequest)
+    } else if transcription.contains("❌ Permission Denied") {
+      return (isError: true, isRetryable: false, errorType: .permissionDenied)
+    } else if transcription.contains("❌ Resource Not Found") {
+      return (isError: true, isRetryable: false, errorType: .notFound)
+    } else if transcription.contains("❌ File Too Large") {
+      return (isError: true, isRetryable: false, errorType: .fileTooLarge)
+    } else if transcription.contains("❌ Empty Audio File") {
+      return (isError: true, isRetryable: false, errorType: .emptyFile)
+    } else if transcription.contains("⚠️ No API Key Configured") {
+      return (isError: true, isRetryable: false, errorType: .noAPIKey)
+    } else {
+      // Generic error - assume not retryable
+      return (isError: true, isRetryable: false, errorType: .internalServerError)
     }
   }
 }
@@ -341,41 +352,191 @@ struct WhisperResponse: Codable {
   let text: String
 }
 
-// MARK: - Errors
-enum TranscriptionError: LocalizedError {
-  case noAPIKey
-  case fileTooLarge
-  case invalidResponse
-  case noData
-  case badRequest
-  case unauthorized
-  case rateLimited
-  case timeout
-  case httpError(Int)
-  case parseError(Error)
+// MARK: - Error Types (Based on OpenAI API Error Codes)
+enum TranscriptionErrorType: CaseIterable {
+  // OpenAI API Errors
+  case invalidRequest  // 400 - Bad request
+  case authenticationError  // 401 - Invalid API key
+  case permissionDenied  // 403 - Insufficient permissions
+  case notFound  // 404 - Resource not found
+  case rateLimitExceeded  // 429 - Rate limit exceeded
+  case internalServerError  // 500 - OpenAI server error
+  case serviceUnavailable  // 503 - Service temporarily unavailable
 
-  var errorDescription: String? {
+  // Network/Client Errors
+  case timeout  // Network timeout
+  case networkError  // General network error
+  case fileTooLarge  // File exceeds 25MB limit
+  case emptyFile  // Empty audio file
+  case noAPIKey  // No API key configured
+  case parseError  // JSON parsing error
+
+  var isRetryable: Bool {
     switch self {
-    case .noAPIKey:
-      return "OpenAI API key not configured"
-    case .fileTooLarge:
-      return "Audio file too large (max 25MB)"
-    case .invalidResponse:
-      return "Invalid response from server"
-    case .noData:
-      return "No data received from server"
-    case .badRequest:
-      return "Bad request - check audio file format"
-    case .unauthorized:
-      return "Unauthorized - check API key"
-    case .rateLimited:
-      return "Rate limited - please try again later"
-    case .timeout:
-      return "Request timed out - try again or use shorter audio"
-    case .httpError(let code):
-      return "HTTP error: \(code)"
-    case .parseError(let error):
-      return "Parse error: \(error.localizedDescription)"
+    case .rateLimitExceeded, .internalServerError, .serviceUnavailable, .timeout, .networkError:
+      return true
+    case .invalidRequest, .authenticationError, .permissionDenied, .notFound, .fileTooLarge,
+      .emptyFile, .noAPIKey, .parseError:
+      return false
     }
+  }
+
+  var emoji: String {
+    switch self {
+    case .timeout: return "⏰"
+    case .rateLimitExceeded: return "⏳"
+    case .serviceUnavailable: return "🔄"
+    case .invalidRequest, .authenticationError, .permissionDenied, .notFound, .internalServerError,
+      .networkError, .fileTooLarge, .emptyFile, .noAPIKey, .parseError:
+      return "❌"
+    }
+  }
+
+  var title: String {
+    switch self {
+    case .invalidRequest: return "Invalid Request"
+    case .authenticationError: return "Authentication Error"
+    case .permissionDenied: return "Permission Denied"
+    case .notFound: return "Resource Not Found"
+    case .rateLimitExceeded: return "Rate Limit Exceeded"
+    case .internalServerError: return "Internal Server Error"
+    case .serviceUnavailable: return "Service Unavailable"
+    case .timeout: return "Request Timeout"
+    case .networkError: return "Network Error"
+    case .fileTooLarge: return "File Too Large"
+    case .emptyFile: return "Empty Audio File"
+    case .noAPIKey: return "No API Key Configured"
+    case .parseError: return "Response Processing Error"
+    }
+  }
+
+  func message(details: String = "") -> String {
+    let baseMessage: String
+    switch self {
+    case .invalidRequest:
+      baseMessage = """
+        ❌ Invalid Request
+
+        The request was malformed or contained invalid parameters.
+        \(details.isEmpty ? "Please check your audio file format and try again." : details)
+        """
+    case .authenticationError:
+      baseMessage = """
+        ❌ Authentication Error
+
+        Your API key is invalid or has expired.
+        Please check your OpenAI API key in Settings.
+        """
+    case .permissionDenied:
+      baseMessage = """
+        ❌ Permission Denied
+
+        You don't have permission to access this resource.
+        Please check your API key permissions.
+        """
+    case .notFound:
+      baseMessage = """
+        ❌ Resource Not Found
+
+        The requested resource was not found.
+        Please try again.
+        """
+    case .rateLimitExceeded:
+      baseMessage = """
+        ⏳ Rate Limit Exceeded
+
+        You have exceeded the rate limit for this API.
+        Please wait a moment and try again.
+        """
+    case .internalServerError:
+      baseMessage = """
+        ❌ Internal Server Error
+
+        An error occurred on OpenAI's servers.
+        Please try again later.
+        """
+    case .serviceUnavailable:
+      baseMessage = """
+        🔄 Service Unavailable
+
+        OpenAI's service is temporarily unavailable.
+        Please try again in a few moments.
+        """
+    case .timeout:
+      baseMessage = """
+        ⏰ Request Timeout
+
+        The request took too long and was cancelled.
+
+        Possible causes:
+        • Slow internet connection
+        • Large audio file
+        • OpenAI servers overloaded
+
+        Tips:
+        • Try again
+        • Use shorter recordings
+        • Check your internet connection
+        """
+    case .networkError:
+      baseMessage = """
+        ❌ Network Error
+
+        Error: \(details)
+
+        Please check your internet connection and try again.
+        """
+    case .fileTooLarge:
+      baseMessage = """
+        ❌ File Too Large
+
+        The audio file is larger than 25MB and cannot be transcribed.
+        Please use a shorter recording.
+        """
+    case .emptyFile:
+      baseMessage = """
+        ❌ Empty Audio File
+
+        The recording contains no audio data.
+        Please try again.
+        """
+    case .noAPIKey:
+      baseMessage = """
+        ⚠️ No API Key Configured
+
+        Please open Settings and add your OpenAI API key.
+
+        Without a valid API key, transcription cannot be performed.
+        """
+    case .parseError:
+      baseMessage = """
+        ❌ Response Processing Error
+
+        Error: \(details)
+
+        The server response could not be processed.
+        Please try again.
+        """
+    }
+    return baseMessage
+  }
+}
+
+// MARK: - Error Result
+struct TranscriptionErrorResult {
+  let type: TranscriptionErrorType
+  let details: String
+
+  init(type: TranscriptionErrorType, details: String = "") {
+    self.type = type
+    self.details = details
+  }
+
+  var message: String {
+    return type.message(details: details)
+  }
+
+  var isRetryable: Bool {
+    return type.isRetryable
   }
 }

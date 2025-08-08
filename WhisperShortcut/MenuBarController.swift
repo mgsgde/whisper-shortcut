@@ -196,10 +196,16 @@ class MenuBarController: NSObject {
     retryMenuItem.isHidden = !canRetry
 
     if canRetry {
-      // Show retry countdown if it's a timeout error
-      if let error = lastError, error.contains("⏰ Timeout Error") {
-        retryMenuItem.title = "🔄 Retry Transcription (Timeout)"
-        print("🔄 Set retry menu title to: Retry Transcription (Timeout)")
+      // Show specific error type in retry menu if available
+      if let error = lastError {
+        let (_, _, errorType) = TranscriptionService.parseTranscriptionResult(error)
+        if let type = errorType {
+          retryMenuItem.title = "🔄 Retry Transcription (\(type.title))"
+          print("🔄 Set retry menu title to: Retry Transcription (\(type.title))")
+        } else {
+          retryMenuItem.title = "🔄 Retry Transcription"
+          print("🔄 Set retry menu title to: Retry Transcription")
+        }
       } else {
         retryMenuItem.title = "🔄 Retry Transcription"
         print("🔄 Set retry menu title to: Retry Transcription")
@@ -447,27 +453,19 @@ extension MenuBarController: AudioRecorderDelegate {
     case .success(let transcription):
       print("Transcription result: \(transcription)")
 
-      // Check if this is an error message (starts with ❌, ⚠️, ⏰, or ⏳)
-      if transcription.hasPrefix("❌") || transcription.hasPrefix("⚠️")
-        || transcription.hasPrefix("⏰") || transcription.hasPrefix("⏳")
-      {
+      // Use the new error parsing system
+      let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+        transcription)
+
+      if isError {
         print("Error message returned as transcription")
+        print("🔄 Error analysis:")
+        print("   - Error type: \(errorType?.title ?? "Unknown")")
+        print("   - Is retryable: \(isRetryable)")
+        print("   - lastAudioURL exists: \(lastAudioURL != nil)")
 
         // Store error for retry functionality
         lastError = transcription
-
-        // Determine if this error is retryable
-        let isRetryable =
-          transcription.contains("⏰ Timeout Error") || transcription.contains("❌ Network error")
-          || transcription.contains("❌ Server error") || transcription.contains("⏳ Rate Limit")
-
-        print("🔄 Error analysis:")
-        print("   - Contains '⏰ Timeout Error': \(transcription.contains("⏰ Timeout Error"))")
-        print("   - Contains '❌ Network error': \(transcription.contains("❌ Network error"))")
-        print("   - Contains '❌ Server error': \(transcription.contains("❌ Server error"))")
-        print("   - Contains '⏳ Rate Limit': \(transcription.contains("⏳ Rate Limit"))")
-        print("   - Is retryable: \(isRetryable)")
-        print("   - lastAudioURL exists: \(lastAudioURL != nil)")
 
         if isRetryable && lastAudioURL != nil {
           canRetry = true

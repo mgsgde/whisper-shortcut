@@ -24,99 +24,113 @@ final class RetryFunctionalityTests: XCTestCase {
 
   func testTimeoutErrorDetection() {
     let timeoutError = """
-      ⏰ Timeout Error
+      ⏰ Request Timeout
 
-      Die Anfrage hat zu lange gedauert und wurde abgebrochen.
+      The request took too long and was cancelled.
 
-      Mögliche Ursachen:
-      • Langsame Internetverbindung
-      • Große Audiodatei
-      • OpenAI Server überlastet
+      Possible causes:
+      • Slow internet connection
+      • Large audio file
+      • OpenAI servers overloaded
 
-      Tipps:
-      • Versuchen Sie es erneut
-      • Verwenden Sie kürzere Aufnahmen
-      • Überprüfen Sie Ihre Internetverbindung
+      Tips:
+      • Try again
+      • Use shorter recordings
+      • Check your internet connection
       """
 
-    // Test that timeout errors are detected correctly
-    XCTAssertTrue(timeoutError.hasPrefix("⏰"), "Timeout error should start with ⏰")
-    XCTAssertTrue(timeoutError.contains("⏰ Timeout Error"), "Should contain timeout error text")
+    // Test that timeout errors are detected correctly using the new parsing system
+    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+      timeoutError)
+    XCTAssertTrue(isError, "Timeout error should be detected as error")
+    XCTAssertTrue(isRetryable, "Timeout error should be retryable")
+    XCTAssertEqual(errorType, .timeout, "Error type should be timeout")
   }
 
   func testNetworkErrorDetection() {
     let networkError = """
-      ❌ Network error
+      ❌ Network Error
 
       Error: The operation couldn't be completed. (NSURLErrorDomain error -1001.)
 
       Please check your internet connection and try again.
       """
 
-    // Test that network errors are detected correctly
-    XCTAssertTrue(networkError.hasPrefix("❌"), "Network error should start with ❌")
-    XCTAssertTrue(networkError.contains("❌ Network error"), "Should contain network error text")
+    // Test that network errors are detected correctly using the new parsing system
+    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+      networkError)
+    XCTAssertTrue(isError, "Network error should be detected as error")
+    XCTAssertTrue(isRetryable, "Network error should be retryable")
+    XCTAssertEqual(errorType, .networkError, "Error type should be networkError")
   }
 
   func testServerErrorDetection() {
     let serverError = """
-      ❌ Server error
+      ❌ Internal Server Error
 
-      HTTP error: 500
-
+      An error occurred on OpenAI's servers.
       Please try again later.
       """
 
-    // Test that server errors are detected correctly
-    XCTAssertTrue(serverError.hasPrefix("❌"), "Server error should start with ❌")
-    XCTAssertTrue(serverError.contains("❌ Server error"), "Should contain server error text")
+    // Test that server errors are detected correctly using the new parsing system
+    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+      serverError)
+    XCTAssertTrue(isError, "Server error should be detected as error")
+    XCTAssertTrue(isRetryable, "Server error should be retryable")
+    XCTAssertEqual(errorType, .internalServerError, "Error type should be internalServerError")
   }
 
   func testRateLimitErrorDetection() {
     let rateLimitError = """
-      ⏳ Rate Limit erreicht
+      ⏳ Rate Limit Exceeded
 
-      Sie haben das Anfrage-Limit erreicht.
-      Bitte warten Sie einen Moment und versuchen Sie es erneut.
+      You have exceeded the rate limit for this API.
+      Please wait a moment and try again.
       """
 
-    // Test that rate limit errors are detected correctly
-    XCTAssertTrue(rateLimitError.hasPrefix("⏳"), "Rate limit error should start with ⏳")
-    XCTAssertTrue(rateLimitError.contains("⏳ Rate Limit"), "Should contain rate limit text")
+    // Test that rate limit errors are detected correctly using the new parsing system
+    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+      rateLimitError)
+    XCTAssertTrue(isError, "Rate limit error should be detected as error")
+    XCTAssertTrue(isRetryable, "Rate limit error should be retryable")
+    XCTAssertEqual(errorType, .rateLimitExceeded, "Error type should be rateLimitExceeded")
   }
 
   // MARK: - Retry Logic Tests
 
   func testRetryableErrorIdentification() {
     let retryableErrors = [
-      "⏰ Timeout Error - should be retryable",
-      "❌ Network error - should be retryable",
-      "❌ Server error - should be retryable",
-      "⏳ Rate Limit - should be retryable",
+      "⏰ Request Timeout",
+      "❌ Network Error",
+      "❌ Internal Server Error",
+      "⏳ Rate Limit Exceeded",
+      "🔄 Service Unavailable",
     ]
 
     for error in retryableErrors {
-      let isRetryable =
-        error.contains("⏰ Timeout Error") || error.contains("❌ Network error")
-        || error.contains("❌ Server error") || error.contains("⏳ Rate Limit")
-
+      let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(error)
+      
+      // Test each assertion separately to see which one fails
+      XCTAssertTrue(isError, "Error should be detected as error: \(error)")
       XCTAssertTrue(isRetryable, "Error should be identified as retryable: \(error)")
+      XCTAssertNotNil(errorType, "Error type should not be nil for: \(error)")
     }
   }
 
   func testNonRetryableErrorIdentification() {
     let nonRetryableErrors = [
-      "❌ Ungültiger API-Schlüssel - should NOT be retryable",
-      "❌ Audiodatei zu groß - should NOT be retryable",
-      "❌ Leere Audiodatei - should NOT be retryable",
-      "⚠️ No API key configured - should NOT be retryable",
+      "❌ Authentication Error - should NOT be retryable",
+      "❌ Invalid Request - should NOT be retryable",
+      "❌ Permission Denied - should NOT be retryable",
+      "❌ Resource Not Found - should NOT be retryable",
+      "❌ File Too Large - should NOT be retryable",
+      "❌ Empty Audio File - should NOT be retryable",
+      "⚠️ No API Key Configured - should NOT be retryable",
     ]
 
     for error in nonRetryableErrors {
-      let isRetryable =
-        error.contains("⏰ Timeout Error") || error.contains("❌ Network error")
-        || error.contains("❌ Server error") || error.contains("⏳ Rate Limit")
-
+      let (isError, isRetryable, _) = TranscriptionService.parseTranscriptionResult(error)
+      XCTAssertTrue(isError, "Error should be detected as error: \(error)")
       XCTAssertFalse(isRetryable, "Error should NOT be identified as retryable: \(error)")
     }
   }
@@ -125,16 +139,17 @@ final class RetryFunctionalityTests: XCTestCase {
 
   func testAudioFileCleanupLogic() {
     // Test successful transcription should cleanup
-    let successResult = Result<String, Error>.success("This is a successful transcription")
-    // This would be tested in MenuBarController, but we can test the logic here
+    let successTranscription = "This is a successful transcription"
+    let (isError, isRetryable, _) = TranscriptionService.parseTranscriptionResult(
+      successTranscription)
+    XCTAssertFalse(isError, "Successful transcription should not be detected as error")
+    XCTAssertFalse(isRetryable, "Successful transcription should not be retryable")
 
     // Test retryable error should NOT cleanup
-    let retryableError = "⏰ Timeout Error - this should be retryable"
-    let isRetryable =
-      retryableError.contains("⏰ Timeout Error") || retryableError.contains("❌ Network error")
-      || retryableError.contains("❌ Server error") || retryableError.contains("⏳ Rate Limit")
-
-    XCTAssertTrue(isRetryable, "Timeout error should be retryable")
+    let retryableError = "⏰ Request Timeout - this should be retryable"
+    let (isError2, isRetryable2, _) = TranscriptionService.parseTranscriptionResult(retryableError)
+    XCTAssertTrue(isError2, "Timeout error should be detected as error")
+    XCTAssertTrue(isRetryable2, "Timeout error should be retryable")
     // If retryable, shouldCleanup should be false
   }
 
@@ -186,31 +201,31 @@ final class RetryFunctionalityTests: XCTestCase {
 
   func testTimeoutErrorMessageFormat() {
     let timeoutMessage = """
-      ⏰ Timeout Error
+      ⏰ Request Timeout
 
-      Die Anfrage hat zu lange gedauert und wurde abgebrochen.
+      The request took too long and was cancelled.
 
-      Mögliche Ursachen:
-      • Langsame Internetverbindung
-      • Große Audiodatei
-      • OpenAI Server überlastet
+      Possible causes:
+      • Slow internet connection
+      • Large audio file
+      • OpenAI servers overloaded
 
-      Tipps:
-      • Versuchen Sie es erneut
-      • Verwenden Sie kürzere Aufnahmen
-      • Überprüfen Sie Ihre Internetverbindung
+      Tips:
+      • Try again
+      • Use shorter recordings
+      • Check your internet connection
       """
 
     // Test that timeout message has correct format
-    XCTAssertTrue(timeoutMessage.hasPrefix("⏰ Timeout Error"))
-    XCTAssertTrue(timeoutMessage.contains("Mögliche Ursachen:"))
-    XCTAssertTrue(timeoutMessage.contains("Tipps:"))
-    XCTAssertTrue(timeoutMessage.contains("Versuchen Sie es erneut"))
+    XCTAssertTrue(timeoutMessage.hasPrefix("⏰ Request Timeout"))
+    XCTAssertTrue(timeoutMessage.contains("Possible causes:"))
+    XCTAssertTrue(timeoutMessage.contains("Tips:"))
+    XCTAssertTrue(timeoutMessage.contains("Try again"))
   }
 
   func testNetworkErrorMessageFormat() {
     let networkMessage = """
-      ❌ Network error
+      ❌ Network Error
 
       Error: The operation couldn't be completed. (NSURLErrorDomain error -1001.)
 
@@ -218,7 +233,51 @@ final class RetryFunctionalityTests: XCTestCase {
       """
 
     // Test that network message has correct format
-    XCTAssertTrue(networkMessage.hasPrefix("❌ Network error"))
+    XCTAssertTrue(networkMessage.hasPrefix("❌ Network Error"))
     XCTAssertTrue(networkMessage.contains("Please check your internet connection"))
   }
+
+  // MARK: - Debug Tests (Removed after fixing the issue)
+
+  func testTimeoutErrorParsing() {
+    let errorString = "⏰ Request Timeout"
+    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(errorString)
+    XCTAssertTrue(isError, "Timeout error should be detected as error")
+    XCTAssertTrue(isRetryable, "Timeout error should be retryable")
+    XCTAssertEqual(errorType, .timeout, "Error type should be timeout")
+  }
+
+  func testNetworkErrorParsing() {
+    let errorString = "❌ Network Error"
+    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(errorString)
+    XCTAssertTrue(isError, "Network error should be detected as error")
+    XCTAssertTrue(isRetryable, "Network error should be retryable")
+    XCTAssertEqual(errorType, .networkError, "Error type should be networkError")
+  }
+
+  func testServerErrorParsing() {
+    let errorString = "❌ Internal Server Error"
+    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(errorString)
+    XCTAssertTrue(isError, "Server error should be detected as error")
+    XCTAssertTrue(isRetryable, "Server error should be retryable")
+    XCTAssertEqual(errorType, .internalServerError, "Error type should be internalServerError")
+  }
+
+  func testRateLimitErrorParsing() {
+    let errorString = "⏳ Rate Limit Exceeded"
+    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(errorString)
+    XCTAssertTrue(isError, "Rate limit error should be detected as error")
+    XCTAssertTrue(isRetryable, "Rate limit error should be retryable")
+    XCTAssertEqual(errorType, .rateLimitExceeded, "Error type should be rateLimitExceeded")
+  }
+
+  func testServiceUnavailableErrorParsing() {
+    let errorString = "🔄 Service Unavailable"
+    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(errorString)
+    XCTAssertTrue(isError, "Service unavailable error should be detected as error")
+    XCTAssertTrue(isRetryable, "Service unavailable error should be retryable")
+    XCTAssertEqual(errorType, .serviceUnavailable, "Error type should be serviceUnavailable")
+  }
+
+
 }

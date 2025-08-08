@@ -42,12 +42,9 @@ final class TranscriptionServiceTests: XCTestCase {
     case .success:
       XCTFail("Validation should fail with empty API key")
     case .failure(let error):
-      if let transcriptionError = error as? TranscriptionError {
-        XCTAssertEqual(
-          transcriptionError, .noAPIKey, "Should fail with noAPIKey error for empty key")
-      } else {
-        XCTFail("Expected TranscriptionError.noAPIKey, got: \(error)")
-      }
+      let nsError = error as NSError
+      XCTAssertEqual(nsError.code, 1001, "Should fail with code 1001 for empty API key")
+      XCTAssertTrue(nsError.localizedDescription.contains("No API key provided"), "Should contain appropriate error message")
     }
   }
 
@@ -72,10 +69,10 @@ final class TranscriptionServiceTests: XCTestCase {
     case .success:
       XCTFail("Validation should fail with invalid API key")
     case .failure(let error):
-      // Should get unauthorized error for invalid key
-      if let transcriptionError = error as? TranscriptionError {
-        XCTAssertEqual(
-          transcriptionError, .unauthorized, "Should fail with unauthorized error for invalid key")
+      let nsError = error as NSError
+      // Should get 401 error for invalid key, or network error
+      if nsError.code == 401 {
+        XCTAssertTrue(nsError.localizedDescription.contains("Authentication failed"), "Should contain authentication error message")
       } else {
         // Network errors are also acceptable for invalid keys
         print("Validation failed with network error (acceptable): \(error)")

@@ -127,21 +127,9 @@ final class TranscriptionServiceIntegrationTests: XCTestCase {
       XCTAssertGreaterThan(transcription.count, 0, "Transcription should contain content")
 
     case .failure(let error):
-      if let transcriptionError = error as? TranscriptionError {
-        switch transcriptionError {
-        case .unauthorized:
-          XCTFail("API key is invalid or unauthorized: \(error.localizedDescription)")
-        case .rateLimited:
-          print("⚠️ Rate limited by OpenAI - this is expected behavior, not a test failure")
-        // Rate limiting is not a test failure, just skip
-        case .fileTooLarge:
-          XCTFail("Test audio file is too large: \(error.localizedDescription)")
-        default:
-          XCTFail("OpenAI transcription failed: \(error.localizedDescription)")
-        }
-      } else {
-        XCTFail("Transcription failed with unexpected error: \(error.localizedDescription)")
-      }
+      // Since we now return error messages as success strings, this should not happen
+      // But handle it gracefully for any unexpected failures
+      XCTFail("Transcription failed with unexpected error: \(error.localizedDescription)")
     }
   }
 
@@ -239,23 +227,5 @@ extension Int16 {
 
 // MARK: - Test Extensions
 
-extension TranscriptionError: Equatable {
-  public static func == (lhs: TranscriptionError, rhs: TranscriptionError) -> Bool {
-    switch (lhs, rhs) {
-    case (.noAPIKey, .noAPIKey),
-      (.fileTooLarge, .fileTooLarge),
-      (.invalidResponse, .invalidResponse),
-      (.noData, .noData),
-      (.badRequest, .badRequest),
-      (.unauthorized, .unauthorized),
-      (.rateLimited, .rateLimited):
-      return true
-    case (.httpError(let code1), .httpError(let code2)):
-      return code1 == code2
-    case (.parseError(_), .parseError(_)):
-      return true  // Simplified comparison for testing
-    default:
-      return false
-    }
-  }
-}
+// Note: TranscriptionError enum has been replaced with TranscriptionErrorType and TranscriptionErrorResult
+// The new system provides better type safety and alignment with OpenAI API error codes

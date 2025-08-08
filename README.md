@@ -28,25 +28,30 @@ A macOS menu bar app that provides quick audio transcription using OpenAI's Whis
 ## Usage
 
 ### Basic Recording
+
 - Press your configured shortcut to start recording
 - Speak clearly into your microphone
 - Press the shortcut again to stop recording
 - The transcription will automatically be copied to your clipboard
 
 ### Retry Functionality
+
 When transcription fails (due to network issues, timeouts, or server errors), the app will:
+
 - Show a "🔄 Retry Transcription" option in the menu
 - Keep the audio file available for retry
 - Allow you to retry with one click
 - Automatically clean up files after successful retry
 
 **Retryable Errors:**
+
 - ⏰ Timeout errors (network issues)
 - ❌ Network errors (connection problems)
 - ❌ Server errors (OpenAI server issues)
 - ⏳ Rate limit errors (temporary limits)
 
 ### Menu Bar Interface
+
 - **🎙️**: Ready to record
 - **🔴**: Currently recording
 - **⏳**: Transcribing audio
@@ -56,11 +61,13 @@ When transcription fails (due to network issues, timeouts, or server errors), th
 ## Configuration
 
 ### Keyboard Shortcuts
+
 - **Start Recording**: Default `Cmd+Shift+R`
 - **Stop Recording**: Default `Cmd+Shift+S`
 - **Settings**: Access via menu bar
 
 ### API Key Management
+
 - Securely stored in macOS Keychain
 - Validated on save
 - No local storage of sensitive data
@@ -70,23 +77,28 @@ When transcription fails (due to network issues, timeouts, or server errors), th
 ### Common Issues
 
 **"No API key configured"**
+
 - Open Settings and add your OpenAI API key
 - Ensure the key is valid and has sufficient credits
 
 **"Timeout Error"**
+
 - Check your internet connection
 - Try using shorter audio recordings
 - Use the retry functionality to attempt again
 
 **"Rate Limited"**
+
 - Wait a moment and try again
 - OpenAI has rate limits on API usage
 
 **"File too large"**
+
 - Keep recordings under 25MB
 - Use shorter audio clips
 
 ### Retry Tips
+
 - For timeout errors, try again immediately
 - For network errors, check your connection first
 - For rate limits, wait 1-2 minutes before retrying
@@ -95,6 +107,7 @@ When transcription fails (due to network issues, timeouts, or server errors), th
 ## Development
 
 ### Building from Source
+
 ```bash
 git clone https://github.com/yourusername/whisper-shortcut.git
 cd whisper-shortcut
@@ -102,6 +115,7 @@ open WhisperShortcut.xcodeproj
 ```
 
 ### Requirements
+
 - macOS 15.5+
 - Xcode 16.0+
 - OpenAI API key

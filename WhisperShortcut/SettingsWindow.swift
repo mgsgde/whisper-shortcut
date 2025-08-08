@@ -348,19 +348,19 @@ class SettingsWindowController: NSWindowController {
 
           // Show specific error message based on the type of error
           let errorMessage: String
-          if let transcriptionError = error as? TranscriptionError {
-            switch transcriptionError {
-            case .unauthorized:
-              errorMessage = "Invalid API key. Please check that your OpenAI API key is correct."
-            case .rateLimited:
-              errorMessage = "Rate limited by OpenAI. Please wait a moment and try again."
-            case .httpError(let code):
-              errorMessage =
-                "Server error (\(code)). Please check your internet connection and try again."
-            default:
-              errorMessage = "Validation failed: \(transcriptionError.localizedDescription)"
-            }
-          } else {
+          let nsError = error as NSError
+          switch nsError.code {
+          case 401:
+            errorMessage = "Invalid API key. Please check that your OpenAI API key is correct."
+          case 429:
+            errorMessage = "Rate limited by OpenAI. Please wait a moment and try again."
+          case 1001:
+            errorMessage = "No API key provided. Please enter a valid API key."
+          case 1002:
+            errorMessage = "Invalid URL. Please check your internet connection."
+          case 1003:
+            errorMessage = "Invalid response from server. Please try again."
+          default:
             errorMessage = "Network error. Please check your internet connection and try again."
           }
 
