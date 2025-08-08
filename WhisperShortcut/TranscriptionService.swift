@@ -5,6 +5,14 @@ class TranscriptionService {
   private let session = URLSession.shared
   private let keychainManager: KeychainManaging
 
+  // Custom session with reasonable timeout for transcription requests
+  private lazy var transcriptionSession: URLSession = {
+    let config = URLSessionConfiguration.default
+    config.timeoutIntervalForRequest = 30.0  // 30 seconds for request timeout
+    config.timeoutIntervalForResource = 120.0 // 2 minutes for resource timeout
+    return URLSession(configuration: config)
+  }()
+
   init(keychainManager: KeychainManaging = KeychainManager.shared) {
     self.keychainManager = keychainManager
     // Check if API key is configured
@@ -140,17 +148,39 @@ class TranscriptionService {
     print("🌐 Making API request to OpenAI Whisper...")
 
     // Execute request
-    session.dataTask(with: request) { data, response, error in
+    transcriptionSession.dataTask(with: request) { data, response, error in
       if let error = error {
         print("❌ Network error: \(error)")
-        let errorMessage = """
-          ❌ Network error
 
-          Error: \(error.localizedDescription)
+        // Check if it's a timeout error
+        if (error as NSError).code == NSURLErrorTimedOut {
+          let errorMessage = """
+            ⏰ Timeout Error
 
-          Please check your internet connection and try again.
-          """
-        completion(.success(errorMessage))
+            Die Anfrage hat zu lange gedauert und wurde abgebrochen.
+
+            Mögliche Ursachen:
+            • Langsame Internetverbindung
+            • Große Audiodatei
+            • OpenAI Server überlastet
+
+            Tipps:
+            • Versuchen Sie es erneut
+            • Verwenden Sie kürzere Aufnahmen
+            • Überprüfen Sie Ihre Internetverbindung
+            """
+          print("⏰ Timeout error detected")
+          completion(.success(errorMessage))
+        } else {
+          let errorMessage = """
+            ❌ Network error
+
+            Error: \(error.localizedDescription)
+
+            Please check your internet connection and try again.
+            """
+          completion(.success(errorMessage))
+        }
         return
       }
 
@@ -306,6 +336,7 @@ enum TranscriptionError: LocalizedError {
   case badRequest
   case unauthorized
   case rateLimited
+  case timeout
   case httpError(Int)
   case parseError(Error)
 
@@ -325,6 +356,8 @@ enum TranscriptionError: LocalizedError {
       return "Unauthorized - check API key"
     case .rateLimited:
       return "Rate limited - please try again later"
+    case .timeout:
+      return "Request timed out - try again or use shorter audio"
     case .httpError(let code):
       return "HTTP error: \(code)"
     case .parseError(let error):
