@@ -9,7 +9,7 @@ class TranscriptionService {
   private lazy var transcriptionSession: URLSession = {
     let config = URLSessionConfiguration.default
     config.timeoutIntervalForRequest = 30.0  // 30 seconds for request timeout
-    config.timeoutIntervalForResource = 120.0 // 2 minutes for resource timeout
+    config.timeoutIntervalForResource = 120.0  // 2 minutes for resource timeout
     return URLSession(configuration: config)
   }()
 
@@ -152,8 +152,22 @@ class TranscriptionService {
       if let error = error {
         print("❌ Network error: \(error)")
 
-        // Check if it's a timeout error
-        if (error as NSError).code == NSURLErrorTimedOut {
+        // Debug error details
+        let nsError = error as NSError
+        print("🔍 Error details:")
+        print("   - Error code: \(nsError.code)")
+        print("   - Error domain: \(nsError.domain)")
+        print("   - Error description: \(nsError.localizedDescription)")
+        print("   - NSURLErrorTimedOut constant: \(NSURLErrorTimedOut)")
+
+        // Check if it's a timeout error (multiple ways to detect)
+        let isTimeout =
+          nsError.code == NSURLErrorTimedOut || nsError.localizedDescription.contains("timed out")
+          || nsError.localizedDescription.contains("timeout")
+
+        print("⏰ Is timeout error: \(isTimeout)")
+
+        if isTimeout {
           let errorMessage = """
             ⏰ Timeout Error
 
