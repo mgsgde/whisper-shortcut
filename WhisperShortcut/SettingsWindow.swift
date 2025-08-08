@@ -331,19 +331,25 @@ class SettingsWindowController: NSWindowController {
     print("🔄 Validating API key with OpenAI...")
 
     // Validate the API key with OpenAI
-    transcriptionService?.validateAPIKey(apiKey) { [weak self] result in
-      DispatchQueue.main.async {
-        // Re-enable the save button
-        saveButton.isEnabled = true
-        saveButton.title = "Save Settings"
-
-        switch result {
-        case .success:
+    Task {
+      do {
+        _ = try await transcriptionService?.validateAPIKey(apiKey)
+        
+        await MainActor.run {
+          // Re-enable the save button
+          saveButton.isEnabled = true
+          saveButton.title = "Save Settings"
+          
           print("✅ API key validation successful, saving and closing...")
-          self?.saveAndClose(
+          self.saveAndClose(
             apiKey: apiKey, startShortcut: startShortcut!, stopShortcut: stopShortcut!)
-
-        case .failure(let error):
+        }
+      } catch {
+        await MainActor.run {
+          // Re-enable the save button
+          saveButton.isEnabled = true
+          saveButton.title = "Save Settings"
+          
           print("❌ API key validation failed: \(error)")
 
           // Show specific error message based on the type of error
@@ -365,7 +371,7 @@ class SettingsWindowController: NSWindowController {
           }
 
           // Don't close the window - just show the error
-          self?.showAlert(title: "API Key Validation Failed", message: errorMessage)
+          self.showAlert(title: "API Key Validation Failed", message: errorMessage)
         }
       }
     }

@@ -1,4 +1,3 @@
-import Foundation
 import XCTest
 
 @testable import WhisperShortcut
@@ -20,7 +19,7 @@ final class RetryFunctionalityTests: XCTestCase {
     super.tearDown()
   }
 
-  // MARK: - Error Detection Tests
+  // MARK: - Error Parsing Tests
 
   func testTimeoutErrorDetection() {
     let timeoutError = """
@@ -44,7 +43,7 @@ final class RetryFunctionalityTests: XCTestCase {
       timeoutError)
     XCTAssertTrue(isError, "Timeout error should be detected as error")
     XCTAssertTrue(isRetryable, "Timeout error should be retryable")
-    XCTAssertEqual(errorType, .timeout, "Error type should be timeout")
+    XCTAssertEqual(errorType, .networkError("Timeout"), "Error type should be networkError")
   }
 
   func testNetworkErrorDetection() {
@@ -61,7 +60,7 @@ final class RetryFunctionalityTests: XCTestCase {
       networkError)
     XCTAssertTrue(isError, "Network error should be detected as error")
     XCTAssertTrue(isRetryable, "Network error should be retryable")
-    XCTAssertEqual(errorType, .networkError, "Error type should be networkError")
+    XCTAssertEqual(errorType, .networkError("Network"), "Error type should be networkError")
   }
 
   func testServerErrorDetection() {
@@ -77,7 +76,7 @@ final class RetryFunctionalityTests: XCTestCase {
       serverError)
     XCTAssertTrue(isError, "Server error should be detected as error")
     XCTAssertTrue(isRetryable, "Server error should be retryable")
-    XCTAssertEqual(errorType, .internalServerError, "Error type should be internalServerError")
+    XCTAssertEqual(errorType, .serverError(500), "Error type should be serverError")
   }
 
   func testRateLimitErrorDetection() {
@@ -93,191 +92,105 @@ final class RetryFunctionalityTests: XCTestCase {
       rateLimitError)
     XCTAssertTrue(isError, "Rate limit error should be detected as error")
     XCTAssertTrue(isRetryable, "Rate limit error should be retryable")
-    XCTAssertEqual(errorType, .rateLimitExceeded, "Error type should be rateLimitExceeded")
+    XCTAssertEqual(errorType, .rateLimited, "Error type should be rateLimited")
   }
 
-  // MARK: - Retry Logic Tests
+  func testServiceUnavailableErrorDetection() {
+    let serviceError = """
+      🔄 Service Unavailable
 
-  func testRetryableErrorIdentification() {
-    let retryableErrors = [
-      "⏰ Request Timeout",
-      "❌ Network Error",
-      "❌ Internal Server Error",
-      "⏳ Rate Limit Exceeded",
-      "🔄 Service Unavailable",
-    ]
+      OpenAI's service is temporarily unavailable.
+      Please try again in a few moments.
+      """
 
-    for error in retryableErrors {
-      let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(error)
-      
-      // Test each assertion separately to see which one fails
-      XCTAssertTrue(isError, "Error should be detected as error: \(error)")
-      XCTAssertTrue(isRetryable, "Error should be identified as retryable: \(error)")
-      XCTAssertNotNil(errorType, "Error type should not be nil for: \(error)")
-    }
+    // Test that service unavailable errors are detected correctly
+    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+      serviceError)
+    XCTAssertTrue(isError, "Service error should be detected as error")
+    XCTAssertTrue(isRetryable, "Service error should be retryable")
+    XCTAssertEqual(errorType, .serviceUnavailable, "Error type should be serviceUnavailable")
   }
 
-  func testNonRetryableErrorIdentification() {
-    let nonRetryableErrors = [
-      "❌ Authentication Error - should NOT be retryable",
-      "❌ Invalid Request - should NOT be retryable",
-      "❌ Permission Denied - should NOT be retryable",
-      "❌ Resource Not Found - should NOT be retryable",
-      "❌ File Too Large - should NOT be retryable",
-      "❌ Empty Audio File - should NOT be retryable",
-      "⚠️ No API Key Configured - should NOT be retryable",
-    ]
+  func testAuthenticationErrorDetection() {
+    let authError = """
+      ❌ Authentication Error
 
-    for error in nonRetryableErrors {
-      let (isError, isRetryable, _) = TranscriptionService.parseTranscriptionResult(error)
-      XCTAssertTrue(isError, "Error should be detected as error: \(error)")
-      XCTAssertFalse(isRetryable, "Error should NOT be identified as retryable: \(error)")
-    }
+      Your API key is invalid or has expired.
+      Please check your OpenAI API key in Settings.
+      """
+
+    // Test that authentication errors are detected correctly (non-retryable)
+    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+      authError)
+    XCTAssertTrue(isError, "Auth error should be detected as error")
+    XCTAssertFalse(isRetryable, "Auth error should NOT be retryable")
+    XCTAssertEqual(errorType, .invalidAPIKey, "Error type should be invalidAPIKey")
   }
 
-  // MARK: - Audio File Cleanup Tests
+  func testNonErrorTextDetection() {
+    let normalText = "Hello, this is a normal transcription."
 
-  func testAudioFileCleanupLogic() {
-    // Test successful transcription should cleanup
-    let successTranscription = "This is a successful transcription"
-    let (isError, isRetryable, _) = TranscriptionService.parseTranscriptionResult(
-      successTranscription)
-    XCTAssertFalse(isError, "Successful transcription should not be detected as error")
-    XCTAssertFalse(isRetryable, "Successful transcription should not be retryable")
-
-    // Test retryable error should NOT cleanup
-    let retryableError = "⏰ Request Timeout - this should be retryable"
-    let (isError2, isRetryable2, _) = TranscriptionService.parseTranscriptionResult(retryableError)
-    XCTAssertTrue(isError2, "Timeout error should be detected as error")
-    XCTAssertTrue(isRetryable2, "Timeout error should be retryable")
-    // If retryable, shouldCleanup should be false
+    // Test that normal text is not detected as error
+    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+      normalText)
+    XCTAssertFalse(isError, "Normal text should not be detected as error")
+    XCTAssertFalse(isRetryable, "Normal text should not be retryable")
+    XCTAssertNil(errorType, "Error type should be nil for normal text")
   }
 
   // MARK: - Integration Tests
 
-  func testTranscriptionWithTimeoutSimulation() {
-    // Set a valid API key
-    mockKeychain.saveAPIKey("sk-test-key")
+  func testTranscriptionWithInvalidAPIKey() async {
+    // Clear any API key (should fail with noAPIKey error)
+    mockKeychain.clear()
 
     // Create a test audio file
-    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test-timeout.wav")
+    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test.wav")
     let testData = Data("test".utf8)
     try? testData.write(to: tempURL)
 
-    let expectation = XCTestExpectation(description: "Transcription with timeout simulation")
-    var transcriptionResult: Result<String, Error>?
-
-    transcriptionService.transcribe(audioURL: tempURL) { result in
-      transcriptionResult = result
-      expectation.fulfill()
+    defer {
+      try? FileManager.default.removeItem(at: tempURL)
     }
 
-    wait(for: [expectation], timeout: 10.0)
+    // With new async API, this should throw a TranscriptionError
+    do {
+      _ = try await transcriptionService.transcribe(audioURL: tempURL)
+      XCTFail("Should have thrown TranscriptionError.noAPIKey")
+    } catch let error as TranscriptionError {
+      XCTAssertEqual(error, .noAPIKey, "Should get noAPIKey error")
+      XCTAssertFalse(error.isRetryable, "No API key error should not be retryable")
+      print("✅ Test passed: Got expected noAPIKey error")
+    } catch {
+      XCTFail("Should get TranscriptionError, got: \(error)")
+    }
+  }
 
-    // Clean up test file
-    try? FileManager.default.removeItem(at: tempURL)
+  func testTranscriptionWithValidAPIKeyButBadFile() async {
+    // Set a test API key (will fail due to invalid audio file)
+    _ = mockKeychain.saveAPIKey("sk-test-key")
 
-    guard let result = transcriptionResult else {
-      XCTFail("No transcription result received")
-      return
+    // Create an empty test file (should fail)
+    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("empty.wav")
+    let emptyData = Data()
+    try? emptyData.write(to: tempURL)
+
+    defer {
+      try? FileManager.default.removeItem(at: tempURL)
     }
 
-    switch result {
-    case .success(let transcription):
-      // Should return an error message (either API key error or timeout)
+    // With new async API, this should throw a TranscriptionError
+    do {
+      _ = try await transcriptionService.transcribe(audioURL: tempURL)
+      XCTFail("Should have thrown TranscriptionError for empty file")
+    } catch let error as TranscriptionError {
+      // Should get emptyFile or fileError
       XCTAssertTrue(
-        transcription.contains("No API key configured") || transcription.contains("⏰ Timeout Error")
-          || transcription.contains("❌"),
-        "Should contain error message"
-      )
-      print("✅ Test passed: Error message returned: '\(transcription.prefix(100))...'")
-
-    case .failure(let error):
-      XCTFail("Should not fail, but return error message as transcription. Got error: \(error)")
+        error == .emptyFile || error == .fileError("File is empty"),
+        "Should get emptyFile or fileError, got: \(error)")
+      print("✅ Test passed: Got expected file error: \(error)")
+    } catch {
+      XCTFail("Should get TranscriptionError, got: \(error)")
     }
   }
-
-  // MARK: - Error Message Format Tests
-
-  func testTimeoutErrorMessageFormat() {
-    let timeoutMessage = """
-      ⏰ Request Timeout
-
-      The request took too long and was cancelled.
-
-      Possible causes:
-      • Slow internet connection
-      • Large audio file
-      • OpenAI servers overloaded
-
-      Tips:
-      • Try again
-      • Use shorter recordings
-      • Check your internet connection
-      """
-
-    // Test that timeout message has correct format
-    XCTAssertTrue(timeoutMessage.hasPrefix("⏰ Request Timeout"))
-    XCTAssertTrue(timeoutMessage.contains("Possible causes:"))
-    XCTAssertTrue(timeoutMessage.contains("Tips:"))
-    XCTAssertTrue(timeoutMessage.contains("Try again"))
-  }
-
-  func testNetworkErrorMessageFormat() {
-    let networkMessage = """
-      ❌ Network Error
-
-      Error: The operation couldn't be completed. (NSURLErrorDomain error -1001.)
-
-      Please check your internet connection and try again.
-      """
-
-    // Test that network message has correct format
-    XCTAssertTrue(networkMessage.hasPrefix("❌ Network Error"))
-    XCTAssertTrue(networkMessage.contains("Please check your internet connection"))
-  }
-
-  // MARK: - Debug Tests (Removed after fixing the issue)
-
-  func testTimeoutErrorParsing() {
-    let errorString = "⏰ Request Timeout"
-    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(errorString)
-    XCTAssertTrue(isError, "Timeout error should be detected as error")
-    XCTAssertTrue(isRetryable, "Timeout error should be retryable")
-    XCTAssertEqual(errorType, .timeout, "Error type should be timeout")
-  }
-
-  func testNetworkErrorParsing() {
-    let errorString = "❌ Network Error"
-    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(errorString)
-    XCTAssertTrue(isError, "Network error should be detected as error")
-    XCTAssertTrue(isRetryable, "Network error should be retryable")
-    XCTAssertEqual(errorType, .networkError, "Error type should be networkError")
-  }
-
-  func testServerErrorParsing() {
-    let errorString = "❌ Internal Server Error"
-    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(errorString)
-    XCTAssertTrue(isError, "Server error should be detected as error")
-    XCTAssertTrue(isRetryable, "Server error should be retryable")
-    XCTAssertEqual(errorType, .internalServerError, "Error type should be internalServerError")
-  }
-
-  func testRateLimitErrorParsing() {
-    let errorString = "⏳ Rate Limit Exceeded"
-    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(errorString)
-    XCTAssertTrue(isError, "Rate limit error should be detected as error")
-    XCTAssertTrue(isRetryable, "Rate limit error should be retryable")
-    XCTAssertEqual(errorType, .rateLimitExceeded, "Error type should be rateLimitExceeded")
-  }
-
-  func testServiceUnavailableErrorParsing() {
-    let errorString = "🔄 Service Unavailable"
-    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(errorString)
-    XCTAssertTrue(isError, "Service unavailable error should be detected as error")
-    XCTAssertTrue(isRetryable, "Service unavailable error should be retryable")
-    XCTAssertEqual(errorType, .serviceUnavailable, "Error type should be serviceUnavailable")
-  }
-
-
 }

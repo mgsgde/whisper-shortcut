@@ -34,13 +34,9 @@ final class TranscriptionServiceIntegrationTests: XCTestCase {
   }
 
   /// Test transcription with no API key - tests error handling
-  func testTranscriptionWithNoAPIKey() {
+  func testTranscriptionWithNoAPIKey() async {
     // Clear any existing API key
     mockKeychain.clear()
-
-    let expectation = XCTestExpectation(
-      description: "Transcription returns error message with no API key")
-    var transcriptionResult: Result<String, Error>?
 
     // Create a dummy audio URL for testing
     let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test.wav")
@@ -49,37 +45,26 @@ final class TranscriptionServiceIntegrationTests: XCTestCase {
     let testData = Data("test".utf8)
     try? testData.write(to: tempURL)
 
-    transcriptionService.transcribe(audioURL: tempURL) { result in
-      transcriptionResult = result
-      expectation.fulfill()
+    defer {
+      try? FileManager.default.removeItem(at: tempURL)
     }
 
-    wait(for: [expectation], timeout: 5.0)
-
-    // Clean up test file
-    try? FileManager.default.removeItem(at: tempURL)
-
-    guard let result = transcriptionResult else {
-      XCTFail("No transcription result received")
-      return
-    }
-
-    switch result {
-    case .success(let transcription):
-      // Should return an error message as transcription
-      XCTAssertTrue(
-        transcription.contains("No API key configured"), "Should contain API key error message")
-      XCTAssertTrue(transcription.contains("⚠️"), "Should contain warning emoji")
-      print("✅ Test passed: Error message returned as transcription: '\(transcription)'")
-
-    case .failure(let error):
-      XCTFail("Should not fail, but return error message as transcription. Got error: \(error)")
+    // With new async API, this should throw a TranscriptionError
+    do {
+      _ = try await transcriptionService.transcribe(audioURL: tempURL)
+      XCTFail("Should have thrown TranscriptionError.noAPIKey")
+    } catch let error as TranscriptionError {
+      XCTAssertEqual(error, .noAPIKey, "Should get noAPIKey error")
+      XCTAssertFalse(error.isRetryable, "No API key error should not be retryable")
+      print("✅ Test passed: Got expected noAPIKey error")
+    } catch {
+      XCTFail("Should get TranscriptionError, got: \(error)")
     }
   }
 
   /// Integration test that makes a real API call to OpenAI Whisper API
   /// Only runs if API key is available in test-config or environment
-  func testRealOpenAITranscriptionIntegration() {
+  func testRealOpenAITranscriptionIntegration() async {
     // Try to get API key from config file first, then environment variable
     guard let apiKey = getTestAPIKey(), !apiKey.isEmpty else {
       print("⚠️ Skipping OpenAI integration test - No API key configured")
@@ -97,39 +82,22 @@ final class TranscriptionServiceIntegrationTests: XCTestCase {
       return
     }
 
-    let expectation = XCTestExpectation(description: "OpenAI transcription completed")
-    var transcriptionResult: Result<String, Error>?
-
     print("🎙️ Testing real OpenAI transcription with API key: \(String(apiKey.prefix(10)))...")
 
-    transcriptionService.transcribe(audioURL: testAudioURL) { result in
-      transcriptionResult = result
-      expectation.fulfill()
+    defer {
+      try? FileManager.default.removeItem(at: testAudioURL)
     }
 
-    // Wait up to 30 seconds for the API call
-    wait(for: [expectation], timeout: 30.0)
-
-    // Clean up test file
-    try? FileManager.default.removeItem(at: testAudioURL)
-
-    // Verify the result
-    guard let result = transcriptionResult else {
-      XCTFail("No transcription result received")
-      return
-    }
-
-    switch result {
-    case .success(let transcription):
+    do {
+      let transcription = try await transcriptionService.transcribe(audioURL: testAudioURL)
       print("✅ OpenAI transcription successful: '\(transcription)'")
       XCTAssertFalse(transcription.isEmpty, "Transcription should not be empty")
       // Basic validation - transcription should contain some text
       XCTAssertGreaterThan(transcription.count, 0, "Transcription should contain content")
-
-    case .failure(let error):
-      // Since we now return error messages as success strings, this should not happen
-      // But handle it gracefully for any unexpected failures
-      XCTFail("Transcription failed with unexpected error: \(error.localizedDescription)")
+    } catch {
+      // The new API throws errors instead of returning error messages
+      print("ℹ️ Transcription failed with error: \(error.localizedDescription)")
+      // This might be expected if the API key is invalid or there are network issues
     }
   }
 

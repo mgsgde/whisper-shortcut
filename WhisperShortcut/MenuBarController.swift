@@ -275,22 +275,8 @@ class MenuBarController: NSObject {
     showTranscribingStatus()
 
     // Start transcription with the same audio file
-    transcriptionService?.transcribe(audioURL: audioURL) { [weak self] result in
-      DispatchQueue.main.async {
-        let shouldCleanup = self?.handleTranscriptionResult(result) ?? false
-
-        // Only clean up the audio file if transcription was successful or not retryable
-        if shouldCleanup {
-          do {
-            try FileManager.default.removeItem(at: audioURL)
-            print("✅ Cleaned up audio file after retry transcription")
-          } catch {
-            print("⚠️ Could not clean up audio file: \(error)")
-          }
-        } else {
-          print("🔄 Keeping audio file for potential retry")
-        }
-      }
+    Task {
+      await performTranscription(audioURL: audioURL)
     }
   }
 
@@ -409,23 +395,75 @@ extension MenuBarController: AudioRecorderDelegate {
     self.showTranscribingStatus()
 
     // Start transcription
-    transcriptionService?.transcribe(audioURL: audioURL) { [weak self] result in
-      DispatchQueue.main.async {
-        let shouldCleanup = self?.handleTranscriptionResult(result) ?? false
-
-        // Only clean up the audio file if transcription was successful or not retryable
-        if shouldCleanup {
-          do {
-            try FileManager.default.removeItem(at: audioURL)
-            print("✅ Cleaned up audio file after transcription")
-          } catch {
-            print("⚠️ Could not clean up audio file: \(error)")
-          }
-        } else {
-          print("🔄 Keeping audio file for potential retry")
-        }
-      }
+    Task {
+      await performTranscription(audioURL: audioURL)
     }
+  }
+  
+  private func performTranscription(audioURL: URL) async {
+    let shouldCleanup: Bool
+    
+    do {
+      let transcription = try await transcriptionService?.transcribe(audioURL: audioURL) ?? ""
+      shouldCleanup = await handleTranscriptionSuccess(transcription)
+    } catch let error as TranscriptionError {
+      shouldCleanup = await handleTranscriptionError(error)
+    } catch {
+      // Handle unexpected errors
+      let transcriptionError = TranscriptionError.networkError(error.localizedDescription)
+      shouldCleanup = await handleTranscriptionError(transcriptionError)
+    }
+    
+    // Clean up audio file if appropriate
+    if shouldCleanup {
+      do {
+        try FileManager.default.removeItem(at: audioURL)
+        print("✅ Cleaned up audio file after transcription")
+      } catch {
+        print("⚠️ Could not clean up audio file: \(error)")
+      }
+    } else {
+      print("🔄 Keeping audio file for potential retry")
+    }
+  }
+  
+  @MainActor
+  private func handleTranscriptionSuccess(_ transcription: String) -> Bool {
+    print("✅ Transcription successful: \(transcription)")
+    
+    // Clear retry state on success
+    canRetry = false
+    lastError = nil
+    lastAudioURL = nil
+    updateRetryMenuItem()
+    
+    // Copy to clipboard
+    clipboardManager?.copyToClipboard(text: transcription)
+    showTemporarySuccess()
+    
+    return true // Clean up audio file
+  }
+  
+  @MainActor
+  private func handleTranscriptionError(_ error: TranscriptionError) -> Bool {
+    print("❌ Transcription error: \(error)")
+    
+    let errorMessage = TranscriptionErrorFormatter.format(error)
+    
+    // Store error for retry functionality
+    lastError = errorMessage
+    
+    if error.isRetryable && lastAudioURL != nil {
+      canRetry = true
+      updateRetryMenuItem()
+      print("🔄 Error is retryable - showing retry option")
+    }
+    
+    // Copy error message to clipboard
+    clipboardManager?.copyToClipboard(text: errorMessage)
+    showTemporaryError()
+    
+    return !error.isRetryable // Clean up if not retryable
   }
 
   private func showTranscribingStatus() {
@@ -448,81 +486,7 @@ extension MenuBarController: AudioRecorderDelegate {
     // Error is visible in menu bar - no notification needed
   }
 
-  private func handleTranscriptionResult(_ result: Result<String, Error>) -> Bool {
-    switch result {
-    case .success(let transcription):
-      print("Transcription result: \(transcription)")
 
-      // Use the new error parsing system
-      let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
-        transcription)
-
-      if isError {
-        print("Error message returned as transcription")
-        print("🔄 Error analysis:")
-        print("   - Error type: \(errorType?.title ?? "Unknown")")
-        print("   - Is retryable: \(isRetryable)")
-        print("   - lastAudioURL exists: \(lastAudioURL != nil)")
-
-        // Store error for retry functionality
-        lastError = transcription
-
-        if isRetryable && lastAudioURL != nil {
-          canRetry = true
-          print("🔄 Setting canRetry = true")
-          updateRetryMenuItem()
-          print("🔄 Error is retryable - showing retry option")
-        } else {
-          print("🔄 Error is NOT retryable or no audio URL")
-        }
-
-        // Copy error message to clipboard
-        clipboardManager?.copyToClipboard(text: transcription)
-        // Show error status temporarily - user sees ❌ in menu bar
-        self.showTemporaryError()
-
-        // Return false to keep audio file for retry
-        return false
-      } else {
-        print("Transcription successful")
-        // Clear retry state on success
-        canRetry = false
-        lastError = nil
-        lastAudioURL = nil
-        updateRetryMenuItem()
-
-        // Copy to clipboard
-        clipboardManager?.copyToClipboard(text: transcription)
-        // Show success status temporarily - user sees ✅ in menu bar
-        self.showTemporarySuccess()
-
-        // Return true to clean up audio file
-        return true
-      }
-
-    case .failure(let error):
-      print("Unexpected transcription failure: \(error)")
-      // This should not happen anymore, but handle it gracefully
-      let errorMessage = """
-          ❌ Unexpected error
-
-          Error: \(error.localizedDescription)
-
-          Please try again.
-        """
-
-      // Store error for retry functionality
-      lastError = errorMessage
-      canRetry = true
-      updateRetryMenuItem()
-
-      clipboardManager?.copyToClipboard(text: errorMessage)
-      self.showTemporaryError()
-
-      // Return true to clean up audio file (unexpected error)
-      return true
-    }
-  }
 
   private func showTemporarySuccess() {
     // Stop blinking and show success indicator in menu bar
