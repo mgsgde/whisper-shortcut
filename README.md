@@ -117,6 +117,7 @@ The project includes a robust test script that handles all the complexities of r
 ```
 
 **Features of the test script:**
+
 - ✅ Handles "Early unexpected exit" errors gracefully
 - ✅ Colored output for easy reading
 - ✅ Automatic cleanup of existing test results
@@ -152,6 +153,7 @@ The test suite includes **16 tests** covering:
 - **TranscriptionServiceIntegrationTests** (3 tests): Real API integration tests
 
 **Test Results:**
+
 - Test results are saved to: `./TestResults.xcresult` (when using result bundle)
 - DerivedData location: `./DerivedData`
 - Logs location: `./DerivedData/Logs/Test/`
@@ -173,7 +175,12 @@ The test suite includes **16 tests** covering:
 
 **"Rate Limited"**
 
-- Wait a moment and try again
+- **For new users**: You may need to set up billing first
+  - Visit platform.openai.com
+  - Go to Settings → Billing
+  - Add a payment method and purchase credits
+  - OpenAI no longer provides free trial credits
+- **For existing users**: Wait a moment and try again
 - OpenAI has rate limits on API usage
 
 **"File too large"**

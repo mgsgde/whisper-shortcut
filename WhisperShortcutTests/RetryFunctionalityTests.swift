@@ -84,7 +84,22 @@ final class RetryFunctionalityTests: XCTestCase {
       ⏳ Rate Limit Exceeded
 
       You have exceeded the rate limit for this API.
-      Please wait a moment and try again.
+      
+      Common causes for new users:
+      • No billing method configured - OpenAI requires payment setup
+      • Account has no credits or usage quota reached
+      • Too many requests in a short time period
+      
+      To resolve:
+      1. Visit platform.openai.com
+      2. Go to Settings → Billing
+      3. Add a payment method
+      4. Purchase prepaid credits
+      
+      Note: OpenAI no longer provides free trial credits.
+      You must add billing information to use the API.
+      
+      Please wait a moment and try again after setting up billing.
       """
 
     // Test that rate limit errors are detected correctly using the new parsing system

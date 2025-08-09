@@ -334,12 +334,12 @@ class SettingsWindowController: NSWindowController {
     Task {
       do {
         _ = try await transcriptionService?.validateAPIKey(apiKey)
-        
+
         await MainActor.run {
           // Re-enable the save button
           saveButton.isEnabled = true
           saveButton.title = "Save Settings"
-          
+
           print("✅ API key validation successful, saving and closing...")
           self.saveAndClose(
             apiKey: apiKey, startShortcut: startShortcut!, stopShortcut: stopShortcut!)
@@ -349,7 +349,7 @@ class SettingsWindowController: NSWindowController {
           // Re-enable the save button
           saveButton.isEnabled = true
           saveButton.title = "Save Settings"
-          
+
           print("❌ API key validation failed: \(error)")
 
           // Show specific error message based on the type of error
