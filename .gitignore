@@ -119,3 +119,5 @@ Temporary Items
 # Build artifacts
 build/
 *.app.zip
+
+TestResults.xcresult/

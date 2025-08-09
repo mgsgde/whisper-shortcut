@@ -72,6 +72,90 @@ When transcription fails (due to network issues, timeouts, or server errors), th
 - Validated on save
 - No local storage of sensitive data
 
+## Development
+
+### Prerequisites
+
+- macOS 15.5+
+- Xcode 16.0+
+- OpenAI API key
+
+### Building from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/whisper-shortcut.git
+cd whisper-shortcut
+
+# Open in Xcode
+open WhisperShortcut.xcodeproj
+```
+
+### Testing
+
+**Rule: Always run tests after making code changes to ensure no regressions.**
+
+#### Method 1: Test Script (Recommended) ✅
+
+The project includes a robust test script that handles all the complexities of running Xcode tests via command line:
+
+```bash
+# Run tests normally
+./scripts/test.sh
+
+# Run tests with verbose output
+./scripts/test.sh -v
+
+# Clean and run tests (removes DerivedData)
+./scripts/test.sh -c
+
+# Clean and run tests with verbose output
+./scripts/test.sh -v -c
+
+# Show help and available options
+./scripts/test.sh -h
+```
+
+**Features of the test script:**
+- ✅ Handles "Early unexpected exit" errors gracefully
+- ✅ Colored output for easy reading
+- ✅ Automatic cleanup of existing test results
+- ✅ Proper error handling and status reporting
+- ✅ Consistent test execution across environments
+
+#### Method 2: Xcode Command Line
+
+```bash
+# Run tests using xcodebuild (basic)
+xcodebuild test -scheme WhisperShortcut -destination 'platform=macOS,arch=arm64' -derivedDataPath ./DerivedData
+
+# Run tests with result bundle (recommended for debugging)
+xcodebuild test -scheme WhisperShortcut -destination 'platform=macOS,arch=arm64' -derivedDataPath ./DerivedData -resultBundlePath ./TestResults.xcresult -only-testing:WhisperShortcutTests
+
+# Run tests with verbose output
+xcodebuild test -scheme WhisperShortcut -destination 'platform=macOS,arch=arm64' -derivedDataPath ./DerivedData -verbose
+```
+
+#### Method 3: Xcode IDE
+
+1. Open `WhisperShortcut.xcodeproj` in Xcode
+2. Select **Product > Test** (⌘U) or click the test diamond icon
+3. View results in the Test navigator
+
+### Test Coverage
+
+The test suite includes **16 tests** covering:
+
+- **RetryFunctionalityTests** (9 tests): Error detection and parsing, retry logic
+- **ClipboardManagerTests** (2 tests): Clipboard functionality and text formatting
+- **TranscriptionServiceTests** (2 tests): API key validation
+- **TranscriptionServiceIntegrationTests** (3 tests): Real API integration tests
+
+**Test Results:**
+- Test results are saved to: `./TestResults.xcresult` (when using result bundle)
+- DerivedData location: `./DerivedData`
+- Logs location: `./DerivedData/Logs/Test/`
+
 ## Troubleshooting
 
 ### Common Issues
@@ -104,21 +188,19 @@ When transcription fails (due to network issues, timeouts, or server errors), th
 - For rate limits, wait 1-2 minutes before retrying
 - The retry button will disappear after successful transcription
 
-## Development
+### Development Issues
 
-### Building from Source
+**Tests not running**
 
-```bash
-git clone https://github.com/yourusername/whisper-shortcut.git
-cd whisper-shortcut
-open WhisperShortcut.xcodeproj
-```
+- Ensure Xcode is installed and up to date
+- Check that you're running from the project root directory
+- Try cleaning DerivedData: `./scripts/test.sh -c`
 
-### Requirements
+**Build errors**
 
-- macOS 15.5+
-- Xcode 16.0+
-- OpenAI API key
+- Clean build artifacts: `rm -rf DerivedData build`
+- Ensure all dependencies are installed
+- Check Xcode version compatibility
 
 ## Privacy
 
@@ -134,3 +216,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+### Development Workflow
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Make your changes
+4. Run tests: `./scripts/test.sh`
+5. Commit your changes: `git commit -am 'Add some feature'`
+6. Push to the branch: `git push origin feature/your-feature`
+7. Submit a Pull Request
