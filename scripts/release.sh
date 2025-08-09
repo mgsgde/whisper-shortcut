@@ -272,15 +272,14 @@ print_info "Creating GitHub release..."
 if command -v gh &> /dev/null; then
     print_status "Using GitHub CLI to create release..."
     
-    # Create release with gh CLI
+    # Create release with gh CLI (publish directly, not as draft)
     gh release create "$TAG_NAME" \
         --title "WhisperShortcut $RELEASE_VERSION" \
         --notes "$RELEASE_NOTES" \
-        "$ZIP_PATH" \
-        --draft
+        "$ZIP_PATH"
     
-    print_status "GitHub release created as draft!"
-    print_info "Please review and publish the release at: https://github.com/$(git config --get remote.origin.url | sed 's/.*github.com[:/]\([^/]*\/[^/]*\)\.git.*/\1/')/releases"
+    print_status "GitHub release created and published!"
+    print_info "Release available at: https://github.com/$(git config --get remote.origin.url | sed 's/.*github.com[:/]\([^/]*\/[^/]*\)\.git.*/\1/')/releases/tag/$TAG_NAME"
 else
     print_warning "GitHub CLI not found. Please create the release manually:"
     echo ""
@@ -299,10 +298,9 @@ echo ""
 print_status "Release process completed!"
 echo ""
 echo "Next steps:"
-echo "1. Review the GitHub release draft"
-echo "2. Publish the release"
-echo "3. Update the README if needed"
-echo "4. Share the release with users"
+echo "1. Verify the GitHub release is published correctly"
+echo "2. Update the README if needed"
+echo "3. Share the release with users"
 echo ""
 echo "Release files:"
 echo "- App: $RELEASE_APP_PATH"
