@@ -18,7 +18,7 @@ A macOS menu bar app that provides quick audio transcription using OpenAI's Whis
 
 #### Method A: Download from Releases
 
-1. Download the latest release from the [Releases page](https://github.com/yourusername/whisper-shortcut/releases)
+1. Download the latest release from the [Releases page](https://github.com/mgsgde/whisper-shortcut/releases)
 2. Drag the app to your Applications folder
 3. Launch the app and configure your OpenAI API key in Settings
 
@@ -28,7 +28,7 @@ If you have the source code and want to build from source:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/whisper-shortcut.git
+git clone https://github.com/mgsgde/whisper-shortcut.git
 cd whisper-shortcut
 
 # Run the installation script
@@ -128,7 +128,7 @@ When transcription fails (due to network issues, timeouts, or server errors), th
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/whisper-shortcut.git
+git clone https://github.com/mgsgde/whisper-shortcut.git
 cd whisper-shortcut
 
 # Open in Xcode
@@ -199,7 +199,7 @@ The project includes a release script that automates the GitHub release process:
    ```
 
 4. **Create GitHub release:**
-   - Go to: `https://github.com/yourusername/whisper-shortcut/releases`
+   - Go to: `https://github.com/mgsgde/whisper-shortcut/releases`
    - Click "Create a new release"
    - Choose the tag you just created
    - Add release notes and upload the zip file
