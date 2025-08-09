@@ -7,10 +7,42 @@ This guide explains how to create GitHub releases for WhisperShortcut.
 Use the automated release script:
 
 ```bash
+# Interactive mode (recommended for first-time users)
 ./scripts/release.sh
+
+# Use existing release notes file
+./scripts/release.sh RELEASE_NOTES_v1.1.md
+
+# Use template file directly
+./scripts/release.sh scripts/release_template.md
+
+# Show help and usage examples
+./scripts/release.sh --help
 ```
 
 This script will guide you through the entire release process automatically.
+
+### Release Notes Options
+
+The release script supports multiple ways to handle release notes:
+
+1. **Interactive Mode** (default):
+   - Script creates a template based on `scripts/release_template.md`
+   - Opens the template in your default editor
+   - You edit the notes and save
+   - Script continues with the release process
+
+2. **File Mode**:
+   - Provide a path to an existing markdown file
+   - Script uses that file as the release notes
+   - Placeholders ({{VERSION}}, {{DATE}}, {{BUILD}}) are automatically replaced
+
+3. **Template Mode**:
+   - Use the built-in template file directly
+   - Good for quick releases using the standard template
+
+4. **Help Mode**:
+   - Shows usage information and examples
 
 ## Manual Release Process
 

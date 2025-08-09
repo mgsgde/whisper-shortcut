@@ -16,9 +16,38 @@ A macOS menu bar app that provides quick audio transcription using OpenAI's Whis
 
 ### Option 1: Free Installation (Recommended)
 
+#### Method A: Download from Releases
+
 1. Download the latest release from the [Releases page](https://github.com/yourusername/whisper-shortcut/releases)
 2. Drag the app to your Applications folder
 3. Launch the app and configure your OpenAI API key in Settings
+
+#### Method B: Install Script (For Developers)
+
+If you have the source code and want to build from source:
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/whisper-shortcut.git
+cd whisper-shortcut
+
+# Run the installation script
+./install.sh
+```
+
+The install script will:
+
+- ✅ Check for Xcode command line tools
+- ✅ Build the app in Release configuration
+- ✅ Install it to `/Applications/`
+- ✅ Set proper permissions
+- ✅ Provide next steps for configuration
+
+**Prerequisites for install script:**
+
+- macOS 15.5+
+- Xcode command line tools installed
+- Git (for cloning the repository)
 
 ### Option 2: App Store (Support the Project)
 
@@ -31,7 +60,7 @@ If you'd like to support the development of WhisperShortcut, you can also downlo
 - ✅ Supports the continued development of the project
 - ✅ Leave a positive review to help others discover the app
 
-**Note**: Both versions are identical in functionality. The App Store version is simply a way to support the project if you find it useful!
+**Note**: All versions are identical in functionality. The App Store version is simply a way to support the project if you find it useful!
 
 ## Setup
 
@@ -111,8 +140,17 @@ open WhisperShortcut.xcodeproj
 The project includes a release script that automates the GitHub release process:
 
 ```bash
-# Run the release script
+# Method 1: Interactive (create template and edit)
 ./scripts/release.sh
+
+# Method 2: Use existing release notes file
+./scripts/release.sh RELEASE_NOTES_v1.1.md
+
+# Method 3: Use template file directly
+./scripts/release.sh scripts/release_template.md
+
+# Method 4: Show help
+./scripts/release.sh --help
 ```
 
 **What the release script does:**
@@ -123,6 +161,13 @@ The project includes a release script that automates the GitHub release process:
 4. ✅ Creates and pushes a git tag
 5. ✅ Creates a GitHub release (draft)
 6. ✅ Provides next steps for publishing
+
+**Release Notes Options:**
+
+- **Interactive mode**: Script creates a template and opens it in your editor
+- **File mode**: Use an existing markdown file with release notes
+- **Template mode**: Use the built-in template file directly
+- **Help**: Show usage information and examples
 
 **Prerequisites for releases:**
 

@@ -2,6 +2,10 @@
 
 # WhisperShortcut Release Script
 # This script helps create GitHub releases for WhisperShortcut
+#
+# Usage: ./scripts/release.sh [release-notes-file]
+#   - release-notes-file: Path to markdown file containing release notes (optional)
+#   - If no file is provided, the script will create a template and open it for editing
 
 set -e  # Exit on any error
 
@@ -28,6 +32,30 @@ print_error() {
 print_info() {
     echo -e "${BLUE}ℹ️  $1${NC}"
 }
+
+# Function to show usage
+show_usage() {
+    echo "Usage: $0 [release-notes-file]"
+    echo ""
+    echo "Options:"
+    echo "  release-notes-file    Path to markdown file containing release notes"
+    echo ""
+    echo "Examples:"
+    echo "  $0                                    # Create template and edit interactively"
+    echo "  $0 RELEASE_NOTES_v1.1.md             # Use existing release notes file"
+    echo "  $0 scripts/release_template.md       # Use template file directly"
+    echo ""
+    echo "If no file is provided, the script will:"
+    echo "  1. Create a release notes template"
+    echo "  2. Open it in your default editor"
+    echo "  3. Continue with the release process"
+}
+
+# Check if help is requested
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    show_usage
+    exit 0
+fi
 
 # Check if we're on macOS
 if [[ "$OSTYPE" != "darwin"* ]]; then
@@ -76,42 +104,83 @@ echo ""
 read -p "Enter release version (e.g., 1.2.0) [current: $CURRENT_VERSION]: " RELEASE_VERSION
 RELEASE_VERSION=${RELEASE_VERSION:-$CURRENT_VERSION}
 
-# Get release notes
-echo ""
-echo "Enter release notes (press Enter twice to finish):"
-echo "You can use markdown formatting."
-echo ""
+# Handle release notes file
+RELEASE_NOTES_FILE="$1"
 
-# Create temporary file for release notes
-TEMP_NOTES=$(mktemp)
-cat > "$TEMP_NOTES" << EOF
+if [ -n "$RELEASE_NOTES_FILE" ]; then
+    # User provided a release notes file
+    if [ ! -f "$RELEASE_NOTES_FILE" ]; then
+        print_error "Release notes file not found: $RELEASE_NOTES_FILE"
+        exit 1
+    fi
+    
+    print_status "Using release notes file: $RELEASE_NOTES_FILE"
+    
+    # Read the file and replace placeholders
+    TEMP_NOTES=$(mktemp)
+    cp "$RELEASE_NOTES_FILE" "$TEMP_NOTES"
+    
+    # Replace placeholders if they exist
+    sed -i '' "s/{{VERSION}}/$RELEASE_VERSION/g" "$TEMP_NOTES" 2>/dev/null || true
+    sed -i '' "s/{{DATE}}/$(date +"%B %Y")/g" "$TEMP_NOTES" 2>/dev/null || true
+    sed -i '' "s/{{BUILD}}/$CURRENT_BUILD/g" "$TEMP_NOTES" 2>/dev/null || true
+    
+else
+    # No file provided, create template
+    echo ""
+    print_info "Creating release notes template..."
+    
+    # Create temporary file for release notes
+    TEMP_NOTES=$(mktemp)
+    
+    # Check if template file exists
+    TEMPLATE_FILE="scripts/release_template.md"
+    if [ -f "$TEMPLATE_FILE" ]; then
+        # Copy template and replace placeholders
+        cp "$TEMPLATE_FILE" "$TEMP_NOTES"
+        
+        # Replace placeholders with actual values (macOS compatible)
+        sed -i '' "s/{{VERSION}}/$RELEASE_VERSION/g" "$TEMP_NOTES"
+        sed -i '' "s/{{DATE}}/$(date +"%B %Y")/g" "$TEMP_NOTES"
+        sed -i '' "s/{{BUILD}}/$CURRENT_BUILD/g" "$TEMP_NOTES"
+    else
+        # Fallback template if template file doesn't exist
+        cat > "$TEMP_NOTES" << EOF
 # WhisperShortcut $RELEASE_VERSION
 
-## What's New
+**Release Date:** $(date +"%B %Y")  
+**Build:** $CURRENT_BUILD  
+**macOS:** 15.5+  
+**Minimum Xcode:** 16.0+
+
+## 🎉 What's New
 
 - 
 
-## Bug Fixes
+## 🐛 Bug Fixes
 
 - 
 
-## Technical Details
+## 🔧 Technical Details
 
 - Build: $CURRENT_BUILD
 - macOS: 15.5+
 EOF
-
-# Open editor for release notes
-if command -v cursor &> /dev/null; then
-    cursor --wait "$TEMP_NOTES"
-elif command -v nano &> /dev/null; then
-    nano "$TEMP_NOTES"
-elif command -v vim &> /dev/null; then
-    vim "$TEMP_NOTES"
-else
-    print_warning "No suitable editor found. Please edit the release notes manually."
-    echo "Release notes file: $TEMP_NOTES"
-    read -p "Press Enter when you're done editing..."
+    fi
+    
+    # Open editor for release notes
+    print_info "Opening release notes for editing..."
+    if command -v cursor &> /dev/null; then
+        cursor --wait "$TEMP_NOTES"
+    elif command -v nano &> /dev/null; then
+        nano "$TEMP_NOTES"
+    elif command -v vim &> /dev/null; then
+        vim "$TEMP_NOTES"
+    else
+        print_warning "No suitable editor found. Please edit the release notes manually."
+        echo "Release notes file: $TEMP_NOTES"
+        read -p "Press Enter when you're done editing..."
+    fi
 fi
 
 # Read release notes
