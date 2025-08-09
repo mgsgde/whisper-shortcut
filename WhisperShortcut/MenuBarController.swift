@@ -399,10 +399,10 @@ extension MenuBarController: AudioRecorderDelegate {
       await performTranscription(audioURL: audioURL)
     }
   }
-  
+
   private func performTranscription(audioURL: URL) async {
     let shouldCleanup: Bool
-    
+
     do {
       let transcription = try await transcriptionService?.transcribe(audioURL: audioURL) ?? ""
       shouldCleanup = await handleTranscriptionSuccess(transcription)
@@ -413,7 +413,7 @@ extension MenuBarController: AudioRecorderDelegate {
       let transcriptionError = TranscriptionError.networkError(error.localizedDescription)
       shouldCleanup = await handleTranscriptionError(transcriptionError)
     }
-    
+
     // Clean up audio file if appropriate
     if shouldCleanup {
       do {
@@ -426,44 +426,44 @@ extension MenuBarController: AudioRecorderDelegate {
       print("🔄 Keeping audio file for potential retry")
     }
   }
-  
+
   @MainActor
   private func handleTranscriptionSuccess(_ transcription: String) -> Bool {
     print("✅ Transcription successful: \(transcription)")
-    
+
     // Clear retry state on success
     canRetry = false
     lastError = nil
     lastAudioURL = nil
     updateRetryMenuItem()
-    
+
     // Copy to clipboard
     clipboardManager?.copyToClipboard(text: transcription)
     showTemporarySuccess()
-    
-    return true // Clean up audio file
+
+    return true  // Clean up audio file
   }
-  
+
   @MainActor
   private func handleTranscriptionError(_ error: TranscriptionError) -> Bool {
     print("❌ Transcription error: \(error)")
-    
+
     let errorMessage = TranscriptionErrorFormatter.format(error)
-    
+
     // Store error for retry functionality
     lastError = errorMessage
-    
+
     if error.isRetryable && lastAudioURL != nil {
       canRetry = true
       updateRetryMenuItem()
       print("🔄 Error is retryable - showing retry option")
     }
-    
+
     // Copy error message to clipboard
     clipboardManager?.copyToClipboard(text: errorMessage)
     showTemporaryError()
-    
-    return !error.isRetryable // Clean up if not retryable
+
+    return !error.isRetryable  // Clean up if not retryable
   }
 
   private func showTranscribingStatus() {
@@ -485,8 +485,6 @@ extension MenuBarController: AudioRecorderDelegate {
 
     // Error is visible in menu bar - no notification needed
   }
-
-
 
   private func showTemporarySuccess() {
     // Stop blinking and show success indicator in menu bar

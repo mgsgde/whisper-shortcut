@@ -173,6 +173,21 @@ class SettingsWindowController: NSWindowController {
     helpText.translatesAutoresizingMaskIntoConstraints = false
     contentView.addSubview(helpText)
 
+    // Error message label (initially hidden)
+    let errorLabel = NSTextField()
+    errorLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+    errorLabel.textColor = NSColor.systemRed
+    errorLabel.isEditable = false
+    errorLabel.isSelectable = false
+    errorLabel.isBordered = false
+    errorLabel.backgroundColor = NSColor.clear
+    errorLabel.translatesAutoresizingMaskIntoConstraints = false
+    errorLabel.maximumNumberOfLines = 3
+    errorLabel.cell?.wraps = true
+    errorLabel.cell?.isScrollable = false
+    errorLabel.isHidden = true
+    contentView.addSubview(errorLabel)
+
     // Skip button for users who want to configure later
     let skipButton = NSButton(title: "Skip for now", target: self, action: #selector(skipSettings))
     skipButton.translatesAutoresizingMaskIntoConstraints = false
@@ -191,6 +206,7 @@ class SettingsWindowController: NSWindowController {
     apiKeyField.tag = 100
     startShortcutField.tag = 101
     stopShortcutField.tag = 102
+    errorLabel.tag = 105
     skipButton.tag = 199
     saveButton.tag = 200
 
@@ -242,14 +258,19 @@ class SettingsWindowController: NSWindowController {
       helpText.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
       helpText.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
 
+      // Error label (positioned below help text)
+      errorLabel.topAnchor.constraint(equalTo: helpText.bottomAnchor, constant: 8),
+      errorLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
+      errorLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
+
       // Buttons
-      saveButton.topAnchor.constraint(equalTo: helpText.bottomAnchor, constant: 20),
+      saveButton.topAnchor.constraint(equalTo: errorLabel.bottomAnchor, constant: 20),
       saveButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
       saveButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32),
       saveButton.widthAnchor.constraint(equalToConstant: 120),
       saveButton.heightAnchor.constraint(equalToConstant: 32),
 
-      skipButton.topAnchor.constraint(equalTo: helpText.bottomAnchor, constant: 20),
+      skipButton.topAnchor.constraint(equalTo: errorLabel.bottomAnchor, constant: 20),
       skipButton.trailingAnchor.constraint(equalTo: saveButton.leadingAnchor, constant: -12),
       skipButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32),
       skipButton.widthAnchor.constraint(equalToConstant: 100),
@@ -298,13 +319,12 @@ class SettingsWindowController: NSWindowController {
     print("🎹 Stop shortcut: '\(stopShortcutText)'")
 
     if apiKey.isEmpty {
-      showAlert(title: "Error", message: "Please enter a valid API key")
+      showInlineError("Please enter a valid API key")
       return
     }
 
     if !apiKey.hasPrefix("sk-") {
-      showAlert(
-        title: "Error", message: "API key must start with 'sk-'. Please check your OpenAI API key.")
+      showInlineError("API key must start with 'sk-'. Please check your OpenAI API key.")
       return
     }
 
@@ -313,14 +333,12 @@ class SettingsWindowController: NSWindowController {
     let stopShortcut = parseShortcut(from: stopShortcutText)
 
     if startShortcut == nil {
-      showAlert(
-        title: "Error", message: "Invalid start recording shortcut format. Use symbols like ⌘⌥R")
+      showInlineError("Invalid start recording shortcut format. Use symbols like ⌘⌥R")
       return
     }
 
     if stopShortcut == nil {
-      showAlert(
-        title: "Error", message: "Invalid stop recording shortcut format. Use symbols like ⌘R")
+      showInlineError("Invalid stop recording shortcut format. Use symbols like ⌘R")
       return
     }
 
@@ -352,26 +370,13 @@ class SettingsWindowController: NSWindowController {
 
           print("❌ API key validation failed: \(error)")
 
-          // Show specific error message based on the type of error
-          let errorMessage: String
-          let nsError = error as NSError
-          switch nsError.code {
-          case 401:
-            errorMessage = "Invalid API key. Please check that your OpenAI API key is correct."
-          case 429:
-            errorMessage = "Rate limited by OpenAI. Please wait a moment and try again."
-          case 1001:
-            errorMessage = "No API key provided. Please enter a valid API key."
-          case 1002:
-            errorMessage = "Invalid URL. Please check your internet connection."
-          case 1003:
-            errorMessage = "Invalid response from server. Please try again."
-          default:
-            errorMessage = "Network error. Please check your internet connection and try again."
-          }
+          // Use the existing TranscriptionErrorFormatter for consistent error handling
+          let transcriptionError =
+            error as? TranscriptionError ?? .networkError(error.localizedDescription)
+          let errorMessage = TranscriptionErrorFormatter.shortStatus(transcriptionError)
 
-          // Don't close the window - just show the error
-          self.showAlert(title: "API Key Validation Failed", message: errorMessage)
+          // Show inline error instead of modal dialog
+          self.showInlineError(errorMessage)
         }
       }
     }
@@ -401,7 +406,7 @@ class SettingsWindowController: NSWindowController {
       }
     } else {
       print("❌ Failed to save API key to Keychain")
-      showAlert(title: "Error", message: "Failed to save API key securely. Please try again.")
+      showInlineError("Failed to save API key securely. Please try again.")
     }
   }
 
@@ -516,13 +521,44 @@ class SettingsWindowController: NSWindowController {
     }
   }
 
-  private func showAlert(title: String, message: String, completion: (() -> Void)? = nil) {
-    let alert = NSAlert()
-    alert.messageText = title
-    alert.informativeText = message
-    alert.addButton(withTitle: "OK")
-    alert.beginSheetModal(for: window!) { _ in
-      completion?()
+  private func showInlineError(_ message: String) {
+    print("🚨 showInlineError called with message: '\(message)'")
+    guard let window = window,
+      let contentView = window.contentView,
+      let errorLabel = contentView.viewWithTag(105) as? NSTextField
+    else {
+      print("❌ Failed to get error label - window: \(window != nil), contentView: \(window?.contentView != nil)")
+      if let contentView = window?.contentView {
+        print("❌ Available tags in contentView: \(contentView.subviews.compactMap { $0.tag }.filter { $0 != 0 })")
+      }
+      return
+    }
+
+    print("✅ Found error label, setting message: '\(message)'")
+    
+    // Stop any ongoing animations and immediately show the error
+    errorLabel.layer?.removeAllAnimations()
+    errorLabel.stringValue = message
+    errorLabel.isHidden = false
+    errorLabel.alphaValue = 1.0  // Make it immediately visible
+    
+    print("✅ Error label should now be visible immediately")
+  }
+
+  private func hideInlineError() {
+    guard let window = window,
+      let contentView = window.contentView,
+      let errorLabel = contentView.viewWithTag(105) as? NSTextField
+    else {
+      return
+    }
+
+    NSAnimationContext.runAnimationGroup({ context in
+      context.duration = 0.3
+      errorLabel.animator().alphaValue = 0.0
+    }) {
+      errorLabel.isHidden = true
+      errorLabel.stringValue = ""
     }
   }
 }
