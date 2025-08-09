@@ -522,27 +522,18 @@ class SettingsWindowController: NSWindowController {
   }
 
   private func showInlineError(_ message: String) {
-    print("🚨 showInlineError called with message: '\(message)'")
     guard let window = window,
       let contentView = window.contentView,
       let errorLabel = contentView.viewWithTag(105) as? NSTextField
     else {
-      print("❌ Failed to get error label - window: \(window != nil), contentView: \(window?.contentView != nil)")
-      if let contentView = window?.contentView {
-        print("❌ Available tags in contentView: \(contentView.subviews.compactMap { $0.tag }.filter { $0 != 0 })")
-      }
       return
     }
 
-    print("✅ Found error label, setting message: '\(message)'")
-    
     // Stop any ongoing animations and immediately show the error
     errorLabel.layer?.removeAllAnimations()
     errorLabel.stringValue = message
     errorLabel.isHidden = false
     errorLabel.alphaValue = 1.0  // Make it immediately visible
-    
-    print("✅ Error label should now be visible immediately")
   }
 
   private func hideInlineError() {
