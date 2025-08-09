@@ -14,9 +14,24 @@ A macOS menu bar app that provides quick audio transcription using OpenAI's Whis
 
 ## Installation
 
+### Option 1: Free Installation (Recommended)
+
 1. Download the latest release from the [Releases page](https://github.com/yourusername/whisper-shortcut/releases)
 2. Drag the app to your Applications folder
 3. Launch the app and configure your OpenAI API key in Settings
+
+### Option 2: App Store (Support the Project)
+
+If you'd like to support the development of WhisperShortcut, you can also download it from the Mac App Store:
+
+**[Download WhisperShortcut on the Mac App Store](https://apps.apple.com/us/app/whispershortcut/id6749648401)**
+
+- ✅ Same features as the free version
+- ✅ Automatic updates through the App Store
+- ✅ Supports the continued development of the project
+- ✅ Leave a positive review to help others discover the app
+
+**Note**: Both versions are identical in functionality. The App Store version is simply a way to support the project if you find it useful!
 
 ## Setup
 
