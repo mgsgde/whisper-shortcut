@@ -45,8 +45,8 @@ final class TranscriptionServiceTests: XCTestCase {
         print("Validation failed with network error (acceptable): \(error)")
         return
       }
-      // Should get invalidAPIKey error for invalid key
-      XCTAssertEqual(transcriptionError, .invalidAPIKey, "Should fail with invalidAPIKey error")
+      // Should get incorrectAPIKey error for invalid key (OpenAI returns "incorrect api key" for malformed keys)
+      XCTAssertEqual(transcriptionError, .incorrectAPIKey, "Should fail with incorrectAPIKey error")
     }
   }
 }

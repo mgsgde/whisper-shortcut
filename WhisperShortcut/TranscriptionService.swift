@@ -169,13 +169,18 @@ class TranscriptionService {
 
     switch statusCode {
     case 401:
-      if errorMessage.contains("incorrect api key") || errorMessage.contains("invalid api key") {
-        return .incorrectAPIKey
-      } else if errorMessage.contains("member of an organization")
+      // Check for organization-specific errors first
+      if errorMessage.contains("member of an organization")
         || errorMessage.contains("organization")
       {
         return .organizationRequired
+      } else if errorMessage.contains("incorrect api key") && !errorMessage.contains("invalid") {
+        // Only return incorrectAPIKey for very specific "incorrect api key" messages
+        // that don't also contain "invalid" (to avoid conflicts)
+        return .incorrectAPIKey
       } else {
+        // Default to invalidAPIKey for all other authentication failures
+        // This includes "invalid api key", "authentication", and general 401 errors
         return .invalidAPIKey
       }
     case 403:
