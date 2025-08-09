@@ -106,6 +106,60 @@ cd whisper-shortcut
 open WhisperShortcut.xcodeproj
 ```
 
+### Creating GitHub Releases
+
+The project includes a release script that automates the GitHub release process:
+
+```bash
+# Run the release script
+./scripts/release.sh
+```
+
+**What the release script does:**
+
+1. ✅ Checks for uncommitted changes
+2. ✅ Builds the app in Release configuration
+3. ✅ Creates a zip file of the app
+4. ✅ Creates and pushes a git tag
+5. ✅ Creates a GitHub release (draft)
+6. ✅ Provides next steps for publishing
+
+**Prerequisites for releases:**
+
+- GitHub CLI (`gh`) installed (optional, for automatic release creation)
+- Git configured with proper remote origin
+- Xcode command line tools installed
+
+**Manual Release Process (if not using the script):**
+
+1. **Build the app:**
+
+   ```bash
+   xcodebuild clean -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -configuration Release
+   xcodebuild build -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -configuration Release -derivedDataPath build
+   ```
+
+2. **Create a zip file:**
+
+   ```bash
+   cd build/Build/Products/Release
+   zip -r WhisperShortcut-1.2.0.zip WhisperShortcut.app
+   ```
+
+3. **Create a git tag:**
+
+   ```bash
+   git tag -a v1.2.0 -m "Release 1.2.0"
+   git push origin v1.2.0
+   ```
+
+4. **Create GitHub release:**
+   - Go to: `https://github.com/yourusername/whisper-shortcut/releases`
+   - Click "Create a new release"
+   - Choose the tag you just created
+   - Add release notes and upload the zip file
+   - Publish the release
+
 ### Testing
 
 **Rule: Always run tests after making code changes to ensure no regressions.**
