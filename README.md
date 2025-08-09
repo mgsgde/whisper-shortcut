@@ -107,7 +107,7 @@ When transcription fails (due to network issues, timeouts, or server errors), th
 ### Keyboard Shortcuts
 
 - **Start Recording**: Default `Cmd+Shift+R`
-- **Stop Recording**: Default `Cmd+Shift+S`
+- **Stop Recording**: Default `Cmd+R`
 - **Settings**: Access via menu bar
 
 ### API Key Management
