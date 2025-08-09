@@ -2,6 +2,8 @@
 
 A macOS menu bar app that provides quick audio transcription using OpenAI's Whisper API. Record audio with a keyboard shortcut and get instant transcriptions copied to your clipboard.
 
+**[Download WhisperShortcut on the Mac App Store](https://apps.apple.com/us/app/whispershortcut/id6749648401)**
+
 ## Features
 
 - **Quick Recording**: Start/stop recording with customizable keyboard shortcuts
