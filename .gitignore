@@ -123,3 +123,5 @@ build/
 TestResults.xcresult/
 
 release/
+
+screenshots/node_modules/

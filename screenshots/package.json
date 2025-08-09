@@ -1,0 +1,20 @@
+{
+  "name": "whispershortcut-screenshots",
+  "version": "1.0.0",
+  "description": "Screenshot generation tools for WhisperShortcut App Store images",
+  "main": "capture-screenshot.js",
+  "scripts": {
+    "capture": "node capture-screenshot.js",
+    "install-deps": "npm install puppeteer"
+  },
+  "dependencies": {
+    "puppeteer": "^21.11.0"
+  },
+  "keywords": [
+    "screenshot",
+    "app-store",
+    "whispershortcut"
+  ],
+  "author": "WhisperShortcut Team",
+  "license": "MIT"
+}

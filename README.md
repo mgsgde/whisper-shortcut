@@ -137,6 +137,46 @@ cd whisper-shortcut
 open WhisperShortcut.xcodeproj
 ```
 
+### Creating App Store Screenshots
+
+The project includes a script to generate App Store screenshots with the correct resolution (1280x800):
+
+```bash
+# Navigate to screenshots directory
+cd screenshots
+
+# Method 1: Using npm script (recommended)
+npm install
+npm run capture
+
+# Method 2: Direct script execution
+npm install puppeteer
+node capture-screenshot.js
+```
+
+**What the screenshot script does:**
+
+- ✅ Captures a screenshot of `index.html` at 1280x800 resolution
+- ✅ Outputs `app-screenshot.png` in the screenshots directory
+- ✅ Perfect for App Store submissions
+- ✅ Shows the app's workflow: "1. Press Shortcut, 2. Transcribe, 3. Paste from Clipboard"
+
+**Screenshot Features:**
+
+- **High contrast design**: White text on black background
+- **Clean typography**: Bold, readable font
+- **Clear workflow**: Three simple steps
+- **App Store ready**: Correct resolution and format
+
+**Manual Screenshot Process:**
+
+If you prefer to capture screenshots manually:
+
+1. Open `screenshots/index.html` in a web browser
+2. Resize the browser window to 1280x800
+3. Take a screenshot using your system's screenshot tool
+4. Save as `app-screenshot.png` in the screenshots directory
+
 ### Creating GitHub Releases
 
 The project includes a release script that automates the GitHub release process:
