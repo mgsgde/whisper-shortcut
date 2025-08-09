@@ -22,6 +22,30 @@ struct TranscriptionErrorFormatter {
         Please check your OpenAI API key in Settings.
         """
 
+    case .incorrectAPIKey:
+      return """
+        ❌ Incorrect API Key
+
+        The API key provided is not correct.
+        Please ensure the API key is correct, clear your browser cache, or generate a new one.
+        """
+
+    case .organizationRequired:
+      return """
+        ❌ Organization Required
+
+        You must be a member of an organization to use the API.
+        Please contact us to get added to a new organization or ask your organization manager to invite you.
+        """
+
+    case .countryNotSupported:
+      return """
+        ❌ Country Not Supported
+
+        You are accessing the API from an unsupported country, region, or territory.
+        Please see OpenAI's documentation for supported regions.
+        """
+
     case .invalidRequest:
       return """
         ❌ Invalid Request
@@ -69,6 +93,21 @@ struct TranscriptionErrorFormatter {
         Please wait a moment and try again after setting up billing.
         """
 
+    case .quotaExceeded:
+      return """
+        ⏳ Quota Exceeded
+
+        You have exceeded your current quota. Please check your plan and billing details.
+
+        To resolve:
+        1. Visit platform.openai.com
+        2. Go to Settings → Billing
+        3. Check your current usage and limits
+        4. Add more credits or upgrade your plan
+
+        Please try again after adding more credits.
+        """
+
     case .serverError(let code):
       return """
         ❌ Server Error (\(code))
@@ -83,6 +122,14 @@ struct TranscriptionErrorFormatter {
 
         OpenAI's service is temporarily unavailable.
         Please try again in a few moments.
+        """
+
+    case .slowDown:
+      return """
+        🔄 Slow Down
+
+        A sudden increase in your request rate is impacting service reliability.
+        Please reduce your request rate to its original level, maintain a consistent rate for at least 15 minutes, and then gradually increase it.
         """
 
     case .networkError(let details):
@@ -145,15 +192,25 @@ struct TranscriptionErrorFormatter {
     case .noAPIKey:
       return "⚠️ No API Key"
     case .invalidAPIKey:
-      return "❌ Invalid Key"
+      return "❌ Invalid Authentication"
+    case .incorrectAPIKey:
+      return "❌ Incorrect API Key"
+    case .organizationRequired:
+      return "❌ Organization Required"
+    case .countryNotSupported:
+      return "❌ Country Not Supported"
     case .rateLimited:
       return "⏳ Rate Limited"
+    case .quotaExceeded:
+      return "⏳ Quota Exceeded"
     case .networkError:
       return "⏰ Network Error"
     case .serverError:
       return "❌ Server Error"
     case .serviceUnavailable:
-      return "🔄 Service Down"
+      return "🔄 Service Unavailable"
+    case .slowDown:
+      return "🔄 Slow Down"
     case .fileTooLarge:
       return "❌ File Too Large"
     case .emptyFile:
