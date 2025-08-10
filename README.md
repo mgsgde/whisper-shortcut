@@ -71,3 +71,7 @@ Contributions welcome! Please submit a Pull Request.
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
+
+---
+
+Made with ❤️ in Karlsruhe, Germany
