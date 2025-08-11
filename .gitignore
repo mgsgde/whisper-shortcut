@@ -125,3 +125,5 @@ TestResults.xcresult/
 release/
 
 screenshots/node_modules/
+
+test-config
