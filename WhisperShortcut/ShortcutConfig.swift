@@ -256,14 +256,17 @@ class ShortcutConfigManager {
 
     for part in parts {
       switch part {
-      case "command":
+      // Modifiers
+      case "command", "cmd", "⌘":
         modifiers.insert(.command)
-      case "option":
+      case "option", "alt", "⌥":
         modifiers.insert(.option)
-      case "control":
+      case "control", "ctrl", "⌃":
         modifiers.insert(.control)
-      case "shift":
+      case "shift", "⇧":
         modifiers.insert(.shift)
+
+      // Letters
       case "a": key = .a
       case "b": key = .b
       case "c": key = .c
@@ -290,6 +293,8 @@ class ShortcutConfigManager {
       case "x": key = .x
       case "y": key = .y
       case "z": key = .z
+
+      // Numbers
       case "0": key = .zero
       case "1": key = .one
       case "2": key = .two
@@ -300,11 +305,49 @@ class ShortcutConfigManager {
       case "7": key = .seven
       case "8": key = .eight
       case "9": key = .nine
-      case "space": key = .space
-      case "return", "enter": key = .return
-      case "escape", "esc": key = .escape
-      case "tab": key = .tab
-      case "delete", "backspace": key = .delete
+
+      // Special keys
+      case "space", " ": key = .space
+      case "return", "enter", "↩": key = .return
+      case "escape", "esc", "⎋": key = .escape
+      case "tab", "⇥": key = .tab
+      case "delete", "backspace", "⌫": key = .delete
+      case "minus", "-": key = .minus
+      case "equal", "=": key = .equal
+      case "leftbracket", "[": key = .leftBracket
+      case "rightbracket", "]": key = .rightBracket
+      case "backslash", "\\": key = .backslash
+      case "semicolon", ";": key = .semicolon
+      case "quote", "'": key = .quote
+      case "grave", "`": key = .grave
+      case "comma", ",": key = .comma
+      case "period", ".": key = .period
+      case "slash", "/": key = .slash
+
+      // Function keys
+      case "f1": key = .f1
+      case "f2": key = .f2
+      case "f3": key = .f3
+      case "f4": key = .f4
+      case "f5": key = .f5
+      case "f6": key = .f6
+      case "f7": key = .f7
+      case "f8": key = .f8
+      case "f9": key = .f9
+      case "f10": key = .f10
+      case "f11": key = .f11
+      case "f12": key = .f12
+
+      // Navigation keys
+      case "home": key = .home
+      case "pageup", "pgup": key = .pageUp
+      case "pagedown", "pgdn": key = .pageDown
+      case "end": key = .end
+      case "uparrow", "up", "↑": key = .upArrow
+      case "downarrow", "down", "↓": key = .downArrow
+      case "leftarrow", "left", "←": key = .leftArrow
+      case "rightarrow", "right", "→": key = .rightArrow
+
       default:
         // Skip empty parts
         if !part.isEmpty {

@@ -24,18 +24,20 @@ struct SettingsView: View {
     VStack(spacing: 20) {
       // Title
       Text("WhisperShortcut Settings")
-        .font(.title2)
-        .fontWeight(.semibold)
-        .padding(.top, 20)
+        .font(.title)
+        .fontWeight(.bold)
+        .padding(.top, 24)
 
       // API Key Section
-      VStack(alignment: .leading, spacing: 8) {
+      VStack(alignment: .leading, spacing: 12) {
         Text("OpenAI API Key")
-          .font(.headline)
+          .font(.title3)
+          .fontWeight(.semibold)
 
         TextField("sk-...", text: $apiKey)
           .textFieldStyle(.roundedBorder)
           .font(.system(.body, design: .monospaced))
+          .frame(height: 36)
           .onAppear {
             apiKey = KeychainManager.shared.getAPIKey() ?? ""
           }
@@ -43,51 +45,79 @@ struct SettingsView: View {
       }
 
       // Shortcuts Section
-      VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 16) {
         Text("Keyboard Shortcuts")
-          .font(.headline)
+          .font(.title3)
+          .fontWeight(.semibold)
 
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
           HStack {
             Text("Start Recording:")
-              .frame(width: 120, alignment: .leading)
+              .font(.body)
+              .fontWeight(.medium)
+              .frame(width: 140, alignment: .leading)
             TextField("e.g., command+option+r", text: $startShortcut)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
+              .frame(height: 36)
               .focused($startShortcutFocused)
           }
 
           HStack {
             Text("Stop Recording:")
-              .frame(width: 120, alignment: .leading)
+              .font(.body)
+              .fontWeight(.medium)
+              .frame(width: 140, alignment: .leading)
             TextField("e.g., command+r", text: $stopShortcut)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
+              .frame(height: 36)
               .focused($stopShortcutFocused)
           }
         }
 
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Available modifiers:")
-            .font(.caption)
-            .fontWeight(.medium)
+        VStack(alignment: .leading, spacing: 8) {
+          Text("Available keys:")
+            .font(.callout)
+            .fontWeight(.semibold)
             .foregroundColor(.secondary)
 
-          Text("• command")
-            .font(.caption)
+          Text("• Modifiers: command, option, control, shift, fn")
+            .font(.callout)
             .foregroundColor(.secondary)
+            .textSelection(.enabled)
 
-          Text("• option")
-            .font(.caption)
+          Text("• Letters: a-z")
+            .font(.callout)
             .foregroundColor(.secondary)
+            .textSelection(.enabled)
 
-          Text("• control")
-            .font(.caption)
+          Text("• Numbers: 0-9")
+            .font(.callout)
             .foregroundColor(.secondary)
+            .textSelection(.enabled)
 
-          Text("• shift")
-            .font(.caption)
+          Text("• Function keys: f1-f12")
+            .font(.callout)
             .foregroundColor(.secondary)
+            .textSelection(.enabled)
+
+          Text("• Special keys: space, return, escape, tab, delete")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
+
+          Text(
+            "• Symbols: minus, equal, leftbracket, rightbracket, backslash, semicolon, quote, grave, comma, period, slash"
+          )
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+
+          Text("• Navigation: home, end, pageup, pagedown, up, down, left, right")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
 
         }
         .textSelection(.enabled)
@@ -97,34 +127,41 @@ struct SettingsView: View {
       if showError {
         Text(errorMessage)
           .foregroundColor(.red)
-          .font(.caption)
+          .font(.callout)
+          .fontWeight(.medium)
           .multilineTextAlignment(.center)
           .textSelection(.enabled)
+          .padding(.vertical, 8)
       }
 
-      Spacer()
+      Spacer(minLength: 4)
 
       // Buttons
-      HStack(spacing: 12) {
+      HStack(spacing: 16) {
         Button("Skip for now") {
           dismiss()
         }
+        .font(.body)
+        .fontWeight(.medium)
 
         Button("Save Settings") {
           saveSettings()
         }
+        .font(.body)
+        .fontWeight(.semibold)
         .buttonStyle(.borderedProminent)
         .disabled(isLoading)
 
         if isLoading {
           ProgressView()
-            .scaleEffect(0.8)
+            .scaleEffect(1.0)
         }
       }
-      .padding(.bottom, 20)
+      .padding(.bottom, 24)
     }
-    .padding(.horizontal, 24)
-    .frame(width: 480, height: 400)
+    .padding(.horizontal, 32)
+    .padding(.vertical, 16)
+    .frame(width: 520, height: 650)
     .onAppear {
       DispatchQueue.main.async {
         NSApp.activate(ignoringOtherApps: true)
@@ -162,12 +199,14 @@ struct SettingsView: View {
 
     guard let startShortcutParsed = ShortcutConfigManager.parseShortcut(from: startShortcut) else {
       showErrorMessage(
-        "Invalid start recording shortcut format. Try: command+option+r, control+shift+t")
+        "Invalid start recording shortcut format. Use: command+option+r, control+shift+space, f1, command+up"
+      )
       return
     }
 
     guard let stopShortcutParsed = ShortcutConfigManager.parseShortcut(from: stopShortcut) else {
-      showErrorMessage("Invalid stop recording shortcut format. Try: command+r, control+t")
+      showErrorMessage(
+        "Invalid stop recording shortcut format. Use: command+r, control+space, f2, command+down")
       return
     }
 
@@ -178,7 +217,7 @@ struct SettingsView: View {
       return
     }
 
-    KeychainManager.shared.saveAPIKey(apiKey)
+    _ = KeychainManager.shared.saveAPIKey(apiKey)
 
     let newConfig = ShortcutConfig(
       startRecording: startShortcutParsed,
