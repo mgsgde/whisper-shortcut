@@ -1,5 +1,4 @@
 import Cocoa
-import Foundation
 import SwiftUI
 
 // Main App Delegate with full functionality
@@ -29,9 +28,6 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     print("")
 
     // Microphone permission will be requested automatically when recording starts
-
-    // Check Keychain status and API key configuration
-    // (removed: KeychainManager.shared.checkKeychainStatus())
 
     // First check if API key exists without triggering a prompt
     if KeychainManager.shared.hasAPIKey() {

@@ -14,10 +14,8 @@ struct SettingsView: View {
 
   @Environment(\.dismiss) private var dismiss
 
-  private let currentConfig: ShortcutConfig
-
   init() {
-    self.currentConfig = ShortcutConfigManager.shared.loadConfiguration()
+    let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     _startShortcut = State(initialValue: currentConfig.startRecording.textDisplayString)
     _stopShortcut = State(initialValue: currentConfig.stopRecording.textDisplayString)
   }
@@ -128,18 +126,15 @@ struct SettingsView: View {
     .padding(.horizontal, 24)
     .frame(width: 480, height: 400)
     .onAppear {
-      // Make window key and main when it appears
       DispatchQueue.main.async {
         NSApp.activate(ignoringOtherApps: true)
         if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
           window.makeKeyAndOrderFront(nil)
         }
-        // Set focus to first text field
         apiKeyFocused = true
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
-      // Ensure window can handle keyboard events
       if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
         window.level = .floating
       }
@@ -150,13 +145,11 @@ struct SettingsView: View {
     isLoading = true
     showError = false
 
-    // Validate API key
     guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       showErrorMessage("Please enter your OpenAI API key")
       return
     }
 
-    // Validate shortcuts
     guard !startShortcut.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       showErrorMessage("Please enter a start recording shortcut")
       return
@@ -167,7 +160,6 @@ struct SettingsView: View {
       return
     }
 
-    // Parse shortcuts
     guard let startShortcutParsed = ShortcutConfigManager.parseShortcut(from: startShortcut) else {
       showErrorMessage(
         "Invalid start recording shortcut format. Try: command+option+r, control+shift+t")
@@ -179,17 +171,14 @@ struct SettingsView: View {
       return
     }
 
-    // Save API key
     KeychainManager.shared.saveAPIKey(apiKey)
 
-    // Save shortcuts
     let newConfig = ShortcutConfig(
       startRecording: startShortcutParsed,
       stopRecording: stopShortcutParsed
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 
-    // Validate API key with OpenAI
     validateAPIKey { isValid in
       DispatchQueue.main.async {
         isLoading = false
