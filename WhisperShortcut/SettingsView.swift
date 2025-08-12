@@ -107,12 +107,15 @@ struct SettingsView: View {
             .foregroundColor(.secondary)
             .textSelection(.enabled)
 
-          Text(
-            "• Symbols: minus, equal, leftbracket, rightbracket, backslash, semicolon, quote, grave, comma, period, slash"
-          )
-          .font(.callout)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
+          Text("• Symbols: minus, equal, leftbracket, rightbracket, backslash")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
+
+          Text("• Symbols: semicolon, quote, grave, comma, period, slash")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
 
           Text("• Navigation: home, end, pageup, pagedown, up, down, left, right")
             .font(.callout)
@@ -123,16 +126,27 @@ struct SettingsView: View {
         .textSelection(.enabled)
       }
 
-      // Error Message
-      if showError {
-        Text(errorMessage)
-          .foregroundColor(.red)
-          .font(.callout)
-          .fontWeight(.medium)
-          .multilineTextAlignment(.center)
-          .textSelection(.enabled)
-          .padding(.vertical, 8)
+      // Error Message - Fixed height to prevent layout shifts
+      VStack {
+        if showError {
+          Text(errorMessage)
+            .foregroundColor(.red)
+            .font(.callout)
+            .fontWeight(.medium)
+            .multilineTextAlignment(.center)
+            .textSelection(.enabled)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+        } else {
+          // Invisible placeholder to maintain consistent spacing
+          Text("")
+            .font(.callout)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .opacity(0)
+        }
       }
+      .frame(height: 40)  // Fixed height for error message area
 
       Spacer(minLength: 4)
 
