@@ -19,6 +19,9 @@ class SettingsWindowController: NSWindowController {
     window.title = "WhisperShortcut Settings"
     window.center()
     window.contentViewController = hostingController
+    window.level = .floating
+    window.isMovableByWindowBackground = false
+    window.collectionBehavior = [.managed, .fullScreenNone]
 
     super.init(window: window)
     window.delegate = self
@@ -29,11 +32,30 @@ class SettingsWindowController: NSWindowController {
   required init?(coder: NSCoder) {
     super.init(coder: coder)
   }
+
+  func showWindow() {
+    // Step 1: Temporarily become a regular app
+    NSApp.setActivationPolicy(.regular)
+    NSApp.activate(ignoringOtherApps: true)
+
+    // Step 2: Show the window
+    window?.makeKeyAndOrderFront(nil)
+
+    // Step 3: Ensure window gets focus
+    DispatchQueue.main.async {
+      self.window?.makeKeyAndOrderFront(nil)
+    }
+  }
 }
 
 // MARK: - NSWindowDelegate
 extension SettingsWindowController: NSWindowDelegate {
   func windowWillClose(_ notification: Notification) {
     print("🔧 Settings window closing")
+
+    // Step 4: Return to menu bar app when window closes
+    DispatchQueue.main.async {
+      NSApp.setActivationPolicy(.accessory)
+    }
   }
 }

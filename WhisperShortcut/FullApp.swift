@@ -1,5 +1,6 @@
 import Cocoa
 import Foundation
+import SwiftUI
 
 // Main App Delegate with full functionality
 class FullAppDelegate: NSObject, NSApplicationDelegate {
@@ -7,6 +8,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     print("🚀 Full WhisperShortcut launched successfully")
+
+    // Setup Edit menu for text editing commands
+    setupEditMenu()
 
     // Initialize the full menu bar controller
     menuBarController = MenuBarController()
@@ -49,6 +53,63 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
   func applicationWillTerminate(_ notification: Notification) {
     menuBarController?.cleanup()
     print("👋 WhisperShortcut terminated")
+  }
+
+  private func setupEditMenu() {
+    // Create Edit menu with standard text editing commands
+    let editMenu = NSMenu(title: "Edit")
+
+    // Undo
+    let undoItem = NSMenuItem(
+      title: "Undo", action: NSSelectorFromString("undo:"), keyEquivalent: "z")
+    undoItem.target = nil  // Will be handled by first responder
+    editMenu.addItem(undoItem)
+
+    // Redo
+    let redoItem = NSMenuItem(
+      title: "Redo", action: NSSelectorFromString("redo:"), keyEquivalent: "Z")
+    redoItem.target = nil  // Will be handled by first responder
+    editMenu.addItem(redoItem)
+
+    editMenu.addItem(NSMenuItem.separator())
+
+    // Cut
+    let cutItem = NSMenuItem(title: "Cut", action: NSSelectorFromString("cut:"), keyEquivalent: "x")
+    cutItem.target = nil  // Will be handled by first responder
+    editMenu.addItem(cutItem)
+
+    // Copy
+    let copyItem = NSMenuItem(
+      title: "Copy", action: NSSelectorFromString("copy:"), keyEquivalent: "c")
+    copyItem.target = nil  // Will be handled by first responder
+    editMenu.addItem(copyItem)
+
+    // Paste
+    let pasteItem = NSMenuItem(
+      title: "Paste", action: NSSelectorFromString("paste:"), keyEquivalent: "v")
+    pasteItem.target = nil  // Will be handled by first responder
+    editMenu.addItem(pasteItem)
+
+    // Delete
+    let deleteItem = NSMenuItem(
+      title: "Delete", action: NSSelectorFromString("delete:"), keyEquivalent: "")
+    deleteItem.target = nil  // Will be handled by first responder
+    editMenu.addItem(deleteItem)
+
+    editMenu.addItem(NSMenuItem.separator())
+
+    // Select All
+    let selectAllItem = NSMenuItem(
+      title: "Select All", action: NSSelectorFromString("selectAll:"), keyEquivalent: "a")
+    selectAllItem.target = nil  // Will be handled by first responder
+    editMenu.addItem(selectAllItem)
+
+    // Add Edit menu to main menu
+    let mainMenu = NSApp.mainMenu ?? NSMenu()
+    mainMenu.addItem(NSMenuItem(title: "Edit", action: nil, keyEquivalent: ""))
+    mainMenu.item(withTitle: "Edit")?.submenu = editMenu
+
+    NSApp.mainMenu = mainMenu
   }
 }
 

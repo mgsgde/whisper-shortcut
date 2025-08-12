@@ -8,6 +8,10 @@ struct SettingsView: View {
   @State private var showError: Bool = false
   @State private var isLoading: Bool = false
 
+  @FocusState private var apiKeyFocused: Bool
+  @FocusState private var startShortcutFocused: Bool
+  @FocusState private var stopShortcutFocused: Bool
+
   @Environment(\.dismiss) private var dismiss
 
   private let currentConfig: ShortcutConfig
@@ -37,6 +41,9 @@ struct SettingsView: View {
           .onAppear {
             apiKey = KeychainManager.shared.getAPIKey() ?? ""
           }
+          .textFieldStyle(.roundedBorder)
+          .allowsHitTesting(true)
+          .focused($apiKeyFocused)
       }
 
       // Shortcuts Section
@@ -51,6 +58,8 @@ struct SettingsView: View {
             TextField("e.g., command+option+r", text: $startShortcut)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
+              .allowsHitTesting(true)
+              .focused($startShortcutFocused)
           }
 
           HStack {
@@ -59,6 +68,8 @@ struct SettingsView: View {
             TextField("e.g., command+r", text: $stopShortcut)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
+              .allowsHitTesting(true)
+              .focused($stopShortcutFocused)
           }
         }
 
@@ -104,12 +115,10 @@ struct SettingsView: View {
         Button("Skip for now") {
           dismiss()
         }
-        .keyboardShortcut("s", modifiers: [])
 
         Button("Save Settings") {
           saveSettings()
         }
-        .keyboardShortcut(.return, modifiers: [])
         .buttonStyle(.borderedProminent)
         .disabled(isLoading)
 
@@ -122,6 +131,23 @@ struct SettingsView: View {
     }
     .padding(.horizontal, 24)
     .frame(width: 480, height: 400)
+    .onAppear {
+      // Make window key and main when it appears
+      DispatchQueue.main.async {
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
+          window.makeKeyAndOrderFront(nil)
+        }
+        // Set focus to first text field
+        apiKeyFocused = true
+      }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+      // Ensure window can handle keyboard events
+      if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
+        window.level = .floating
+      }
+    }
   }
 
   private func saveSettings() {
