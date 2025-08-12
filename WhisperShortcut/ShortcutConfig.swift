@@ -143,6 +143,19 @@ struct ShortcutDefinition: Codable, Equatable {
     return parts.joined()
   }
 
+  var textDisplayString: String {
+    var parts: [String] = []
+
+    if modifiers.contains(.command) { parts.append("command") }
+    if modifiers.contains(.option) { parts.append("option") }
+    if modifiers.contains(.control) { parts.append("control") }
+    if modifiers.contains(.shift) { parts.append("shift") }
+
+    parts.append(key.displayString.lowercased())
+
+    return parts.joined(separator: "+")
+  }
+
   var isConflicting: Bool {
     // Check for common conflicts
     let conflictKeys: [Key] = [.space, .tab, .escape, .return, .delete]
@@ -219,6 +232,94 @@ class ShortcutConfigManager {
     if let data = try? JSONEncoder().encode(shortcut) {
       userDefaults.set(data, forKey: key)
     }
+  }
+
+  // MARK: - String-based parsing (for UI)
+  static func parseShortcut(from string: String) -> ShortcutDefinition? {
+    let cleanString = string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+    print("🔍 Parsing shortcut: '\(string)' -> '\(cleanString)'")
+
+    // Handle empty input
+    if cleanString.isEmpty {
+      print("❌ Empty shortcut string")
+      return nil
+    }
+
+    // Parse text-based shortcuts like "command+option+r" or "ctrl shift t"
+    let parts = cleanString.components(
+      separatedBy: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "+")))
+
+    print("🔍 Parts: \(parts)")
+    var modifiers: NSEvent.ModifierFlags = []
+    var key: Key?
+
+    for part in parts {
+      switch part {
+      case "command":
+        modifiers.insert(.command)
+      case "option":
+        modifiers.insert(.option)
+      case "control":
+        modifiers.insert(.control)
+      case "shift":
+        modifiers.insert(.shift)
+      case "a": key = .a
+      case "b": key = .b
+      case "c": key = .c
+      case "d": key = .d
+      case "e": key = .e
+      case "f": key = .f
+      case "g": key = .g
+      case "h": key = .h
+      case "i": key = .i
+      case "j": key = .j
+      case "k": key = .k
+      case "l": key = .l
+      case "m": key = .m
+      case "n": key = .n
+      case "o": key = .o
+      case "p": key = .p
+      case "q": key = .q
+      case "r": key = .r
+      case "s": key = .s
+      case "t": key = .t
+      case "u": key = .u
+      case "v": key = .v
+      case "w": key = .w
+      case "x": key = .x
+      case "y": key = .y
+      case "z": key = .z
+      case "0": key = .zero
+      case "1": key = .one
+      case "2": key = .two
+      case "3": key = .three
+      case "4": key = .four
+      case "5": key = .five
+      case "6": key = .six
+      case "7": key = .seven
+      case "8": key = .eight
+      case "9": key = .nine
+      case "space": key = .space
+      case "return", "enter": key = .return
+      case "escape", "esc": key = .escape
+      case "tab": key = .tab
+      case "delete", "backspace": key = .delete
+      default:
+        // Skip empty parts
+        if !part.isEmpty {
+          print("⚠️ Unknown shortcut part: '\(part)' in '\(string)'")
+        }
+      }
+    }
+
+    guard let key = key else {
+      print("❌ No valid key found in shortcut: '\(string)'")
+      return nil
+    }
+
+    print("✅ Parsed shortcut: '\(string)' -> \(key.displayString) with modifiers: \(modifiers)")
+    return ShortcutDefinition(key: key, modifiers: modifiers)
   }
 
   // MARK: - Validation
