@@ -41,8 +41,6 @@ struct SettingsView: View {
           .onAppear {
             apiKey = KeychainManager.shared.getAPIKey() ?? ""
           }
-          .textFieldStyle(.roundedBorder)
-          .allowsHitTesting(true)
           .focused($apiKeyFocused)
       }
 
@@ -58,7 +56,6 @@ struct SettingsView: View {
             TextField("e.g., command+option+r", text: $startShortcut)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
-              .allowsHitTesting(true)
               .focused($startShortcutFocused)
           }
 
@@ -68,7 +65,6 @@ struct SettingsView: View {
             TextField("e.g., command+r", text: $stopShortcut)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
-              .allowsHitTesting(true)
               .focused($stopShortcutFocused)
           }
         }
