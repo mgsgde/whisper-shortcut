@@ -35,7 +35,7 @@ struct SettingsView: View {
         Text("OpenAI API Key")
           .font(.headline)
 
-        SecureField("sk-...", text: $apiKey)
+        TextField("sk-...", text: $apiKey)
           .textFieldStyle(.roundedBorder)
           .font(.system(.body, design: .monospaced))
           .onAppear {
