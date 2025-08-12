@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		BF070B1E2E4B5966005CB23D /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BF070B1D2E4B5966005CB23D /* HotKey */; };
 		BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BFBC35F42E3E129600BAC747 /* HotKey */; };
 /* End PBXBuildFile section */
 
@@ -65,6 +66,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BF070B1E2E4B5966005CB23D /* HotKey in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -142,6 +144,7 @@
 			);
 			name = WhisperShortcutTests;
 			packageProductDependencies = (
+				BF070B1D2E4B5966005CB23D /* HotKey */,
 			);
 			productName = WhisperShortcutTests;
 			productReference = BF3C90D42E3E0CC2001D325B /* WhisperShortcutTests.xctest */;
@@ -491,6 +494,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		BF070B1D2E4B5966005CB23D /* HotKey */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */;
+			productName = HotKey;
+		};
 		BFBC35F42E3E129600BAC747 /* HotKey */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */;
