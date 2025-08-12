@@ -171,6 +171,13 @@ struct SettingsView: View {
       return
     }
 
+    // Check for duplicate shortcuts
+    if startShortcutParsed == stopShortcutParsed {
+      showErrorMessage(
+        "Start and stop shortcuts cannot be the same. Please use different shortcuts.")
+      return
+    }
+
     KeychainManager.shared.saveAPIKey(apiKey)
 
     let newConfig = ShortcutConfig(
