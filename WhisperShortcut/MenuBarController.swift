@@ -113,6 +113,16 @@ class MenuBarController: NSObject {
     transcriptionService = TranscriptionService()
     clipboardManager = ClipboardManager()
 
+    // Load saved model preference and set it on the transcription service
+    if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
+      let savedModel = TranscriptionModel(rawValue: savedModelString)
+    {
+      transcriptionService?.setModel(savedModel)
+    } else {
+      // Set default model to GPT-4o Transcribe
+      transcriptionService?.setModel(.gpt4oTranscribe)
+    }
+
     // Setup simple shortcuts
     shortcuts?.delegate = self
     shortcuts?.setup()
@@ -132,6 +142,13 @@ class MenuBarController: NSObject {
       self,
       selector: #selector(shortcutsChanged),
       name: .shortcutsChanged,
+      object: nil
+    )
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(modelChanged),
+      name: .modelChanged,
       object: nil
     )
   }
@@ -293,6 +310,14 @@ class MenuBarController: NSObject {
       DispatchQueue.main.async {
         self.updateMenuShortcuts()
       }
+    }
+  }
+
+  @objc private func modelChanged(_ notification: Notification) {
+    print("🔄 Model changed, updating transcription service...")
+    if let newModel = notification.object as? TranscriptionModel {
+      transcriptionService?.setModel(newModel)
+      print("✅ Model updated to: \(newModel.displayName)")
     }
   }
 

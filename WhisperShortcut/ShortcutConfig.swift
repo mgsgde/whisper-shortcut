@@ -116,8 +116,8 @@ struct ShortcutConfig: Codable {
   var stopRecording: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
-    startRecording: ShortcutDefinition(key: .r, modifiers: [.command, .option]),
-    stopRecording: ShortcutDefinition(key: .r, modifiers: [.command])
+    startRecording: ShortcutDefinition(key: .e, modifiers: [.command, .shift]),
+    stopRecording: ShortcutDefinition(key: .e, modifiers: [.command])
   )
 }
 
@@ -410,4 +410,5 @@ enum ShortcutValidationResult {
 // MARK: - Notification Extension
 extension Notification.Name {
   static let shortcutsChanged = Notification.Name("shortcutsChanged")
+  static let modelChanged = Notification.Name("modelChanged")
 }

@@ -4,9 +4,10 @@ struct SettingsView: View {
   @State private var apiKey: String = ""
   @State private var startShortcut: String = ""
   @State private var stopShortcut: String = ""
+  @State private var selectedModel: TranscriptionModel = .gpt4oTranscribe
   @State private var errorMessage: String = ""
-  @State private var showError: Bool = false
   @State private var isLoading: Bool = false
+  @State private var showAlert: Bool = false
 
   @FocusState private var apiKeyFocused: Bool
   @FocusState private var startShortcutFocused: Bool
@@ -18,6 +19,15 @@ struct SettingsView: View {
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     _startShortcut = State(initialValue: currentConfig.startRecording.textDisplayString)
     _stopShortcut = State(initialValue: currentConfig.stopRecording.textDisplayString)
+
+    // Load saved model preference
+    if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
+      let savedModel = TranscriptionModel(rawValue: savedModelString)
+    {
+      _selectedModel = State(initialValue: savedModel)
+    } else {
+      _selectedModel = State(initialValue: .gpt4oTranscribe)
+    }
   }
 
   var body: some View {
@@ -42,6 +52,75 @@ struct SettingsView: View {
             apiKey = KeychainManager.shared.getAPIKey() ?? ""
           }
           .focused($apiKeyFocused)
+      }
+
+      // Model Selection Section
+      VStack(alignment: .leading, spacing: 12) {
+        Text("Transcription Model")
+          .font(.title3)
+          .fontWeight(.semibold)
+
+        HStack(spacing: 0) {
+          ForEach(TranscriptionModel.allCases, id: \.self) { model in
+            ZStack {
+              Rectangle()
+                .fill(selectedModel == model ? Color.accentColor : Color.clear)
+                .cornerRadius(6)
+
+              Text(model.displayName)
+                .font(.system(.body, design: .default))
+                .foregroundColor(selectedModel == model ? .white : .primary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+            .onTapGesture {
+              selectedModel = model
+            }
+
+            if model != TranscriptionModel.allCases.last {
+              Divider()
+                .frame(height: 20)
+            }
+          }
+        }
+        .background(Color(.controlBackgroundColor))
+        .cornerRadius(8)
+        .overlay(
+          RoundedRectangle(cornerRadius: 8)
+            .stroke(Color(.separatorColor), lineWidth: 1)
+        )
+        .frame(height: 44)
+
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Model Details:")
+            .font(.callout)
+            .fontWeight(.semibold)
+            .foregroundColor(.secondary)
+
+          switch selectedModel {
+          case .whisper1:
+            Text("• Whisper-1: Most cost-effective, stable and proven")
+              .font(.callout)
+              .foregroundColor(.secondary)
+            Text("• Best for: Budget-conscious users, clear audio sources")
+              .font(.callout)
+              .foregroundColor(.secondary)
+          case .gpt4oTranscribe:
+            Text("• GPT-4o Transcribe: Highest accuracy, best for difficult audio")
+              .font(.callout)
+              .foregroundColor(.secondary)
+            Text("• Best for: Critical applications, maximum quality")
+              .font(.callout)
+              .foregroundColor(.secondary)
+          case .gpt4oMiniTranscribe:
+            Text("• GPT-4o Mini Transcribe: Balanced quality and speed")
+              .font(.callout)
+              .foregroundColor(.secondary)
+            Text("• Best for: Everyday use, good quality with lower cost")
+              .font(.callout)
+              .foregroundColor(.secondary)
+          }
+        }
       }
 
       // Shortcuts Section
@@ -126,27 +205,8 @@ struct SettingsView: View {
         .textSelection(.enabled)
       }
 
-      // Error Message - Fixed height to prevent layout shifts
-      VStack {
-        if showError {
-          Text(errorMessage)
-            .foregroundColor(.red)
-            .font(.callout)
-            .fontWeight(.medium)
-            .multilineTextAlignment(.center)
-            .textSelection(.enabled)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
-        } else {
-          // Invisible placeholder to maintain consistent spacing
-          Text("")
-            .font(.callout)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
-            .opacity(0)
-        }
-      }
-      .frame(height: 40)  // Fixed height for error message area
+      // Error Message - Now shown as popup alert
+      // Removed fixed height to give more space for buttons
 
       Spacer(minLength: 4)
 
@@ -173,9 +233,16 @@ struct SettingsView: View {
       }
       .padding(.bottom, 24)
     }
-    .padding(.horizontal, 32)
-    .padding(.vertical, 16)
-    .frame(width: 520, height: 650)
+    .padding(.horizontal, 48)
+    .padding(.vertical, 32)
+    .frame(width: 580, height: 720)
+    .alert("Error", isPresented: $showAlert) {
+      Button("OK") {
+        showAlert = false
+      }
+    } message: {
+      Text(errorMessage)
+    }
     .onAppear {
       DispatchQueue.main.async {
         NSApp.activate(ignoringOtherApps: true)
@@ -194,7 +261,6 @@ struct SettingsView: View {
 
   private func saveSettings() {
     isLoading = true
-    showError = false
 
     guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       showErrorMessage("Please enter your OpenAI API key")
@@ -233,6 +299,12 @@ struct SettingsView: View {
 
     _ = KeychainManager.shared.saveAPIKey(apiKey)
 
+    // Save model preference
+    UserDefaults.standard.set(selectedModel.rawValue, forKey: "selectedTranscriptionModel")
+
+    // Notify that model has changed
+    NotificationCenter.default.post(name: .modelChanged, object: selectedModel)
+
     let newConfig = ShortcutConfig(
       startRecording: startShortcutParsed,
       stopRecording: stopShortcutParsed
@@ -253,12 +325,13 @@ struct SettingsView: View {
 
   private func showErrorMessage(_ message: String) {
     errorMessage = message
-    showError = true
+    showAlert = true
     isLoading = false
   }
 
   private func validateAPIKey(completion: @escaping (Bool) -> Void) {
     let transcriptionService = TranscriptionService()
+    transcriptionService.setModel(selectedModel)
     Task {
       do {
         let isValid = try await transcriptionService.validateAPIKey(apiKey)

@@ -1,9 +1,45 @@
 import Foundation
 
+// MARK: - Transcription Model Enum
+enum TranscriptionModel: String, CaseIterable {
+  case gpt4oTranscribe = "gpt-4o-transcribe"
+  case gpt4oMiniTranscribe = "gpt-4o-mini-transcribe"
+  case whisper1 = "whisper-1"
+
+  var displayName: String {
+    switch self {
+    case .gpt4oTranscribe:
+      return "GPT-4o Transcribe"
+    case .gpt4oMiniTranscribe:
+      return "GPT-4o Mini Transcribe"
+    case .whisper1:
+      return "Whisper-1"
+    }
+  }
+
+  var apiEndpoint: String {
+    switch self {
+    case .whisper1:
+      return "https://api.openai.com/v1/audio/transcriptions"
+    case .gpt4oTranscribe:
+      return "https://api.openai.com/v1/audio/transcriptions"
+    case .gpt4oMiniTranscribe:
+      return "https://api.openai.com/v1/audio/transcriptions"
+    }
+  }
+
+  var requiresMultipartForm: Bool {
+    switch self {
+    case .whisper1, .gpt4oTranscribe, .gpt4oMiniTranscribe:
+      return true
+    }
+  }
+}
+
 // MARK: - Core Service
 class TranscriptionService {
-  private let apiURL = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
   private let keychainManager: KeychainManaging
+  private var selectedModel: TranscriptionModel = .whisper1
 
   // Custom session with appropriate timeouts
   private lazy var session: URLSession = {
@@ -15,6 +51,15 @@ class TranscriptionService {
 
   init(keychainManager: KeychainManaging = KeychainManager.shared) {
     self.keychainManager = keychainManager
+  }
+
+  // MARK: - Model Selection
+  func setModel(_ model: TranscriptionModel) {
+    self.selectedModel = model
+  }
+
+  func getCurrentModel() -> TranscriptionModel {
+    return selectedModel
   }
 
   // MARK: - API Key Management
@@ -65,7 +110,7 @@ class TranscriptionService {
     // Validate file
     try validateAudioFile(at: audioURL)
 
-    // Create request
+    // Create request based on selected model
     let request = try createRequest(audioURL: audioURL, apiKey: apiKey)
 
     // Execute request
@@ -98,31 +143,47 @@ class TranscriptionService {
       throw TranscriptionError.emptyFile
     }
 
+    // GPT-4o-transcribe has a 25MB limit, same as Whisper-1
     if fileSize > 25 * 1024 * 1024 {  // 25MB limit
       throw TranscriptionError.fileTooLarge
     }
   }
 
   private func createRequest(audioURL: URL, apiKey: String) throws -> URLRequest {
+    let apiURL = URL(string: selectedModel.apiEndpoint)!
     var request = URLRequest(url: apiURL)
     request.httpMethod = "POST"
+    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
+    // All models use multipart form data
+    return try createMultipartRequest(request: &request, audioURL: audioURL)
+  }
+
+  private func createMultipartRequest(request: inout URLRequest, audioURL: URL) throws -> URLRequest
+  {
     let boundary = "Boundary-\(UUID().uuidString)"
     request.setValue(
       "multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
     var body = Data()
 
     // Add model
     body.append("--\(boundary)\r\n")
     body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
-    body.append("whisper-1\r\n")
+    body.append("\(selectedModel.rawValue)\r\n")
 
     // Add response format
     body.append("--\(boundary)\r\n")
     body.append("Content-Disposition: form-data; name=\"response_format\"\r\n\r\n")
     body.append("json\r\n")
+
+    // Add prompt for GPT-4o models (they support prompts for better quality)
+    if selectedModel == .gpt4oTranscribe || selectedModel == .gpt4oMiniTranscribe {
+      body.append("--\(boundary)\r\n")
+      body.append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n")
+      body.append(
+        "Please transcribe this audio accurately, preserving punctuation and filler words.\r\n")
+    }
 
     // Add audio file
     body.append("--\(boundary)\r\n")
@@ -236,6 +297,14 @@ extension Data {
 // MARK: - Models
 struct WhisperResponse: Codable {
   let text: String
+}
+
+// GPT-4o-transcribe models support prompts for better transcription quality
+struct TranscriptionPrompt {
+  let text: String
+
+  static let defaultPrompt = TranscriptionPrompt(
+    text: "Please transcribe this audio accurately, preserving punctuation and filler words.")
 }
 
 struct OpenAIErrorResponse: Codable {
