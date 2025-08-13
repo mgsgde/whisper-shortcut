@@ -14,4 +14,9 @@ class SettingsManager {
     // Use the new showWindow method that handles activation policy
     settingsWindowController?.showWindow()
   }
+  
+  func closeSettings() {
+    settingsWindowController?.window?.close()
+    settingsWindowController = nil
+  }
 }

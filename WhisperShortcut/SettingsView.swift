@@ -1,6 +1,30 @@
 import SwiftUI
 
 struct SettingsView: View {
+
+  // MARK: - Constants
+  private enum Constants {
+    static let labelWidth: CGFloat = 140
+    static let apiKeyMaxWidth: CGFloat = 300
+    static let shortcutMaxWidth: CGFloat = 250
+    static let minWindowWidth: CGFloat = 520
+    static let minWindowHeight: CGFloat = 600
+    static let modelSelectionHeight: CGFloat = 44
+    static let textFieldHeight: CGFloat = 36
+    static let topPadding: CGFloat = 24
+    static let spacing: CGFloat = 20
+    static let sectionSpacing: CGFloat = 12
+    static let modelSpacing: CGFloat = 0
+    static let dividerHeight: CGFloat = 20
+    static let cornerRadius: CGFloat = 6
+    static let textEditorHeight: CGFloat = 80
+    static let buttonSpacing: CGFloat = 16
+    static let bottomPadding: CGFloat = 24
+    static let horizontalPadding: CGFloat = 48
+    static let verticalPadding: CGFloat = 32
+  }
+
+  // MARK: - State Variables
   @State private var apiKey: String = ""
   @State private var startShortcut: String = ""
   @State private var stopShortcut: String = ""
@@ -10,11 +34,13 @@ struct SettingsView: View {
   @State private var showAlert: Bool = false
   @State private var customPromptText: String = ""
 
+  // MARK: - Focus State
   @FocusState private var apiKeyFocused: Bool
   @FocusState private var startShortcutFocused: Bool
   @FocusState private var stopShortcutFocused: Bool
   @FocusState private var customPromptFocused: Bool
 
+  // MARK: - Environment
   @Environment(\.dismiss) private var dismiss
 
   init() {
@@ -41,15 +67,15 @@ struct SettingsView: View {
   }
 
   var body: some View {
-    VStack(spacing: 20) {
+    VStack(spacing: Constants.spacing) {
       // Title
       Text("WhisperShortcut Settings")
         .font(.title)
         .fontWeight(.bold)
-        .padding(.top, 24)
+        .padding(.top, Constants.topPadding)
 
       // API Key Section
-      VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
         Text("OpenAI API Key")
           .font(.title3)
           .fontWeight(.semibold)
@@ -58,12 +84,12 @@ struct SettingsView: View {
           Text("API Key:")
             .font(.body)
             .fontWeight(.medium)
-            .frame(width: 140, alignment: .leading)
+            .frame(width: Constants.labelWidth, alignment: .leading)
           TextField("sk-...", text: $apiKey)
             .textFieldStyle(.roundedBorder)
             .font(.system(.body, design: .monospaced))
-            .frame(height: 36)
-            .frame(maxWidth: 300)
+            .frame(height: Constants.textFieldHeight)
+            .frame(maxWidth: Constants.apiKeyMaxWidth)
             .onAppear {
               apiKey = KeychainManager.shared.getAPIKey() ?? ""
             }
@@ -73,23 +99,23 @@ struct SettingsView: View {
       }
 
       // Model Selection Section
-      VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
         Text("Transcription Model")
           .font(.title3)
           .fontWeight(.semibold)
 
-        HStack(spacing: 0) {
+        HStack(spacing: Constants.modelSpacing) {
           ForEach(TranscriptionModel.allCases, id: \.self) { model in
             ZStack {
               Rectangle()
                 .fill(selectedModel == model ? Color.accentColor : Color.clear)
-                .cornerRadius(6)
+                .cornerRadius(Constants.cornerRadius)
 
               Text(model.displayName)
                 .font(.system(.body, design: .default))
                 .foregroundColor(selectedModel == model ? .white : .primary)
             }
-            .frame(maxWidth: .infinity, minHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: Constants.modelSelectionHeight)
             .contentShape(Rectangle())
             .onTapGesture {
               selectedModel = model
@@ -97,7 +123,7 @@ struct SettingsView: View {
 
             if model != TranscriptionModel.allCases.last {
               Divider()
-                .frame(height: 20)
+                .frame(height: Constants.dividerHeight)
             }
           }
         }
@@ -107,7 +133,7 @@ struct SettingsView: View {
           RoundedRectangle(cornerRadius: 8)
             .stroke(Color(.separatorColor), lineWidth: 1)
         )
-        .frame(height: 44)
+        .frame(height: Constants.modelSelectionHeight)
 
         VStack(alignment: .leading, spacing: 4) {
           Text("Model Details:")
@@ -143,12 +169,12 @@ struct SettingsView: View {
 
       // Custom Prompt Section (only show for GPT-4o models)
       if selectedModel == .gpt4oTranscribe || selectedModel == .gpt4oMiniTranscribe {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
           Text("Transcription Prompt")
             .font(.title3)
             .fontWeight(.semibold)
 
-          VStack(alignment: .leading, spacing: 12) {
+          VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
             VStack(alignment: .leading, spacing: 8) {
               Text("Domain Terms & Context:")
                 .font(.body)
@@ -156,12 +182,12 @@ struct SettingsView: View {
 
               TextEditor(text: $customPromptText)
                 .font(.system(.body, design: .default))
-                .frame(height: 80)
+                .frame(height: Constants.textEditorHeight)
                 .padding(8)
                 .background(Color(.controlBackgroundColor))
-                .cornerRadius(6)
+                .cornerRadius(Constants.cornerRadius)
                 .overlay(
-                  RoundedRectangle(cornerRadius: 6)
+                  RoundedRectangle(cornerRadius: Constants.cornerRadius)
                     .stroke(Color(.separatorColor), lineWidth: 1)
                 )
                 .focused($customPromptFocused)
@@ -177,22 +203,22 @@ struct SettingsView: View {
       }
 
       // Shortcuts Section
-      VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
         Text("Keyboard Shortcuts")
           .font(.title3)
           .fontWeight(.semibold)
 
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
           HStack(alignment: .center, spacing: 12) {
             Text("Start Recording:")
               .font(.body)
               .fontWeight(.medium)
-              .frame(width: 140, alignment: .leading)
+              .frame(width: Constants.labelWidth, alignment: .leading)
             TextField("e.g., command+option+r", text: $startShortcut)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
-              .frame(height: 36)
-              .frame(maxWidth: 250)
+              .frame(height: Constants.textFieldHeight)
+              .frame(maxWidth: Constants.shortcutMaxWidth)
               .focused($startShortcutFocused)
             Spacer()
           }
@@ -201,12 +227,12 @@ struct SettingsView: View {
             Text("Stop Recording:")
               .font(.body)
               .fontWeight(.medium)
-              .frame(width: 140, alignment: .leading)
+              .frame(width: Constants.labelWidth, alignment: .leading)
             TextField("e.g., command+r", text: $stopShortcut)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
-              .frame(height: 36)
-              .frame(maxWidth: 250)
+              .frame(height: Constants.textFieldHeight)
+              .frame(maxWidth: Constants.shortcutMaxWidth)
               .focused($stopShortcutFocused)
             Spacer()
           }
@@ -268,7 +294,7 @@ struct SettingsView: View {
       Spacer(minLength: 4)
 
       // Buttons
-      HStack(spacing: 16) {
+      HStack(spacing: Constants.buttonSpacing) {
         Button("Skip for now") {
           dismiss()
         }
@@ -288,11 +314,11 @@ struct SettingsView: View {
             .scaleEffect(1.0)
         }
       }
-      .padding(.bottom, 24)
+      .padding(.bottom, Constants.bottomPadding)
     }
-    .padding(.horizontal, 48)
-    .padding(.vertical, 32)
-    .frame(minWidth: 520, minHeight: 600)
+    .padding(.horizontal, Constants.horizontalPadding)
+    .padding(.vertical, Constants.verticalPadding)
+    .frame(minWidth: Constants.minWindowWidth, minHeight: Constants.minWindowHeight)
     .alert("Error", isPresented: $showAlert) {
       Button("OK") {
         showAlert = false
@@ -310,11 +336,13 @@ struct SettingsView: View {
         apiKeyFocused = true
       }
     }
-    .onChange(of: selectedModel) { _ in
+    .onChange(of: selectedModel) { oldValue, newValue in
       // Auto-resize window when model changes (affects content visibility)
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
         if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
-          window.setContentSize(window.contentView?.fittingSize ?? NSSize(width: 520, height: 600))
+          window.setContentSize(
+            window.contentView?.fittingSize
+              ?? NSSize(width: Constants.minWindowWidth, height: Constants.minWindowHeight))
         }
       }
     }

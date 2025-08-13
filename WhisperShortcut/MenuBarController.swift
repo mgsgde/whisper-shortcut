@@ -3,6 +3,17 @@ import SwiftUI
 import UserNotifications
 
 class MenuBarController: NSObject {
+  
+  // MARK: - Constants
+  private enum Constants {
+    static let blinkInterval: TimeInterval = 0.5
+    static let audioLevelUpdateInterval: TimeInterval = 0.1
+    static let successDisplayTime: TimeInterval = 2.0
+    static let errorDisplayTime: TimeInterval = 3.0
+    static let transcribingDisplayTime: TimeInterval = 1.0
+  }
+  
+  // MARK: - UI Components
   private var statusItem: NSStatusItem?
   private var isRecording = false
   private var audioRecorder: AudioRecorder?
@@ -11,11 +22,14 @@ class MenuBarController: NSObject {
   private var clipboardManager: ClipboardManager?
   private var audioLevelTimer: Timer?
 
+  // MARK: - Configuration
   private var currentConfig: ShortcutConfig
+  
+  // MARK: - Animation
   private var blinkTimer: Timer?
   private var isBlinking = false
 
-  // Retry functionality
+  // MARK: - Retry Functionality
   private var lastAudioURL: URL?
   private var lastError: String?
   private var canRetry = false
@@ -326,7 +340,7 @@ class MenuBarController: NSObject {
     stopBlinking()  // Stop any existing blinking
 
     isBlinking = true
-    blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+    blinkTimer = Timer.scheduledTimer(withTimeInterval: Constants.blinkInterval, repeats: true) { [weak self] _ in
       self?.toggleBlinkState()
     }
   }
@@ -388,7 +402,7 @@ extension MenuBarController: ShortcutDelegate {
 
   private func startAudioLevelMonitoring() {
     // Monitor audio levels every 0.5 seconds during recording
-    audioLevelTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+    audioLevelTimer = Timer.scheduledTimer(withTimeInterval: Constants.audioLevelUpdateInterval, repeats: true) { [weak self] _ in
       if let levels = self?.audioRecorder?.getAudioLevels() {
         print("🎤 Audio levels - Average: \(levels.average)dB, Peak: \(levels.peak)dB")
 
@@ -535,7 +549,7 @@ extension MenuBarController: AudioRecorderDelegate {
     }
 
     // Reset after 3 seconds
-    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + Constants.successDisplayTime) {
       self.resetToReadyState()
     }
   }
@@ -562,7 +576,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
     // Only reset after 3 seconds if retry is not available
     if !canRetry {
-      DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.errorDisplayTime) {
         self.resetToReadyState()
       }
     }

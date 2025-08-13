@@ -190,24 +190,28 @@ struct ShortcutDefinition: Codable, Equatable {
 class ShortcutConfigManager {
   static let shared = ShortcutConfigManager()
 
+  // MARK: - Constants
+  private enum Constants {
+    static let startRecordingKey = "shortcut_start_recording"
+    static let stopRecordingKey = "shortcut_stop_recording"
+  }
+  
   private let userDefaults = UserDefaults.standard
-  private let startRecordingKey = "shortcut_start_recording"
-  private let stopRecordingKey = "shortcut_stop_recording"
 
   private init() {}
 
   // MARK: - Load/Save Configuration
   func loadConfiguration() -> ShortcutConfig {
     let startRecording =
-      loadShortcut(for: startRecordingKey) ?? ShortcutConfig.default.startRecording
-    let stopRecording = loadShortcut(for: stopRecordingKey) ?? ShortcutConfig.default.stopRecording
+      loadShortcut(for: Constants.startRecordingKey) ?? ShortcutConfig.default.startRecording
+    let stopRecording = loadShortcut(for: Constants.stopRecordingKey) ?? ShortcutConfig.default.stopRecording
 
     return ShortcutConfig(startRecording: startRecording, stopRecording: stopRecording)
   }
 
   func saveConfiguration(_ config: ShortcutConfig) {
-    saveShortcut(config.startRecording, for: startRecordingKey)
-    saveShortcut(config.stopRecording, for: stopRecordingKey)
+    saveShortcut(config.startRecording, for: Constants.startRecordingKey)
+    saveShortcut(config.stopRecording, for: Constants.stopRecordingKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)

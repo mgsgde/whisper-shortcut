@@ -11,6 +11,18 @@ class AudioRecorder: NSObject {
 
   private var audioRecorder: AVAudioRecorder?
   private var recordingURL: URL?
+  
+  // MARK: - Constants
+  private enum Constants {
+    static let sampleRate: Double = 16000.0  // 16kHz is optimal for Whisper
+    static let numberOfChannels = 1  // Mono
+    static let bitDepth = 16
+    static let errorDomain = "WhisperShortcut"
+    static let permissionDeniedCode = 1001
+    static let recordingFailedCode = 1002
+    static let recordingUnsuccessfulCode = 1003
+    static let emptyFileCode = 1004
+  }
 
   override init() {
     super.init()
@@ -30,7 +42,7 @@ class AudioRecorder: NSObject {
         self?.beginRecording()
       } else {
         let error = NSError(
-          domain: "WhisperShortcut", code: 1001,
+          domain: Constants.errorDomain, code: Constants.permissionDeniedCode,
           userInfo: [
             NSLocalizedDescriptionKey: "Microphone permission denied"
           ])
@@ -85,9 +97,9 @@ class AudioRecorder: NSObject {
     // Audio settings optimized for speech recognition
     let settings: [String: Any] = [
       AVFormatIDKey: Int(kAudioFormatLinearPCM),
-      AVSampleRateKey: 16000.0,  // 16kHz is optimal for Whisper
-      AVNumberOfChannelsKey: 1,  // Mono
-      AVLinearPCMBitDepthKey: 16,
+      AVSampleRateKey: Constants.sampleRate,
+      AVNumberOfChannelsKey: Constants.numberOfChannels,
+      AVLinearPCMBitDepthKey: Constants.bitDepth,
       AVLinearPCMIsFloatKey: false,
       AVLinearPCMIsBigEndianKey: false,
       AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
@@ -106,7 +118,7 @@ class AudioRecorder: NSObject {
         print("📁 Recording to: \(audioFilename.path)")
       } else {
         throw NSError(
-          domain: "WhisperShortcut", code: 1002,
+          domain: Constants.errorDomain, code: Constants.recordingFailedCode,
           userInfo: [
             NSLocalizedDescriptionKey: "Failed to start recording"
           ])
@@ -191,7 +203,7 @@ extension AudioRecorder: AVAudioRecorderDelegate {
           delegate?.audioRecorderDidFinishRecording(audioURL: url)
         } else {
           let error = NSError(
-            domain: "WhisperShortcut", code: 1004,
+            domain: Constants.errorDomain, code: Constants.emptyFileCode,
             userInfo: [
               NSLocalizedDescriptionKey: "Recording file is empty"
             ])
@@ -203,7 +215,7 @@ extension AudioRecorder: AVAudioRecorderDelegate {
       }
     } else {
       let error = NSError(
-        domain: "WhisperShortcut", code: 1003,
+        domain: Constants.errorDomain, code: Constants.recordingUnsuccessfulCode,
         userInfo: [
           NSLocalizedDescriptionKey: "Recording finished unsuccessfully"
         ])

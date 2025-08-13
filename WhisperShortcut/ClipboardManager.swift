@@ -3,6 +3,13 @@ import Foundation
 
 class ClipboardManager {
   private let pasteboard = NSPasteboard.general
+  
+  // MARK: - Constants
+  private enum Constants {
+    static let maxPreviewLength = 50
+    static let defaultSeparator = "\n"
+    static let punctuation: Set<Character> = [".", "!", "?", ":", ";"]
+  }
 
   func copyToClipboard(text: String) {
     // Format the text before copying
@@ -11,8 +18,9 @@ class ClipboardManager {
     pasteboard.clearContents()
     pasteboard.setString(formattedText, forType: .string)
 
-    let preview =
-      formattedText.count > 50 ? String(formattedText.prefix(50)) + "..." : formattedText
+    let preview = formattedText.count > Constants.maxPreviewLength 
+      ? String(formattedText.prefix(Constants.maxPreviewLength)) + "..." 
+      : formattedText
     print("📋 Text copied to clipboard: \"\(preview)\"")
     print("   Full text length: \(formattedText.count) characters")
   }
@@ -21,7 +29,7 @@ class ClipboardManager {
     return pasteboard.string(forType: .string)
   }
 
-  func appendToClipboard(text: String, separator: String = "\n") {
+  func appendToClipboard(text: String, separator: String = Constants.defaultSeparator) {
     let currentText = getClipboardText() ?? ""
     let newText = currentText.isEmpty ? text : currentText + separator + text
     copyToClipboard(text: newText)
@@ -38,8 +46,7 @@ class ClipboardManager {
     }
 
     // Add period if missing and text doesn't end with punctuation
-    let punctuation: Set<Character> = [".", "!", "?", ":", ";"]
-    if !formatted.isEmpty && !punctuation.contains(formatted.last!) {
+    if !formatted.isEmpty && !Constants.punctuation.contains(formatted.last!) {
       formatted += "."
     }
 

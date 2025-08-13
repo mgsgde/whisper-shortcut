@@ -12,9 +12,15 @@ protocol KeychainManaging {
 
 class KeychainManager: KeychainManaging {
   static let shared = KeychainManager()
-  private let serviceName = "com.whispershortcut.openai"
-  private let accountName = "api-key"
+  
+  // MARK: - Constants
+  private enum Constants {
+    static let serviceName = "com.whispershortcut.openai"
+    static let accountName = "api-key"
+  }
+  
   private var cachedAPIKey: String?
+  
   private init() {}
 
   // MARK: - API Key Management
@@ -29,8 +35,8 @@ class KeychainManager: KeychainManaging {
 
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: serviceName,
-      kSecAttrAccount as String: accountName,
+      kSecAttrService as String: Constants.serviceName,
+      kSecAttrAccount as String: Constants.accountName,
       kSecValueData as String: data,
       kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
     ]
@@ -51,8 +57,8 @@ class KeychainManager: KeychainManaging {
 
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: serviceName,
-      kSecAttrAccount as String: accountName,
+      kSecAttrService as String: Constants.serviceName,
+      kSecAttrAccount as String: Constants.accountName,
       kSecReturnData as String: true,
       kSecMatchLimit as String: kSecMatchLimitOne,
     ]
@@ -76,8 +82,8 @@ class KeychainManager: KeychainManaging {
     clearCache()
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: serviceName,
-      kSecAttrAccount as String: accountName,
+      kSecAttrService as String: Constants.serviceName,
+      kSecAttrAccount as String: Constants.accountName,
     ]
     let status = SecItemDelete(query as CFDictionary)
 
@@ -97,8 +103,8 @@ class KeychainManager: KeychainManaging {
     // Check if key exists in keychain without reading the data
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: serviceName,
-      kSecAttrAccount as String: accountName,
+      kSecAttrService as String: Constants.serviceName,
+      kSecAttrAccount as String: Constants.accountName,
       kSecReturnAttributes as String: true,
       kSecMatchLimit as String: kSecMatchLimitOne,
     ]

@@ -1,6 +1,12 @@
 import Cocoa
 import SwiftUI
 
+// MARK: - Constants
+private enum Constants {
+  static let settingsDelay: TimeInterval = 0.5
+  static let defaultBundleID = "com.magnusgoedde.whispershortcut"
+}
+
 // Main App Delegate with full functionality
 class FullAppDelegate: NSObject, NSApplicationDelegate {
   var menuBarController: MenuBarController?
@@ -36,7 +42,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       _ = KeychainManager.shared.getAPIKey()
     } else {
       print("⚠️  No API key configured - opening Settings with Skip option...")
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
         SettingsManager.shared.showSettings()
       }
     }
@@ -116,7 +122,7 @@ class FullWhisperShortcut {
     print("🎙️ WhisperShortcut (Full Version) Starting...")
 
     // Check for multiple instances to prevent double menu bar icons
-    let bundleID = Bundle.main.bundleIdentifier ?? "com.transcription.app"
+    let bundleID = Bundle.main.bundleIdentifier ?? "com.magnusgoedde.whispershortcut"
     let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
 
     if runningApps.count > 1 {

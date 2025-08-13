@@ -2,6 +2,14 @@ import Foundation
 
 /// Handles formatting of transcription errors for display in the UI
 struct TranscriptionErrorFormatter {
+  
+  // MARK: - Constants
+  private enum Constants {
+    static let maxFileSize = "25MB"
+    static let openAIPlatformURL = "platform.openai.com"
+    static let billingPath = "Settings → Billing"
+    static let slowDownWaitTime = "15 minutes"
+  }
 
   /// Format a TranscriptionError into a user-friendly message
   static func format(_ error: TranscriptionError) -> String {
@@ -82,8 +90,8 @@ struct TranscriptionErrorFormatter {
         • Too many requests in a short time period
 
         To resolve:
-        1. Visit platform.openai.com
-        2. Go to Settings → Billing
+        1. Visit \(Constants.openAIPlatformURL)
+        2. Go to \(Constants.billingPath)
         3. Add a payment method
         4. Purchase prepaid credits
 
@@ -100,8 +108,8 @@ struct TranscriptionErrorFormatter {
         You have exceeded your current quota. Please check your plan and billing details.
 
         To resolve:
-        1. Visit platform.openai.com
-        2. Go to Settings → Billing
+        1. Visit \(Constants.openAIPlatformURL)
+        2. Go to \(Constants.billingPath)
         3. Check your current usage and limits
         4. Add more credits or upgrade your plan
 
@@ -129,7 +137,7 @@ struct TranscriptionErrorFormatter {
         🔄 Slow Down
 
         A sudden increase in your request rate is impacting service reliability.
-        Please reduce your request rate to its original level, maintain a consistent rate for at least 15 minutes, and then gradually increase it.
+        Please reduce your request rate to its original level, maintain a consistent rate for at least \(Constants.slowDownWaitTime), and then gradually increase it.
         """
 
     case .networkError(let details):
@@ -172,7 +180,7 @@ struct TranscriptionErrorFormatter {
       return """
         ❌ File Too Large
 
-        The audio file is larger than 25MB and cannot be transcribed.
+        The audio file is larger than \(Constants.maxFileSize) and cannot be transcribed.
         Please use a shorter recording.
         """
 
