@@ -1,5 +1,15 @@
 import Foundation
 
+// MARK: - Constants
+private enum Constants {
+  static let maxFileSize = 25 * 1024 * 1024  // 25MB
+  static let requestTimeout: TimeInterval = 30.0
+  static let resourceTimeout: TimeInterval = 120.0
+  static let validationTimeout: TimeInterval = 10.0
+  static let apiEndpoint = "https://api.openai.com/v1/audio/transcriptions"
+  static let modelsEndpoint = "https://api.openai.com/v1/models"
+}
+
 // MARK: - Transcription Model Enum
 enum TranscriptionModel: String, CaseIterable {
   case gpt4oTranscribe = "gpt-4o-transcribe"
@@ -18,21 +28,7 @@ enum TranscriptionModel: String, CaseIterable {
   }
 
   var apiEndpoint: String {
-    switch self {
-    case .whisper1:
-      return "https://api.openai.com/v1/audio/transcriptions"
-    case .gpt4oTranscribe:
-      return "https://api.openai.com/v1/audio/transcriptions"
-    case .gpt4oMiniTranscribe:
-      return "https://api.openai.com/v1/audio/transcriptions"
-    }
-  }
-
-  var requiresMultipartForm: Bool {
-    switch self {
-    case .whisper1, .gpt4oTranscribe, .gpt4oMiniTranscribe:
-      return true
-    }
+    return Constants.apiEndpoint
   }
 
   var isRecommended: Bool {
@@ -64,8 +60,8 @@ class TranscriptionService {
   // Custom session with appropriate timeouts
   private lazy var session: URLSession = {
     let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = 30.0
-    config.timeoutIntervalForResource = 120.0
+    config.timeoutIntervalForRequest = Constants.requestTimeout
+    config.timeoutIntervalForResource = Constants.resourceTimeout
     return URLSession(configuration: config)
   }()
 
@@ -101,10 +97,10 @@ class TranscriptionService {
       throw TranscriptionError.noAPIKey
     }
 
-    let url = URL(string: "https://api.openai.com/v1/models")!
+    let url = URL(string: Constants.modelsEndpoint)!
     var request = URLRequest(url: url)
     request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-    request.timeoutInterval = 10.0
+    request.timeoutInterval = Constants.validationTimeout
 
     let (data, response) = try await session.data(for: request)
 
@@ -164,7 +160,7 @@ class TranscriptionService {
     }
 
     // GPT-4o-transcribe has a 25MB limit, same as Whisper-1
-    if fileSize > 25 * 1024 * 1024 {  // 25MB limit
+    if fileSize > Constants.maxFileSize {
       throw TranscriptionError.fileTooLarge
     }
   }
@@ -179,46 +175,35 @@ class TranscriptionService {
     return try createMultipartRequest(request: &request, audioURL: audioURL)
   }
 
-  private func createMultipartRequest(request: inout URLRequest, audioURL: URL) throws -> URLRequest {
+  private func createMultipartRequest(request: inout URLRequest, audioURL: URL) throws -> URLRequest
+  {
     let boundary = "Boundary-\(UUID().uuidString)"
-    
+
     // Prepare form fields
     var fields: [String: String] = [
       "model": selectedModel.rawValue,
-      "response_format": "json"
+      "response_format": "json",
     ]
-    
+
     // Add prompt for GPT-4o models
     if selectedModel == .gpt4oTranscribe || selectedModel == .gpt4oMiniTranscribe {
-      let savedCustomPrompt = UserDefaults.standard.string(forKey: "customPromptText")
-      let promptText = savedCustomPrompt?.isEmpty == false ? savedCustomPrompt! : TranscriptionPrompt.defaultPrompt.text
+      let promptText =
+        UserDefaults.standard.string(forKey: "customPromptText")?.isEmpty == false
+        ? UserDefaults.standard.string(forKey: "customPromptText")!
+        : TranscriptionPrompt.defaultPrompt.text
       fields["prompt"] = promptText
     }
-    
+
     // Prepare file
     let audioData = try Data(contentsOf: audioURL)
     let files: [String: (filename: String, contentType: String, data: Data)] = [
       "file": (filename: "audio.wav", contentType: "audio/wav", data: audioData)
     ]
-    
+
     // Set multipart form data using the elegant extension
     request.setMultipartFormData(boundary: boundary, fields: fields, files: files)
-    
-    return request
-  }
 
-  private func validateStatusCode(_ statusCode: Int) throws {
-    switch statusCode {
-    case 200: return
-    case 400: throw TranscriptionError.invalidRequest
-    case 401: throw TranscriptionError.invalidAPIKey
-    case 403: throw TranscriptionError.permissionDenied
-    case 404: throw TranscriptionError.notFound
-    case 429: throw TranscriptionError.rateLimited
-    case 500: throw TranscriptionError.serverError(statusCode)
-    case 503: throw TranscriptionError.serviceUnavailable
-    default: throw TranscriptionError.serverError(statusCode)
-    }
+    return request
   }
 
   private func parseErrorResponse(data: Data, statusCode: Int) throws -> TranscriptionError {
@@ -305,30 +290,34 @@ extension Data {
 
 // MARK: - Multipart Form Data Extension
 extension URLRequest {
-  mutating func setMultipartFormData(boundary: String, fields: [String: String], files: [String: (filename: String, contentType: String, data: Data)]) {
+  mutating func setMultipartFormData(
+    boundary: String, fields: [String: String],
+    files: [String: (filename: String, contentType: String, data: Data)]
+  ) {
     setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-    
+
     var body = Data()
-    
+
     // Add form fields
     for (name, value) in fields {
       body.append("--\(boundary)\r\n")
       body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
       body.append("\(value)\r\n")
     }
-    
+
     // Add files
     for (name, file) in files {
       body.append("--\(boundary)\r\n")
-      body.append("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(file.filename)\"\r\n")
+      body.append(
+        "Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(file.filename)\"\r\n")
       body.append("Content-Type: \(file.contentType)\r\n\r\n")
       body.append(file.data)
       body.append("\r\n")
     }
-    
+
     // Close boundary
     body.append("--\(boundary)--\r\n")
-    
+
     httpBody = body
   }
 }
