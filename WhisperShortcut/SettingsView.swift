@@ -146,23 +146,29 @@ struct SettingsView: View {
             Text("• Whisper-1: Most cost-effective, stable and proven")
               .font(.callout)
               .foregroundColor(.secondary)
+              .textSelection(.enabled)
             Text("• Best for: Budget-conscious users, clear audio sources")
               .font(.callout)
               .foregroundColor(.secondary)
+              .textSelection(.enabled)
           case .gpt4oTranscribe:
             Text("• GPT-4o Transcribe: Highest accuracy, best for difficult audio")
               .font(.callout)
               .foregroundColor(.secondary)
+              .textSelection(.enabled)
             Text("• Best for: Critical applications, maximum quality")
               .font(.callout)
               .foregroundColor(.secondary)
+              .textSelection(.enabled)
           case .gpt4oMiniTranscribe:
             Text("• GPT-4o Mini Transcribe: Balanced quality and speed")
               .font(.callout)
               .foregroundColor(.secondary)
+              .textSelection(.enabled)
             Text("• Best for: Everyday use, good quality with lower cost")
               .font(.callout)
               .foregroundColor(.secondary)
+              .textSelection(.enabled)
           }
         }
       }
@@ -177,8 +183,10 @@ struct SettingsView: View {
           VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
             VStack(alignment: .leading, spacing: 8) {
               Text("Domain Terms & Context:")
-                .font(.body)
-                .fontWeight(.medium)
+                .font(.callout)
+                .fontWeight(.semibold)
+                .foregroundColor(.secondary)
+                .textSelection(.enabled)
 
               TextEditor(text: $customPromptText)
                 .font(.system(.body, design: .default))
@@ -197,6 +205,7 @@ struct SettingsView: View {
               )
               .font(.callout)
               .foregroundColor(.secondary)
+              .textSelection(.enabled)
             }
           }
         }
@@ -243,47 +252,15 @@ struct SettingsView: View {
             .font(.callout)
             .fontWeight(.semibold)
             .foregroundColor(.secondary)
-
-          Text("• Modifiers: command, option, control, shift, fn")
-            .font(.callout)
-            .foregroundColor(.secondary)
             .textSelection(.enabled)
 
-          Text("• Letters: a-z")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-
-          Text("• Numbers: 0-9")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-
-          Text("• Function keys: f1-f12")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-
-          Text("• Special keys: space, return, escape, tab, delete")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-
-          Text("• Symbols: minus, equal, leftbracket, rightbracket, backslash")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-
-          Text("• Symbols: semicolon, quote, grave, comma, period, slash")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-
-          Text("• Navigation: home, end, pageup, pagedown, up, down, left, right")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-
+          Text(
+            "command • option • control • shift • a-z • 0-9 • f1-f12 • space • return • escape • tab • delete • home • end • pageup • pagedown • up • down • left • right • minus • equal • leftbracket • rightbracket • backslash • semicolon • quote • grave • comma • period • slash"
+          )
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
         }
         .textSelection(.enabled)
       }
@@ -318,13 +295,14 @@ struct SettingsView: View {
     }
     .padding(.horizontal, Constants.horizontalPadding)
     .padding(.vertical, Constants.verticalPadding)
-    .frame(minWidth: Constants.minWindowWidth, minHeight: Constants.minWindowHeight)
+    .frame(minWidth: Constants.minWindowWidth, maxWidth: 600, minHeight: Constants.minWindowHeight)
     .alert("Error", isPresented: $showAlert) {
       Button("OK") {
         showAlert = false
       }
     } message: {
       Text(errorMessage)
+        .textSelection(.enabled)
     }
 
     .onAppear {
