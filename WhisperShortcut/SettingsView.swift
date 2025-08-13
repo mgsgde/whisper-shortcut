@@ -8,10 +8,12 @@ struct SettingsView: View {
   @State private var errorMessage: String = ""
   @State private var isLoading: Bool = false
   @State private var showAlert: Bool = false
+  @State private var customPromptText: String = ""
 
   @FocusState private var apiKeyFocused: Bool
   @FocusState private var startShortcutFocused: Bool
   @FocusState private var stopShortcutFocused: Bool
+  @FocusState private var customPromptFocused: Bool
 
   @Environment(\.dismiss) private var dismiss
 
@@ -27,6 +29,14 @@ struct SettingsView: View {
       _selectedModel = State(initialValue: savedModel)
     } else {
       _selectedModel = State(initialValue: .gpt4oTranscribe)
+    }
+
+    // Load saved custom prompt or use default
+    if let savedCustomPrompt = UserDefaults.standard.string(forKey: "customPromptText") {
+      _customPromptText = State(initialValue: savedCustomPrompt)
+    } else {
+      // Use default prompt if no custom prompt is saved
+      _customPromptText = State(initialValue: TranscriptionPrompt.defaultPrompt.text)
     }
   }
 
@@ -44,14 +54,22 @@ struct SettingsView: View {
           .font(.title3)
           .fontWeight(.semibold)
 
-        TextField("sk-...", text: $apiKey)
-          .textFieldStyle(.roundedBorder)
-          .font(.system(.body, design: .monospaced))
-          .frame(height: 36)
-          .onAppear {
-            apiKey = KeychainManager.shared.getAPIKey() ?? ""
-          }
-          .focused($apiKeyFocused)
+        HStack(alignment: .center, spacing: 12) {
+          Text("API Key:")
+            .font(.body)
+            .fontWeight(.medium)
+            .frame(width: 140, alignment: .leading)
+          TextField("sk-...", text: $apiKey)
+            .textFieldStyle(.roundedBorder)
+            .font(.system(.body, design: .monospaced))
+            .frame(height: 36)
+            .frame(maxWidth: 300)
+            .onAppear {
+              apiKey = KeychainManager.shared.getAPIKey() ?? ""
+            }
+            .focused($apiKeyFocused)
+          Spacer()
+        }
       }
 
       // Model Selection Section
@@ -123,6 +141,41 @@ struct SettingsView: View {
         }
       }
 
+      // Custom Prompt Section (only show for GPT-4o models)
+      if selectedModel == .gpt4oTranscribe || selectedModel == .gpt4oMiniTranscribe {
+        VStack(alignment: .leading, spacing: 16) {
+          Text("Transcription Prompt")
+            .font(.title3)
+            .fontWeight(.semibold)
+
+          VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+              Text("Domain Terms & Context:")
+                .font(.body)
+                .fontWeight(.medium)
+
+              TextEditor(text: $customPromptText)
+                .font(.system(.body, design: .default))
+                .frame(height: 80)
+                .padding(8)
+                .background(Color(.controlBackgroundColor))
+                .cornerRadius(6)
+                .overlay(
+                  RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(.separatorColor), lineWidth: 1)
+                )
+                .focused($customPromptFocused)
+
+              Text(
+                "Describe the domain terms and context of your recordings for better transcription quality."
+              )
+              .font(.callout)
+              .foregroundColor(.secondary)
+            }
+          }
+        }
+      }
+
       // Shortcuts Section
       VStack(alignment: .leading, spacing: 16) {
         Text("Keyboard Shortcuts")
@@ -130,7 +183,7 @@ struct SettingsView: View {
           .fontWeight(.semibold)
 
         VStack(alignment: .leading, spacing: 12) {
-          HStack {
+          HStack(alignment: .center, spacing: 12) {
             Text("Start Recording:")
               .font(.body)
               .fontWeight(.medium)
@@ -139,10 +192,12 @@ struct SettingsView: View {
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
               .frame(height: 36)
+              .frame(maxWidth: 250)
               .focused($startShortcutFocused)
+            Spacer()
           }
 
-          HStack {
+          HStack(alignment: .center, spacing: 12) {
             Text("Stop Recording:")
               .font(.body)
               .fontWeight(.medium)
@@ -151,7 +206,9 @@ struct SettingsView: View {
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
               .frame(height: 36)
+              .frame(maxWidth: 250)
               .focused($stopShortcutFocused)
+            Spacer()
           }
         }
 
@@ -235,7 +292,7 @@ struct SettingsView: View {
     }
     .padding(.horizontal, 48)
     .padding(.vertical, 32)
-    .frame(width: 580, height: 720)
+    .frame(minWidth: 520, minHeight: 600)
     .alert("Error", isPresented: $showAlert) {
       Button("OK") {
         showAlert = false
@@ -243,6 +300,7 @@ struct SettingsView: View {
     } message: {
       Text(errorMessage)
     }
+
     .onAppear {
       DispatchQueue.main.async {
         NSApp.activate(ignoringOtherApps: true)
@@ -252,11 +310,20 @@ struct SettingsView: View {
         apiKeyFocused = true
       }
     }
+    .onChange(of: selectedModel) { _ in
+      // Auto-resize window when model changes (affects content visibility)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
+          window.setContentSize(window.contentView?.fittingSize ?? NSSize(width: 520, height: 600))
+        }
+      }
+    }
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
       if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
         window.level = .floating
       }
     }
+
   }
 
   private func saveSettings() {
@@ -301,6 +368,9 @@ struct SettingsView: View {
 
     // Save model preference
     UserDefaults.standard.set(selectedModel.rawValue, forKey: "selectedTranscriptionModel")
+
+    // Save custom prompt
+    UserDefaults.standard.set(customPromptText, forKey: "customPromptText")
 
     // Notify that model has changed
     NotificationCenter.default.post(name: .modelChanged, object: selectedModel)

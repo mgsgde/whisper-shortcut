@@ -34,6 +34,26 @@ enum TranscriptionModel: String, CaseIterable {
       return true
     }
   }
+
+  var isRecommended: Bool {
+    switch self {
+    case .gpt4oMiniTranscribe:
+      return true
+    case .whisper1, .gpt4oTranscribe:
+      return false
+    }
+  }
+
+  var costLevel: String {
+    switch self {
+    case .whisper1:
+      return "Low"
+    case .gpt4oMiniTranscribe:
+      return "Medium"
+    case .gpt4oTranscribe:
+      return "High"
+    }
+  }
 }
 
 // MARK: - Core Service
@@ -155,46 +175,35 @@ class TranscriptionService {
     request.httpMethod = "POST"
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
-    // All models use multipart form data
+    // Create multipart form data using a more elegant approach
     return try createMultipartRequest(request: &request, audioURL: audioURL)
   }
 
-  private func createMultipartRequest(request: inout URLRequest, audioURL: URL) throws -> URLRequest
-  {
+  private func createMultipartRequest(request: inout URLRequest, audioURL: URL) throws -> URLRequest {
     let boundary = "Boundary-\(UUID().uuidString)"
-    request.setValue(
-      "multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-    var body = Data()
-
-    // Add model
-    body.append("--\(boundary)\r\n")
-    body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
-    body.append("\(selectedModel.rawValue)\r\n")
-
-    // Add response format
-    body.append("--\(boundary)\r\n")
-    body.append("Content-Disposition: form-data; name=\"response_format\"\r\n\r\n")
-    body.append("json\r\n")
-
-    // Add prompt for GPT-4o models (they support prompts for better quality)
+    
+    // Prepare form fields
+    var fields: [String: String] = [
+      "model": selectedModel.rawValue,
+      "response_format": "json"
+    ]
+    
+    // Add prompt for GPT-4o models
     if selectedModel == .gpt4oTranscribe || selectedModel == .gpt4oMiniTranscribe {
-      body.append("--\(boundary)\r\n")
-      body.append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n")
-      body.append(
-        "Please transcribe this audio accurately, preserving punctuation and filler words.\r\n")
+      let savedCustomPrompt = UserDefaults.standard.string(forKey: "customPromptText")
+      let promptText = savedCustomPrompt?.isEmpty == false ? savedCustomPrompt! : TranscriptionPrompt.defaultPrompt.text
+      fields["prompt"] = promptText
     }
-
-    // Add audio file
-    body.append("--\(boundary)\r\n")
-    body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n")
-    body.append("Content-Type: audio/wav\r\n\r\n")
-
+    
+    // Prepare file
     let audioData = try Data(contentsOf: audioURL)
-    body.append(audioData)
-    body.append("\r\n--\(boundary)--\r\n")
-
-    request.httpBody = body
+    let files: [String: (filename: String, contentType: String, data: Data)] = [
+      "file": (filename: "audio.wav", contentType: "audio/wav", data: audioData)
+    ]
+    
+    // Set multipart form data using the elegant extension
+    request.setMultipartFormData(boundary: boundary, fields: fields, files: files)
+    
     return request
   }
 
@@ -291,6 +300,36 @@ extension Data {
     if let data = string.data(using: .utf8) {
       append(data)
     }
+  }
+}
+
+// MARK: - Multipart Form Data Extension
+extension URLRequest {
+  mutating func setMultipartFormData(boundary: String, fields: [String: String], files: [String: (filename: String, contentType: String, data: Data)]) {
+    setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+    
+    var body = Data()
+    
+    // Add form fields
+    for (name, value) in fields {
+      body.append("--\(boundary)\r\n")
+      body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+      body.append("\(value)\r\n")
+    }
+    
+    // Add files
+    for (name, file) in files {
+      body.append("--\(boundary)\r\n")
+      body.append("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(file.filename)\"\r\n")
+      body.append("Content-Type: \(file.contentType)\r\n\r\n")
+      body.append(file.data)
+      body.append("\r\n")
+    }
+    
+    // Close boundary
+    body.append("--\(boundary)--\r\n")
+    
+    httpBody = body
   }
 }
 
