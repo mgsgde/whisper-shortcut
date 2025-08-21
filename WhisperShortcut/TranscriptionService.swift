@@ -215,10 +215,10 @@ class TranscriptionService {
     // Parse result
     do {
       let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
-      
+
       // Store the response ID for conversation continuity
       previousResponseId = result.id
-      
+
       // Extract text from the response structure
       for output in result.output {
         if output.type == "message" {
@@ -229,7 +229,7 @@ class TranscriptionService {
           }
         }
       }
-      
+
       // Fallback: if we can't find the expected structure, try to extract any text
       NSLog("🤖 PROMPT-MODE: GPT-5 Could not find expected text structure, trying fallback...")
       if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
@@ -237,18 +237,18 @@ class TranscriptionService {
       {
         NSLog("🤖 PROMPT-MODE: GPT-5 Raw JSON Structure: \(jsonObject)")
       }
-      
+
       throw TranscriptionError.networkError("Could not extract text from GPT-5 response")
     } catch {
       NSLog("🤖 PROMPT-MODE: GPT-5 JSON Parsing Error: \(error)")
-      
+
       // Try to parse as a generic dictionary to see the actual structure
       if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
         as? [String: Any]
       {
         NSLog("🤖 PROMPT-MODE: GPT-5 Raw JSON Structure: \(jsonObject)")
       }
-      
+
       throw error
     }
   }
@@ -277,7 +277,7 @@ class TranscriptionService {
     request.httpBody = try JSONEncoder().encode(testRequest)
 
     let (data, response) = try await URLSession.shared.data(for: request)
-    
+
     guard let httpResponse = response as? HTTPURLResponse else {
       throw TranscriptionError.networkError("Invalid response type")
     }
@@ -292,7 +292,7 @@ class TranscriptionService {
 
     // Parse result using the new structure
     let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
-    
+
     // Extract text from the response structure
     for output in result.output {
       if output.type == "message" {
@@ -303,7 +303,7 @@ class TranscriptionService {
         }
       }
     }
-    
+
     throw TranscriptionError.networkError("Could not extract text from test response")
   }
 
