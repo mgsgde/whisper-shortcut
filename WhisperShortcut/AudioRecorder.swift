@@ -11,7 +11,7 @@ class AudioRecorder: NSObject {
 
   private var audioRecorder: AVAudioRecorder?
   private var recordingURL: URL?
-  
+
   // MARK: - Constants
   private enum Constants {
     static let sampleRate: Double = 16000.0  // 16kHz is optimal for Whisper
@@ -135,29 +135,8 @@ class AudioRecorder: NSObject {
       return
     }
 
-    // Log final audio levels before stopping
-    recorder.updateMeters()
-    let averageLevel = recorder.averagePower(forChannel: 0)
-    let peakLevel = recorder.peakPower(forChannel: 0)
-    print("📊 Final audio levels - Average: \(averageLevel)dB, Peak: \(peakLevel)dB")
-
     recorder.stop()
     print("⏹️ Recording stopped")
-
-    // Check if file was created and has content
-    if let url = recordingURL {
-      do {
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        let fileSize = attributes[.size] as? Int64 ?? 0
-        print("📊 Recording file size: \(fileSize) bytes")
-
-        if fileSize == 0 {
-          print("⚠️ Warning: Recording file is empty!")
-        }
-      } catch {
-        print("❌ Could not check recording file: \(error)")
-      }
-    }
   }
 
   func getAudioLevels() -> (average: Float, peak: Float)? {
@@ -172,24 +151,24 @@ class AudioRecorder: NSObject {
   }
 
   func cleanup() {
+    // Simple and safe cleanup
     audioRecorder?.stop()
     audioRecorder = nil
 
     // Clean up temporary recording files
     if let url = recordingURL {
-      do {
-        try FileManager.default.removeItem(at: url)
-        print("✅ Cleaned up recording file: \(url.path)")
-      } catch {
-        print("⚠️ Could not clean up recording file: \(error)")
-      }
+      try? FileManager.default.removeItem(at: url)
     }
+    recordingURL = nil
   }
 }
 
 // MARK: - AVAudioRecorderDelegate
 extension AudioRecorder: AVAudioRecorderDelegate {
-  func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+    func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+    // Clean up the recorder instance to release microphone
+    audioRecorder = nil
+    
     if flag, let url = recordingURL {
       print("✅ Recording finished successfully: \(url.path)")
 

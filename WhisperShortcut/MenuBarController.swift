@@ -35,6 +35,9 @@ class MenuBarController: NSObject {
   private var lastError: String?
   private var canRetry = false
 
+  // MARK: - Mode Tracking (for delegate callback)
+  private var lastModeWasPrompting = false
+
   override init() {
     // Load current shortcut configuration
     currentConfig = ShortcutConfigManager.shared.loadConfiguration()
@@ -203,26 +206,77 @@ class MenuBarController: NSObject {
       }
     }
 
-    // Update recording menu items - hide them when prompting is active
+    // Determine if we're in an active recording/prompting state
+    let isActivelyRecording = isRecording || isPrompting
+
+    // Update recording menu items
     if let startRecordingItem = menu.item(withTag: 102) {
-      startRecordingItem.isHidden = isRecording || isPrompting
-      startRecordingItem.isEnabled = !isRecording && !isPrompting && hasAPIKey
+      let isEnabled = !isRecording && !isPrompting && hasAPIKey
+      startRecordingItem.isEnabled = isEnabled
+
+      if isActivelyRecording {
+        // During recording/prompting: hide disabled items
+        startRecordingItem.isHidden = !isEnabled
+        if !startRecordingItem.isHidden {
+          startRecordingItem.title = "Start Recording"
+        }
+      } else {
+        // In ready state: show all items
+        startRecordingItem.isHidden = false
+        startRecordingItem.title = "Start Recording"
+      }
     }
 
     if let stopRecordingItem = menu.item(withTag: 103) {
-      stopRecordingItem.isHidden = !isRecording
-      stopRecordingItem.isEnabled = isRecording
+      let isEnabled = isRecording
+      stopRecordingItem.isEnabled = isEnabled
+
+      if isActivelyRecording {
+        // During recording/prompting: hide disabled items
+        stopRecordingItem.isHidden = !isEnabled
+        if !stopRecordingItem.isHidden {
+          stopRecordingItem.title = "Stop & Transcribe"
+        }
+      } else {
+        // In ready state: show all items
+        stopRecordingItem.isHidden = false
+        stopRecordingItem.title = "Stop & Transcribe"
+      }
     }
 
-    // Update prompting menu items - hide them when recording is active
+    // Update prompting menu items
     if let startPromptingItem = menu.item(withTag: 105) {
-      startPromptingItem.isHidden = isRecording || isPrompting
-      startPromptingItem.isEnabled = !isRecording && !isPrompting && hasAPIKey
+      let isEnabled = !isRecording && !isPrompting && hasAPIKey
+      startPromptingItem.isEnabled = isEnabled
+
+      if isActivelyRecording {
+        // During recording/prompting: hide disabled items
+        startPromptingItem.isHidden = !isEnabled
+        if !startPromptingItem.isHidden {
+          startPromptingItem.title = "Start Prompting"
+        }
+      } else {
+        // In ready state: show all items
+        startPromptingItem.isHidden = false
+        startPromptingItem.title = "Start Prompting"
+      }
     }
 
     if let stopPromptingItem = menu.item(withTag: 106) {
-      stopPromptingItem.isHidden = !isPrompting
-      stopPromptingItem.isEnabled = isPrompting
+      let isEnabled = isPrompting
+      stopPromptingItem.isEnabled = isEnabled
+
+      if isActivelyRecording {
+        // During recording/prompting: hide disabled items
+        stopPromptingItem.isHidden = !isEnabled
+        if !stopPromptingItem.isHidden {
+          stopPromptingItem.title = "Stop & Execute"
+        }
+      } else {
+        // In ready state: show all items
+        stopPromptingItem.isHidden = false
+        stopPromptingItem.title = "Stop & Execute"
+      }
     }
 
     // Update retry menu item
@@ -456,9 +510,10 @@ class MenuBarController: NSObject {
   }
 
   func cleanup() {
+    stopAudioLevelMonitoring()
+    stopBlinking()
     shortcuts?.cleanup()
     audioRecorder?.cleanup()
-    stopBlinking()
     statusItem = nil
     NotificationCenter.default.removeObserver(self)
   }
@@ -467,61 +522,45 @@ class MenuBarController: NSObject {
 // MARK: - ShortcutDelegate
 extension MenuBarController: ShortcutDelegate {
   func startRecording() {
-    guard !isPrompting else { return }  // Don't start recording if prompting
+    guard !isPrompting && !isRecording else { return }
+
     print("🎙️ Starting recording via shortcut...")
+    lastModeWasPrompting = false
     isRecording = true
     updateMenuState()
     audioRecorder?.startRecording()
-
-    // Start monitoring audio levels
     startAudioLevelMonitoring()
   }
 
   func stopRecording() {
     guard isRecording else { return }
-    NSLog("⏹️ TRANSCRIPTION-MODE: Stopping recording via shortcut...")
+    print("⏹️ Stopping recording via shortcut...")
 
-    // Don't reset isRecording here - it will be used in audioRecorderDidFinishRecording
+    isRecording = false
     updateMenuState()
     stopAudioLevelMonitoring()
     audioRecorder?.stopRecording()
-
-    NSLog("⏹️ TRANSCRIPTION-MODE: Audio recording stopped, waiting for processing...")
   }
 
   func startPrompting() {
-    guard !isRecording else {
-      NSLog(
-        "❌ PROMPT-MODE: Cannot start prompting via shortcut - already recording: \(isRecording)")
-      return
-    }
-    NSLog("🤖 PROMPT-MODE: Starting prompting via shortcut...")
-    NSLog("🤖 PROMPT-MODE: State before: isPrompting = \(isPrompting), isRecording = \(isRecording)")
+    guard !isRecording else { return }
+
+    print("🤖 Starting prompting via shortcut...")
+    lastModeWasPrompting = true
     isPrompting = true
-    NSLog("🤖 PROMPT-MODE: State after: isPrompting = \(isPrompting), isRecording = \(isRecording)")
     updateMenuState()
     audioRecorder?.startRecording()
-
-    // Start monitoring audio levels
     startAudioLevelMonitoring()
   }
 
   func stopPrompting() {
-    guard isPrompting else {
-      NSLog(
-        "❌ PROMPT-MODE: Cannot stop prompting via shortcut - not currently prompting: \(isPrompting)"
-      )
-      return
-    }
-    NSLog("🤖 PROMPT-MODE: Stopping prompting via shortcut...")
-    NSLog("🤖 PROMPT-MODE: State before: isPrompting = \(isPrompting), isRecording = \(isRecording)")
+    guard isPrompting else { return }
 
-    // Don't reset isPrompting here - it will be used in audioRecorderDidFinishRecording
+    print("🤖 Stopping prompting via shortcut...")
+    isPrompting = false
     updateMenuState()
     stopAudioLevelMonitoring()
     audioRecorder?.stopRecording()
-
-    NSLog("🤖 PROMPT-MODE: Audio recording stopped, waiting for processing...")
   }
 
   private func startAudioLevelMonitoring() {
@@ -554,11 +593,10 @@ extension MenuBarController: AudioRecorderDelegate {
     canRetry = false
     lastError = nil
 
-    // Capture the current mode before any state changes
-    let wasPrompting = isPrompting
-    let wasRecording = isRecording
+    // Use tracked mode since states are reset immediately in stop functions
+    let wasPrompting = lastModeWasPrompting
 
-    NSLog("🎯 AUDIO-FINISHED: wasPrompting = \(wasPrompting), wasRecording = \(wasRecording)")
+    NSLog("🎯 AUDIO-FINISHED: wasPrompting = \(wasPrompting)")
 
     // Determine which mode we were in and process accordingly
     if wasPrompting {
@@ -594,11 +632,7 @@ extension MenuBarController: AudioRecorderDelegate {
       shouldCleanup = await handleTranscriptionError(transcriptionError)
     }
 
-    // Reset recording state after processing
-    await MainActor.run {
-      isRecording = false
-      NSLog("⏹️ TRANSCRIPTION-MODE: State reset after processing - isRecording = \(isRecording)")
-    }
+    // State is already reset immediately in stopRecording() - no need to reset again
 
     // Clean up audio file if appropriate
     if shouldCleanup {
@@ -839,9 +873,11 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   private func resetToReadyState() {
-    // Reset both recording and prompting states
-    isRecording = false
-    isPrompting = false
+    // CRITICAL: Only reset if nothing is currently active
+    guard !isRecording && !isPrompting else {
+      print("⚠️ Cannot reset to ready state - recording/prompting is active")
+      return
+    }
 
     // Reset to normal state
     if let button = statusItem?.button {
