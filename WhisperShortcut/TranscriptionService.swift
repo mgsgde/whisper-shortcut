@@ -92,7 +92,6 @@ class TranscriptionService {
   // MARK: - Conversation Management
   func clearConversationHistory() {
     previousResponseId = nil
-    NSLog("🤖 PROMPT-MODE: Conversation history cleared")
   }
 
   // MARK: - Validation
@@ -196,13 +195,6 @@ class TranscriptionService {
 
     request.httpBody = try JSONEncoder().encode(gpt5Request)
 
-    // Debug logging
-    NSLog("🤖 PROMPT-MODE: GPT-5 Request URL: \(url)")
-    NSLog("🤖 PROMPT-MODE: GPT-5 Request Headers: \(request.allHTTPHeaderFields ?? [:])")
-    if let requestBody = String(data: request.httpBody!, encoding: .utf8) {
-      NSLog("🤖 PROMPT-MODE: GPT-5 Request Body: \(requestBody)")
-    }
-
     // Execute request
     let (data, response) = try await session.data(for: request)
 
@@ -210,10 +202,6 @@ class TranscriptionService {
     guard let httpResponse = response as? HTTPURLResponse else {
       throw TranscriptionError.networkError("Invalid response")
     }
-
-    // Debug logging for response
-    NSLog("🤖 PROMPT-MODE: GPT-5 Response Status: \(httpResponse.statusCode)")
-    NSLog("🤖 PROMPT-MODE: GPT-5 Response Headers: \(httpResponse.allHeaderFields)")
 
     if httpResponse.statusCode != 200 {
       // Log error response body for debugging
@@ -224,32 +212,24 @@ class TranscriptionService {
       throw error
     }
 
-    // Log successful response body for debugging
-    if let responseBody = String(data: data, encoding: .utf8) {
-      NSLog("🤖 PROMPT-MODE: GPT-5 Success Response Body: \(responseBody)")
-    }
-
     // Parse result
     do {
       let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
-      NSLog("🤖 PROMPT-MODE: GPT-5 Success Response: \(result)")
-
+      
       // Store the response ID for conversation continuity
       previousResponseId = result.id
-      NSLog("🤖 PROMPT-MODE: GPT-5 Stored Response ID: \(result.id)")
-
+      
       // Extract text from the response structure
       for output in result.output {
         if output.type == "message" {
           for content in output.content ?? [] {
             if content.type == "output_text" {
-              NSLog("🤖 PROMPT-MODE: GPT-5 Extracted Text: \(content.text)")
               return content.text
             }
           }
         }
       }
-
+      
       // Fallback: if we can't find the expected structure, try to extract any text
       NSLog("🤖 PROMPT-MODE: GPT-5 Could not find expected text structure, trying fallback...")
       if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
@@ -257,19 +237,18 @@ class TranscriptionService {
       {
         NSLog("🤖 PROMPT-MODE: GPT-5 Raw JSON Structure: \(jsonObject)")
       }
-
+      
       throw TranscriptionError.networkError("Could not extract text from GPT-5 response")
     } catch {
       NSLog("🤖 PROMPT-MODE: GPT-5 JSON Parsing Error: \(error)")
-      NSLog("🤖 PROMPT-MODE: GPT-5 Response Data Length: \(data.count)")
-
+      
       // Try to parse as a generic dictionary to see the actual structure
       if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
         as? [String: Any]
       {
         NSLog("🤖 PROMPT-MODE: GPT-5 Raw JSON Structure: \(jsonObject)")
       }
-
+      
       throw error
     }
   }
@@ -279,8 +258,6 @@ class TranscriptionService {
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
       throw TranscriptionError.noAPIKey
     }
-
-    NSLog("🧪 TEST: Testing GPT-5 API request format...")
 
     // Test with a simple request
     let testRequest = GPT5ResponseRequest(
@@ -300,12 +277,10 @@ class TranscriptionService {
     request.httpBody = try JSONEncoder().encode(testRequest)
 
     let (data, response) = try await URLSession.shared.data(for: request)
-
+    
     guard let httpResponse = response as? HTTPURLResponse else {
       throw TranscriptionError.networkError("Invalid response type")
     }
-
-    NSLog("🧪 TEST: Test Response Status: \(httpResponse.statusCode)")
 
     if httpResponse.statusCode != 200 {
       if let errorBody = String(data: data, encoding: .utf8) {
@@ -317,20 +292,18 @@ class TranscriptionService {
 
     // Parse result using the new structure
     let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
-    NSLog("🧪 TEST: Test Success Response: \(result)")
-
+    
     // Extract text from the response structure
     for output in result.output {
       if output.type == "message" {
         for content in output.content ?? [] {
           if content.type == "output_text" {
-            NSLog("🧪 TEST: Test Extracted Text: \(content.text)")
             return content.text
           }
         }
       }
     }
-
+    
     throw TranscriptionError.networkError("Could not extract text from test response")
   }
 
