@@ -54,39 +54,32 @@ final class TranscriptionServiceTests: XCTestCase {
   func testModelSelection() {
     // Test default model
     XCTAssertEqual(
-      transcriptionService.getCurrentModel(), .whisper1, "Default model should be whisper1")
+      transcriptionService.getCurrentModel(), .gpt4oMiniTranscribe,
+      "Default model should be gpt4oMiniTranscribe")
 
     // Test setting different models
-    transcriptionService.setModel(.gpt4oTranscribe)
-    XCTAssertEqual(
-      transcriptionService.getCurrentModel(), .gpt4oTranscribe,
-      "Model should be set to gpt4oTranscribe")
-
     transcriptionService.setModel(.gpt4oMiniTranscribe)
     XCTAssertEqual(
       transcriptionService.getCurrentModel(), .gpt4oMiniTranscribe,
       "Model should be set to gpt4oMiniTranscribe")
 
-    transcriptionService.setModel(.whisper1)
+    transcriptionService.setModel(.gpt4oTranscribe)
     XCTAssertEqual(
-      transcriptionService.getCurrentModel(), .whisper1, "Model should be set back to whisper1")
+      transcriptionService.getCurrentModel(), .gpt4oTranscribe,
+      "Model should be set back to gpt4oTranscribe")
   }
 
   func testAllModelsAvailable() {
     // Test that all models are available
     let allModels = TranscriptionModel.allCases
-    XCTAssertEqual(allModels.count, 3, "Should have exactly 3 models available")
+    XCTAssertEqual(allModels.count, 2, "Should have exactly 2 models available")
 
-    XCTAssertTrue(allModels.contains(.whisper1), "Should include whisper1")
     XCTAssertTrue(allModels.contains(.gpt4oTranscribe), "Should include gpt4oTranscribe")
     XCTAssertTrue(allModels.contains(.gpt4oMiniTranscribe), "Should include gpt4oMiniTranscribe")
   }
 
   func testModelDisplayNames() {
     // Test that all models have proper display names
-    XCTAssertEqual(
-      TranscriptionModel.whisper1.displayName, "Whisper-1",
-      "Whisper-1 should have correct display name")
     XCTAssertEqual(
       TranscriptionModel.gpt4oTranscribe.displayName, "GPT-4o Transcribe",
       "GPT-4o Transcribe should have correct display name")
@@ -97,8 +90,6 @@ final class TranscriptionServiceTests: XCTestCase {
 
   func testModelRawValues() {
     // Test that all models have correct raw values for API calls
-    XCTAssertEqual(
-      TranscriptionModel.whisper1.rawValue, "whisper-1", "Whisper-1 should have correct raw value")
     XCTAssertEqual(
       TranscriptionModel.gpt4oTranscribe.rawValue, "gpt-4o-transcribe",
       "GPT-4o Transcribe should have correct raw value")
@@ -130,9 +121,6 @@ final class TranscriptionServiceTests: XCTestCase {
   func testModelInitializationFromString() {
     // Test that models can be initialized from their raw string values
     XCTAssertEqual(
-      TranscriptionModel(rawValue: "whisper-1"), .whisper1, "Should initialize whisper1 from string"
-    )
-    XCTAssertEqual(
       TranscriptionModel(rawValue: "gpt-4o-transcribe"), .gpt4oTranscribe,
       "Should initialize gpt4oTranscribe from string")
     XCTAssertEqual(
@@ -142,5 +130,7 @@ final class TranscriptionServiceTests: XCTestCase {
     // Test invalid string
     XCTAssertNil(
       TranscriptionModel(rawValue: "invalid-model"), "Should return nil for invalid model string")
+    XCTAssertNil(
+      TranscriptionModel(rawValue: "whisper-1"), "Should return nil for deprecated whisper-1 model")
   }
 }
