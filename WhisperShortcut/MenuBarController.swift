@@ -310,11 +310,13 @@ class MenuBarController: NSObject {
   @objc private func stopRecordingFromMenu() {
     guard isRecording else { return }
 
-    print("Stopping recording...")
-    isRecording = false
+    NSLog("⏹️ TRANSCRIPTION-MODE: Stopping recording from menu...")
+    
+    // Don't reset isRecording here - it will be used in audioRecorderDidFinishRecording
     updateMenuState()
-
     audioRecorder?.stopRecording()
+    
+    NSLog("⏹️ TRANSCRIPTION-MODE: Audio recording stopped from menu, waiting for processing...")
   }
 
   @objc private func startPromptingFromMenu() {
@@ -333,15 +335,17 @@ class MenuBarController: NSObject {
 
   @objc private func stopPromptingFromMenu() {
     guard isPrompting else {
-      print("❌ Cannot stop prompting - not currently prompting")
+      NSLog("❌ PROMPT-MODE: Cannot stop prompting from menu - not currently prompting")
       return
     }
 
-    print("🤖 Stopping prompting from menu...")
-    isPrompting = false
+    NSLog("🤖 PROMPT-MODE: Stopping prompting from menu...")
+    
+    // Don't reset isPrompting here - it will be used in audioRecorderDidFinishRecording
     updateMenuState()
-
     audioRecorder?.stopRecording()
+    
+    NSLog("🤖 PROMPT-MODE: Audio recording stopped from menu, waiting for processing...")
   }
 
   @objc private func openSettings() {
@@ -458,22 +462,26 @@ extension MenuBarController: ShortcutDelegate {
 
   func stopRecording() {
     guard isRecording else { return }
-    print("⏹️ Stopping recording via shortcut...")
-    isRecording = false
+    NSLog("⏹️ TRANSCRIPTION-MODE: Stopping recording via shortcut...")
+    
+    // Don't reset isRecording here - it will be used in audioRecorderDidFinishRecording
     updateMenuState()
     stopAudioLevelMonitoring()
     audioRecorder?.stopRecording()
+    
+    NSLog("⏹️ TRANSCRIPTION-MODE: Audio recording stopped, waiting for processing...")
   }
 
   func startPrompting() {
     guard !isRecording else {
-      print("❌ Cannot start prompting via shortcut - already recording: \(isRecording)")
+      NSLog(
+        "❌ PROMPT-MODE: Cannot start prompting via shortcut - already recording: \(isRecording)")
       return
     }
-    print("🤖 Starting prompting via shortcut...")
-    print("🤖 State before: isPrompting = \(isPrompting), isRecording = \(isRecording)")
+    NSLog("🤖 PROMPT-MODE: Starting prompting via shortcut...")
+    NSLog("🤖 PROMPT-MODE: State before: isPrompting = \(isPrompting), isRecording = \(isRecording)")
     isPrompting = true
-    print("🤖 State after: isPrompting = \(isPrompting), isRecording = \(isRecording)")
+    NSLog("🤖 PROMPT-MODE: State after: isPrompting = \(isPrompting), isRecording = \(isRecording)")
     updateMenuState()
     audioRecorder?.startRecording()
 
@@ -483,16 +491,20 @@ extension MenuBarController: ShortcutDelegate {
 
   func stopPrompting() {
     guard isPrompting else {
-      print("❌ Cannot stop prompting via shortcut - not currently prompting: \(isPrompting)")
+      NSLog(
+        "❌ PROMPT-MODE: Cannot stop prompting via shortcut - not currently prompting: \(isPrompting)"
+      )
       return
     }
-    print("🤖 Stopping prompting via shortcut...")
-    print("🤖 State before: isPrompting = \(isPrompting), isRecording = \(isRecording)")
-    isPrompting = false
-    print("🤖 State after: isPrompting = \(isPrompting), isRecording = \(isRecording)")
+    NSLog("🤖 PROMPT-MODE: Stopping prompting via shortcut...")
+    NSLog("🤖 PROMPT-MODE: State before: isPrompting = \(isPrompting), isRecording = \(isRecording)")
+    
+    // Don't reset isPrompting here - it will be used in audioRecorderDidFinishRecording
     updateMenuState()
     stopAudioLevelMonitoring()
     audioRecorder?.stopRecording()
+    
+    NSLog("🤖 PROMPT-MODE: Audio recording stopped, waiting for processing...")
   }
 
   private func startAudioLevelMonitoring() {
@@ -525,21 +537,25 @@ extension MenuBarController: AudioRecorderDelegate {
     canRetry = false
     lastError = nil
 
-    // Determine which mode we were in and process accordingly
-    if isPrompting {
-      print("🤖 Audio recording finished, executing prompt...")
-      print("🤖 isPrompting = \(isPrompting), isRecording = \(isRecording)")
-      showProcessingStatus(mode: "prompt")
+    // Capture the current mode before any state changes
+    let wasPrompting = isPrompting
+    let wasRecording = isRecording
+    
+    NSLog("🎯 AUDIO-FINISHED: wasPrompting = \(wasPrompting), wasRecording = \(wasRecording)")
 
+    // Determine which mode we were in and process accordingly
+    if wasPrompting {
+      NSLog("🤖 PROMPT-MODE: Audio recording finished, executing prompt...")
+      showProcessingStatus(mode: "prompt")
+      
       // Start prompt execution
       Task {
         await performPromptExecution(audioURL: audioURL)
       }
     } else {
-      print("🎙️ Audio recording finished, starting transcription...")
-      print("🎙️ isPrompting = \(isPrompting), isRecording = \(isRecording)")
+      NSLog("🎙️ TRANSCRIPTION-MODE: Audio recording finished, starting transcription...")
       showProcessingStatus(mode: "transcription")
-
+      
       // Start transcription
       Task {
         await performTranscription(audioURL: audioURL)
@@ -559,6 +575,12 @@ extension MenuBarController: AudioRecorderDelegate {
       // Handle unexpected errors
       let transcriptionError = TranscriptionError.networkError(error.localizedDescription)
       shouldCleanup = await handleTranscriptionError(transcriptionError)
+    }
+
+    // Reset recording state after processing
+    await MainActor.run {
+      isRecording = false
+      NSLog("⏹️ TRANSCRIPTION-MODE: State reset after processing - isRecording = \(isRecording)")
     }
 
     // Clean up audio file if appropriate
@@ -586,6 +608,12 @@ extension MenuBarController: AudioRecorderDelegate {
       // Handle unexpected errors
       let transcriptionError = TranscriptionError.networkError(error.localizedDescription)
       shouldCleanup = await handlePromptError(transcriptionError)
+    }
+
+    // Reset prompting state after processing
+    await MainActor.run {
+      isPrompting = false
+      NSLog("🤖 PROMPT-MODE: State reset after processing - isPrompting = \(isPrompting)")
     }
 
     // Clean up audio file if appropriate
