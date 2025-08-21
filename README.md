@@ -22,11 +22,15 @@ If you like WhisperShortcut, please consider leaving a review on the App Store :
 
 ## Features
 
-- **Quick Recording**: Start/stop with customizable keyboard shortcuts
-- **Instant Transcription**: OpenAI Whisper API for accurate results
+- **Dual Recording Modes**: 
+  - **Transcription Mode**: Audio → Text transcription
+  - **Prompt Mode**: Audio → GPT-4o AI assistant execution
+- **Customizable Shortcuts**: Configurable keyboard shortcuts for both modes
+- **Instant Processing**: OpenAI Whisper + GPT-4o APIs for accurate results
 - **Clipboard Integration**: Automatic copy to clipboard
-- **Menu Bar Interface**: Clean, minimal macOS menu bar app
-- **Retry Functionality**: One-click retry for failed transcriptions
+- **Tabbed Settings**: Clean, organized settings interface
+- **Menu Bar Interface**: Minimal macOS menu bar app
+- **Retry Functionality**: One-click retry for failed operations
 - **Secure**: API keys stored in macOS Keychain
 
 ## Privacy
@@ -52,11 +56,52 @@ cd whisper-shortcut
 open WhisperShortcut.xcodeproj
 ```
 
+### Build and Run
+
+```bash
+# Build the application
+xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -configuration Debug build
+
+# Run the application
+open /Users/mgsgde/Library/Developer/Xcode/DerivedData/WhisperShortcut-budjpsyyuwuiqxgeultiqzrgjcos/Build/Products/Debug/WhisperShortcut.app
+```
+
 ### Run Tests
 
 ```bash
 ./scripts/test.sh
 ```
+
+### Debugging and Logs
+
+#### View Real-time Logs
+```bash
+# Stream all app logs in real-time
+log stream --predicate 'process == "WhisperShortcut"' --style compact
+
+# Filter for prompt mode debugging
+log stream --predicate 'process == "WhisperShortcut" AND eventMessage CONTAINS "PROMPT-MODE"' --style compact
+
+# Filter for transcription mode debugging  
+log stream --predicate 'process == "WhisperShortcut" AND eventMessage CONTAINS "TRANSCRIPTION-MODE"' --style compact
+```
+
+#### Using Console.app
+```bash
+# Open macOS Console application
+open /System/Applications/Utilities/Console.app
+
+# In Console.app:
+# 1. Click "Start streaming" 
+# 2. Filter by: process:WhisperShortcut
+# 3. View real-time logs
+```
+
+#### Debug Output Categories
+- **🤖 PROMPT-MODE:** Prompt execution debugging
+- **🎙️ TRANSCRIPTION-MODE:** Audio transcription debugging  
+- **🎹 Shortcuts:** Keyboard shortcut registration and handling
+- **⚠️ Errors:** Error handling and recovery attempts
 
 ## Contributing
 
