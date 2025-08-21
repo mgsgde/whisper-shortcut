@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct SettingsView: View {
+struct SettingsViewNew: View {
 
   // MARK: - Tab Selection
   enum SettingsTab: String, CaseIterable {
@@ -84,10 +84,7 @@ struct SettingsView: View {
     if let savedSystemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt") {
       _promptModeSystemPrompt = State(initialValue: savedSystemPrompt)
     } else {
-      _promptModeSystemPrompt = State(
-        initialValue:
-          "You are a helpful assistant that executes user commands. Provide clear, actionable responses."
-      )
+      _promptModeSystemPrompt = State(initialValue: "You are a helpful assistant that executes user commands. Provide clear, actionable responses.")
     }
   }
 
@@ -187,7 +184,7 @@ struct SettingsView: View {
   }
 
   // MARK: - Tab Content Views
-
+  
   @ViewBuilder
   private var generalTabContent: some View {
     VStack(alignment: .leading, spacing: Constants.spacing) {
@@ -287,7 +284,7 @@ struct SettingsView: View {
         Text("Transcription Mode")
           .font(.title3)
           .fontWeight(.semibold)
-
+        
         Text("Audio → Text Conversion")
           .font(.callout)
           .foregroundColor(.secondary)
@@ -326,7 +323,7 @@ struct SettingsView: View {
         Text("Prompt Mode")
           .font(.title3)
           .fontWeight(.semibold)
-
+        
         Text("Audio → AI Assistant Response")
           .font(.callout)
           .foregroundColor(.secondary)
@@ -390,11 +387,9 @@ struct SettingsView: View {
               )
               .focused($customPromptFocused)
 
-            Text(
-              "Describe domain terms for better transcription quality. Leave empty to use OpenAI's default."
-            )
-            .font(.callout)
-            .foregroundColor(.secondary)
+            Text("Describe domain terms for better transcription quality. Leave empty to use OpenAI's default.")
+              .font(.callout)
+              .foregroundColor(.secondary)
 
             HStack {
               Spacer()
@@ -439,8 +434,7 @@ struct SettingsView: View {
           HStack {
             Spacer()
             Button("Reset to Default") {
-              promptModeSystemPrompt =
-                "You are a helpful assistant that executes user commands. Provide clear, actionable responses."
+              promptModeSystemPrompt = "You are a helpful assistant that executes user commands. Provide clear, actionable responses."
             }
             .buttonStyle(.bordered)
             .font(.callout)
@@ -484,20 +478,16 @@ struct SettingsView: View {
 
     // Parse shortcuts
     guard let startShortcutParsed = ShortcutConfigManager.parseShortcut(from: startShortcut) else {
-      showErrorMessage(
-        "Invalid start recording shortcut format. Use: command+option+r, control+shift+space, f1, command+up"
-      )
+      showErrorMessage("Invalid start recording shortcut format. Use: command+option+r, control+shift+space, f1, command+up")
       return
     }
 
     guard let stopShortcutParsed = ShortcutConfigManager.parseShortcut(from: stopShortcut) else {
-      showErrorMessage(
-        "Invalid stop recording shortcut format. Use: command+r, control+space, f2, command+down")
+      showErrorMessage("Invalid stop recording shortcut format. Use: command+r, control+space, f2, command+down")
       return
     }
 
-    guard let startPromptingParsed = ShortcutConfigManager.parseShortcut(from: startPrompting)
-    else {
+    guard let startPromptingParsed = ShortcutConfigManager.parseShortcut(from: startPrompting) else {
       showErrorMessage("Invalid start prompting shortcut format")
       return
     }
@@ -508,9 +498,7 @@ struct SettingsView: View {
     }
 
     // Check for duplicate shortcuts
-    let shortcuts = [
-      startShortcutParsed, stopShortcutParsed, startPromptingParsed, stopPromptingParsed,
-    ]
+    let shortcuts = [startShortcutParsed, stopShortcutParsed, startPromptingParsed, stopPromptingParsed]
     let uniqueShortcuts = Set(shortcuts)
     if shortcuts.count != uniqueShortcuts.count {
       showErrorMessage("All shortcuts must be different. Please use unique shortcuts.")
@@ -525,7 +513,7 @@ struct SettingsView: View {
 
     // Save custom prompt
     UserDefaults.standard.set(customPromptText, forKey: "customPromptText")
-
+    
     // Save prompt mode system prompt
     UserDefaults.standard.set(promptModeSystemPrompt, forKey: "promptModeSystemPrompt")
 

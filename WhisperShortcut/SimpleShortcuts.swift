@@ -46,7 +46,8 @@ class SimpleShortcuts {
     // Create new shortcuts
     startKey = HotKey(key: config.startRecording.key, modifiers: config.startRecording.modifiers)
     stopKey = HotKey(key: config.stopRecording.key, modifiers: config.stopRecording.modifiers)
-    startPromptKey = HotKey(key: config.startPrompting.key, modifiers: config.startPrompting.modifiers)
+    startPromptKey = HotKey(
+      key: config.startPrompting.key, modifiers: config.startPrompting.modifiers)
     stopPromptKey = HotKey(key: config.stopPrompting.key, modifiers: config.stopPrompting.modifiers)
 
     startKey?.keyDownHandler = { [weak self] in

@@ -3,7 +3,7 @@ import SwiftUI
 import UserNotifications
 
 class MenuBarController: NSObject {
-  
+
   // MARK: - Constants
   private enum Constants {
     static let blinkInterval: TimeInterval = 0.5
@@ -12,7 +12,7 @@ class MenuBarController: NSObject {
     static let errorDisplayTime: TimeInterval = 3.0
     static let transcribingDisplayTime: TimeInterval = 1.0
   }
-  
+
   // MARK: - UI Components
   private var statusItem: NSStatusItem?
   private var isRecording = false
@@ -25,7 +25,7 @@ class MenuBarController: NSObject {
 
   // MARK: - Configuration
   private var currentConfig: ShortcutConfig
-  
+
   // MARK: - Animation
   private var blinkTimer: Timer?
   private var isBlinking = false
@@ -318,18 +318,26 @@ class MenuBarController: NSObject {
   }
 
   @objc private func startPromptingFromMenu() {
-    guard !isPrompting && !isRecording else { return }
+    guard !isPrompting && !isRecording else {
+      print(
+        "❌ Cannot start prompting - already recording: \(isRecording), already prompting: \(isPrompting)"
+      )
+      return
+    }
 
-    print("Starting prompting...")
+    print("🤖 Starting prompting from menu...")
     isPrompting = true
     updateMenuState()
     audioRecorder?.startRecording()
   }
 
   @objc private func stopPromptingFromMenu() {
-    guard isPrompting else { return }
+    guard isPrompting else {
+      print("❌ Cannot stop prompting - not currently prompting")
+      return
+    }
 
-    print("Stopping prompting...")
+    print("🤖 Stopping prompting from menu...")
     isPrompting = false
     updateMenuState()
 
@@ -395,7 +403,8 @@ class MenuBarController: NSObject {
     stopBlinking()  // Stop any existing blinking
 
     isBlinking = true
-    blinkTimer = Timer.scheduledTimer(withTimeInterval: Constants.blinkInterval, repeats: true) { [weak self] _ in
+    blinkTimer = Timer.scheduledTimer(withTimeInterval: Constants.blinkInterval, repeats: true) {
+      [weak self] _ in
       self?.toggleBlinkState()
     }
   }
@@ -457,9 +466,14 @@ extension MenuBarController: ShortcutDelegate {
   }
 
   func startPrompting() {
-    guard !isRecording else { return }  // Don't start prompting if recording
+    guard !isRecording else {
+      print("❌ Cannot start prompting via shortcut - already recording: \(isRecording)")
+      return
+    }
     print("🤖 Starting prompting via shortcut...")
+    print("🤖 State before: isPrompting = \(isPrompting), isRecording = \(isRecording)")
     isPrompting = true
+    print("🤖 State after: isPrompting = \(isPrompting), isRecording = \(isRecording)")
     updateMenuState()
     audioRecorder?.startRecording()
 
@@ -468,9 +482,14 @@ extension MenuBarController: ShortcutDelegate {
   }
 
   func stopPrompting() {
-    guard isPrompting else { return }
+    guard isPrompting else {
+      print("❌ Cannot stop prompting via shortcut - not currently prompting: \(isPrompting)")
+      return
+    }
     print("🤖 Stopping prompting via shortcut...")
+    print("🤖 State before: isPrompting = \(isPrompting), isRecording = \(isRecording)")
     isPrompting = false
+    print("🤖 State after: isPrompting = \(isPrompting), isRecording = \(isRecording)")
     updateMenuState()
     stopAudioLevelMonitoring()
     audioRecorder?.stopRecording()
@@ -478,7 +497,9 @@ extension MenuBarController: ShortcutDelegate {
 
   private func startAudioLevelMonitoring() {
     // Monitor audio levels every 0.5 seconds during recording
-    audioLevelTimer = Timer.scheduledTimer(withTimeInterval: Constants.audioLevelUpdateInterval, repeats: true) { [weak self] _ in
+    audioLevelTimer = Timer.scheduledTimer(
+      withTimeInterval: Constants.audioLevelUpdateInterval, repeats: true
+    ) { [weak self] _ in
       if let levels = self?.audioRecorder?.getAudioLevels() {
         print("🎤 Audio levels - Average: \(levels.average)dB, Peak: \(levels.peak)dB")
 
@@ -506,17 +527,19 @@ extension MenuBarController: AudioRecorderDelegate {
 
     // Determine which mode we were in and process accordingly
     if isPrompting {
-      print("Audio recording finished, executing prompt...")
+      print("🤖 Audio recording finished, executing prompt...")
+      print("🤖 isPrompting = \(isPrompting), isRecording = \(isRecording)")
       showProcessingStatus(mode: "prompt")
-      
+
       // Start prompt execution
       Task {
         await performPromptExecution(audioURL: audioURL)
       }
     } else {
-      print("Audio recording finished, starting transcription...")
+      print("🎙️ Audio recording finished, starting transcription...")
+      print("🎙️ isPrompting = \(isPrompting), isRecording = \(isRecording)")
       showProcessingStatus(mode: "transcription")
-      
+
       // Start transcription
       Task {
         await performTranscription(audioURL: audioURL)

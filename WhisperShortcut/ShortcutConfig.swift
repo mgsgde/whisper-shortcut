@@ -207,7 +207,7 @@ class ShortcutConfigManager {
     static let startPromptingKey = "shortcut_start_prompting"
     static let stopPromptingKey = "shortcut_stop_prompting"
   }
-  
+
   private let userDefaults = UserDefaults.standard
 
   private init() {}
@@ -216,14 +216,15 @@ class ShortcutConfigManager {
   func loadConfiguration() -> ShortcutConfig {
     let startRecording =
       loadShortcut(for: Constants.startRecordingKey) ?? ShortcutConfig.default.startRecording
-    let stopRecording = loadShortcut(for: Constants.stopRecordingKey) ?? ShortcutConfig.default.stopRecording
-    let startPrompting = 
+    let stopRecording =
+      loadShortcut(for: Constants.stopRecordingKey) ?? ShortcutConfig.default.stopRecording
+    let startPrompting =
       loadShortcut(for: Constants.startPromptingKey) ?? ShortcutConfig.default.startPrompting
-    let stopPrompting = 
+    let stopPrompting =
       loadShortcut(for: Constants.stopPromptingKey) ?? ShortcutConfig.default.stopPrompting
 
     return ShortcutConfig(
-      startRecording: startRecording, 
+      startRecording: startRecording,
       stopRecording: stopRecording,
       startPrompting: startPrompting,
       stopPrompting: stopPrompting
@@ -401,10 +402,9 @@ class ShortcutConfigManager {
 
     // Check for duplicate shortcuts
     let currentConfig = loadConfiguration()
-    if shortcut == currentConfig.startRecording || 
-       shortcut == currentConfig.stopRecording ||
-       shortcut == currentConfig.startPrompting ||
-       shortcut == currentConfig.stopPrompting {
+    if shortcut == currentConfig.startRecording || shortcut == currentConfig.stopRecording
+      || shortcut == currentConfig.startPrompting || shortcut == currentConfig.stopPrompting
+    {
       return .duplicate("This shortcut is already in use")
     }
 

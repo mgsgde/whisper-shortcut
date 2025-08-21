@@ -153,7 +153,7 @@ class TranscriptionService {
 
     // First, transcribe the audio to get the user's spoken text
     let spokenText = try await transcribe(audioURL: audioURL)
-    
+
     // Then send the transcribed text to the chat API
     return try await executeChatCompletion(userMessage: spokenText, apiKey: apiKey)
   }
@@ -166,14 +166,15 @@ class TranscriptionService {
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
     // Get system prompt from settings
-    let systemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt") ?? 
-      "You are a helpful assistant that executes user commands. Provide clear, actionable responses."
+    let systemPrompt =
+      UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
+      ?? "You are a helpful assistant that executes user commands. Provide clear, actionable responses."
 
     let chatRequest = ChatCompletionRequest(
       model: "gpt-4o",  // Use full GPT-4o for prompt execution
       messages: [
         ChatMessage(role: "system", content: systemPrompt),
-        ChatMessage(role: "user", content: userMessage)
+        ChatMessage(role: "user", content: userMessage),
       ],
       maxTokens: 1000,
       temperature: 0.7
@@ -385,7 +386,7 @@ struct ChatCompletionRequest: Codable {
   let messages: [ChatMessage]
   let maxTokens: Int
   let temperature: Double
-  
+
   enum CodingKeys: String, CodingKey {
     case model, messages, temperature
     case maxTokens = "max_tokens"
