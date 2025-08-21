@@ -16,6 +16,7 @@ class MenuBarController: NSObject {
   // MARK: - UI Components
   private var statusItem: NSStatusItem?
   private var isRecording = false
+  private var isPrompting = false  // New: Track prompt mode
   private var audioRecorder: AudioRecorder?
   private var shortcuts: SimpleShortcuts?
   private var transcriptionService: TranscriptionService?
@@ -102,6 +103,24 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
+    // Start prompting item with configurable shortcut
+    let startPromptItem = NSMenuItem(
+      title: "Start Prompting", action: #selector(startPromptingFromMenu), keyEquivalent: "")
+    startPromptItem.keyEquivalentModifierMask = []
+    startPromptItem.target = self
+    startPromptItem.tag = 105  // Tag for updating shortcut
+    menu.addItem(startPromptItem)
+
+    // Stop prompting item with configurable shortcut
+    let stopPromptItem = NSMenuItem(
+      title: "Stop & Execute", action: #selector(stopPromptingFromMenu), keyEquivalent: "")
+    stopPromptItem.keyEquivalentModifierMask = []
+    stopPromptItem.target = self
+    stopPromptItem.tag = 106  // Tag for updating shortcut
+    menu.addItem(stopPromptItem)
+
+    menu.addItem(NSMenuItem.separator())
+
     // Settings item
     let settingsItem = NSMenuItem(
       title: "Settings...", action: #selector(openSettings), keyEquivalent: "")
@@ -176,7 +195,9 @@ class MenuBarController: NSObject {
     // Update status text
     if let statusMenuItem = menu.item(withTag: 100) {
       if isRecording {
-        statusMenuItem.title = "🔴 Recording..."
+        statusMenuItem.title = "🔴 Recording (Transcription)..."
+      } else if isPrompting {
+        statusMenuItem.title = "🔴 Recording (Prompt)..."
       } else {
         statusMenuItem.title = "Ready to record"
       }
@@ -194,7 +215,10 @@ class MenuBarController: NSObject {
     if let button = statusItem?.button {
       if isRecording {
         button.title = "🔴"
-        button.toolTip = "Recording... Click to stop"
+        button.toolTip = "Recording for transcription... Click to stop"
+      } else if isPrompting {
+        button.title = "🤖"
+        button.toolTip = "Recording for AI prompt... Click to stop"
       } else if hasAPIKey {
         button.title = "🎙️"
         button.toolTip = "WhisperShortcut - Click to record"
@@ -260,6 +284,18 @@ class MenuBarController: NSObject {
       stopItem.keyEquivalent = currentConfig.stopRecording.key.displayString.lowercased()
       stopItem.keyEquivalentModifierMask = currentConfig.stopRecording.modifiers
     }
+
+    // Update start prompting shortcut
+    if let startPromptItem = menu.item(withTag: 105) {
+      startPromptItem.keyEquivalent = currentConfig.startPrompting.key.displayString.lowercased()
+      startPromptItem.keyEquivalentModifierMask = currentConfig.startPrompting.modifiers
+    }
+
+    // Update stop prompting shortcut
+    if let stopPromptItem = menu.item(withTag: 106) {
+      stopPromptItem.keyEquivalent = currentConfig.stopPrompting.key.displayString.lowercased()
+      stopPromptItem.keyEquivalentModifierMask = currentConfig.stopPrompting.modifiers
+    }
   }
 
   @objc private func startRecordingFromMenu() {
@@ -276,6 +312,25 @@ class MenuBarController: NSObject {
 
     print("Stopping recording...")
     isRecording = false
+    updateMenuState()
+
+    audioRecorder?.stopRecording()
+  }
+
+  @objc private func startPromptingFromMenu() {
+    guard !isPrompting && !isRecording else { return }
+
+    print("Starting prompting...")
+    isPrompting = true
+    updateMenuState()
+    audioRecorder?.startRecording()
+  }
+
+  @objc private func stopPromptingFromMenu() {
+    guard isPrompting else { return }
+
+    print("Stopping prompting...")
+    isPrompting = false
     updateMenuState()
 
     audioRecorder?.stopRecording()
@@ -382,6 +437,7 @@ class MenuBarController: NSObject {
 // MARK: - ShortcutDelegate
 extension MenuBarController: ShortcutDelegate {
   func startRecording() {
+    guard !isPrompting else { return }  // Don't start recording if prompting
     print("🎙️ Starting recording via shortcut...")
     isRecording = true
     updateMenuState()
@@ -395,6 +451,26 @@ extension MenuBarController: ShortcutDelegate {
     guard isRecording else { return }
     print("⏹️ Stopping recording via shortcut...")
     isRecording = false
+    updateMenuState()
+    stopAudioLevelMonitoring()
+    audioRecorder?.stopRecording()
+  }
+
+  func startPrompting() {
+    guard !isRecording else { return }  // Don't start prompting if recording
+    print("🤖 Starting prompting via shortcut...")
+    isPrompting = true
+    updateMenuState()
+    audioRecorder?.startRecording()
+
+    // Start monitoring audio levels
+    startAudioLevelMonitoring()
+  }
+
+  func stopPrompting() {
+    guard isPrompting else { return }
+    print("🤖 Stopping prompting via shortcut...")
+    isPrompting = false
     updateMenuState()
     stopAudioLevelMonitoring()
     audioRecorder?.stopRecording()
@@ -423,19 +499,28 @@ extension MenuBarController: ShortcutDelegate {
 // MARK: - AudioRecorderDelegate
 extension MenuBarController: AudioRecorderDelegate {
   func audioRecorderDidFinishRecording(audioURL: URL) {
-    print("Audio recording finished, starting transcription...")
-
     // Store the audio URL for potential retry
     lastAudioURL = audioURL
     canRetry = false
     lastError = nil
 
-    // Update status to show transcribing
-    self.showTranscribingStatus()
-
-    // Start transcription
-    Task {
-      await performTranscription(audioURL: audioURL)
+    // Determine which mode we were in and process accordingly
+    if isPrompting {
+      print("Audio recording finished, executing prompt...")
+      showProcessingStatus(mode: "prompt")
+      
+      // Start prompt execution
+      Task {
+        await performPromptExecution(audioURL: audioURL)
+      }
+    } else {
+      print("Audio recording finished, starting transcription...")
+      showProcessingStatus(mode: "transcription")
+      
+      // Start transcription
+      Task {
+        await performTranscription(audioURL: audioURL)
+      }
     }
   }
 
@@ -458,6 +543,33 @@ extension MenuBarController: AudioRecorderDelegate {
       do {
         try FileManager.default.removeItem(at: audioURL)
         print("✅ Cleaned up audio file after transcription")
+      } catch {
+        print("⚠️ Could not clean up audio file: \(error)")
+      }
+    } else {
+      print("🔄 Keeping audio file for potential retry")
+    }
+  }
+
+  private func performPromptExecution(audioURL: URL) async {
+    let shouldCleanup: Bool
+
+    do {
+      let response = try await transcriptionService?.executePrompt(audioURL: audioURL) ?? ""
+      shouldCleanup = await handlePromptSuccess(response)
+    } catch let error as TranscriptionError {
+      shouldCleanup = await handlePromptError(error)
+    } catch {
+      // Handle unexpected errors
+      let transcriptionError = TranscriptionError.networkError(error.localizedDescription)
+      shouldCleanup = await handlePromptError(transcriptionError)
+    }
+
+    // Clean up audio file if appropriate
+    if shouldCleanup {
+      do {
+        try FileManager.default.removeItem(at: audioURL)
+        print("✅ Cleaned up audio file after prompt execution")
       } catch {
         print("⚠️ Could not clean up audio file: \(error)")
       }
@@ -505,16 +617,63 @@ extension MenuBarController: AudioRecorderDelegate {
     return !error.isRetryable  // Clean up if not retryable
   }
 
-  private func showTranscribingStatus() {
-    // Start blinking transcribing indicator in menu bar
+  @MainActor
+  private func handlePromptSuccess(_ response: String) -> Bool {
+    print("✅ Prompt execution successful: \(response)")
+
+    // Clear retry state on success
+    canRetry = false
+    lastError = nil
+    lastAudioURL = nil
+    updateRetryMenuItem()
+
+    // Copy response to clipboard
+    clipboardManager?.copyToClipboard(text: response)
+    showTemporaryPromptSuccess()
+
+    return true  // Clean up audio file
+  }
+
+  @MainActor
+  private func handlePromptError(_ error: TranscriptionError) -> Bool {
+    print("❌ Prompt execution error: \(error)")
+
+    let errorMessage = TranscriptionErrorFormatter.format(error)
+
+    // Store error for retry functionality
+    lastError = errorMessage
+
+    if error.isRetryable && lastAudioURL != nil {
+      canRetry = true
+      updateRetryMenuItem()
+      print("🔄 Error is retryable - showing retry option")
+    }
+
+    // Copy error message to clipboard
+    clipboardManager?.copyToClipboard(text: errorMessage)
+    showTemporaryError()
+
+    return !error.isRetryable  // Clean up if not retryable
+  }
+
+  private func showProcessingStatus(mode: String) {
+    // Start blinking indicator in menu bar
     startBlinking()
 
     // Update menu status
     if let menu = statusItem?.menu,
       let statusMenuItem = menu.item(withTag: 100)
     {
-      statusMenuItem.title = "⏳ Transcribing..."
+      if mode == "prompt" {
+        statusMenuItem.title = "🤖 Processing prompt..."
+      } else {
+        statusMenuItem.title = "⏳ Transcribing..."
+      }
     }
+  }
+
+  private func showTranscribingStatus() {
+    showProcessingStatus(mode: "transcription")
   }
 
   func audioRecorderDidFailWithError(_ error: Error) {
@@ -554,6 +713,35 @@ extension MenuBarController: AudioRecorderDelegate {
     }
   }
 
+  private func showTemporaryPromptSuccess() {
+    // Stop blinking and show success indicator in menu bar
+    stopBlinking()
+
+    if let button = statusItem?.button {
+      button.title = "🤖"
+      button.toolTip = "Prompt execution complete - response copied to clipboard"
+
+      // Force immediate redraw to ensure visibility on all screens
+      button.needsDisplay = true
+      button.window?.displayIfNeeded()
+
+      // Also force the status item to update
+      statusItem?.button?.needsDisplay = true
+    }
+
+    // Update menu status
+    if let menu = statusItem?.menu,
+      let statusMenuItem = menu.item(withTag: 100)
+    {
+      statusMenuItem.title = "🤖 AI response copied to clipboard"
+    }
+
+    // Reset after 3 seconds
+    DispatchQueue.main.asyncAfter(deadline: .now() + Constants.successDisplayTime) {
+      self.resetToReadyState()
+    }
+  }
+
   private func showTemporaryError() {
     // Stop blinking and show error indicator in menu bar
     stopBlinking()
@@ -583,6 +771,10 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   private func resetToReadyState() {
+    // Reset both recording and prompting states
+    isRecording = false
+    isPrompting = false
+
     // Reset to normal state
     if let button = statusItem?.button {
       button.title = "🎙️"

@@ -4,6 +4,8 @@ import HotKey
 protocol ShortcutDelegate: AnyObject {
   func startRecording()
   func stopRecording()
+  func startPrompting()
+  func stopPrompting()
 }
 
 // Configurable shortcuts using ShortcutConfigManager
@@ -12,6 +14,8 @@ class SimpleShortcuts {
 
   private var startKey: HotKey?
   private var stopKey: HotKey?
+  private var startPromptKey: HotKey?
+  private var stopPromptKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -31,7 +35,7 @@ class SimpleShortcuts {
     // Setup shortcuts with current configuration
     setupShortcuts(with: currentConfig)
     print(
-      "🎹 Shortcuts ready: \(currentConfig.startRecording.displayString) (start), \(currentConfig.stopRecording.displayString) (stop)"
+      "🎹 Shortcuts ready: \(currentConfig.startRecording.displayString) (start), \(currentConfig.stopRecording.displayString) (stop), \(currentConfig.startPrompting.displayString) (start prompt), \(currentConfig.stopPrompting.displayString) (stop prompt)"
     )
   }
 
@@ -42,6 +46,8 @@ class SimpleShortcuts {
     // Create new shortcuts
     startKey = HotKey(key: config.startRecording.key, modifiers: config.startRecording.modifiers)
     stopKey = HotKey(key: config.stopRecording.key, modifiers: config.stopRecording.modifiers)
+    startPromptKey = HotKey(key: config.startPrompting.key, modifiers: config.startPrompting.modifiers)
+    stopPromptKey = HotKey(key: config.stopPrompting.key, modifiers: config.stopPrompting.modifiers)
 
     startKey?.keyDownHandler = { [weak self] in
       self?.delegate?.startRecording()
@@ -50,6 +56,14 @@ class SimpleShortcuts {
     stopKey?.keyDownHandler = { [weak self] in
       self?.delegate?.stopRecording()
     }
+
+    startPromptKey?.keyDownHandler = { [weak self] in
+      self?.delegate?.startPrompting()
+    }
+
+    stopPromptKey?.keyDownHandler = { [weak self] in
+      self?.delegate?.stopPrompting()
+    }
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -57,7 +71,7 @@ class SimpleShortcuts {
       currentConfig = newConfig
       setupShortcuts(with: newConfig)
       print(
-        "🎹 Shortcuts updated: \(newConfig.startRecording.displayString) (start), \(newConfig.stopRecording.displayString) (stop)"
+        "🎹 Shortcuts updated: \(newConfig.startRecording.displayString) (start), \(newConfig.stopRecording.displayString) (stop), \(newConfig.startPrompting.displayString) (start prompt), \(newConfig.stopPrompting.displayString) (stop prompt)"
       )
     }
   }
@@ -65,6 +79,8 @@ class SimpleShortcuts {
   func cleanup() {
     startKey = nil
     stopKey = nil
+    startPromptKey = nil
+    stopPromptKey = nil
   }
 
   deinit {

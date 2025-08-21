@@ -28,17 +28,23 @@ struct SettingsView: View {
   @State private var apiKey: String = ""
   @State private var startShortcut: String = ""
   @State private var stopShortcut: String = ""
+  @State private var startPrompting: String = ""
+  @State private var stopPrompting: String = ""
   @State private var selectedModel: TranscriptionModel = .gpt4oTranscribe
   @State private var errorMessage: String = ""
   @State private var isLoading: Bool = false
   @State private var showAlert: Bool = false
   @State private var customPromptText: String = ""
+  @State private var promptModeSystemPrompt: String = ""
 
   // MARK: - Focus State
   @FocusState private var apiKeyFocused: Bool
   @FocusState private var startShortcutFocused: Bool
   @FocusState private var stopShortcutFocused: Bool
+  @FocusState private var startPromptingFocused: Bool
+  @FocusState private var stopPromptingFocused: Bool
   @FocusState private var customPromptFocused: Bool
+  @FocusState private var promptModeSystemPromptFocused: Bool
 
   // MARK: - Environment
   @Environment(\.dismiss) private var dismiss
@@ -47,6 +53,8 @@ struct SettingsView: View {
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     _startShortcut = State(initialValue: currentConfig.startRecording.textDisplayString)
     _stopShortcut = State(initialValue: currentConfig.stopRecording.textDisplayString)
+    _startPrompting = State(initialValue: currentConfig.startPrompting.textDisplayString)
+    _stopPrompting = State(initialValue: currentConfig.stopPrompting.textDisplayString)
 
     // Load saved model preference
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
@@ -63,6 +71,14 @@ struct SettingsView: View {
     } else {
       // Use default prompt if no custom prompt is saved
       _customPromptText = State(initialValue: TranscriptionPrompt.defaultPrompt.text)
+    }
+
+    // Load saved prompt mode system prompt or use default
+    if let savedSystemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt") {
+      _promptModeSystemPrompt = State(initialValue: savedSystemPrompt)
+    } else {
+      // Use default system prompt
+      _promptModeSystemPrompt = State(initialValue: "You are a helpful assistant that executes user commands. Provide clear, actionable responses.")
     }
   }
 
@@ -218,12 +234,18 @@ struct SettingsView: View {
           .fontWeight(.semibold)
 
         VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
+          // Transcription Mode Shortcuts
+          Text("Transcription Mode (Audio → Text)")
+            .font(.callout)
+            .fontWeight(.semibold)
+            .foregroundColor(.secondary)
+
           HStack(alignment: .center, spacing: 12) {
             Text("Start Recording:")
               .font(.body)
               .fontWeight(.medium)
               .frame(width: Constants.labelWidth, alignment: .leading)
-            TextField("e.g., command+option+r", text: $startShortcut)
+            TextField("e.g., command+shift+e", text: $startShortcut)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
               .frame(height: Constants.textFieldHeight)
@@ -237,12 +259,47 @@ struct SettingsView: View {
               .font(.body)
               .fontWeight(.medium)
               .frame(width: Constants.labelWidth, alignment: .leading)
-            TextField("e.g., command+r", text: $stopShortcut)
+            TextField("e.g., command+e", text: $stopShortcut)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
               .frame(height: Constants.textFieldHeight)
               .frame(maxWidth: Constants.shortcutMaxWidth)
               .focused($stopShortcutFocused)
+            Spacer()
+          }
+
+          // Prompt Mode Shortcuts
+          Text("Prompt Mode (Audio → AI Response)")
+            .font(.callout)
+            .fontWeight(.semibold)
+            .foregroundColor(.secondary)
+            .padding(.top, 8)
+
+          HStack(alignment: .center, spacing: 12) {
+            Text("Start Prompting:")
+              .font(.body)
+              .fontWeight(.medium)
+              .frame(width: Constants.labelWidth, alignment: .leading)
+            TextField("e.g., command+shift+p", text: $startPrompting)
+              .textFieldStyle(.roundedBorder)
+              .font(.system(.body, design: .monospaced))
+              .frame(height: Constants.textFieldHeight)
+              .frame(maxWidth: Constants.shortcutMaxWidth)
+              .focused($startPromptingFocused)
+            Spacer()
+          }
+
+          HStack(alignment: .center, spacing: 12) {
+            Text("Stop Prompting:")
+              .font(.body)
+              .fontWeight(.medium)
+              .frame(width: Constants.labelWidth, alignment: .leading)
+            TextField("e.g., command+p", text: $stopPrompting)
+              .textFieldStyle(.roundedBorder)
+              .font(.system(.body, design: .monospaced))
+              .frame(height: Constants.textFieldHeight)
+              .frame(maxWidth: Constants.shortcutMaxWidth)
+              .focused($stopPromptingFocused)
             Spacer()
           }
         }
@@ -263,6 +320,51 @@ struct SettingsView: View {
           .fixedSize(horizontal: false, vertical: true)
         }
         .textSelection(.enabled)
+      }
+
+      // Prompt Mode Configuration Section
+      VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
+        Text("Prompt Mode Configuration")
+          .font(.title3)
+          .fontWeight(.semibold)
+
+        VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
+          VStack(alignment: .leading, spacing: 8) {
+            Text("System Prompt for AI Assistant:")
+              .font(.callout)
+              .fontWeight(.semibold)
+              .foregroundColor(.secondary)
+              .textSelection(.enabled)
+
+            TextEditor(text: $promptModeSystemPrompt)
+              .font(.system(.body, design: .default))
+              .frame(height: Constants.textEditorHeight)
+              .padding(8)
+              .background(Color(.controlBackgroundColor))
+              .cornerRadius(Constants.cornerRadius)
+              .overlay(
+                RoundedRectangle(cornerRadius: Constants.cornerRadius)
+                  .stroke(Color(.separatorColor), lineWidth: 1)
+              )
+              .focused($promptModeSystemPromptFocused)
+
+            Text(
+              "Define how the AI should behave when executing voice commands. This system prompt guides the AI's responses and actions."
+            )
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
+
+            HStack {
+              Spacer()
+              Button("Reset to Default") {
+                promptModeSystemPrompt = "You are a helpful assistant that executes user commands. Provide clear, actionable responses."
+              }
+              .buttonStyle(.bordered)
+              .controlSize(.small)
+            }
+          }
+        }
       }
 
       // Error Message - Now shown as popup alert
@@ -350,6 +452,16 @@ struct SettingsView: View {
       return
     }
 
+    guard !startPrompting.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      showErrorMessage("Please enter a start prompting shortcut")
+      return
+    }
+
+    guard !stopPrompting.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      showErrorMessage("Please enter a stop prompting shortcut")
+      return
+    }
+
     guard let startShortcutParsed = ShortcutConfigManager.parseShortcut(from: startShortcut) else {
       showErrorMessage(
         "Invalid start recording shortcut format. Use: command+option+r, control+shift+space, f1, command+up"
@@ -363,10 +475,25 @@ struct SettingsView: View {
       return
     }
 
-    // Check for duplicate shortcuts
-    if startShortcutParsed == stopShortcutParsed {
+    guard let startPromptingParsed = ShortcutConfigManager.parseShortcut(from: startPrompting) else {
       showErrorMessage(
-        "Start and stop shortcuts cannot be the same. Please use different shortcuts.")
+        "Invalid start prompting shortcut format. Use: command+shift+p, control+alt+p, etc.")
+      return
+    }
+
+    guard let stopPromptingParsed = ShortcutConfigManager.parseShortcut(from: stopPrompting) else {
+      showErrorMessage(
+        "Invalid stop prompting shortcut format. Use: command+p, control+p, etc.")
+      return
+    }
+
+    // Check for duplicate shortcuts
+    let allShortcuts = [startShortcutParsed, stopShortcutParsed, startPromptingParsed, stopPromptingParsed]
+    let uniqueShortcuts = Set(allShortcuts)
+    
+    if uniqueShortcuts.count != allShortcuts.count {
+      showErrorMessage(
+        "All shortcuts must be different. Please use unique keyboard combinations.")
       return
     }
 
@@ -377,13 +504,18 @@ struct SettingsView: View {
 
     // Save custom prompt
     UserDefaults.standard.set(customPromptText, forKey: "customPromptText")
+    
+    // Save prompt mode system prompt
+    UserDefaults.standard.set(promptModeSystemPrompt, forKey: "promptModeSystemPrompt")
 
     // Notify that model has changed
     NotificationCenter.default.post(name: .modelChanged, object: selectedModel)
 
     let newConfig = ShortcutConfig(
       startRecording: startShortcutParsed,
-      stopRecording: stopShortcutParsed
+      stopRecording: stopShortcutParsed,
+      startPrompting: startPromptingParsed,
+      stopPrompting: stopPromptingParsed
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 

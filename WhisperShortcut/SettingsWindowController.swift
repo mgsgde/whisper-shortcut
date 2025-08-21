@@ -2,7 +2,7 @@ import Cocoa
 import SwiftUI
 
 class SettingsWindowController: NSWindowController {
-  
+
   // MARK: - Constants
   private enum Constants {
     static let windowWidth: CGFloat = 520
@@ -32,7 +32,7 @@ class SettingsWindowController: NSWindowController {
     window.level = .floating
     window.isMovableByWindowBackground = false
     window.collectionBehavior = [.managed, .fullScreenNone]
-    
+
     // Set minimum size and let window auto-resize to content
     window.contentMinSize = NSSize(width: Constants.windowWidth, height: Constants.windowHeight)
     window.contentMaxSize = NSSize(width: Constants.maxWidth, height: Constants.maxHeight)
@@ -60,7 +60,8 @@ class SettingsWindowController: NSWindowController {
       self.window?.makeKeyAndOrderFront(nil)
       self.window?.contentView?.window?.setFrameAutosaveName(Constants.frameAutosaveName)
       self.window?.contentView?.window?.setContentSize(
-        self.window?.contentView?.fittingSize ?? NSSize(width: Constants.windowWidth, height: Constants.windowHeight)
+        self.window?.contentView?.fittingSize
+          ?? NSSize(width: Constants.windowWidth, height: Constants.windowHeight)
       )
     }
   }

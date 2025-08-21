@@ -6,7 +6,8 @@ private enum Constants {
   static let requestTimeout: TimeInterval = 30.0
   static let resourceTimeout: TimeInterval = 120.0
   static let validationTimeout: TimeInterval = 10.0
-  static let apiEndpoint = "https://api.openai.com/v1/audio/transcriptions"
+  static let transcriptionEndpoint = "https://api.openai.com/v1/audio/transcriptions"
+  static let chatEndpoint = "https://api.openai.com/v1/chat/completions"
   static let modelsEndpoint = "https://api.openai.com/v1/models"
 }
 
@@ -25,7 +26,7 @@ enum TranscriptionModel: String, CaseIterable {
   }
 
   var apiEndpoint: String {
-    return Constants.apiEndpoint
+    return Constants.transcriptionEndpoint
   }
 
   var isRecommended: Bool {
@@ -141,6 +142,61 @@ class TranscriptionService {
     // Parse result
     let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
     return result.text
+  }
+
+  // MARK: - Prompt Execution
+  func executePrompt(audioURL: URL) async throws -> String {
+    // Validate API key
+    guard let apiKey = self.apiKey, !apiKey.isEmpty else {
+      throw TranscriptionError.noAPIKey
+    }
+
+    // First, transcribe the audio to get the user's spoken text
+    let spokenText = try await transcribe(audioURL: audioURL)
+    
+    // Then send the transcribed text to the chat API
+    return try await executeChatCompletion(userMessage: spokenText, apiKey: apiKey)
+  }
+
+  private func executeChatCompletion(userMessage: String, apiKey: String) async throws -> String {
+    let url = URL(string: Constants.chatEndpoint)!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+    // Get system prompt from settings
+    let systemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt") ?? 
+      "You are a helpful assistant that executes user commands. Provide clear, actionable responses."
+
+    let chatRequest = ChatCompletionRequest(
+      model: "gpt-4o",  // Use full GPT-4o for prompt execution
+      messages: [
+        ChatMessage(role: "system", content: systemPrompt),
+        ChatMessage(role: "user", content: userMessage)
+      ],
+      maxTokens: 1000,
+      temperature: 0.7
+    )
+
+    request.httpBody = try JSONEncoder().encode(chatRequest)
+
+    // Execute request
+    let (data, response) = try await session.data(for: request)
+
+    // Validate response
+    guard let httpResponse = response as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response")
+    }
+
+    if httpResponse.statusCode != 200 {
+      let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
+      throw error
+    }
+
+    // Parse result
+    let result = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
+    return result.choices.first?.message.content ?? "No response generated"
   }
 
   // MARK: - Private Helpers
@@ -321,6 +377,32 @@ extension URLRequest {
 // MARK: - Models
 struct WhisperResponse: Codable {
   let text: String
+}
+
+// Chat API Models
+struct ChatCompletionRequest: Codable {
+  let model: String
+  let messages: [ChatMessage]
+  let maxTokens: Int
+  let temperature: Double
+  
+  enum CodingKeys: String, CodingKey {
+    case model, messages, temperature
+    case maxTokens = "max_tokens"
+  }
+}
+
+struct ChatMessage: Codable {
+  let role: String
+  let content: String
+}
+
+struct ChatCompletionResponse: Codable {
+  let choices: [ChatChoice]
+}
+
+struct ChatChoice: Codable {
+  let message: ChatMessage
 }
 
 // GPT-4o-transcribe models support prompts for better transcription quality

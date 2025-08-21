@@ -114,14 +114,18 @@ extension NSEvent.ModifierFlags: Codable {
 struct ShortcutConfig: Codable {
   var startRecording: ShortcutDefinition
   var stopRecording: ShortcutDefinition
+  var startPrompting: ShortcutDefinition
+  var stopPrompting: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .e, modifiers: [.command, .shift]),
-    stopRecording: ShortcutDefinition(key: .e, modifiers: [.command])
+    stopRecording: ShortcutDefinition(key: .e, modifiers: [.command]),
+    startPrompting: ShortcutDefinition(key: .p, modifiers: [.command, .shift]),
+    stopPrompting: ShortcutDefinition(key: .p, modifiers: [.command])
   )
 }
 
-struct ShortcutDefinition: Codable, Equatable {
+struct ShortcutDefinition: Codable, Equatable, Hashable {
   let key: Key
   let modifiers: NSEvent.ModifierFlags
 
@@ -184,6 +188,12 @@ struct ShortcutDefinition: Codable, Equatable {
   static func == (lhs: ShortcutDefinition, rhs: ShortcutDefinition) -> Bool {
     return lhs.key == rhs.key && lhs.modifiers == rhs.modifiers
   }
+
+  // MARK: - Hashable Implementation
+  func hash(into hasher: inout Hasher) {
+    hasher.combine(key.carbonKeyCode)
+    hasher.combine(modifiers.rawValue)
+  }
 }
 
 // MARK: - Shortcut Configuration Manager
@@ -194,6 +204,8 @@ class ShortcutConfigManager {
   private enum Constants {
     static let startRecordingKey = "shortcut_start_recording"
     static let stopRecordingKey = "shortcut_stop_recording"
+    static let startPromptingKey = "shortcut_start_prompting"
+    static let stopPromptingKey = "shortcut_stop_prompting"
   }
   
   private let userDefaults = UserDefaults.standard
@@ -205,13 +217,24 @@ class ShortcutConfigManager {
     let startRecording =
       loadShortcut(for: Constants.startRecordingKey) ?? ShortcutConfig.default.startRecording
     let stopRecording = loadShortcut(for: Constants.stopRecordingKey) ?? ShortcutConfig.default.stopRecording
+    let startPrompting = 
+      loadShortcut(for: Constants.startPromptingKey) ?? ShortcutConfig.default.startPrompting
+    let stopPrompting = 
+      loadShortcut(for: Constants.stopPromptingKey) ?? ShortcutConfig.default.stopPrompting
 
-    return ShortcutConfig(startRecording: startRecording, stopRecording: stopRecording)
+    return ShortcutConfig(
+      startRecording: startRecording, 
+      stopRecording: stopRecording,
+      startPrompting: startPrompting,
+      stopPrompting: stopPrompting
+    )
   }
 
   func saveConfiguration(_ config: ShortcutConfig) {
     saveShortcut(config.startRecording, for: Constants.startRecordingKey)
     saveShortcut(config.stopRecording, for: Constants.stopRecordingKey)
+    saveShortcut(config.startPrompting, for: Constants.startPromptingKey)
+    saveShortcut(config.stopPrompting, for: Constants.stopPromptingKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)
@@ -378,7 +401,10 @@ class ShortcutConfigManager {
 
     // Check for duplicate shortcuts
     let currentConfig = loadConfiguration()
-    if shortcut == currentConfig.startRecording || shortcut == currentConfig.stopRecording {
+    if shortcut == currentConfig.startRecording || 
+       shortcut == currentConfig.stopRecording ||
+       shortcut == currentConfig.startPrompting ||
+       shortcut == currentConfig.stopPrompting {
       return .duplicate("This shortcut is already in use")
     }
 
