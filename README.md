@@ -22,7 +22,7 @@ If you like WhisperShortcut, please consider leaving a review on the App Store :
 
 ## Features
 
-- **Dual Recording Modes**: 
+- **Dual Recording Modes**:
   - **Transcription Mode**: Audio → Text transcription
   - **Prompt Mode**: Audio → GPT-4o AI assistant execution
 - **Customizable Shortcuts**: Configurable keyboard shortcuts for both modes
@@ -66,15 +66,73 @@ xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -configura
 open /Users/mgsgde/Library/Developer/Xcode/DerivedData/WhisperShortcut-budjpsyyuwuiqxgeultiqzrgjcos/Build/Products/Debug/WhisperShortcut.app
 ```
 
-### Run Tests
+### Testing
+
+#### Test-Driven Development (TDD)
+
+This project follows **Test-Driven Development** practices:
+
+1. **Write tests first** before implementing features
+2. **Run tests frequently** during development
+3. **Keep tests simple** and focused on single behaviors
+4. **Maintain high test coverage** for critical functionality
+
+#### Running Tests
 
 ```bash
+# Run all tests using the test script (recommended)
 ./scripts/test.sh
+
+# Run tests with verbose output
+./scripts/test.sh -v
+
+# Run tests with clean build
+./scripts/test.sh -c
+
+# Run tests directly with Xcode (alternative)
+xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -destination 'platform=macOS'
+
+# Run specific test class
+xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -destination 'platform=macOS' -only-testing:WhisperShortcutTests/TranscriptionServiceTests
+
+# Run specific test method
+xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -destination 'platform=macOS' -only-testing:WhisperShortcutTests/TranscriptionServiceTests/testModelSelection
+```
+
+#### Test Categories
+
+- **Unit Tests**: Test individual components in isolation
+- **Integration Tests**: Test API interactions and real service calls  
+- **UI Tests**: Test user interface behavior (future enhancement)
+
+#### Writing Tests
+
+When adding new features:
+
+1. **Create test first** that defines expected behavior
+2. **Run test** to confirm it fails (red)
+3. **Implement feature** to make test pass (green)
+4. **Refactor code** while keeping tests green (refactor)
+
+Example test structure:
+
+```swift
+func testNewFeature() {
+    // Given - Setup test data
+    let service = TranscriptionService()
+    
+    // When - Execute the action
+    let result = service.performAction()
+    
+    // Then - Assert expected outcome
+    XCTAssertEqual(result, expectedValue)
+}
 ```
 
 ### Debugging and Logs
 
 #### View Real-time Logs
+
 ```bash
 # Stream all app logs in real-time
 log stream --predicate 'process == "WhisperShortcut"' --style compact
@@ -87,6 +145,7 @@ log stream --predicate 'process == "WhisperShortcut" AND eventMessage CONTAINS "
 ```
 
 #### Using Console.app
+
 ```bash
 # Open macOS Console application
 open /System/Applications/Utilities/Console.app
@@ -98,20 +157,11 @@ open /System/Applications/Utilities/Console.app
 ```
 
 #### Debug Output Categories
+
 - **🤖 PROMPT-MODE:** Prompt execution debugging
 - **🎙️ TRANSCRIPTION-MODE:** Audio transcription debugging  
 - **🎹 Shortcuts:** Keyboard shortcut registration and handling
 - **⚠️ Errors:** Error handling and recovery attempts
-
-## Contributing
-
-Contributions welcome! Please submit a Pull Request.
-
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/your-feature`
-3. Make changes and run tests: `./scripts/test.sh`
-4. Commit and push: `git commit -am 'Add feature' && git push origin feature/your-feature`
-5. Submit Pull Request
 
 ## License
 
