@@ -359,6 +359,24 @@ struct SettingsView: View {
           Spacer()
         }
       }
+
+      // Available Keys Information
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Available keys:")
+          .font(.callout)
+          .fontWeight(.semibold)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+
+        Text(
+          "command • option • control • shift • a-z • 0-9 • f1-f12 • space • return • escape • tab • delete • home • end • pageup • pagedown • up • down • left • right • minus • equal • leftbracket • rightbracket • backslash • semicolon • quote • grave • comma • period • slash"
+        )
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+      .textSelection(.enabled)
     }
   }
 
