@@ -8,6 +8,7 @@ private enum Constants {
   static let validationTimeout: TimeInterval = 10.0
   static let transcriptionEndpoint = "https://api.openai.com/v1/audio/transcriptions"
   static let chatEndpoint = "https://api.openai.com/v1/chat/completions"
+  static let responsesEndpoint = "https://api.openai.com/v1/responses"  // New GPT-5 API
   static let modelsEndpoint = "https://api.openai.com/v1/models"
 }
 
@@ -52,6 +53,7 @@ enum TranscriptionModel: String, CaseIterable {
 class TranscriptionService {
   private let keychainManager: KeychainManaging
   private var selectedModel: TranscriptionModel = .gpt4oMiniTranscribe
+  private var previousResponseId: String?  // Store previous response ID for conversation continuity
 
   // Custom session with appropriate timeouts
   private lazy var session: URLSession = {
@@ -85,6 +87,12 @@ class TranscriptionService {
 
   func clearAPIKey() {
     _ = keychainManager.deleteAPIKey()
+  }
+
+  // MARK: - Conversation Management
+  func clearConversationHistory() {
+    previousResponseId = nil
+    NSLog("🤖 PROMPT-MODE: Conversation history cleared")
   }
 
   // MARK: - Validation
@@ -159,7 +167,12 @@ class TranscriptionService {
   }
 
   private func executeChatCompletion(userMessage: String, apiKey: String) async throws -> String {
-    let url = URL(string: Constants.chatEndpoint)!
+    // Always use GPT-5 with Responses API
+    return try await executeGPT5Response(userMessage: userMessage, apiKey: apiKey)
+  }
+
+  private func executeGPT5Response(userMessage: String, apiKey: String) async throws -> String {
+    let url = URL(string: Constants.responsesEndpoint)!
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -170,17 +183,25 @@ class TranscriptionService {
       UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
       ?? "You are a helpful assistant that executes user commands. Provide clear, actionable responses."
 
-    let chatRequest = ChatCompletionRequest(
-      model: "gpt-4o",  // Use full GPT-4o for prompt execution
-      messages: [
-        ChatMessage(role: "system", content: systemPrompt),
-        ChatMessage(role: "user", content: userMessage),
-      ],
-      maxTokens: 1000,
-      temperature: 0.7
+    // Create input with system prompt and user message
+    let fullInput = "\(systemPrompt)\n\nUser: \(userMessage)"
+
+    let gpt5Request = GPT5ResponseRequest(
+      model: "gpt-5",
+      input: fullInput,
+      reasoning: GPT5ResponseRequest.ReasoningConfig(effort: "minimal"),
+      text: GPT5ResponseRequest.TextConfig(verbosity: "medium"),
+      previous_response_id: previousResponseId
     )
 
-    request.httpBody = try JSONEncoder().encode(chatRequest)
+    request.httpBody = try JSONEncoder().encode(gpt5Request)
+
+    // Debug logging
+    NSLog("🤖 PROMPT-MODE: GPT-5 Request URL: \(url)")
+    NSLog("🤖 PROMPT-MODE: GPT-5 Request Headers: \(request.allHTTPHeaderFields ?? [:])")
+    if let requestBody = String(data: request.httpBody!, encoding: .utf8) {
+      NSLog("🤖 PROMPT-MODE: GPT-5 Request Body: \(requestBody)")
+    }
 
     // Execute request
     let (data, response) = try await session.data(for: request)
@@ -190,14 +211,127 @@ class TranscriptionService {
       throw TranscriptionError.networkError("Invalid response")
     }
 
+    // Debug logging for response
+    NSLog("🤖 PROMPT-MODE: GPT-5 Response Status: \(httpResponse.statusCode)")
+    NSLog("🤖 PROMPT-MODE: GPT-5 Response Headers: \(httpResponse.allHeaderFields)")
+
     if httpResponse.statusCode != 200 {
+      // Log error response body for debugging
+      if let errorBody = String(data: data, encoding: .utf8) {
+        NSLog("🤖 PROMPT-MODE: GPT-5 Error Response Body: \(errorBody)")
+      }
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
 
+    // Log successful response body for debugging
+    if let responseBody = String(data: data, encoding: .utf8) {
+      NSLog("🤖 PROMPT-MODE: GPT-5 Success Response Body: \(responseBody)")
+    }
+
     // Parse result
-    let result = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
-    return result.choices.first?.message.content ?? "No response generated"
+    do {
+      let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
+      NSLog("🤖 PROMPT-MODE: GPT-5 Success Response: \(result)")
+
+      // Store the response ID for conversation continuity
+      previousResponseId = result.id
+      NSLog("🤖 PROMPT-MODE: GPT-5 Stored Response ID: \(result.id)")
+
+      // Extract text from the response structure
+      for output in result.output {
+        if output.type == "message" {
+          for content in output.content ?? [] {
+            if content.type == "output_text" {
+              NSLog("🤖 PROMPT-MODE: GPT-5 Extracted Text: \(content.text)")
+              return content.text
+            }
+          }
+        }
+      }
+
+      // Fallback: if we can't find the expected structure, try to extract any text
+      NSLog("🤖 PROMPT-MODE: GPT-5 Could not find expected text structure, trying fallback...")
+      if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
+        as? [String: Any]
+      {
+        NSLog("🤖 PROMPT-MODE: GPT-5 Raw JSON Structure: \(jsonObject)")
+      }
+
+      throw TranscriptionError.networkError("Could not extract text from GPT-5 response")
+    } catch {
+      NSLog("🤖 PROMPT-MODE: GPT-5 JSON Parsing Error: \(error)")
+      NSLog("🤖 PROMPT-MODE: GPT-5 Response Data Length: \(data.count)")
+
+      // Try to parse as a generic dictionary to see the actual structure
+      if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
+        as? [String: Any]
+      {
+        NSLog("🤖 PROMPT-MODE: GPT-5 Raw JSON Structure: \(jsonObject)")
+      }
+
+      throw error
+    }
+  }
+
+  // MARK: - Testing and Debugging
+  func testGPT5Request() async throws -> String {
+    guard let apiKey = self.apiKey, !apiKey.isEmpty else {
+      throw TranscriptionError.noAPIKey
+    }
+
+    NSLog("🧪 TEST: Testing GPT-5 API request format...")
+
+    // Test with a simple request
+    let testRequest = GPT5ResponseRequest(
+      model: "gpt-5",
+      input: "Hello, this is a test message.",
+      reasoning: nil,
+      text: nil,
+      previous_response_id: nil
+    )
+
+    let url = URL(string: Constants.responsesEndpoint)!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+    request.httpBody = try JSONEncoder().encode(testRequest)
+
+    let (data, response) = try await URLSession.shared.data(for: request)
+
+    guard let httpResponse = response as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response type")
+    }
+
+    NSLog("🧪 TEST: Test Response Status: \(httpResponse.statusCode)")
+
+    if httpResponse.statusCode != 200 {
+      if let errorBody = String(data: data, encoding: .utf8) {
+        NSLog("🧪 TEST: Test Error Response Body: \(errorBody)")
+      }
+      let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
+      throw error
+    }
+
+    // Parse result using the new structure
+    let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
+    NSLog("🧪 TEST: Test Success Response: \(result)")
+
+    // Extract text from the response structure
+    for output in result.output {
+      if output.type == "message" {
+        for content in output.content ?? [] {
+          if content.type == "output_text" {
+            NSLog("🧪 TEST: Test Extracted Text: \(content.text)")
+            return content.text
+          }
+        }
+      }
+    }
+
+    throw TranscriptionError.networkError("Could not extract text from test response")
   }
 
   // MARK: - Private Helpers
@@ -404,6 +538,38 @@ struct ChatCompletionResponse: Codable {
 
 struct ChatChoice: Codable {
   let message: ChatMessage
+}
+
+// GPT-5 Responses API Models (New)
+struct GPT5ResponseRequest: Codable {
+  let model: String
+  let input: String
+  let reasoning: ReasoningConfig?
+  let text: TextConfig?
+  let previous_response_id: String?
+
+  struct ReasoningConfig: Codable {
+    let effort: String  // "minimal", "low", "medium", "high"
+  }
+
+  struct TextConfig: Codable {
+    let verbosity: String  // "low", "medium", "high"
+  }
+}
+
+struct GPT5ResponseResponse: Codable {
+  let output: [GPT5Output]
+  let id: String  // Added for conversation continuity
+
+  struct GPT5Output: Codable {
+    let type: String
+    let content: [GPT5Content]?
+
+    struct GPT5Content: Codable {
+      let type: String
+      let text: String
+    }
+  }
 }
 
 // GPT-4o-transcribe models support prompts for better transcription quality

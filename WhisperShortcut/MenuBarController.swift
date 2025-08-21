@@ -121,6 +121,16 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
+    // Test GPT-5 API
+    let testGPT5Item = NSMenuItem(
+      title: "Test GPT-5 API",
+      action: #selector(testGPT5API),
+      keyEquivalent: ""
+    )
+    menu.addItem(testGPT5Item)
+
+    menu.addItem(NSMenuItem.separator())
+
     // Settings item
     let settingsItem = NSMenuItem(
       title: "Settings...", action: #selector(openSettings), keyEquivalent: "")
@@ -311,11 +321,11 @@ class MenuBarController: NSObject {
     guard isRecording else { return }
 
     NSLog("⏹️ TRANSCRIPTION-MODE: Stopping recording from menu...")
-    
+
     // Don't reset isRecording here - it will be used in audioRecorderDidFinishRecording
     updateMenuState()
     audioRecorder?.stopRecording()
-    
+
     NSLog("⏹️ TRANSCRIPTION-MODE: Audio recording stopped from menu, waiting for processing...")
   }
 
@@ -340,11 +350,11 @@ class MenuBarController: NSObject {
     }
 
     NSLog("🤖 PROMPT-MODE: Stopping prompting from menu...")
-    
+
     // Don't reset isPrompting here - it will be used in audioRecorderDidFinishRecording
     updateMenuState()
     audioRecorder?.stopRecording()
-    
+
     NSLog("🤖 PROMPT-MODE: Audio recording stopped from menu, waiting for processing...")
   }
 
@@ -399,6 +409,30 @@ class MenuBarController: NSObject {
     if let newModel = notification.object as? TranscriptionModel {
       transcriptionService?.setModel(newModel)
       print("✅ Model updated to: \(newModel.displayName)")
+    }
+  }
+
+  @objc private func testGPT5API() {
+    NSLog("🧪 TEST: Testing GPT-5 API from menu...")
+    Task {
+      do {
+        let result = try await transcriptionService?.testGPT5Request() ?? "No response"
+        await MainActor.run {
+          clipboardManager?.copyToClipboard(text: "GPT-5 Test Result: \(result)")
+          showTemporarySuccess()
+        }
+      } catch let error as TranscriptionError {
+        await MainActor.run {
+          let errorMessage = TranscriptionErrorFormatter.format(error)
+          clipboardManager?.copyToClipboard(text: "GPT-5 Test Error: \(errorMessage)")
+          showTemporaryError()
+        }
+      } catch {
+        await MainActor.run {
+          clipboardManager?.copyToClipboard(text: "GPT-5 Test Error: \(error.localizedDescription)")
+          showTemporaryError()
+        }
+      }
     }
   }
 
@@ -463,12 +497,12 @@ extension MenuBarController: ShortcutDelegate {
   func stopRecording() {
     guard isRecording else { return }
     NSLog("⏹️ TRANSCRIPTION-MODE: Stopping recording via shortcut...")
-    
+
     // Don't reset isRecording here - it will be used in audioRecorderDidFinishRecording
     updateMenuState()
     stopAudioLevelMonitoring()
     audioRecorder?.stopRecording()
-    
+
     NSLog("⏹️ TRANSCRIPTION-MODE: Audio recording stopped, waiting for processing...")
   }
 
@@ -498,12 +532,12 @@ extension MenuBarController: ShortcutDelegate {
     }
     NSLog("🤖 PROMPT-MODE: Stopping prompting via shortcut...")
     NSLog("🤖 PROMPT-MODE: State before: isPrompting = \(isPrompting), isRecording = \(isRecording)")
-    
+
     // Don't reset isPrompting here - it will be used in audioRecorderDidFinishRecording
     updateMenuState()
     stopAudioLevelMonitoring()
     audioRecorder?.stopRecording()
-    
+
     NSLog("🤖 PROMPT-MODE: Audio recording stopped, waiting for processing...")
   }
 
@@ -540,14 +574,14 @@ extension MenuBarController: AudioRecorderDelegate {
     // Capture the current mode before any state changes
     let wasPrompting = isPrompting
     let wasRecording = isRecording
-    
+
     NSLog("🎯 AUDIO-FINISHED: wasPrompting = \(wasPrompting), wasRecording = \(wasRecording)")
 
     // Determine which mode we were in and process accordingly
     if wasPrompting {
       NSLog("🤖 PROMPT-MODE: Audio recording finished, executing prompt...")
       showProcessingStatus(mode: "prompt")
-      
+
       // Start prompt execution
       Task {
         await performPromptExecution(audioURL: audioURL)
@@ -555,7 +589,7 @@ extension MenuBarController: AudioRecorderDelegate {
     } else {
       NSLog("🎙️ TRANSCRIPTION-MODE: Audio recording finished, starting transcription...")
       showProcessingStatus(mode: "transcription")
-      
+
       // Start transcription
       Task {
         await performTranscription(audioURL: audioURL)
