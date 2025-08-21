@@ -121,16 +121,6 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
-    // Test GPT-5 API
-    let testGPT5Item = NSMenuItem(
-      title: "Test GPT-5 API",
-      action: #selector(testGPT5API),
-      keyEquivalent: ""
-    )
-    menu.addItem(testGPT5Item)
-
-    menu.addItem(NSMenuItem.separator())
-
     // Settings item
     let settingsItem = NSMenuItem(
       title: "Settings...", action: #selector(openSettings), keyEquivalent: "")
@@ -213,9 +203,26 @@ class MenuBarController: NSObject {
       }
     }
 
-    // Update stop button state
-    if let stopMenuItem = menu.item(withTag: 101) {
-      stopMenuItem.isEnabled = isRecording
+    // Update recording menu items - hide them when prompting is active
+    if let startRecordingItem = menu.item(withTag: 102) {
+      startRecordingItem.isHidden = isRecording || isPrompting
+      startRecordingItem.isEnabled = !isRecording && !isPrompting && hasAPIKey
+    }
+
+    if let stopRecordingItem = menu.item(withTag: 103) {
+      stopRecordingItem.isHidden = !isRecording
+      stopRecordingItem.isEnabled = isRecording
+    }
+
+    // Update prompting menu items - hide them when recording is active
+    if let startPromptingItem = menu.item(withTag: 105) {
+      startPromptingItem.isHidden = isRecording || isPrompting
+      startPromptingItem.isEnabled = !isRecording && !isPrompting && hasAPIKey
+    }
+
+    if let stopPromptingItem = menu.item(withTag: 106) {
+      stopPromptingItem.isHidden = !isPrompting
+      stopPromptingItem.isEnabled = isPrompting
     }
 
     // Update retry menu item
@@ -409,30 +416,6 @@ class MenuBarController: NSObject {
     if let newModel = notification.object as? TranscriptionModel {
       transcriptionService?.setModel(newModel)
       print("✅ Model updated to: \(newModel.displayName)")
-    }
-  }
-
-  @objc private func testGPT5API() {
-    NSLog("🧪 TEST: Testing GPT-5 API from menu...")
-    Task {
-      do {
-        let result = try await transcriptionService?.testGPT5Request() ?? "No response"
-        await MainActor.run {
-          clipboardManager?.copyToClipboard(text: "GPT-5 Test Result: \(result)")
-          showTemporarySuccess()
-        }
-      } catch let error as TranscriptionError {
-        await MainActor.run {
-          let errorMessage = TranscriptionErrorFormatter.format(error)
-          clipboardManager?.copyToClipboard(text: "GPT-5 Test Error: \(errorMessage)")
-          showTemporaryError()
-        }
-      } catch {
-        await MainActor.run {
-          clipboardManager?.copyToClipboard(text: "GPT-5 Test Error: \(error.localizedDescription)")
-          showTemporaryError()
-        }
-      }
     }
   }
 
@@ -878,5 +861,8 @@ extension MenuBarController: AudioRecorderDelegate {
     lastError = nil
     lastAudioURL = nil
     updateRetryMenuItem()
+
+    // Update menu state to enable/disable appropriate items
+    updateMenuState()
   }
 }
