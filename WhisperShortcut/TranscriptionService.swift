@@ -180,13 +180,14 @@ class TranscriptionService {
       "response_format": "json",
     ]
 
-    // Add prompt for GPT-4o models
+    // Add prompt for GPT-4o models only if custom prompt is not empty
     if selectedModel == .gpt4oTranscribe || selectedModel == .gpt4oMiniTranscribe {
-      let promptText =
-        UserDefaults.standard.string(forKey: "customPromptText")?.isEmpty == false
-        ? UserDefaults.standard.string(forKey: "customPromptText")!
-        : TranscriptionPrompt.defaultPrompt.text
-      fields["prompt"] = promptText
+      if let customPrompt = UserDefaults.standard.string(forKey: "customPromptText"),
+        !customPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      {
+        fields["prompt"] = customPrompt
+      }
+      // If prompt is empty or nil, don't send any prompt field to OpenAI
     }
 
     // Prepare file

@@ -192,11 +192,20 @@ struct SettingsView: View {
                 .focused($customPromptFocused)
 
               Text(
-                "Describe the domain terms and context of your recordings for better transcription quality."
+                "Describe the domain terms and context of your recordings for better transcription quality. Leave empty to use OpenAI's default transcription without any custom prompt."
               )
               .font(.callout)
               .foregroundColor(.secondary)
               .textSelection(.enabled)
+
+              HStack {
+                Spacer()
+                Button("Reset to Default") {
+                  customPromptText = TranscriptionPrompt.defaultPrompt.text
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+              }
             }
           }
         }
