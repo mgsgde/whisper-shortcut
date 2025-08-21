@@ -54,7 +54,7 @@ struct SettingsView: View {
     {
       _selectedModel = State(initialValue: savedModel)
     } else {
-      _selectedModel = State(initialValue: .gpt4oTranscribe)
+      _selectedModel = State(initialValue: .gpt4oMiniTranscribe)
     }
 
     // Load saved custom prompt or use default
@@ -142,30 +142,21 @@ struct SettingsView: View {
             .foregroundColor(.secondary)
 
           switch selectedModel {
-          case .whisper1:
-            Text("• Whisper-1: Most cost-effective, stable and proven")
-              .font(.callout)
-              .foregroundColor(.secondary)
-              .textSelection(.enabled)
-            Text("• Best for: Budget-conscious users, clear audio sources")
-              .font(.callout)
-              .foregroundColor(.secondary)
-              .textSelection(.enabled)
           case .gpt4oTranscribe:
-            Text("• GPT-4o Transcribe: Highest accuracy, best for difficult audio")
+            Text("• GPT-4o Transcribe: Highest accuracy and quality")
               .font(.callout)
               .foregroundColor(.secondary)
               .textSelection(.enabled)
-            Text("• Best for: Critical applications, maximum quality")
+            Text("• Best for: Critical applications, maximum quality, difficult audio")
               .font(.callout)
               .foregroundColor(.secondary)
               .textSelection(.enabled)
           case .gpt4oMiniTranscribe:
-            Text("• GPT-4o Mini Transcribe: Balanced quality and speed")
+            Text("• GPT-4o Mini Transcribe: Recommended - Great quality at lower cost")
               .font(.callout)
               .foregroundColor(.secondary)
               .textSelection(.enabled)
-            Text("• Best for: Everyday use, good quality with lower cost")
+            Text("• Best for: Everyday use, balanced performance and cost")
               .font(.callout)
               .foregroundColor(.secondary)
               .textSelection(.enabled)

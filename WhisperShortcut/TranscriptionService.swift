@@ -14,7 +14,6 @@ private enum Constants {
 enum TranscriptionModel: String, CaseIterable {
   case gpt4oTranscribe = "gpt-4o-transcribe"
   case gpt4oMiniTranscribe = "gpt-4o-mini-transcribe"
-  case whisper1 = "whisper-1"
 
   var displayName: String {
     switch self {
@@ -22,8 +21,6 @@ enum TranscriptionModel: String, CaseIterable {
       return "GPT-4o Transcribe"
     case .gpt4oMiniTranscribe:
       return "GPT-4o Mini Transcribe"
-    case .whisper1:
-      return "Whisper-1"
     }
   }
 
@@ -35,17 +32,15 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gpt4oMiniTranscribe:
       return true
-    case .whisper1, .gpt4oTranscribe:
+    case .gpt4oTranscribe:
       return false
     }
   }
 
   var costLevel: String {
     switch self {
-    case .whisper1:
-      return "Low"
     case .gpt4oMiniTranscribe:
-      return "Medium"
+      return "Low"
     case .gpt4oTranscribe:
       return "High"
     }
@@ -55,7 +50,7 @@ enum TranscriptionModel: String, CaseIterable {
 // MARK: - Core Service
 class TranscriptionService {
   private let keychainManager: KeychainManaging
-  private var selectedModel: TranscriptionModel = .whisper1
+  private var selectedModel: TranscriptionModel = .gpt4oMiniTranscribe
 
   // Custom session with appropriate timeouts
   private lazy var session: URLSession = {
