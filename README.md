@@ -80,15 +80,6 @@ This project follows **Test-Driven Development** practices:
 #### Running Tests
 
 ```bash
-# Run all tests using the test script (recommended)
-./scripts/test.sh
-
-# Run tests with verbose output
-./scripts/test.sh -v
-
-# Run tests with clean build
-./scripts/test.sh -c
-
 # Run tests directly with Xcode (alternative)
 xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -destination 'platform=macOS'
 
@@ -98,70 +89,6 @@ xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -dest
 # Run specific test method
 xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -destination 'platform=macOS' -only-testing:WhisperShortcutTests/TranscriptionServiceTests/testModelSelection
 ```
-
-#### Test Categories
-
-- **Unit Tests**: Test individual components in isolation
-- **Integration Tests**: Test API interactions and real service calls  
-- **UI Tests**: Test user interface behavior (future enhancement)
-
-#### Writing Tests
-
-When adding new features:
-
-1. **Create test first** that defines expected behavior
-2. **Run test** to confirm it fails (red)
-3. **Implement feature** to make test pass (green)
-4. **Refactor code** while keeping tests green (refactor)
-
-Example test structure:
-
-```swift
-func testNewFeature() {
-    // Given - Setup test data
-    let service = TranscriptionService()
-    
-    // When - Execute the action
-    let result = service.performAction()
-    
-    // Then - Assert expected outcome
-    XCTAssertEqual(result, expectedValue)
-}
-```
-
-### Debugging and Logs
-
-#### View Real-time Logs
-
-```bash
-# Stream all app logs in real-time
-log stream --predicate 'process == "WhisperShortcut"' --style compact
-
-# Filter for prompt mode debugging
-log stream --predicate 'process == "WhisperShortcut" AND eventMessage CONTAINS "PROMPT-MODE"' --style compact
-
-# Filter for transcription mode debugging  
-log stream --predicate 'process == "WhisperShortcut" AND eventMessage CONTAINS "TRANSCRIPTION-MODE"' --style compact
-```
-
-#### Using Console.app
-
-```bash
-# Open macOS Console application
-open /System/Applications/Utilities/Console.app
-
-# In Console.app:
-# 1. Click "Start streaming" 
-# 2. Filter by: process:WhisperShortcut
-# 3. View real-time logs
-```
-
-#### Debug Output Categories
-
-- **🤖 PROMPT-MODE:** Prompt execution debugging
-- **🎙️ TRANSCRIPTION-MODE:** Audio transcription debugging  
-- **🎹 Shortcuts:** Keyboard shortcut registration and handling
-- **⚠️ Errors:** Error handling and recovery attempts
 
 ## License
 
