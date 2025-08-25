@@ -9,17 +9,53 @@
 3. **Transcribe** - Uses OpenAI's Whisper API for accurate speech-to-text
 4. **Paste from Clipboard** - Automatically copies transcription to your clipboard
 
-## App Store (Support the Project)
+## Get WhisperShortcut
 
-**[Download from Mac App Store](https://apps.apple.com/us/app/whispershortcut/id6749648401)**
+### Free Installation
 
-If you like WhisperShortcut, please consider leaving a review on the App Store :)
+```bash
+# Clone the repository
+git clone https://github.com/mgsgde/whisper-shortcut.git
+cd whisper-shortcut
 
-## Free Download
+# Install the app
+bash install.sh
+```
 
-1. Download from [Releases](https://github.com/mgsgde/whisper-shortcut/releases)
-2. Drag to Applications folder
-3. Launch and configure your OpenAI API key
+### Support the Project
+
+**[Buy on Mac App Store](https://apps.apple.com/us/app/whispershortcut/id6749648401)**
+
+If you like WhisperShortcut, please consider buying it and leaving a review on the App Store! ⭐
+
+## Installation
+
+### Manual Build
+
+```bash
+# Clone the repository
+git clone https://github.com/mgsgde/whisper-shortcut.git
+cd whisper-shortcut
+
+# Install the app
+bash install.sh
+```
+
+### Manual Build
+
+If you prefer to build manually:
+
+```bash
+# Clone the repository
+git clone https://github.com/mgsgde/whisper-shortcut.git
+cd whisper-shortcut
+
+# Build the application
+xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -configuration Release build
+
+# Run the application
+open /Users/mgsgde/Library/Developer/Xcode/DerivedData/WhisperShortcut-budjpsyyuwuiqxgeultiqzrgjcos/Build/Products/Release/WhisperShortcut.app
+```
 
 ## Features
 
