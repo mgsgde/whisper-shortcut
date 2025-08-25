@@ -1,19 +1,7 @@
-#!/usr/bin/env node
-
-/**
- * Screenshot Capture Script for WhisperShortcut App Store Images
- * 
- * This script captures a screenshot of the index.html file with 1280x800 resolution
- * for use in App Store listings.
- * 
- * Usage: node capture-screenshot.js
- * Output: app-screenshot.png in the screenshots directory
- */
-
 const puppeteer = require('puppeteer');
 
 async function captureScreenshot() {
-  console.log('🖼️  Starting screenshot capture...');
+  console.log('🖼️  Starting prompt screenshot capture...');
   
   const browser = await puppeteer.launch({
     headless: true,
@@ -30,7 +18,7 @@ async function captureScreenshot() {
     });
     
     // Load the HTML file
-    await page.goto('file://' + __dirname + '/index.html');
+    await page.goto('file://' + __dirname + '/prompt-screenshot.html');
     
     // Wait for content to load
     console.log('⏳ Waiting for content to load...');
@@ -38,11 +26,11 @@ async function captureScreenshot() {
     
     // Take screenshot
     await page.screenshot({ 
-      path: 'app-screenshot.png',
+      path: 'prompt-screenshot.png',
       fullPage: false
     });
     
-    console.log('✅ Screenshot saved as: app-screenshot.png');
+    console.log('✅ Prompt screenshot saved as: prompt-screenshot.png');
   } catch (error) {
     console.error('❌ Error capturing screenshot:', error);
   } finally {
