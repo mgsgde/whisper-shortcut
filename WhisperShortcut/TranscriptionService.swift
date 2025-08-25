@@ -54,6 +54,7 @@ class TranscriptionService {
   private let keychainManager: KeychainManaging
   private var selectedModel: TranscriptionModel = .gpt4oMiniTranscribe
   private var previousResponseId: String?  // Store previous response ID for conversation continuity
+  private var clipboardManager: ClipboardManager?  // Add clipboard manager for context
 
   // Custom session with appropriate timeouts
   private lazy var session: URLSession = {
@@ -63,8 +64,12 @@ class TranscriptionService {
     return URLSession(configuration: config)
   }()
 
-  init(keychainManager: KeychainManaging = KeychainManager.shared) {
+  init(
+    keychainManager: KeychainManaging = KeychainManager.shared,
+    clipboardManager: ClipboardManager? = nil
+  ) {
     self.keychainManager = keychainManager
+    self.clipboardManager = clipboardManager
   }
 
   // MARK: - Model Selection
@@ -153,24 +158,76 @@ class TranscriptionService {
 
   // MARK: - Prompt Execution
   func executePrompt(audioURL: URL) async throws -> String {
+    NSLog("🤖 PROMPT-MODE: Starting prompt execution...")
+
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
+      NSLog("🤖 PROMPT-MODE: ❌ No API key available")
       throw TranscriptionError.noAPIKey
     }
+
+    NSLog("🤖 PROMPT-MODE: API key validated, starting audio transcription...")
 
     // First, transcribe the audio to get the user's spoken text
     let spokenText = try await transcribe(audioURL: audioURL)
 
-    // Then send the transcribed text to the chat API
-    return try await executeChatCompletion(userMessage: spokenText, apiKey: apiKey)
+    NSLog("🤖 PROMPT-MODE: Audio transcribed successfully: \(spokenText.prefix(100))...")
+
+    // Get clipboard content as context if available
+    let clipboardContext = getClipboardContext()
+
+    if let context = clipboardContext {
+      NSLog("🤖 PROMPT-MODE: Will include clipboard context in prompt")
+    } else {
+      NSLog("🤖 PROMPT-MODE: No clipboard context available, proceeding without context")
+    }
+
+    // Then send the transcribed text to the chat API with clipboard context
+    NSLog("🤖 PROMPT-MODE: Sending to GPT-5 with context...")
+    return try await executeChatCompletion(
+      userMessage: spokenText, clipboardContext: clipboardContext, apiKey: apiKey)
   }
 
-  private func executeChatCompletion(userMessage: String, apiKey: String) async throws -> String {
+  // MARK: - Clipboard Context
+  private func getClipboardContext() -> String? {
+    NSLog("🤖 PROMPT-MODE: Checking clipboard for context...")
+
+    guard let clipboardManager = clipboardManager else {
+      NSLog("🤖 PROMPT-MODE: ❌ No clipboard manager available")
+      return nil
+    }
+
+    guard let clipboardText = clipboardManager.getClipboardText() else {
+      NSLog("🤖 PROMPT-MODE: ❌ Could not read clipboard text")
+      return nil
+    }
+
+    NSLog("🤖 PROMPT-MODE: Raw clipboard text length: \(clipboardText.count) characters")
+
+    let trimmedText = clipboardText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    guard !trimmedText.isEmpty else {
+      NSLog("🤖 PROMPT-MODE: ⚠️ Clipboard text is empty or contains only whitespace")
+      return nil
+    }
+
+    NSLog(
+      "🤖 PROMPT-MODE: ✅ Found clipboard context (\(trimmedText.count) chars): \(trimmedText.prefix(100))..."
+    )
+    return trimmedText
+  }
+
+  private func executeChatCompletion(userMessage: String, clipboardContext: String?, apiKey: String)
+    async throws -> String
+  {
     // Always use GPT-5 with Responses API
-    return try await executeGPT5Response(userMessage: userMessage, apiKey: apiKey)
+    return try await executeGPT5Response(
+      userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey)
   }
 
-  private func executeGPT5Response(userMessage: String, apiKey: String) async throws -> String {
+  private func executeGPT5Response(userMessage: String, clipboardContext: String?, apiKey: String)
+    async throws -> String
+  {
     let url = URL(string: Constants.responsesEndpoint)!
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -182,8 +239,15 @@ class TranscriptionService {
       UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
       ?? "You are a helpful assistant that executes user commands. Provide clear, actionable responses."
 
-    // Create input with system prompt and user message
-    let fullInput = "\(systemPrompt)\n\nUser: \(userMessage)"
+    // Build the full input with clipboard context if available
+    var fullInput = systemPrompt
+
+    if let context = clipboardContext {
+      fullInput += "\n\nContext (selected text from clipboard):\n\(context)"
+      NSLog("🤖 PROMPT-MODE: Added clipboard context to prompt")
+    }
+
+    fullInput += "\n\nUser: \(userMessage)"
 
     let gpt5Request = GPT5ResponseRequest(
       model: "gpt-5",

@@ -146,8 +146,8 @@ class MenuBarController: NSObject {
   private func setupComponents() {
     audioRecorder = AudioRecorder()
     shortcuts = SimpleShortcuts()
-    transcriptionService = TranscriptionService()
     clipboardManager = ClipboardManager()
+    transcriptionService = TranscriptionService(clipboardManager: clipboardManager)
 
     // Load saved model preference and set it on the transcription service
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
@@ -399,6 +399,10 @@ class MenuBarController: NSObject {
     }
 
     print("🤖 Starting prompting from menu...")
+
+    // Simulate Copy-Paste to capture selected text
+    simulateCopyPaste()
+
     isPrompting = true
     updateMenuState()
     audioRecorder?.startRecording()
@@ -546,11 +550,61 @@ extension MenuBarController: ShortcutDelegate {
     guard !isRecording else { return }
 
     print("🤖 Starting prompting via shortcut...")
+
+    // Simulate Copy-Paste to capture selected text
+    simulateCopyPaste()
+
     lastModeWasPrompting = true
     isPrompting = true
     updateMenuState()
     audioRecorder?.startRecording()
     startAudioLevelMonitoring()
+  }
+
+  private func simulateCopyPaste() {
+    NSLog("🤖 PROMPT-MODE: Starting copy-paste simulation...")
+
+    // Simulate Cmd+C to copy selected text
+    let source = CGEventSource(stateID: .combinedSessionState)
+
+    NSLog("🤖 PROMPT-MODE: Created event source")
+
+    // Create Cmd+C event
+    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true)  // C key
+    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
+
+    NSLog("🤖 PROMPT-MODE: Created keyboard events - Down: \(cmdDown != nil), Up: \(cmdUp != nil)")
+
+    // Add Command modifier
+    cmdDown?.flags = .maskCommand
+    cmdUp?.flags = .maskCommand
+
+    NSLog("🤖 PROMPT-MODE: Added Command modifier flags")
+
+    // Post the events
+    cmdDown?.post(tap: .cghidEventTap)
+    cmdUp?.post(tap: .cghidEventTap)
+
+    NSLog("🤖 PROMPT-MODE: Posted Cmd+C events")
+
+    // Check clipboard content after simulation
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+      if let clipboardText = self?.clipboardManager?.getClipboardText() {
+        if !clipboardText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          NSLog(
+            "🤖 PROMPT-MODE: ✅ Copy-paste successful! Clipboard contains: \(clipboardText.prefix(100))..."
+          )
+        } else {
+          NSLog(
+            "🤖 PROMPT-MODE: ⚠️ Copy-paste completed but clipboard is empty or contains only whitespace"
+          )
+        }
+      } else {
+        NSLog("🤖 PROMPT-MODE: ❌ Copy-paste completed but could not read clipboard content")
+      }
+    }
+
+    NSLog("🤖 PROMPT-MODE: Copy-paste simulation completed")
   }
 
   func stopPrompting() {
