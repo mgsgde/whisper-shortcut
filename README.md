@@ -30,8 +30,6 @@ If you like WhisperShortcut, please consider buying it and leaving a review on t
 
 ## Installation
 
-### Manual Build
-
 ```bash
 # Clone the repository
 git clone https://github.com/mgsgde/whisper-shortcut.git
@@ -41,42 +39,14 @@ cd whisper-shortcut
 bash install.sh
 ```
 
-### Manual Build
-
-If you prefer to build manually:
-
-```bash
-# Clone the repository
-git clone https://github.com/mgsgde/whisper-shortcut.git
-cd whisper-shortcut
-
-# Build the application
-xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -configuration Release build
-
-# Run the application
-open /Users/mgsgde/Library/Developer/Xcode/DerivedData/WhisperShortcut-budjpsyyuwuiqxgeultiqzrgjcos/Build/Products/Release/WhisperShortcut.app
-```
-
 ## Features
 
 - **Dual Recording Modes**:
-  - **Transcription Mode**: Audio → Text transcription
-  - **Prompt Mode**: Audio → GPT-4o AI assistant execution
+  - **Transcription Mode**: Audio → Text transcription using GPT-4o-transcribe (mini)
+  - **Prompt Mode**: Audio → Prompt execution using GPT-5
 - **Customizable Shortcuts**: Configurable keyboard shortcuts for both modes
-- **Instant Processing**: OpenAI Whisper + GPT-4o APIs for accurate results
 - **Clipboard Integration**: Automatic copy to clipboard
-- **Tabbed Settings**: Clean, organized settings interface
-- **Menu Bar Interface**: Minimal macOS menu bar app
-- **Retry Functionality**: One-click retry for failed operations
-- **Secure**: API keys stored in macOS Keychain
-
-## Privacy
-
-- Audio processed locally and sent to OpenAI
-- No permanent audio storage
-- API keys stored securely in Keychain
-- No telemetry collected
-
+  
 ## Development
 
 ### Prerequisites
@@ -85,46 +55,12 @@ open /Users/mgsgde/Library/Developer/Xcode/DerivedData/WhisperShortcut-budjpsyyu
 - Xcode 16.0+
 - OpenAI API key
 
-### Build from Source
+### Open in Xcode
 
 ```bash
 git clone https://github.com/mgsgde/whisper-shortcut.git
 cd whisper-shortcut
 open WhisperShortcut.xcodeproj
-```
-
-### Build and Run
-
-```bash
-# Build the application
-xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -configuration Debug build
-
-# Run the application
-open /Users/mgsgde/Library/Developer/Xcode/DerivedData/WhisperShortcut-budjpsyyuwuiqxgeultiqzrgjcos/Build/Products/Debug/WhisperShortcut.app
-```
-
-### Testing
-
-#### Test-Driven Development (TDD)
-
-This project follows **Test-Driven Development** practices:
-
-1. **Write tests first** before implementing features
-2. **Run tests frequently** during development
-3. **Keep tests simple** and focused on single behaviors
-4. **Maintain high test coverage** for critical functionality
-
-#### Running Tests
-
-```bash
-# Run tests directly with Xcode (alternative)
-xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -destination 'platform=macOS'
-
-# Run specific test class
-xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -destination 'platform=macOS' -only-testing:WhisperShortcutTests/TranscriptionServiceTests
-
-# Run specific test method
-xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -destination 'platform=macOS' -only-testing:WhisperShortcutTests/TranscriptionServiceTests/testModelSelection
 ```
 
 ## License
