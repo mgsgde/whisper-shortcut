@@ -158,62 +158,38 @@ class TranscriptionService {
 
   // MARK: - Prompt Execution
   func executePrompt(audioURL: URL) async throws -> String {
-    NSLog("🤖 PROMPT-MODE: Starting prompt execution...")
-
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      NSLog("🤖 PROMPT-MODE: ❌ No API key available")
       throw TranscriptionError.noAPIKey
     }
-
-    NSLog("🤖 PROMPT-MODE: API key validated, starting audio transcription...")
 
     // First, transcribe the audio to get the user's spoken text
     let spokenText = try await transcribe(audioURL: audioURL)
 
-    NSLog("🤖 PROMPT-MODE: Audio transcribed successfully: \(spokenText.prefix(100))...")
-
     // Get clipboard content as context if available
     let clipboardContext = getClipboardContext()
 
-    if let context = clipboardContext {
-      NSLog("🤖 PROMPT-MODE: Will include clipboard context in prompt")
-    } else {
-      NSLog("🤖 PROMPT-MODE: No clipboard context available, proceeding without context")
-    }
-
     // Then send the transcribed text to the chat API with clipboard context
-    NSLog("🤖 PROMPT-MODE: Sending to GPT-5 with context...")
     return try await executeChatCompletion(
       userMessage: spokenText, clipboardContext: clipboardContext, apiKey: apiKey)
   }
 
   // MARK: - Clipboard Context
   private func getClipboardContext() -> String? {
-    NSLog("🤖 PROMPT-MODE: Checking clipboard for context...")
-
     guard let clipboardManager = clipboardManager else {
-      NSLog("🤖 PROMPT-MODE: ❌ No clipboard manager available")
       return nil
     }
 
     guard let clipboardText = clipboardManager.getClipboardText() else {
-      NSLog("🤖 PROMPT-MODE: ❌ Could not read clipboard text")
       return nil
     }
-
-    NSLog("🤖 PROMPT-MODE: Raw clipboard text length: \(clipboardText.count) characters")
 
     let trimmedText = clipboardText.trimmingCharacters(in: .whitespacesAndNewlines)
 
     guard !trimmedText.isEmpty else {
-      NSLog("🤖 PROMPT-MODE: ⚠️ Clipboard text is empty or contains only whitespace")
       return nil
     }
 
-    NSLog(
-      "🤖 PROMPT-MODE: ✅ Found clipboard context (\(trimmedText.count) chars): \(trimmedText.prefix(100))..."
-    )
     return trimmedText
   }
 
@@ -237,14 +213,13 @@ class TranscriptionService {
     // Get system prompt from settings
     let systemPrompt =
       UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
-      ?? "You are a helpful assistant that executes user commands. Provide clear, actionable responses."
+      ?? "You are an assistant that only outputs the final result. - Never include explanations, meta information, or questions. - Do not ask for clarification. - Always return only the result, nothing else. Always return the result as plain text without quotes, markdown, or additional formatting."
 
     // Build the full input with clipboard context if available
     var fullInput = systemPrompt
 
     if let context = clipboardContext {
       fullInput += "\n\nContext (selected text from clipboard):\n\(context)"
-      NSLog("🤖 PROMPT-MODE: Added clipboard context to prompt")
     }
 
     fullInput += "\n\nUser: \(userMessage)"

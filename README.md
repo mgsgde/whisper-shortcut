@@ -4,10 +4,19 @@
 
 ## How it works
 
+### Transcription Mode
+
 1. **Setup** - Configure your OpenAI API key ([Get one here](https://platform.openai.com/account/api-keys))
 2. **Press Shortcut** - Start recording with a keyboard shortcut
 3. **Transcribe** - Uses OpenAI's Whisper API for accurate speech-to-text
 4. **Paste from Clipboard** - Automatically copies transcription to your clipboard
+
+### Prompt Mode (NEW!)
+
+1. **Select Text** - Mark any text you want to use as context
+2. **Press Prompt Shortcut** - Automatically captures selected text and starts recording
+3. **Speak Your Prompt** - Ask GPT-5 to analyze, explain, or work with the selected text
+4. **Get Smart Response** - GPT-5 receives both your spoken prompt AND the selected text as context
 
 ## Get WhisperShortcut
 
@@ -43,9 +52,12 @@ bash install.sh
 
 - **Dual Recording Modes**:
   - **Transcription Mode**: Audio → Text transcription using GPT-4o-transcribe (mini)
-  - **Prompt Mode**: Audio → Prompt execution using GPT-5
+  - **Prompt Mode**: Audio → Prompt execution using GPT-5 with **automatic clipboard context**
+- **Smart Clipboard Integration**:
+  - **Transcription Mode**: Automatic copy to clipboard
+  - **Prompt Mode**: Automatically captures selected text and includes it as context
 - **Customizable Shortcuts**: Configurable keyboard shortcuts for both modes
-- **Clipboard Integration**: Automatic copy to clipboard
+- **Context-Aware Prompts**: When using Prompt Mode, the app automatically simulates Cmd+C to capture any selected text and includes it as context for GPT-5
   
 ## Development
 
