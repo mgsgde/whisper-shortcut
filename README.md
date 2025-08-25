@@ -4,9 +4,10 @@
 
 ## How it works
 
-1. **Press Shortcut** - Start recording with a keyboard shortcut
-2. **Transcribe** - Uses OpenAI's Whisper API for accurate speech-to-text
-3. **Paste from Clipboard** - Automatically copies transcription to your clipboard
+1. **Setup** - Configure your OpenAI API key ([Get one here](https://platform.openai.com/account/api-keys))
+2. **Press Shortcut** - Start recording with a keyboard shortcut
+3. **Transcribe** - Uses OpenAI's Whisper API for accurate speech-to-text
+4. **Paste from Clipboard** - Automatically copies transcription to your clipboard
 
 ## App Store (Support the Project)
 
