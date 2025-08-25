@@ -293,7 +293,7 @@ struct SettingsView: View {
           .foregroundColor(.secondary)
 
         HStack(alignment: .center, spacing: 12) {
-          Text("Start Recording:")
+          Text("Dictate:")
             .font(.body)
             .fontWeight(.medium)
             .frame(width: Constants.labelWidth, alignment: .leading)
@@ -327,12 +327,12 @@ struct SettingsView: View {
           .font(.title3)
           .fontWeight(.semibold)
 
-        Text("Audio → AI Assistant Response")
+        Text("Select Text + Audio → AI Assistant Response")
           .font(.callout)
           .foregroundColor(.secondary)
 
         HStack(alignment: .center, spacing: 12) {
-          Text("Start Prompting:")
+          Text("Select text and dictate prompt:")
             .font(.body)
             .fontWeight(.medium)
             .frame(width: Constants.labelWidth, alignment: .leading)

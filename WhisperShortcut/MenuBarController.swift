@@ -88,9 +88,16 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
+    // Dictation section header
+    let dictationHeader = NSMenuItem(title: "Dictation", action: nil, keyEquivalent: "")
+    dictationHeader.isEnabled = false
+    dictationHeader.tag = 101
+    menu.addItem(dictationHeader)
+
     // Start recording item with configurable shortcut
     let startItem = NSMenuItem(
-      title: "Start Recording", action: #selector(startRecordingFromMenu), keyEquivalent: "")
+      title: "Dictate", action: #selector(startRecordingFromMenu),
+      keyEquivalent: "")
     startItem.keyEquivalentModifierMask = []
     startItem.target = self
     startItem.tag = 102  // Tag for updating shortcut
@@ -106,9 +113,16 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
+    // Prompt section header
+    let promptHeader = NSMenuItem(title: "AI Assistant", action: nil, keyEquivalent: "")
+    promptHeader.isEnabled = false
+    promptHeader.tag = 104
+    menu.addItem(promptHeader)
+
     // Start prompting item with configurable shortcut
     let startPromptItem = NSMenuItem(
-      title: "Start Prompting", action: #selector(startPromptingFromMenu), keyEquivalent: "")
+      title: "Select Text & Dictate Prompt", action: #selector(startPromptingFromMenu),
+      keyEquivalent: "")
     startPromptItem.keyEquivalentModifierMask = []
     startPromptItem.target = self
     startPromptItem.tag = 105  // Tag for updating shortcut
@@ -195,14 +209,15 @@ class MenuBarController: NSObject {
     // Check if API key is configured
     let hasAPIKey = KeychainManager.shared.hasAPIKey()
 
-    // Update status text
+    // Update status text only when actively recording
     if let statusMenuItem = menu.item(withTag: 100) {
       if isRecording {
         statusMenuItem.title = "🔴 Recording (Transcription)..."
       } else if isPrompting {
         statusMenuItem.title = "🔴 Recording (Prompt)..."
       } else {
-        statusMenuItem.title = "Ready to record"
+        // Hide status text when not recording
+        statusMenuItem.isHidden = true
       }
     }
 
@@ -218,12 +233,12 @@ class MenuBarController: NSObject {
         // During recording/prompting: hide disabled items
         startRecordingItem.isHidden = !isEnabled
         if !startRecordingItem.isHidden {
-          startRecordingItem.title = "Start Recording"
+          startRecordingItem.title = "Dictate"
         }
       } else {
         // In ready state: show all items
         startRecordingItem.isHidden = false
-        startRecordingItem.title = "Start Recording"
+        startRecordingItem.title = "Dictate"
       }
     }
 
@@ -253,12 +268,12 @@ class MenuBarController: NSObject {
         // During recording/prompting: hide disabled items
         startPromptingItem.isHidden = !isEnabled
         if !startPromptingItem.isHidden {
-          startPromptingItem.title = "Start Prompting"
+          startPromptingItem.title = "Select Text & Dictate Prompt"
         }
       } else {
         // In ready state: show all items
         startPromptingItem.isHidden = false
-        startPromptingItem.title = "Start Prompting"
+        startPromptingItem.title = "Select Text & Dictate Prompt"
       }
     }
 
