@@ -288,7 +288,7 @@ struct SettingsView: View {
           .font(.title3)
           .fontWeight(.semibold)
 
-        Text("Audio → Text Conversion")
+        Text("Dictate → Text Conversion")
           .font(.callout)
           .foregroundColor(.secondary)
 
@@ -327,7 +327,7 @@ struct SettingsView: View {
           .font(.title3)
           .fontWeight(.semibold)
 
-        Text("Select Text + Audio → AI Assistant Response")
+        Text("Dictate Prompt → AI Assistant Response (uses clipboard as context)")
           .font(.callout)
           .foregroundColor(.secondary)
 
@@ -377,6 +377,36 @@ struct SettingsView: View {
         .fixedSize(horizontal: false, vertical: true)
       }
       .textSelection(.enabled)
+
+      // Prompt Mode Usage Instructions
+      VStack(alignment: .leading, spacing: 8) {
+        Text("How to use Prompt Mode:")
+          .font(.callout)
+          .fontWeight(.semibold)
+          .foregroundColor(.secondary)
+
+        VStack(alignment: .leading, spacing: 4) {
+          Text("1. Optional: Copy any text to clipboard (⌘C)")
+          Text("2. Dictate your prompt (e.g., ⌘⌥P)")
+          Text("3. AI receives both your voice and clipboard text")
+        }
+        .font(.callout)
+        .foregroundColor(.secondary)
+
+        Text(
+          "💡 Tip: When installing the app directly from the GitHub repository (https://github.com/mgsgde/whisper-shortcut), any text you select will be automatically copied to the clipboard for use in Prompt Mode."
+        )
+        .font(.callout)
+        .foregroundColor(.orange)
+        .padding(.top, 4)
+      }
+      .padding(12)
+      .background(Color(.controlBackgroundColor).opacity(0.5))
+      .cornerRadius(Constants.cornerRadius)
+      .overlay(
+        RoundedRectangle(cornerRadius: Constants.cornerRadius)
+          .stroke(Color(.separatorColor), lineWidth: 1)
+      )
     }
   }
 
@@ -433,6 +463,13 @@ struct SettingsView: View {
           .fontWeight(.semibold)
 
         VStack(alignment: .leading, spacing: 8) {
+          Text(
+            "Usage: This prompt defines how the AI assistant behaves when you use Prompt Mode. The AI receives both your spoken command AND any selected text from your clipboard as context."
+          )
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .padding(.bottom, 4)
+
           Text("System Instructions for AI Assistant:")
             .font(.callout)
             .fontWeight(.semibold)

@@ -121,7 +121,7 @@ class MenuBarController: NSObject {
 
     // Start prompting item with configurable shortcut
     let startPromptItem = NSMenuItem(
-      title: "Select Text & Dictate Prompt", action: #selector(startPromptingFromMenu),
+      title: "Dictate Prompt", action: #selector(startPromptingFromMenu),
       keyEquivalent: "")
     startPromptItem.keyEquivalentModifierMask = []
     startPromptItem.target = self
@@ -268,12 +268,12 @@ class MenuBarController: NSObject {
         // During recording/prompting: hide disabled items
         startPromptingItem.isHidden = !isEnabled
         if !startPromptingItem.isHidden {
-          startPromptingItem.title = "Select Text & Dictate Prompt"
+          startPromptingItem.title = "Dictate Prompt"
         }
       } else {
         // In ready state: show all items
         startPromptingItem.isHidden = false
-        startPromptingItem.title = "Select Text & Dictate Prompt"
+        startPromptingItem.title = "Dictate Prompt"
       }
     }
 
@@ -591,6 +591,10 @@ extension MenuBarController: ShortcutDelegate {
     // Post the events
     cmdDown?.post(tap: .cghidEventTap)
     cmdUp?.post(tap: .cghidEventTap)
+
+    print("🤖 PROMPT-MODE: Attempted to simulate Cmd+C for text capture")
+    print(
+      "   Note: If this doesn't work (especially in App Store version), manually press Cmd+C first")
   }
 
   func stopPrompting() {

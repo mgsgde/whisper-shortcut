@@ -18,6 +18,8 @@
 3. **Speak Your Prompt** - Ask GPT-5 to analyze, explain, or work with the selected text
 4. **Get Smart Response** - GPT-5 receives both your spoken prompt AND the selected text as context
 
+**💡 Pro Tip:** If automatic text capture doesn't work (especially in App Store version), manually press **⌘C** to copy your selected text before using the prompt shortcut.
+
 ## Get WhisperShortcut
 
 ### Free Installation
