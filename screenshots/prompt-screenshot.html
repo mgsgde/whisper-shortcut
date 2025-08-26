@@ -59,37 +59,38 @@
         .steps {
             display: flex;
             flex-direction: column;
-            gap: 30px;
+            gap: 25px;
             flex: 1;
             max-width: 600px;
+            margin-bottom: 40px;
         }
 
         .step {
             display: flex;
             align-items: center;
             gap: 25px;
-            padding: 25px 30px;
+            padding: 20px 25px;
             background: rgba(255, 255, 255, 0.15);
             border-radius: 16px;
             border: 1px solid rgba(255, 255, 255, 0.3);
         }
 
         .step-number {
-            width: 60px;
-            height: 60px;
+            width: 50px;
+            height: 50px;
             background: #ffffff;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 28px;
+            font-size: 24px;
             font-weight: 700;
             color: #0089fb;
             flex-shrink: 0;
         }
 
         .step-text {
-            font-size: 40px;
+            font-size: 32px;
             font-weight: 500;
             color: #ffffff;
         }
@@ -137,21 +138,25 @@
 <body>
     <div class="header">
         <h1 class="app-title">Dictate Prompt</h1>
-        <p class="app-subtitle">OpenAI API Key Required</p>
+        <p class="app-subtitle">Voice + Clipboard Context → AI Response</p>
     </div>
 
     <div class="main-content">
         <div class="steps">
             <div class="step">
                 <div class="step-number">1</div>
-                <div class="step-text">Select Text</div>
+                <div class="step-text">Copy Text to Clipboard</div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
-                <div class="step-text">Dictate Prompt</div>
+                <div class="step-text">Press Shortcut</div>
             </div>
             <div class="step">
                 <div class="step-number">3</div>
+                <div class="step-text">Dictate Prompt</div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
                 <div class="step-text">Paste from Clipboard</div>
             </div>
         </div>
