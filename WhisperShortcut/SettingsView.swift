@@ -29,6 +29,7 @@ struct SettingsView: View {
     static let bottomPadding: CGFloat = 30
     static let horizontalPadding: CGFloat = 40
     static let verticalPadding: CGFloat = 24
+
   }
 
   // MARK: - State Variables
@@ -85,8 +86,7 @@ struct SettingsView: View {
       _promptModeSystemPrompt = State(initialValue: savedSystemPrompt)
     } else {
       _promptModeSystemPrompt = State(
-        initialValue:
-          "You are a helpful assistant that executes user commands. Provide clear, actionable responses."
+        initialValue: AppConstants.defaultSystemPrompt
       )
     }
   }
@@ -505,16 +505,17 @@ struct SettingsView: View {
             )
             .focused($promptModeSystemPromptFocused)
 
-          Text("Define how the AI assistant should behave when processing your voice commands.")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
+          Text(
+            "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text."
+          )
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
 
           HStack {
             Spacer()
             Button("Reset to Default") {
-              promptModeSystemPrompt =
-                "You are a helpful assistant that executes user commands. Provide clear, actionable responses."
+              promptModeSystemPrompt = AppConstants.defaultSystemPrompt
             }
             .buttonStyle(.bordered)
             .font(.callout)

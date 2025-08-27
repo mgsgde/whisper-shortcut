@@ -211,12 +211,14 @@ class TranscriptionService {
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
     // Get system prompt from settings
-    let systemPrompt =
-      UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
-      ?? "You are an assistant that only outputs the final result. - Never include explanations, meta information, or questions. - Do not ask for clarification. - Always return only the result, nothing else. Always return the result as plain text without quotes, markdown, or additional formatting."
+    let baseSystemPrompt = AppConstants.defaultSystemPrompt
+    let customSystemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
 
-    // Build the full input with clipboard context if available
-    var fullInput = systemPrompt
+    // Combine base system prompt with custom prompt if available
+    var fullInput = baseSystemPrompt
+    if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
+      fullInput += "\n\nAdditional instructions: \(customPrompt)"
+    }
 
     if let context = clipboardContext {
       fullInput += "\n\nContext (selected text from clipboard):\n\(context)"
