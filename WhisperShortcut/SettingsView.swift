@@ -413,7 +413,7 @@ struct SettingsView: View {
         .foregroundColor(.secondary)
 
         Text(
-          "💡 Tip: When installing the app directly from the GitHub repository (https://github.com/mgsgde/whisper-shortcut), any text you select will be automatically copied to the clipboard for use in Prompt Mode. Note: This feature doesn't work in the Mac App Store version due to permissions restrictions."
+          "💡 Auto-copy: [GitHub version](https://github.com/mgsgde/whisper-shortcut) automatically copies selected text. Mac App Store version requires manual ⌘C."
         )
         .font(.callout)
         .foregroundColor(.orange)
