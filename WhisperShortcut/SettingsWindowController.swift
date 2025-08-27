@@ -33,9 +33,9 @@ class SettingsWindowController: NSWindowController {
     window.isMovableByWindowBackground = false
     window.collectionBehavior = [.managed, .fullScreenNone]
 
-    // Set minimum size and let window auto-resize to content
+    // Set fixed size - no auto-resize
     window.contentMinSize = NSSize(width: Constants.windowWidth, height: Constants.windowHeight)
-    window.contentMaxSize = NSSize(width: Constants.maxWidth, height: Constants.maxHeight)
+    window.contentMaxSize = NSSize(width: Constants.windowWidth, height: Constants.maxHeight)
 
     super.init(window: window)
     window.delegate = self
@@ -55,14 +55,10 @@ class SettingsWindowController: NSWindowController {
     // Step 2: Show the window
     window?.makeKeyAndOrderFront(nil)
 
-    // Step 3: Ensure window gets focus and auto-resize to content
+    // Step 3: Ensure window gets focus with fixed size
     DispatchQueue.main.async {
       self.window?.makeKeyAndOrderFront(nil)
       self.window?.contentView?.window?.setFrameAutosaveName(Constants.frameAutosaveName)
-      self.window?.contentView?.window?.setContentSize(
-        self.window?.contentView?.fittingSize
-          ?? NSSize(width: Constants.windowWidth, height: Constants.windowHeight)
-      )
     }
   }
 }

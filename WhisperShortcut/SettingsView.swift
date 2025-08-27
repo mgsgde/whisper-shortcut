@@ -151,7 +151,7 @@ struct SettingsView: View {
       }
       .padding(.bottom, Constants.bottomPadding)
     }
-    .frame(minWidth: Constants.minWindowWidth, maxWidth: 600, minHeight: Constants.minWindowHeight)
+    .frame(width: Constants.minWindowWidth, height: Constants.minWindowHeight)
     .alert("Error", isPresented: $showAlert) {
       Button("OK") {
         showAlert = false
@@ -169,16 +169,7 @@ struct SettingsView: View {
         apiKeyFocused = true
       }
     }
-    .onChange(of: selectedModel) { oldValue, newValue in
-      // Auto-resize window when model changes
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-        if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
-          window.setContentSize(
-            window.contentView?.fittingSize
-              ?? NSSize(width: Constants.minWindowWidth, height: Constants.minWindowHeight))
-        }
-      }
-    }
+
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
       if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
         window.level = .floating

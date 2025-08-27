@@ -3,7 +3,7 @@ import Foundation
 
 class ClipboardManager {
   private let pasteboard = NSPasteboard.general
-  
+
   // MARK: - Constants
   private enum Constants {
     static let maxPreviewLength = 50
@@ -18,8 +18,9 @@ class ClipboardManager {
     pasteboard.clearContents()
     pasteboard.setString(formattedText, forType: .string)
 
-    let preview = formattedText.count > Constants.maxPreviewLength 
-      ? String(formattedText.prefix(Constants.maxPreviewLength)) + "..." 
+    let preview =
+      formattedText.count > Constants.maxPreviewLength
+      ? String(formattedText.prefix(Constants.maxPreviewLength)) + "..."
       : formattedText
     print("📋 Text copied to clipboard: \"\(preview)\"")
     print("   Full text length: \(formattedText.count) characters")
