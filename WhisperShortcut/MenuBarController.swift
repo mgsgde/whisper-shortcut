@@ -80,7 +80,7 @@ class MenuBarController: NSObject {
 
     // Retry item (initially hidden)
     let retryItem = NSMenuItem(
-      title: "🔄 Retry Transcription", action: #selector(retryTranscription), keyEquivalent: "")
+      title: "🔄 Retry Transcription", action: #selector(retryLastOperation), keyEquivalent: "")
     retryItem.target = self
     retryItem.tag = 104  // Tag for retry item
     retryItem.isHidden = true
@@ -337,19 +337,22 @@ class MenuBarController: NSObject {
     retryMenuItem.isHidden = !canRetry
 
     if canRetry {
+      // Determine the operation type based on last mode
+      let operationType = lastModeWasPrompting ? "Prompt" : "Transcription"
+
       // Show specific error type in retry menu if available
       if let error = lastError {
         let (_, _, errorType) = TranscriptionService.parseTranscriptionResult(error)
         if let type = errorType {
-          retryMenuItem.title = "🔄 Retry Transcription (\(type.title))"
-          print("🔄 Set retry menu title to: Retry Transcription (\(type.title))")
+          retryMenuItem.title = "🔄 Retry \(operationType) (\(type.title))"
+          print("🔄 Set retry menu title to: Retry \(operationType) (\(type.title))")
         } else {
-          retryMenuItem.title = "🔄 Retry Transcription"
-          print("🔄 Set retry menu title to: Retry Transcription")
+          retryMenuItem.title = "🔄 Retry \(operationType)"
+          print("🔄 Set retry menu title to: Retry \(operationType)")
         }
       } else {
-        retryMenuItem.title = "🔄 Retry Transcription"
-        print("🔄 Set retry menu title to: Retry Transcription")
+        retryMenuItem.title = "🔄 Retry \(operationType)"
+        print("🔄 Set retry menu title to: Retry \(operationType)")
       }
     } else {
       print("🔄 Retry menu item hidden")
@@ -447,24 +450,33 @@ class MenuBarController: NSObject {
     NSApplication.shared.terminate(nil)
   }
 
-  @objc private func retryTranscription() {
+  @objc private func retryLastOperation() {
     guard canRetry, let audioURL = lastAudioURL else {
       print("❌ Cannot retry - no audio file available")
       return
     }
 
-    print("🔄 Retrying transcription...")
+    let operationType = lastModeWasPrompting ? "prompt execution" : "transcription"
+    print("🔄 Retrying \(operationType)...")
 
     // Reset retry state
     canRetry = false
     updateRetryMenuItem()
 
-    // Show transcribing status
-    showTranscribingStatus()
+    // Show appropriate processing status
+    if lastModeWasPrompting {
+      showProcessingStatus(mode: "prompt")
+    } else {
+      showTranscribingStatus()
+    }
 
-    // Start transcription with the same audio file
+    // Start the appropriate operation with the same audio file
     Task {
-      await performTranscription(audioURL: audioURL)
+      if lastModeWasPrompting {
+        await performPromptExecution(audioURL: audioURL)
+      } else {
+        await performTranscription(audioURL: audioURL)
+      }
     }
   }
 
