@@ -11,24 +11,24 @@ struct SettingsView: View {
 
   // MARK: - Constants
   private enum Constants {
-    static let labelWidth: CGFloat = 140
-    static let apiKeyMaxWidth: CGFloat = 300
-    static let shortcutMaxWidth: CGFloat = 250
-    static let minWindowWidth: CGFloat = 520
-    static let minWindowHeight: CGFloat = 450
-    static let modelSelectionHeight: CGFloat = 44
-    static let textFieldHeight: CGFloat = 36
-    static let topPadding: CGFloat = 20
-    static let spacing: CGFloat = 16
-    static let sectionSpacing: CGFloat = 10
+    static let labelWidth: CGFloat = 160
+    static let apiKeyMaxWidth: CGFloat = 350
+    static let shortcutMaxWidth: CGFloat = 300
+    static let minWindowWidth: CGFloat = 600
+    static let minWindowHeight: CGFloat = 550
+    static let modelSelectionHeight: CGFloat = 48
+    static let textFieldHeight: CGFloat = 40
+    static let topPadding: CGFloat = 30
+    static let spacing: CGFloat = 24
+    static let sectionSpacing: CGFloat = 16
     static let modelSpacing: CGFloat = 0
     static let dividerHeight: CGFloat = 20
-    static let cornerRadius: CGFloat = 6
-    static let textEditorHeight: CGFloat = 70
-    static let buttonSpacing: CGFloat = 16
-    static let bottomPadding: CGFloat = 20
-    static let horizontalPadding: CGFloat = 32
-    static let verticalPadding: CGFloat = 20
+    static let cornerRadius: CGFloat = 8
+    static let textEditorHeight: CGFloat = 80
+    static let buttonSpacing: CGFloat = 20
+    static let bottomPadding: CGFloat = 30
+    static let horizontalPadding: CGFloat = 40
+    static let verticalPadding: CGFloat = 24
   }
 
   // MARK: - State Variables
@@ -189,7 +189,7 @@ struct SettingsView: View {
           .fontWeight(.semibold)
           .textSelection(.enabled)
 
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 16) {
           Text("API Key:")
             .font(.body)
             .fontWeight(.medium)
@@ -254,7 +254,7 @@ struct SettingsView: View {
         )
         .frame(height: Constants.modelSelectionHeight)
 
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
           Text("Model Details:")
             .font(.callout)
             .fontWeight(.semibold)
@@ -301,7 +301,7 @@ struct SettingsView: View {
           .foregroundColor(.secondary)
           .textSelection(.enabled)
 
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 16) {
           Text("Dictate:")
             .font(.body)
             .fontWeight(.medium)
@@ -316,7 +316,7 @@ struct SettingsView: View {
           Spacer()
         }
 
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 16) {
           Text("Stop Recording:")
             .font(.body)
             .fontWeight(.medium)
@@ -344,7 +344,7 @@ struct SettingsView: View {
           .foregroundColor(.secondary)
           .textSelection(.enabled)
 
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 16) {
           Text("Select text and dictate prompt:")
             .font(.body)
             .fontWeight(.medium)
@@ -359,7 +359,7 @@ struct SettingsView: View {
           Spacer()
         }
 
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 16) {
           Text("Stop Prompting:")
             .font(.body)
             .fontWeight(.medium)
@@ -401,7 +401,7 @@ struct SettingsView: View {
           .foregroundColor(.secondary)
           .textSelection(.enabled)
 
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
           Text("1. Copy any text to clipboard (⌘C)")
             .textSelection(.enabled)
           Text("2. Dictate your prompt (e.g., ⌘⌥P)")
