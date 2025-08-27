@@ -101,7 +101,7 @@ struct SettingsView: View {
         .padding(.bottom, 16)
 
       // Tab Selection
-      Picker("Settings Tab", selection: $selectedTab) {
+      Picker("", selection: $selectedTab) {
         ForEach(SettingsTab.allCases, id: \.self) { tab in
           Text(tab.rawValue).tag(tab)
         }
@@ -187,12 +187,14 @@ struct SettingsView: View {
         Text("OpenAI API Key")
           .font(.title3)
           .fontWeight(.semibold)
+          .textSelection(.enabled)
 
         HStack(alignment: .center, spacing: 12) {
           Text("API Key:")
             .font(.body)
             .fontWeight(.medium)
             .frame(width: Constants.labelWidth, alignment: .leading)
+            .textSelection(.enabled)
           TextField("sk-...", text: $apiKey)
             .textFieldStyle(.roundedBorder)
             .font(.system(.body, design: .monospaced))
@@ -204,6 +206,14 @@ struct SettingsView: View {
             .focused($apiKeyFocused)
           Spacer()
         }
+
+        Text(
+          "💡 Need an API key? Get one at [platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys)"
+        )
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .padding(.top, 4)
+        .textSelection(.enabled)
       }
 
       // Model Selection Section
@@ -211,6 +221,7 @@ struct SettingsView: View {
         Text("Transcription Model")
           .font(.title3)
           .fontWeight(.semibold)
+          .textSelection(.enabled)
 
         HStack(spacing: Constants.modelSpacing) {
           ForEach(TranscriptionModel.allCases, id: \.self) { model in
@@ -248,22 +259,27 @@ struct SettingsView: View {
             .font(.callout)
             .fontWeight(.semibold)
             .foregroundColor(.secondary)
+            .textSelection(.enabled)
 
           switch selectedModel {
           case .gpt4oTranscribe:
             Text("• GPT-4o Transcribe: Highest accuracy and quality")
               .font(.callout)
               .foregroundColor(.secondary)
+              .textSelection(.enabled)
             Text("• Best for: Critical applications, maximum quality")
               .font(.callout)
               .foregroundColor(.secondary)
+              .textSelection(.enabled)
           case .gpt4oMiniTranscribe:
             Text("• GPT-4o Mini: Recommended - Great quality at lower cost")
               .font(.callout)
               .foregroundColor(.secondary)
+              .textSelection(.enabled)
             Text("• Best for: Everyday use, balanced performance")
               .font(.callout)
               .foregroundColor(.secondary)
+              .textSelection(.enabled)
           }
         }
       }
@@ -278,16 +294,19 @@ struct SettingsView: View {
         Text("Transcription Mode")
           .font(.title3)
           .fontWeight(.semibold)
+          .textSelection(.enabled)
 
         Text("Dictate → Text Conversion")
           .font(.callout)
           .foregroundColor(.secondary)
+          .textSelection(.enabled)
 
         HStack(alignment: .center, spacing: 12) {
           Text("Dictate:")
             .font(.body)
             .fontWeight(.medium)
             .frame(width: Constants.labelWidth, alignment: .leading)
+            .textSelection(.enabled)
           TextField("e.g., command+shift+e", text: $startShortcut)
             .textFieldStyle(.roundedBorder)
             .font(.system(.body, design: .monospaced))
@@ -302,6 +321,7 @@ struct SettingsView: View {
             .font(.body)
             .fontWeight(.medium)
             .frame(width: Constants.labelWidth, alignment: .leading)
+            .textSelection(.enabled)
           TextField("e.g., command+e", text: $stopShortcut)
             .textFieldStyle(.roundedBorder)
             .font(.system(.body, design: .monospaced))
@@ -317,16 +337,19 @@ struct SettingsView: View {
         Text("Prompt Mode")
           .font(.title3)
           .fontWeight(.semibold)
+          .textSelection(.enabled)
 
         Text("Dictate Prompt → AI Assistant Response (uses clipboard as context)")
           .font(.callout)
           .foregroundColor(.secondary)
+          .textSelection(.enabled)
 
         HStack(alignment: .center, spacing: 12) {
           Text("Select text and dictate prompt:")
             .font(.body)
             .fontWeight(.medium)
             .frame(width: Constants.labelWidth, alignment: .leading)
+            .textSelection(.enabled)
           TextField("e.g., command+shift+p", text: $startPrompting)
             .textFieldStyle(.roundedBorder)
             .font(.system(.body, design: .monospaced))
@@ -341,6 +364,7 @@ struct SettingsView: View {
             .font(.body)
             .fontWeight(.medium)
             .frame(width: Constants.labelWidth, alignment: .leading)
+            .textSelection(.enabled)
           TextField("e.g., command+p", text: $stopPrompting)
             .textFieldStyle(.roundedBorder)
             .font(.system(.body, design: .monospaced))
@@ -375,21 +399,26 @@ struct SettingsView: View {
           .font(.callout)
           .fontWeight(.semibold)
           .foregroundColor(.secondary)
+          .textSelection(.enabled)
 
         VStack(alignment: .leading, spacing: 4) {
-          Text("1. Optional: Copy any text to clipboard (⌘C)")
+          Text("1. Copy any text to clipboard (⌘C)")
+            .textSelection(.enabled)
           Text("2. Dictate your prompt (e.g., ⌘⌥P)")
+            .textSelection(.enabled)
           Text("3. AI receives both your voice and clipboard text")
+            .textSelection(.enabled)
         }
         .font(.callout)
         .foregroundColor(.secondary)
 
         Text(
-          "💡 Tip: When installing the app directly from the GitHub repository (https://github.com/mgsgde/whisper-shortcut), any text you select will be automatically copied to the clipboard for use in Prompt Mode."
+          "💡 Tip: When installing the app directly from the GitHub repository (https://github.com/mgsgde/whisper-shortcut), any text you select will be automatically copied to the clipboard for use in Prompt Mode. Note: This feature doesn't work in the Mac App Store version due to permissions restrictions."
         )
         .font(.callout)
         .foregroundColor(.orange)
         .padding(.top, 4)
+        .textSelection(.enabled)
       }
       .padding(12)
       .background(Color(.controlBackgroundColor).opacity(0.5))
@@ -410,12 +439,14 @@ struct SettingsView: View {
           Text("Transcription Prompt")
             .font(.title3)
             .fontWeight(.semibold)
+            .textSelection(.enabled)
 
           VStack(alignment: .leading, spacing: 8) {
             Text("Domain Terms & Context:")
               .font(.callout)
               .fontWeight(.semibold)
               .foregroundColor(.secondary)
+              .textSelection(.enabled)
 
             TextEditor(text: $customPromptText)
               .font(.system(.body, design: .default))
@@ -434,6 +465,7 @@ struct SettingsView: View {
             )
             .font(.callout)
             .foregroundColor(.secondary)
+            .textSelection(.enabled)
 
             HStack {
               Spacer()
@@ -452,19 +484,14 @@ struct SettingsView: View {
         Text("AI Assistant System Prompt")
           .font(.title3)
           .fontWeight(.semibold)
+          .textSelection(.enabled)
 
         VStack(alignment: .leading, spacing: 8) {
-          Text(
-            "Usage: This prompt defines how the AI assistant behaves when you use Prompt Mode. The AI receives both your spoken command AND any selected text from your clipboard as context."
-          )
-          .font(.callout)
-          .foregroundColor(.secondary)
-          .padding(.bottom, 4)
-
           Text("System Instructions for AI Assistant:")
             .font(.callout)
             .fontWeight(.semibold)
             .foregroundColor(.secondary)
+            .textSelection(.enabled)
 
           TextEditor(text: $promptModeSystemPrompt)
             .font(.system(.body, design: .default))
@@ -481,6 +508,7 @@ struct SettingsView: View {
           Text("Define how the AI assistant should behave when processing your voice commands.")
             .font(.callout)
             .foregroundColor(.secondary)
+            .textSelection(.enabled)
 
           HStack {
             Spacer()
