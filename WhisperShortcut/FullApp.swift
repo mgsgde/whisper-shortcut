@@ -20,6 +20,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Initialize the full menu bar controller
     menuBarController = MenuBarController()
 
+    // Check accessibility permissions after app startup
+    AccessibilityPermissionManager.checkAndRequestPermissionIfNeeded()
+
     print("✅ Full app components initialized:")
     print("   • Menu bar controller")
     print("   • Audio recorder")

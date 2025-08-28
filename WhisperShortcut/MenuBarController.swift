@@ -578,6 +578,12 @@ extension MenuBarController: ShortcutDelegate {
 
     print("🤖 Starting prompting via shortcut...")
 
+    // Check accessibility permission first
+    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
+      print("⚠️ PROMPT-MODE: No accessibility permission - aborting prompt start")
+      return
+    }
+
     // Simulate Copy-Paste to capture selected text
     simulateCopyPaste()
 
