@@ -43,27 +43,35 @@ class SimpleShortcuts {
     // Clean up existing shortcuts
     cleanup()
 
-    // Create new shortcuts
-    startKey = HotKey(key: config.startRecording.key, modifiers: config.startRecording.modifiers)
-    stopKey = HotKey(key: config.stopRecording.key, modifiers: config.stopRecording.modifiers)
-    startPromptKey = HotKey(
-      key: config.startPrompting.key, modifiers: config.startPrompting.modifiers)
-    stopPromptKey = HotKey(key: config.stopPrompting.key, modifiers: config.stopPrompting.modifiers)
-
-    startKey?.keyDownHandler = { [weak self] in
-      self?.delegate?.startRecording()
+    // Create new shortcuts (only if enabled)
+    if config.startRecording.isEnabled {
+      startKey = HotKey(key: config.startRecording.key, modifiers: config.startRecording.modifiers)
+      startKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.startRecording()
+      }
     }
 
-    stopKey?.keyDownHandler = { [weak self] in
-      self?.delegate?.stopRecording()
+    if config.stopRecording.isEnabled {
+      stopKey = HotKey(key: config.stopRecording.key, modifiers: config.stopRecording.modifiers)
+      stopKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.stopRecording()
+      }
     }
 
-    startPromptKey?.keyDownHandler = { [weak self] in
-      self?.delegate?.startPrompting()
+    if config.startPrompting.isEnabled {
+      startPromptKey = HotKey(
+        key: config.startPrompting.key, modifiers: config.startPrompting.modifiers)
+      startPromptKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.startPrompting()
+      }
     }
 
-    stopPromptKey?.keyDownHandler = { [weak self] in
-      self?.delegate?.stopPrompting()
+    if config.stopPrompting.isEnabled {
+      stopPromptKey = HotKey(
+        key: config.stopPrompting.key, modifiers: config.stopPrompting.modifiers)
+      stopPromptKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.stopPrompting()
+      }
     }
   }
 

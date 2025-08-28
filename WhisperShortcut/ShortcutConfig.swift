@@ -128,13 +128,19 @@ struct ShortcutConfig: Codable {
 struct ShortcutDefinition: Codable, Equatable, Hashable {
   let key: Key
   let modifiers: NSEvent.ModifierFlags
+  let isEnabled: Bool
 
-  init(key: Key, modifiers: NSEvent.ModifierFlags) {
+  init(key: Key, modifiers: NSEvent.ModifierFlags, isEnabled: Bool = true) {
     self.key = key
     self.modifiers = modifiers
+    self.isEnabled = isEnabled
   }
 
   var displayString: String {
+    if !isEnabled {
+      return "Disabled"
+    }
+
     var parts: [String] = []
 
     if modifiers.contains(.command) { parts.append("⌘") }
@@ -148,6 +154,10 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
   }
 
   var textDisplayString: String {
+    if !isEnabled {
+      return "Disabled"
+    }
+
     var parts: [String] = []
 
     if modifiers.contains(.command) { parts.append("command") }
@@ -170,29 +180,33 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
   enum CodingKeys: String, CodingKey {
     case key
     case modifiers
+    case isEnabled
   }
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     key = try container.decode(Key.self, forKey: .key)
     modifiers = try container.decode(NSEvent.ModifierFlags.self, forKey: .modifiers)
+    isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
   }
 
   func encode(to encoder: Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
     try container.encode(key, forKey: .key)
     try container.encode(modifiers, forKey: .modifiers)
+    try container.encode(isEnabled, forKey: .isEnabled)
   }
 
   // MARK: - Equatable Implementation
   static func == (lhs: ShortcutDefinition, rhs: ShortcutDefinition) -> Bool {
-    return lhs.key == rhs.key && lhs.modifiers == rhs.modifiers
+    return lhs.key == rhs.key && lhs.modifiers == rhs.modifiers && lhs.isEnabled == rhs.isEnabled
   }
 
   // MARK: - Hashable Implementation
   func hash(into hasher: inout Hasher) {
     hasher.combine(key.carbonKeyCode)
     hasher.combine(modifiers.rawValue)
+    hasher.combine(isEnabled)
   }
 }
 

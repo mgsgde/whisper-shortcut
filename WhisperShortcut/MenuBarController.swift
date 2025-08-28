@@ -364,26 +364,54 @@ class MenuBarController: NSObject {
 
     // Update start recording shortcut
     if let startItem = menu.item(withTag: 102) {
-      startItem.keyEquivalent = currentConfig.startRecording.key.displayString.lowercased()
-      startItem.keyEquivalentModifierMask = currentConfig.startRecording.modifiers
+      if currentConfig.startRecording.isEnabled {
+        startItem.keyEquivalent = currentConfig.startRecording.key.displayString.lowercased()
+        startItem.keyEquivalentModifierMask = currentConfig.startRecording.modifiers
+        startItem.title = "Dictate"
+      } else {
+        startItem.keyEquivalent = ""
+        startItem.keyEquivalentModifierMask = []
+        startItem.title = "Dictate (Disabled)"
+      }
     }
 
     // Update stop recording shortcut
     if let stopItem = menu.item(withTag: 103) {
-      stopItem.keyEquivalent = currentConfig.stopRecording.key.displayString.lowercased()
-      stopItem.keyEquivalentModifierMask = currentConfig.stopRecording.modifiers
+      if currentConfig.stopRecording.isEnabled {
+        stopItem.keyEquivalent = currentConfig.stopRecording.key.displayString.lowercased()
+        stopItem.keyEquivalentModifierMask = currentConfig.stopRecording.modifiers
+        stopItem.title = "Stop & Transcribe"
+      } else {
+        stopItem.keyEquivalent = ""
+        stopItem.keyEquivalentModifierMask = []
+        stopItem.title = "Stop & Transcribe (Disabled)"
+      }
     }
 
     // Update start prompting shortcut
     if let startPromptItem = menu.item(withTag: 105) {
-      startPromptItem.keyEquivalent = currentConfig.startPrompting.key.displayString.lowercased()
-      startPromptItem.keyEquivalentModifierMask = currentConfig.startPrompting.modifiers
+      if currentConfig.startPrompting.isEnabled {
+        startPromptItem.keyEquivalent = currentConfig.startPrompting.key.displayString.lowercased()
+        startPromptItem.keyEquivalentModifierMask = currentConfig.startPrompting.modifiers
+        startPromptItem.title = "Dictate Prompt"
+      } else {
+        startPromptItem.keyEquivalent = ""
+        startPromptItem.keyEquivalentModifierMask = []
+        startPromptItem.title = "Dictate Prompt (Disabled)"
+      }
     }
 
     // Update stop prompting shortcut
     if let stopPromptItem = menu.item(withTag: 106) {
-      stopPromptItem.keyEquivalent = currentConfig.stopPrompting.key.displayString.lowercased()
-      stopPromptItem.keyEquivalentModifierMask = currentConfig.stopPrompting.modifiers
+      if currentConfig.stopPrompting.isEnabled {
+        stopPromptItem.keyEquivalent = currentConfig.stopPrompting.key.displayString.lowercased()
+        stopPromptItem.keyEquivalentModifierMask = currentConfig.stopPrompting.modifiers
+        stopPromptItem.title = "Stop & Execute"
+      } else {
+        stopPromptItem.keyEquivalent = ""
+        stopPromptItem.keyEquivalentModifierMask = []
+        stopPromptItem.title = "Stop & Execute (Disabled)"
+      }
     }
   }
 

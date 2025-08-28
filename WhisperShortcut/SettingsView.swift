@@ -39,6 +39,10 @@ struct SettingsView: View {
   @State private var stopShortcut: String = ""
   @State private var startPrompting: String = ""
   @State private var stopPrompting: String = ""
+  @State private var startShortcutEnabled: Bool = true
+  @State private var stopShortcutEnabled: Bool = true
+  @State private var startPromptingEnabled: Bool = true
+  @State private var stopPromptingEnabled: Bool = true
   @State private var selectedModel: TranscriptionModel = .gpt4oTranscribe
   @State private var errorMessage: String = ""
   @State private var isLoading: Bool = false
@@ -64,6 +68,10 @@ struct SettingsView: View {
     _stopShortcut = State(initialValue: currentConfig.stopRecording.textDisplayString)
     _startPrompting = State(initialValue: currentConfig.startPrompting.textDisplayString)
     _stopPrompting = State(initialValue: currentConfig.stopPrompting.textDisplayString)
+    _startShortcutEnabled = State(initialValue: currentConfig.startRecording.isEnabled)
+    _stopShortcutEnabled = State(initialValue: currentConfig.stopRecording.isEnabled)
+    _startPromptingEnabled = State(initialValue: currentConfig.startPrompting.isEnabled)
+    _stopPromptingEnabled = State(initialValue: currentConfig.stopPrompting.isEnabled)
 
     // Load saved model preference
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
@@ -313,6 +321,10 @@ struct SettingsView: View {
             .frame(height: Constants.textFieldHeight)
             .frame(maxWidth: Constants.shortcutMaxWidth)
             .focused($startShortcutFocused)
+            .disabled(!startShortcutEnabled)
+          Toggle("", isOn: $startShortcutEnabled)
+            .toggleStyle(.checkbox)
+            .help("Enable/disable this shortcut")
           Spacer()
         }
 
@@ -328,6 +340,10 @@ struct SettingsView: View {
             .frame(height: Constants.textFieldHeight)
             .frame(maxWidth: Constants.shortcutMaxWidth)
             .focused($stopShortcutFocused)
+            .disabled(!stopShortcutEnabled)
+          Toggle("", isOn: $stopShortcutEnabled)
+            .toggleStyle(.checkbox)
+            .help("Enable/disable this shortcut")
           Spacer()
         }
       }
@@ -356,6 +372,10 @@ struct SettingsView: View {
             .frame(height: Constants.textFieldHeight)
             .frame(maxWidth: Constants.shortcutMaxWidth)
             .focused($startPromptingFocused)
+            .disabled(!startPromptingEnabled)
+          Toggle("", isOn: $startPromptingEnabled)
+            .toggleStyle(.checkbox)
+            .help("Enable/disable this shortcut")
           Spacer()
         }
 
@@ -371,6 +391,10 @@ struct SettingsView: View {
             .frame(height: Constants.textFieldHeight)
             .frame(maxWidth: Constants.shortcutMaxWidth)
             .focused($stopPromptingFocused)
+            .disabled(!stopPromptingEnabled)
+          Toggle("", isOn: $stopPromptingEnabled)
+            .toggleStyle(.checkbox)
+            .help("Enable/disable this shortcut")
           Spacer()
         }
       }
@@ -536,59 +560,99 @@ struct SettingsView: View {
       return
     }
 
-    // Validate shortcuts
-    guard !startShortcut.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      showErrorMessage("Please enter a start recording shortcut")
-      return
+    // Validate shortcuts (only if enabled)
+    if startShortcutEnabled {
+      guard !startShortcut.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        showErrorMessage("Please enter a start recording shortcut")
+        return
+      }
     }
 
-    guard !stopShortcut.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      showErrorMessage("Please enter a stop recording shortcut")
-      return
+    if stopShortcutEnabled {
+      guard !stopShortcut.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        showErrorMessage("Please enter a stop recording shortcut")
+        return
+      }
     }
 
-    guard !startPrompting.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      showErrorMessage("Please enter a start prompting shortcut")
-      return
+    if startPromptingEnabled {
+      guard !startPrompting.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        showErrorMessage("Please enter a start prompting shortcut")
+        return
+      }
     }
 
-    guard !stopPrompting.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      showErrorMessage("Please enter a stop prompting shortcut")
-      return
+    if stopPromptingEnabled {
+      guard !stopPrompting.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        showErrorMessage("Please enter a stop prompting shortcut")
+        return
+      }
     }
 
-    // Parse shortcuts
-    guard let startShortcutParsed = ShortcutConfigManager.parseShortcut(from: startShortcut) else {
-      showErrorMessage(
-        "Invalid start recording shortcut format. Use: command+option+r, control+shift+space, f1, command+up"
-      )
-      return
+    // Parse shortcuts (only if enabled)
+    let startShortcutParsed =
+      startShortcutEnabled
+      ? ShortcutConfigManager.parseShortcut(from: startShortcut)
+      : ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false)
+
+    let stopShortcutParsed =
+      stopShortcutEnabled
+      ? ShortcutConfigManager.parseShortcut(from: stopShortcut)
+      : ShortcutDefinition(key: .e, modifiers: [.command], isEnabled: false)
+
+    let startPromptingParsed =
+      startPromptingEnabled
+      ? ShortcutConfigManager.parseShortcut(from: startPrompting)
+      : ShortcutDefinition(key: .p, modifiers: [.command, .shift], isEnabled: false)
+
+    let stopPromptingParsed =
+      stopPromptingEnabled
+      ? ShortcutConfigManager.parseShortcut(from: stopPrompting)
+      : ShortcutDefinition(key: .p, modifiers: [.command], isEnabled: false)
+
+    // Validate parsed shortcuts
+    if startShortcutEnabled {
+      guard let parsed = startShortcutParsed else {
+        showErrorMessage(
+          "Invalid start recording shortcut format. Use: command+option+r, control+shift+space, f1, command+up"
+        )
+        return
+      }
     }
 
-    guard let stopShortcutParsed = ShortcutConfigManager.parseShortcut(from: stopShortcut) else {
-      showErrorMessage(
-        "Invalid stop recording shortcut format. Use: command+r, control+space, f2, command+down")
-      return
+    if stopShortcutEnabled {
+      guard let parsed = stopShortcutParsed else {
+        showErrorMessage(
+          "Invalid stop recording shortcut format. Use: command+r, control+space, f2, command+down")
+        return
+      }
     }
 
-    guard let startPromptingParsed = ShortcutConfigManager.parseShortcut(from: startPrompting)
-    else {
-      showErrorMessage("Invalid start prompting shortcut format")
-      return
+    if startPromptingEnabled {
+      guard let parsed = startPromptingParsed else {
+        showErrorMessage("Invalid start prompting shortcut format")
+        return
+      }
     }
 
-    guard let stopPromptingParsed = ShortcutConfigManager.parseShortcut(from: stopPrompting) else {
-      showErrorMessage("Invalid stop prompting shortcut format")
-      return
+    if stopPromptingEnabled {
+      guard let parsed = stopPromptingParsed else {
+        showErrorMessage("Invalid stop prompting shortcut format")
+        return
+      }
     }
 
-    // Check for duplicate shortcuts
-    let shortcuts = [
-      startShortcutParsed, stopShortcutParsed, startPromptingParsed, stopPromptingParsed,
-    ]
-    let uniqueShortcuts = Set(shortcuts)
-    if shortcuts.count != uniqueShortcuts.count {
-      showErrorMessage("All shortcuts must be different. Please use unique shortcuts.")
+    // Check for duplicate shortcuts (only among enabled ones)
+    let enabledShortcuts = [
+      startShortcutEnabled ? startShortcutParsed : nil,
+      stopShortcutEnabled ? stopShortcutParsed : nil,
+      startPromptingEnabled ? startPromptingParsed : nil,
+      stopPromptingEnabled ? stopPromptingParsed : nil,
+    ].compactMap { $0 }
+
+    let uniqueShortcuts = Set(enabledShortcuts)
+    if enabledShortcuts.count != uniqueShortcuts.count {
+      showErrorMessage("All enabled shortcuts must be different. Please use unique shortcuts.")
       return
     }
 
@@ -608,10 +672,14 @@ struct SettingsView: View {
     NotificationCenter.default.post(name: .modelChanged, object: selectedModel)
 
     let newConfig = ShortcutConfig(
-      startRecording: startShortcutParsed,
-      stopRecording: stopShortcutParsed,
-      startPrompting: startPromptingParsed,
+      startRecording: startShortcutParsed
+        ?? ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
+      stopRecording: stopShortcutParsed
+        ?? ShortcutDefinition(key: .e, modifiers: [.command], isEnabled: false),
+      startPrompting: startPromptingParsed
+        ?? ShortcutDefinition(key: .p, modifiers: [.command, .shift], isEnabled: false),
       stopPrompting: stopPromptingParsed
+        ?? ShortcutDefinition(key: .p, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 
