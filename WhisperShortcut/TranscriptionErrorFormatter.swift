@@ -191,6 +191,17 @@ struct TranscriptionErrorFormatter {
         The recording contains no audio data.
         Please try again.
         """
+    case .noSpeechDetected:
+      return """
+        🎤 No Speech Detected
+
+        No speech was detected in your recording. Please make sure to:
+        • Speak clearly into your microphone
+        • Wait for the recording indicator before speaking
+        • Speak your prompt or instruction before stopping the recording
+
+        Try recording again with clear speech.
+        """
     }
   }
 
@@ -223,6 +234,8 @@ struct TranscriptionErrorFormatter {
       return "❌ File Too Large"
     case .emptyFile:
       return "❌ Empty File"
+    case .noSpeechDetected:
+      return "🎤 No Speech"
     default:
       return "❌ Error"
     }

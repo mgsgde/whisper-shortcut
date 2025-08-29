@@ -906,9 +906,12 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handlePromptError(_ error: TranscriptionError) -> Bool {
+    NSLog("🤖 PROMPT-MODE: Error handler called with error: \(error)")
+    NSLog("🤖 PROMPT-MODE: Error title: \(error.title)")
     print("❌ Prompt execution error: \(error)")
 
     let errorMessage = TranscriptionErrorFormatter.format(error)
+    NSLog("🤖 PROMPT-MODE: Formatted error message: '\(errorMessage)'")
 
     // Store error for retry functionality
     lastError = errorMessage
@@ -916,10 +919,12 @@ extension MenuBarController: AudioRecorderDelegate {
     if error.isRetryable && lastAudioURL != nil {
       canRetry = true
       updateRetryMenuItem()
+      NSLog("🤖 PROMPT-MODE: Error is retryable - showing retry option")
       print("🔄 Error is retryable - showing retry option")
     }
 
     // Copy error message to clipboard
+    NSLog("🤖 PROMPT-MODE: Copying error message to clipboard")
     clipboardManager?.copyToClipboard(text: errorMessage)
     showTemporaryError()
 
