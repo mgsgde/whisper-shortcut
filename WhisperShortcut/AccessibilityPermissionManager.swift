@@ -25,21 +25,23 @@ class AccessibilityPermissionManager {
     let alert = NSAlert()
     alert.messageText = "Accessibility Permission Required"
     alert.informativeText = """
-      The prompt feature needs accessibility permission to capture selected text as context.
+      The prompt feature requires accessibility permission to function properly.
+
+      Without this permission, the app cannot capture selected text.
 
       Click "Open Settings" to grant this permission. In System Settings:
       1. Go to Privacy & Security → Accessibility
       2. Enable WhisperShortcut
 
-      Or choose "Cancel" to use only clipboard content for prompts.
+      The prompt feature will not work until this permission is granted.
       """
     alert.alertStyle = .informational
     alert.addButton(withTitle: "Open Settings")
-    alert.addButton(withTitle: "Cancel")
+    alert.addButton(withTitle: "Not Now")
 
     let response = alert.runModal()
     NSLog(
-      "🔐 ACCESSIBILITY: Dialog response: \(response == .alertFirstButtonReturn ? "Open Settings" : "Cancel")"
+      "🔐 ACCESSIBILITY: Dialog response: \(response == .alertFirstButtonReturn ? "Open Settings" : "Not Now")"
     )
 
     if response == .alertFirstButtonReturn {

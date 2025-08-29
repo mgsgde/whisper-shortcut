@@ -469,6 +469,12 @@ class MenuBarController: NSObject {
 
     print("🤖 Starting prompting from menu...")
 
+    // Check accessibility permission first
+    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
+      print("⚠️ PROMPT-MODE: No accessibility permission - aborting prompt start from menu")
+      return
+    }
+
     // Simulate Copy-Paste to capture selected text
     simulateCopyPaste()
 
