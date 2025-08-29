@@ -18,7 +18,7 @@ class MenuBarController: NSObject {
   private var isRecording = false
   private var isPrompting = false  // New: Track prompt mode
   private var audioRecorder: AudioRecorder?
-  private var shortcuts: SimpleShortcuts?
+  private var shortcuts: Shortcuts?
   private var speechService: SpeechService?
   private var clipboardManager: ClipboardManager?
   private var audioLevelTimer: Timer?
@@ -169,7 +169,7 @@ class MenuBarController: NSObject {
 
   private func setupComponents() {
     audioRecorder = AudioRecorder()
-    shortcuts = SimpleShortcuts()
+    shortcuts = Shortcuts()
     clipboardManager = ClipboardManager()
     speechService = SpeechService(clipboardManager: clipboardManager)
 
@@ -836,7 +836,7 @@ extension MenuBarController: AudioRecorderDelegate {
   private func handleTranscriptionError(_ error: TranscriptionError) -> Bool {
     NSLog("❌ Transcription error: \(error)")
 
-    let errorMessage = TranscriptionErrorFormatter.format(error)
+    let errorMessage = SpeechErrorFormatter.format(error)
 
     // Store error for retry functionality
     lastError = errorMessage
@@ -876,7 +876,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
     NSLog("❌ Prompt execution error: \(error)")
 
-    let errorMessage = TranscriptionErrorFormatter.format(error)
+    let errorMessage = SpeechErrorFormatter.format(error)
 
     // Store error for retry functionality
     lastError = errorMessage

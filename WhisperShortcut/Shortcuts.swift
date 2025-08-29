@@ -10,7 +10,7 @@ protocol ShortcutDelegate: AnyObject {
 }
 
 // Configurable shortcuts using ShortcutConfigManager
-class SimpleShortcuts {
+class Shortcuts {
   weak var delegate: ShortcutDelegate?
 
   private var startKey: HotKey?

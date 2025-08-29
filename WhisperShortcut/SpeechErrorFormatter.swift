@@ -1,7 +1,7 @@
 import Foundation
 
-/// Handles formatting of transcription errors for display in the UI
-struct TranscriptionErrorFormatter {
+/// Handles formatting of speech errors for display in the UI
+struct SpeechErrorFormatter {
   
   // MARK: - Constants
   private enum Constants {
