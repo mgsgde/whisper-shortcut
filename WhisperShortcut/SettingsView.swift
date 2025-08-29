@@ -445,7 +445,7 @@ struct SettingsView: View {
           .textSelection(.enabled)
 
         Text(
-          "command • option • control • shift • a-z • 0-9 • f1-f12 • space • return • escape • tab • delete • home • end • pageup • pagedown • up • down • left • right • minus • equal • leftbracket • rightbracket • backslash • semicolon • quote • grave • comma • period • slash"
+          "command (⌘) • option (⌥) • control (⌃) • shift (⇧) • a-z • 0-9 • f1-f12 • space • return • escape • tab • delete • home • end • pageup • pagedown • up (↑) • down (↓) • left (←) • right (→) • minus (-) • equal (=) • leftbracket ([) • rightbracket (]) • backslash (\\) • semicolon (;) • quote (') • grave (`) • comma (,) • period (.) • slash (/)"
         )
         .font(.callout)
         .foregroundColor(.secondary)
