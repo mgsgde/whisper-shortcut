@@ -221,7 +221,7 @@ class MenuBarController: NSObject {
     menu.addItem(NSMenuItem.separator())
 
     // Dictation section header
-    let dictationHeader = NSMenuItem(title: "Dictation", action: nil, keyEquivalent: "")
+    let dictationHeader = NSMenuItem(title: "Speech to Text", action: nil, keyEquivalent: "")
     dictationHeader.isEnabled = false
     dictationHeader.tag = 101
     menu.addItem(dictationHeader)
@@ -246,7 +246,7 @@ class MenuBarController: NSObject {
     menu.addItem(NSMenuItem.separator())
 
     // Prompt section header
-    let promptHeader = NSMenuItem(title: "AI Assistant", action: nil, keyEquivalent: "")
+    let promptHeader = NSMenuItem(title: "Speech to Prompt", action: nil, keyEquivalent: "")
     promptHeader.isEnabled = false
     promptHeader.tag = 104
     menu.addItem(promptHeader)
@@ -272,14 +272,14 @@ class MenuBarController: NSObject {
 
     // Voice Response section header
     let voiceResponseHeader = NSMenuItem(
-      title: "Speech to Prompt with Voice Response", action: nil, keyEquivalent: "")
+      title: "Speech to Prompt with Voice Responses", action: nil, keyEquivalent: "")
     voiceResponseHeader.isEnabled = false
     voiceResponseHeader.tag = 108
     menu.addItem(voiceResponseHeader)
 
     // Start voice response item with configurable shortcut
     let startVoiceResponseItem = NSMenuItem(
-      title: "Speech to Prompt", action: #selector(startVoiceResponseFromMenu),
+      title: "Dictate Prompt", action: #selector(startVoiceResponseFromMenu),
       keyEquivalent: "")
     startVoiceResponseItem.keyEquivalentModifierMask = []
     startVoiceResponseItem.target = self
@@ -437,7 +437,7 @@ class MenuBarController: NSObject {
       startVoiceResponseItem.isEnabled = appMode.shouldEnableStartVoiceResponse(
         hasAPIKey: hasAPIKey)
       startVoiceResponseItem.isHidden = appMode.isBusy && !startVoiceResponseItem.isEnabled
-      startVoiceResponseItem.title = "Speech to Prompt"
+      startVoiceResponseItem.title = "Dictate Prompt"
     }
 
     if let stopVoiceResponseItem = menu.item(withTag: 110) {
@@ -556,11 +556,11 @@ class MenuBarController: NSObject {
           .lowercased()
         startVoiceResponseItem.keyEquivalentModifierMask =
           currentConfig.startVoiceResponse.modifiers
-        startVoiceResponseItem.title = "Speech to Prompt"
+        startVoiceResponseItem.title = "Dictate Prompt"
       } else {
         startVoiceResponseItem.keyEquivalent = ""
         startVoiceResponseItem.keyEquivalentModifierMask = []
-        startVoiceResponseItem.title = "Speech to Prompt (Disabled)"
+        startVoiceResponseItem.title = "Dictate Prompt (Disabled)"
       }
     }
 

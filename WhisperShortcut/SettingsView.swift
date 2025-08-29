@@ -508,7 +508,7 @@ struct SettingsView: View {
 
       // Voice Response Shortcuts
       VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
-        Text("Speech to Prompt with Voice Response")
+        Text("Speech to Prompt with Voice Responses")
           .font(.title3)
           .fontWeight(.semibold)
           .textSelection(.enabled)
