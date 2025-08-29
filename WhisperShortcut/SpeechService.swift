@@ -259,6 +259,11 @@ class SpeechService {
       userMessage: spokenText, clipboardContext: contextToUse, apiKey: apiKey)
     NSLog("🔊 VOICE-RESPONSE-MODE: GPT-5 response received (length: \(response.count))")
 
+    // Copy response to clipboard immediately (same as normal prompt mode)
+    NSLog("🔊 VOICE-RESPONSE-MODE: Copying response to clipboard...")
+    clipboardManager?.copyToClipboard(text: response)
+    NSLog("✅ VOICE-RESPONSE-MODE: Response copied to clipboard")
+
     // Generate speech from response
     NSLog("🔊 VOICE-RESPONSE-MODE: Generating speech from response...")
 
@@ -284,11 +289,6 @@ class SpeechService {
       NSLog("⚠️ VOICE-RESPONSE-MODE: Audio playback failed")
       throw TranscriptionError.networkError("Audio playback failed")
     }
-
-    // Copy response to clipboard (same as normal prompt mode)
-    NSLog("🔊 VOICE-RESPONSE-MODE: Copying response to clipboard...")
-    clipboardManager?.copyToClipboard(text: response)
-    NSLog("✅ VOICE-RESPONSE-MODE: Response copied to clipboard")
 
     return response
   }
