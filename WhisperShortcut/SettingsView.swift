@@ -296,6 +296,52 @@ struct SettingsView: View {
           }
         }
       }
+
+      // Feedback Section
+      VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
+        Text("Support & Feedback")
+          .font(.title3)
+          .fontWeight(.semibold)
+          .textSelection(.enabled)
+
+        Button(action: {
+          openWhatsAppFeedback()
+        }) {
+          HStack(alignment: .top, spacing: 16) {
+            Image("WhatsApp")
+              .resizable()
+              .aspectRatio(contentMode: .fit)
+              .frame(width: 44, height: 44)
+              .clipShape(RoundedRectangle(cornerRadius: 12))
+
+            VStack(alignment: .leading, spacing: 8) {
+              Text("Thanks for using WhisperShortcut!")
+                .font(.body)
+                .fontWeight(.medium)
+                .textSelection(.enabled)
+
+              Text(
+                "If you have feedback, if something doesn't work, or if you have suggestions for improvement, feel free to contact me via WhatsApp."
+              )
+              .font(.callout)
+              .foregroundColor(.secondary)
+              .textSelection(.enabled)
+              .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+          }
+        }
+        .buttonStyle(PlainButtonStyle())
+        .help("Contact via WhatsApp")
+        .onHover { isHovered in
+          if isHovered {
+            NSCursor.pointingHand.push()
+          } else {
+            NSCursor.pop()
+          }
+        }
+      }
     }
   }
 
@@ -752,5 +798,38 @@ struct SettingsView: View {
     errorMessage = message
     showAlert = true
     isLoading = false
+  }
+
+  private func openWhatsAppFeedback() {
+    NSLog("💬 FEEDBACK: Opening WhatsApp Web feedback from Settings with number +49 162 8365293")
+
+    // WhatsApp Business number for feedback
+    let whatsappNumber = "+491628365293"  // Remove spaces and special characters
+    let feedbackMessage = "Hi! I have feedback about WhisperShortcut:"
+
+    // Open WhatsApp Web directly
+    if let webWhatsappURL = URL(
+      string:
+        "https://wa.me/\(whatsappNumber)?text=\(feedbackMessage.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+    ) {
+      if NSWorkspace.shared.open(webWhatsappURL) {
+        NSLog("✅ FEEDBACK: Successfully opened WhatsApp Web from Settings")
+      } else {
+        NSLog("❌ FEEDBACK: Failed to open WhatsApp Web from Settings")
+        showFeedbackError()
+      }
+    } else {
+      NSLog("❌ FEEDBACK: Failed to create WhatsApp URL from Settings")
+      showFeedbackError()
+    }
+  }
+
+  private func showFeedbackError() {
+    let alert = NSAlert()
+    alert.messageText = "Could not open WhatsApp"
+    alert.informativeText = "Please open WhatsApp manually and message:\n+49 162 8365293"
+    alert.alertStyle = .informational
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
   }
 }
