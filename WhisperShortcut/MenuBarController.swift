@@ -531,6 +531,8 @@ class MenuBarController: NSObject {
     SettingsManager.shared.showSettings()
   }
 
+
+
   @objc private func quitApp() {
     NSApplication.shared.terminate(nil)
   }

@@ -417,7 +417,7 @@ struct SettingsView: View {
             .fontWeight(.medium)
             .frame(width: Constants.labelWidth, alignment: .leading)
             .textSelection(.enabled)
-          TextField("e.g., command+shift+p", text: $startPrompting)
+          TextField("e.g., command+shift+j", text: $startPrompting)
             .textFieldStyle(.roundedBorder)
             .font(.system(.body, design: .monospaced))
             .frame(height: Constants.textFieldHeight)
@@ -511,7 +511,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
           Text("1. Copy any text to clipboard (⌘C)")
             .textSelection(.enabled)
-          Text("2. Dictate your prompt (e.g., ⌘⌥P)")
+          Text("2. Dictate your prompt (e.g., ⌘⇧J)")
             .textSelection(.enabled)
           Text("3. AI receives both your voice and clipboard text")
             .textSelection(.enabled)
@@ -693,7 +693,7 @@ struct SettingsView: View {
     let startPromptingParsed =
       startPromptingEnabled
       ? ShortcutConfigManager.parseShortcut(from: startPrompting)
-      : ShortcutDefinition(key: .p, modifiers: [.command, .shift], isEnabled: false)
+      : ShortcutDefinition(key: .j, modifiers: [.command, .shift], isEnabled: false)
 
     let stopPromptingParsed =
       stopPromptingEnabled
@@ -780,7 +780,7 @@ struct SettingsView: View {
       stopRecording: stopShortcutParsed
         ?? ShortcutDefinition(key: .e, modifiers: [.command], isEnabled: false),
       startPrompting: startPromptingParsed
-        ?? ShortcutDefinition(key: .p, modifiers: [.command, .shift], isEnabled: false),
+        ?? ShortcutDefinition(key: .j, modifiers: [.command, .shift], isEnabled: false),
       stopPrompting: stopPromptingParsed
         ?? ShortcutDefinition(key: .p, modifiers: [.command], isEnabled: false),
       openChatGPT: openChatGPTParsed
