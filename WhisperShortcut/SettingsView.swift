@@ -99,7 +99,7 @@ struct SettingsView: View {
       _promptModeSystemPrompt = State(initialValue: savedSystemPrompt)
     } else {
       _promptModeSystemPrompt = State(
-        initialValue: AppConstants.defaultSystemPrompt
+        initialValue: AppConstants.defaultPromptModeSystemPrompt
       )
     }
   }
@@ -576,7 +576,7 @@ struct SettingsView: View {
           HStack {
             Spacer()
             Button("Reset to Default") {
-              promptModeSystemPrompt = AppConstants.defaultSystemPrompt
+              promptModeSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
             }
             .buttonStyle(.bordered)
             .font(.callout)

@@ -211,7 +211,7 @@ class TranscriptionService {
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
     // Get system prompt from settings
-    let baseSystemPrompt = AppConstants.defaultSystemPrompt
+    let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
     let customSystemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
 
     // Combine base system prompt with custom prompt if available
@@ -591,7 +591,7 @@ struct TranscriptionPrompt {
   let text: String
 
   static let defaultPrompt = TranscriptionPrompt(
-    text: "Please transcribe this audio accurately, preserving punctuation and filler words.")
+    text: AppConstants.defaultTranscriptionSystemPrompt)
 }
 
 struct OpenAIErrorResponse: Codable {
