@@ -56,7 +56,7 @@ final class TranscriptionServiceIntegrationTests: XCTestCase {
     } catch let error as TranscriptionError {
       XCTAssertEqual(error, .noAPIKey, "Should get noAPIKey error")
       XCTAssertFalse(error.isRetryable, "No API key error should not be retryable")
-      print("✅ Test passed: Got expected noAPIKey error")
+      NSLog("✅ Test passed: Got expected noAPIKey error")
     } catch {
       XCTFail("Should get TranscriptionError, got: \(error)")
     }
@@ -67,9 +67,9 @@ final class TranscriptionServiceIntegrationTests: XCTestCase {
   func testRealOpenAITranscriptionIntegration() async {
     // Try to get API key from config file first, then environment variable
     guard let apiKey = getTestAPIKey(), !apiKey.isEmpty else {
-      print("⚠️ Skipping OpenAI integration test - No API key configured")
-      print("   Create 'test-config' file with OPENAI_API_KEY=your_key")
-      print("   Or set environment variable: export OPENAI_API_KEY=your_key")
+      NSLog("⚠️ Skipping OpenAI integration test - No API key configured")
+      NSLog("   Create 'test-config' file with OPENAI_API_KEY=your_key")
+      NSLog("   Or set environment variable: export OPENAI_API_KEY=your_key")
       return
     }
 
@@ -82,7 +82,7 @@ final class TranscriptionServiceIntegrationTests: XCTestCase {
       return
     }
 
-    print("🎙️ Testing real OpenAI transcription with API key: \(String(apiKey.prefix(10)))...")
+    NSLog("🎙️ Testing real OpenAI transcription with API key: \(String(apiKey.prefix(10)))...")
 
     defer {
       try? FileManager.default.removeItem(at: testAudioURL)
@@ -90,13 +90,13 @@ final class TranscriptionServiceIntegrationTests: XCTestCase {
 
     do {
       let transcription = try await transcriptionService.transcribe(audioURL: testAudioURL)
-      print("✅ OpenAI transcription successful: '\(transcription)'")
+      NSLog("✅ OpenAI transcription successful: '\(transcription)'")
       XCTAssertFalse(transcription.isEmpty, "Transcription should not be empty")
       // Basic validation - transcription should contain some text
       XCTAssertGreaterThan(transcription.count, 0, "Transcription should contain content")
     } catch {
       // The new API throws errors instead of returning error messages
-      print("ℹ️ Transcription failed with error: \(error.localizedDescription)")
+      NSLog("ℹ️ Transcription failed with error: \(error.localizedDescription)")
       // This might be expected if the API key is invalid or there are network issues
     }
   }
@@ -163,10 +163,10 @@ final class TranscriptionServiceIntegrationTests: XCTestCase {
 
     do {
       try audioData.write(to: audioURL)
-      print("🎵 Created simple test audio: \(audioURL.path) (\(audioData.count) bytes)")
+      NSLog("🎵 Created simple test audio: \(audioURL.path) (\(audioData.count) bytes)")
       return audioURL
     } catch {
-      print("❌ Failed to create test audio: \(error)")
+      NSLog("❌ Failed to create test audio: \(error)")
       return nil
     }
   }

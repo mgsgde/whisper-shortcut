@@ -271,11 +271,9 @@ class ShortcutConfigManager {
   static func parseShortcut(from string: String) -> ShortcutDefinition? {
     let cleanString = string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
-    print("🔍 Parsing shortcut: '\(string)' -> '\(cleanString)'")
-
     // Handle empty input
     if cleanString.isEmpty {
-      print("❌ Empty shortcut string")
+
       return nil
     }
 
@@ -283,7 +281,6 @@ class ShortcutConfigManager {
     let parts = cleanString.components(
       separatedBy: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "+")))
 
-    print("🔍 Parts: \(parts)")
     var modifiers: NSEvent.ModifierFlags = []
     var key: Key?
 
@@ -367,17 +364,16 @@ class ShortcutConfigManager {
       default:
         // Skip empty parts
         if !part.isEmpty {
-          print("⚠️ Unknown shortcut part: '\(part)' in '\(string)'")
+
         }
       }
     }
 
     guard let key = key else {
-      print("❌ No valid key found in shortcut: '\(string)'")
+
       return nil
     }
 
-    print("✅ Parsed shortcut: '\(string)' -> \(key.displayString) with modifiers: \(modifiers)")
     return ShortcutDefinition(key: key, modifiers: modifiers)
   }
 

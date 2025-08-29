@@ -52,7 +52,7 @@ class MenuBarController: NSObject {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
     guard let statusItem = statusItem else {
-      print("Failed to create status item")
+
       return
     }
 
@@ -331,19 +331,17 @@ class MenuBarController: NSObject {
   }
 
   private func updateRetryMenuItem() {
-    print("🔄 updateRetryMenuItem called - canRetry: \(canRetry)")
 
     guard let menu = statusItem?.menu else {
-      print("❌ No menu found")
+
       return
     }
 
     guard let retryMenuItem = menu.item(withTag: 104) else {
-      print("❌ No retry menu item found with tag 104")
+
       return
     }
 
-    print("🔄 Setting retry menu item hidden: \(!canRetry)")
     retryMenuItem.isHidden = !canRetry
 
     if canRetry {
@@ -355,17 +353,13 @@ class MenuBarController: NSObject {
         let (_, _, errorType) = TranscriptionService.parseTranscriptionResult(error)
         if let type = errorType {
           retryMenuItem.title = "🔄 Retry \(operationType) (\(type.title))"
-          print("🔄 Set retry menu title to: Retry \(operationType) (\(type.title))")
+
         } else {
           retryMenuItem.title = "🔄 Retry \(operationType)"
-          print("🔄 Set retry menu title to: Retry \(operationType)")
         }
       } else {
         retryMenuItem.title = "🔄 Retry \(operationType)"
-        print("🔄 Set retry menu title to: Retry \(operationType)")
       }
-    } else {
-      print("🔄 Retry menu item hidden")
     }
   }
 
@@ -441,7 +435,6 @@ class MenuBarController: NSObject {
   @objc private func startRecordingFromMenu() {
     guard !isRecording else { return }
 
-    print("Starting recording...")
     isRecording = true
     updateMenuState()
     audioRecorder?.startRecording()
@@ -450,28 +443,21 @@ class MenuBarController: NSObject {
   @objc private func stopRecordingFromMenu() {
     guard isRecording else { return }
 
-    NSLog("⏹️ TRANSCRIPTION-MODE: Stopping recording from menu...")
-
     // Don't reset isRecording here - it will be used in audioRecorderDidFinishRecording
     updateMenuState()
     audioRecorder?.stopRecording()
 
-    NSLog("⏹️ TRANSCRIPTION-MODE: Audio recording stopped from menu, waiting for processing...")
   }
 
   @objc private func startPromptingFromMenu() {
     guard !isPrompting && !isRecording else {
-      print(
-        "❌ Cannot start prompting - already recording: \(isRecording), already prompting: \(isPrompting)"
-      )
+
       return
     }
 
-    print("🤖 Starting prompting from menu...")
-
     // Check accessibility permission first
     if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-      print("⚠️ PROMPT-MODE: No accessibility permission - aborting prompt start from menu")
+
       return
     }
 
@@ -485,21 +471,18 @@ class MenuBarController: NSObject {
 
   @objc private func stopPromptingFromMenu() {
     guard isPrompting else {
-      NSLog("❌ PROMPT-MODE: Cannot stop prompting from menu - not currently prompting")
+
       return
     }
-
-    NSLog("🤖 PROMPT-MODE: Stopping prompting from menu...")
 
     // Don't reset isPrompting here - it will be used in audioRecorderDidFinishRecording
     updateMenuState()
     audioRecorder?.stopRecording()
 
-    NSLog("🤖 PROMPT-MODE: Audio recording stopped from menu, waiting for processing...")
   }
 
   @objc private func openChatGPTFromMenu() {
-    print("Opening ChatGPT...")
+
     openChatGPTApp()
   }
 
@@ -512,22 +495,21 @@ class MenuBarController: NSObject {
       let runningApp = NSWorkspace.shared.openApplication(
         at: chatGPTAppURL, configuration: NSWorkspace.OpenConfiguration())
       if runningApp != nil {
-        print("✅ Successfully opened ChatGPT desktop app")
+
         return
       } else {
-        print("❌ Failed to open ChatGPT desktop app")
+
       }
     } else {
-      print("ℹ️ ChatGPT desktop app not found at \(chatGPTAppPath)")
+
     }
 
     // Fallback: try to open ChatGPT in the default browser
     let chatGPTURL = URL(string: "https://chat.openai.com")!
 
     if NSWorkspace.shared.open(chatGPTURL) {
-      print("✅ Successfully opened ChatGPT in browser")
+
     } else {
-      print("❌ Failed to open ChatGPT in browser")
 
       // Final fallback: try to open in Safari specifically
       let safariURL = URL(string: "https://chat.openai.com")!
@@ -536,15 +518,15 @@ class MenuBarController: NSObject {
         [safariURL], withApplicationAt: safariAppURL, configuration: NSWorkspace.OpenConfiguration()
       )
       if runningApp != nil {
-        print("✅ Opened ChatGPT in Safari")
+
       } else {
-        print("❌ Failed to open ChatGPT in Safari")
+
       }
     }
   }
 
   @objc private func openSettings() {
-    print("Opening settings...")
+
     SettingsManager.shared.showSettings()
   }
 
@@ -554,12 +536,11 @@ class MenuBarController: NSObject {
 
   @objc private func retryLastOperation() {
     guard canRetry, let audioURL = lastAudioURL else {
-      print("❌ Cannot retry - no audio file available")
+
       return
     }
 
     let operationType = lastModeWasPrompting ? "prompt execution" : "transcription"
-    print("🔄 Retrying \(operationType)...")
 
     // Reset retry state
     canRetry = false
@@ -599,10 +580,10 @@ class MenuBarController: NSObject {
   }
 
   @objc private func modelChanged(_ notification: Notification) {
-    print("🔄 Model changed, updating transcription service...")
+
     if let newModel = notification.object as? TranscriptionModel {
       transcriptionService?.setModel(newModel)
-      print("✅ Model updated to: \(newModel.displayName)")
+
     }
   }
 
@@ -657,7 +638,6 @@ extension MenuBarController: ShortcutDelegate {
   func startRecording() {
     guard !isPrompting && !isRecording else { return }
 
-    print("🎙️ Starting recording via shortcut...")
     lastModeWasPrompting = false
     isRecording = true
     updateMenuState()
@@ -667,7 +647,6 @@ extension MenuBarController: ShortcutDelegate {
 
   func stopRecording() {
     guard isRecording else { return }
-    print("⏹️ Stopping recording via shortcut...")
 
     isRecording = false
     updateMenuState()
@@ -678,11 +657,9 @@ extension MenuBarController: ShortcutDelegate {
   func startPrompting() {
     guard !isRecording else { return }
 
-    print("🤖 Starting prompting via shortcut...")
-
     // Check accessibility permission first
     if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-      print("⚠️ PROMPT-MODE: No accessibility permission - aborting prompt start")
+
       return
     }
 
@@ -712,15 +689,11 @@ extension MenuBarController: ShortcutDelegate {
     cmdDown?.post(tap: .cghidEventTap)
     cmdUp?.post(tap: .cghidEventTap)
 
-    print("🤖 PROMPT-MODE: Attempted to simulate Cmd+C for text capture")
-    print(
-      "   Note: If this doesn't work (especially in App Store version), manually press Cmd+C first")
   }
 
   func stopPrompting() {
     guard isPrompting else { return }
 
-    print("🤖 Stopping prompting via shortcut...")
     isPrompting = false
     updateMenuState()
     stopAudioLevelMonitoring()
@@ -737,11 +710,10 @@ extension MenuBarController: ShortcutDelegate {
       withTimeInterval: Constants.audioLevelUpdateInterval, repeats: true
     ) { [weak self] _ in
       if let levels = self?.audioRecorder?.getAudioLevels() {
-        print("🎤 Audio levels - Average: \(levels.average)dB, Peak: \(levels.peak)dB")
 
         // If levels are very low (below -50dB), warn about potential issues
         if levels.average < -50 && levels.peak < -40 {
-          print("⚠️ Warning: Very low audio levels detected - check microphone input")
+
         }
       }
     }
@@ -764,11 +736,9 @@ extension MenuBarController: AudioRecorderDelegate {
     // Use tracked mode since states are reset immediately in stop functions
     let wasPrompting = lastModeWasPrompting
 
-    NSLog("🎯 AUDIO-FINISHED: wasPrompting = \(wasPrompting)")
-
     // Determine which mode we were in and process accordingly
     if wasPrompting {
-      NSLog("🤖 PROMPT-MODE: Audio recording finished, executing prompt...")
+
       showProcessingStatus(mode: "prompt")
 
       // Start prompt execution
@@ -776,7 +746,7 @@ extension MenuBarController: AudioRecorderDelegate {
         await performPromptExecution(audioURL: audioURL)
       }
     } else {
-      NSLog("🎙️ TRANSCRIPTION-MODE: Audio recording finished, starting transcription...")
+
       showProcessingStatus(mode: "transcription")
 
       // Start transcription
@@ -806,12 +776,10 @@ extension MenuBarController: AudioRecorderDelegate {
     if shouldCleanup {
       do {
         try FileManager.default.removeItem(at: audioURL)
-        print("✅ Cleaned up audio file after transcription")
+
       } catch {
-        print("⚠️ Could not clean up audio file: \(error)")
       }
     } else {
-      print("🔄 Keeping audio file for potential retry")
     }
   }
 
@@ -832,25 +800,23 @@ extension MenuBarController: AudioRecorderDelegate {
     // Reset prompting state after processing
     await MainActor.run {
       isPrompting = false
-      NSLog("🤖 PROMPT-MODE: State reset after processing - isPrompting = \(isPrompting)")
+
     }
 
     // Clean up audio file if appropriate
     if shouldCleanup {
       do {
         try FileManager.default.removeItem(at: audioURL)
-        print("✅ Cleaned up audio file after prompt execution")
+
       } catch {
-        print("⚠️ Could not clean up audio file: \(error)")
       }
     } else {
-      print("🔄 Keeping audio file for potential retry")
     }
   }
 
   @MainActor
   private func handleTranscriptionSuccess(_ transcription: String) -> Bool {
-    print("✅ Transcription successful: \(transcription)")
+    NSLog("✅ Transcription successful: \(transcription)")
 
     // Clear retry state on success
     canRetry = false
@@ -867,7 +833,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handleTranscriptionError(_ error: TranscriptionError) -> Bool {
-    print("❌ Transcription error: \(error)")
+    NSLog("❌ Transcription error: \(error)")
 
     let errorMessage = TranscriptionErrorFormatter.format(error)
 
@@ -877,7 +843,7 @@ extension MenuBarController: AudioRecorderDelegate {
     if error.isRetryable && lastAudioURL != nil {
       canRetry = true
       updateRetryMenuItem()
-      print("🔄 Error is retryable - showing retry option")
+
     }
 
     // Copy error message to clipboard
@@ -889,7 +855,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handlePromptSuccess(_ response: String) -> Bool {
-    print("✅ Prompt execution successful: \(response)")
+    NSLog("✅ Prompt execution successful: \(response)")
 
     // Clear retry state on success
     canRetry = false
@@ -906,12 +872,10 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handlePromptError(_ error: TranscriptionError) -> Bool {
-    NSLog("🤖 PROMPT-MODE: Error handler called with error: \(error)")
-    NSLog("🤖 PROMPT-MODE: Error title: \(error.title)")
-    print("❌ Prompt execution error: \(error)")
+
+    NSLog("❌ Prompt execution error: \(error)")
 
     let errorMessage = TranscriptionErrorFormatter.format(error)
-    NSLog("🤖 PROMPT-MODE: Formatted error message: '\(errorMessage)'")
 
     // Store error for retry functionality
     lastError = errorMessage
@@ -919,12 +883,11 @@ extension MenuBarController: AudioRecorderDelegate {
     if error.isRetryable && lastAudioURL != nil {
       canRetry = true
       updateRetryMenuItem()
-      NSLog("🤖 PROMPT-MODE: Error is retryable - showing retry option")
-      print("🔄 Error is retryable - showing retry option")
+
     }
 
     // Copy error message to clipboard
-    NSLog("🤖 PROMPT-MODE: Copying error message to clipboard")
+
     clipboardManager?.copyToClipboard(text: errorMessage)
     showTemporaryError()
 
@@ -952,7 +915,7 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   func audioRecorderDidFailWithError(_ error: Error) {
-    print("Audio recording failed: \(error)")
+
     isRecording = false
     updateMenuState()
 
@@ -1048,7 +1011,7 @@ extension MenuBarController: AudioRecorderDelegate {
   private func resetToReadyState() {
     // CRITICAL: Only reset if nothing is currently active
     guard !isRecording && !isPrompting else {
-      print("⚠️ Cannot reset to ready state - recording/prompting is active")
+
       return
     }
 

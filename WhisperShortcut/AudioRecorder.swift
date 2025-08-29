@@ -31,8 +31,7 @@ class AudioRecorder: NSObject {
 
   private func setupAudioSession() {
     // For macOS, AVAudioSession is not available - AVAudioRecorder handles audio setup automatically
-    print("✅ Audio recorder initialized for macOS")
-    print("🎤 Microphone permissions will be requested automatically when recording starts")
+
   }
 
   func startRecording() {
@@ -55,32 +54,29 @@ class AudioRecorder: NSObject {
     // Check current microphone authorization status
     switch AVCaptureDevice.authorizationStatus(for: .audio) {
     case .authorized:
-      print("✅ Microphone permission already granted")
+  
       completion(true)
 
     case .notDetermined:
-      print("🎤 Requesting microphone permission...")
+  
       AVCaptureDevice.requestAccess(for: .audio) { granted in
         DispatchQueue.main.async {
           if granted {
-            print("✅ Microphone permission granted")
+        
             completion(true)
           } else {
-            print("❌ Microphone permission denied")
+        
             completion(false)
           }
         }
       }
 
     case .denied, .restricted:
-      print("❌ Microphone permission denied or restricted")
-      print(
-        "💡 Please enable microphone access in System Preferences → Security & Privacy → Privacy → Microphone"
-      )
+      NSLog("❌ Microphone permission denied or restricted")
       completion(false)
 
     @unknown default:
-      print("⚠️ Unknown microphone authorization status")
+  
       completion(false)
     }
   }
@@ -114,8 +110,7 @@ class AudioRecorder: NSObject {
 
       let success = audioRecorder?.record() ?? false
       if success {
-        print("✅ Recording started successfully")
-        print("📁 Recording to: \(audioFilename.path)")
+        NSLog("✅ Recording started successfully")
       } else {
         throw NSError(
           domain: Constants.errorDomain, code: Constants.recordingFailedCode,
@@ -124,19 +119,19 @@ class AudioRecorder: NSObject {
           ])
       }
     } catch {
-      print("❌ Failed to start recording: \(error)")
+  
       delegate?.audioRecorderDidFailWithError(error)
     }
   }
 
   func stopRecording() {
     guard let recorder = audioRecorder, recorder.isRecording else {
-      print("⚠️ No active recording to stop")
+  
       return
     }
 
     recorder.stop()
-    print("⏹️ Recording stopped")
+
   }
 
   func getAudioLevels() -> (average: Float, peak: Float)? {
@@ -165,18 +160,18 @@ class AudioRecorder: NSObject {
 
 // MARK: - AVAudioRecorderDelegate
 extension AudioRecorder: AVAudioRecorderDelegate {
-    func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+  func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
     // Clean up the recorder instance to release microphone
     audioRecorder = nil
-    
+
     if flag, let url = recordingURL {
-      print("✅ Recording finished successfully: \(url.path)")
+  
 
       // Verify the file has content
       do {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         let fileSize = attributes[.size] as? Int64 ?? 0
-        print("📊 Final file size: \(fileSize) bytes")
+    
 
         if fileSize > 0 {
           delegate?.audioRecorderDidFinishRecording(audioURL: url)
@@ -189,7 +184,7 @@ extension AudioRecorder: AVAudioRecorderDelegate {
           delegate?.audioRecorderDidFailWithError(error)
         }
       } catch {
-        print("❌ Could not verify recording file: \(error)")
+    
         delegate?.audioRecorderDidFailWithError(error)
       }
     } else {
@@ -204,7 +199,7 @@ extension AudioRecorder: AVAudioRecorderDelegate {
 
   func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
     if let error = error {
-      print("❌ Audio recorder encode error: \(error)")
+  
       delegate?.audioRecorderDidFailWithError(error)
     }
   }

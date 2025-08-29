@@ -36,9 +36,7 @@ class SimpleShortcuts {
   func setup() {
     // Setup shortcuts with current configuration
     setupShortcuts(with: currentConfig)
-    print(
-      "🎹 Shortcuts ready: \(currentConfig.startRecording.displayString) (start), \(currentConfig.stopRecording.displayString) (stop), \(currentConfig.startPrompting.displayString) (start prompt), \(currentConfig.stopPrompting.displayString) (stop prompt), \(currentConfig.openChatGPT.displayString) (open ChatGPT)"
-    )
+
   }
 
   private func setupShortcuts(with config: ShortcutConfig) {
@@ -80,7 +78,7 @@ class SimpleShortcuts {
       openChatGPTKey = HotKey(
         key: config.openChatGPT.key, modifiers: config.openChatGPT.modifiers)
       openChatGPTKey?.keyDownHandler = { [weak self] in
-        print("🤖 Opening ChatGPT via shortcut...")
+
         self?.delegate?.openChatGPT()
       }
     }
@@ -90,9 +88,7 @@ class SimpleShortcuts {
     if let newConfig = notification.object as? ShortcutConfig {
       currentConfig = newConfig
       setupShortcuts(with: newConfig)
-      print(
-        "🎹 Shortcuts updated: \(newConfig.startRecording.displayString) (start), \(newConfig.stopRecording.displayString) (stop), \(newConfig.startPrompting.displayString) (start prompt), \(newConfig.stopPrompting.displayString) (stop prompt), \(newConfig.openChatGPT.displayString) (open ChatGPT)"
-      )
+
     }
   }
 

@@ -126,107 +126,66 @@ class TranscriptionService {
 
   // MARK: - Transcription
   func transcribe(audioURL: URL) async throws -> String {
-    NSLog("🎙️ TRANSCRIPTION-MODE: Starting transcription for URL: \(audioURL)")
-
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      NSLog("🎙️ TRANSCRIPTION-MODE: No API key found")
       throw TranscriptionError.noAPIKey
     }
-    NSLog("🎙️ TRANSCRIPTION-MODE: API key validation passed")
 
     // Validate file
-    NSLog("🎙️ TRANSCRIPTION-MODE: Validating audio file...")
     try validateAudioFile(at: audioURL)
-    NSLog("🎙️ TRANSCRIPTION-MODE: Audio file validation passed")
 
     // Create request based on selected model
-    NSLog("🎙️ TRANSCRIPTION-MODE: Creating request...")
     let request = try createRequest(audioURL: audioURL, apiKey: apiKey)
-    NSLog("🎙️ TRANSCRIPTION-MODE: Request created successfully")
 
     // Execute request
-    NSLog("🎙️ TRANSCRIPTION-MODE: Executing API request...")
     let (data, response) = try await session.data(for: request)
-    NSLog("🎙️ TRANSCRIPTION-MODE: API request completed")
 
     // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
-      NSLog("🎙️ TRANSCRIPTION-MODE: Invalid response type")
       throw TranscriptionError.networkError("Invalid response")
     }
-    NSLog("🎙️ TRANSCRIPTION-MODE: HTTP status code: \(httpResponse.statusCode)")
 
     // Check if the response indicates an error
     if httpResponse.statusCode != 200 {
-      NSLog("🎙️ TRANSCRIPTION-MODE: HTTP error status: \(httpResponse.statusCode)")
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
 
     // Parse result
-    NSLog("🎙️ TRANSCRIPTION-MODE: Parsing response...")
     let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
-    NSLog("🎙️ TRANSCRIPTION-MODE: Parsed result text: '\(result.text)'")
-    NSLog("🎙️ TRANSCRIPTION-MODE: Result text length: \(result.text.count)")
-
     return result.text
   }
 
   // MARK: - Prompt Execution
   func executePrompt(audioURL: URL) async throws -> String {
-    NSLog("🤖 PROMPT-MODE: Starting prompt execution with audio URL: \(audioURL)")
-
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      NSLog("🤖 PROMPT-MODE: No API key found")
       throw TranscriptionError.noAPIKey
     }
-    NSLog("🤖 PROMPT-MODE: API key validation passed")
 
     // First, transcribe the audio to get the user's spoken text
-    NSLog("🤖 PROMPT-MODE: Starting transcription...")
     let spokenText = try await transcribe(audioURL: audioURL)
-    NSLog("🤖 PROMPT-MODE: Transcription completed. Raw result: '\(spokenText)'")
-    NSLog("🤖 PROMPT-MODE: Transcription length: \(spokenText.count) characters")
-    NSLog(
-      "🤖 PROMPT-MODE: Trimmed text: '\(spokenText.trimmingCharacters(in: .whitespacesAndNewlines))'"
-    )
 
     // Check if meaningful speech was detected
     let trimmedText = spokenText.trimmingCharacters(in: .whitespacesAndNewlines)
 
     // Check for empty or very short text
     if trimmedText.isEmpty || trimmedText.count < 3 {
-      NSLog(
-        "🤖 PROMPT-MODE: No meaningful speech detected (empty/short). Throwing noSpeechDetected error"
-      )
       throw TranscriptionError.noSpeechDetected
     }
 
     // Check if the transcription returned the system prompt itself (common with silent audio)
     let defaultPrompt = AppConstants.defaultTranscriptionSystemPrompt
     if trimmedText.contains(defaultPrompt) || trimmedText.hasPrefix("context:") {
-      NSLog(
-        "🤖 PROMPT-MODE: Transcription returned system prompt (silent audio detected). Throwing noSpeechDetected error"
-      )
-      NSLog("🤖 PROMPT-MODE: Detected prompt text: '\(trimmedText)'")
       throw TranscriptionError.noSpeechDetected
     }
 
-    NSLog("🤖 PROMPT-MODE: Speech validation passed. Proceeding with chat completion")
-
     // Get clipboard content as context if available
     let clipboardContext = getClipboardContext()
-    NSLog("🤖 PROMPT-MODE: Clipboard context available: \(clipboardContext != nil)")
 
     // Then send the transcribed text to the chat API with clipboard context
-    NSLog("🤖 PROMPT-MODE: Calling executeChatCompletion...")
-    let result = try await executeChatCompletion(
+    return try await executeChatCompletion(
       userMessage: spokenText, clipboardContext: clipboardContext, apiKey: apiKey)
-    NSLog("🤖 PROMPT-MODE: Chat completion successful. Result: '\(result)'")
-
-    return result
   }
 
   // MARK: - Clipboard Context
@@ -302,7 +261,6 @@ class TranscriptionService {
     if httpResponse.statusCode != 200 {
       // Log error response body for debugging
       if let errorBody = String(data: data, encoding: .utf8) {
-        NSLog("🤖 PROMPT-MODE: GPT-5 Error Response Body: \(errorBody)")
       }
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
@@ -327,22 +285,17 @@ class TranscriptionService {
       }
 
       // Fallback: if we can't find the expected structure, try to extract any text
-      NSLog("🤖 PROMPT-MODE: GPT-5 Could not find expected text structure, trying fallback...")
       if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
         as? [String: Any]
       {
-        NSLog("🤖 PROMPT-MODE: GPT-5 Raw JSON Structure: \(jsonObject)")
       }
 
       throw TranscriptionError.networkError("Could not extract text from GPT-5 response")
     } catch {
-      NSLog("🤖 PROMPT-MODE: GPT-5 JSON Parsing Error: \(error)")
-
       // Try to parse as a generic dictionary to see the actual structure
       if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
         as? [String: Any]
       {
-        NSLog("🤖 PROMPT-MODE: GPT-5 Raw JSON Structure: \(jsonObject)")
       }
 
       throw error
@@ -380,7 +333,6 @@ class TranscriptionService {
 
     if httpResponse.statusCode != 200 {
       if let errorBody = String(data: data, encoding: .utf8) {
-        NSLog("🧪 TEST: Test Error Response Body: \(errorBody)")
       }
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error

@@ -14,7 +14,7 @@ class SettingsWindowController: NSWindowController {
   }
 
   init() {
-    print("🔧 Creating SettingsWindowController...")
+
 
     // Create SwiftUI hosting window
     let settingsView = SettingsView()
@@ -40,7 +40,7 @@ class SettingsWindowController: NSWindowController {
     super.init(window: window)
     window.delegate = self
 
-    print("🔧 SettingsWindowController created successfully")
+
   }
 
   required init?(coder: NSCoder) {
@@ -66,7 +66,7 @@ class SettingsWindowController: NSWindowController {
 // MARK: - NSWindowDelegate
 extension SettingsWindowController: NSWindowDelegate {
   func windowWillClose(_ notification: Notification) {
-    print("🔧 Settings window closing")
+
 
     // Step 4: Return to menu bar app when window closes
     DispatchQueue.main.async {

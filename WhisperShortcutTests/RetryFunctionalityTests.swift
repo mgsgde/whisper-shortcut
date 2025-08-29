@@ -84,21 +84,21 @@ final class RetryFunctionalityTests: XCTestCase {
       ⏳ Rate Limit Exceeded
 
       You have exceeded the rate limit for this API.
-      
+
       Common causes for new users:
       • No billing method configured - OpenAI requires payment setup
       • Account has no credits or usage quota reached
       • Too many requests in a short time period
-      
+
       To resolve:
       1. Visit platform.openai.com
       2. Go to Settings → Billing
       3. Add a payment method
       4. Purchase prepaid credits
-      
+
       Note: OpenAI no longer provides free trial credits.
       You must add billing information to use the API.
-      
+
       Please wait a moment and try again after setting up billing.
       """
 
@@ -175,7 +175,7 @@ final class RetryFunctionalityTests: XCTestCase {
     } catch let error as TranscriptionError {
       XCTAssertEqual(error, .noAPIKey, "Should get noAPIKey error")
       XCTAssertFalse(error.isRetryable, "No API key error should not be retryable")
-      print("✅ Test passed: Got expected noAPIKey error")
+      NSLog("✅ Test passed: Got expected noAPIKey error")
     } catch {
       XCTFail("Should get TranscriptionError, got: \(error)")
     }
@@ -203,7 +203,7 @@ final class RetryFunctionalityTests: XCTestCase {
       XCTAssertTrue(
         error == .emptyFile || error == .fileError("File is empty"),
         "Should get emptyFile or fileError, got: \(error)")
-      print("✅ Test passed: Got expected file error: \(error)")
+      NSLog("✅ Test passed: Got expected file error: \(error)")
     } catch {
       XCTFail("Should get TranscriptionError, got: \(error)")
     }

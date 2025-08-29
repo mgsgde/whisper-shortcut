@@ -42,7 +42,7 @@ final class TranscriptionServiceTests: XCTestCase {
     } catch {
       guard let transcriptionError = error as? TranscriptionError else {
         // Network errors are also acceptable for invalid keys
-        print("Validation failed with network error (acceptable): \(error)")
+        NSLog("Validation failed with network error (acceptable): \(error)")
         return
       }
       // Should get incorrectAPIKey error for invalid key (OpenAI returns "incorrect api key" for malformed keys)

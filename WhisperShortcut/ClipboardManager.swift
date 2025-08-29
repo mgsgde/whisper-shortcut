@@ -22,8 +22,7 @@ class ClipboardManager {
       formattedText.count > Constants.maxPreviewLength
       ? String(formattedText.prefix(Constants.maxPreviewLength)) + "..."
       : formattedText
-    print("📋 Text copied to clipboard: \"\(preview)\"")
-    print("   Full text length: \(formattedText.count) characters")
+
   }
 
   func getClipboardText() -> String? {

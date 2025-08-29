@@ -12,15 +12,15 @@ protocol KeychainManaging {
 
 class KeychainManager: KeychainManaging {
   static let shared = KeychainManager()
-  
+
   // MARK: - Constants
   private enum Constants {
     static let serviceName = "com.whispershortcut.openai"
     static let accountName = "api-key"
   }
-  
+
   private var cachedAPIKey: String?
-  
+
   private init() {}
 
   // MARK: - API Key Management
@@ -29,7 +29,7 @@ class KeychainManager: KeychainManaging {
     clearCache()
     _ = deleteAPIKey()
     guard let data = apiKey.data(using: .utf8) else {
-      print("❌ Failed to convert API key to data")
+
       return false
     }
 
@@ -44,10 +44,10 @@ class KeychainManager: KeychainManaging {
     let status = SecItemAdd(query as CFDictionary, nil)
 
     if status == errSecSuccess {
-      print("✅ API key saved to Keychain successfully")
+
       return true
     } else {
-      print("❌ Failed to save API key to Keychain: \(status)")
+
       return false
     }
   }
@@ -69,11 +69,11 @@ class KeychainManager: KeychainManaging {
     if status == errSecSuccess, let data = result as? Data,
       let apiKey = String(data: data, encoding: .utf8)
     {
-      print("✅ API key retrieved from Keychain")
+
       cachedAPIKey = apiKey
       return apiKey
     } else {
-      print("⚠️ No API key found in Keychain or error: \(status)")
+
       return nil
     }
   }
@@ -88,10 +88,10 @@ class KeychainManager: KeychainManaging {
     let status = SecItemDelete(query as CFDictionary)
 
     if status == errSecSuccess || status == errSecItemNotFound {
-      print("✅ API key deleted from Keychain (or was not found)")
+
       return true
     } else {
-      print("❌ Failed to delete API key from Keychain: \(status)")
+
       return false
     }
   }
