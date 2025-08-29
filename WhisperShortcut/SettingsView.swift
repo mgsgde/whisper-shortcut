@@ -136,10 +136,10 @@ struct SettingsView: View {
           }
         }
         .padding(.horizontal, Constants.horizontalPadding)
-        .padding(.bottom, 20)
+        .padding(.bottom, Constants.spacing)
       }
 
-      Spacer(minLength: 4)
+      Spacer(minLength: Constants.spacing)
 
       // Buttons
       HStack(spacing: Constants.buttonSpacing) {

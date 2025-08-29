@@ -3,18 +3,18 @@ import XCTest
 @testable import WhisperShortcut
 
 final class RetryFunctionalityTests: XCTestCase {
-  var transcriptionService: TranscriptionService!
+  var speechService: SpeechService!
   var mockKeychain: MockKeychainManager!
 
   override func setUp() {
     super.setUp()
     mockKeychain = MockKeychainManager()
-    transcriptionService = TranscriptionService(keychainManager: mockKeychain)
+    speechService = SpeechService(keychainManager: mockKeychain)
   }
 
   override func tearDown() {
     mockKeychain.clear()
-    transcriptionService = nil
+    speechService = nil
     mockKeychain = nil
     super.tearDown()
   }
@@ -170,7 +170,7 @@ final class RetryFunctionalityTests: XCTestCase {
 
     // With new async API, this should throw a TranscriptionError
     do {
-      _ = try await transcriptionService.transcribe(audioURL: tempURL)
+      _ = try await speechService.transcribe(audioURL: tempURL)
       XCTFail("Should have thrown TranscriptionError.noAPIKey")
     } catch let error as TranscriptionError {
       XCTAssertEqual(error, .noAPIKey, "Should get noAPIKey error")
@@ -196,7 +196,7 @@ final class RetryFunctionalityTests: XCTestCase {
 
     // With new async API, this should throw a TranscriptionError
     do {
-      _ = try await transcriptionService.transcribe(audioURL: tempURL)
+      _ = try await speechService.transcribe(audioURL: tempURL)
       XCTFail("Should have thrown TranscriptionError for empty file")
     } catch let error as TranscriptionError {
       // Should get emptyFile or fileError

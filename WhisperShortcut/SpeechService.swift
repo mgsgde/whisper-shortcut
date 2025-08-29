@@ -50,11 +50,11 @@ enum TranscriptionModel: String, CaseIterable {
 }
 
 // MARK: - Core Service
-class TranscriptionService {
+class SpeechService {
+
+  // MARK: - Shared Infrastructure
   private let keychainManager: KeychainManaging
-  private var selectedModel: TranscriptionModel = .gpt4oMiniTranscribe
-  private var previousResponseId: String?  // Store previous response ID for conversation continuity
-  private var clipboardManager: ClipboardManager?  // Add clipboard manager for context
+  private var clipboardManager: ClipboardManager?
 
   // Custom session with appropriate timeouts
   private lazy var session: URLSession = {
@@ -64,16 +64,39 @@ class TranscriptionService {
     return URLSession(configuration: config)
   }()
 
+  // MARK: - Transcription Mode Properties
+  private var selectedModel: TranscriptionModel = .gpt4oMiniTranscribe
+
+  // MARK: - Prompt Mode Properties
+  private var previousResponseId: String?  // Store previous response ID for conversation continuity
+
   init(
     keychainManager: KeychainManaging = KeychainManager.shared,
     clipboardManager: ClipboardManager? = nil
   ) {
     self.keychainManager = keychainManager
     self.clipboardManager = clipboardManager
+    NSLog("🔧 SpeechService initialized with keychain and clipboard manager")
   }
 
-  // MARK: - Model Selection
+  // MARK: - Shared API Key Management
+  private var apiKey: String? {
+    keychainManager.getAPIKey()
+  }
+
+  func updateAPIKey(_ key: String) {
+    NSLog("🔑 API key updated")
+    _ = keychainManager.saveAPIKey(key)
+  }
+
+  func clearAPIKey() {
+    NSLog("🔑 API key cleared")
+    _ = keychainManager.deleteAPIKey()
+  }
+
+  // MARK: - Transcription Mode Configuration
   func setModel(_ model: TranscriptionModel) {
+    NSLog("🎙️ TRANSCRIPTION-MODE: Model set to \(model.displayName)")
     self.selectedModel = model
   }
 
@@ -81,27 +104,18 @@ class TranscriptionService {
     return selectedModel
   }
 
-  // MARK: - API Key Management
-  private var apiKey: String? {
-    keychainManager.getAPIKey()
-  }
-
-  func updateAPIKey(_ key: String) {
-    _ = keychainManager.saveAPIKey(key)
-  }
-
-  func clearAPIKey() {
-    _ = keychainManager.deleteAPIKey()
-  }
-
-  // MARK: - Conversation Management
+  // MARK: - Prompt Mode Configuration
   func clearConversationHistory() {
+    NSLog("🤖 PROMPT-MODE: Conversation history cleared")
     previousResponseId = nil
   }
 
-  // MARK: - Validation
+  // MARK: - Shared Validation
   func validateAPIKey(_ key: String) async throws -> Bool {
+    NSLog("🔑 Validating API key...")
+
     guard !key.isEmpty else {
+      NSLog("⚠️ Error: API key is empty")
       throw TranscriptionError.noAPIKey
     }
 
@@ -113,82 +127,126 @@ class TranscriptionService {
     let (data, response) = try await session.data(for: request)
 
     guard let httpResponse = response as? HTTPURLResponse else {
+      NSLog("⚠️ Error: Invalid response from API validation")
       throw TranscriptionError.networkError("Invalid response")
     }
 
     if httpResponse.statusCode != 200 {
+      NSLog("⚠️ Error: API validation failed with status \(httpResponse.statusCode)")
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
 
+    NSLog("✅ API key validation successful")
     return true
   }
 
-  // MARK: - Transcription
+  // MARK: - Transcription Mode
+  /// Pure transcription using GPT-4o-transcribe models
   func transcribe(audioURL: URL) async throws -> String {
+    NSLog("🎙️ TRANSCRIPTION-MODE: Starting transcription with model \(selectedModel.displayName)")
+
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
+      NSLog("⚠️ TRANSCRIPTION-MODE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
     // Validate file
     try validateAudioFile(at: audioURL)
+    NSLog("🎙️ TRANSCRIPTION-MODE: Audio file validated")
 
-    // Create request based on selected model
-    let request = try createRequest(audioURL: audioURL, apiKey: apiKey)
+    // Create transcription request
+    let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
 
     // Execute request
+    NSLog("🎙️ TRANSCRIPTION-MODE: Sending request to \(selectedModel.apiEndpoint)")
     let (data, response) = try await session.data(for: request)
 
     // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
+      NSLog("⚠️ TRANSCRIPTION-MODE: Invalid response type")
       throw TranscriptionError.networkError("Invalid response")
     }
 
     // Check if the response indicates an error
     if httpResponse.statusCode != 200 {
+      NSLog("⚠️ TRANSCRIPTION-MODE: HTTP error \(httpResponse.statusCode)")
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
 
     // Parse result
     let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
+    NSLog("✅ TRANSCRIPTION-MODE: Transcription successful, text length: \(result.text.count)")
     return result.text
   }
 
-  // MARK: - Prompt Execution
+  // MARK: - Prompt Mode
+  /// Transcribe audio and execute as prompt with GPT-5
   func executePrompt(audioURL: URL) async throws -> String {
+    NSLog("🤖 PROMPT-MODE: Starting prompt execution")
+
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
+      NSLog("⚠️ PROMPT-MODE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
     // First, transcribe the audio to get the user's spoken text
+    NSLog("🤖 PROMPT-MODE: Transcribing user input...")
     let spokenText = try await transcribe(audioURL: audioURL)
+    NSLog("🤖 PROMPT-MODE: User input transcribed: '\(spokenText)'")
 
+    // Validate spoken text
+    try validateSpokenText(spokenText)
+    NSLog("🤖 PROMPT-MODE: Spoken text validation passed")
+
+    // Get clipboard content as context if available
+    let clipboardContext = getClipboardContext()
+    if let context = clipboardContext {
+      NSLog("🤖 PROMPT-MODE: Clipboard context found (length: \(context.count))")
+    } else {
+      NSLog("🤖 PROMPT-MODE: No clipboard context available")
+    }
+
+    // Execute prompt with GPT-5
+    return try await executeGPT5Prompt(
+      userMessage: spokenText, clipboardContext: clipboardContext, apiKey: apiKey)
+  }
+
+  // MARK: - Transcription Mode Helpers
+  private func createTranscriptionRequest(audioURL: URL, apiKey: String) throws -> URLRequest {
+    NSLog("🎙️ TRANSCRIPTION-MODE: Creating request for \(selectedModel.rawValue)")
+
+    let apiURL = URL(string: selectedModel.apiEndpoint)!
+    var request = URLRequest(url: apiURL)
+    request.httpMethod = "POST"
+    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+    // Create multipart form data using a more elegant approach
+    return try createMultipartRequest(request: &request, audioURL: audioURL)
+  }
+
+  // MARK: - Prompt Mode Helpers
+  private func validateSpokenText(_ spokenText: String) throws {
     // Check if meaningful speech was detected
     let trimmedText = spokenText.trimmingCharacters(in: .whitespacesAndNewlines)
 
     // Check for empty or very short text
     if trimmedText.isEmpty || trimmedText.count < 3 {
+      NSLog("⚠️ PROMPT-MODE: No meaningful speech detected")
       throw TranscriptionError.noSpeechDetected
     }
 
     // Check if the transcription returned the system prompt itself (common with silent audio)
     let defaultPrompt = AppConstants.defaultTranscriptionSystemPrompt
     if trimmedText.contains(defaultPrompt) || trimmedText.hasPrefix("context:") {
+      NSLog("⚠️ PROMPT-MODE: System prompt detected in transcription")
       throw TranscriptionError.noSpeechDetected
     }
-
-    // Get clipboard content as context if available
-    let clipboardContext = getClipboardContext()
-
-    // Then send the transcribed text to the chat API with clipboard context
-    return try await executeChatCompletion(
-      userMessage: spokenText, clipboardContext: clipboardContext, apiKey: apiKey)
   }
 
-  // MARK: - Clipboard Context
   private func getClipboardContext() -> String? {
     guard let clipboardManager = clipboardManager else {
       return nil
@@ -207,10 +265,10 @@ class TranscriptionService {
     return trimmedText
   }
 
-  private func executeChatCompletion(userMessage: String, clipboardContext: String?, apiKey: String)
+  private func executeGPT5Prompt(userMessage: String, clipboardContext: String?, apiKey: String)
     async throws -> String
   {
-    // Always use GPT-5 with Responses API
+    NSLog("🤖 PROMPT-MODE: Executing GPT-5 prompt")
     return try await executeGPT5Response(
       userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey)
   }
@@ -218,27 +276,17 @@ class TranscriptionService {
   private func executeGPT5Response(userMessage: String, clipboardContext: String?, apiKey: String)
     async throws -> String
   {
+    NSLog("🤖 PROMPT-MODE: Building GPT-5 request")
+
     let url = URL(string: Constants.responsesEndpoint)!
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-    // Get system prompt from settings
-    let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
-    let customSystemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
-
-    // Combine base system prompt with custom prompt if available
-    var fullInput = baseSystemPrompt
-    if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
-      fullInput += "\n\nAdditional instructions: \(customPrompt)"
-    }
-
-    if let context = clipboardContext {
-      fullInput += "\n\nContext (selected text from clipboard):\n\(context)"
-    }
-
-    fullInput += "\n\nUser: \(userMessage)"
+    // Build prompt input
+    let fullInput = buildPromptInput(userMessage: userMessage, clipboardContext: clipboardContext)
+    NSLog("🤖 PROMPT-MODE: Prompt input built (length: \(fullInput.count))")
 
     let gpt5Request = GPT5ResponseRequest(
       model: "gpt-5",
@@ -251,33 +299,67 @@ class TranscriptionService {
     request.httpBody = try JSONEncoder().encode(gpt5Request)
 
     // Execute request
+    NSLog("🤖 PROMPT-MODE: Sending request to GPT-5 API")
     let (data, response) = try await session.data(for: request)
 
     // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
+      NSLog("⚠️ PROMPT-MODE: Invalid response type from GPT-5")
       throw TranscriptionError.networkError("Invalid response")
     }
 
     if httpResponse.statusCode != 200 {
-      // Log error response body for debugging
+      NSLog("⚠️ PROMPT-MODE: GPT-5 HTTP error \(httpResponse.statusCode)")
       if let errorBody = String(data: data, encoding: .utf8) {
+        NSLog("⚠️ PROMPT-MODE: Error response body: \(errorBody)")
       }
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
 
-    // Parse result
+    // Parse and extract response
+    return try parseGPT5Response(data: data)
+  }
+
+  private func buildPromptInput(userMessage: String, clipboardContext: String?) -> String {
+    // Get system prompt from settings
+    let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
+    let customSystemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
+
+    // Combine base system prompt with custom prompt if available
+    var fullInput = baseSystemPrompt
+    if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
+      fullInput += "\n\nAdditional instructions: \(customPrompt)"
+      NSLog("🤖 PROMPT-MODE: Custom system prompt added")
+    }
+
+    if let context = clipboardContext {
+      fullInput += "\n\nContext (selected text from clipboard):\n\(context)"
+      NSLog("🤖 PROMPT-MODE: Clipboard context added to prompt")
+    }
+
+    fullInput += "\n\nUser: \(userMessage)"
+    return fullInput
+  }
+
+  private func parseGPT5Response(data: Data) throws -> String {
+    NSLog("🤖 PROMPT-MODE: Parsing GPT-5 response")
+
     do {
       let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
 
       // Store the response ID for conversation continuity
       previousResponseId = result.id
+      NSLog("🤖 PROMPT-MODE: Response ID stored for conversation continuity")
 
       // Extract text from the response structure
       for output in result.output {
         if output.type == "message" {
           for content in output.content ?? [] {
             if content.type == "output_text" {
+              NSLog(
+                "✅ PROMPT-MODE: Successfully extracted response text (length: \(content.text.count))"
+              )
               return content.text
             }
           }
@@ -288,6 +370,7 @@ class TranscriptionService {
       if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
         as? [String: Any]
       {
+        NSLog("⚠️ PROMPT-MODE: Unexpected response structure, attempting fallback parsing")
       }
 
       throw TranscriptionError.networkError("Could not extract text from GPT-5 response")
@@ -296,6 +379,7 @@ class TranscriptionService {
       if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
         as? [String: Any]
       {
+        NSLog("⚠️ PROMPT-MODE: Failed to decode response, raw structure available")
       }
 
       throw error
@@ -304,7 +388,10 @@ class TranscriptionService {
 
   // MARK: - Testing and Debugging
   func testGPT5Request() async throws -> String {
+    NSLog("🧪 Testing GPT-5 request")
+
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
+      NSLog("⚠️ TEST: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
@@ -325,14 +412,18 @@ class TranscriptionService {
 
     request.httpBody = try JSONEncoder().encode(testRequest)
 
+    NSLog("🧪 TEST: Sending test request to GPT-5")
     let (data, response) = try await URLSession.shared.data(for: request)
 
     guard let httpResponse = response as? HTTPURLResponse else {
+      NSLog("⚠️ TEST: Invalid response type")
       throw TranscriptionError.networkError("Invalid response type")
     }
 
     if httpResponse.statusCode != 200 {
+      NSLog("⚠️ TEST: HTTP error \(httpResponse.statusCode)")
       if let errorBody = String(data: data, encoding: .utf8) {
+        NSLog("⚠️ TEST: Error body: \(errorBody)")
       }
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
@@ -346,44 +437,47 @@ class TranscriptionService {
       if output.type == "message" {
         for content in output.content ?? [] {
           if content.type == "output_text" {
+            NSLog("✅ TEST: GPT-5 test successful")
             return content.text
           }
         }
       }
     }
 
+    NSLog("⚠️ TEST: Could not extract text from test response")
     throw TranscriptionError.networkError("Could not extract text from test response")
   }
 
-  // MARK: - Private Helpers
+  // MARK: - Shared Infrastructure Helpers
   private func validateAudioFile(at url: URL) throws {
+    NSLog("🔧 Validating audio file at: \(url.lastPathComponent)")
+
     let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
     guard let fileSize = attributes[.size] as? Int64 else {
+      NSLog("⚠️ Error: Cannot read file size")
       throw TranscriptionError.fileError("Cannot read file size")
     }
 
+    NSLog("🔧 Audio file size: \(fileSize) bytes")
+
     if fileSize == 0 {
+      NSLog("⚠️ Error: Empty audio file")
       throw TranscriptionError.emptyFile
     }
 
     // GPT-4o-transcribe has a 25MB limit, same as Whisper-1
     if fileSize > Constants.maxFileSize {
+      NSLog("⚠️ Error: File too large (\(fileSize) > \(Constants.maxFileSize))")
       throw TranscriptionError.fileTooLarge
     }
-  }
 
-  private func createRequest(audioURL: URL, apiKey: String) throws -> URLRequest {
-    let apiURL = URL(string: selectedModel.apiEndpoint)!
-    var request = URLRequest(url: apiURL)
-    request.httpMethod = "POST"
-    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-
-    // Create multipart form data using a more elegant approach
-    return try createMultipartRequest(request: &request, audioURL: audioURL)
+    NSLog("✅ Audio file validation passed")
   }
 
   private func createMultipartRequest(request: inout URLRequest, audioURL: URL) throws -> URLRequest
   {
+    NSLog("🔧 Creating multipart form data request")
+
     let boundary = "Boundary-\(UUID().uuidString)"
 
     // Prepare form fields
@@ -392,35 +486,45 @@ class TranscriptionService {
       "response_format": "json",
     ]
 
+    NSLog("🔧 Using model: \(selectedModel.rawValue)")
+
     // Add prompt for GPT-4o models only if custom prompt is not empty
     if selectedModel == .gpt4oTranscribe || selectedModel == .gpt4oMiniTranscribe {
       if let customPrompt = UserDefaults.standard.string(forKey: "customPromptText"),
         !customPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       {
         fields["prompt"] = customPrompt
+        NSLog("🔧 Custom transcription prompt added")
       }
       // If prompt is empty or nil, don't send any prompt field to OpenAI
     }
 
     // Prepare file
     let audioData = try Data(contentsOf: audioURL)
+    NSLog("🔧 Audio data loaded: \(audioData.count) bytes")
+
     let files: [String: (filename: String, contentType: String, data: Data)] = [
       "file": (filename: "audio.wav", contentType: "audio/wav", data: audioData)
     ]
 
     // Set multipart form data using the elegant extension
     request.setMultipartFormData(boundary: boundary, fields: fields, files: files)
+    NSLog("🔧 Multipart request created successfully")
 
     return request
   }
 
   private func parseErrorResponse(data: Data, statusCode: Int) throws -> TranscriptionError {
+    NSLog("🔧 Parsing error response (status: \(statusCode))")
+
     // Try to parse the error response as JSON
     if let errorResponse = try? JSONDecoder().decode(OpenAIErrorResponse.self, from: data) {
+      NSLog("🔧 Parsed OpenAI error response")
       return parseOpenAIError(errorResponse, statusCode: statusCode)
     }
 
     // If we can't parse JSON, fall back to status code
+    NSLog("🔧 Using status code fallback for error parsing")
     return parseStatusCodeError(statusCode)
   }
 
@@ -684,7 +788,7 @@ enum TranscriptionError: Error, Equatable {
 }
 
 // MARK: - Error Result Parser
-extension TranscriptionService {
+extension SpeechService {
   /// Parse transcription result to determine if it contains an error message
   static func parseTranscriptionResult(_ text: String) -> (
     isError: Bool, isRetryable: Bool, errorType: TranscriptionError?

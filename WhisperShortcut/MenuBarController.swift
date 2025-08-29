@@ -19,7 +19,7 @@ class MenuBarController: NSObject {
   private var isPrompting = false  // New: Track prompt mode
   private var audioRecorder: AudioRecorder?
   private var shortcuts: SimpleShortcuts?
-  private var transcriptionService: TranscriptionService?
+  private var speechService: SpeechService?
   private var clipboardManager: ClipboardManager?
   private var audioLevelTimer: Timer?
 
@@ -171,16 +171,16 @@ class MenuBarController: NSObject {
     audioRecorder = AudioRecorder()
     shortcuts = SimpleShortcuts()
     clipboardManager = ClipboardManager()
-    transcriptionService = TranscriptionService(clipboardManager: clipboardManager)
+    speechService = SpeechService(clipboardManager: clipboardManager)
 
     // Load saved model preference and set it on the transcription service
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
       let savedModel = TranscriptionModel(rawValue: savedModelString)
     {
-      transcriptionService?.setModel(savedModel)
+      speechService?.setModel(savedModel)
     } else {
       // Set default model to GPT-4o Transcribe
-      transcriptionService?.setModel(.gpt4oTranscribe)
+      speechService?.setModel(.gpt4oTranscribe)
     }
 
     // Setup simple shortcuts
@@ -350,7 +350,7 @@ class MenuBarController: NSObject {
 
       // Show specific error type in retry menu if available
       if let error = lastError {
-        let (_, _, errorType) = TranscriptionService.parseTranscriptionResult(error)
+        let (_, _, errorType) = SpeechService.parseTranscriptionResult(error)
         if let type = errorType {
           retryMenuItem.title = "🔄 Retry \(operationType) (\(type.title))"
 
@@ -360,6 +360,7 @@ class MenuBarController: NSObject {
       } else {
         retryMenuItem.title = "🔄 Retry \(operationType)"
       }
+    } else {
     }
   }
 
@@ -582,7 +583,7 @@ class MenuBarController: NSObject {
   @objc private func modelChanged(_ notification: Notification) {
 
     if let newModel = notification.object as? TranscriptionModel {
-      transcriptionService?.setModel(newModel)
+      speechService?.setModel(newModel)
 
     }
   }
@@ -760,7 +761,7 @@ extension MenuBarController: AudioRecorderDelegate {
     let shouldCleanup: Bool
 
     do {
-      let transcription = try await transcriptionService?.transcribe(audioURL: audioURL) ?? ""
+      let transcription = try await speechService?.transcribe(audioURL: audioURL) ?? ""
       shouldCleanup = await handleTranscriptionSuccess(transcription)
     } catch let error as TranscriptionError {
       shouldCleanup = await handleTranscriptionError(error)
@@ -787,7 +788,7 @@ extension MenuBarController: AudioRecorderDelegate {
     let shouldCleanup: Bool
 
     do {
-      let response = try await transcriptionService?.executePrompt(audioURL: audioURL) ?? ""
+      let response = try await speechService?.executePrompt(audioURL: audioURL) ?? ""
       shouldCleanup = await handlePromptSuccess(response)
     } catch let error as TranscriptionError {
       shouldCleanup = await handlePromptError(error)
