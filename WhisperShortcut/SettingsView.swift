@@ -24,7 +24,7 @@ struct SettingsView: View {
     static let modelSpacing: CGFloat = 0
     static let dividerHeight: CGFloat = 20
     static let cornerRadius: CGFloat = 8
-    static let textEditorHeight: CGFloat = 80
+    static let textEditorHeight: CGFloat = 120
     static let buttonSpacing: CGFloat = 20
     static let bottomPadding: CGFloat = 30
     static let horizontalPadding: CGFloat = 40
