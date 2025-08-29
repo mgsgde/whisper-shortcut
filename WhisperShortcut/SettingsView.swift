@@ -55,6 +55,7 @@ struct SettingsView: View {
   @State private var showAlert: Bool = false
   @State private var customPromptText: String = ""
   @State private var promptModeSystemPrompt: String = ""
+  @State private var audioPlaybackSpeed: Double = 1.0
 
   // MARK: - Focus State
   @FocusState private var apiKeyFocused: Bool
@@ -111,6 +112,14 @@ struct SettingsView: View {
       _promptModeSystemPrompt = State(
         initialValue: AppConstants.defaultPromptModeSystemPrompt
       )
+    }
+
+    // Load saved audio playback speed
+    let savedPlaybackSpeed = UserDefaults.standard.double(forKey: "audioPlaybackSpeed")
+    if savedPlaybackSpeed > 0 {
+      _audioPlaybackSpeed = State(initialValue: savedPlaybackSpeed)
+    } else {
+      _audioPlaybackSpeed = State(initialValue: 1.0)
     }
   }
 
@@ -304,6 +313,51 @@ struct SettingsView: View {
               .foregroundColor(.secondary)
               .textSelection(.enabled)
           }
+        }
+      }
+
+      // Audio Playback Speed Section
+      VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
+        Text("Audio Playback Speed")
+          .font(.title3)
+          .fontWeight(.semibold)
+          .textSelection(.enabled)
+
+        HStack(alignment: .center, spacing: 16) {
+          Text("Speed:")
+            .font(.body)
+            .fontWeight(.medium)
+            .frame(width: Constants.labelWidth, alignment: .leading)
+            .textSelection(.enabled)
+          
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 16) {
+              Text("0.5x")
+                .font(.caption)
+                .foregroundColor(.secondary)
+              
+              Slider(value: $audioPlaybackSpeed, in: 0.5...2.0, step: 0.1) {
+                Text("Playback Speed")
+              }
+              .frame(width: 200)
+              
+              Text("2.0x")
+                .font(.caption)
+                .foregroundColor(.secondary)
+              
+              Text("\(String(format: "%.1f", audioPlaybackSpeed))x")
+                .font(.body)
+                .fontWeight(.medium)
+                .frame(width: 40, alignment: .leading)
+            }
+            
+            Text("Controls the speed of voice response playback")
+              .font(.callout)
+              .foregroundColor(.secondary)
+              .textSelection(.enabled)
+          }
+          
+          Spacer()
         }
       }
 
@@ -871,6 +925,9 @@ struct SettingsView: View {
 
     // Save prompt mode system prompt
     UserDefaults.standard.set(promptModeSystemPrompt, forKey: "promptModeSystemPrompt")
+
+    // Save audio playback speed
+    UserDefaults.standard.set(audioPlaybackSpeed, forKey: "audioPlaybackSpeed")
 
     // Notify that model has changed
     NotificationCenter.default.post(name: .modelChanged, object: selectedModel)

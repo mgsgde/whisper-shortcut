@@ -36,10 +36,11 @@ class TTSService {
   // MARK: - Main TTS Generation Method
   func generateSpeech(
     text: String, voice: String = TTSConstants.defaultVoice,
-    model: String = TTSConstants.defaultModel
+    model: String = TTSConstants.defaultModel, speed: Double = 1.0
   ) async throws -> Data {
     NSLog("🔊 TTS-SERVICE: Starting text-to-speech generation")
     NSLog("🔊 TTS-SERVICE: Text length: \(text.count) characters")
+    NSLog("🔊 TTS-SERVICE: Speech speed: \(speed)x")
 
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
@@ -61,7 +62,8 @@ class TTSService {
         NSLog("🔊 TTS-SERVICE: Attempt \(attempt)/\(maxRetries)")
 
         // Create request
-        let request = try createTTSRequest(text: text, voice: voice, model: model, apiKey: apiKey)
+        let request = try createTTSRequest(
+          text: text, voice: voice, model: model, apiKey: apiKey, speed: speed)
         NSLog("🔊 TTS-SERVICE: TTS request created")
 
         // Execute request
@@ -114,15 +116,18 @@ class TTSService {
           try await Task.sleep(nanoseconds: delay)
           continue
         } else {
-          NSLog("🚫 TTS-SERVICE: Non-retryable error or max retries reached: \(error.localizedDescription)")
+          NSLog(
+            "🚫 TTS-SERVICE: Non-retryable error or max retries reached: \(error.localizedDescription)"
+          )
           throw error
         }
       } catch {
         // Handle unexpected errors
         let wrappedError = TTSError.networkError("Unexpected error: \(error.localizedDescription)")
         lastError = wrappedError
-        NSLog("❌ TTS-SERVICE: Unexpected error on attempt \(attempt): \(error.localizedDescription)")
-        
+        NSLog(
+          "❌ TTS-SERVICE: Unexpected error on attempt \(attempt): \(error.localizedDescription)")
+
         if attempt < maxRetries {
           NSLog("🔄 TTS-SERVICE: Retrying unexpected error...")
           let delay = baseDelay * UInt64(attempt)
@@ -139,10 +144,13 @@ class TTSService {
   }
 
   // MARK: - Request Creation
-  private func createTTSRequest(text: String, voice: String, model: String, apiKey: String) throws
+  private func createTTSRequest(
+    text: String, voice: String, model: String, apiKey: String, speed: Double
+  ) throws
     -> URLRequest
   {
-    NSLog("🔧 TTS-SERVICE: Creating TTS request for model: \(model), voice: \(voice)")
+    NSLog(
+      "🔧 TTS-SERVICE: Creating TTS request for model: \(model), voice: \(voice), speed: \(speed)x")
 
     guard let url = URL(string: TTSConstants.endpoint) else {
       throw TTSError.networkError("Invalid TTS endpoint URL")
@@ -158,7 +166,7 @@ class TTSService {
       input: text,
       voice: voice,
       response_format: TTSConstants.outputFormat,
-      speed: 1.0
+      speed: speed
     )
 
     request.httpBody = try JSONEncoder().encode(requestBody)

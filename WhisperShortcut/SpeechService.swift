@@ -271,9 +271,14 @@ class SpeechService {
     // Generate speech from response
     NSLog("🔊 VOICE-RESPONSE-MODE: Generating speech from response...")
 
+    // Get playback speed setting for TTS generation
+    let playbackSpeed = UserDefaults.standard.double(forKey: "audioPlaybackSpeed")
+    let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
+    NSLog("🔊 VOICE-RESPONSE-MODE: Using TTS speed: \(speed)x")
+
     let audioData: Data
     do {
-      audioData = try await ttsService.generateSpeech(text: response)
+      audioData = try await ttsService.generateSpeech(text: response, speed: speed)
       NSLog("🔊 VOICE-RESPONSE-MODE: Speech generated (\(audioData.count) bytes)")
     } catch let ttsError as TTSError {
       NSLog("❌ VOICE-RESPONSE-MODE: TTS error: \(ttsError.localizedDescription)")
@@ -285,6 +290,7 @@ class SpeechService {
 
     // Play the audio response
     NSLog("🔊 VOICE-RESPONSE-MODE: Playing audio response...")
+
     let playbackSuccess = try await audioPlaybackService.playAudio(data: audioData)
 
     if playbackSuccess {
