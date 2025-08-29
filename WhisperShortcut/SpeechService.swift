@@ -179,6 +179,11 @@ class SpeechService {
     // Parse result
     let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
     NSLog("✅ TRANSCRIPTION-MODE: Transcription successful, text length: \(result.text.count)")
+
+    // Validate transcribed text for empty/silent audio
+    try validateTranscribedText(result.text)
+    NSLog("✅ TRANSCRIPTION-MODE: Text validation passed")
+
     return result.text
   }
 
@@ -226,6 +231,28 @@ class SpeechService {
 
     // Create multipart form data using a more elegant approach
     return try createMultipartRequest(request: &request, audioURL: audioURL)
+  }
+
+  private func validateTranscribedText(_ transcribedText: String) throws {
+    NSLog("🎙️ TRANSCRIPTION-MODE: Validating transcribed text")
+
+    // Check if meaningful speech was detected
+    let trimmedText = transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    // Check for empty or very short text
+    if trimmedText.isEmpty || trimmedText.count < 3 {
+      NSLog("⚠️ TRANSCRIPTION-MODE: No meaningful speech detected")
+      throw TranscriptionError.noSpeechDetected
+    }
+
+    // Check if the transcription returned the system prompt itself (common with silent audio)
+    let defaultPrompt = AppConstants.defaultTranscriptionSystemPrompt
+    if trimmedText.contains(defaultPrompt) || trimmedText.hasPrefix("context:") {
+      NSLog("⚠️ TRANSCRIPTION-MODE: System prompt detected in transcription")
+      throw TranscriptionError.noSpeechDetected
+    }
+
+    NSLog("🎙️ TRANSCRIPTION-MODE: Text validation successful")
   }
 
   // MARK: - Prompt Mode Helpers
