@@ -100,6 +100,8 @@ struct ShortcutConfig: Codable {
   var stopRecording: ShortcutDefinition
   var startPrompting: ShortcutDefinition
   var stopPrompting: ShortcutDefinition
+  var startVoiceResponse: ShortcutDefinition
+  var stopVoiceResponse: ShortcutDefinition
   var openChatGPT: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
@@ -107,6 +109,8 @@ struct ShortcutConfig: Codable {
     stopRecording: ShortcutDefinition(key: .e, modifiers: [.command]),
     startPrompting: ShortcutDefinition(key: .j, modifiers: [.command, .shift]),
     stopPrompting: ShortcutDefinition(key: .p, modifiers: [.command]),
+    startVoiceResponse: ShortcutDefinition(key: .h, modifiers: [.command, .shift]),
+    stopVoiceResponse: ShortcutDefinition(key: .h, modifiers: [.command]),
     openChatGPT: ShortcutDefinition(key: .one, modifiers: [.command])
   )
 }
@@ -206,6 +210,8 @@ class ShortcutConfigManager {
     static let stopRecordingKey = "shortcut_stop_recording"
     static let startPromptingKey = "shortcut_start_prompting"
     static let stopPromptingKey = "shortcut_stop_prompting"
+    static let startVoiceResponseKey = "shortcut_start_voice_response"
+    static let stopVoiceResponseKey = "shortcut_stop_voice_response"
     static let openChatGPTKey = "shortcut_open_chatgpt"
   }
 
@@ -223,6 +229,10 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.startPromptingKey) ?? ShortcutConfig.default.startPrompting
     let stopPrompting =
       loadShortcut(for: Constants.stopPromptingKey) ?? ShortcutConfig.default.stopPrompting
+    let startVoiceResponse =
+      loadShortcut(for: Constants.startVoiceResponseKey) ?? ShortcutConfig.default.startVoiceResponse
+    let stopVoiceResponse =
+      loadShortcut(for: Constants.stopVoiceResponseKey) ?? ShortcutConfig.default.stopVoiceResponse
     let openChatGPT =
       loadShortcut(for: Constants.openChatGPTKey) ?? ShortcutConfig.default.openChatGPT
 
@@ -231,6 +241,8 @@ class ShortcutConfigManager {
       stopRecording: stopRecording,
       startPrompting: startPrompting,
       stopPrompting: stopPrompting,
+      startVoiceResponse: startVoiceResponse,
+      stopVoiceResponse: stopVoiceResponse,
       openChatGPT: openChatGPT
     )
   }
@@ -240,6 +252,8 @@ class ShortcutConfigManager {
     saveShortcut(config.stopRecording, for: Constants.stopRecordingKey)
     saveShortcut(config.startPrompting, for: Constants.startPromptingKey)
     saveShortcut(config.stopPrompting, for: Constants.stopPromptingKey)
+    saveShortcut(config.startVoiceResponse, for: Constants.startVoiceResponseKey)
+    saveShortcut(config.stopVoiceResponse, for: Constants.stopVoiceResponseKey)
     saveShortcut(config.openChatGPT, for: Constants.openChatGPTKey)
 
     // Post notification for shortcut updates
@@ -388,6 +402,7 @@ class ShortcutConfigManager {
     let currentConfig = loadConfiguration()
     if shortcut == currentConfig.startRecording || shortcut == currentConfig.stopRecording
       || shortcut == currentConfig.startPrompting || shortcut == currentConfig.stopPrompting
+      || shortcut == currentConfig.startVoiceResponse || shortcut == currentConfig.stopVoiceResponse
       || shortcut == currentConfig.openChatGPT
     {
       return .duplicate("This shortcut is already in use")

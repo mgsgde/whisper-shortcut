@@ -54,6 +54,8 @@ class SpeechService {
 
   // MARK: - Shared Infrastructure
   private let keychainManager: KeychainManaging
+  private let ttsService: TTSService
+  private let audioPlaybackService: AudioPlaybackService
   private var clipboardManager: ClipboardManager?
 
   // Custom session with appropriate timeouts
@@ -76,7 +78,9 @@ class SpeechService {
   ) {
     self.keychainManager = keychainManager
     self.clipboardManager = clipboardManager
-    NSLog("🔧 SpeechService initialized with keychain and clipboard manager")
+    self.ttsService = TTSService(keychainManager: keychainManager)
+    self.audioPlaybackService = AudioPlaybackService()
+    NSLog("🔧 SpeechService initialized with keychain, clipboard, TTS, and audio playback services")
   }
 
   // MARK: - Shared API Key Management
@@ -218,6 +222,75 @@ class SpeechService {
     // Execute prompt with GPT-5
     return try await executeGPT5Prompt(
       userMessage: spokenText, clipboardContext: clipboardContext, apiKey: apiKey)
+  }
+
+  /// Execute prompt and play response as speech instead of copying to clipboard
+  func executePromptWithVoiceResponse(audioURL: URL, clipboardContext: String? = nil) async throws
+    -> String
+  {
+    NSLog("🔊 VOICE-RESPONSE-MODE: Starting prompt execution for voice output")
+
+    // Validate API key
+    guard let apiKey = self.apiKey, !apiKey.isEmpty else {
+      NSLog("⚠️ VOICE-RESPONSE-MODE: No API key available")
+      throw TranscriptionError.noAPIKey
+    }
+
+    // First, transcribe the audio to get the user's spoken text
+    NSLog("🔊 VOICE-RESPONSE-MODE: Transcribing user input...")
+    let spokenText = try await transcribe(audioURL: audioURL)
+    NSLog("🔊 VOICE-RESPONSE-MODE: User input transcribed: '\(spokenText)'")
+
+    // Validate spoken text
+    try validateSpokenText(spokenText)
+    NSLog("🔊 VOICE-RESPONSE-MODE: Spoken text validation passed")
+
+    // Use provided clipboard context or get current clipboard
+    let contextToUse = clipboardContext ?? getClipboardContext()
+    if let context = contextToUse {
+      NSLog("🔊 VOICE-RESPONSE-MODE: Context found (length: \(context.count))")
+    } else {
+      NSLog("🔊 VOICE-RESPONSE-MODE: No context available")
+    }
+
+    // Execute prompt with GPT-5
+    NSLog("🔊 VOICE-RESPONSE-MODE: Executing GPT-5 prompt...")
+    let response = try await executeGPT5Prompt(
+      userMessage: spokenText, clipboardContext: contextToUse, apiKey: apiKey)
+    NSLog("🔊 VOICE-RESPONSE-MODE: GPT-5 response received (length: \(response.count))")
+
+    // Generate speech from response
+    NSLog("🔊 VOICE-RESPONSE-MODE: Generating speech from response...")
+
+    let audioData: Data
+    do {
+      audioData = try await ttsService.generateSpeech(text: response)
+      NSLog("🔊 VOICE-RESPONSE-MODE: Speech generated (\(audioData.count) bytes)")
+    } catch let ttsError as TTSError {
+      NSLog("❌ VOICE-RESPONSE-MODE: TTS error: \(ttsError.localizedDescription)")
+      throw TranscriptionError.networkError(ttsError.localizedDescription)
+    } catch {
+      NSLog("❌ VOICE-RESPONSE-MODE: Unexpected TTS error: \(error.localizedDescription)")
+      throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
+    }
+
+    // Play the audio response
+    NSLog("🔊 VOICE-RESPONSE-MODE: Playing audio response...")
+    let playbackSuccess = try await audioPlaybackService.playAudio(data: audioData)
+
+    if playbackSuccess {
+      NSLog("✅ VOICE-RESPONSE-MODE: Audio response played successfully")
+    } else {
+      NSLog("⚠️ VOICE-RESPONSE-MODE: Audio playback failed")
+      throw TranscriptionError.networkError("Audio playback failed")
+    }
+
+    // Copy response to clipboard (same as normal prompt mode)
+    NSLog("🔊 VOICE-RESPONSE-MODE: Copying response to clipboard...")
+    clipboardManager?.copyToClipboard(text: response)
+    NSLog("✅ VOICE-RESPONSE-MODE: Response copied to clipboard")
+
+    return response
   }
 
   // MARK: - Transcription Mode Helpers

@@ -6,6 +6,8 @@ protocol ShortcutDelegate: AnyObject {
   func stopRecording()
   func startPrompting()
   func stopPrompting()
+  func startVoiceResponse()
+  func stopVoiceResponse()
   func openChatGPT()
 }
 
@@ -17,6 +19,8 @@ class Shortcuts {
   private var stopKey: HotKey?
   private var startPromptKey: HotKey?
   private var stopPromptKey: HotKey?
+  private var startVoiceResponseKey: HotKey?
+  private var stopVoiceResponseKey: HotKey?
   private var openChatGPTKey: HotKey?
   private var currentConfig: ShortcutConfig
 
@@ -74,6 +78,22 @@ class Shortcuts {
       }
     }
 
+    if config.startVoiceResponse.isEnabled {
+      startVoiceResponseKey = HotKey(
+        key: config.startVoiceResponse.key, modifiers: config.startVoiceResponse.modifiers)
+      startVoiceResponseKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.startVoiceResponse()
+      }
+    }
+
+    if config.stopVoiceResponse.isEnabled {
+      stopVoiceResponseKey = HotKey(
+        key: config.stopVoiceResponse.key, modifiers: config.stopVoiceResponse.modifiers)
+      stopVoiceResponseKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.stopVoiceResponse()
+      }
+    }
+
     if config.openChatGPT.isEnabled {
       openChatGPTKey = HotKey(
         key: config.openChatGPT.key, modifiers: config.openChatGPT.modifiers)
@@ -97,6 +117,8 @@ class Shortcuts {
     stopKey = nil
     startPromptKey = nil
     stopPromptKey = nil
+    startVoiceResponseKey = nil
+    stopVoiceResponseKey = nil
     openChatGPTKey = nil
   }
 

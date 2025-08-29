@@ -39,11 +39,15 @@ struct SettingsView: View {
   @State private var stopShortcut: String = ""
   @State private var startPrompting: String = ""
   @State private var stopPrompting: String = ""
+  @State private var startVoiceResponse: String = ""
+  @State private var stopVoiceResponse: String = ""
   @State private var openChatGPT: String = ""
   @State private var startShortcutEnabled: Bool = true
   @State private var stopShortcutEnabled: Bool = true
   @State private var startPromptingEnabled: Bool = true
   @State private var stopPromptingEnabled: Bool = true
+  @State private var startVoiceResponseEnabled: Bool = true
+  @State private var stopVoiceResponseEnabled: Bool = true
   @State private var openChatGPTEnabled: Bool = true
   @State private var selectedModel: TranscriptionModel = .gpt4oTranscribe
   @State private var errorMessage: String = ""
@@ -58,6 +62,8 @@ struct SettingsView: View {
   @FocusState private var stopShortcutFocused: Bool
   @FocusState private var startPromptingFocused: Bool
   @FocusState private var stopPromptingFocused: Bool
+  @FocusState private var startVoiceResponseFocused: Bool
+  @FocusState private var stopVoiceResponseFocused: Bool
   @FocusState private var openChatGPTFocused: Bool
   @FocusState private var customPromptFocused: Bool
   @FocusState private var promptModeSystemPromptFocused: Bool
@@ -71,11 +77,15 @@ struct SettingsView: View {
     _stopShortcut = State(initialValue: currentConfig.stopRecording.textDisplayString)
     _startPrompting = State(initialValue: currentConfig.startPrompting.textDisplayString)
     _stopPrompting = State(initialValue: currentConfig.stopPrompting.textDisplayString)
+    _startVoiceResponse = State(initialValue: currentConfig.startVoiceResponse.textDisplayString)
+    _stopVoiceResponse = State(initialValue: currentConfig.stopVoiceResponse.textDisplayString)
     _openChatGPT = State(initialValue: currentConfig.openChatGPT.textDisplayString)
     _startShortcutEnabled = State(initialValue: currentConfig.startRecording.isEnabled)
     _stopShortcutEnabled = State(initialValue: currentConfig.stopRecording.isEnabled)
     _startPromptingEnabled = State(initialValue: currentConfig.startPrompting.isEnabled)
     _stopPromptingEnabled = State(initialValue: currentConfig.stopPrompting.isEnabled)
+    _startVoiceResponseEnabled = State(initialValue: currentConfig.startVoiceResponse.isEnabled)
+    _stopVoiceResponseEnabled = State(initialValue: currentConfig.stopVoiceResponse.isEnabled)
     _openChatGPTEnabled = State(initialValue: currentConfig.openChatGPT.isEnabled)
 
     // Load saved model preference
@@ -450,6 +460,57 @@ struct SettingsView: View {
         }
       }
 
+      // Voice Response Shortcuts
+      VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
+        Text("Speech to Prompt with Voice Response")
+          .font(.title3)
+          .fontWeight(.semibold)
+          .textSelection(.enabled)
+
+        Text("Record prompt and receive spoken response (uses OpenAI TTS)")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+
+        HStack(alignment: .center, spacing: 16) {
+          Text("Start Voice Response:")
+            .font(.body)
+            .fontWeight(.medium)
+            .frame(width: Constants.labelWidth, alignment: .leading)
+            .textSelection(.enabled)
+          TextField("e.g., command+shift+h", text: $startVoiceResponse)
+            .textFieldStyle(.roundedBorder)
+            .font(.system(.body, design: .monospaced))
+            .frame(height: Constants.textFieldHeight)
+            .frame(maxWidth: Constants.shortcutMaxWidth)
+            .focused($startVoiceResponseFocused)
+            .disabled(!startVoiceResponseEnabled)
+          Toggle("", isOn: $startVoiceResponseEnabled)
+            .toggleStyle(.checkbox)
+            .help("Enable/disable this shortcut")
+          Spacer()
+        }
+
+        HStack(alignment: .center, spacing: 16) {
+          Text("Stop Voice Response:")
+            .font(.body)
+            .fontWeight(.medium)
+            .frame(width: Constants.labelWidth, alignment: .leading)
+            .textSelection(.enabled)
+          TextField("e.g., command+h", text: $stopVoiceResponse)
+            .textFieldStyle(.roundedBorder)
+            .font(.system(.body, design: .monospaced))
+            .frame(height: Constants.textFieldHeight)
+            .frame(maxWidth: Constants.shortcutMaxWidth)
+            .focused($stopVoiceResponseFocused)
+            .disabled(!stopVoiceResponseEnabled)
+          Toggle("", isOn: $stopVoiceResponseEnabled)
+            .toggleStyle(.checkbox)
+            .help("Enable/disable this shortcut")
+          Spacer()
+        }
+      }
+
       // ChatGPT Shortcut
       VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
         Text("Quick Access")
@@ -672,6 +733,20 @@ struct SettingsView: View {
       }
     }
 
+    if startVoiceResponseEnabled {
+      guard !startVoiceResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        showErrorMessage("Please enter a start voice response shortcut")
+        return
+      }
+    }
+
+    if stopVoiceResponseEnabled {
+      guard !stopVoiceResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        showErrorMessage("Please enter a stop voice response shortcut")
+        return
+      }
+    }
+
     if openChatGPTEnabled {
       guard !openChatGPT.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         showErrorMessage("Please enter an open ChatGPT shortcut")
@@ -699,6 +774,16 @@ struct SettingsView: View {
       stopPromptingEnabled
       ? ShortcutConfigManager.parseShortcut(from: stopPrompting)
       : ShortcutDefinition(key: .p, modifiers: [.command], isEnabled: false)
+
+    let startVoiceResponseParsed =
+      startVoiceResponseEnabled
+      ? ShortcutConfigManager.parseShortcut(from: startVoiceResponse)
+      : ShortcutDefinition(key: .k, modifiers: [.command, .shift], isEnabled: false)
+
+    let stopVoiceResponseParsed =
+      stopVoiceResponseEnabled
+      ? ShortcutConfigManager.parseShortcut(from: stopVoiceResponse)
+      : ShortcutDefinition(key: .v, modifiers: [.command], isEnabled: false)
 
     let openChatGPTParsed =
       openChatGPTEnabled
@@ -737,6 +822,20 @@ struct SettingsView: View {
       }
     }
 
+    if startVoiceResponseEnabled {
+      guard startVoiceResponseParsed != nil else {
+        showErrorMessage("Invalid start voice response shortcut format")
+        return
+      }
+    }
+
+    if stopVoiceResponseEnabled {
+      guard stopVoiceResponseParsed != nil else {
+        showErrorMessage("Invalid stop voice response shortcut format")
+        return
+      }
+    }
+
     if openChatGPTEnabled {
       guard openChatGPTParsed != nil else {
         showErrorMessage("Invalid open ChatGPT shortcut format")
@@ -750,6 +849,8 @@ struct SettingsView: View {
       stopShortcutEnabled ? stopShortcutParsed : nil,
       startPromptingEnabled ? startPromptingParsed : nil,
       stopPromptingEnabled ? stopPromptingParsed : nil,
+      startVoiceResponseEnabled ? startVoiceResponseParsed : nil,
+      stopVoiceResponseEnabled ? stopVoiceResponseParsed : nil,
       openChatGPTEnabled ? openChatGPTParsed : nil,
     ].compactMap { $0 }
 
@@ -783,6 +884,10 @@ struct SettingsView: View {
         ?? ShortcutDefinition(key: .j, modifiers: [.command, .shift], isEnabled: false),
       stopPrompting: stopPromptingParsed
         ?? ShortcutDefinition(key: .p, modifiers: [.command], isEnabled: false),
+      startVoiceResponse: startVoiceResponseParsed
+        ?? ShortcutDefinition(key: .k, modifiers: [.command, .shift], isEnabled: false),
+      stopVoiceResponse: stopVoiceResponseParsed
+        ?? ShortcutDefinition(key: .v, modifiers: [.command], isEnabled: false),
       openChatGPT: openChatGPTParsed
         ?? ShortcutDefinition(key: .one, modifiers: [.command], isEnabled: false)
     )

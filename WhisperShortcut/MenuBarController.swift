@@ -17,6 +17,7 @@ class MenuBarController: NSObject {
   private var statusItem: NSStatusItem?
   private var isRecording = false
   private var isPrompting = false  // New: Track prompt mode
+  private var isVoiceResponse = false  // New: Track voice response mode
   private var audioRecorder: AudioRecorder?
   private var shortcuts: Shortcuts?
   private var speechService: SpeechService?
@@ -37,6 +38,7 @@ class MenuBarController: NSObject {
 
   // MARK: - Mode Tracking (for delegate callback)
   private var lastModeWasPrompting = false
+  private var lastModeWasVoiceResponse = false
 
   override init() {
     // Load current shortcut configuration
@@ -135,6 +137,33 @@ class MenuBarController: NSObject {
     stopPromptItem.target = self
     stopPromptItem.tag = 106  // Tag for updating shortcut
     menu.addItem(stopPromptItem)
+
+    menu.addItem(NSMenuItem.separator())
+
+    // Voice Response section header
+    let voiceResponseHeader = NSMenuItem(
+      title: "Speech to Prompt with Voice Response", action: nil, keyEquivalent: "")
+    voiceResponseHeader.isEnabled = false
+    voiceResponseHeader.tag = 108
+    menu.addItem(voiceResponseHeader)
+
+    // Start voice response item with configurable shortcut
+    let startVoiceResponseItem = NSMenuItem(
+      title: "Speech to Prompt", action: #selector(startVoiceResponseFromMenu),
+      keyEquivalent: "")
+    startVoiceResponseItem.keyEquivalentModifierMask = []
+    startVoiceResponseItem.target = self
+    startVoiceResponseItem.tag = 109  // Tag for updating shortcut
+    menu.addItem(startVoiceResponseItem)
+
+    // Stop voice response item with configurable shortcut
+    let stopVoiceResponseItem = NSMenuItem(
+      title: "Stop & Speak Response", action: #selector(stopVoiceResponseFromMenu),
+      keyEquivalent: "")
+    stopVoiceResponseItem.keyEquivalentModifierMask = []
+    stopVoiceResponseItem.target = self
+    stopVoiceResponseItem.tag = 110  // Tag for updating shortcut
+    menu.addItem(stopVoiceResponseItem)
 
     menu.addItem(NSMenuItem.separator())
 
@@ -304,6 +333,41 @@ class MenuBarController: NSObject {
       }
     }
 
+    // Update voice response menu items
+    if let startVoiceResponseItem = menu.item(withTag: 109) {
+      let isEnabled = !isRecording && !isPrompting && !isVoiceResponse && hasAPIKey
+      startVoiceResponseItem.isEnabled = isEnabled
+
+      if isActivelyRecording {
+        // During recording/prompting: hide disabled items
+        startVoiceResponseItem.isHidden = !isEnabled
+        if !startVoiceResponseItem.isHidden {
+          startVoiceResponseItem.title = "Speech to Prompt"
+        }
+      } else {
+        // In ready state: show all items
+        startVoiceResponseItem.isHidden = false
+        startVoiceResponseItem.title = "Speech to Prompt"
+      }
+    }
+
+    if let stopVoiceResponseItem = menu.item(withTag: 110) {
+      let isEnabled = isVoiceResponse
+      stopVoiceResponseItem.isEnabled = isEnabled
+
+      if isActivelyRecording {
+        // During recording/prompting: hide disabled items
+        stopVoiceResponseItem.isHidden = !isEnabled
+        if !stopVoiceResponseItem.isHidden {
+          stopVoiceResponseItem.title = "Stop & Speak Response"
+        }
+      } else {
+        // In ready state: show all items
+        stopVoiceResponseItem.isHidden = false
+        stopVoiceResponseItem.title = "Stop & Speak Response"
+      }
+    }
+
     // Update retry menu item
     updateRetryMenuItem()
 
@@ -315,6 +379,9 @@ class MenuBarController: NSObject {
       } else if isPrompting {
         button.title = "🤖"
         button.toolTip = "Recording for AI prompt... Click to stop"
+      } else if isVoiceResponse {
+        button.title = "🔊"
+        button.toolTip = "Recording for voice response... Click to stop"
       } else if hasAPIKey {
         button.title = "🎙️"
         button.toolTip = "WhisperShortcut - Click to record"
@@ -419,6 +486,35 @@ class MenuBarController: NSObject {
       }
     }
 
+    // Update start voice response shortcut
+    if let startVoiceResponseItem = menu.item(withTag: 109) {
+      if currentConfig.startVoiceResponse.isEnabled {
+        startVoiceResponseItem.keyEquivalent = currentConfig.startVoiceResponse.key.displayString
+          .lowercased()
+        startVoiceResponseItem.keyEquivalentModifierMask =
+          currentConfig.startVoiceResponse.modifiers
+        startVoiceResponseItem.title = "Speech to Prompt"
+      } else {
+        startVoiceResponseItem.keyEquivalent = ""
+        startVoiceResponseItem.keyEquivalentModifierMask = []
+        startVoiceResponseItem.title = "Speech to Prompt (Disabled)"
+      }
+    }
+
+    // Update stop voice response shortcut
+    if let stopVoiceResponseItem = menu.item(withTag: 110) {
+      if currentConfig.stopVoiceResponse.isEnabled {
+        stopVoiceResponseItem.keyEquivalent = currentConfig.stopVoiceResponse.key.displayString
+          .lowercased()
+        stopVoiceResponseItem.keyEquivalentModifierMask = currentConfig.stopVoiceResponse.modifiers
+        stopVoiceResponseItem.title = "Stop & Speak Response"
+      } else {
+        stopVoiceResponseItem.keyEquivalent = ""
+        stopVoiceResponseItem.keyEquivalentModifierMask = []
+        stopVoiceResponseItem.title = "Stop & Speak Response (Disabled)"
+      }
+    }
+
     // Update open ChatGPT shortcut
     if let openChatGPTItem = menu.item(withTag: 107) {
       if currentConfig.openChatGPT.isEnabled {
@@ -482,6 +578,37 @@ class MenuBarController: NSObject {
 
   }
 
+  @objc private func startVoiceResponseFromMenu() {
+    guard !isRecording && !isVoiceResponse else { return }
+
+    // Check accessibility permission first
+    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
+      NSLog("⚠️ VOICE-RESPONSE-MODE: No accessibility permission")
+      return
+    }
+
+    // Simulate Copy-Paste to capture selected text
+    simulateCopyPaste()
+
+    NSLog("🔊 VOICE-RESPONSE-MODE: Starting voice response recording from menu")
+    lastModeWasPrompting = false
+    lastModeWasVoiceResponse = true
+    isVoiceResponse = true
+    updateMenuState()
+    startAudioLevelMonitoring()
+    audioRecorder?.startRecording()
+  }
+
+  @objc private func stopVoiceResponseFromMenu() {
+    guard isVoiceResponse else { return }
+
+    NSLog("🔊 VOICE-RESPONSE-MODE: Stopping voice response recording from menu")
+    isVoiceResponse = false
+    updateMenuState()
+    stopAudioLevelMonitoring()
+    audioRecorder?.stopRecording()
+  }
+
   @objc private func openChatGPTFromMenu() {
 
     openChatGPTApp()
@@ -531,8 +658,6 @@ class MenuBarController: NSObject {
     SettingsManager.shared.showSettings()
   }
 
-
-
   @objc private func quitApp() {
     NSApplication.shared.terminate(nil)
   }
@@ -543,14 +668,18 @@ class MenuBarController: NSObject {
       return
     }
 
-    let operationType = lastModeWasPrompting ? "prompt execution" : "transcription"
+    let operationType =
+      lastModeWasVoiceResponse
+      ? "voice response" : (lastModeWasPrompting ? "prompt execution" : "transcription")
 
     // Reset retry state
     canRetry = false
     updateRetryMenuItem()
 
     // Show appropriate processing status
-    if lastModeWasPrompting {
+    if lastModeWasVoiceResponse {
+      showProcessingStatus(mode: "voice response")
+    } else if lastModeWasPrompting {
       showProcessingStatus(mode: "prompt")
     } else {
       showTranscribingStatus()
@@ -558,7 +687,9 @@ class MenuBarController: NSObject {
 
     // Start the appropriate operation with the same audio file
     Task {
-      if lastModeWasPrompting {
+      if lastModeWasVoiceResponse {
+        await performVoiceResponseExecution(audioURL: audioURL)
+      } else if lastModeWasPrompting {
         await performPromptExecution(audioURL: audioURL)
       } else {
         await performTranscription(audioURL: audioURL)
@@ -642,6 +773,7 @@ extension MenuBarController: ShortcutDelegate {
     guard !isPrompting && !isRecording else { return }
 
     lastModeWasPrompting = false
+    lastModeWasVoiceResponse = false
     isRecording = true
     updateMenuState()
     audioRecorder?.startRecording()
@@ -670,6 +802,7 @@ extension MenuBarController: ShortcutDelegate {
     simulateCopyPaste()
 
     lastModeWasPrompting = true
+    lastModeWasVoiceResponse = false
     isPrompting = true
     updateMenuState()
     audioRecorder?.startRecording()
@@ -698,6 +831,37 @@ extension MenuBarController: ShortcutDelegate {
     guard isPrompting else { return }
 
     isPrompting = false
+    updateMenuState()
+    stopAudioLevelMonitoring()
+    audioRecorder?.stopRecording()
+  }
+
+  func startVoiceResponse() {
+    guard !isRecording && !isVoiceResponse else { return }
+
+    // Check accessibility permission first
+    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
+      NSLog("⚠️ VOICE-RESPONSE-MODE: No accessibility permission")
+      return
+    }
+
+    // Simulate Copy-Paste to capture selected text
+    simulateCopyPaste()
+
+    NSLog("🔊 VOICE-RESPONSE-MODE: Starting voice response recording")
+    lastModeWasPrompting = false
+    lastModeWasVoiceResponse = true
+    isVoiceResponse = true
+    updateMenuState()
+    startAudioLevelMonitoring()
+    audioRecorder?.startRecording()
+  }
+
+  func stopVoiceResponse() {
+    guard isVoiceResponse else { return }
+
+    NSLog("🔊 VOICE-RESPONSE-MODE: Stopping voice response recording")
+    isVoiceResponse = false
     updateMenuState()
     stopAudioLevelMonitoring()
     audioRecorder?.stopRecording()
@@ -738,9 +902,18 @@ extension MenuBarController: AudioRecorderDelegate {
 
     // Use tracked mode since states are reset immediately in stop functions
     let wasPrompting = lastModeWasPrompting
+    let wasVoiceResponse = lastModeWasVoiceResponse
 
     // Determine which mode we were in and process accordingly
-    if wasPrompting {
+    if wasVoiceResponse {
+      NSLog("🔊 VOICE-RESPONSE-MODE: Processing audio for voice response")
+      showProcessingStatus(mode: "voice response")
+
+      // Start voice response execution
+      Task {
+        await performVoiceResponseExecution(audioURL: audioURL)
+      }
+    } else if wasPrompting {
 
       showProcessingStatus(mode: "prompt")
 
@@ -815,6 +988,70 @@ extension MenuBarController: AudioRecorderDelegate {
       }
     } else {
     }
+  }
+
+  private func performVoiceResponseExecution(audioURL: URL) async {
+    let shouldCleanup: Bool
+
+    do {
+      NSLog("🔊 VOICE-RESPONSE-MODE: Starting voice response execution")
+      let response =
+        try await speechService?.executePromptWithVoiceResponse(audioURL: audioURL) ?? ""
+      shouldCleanup = await handleVoiceResponseSuccess(response)
+    } catch let error as TranscriptionError {
+      shouldCleanup = await handleVoiceResponseError(error)
+    } catch {
+      // Handle unexpected errors
+      let transcriptionError = TranscriptionError.networkError(error.localizedDescription)
+      shouldCleanup = await handleVoiceResponseError(transcriptionError)
+    }
+
+    // Clean up audio file if appropriate
+    if shouldCleanup {
+      // Clean up audio file
+      do {
+        try FileManager.default.removeItem(at: audioURL)
+        NSLog("🔊 VOICE-RESPONSE-MODE: Cleaned up audio file")
+      } catch {
+        NSLog("⚠️ VOICE-RESPONSE-MODE: Failed to clean up audio file: \(error)")
+      }
+    }
+  }
+
+  @MainActor
+  private func handleVoiceResponseSuccess(_ response: String) -> Bool {
+    NSLog("✅ VOICE-RESPONSE-MODE: Voice response successful, audio played")
+
+    // Clear retry state on success
+    canRetry = false
+    lastError = nil
+    lastAudioURL = nil
+    updateRetryMenuItem()
+
+    showTemporarySuccess()
+
+    return true  // Clean up audio file
+  }
+
+  @MainActor
+  private func handleVoiceResponseError(_ error: TranscriptionError) -> Bool {
+    NSLog("❌ VOICE-RESPONSE-MODE: Voice response error: \(error)")
+
+    let errorMessage = SpeechErrorFormatter.format(error)
+
+    // Store error for retry functionality
+    lastError = errorMessage
+
+    if error.isRetryable && lastAudioURL != nil {
+      canRetry = true
+      updateRetryMenuItem()
+    }
+
+    // Copy error message to clipboard for troubleshooting
+    clipboardManager?.copyToClipboard(text: errorMessage)
+    showTemporaryError()
+
+    return !error.isRetryable  // Clean up if not retryable
   }
 
   @MainActor
