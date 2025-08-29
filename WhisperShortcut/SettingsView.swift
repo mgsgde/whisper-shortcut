@@ -329,34 +329,26 @@ struct SettingsView: View {
             .fontWeight(.medium)
             .frame(width: Constants.labelWidth, alignment: .leading)
             .textSelection(.enabled)
-          
+
           VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 16) {
-              Text("0.5x")
-                .font(.caption)
-                .foregroundColor(.secondary)
-              
               Slider(value: $audioPlaybackSpeed, in: 0.5...2.0, step: 0.1) {
                 Text("Playback Speed")
               }
               .frame(width: 200)
-              
-              Text("2.0x")
-                .font(.caption)
-                .foregroundColor(.secondary)
-              
+
               Text("\(String(format: "%.1f", audioPlaybackSpeed))x")
                 .font(.body)
                 .fontWeight(.medium)
                 .frame(width: 40, alignment: .leading)
             }
-            
+
             Text("Controls the speed of voice response playback")
               .font(.callout)
               .foregroundColor(.secondary)
               .textSelection(.enabled)
           }
-          
+
           Spacer()
         }
       }

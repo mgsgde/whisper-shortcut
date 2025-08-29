@@ -20,6 +20,45 @@ class MenuBarController: NSObject {
   private var appMode: AppMode = .idle {
     didSet {
       NSLog("🔄 MODE-CHANGE: \(oldValue) → \(appMode)")
+      NSLog("🎨 UI-DEBUG: About to call updateUI() after mode change")
+      updateUI()
+      NSLog("🎨 UI-DEBUG: updateUI() completed after mode change")
+    }
+  }
+
+  // MARK: - Visual State (Independent of Business Logic)
+  private enum VisualState {
+    case normal  // Show normal AppMode-based icon
+    case success(String)  // Show success icon with message
+    case error(String)  // Show error icon with message
+
+    var overridesAppMode: Bool {
+      switch self {
+      case .normal: return false
+      case .success, .error: return true
+      }
+    }
+
+    var icon: String {
+      switch self {
+      case .normal: return ""  // Use AppMode icon
+      case .success: return "✅"
+      case .error: return "❌"
+      }
+    }
+
+    var statusText: String {
+      switch self {
+      case .normal: return ""  // Use AppMode status
+      case .success(let message): return "✅ \(message)"
+      case .error(let message): return "❌ \(message)"
+      }
+    }
+  }
+
+  private var visualState: VisualState = .normal {
+    didSet {
+      NSLog("🎨 VISUAL-STATE: \(oldValue) → \(visualState)")
       updateUI()
     }
   }
@@ -46,7 +85,7 @@ class MenuBarController: NSObject {
 
   // MARK: - Computed Properties for Backward Compatibility
   // These provide the old boolean interface while using the new AppMode internally
-    private var isRecording: Bool {
+  private var isRecording: Bool {
     get { appMode.isRecording && appMode.recordingType == .transcription }
     set {
       if newValue {
@@ -58,7 +97,7 @@ class MenuBarController: NSObject {
       }
     }
   }
-  
+
   private var isPrompting: Bool {
     get { appMode.isRecording && appMode.recordingType == .prompt }
     set {
@@ -71,7 +110,7 @@ class MenuBarController: NSObject {
       }
     }
   }
-  
+
   private var isVoiceResponse: Bool {
     get { appMode.isRecording && appMode.recordingType == .voiceResponse }
     set {
@@ -85,22 +124,42 @@ class MenuBarController: NSObject {
     }
   }
 
-    // For backward compatibility, we need to track the last mode separately
+  // For backward compatibility, we need to track the last mode separately
   // since the AppMode enum doesn't preserve this information during transitions
   private var lastModeWasPrompting: Bool = false
   private var lastModeWasVoiceResponse: Bool = false
 
   // MARK: - UI Update Methods
   private func updateUI() {
+    NSLog("🎨 UI-DEBUG: updateUI() called - current mode: \(appMode)")
     updateMenuBarIcon()
     updateMenuState()
     updateBlinkingState()
+    NSLog("🎨 UI-DEBUG: updateUI() completed")
   }
 
   private func updateMenuBarIcon() {
     guard let button = statusItem?.button else { return }
-    button.title = appMode.icon
-    button.toolTip = appMode.tooltip
+    let oldTitle = button.title
+
+    // Visual state overrides AppMode when active
+    let newTitle: String
+    let tooltip: String
+
+    if visualState.overridesAppMode {
+      newTitle = visualState.icon
+      tooltip = visualState.statusText
+    } else {
+      newTitle = appMode.icon
+      tooltip = appMode.tooltip
+    }
+
+    button.title = newTitle
+    button.toolTip = tooltip
+
+    NSLog(
+      "🎨 UI-DEBUG: Menu bar icon update - old: '\(oldTitle)' → new: '\(newTitle)' (mode: \(appMode), visual: \(visualState))"
+    )
   }
 
   private func updateBlinkingState() {
@@ -327,10 +386,24 @@ class MenuBarController: NSObject {
     // Check if API key is configured
     let hasAPIKey = KeychainManager.shared.hasAPIKey()
 
-    // Update status text based on current mode
+    // Update status text based on current mode (with visual state override)
     if let statusMenuItem = menu.item(withTag: 100) {
-      statusMenuItem.title = appMode.statusText
-      statusMenuItem.isHidden = appMode.statusText.isEmpty
+      let oldStatus = statusMenuItem.title
+
+      // Visual state overrides AppMode when active
+      let newStatus: String
+      if visualState.overridesAppMode {
+        newStatus = visualState.statusText
+      } else {
+        newStatus = appMode.statusText
+      }
+
+      statusMenuItem.title = newStatus
+      statusMenuItem.isHidden = false  // Always show status
+
+      NSLog(
+        "🎨 UI-DEBUG: Menu status update - old: '\(oldStatus)' → new: '\(newStatus)' (mode: \(appMode), visual: \(visualState))"
+      )
     }
 
     // Update recording menu items
@@ -733,11 +806,8 @@ class MenuBarController: NSObject {
     blinkTimer = nil
     isBlinking = false
 
-    // Ensure button is visible when stopping
-    if let button = statusItem?.button {
-      button.title = "⏳"
-      button.toolTip = "Transcribing audio... Please wait"
-    }
+    NSLog("🎨 UI-DEBUG: stopBlinking() called - NOT overriding icon")
+    // Note: Don't override the icon here - let the AppMode system handle it
   }
 
   private func toggleBlinkState() {
@@ -766,8 +836,13 @@ class MenuBarController: NSObject {
 // MARK: - ShortcutDelegate
 extension MenuBarController: ShortcutDelegate {
   func startRecording() {
-    guard !isPrompting && !isRecording else { return }
+    // Comprehensive state check - no new recordings if ANYTHING is active
+    guard appMode == .idle else {
+      NSLog("🚫 RECORDING-BLOCKED: Cannot start recording - app not idle (current: \(appMode))")
+      return
+    }
 
+    NSLog("🎙️ RECORDING-START: Starting transcription recording")
     lastModeWasPrompting = false
     lastModeWasVoiceResponse = false
     isRecording = true
@@ -786,13 +861,19 @@ extension MenuBarController: ShortcutDelegate {
   }
 
   func startPrompting() {
-    guard !isRecording else { return }
+    // Comprehensive state check - no new recordings if ANYTHING is active
+    guard appMode == .idle else {
+      NSLog("🚫 PROMPTING-BLOCKED: Cannot start prompting - app not idle (current: \(appMode))")
+      return
+    }
 
     // Check accessibility permission first
     if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-
+      NSLog("🚫 PROMPTING-BLOCKED: No accessibility permission")
       return
     }
+
+    NSLog("🤖 PROMPTING-START: Starting prompt recording")
 
     // Simulate Copy-Paste to capture selected text
     simulateCopyPaste()
@@ -833,18 +914,24 @@ extension MenuBarController: ShortcutDelegate {
   }
 
   func startVoiceResponse() {
-    guard !isRecording && !isVoiceResponse else { return }
+    // Comprehensive state check - no new recordings if ANYTHING is active
+    guard appMode == .idle else {
+      NSLog(
+        "🚫 VOICE-RESPONSE-BLOCKED: Cannot start voice response - app not idle (current: \(appMode))"
+      )
+      return
+    }
 
     // Check accessibility permission first
     if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-      NSLog("⚠️ VOICE-RESPONSE-MODE: No accessibility permission")
+      NSLog("🚫 VOICE-RESPONSE-BLOCKED: No accessibility permission")
       return
     }
 
     // Simulate Copy-Paste to capture selected text
     simulateCopyPaste()
 
-    NSLog("🔊 VOICE-RESPONSE-MODE: Starting voice response recording")
+    NSLog("🔊 VOICE-RESPONSE-START: Starting voice response recording")
     lastModeWasPrompting = false
     lastModeWasVoiceResponse = true
     isVoiceResponse = true
@@ -942,10 +1029,7 @@ extension MenuBarController: AudioRecorderDelegate {
       shouldCleanup = await handleTranscriptionError(transcriptionError)
     }
 
-    // Reset to idle state after processing
-    await MainActor.run {
-      appMode = .idle
-    }
+    // Note: appMode will be reset to .idle by the success/error display timeout
 
     // Clean up audio file if appropriate
     if shouldCleanup {
@@ -972,10 +1056,7 @@ extension MenuBarController: AudioRecorderDelegate {
       shouldCleanup = await handlePromptError(transcriptionError)
     }
 
-    // Reset to idle state after processing
-    await MainActor.run {
-      appMode = .idle
-    }
+    // Note: appMode will be reset to .idle by the success/error display timeout
 
     // Clean up audio file if appropriate
     if shouldCleanup {
@@ -1004,10 +1085,7 @@ extension MenuBarController: AudioRecorderDelegate {
       shouldCleanup = await handleVoiceResponseError(transcriptionError)
     }
 
-    // Reset to idle state after processing
-    await MainActor.run {
-      appMode = .idle
-    }
+    // Note: appMode will be reset to .idle by the success/error display timeout
 
     // Clean up audio file if appropriate
     if shouldCleanup {
@@ -1186,37 +1264,31 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   private func showTemporarySuccess() {
-    // Stop blinking and show success indicator in menu bar
+    // Stop blinking and show success indicator
     stopBlinking()
 
-    if let button = statusItem?.button {
-      button.title = "✅"
-      button.toolTip = "Transcription complete - text copied to clipboard"
+    NSLog("🎨 UI-DEBUG: showTemporarySuccess() called")
 
-      // Force immediate redraw to ensure visibility on all screens
-      button.needsDisplay = true
-      button.window?.displayIfNeeded()
+    // Set visual state (independent of AppMode)
+    visualState = .success("Text copied to clipboard")
 
-      // Also force the status item to update
-      statusItem?.button?.needsDisplay = true
-    }
+    // Business logic: immediately return to idle (allows new recordings)
+    appMode = .idle
 
-    // Update menu status
-    if let menu = statusItem?.menu,
-      let statusMenuItem = menu.item(withTag: 100)
-    {
-      statusMenuItem.title = "✅ Text copied to clipboard"
-    }
+    NSLog("🎨 UI-DEBUG: Success state set - AppMode returned to idle, visual shows success")
 
-    // Reset after 3 seconds
+    // Reset visual state after 3 seconds
     DispatchQueue.main.asyncAfter(deadline: .now() + Constants.successDisplayTime) {
-      self.resetToReadyState()
+      NSLog("🎨 UI-DEBUG: Success timeout reached, resetting visual to normal")
+      self.visualState = .normal
     }
   }
 
   private func showTemporaryPromptSuccess() {
     // Stop blinking and show success indicator in menu bar
     stopBlinking()
+
+    NSLog("🎨 UI-DEBUG: showTemporaryPromptSuccess() called")
 
     if let button = statusItem?.button {
       button.title = "🤖"
@@ -1237,15 +1309,21 @@ extension MenuBarController: AudioRecorderDelegate {
       statusMenuItem.title = "🤖 AI response copied to clipboard"
     }
 
-    // Reset after 3 seconds
+    NSLog("🎨 UI-DEBUG: Prompt success indicator set to 🤖")
+
+    // Reset after 3 seconds - but don't trigger AppMode change immediately
     DispatchQueue.main.asyncAfter(deadline: .now() + Constants.successDisplayTime) {
-      self.resetToReadyState()
+      NSLog("🎨 UI-DEBUG: Prompt success timeout reached, resetting to idle")
+      self.appMode = .idle
+      self.updateUI()
     }
   }
 
   private func showTemporaryError() {
     // Stop blinking and show error indicator in menu bar
     stopBlinking()
+
+    NSLog("🎨 UI-DEBUG: showTemporaryError() called")
 
     if let button = statusItem?.button {
       button.title = "❌"
@@ -1263,10 +1341,14 @@ extension MenuBarController: AudioRecorderDelegate {
       }
     }
 
+    NSLog("🎨 UI-DEBUG: Error indicator set to ❌")
+
     // Only reset after 3 seconds if retry is not available
     if !canRetry {
       DispatchQueue.main.asyncAfter(deadline: .now() + Constants.errorDisplayTime) {
-        self.resetToReadyState()
+        NSLog("🎨 UI-DEBUG: Error timeout reached, resetting to idle")
+        self.appMode = .idle
+        self.updateUI()
       }
     }
   }

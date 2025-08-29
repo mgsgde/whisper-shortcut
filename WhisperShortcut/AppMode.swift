@@ -114,11 +114,17 @@ extension AppMode {
 
   /// Icon to display in menu bar
   var icon: String {
+    let iconString: String
     switch self {
-    case .idle: return "🎙️"
-    case .recording(let type): return type.icon
-    case .processing(let type): return type.icon
+    case .idle: 
+      iconString = "🎙️"
+    case .recording(let type): 
+      iconString = type.icon
+    case .processing(let type): 
+      iconString = type.icon
     }
+    NSLog("🎨 UI-DEBUG: AppMode.icon called for \(self) → '\(iconString)'")
+    return iconString
   }
 
   /// Tooltip text for menu bar icon
@@ -133,7 +139,7 @@ extension AppMode {
   /// Status text for menu items
   var statusText: String {
     switch self {
-    case .idle: return ""
+    case .idle: return "Ready to record"
     case .recording(let type): return type.statusText
     case .processing(let type): return type.statusText
     }
