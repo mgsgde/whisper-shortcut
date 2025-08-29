@@ -15,9 +15,15 @@ class MenuBarController: NSObject {
 
   // MARK: - UI Components
   private var statusItem: NSStatusItem?
-  private var isRecording = false
-  private var isPrompting = false  // New: Track prompt mode
-  private var isVoiceResponse = false  // New: Track voice response mode
+
+  // MARK: - Application Mode (Single Source of Truth)
+  private var appMode: AppMode = .idle {
+    didSet {
+      NSLog("🔄 MODE-CHANGE: \(oldValue) → \(appMode)")
+      updateUI()
+    }
+  }
+
   private var audioRecorder: AudioRecorder?
   private var shortcuts: Shortcuts?
   private var speechService: SpeechService?
@@ -36,9 +42,74 @@ class MenuBarController: NSObject {
   private var lastError: String?
   private var canRetry = false
 
-  // MARK: - Mode Tracking (for delegate callback)
-  private var lastModeWasPrompting = false
-  private var lastModeWasVoiceResponse = false
+  // Note: Mode tracking is now handled by AppMode enum
+
+  // MARK: - Computed Properties for Backward Compatibility
+  // These provide the old boolean interface while using the new AppMode internally
+    private var isRecording: Bool {
+    get { appMode.isRecording && appMode.recordingType == .transcription }
+    set {
+      if newValue {
+        lastModeWasPrompting = false
+        lastModeWasVoiceResponse = false
+        appMode = appMode.startRecording(type: .transcription)
+      } else if appMode.recordingType == .transcription {
+        appMode = appMode.stopRecording()
+      }
+    }
+  }
+  
+  private var isPrompting: Bool {
+    get { appMode.isRecording && appMode.recordingType == .prompt }
+    set {
+      if newValue {
+        lastModeWasPrompting = true
+        lastModeWasVoiceResponse = false
+        appMode = appMode.startRecording(type: .prompt)
+      } else if appMode.recordingType == .prompt {
+        appMode = appMode.stopRecording()
+      }
+    }
+  }
+  
+  private var isVoiceResponse: Bool {
+    get { appMode.isRecording && appMode.recordingType == .voiceResponse }
+    set {
+      if newValue {
+        lastModeWasPrompting = false
+        lastModeWasVoiceResponse = true
+        appMode = appMode.startRecording(type: .voiceResponse)
+      } else if appMode.recordingType == .voiceResponse {
+        appMode = appMode.stopRecording()
+      }
+    }
+  }
+
+    // For backward compatibility, we need to track the last mode separately
+  // since the AppMode enum doesn't preserve this information during transitions
+  private var lastModeWasPrompting: Bool = false
+  private var lastModeWasVoiceResponse: Bool = false
+
+  // MARK: - UI Update Methods
+  private func updateUI() {
+    updateMenuBarIcon()
+    updateMenuState()
+    updateBlinkingState()
+  }
+
+  private func updateMenuBarIcon() {
+    guard let button = statusItem?.button else { return }
+    button.title = appMode.icon
+    button.toolTip = appMode.tooltip
+  }
+
+  private func updateBlinkingState() {
+    if appMode.shouldBlink {
+      startBlinking()
+    } else {
+      stopBlinking()
+    }
+  }
 
   override init() {
     // Load current shortcut configuration
@@ -256,151 +327,62 @@ class MenuBarController: NSObject {
     // Check if API key is configured
     let hasAPIKey = KeychainManager.shared.hasAPIKey()
 
-    // Update status text only when actively recording
+    // Update status text based on current mode
     if let statusMenuItem = menu.item(withTag: 100) {
-      if isRecording {
-        statusMenuItem.title = "🔴 Recording (Transcription)..."
-      } else if isPrompting {
-        statusMenuItem.title = "🔴 Recording (Prompt)..."
-      } else {
-        // Hide status text when not recording
-        statusMenuItem.isHidden = true
-      }
+      statusMenuItem.title = appMode.statusText
+      statusMenuItem.isHidden = appMode.statusText.isEmpty
     }
-
-    // Determine if we're in an active recording/prompting state
-    let isActivelyRecording = isRecording || isPrompting
 
     // Update recording menu items
     if let startRecordingItem = menu.item(withTag: 102) {
-      let isEnabled = !isRecording && !isPrompting && hasAPIKey
-      startRecordingItem.isEnabled = isEnabled
-
-      if isActivelyRecording {
-        // During recording/prompting: hide disabled items
-        startRecordingItem.isHidden = !isEnabled
-        if !startRecordingItem.isHidden {
-          startRecordingItem.title = "Dictate"
-        }
-      } else {
-        // In ready state: show all items
-        startRecordingItem.isHidden = false
-        startRecordingItem.title = "Dictate"
-      }
+      startRecordingItem.isEnabled = appMode.shouldEnableStartRecording(hasAPIKey: hasAPIKey)
+      startRecordingItem.isHidden = appMode.isBusy && !startRecordingItem.isEnabled
+      startRecordingItem.title = "Dictate"
     }
 
     if let stopRecordingItem = menu.item(withTag: 103) {
-      let isEnabled = isRecording
-      stopRecordingItem.isEnabled = isEnabled
-
-      if isActivelyRecording {
-        // During recording/prompting: hide disabled items
-        stopRecordingItem.isHidden = !isEnabled
-        if !stopRecordingItem.isHidden {
-          stopRecordingItem.title = "Stop & Transcribe"
-        }
-      } else {
-        // In ready state: show all items
-        stopRecordingItem.isHidden = false
-        stopRecordingItem.title = "Stop & Transcribe"
-      }
+      stopRecordingItem.isEnabled = appMode.shouldEnableStopRecording
+      stopRecordingItem.isHidden = appMode.isBusy && !stopRecordingItem.isEnabled
+      stopRecordingItem.title = "Stop & Transcribe"
     }
 
     // Update prompting menu items
     if let startPromptingItem = menu.item(withTag: 105) {
-      let isEnabled = !isRecording && !isPrompting && hasAPIKey
-      startPromptingItem.isEnabled = isEnabled
-
-      if isActivelyRecording {
-        // During recording/prompting: hide disabled items
-        startPromptingItem.isHidden = !isEnabled
-        if !startPromptingItem.isHidden {
-          startPromptingItem.title = "Dictate Prompt"
-        }
-      } else {
-        // In ready state: show all items
-        startPromptingItem.isHidden = false
-        startPromptingItem.title = "Dictate Prompt"
-      }
+      startPromptingItem.isEnabled = appMode.shouldEnableStartPrompting(hasAPIKey: hasAPIKey)
+      startPromptingItem.isHidden = appMode.isBusy && !startPromptingItem.isEnabled
+      startPromptingItem.title = "Dictate Prompt"
     }
 
     if let stopPromptingItem = menu.item(withTag: 106) {
-      let isEnabled = isPrompting
-      stopPromptingItem.isEnabled = isEnabled
-
-      if isActivelyRecording {
-        // During recording/prompting: hide disabled items
-        stopPromptingItem.isHidden = !isEnabled
-        if !stopPromptingItem.isHidden {
-          stopPromptingItem.title = "Stop & Execute"
-        }
-      } else {
-        // In ready state: show all items
-        stopPromptingItem.isHidden = false
-        stopPromptingItem.title = "Stop & Execute"
-      }
+      stopPromptingItem.isEnabled = appMode.shouldEnableStopPrompting
+      stopPromptingItem.isHidden = appMode.isBusy && !stopPromptingItem.isEnabled
+      stopPromptingItem.title = "Stop & Execute"
     }
 
     // Update voice response menu items
     if let startVoiceResponseItem = menu.item(withTag: 109) {
-      let isEnabled = !isRecording && !isPrompting && !isVoiceResponse && hasAPIKey
-      startVoiceResponseItem.isEnabled = isEnabled
-
-      if isActivelyRecording {
-        // During recording/prompting: hide disabled items
-        startVoiceResponseItem.isHidden = !isEnabled
-        if !startVoiceResponseItem.isHidden {
-          startVoiceResponseItem.title = "Speech to Prompt"
-        }
-      } else {
-        // In ready state: show all items
-        startVoiceResponseItem.isHidden = false
-        startVoiceResponseItem.title = "Speech to Prompt"
-      }
+      startVoiceResponseItem.isEnabled = appMode.shouldEnableStartVoiceResponse(
+        hasAPIKey: hasAPIKey)
+      startVoiceResponseItem.isHidden = appMode.isBusy && !startVoiceResponseItem.isEnabled
+      startVoiceResponseItem.title = "Speech to Prompt"
     }
 
     if let stopVoiceResponseItem = menu.item(withTag: 110) {
-      let isEnabled = isVoiceResponse
-      stopVoiceResponseItem.isEnabled = isEnabled
-
-      if isActivelyRecording {
-        // During recording/prompting: hide disabled items
-        stopVoiceResponseItem.isHidden = !isEnabled
-        if !stopVoiceResponseItem.isHidden {
-          stopVoiceResponseItem.title = "Stop & Speak Response"
-        }
-      } else {
-        // In ready state: show all items
-        stopVoiceResponseItem.isHidden = false
-        stopVoiceResponseItem.title = "Stop & Speak Response"
-      }
+      stopVoiceResponseItem.isEnabled = appMode.shouldEnableStopVoiceResponse
+      stopVoiceResponseItem.isHidden = appMode.isBusy && !stopVoiceResponseItem.isEnabled
+      stopVoiceResponseItem.title = "Stop & Speak Response"
     }
 
     // Update retry menu item
     updateRetryMenuItem()
 
-    // Update icon - always use emoji for reliability
-    if let button = statusItem?.button {
-      if isRecording {
-        button.title = "🔴"
-        button.toolTip = "Recording for transcription... Click to stop"
-      } else if isPrompting {
-        button.title = "🤖"
-        button.toolTip = "Recording for AI prompt... Click to stop"
-      } else if isVoiceResponse {
-        button.title = "🔊"
-        button.toolTip = "Recording for voice response... Click to stop"
-      } else if hasAPIKey {
-        button.title = "🎙️"
-        button.toolTip = "WhisperShortcut - Click to record"
-      } else {
-        button.title = "⚠️"
-        button.toolTip = "API key required - click to configure"
-      }
+    // Icon is now handled by updateMenuBarIcon() which is called from updateUI()
+    // Handle special case when no API key is configured
+    if !hasAPIKey, let button = statusItem?.button {
+      button.title = "⚠️"
+      button.toolTip = "API key required - click to configure"
       button.image = nil
       button.imagePosition = .noImage
-
-      // Force refresh
       button.needsDisplay = true
     }
   }
@@ -960,7 +942,10 @@ extension MenuBarController: AudioRecorderDelegate {
       shouldCleanup = await handleTranscriptionError(transcriptionError)
     }
 
-    // State is already reset immediately in stopRecording() - no need to reset again
+    // Reset to idle state after processing
+    await MainActor.run {
+      appMode = .idle
+    }
 
     // Clean up audio file if appropriate
     if shouldCleanup {
@@ -987,10 +972,9 @@ extension MenuBarController: AudioRecorderDelegate {
       shouldCleanup = await handlePromptError(transcriptionError)
     }
 
-    // Reset prompting state after processing
+    // Reset to idle state after processing
     await MainActor.run {
-      isPrompting = false
-
+      appMode = .idle
     }
 
     // Clean up audio file if appropriate
@@ -1018,6 +1002,11 @@ extension MenuBarController: AudioRecorderDelegate {
       // Handle unexpected errors
       let transcriptionError = TranscriptionError.networkError(error.localizedDescription)
       shouldCleanup = await handleVoiceResponseError(transcriptionError)
+    }
+
+    // Reset to idle state after processing
+    await MainActor.run {
+      appMode = .idle
     }
 
     // Clean up audio file if appropriate
