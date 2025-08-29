@@ -143,7 +143,7 @@ struct SettingsView: View {
 
       // Buttons
       HStack(spacing: Constants.buttonSpacing) {
-        Button("Skip for now") {
+        Button("Cancel") {
           dismiss()
         }
         .font(.body)
@@ -445,7 +445,7 @@ struct SettingsView: View {
           .textSelection(.enabled)
 
         Text(
-          "command (⌘) • option (⌥) • control (⌃) • shift (⇧) • a-z • 0-9 • f1-f12 • space • return • escape • tab • delete • home • end • pageup • pagedown • up (↑) • down (↓) • left (←) • right (→) • minus (-) • equal (=) • leftbracket ([) • rightbracket (]) • backslash (\\) • semicolon (;) • quote (') • grave (`) • comma (,) • period (.) • slash (/)"
+          "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • up • down • left • right • comma • period"
         )
         .font(.callout)
         .foregroundColor(.secondary)
@@ -661,7 +661,7 @@ struct SettingsView: View {
 
     // Validate parsed shortcuts
     if startShortcutEnabled {
-      guard let parsed = startShortcutParsed else {
+      guard startShortcutParsed != nil else {
         showErrorMessage(
           "Invalid start recording shortcut format. Use: command+option+r, control+shift+space, f1, command+up"
         )
@@ -670,7 +670,7 @@ struct SettingsView: View {
     }
 
     if stopShortcutEnabled {
-      guard let parsed = stopShortcutParsed else {
+      guard stopShortcutParsed != nil else {
         showErrorMessage(
           "Invalid stop recording shortcut format. Use: command+r, control+space, f2, command+down")
         return
@@ -678,21 +678,21 @@ struct SettingsView: View {
     }
 
     if startPromptingEnabled {
-      guard let parsed = startPromptingParsed else {
+      guard startPromptingParsed != nil else {
         showErrorMessage("Invalid start prompting shortcut format")
         return
       }
     }
 
     if stopPromptingEnabled {
-      guard let parsed = stopPromptingParsed else {
+      guard stopPromptingParsed != nil else {
         showErrorMessage("Invalid stop prompting shortcut format")
         return
       }
     }
 
     if openChatGPTEnabled {
-      guard let parsed = openChatGPTParsed else {
+      guard openChatGPTParsed != nil else {
         showErrorMessage("Invalid open ChatGPT shortcut format")
         return
       }
@@ -714,7 +714,7 @@ struct SettingsView: View {
     }
 
     // Save API key
-    KeychainManager.shared.saveAPIKey(apiKey)
+    _ = KeychainManager.shared.saveAPIKey(apiKey)
 
     // Save model preference
     UserDefaults.standard.set(selectedModel.rawValue, forKey: "selectedTranscriptionModel")
@@ -745,7 +745,6 @@ struct SettingsView: View {
     // Reset loading state
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
       isLoading = false
-      dismiss()
     }
   }
 

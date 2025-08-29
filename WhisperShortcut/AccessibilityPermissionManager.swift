@@ -31,15 +31,15 @@ class AccessibilityPermissionManager {
       1. Go to Privacy & Security → Accessibility
       2. Enable WhisperShortcut
 
-      Or choose "Skip" to use only clipboard content for prompts.
+      Or choose "Cancel" to use only clipboard content for prompts.
       """
     alert.alertStyle = .informational
     alert.addButton(withTitle: "Open Settings")
-    alert.addButton(withTitle: "Skip for Now")
+    alert.addButton(withTitle: "Cancel")
 
     let response = alert.runModal()
     NSLog(
-      "🔐 ACCESSIBILITY: Dialog response: \(response == .alertFirstButtonReturn ? "Open Settings" : "Skip")"
+      "🔐 ACCESSIBILITY: Dialog response: \(response == .alertFirstButtonReturn ? "Open Settings" : "Cancel")"
     )
 
     if response == .alertFirstButtonReturn {

@@ -55,22 +55,9 @@ extension Key: Codable {
     case .seven: return "7"
     case .eight: return "8"
     case .nine: return "9"
-    case .return: return "↩"
     case .escape: return "⎋"
-    case .delete: return "⌫"
-    case .tab: return "⇥"
-    case .space: return "Space"
-    case .minus: return "-"
-    case .equal: return "="
-    case .leftBracket: return "["
-    case .rightBracket: return "]"
-    case .backslash: return "\\"
-    case .semicolon: return ";"
-    case .quote: return "'"
-    case .grave: return "`"
     case .comma: return ","
     case .period: return "."
-    case .slash: return "/"
     case .f1: return "F1"
     case .f2: return "F2"
     case .f3: return "F3"
@@ -83,14 +70,11 @@ extension Key: Codable {
     case .f10: return "F10"
     case .f11: return "F11"
     case .f12: return "F12"
-    case .home: return "Home"
-    case .pageUp: return "PgUp"
-    case .pageDown: return "PgDn"
-    case .end: return "End"
     case .upArrow: return "↑"
     case .downArrow: return "↓"
     case .leftArrow: return "←"
     case .rightArrow: return "→"
+
     default: return "Key"
     }
   }
@@ -174,7 +158,7 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
 
   var isConflicting: Bool {
     // Check for common conflicts
-    let conflictKeys: [Key] = [.space, .tab, .escape, .return, .delete]
+    let conflictKeys: [Key] = [.escape]
     return conflictKeys.contains(key) && modifiers.isEmpty
   }
 
@@ -356,22 +340,9 @@ class ShortcutConfigManager {
       case "9": key = .nine
 
       // Special keys
-      case "space", " ": key = .space
-      case "return", "enter", "↩": key = .return
       case "escape", "esc", "⎋": key = .escape
-      case "tab", "⇥": key = .tab
-      case "delete", "backspace", "⌫": key = .delete
-      case "minus", "-": key = .minus
-      case "equal", "=": key = .equal
-      case "leftbracket", "[": key = .leftBracket
-      case "rightbracket", "]": key = .rightBracket
-      case "backslash", "\\": key = .backslash
-      case "semicolon", ";": key = .semicolon
-      case "quote", "'": key = .quote
-      case "grave", "`": key = .grave
       case "comma", ",": key = .comma
       case "period", ".": key = .period
-      case "slash", "/": key = .slash
 
       // Function keys
       case "f1": key = .f1
@@ -388,10 +359,6 @@ class ShortcutConfigManager {
       case "f12": key = .f12
 
       // Navigation keys
-      case "home": key = .home
-      case "pageup", "pgup": key = .pageUp
-      case "pagedown", "pgdn": key = .pageDown
-      case "end": key = .end
       case "uparrow", "up", "↑": key = .upArrow
       case "downarrow", "down", "↓": key = .downArrow
       case "leftarrow", "left", "←": key = .leftArrow
