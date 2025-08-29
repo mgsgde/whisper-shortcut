@@ -39,7 +39,7 @@ final class RetryFunctionalityTests: XCTestCase {
       """
 
     // Test that timeout errors are detected correctly using the new parsing system
-    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+    let (isError, isRetryable, errorType) = SpeechService.parseTranscriptionResult(
       timeoutError)
     XCTAssertTrue(isError, "Timeout error should be detected as error")
     XCTAssertTrue(isRetryable, "Timeout error should be retryable")
@@ -56,7 +56,7 @@ final class RetryFunctionalityTests: XCTestCase {
       """
 
     // Test that network errors are detected correctly using the new parsing system
-    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+    let (isError, isRetryable, errorType) = SpeechService.parseTranscriptionResult(
       networkError)
     XCTAssertTrue(isError, "Network error should be detected as error")
     XCTAssertTrue(isRetryable, "Network error should be retryable")
@@ -72,7 +72,7 @@ final class RetryFunctionalityTests: XCTestCase {
       """
 
     // Test that server errors are detected correctly using the new parsing system
-    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+    let (isError, isRetryable, errorType) = SpeechService.parseTranscriptionResult(
       serverError)
     XCTAssertTrue(isError, "Server error should be detected as error")
     XCTAssertTrue(isRetryable, "Server error should be retryable")
@@ -103,7 +103,7 @@ final class RetryFunctionalityTests: XCTestCase {
       """
 
     // Test that rate limit errors are detected correctly using the new parsing system
-    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+    let (isError, isRetryable, errorType) = SpeechService.parseTranscriptionResult(
       rateLimitError)
     XCTAssertTrue(isError, "Rate limit error should be detected as error")
     XCTAssertTrue(isRetryable, "Rate limit error should be retryable")
@@ -119,7 +119,7 @@ final class RetryFunctionalityTests: XCTestCase {
       """
 
     // Test that service unavailable errors are detected correctly
-    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+    let (isError, isRetryable, errorType) = SpeechService.parseTranscriptionResult(
       serviceError)
     XCTAssertTrue(isError, "Service error should be detected as error")
     XCTAssertTrue(isRetryable, "Service error should be retryable")
@@ -135,7 +135,7 @@ final class RetryFunctionalityTests: XCTestCase {
       """
 
     // Test that authentication errors are detected correctly (non-retryable)
-    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+    let (isError, isRetryable, errorType) = SpeechService.parseTranscriptionResult(
       authError)
     XCTAssertTrue(isError, "Auth error should be detected as error")
     XCTAssertFalse(isRetryable, "Auth error should NOT be retryable")
@@ -146,7 +146,7 @@ final class RetryFunctionalityTests: XCTestCase {
     let normalText = "Hello, this is a normal transcription."
 
     // Test that normal text is not detected as error
-    let (isError, isRetryable, errorType) = TranscriptionService.parseTranscriptionResult(
+    let (isError, isRetryable, errorType) = SpeechService.parseTranscriptionResult(
       normalText)
     XCTAssertFalse(isError, "Normal text should not be detected as error")
     XCTAssertFalse(isRetryable, "Normal text should not be retryable")
