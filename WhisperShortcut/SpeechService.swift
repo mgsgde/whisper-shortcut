@@ -264,6 +264,10 @@ class SpeechService {
     clipboardManager?.copyToClipboard(text: response)
     NSLog("✅ VOICE-RESPONSE-MODE: Response copied to clipboard")
 
+    // Notify that we're ready to speak (text is available, now generating audio)
+    NotificationCenter.default.post(
+      name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
+
     // Generate speech from response
     NSLog("🔊 VOICE-RESPONSE-MODE: Generating speech from response...")
 

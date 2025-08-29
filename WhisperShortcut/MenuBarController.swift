@@ -227,6 +227,14 @@ class MenuBarController: NSObject {
       object: nil
     )
 
+    // Listen for voice response status updates
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(voiceResponseReadyToSpeak),
+      name: NSNotification.Name("VoiceResponseReadyToSpeak"),
+      object: nil
+    )
+
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(shortcutsChanged),
@@ -721,6 +729,12 @@ class MenuBarController: NSObject {
     }
   }
 
+  @objc private func voiceResponseReadyToSpeak() {
+    DispatchQueue.main.async {
+      self.showSpeakingStatus()
+    }
+  }
+
   // MARK: - Blinking Animation
   private func startBlinking() {
     stopBlinking()  // Stop any existing blinking
@@ -1144,6 +1158,8 @@ extension MenuBarController: AudioRecorderDelegate {
     {
       if mode == "prompt" {
         statusMenuItem.title = "🤖 Processing prompt..."
+      } else if mode == "voice response" {
+        statusMenuItem.title = "🔊 Processing voice response..."
       } else {
         statusMenuItem.title = "⏳ Transcribing..."
       }
@@ -1152,6 +1168,24 @@ extension MenuBarController: AudioRecorderDelegate {
 
   private func showTranscribingStatus() {
     showProcessingStatus(mode: "transcription")
+  }
+
+  private func showSpeakingStatus() {
+    // Stop blinking - we're no longer processing
+    stopBlinking()
+
+    // Update menu bar icon to speaker
+    if let button = statusItem?.button {
+      button.title = "🔈"
+      button.toolTip = "Playing voice response..."
+    }
+
+    // Update menu status
+    if let menu = statusItem?.menu,
+      let statusMenuItem = menu.item(withTag: 100)
+    {
+      statusMenuItem.title = "🔈 Playing response..."
+    }
   }
 
   func audioRecorderDidFailWithError(_ error: Error) {
