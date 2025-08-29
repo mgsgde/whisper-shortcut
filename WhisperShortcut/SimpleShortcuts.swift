@@ -6,6 +6,7 @@ protocol ShortcutDelegate: AnyObject {
   func stopRecording()
   func startPrompting()
   func stopPrompting()
+  func openChatGPT()
 }
 
 // Configurable shortcuts using ShortcutConfigManager
@@ -16,6 +17,7 @@ class SimpleShortcuts {
   private var stopKey: HotKey?
   private var startPromptKey: HotKey?
   private var stopPromptKey: HotKey?
+  private var openChatGPTKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -35,7 +37,7 @@ class SimpleShortcuts {
     // Setup shortcuts with current configuration
     setupShortcuts(with: currentConfig)
     print(
-      "🎹 Shortcuts ready: \(currentConfig.startRecording.displayString) (start), \(currentConfig.stopRecording.displayString) (stop), \(currentConfig.startPrompting.displayString) (start prompt), \(currentConfig.stopPrompting.displayString) (stop prompt)"
+      "🎹 Shortcuts ready: \(currentConfig.startRecording.displayString) (start), \(currentConfig.stopRecording.displayString) (stop), \(currentConfig.startPrompting.displayString) (start prompt), \(currentConfig.stopPrompting.displayString) (stop prompt), \(currentConfig.openChatGPT.displayString) (open ChatGPT)"
     )
   }
 
@@ -73,6 +75,15 @@ class SimpleShortcuts {
         self?.delegate?.stopPrompting()
       }
     }
+
+    if config.openChatGPT.isEnabled {
+      openChatGPTKey = HotKey(
+        key: config.openChatGPT.key, modifiers: config.openChatGPT.modifiers)
+      openChatGPTKey?.keyDownHandler = { [weak self] in
+        print("🤖 Opening ChatGPT via shortcut...")
+        self?.delegate?.openChatGPT()
+      }
+    }
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -80,7 +91,7 @@ class SimpleShortcuts {
       currentConfig = newConfig
       setupShortcuts(with: newConfig)
       print(
-        "🎹 Shortcuts updated: \(newConfig.startRecording.displayString) (start), \(newConfig.stopRecording.displayString) (stop), \(newConfig.startPrompting.displayString) (start prompt), \(newConfig.stopPrompting.displayString) (stop prompt)"
+        "🎹 Shortcuts updated: \(newConfig.startRecording.displayString) (start), \(newConfig.stopRecording.displayString) (stop), \(newConfig.startPrompting.displayString) (start prompt), \(newConfig.stopPrompting.displayString) (stop prompt), \(newConfig.openChatGPT.displayString) (open ChatGPT)"
       )
     }
   }
@@ -90,6 +101,7 @@ class SimpleShortcuts {
     stopKey = nil
     startPromptKey = nil
     stopPromptKey = nil
+    openChatGPTKey = nil
   }
 
   deinit {

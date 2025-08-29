@@ -138,6 +138,16 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
+    // Open ChatGPT item with configurable shortcut
+    let openChatGPTItem = NSMenuItem(
+      title: "Open ChatGPT", action: #selector(openChatGPTFromMenu), keyEquivalent: "")
+    openChatGPTItem.keyEquivalentModifierMask = []
+    openChatGPTItem.target = self
+    openChatGPTItem.tag = 107  // Tag for updating shortcut
+    menu.addItem(openChatGPTItem)
+
+    menu.addItem(NSMenuItem.separator())
+
     // Settings item
     let settingsItem = NSMenuItem(
       title: "Settings...", action: #selector(openSettings), keyEquivalent: "")
@@ -413,6 +423,19 @@ class MenuBarController: NSObject {
         stopPromptItem.title = "Stop & Execute (Disabled)"
       }
     }
+
+    // Update open ChatGPT shortcut
+    if let openChatGPTItem = menu.item(withTag: 107) {
+      if currentConfig.openChatGPT.isEnabled {
+        openChatGPTItem.keyEquivalent = currentConfig.openChatGPT.key.displayString.lowercased()
+        openChatGPTItem.keyEquivalentModifierMask = currentConfig.openChatGPT.modifiers
+        openChatGPTItem.title = "Open ChatGPT"
+      } else {
+        openChatGPTItem.keyEquivalent = ""
+        openChatGPTItem.keyEquivalentModifierMask = []
+        openChatGPTItem.title = "Open ChatGPT (Disabled)"
+      }
+    }
   }
 
   @objc private func startRecordingFromMenu() {
@@ -467,6 +490,51 @@ class MenuBarController: NSObject {
     audioRecorder?.stopRecording()
 
     NSLog("🤖 PROMPT-MODE: Audio recording stopped from menu, waiting for processing...")
+  }
+
+  @objc private func openChatGPTFromMenu() {
+    print("Opening ChatGPT...")
+    openChatGPTApp()
+  }
+
+  private func openChatGPTApp() {
+    // First, try to open the ChatGPT desktop app if installed
+    let chatGPTAppPath = "/Applications/ChatGPT.app"
+    let chatGPTAppURL = URL(fileURLWithPath: chatGPTAppPath)
+
+    if FileManager.default.fileExists(atPath: chatGPTAppPath) {
+      let runningApp = NSWorkspace.shared.openApplication(
+        at: chatGPTAppURL, configuration: NSWorkspace.OpenConfiguration())
+      if runningApp != nil {
+        print("✅ Successfully opened ChatGPT desktop app")
+        return
+      } else {
+        print("❌ Failed to open ChatGPT desktop app")
+      }
+    } else {
+      print("ℹ️ ChatGPT desktop app not found at \(chatGPTAppPath)")
+    }
+
+    // Fallback: try to open ChatGPT in the default browser
+    let chatGPTURL = URL(string: "https://chat.openai.com")!
+
+    if NSWorkspace.shared.open(chatGPTURL) {
+      print("✅ Successfully opened ChatGPT in browser")
+    } else {
+      print("❌ Failed to open ChatGPT in browser")
+
+      // Final fallback: try to open in Safari specifically
+      let safariURL = URL(string: "https://chat.openai.com")!
+      let safariAppURL = URL(fileURLWithPath: "/Applications/Safari.app")
+      let runningApp = NSWorkspace.shared.open(
+        [safariURL], withApplicationAt: safariAppURL, configuration: NSWorkspace.OpenConfiguration()
+      )
+      if runningApp != nil {
+        print("✅ Opened ChatGPT in Safari")
+      } else {
+        print("❌ Failed to open ChatGPT in Safari")
+      }
+    }
   }
 
   @objc private func openSettings() {
@@ -651,6 +719,10 @@ extension MenuBarController: ShortcutDelegate {
     updateMenuState()
     stopAudioLevelMonitoring()
     audioRecorder?.stopRecording()
+  }
+
+  func openChatGPT() {
+    openChatGPTApp()
   }
 
   private func startAudioLevelMonitoring() {

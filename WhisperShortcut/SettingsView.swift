@@ -39,10 +39,12 @@ struct SettingsView: View {
   @State private var stopShortcut: String = ""
   @State private var startPrompting: String = ""
   @State private var stopPrompting: String = ""
+  @State private var openChatGPT: String = ""
   @State private var startShortcutEnabled: Bool = true
   @State private var stopShortcutEnabled: Bool = true
   @State private var startPromptingEnabled: Bool = true
   @State private var stopPromptingEnabled: Bool = true
+  @State private var openChatGPTEnabled: Bool = true
   @State private var selectedModel: TranscriptionModel = .gpt4oTranscribe
   @State private var errorMessage: String = ""
   @State private var isLoading: Bool = false
@@ -56,6 +58,7 @@ struct SettingsView: View {
   @FocusState private var stopShortcutFocused: Bool
   @FocusState private var startPromptingFocused: Bool
   @FocusState private var stopPromptingFocused: Bool
+  @FocusState private var openChatGPTFocused: Bool
   @FocusState private var customPromptFocused: Bool
   @FocusState private var promptModeSystemPromptFocused: Bool
 
@@ -68,10 +71,12 @@ struct SettingsView: View {
     _stopShortcut = State(initialValue: currentConfig.stopRecording.textDisplayString)
     _startPrompting = State(initialValue: currentConfig.startPrompting.textDisplayString)
     _stopPrompting = State(initialValue: currentConfig.stopPrompting.textDisplayString)
+    _openChatGPT = State(initialValue: currentConfig.openChatGPT.textDisplayString)
     _startShortcutEnabled = State(initialValue: currentConfig.startRecording.isEnabled)
     _stopShortcutEnabled = State(initialValue: currentConfig.stopRecording.isEnabled)
     _startPromptingEnabled = State(initialValue: currentConfig.startPrompting.isEnabled)
     _stopPromptingEnabled = State(initialValue: currentConfig.stopPrompting.isEnabled)
+    _openChatGPTEnabled = State(initialValue: currentConfig.openChatGPT.isEnabled)
 
     // Load saved model preference
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
@@ -399,6 +404,38 @@ struct SettingsView: View {
         }
       }
 
+      // ChatGPT Shortcut
+      VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
+        Text("Quick Access")
+          .font(.title3)
+          .fontWeight(.semibold)
+          .textSelection(.enabled)
+
+        Text("Open ChatGPT in browser")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+
+        HStack(alignment: .center, spacing: 16) {
+          Text("Open ChatGPT:")
+            .font(.body)
+            .fontWeight(.medium)
+            .frame(width: Constants.labelWidth, alignment: .leading)
+            .textSelection(.enabled)
+          TextField("e.g., command+1", text: $openChatGPT)
+            .textFieldStyle(.roundedBorder)
+            .font(.system(.body, design: .monospaced))
+            .frame(height: Constants.textFieldHeight)
+            .frame(maxWidth: Constants.shortcutMaxWidth)
+            .focused($openChatGPTFocused)
+            .disabled(!openChatGPTEnabled)
+          Toggle("", isOn: $openChatGPTEnabled)
+            .toggleStyle(.checkbox)
+            .help("Enable/disable this shortcut")
+          Spacer()
+        }
+      }
+
       // Available Keys Information
       VStack(alignment: .leading, spacing: 8) {
         Text("Available keys:")
@@ -589,6 +626,13 @@ struct SettingsView: View {
       }
     }
 
+    if openChatGPTEnabled {
+      guard !openChatGPT.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        showErrorMessage("Please enter an open ChatGPT shortcut")
+        return
+      }
+    }
+
     // Parse shortcuts (only if enabled)
     let startShortcutParsed =
       startShortcutEnabled
@@ -609,6 +653,11 @@ struct SettingsView: View {
       stopPromptingEnabled
       ? ShortcutConfigManager.parseShortcut(from: stopPrompting)
       : ShortcutDefinition(key: .p, modifiers: [.command], isEnabled: false)
+
+    let openChatGPTParsed =
+      openChatGPTEnabled
+      ? ShortcutConfigManager.parseShortcut(from: openChatGPT)
+      : ShortcutDefinition(key: .one, modifiers: [.command], isEnabled: false)
 
     // Validate parsed shortcuts
     if startShortcutEnabled {
@@ -642,12 +691,20 @@ struct SettingsView: View {
       }
     }
 
+    if openChatGPTEnabled {
+      guard let parsed = openChatGPTParsed else {
+        showErrorMessage("Invalid open ChatGPT shortcut format")
+        return
+      }
+    }
+
     // Check for duplicate shortcuts (only among enabled ones)
     let enabledShortcuts = [
       startShortcutEnabled ? startShortcutParsed : nil,
       stopShortcutEnabled ? stopShortcutParsed : nil,
       startPromptingEnabled ? startPromptingParsed : nil,
       stopPromptingEnabled ? stopPromptingParsed : nil,
+      openChatGPTEnabled ? openChatGPTParsed : nil,
     ].compactMap { $0 }
 
     let uniqueShortcuts = Set(enabledShortcuts)
@@ -679,7 +736,9 @@ struct SettingsView: View {
       startPrompting: startPromptingParsed
         ?? ShortcutDefinition(key: .p, modifiers: [.command, .shift], isEnabled: false),
       stopPrompting: stopPromptingParsed
-        ?? ShortcutDefinition(key: .p, modifiers: [.command], isEnabled: false)
+        ?? ShortcutDefinition(key: .p, modifiers: [.command], isEnabled: false),
+      openChatGPT: openChatGPTParsed
+        ?? ShortcutDefinition(key: .one, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 
