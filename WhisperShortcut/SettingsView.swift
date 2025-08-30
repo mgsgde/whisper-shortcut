@@ -47,7 +47,7 @@ struct SettingsView: View {
       .font(.title)
       .fontWeight(.bold)
       .padding(.top, SettingsConstants.topPadding)
-      .padding(.bottom, 16)
+      .padding(.bottom, 24)  // Increased from 16 to 24 for better spacing
   }
 
   // MARK: - Tab Picker
@@ -59,8 +59,10 @@ struct SettingsView: View {
       }
     }
     .pickerStyle(.segmented)
-    .padding(.horizontal, SettingsConstants.horizontalPadding)
+    .padding(.horizontal, SettingsConstants.horizontalPadding + 20)  // Increased horizontal padding for more space from edges
     .padding(.bottom, SettingsConstants.spacing)
+    .frame(maxWidth: .infinity)
+    .scaleEffect(1.1)  // Make tabs slightly larger
   }
 
   // MARK: - Tab Content Container
@@ -115,18 +117,17 @@ struct SettingsView: View {
 
   // MARK: - Functions
   private func saveSettings() async {
-    NSLog("🎛️ SETTINGS: Save button pressed - refactored version")
 
     if let error = await viewModel.saveSettings() {
       viewModel.showError(error)
     } else {
       // Settings saved successfully, keep window open
-      NSLog("🎛️ SETTINGS: Settings saved successfully - window remains open")
+
     }
   }
 
   private func setupWindow() {
-    NSLog("🎛️ SETTINGS: Settings window appeared - refactored version")
+
     DispatchQueue.main.async {
       NSApp.activate(ignoringOtherApps: true)
       if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {

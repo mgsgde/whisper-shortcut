@@ -13,7 +13,7 @@ class AudioPlaybackService: NSObject {
 
   // MARK: - Main Playback Method
   func playAudio(data: Data) async throws -> Bool {
-    NSLog("🔊 AUDIO-PLAYBACK: Starting audio playback")
+
     NSLog("🔊 AUDIO-PLAYBACK: Audio data size: \(data.count) bytes")
 
     // Validate audio data

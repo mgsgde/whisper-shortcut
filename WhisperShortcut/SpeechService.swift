@@ -117,7 +117,6 @@ class SpeechService {
   // MARK: - Shared Validation
   func validateAPIKey(_ key: String) async throws -> Bool {
 
-
     guard !key.isEmpty else {
       NSLog("⚠️ Error: API key is empty")
       throw TranscriptionError.noAPIKey
@@ -141,14 +140,12 @@ class SpeechService {
       throw error
     }
 
-
     return true
   }
 
   // MARK: - Transcription Mode
   /// Pure transcription using GPT-4o-transcribe models
   func transcribe(audioURL: URL) async throws -> String {
-
 
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
@@ -158,7 +155,6 @@ class SpeechService {
 
     // Validate file
     try validateAudioFile(at: audioURL)
-
 
     // Create transcription request
     let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
@@ -183,10 +179,8 @@ class SpeechService {
     // Parse result
     let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
 
-
     // Validate transcribed text for empty/silent audio
     try validateTranscribedText(result.text)
-
 
     return result.text
   }
@@ -283,7 +277,6 @@ class SpeechService {
   // MARK: - Transcription Mode Helpers
   private func createTranscriptionRequest(audioURL: URL, apiKey: String) throws -> URLRequest {
 
-
     let apiURL = URL(string: selectedModel.apiEndpoint)!
     var request = URLRequest(url: apiURL)
     request.httpMethod = "POST"
@@ -294,7 +287,6 @@ class SpeechService {
   }
 
   private func validateTranscribedText(_ transcribedText: String) throws {
-
 
     // Check if meaningful speech was detected
     let trimmedText = transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -311,7 +303,6 @@ class SpeechService {
       NSLog("⚠️ TRANSCRIPTION-MODE: System prompt detected in transcription")
       throw TranscriptionError.noSpeechDetected
     }
-
 
   }
 
@@ -486,7 +477,6 @@ class SpeechService {
 
   // MARK: - Testing and Debugging
   func testGPT5Request() async throws -> String {
-    NSLog("🧪 Testing GPT-5 request")
 
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
       NSLog("⚠️ TEST: No API key available")
@@ -510,7 +500,6 @@ class SpeechService {
 
     request.httpBody = try JSONEncoder().encode(testRequest)
 
-    NSLog("🧪 TEST: Sending test request to GPT-5")
     let (data, response) = try await URLSession.shared.data(for: request)
 
     guard let httpResponse = response as? HTTPURLResponse else {
@@ -535,28 +524,24 @@ class SpeechService {
       if output.type == "message" {
         for content in output.content ?? [] {
           if content.type == "output_text" {
-            NSLog("✅ TEST: GPT-5 test successful")
+
             return content.text
           }
         }
       }
     }
 
-    NSLog("⚠️ TEST: Could not extract text from test response")
     throw TranscriptionError.networkError("Could not extract text from test response")
   }
 
   // MARK: - Shared Infrastructure Helpers
   private func validateAudioFile(at url: URL) throws {
-    NSLog("🔧 Validating audio file at: \(url.lastPathComponent)")
 
     let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
     guard let fileSize = attributes[.size] as? Int64 else {
       NSLog("⚠️ Error: Cannot read file size")
       throw TranscriptionError.fileError("Cannot read file size")
     }
-
-    NSLog("🔧 Audio file size: \(fileSize) bytes")
 
     if fileSize == 0 {
       NSLog("⚠️ Error: Empty audio file")
@@ -569,12 +554,10 @@ class SpeechService {
       throw TranscriptionError.fileTooLarge
     }
 
-    NSLog("✅ Audio file validation passed")
   }
 
   private func createMultipartRequest(request: inout URLRequest, audioURL: URL) throws -> URLRequest
   {
-    NSLog("🔧 Creating multipart form data request")
 
     let boundary = "Boundary-\(UUID().uuidString)"
 
@@ -584,22 +567,19 @@ class SpeechService {
       "response_format": "json",
     ]
 
-    NSLog("🔧 Using model: \(selectedModel.rawValue)")
-
     // Add prompt for GPT-4o models only if custom prompt is not empty
     if selectedModel == .gpt4oTranscribe || selectedModel == .gpt4oMiniTranscribe {
       if let customPrompt = UserDefaults.standard.string(forKey: "customPromptText"),
         !customPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       {
         fields["prompt"] = customPrompt
-        NSLog("🔧 Custom transcription prompt added")
+
       }
       // If prompt is empty or nil, don't send any prompt field to OpenAI
     }
 
     // Prepare file
     let audioData = try Data(contentsOf: audioURL)
-    NSLog("🔧 Audio data loaded: \(audioData.count) bytes")
 
     let files: [String: (filename: String, contentType: String, data: Data)] = [
       "file": (filename: "audio.wav", contentType: "audio/wav", data: audioData)
@@ -607,22 +587,20 @@ class SpeechService {
 
     // Set multipart form data using the elegant extension
     request.setMultipartFormData(boundary: boundary, fields: fields, files: files)
-    NSLog("🔧 Multipart request created successfully")
 
     return request
   }
 
   private func parseErrorResponse(data: Data, statusCode: Int) throws -> TranscriptionError {
-    NSLog("🔧 Parsing error response (status: \(statusCode))")
 
     // Try to parse the error response as JSON
     if let errorResponse = try? JSONDecoder().decode(OpenAIErrorResponse.self, from: data) {
-      NSLog("🔧 Parsed OpenAI error response")
+
       return parseOpenAIError(errorResponse, statusCode: statusCode)
     }
 
     // If we can't parse JSON, fall back to status code
-    NSLog("🔧 Using status code fallback for error parsing")
+
     return parseStatusCodeError(statusCode)
   }
 

@@ -19,7 +19,7 @@ class MenuBarController: NSObject {
   // MARK: - Application Mode (Single Source of Truth)
   private var appMode: AppMode = .idle {
     didSet {
-          updateUI()
+      updateUI()
     }
   }
 
@@ -55,7 +55,7 @@ class MenuBarController: NSObject {
 
   private var visualState: VisualState = .normal {
     didSet {
-  
+
       updateUI()
     }
   }
@@ -232,7 +232,8 @@ class MenuBarController: NSObject {
 
     // Stop recording item with configurable shortcut
     let stopItem = NSMenuItem(
-      title: "Stop & Transcribe", action: #selector(stopRecordingFromMenu), keyEquivalent: "")
+      title: "Stop & Copy to Clipboard", action: #selector(stopRecordingFromMenu), keyEquivalent: ""
+    )
     stopItem.keyEquivalentModifierMask = []
     stopItem.target = self
     stopItem.tag = 103  // Tag for updating shortcut
@@ -257,7 +258,8 @@ class MenuBarController: NSObject {
 
     // Stop prompting item with configurable shortcut
     let stopPromptItem = NSMenuItem(
-      title: "Stop & Execute", action: #selector(stopPromptingFromMenu), keyEquivalent: "")
+      title: "Stop & Copy to Clipboard", action: #selector(stopPromptingFromMenu),
+      keyEquivalent: "")
     stopPromptItem.keyEquivalentModifierMask = []
     stopPromptItem.target = self
     stopPromptItem.tag = 106  // Tag for updating shortcut
@@ -337,7 +339,7 @@ class MenuBarController: NSObject {
       speechService?.setModel(savedModel)
     } else {
       // Set default model to GPT-4o Transcribe
-  
+
       speechService?.setModel(.gpt4oTranscribe)
     }
 
@@ -415,7 +417,7 @@ class MenuBarController: NSObject {
     if let stopRecordingItem = menu.item(withTag: 103) {
       stopRecordingItem.isEnabled = appMode.shouldEnableStopRecording
       stopRecordingItem.isHidden = appMode.isBusy && !stopRecordingItem.isEnabled
-      stopRecordingItem.title = "Stop & Transcribe"
+      stopRecordingItem.title = "Stop & Copy to Clipboard"
     }
 
     // Update prompting menu items
@@ -428,7 +430,7 @@ class MenuBarController: NSObject {
     if let stopPromptingItem = menu.item(withTag: 106) {
       stopPromptingItem.isEnabled = appMode.shouldEnableStopPrompting
       stopPromptingItem.isHidden = appMode.isBusy && !stopPromptingItem.isEnabled
-      stopPromptingItem.title = "Stop & Execute"
+      stopPromptingItem.title = "Stop & Copy to Clipboard"
     }
 
     // Update voice response menu items
@@ -514,11 +516,11 @@ class MenuBarController: NSObject {
       if currentConfig.stopRecording.isEnabled {
         stopItem.keyEquivalent = currentConfig.stopRecording.key.displayString.lowercased()
         stopItem.keyEquivalentModifierMask = currentConfig.stopRecording.modifiers
-        stopItem.title = "Stop & Transcribe"
+        stopItem.title = "Stop & Copy to Clipboard"
       } else {
         stopItem.keyEquivalent = ""
         stopItem.keyEquivalentModifierMask = []
-        stopItem.title = "Stop & Transcribe (Disabled)"
+        stopItem.title = "Stop & Copy to Clipboard (Disabled)"
       }
     }
 
@@ -540,11 +542,11 @@ class MenuBarController: NSObject {
       if currentConfig.stopPrompting.isEnabled {
         stopPromptItem.keyEquivalent = currentConfig.stopPrompting.key.displayString.lowercased()
         stopPromptItem.keyEquivalentModifierMask = currentConfig.stopPrompting.modifiers
-        stopPromptItem.title = "Stop & Execute"
+        stopPromptItem.title = "Stop & Copy to Clipboard"
       } else {
         stopPromptItem.keyEquivalent = ""
         stopPromptItem.keyEquivalentModifierMask = []
-        stopPromptItem.title = "Stop & Execute (Disabled)"
+        stopPromptItem.title = "Stop & Copy to Clipboard (Disabled)"
       }
     }
 
@@ -652,7 +654,6 @@ class MenuBarController: NSObject {
     // Simulate Copy-Paste to capture selected text
     simulateCopyPaste()
 
-
     lastModeWasPrompting = false
     lastModeWasVoiceResponse = true
     isVoiceResponse = true
@@ -663,7 +664,6 @@ class MenuBarController: NSObject {
 
   @objc private func stopVoiceResponseFromMenu() {
     guard isVoiceResponse else { return }
-
 
     isVoiceResponse = false
     updateMenuState()
@@ -805,7 +805,6 @@ class MenuBarController: NSObject {
     blinkTimer = nil
     isBlinking = false
 
-
     // Note: Don't override the icon here - let the AppMode system handle it
   }
 
@@ -946,7 +945,6 @@ extension MenuBarController: ShortcutDelegate {
   func stopVoiceResponse() {
     guard isVoiceResponse else { return }
 
-
     isVoiceResponse = false
     updateMenuState()
     stopAudioLevelMonitoring()
@@ -999,7 +997,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
     // Determine which mode we were in and process accordingly
     if wasVoiceResponse {
-  
+
       showProcessingStatus(mode: "voice response")
 
       // Start voice response execution
@@ -1007,7 +1005,7 @@ extension MenuBarController: AudioRecorderDelegate {
         await performVoiceResponseExecution(audioURL: audioURL)
       }
     } else if wasPrompting {
-  
+
       showProcessingStatus(mode: "prompt")
 
       // Start prompt execution
@@ -1015,7 +1013,7 @@ extension MenuBarController: AudioRecorderDelegate {
         await performPromptExecution(audioURL: audioURL)
       }
     } else {
-  
+
       showProcessingStatus(mode: "transcription")
 
       // Start transcription
@@ -1083,7 +1081,7 @@ extension MenuBarController: AudioRecorderDelegate {
     let shouldCleanup: Bool
 
     do {
-  
+
       let response =
         try await speechService?.executePromptWithVoiceResponse(audioURL: audioURL) ?? ""
       shouldCleanup = await handleVoiceResponseSuccess(response)
@@ -1102,7 +1100,7 @@ extension MenuBarController: AudioRecorderDelegate {
       // Clean up audio file
       do {
         try FileManager.default.removeItem(at: audioURL)
-    
+
       } catch {
         NSLog("⚠️ VOICE-RESPONSE-MODE: Failed to clean up audio file: \(error)")
       }
@@ -1111,7 +1109,6 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handleVoiceResponseSuccess(_ response: String) -> Bool {
-
 
     // Clear retry state on success
     canRetry = false
@@ -1277,19 +1274,15 @@ extension MenuBarController: AudioRecorderDelegate {
     // Stop blinking and show success indicator
     stopBlinking()
 
-
-
     // Set visual state (independent of AppMode)
     visualState = .success("Text copied to clipboard")
 
     // Business logic: immediately return to idle (allows new recordings)
     appMode = .idle
 
-
-
     // Reset visual state after 3 seconds
     DispatchQueue.main.asyncAfter(deadline: .now() + Constants.successDisplayTime) {
-  
+
       self.visualState = .normal
     }
   }
@@ -1297,8 +1290,6 @@ extension MenuBarController: AudioRecorderDelegate {
   private func showTemporaryPromptSuccess() {
     // Stop blinking and show success indicator in menu bar
     stopBlinking()
-
-
 
     if let button = statusItem?.button {
       button.title = "🤖"
@@ -1319,11 +1310,9 @@ extension MenuBarController: AudioRecorderDelegate {
       statusMenuItem.title = "🤖 AI response copied to clipboard"
     }
 
-    NSLog("🎨 UI-DEBUG: Prompt success indicator set to 🤖")
-
     // Reset after 3 seconds - but don't trigger AppMode change immediately
     DispatchQueue.main.asyncAfter(deadline: .now() + Constants.successDisplayTime) {
-      NSLog("🎨 UI-DEBUG: Prompt success timeout reached, resetting to idle")
+
       self.appMode = .idle
       self.updateUI()
     }
@@ -1332,8 +1321,6 @@ extension MenuBarController: AudioRecorderDelegate {
   private func showTemporaryError() {
     // Stop blinking and show error indicator in menu bar
     stopBlinking()
-
-    NSLog("🎨 UI-DEBUG: showTemporaryError() called")
 
     if let button = statusItem?.button {
       button.title = "❌"
@@ -1351,12 +1338,10 @@ extension MenuBarController: AudioRecorderDelegate {
       }
     }
 
-    NSLog("🎨 UI-DEBUG: Error indicator set to ❌")
-
     // Only reset after 3 seconds if retry is not available
     if !canRetry {
       DispatchQueue.main.asyncAfter(deadline: .now() + Constants.errorDisplayTime) {
-        NSLog("🎨 UI-DEBUG: Error timeout reached, resetting to idle")
+
         self.appMode = .idle
         self.updateUI()
       }

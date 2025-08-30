@@ -9,13 +9,12 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Initialization
   init() {
-    NSLog("🎛️ SETTINGS-VM: Initializing SettingsViewModel")
+
     loadCurrentSettings()
   }
 
   // MARK: - Data Loading
   private func loadCurrentSettings() {
-    NSLog("🎛️ SETTINGS-VM: Loading current settings")
 
     // Load shortcuts configuration
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
@@ -188,7 +187,7 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Save Settings
   func saveSettings() async -> String? {
-    NSLog("🎛️ SETTINGS-VM: Starting save operation")
+
     data.isLoading = true
 
     // Validate first
@@ -199,7 +198,6 @@ class SettingsViewModel: ObservableObject {
 
     // Save API key
     _ = KeychainManager.shared.saveAPIKey(data.apiKey)
-    NSLog("🎛️ SETTINGS-VM: API key saved")
 
     // Save model preferences
     UserDefaults.standard.set(data.selectedModel.rawValue, forKey: "selectedTranscriptionModel")
@@ -210,11 +208,9 @@ class SettingsViewModel: ObservableObject {
     // Save prompts
     UserDefaults.standard.set(data.customPromptText, forKey: "customPromptText")
     UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: "promptModeSystemPrompt")
-    NSLog("🎛️ SETTINGS-VM: Prompts saved")
 
     // Save audio playback speed
     UserDefaults.standard.set(data.audioPlaybackSpeed, forKey: "audioPlaybackSpeed")
-    NSLog("🎛️ SETTINGS-VM: Audio playback speed saved")
 
     // Save shortcuts
     let shortcuts = parseShortcuts()
@@ -235,7 +231,6 @@ class SettingsViewModel: ObservableObject {
         ?? ShortcutDefinition(key: .one, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
-    NSLog("🎛️ SETTINGS-VM: Shortcuts saved")
 
     // Notify about model change
     NotificationCenter.default.post(name: .modelChanged, object: data.selectedModel)
@@ -244,7 +239,7 @@ class SettingsViewModel: ObservableObject {
     try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
 
     data.isLoading = false
-    NSLog("🎛️ SETTINGS-VM: Save operation completed successfully")
+
     return nil
   }
 
