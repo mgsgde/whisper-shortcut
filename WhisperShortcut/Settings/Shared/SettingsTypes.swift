@@ -77,6 +77,7 @@ struct SettingsData {
   var selectedVoiceResponseGPTModel: GPTModel = .gpt5ChatLatest
   var customPromptText: String = ""
   var promptModeSystemPrompt: String = ""
+  var voiceResponseSystemPrompt: String = ""
   var audioPlaybackSpeed: Double = 1.0
 
   // MARK: - UI State
@@ -97,4 +98,5 @@ enum SettingsFocusField: Hashable {
   case openChatGPT
   case customPrompt
   case promptModeSystemPrompt
+  case voiceResponseSystemPrompt
 }

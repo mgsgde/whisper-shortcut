@@ -76,6 +76,15 @@ class SettingsViewModel: ObservableObject {
       data.promptModeSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
     }
 
+    // Load voice response system prompt
+    if let savedVoiceResponseSystemPrompt = UserDefaults.standard.string(
+      forKey: "voiceResponseSystemPrompt")
+    {
+      data.voiceResponseSystemPrompt = savedVoiceResponseSystemPrompt
+    } else {
+      data.voiceResponseSystemPrompt = AppConstants.defaultVoiceResponseSystemPrompt
+    }
+
     // Load audio playback speed
     let savedPlaybackSpeed = UserDefaults.standard.double(forKey: "audioPlaybackSpeed")
     if savedPlaybackSpeed > 0 {
@@ -208,6 +217,7 @@ class SettingsViewModel: ObservableObject {
     // Save prompts
     UserDefaults.standard.set(data.customPromptText, forKey: "customPromptText")
     UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: "promptModeSystemPrompt")
+    UserDefaults.standard.set(data.voiceResponseSystemPrompt, forKey: "voiceResponseSystemPrompt")
 
     // Save audio playback speed
     UserDefaults.standard.set(data.audioPlaybackSpeed, forKey: "audioPlaybackSpeed")

@@ -114,12 +114,12 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
     PromptTextEditor(
       title: "AI Assistant System Prompt",
       subtitle:
-        "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
+        "Instructions for the AI assistant that will generate responses to be spoken aloud. Optimize for clear, natural speech.",
       helpText:
-        "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
-      defaultValue: AppConstants.defaultPromptModeSystemPrompt,
-      text: $viewModel.data.promptModeSystemPrompt,
-      focusedField: .promptModeSystemPrompt,
+        "Instructions for the AI assistant that will generate responses to be spoken aloud. Optimize for clear, natural speech.",
+      defaultValue: AppConstants.defaultVoiceResponseSystemPrompt,
+      text: $viewModel.data.voiceResponseSystemPrompt,
+      focusedField: .voiceResponseSystemPrompt,
       currentFocus: $focusedField
     )
   }

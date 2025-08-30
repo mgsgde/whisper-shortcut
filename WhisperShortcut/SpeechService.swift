@@ -378,7 +378,9 @@ class SpeechService {
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
     // Build prompt input
-    let fullInput = buildPromptInput(userMessage: userMessage, clipboardContext: clipboardContext)
+    let fullInput = buildPromptInput(
+      userMessage: userMessage, clipboardContext: clipboardContext, isVoiceResponse: isVoiceResponse
+    )
 
     // Only use reasoning config for GPT-5 (not for GPT-5 Chat Latest or GPT-5 Mini)
     let reasoningConfig =
@@ -416,10 +418,22 @@ class SpeechService {
     return try parseGPT5Response(data: data)
   }
 
-  private func buildPromptInput(userMessage: String, clipboardContext: String?) -> String {
-    // Get system prompt from settings
-    let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
-    let customSystemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
+  private func buildPromptInput(
+    userMessage: String, clipboardContext: String?, isVoiceResponse: Bool = false
+  ) -> String {
+    // Get system prompt from settings based on mode
+    let baseSystemPrompt: String
+    let customSystemPromptKey: String
+
+    if isVoiceResponse {
+      baseSystemPrompt = AppConstants.defaultVoiceResponseSystemPrompt
+      customSystemPromptKey = "voiceResponseSystemPrompt"
+    } else {
+      baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
+      customSystemPromptKey = "promptModeSystemPrompt"
+    }
+
+    let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptKey)
 
     // Combine base system prompt with custom prompt if available
     var fullInput = baseSystemPrompt
