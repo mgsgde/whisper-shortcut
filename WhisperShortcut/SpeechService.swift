@@ -80,7 +80,7 @@ class SpeechService {
     self.clipboardManager = clipboardManager
     self.ttsService = TTSService(keychainManager: keychainManager)
     self.audioPlaybackService = AudioPlaybackService()
-    NSLog("🔧 SpeechService initialized with keychain, clipboard, TTS, and audio playback services")
+
   }
 
   // MARK: - Shared API Key Management
@@ -89,18 +89,18 @@ class SpeechService {
   }
 
   func updateAPIKey(_ key: String) {
-    NSLog("🔑 API key updated")
+
     _ = keychainManager.saveAPIKey(key)
   }
 
   func clearAPIKey() {
-    NSLog("🔑 API key cleared")
+
     _ = keychainManager.deleteAPIKey()
   }
 
   // MARK: - Transcription Mode Configuration
   func setModel(_ model: TranscriptionModel) {
-    NSLog("🎙️ TRANSCRIPTION-MODE: Model set to \(model.displayName)")
+
     self.selectedModel = model
   }
 
@@ -110,13 +110,13 @@ class SpeechService {
 
   // MARK: - Prompt Mode Configuration
   func clearConversationHistory() {
-    NSLog("🤖 PROMPT-MODE: Conversation history cleared")
+
     previousResponseId = nil
   }
 
   // MARK: - Shared Validation
   func validateAPIKey(_ key: String) async throws -> Bool {
-    NSLog("🔑 Validating API key...")
+
 
     guard !key.isEmpty else {
       NSLog("⚠️ Error: API key is empty")
@@ -141,14 +141,14 @@ class SpeechService {
       throw error
     }
 
-    NSLog("✅ API key validation successful")
+
     return true
   }
 
   // MARK: - Transcription Mode
   /// Pure transcription using GPT-4o-transcribe models
   func transcribe(audioURL: URL) async throws -> String {
-    NSLog("🎙️ TRANSCRIPTION-MODE: Starting transcription with model \(selectedModel.displayName)")
+
 
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
@@ -158,13 +158,13 @@ class SpeechService {
 
     // Validate file
     try validateAudioFile(at: audioURL)
-    NSLog("🎙️ TRANSCRIPTION-MODE: Audio file validated")
+
 
     // Create transcription request
     let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
 
     // Execute request
-    NSLog("🎙️ TRANSCRIPTION-MODE: Sending request to \(selectedModel.apiEndpoint)")
+
     let (data, response) = try await session.data(for: request)
 
     // Validate response
@@ -182,11 +182,11 @@ class SpeechService {
 
     // Parse result
     let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
-    NSLog("✅ TRANSCRIPTION-MODE: Transcription successful, text length: \(result.text.count)")
+
 
     // Validate transcribed text for empty/silent audio
     try validateTranscribedText(result.text)
-    NSLog("✅ TRANSCRIPTION-MODE: Text validation passed")
+
 
     return result.text
   }
@@ -194,7 +194,6 @@ class SpeechService {
   // MARK: - Prompt Mode
   /// Transcribe audio and execute as prompt with GPT-5
   func executePrompt(audioURL: URL) async throws -> String {
-    NSLog("🤖 PROMPT-MODE: Starting prompt execution")
 
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
@@ -203,21 +202,14 @@ class SpeechService {
     }
 
     // First, transcribe the audio to get the user's spoken text
-    NSLog("🤖 PROMPT-MODE: Transcribing user input...")
+
     let spokenText = try await transcribe(audioURL: audioURL)
-    NSLog("🤖 PROMPT-MODE: User input transcribed: '\(spokenText)'")
 
     // Validate spoken text
     try validateSpokenText(spokenText)
-    NSLog("🤖 PROMPT-MODE: Spoken text validation passed")
 
     // Get clipboard content as context if available
     let clipboardContext = getClipboardContext()
-    if let context = clipboardContext {
-      NSLog("🤖 PROMPT-MODE: Clipboard context found (length: \(context.count))")
-    } else {
-      NSLog("🤖 PROMPT-MODE: No clipboard context available")
-    }
 
     // Execute prompt with GPT-5
     return try await executeGPT5Prompt(
@@ -228,7 +220,6 @@ class SpeechService {
   func executePromptWithVoiceResponse(audioURL: URL, clipboardContext: String? = nil) async throws
     -> String
   {
-    NSLog("🔊 VOICE-RESPONSE-MODE: Starting prompt execution for voice response")
 
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
@@ -237,56 +228,36 @@ class SpeechService {
     }
 
     // First, transcribe the audio to get the user's spoken text
-    NSLog("🔊 VOICE-RESPONSE-MODE: Transcribing user input...")
+
     let spokenText = try await transcribe(audioURL: audioURL)
-    NSLog("🔊 VOICE-RESPONSE-MODE: User input transcribed: '\(spokenText)'")
 
     // Validate spoken text
     try validateSpokenText(spokenText)
-    NSLog("🔊 VOICE-RESPONSE-MODE: Spoken text validation passed")
 
     // Use provided clipboard context or get current clipboard
     let contextToUse = clipboardContext ?? getClipboardContext()
-    if let context = contextToUse {
-      NSLog("🔊 VOICE-RESPONSE-MODE: Context found (length: \(context.count))")
-    } else {
-      NSLog("🔊 VOICE-RESPONSE-MODE: No context available")
-    }
 
-    // Get the selected Voice Response GPT model from UserDefaults
-    let selectedVoiceResponseGPTModelString =
-      UserDefaults.standard.string(forKey: "selectedVoiceResponseGPTModel") ?? "gpt-5"
-    let selectedVoiceResponseGPTModel =
-      GPTModel(rawValue: selectedVoiceResponseGPTModelString) ?? .gpt5
-
-    NSLog(
-      "🔊 VOICE-RESPONSE-MODE: Executing prompt with GPT model: \(selectedVoiceResponseGPTModel.displayName) (\(selectedVoiceResponseGPTModel.rawValue))"
-    )
     let response = try await executeGPT5PromptForVoiceResponse(
       userMessage: spokenText, clipboardContext: contextToUse, apiKey: apiKey)
-    NSLog("🔊 VOICE-RESPONSE-MODE: GPT-5 response received (length: \(response.count))")
 
     // Copy response to clipboard immediately (same as normal prompt mode)
-    NSLog("🔊 VOICE-RESPONSE-MODE: Copying response to clipboard...")
+
     clipboardManager?.copyToClipboard(text: response)
-    NSLog("✅ VOICE-RESPONSE-MODE: Response copied to clipboard")
 
     // Notify that we're ready to speak (text is available, now generating audio)
     NotificationCenter.default.post(
       name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
 
     // Generate speech from response
-    NSLog("🔊 VOICE-RESPONSE-MODE: Generating speech from response...")
 
     // Get playback speed setting for TTS generation
     let playbackSpeed = UserDefaults.standard.double(forKey: "audioPlaybackSpeed")
     let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
-    NSLog("🔊 VOICE-RESPONSE-MODE: Using TTS speed: \(speed)x")
 
     let audioData: Data
     do {
       audioData = try await ttsService.generateSpeech(text: response, speed: speed)
-      NSLog("🔊 VOICE-RESPONSE-MODE: Speech generated (\(audioData.count) bytes)")
+
     } catch let ttsError as TTSError {
       NSLog("❌ VOICE-RESPONSE-MODE: TTS error: \(ttsError.localizedDescription)")
       throw TranscriptionError.networkError(ttsError.localizedDescription)
@@ -296,12 +267,11 @@ class SpeechService {
     }
 
     // Play the audio response
-    NSLog("🔊 VOICE-RESPONSE-MODE: Playing audio response...")
 
     let playbackSuccess = try await audioPlaybackService.playAudio(data: audioData)
 
     if playbackSuccess {
-      NSLog("✅ VOICE-RESPONSE-MODE: Audio response played successfully")
+
     } else {
       NSLog("⚠️ VOICE-RESPONSE-MODE: Audio playback failed")
       throw TranscriptionError.networkError("Audio playback failed")
@@ -312,7 +282,7 @@ class SpeechService {
 
   // MARK: - Transcription Mode Helpers
   private func createTranscriptionRequest(audioURL: URL, apiKey: String) throws -> URLRequest {
-    NSLog("🎙️ TRANSCRIPTION-MODE: Creating request for \(selectedModel.rawValue)")
+
 
     let apiURL = URL(string: selectedModel.apiEndpoint)!
     var request = URLRequest(url: apiURL)
@@ -324,7 +294,7 @@ class SpeechService {
   }
 
   private func validateTranscribedText(_ transcribedText: String) throws {
-    NSLog("🎙️ TRANSCRIPTION-MODE: Validating transcribed text")
+
 
     // Check if meaningful speech was detected
     let trimmedText = transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -342,7 +312,7 @@ class SpeechService {
       throw TranscriptionError.noSpeechDetected
     }
 
-    NSLog("🎙️ TRANSCRIPTION-MODE: Text validation successful")
+
   }
 
   // MARK: - Prompt Mode Helpers
@@ -385,7 +355,7 @@ class SpeechService {
   private func executeGPT5Prompt(userMessage: String, clipboardContext: String?, apiKey: String)
     async throws -> String
   {
-    NSLog("🤖 PROMPT-MODE: Executing GPT-5 prompt")
+
     return try await executeGPT5Response(
       userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey,
       isVoiceResponse: false)
@@ -396,7 +366,7 @@ class SpeechService {
   )
     async throws -> String
   {
-    NSLog("🔊 VOICE-RESPONSE-MODE: Executing GPT-5 prompt for voice response")
+
     return try await executeGPT5Response(
       userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey,
       isVoiceResponse: true)
@@ -412,11 +382,6 @@ class SpeechService {
     let selectedGPTModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5"
     let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5
 
-    let modePrefix = isVoiceResponse ? "🔊 VOICE-RESPONSE-MODE" : "🤖 PROMPT-MODE"
-    NSLog(
-      "\(modePrefix): Building request with GPT model: \(selectedGPTModel.displayName) (\(selectedGPTModel.rawValue))"
-    )
-
     let url = URL(string: Constants.responsesEndpoint)!
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -425,7 +390,6 @@ class SpeechService {
 
     // Build prompt input
     let fullInput = buildPromptInput(userMessage: userMessage, clipboardContext: clipboardContext)
-    NSLog("🤖 PROMPT-MODE: Prompt input built (length: \(fullInput.count))")
 
     let gpt5Request = GPT5ResponseRequest(
       model: selectedGPTModel.rawValue,
@@ -438,19 +402,18 @@ class SpeechService {
     request.httpBody = try JSONEncoder().encode(gpt5Request)
 
     // Execute request
-    NSLog("\(modePrefix): Sending request to GPT-5 API")
     let (data, response) = try await session.data(for: request)
 
     // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
-      NSLog("⚠️ \(modePrefix): Invalid response type from GPT-5")
+      NSLog("⚠️ PROMPT-MODE: Invalid response type from GPT-5")
       throw TranscriptionError.networkError("Invalid response")
     }
 
     if httpResponse.statusCode != 200 {
-      NSLog("⚠️ \(modePrefix): GPT-5 HTTP error \(httpResponse.statusCode)")
+      NSLog("⚠️ PROMPT-MODE: GPT-5 HTTP error \(httpResponse.statusCode)")
       if let errorBody = String(data: data, encoding: .utf8) {
-        NSLog("⚠️ \(modePrefix): Error response body: \(errorBody)")
+        NSLog("⚠️ PROMPT-MODE: Error response body: \(errorBody)")
       }
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
@@ -469,12 +432,10 @@ class SpeechService {
     var fullInput = baseSystemPrompt
     if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
       fullInput += "\n\nAdditional instructions: \(customPrompt)"
-      NSLog("🤖 PROMPT-MODE: Custom system prompt added")
     }
 
     if let context = clipboardContext {
       fullInput += "\n\nContext (selected text from clipboard):\n\(context)"
-      NSLog("🤖 PROMPT-MODE: Clipboard context added to prompt")
     }
 
     fullInput += "\n\nUser: \(userMessage)"
@@ -482,14 +443,12 @@ class SpeechService {
   }
 
   private func parseGPT5Response(data: Data) throws -> String {
-    NSLog("🤖 PROMPT-MODE: Parsing GPT-5 response")
 
     do {
       let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
 
       // Store the response ID for conversation continuity
       previousResponseId = result.id
-      NSLog("🤖 PROMPT-MODE: Response ID stored for conversation continuity")
 
       // Extract text from the response structure
       for output in result.output {

@@ -19,10 +19,7 @@ class MenuBarController: NSObject {
   // MARK: - Application Mode (Single Source of Truth)
   private var appMode: AppMode = .idle {
     didSet {
-      NSLog("🔄 MODE-CHANGE: \(oldValue) → \(appMode)")
-      NSLog("🎨 UI-DEBUG: About to call updateUI() after mode change")
-      updateUI()
-      NSLog("🎨 UI-DEBUG: updateUI() completed after mode change")
+          updateUI()
     }
   }
 
@@ -58,7 +55,7 @@ class MenuBarController: NSObject {
 
   private var visualState: VisualState = .normal {
     didSet {
-      NSLog("🎨 VISUAL-STATE: \(oldValue) → \(visualState)")
+  
       updateUI()
     }
   }
@@ -131,11 +128,9 @@ class MenuBarController: NSObject {
 
   // MARK: - UI Update Methods
   private func updateUI() {
-    NSLog("🎨 UI-DEBUG: updateUI() called - current mode: \(appMode)")
     updateMenuBarIcon()
     updateMenuState()
     updateBlinkingState()
-    NSLog("🎨 UI-DEBUG: updateUI() completed")
   }
 
   private func updateMenuBarIcon() {
@@ -342,7 +337,7 @@ class MenuBarController: NSObject {
       speechService?.setModel(savedModel)
     } else {
       // Set default model to GPT-4o Transcribe
-      NSLog("🎯 MENU-CONTROLLER: Using default transcription model: GPT-4o Transcribe")
+  
       speechService?.setModel(.gpt4oTranscribe)
     }
 
@@ -657,7 +652,7 @@ class MenuBarController: NSObject {
     // Simulate Copy-Paste to capture selected text
     simulateCopyPaste()
 
-    NSLog("🔊 VOICE-RESPONSE-MODE: Starting voice response recording from menu")
+
     lastModeWasPrompting = false
     lastModeWasVoiceResponse = true
     isVoiceResponse = true
@@ -669,7 +664,7 @@ class MenuBarController: NSObject {
   @objc private func stopVoiceResponseFromMenu() {
     guard isVoiceResponse else { return }
 
-    NSLog("🔊 VOICE-RESPONSE-MODE: Stopping voice response recording from menu")
+
     isVoiceResponse = false
     updateMenuState()
     stopAudioLevelMonitoring()
@@ -810,7 +805,7 @@ class MenuBarController: NSObject {
     blinkTimer = nil
     isBlinking = false
 
-    NSLog("🎨 UI-DEBUG: stopBlinking() called - NOT overriding icon")
+
     // Note: Don't override the icon here - let the AppMode system handle it
   }
 
@@ -882,13 +877,6 @@ extension MenuBarController: ShortcutDelegate {
 
     NSLog("🤖 PROMPTING-START: Starting prompt recording")
 
-    // Get selected GPT model for logging
-    let selectedGPTModelString = UserDefaults.standard.string(forKey: "selectedGPTModel") ?? "gpt-5"
-    let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5
-    NSLog(
-      "🤖 PROMPTING-START: Using GPT model: \(selectedGPTModel.displayName) (\(selectedGPTModel.rawValue))"
-    )
-
     // Simulate Copy-Paste to capture selected text
     simulateCopyPaste()
 
@@ -947,15 +935,6 @@ extension MenuBarController: ShortcutDelegate {
 
     NSLog("🔊 VOICE-RESPONSE-START: Starting voice response recording")
 
-    // Get selected Voice Response GPT model for logging
-    let selectedVoiceResponseGPTModelString =
-      UserDefaults.standard.string(forKey: "selectedVoiceResponseGPTModel") ?? "gpt-5"
-    let selectedVoiceResponseGPTModel =
-      GPTModel(rawValue: selectedVoiceResponseGPTModelString) ?? .gpt5
-    NSLog(
-      "🔊 VOICE-RESPONSE-START: Using Voice Response GPT model: \(selectedVoiceResponseGPTModel.displayName) (\(selectedVoiceResponseGPTModel.rawValue))"
-    )
-
     lastModeWasPrompting = false
     lastModeWasVoiceResponse = true
     isVoiceResponse = true
@@ -967,7 +946,7 @@ extension MenuBarController: ShortcutDelegate {
   func stopVoiceResponse() {
     guard isVoiceResponse else { return }
 
-    NSLog("🔊 VOICE-RESPONSE-MODE: Stopping voice response recording")
+
     isVoiceResponse = false
     updateMenuState()
     stopAudioLevelMonitoring()
@@ -1020,7 +999,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
     // Determine which mode we were in and process accordingly
     if wasVoiceResponse {
-      NSLog("🔊 VOICE-RESPONSE-MODE: Processing audio for voice response")
+  
       showProcessingStatus(mode: "voice response")
 
       // Start voice response execution
@@ -1028,7 +1007,7 @@ extension MenuBarController: AudioRecorderDelegate {
         await performVoiceResponseExecution(audioURL: audioURL)
       }
     } else if wasPrompting {
-      NSLog("🤖 PROMPT-MODE: Processing audio for prompt")
+  
       showProcessingStatus(mode: "prompt")
 
       // Start prompt execution
@@ -1036,7 +1015,7 @@ extension MenuBarController: AudioRecorderDelegate {
         await performPromptExecution(audioURL: audioURL)
       }
     } else {
-      NSLog("🎙️ TRANSCRIPTION-MODE: Processing audio for transcription")
+  
       showProcessingStatus(mode: "transcription")
 
       // Start transcription
@@ -1104,7 +1083,7 @@ extension MenuBarController: AudioRecorderDelegate {
     let shouldCleanup: Bool
 
     do {
-      NSLog("🔊 VOICE-RESPONSE-MODE: Starting voice response execution")
+  
       let response =
         try await speechService?.executePromptWithVoiceResponse(audioURL: audioURL) ?? ""
       shouldCleanup = await handleVoiceResponseSuccess(response)
@@ -1123,7 +1102,7 @@ extension MenuBarController: AudioRecorderDelegate {
       // Clean up audio file
       do {
         try FileManager.default.removeItem(at: audioURL)
-        NSLog("🔊 VOICE-RESPONSE-MODE: Cleaned up audio file")
+    
       } catch {
         NSLog("⚠️ VOICE-RESPONSE-MODE: Failed to clean up audio file: \(error)")
       }
@@ -1132,7 +1111,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handleVoiceResponseSuccess(_ response: String) -> Bool {
-    NSLog("✅ VOICE-RESPONSE-MODE: Voice response successful, audio played")
+
 
     // Clear retry state on success
     canRetry = false
@@ -1298,7 +1277,7 @@ extension MenuBarController: AudioRecorderDelegate {
     // Stop blinking and show success indicator
     stopBlinking()
 
-    NSLog("🎨 UI-DEBUG: showTemporarySuccess() called")
+
 
     // Set visual state (independent of AppMode)
     visualState = .success("Text copied to clipboard")
@@ -1306,11 +1285,11 @@ extension MenuBarController: AudioRecorderDelegate {
     // Business logic: immediately return to idle (allows new recordings)
     appMode = .idle
 
-    NSLog("🎨 UI-DEBUG: Success state set - AppMode returned to idle, visual shows success")
+
 
     // Reset visual state after 3 seconds
     DispatchQueue.main.asyncAfter(deadline: .now() + Constants.successDisplayTime) {
-      NSLog("🎨 UI-DEBUG: Success timeout reached, resetting visual to normal")
+  
       self.visualState = .normal
     }
   }
@@ -1319,7 +1298,7 @@ extension MenuBarController: AudioRecorderDelegate {
     // Stop blinking and show success indicator in menu bar
     stopBlinking()
 
-    NSLog("🎨 UI-DEBUG: showTemporaryPromptSuccess() called")
+
 
     if let button = statusItem?.button {
       button.title = "🤖"

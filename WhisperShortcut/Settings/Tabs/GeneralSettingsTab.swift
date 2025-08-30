@@ -133,7 +133,7 @@ struct GeneralSettingsTab: View {
             .frame(width: 44, height: 44)
             .clipShape(RoundedRectangle(cornerRadius: 12))
 
-          Text("Thanks for using WhisperShortcut!")
+          Text("Thanks for using my app! :)")
             .font(.body)
             .fontWeight(.medium)
             .textSelection(.enabled)
