@@ -16,15 +16,11 @@ class AudioPlaybackService: NSObject {
 
   // MARK: - Main Playback Method
   func playAudio(data: Data) async throws -> Bool {
-
     // Validate audio data
     try validateAudioData(data)
 
     // Stop any current playback
     stopCurrentPlayback()
-
-    // Notify that playback is starting
-    NotificationCenter.default.post(name: NSNotification.Name("VoicePlaybackStarted"), object: nil)
 
     // Create temporary file for audio playback
     let tempURL = try createTemporaryAudioFile(data: data)
@@ -32,7 +28,6 @@ class AudioPlaybackService: NSObject {
     defer {
       // Clean up temporary file
       try? FileManager.default.removeItem(at: tempURL)
-
     }
 
     // Create and configure audio player
@@ -42,7 +37,6 @@ class AudioPlaybackService: NSObject {
       audioPlayer?.prepareToPlay()
 
     } catch {
-
       throw AudioPlaybackError.playbackFailed
     }
 
@@ -53,15 +47,13 @@ class AudioPlaybackService: NSObject {
       }
 
       guard let player = audioPlayer else {
-
         continuation.resume(returning: false)
         return
       }
 
       if player.play() {
-
+        // Playback started successfully
       } else {
-
         continuation.resume(returning: false)
       }
     }
@@ -69,7 +61,6 @@ class AudioPlaybackService: NSObject {
 
   // MARK: - Playback Control
   func stopPlayback() {
-    NSLog("🔇 AUDIO-PLAYBACK: Stopping playback")
     stopCurrentPlayback()
   }
 
@@ -154,7 +145,6 @@ class AudioPlaybackService: NSObject {
 // MARK: - AVAudioPlayerDelegate
 extension AudioPlaybackService: AVAudioPlayerDelegate {
   func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-    NSLog("🔇 AUDIO-PLAYBACK: Playback finished successfully: \(flag)")
 
     // Notify that playback finished naturally
     NotificationCenter.default.post(name: NSNotification.Name("VoicePlaybackStopped"), object: nil)

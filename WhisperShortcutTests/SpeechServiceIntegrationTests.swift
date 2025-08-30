@@ -55,7 +55,7 @@ final class SpeechServiceIntegrationTests: XCTestCase {
       XCTFail("Should have thrown TranscriptionError.noAPIKey")
     } catch let error as TranscriptionError {
       XCTAssertEqual(error, .noAPIKey, "Should get noAPIKey error")
-      XCTAssertFalse(error.isRetryable, "No API key error should not be retryable")
+
       NSLog("✅ Test passed: Got expected noAPIKey error")
     } catch {
       XCTFail("Should get TranscriptionError, got: \(error)")

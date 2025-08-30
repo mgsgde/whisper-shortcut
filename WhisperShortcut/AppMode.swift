@@ -184,20 +184,6 @@ extension AppMode {
     return .idle
   }
 
-  /// Get the last recording type for retry functionality
-  var lastRecordingType: RecordingType? {
-    switch self {
-    case .recording(let type): return type
-    case .processing(let processingType):
-      // Map processing type back to recording type
-      switch processingType {
-      case .transcribing: return .transcription
-      case .prompting: return .prompt
-      case .voiceResponding, .speaking: return .voiceResponse
-      }
-    case .idle: return nil
-    }
-  }
 }
 
 // MARK: - Menu Item Enablement Logic

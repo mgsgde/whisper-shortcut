@@ -235,15 +235,9 @@ class SpeechService {
       userMessage: spokenText, clipboardContext: contextToUse, apiKey: apiKey)
 
     // Copy response to clipboard immediately (same as normal prompt mode)
-
     clipboardManager?.copyToClipboard(text: response)
 
-    // Notify that we're ready to speak (text is available, now generating audio)
-    NotificationCenter.default.post(
-      name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
-
     // Generate speech from response
-
     // Get playback speed setting for TTS generation
     let playbackSpeed = UserDefaults.standard.double(forKey: "audioPlaybackSpeed")
     let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
@@ -260,8 +254,11 @@ class SpeechService {
       throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
     }
 
-    // Play the audio response
+    // Notify that we're ready to speak (TTS generation completed, audio ready to play)
+    NotificationCenter.default.post(
+      name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
 
+    // Play the audio response
     let playbackSuccess = try await audioPlaybackService.playAudio(data: audioData)
 
     if playbackSuccess {
@@ -817,15 +814,6 @@ enum TranscriptionError: Error, Equatable {
   case emptyFile
   case noSpeechDetected
 
-  var isRetryable: Bool {
-    switch self {
-    case .rateLimited, .quotaExceeded, .serverError, .serviceUnavailable, .slowDown, .networkError:
-      return true
-    default:
-      return false
-    }
-  }
-
   var title: String {
     switch self {
     case .noAPIKey:
@@ -872,47 +860,47 @@ enum TranscriptionError: Error, Equatable {
 extension SpeechService {
   /// Parse transcription result to determine if it contains an error message
   static func parseTranscriptionResult(_ text: String) -> (
-    isError: Bool, isRetryable: Bool, errorType: TranscriptionError?
+    isError: Bool, errorType: TranscriptionError?
   ) {
     // Check for error indicators
     let errorPrefixes = ["❌", "⚠️", "⏰", "⏳", "🔄"]
     let isError = errorPrefixes.contains { text.hasPrefix($0) }
 
     guard isError else {
-      return (false, false, nil)
+      return (false, nil)
     }
 
     // Map error messages to error types
     if text.contains("No API Key") {
-      return (true, false, .noAPIKey)
+      return (true, .noAPIKey)
     } else if text.contains("Incorrect API Key") {
-      return (true, false, .incorrectAPIKey)
+      return (true, .incorrectAPIKey)
     } else if text.contains("Organization Required") {
-      return (true, false, .organizationRequired)
+      return (true, .organizationRequired)
     } else if text.contains("Country Not Supported") {
-      return (true, false, .countryNotSupported)
+      return (true, .countryNotSupported)
     } else if text.contains("Authentication") || text.contains("invalid API key") {
-      return (true, false, .invalidAPIKey)
+      return (true, .invalidAPIKey)
     } else if text.contains("Rate Limit") {
-      return (true, true, .rateLimited)
+      return (true, .rateLimited)
     } else if text.contains("Quota Exceeded") {
-      return (true, true, .quotaExceeded)
+      return (true, .quotaExceeded)
     } else if text.contains("Timeout") {
-      return (true, true, .networkError("Timeout"))
+      return (true, .networkError("Timeout"))
     } else if text.contains("Network Error") {
-      return (true, true, .networkError("Network"))
+      return (true, .networkError("Network"))
     } else if text.contains("Server Error") {
-      return (true, true, .serverError(500))
+      return (true, .serverError(500))
     } else if text.contains("Service Unavailable") {
-      return (true, true, .serviceUnavailable)
+      return (true, .serviceUnavailable)
     } else if text.contains("Slow Down") {
-      return (true, true, .slowDown)
+      return (true, .slowDown)
     } else if text.contains("File Too Large") {
-      return (true, false, .fileTooLarge)
+      return (true, .fileTooLarge)
     } else if text.contains("Empty") {
-      return (true, false, .emptyFile)
+      return (true, .emptyFile)
     } else {
-      return (true, false, .serverError(0))
+      return (true, .serverError(0))
     }
   }
 }

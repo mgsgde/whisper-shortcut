@@ -52,95 +52,35 @@ class TTSService {
     try validateInputText(text)
     NSLog("🔊 TTS-SERVICE: Input text validation passed")
 
-    // Implement retry logic for server errors
-    var lastError: TTSError?
-    let maxRetries = 3
-    let baseDelay: UInt64 = 1_000_000_000  // 1 second in nanoseconds
+    // Create request
+    let request = try createTTSRequest(
+      text: text, voice: voice, model: model, apiKey: apiKey, speed: speed)
+    NSLog("🔊 TTS-SERVICE: TTS request created")
 
-    for attempt in 1...maxRetries {
-      do {
-        NSLog("🔊 TTS-SERVICE: Attempt \(attempt)/\(maxRetries)")
+    // Execute request
+    NSLog("🔊 TTS-SERVICE: Sending request to OpenAI TTS API")
+    let (data, response) = try await session.data(for: request)
 
-        // Create request
-        let request = try createTTSRequest(
-          text: text, voice: voice, model: model, apiKey: apiKey, speed: speed)
-        NSLog("🔊 TTS-SERVICE: TTS request created")
-
-        // Execute request
-        NSLog("🔊 TTS-SERVICE: Sending request to OpenAI TTS API")
-        let (data, response) = try await session.data(for: request)
-
-        // Validate response
-        guard let httpResponse = response as? HTTPURLResponse else {
-          NSLog("⚠️ TTS-SERVICE: Invalid response type from OpenAI TTS")
-          throw TTSError.networkError("Invalid response type")
-        }
-
-        if httpResponse.statusCode != 200 {
-          NSLog("⚠️ TTS-SERVICE: OpenAI TTS HTTP error \(httpResponse.statusCode)")
-          if let errorBody = String(data: data, encoding: .utf8) {
-            NSLog("⚠️ TTS-SERVICE: Error response body: \(errorBody)")
-          }
-          let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
-
-          // Retry only for server errors (5xx)
-          if httpResponse.statusCode >= 500 && httpResponse.statusCode < 600 && attempt < maxRetries
-          {
-            NSLog(
-              "🔄 TTS-SERVICE: Server error \(httpResponse.statusCode), retrying in \(attempt) seconds..."
-            )
-            lastError = error
-            let delay = baseDelay * UInt64(attempt)  // Exponential backoff
-            try await Task.sleep(nanoseconds: delay)
-            continue
-          }
-
-          throw error
-        }
-
-        // Validate audio data
-        try validateAudioData(data)
-
-        NSLog("✅ TTS-SERVICE: Successfully generated \(data.count) bytes of audio")
-        return data
-
-      } catch let error as TTSError {
-        lastError = error
-        NSLog("❌ TTS-SERVICE: Error on attempt \(attempt): \(error.localizedDescription)")
-
-        // Only retry for server errors
-        if error.isRetryable && attempt < maxRetries {
-          NSLog(
-            "🔄 TTS-SERVICE: Retryable error on attempt \(attempt): \(error.localizedDescription)")
-          let delay = baseDelay * UInt64(attempt)
-          try await Task.sleep(nanoseconds: delay)
-          continue
-        } else {
-          NSLog(
-            "🚫 TTS-SERVICE: Non-retryable error or max retries reached: \(error.localizedDescription)"
-          )
-          throw error
-        }
-      } catch {
-        // Handle unexpected errors
-        let wrappedError = TTSError.networkError("Unexpected error: \(error.localizedDescription)")
-        lastError = wrappedError
-        NSLog(
-          "❌ TTS-SERVICE: Unexpected error on attempt \(attempt): \(error.localizedDescription)")
-
-        if attempt < maxRetries {
-          NSLog("🔄 TTS-SERVICE: Retrying unexpected error...")
-          let delay = baseDelay * UInt64(attempt)
-          try await Task.sleep(nanoseconds: delay)
-          continue
-        } else {
-          throw wrappedError
-        }
-      }
+    // Validate response
+    guard let httpResponse = response as? HTTPURLResponse else {
+      NSLog("⚠️ TTS-SERVICE: Invalid response type from OpenAI TTS")
+      throw TTSError.networkError("Invalid response type")
     }
 
-    // If we get here, all retries failed
-    throw lastError ?? TTSError.networkError("All retry attempts failed")
+    if httpResponse.statusCode != 200 {
+      NSLog("⚠️ TTS-SERVICE: OpenAI TTS HTTP error \(httpResponse.statusCode)")
+      if let errorBody = String(data: data, encoding: .utf8) {
+        NSLog("⚠️ TTS-SERVICE: Error response body: \(errorBody)")
+      }
+      let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
+      throw error
+    }
+
+    // Validate audio data
+    try validateAudioData(data)
+
+    NSLog("✅ TTS-SERVICE: Successfully generated \(data.count) bytes of audio")
+    return data
   }
 
   // MARK: - Request Creation
@@ -295,15 +235,6 @@ enum TTSError: Error, Equatable {
   case authenticationError
   case networkError(String)
   case audioGenerationFailed
-
-  var isRetryable: Bool {
-    switch self {
-    case .networkError:
-      return true
-    case .noAPIKey, .invalidInput, .authenticationError, .audioGenerationFailed:
-      return false
-    }
-  }
 
   var localizedDescription: String {
     switch self {

@@ -75,11 +75,6 @@ class MenuBarController: NSObject {
   private var blinkTimer: Timer?
   private var isBlinking = false
 
-  // MARK: - Retry Functionality
-  private var lastAudioURL: URL?
-  private var lastError: String?
-  private var canRetry = false
-
   // Note: Mode tracking is now handled by AppMode enum
 
   // MARK: - Computed Properties for Backward Compatibility
@@ -203,14 +198,6 @@ class MenuBarController: NSObject {
     menu.addItem(statusMenuItem)
 
     menu.addItem(NSMenuItem.separator())
-
-    // Retry item (initially hidden)
-    let retryItem = NSMenuItem(
-      title: "🔄 Retry Transcription", action: #selector(retryLastOperation), keyEquivalent: "")
-    retryItem.target = self
-    retryItem.tag = 104  // Tag for retry item
-    retryItem.isHidden = true
-    menu.addItem(retryItem)
 
     menu.addItem(NSMenuItem.separator())
 
@@ -378,13 +365,6 @@ class MenuBarController: NSObject {
     // Listen for voice playback status updates
     NotificationCenter.default.addObserver(
       self,
-      selector: #selector(voicePlaybackStarted),
-      name: NSNotification.Name("VoicePlaybackStarted"),
-      object: nil
-    )
-
-    NotificationCenter.default.addObserver(
-      self,
       selector: #selector(voicePlaybackStopped),
       name: NSNotification.Name("VoicePlaybackStopped"),
       object: nil
@@ -475,9 +455,6 @@ class MenuBarController: NSObject {
       stopVoicePlaybackItem.title = "Stop Voice Playback"
     }
 
-    // Update retry menu item
-    updateRetryMenuItem()
-
     // Icon is now handled by updateMenuBarIcon() which is called from updateUI()
     // Handle special case when no API key is configured
     if !hasAPIKey, let button = statusItem?.button {
@@ -486,40 +463,6 @@ class MenuBarController: NSObject {
       button.image = nil
       button.imagePosition = .noImage
       button.needsDisplay = true
-    }
-  }
-
-  private func updateRetryMenuItem() {
-
-    guard let menu = statusItem?.menu else {
-
-      return
-    }
-
-    guard let retryMenuItem = menu.item(withTag: 104) else {
-
-      return
-    }
-
-    retryMenuItem.isHidden = !canRetry
-
-    if canRetry {
-      // Determine the operation type based on last mode
-      let operationType = lastModeWasPrompting ? "Prompt" : "Transcription"
-
-      // Show specific error type in retry menu if available
-      if let error = lastError {
-        let (_, _, errorType) = SpeechService.parseTranscriptionResult(error)
-        if let type = errorType {
-          retryMenuItem.title = "🔄 Retry \(operationType) (\(type.title))"
-
-        } else {
-          retryMenuItem.title = "🔄 Retry \(operationType)"
-        }
-      } else {
-        retryMenuItem.title = "🔄 Retry \(operationType)"
-      }
-    } else {
     }
   }
 
@@ -675,7 +618,6 @@ class MenuBarController: NSObject {
 
     // Check accessibility permission first
     if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-      NSLog("⚠️ VOICE-RESPONSE-MODE: No accessibility permission")
       return
     }
 
@@ -702,7 +644,6 @@ class MenuBarController: NSObject {
   @objc private func stopVoicePlaybackFromMenu() {
     guard isVoicePlaying else { return }
 
-    NSLog("🔇 MENU-CONTROLLER: Stopping voice playback from menu")
     audioPlaybackService?.stopPlayback()
     isVoicePlaying = false
     updateMenuState()
@@ -761,41 +702,6 @@ class MenuBarController: NSObject {
     NSApplication.shared.terminate(nil)
   }
 
-  @objc private func retryLastOperation() {
-    guard canRetry, let audioURL = lastAudioURL else {
-
-      return
-    }
-
-    let operationType =
-      lastModeWasVoiceResponse
-      ? "voice response" : (lastModeWasPrompting ? "prompt execution" : "transcription")
-
-    // Reset retry state
-    canRetry = false
-    updateRetryMenuItem()
-
-    // Show appropriate processing status
-    if lastModeWasVoiceResponse {
-      showProcessingStatus(mode: "voice response")
-    } else if lastModeWasPrompting {
-      showProcessingStatus(mode: "prompt")
-    } else {
-      showTranscribingStatus()
-    }
-
-    // Start the appropriate operation with the same audio file
-    Task {
-      if lastModeWasVoiceResponse {
-        await performVoiceResponseExecution(audioURL: audioURL)
-      } else if lastModeWasPrompting {
-        await performPromptExecution(audioURL: audioURL)
-      } else {
-        await performTranscription(audioURL: audioURL)
-      }
-    }
-  }
-
   @objc private func apiKeyUpdated() {
     // Update menu state when API key changes
     DispatchQueue.main.async {
@@ -826,17 +732,8 @@ class MenuBarController: NSObject {
     }
   }
 
-  @objc private func voicePlaybackStarted() {
-    DispatchQueue.main.async {
-      NSLog("🔊 MENU-CONTROLLER: Voice playback started")
-      self.isVoicePlaying = true
-      self.updateMenuState()
-    }
-  }
-
   @objc private func voicePlaybackStopped() {
     DispatchQueue.main.async {
-      NSLog("🔇 MENU-CONTROLLER: Voice playback stopped")
       self.isVoicePlaying = false
       self.updateMenuState()
     }
@@ -889,14 +786,9 @@ extension MenuBarController: ShortcutDelegate {
   func startRecording() {
     // Comprehensive state check - no new recordings if ANYTHING is active
     guard appMode == .idle else {
-      NSLog("🚫 RECORDING-BLOCKED: Cannot start recording - app not idle (current: \(appMode))")
       return
     }
 
-    NSLog("🎙️ RECORDING-START: Starting transcription recording")
-    NSLog(
-      "🎙️ RECORDING-START: Using transcription model: \(speechService?.getCurrentModel().displayName ?? "Unknown")"
-    )
     lastModeWasPrompting = false
     lastModeWasVoiceResponse = false
     isRecording = true
@@ -917,17 +809,13 @@ extension MenuBarController: ShortcutDelegate {
   func startPrompting() {
     // Comprehensive state check - no new recordings if ANYTHING is active
     guard appMode == .idle else {
-      NSLog("🚫 PROMPTING-BLOCKED: Cannot start prompting - app not idle (current: \(appMode))")
       return
     }
 
     // Check accessibility permission first
     if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-      NSLog("🚫 PROMPTING-BLOCKED: No accessibility permission")
       return
     }
-
-    NSLog("🤖 PROMPTING-START: Starting prompt recording")
 
     // Simulate Copy-Paste to capture selected text
     simulateCopyPaste()
@@ -970,22 +858,16 @@ extension MenuBarController: ShortcutDelegate {
   func startVoiceResponse() {
     // Comprehensive state check - no new recordings if ANYTHING is active
     guard appMode == .idle else {
-      NSLog(
-        "🚫 VOICE-RESPONSE-BLOCKED: Cannot start voice response - app not idle (current: \(appMode))"
-      )
       return
     }
 
     // Check accessibility permission first
     if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-      NSLog("🚫 VOICE-RESPONSE-BLOCKED: No accessibility permission")
       return
     }
 
     // Simulate Copy-Paste to capture selected text
     simulateCopyPaste()
-
-    NSLog("🔊 VOICE-RESPONSE-START: Starting voice response recording")
 
     lastModeWasPrompting = false
     lastModeWasVoiceResponse = true
@@ -1032,21 +914,10 @@ extension MenuBarController: ShortcutDelegate {
 // MARK: - AudioRecorderDelegate
 extension MenuBarController: AudioRecorderDelegate {
   func audioRecorderDidFinishRecording(audioURL: URL) {
-    NSLog(
-      "🎙️ AUDIO-RECORDER: Recording finished, processing audio file: \(audioURL.lastPathComponent)")
-
-    // Store the audio URL for potential retry
-    lastAudioURL = audioURL
-    canRetry = false
-    lastError = nil
 
     // Use tracked mode since states are reset immediately in stop functions
     let wasPrompting = lastModeWasPrompting
     let wasVoiceResponse = lastModeWasVoiceResponse
-
-    NSLog(
-      "🎙️ AUDIO-RECORDER: Mode detection - wasPrompting: \(wasPrompting), wasVoiceResponse: \(wasVoiceResponse)"
-    )
 
     // Determine which mode we were in and process accordingly
     if wasVoiceResponse {
@@ -1163,12 +1034,6 @@ extension MenuBarController: AudioRecorderDelegate {
   @MainActor
   private func handleVoiceResponseSuccess(_ response: String) -> Bool {
 
-    // Clear retry state on success
-    canRetry = false
-    lastError = nil
-    lastAudioURL = nil
-    updateRetryMenuItem()
-
     showTemporarySuccess()
 
     return true  // Clean up audio file
@@ -1180,30 +1045,16 @@ extension MenuBarController: AudioRecorderDelegate {
 
     let errorMessage = SpeechErrorFormatter.format(error)
 
-    // Store error for retry functionality
-    lastError = errorMessage
-
-    if error.isRetryable && lastAudioURL != nil {
-      canRetry = true
-      updateRetryMenuItem()
-    }
-
     // Copy error message to clipboard for troubleshooting
     clipboardManager?.copyToClipboard(text: errorMessage)
     showTemporaryError()
 
-    return !error.isRetryable  // Clean up if not retryable
+    return true  // Clean up audio file
   }
 
   @MainActor
   private func handleTranscriptionSuccess(_ transcription: String) -> Bool {
     NSLog("✅ Transcription successful: \(transcription)")
-
-    // Clear retry state on success
-    canRetry = false
-    lastError = nil
-    lastAudioURL = nil
-    updateRetryMenuItem()
 
     // Copy to clipboard
     clipboardManager?.copyToClipboard(text: transcription)
@@ -1218,31 +1069,16 @@ extension MenuBarController: AudioRecorderDelegate {
 
     let errorMessage = SpeechErrorFormatter.format(error)
 
-    // Store error for retry functionality
-    lastError = errorMessage
-
-    if error.isRetryable && lastAudioURL != nil {
-      canRetry = true
-      updateRetryMenuItem()
-
-    }
-
     // Copy error message to clipboard
     clipboardManager?.copyToClipboard(text: errorMessage)
     showTemporaryError()
 
-    return !error.isRetryable  // Clean up if not retryable
+    return true  // Clean up audio file
   }
 
   @MainActor
   private func handlePromptSuccess(_ response: String) -> Bool {
     NSLog("✅ Prompt execution successful: \(response)")
-
-    // Clear retry state on success
-    canRetry = false
-    lastError = nil
-    lastAudioURL = nil
-    updateRetryMenuItem()
 
     // Copy response to clipboard
     clipboardManager?.copyToClipboard(text: response)
@@ -1258,21 +1094,11 @@ extension MenuBarController: AudioRecorderDelegate {
 
     let errorMessage = SpeechErrorFormatter.format(error)
 
-    // Store error for retry functionality
-    lastError = errorMessage
-
-    if error.isRetryable && lastAudioURL != nil {
-      canRetry = true
-      updateRetryMenuItem()
-
-    }
-
     // Copy error message to clipboard
-
     clipboardManager?.copyToClipboard(text: errorMessage)
     showTemporaryError()
 
-    return !error.isRetryable  // Clean up if not retryable
+    return true  // Clean up audio file
   }
 
   private func showProcessingStatus(mode: String) {
@@ -1384,20 +1210,14 @@ extension MenuBarController: AudioRecorderDelegate {
     if let menu = statusItem?.menu,
       let statusMenuItem = menu.item(withTag: 100)
     {
-      if canRetry {
-        statusMenuItem.title = "❌ Transcription failed - Retry available"
-      } else {
-        statusMenuItem.title = "❌ Transcription failed"
-      }
+      statusMenuItem.title = "❌ Transcription failed"
     }
 
-    // Only reset after 3 seconds if retry is not available
-    if !canRetry {
-      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.errorDisplayTime) {
+    // Reset after 3 seconds
+    DispatchQueue.main.asyncAfter(deadline: .now() + Constants.errorDisplayTime) {
 
-        self.appMode = .idle
-        self.updateUI()
-      }
+      self.appMode = .idle
+      self.updateUI()
     }
   }
 
@@ -1420,12 +1240,6 @@ extension MenuBarController: AudioRecorderDelegate {
     {
       statusMenuItem.title = "Ready to record"
     }
-
-    // Clear retry state
-    canRetry = false
-    lastError = nil
-    lastAudioURL = nil
-    updateRetryMenuItem()
 
     // Update menu state to enable/disable appropriate items
     updateMenuState()

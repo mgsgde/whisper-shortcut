@@ -49,7 +49,7 @@ final class TTSIntegrationTests: XCTestCase {
       XCTFail("Should have thrown TTSError.noAPIKey")
     } catch let error as TTSError {
       XCTAssertEqual(error, .noAPIKey, "Should get noAPIKey error")
-      XCTAssertFalse(error.isRetryable, "No API key error should not be retryable")
+
       NSLog("✅ TTS Test passed: Got expected noAPIKey error")
     } catch {
       XCTFail("Should get TTSError, got: \(error)")
