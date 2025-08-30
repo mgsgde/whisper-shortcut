@@ -365,6 +365,13 @@ class MenuBarController: NSObject {
     // Listen for voice playback status updates
     NotificationCenter.default.addObserver(
       self,
+      selector: #selector(voicePlaybackStarted),
+      name: NSNotification.Name("VoicePlaybackStarted"),
+      object: nil
+    )
+
+    NotificationCenter.default.addObserver(
+      self,
       selector: #selector(voicePlaybackStopped),
       name: NSNotification.Name("VoicePlaybackStopped"),
       object: nil
@@ -729,6 +736,13 @@ class MenuBarController: NSObject {
   @objc private func voiceResponseReadyToSpeak() {
     DispatchQueue.main.async {
       self.showSpeakingStatus()
+    }
+  }
+
+  @objc private func voicePlaybackStarted() {
+    DispatchQueue.main.async {
+      self.isVoicePlaying = true
+      self.updateMenuState()
     }
   }
 
