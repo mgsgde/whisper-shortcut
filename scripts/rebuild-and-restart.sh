@@ -14,11 +14,13 @@ if [ $? -eq 0 ]; then
     echo "🔄 Killing any running WhisperShortcut instances..."
     pkill -f WhisperShortcut || true
     
+    echo "⏳ Waiting for app to fully close..."
+    sleep 1
+    
     echo "🚀 Starting WhisperShortcut application..."
-    open /Users/mgsgde/Library/Developer/Xcode/DerivedData/WhisperShortcut-budjpsyyuwuiqxgeultiqzrgjcos/Build/Products/Debug/WhisperShortcut.app 2>/dev/null || true
+    open /Users/mgsgde/Library/Developer/Xcode/DerivedData/WhisperShortcut-budjpsyyuwuiqxgeultiqzrgjcos/Build/Products/Debug/WhisperShortcut.app
     
     echo "🎉 WhisperShortcut has been rebuilt and restarted!"
-    echo "   Note: Error -600 is normal if the app was already running"
 else
     echo "❌ Build failed! Please check the error messages above."
     exit 1
