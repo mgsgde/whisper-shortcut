@@ -45,7 +45,7 @@ enum SettingsTab: String, CaseIterable {
   case general = "General"
   case speechToText = "Dictate"
   case speechToPrompt = "Dictate Prompt"
-  case speechToPromptWithVoiceResponse = "Dictate Prompt (Voice)"
+  case speechToPromptWithVoiceResponse = "Dictate Prompt and Speak"
 }
 
 // MARK: - Settings Data Models

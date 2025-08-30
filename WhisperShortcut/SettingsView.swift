@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Hauptsächliche Settings-View - schlanker Container für Tab-Management
+/// Modern Settings-View mit Sidebar-Navigation (macOS System Settings Style)
 struct SettingsView: View {
   @StateObject private var viewModel = SettingsViewModel()
   @State private var selectedTab: SettingsTab = .general
@@ -8,20 +8,12 @@ struct SettingsView: View {
   @FocusState private var focusedField: SettingsFocusField?
 
   var body: some View {
-    VStack(spacing: 0) {
-      // Title
-      titleSection
-
-      // Tab Selection
-      tabPicker
-
-      // Tab Content
-      tabContentContainer
-
-      Spacer(minLength: SettingsConstants.spacing)
-
-      // Action Buttons
-      actionButtons
+    NavigationSplitView {
+      // MARK: - Sidebar
+      sidebar
+    } detail: {
+      // MARK: - Detail View
+      detailView
     }
     .frame(width: SettingsConstants.minWindowWidth, height: SettingsConstants.minWindowHeight)
     .alert("Error", isPresented: $viewModel.data.showAlert) {
@@ -40,34 +32,88 @@ struct SettingsView: View {
     }
   }
 
-  // MARK: - Title Section
+  // MARK: - Sidebar
   @ViewBuilder
-  private var titleSection: some View {
-    Text("WhisperShortcut Settings")
-      .font(.title)
-      .fontWeight(.bold)
-      .padding(.top, SettingsConstants.topPadding)
-      .padding(.bottom, 24)  // Increased from 16 to 24 for better spacing
-  }
+  private var sidebar: some View {
+    List(SettingsTab.allCases, id: \.self, selection: $selectedTab) { tab in
+      NavigationLink(value: tab) {
+        HStack(spacing: 12) {
+          Image(systemName: iconName(for: tab))
+            .font(.title2)
+            .foregroundColor(.accentColor)
+            .frame(width: 24, height: 24)
 
-  // MARK: - Tab Picker
-  @ViewBuilder
-  private var tabPicker: some View {
-    Picker("", selection: $selectedTab) {
-      ForEach(SettingsTab.allCases, id: \.self) { tab in
-        Text(tab.rawValue).tag(tab)
+          VStack(alignment: .leading, spacing: 2) {
+            Text(tab.rawValue)
+              .font(.body)
+              .fontWeight(.medium)
+
+            Text(description(for: tab))
+              .font(.caption)
+              .foregroundColor(.secondary)
+              .lineLimit(2)
+          }
+        }
+        .padding(.vertical, 4)
       }
     }
-    .pickerStyle(.segmented)
-    .padding(.horizontal, SettingsConstants.horizontalPadding + 20)  // Increased horizontal padding for more space from edges
-    .padding(.bottom, SettingsConstants.spacing)
-    .frame(maxWidth: .infinity)
-    .scaleEffect(1.1)  // Make tabs slightly larger
+    .listStyle(.sidebar)
+    .frame(minWidth: 240, idealWidth: 280, maxWidth: 320)
   }
 
-  // MARK: - Tab Content Container
+  // MARK: - Detail View
   @ViewBuilder
-  private var tabContentContainer: some View {
+  private var detailView: some View {
+    VStack(spacing: 0) {
+      // Custom Navigation Bar
+      customNavigationBar
+
+      // Content
+      contentSection
+
+      Spacer(minLength: 0)
+
+      // Action Buttons
+      actionButtons
+    }
+  }
+
+  // MARK: - Custom Navigation Bar
+  @ViewBuilder
+  private var customNavigationBar: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack {
+        Image(systemName: iconName(for: selectedTab))
+          .font(.title2)
+          .foregroundColor(.accentColor)
+
+        Text(selectedTab.rawValue)
+          .font(.title2)
+          .fontWeight(.semibold)
+
+        Spacer()
+      }
+
+      Text(description(for: selectedTab))
+        .font(.subheadline)
+        .foregroundColor(.secondary)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.horizontal, 24)
+    .padding(.top, 16)
+    .padding(.bottom, 12)
+    .background(Color(NSColor.controlBackgroundColor))
+    .overlay(
+      Rectangle()
+        .frame(height: 0.5)
+        .foregroundColor(Color(NSColor.separatorColor))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    )
+  }
+
+  // MARK: - Content Section
+  @ViewBuilder
+  private var contentSection: some View {
     ScrollView {
       VStack(spacing: SettingsConstants.spacing) {
         switch selectedTab {
@@ -82,7 +128,8 @@ struct SettingsView: View {
             viewModel: viewModel, focusedField: $focusedField)
         }
       }
-      .padding(.horizontal, SettingsConstants.horizontalPadding)
+      .padding(.horizontal, 24)
+      .padding(.top, 20)
       .padding(.bottom, SettingsConstants.spacing)
     }
   }
@@ -112,22 +159,47 @@ struct SettingsView: View {
           .scaleEffect(1.0)
       }
     }
+    .padding(.horizontal, 24)
     .padding(.bottom, SettingsConstants.bottomPadding)
+  }
+
+  // MARK: - Helper Functions
+  private func iconName(for tab: SettingsTab) -> String {
+    switch tab {
+    case .general:
+      return "gear"
+    case .speechToText:
+      return "mic"
+    case .speechToPrompt:
+      return "text.bubble"
+    case .speechToPromptWithVoiceResponse:
+      return "speaker.wave.2"
+    }
+  }
+
+  private func description(for tab: SettingsTab) -> String {
+    switch tab {
+    case .general:
+      return "API Key, ChatGPT Shortcut and Feedback"
+    case .speechToText:
+      return "Model, Prompt and Shortcut"
+    case .speechToPrompt:
+      return "Model, Prompt and Shortcut"
+    case .speechToPromptWithVoiceResponse:
+      return "Model, Prompt, Shortcut and Playback Speed"
+    }
   }
 
   // MARK: - Functions
   private func saveSettings() async {
-
     if let error = await viewModel.saveSettings() {
       viewModel.showError(error)
     } else {
       // Settings saved successfully, keep window open
-
     }
   }
 
   private func setupWindow() {
-
     DispatchQueue.main.async {
       NSApp.activate(ignoringOtherApps: true)
       if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {

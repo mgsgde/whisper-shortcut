@@ -7,7 +7,7 @@ enum SettingsConstants {
   static let labelWidth: CGFloat = 160
   static let apiKeyMaxWidth: CGFloat = 350
   static let shortcutMaxWidth: CGFloat = 300
-  static let minWindowWidth: CGFloat = 750
+  static let minWindowWidth: CGFloat = 950
   static let minWindowHeight: CGFloat = 800
   static let modelSelectionHeight: CGFloat = 48
   static let textFieldHeight: CGFloat = 40
