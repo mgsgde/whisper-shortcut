@@ -14,23 +14,19 @@ class AudioPlaybackService: NSObject {
   // MARK: - Main Playback Method
   func playAudio(data: Data) async throws -> Bool {
 
-    NSLog("🔊 AUDIO-PLAYBACK: Audio data size: \(data.count) bytes")
-
     // Validate audio data
     try validateAudioData(data)
-    NSLog("🔊 AUDIO-PLAYBACK: Audio data validation passed")
 
     // Stop any current playback
     stopCurrentPlayback()
 
     // Create temporary file for audio playback
     let tempURL = try createTemporaryAudioFile(data: data)
-    NSLog("🔊 AUDIO-PLAYBACK: Temporary audio file created: \(tempURL.path)")
 
     defer {
       // Clean up temporary file
       try? FileManager.default.removeItem(at: tempURL)
-      NSLog("🔊 AUDIO-PLAYBACK: Temporary audio file cleaned up")
+
     }
 
     // Create and configure audio player
@@ -38,9 +34,9 @@ class AudioPlaybackService: NSObject {
       audioPlayer = try AVAudioPlayer(contentsOf: tempURL)
       audioPlayer?.delegate = self
       audioPlayer?.prepareToPlay()
-      NSLog("🔊 AUDIO-PLAYBACK: Audio player created and prepared")
+
     } catch {
-      NSLog("⚠️ AUDIO-PLAYBACK: Failed to create audio player: \(error)")
+
       throw AudioPlaybackError.playbackFailed
     }
 
@@ -51,16 +47,15 @@ class AudioPlaybackService: NSObject {
       }
 
       guard let player = audioPlayer else {
-        NSLog("⚠️ AUDIO-PLAYBACK: Audio player is nil")
+
         continuation.resume(returning: false)
         return
       }
 
       if player.play() {
-        NSLog("✅ AUDIO-PLAYBACK: Audio playback started successfully")
-        NSLog("🔊 AUDIO-PLAYBACK: Duration: \(player.duration)s, Volume: \(player.volume)")
+
       } else {
-        NSLog("⚠️ AUDIO-PLAYBACK: Failed to start audio playback")
+
         continuation.resume(returning: false)
       }
     }
@@ -68,7 +63,7 @@ class AudioPlaybackService: NSObject {
 
   // MARK: - Playback Control
   func stopPlayback() {
-    NSLog("🔊 AUDIO-PLAYBACK: Stopping audio playback")
+
     stopCurrentPlayback()
   }
 
@@ -76,7 +71,7 @@ class AudioPlaybackService: NSObject {
     if let player = audioPlayer {
       if player.isPlaying {
         player.stop()
-        NSLog("🔊 AUDIO-PLAYBACK: Current playback stopped")
+
       }
       audioPlayer = nil
     }
@@ -92,25 +87,24 @@ class AudioPlaybackService: NSObject {
   private func setupAudioSession() {
     // On macOS, AVAudioSession is not available
     // Audio configuration is handled automatically by the system for desktop apps
-    NSLog("✅ AUDIO-PLAYBACK: Audio session setup skipped (not needed on macOS)")
+
   }
 
   // MARK: - Validation and Utilities
   private func validateAudioData(_ data: Data) throws {
     guard !data.isEmpty else {
-      NSLog("⚠️ AUDIO-PLAYBACK: Audio data is empty")
+
       throw AudioPlaybackError.invalidAudioData
     }
 
     guard data.count > 100 else {
-      NSLog("⚠️ AUDIO-PLAYBACK: Audio data too small: \(data.count) bytes")
+
       throw AudioPlaybackError.invalidAudioData
     }
 
     // Log first few bytes for debugging
     let headerBytes = Array(data.prefix(16))
     let headerHex = headerBytes.map { String(format: "%02X", $0) }.joined(separator: " ")
-    NSLog("🔧 AUDIO-PLAYBACK: Audio header bytes: \(headerHex)")
 
     // More flexible format validation - check for common audio headers
     let header = Array(data.prefix(12))
@@ -128,10 +122,10 @@ class AudioPlaybackService: NSObject {
       || header.starts(with: [0x66, 0x74, 0x79, 0x70])  // MP4/M4A (ftyp)
 
     if !hasValidHeader {
-      NSLog("⚠️ AUDIO-PLAYBACK: Unrecognized audio format - attempting playback anyway")
+
       // Don't throw error, let AVAudioPlayer try to handle it
     } else {
-      NSLog("✅ AUDIO-PLAYBACK: Recognized audio format")
+
     }
   }
 
@@ -143,7 +137,7 @@ class AudioPlaybackService: NSObject {
       try data.write(to: tempURL)
       return tempURL
     } catch {
-      NSLog("⚠️ AUDIO-PLAYBACK: Failed to write temporary audio file: \(error)")
+
       throw AudioPlaybackError.playbackFailed
     }
   }
@@ -152,7 +146,6 @@ class AudioPlaybackService: NSObject {
 // MARK: - AVAudioPlayerDelegate
 extension AudioPlaybackService: AVAudioPlayerDelegate {
   func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-    NSLog("🔊 AUDIO-PLAYBACK: Audio playback finished successfully: \(flag)")
 
     if let completion = currentPlaybackCompletion {
       currentPlaybackCompletion = nil
@@ -163,7 +156,6 @@ extension AudioPlaybackService: AVAudioPlayerDelegate {
   }
 
   func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-    NSLog("⚠️ AUDIO-PLAYBACK: Audio decode error: \(error?.localizedDescription ?? "Unknown error")")
 
     if let completion = currentPlaybackCompletion {
       currentPlaybackCompletion = nil

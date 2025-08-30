@@ -116,14 +116,14 @@ extension AppMode {
   var icon: String {
     let iconString: String
     switch self {
-    case .idle: 
+    case .idle:
       iconString = "🎙️"
-    case .recording(let type): 
+    case .recording(let type):
       iconString = type.icon
-    case .processing(let type): 
+    case .processing(let type):
       iconString = type.icon
     }
-    NSLog("🎨 UI-DEBUG: AppMode.icon called for \(self) → '\(iconString)'")
+
     return iconString
   }
 

@@ -152,9 +152,6 @@ class MenuBarController: NSObject {
     button.title = newTitle
     button.toolTip = tooltip
 
-    NSLog(
-      "🎨 UI-DEBUG: Menu bar icon update - old: '\(oldTitle)' → new: '\(newTitle)' (mode: \(appMode), visual: \(visualState))"
-    )
   }
 
   private func updateBlinkingState() {
@@ -402,9 +399,6 @@ class MenuBarController: NSObject {
       statusMenuItem.title = newStatus
       statusMenuItem.isHidden = false  // Always show status
 
-      NSLog(
-        "🎨 UI-DEBUG: Menu status update - old: '\(oldStatus)' → new: '\(newStatus)' (mode: \(appMode), visual: \(visualState))"
-      )
     }
 
     // Update recording menu items

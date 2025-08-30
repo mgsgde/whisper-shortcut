@@ -368,7 +368,7 @@ class SpeechService {
   )
     async throws -> String
   {
-        // Get the selected GPT model from UserDefaults based on mode
+    // Get the selected GPT model from UserDefaults based on mode
     let modelKey = isVoiceResponse ? "selectedVoiceResponseGPTModel" : "selectedGPTModel"
     let selectedGPTModelString =
       UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-chat-latest"
