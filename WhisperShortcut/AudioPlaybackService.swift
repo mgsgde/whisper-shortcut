@@ -11,16 +11,19 @@ class AudioPlaybackService: NSObject {
 
   override init() {
     super.init()
-    setupAudioSession()
   }
 
   // MARK: - Main Playback Method
   func playAudio(data: Data) async throws -> Bool {
+
     // Validate audio data
     try validateAudioData(data)
 
     // Stop any current playback
     stopCurrentPlayback()
+
+    // Notify that playback is starting
+    NotificationCenter.default.post(name: NSNotification.Name("VoicePlaybackStarted"), object: nil)
 
     // Create temporary file for audio playback
     let tempURL = try createTemporaryAudioFile(data: data)
@@ -28,6 +31,7 @@ class AudioPlaybackService: NSObject {
     defer {
       // Clean up temporary file
       try? FileManager.default.removeItem(at: tempURL)
+
     }
 
     // Create and configure audio player
@@ -37,6 +41,7 @@ class AudioPlaybackService: NSObject {
       audioPlayer?.prepareToPlay()
 
     } catch {
+
       throw AudioPlaybackError.playbackFailed
     }
 
@@ -47,13 +52,15 @@ class AudioPlaybackService: NSObject {
       }
 
       guard let player = audioPlayer else {
+
         continuation.resume(returning: false)
         return
       }
 
       if player.play() {
-        // Playback started successfully
+
       } else {
+
         continuation.resume(returning: false)
       }
     }
@@ -61,6 +68,7 @@ class AudioPlaybackService: NSObject {
 
   // MARK: - Playback Control
   func stopPlayback() {
+    NSLog("🔇 AUDIO-PLAYBACK: Stopping playback")
     stopCurrentPlayback()
   }
 
@@ -82,50 +90,38 @@ class AudioPlaybackService: NSObject {
     }
   }
 
-  // MARK: - Audio Session Setup
-  private func setupAudioSession() {
-    // On macOS, AVAudioSession is not available
-    // Audio configuration is handled automatically by the system for desktop apps
-
-  }
-
   // MARK: - Validation and Utilities
   private func validateAudioData(_ data: Data) throws {
     guard !data.isEmpty else {
-
       throw AudioPlaybackError.invalidAudioData
     }
 
-    guard data.count > 100 else {
-
-      throw AudioPlaybackError.invalidAudioData
-    }
-
-    // Log first few bytes for debugging
+    // Check for common audio file headers
     let headerBytes = Array(data.prefix(16))
-    let headerHex = headerBytes.map { String(format: "%02X", $0) }.joined(separator: " ")
-
-    // More flexible format validation - check for common audio headers
-    let header = Array(data.prefix(12))
-    let hasValidHeader =
-      header.starts(with: [0x49, 0x44, 0x33])  // ID3 (MP3)
-      || header.starts(with: [0xFF, 0xFB])  // MPEG Layer 3 (MP3)
-      || header.starts(with: [0xFF, 0xFA])  // MPEG Layer 3 (MP3)
-      || header.starts(with: [0xFF, 0xF3])  // MPEG Layer 3 (MP3)
-      || header.starts(with: [0xFF, 0xF2])  // MPEG Layer 3 (MP3)
-      || (header[0] == 0xFF && (header[1] & 0xE0) == 0xE0)  // Any MPEG audio frame
-      || header.starts(with: Array("RIFF".utf8))  // WAV
-      || header.starts(with: Array("fLaC".utf8))  // FLAC
-      || header.starts(with: Array("OggS".utf8))  // OGG
-      || header.starts(with: Array("FORM".utf8))  // AIFF
-      || header.starts(with: [0x66, 0x74, 0x79, 0x70])  // MP4/M4A (ftyp)
-
-    if !hasValidHeader {
-
-      // Don't throw error, let AVAudioPlayer try to handle it
-    } else {
-
+    
+    // MP3 header check (ID3 or MPEG sync)
+    if headerBytes.count >= 3 {
+      // ID3v2 header
+      if headerBytes[0] == 0x49 && headerBytes[1] == 0x44 && headerBytes[2] == 0x33 {
+        return
+      }
+      
+      // MPEG sync bytes
+      if (headerBytes[0] == 0xFF && (headerBytes[1] & 0xE0) == 0xE0) {
+        return
+      }
     }
+    
+    // WAV header check
+    if headerBytes.count >= 12 {
+      if headerBytes[0] == 0x52 && headerBytes[1] == 0x49 && headerBytes[2] == 0x46 && headerBytes[3] == 0x46 &&
+         headerBytes[8] == 0x57 && headerBytes[9] == 0x41 && headerBytes[10] == 0x56 && headerBytes[11] == 0x45 {
+        return
+      }
+    }
+    
+    // If we get here, we couldn't identify the audio format
+    // But we'll still try to play it - AVAudioPlayer might handle it
   }
 
   private func createTemporaryAudioFile(data: Data) throws -> URL {
@@ -145,6 +141,7 @@ class AudioPlaybackService: NSObject {
 // MARK: - AVAudioPlayerDelegate
 extension AudioPlaybackService: AVAudioPlayerDelegate {
   func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+    NSLog("🔇 AUDIO-PLAYBACK: Playback finished successfully: \(flag)")
 
     // Notify that playback finished naturally
     NotificationCenter.default.post(name: NSNotification.Name("VoicePlaybackStopped"), object: nil)
