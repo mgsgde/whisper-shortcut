@@ -6,9 +6,12 @@ struct GPTModelSelectionView: View {
   @Binding var selectedModel: GPTModel
 
   var body: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
-      SectionHeader(title: title)
-      
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: title,
+        subtitle: "Choose the AI model for generating responses"
+      )
+
       HStack(spacing: SettingsConstants.modelSpacing) {
         ForEach(GPTModel.allCases, id: \.self) { model in
           ZStack {
@@ -43,25 +46,33 @@ struct GPTModelSelectionView: View {
           .foregroundColor(.secondary)
           .textSelection(.enabled)
 
-        ForEach(GPTModel.allCases, id: \.self) { model in
-          HStack {
-            Text("• \(model.displayName):")
-              .font(.callout)
-              .foregroundColor(.secondary)
-              .textSelection(.enabled)
-            
-            Text("\(model.costLevel) cost")
-              .font(.callout)
-              .foregroundColor(model.isRecommended ? .green : .orange)
-              .textSelection(.enabled)
-            
-            if model.isRecommended {
-              Text("(Recommended)")
-                .font(.callout)
-                .foregroundColor(.green)
-                .textSelection(.enabled)
-            }
-          }
+        switch selectedModel {
+        case .gpt5:
+          Text("• GPT-5: Highest quality and most capable model")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
+          Text("• Best for: Complex tasks, maximum quality")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
+          Text("• Cost: High")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
+        case .gpt5Mini:
+          Text("• GPT-5 Mini: Fast and efficient model")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
+          Text("• Best for: Everyday use, quick responses")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
+          Text("• Cost: Low")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
         }
       }
     }
@@ -69,13 +80,13 @@ struct GPTModelSelectionView: View {
 }
 
 #if DEBUG
-struct GPTModelSelectionView_Previews: PreviewProvider {
-  static var previews: some View {
-    @State var selectedModel: GPTModel = .gpt5Mini
-    
-    GPTModelSelectionView(title: "GPT Model", selectedModel: $selectedModel)
-      .padding()
-      .frame(width: 600)
+  struct GPTModelSelectionView_Previews: PreviewProvider {
+    static var previews: some View {
+      @State var selectedModel: GPTModel = .gpt5Mini
+
+      GPTModelSelectionView(title: "GPT Model", selectedModel: $selectedModel)
+        .padding()
+        .frame(width: 600)
+    }
   }
-}
 #endif

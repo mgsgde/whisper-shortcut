@@ -1,17 +1,35 @@
 import SwiftUI
 
-/// General Settings Tab - API Key, Open ChatGPT Shortcut und Support & Feedback
+/// General Settings Tab - API Key und Support & Feedback
 struct GeneralSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
 
   var body: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.spacing) {
+    VStack(alignment: .leading, spacing: 0) {
       // API Key Section
       apiKeySection
 
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Open ChatGPT Shortcut Section
       openChatGPTSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
 
       // Support & Feedback Section
       supportFeedbackSection
@@ -21,8 +39,11 @@ struct GeneralSettingsTab: View {
   // MARK: - API Key Section
   @ViewBuilder
   private var apiKeySection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
-      SectionHeader(title: "OpenAI API Key")
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "OpenAI API Key",
+        subtitle: "Required for transcription and AI assistant functionality"
+      )
 
       HStack(alignment: .center, spacing: 16) {
         Text("API Key:")
@@ -49,15 +70,15 @@ struct GeneralSettingsTab: View {
       )
       .font(.callout)
       .foregroundColor(.secondary)
-      .padding(.top, 4)
       .textSelection(.enabled)
+      .fixedSize(horizontal: false, vertical: true)
     }
   }
 
   // MARK: - Open ChatGPT Shortcut Section
   @ViewBuilder
   private var openChatGPTSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Open ChatGPT Shortcut",
         subtitle: "Quick access to ChatGPT in your browser"
@@ -95,33 +116,27 @@ struct GeneralSettingsTab: View {
   // MARK: - Support & Feedback Section
   @ViewBuilder
   private var supportFeedbackSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
-      SectionHeader(title: "Support & Feedback")
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Support & Feedback",
+        subtitle:
+          "If you have feedback, if something doesn't work, or if you have suggestions for improvement, feel free to contact me via WhatsApp."
+      )
 
       Button(action: {
         viewModel.openWhatsAppFeedback()
       }) {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .center, spacing: 16) {
           Image("WhatsApp")
             .resizable()
             .aspectRatio(contentMode: .fit)
             .frame(width: 44, height: 44)
             .clipShape(RoundedRectangle(cornerRadius: 12))
 
-          VStack(alignment: .leading, spacing: 8) {
-            Text("Thanks for using WhisperShortcut!")
-              .font(.body)
-              .fontWeight(.medium)
-              .textSelection(.enabled)
-
-            Text(
-              "If you have feedback, if something doesn't work, or if you have suggestions for improvement, feel free to contact me via WhatsApp."
-            )
-            .font(.callout)
-            .foregroundColor(.secondary)
+          Text("Thanks for using WhisperShortcut!")
+            .font(.body)
+            .fontWeight(.medium)
             .textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
-          }
 
           Spacer()
         }

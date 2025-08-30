@@ -8,7 +8,7 @@ enum GPTModel: String, CaseIterable {
   var displayName: String {
     switch self {
     case .gpt5:
-      return "GPT-5 recommended"
+      return "GPT-5"
     case .gpt5Mini:
       return "GPT-5 Mini"
     }
@@ -38,7 +38,7 @@ enum SettingsTab: String, CaseIterable {
   case general = "General"
   case speechToText = "Speech to Text"
   case speechToPrompt = "Speech to Prompt"
-  case speechToPromptWithVoiceResponse = "Speech to Prompt with Voice Response"
+  case speechToPromptWithVoiceResponse = "Speech to Prompt (Voice)"
 }
 
 // MARK: - Settings Data Models

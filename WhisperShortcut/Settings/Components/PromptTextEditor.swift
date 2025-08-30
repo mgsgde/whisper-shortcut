@@ -9,18 +9,12 @@ struct PromptTextEditor: View {
   @Binding var text: String
   let focusedField: SettingsFocusField
   @FocusState.Binding var currentFocus: SettingsFocusField?
-  
-  var body: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
-      SectionHeader(title: title)
-      
-      VStack(alignment: .leading, spacing: 8) {
-        Text(subtitle)
-          .font(.callout)
-          .fontWeight(.semibold)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
 
+  var body: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(title: title, subtitle: subtitle)
+
+      VStack(alignment: .leading, spacing: 8) {
         TextEditor(text: $text)
           .font(.system(.body, design: .default))
           .frame(height: SettingsConstants.textEditorHeight)
@@ -52,22 +46,23 @@ struct PromptTextEditor: View {
 }
 
 #if DEBUG
-struct PromptTextEditor_Previews: PreviewProvider {
-  static var previews: some View {
-    @State var text = "Enter your custom prompt here..."
-    @FocusState var currentFocus: SettingsFocusField?
-    
-    PromptTextEditor(
-      title: "Custom Prompt",
-      subtitle: "Domain Terms & Context:",
-      helpText: "Describe domain terms for better transcription quality. Leave empty to use OpenAI's default.",
-      defaultValue: "Default prompt text",
-      text: $text,
-      focusedField: .customPrompt,
-      currentFocus: $currentFocus
-    )
-    .padding()
-    .frame(width: 600)
+  struct PromptTextEditor_Previews: PreviewProvider {
+    static var previews: some View {
+      @State var text = "Enter your custom prompt here..."
+      @FocusState var currentFocus: SettingsFocusField?
+
+      PromptTextEditor(
+        title: "Custom Prompt",
+        subtitle: "Domain Terms & Context:",
+        helpText:
+          "Describe domain terms for better transcription quality. Leave empty to use OpenAI's default.",
+        defaultValue: "Default prompt text",
+        text: $text,
+        focusedField: .customPrompt,
+        currentFocus: $currentFocus
+      )
+      .padding()
+      .frame(width: 600)
+    }
   }
-}
 #endif

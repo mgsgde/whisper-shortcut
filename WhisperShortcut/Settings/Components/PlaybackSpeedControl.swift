@@ -5,7 +5,7 @@ struct PlaybackSpeedControl: View {
   @Binding var playbackSpeed: Double
 
   var body: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Playback Speed",
         subtitle: "Controls how fast the AI voice response is played"

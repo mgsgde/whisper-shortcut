@@ -6,20 +6,56 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   @FocusState.Binding var focusedField: SettingsFocusField?
 
   var body: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.spacing) {
+    VStack(alignment: .leading, spacing: 0) {
       // Shortcuts Section
       shortcutsSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
 
       // Prompt Section
       promptSection
 
-      // Model Selection Section
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
+      // Model Section
       modelSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
 
       // Playback Speed Section
       playbackSpeedSection
 
-      // Usage Instructions
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
+      // Usage Instructions Section
       usageInstructionsSection
     }
   }
@@ -27,15 +63,15 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   // MARK: - Shortcuts Section
   @ViewBuilder
   private var shortcutsSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Shortcuts",
-        subtitle: "Record prompt and receive spoken response (uses OpenAI TTS)"
+        subtitle: "Dictate Prompt → AI Assistant Response with Voice Output"
       )
 
       ShortcutInputRow(
         label: "Start Voice Response:",
-        placeholder: "e.g., command+shift+k",
+        placeholder: "e.g., command+shift+h",
         text: $viewModel.data.startVoiceResponse,
         isEnabled: $viewModel.data.startVoiceResponseEnabled,
         focusedField: .startVoiceResponse,
@@ -76,7 +112,8 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   private var promptSection: some View {
     PromptTextEditor(
       title: "AI Assistant System Prompt",
-      subtitle: "System Instructions for AI Assistant:",
+      subtitle:
+        "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
       helpText:
         "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
       defaultValue: AppConstants.defaultPromptModeSystemPrompt,
@@ -104,7 +141,7 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   // MARK: - Usage Instructions
   @ViewBuilder
   private var usageInstructionsSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "How to use Speech to Prompt with Voice Response",
         subtitle: "Step-by-step instructions for using the voice response mode"

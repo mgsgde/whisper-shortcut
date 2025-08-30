@@ -5,9 +5,9 @@ struct ModelSelectionView: View {
   @Binding var selectedModel: TranscriptionModel
   let title: String
   let models: [TranscriptionModel]
-  
+
   init(
-    title: String = "Transcription Model", 
+    title: String = "Transcription Model",
     selectedModel: Binding<TranscriptionModel>,
     models: [TranscriptionModel] = TranscriptionModel.allCases
   ) {
@@ -15,11 +15,14 @@ struct ModelSelectionView: View {
     self._selectedModel = selectedModel
     self.models = models
   }
-  
+
   var body: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
-      SectionHeader(title: title)
-      
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: title,
+        subtitle: "Choose the transcription model for speech recognition"
+      )
+
       HStack(spacing: SettingsConstants.modelSpacing) {
         ForEach(models, id: \.self) { model in
           ZStack {
@@ -85,13 +88,13 @@ struct ModelSelectionView: View {
 }
 
 #if DEBUG
-struct ModelSelectionView_Previews: PreviewProvider {
-  static var previews: some View {
-    @State var selectedModel: TranscriptionModel = .gpt4oMiniTranscribe
-    
-    ModelSelectionView(selectedModel: $selectedModel)
-      .padding()
-      .frame(width: 600)
+  struct ModelSelectionView_Previews: PreviewProvider {
+    static var previews: some View {
+      @State var selectedModel: TranscriptionModel = .gpt4oMiniTranscribe
+
+      ModelSelectionView(selectedModel: $selectedModel)
+        .padding()
+        .frame(width: 600)
+    }
   }
-}
 #endif

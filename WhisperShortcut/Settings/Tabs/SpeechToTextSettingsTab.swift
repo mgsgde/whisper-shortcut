@@ -6,12 +6,30 @@ struct SpeechToTextSettingsTab: View {
   @FocusState.Binding var focusedField: SettingsFocusField?
 
   var body: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.spacing) {
+    VStack(alignment: .leading, spacing: 0) {
       // Shortcuts Section
       shortcutsSection
 
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Prompt Section
       promptSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
 
       // Transcription Model Section
       modelSection
@@ -21,7 +39,7 @@ struct SpeechToTextSettingsTab: View {
   // MARK: - Shortcuts Section
   @ViewBuilder
   private var shortcutsSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Shortcuts",
         subtitle: "Dictate → Text Conversion"
@@ -70,9 +88,10 @@ struct SpeechToTextSettingsTab: View {
   private var promptSection: some View {
     PromptTextEditor(
       title: "Prompt",
-      subtitle: "Domain Terms & Context:",
-      helpText:
+      subtitle:
         "Describe domain terms for better transcription quality. Leave empty to use OpenAI's default.",
+      helpText:
+        "Enter domain-specific terms, jargon, or context that will help improve transcription accuracy for your specific use case.",
       defaultValue: TranscriptionPrompt.defaultPrompt.text,
       text: $viewModel.data.customPromptText,
       focusedField: .customPrompt,

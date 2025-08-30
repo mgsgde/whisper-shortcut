@@ -47,7 +47,7 @@ echo ""
 echo "Log Categories:"
 echo "  🤖 Speech-to-Prompt-Mode:        Speech to prompt execution and processing"
 echo "  🎙️ Speech-to-Text-Mode:         Speech to text transcription process"
-echo "  🔊 Speech-to-Prompt-with-Voice-Responses-Mode: Speech to prompt with voice responses"
+echo "  🔊 Speech-to-Prompt-with-Voice-Response-Mode: Speech to prompt with voice response"
 echo "  ⚠️ Errors:                       Error handling and recovery"
 echo "  🎹 Shortcuts:                    Keyboard shortcut registration"
 }

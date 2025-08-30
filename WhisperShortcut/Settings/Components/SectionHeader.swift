@@ -4,19 +4,19 @@ import SwiftUI
 struct SectionHeader: View {
   let title: String
   let subtitle: String?
-  
+
   init(title: String, subtitle: String? = nil) {
     self.title = title
     self.subtitle = subtitle
   }
-  
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
+    VStack(alignment: .leading, spacing: 2) {  // Reduced from 4 to 2 for more compact spacing
       Text(title)
-        .font(.title3)
+        .font(.title2)  // Increased from .title3 to .title2 for more prominent section headers
         .fontWeight(.semibold)
         .textSelection(.enabled)
-      
+
       if let subtitle = subtitle {
         Text(subtitle)
           .font(.callout)
@@ -28,17 +28,17 @@ struct SectionHeader: View {
 }
 
 #if DEBUG
-struct SectionHeader_Previews: PreviewProvider {
-  static var previews: some View {
-    VStack(spacing: 20) {
-      SectionHeader(title: "Shortcuts")
-      
-      SectionHeader(
-        title: "Shortcuts",
-        subtitle: "Configure keyboard shortcuts for different modes"
-      )
+  struct SectionHeader_Previews: PreviewProvider {
+    static var previews: some View {
+      VStack(spacing: 20) {
+        SectionHeader(title: "Shortcuts")
+
+        SectionHeader(
+          title: "Shortcuts",
+          subtitle: "Configure keyboard shortcuts for different modes"
+        )
+      }
+      .padding()
     }
-    .padding()
   }
-}
 #endif

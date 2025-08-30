@@ -272,7 +272,7 @@ class MenuBarController: NSObject {
 
     // Voice Response section header
     let voiceResponseHeader = NSMenuItem(
-      title: "Speech to Prompt with Voice Responses", action: nil, keyEquivalent: "")
+      title: "Speech to Prompt with Voice Response", action: nil, keyEquivalent: "")
     voiceResponseHeader.isEnabled = false
     voiceResponseHeader.tag = 108
     menu.addItem(voiceResponseHeader)

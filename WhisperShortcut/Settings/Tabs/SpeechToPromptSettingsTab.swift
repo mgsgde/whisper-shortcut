@@ -6,17 +6,44 @@ struct SpeechToPromptSettingsTab: View {
   @FocusState.Binding var focusedField: SettingsFocusField?
 
   var body: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.spacing) {
+    VStack(alignment: .leading, spacing: 0) {
       // Shortcuts Section
       shortcutsSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
 
       // Prompt Section
       promptSection
 
-      // Model Selection Section
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
+      // Model Section
       modelSection
 
-      // Usage Instructions
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
+      // Usage Instructions Section
       usageInstructionsSection
     }
   }
@@ -24,7 +51,7 @@ struct SpeechToPromptSettingsTab: View {
   // MARK: - Shortcuts Section
   @ViewBuilder
   private var shortcutsSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Shortcuts",
         subtitle: "Dictate Prompt → AI Assistant Response (uses clipboard as context)"
@@ -73,7 +100,8 @@ struct SpeechToPromptSettingsTab: View {
   private var promptSection: some View {
     PromptTextEditor(
       title: "AI Assistant System Prompt",
-      subtitle: "System Instructions for AI Assistant:",
+      subtitle:
+        "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
       helpText:
         "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
       defaultValue: AppConstants.defaultPromptModeSystemPrompt,
@@ -95,7 +123,7 @@ struct SpeechToPromptSettingsTab: View {
   // MARK: - Usage Instructions
   @ViewBuilder
   private var usageInstructionsSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "How to use Speech to Prompt",
         subtitle: "Step-by-step instructions for using the prompt mode"
