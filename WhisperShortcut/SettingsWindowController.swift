@@ -6,7 +6,7 @@ class SettingsWindowController: NSWindowController {
   // MARK: - Constants
   private enum Constants {
     static let windowWidth: CGFloat = 520
-    static let windowHeight: CGFloat = 600
+    static let windowHeight: CGFloat = 750
     static let maxWidth: CGFloat = 800
     static let maxHeight: CGFloat = 1000
     static let windowTitle = "WhisperShortcut Settings"
@@ -14,7 +14,6 @@ class SettingsWindowController: NSWindowController {
   }
 
   init() {
-
 
     // Create SwiftUI hosting window
     let settingsView = SettingsView()
@@ -39,7 +38,6 @@ class SettingsWindowController: NSWindowController {
 
     super.init(window: window)
     window.delegate = self
-
 
   }
 
@@ -66,7 +64,6 @@ class SettingsWindowController: NSWindowController {
 // MARK: - NSWindowDelegate
 extension SettingsWindowController: NSWindowDelegate {
   func windowWillClose(_ notification: Notification) {
-
 
     // Step 4: Return to menu bar app when window closes
     DispatchQueue.main.async {
