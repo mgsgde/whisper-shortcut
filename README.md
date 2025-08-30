@@ -2,6 +2,8 @@
 
 **Speech-to-text** shortcut with **OpenAI Whisper API**
 
+📺 **[Watch Demo Video](https://youtu.be/HQz8CsgEvx4)**
+
 ## How it works
 
 ### Transcription Mode
