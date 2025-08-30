@@ -26,7 +26,11 @@ struct GPTModelSelectionView: View {
           .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
           .contentShape(Rectangle())
           .onTapGesture {
+            NSLog("🎯 GPT-MODEL-SELECTION: User tapped on \(model.displayName) (\(model.rawValue))")
             selectedModel = model
+            NSLog(
+              "🎯 GPT-MODEL-SELECTION: Model changed to \(selectedModel.displayName) (\(selectedModel.rawValue))"
+            )
           }
         }
       }

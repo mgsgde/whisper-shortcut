@@ -37,7 +37,13 @@ struct ModelSelectionView: View {
           .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
           .contentShape(Rectangle())
           .onTapGesture {
+            NSLog(
+              "🎯 TRANSCRIPTION-MODEL-SELECTION: User tapped on \(model.displayName) (\(model.rawValue))"
+            )
             selectedModel = model
+            NSLog(
+              "🎯 TRANSCRIPTION-MODEL-SELECTION: Model changed to \(selectedModel.displayName) (\(selectedModel.rawValue))"
+            )
           }
 
           if model != models.last {

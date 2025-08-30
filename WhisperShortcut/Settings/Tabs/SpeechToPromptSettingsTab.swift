@@ -54,7 +54,7 @@ struct SpeechToPromptSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Shortcuts",
-        subtitle: "Dictate Prompt → AI Assistant Response (uses clipboard as context)"
+        subtitle: "Dictate Prompt → AI Assistant Response (uses selected text as context)"
       )
 
       ShortcutInputRow(

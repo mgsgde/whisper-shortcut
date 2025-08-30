@@ -228,7 +228,7 @@ class SpeechService {
   func executePromptWithVoiceResponse(audioURL: URL, clipboardContext: String? = nil) async throws
     -> String
   {
-    NSLog("🔊 VOICE-RESPONSE-MODE: Starting prompt execution for voice output")
+    NSLog("🔊 VOICE-RESPONSE-MODE: Starting prompt execution for voice response")
 
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
@@ -253,9 +253,16 @@ class SpeechService {
       NSLog("🔊 VOICE-RESPONSE-MODE: No context available")
     }
 
-    // Execute prompt with GPT-5
-    NSLog("🔊 VOICE-RESPONSE-MODE: Executing GPT-5 prompt...")
-    let response = try await executeGPT5Prompt(
+    // Get the selected Voice Response GPT model from UserDefaults
+    let selectedVoiceResponseGPTModelString =
+      UserDefaults.standard.string(forKey: "selectedVoiceResponseGPTModel") ?? "gpt-5"
+    let selectedVoiceResponseGPTModel =
+      GPTModel(rawValue: selectedVoiceResponseGPTModelString) ?? .gpt5
+
+    NSLog(
+      "🔊 VOICE-RESPONSE-MODE: Executing prompt with GPT model: \(selectedVoiceResponseGPTModel.displayName) (\(selectedVoiceResponseGPTModel.rawValue))"
+    )
+    let response = try await executeGPT5PromptForVoiceResponse(
       userMessage: spokenText, clipboardContext: contextToUse, apiKey: apiKey)
     NSLog("🔊 VOICE-RESPONSE-MODE: GPT-5 response received (length: \(response.count))")
 
@@ -380,13 +387,35 @@ class SpeechService {
   {
     NSLog("🤖 PROMPT-MODE: Executing GPT-5 prompt")
     return try await executeGPT5Response(
-      userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey)
+      userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey,
+      isVoiceResponse: false)
   }
 
-  private func executeGPT5Response(userMessage: String, clipboardContext: String?, apiKey: String)
+  private func executeGPT5PromptForVoiceResponse(
+    userMessage: String, clipboardContext: String?, apiKey: String
+  )
     async throws -> String
   {
-    NSLog("🤖 PROMPT-MODE: Building GPT-5 request")
+    NSLog("🔊 VOICE-RESPONSE-MODE: Executing GPT-5 prompt for voice response")
+    return try await executeGPT5Response(
+      userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey,
+      isVoiceResponse: true)
+  }
+
+  private func executeGPT5Response(
+    userMessage: String, clipboardContext: String?, apiKey: String, isVoiceResponse: Bool = false
+  )
+    async throws -> String
+  {
+    // Get the selected GPT model from UserDefaults based on mode
+    let modelKey = isVoiceResponse ? "selectedVoiceResponseGPTModel" : "selectedGPTModel"
+    let selectedGPTModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5"
+    let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5
+
+    let modePrefix = isVoiceResponse ? "🔊 VOICE-RESPONSE-MODE" : "🤖 PROMPT-MODE"
+    NSLog(
+      "\(modePrefix): Building request with GPT model: \(selectedGPTModel.displayName) (\(selectedGPTModel.rawValue))"
+    )
 
     let url = URL(string: Constants.responsesEndpoint)!
     var request = URLRequest(url: url)
@@ -399,7 +428,7 @@ class SpeechService {
     NSLog("🤖 PROMPT-MODE: Prompt input built (length: \(fullInput.count))")
 
     let gpt5Request = GPT5ResponseRequest(
-      model: "gpt-5",
+      model: selectedGPTModel.rawValue,
       input: fullInput,
       reasoning: GPT5ResponseRequest.ReasoningConfig(effort: "minimal"),
       text: GPT5ResponseRequest.TextConfig(verbosity: "medium"),
@@ -409,19 +438,19 @@ class SpeechService {
     request.httpBody = try JSONEncoder().encode(gpt5Request)
 
     // Execute request
-    NSLog("🤖 PROMPT-MODE: Sending request to GPT-5 API")
+    NSLog("\(modePrefix): Sending request to GPT-5 API")
     let (data, response) = try await session.data(for: request)
 
     // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
-      NSLog("⚠️ PROMPT-MODE: Invalid response type from GPT-5")
+      NSLog("⚠️ \(modePrefix): Invalid response type from GPT-5")
       throw TranscriptionError.networkError("Invalid response")
     }
 
     if httpResponse.statusCode != 200 {
-      NSLog("⚠️ PROMPT-MODE: GPT-5 HTTP error \(httpResponse.statusCode)")
+      NSLog("⚠️ \(modePrefix): GPT-5 HTTP error \(httpResponse.statusCode)")
       if let errorBody = String(data: data, encoding: .utf8) {
-        NSLog("⚠️ PROMPT-MODE: Error response body: \(errorBody)")
+        NSLog("⚠️ \(modePrefix): Error response body: \(errorBody)")
       }
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error

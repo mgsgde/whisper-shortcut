@@ -36,31 +36,44 @@ class SettingsViewModel: ObservableObject {
     data.stopVoiceResponseEnabled = currentConfig.stopVoiceResponse.isEnabled
     data.openChatGPTEnabled = currentConfig.openChatGPT.isEnabled
 
-          // Load transcription model preference
-      if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
-       let savedModel = TranscriptionModel(rawValue: savedModelString)
-     {
-        data.selectedModel = savedModel
-      } else {
-        data.selectedModel = .gpt4oMiniTranscribe
-      }
+    // Load transcription model preference
+    if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
+      let savedModel = TranscriptionModel(rawValue: savedModelString)
+    {
+      data.selectedModel = savedModel
+    } else {
+      data.selectedModel = .gpt4oMiniTranscribe
+    }
 
-      // Load GPT model preferences
-      if let savedGPTModelString = UserDefaults.standard.string(forKey: "selectedGPTModel"),
-       let savedGPTModel = GPTModel(rawValue: savedGPTModelString)
-     {
-        data.selectedGPTModel = savedGPTModel
-      } else {
-        data.selectedGPTModel = .gpt5
-      }
+    // Load GPT model preferences
+    if let savedGPTModelString = UserDefaults.standard.string(forKey: "selectedGPTModel"),
+      let savedGPTModel = GPTModel(rawValue: savedGPTModelString)
+    {
+      data.selectedGPTModel = savedGPTModel
+      NSLog(
+        "🎛️ SETTINGS-VM: Loaded saved GPT model: \(savedGPTModel.displayName) (\(savedGPTModel.rawValue))"
+      )
+    } else {
+      data.selectedGPTModel = .gpt5
+      NSLog(
+        "🎛️ SETTINGS-VM: Using default GPT model: \(data.selectedGPTModel.displayName) (\(data.selectedGPTModel.rawValue))"
+      )
+    }
 
-      if let savedVoiceResponseGPTModelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseGPTModel"),
-       let savedVoiceResponseGPTModel = GPTModel(rawValue: savedVoiceResponseGPTModelString)
-     {
-        data.selectedVoiceResponseGPTModel = savedVoiceResponseGPTModel
-      } else {
-        data.selectedVoiceResponseGPTModel = .gpt5
-      }
+    if let savedVoiceResponseGPTModelString = UserDefaults.standard.string(
+      forKey: "selectedVoiceResponseGPTModel"),
+      let savedVoiceResponseGPTModel = GPTModel(rawValue: savedVoiceResponseGPTModelString)
+    {
+      data.selectedVoiceResponseGPTModel = savedVoiceResponseGPTModel
+      NSLog(
+        "🎛️ SETTINGS-VM: Loaded saved Voice Response GPT model: \(savedVoiceResponseGPTModel.displayName) (\(savedVoiceResponseGPTModel.rawValue))"
+      )
+    } else {
+      data.selectedVoiceResponseGPTModel = .gpt5
+      NSLog(
+        "🎛️ SETTINGS-VM: Using default Voice Response GPT model: \(data.selectedVoiceResponseGPTModel.displayName) (\(data.selectedVoiceResponseGPTModel.rawValue))"
+      )
+    }
 
     // Load custom prompt
     if let savedCustomPrompt = UserDefaults.standard.string(forKey: "customPromptText") {
@@ -202,11 +215,20 @@ class SettingsViewModel: ObservableObject {
     _ = KeychainManager.shared.saveAPIKey(data.apiKey)
     NSLog("🎛️ SETTINGS-VM: API key saved")
 
-          // Save model preferences
-      UserDefaults.standard.set(data.selectedModel.rawValue, forKey: "selectedTranscriptionModel")
-      UserDefaults.standard.set(data.selectedGPTModel.rawValue, forKey: "selectedGPTModel")
-      UserDefaults.standard.set(data.selectedVoiceResponseGPTModel.rawValue, forKey: "selectedVoiceResponseGPTModel")
-    NSLog("🎛️ SETTINGS-VM: Model preference saved: \(data.selectedModel.rawValue)")
+    // Save model preferences
+    UserDefaults.standard.set(data.selectedModel.rawValue, forKey: "selectedTranscriptionModel")
+    UserDefaults.standard.set(data.selectedGPTModel.rawValue, forKey: "selectedGPTModel")
+    UserDefaults.standard.set(
+      data.selectedVoiceResponseGPTModel.rawValue, forKey: "selectedVoiceResponseGPTModel")
+    NSLog(
+      "🎛️ SETTINGS-VM: Transcription model saved: \(data.selectedModel.displayName) (\(data.selectedModel.rawValue))"
+    )
+    NSLog(
+      "🎛️ SETTINGS-VM: GPT model saved: \(data.selectedGPTModel.displayName) (\(data.selectedGPTModel.rawValue))"
+    )
+    NSLog(
+      "🎛️ SETTINGS-VM: Voice Response GPT model saved: \(data.selectedVoiceResponseGPTModel.displayName) (\(data.selectedVoiceResponseGPTModel.rawValue))"
+    )
 
     // Save prompts
     UserDefaults.standard.set(data.customPromptText, forKey: "customPromptText")

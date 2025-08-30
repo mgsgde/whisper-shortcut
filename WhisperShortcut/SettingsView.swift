@@ -76,15 +76,14 @@ struct SettingsView: View {
         case .speechToPrompt:
           SpeechToPromptSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .speechToPromptWithVoiceResponse:
-          SpeechToPromptWithVoiceResponseSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+          SpeechToPromptWithVoiceResponseSettingsTab(
+            viewModel: viewModel, focusedField: $focusedField)
         }
       }
       .padding(.horizontal, SettingsConstants.horizontalPadding)
       .padding(.bottom, SettingsConstants.spacing)
     }
   }
-
-
 
   // MARK: - Action Buttons
   @ViewBuilder
@@ -102,7 +101,7 @@ struct SettingsView: View {
         }
       }
       .font(.body)
-          .fontWeight(.semibold)
+      .fontWeight(.semibold)
       .buttonStyle(.borderedProminent)
       .disabled(viewModel.data.isLoading)
 
@@ -121,8 +120,8 @@ struct SettingsView: View {
     if let error = await viewModel.saveSettings() {
       viewModel.showError(error)
     } else {
-      // Settings saved successfully, close window
-      dismiss()
+      // Settings saved successfully, keep window open
+      NSLog("🎛️ SETTINGS: Settings saved successfully - window remains open")
     }
   }
 

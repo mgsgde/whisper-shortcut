@@ -336,9 +336,13 @@ class MenuBarController: NSObject {
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
       let savedModel = TranscriptionModel(rawValue: savedModelString)
     {
+      NSLog(
+        "🎯 MENU-CONTROLLER: Loading saved transcription model: \(savedModel.displayName) (\(savedModel.rawValue))"
+      )
       speechService?.setModel(savedModel)
     } else {
       // Set default model to GPT-4o Transcribe
+      NSLog("🎯 MENU-CONTROLLER: Using default transcription model: GPT-4o Transcribe")
       speechService?.setModel(.gpt4oTranscribe)
     }
 
@@ -843,6 +847,9 @@ extension MenuBarController: ShortcutDelegate {
     }
 
     NSLog("🎙️ RECORDING-START: Starting transcription recording")
+    NSLog(
+      "🎙️ RECORDING-START: Using transcription model: \(speechService?.getCurrentModel().displayName ?? "Unknown")"
+    )
     lastModeWasPrompting = false
     lastModeWasVoiceResponse = false
     isRecording = true
@@ -874,6 +881,13 @@ extension MenuBarController: ShortcutDelegate {
     }
 
     NSLog("🤖 PROMPTING-START: Starting prompt recording")
+
+    // Get selected GPT model for logging
+    let selectedGPTModelString = UserDefaults.standard.string(forKey: "selectedGPTModel") ?? "gpt-5"
+    let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5
+    NSLog(
+      "🤖 PROMPTING-START: Using GPT model: \(selectedGPTModel.displayName) (\(selectedGPTModel.rawValue))"
+    )
 
     // Simulate Copy-Paste to capture selected text
     simulateCopyPaste()
@@ -932,6 +946,16 @@ extension MenuBarController: ShortcutDelegate {
     simulateCopyPaste()
 
     NSLog("🔊 VOICE-RESPONSE-START: Starting voice response recording")
+
+    // Get selected Voice Response GPT model for logging
+    let selectedVoiceResponseGPTModelString =
+      UserDefaults.standard.string(forKey: "selectedVoiceResponseGPTModel") ?? "gpt-5"
+    let selectedVoiceResponseGPTModel =
+      GPTModel(rawValue: selectedVoiceResponseGPTModelString) ?? .gpt5
+    NSLog(
+      "🔊 VOICE-RESPONSE-START: Using Voice Response GPT model: \(selectedVoiceResponseGPTModel.displayName) (\(selectedVoiceResponseGPTModel.rawValue))"
+    )
+
     lastModeWasPrompting = false
     lastModeWasVoiceResponse = true
     isVoiceResponse = true
@@ -978,6 +1002,9 @@ extension MenuBarController: ShortcutDelegate {
 // MARK: - AudioRecorderDelegate
 extension MenuBarController: AudioRecorderDelegate {
   func audioRecorderDidFinishRecording(audioURL: URL) {
+    NSLog(
+      "🎙️ AUDIO-RECORDER: Recording finished, processing audio file: \(audioURL.lastPathComponent)")
+
     // Store the audio URL for potential retry
     lastAudioURL = audioURL
     canRetry = false
@@ -986,6 +1013,10 @@ extension MenuBarController: AudioRecorderDelegate {
     // Use tracked mode since states are reset immediately in stop functions
     let wasPrompting = lastModeWasPrompting
     let wasVoiceResponse = lastModeWasVoiceResponse
+
+    NSLog(
+      "🎙️ AUDIO-RECORDER: Mode detection - wasPrompting: \(wasPrompting), wasVoiceResponse: \(wasVoiceResponse)"
+    )
 
     // Determine which mode we were in and process accordingly
     if wasVoiceResponse {
@@ -997,7 +1028,7 @@ extension MenuBarController: AudioRecorderDelegate {
         await performVoiceResponseExecution(audioURL: audioURL)
       }
     } else if wasPrompting {
-
+      NSLog("🤖 PROMPT-MODE: Processing audio for prompt")
       showProcessingStatus(mode: "prompt")
 
       // Start prompt execution
@@ -1005,7 +1036,7 @@ extension MenuBarController: AudioRecorderDelegate {
         await performPromptExecution(audioURL: audioURL)
       }
     } else {
-
+      NSLog("🎙️ TRANSCRIPTION-MODE: Processing audio for transcription")
       showProcessingStatus(mode: "transcription")
 
       // Start transcription
