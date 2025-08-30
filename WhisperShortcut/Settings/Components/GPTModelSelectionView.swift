@@ -47,12 +47,25 @@ struct GPTModelSelectionView: View {
           .textSelection(.enabled)
 
         switch selectedModel {
-        case .gpt5:
-          Text("• GPT-5: Highest quality and most capable model")
+        case .gpt5ChatLatest:
+          Text("• GPT-5 Chat Latest: Optimized for fast, general chat")
             .font(.callout)
             .foregroundColor(.secondary)
             .textSelection(.enabled)
-          Text("• Best for: Complex tasks, maximum quality")
+          Text("• Best for: Quick responses, low latency, everyday use")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
+          Text("• Cost: Medium")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
+        case .gpt5:
+          Text("• GPT-5: Deep reasoning and complex tasks")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
+          Text("• Best for: Complex problems, coding, detailed analysis")
             .font(.callout)
             .foregroundColor(.secondary)
             .textSelection(.enabled)

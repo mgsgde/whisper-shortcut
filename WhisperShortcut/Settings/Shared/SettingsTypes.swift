@@ -2,11 +2,14 @@ import Foundation
 
 // MARK: - GPT Model Enum
 enum GPTModel: String, CaseIterable {
+  case gpt5ChatLatest = "gpt-5-chat-latest"
   case gpt5 = "gpt-5"
   case gpt5Mini = "gpt-5-mini"
 
   var displayName: String {
     switch self {
+    case .gpt5ChatLatest:
+      return "GPT-5 Chat Latest"
     case .gpt5:
       return "GPT-5"
     case .gpt5Mini:
@@ -16,8 +19,10 @@ enum GPTModel: String, CaseIterable {
 
   var isRecommended: Bool {
     switch self {
-    case .gpt5:
+    case .gpt5ChatLatest:
       return true
+    case .gpt5:
+      return false
     case .gpt5Mini:
       return false
     }
@@ -27,6 +32,8 @@ enum GPTModel: String, CaseIterable {
     switch self {
     case .gpt5Mini:
       return "Low"
+    case .gpt5ChatLatest:
+      return "Medium"
     case .gpt5:
       return "High"
     }
@@ -66,8 +73,8 @@ struct SettingsData {
 
   // MARK: - Model & Prompt Settings
   var selectedModel: TranscriptionModel = .gpt4oTranscribe
-  var selectedGPTModel: GPTModel = .gpt5
-  var selectedVoiceResponseGPTModel: GPTModel = .gpt5
+  var selectedGPTModel: GPTModel = .gpt5ChatLatest
+  var selectedVoiceResponseGPTModel: GPTModel = .gpt5ChatLatest
   var customPromptText: String = ""
   var promptModeSystemPrompt: String = ""
   var audioPlaybackSpeed: Double = 1.0

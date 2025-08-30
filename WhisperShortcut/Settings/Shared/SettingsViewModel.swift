@@ -50,7 +50,7 @@ class SettingsViewModel: ObservableObject {
     {
       data.selectedGPTModel = savedGPTModel
     } else {
-      data.selectedGPTModel = .gpt5
+      data.selectedGPTModel = .gpt5ChatLatest
     }
 
     if let savedVoiceResponseGPTModelString = UserDefaults.standard.string(
@@ -59,7 +59,7 @@ class SettingsViewModel: ObservableObject {
     {
       data.selectedVoiceResponseGPTModel = savedVoiceResponseGPTModel
     } else {
-      data.selectedVoiceResponseGPTModel = .gpt5
+      data.selectedVoiceResponseGPTModel = .gpt5ChatLatest
     }
 
     // Load custom prompt

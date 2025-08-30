@@ -368,10 +368,11 @@ class SpeechService {
   )
     async throws -> String
   {
-    // Get the selected GPT model from UserDefaults based on mode
+        // Get the selected GPT model from UserDefaults based on mode
     let modelKey = isVoiceResponse ? "selectedVoiceResponseGPTModel" : "selectedGPTModel"
-    let selectedGPTModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5"
-    let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5
+    let selectedGPTModelString =
+      UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-chat-latest"
+    let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5ChatLatest
 
     let url = URL(string: Constants.responsesEndpoint)!
     var request = URLRequest(url: url)
@@ -382,10 +383,14 @@ class SpeechService {
     // Build prompt input
     let fullInput = buildPromptInput(userMessage: userMessage, clipboardContext: clipboardContext)
 
+    // Only use reasoning config for GPT-5 (not for GPT-5 Chat Latest or GPT-5 Mini)
+    let reasoningConfig =
+      selectedGPTModel == .gpt5 ? GPT5ResponseRequest.ReasoningConfig(effort: "minimal") : nil
+
     let gpt5Request = GPT5ResponseRequest(
       model: selectedGPTModel.rawValue,
       input: fullInput,
-      reasoning: GPT5ResponseRequest.ReasoningConfig(effort: "minimal"),
+      reasoning: reasoningConfig,
       text: GPT5ResponseRequest.TextConfig(verbosity: "medium"),
       previous_response_id: previousResponseId
     )
@@ -485,7 +490,7 @@ class SpeechService {
 
     // Test with a simple request
     let testRequest = GPT5ResponseRequest(
-      model: "gpt-5",
+      model: "gpt-5-chat-latest",
       input: "Hello, this is a test message.",
       reasoning: nil,
       text: nil,
