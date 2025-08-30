@@ -6,8 +6,8 @@ private enum TTSConstants {
   static let endpoint = "https://api.openai.com/v1/audio/speech"
   static let requestTimeout: TimeInterval = 30.0
   static let maxTextLength = 4096  // OpenAI TTS text limit
-  static let defaultVoice = "nova"  // OpenAI voice options: alloy, echo, fable, onyx, nova, shimmer
-  static let defaultModel = "tts-1"  // tts-1 or tts-1-hd
+  static let defaultVoice = "onyx"  // OpenAI voice options: alloy, echo, fable, onyx, nova, shimmer, coral, verse, ballad, ash, sage, marin, cedar
+  static let defaultModel = "gpt-4o-mini-tts"  // gpt-4o-mini-tts, gpt-4o-tts, tts-1, tts-1-hd
   static let outputFormat = "mp3"  // mp3, opus, aac, flac, wav, pcm
 }
 
