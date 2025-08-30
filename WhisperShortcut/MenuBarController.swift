@@ -65,6 +65,8 @@ class MenuBarController: NSObject {
   private var speechService: SpeechService?
   private var clipboardManager: ClipboardManager?
   private var audioLevelTimer: Timer?
+  private var audioPlaybackService: AudioPlaybackService?
+  private var isVoicePlaying: Bool = false
 
   // MARK: - Configuration
   private var currentConfig: ShortcutConfig
@@ -289,6 +291,15 @@ class MenuBarController: NSObject {
     stopVoiceResponseItem.tag = 110  // Tag for updating shortcut
     menu.addItem(stopVoiceResponseItem)
 
+    // Stop voice playback item (for interrupting speech)
+    let stopVoicePlaybackItem = NSMenuItem(
+      title: "Stop Voice Playback", action: #selector(stopVoicePlaybackFromMenu),
+      keyEquivalent: "")
+    stopVoicePlaybackItem.target = self
+    stopVoicePlaybackItem.tag = 111  // Tag for stop voice playback
+    stopVoicePlaybackItem.isHidden = true  // Initially hidden
+    menu.addItem(stopVoicePlaybackItem)
+
     menu.addItem(NSMenuItem.separator())
 
     // Open ChatGPT item with configurable shortcut
@@ -325,6 +336,7 @@ class MenuBarController: NSObject {
     shortcuts = Shortcuts()
     clipboardManager = ClipboardManager()
     speechService = SpeechService(clipboardManager: clipboardManager)
+    audioPlaybackService = AudioPlaybackService.shared
 
     // Load saved model preference and set it on the transcription service
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
@@ -360,6 +372,21 @@ class MenuBarController: NSObject {
       self,
       selector: #selector(voiceResponseReadyToSpeak),
       name: NSNotification.Name("VoiceResponseReadyToSpeak"),
+      object: nil
+    )
+
+    // Listen for voice playback status updates
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(voicePlaybackStarted),
+      name: NSNotification.Name("VoicePlaybackStarted"),
+      object: nil
+    )
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(voicePlaybackStopped),
+      name: NSNotification.Name("VoicePlaybackStopped"),
       object: nil
     )
 
@@ -439,6 +466,13 @@ class MenuBarController: NSObject {
       stopVoiceResponseItem.isEnabled = appMode.shouldEnableStopVoiceResponse
       stopVoiceResponseItem.isHidden = appMode.isBusy && !stopVoiceResponseItem.isEnabled
       stopVoiceResponseItem.title = "Stop & Speak Response"
+    }
+
+    // Update stop voice playback menu item
+    if let stopVoicePlaybackItem = menu.item(withTag: 111) {
+      stopVoicePlaybackItem.isEnabled = isVoicePlaying
+      stopVoicePlaybackItem.isHidden = !isVoicePlaying
+      stopVoicePlaybackItem.title = "Stop Voice Playback"
     }
 
     // Update retry menu item
@@ -665,6 +699,15 @@ class MenuBarController: NSObject {
     audioRecorder?.stopRecording()
   }
 
+  @objc private func stopVoicePlaybackFromMenu() {
+    guard isVoicePlaying else { return }
+
+    NSLog("🔇 MENU-CONTROLLER: Stopping voice playback from menu")
+    audioPlaybackService?.stopPlayback()
+    isVoicePlaying = false
+    updateMenuState()
+  }
+
   @objc private func openChatGPTFromMenu() {
 
     openChatGPTApp()
@@ -780,6 +823,22 @@ class MenuBarController: NSObject {
   @objc private func voiceResponseReadyToSpeak() {
     DispatchQueue.main.async {
       self.showSpeakingStatus()
+    }
+  }
+
+  @objc private func voicePlaybackStarted() {
+    DispatchQueue.main.async {
+      NSLog("🔊 MENU-CONTROLLER: Voice playback started")
+      self.isVoicePlaying = true
+      self.updateMenuState()
+    }
+  }
+
+  @objc private func voicePlaybackStopped() {
+    DispatchQueue.main.async {
+      NSLog("🔇 MENU-CONTROLLER: Voice playback stopped")
+      self.isVoicePlaying = false
+      self.updateMenuState()
     }
   }
 

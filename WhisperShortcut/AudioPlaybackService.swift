@@ -3,6 +3,9 @@ import Foundation
 
 // MARK: - Audio Playback Service Implementation
 class AudioPlaybackService: NSObject {
+  // Shared instance for global access
+  static let shared = AudioPlaybackService()
+
   private var audioPlayer: AVAudioPlayer?
   private var currentPlaybackCompletion: ((Bool) -> Void)?
 
@@ -19,6 +22,9 @@ class AudioPlaybackService: NSObject {
 
     // Stop any current playback
     stopCurrentPlayback()
+
+    // Notify that playback is starting
+    NotificationCenter.default.post(name: NSNotification.Name("VoicePlaybackStarted"), object: nil)
 
     // Create temporary file for audio playback
     let tempURL = try createTemporaryAudioFile(data: data)
@@ -63,7 +69,7 @@ class AudioPlaybackService: NSObject {
 
   // MARK: - Playback Control
   func stopPlayback() {
-
+    NSLog("🔇 AUDIO-PLAYBACK: Stopping playback")
     stopCurrentPlayback()
   }
 
@@ -71,7 +77,9 @@ class AudioPlaybackService: NSObject {
     if let player = audioPlayer {
       if player.isPlaying {
         player.stop()
-
+        // Notify that playback was stopped
+        NotificationCenter.default.post(
+          name: NSNotification.Name("VoicePlaybackStopped"), object: nil)
       }
       audioPlayer = nil
     }
@@ -146,6 +154,10 @@ class AudioPlaybackService: NSObject {
 // MARK: - AVAudioPlayerDelegate
 extension AudioPlaybackService: AVAudioPlayerDelegate {
   func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+    NSLog("🔇 AUDIO-PLAYBACK: Playback finished successfully: \(flag)")
+
+    // Notify that playback finished naturally
+    NotificationCenter.default.post(name: NSNotification.Name("VoicePlaybackStopped"), object: nil)
 
     if let completion = currentPlaybackCompletion {
       currentPlaybackCompletion = nil

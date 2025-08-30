@@ -43,9 +43,9 @@ enum GPTModel: String, CaseIterable {
 // MARK: - Settings Tab Definition
 enum SettingsTab: String, CaseIterable {
   case general = "General"
-  case speechToText = "Speech to Text"
-  case speechToPrompt = "Speech to Prompt"
-  case speechToPromptWithVoiceResponse = "Speech to Prompt (Voice)"
+  case speechToText = "Dictate"
+  case speechToPrompt = "Dictate Prompt"
+  case speechToPromptWithVoiceResponse = "Dictate Prompt (Voice)"
 }
 
 // MARK: - Settings Data Models

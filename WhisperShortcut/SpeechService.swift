@@ -79,7 +79,7 @@ class SpeechService {
     self.keychainManager = keychainManager
     self.clipboardManager = clipboardManager
     self.ttsService = TTSService(keychainManager: keychainManager)
-    self.audioPlaybackService = AudioPlaybackService()
+    self.audioPlaybackService = AudioPlaybackService.shared
 
   }
 
