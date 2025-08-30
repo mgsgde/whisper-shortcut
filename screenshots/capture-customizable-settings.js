@@ -1,7 +1,19 @@
+#!/usr/bin/env node
+
+/**
+ * Screenshot Capture Script for WhisperShortcut Customizable Settings
+ * 
+ * This script captures a screenshot of the customizable-settings.html file with 1280x800 resolution
+ * for use in App Store listings.
+ * 
+ * Usage: node capture-customizable-settings.js
+ * Output: customizable-settings.png in the screenshots directory
+ */
+
 const puppeteer = require('puppeteer');
 
 async function captureScreenshot() {
-  console.log('🖼️  Starting prompt screenshot capture...');
+  console.log('🖼️  Starting customizable settings screenshot capture...');
   
   const browser = await puppeteer.launch({
     headless: true,
@@ -18,7 +30,7 @@ async function captureScreenshot() {
     });
     
     // Load the HTML file
-    await page.goto('file://' + __dirname + '/prompt-screenshot.html');
+    await page.goto('file://' + __dirname + '/customizable-settings.html');
     
     // Wait for content to load
     console.log('⏳ Waiting for content to load...');
@@ -26,11 +38,11 @@ async function captureScreenshot() {
     
     // Take screenshot
     await page.screenshot({ 
-      path: 'prompt-screenshot.png',
+      path: 'customizable-settings.png',
       fullPage: false
     });
     
-    console.log('✅ Prompt screenshot saved as: prompt-screenshot.png');
+    console.log('✅ Screenshot saved as: customizable-settings.png');
   } catch (error) {
     console.error('❌ Error capturing screenshot:', error);
   } finally {
