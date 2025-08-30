@@ -51,7 +51,7 @@ class SettingsViewModel: ObservableObject {
      {
         data.selectedGPTModel = savedGPTModel
       } else {
-        data.selectedGPTModel = .gpt5Mini
+        data.selectedGPTModel = .gpt5
       }
 
       if let savedVoiceResponseGPTModelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseGPTModel"),
@@ -59,7 +59,7 @@ class SettingsViewModel: ObservableObject {
      {
         data.selectedVoiceResponseGPTModel = savedVoiceResponseGPTModel
       } else {
-        data.selectedVoiceResponseGPTModel = .gpt5Mini
+        data.selectedVoiceResponseGPTModel = .gpt5
       }
 
     // Load custom prompt

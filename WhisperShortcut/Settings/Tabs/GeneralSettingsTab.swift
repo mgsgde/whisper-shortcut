@@ -1,20 +1,23 @@
 import SwiftUI
 
-/// General Settings Tab - API Key und Support & Feedback
+/// General Settings Tab - API Key, Open ChatGPT Shortcut und Support & Feedback
 struct GeneralSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
-  
+
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.spacing) {
       // API Key Section
       apiKeySection
-      
+
+      // Open ChatGPT Shortcut Section
+      openChatGPTSection
+
       // Support & Feedback Section
       supportFeedbackSection
     }
   }
-  
+
   // MARK: - API Key Section
   @ViewBuilder
   private var apiKeySection: some View {
@@ -27,7 +30,7 @@ struct GeneralSettingsTab: View {
           .fontWeight(.medium)
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
           .textSelection(.enabled)
-        
+
         TextField("sk-...", text: $viewModel.data.apiKey)
           .textFieldStyle(.roundedBorder)
           .font(.system(.body, design: .monospaced))
@@ -37,7 +40,7 @@ struct GeneralSettingsTab: View {
             viewModel.data.apiKey = KeychainManager.shared.getAPIKey() ?? ""
           }
           .focused($focusedField, equals: .apiKey)
-        
+
         Spacer()
       }
 
@@ -50,7 +53,45 @@ struct GeneralSettingsTab: View {
       .textSelection(.enabled)
     }
   }
-  
+
+  // MARK: - Open ChatGPT Shortcut Section
+  @ViewBuilder
+  private var openChatGPTSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
+      SectionHeader(
+        title: "Open ChatGPT Shortcut",
+        subtitle: "Quick access to ChatGPT in your browser"
+      )
+
+      ShortcutInputRow(
+        label: "Open ChatGPT:",
+        placeholder: "e.g., command+1",
+        text: $viewModel.data.openChatGPT,
+        isEnabled: $viewModel.data.openChatGPTEnabled,
+        focusedField: .openChatGPT,
+        currentFocus: $focusedField
+      )
+
+      // Available Keys Information
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Available keys:")
+          .font(.callout)
+          .fontWeight(.semibold)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+
+        Text(
+          "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • up • down • left • right • comma • period"
+        )
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+      .textSelection(.enabled)
+    }
+  }
+
   // MARK: - Support & Feedback Section
   @ViewBuilder
   private var supportFeedbackSection: some View {
@@ -99,13 +140,13 @@ struct GeneralSettingsTab: View {
 }
 
 #if DEBUG
-struct GeneralSettingsTab_Previews: PreviewProvider {
-  static var previews: some View {
-    @FocusState var focusedField: SettingsFocusField?
-    
-    GeneralSettingsTab(viewModel: SettingsViewModel(), focusedField: $focusedField)
-      .padding()
-      .frame(width: 600, height: 400)
+  struct GeneralSettingsTab_Previews: PreviewProvider {
+    static var previews: some View {
+      @FocusState var focusedField: SettingsFocusField?
+
+      GeneralSettingsTab(viewModel: SettingsViewModel(), focusedField: $focusedField)
+        .padding()
+        .frame(width: 600, height: 400)
+    }
   }
-}
 #endif

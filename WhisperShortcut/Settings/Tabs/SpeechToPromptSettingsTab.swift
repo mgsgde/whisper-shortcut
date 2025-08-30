@@ -4,23 +4,23 @@ import SwiftUI
 struct SpeechToPromptSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
-  
+
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.spacing) {
       // Shortcuts Section
       shortcutsSection
-      
-      // Prompt Section  
+
+      // Prompt Section
       promptSection
-      
+
       // Model Selection Section
       modelSection
-      
+
       // Usage Instructions
       usageInstructionsSection
     }
   }
-  
+
   // MARK: - Shortcuts Section
   @ViewBuilder
   private var shortcutsSection: some View {
@@ -47,7 +47,7 @@ struct SpeechToPromptSettingsTab: View {
         focusedField: .stopPrompting,
         currentFocus: $focusedField
       )
-      
+
       // Available Keys Information
       VStack(alignment: .leading, spacing: 8) {
         Text("Available keys:")
@@ -67,21 +67,22 @@ struct SpeechToPromptSettingsTab: View {
       .textSelection(.enabled)
     }
   }
-  
+
   // MARK: - Prompt Section
   @ViewBuilder
   private var promptSection: some View {
     PromptTextEditor(
       title: "AI Assistant System Prompt",
       subtitle: "System Instructions for AI Assistant:",
-      helpText: "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
+      helpText:
+        "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
       defaultValue: AppConstants.defaultPromptModeSystemPrompt,
       text: $viewModel.data.promptModeSystemPrompt,
       focusedField: .promptModeSystemPrompt,
       currentFocus: $focusedField
     )
   }
-  
+
   // MARK: - Model Section
   @ViewBuilder
   private var modelSection: some View {
@@ -90,54 +91,38 @@ struct SpeechToPromptSettingsTab: View {
       selectedModel: $viewModel.data.selectedGPTModel
     )
   }
-  
+
   // MARK: - Usage Instructions
   @ViewBuilder
   private var usageInstructionsSection: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("How to use Speech to Prompt:")
-        .font(.callout)
-        .fontWeight(.semibold)
-        .foregroundColor(.secondary)
-        .textSelection(.enabled)
+    VStack(alignment: .leading, spacing: SettingsConstants.sectionSpacing) {
+      SectionHeader(
+        title: "How to use Speech to Prompt",
+        subtitle: "Step-by-step instructions for using the prompt mode"
+      )
 
       VStack(alignment: .leading, spacing: 8) {
-        Text("1. Copy any text to clipboard (⌘C)")
+        Text("1. Select text")
           .textSelection(.enabled)
-        Text("2. Dictate your prompt (e.g., ⌘⇧J)")
+        Text("2. Dictate your prompt")
           .textSelection(.enabled)
-        Text("3. AI receives both your voice and clipboard text")
+        Text("3. AI receives both your voice and selected text")
           .textSelection(.enabled)
       }
       .font(.callout)
       .foregroundColor(.secondary)
-
-      Text(
-        "💡 Auto-copy: [GitHub version](https://github.com/mgsgde/whisper-shortcut) automatically copies selected text. Mac App Store version requires manual ⌘C."
-      )
-      .font(.callout)
-      .foregroundColor(.orange)
-      .padding(.top, 4)
-      .textSelection(.enabled)
     }
-    .padding(12)
-    .background(Color(.controlBackgroundColor).opacity(0.5))
-    .cornerRadius(SettingsConstants.cornerRadius)
-    .overlay(
-      RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
-        .stroke(Color(.separatorColor), lineWidth: 1)
-    )
   }
 }
 
 #if DEBUG
-struct SpeechToPromptSettingsTab_Previews: PreviewProvider {
-  static var previews: some View {
-    @FocusState var focusedField: SettingsFocusField?
-    
-    SpeechToPromptSettingsTab(viewModel: SettingsViewModel(), focusedField: $focusedField)
-      .padding()
-      .frame(width: 600, height: 800)
+  struct SpeechToPromptSettingsTab_Previews: PreviewProvider {
+    static var previews: some View {
+      @FocusState var focusedField: SettingsFocusField?
+
+      SpeechToPromptSettingsTab(viewModel: SettingsViewModel(), focusedField: $focusedField)
+        .padding()
+        .frame(width: 600, height: 800)
+    }
   }
-}
 #endif

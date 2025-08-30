@@ -8,7 +8,7 @@ enum GPTModel: String, CaseIterable {
   var displayName: String {
     switch self {
     case .gpt5:
-      return "GPT-5"
+      return "GPT-5 recommended"
     case .gpt5Mini:
       return "GPT-5 Mini"
     }
@@ -16,9 +16,9 @@ enum GPTModel: String, CaseIterable {
 
   var isRecommended: Bool {
     switch self {
-    case .gpt5Mini:
-      return true
     case .gpt5:
+      return true
+    case .gpt5Mini:
       return false
     }
   }
@@ -66,8 +66,8 @@ struct SettingsData {
 
   // MARK: - Model & Prompt Settings
   var selectedModel: TranscriptionModel = .gpt4oTranscribe
-  var selectedGPTModel: GPTModel = .gpt5Mini
-  var selectedVoiceResponseGPTModel: GPTModel = .gpt5Mini
+  var selectedGPTModel: GPTModel = .gpt5
+  var selectedVoiceResponseGPTModel: GPTModel = .gpt5
   var customPromptText: String = ""
   var promptModeSystemPrompt: String = ""
   var audioPlaybackSpeed: Double = 1.0
