@@ -109,8 +109,8 @@ struct ShortcutConfig: Codable {
     stopRecording: ShortcutDefinition(key: .e, modifiers: [.command]),
     startPrompting: ShortcutDefinition(key: .j, modifiers: [.command, .shift]),
     stopPrompting: ShortcutDefinition(key: .p, modifiers: [.command]),
-    startVoiceResponse: ShortcutDefinition(key: .h, modifiers: [.command, .shift]),
-    stopVoiceResponse: ShortcutDefinition(key: .h, modifiers: [.command]),
+    startVoiceResponse: ShortcutDefinition(key: .g, modifiers: [.command, .shift]),
+    stopVoiceResponse: ShortcutDefinition(key: .g, modifiers: [.command]),
     openChatGPT: ShortcutDefinition(key: .one, modifiers: [.command])
   )
 }
@@ -230,7 +230,8 @@ class ShortcutConfigManager {
     let stopPrompting =
       loadShortcut(for: Constants.stopPromptingKey) ?? ShortcutConfig.default.stopPrompting
     let startVoiceResponse =
-      loadShortcut(for: Constants.startVoiceResponseKey) ?? ShortcutConfig.default.startVoiceResponse
+      loadShortcut(for: Constants.startVoiceResponseKey)
+      ?? ShortcutConfig.default.startVoiceResponse
     let stopVoiceResponse =
       loadShortcut(for: Constants.stopVoiceResponseKey) ?? ShortcutConfig.default.stopVoiceResponse
     let openChatGPT =

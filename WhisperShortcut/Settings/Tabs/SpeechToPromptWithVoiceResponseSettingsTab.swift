@@ -72,7 +72,7 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
 
       ShortcutInputRow(
         label: "Start Voice Response:",
-        placeholder: "e.g., command+shift+h",
+        placeholder: "e.g., command+shift+g",
         text: $viewModel.data.startVoiceResponse,
         isEnabled: $viewModel.data.startVoiceResponseEnabled,
         focusedField: .startVoiceResponse,
@@ -81,7 +81,7 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
 
       ShortcutInputRow(
         label: "Stop Voice Response:",
-        placeholder: "e.g., command+h",
+        placeholder: "e.g., command+g",
         text: $viewModel.data.stopVoiceResponse,
         isEnabled: $viewModel.data.stopVoiceResponseEnabled,
         focusedField: .stopVoiceResponse,
