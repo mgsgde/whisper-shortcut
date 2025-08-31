@@ -41,30 +41,16 @@ struct SpeechToTextSettingsTab: View {
   private var shortcutsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Shortcuts",
-        subtitle: "Dictate → Text Conversion"
+        title: "Toggle Shortcut",
+        subtitle: "Start/Stop Dictation with one shortcut"
       )
 
       ShortcutInputRow(
-        label: "Start Dictation:",
+        label: "Toggle Dictation:",
         placeholder: "e.g., command+shift+e",
-        text: $viewModel.data.startShortcut,
-        isEnabled: $viewModel.data.startShortcutEnabled,
-        focusedField: .startShortcut,
-        currentFocus: $focusedField,
-        onShortcutChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        }
-      )
-
-      ShortcutInputRow(
-        label: "Stop Recording:",
-        placeholder: "e.g., command+e",
-        text: $viewModel.data.stopShortcut,
-        isEnabled: $viewModel.data.stopShortcutEnabled,
-        focusedField: .stopShortcut,
+        text: $viewModel.data.toggleDictation,
+        isEnabled: $viewModel.data.toggleDictationEnabled,
+        focusedField: .toggleDictation,
         currentFocus: $focusedField,
         onShortcutChanged: {
           Task {

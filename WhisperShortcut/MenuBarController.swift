@@ -207,23 +207,14 @@ class MenuBarController: NSObject {
     dictationHeader.tag = 101
     menu.addItem(dictationHeader)
 
-    // Start recording item with configurable shortcut
-    let startItem = NSMenuItem(
-      title: "Dictate", action: #selector(startRecordingFromMenu),
+    // Toggle dictation item with configurable shortcut
+    let toggleDictationItem = NSMenuItem(
+      title: "Toggle Dictation", action: #selector(toggleDictationFromMenu),
       keyEquivalent: "")
-    startItem.keyEquivalentModifierMask = []
-    startItem.target = self
-    startItem.tag = 102  // Tag for updating shortcut
-    menu.addItem(startItem)
-
-    // Stop recording item with configurable shortcut
-    let stopItem = NSMenuItem(
-      title: "Stop & Copy to Clipboard", action: #selector(stopRecordingFromMenu), keyEquivalent: ""
-    )
-    stopItem.keyEquivalentModifierMask = []
-    stopItem.target = self
-    stopItem.tag = 103  // Tag for updating shortcut
-    menu.addItem(stopItem)
+    toggleDictationItem.keyEquivalentModifierMask = []
+    toggleDictationItem.target = self
+    toggleDictationItem.tag = 102  // Tag for updating shortcut
+    menu.addItem(toggleDictationItem)
 
     menu.addItem(NSMenuItem.separator())
 
@@ -233,23 +224,14 @@ class MenuBarController: NSObject {
     promptHeader.tag = 104
     menu.addItem(promptHeader)
 
-    // Start prompting item with configurable shortcut
-    let startPromptItem = NSMenuItem(
-      title: "Dictate Prompt", action: #selector(startPromptingFromMenu),
+    // Toggle prompting item with configurable shortcut
+    let togglePromptingItem = NSMenuItem(
+      title: "Toggle Prompting", action: #selector(togglePromptingFromMenu),
       keyEquivalent: "")
-    startPromptItem.keyEquivalentModifierMask = []
-    startPromptItem.target = self
-    startPromptItem.tag = 105  // Tag for updating shortcut
-    menu.addItem(startPromptItem)
-
-    // Stop prompting item with configurable shortcut
-    let stopPromptItem = NSMenuItem(
-      title: "Stop & Copy to Clipboard", action: #selector(stopPromptingFromMenu),
-      keyEquivalent: "")
-    stopPromptItem.keyEquivalentModifierMask = []
-    stopPromptItem.target = self
-    stopPromptItem.tag = 106  // Tag for updating shortcut
-    menu.addItem(stopPromptItem)
+    togglePromptingItem.keyEquivalentModifierMask = []
+    togglePromptingItem.target = self
+    togglePromptingItem.tag = 105  // Tag for updating shortcut
+    menu.addItem(togglePromptingItem)
 
     menu.addItem(NSMenuItem.separator())
 
@@ -260,23 +242,14 @@ class MenuBarController: NSObject {
     voiceResponseHeader.tag = 108
     menu.addItem(voiceResponseHeader)
 
-    // Start voice response item with configurable shortcut
-    let startVoiceResponseItem = NSMenuItem(
-      title: "Dictate Prompt", action: #selector(startVoiceResponseFromMenu),
+    // Toggle voice response item with configurable shortcut
+    let toggleVoiceResponseItem = NSMenuItem(
+      title: "Toggle Voice Response", action: #selector(toggleVoiceResponseFromMenu),
       keyEquivalent: "")
-    startVoiceResponseItem.keyEquivalentModifierMask = []
-    startVoiceResponseItem.target = self
-    startVoiceResponseItem.tag = 109  // Tag for updating shortcut
-    menu.addItem(startVoiceResponseItem)
-
-    // Stop voice response item with configurable shortcut
-    let stopVoiceResponseItem = NSMenuItem(
-      title: "Stop & Speak Response", action: #selector(stopVoiceResponseFromMenu),
-      keyEquivalent: "")
-    stopVoiceResponseItem.keyEquivalentModifierMask = []
-    stopVoiceResponseItem.target = self
-    stopVoiceResponseItem.tag = 110  // Tag for updating shortcut
-    menu.addItem(stopVoiceResponseItem)
+    toggleVoiceResponseItem.keyEquivalentModifierMask = []
+    toggleVoiceResponseItem.target = self
+    toggleVoiceResponseItem.tag = 109  // Tag for updating shortcut
+    menu.addItem(toggleVoiceResponseItem)
 
     // Stop voice playback item (for interrupting speech)
     let stopVoicePlaybackItem = NSMenuItem(
@@ -415,44 +388,34 @@ class MenuBarController: NSObject {
 
     }
 
-    // Update recording menu items
-    if let startRecordingItem = menu.item(withTag: 102) {
-      startRecordingItem.isEnabled = appMode.shouldEnableStartRecording(hasAPIKey: hasAPIKey)
-      startRecordingItem.isHidden = appMode.isBusy && !startRecordingItem.isEnabled
-      startRecordingItem.title = "Dictate"
+    // Update toggle dictation menu item
+    if let toggleDictationItem = menu.item(withTag: 102) {
+      toggleDictationItem.isEnabled = appMode.canStartNewRecording && hasAPIKey
+      toggleDictationItem.isHidden = false
+      toggleDictationItem.title =
+        appMode.isRecording && appMode.recordingType == .transcription
+        ? "Stop Dictation"
+        : "Start Dictation"
     }
 
-    if let stopRecordingItem = menu.item(withTag: 103) {
-      stopRecordingItem.isEnabled = appMode.shouldEnableStopRecording
-      stopRecordingItem.isHidden = appMode.isBusy && !stopRecordingItem.isEnabled
-      stopRecordingItem.title = "Stop & Copy to Clipboard"
+    // Update toggle prompting menu item
+    if let togglePromptingItem = menu.item(withTag: 105) {
+      togglePromptingItem.isEnabled = appMode.canStartNewRecording && hasAPIKey
+      togglePromptingItem.isHidden = false
+      togglePromptingItem.title =
+        appMode.isRecording && appMode.recordingType == .prompt
+        ? "Stop Prompting"
+        : "Start Prompting"
     }
 
-    // Update prompting menu items
-    if let startPromptingItem = menu.item(withTag: 105) {
-      startPromptingItem.isEnabled = appMode.shouldEnableStartPrompting(hasAPIKey: hasAPIKey)
-      startPromptingItem.isHidden = appMode.isBusy && !startPromptingItem.isEnabled
-      startPromptingItem.title = "Dictate Prompt"
-    }
-
-    if let stopPromptingItem = menu.item(withTag: 106) {
-      stopPromptingItem.isEnabled = appMode.shouldEnableStopPrompting
-      stopPromptingItem.isHidden = appMode.isBusy && !stopPromptingItem.isEnabled
-      stopPromptingItem.title = "Stop & Copy to Clipboard"
-    }
-
-    // Update voice response menu items
-    if let startVoiceResponseItem = menu.item(withTag: 109) {
-      startVoiceResponseItem.isEnabled = appMode.shouldEnableStartVoiceResponse(
-        hasAPIKey: hasAPIKey)
-      startVoiceResponseItem.isHidden = appMode.isBusy && !startVoiceResponseItem.isEnabled
-      startVoiceResponseItem.title = "Dictate Prompt"
-    }
-
-    if let stopVoiceResponseItem = menu.item(withTag: 110) {
-      stopVoiceResponseItem.isEnabled = appMode.shouldEnableStopVoiceResponse
-      stopVoiceResponseItem.isHidden = appMode.isBusy && !stopVoiceResponseItem.isEnabled
-      stopVoiceResponseItem.title = "Stop & Speak Response"
+    // Update toggle voice response menu item
+    if let toggleVoiceResponseItem = menu.item(withTag: 109) {
+      toggleVoiceResponseItem.isEnabled = appMode.canStartNewRecording && hasAPIKey
+      toggleVoiceResponseItem.isHidden = false
+      toggleVoiceResponseItem.title =
+        appMode.isRecording && appMode.recordingType == .voiceResponse
+        ? "Stop Voice Response"
+        : "Start Voice Response"
     }
 
     // Update stop voice playback menu item
@@ -476,84 +439,55 @@ class MenuBarController: NSObject {
   private func updateMenuShortcuts() {
     guard let menu = statusItem?.menu else { return }
 
-    // Update start recording shortcut
-    if let startItem = menu.item(withTag: 102) {
+    // Update toggle dictation shortcut
+    if let toggleDictationItem = menu.item(withTag: 102) {
       if currentConfig.startRecording.isEnabled {
-        startItem.keyEquivalent = currentConfig.startRecording.key.displayString.lowercased()
-        startItem.keyEquivalentModifierMask = currentConfig.startRecording.modifiers
-        startItem.title = "Dictate"
+        toggleDictationItem.keyEquivalent = currentConfig.startRecording.key.displayString
+          .lowercased()
+        toggleDictationItem.keyEquivalentModifierMask = currentConfig.startRecording.modifiers
+        toggleDictationItem.title =
+          appMode.isRecording && appMode.recordingType == .transcription
+          ? "Stop Dictation"
+          : "Start Dictation"
       } else {
-        startItem.keyEquivalent = ""
-        startItem.keyEquivalentModifierMask = []
-        startItem.title = "Dictate (Disabled)"
+        toggleDictationItem.keyEquivalent = ""
+        toggleDictationItem.keyEquivalentModifierMask = []
+        toggleDictationItem.title = "Toggle Dictation (Disabled)"
       }
     }
 
-    // Update stop recording shortcut
-    if let stopItem = menu.item(withTag: 103) {
-      if currentConfig.stopRecording.isEnabled {
-        stopItem.keyEquivalent = currentConfig.stopRecording.key.displayString.lowercased()
-        stopItem.keyEquivalentModifierMask = currentConfig.stopRecording.modifiers
-        stopItem.title = "Stop & Copy to Clipboard"
-      } else {
-        stopItem.keyEquivalent = ""
-        stopItem.keyEquivalentModifierMask = []
-        stopItem.title = "Stop & Copy to Clipboard (Disabled)"
-      }
-    }
-
-    // Update start prompting shortcut
-    if let startPromptItem = menu.item(withTag: 105) {
+    // Update toggle prompting shortcut
+    if let togglePromptingItem = menu.item(withTag: 105) {
       if currentConfig.startPrompting.isEnabled {
-        startPromptItem.keyEquivalent = currentConfig.startPrompting.key.displayString.lowercased()
-        startPromptItem.keyEquivalentModifierMask = currentConfig.startPrompting.modifiers
-        startPromptItem.title = "Dictate Prompt"
+        togglePromptingItem.keyEquivalent = currentConfig.startPrompting.key.displayString
+          .lowercased()
+        togglePromptingItem.keyEquivalentModifierMask = currentConfig.startPrompting.modifiers
+        togglePromptingItem.title =
+          appMode.isRecording && appMode.recordingType == .prompt
+          ? "Stop Prompting"
+          : "Start Prompting"
       } else {
-        startPromptItem.keyEquivalent = ""
-        startPromptItem.keyEquivalentModifierMask = []
-        startPromptItem.title = "Dictate Prompt (Disabled)"
+        togglePromptingItem.keyEquivalent = ""
+        togglePromptingItem.keyEquivalentModifierMask = []
+        togglePromptingItem.title = "Toggle Prompting (Disabled)"
       }
     }
 
-    // Update stop prompting shortcut
-    if let stopPromptItem = menu.item(withTag: 106) {
-      if currentConfig.stopPrompting.isEnabled {
-        stopPromptItem.keyEquivalent = currentConfig.stopPrompting.key.displayString.lowercased()
-        stopPromptItem.keyEquivalentModifierMask = currentConfig.stopPrompting.modifiers
-        stopPromptItem.title = "Stop & Copy to Clipboard"
-      } else {
-        stopPromptItem.keyEquivalent = ""
-        stopPromptItem.keyEquivalentModifierMask = []
-        stopPromptItem.title = "Stop & Copy to Clipboard (Disabled)"
-      }
-    }
-
-    // Update start voice response shortcut
-    if let startVoiceResponseItem = menu.item(withTag: 109) {
+    // Update toggle voice response shortcut
+    if let toggleVoiceResponseItem = menu.item(withTag: 109) {
       if currentConfig.startVoiceResponse.isEnabled {
-        startVoiceResponseItem.keyEquivalent = currentConfig.startVoiceResponse.key.displayString
+        toggleVoiceResponseItem.keyEquivalent = currentConfig.startVoiceResponse.key.displayString
           .lowercased()
-        startVoiceResponseItem.keyEquivalentModifierMask =
+        toggleVoiceResponseItem.keyEquivalentModifierMask =
           currentConfig.startVoiceResponse.modifiers
-        startVoiceResponseItem.title = "Dictate Prompt"
+        toggleVoiceResponseItem.title =
+          appMode.isRecording && appMode.recordingType == .voiceResponse
+          ? "Stop Voice Response"
+          : "Start Voice Response"
       } else {
-        startVoiceResponseItem.keyEquivalent = ""
-        startVoiceResponseItem.keyEquivalentModifierMask = []
-        startVoiceResponseItem.title = "Dictate Prompt (Disabled)"
-      }
-    }
-
-    // Update stop voice response shortcut
-    if let stopVoiceResponseItem = menu.item(withTag: 110) {
-      if currentConfig.stopVoiceResponse.isEnabled {
-        stopVoiceResponseItem.keyEquivalent = currentConfig.stopVoiceResponse.key.displayString
-          .lowercased()
-        stopVoiceResponseItem.keyEquivalentModifierMask = currentConfig.stopVoiceResponse.modifiers
-        stopVoiceResponseItem.title = "Stop & Speak Response"
-      } else {
-        stopVoiceResponseItem.keyEquivalent = ""
-        stopVoiceResponseItem.keyEquivalentModifierMask = []
-        stopVoiceResponseItem.title = "Stop & Speak Response (Disabled)"
+        toggleVoiceResponseItem.keyEquivalent = ""
+        toggleVoiceResponseItem.keyEquivalentModifierMask = []
+        toggleVoiceResponseItem.title = "Toggle Voice Response (Disabled)"
       }
     }
 
@@ -571,6 +505,16 @@ class MenuBarController: NSObject {
     }
   }
 
+  @objc private func toggleDictationFromMenu() {
+    if appMode.isRecording && appMode.recordingType == .transcription {
+      // Stop recording
+      stopRecordingFromMenu()
+    } else if appMode.canStartNewRecording {
+      // Start recording
+      startRecordingFromMenu()
+    }
+  }
+
   @objc private func startRecordingFromMenu() {
     guard !isRecording else { return }
 
@@ -585,7 +529,16 @@ class MenuBarController: NSObject {
     // Don't reset isRecording here - it will be used in audioRecorderDidFinishRecording
     updateMenuState()
     audioRecorder?.stopRecording()
+  }
 
+  @objc private func togglePromptingFromMenu() {
+    if appMode.isRecording && appMode.recordingType == .prompt {
+      // Stop prompting
+      stopPromptingFromMenu()
+    } else if appMode.canStartNewRecording {
+      // Start prompting
+      startPromptingFromMenu()
+    }
   }
 
   @objc private func startPromptingFromMenu() {
@@ -618,6 +571,16 @@ class MenuBarController: NSObject {
     updateMenuState()
     audioRecorder?.stopRecording()
 
+  }
+
+  @objc private func toggleVoiceResponseFromMenu() {
+    if appMode.isRecording && appMode.recordingType == .voiceResponse {
+      // Stop voice response
+      stopVoiceResponseFromMenu()
+    } else if appMode.canStartNewRecording {
+      // Start voice response
+      startVoiceResponseFromMenu()
+    }
   }
 
   @objc private func startVoiceResponseFromMenu() {
@@ -792,136 +755,6 @@ class MenuBarController: NSObject {
     audioRecorder?.cleanup()
     statusItem = nil
     NotificationCenter.default.removeObserver(self)
-  }
-}
-
-// MARK: - ShortcutDelegate
-extension MenuBarController: ShortcutDelegate {
-  func startRecording() {
-    // Comprehensive state check - no new recordings if ANYTHING is active
-    guard appMode == .idle else {
-      return
-    }
-
-    lastModeWasPrompting = false
-    lastModeWasVoiceResponse = false
-    isRecording = true
-    updateMenuState()
-    audioRecorder?.startRecording()
-    startAudioLevelMonitoring()
-  }
-
-  func stopRecording() {
-    guard isRecording else { return }
-
-    isRecording = false
-    updateMenuState()
-    stopAudioLevelMonitoring()
-    audioRecorder?.stopRecording()
-  }
-
-  func startPrompting() {
-    // Comprehensive state check - no new recordings if ANYTHING is active
-    guard appMode == .idle else {
-      return
-    }
-
-    // Check accessibility permission first
-    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-      return
-    }
-
-    // Simulate Copy-Paste to capture selected text
-    simulateCopyPaste()
-
-    lastModeWasPrompting = true
-    lastModeWasVoiceResponse = false
-    isPrompting = true
-    updateMenuState()
-    audioRecorder?.startRecording()
-    startAudioLevelMonitoring()
-  }
-
-  private func simulateCopyPaste() {
-    // Simulate Cmd+C to copy selected text
-    let source = CGEventSource(stateID: .combinedSessionState)
-
-    // Create Cmd+C event
-    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true)  // C key
-    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
-
-    // Add Command modifier
-    cmdDown?.flags = .maskCommand
-    cmdUp?.flags = .maskCommand
-
-    // Post the events
-    cmdDown?.post(tap: .cghidEventTap)
-    cmdUp?.post(tap: .cghidEventTap)
-
-  }
-
-  func stopPrompting() {
-    guard isPrompting else { return }
-
-    isPrompting = false
-    updateMenuState()
-    stopAudioLevelMonitoring()
-    audioRecorder?.stopRecording()
-  }
-
-  func startVoiceResponse() {
-    // Comprehensive state check - no new recordings if ANYTHING is active
-    guard appMode == .idle else {
-      return
-    }
-
-    // Check accessibility permission first
-    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-      return
-    }
-
-    // Simulate Copy-Paste to capture selected text
-    simulateCopyPaste()
-
-    lastModeWasPrompting = false
-    lastModeWasVoiceResponse = true
-    isVoiceResponse = true
-    updateMenuState()
-    startAudioLevelMonitoring()
-    audioRecorder?.startRecording()
-  }
-
-  func stopVoiceResponse() {
-    guard isVoiceResponse else { return }
-
-    isVoiceResponse = false
-    updateMenuState()
-    stopAudioLevelMonitoring()
-    audioRecorder?.stopRecording()
-  }
-
-  func openChatGPT() {
-    openChatGPTApp()
-  }
-
-  private func startAudioLevelMonitoring() {
-    // Monitor audio levels every 0.5 seconds during recording
-    audioLevelTimer = Timer.scheduledTimer(
-      withTimeInterval: Constants.audioLevelUpdateInterval, repeats: true
-    ) { [weak self] _ in
-      if let levels = self?.audioRecorder?.getAudioLevels() {
-
-        // If levels are very low (below -50dB), warn about potential issues
-        if levels.average < -50 && levels.peak < -40 {
-
-        }
-      }
-    }
-  }
-
-  private func stopAudioLevelMonitoring() {
-    audioLevelTimer?.invalidate()
-    audioLevelTimer = nil
   }
 }
 
@@ -1257,5 +1090,79 @@ extension MenuBarController: AudioRecorderDelegate {
 
     // Update menu state to enable/disable appropriate items
     updateMenuState()
+  }
+
+  private func simulateCopyPaste() {
+    // Simulate Cmd+C to copy selected text
+    let source = CGEventSource(stateID: .combinedSessionState)
+
+    // Create Cmd+C event
+    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true)  // C key
+    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
+
+    // Add Command modifier
+    cmdDown?.flags = .maskCommand
+    cmdUp?.flags = .maskCommand
+
+    // Post the events
+    cmdDown?.post(tap: .cghidEventTap)
+    cmdUp?.post(tap: .cghidEventTap)
+  }
+
+  private func startAudioLevelMonitoring() {
+    // Monitor audio levels every 0.5 seconds during recording
+    audioLevelTimer = Timer.scheduledTimer(
+      withTimeInterval: Constants.audioLevelUpdateInterval, repeats: true
+    ) { [weak self] _ in
+      if let levels = self?.audioRecorder?.getAudioLevels() {
+
+        // If levels are very low (below -50dB), warn about potential issues
+        if levels.average < -50 && levels.peak < -40 {
+
+        }
+      }
+    }
+  }
+
+  private func stopAudioLevelMonitoring() {
+    audioLevelTimer?.invalidate()
+    audioLevelTimer = nil
+  }
+}
+
+// MARK: - ShortcutDelegate Implementation
+extension MenuBarController: ShortcutDelegate {
+  func toggleDictation() {
+    if appMode.isRecording && appMode.recordingType == .transcription {
+      // Stop recording
+      stopRecordingFromMenu()
+    } else if appMode.canStartNewRecording {
+      // Start recording
+      startRecordingFromMenu()
+    }
+  }
+
+  func togglePrompting() {
+    if appMode.isRecording && appMode.recordingType == .prompt {
+      // Stop prompting
+      stopPromptingFromMenu()
+    } else if appMode.canStartNewRecording {
+      // Start prompting
+      startPromptingFromMenu()
+    }
+  }
+
+  func toggleVoiceResponse() {
+    if appMode.isRecording && appMode.recordingType == .voiceResponse {
+      // Stop voice response
+      stopVoiceResponseFromMenu()
+    } else if appMode.canStartNewRecording {
+      // Start voice response
+      startVoiceResponseFromMenu()
+    }
+  }
+
+  func openChatGPT() {
+    openChatGPTFromMenu()
   }
 }

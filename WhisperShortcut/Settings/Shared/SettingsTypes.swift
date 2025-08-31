@@ -53,22 +53,16 @@ struct SettingsData {
   // MARK: - Global Settings
   var apiKey: String = ""
 
-  // MARK: - Shortcut Settings
-  var startShortcut: String = ""
-  var stopShortcut: String = ""
-  var startPrompting: String = ""
-  var stopPrompting: String = ""
-  var startVoiceResponse: String = ""
-  var stopVoiceResponse: String = ""
+  // MARK: - Toggle Shortcut Settings
+  var toggleDictation: String = ""
+  var togglePrompting: String = ""
+  var toggleVoiceResponse: String = ""
   var openChatGPT: String = ""
 
-  // MARK: - Shortcut Enable States
-  var startShortcutEnabled: Bool = true
-  var stopShortcutEnabled: Bool = true
-  var startPromptingEnabled: Bool = true
-  var stopPromptingEnabled: Bool = true
-  var startVoiceResponseEnabled: Bool = true
-  var stopVoiceResponseEnabled: Bool = true
+  // MARK: - Toggle Shortcut Enable States
+  var toggleDictationEnabled: Bool = true
+  var togglePromptingEnabled: Bool = true
+  var toggleVoiceResponseEnabled: Bool = true
   var openChatGPTEnabled: Bool = true
 
   // MARK: - Model & Prompt Settings
@@ -89,12 +83,9 @@ struct SettingsData {
 // MARK: - Focus States Enum
 enum SettingsFocusField: Hashable {
   case apiKey
-  case startShortcut
-  case stopShortcut
-  case startPrompting
-  case stopPrompting
-  case startVoiceResponse
-  case stopVoiceResponse
+  case toggleDictation
+  case togglePrompting
+  case toggleVoiceResponse
   case openChatGPT
   case customPrompt
   case promptModeSystemPrompt

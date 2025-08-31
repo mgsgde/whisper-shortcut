@@ -16,23 +16,17 @@ class SettingsViewModel: ObservableObject {
   // MARK: - Data Loading
   private func loadCurrentSettings() {
 
-    // Load shortcuts configuration
+    // Load toggle shortcuts configuration
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
-    data.startShortcut = currentConfig.startRecording.textDisplayString
-    data.stopShortcut = currentConfig.stopRecording.textDisplayString
-    data.startPrompting = currentConfig.startPrompting.textDisplayString
-    data.stopPrompting = currentConfig.stopPrompting.textDisplayString
-    data.startVoiceResponse = currentConfig.startVoiceResponse.textDisplayString
-    data.stopVoiceResponse = currentConfig.stopVoiceResponse.textDisplayString
+    data.toggleDictation = currentConfig.startRecording.textDisplayString
+    data.togglePrompting = currentConfig.startPrompting.textDisplayString
+    data.toggleVoiceResponse = currentConfig.startVoiceResponse.textDisplayString
     data.openChatGPT = currentConfig.openChatGPT.textDisplayString
 
-    // Load shortcut enabled states
-    data.startShortcutEnabled = currentConfig.startRecording.isEnabled
-    data.stopShortcutEnabled = currentConfig.stopRecording.isEnabled
-    data.startPromptingEnabled = currentConfig.startPrompting.isEnabled
-    data.stopPromptingEnabled = currentConfig.stopPrompting.isEnabled
-    data.startVoiceResponseEnabled = currentConfig.startVoiceResponse.isEnabled
-    data.stopVoiceResponseEnabled = currentConfig.stopVoiceResponse.isEnabled
+    // Load toggle shortcut enabled states
+    data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
+    data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
+    data.toggleVoiceResponseEnabled = currentConfig.startVoiceResponse.isEnabled
     data.openChatGPTEnabled = currentConfig.openChatGPT.isEnabled
 
     // Load transcription model preference
@@ -106,40 +100,22 @@ class SettingsViewModel: ObservableObject {
       return "Please enter your OpenAI API key"
     }
 
-    // Validate shortcuts (only if enabled)
-    if data.startShortcutEnabled {
-      guard !data.startShortcut.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a start recording shortcut"
+    // Validate toggle shortcuts (only if enabled)
+    if data.toggleDictationEnabled {
+      guard !data.toggleDictation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return "Please enter a toggle dictation shortcut"
       }
     }
 
-    if data.stopShortcutEnabled {
-      guard !data.stopShortcut.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a stop recording shortcut"
+    if data.togglePromptingEnabled {
+      guard !data.togglePrompting.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return "Please enter a toggle prompting shortcut"
       }
     }
 
-    if data.startPromptingEnabled {
-      guard !data.startPrompting.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a start prompting shortcut"
-      }
-    }
-
-    if data.stopPromptingEnabled {
-      guard !data.stopPrompting.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a stop prompting shortcut"
-      }
-    }
-
-    if data.startVoiceResponseEnabled {
-      guard !data.startVoiceResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a start voice response shortcut"
-      }
-    }
-
-    if data.stopVoiceResponseEnabled {
-      guard !data.stopVoiceResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a stop voice response shortcut"
+    if data.toggleVoiceResponseEnabled {
+      guard !data.toggleVoiceResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return "Please enter a toggle voice response shortcut"
       }
     }
 
@@ -167,27 +143,18 @@ class SettingsViewModel: ObservableObject {
     return nil
   }
 
-  // MARK: - Shortcut Parsing
+  // MARK: - Toggle Shortcut Parsing
   private func parseShortcuts() -> [String: ShortcutDefinition?] {
     return [
-      "start recording": data.startShortcutEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.startShortcut)
+      "toggle dictation": data.toggleDictationEnabled
+        ? ShortcutConfigManager.parseShortcut(from: data.toggleDictation)
         : ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
-      "stop recording": data.stopShortcutEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.stopShortcut)
-        : ShortcutDefinition(key: .e, modifiers: [.command], isEnabled: false),
-      "start prompting": data.startPromptingEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.startPrompting)
+      "toggle prompting": data.togglePromptingEnabled
+        ? ShortcutConfigManager.parseShortcut(from: data.togglePrompting)
         : ShortcutDefinition(key: .j, modifiers: [.command, .shift], isEnabled: false),
-      "stop prompting": data.stopPromptingEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.stopPrompting)
-        : ShortcutDefinition(key: .p, modifiers: [.command], isEnabled: false),
-      "start voice response": data.startVoiceResponseEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.startVoiceResponse)
+      "toggle voice response": data.toggleVoiceResponseEnabled
+        ? ShortcutConfigManager.parseShortcut(from: data.toggleVoiceResponse)
         : ShortcutDefinition(key: .k, modifiers: [.command, .shift], isEnabled: false),
-      "stop voice response": data.stopVoiceResponseEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.stopVoiceResponse)
-        : ShortcutDefinition(key: .v, modifiers: [.command], isEnabled: false),
       "open ChatGPT": data.openChatGPTEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.openChatGPT)
         : ShortcutDefinition(key: .one, modifiers: [.command], isEnabled: false),
@@ -222,21 +189,21 @@ class SettingsViewModel: ObservableObject {
     // Save audio playback speed
     UserDefaults.standard.set(data.audioPlaybackSpeed, forKey: "audioPlaybackSpeed")
 
-    // Save shortcuts
+    // Save toggle shortcuts
     let shortcuts = parseShortcuts()
     let newConfig = ShortcutConfig(
-      startRecording: shortcuts["start recording"]!
+      startRecording: shortcuts["toggle dictation"]!
         ?? ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
-      stopRecording: shortcuts["stop recording"]!
-        ?? ShortcutDefinition(key: .e, modifiers: [.command], isEnabled: false),
-      startPrompting: shortcuts["start prompting"]!
+      stopRecording: shortcuts["toggle dictation"]!
+        ?? ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
+      startPrompting: shortcuts["toggle prompting"]!
         ?? ShortcutDefinition(key: .j, modifiers: [.command, .shift], isEnabled: false),
-      stopPrompting: shortcuts["stop prompting"]!
-        ?? ShortcutDefinition(key: .p, modifiers: [.command], isEnabled: false),
-      startVoiceResponse: shortcuts["start voice response"]!
+      stopPrompting: shortcuts["toggle prompting"]!
+        ?? ShortcutDefinition(key: .j, modifiers: [.command, .shift], isEnabled: false),
+      startVoiceResponse: shortcuts["toggle voice response"]!
         ?? ShortcutDefinition(key: .k, modifiers: [.command, .shift], isEnabled: false),
-      stopVoiceResponse: shortcuts["stop voice response"]!
-        ?? ShortcutDefinition(key: .v, modifiers: [.command], isEnabled: false),
+      stopVoiceResponse: shortcuts["toggle voice response"]!
+        ?? ShortcutDefinition(key: .k, modifiers: [.command, .shift], isEnabled: false),
       openChatGPT: shortcuts["open ChatGPT"]!
         ?? ShortcutDefinition(key: .one, modifiers: [.command], isEnabled: false)
     )

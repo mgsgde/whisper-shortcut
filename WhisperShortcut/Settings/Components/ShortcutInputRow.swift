@@ -67,11 +67,11 @@ struct ShortcutInputRow: View {
       @FocusState var currentFocus: SettingsFocusField?
 
       ShortcutInputRow(
-        label: "Start Dictation:",
+        label: "Toggle Dictation:",
         placeholder: "e.g., command+shift+e",
         text: $text,
         isEnabled: $isEnabled,
-        focusedField: .startShortcut,
+        focusedField: .toggleDictation,
         currentFocus: $currentFocus
       )
       .padding()

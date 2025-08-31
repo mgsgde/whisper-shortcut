@@ -2,12 +2,9 @@ import Foundation
 import HotKey
 
 protocol ShortcutDelegate: AnyObject {
-  func startRecording()
-  func stopRecording()
-  func startPrompting()
-  func stopPrompting()
-  func startVoiceResponse()
-  func stopVoiceResponse()
+  func toggleDictation()
+  func togglePrompting()
+  func toggleVoiceResponse()
   func openChatGPT()
 }
 
@@ -15,12 +12,9 @@ protocol ShortcutDelegate: AnyObject {
 class Shortcuts {
   weak var delegate: ShortcutDelegate?
 
-  private var startKey: HotKey?
-  private var stopKey: HotKey?
-  private var startPromptKey: HotKey?
-  private var stopPromptKey: HotKey?
-  private var startVoiceResponseKey: HotKey?
-  private var stopVoiceResponseKey: HotKey?
+  private var toggleDictationKey: HotKey?
+  private var togglePromptingKey: HotKey?
+  private var toggleVoiceResponseKey: HotKey?
   private var openChatGPTKey: HotKey?
   private var currentConfig: ShortcutConfig
 
@@ -47,50 +41,28 @@ class Shortcuts {
     // Clean up existing shortcuts
     cleanup()
 
-    // Create new shortcuts (only if enabled)
+    // Create toggle shortcuts (only if enabled)
     if config.startRecording.isEnabled {
-      startKey = HotKey(key: config.startRecording.key, modifiers: config.startRecording.modifiers)
-      startKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.startRecording()
-      }
-    }
-
-    if config.stopRecording.isEnabled {
-      stopKey = HotKey(key: config.stopRecording.key, modifiers: config.stopRecording.modifiers)
-      stopKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.stopRecording()
+      toggleDictationKey = HotKey(
+        key: config.startRecording.key, modifiers: config.startRecording.modifiers)
+      toggleDictationKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.toggleDictation()
       }
     }
 
     if config.startPrompting.isEnabled {
-      startPromptKey = HotKey(
+      togglePromptingKey = HotKey(
         key: config.startPrompting.key, modifiers: config.startPrompting.modifiers)
-      startPromptKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.startPrompting()
-      }
-    }
-
-    if config.stopPrompting.isEnabled {
-      stopPromptKey = HotKey(
-        key: config.stopPrompting.key, modifiers: config.stopPrompting.modifiers)
-      stopPromptKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.stopPrompting()
+      togglePromptingKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.togglePrompting()
       }
     }
 
     if config.startVoiceResponse.isEnabled {
-      startVoiceResponseKey = HotKey(
+      toggleVoiceResponseKey = HotKey(
         key: config.startVoiceResponse.key, modifiers: config.startVoiceResponse.modifiers)
-      startVoiceResponseKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.startVoiceResponse()
-      }
-    }
-
-    if config.stopVoiceResponse.isEnabled {
-      stopVoiceResponseKey = HotKey(
-        key: config.stopVoiceResponse.key, modifiers: config.stopVoiceResponse.modifiers)
-      stopVoiceResponseKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.stopVoiceResponse()
+      toggleVoiceResponseKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.toggleVoiceResponse()
       }
     }
 
@@ -98,7 +70,6 @@ class Shortcuts {
       openChatGPTKey = HotKey(
         key: config.openChatGPT.key, modifiers: config.openChatGPT.modifiers)
       openChatGPTKey?.keyDownHandler = { [weak self] in
-
         self?.delegate?.openChatGPT()
       }
     }
@@ -113,12 +84,9 @@ class Shortcuts {
   }
 
   func cleanup() {
-    startKey = nil
-    stopKey = nil
-    startPromptKey = nil
-    stopPromptKey = nil
-    startVoiceResponseKey = nil
-    stopVoiceResponseKey = nil
+    toggleDictationKey = nil
+    togglePromptingKey = nil
+    toggleVoiceResponseKey = nil
     openChatGPTKey = nil
   }
 

@@ -53,30 +53,16 @@ struct SpeechToPromptSettingsTab: View {
   private var shortcutsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Shortcuts",
-        subtitle: "Dictate Prompt → AI Assistant Response (uses selected text as context)"
+        title: "Toggle Shortcut",
+        subtitle: "Start/Stop Prompting with one shortcut (uses selected text as context)"
       )
 
       ShortcutInputRow(
-        label: "Start Prompting:",
+        label: "Toggle Prompting:",
         placeholder: "e.g., command+shift+j",
-        text: $viewModel.data.startPrompting,
-        isEnabled: $viewModel.data.startPromptingEnabled,
-        focusedField: .startPrompting,
-        currentFocus: $focusedField,
-        onShortcutChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        }
-      )
-
-      ShortcutInputRow(
-        label: "Stop Prompting:",
-        placeholder: "e.g., command+p",
-        text: $viewModel.data.stopPrompting,
-        isEnabled: $viewModel.data.stopPromptingEnabled,
-        focusedField: .stopPrompting,
+        text: $viewModel.data.togglePrompting,
+        isEnabled: $viewModel.data.togglePromptingEnabled,
+        focusedField: .togglePrompting,
         currentFocus: $focusedField,
         onShortcutChanged: {
           Task {

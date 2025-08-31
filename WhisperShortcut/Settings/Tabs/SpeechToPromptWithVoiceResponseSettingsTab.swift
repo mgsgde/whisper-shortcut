@@ -65,31 +65,17 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   private var shortcutsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Shortcuts",
+        title: "Toggle Shortcut",
         subtitle:
-          "Dictate Prompt → AI Assistant Response with Voice Response (uses selected text as context)"
+          "Start/Stop Voice Response with one shortcut (uses selected text as context)"
       )
 
       ShortcutInputRow(
-        label: "Start Voice Response:",
-        placeholder: "e.g., command+shift+g",
-        text: $viewModel.data.startVoiceResponse,
-        isEnabled: $viewModel.data.startVoiceResponseEnabled,
-        focusedField: .startVoiceResponse,
-        currentFocus: $focusedField,
-        onShortcutChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        }
-      )
-
-      ShortcutInputRow(
-        label: "Stop Voice Response:",
-        placeholder: "e.g., command+g",
-        text: $viewModel.data.stopVoiceResponse,
-        isEnabled: $viewModel.data.stopVoiceResponseEnabled,
-        focusedField: .stopVoiceResponse,
+        label: "Toggle Voice Response:",
+        placeholder: "e.g., command+shift+k",
+        text: $viewModel.data.toggleVoiceResponse,
+        isEnabled: $viewModel.data.toggleVoiceResponseEnabled,
+        focusedField: .toggleVoiceResponse,
         currentFocus: $focusedField,
         onShortcutChanged: {
           Task {
