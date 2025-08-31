@@ -410,12 +410,15 @@ class MenuBarController: NSObject {
 
     // Update toggle voice response menu item
     if let toggleVoiceResponseItem = menu.item(withTag: 109) {
-      toggleVoiceResponseItem.isEnabled = appMode.canStartNewRecording && hasAPIKey
+      toggleVoiceResponseItem.isEnabled =
+        (appMode.canStartNewRecording || isVoicePlaying) && hasAPIKey
       toggleVoiceResponseItem.isHidden = false
       toggleVoiceResponseItem.title =
         appMode.isRecording && appMode.recordingType == .voiceResponse
         ? "Stop Voice Response"
-        : "Start Voice Response"
+        : isVoicePlaying
+          ? "Stop Voice Playback"
+          : "Start Voice Response"
     }
 
     // Update stop voice playback menu item
@@ -483,7 +486,9 @@ class MenuBarController: NSObject {
         toggleVoiceResponseItem.title =
           appMode.isRecording && appMode.recordingType == .voiceResponse
           ? "Stop Voice Response"
-          : "Start Voice Response"
+          : isVoicePlaying
+            ? "Stop Voice Playback"
+            : "Start Voice Response"
       } else {
         toggleVoiceResponseItem.keyEquivalent = ""
         toggleVoiceResponseItem.keyEquivalentModifierMask = []
@@ -577,6 +582,9 @@ class MenuBarController: NSObject {
     if appMode.isRecording && appMode.recordingType == .voiceResponse {
       // Stop voice response
       stopVoiceResponseFromMenu()
+    } else if isVoicePlaying {
+      // Stop voice playback only
+      stopVoicePlaybackFromMenu()
     } else if appMode.canStartNewRecording {
       // Start voice response
       startVoiceResponseFromMenu()
@@ -1156,6 +1164,9 @@ extension MenuBarController: ShortcutDelegate {
     if appMode.isRecording && appMode.recordingType == .voiceResponse {
       // Stop voice response
       stopVoiceResponseFromMenu()
+    } else if isVoicePlaying {
+      // Stop voice playback only
+      stopVoicePlaybackFromMenu()
     } else if appMode.canStartNewRecording {
       // Start voice response
       startVoiceResponseFromMenu()
