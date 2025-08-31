@@ -15,7 +15,7 @@ struct SettingsView: View {
       // MARK: - Detail View
       detailView
     }
-    .frame(width: SettingsConstants.minWindowWidth, height: SettingsConstants.minWindowHeight)
+    .navigationSplitViewStyle(.balanced)
     .alert("Error", isPresented: $viewModel.data.showAlert) {
       Button("OK") {
         viewModel.clearError()
@@ -26,9 +26,13 @@ struct SettingsView: View {
     }
     .onAppear {
       setupWindow()
+      updateWindowTitle(for: selectedTab)
     }
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
       setupFloatingWindow()
+    }
+    .onChange(of: selectedTab) { _, newTab in
+      updateWindowTitle(for: newTab)
     }
   }
 
@@ -65,9 +69,6 @@ struct SettingsView: View {
   @ViewBuilder
   private var detailView: some View {
     VStack(spacing: 0) {
-      // Custom Navigation Bar
-      customNavigationBar
-
       // Content
       contentSection
 
@@ -76,39 +77,6 @@ struct SettingsView: View {
       // Action Buttons
       actionButtons
     }
-  }
-
-  // MARK: - Custom Navigation Bar
-  @ViewBuilder
-  private var customNavigationBar: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      HStack {
-        Image(systemName: iconName(for: selectedTab))
-          .font(.title2)
-          .foregroundColor(.accentColor)
-
-        Text(selectedTab.rawValue)
-          .font(.title2)
-          .fontWeight(.semibold)
-
-        Spacer()
-      }
-
-      Text(description(for: selectedTab))
-        .font(.subheadline)
-        .foregroundColor(.secondary)
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.horizontal, 24)
-    .padding(.top, 16)
-    .padding(.bottom, 12)
-    .background(Color(NSColor.controlBackgroundColor))
-    .overlay(
-      Rectangle()
-        .frame(height: 0.5)
-        .foregroundColor(Color(NSColor.separatorColor))
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-    )
   }
 
   // MARK: - Content Section
@@ -137,30 +105,56 @@ struct SettingsView: View {
   // MARK: - Action Buttons
   @ViewBuilder
   private var actionButtons: some View {
-    HStack(spacing: SettingsConstants.buttonSpacing) {
-      Button("Cancel") {
-        dismiss()
-      }
-      .font(.body)
-      .fontWeight(.medium)
+    VStack(spacing: 0) {
+      // Trennlinie
+      Rectangle()
+        .frame(height: 0.5)
+        .foregroundColor(Color(NSColor.separatorColor))
 
-      Button("Save Settings") {
-        Task {
-          await saveSettings()
+      // Button-Container mit vollem Hintergrund
+      HStack(spacing: SettingsConstants.buttonSpacing) {
+        Button("Cancel") {
+          dismiss()
+        }
+        .font(.body)
+        .fontWeight(.medium)
+
+        Button("Save Settings") {
+          Task {
+            await saveSettings()
+          }
+        }
+        .font(.body)
+        .fontWeight(.semibold)
+        .buttonStyle(.borderedProminent)
+        .disabled(viewModel.data.isLoading)
+
+        if viewModel.data.isLoading {
+          ProgressView()
+            .scaleEffect(1.0)
         }
       }
-      .font(.body)
-      .fontWeight(.semibold)
-      .buttonStyle(.borderedProminent)
-      .disabled(viewModel.data.isLoading)
-
-      if viewModel.data.isLoading {
-        ProgressView()
-          .scaleEffect(1.0)
-      }
+      .padding(.horizontal, 24)
+      .padding(.vertical, 16)
+      .frame(maxWidth: .infinity)
+      .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
     }
-    .padding(.horizontal, 24)
-    .padding(.bottom, SettingsConstants.bottomPadding)
+  }
+
+  // MARK: - Helper Functions
+  private func updateWindowTitle(for tab: SettingsTab) {
+    let title: String
+    switch tab {
+    case .general:
+      title = "Settings"
+    case .speechToText:
+      title = "Speech to Text Settings"
+    case .speechToPrompt:
+      title = "Speech to Prompt Settings"
+    case .speechToPromptWithVoiceResponse:
+      title = "Speech to Prompt with Voice Response Settings"
+    }
+    NSApp.windows.first?.title = title
   }
 
   // MARK: - Helper Functions
