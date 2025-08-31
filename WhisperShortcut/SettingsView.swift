@@ -87,7 +87,7 @@ struct SettingsView: View {
       }
       .padding(.horizontal, 24)
       .padding(.top, 20)
-      .padding(.bottom, SettingsConstants.spacing)
+      .padding(.bottom, 40)  // Extra margin for better scrolling experience
     }
   }
 
