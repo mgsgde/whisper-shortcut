@@ -4,6 +4,12 @@
 
 📺 **[Watch Demo Video](https://youtu.be/HQz8CsgEvx4)**
 
+## Support the Project  
+
+**[Buy on Mac App Store](https://apps.apple.com/us/app/whispershortcut/id6749648401)**  
+
+If you like WhisperShortcut, please leave a review or buy it on the App Store to support the project! ⭐ It’s optional — you can also install it for free yourself.
+
 ## How it works
 
 ### Transcription Mode
@@ -34,12 +40,6 @@ cd whisper-shortcut
 # Install the app
 bash install.sh
 ```
-
-### Support the Project
-
-**[Buy on Mac App Store](https://apps.apple.com/us/app/whispershortcut/id6749648401)**
-
-If you like WhisperShortcut, please consider buying it and leaving a review on the App Store! ⭐
 
 ## Installation
 
