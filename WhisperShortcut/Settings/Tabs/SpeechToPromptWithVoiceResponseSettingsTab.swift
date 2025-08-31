@@ -76,7 +76,12 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
         text: $viewModel.data.startVoiceResponse,
         isEnabled: $viewModel.data.startVoiceResponseEnabled,
         focusedField: .startVoiceResponse,
-        currentFocus: $focusedField
+        currentFocus: $focusedField,
+        onShortcutChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
+        }
       )
 
       ShortcutInputRow(
@@ -85,7 +90,12 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
         text: $viewModel.data.stopVoiceResponse,
         isEnabled: $viewModel.data.stopVoiceResponseEnabled,
         focusedField: .stopVoiceResponse,
-        currentFocus: $focusedField
+        currentFocus: $focusedField,
+        onShortcutChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
+        }
       )
 
       // Available Keys Information
@@ -120,7 +130,12 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
       defaultValue: AppConstants.defaultVoiceResponseSystemPrompt,
       text: $viewModel.data.voiceResponseSystemPrompt,
       focusedField: .voiceResponseSystemPrompt,
-      currentFocus: $focusedField
+      currentFocus: $focusedField,
+      onTextChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
     )
   }
 
@@ -129,14 +144,26 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   private var modelSection: some View {
     GPTModelSelectionView(
       title: "GPT Model",
-      selectedModel: $viewModel.data.selectedVoiceResponseGPTModel
+      selectedModel: $viewModel.data.selectedVoiceResponseGPTModel,
+      onModelChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
     )
   }
 
   // MARK: - Playback Speed Section
   @ViewBuilder
   private var playbackSpeedSection: some View {
-    PlaybackSpeedControl(playbackSpeed: $viewModel.data.audioPlaybackSpeed)
+    PlaybackSpeedControl(
+      playbackSpeed: $viewModel.data.audioPlaybackSpeed,
+      onSpeedChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+    )
   }
 
   // MARK: - Usage Instructions

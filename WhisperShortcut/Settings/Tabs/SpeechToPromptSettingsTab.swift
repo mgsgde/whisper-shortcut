@@ -63,7 +63,12 @@ struct SpeechToPromptSettingsTab: View {
         text: $viewModel.data.startPrompting,
         isEnabled: $viewModel.data.startPromptingEnabled,
         focusedField: .startPrompting,
-        currentFocus: $focusedField
+        currentFocus: $focusedField,
+        onShortcutChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
+        }
       )
 
       ShortcutInputRow(
@@ -72,7 +77,12 @@ struct SpeechToPromptSettingsTab: View {
         text: $viewModel.data.stopPrompting,
         isEnabled: $viewModel.data.stopPromptingEnabled,
         focusedField: .stopPrompting,
-        currentFocus: $focusedField
+        currentFocus: $focusedField,
+        onShortcutChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
+        }
       )
 
       // Available Keys Information
@@ -107,7 +117,12 @@ struct SpeechToPromptSettingsTab: View {
       defaultValue: AppConstants.defaultPromptModeSystemPrompt,
       text: $viewModel.data.promptModeSystemPrompt,
       focusedField: .promptModeSystemPrompt,
-      currentFocus: $focusedField
+      currentFocus: $focusedField,
+      onTextChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
     )
   }
 
@@ -116,7 +131,12 @@ struct SpeechToPromptSettingsTab: View {
   private var modelSection: some View {
     GPTModelSelectionView(
       title: "GPT Model",
-      selectedModel: $viewModel.data.selectedGPTModel
+      selectedModel: $viewModel.data.selectedGPTModel,
+      onModelChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
     )
   }
 

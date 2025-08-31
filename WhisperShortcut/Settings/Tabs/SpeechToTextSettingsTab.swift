@@ -51,7 +51,12 @@ struct SpeechToTextSettingsTab: View {
         text: $viewModel.data.startShortcut,
         isEnabled: $viewModel.data.startShortcutEnabled,
         focusedField: .startShortcut,
-        currentFocus: $focusedField
+        currentFocus: $focusedField,
+        onShortcutChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
+        }
       )
 
       ShortcutInputRow(
@@ -60,7 +65,12 @@ struct SpeechToTextSettingsTab: View {
         text: $viewModel.data.stopShortcut,
         isEnabled: $viewModel.data.stopShortcutEnabled,
         focusedField: .stopShortcut,
-        currentFocus: $focusedField
+        currentFocus: $focusedField,
+        onShortcutChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
+        }
       )
 
       // Available Keys Information
@@ -95,7 +105,12 @@ struct SpeechToTextSettingsTab: View {
       defaultValue: TranscriptionPrompt.defaultPrompt.text,
       text: $viewModel.data.customPromptText,
       focusedField: .customPrompt,
-      currentFocus: $focusedField
+      currentFocus: $focusedField,
+      onTextChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
     )
   }
 
@@ -104,7 +119,12 @@ struct SpeechToTextSettingsTab: View {
   private var modelSection: some View {
     ModelSelectionView(
       title: "Transcription Model",
-      selectedModel: $viewModel.data.selectedModel
+      selectedModel: $viewModel.data.selectedModel,
+      onModelChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
     )
   }
 }

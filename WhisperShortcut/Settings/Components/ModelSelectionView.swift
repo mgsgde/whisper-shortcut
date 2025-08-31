@@ -5,15 +5,18 @@ struct ModelSelectionView: View {
   @Binding var selectedModel: TranscriptionModel
   let title: String
   let models: [TranscriptionModel]
+  let onModelChanged: (() -> Void)?
 
   init(
     title: String = "Transcription Model",
     selectedModel: Binding<TranscriptionModel>,
-    models: [TranscriptionModel] = TranscriptionModel.allCases
+    models: [TranscriptionModel] = TranscriptionModel.allCases,
+    onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
     self._selectedModel = selectedModel
     self.models = models
+    self.onModelChanged = onModelChanged
   }
 
   var body: some View {
@@ -38,6 +41,7 @@ struct ModelSelectionView: View {
           .contentShape(Rectangle())
           .onTapGesture {
             selectedModel = model
+            onModelChanged?()
           }
 
           if model != models.last {

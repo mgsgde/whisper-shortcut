@@ -3,6 +3,15 @@ import SwiftUI
 /// Wiederverwendbare Komponente für Playback Speed Control
 struct PlaybackSpeedControl: View {
   @Binding var playbackSpeed: Double
+  let onSpeedChanged: (() -> Void)?
+  
+  init(
+    playbackSpeed: Binding<Double>,
+    onSpeedChanged: (() -> Void)? = nil
+  ) {
+    self._playbackSpeed = playbackSpeed
+    self.onSpeedChanged = onSpeedChanged
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -21,6 +30,9 @@ struct PlaybackSpeedControl: View {
           Text("Playback Speed")
         }
         .frame(maxWidth: 300)
+        .onChange(of: playbackSpeed) { _, _ in
+          onSpeedChanged?()
+        }
 
         Text("\(playbackSpeed, specifier: "%.2f")x")
           .font(.body)

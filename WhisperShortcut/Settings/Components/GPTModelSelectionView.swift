@@ -4,6 +4,17 @@ import SwiftUI
 struct GPTModelSelectionView: View {
   let title: String
   @Binding var selectedModel: GPTModel
+  let onModelChanged: (() -> Void)?
+  
+  init(
+    title: String,
+    selectedModel: Binding<GPTModel>,
+    onModelChanged: (() -> Void)? = nil
+  ) {
+    self.title = title
+    self._selectedModel = selectedModel
+    self.onModelChanged = onModelChanged
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -27,6 +38,7 @@ struct GPTModelSelectionView: View {
           .contentShape(Rectangle())
           .onTapGesture {
             selectedModel = model
+            onModelChanged?()
           }
         }
       }

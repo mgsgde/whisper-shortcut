@@ -61,6 +61,12 @@ struct GeneralSettingsTab: View {
             viewModel.data.apiKey = KeychainManager.shared.getAPIKey() ?? ""
           }
           .focused($focusedField, equals: .apiKey)
+          .onChange(of: viewModel.data.apiKey) { _, newValue in
+            // Auto-save API key to keychain
+            Task {
+              _ = KeychainManager.shared.saveAPIKey(newValue)
+            }
+          }
 
         Spacer()
       }
@@ -90,7 +96,13 @@ struct GeneralSettingsTab: View {
         text: $viewModel.data.openChatGPT,
         isEnabled: $viewModel.data.openChatGPTEnabled,
         focusedField: .openChatGPT,
-        currentFocus: $focusedField
+        currentFocus: $focusedField,
+        onShortcutChanged: {
+          // Auto-save shortcuts
+          Task {
+            await viewModel.saveSettings()
+          }
+        }
       )
 
       // Available Keys Information

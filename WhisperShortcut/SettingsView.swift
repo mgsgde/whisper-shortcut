@@ -26,13 +26,9 @@ struct SettingsView: View {
     }
     .onAppear {
       setupWindow()
-      updateWindowTitle(for: selectedTab)
     }
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
       setupFloatingWindow()
-    }
-    .onChange(of: selectedTab) { _, newTab in
-      updateWindowTitle(for: newTab)
     }
   }
 
@@ -68,15 +64,8 @@ struct SettingsView: View {
   // MARK: - Detail View
   @ViewBuilder
   private var detailView: some View {
-    VStack(spacing: 0) {
-      // Content
-      contentSection
-
-      Spacer(minLength: 0)
-
-      // Action Buttons
-      actionButtons
-    }
+    // Content only - no action buttons for Apple's System Settings consistency
+    contentSection
   }
 
   // MARK: - Content Section
@@ -100,61 +89,6 @@ struct SettingsView: View {
       .padding(.top, 20)
       .padding(.bottom, SettingsConstants.spacing)
     }
-  }
-
-  // MARK: - Action Buttons
-  @ViewBuilder
-  private var actionButtons: some View {
-    VStack(spacing: 0) {
-      // Trennlinie
-      Rectangle()
-        .frame(height: 0.5)
-        .foregroundColor(Color(NSColor.separatorColor))
-
-      // Button-Container mit vollem Hintergrund
-      HStack(spacing: SettingsConstants.buttonSpacing) {
-        Button("Cancel") {
-          dismiss()
-        }
-        .font(.body)
-        .fontWeight(.medium)
-
-        Button("Save Settings") {
-          Task {
-            await saveSettings()
-          }
-        }
-        .font(.body)
-        .fontWeight(.semibold)
-        .buttonStyle(.borderedProminent)
-        .disabled(viewModel.data.isLoading)
-
-        if viewModel.data.isLoading {
-          ProgressView()
-            .scaleEffect(1.0)
-        }
-      }
-      .padding(.horizontal, 24)
-      .padding(.vertical, 16)
-      .frame(maxWidth: .infinity)
-      .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-    }
-  }
-
-  // MARK: - Helper Functions
-  private func updateWindowTitle(for tab: SettingsTab) {
-    let title: String
-    switch tab {
-    case .general:
-      title = "Settings"
-    case .speechToText:
-      title = "Speech to Text Settings"
-    case .speechToPrompt:
-      title = "Speech to Prompt Settings"
-    case .speechToPromptWithVoiceResponse:
-      title = "Speech to Prompt with Voice Response Settings"
-    }
-    NSApp.windows.first?.title = title
   }
 
   // MARK: - Helper Functions
