@@ -7,10 +7,11 @@
  * for use in App Store listings.
  * 
  * Usage: node capture-speech-to-prompt.js
- * Output: speech-to-prompt.png in the screenshots directory
+ * Output: speech-to-prompt.png in the images directory
  */
 
 const puppeteer = require('puppeteer');
+const path = require('path');
 
 async function captureScreenshot() {
   console.log('🖼️  Starting speech-to-prompt screenshot capture...');
@@ -30,19 +31,21 @@ async function captureScreenshot() {
     });
     
     // Load the HTML file
-    await page.goto('file://' + __dirname + '/speech-to-prompt.html');
+    const htmlPath = path.join(__dirname, '..', 'html', 'speech-to-prompt.html');
+    await page.goto('file://' + htmlPath);
     
     // Wait for content to load
     console.log('⏳ Waiting for content to load...');
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     // Take screenshot
+    const outputPath = path.join(__dirname, '..', 'images', 'speech-to-prompt.png');
     await page.screenshot({ 
-      path: 'speech-to-prompt.png',
+      path: outputPath,
       fullPage: false
     });
     
-    console.log('✅ Screenshot saved as: speech-to-prompt.png');
+    console.log('✅ Screenshot saved as: ' + outputPath);
   } catch (error) {
     console.error('❌ Error capturing screenshot:', error);
   } finally {

@@ -2,6 +2,12 @@
 
 **Speech-to-text** shortcut with **OpenAI Whisper API**
 
+<div align="center">
+  <img src="screenshots/images/speech-to-text.png" width="30%" alt="Speech-to-Text Feature">
+  <img src="screenshots/images/speech-to-prompt.png" width="30%" alt="Speech-to-Prompt Feature">
+  <img src="screenshots/images/powered-by-openai.png" width="30%" alt="OpenAI Integration">
+</div>
+
 📺 **[Watch Demo Video](https://youtu.be/HQz8CsgEvx4)**
 
 ## Support the Project  
