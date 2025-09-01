@@ -72,7 +72,7 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
 
       ShortcutInputRow(
         label: "Toggle Voice Response:",
-        placeholder: "e.g., command+shift+k",
+        placeholder: "e.g., command+x",
         text: $viewModel.data.toggleVoiceResponse,
         isEnabled: $viewModel.data.toggleVoiceResponseEnabled,
         focusedField: .toggleVoiceResponse,

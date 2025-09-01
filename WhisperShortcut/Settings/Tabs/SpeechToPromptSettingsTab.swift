@@ -59,7 +59,7 @@ struct SpeechToPromptSettingsTab: View {
 
       ShortcutInputRow(
         label: "Toggle Prompting:",
-        placeholder: "e.g., command+shift+j",
+        placeholder: "e.g., command+d",
         text: $viewModel.data.togglePrompting,
         isEnabled: $viewModel.data.togglePromptingEnabled,
         focusedField: .togglePrompting,

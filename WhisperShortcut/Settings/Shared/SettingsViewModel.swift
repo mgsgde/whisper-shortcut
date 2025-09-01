@@ -148,13 +148,13 @@ class SettingsViewModel: ObservableObject {
     return [
       "toggle dictation": data.toggleDictationEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.toggleDictation)
-        : ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
+        : ShortcutDefinition(key: .e, modifiers: [.command], isEnabled: false),
       "toggle prompting": data.togglePromptingEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.togglePrompting)
-        : ShortcutDefinition(key: .j, modifiers: [.command, .shift], isEnabled: false),
+        : ShortcutDefinition(key: .d, modifiers: [.command], isEnabled: false),
       "toggle voice response": data.toggleVoiceResponseEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.toggleVoiceResponse)
-        : ShortcutDefinition(key: .k, modifiers: [.command, .shift], isEnabled: false),
+        : ShortcutDefinition(key: .x, modifiers: [.command], isEnabled: false),
       "open ChatGPT": data.openChatGPTEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.openChatGPT)
         : ShortcutDefinition(key: .one, modifiers: [.command], isEnabled: false),

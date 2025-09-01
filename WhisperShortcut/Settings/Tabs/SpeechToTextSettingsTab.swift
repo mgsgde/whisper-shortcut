@@ -47,7 +47,7 @@ struct SpeechToTextSettingsTab: View {
 
       ShortcutInputRow(
         label: "Toggle Dictation:",
-        placeholder: "e.g., command+shift+e",
+        placeholder: "e.g., command+e",
         text: $viewModel.data.toggleDictation,
         isEnabled: $viewModel.data.toggleDictationEnabled,
         focusedField: .toggleDictation,
