@@ -251,9 +251,4 @@ class SettingsViewModel: ObservableObject {
       }
     }
   }
-
-  // MARK: - Focus Management
-  func setInitialFocus() {
-    // Focus is now managed in the main SettingsView
-  }
 }
