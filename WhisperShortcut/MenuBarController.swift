@@ -199,14 +199,6 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
-    menu.addItem(NSMenuItem.separator())
-
-    // Dictation section header
-    let dictationHeader = NSMenuItem(title: "Speech to Text", action: nil, keyEquivalent: "")
-    dictationHeader.isEnabled = false
-    dictationHeader.tag = 101
-    menu.addItem(dictationHeader)
-
     // Toggle dictation item with configurable shortcut
     let toggleDictationItem = NSMenuItem(
       title: "Toggle Dictation", action: #selector(toggleDictationFromMenu),
@@ -216,14 +208,6 @@ class MenuBarController: NSObject {
     toggleDictationItem.tag = 102  // Tag for updating shortcut
     menu.addItem(toggleDictationItem)
 
-    menu.addItem(NSMenuItem.separator())
-
-    // Prompt section header
-    let promptHeader = NSMenuItem(title: "Speech to Prompt", action: nil, keyEquivalent: "")
-    promptHeader.isEnabled = false
-    promptHeader.tag = 104
-    menu.addItem(promptHeader)
-
     // Toggle prompting item with configurable shortcut
     let togglePromptingItem = NSMenuItem(
       title: "Toggle Prompting", action: #selector(togglePromptingFromMenu),
@@ -232,15 +216,6 @@ class MenuBarController: NSObject {
     togglePromptingItem.target = self
     togglePromptingItem.tag = 105  // Tag for updating shortcut
     menu.addItem(togglePromptingItem)
-
-    menu.addItem(NSMenuItem.separator())
-
-    // Voice Response section header
-    let voiceResponseHeader = NSMenuItem(
-      title: "Speech to Prompt with Voice Response", action: nil, keyEquivalent: "")
-    voiceResponseHeader.isEnabled = false
-    voiceResponseHeader.tag = 108
-    menu.addItem(voiceResponseHeader)
 
     // Toggle voice response item with configurable shortcut
     let toggleVoiceResponseItem = NSMenuItem(
