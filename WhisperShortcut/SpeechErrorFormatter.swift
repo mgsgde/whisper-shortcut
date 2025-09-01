@@ -2,7 +2,7 @@ import Foundation
 
 /// Handles formatting of speech errors for display in the UI
 struct SpeechErrorFormatter {
-  
+
   // MARK: - Constants
   private enum Constants {
     static let maxFileSize = "25MB"
@@ -35,15 +35,7 @@ struct SpeechErrorFormatter {
         ❌ Incorrect API Key
 
         The API key provided is not correct.
-        Please ensure the API key is correct, clear your browser cache, or generate a new one.
-        """
-
-    case .organizationRequired:
-      return """
-        ❌ Organization Required
-
-        You must be a member of an organization to use the API.
-        Please contact us to get added to a new organization or ask your organization manager to invite you.
+        Please ensure the API key is correct and that you have added your payment details and activated the API key.
         """
 
     case .countryNotSupported:
@@ -214,8 +206,6 @@ struct SpeechErrorFormatter {
       return "❌ Invalid Authentication"
     case .incorrectAPIKey:
       return "❌ Incorrect API Key"
-    case .organizationRequired:
-      return "❌ Organization Required"
     case .countryNotSupported:
       return "❌ Country Not Supported"
     case .rateLimited:

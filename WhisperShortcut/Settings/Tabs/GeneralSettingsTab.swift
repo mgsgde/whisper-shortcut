@@ -71,12 +71,29 @@ struct GeneralSettingsTab: View {
         Spacer()
       }
 
-      Text(
-        "💡 Need an API key? Get one at [platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys)"
-      )
-      .font(.callout)
-      .foregroundColor(.secondary)
-      .textSelection(.enabled)
+      HStack(spacing: 0) {
+        Text("💡 Need an API key? Get one at ")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+
+        Link(
+          destination: URL(string: "https://platform.openai.com/account/api-keys")!
+        ) {
+          Text("platform.openai.com/account/api-keys")
+            .font(.callout)
+            .foregroundColor(.blue)
+            .underline()
+            .textSelection(.enabled)
+        }
+        .onHover { isHovered in
+          if isHovered {
+            NSCursor.pointingHand.push()
+          } else {
+            NSCursor.pop()
+          }
+        }
+      }
       .fixedSize(horizontal: false, vertical: true)
     }
   }

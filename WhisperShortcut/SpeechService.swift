@@ -628,12 +628,7 @@ class SpeechService {
 
     switch statusCode {
     case 401:
-      // Check for organization-specific errors first
-      if errorMessage.contains("member of an organization")
-        || errorMessage.contains("organization")
-      {
-        return .organizationRequired
-      } else if errorMessage.contains("incorrect api key") && !errorMessage.contains("invalid") {
+      if errorMessage.contains("incorrect api key") && !errorMessage.contains("invalid") {
         // Only return incorrectAPIKey for very specific "incorrect api key" messages
         // that don't also contain "invalid" (to avoid conflicts)
         return .incorrectAPIKey
@@ -812,7 +807,6 @@ enum TranscriptionError: Error, Equatable {
   case noAPIKey
   case invalidAPIKey
   case incorrectAPIKey
-  case organizationRequired
   case countryNotSupported
   case invalidRequest
   case permissionDenied
@@ -836,8 +830,6 @@ enum TranscriptionError: Error, Equatable {
       return "Invalid Authentication"
     case .incorrectAPIKey:
       return "Incorrect API Key"
-    case .organizationRequired:
-      return "Organization Required"
     case .countryNotSupported:
       return "Country Not Supported"
     case .invalidRequest:
@@ -889,8 +881,6 @@ extension SpeechService {
       return (true, .noAPIKey)
     } else if text.contains("Incorrect API Key") {
       return (true, .incorrectAPIKey)
-    } else if text.contains("Organization Required") {
-      return (true, .organizationRequired)
     } else if text.contains("Country Not Supported") {
       return (true, .countryNotSupported)
     } else if text.contains("Authentication") || text.contains("invalid API key") {
