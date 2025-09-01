@@ -9,7 +9,7 @@ class MenuBarController: NSObject {
     static let blinkInterval: TimeInterval = 0.5
     static let audioLevelUpdateInterval: TimeInterval = 0.1
     static let successDisplayTime: TimeInterval = 2.0
-    static let errorDisplayTime: TimeInterval = 3.0
+    static let errorDisplayTime: TimeInterval = 1.5
     static let transcribingDisplayTime: TimeInterval = 1.0
   }
 
