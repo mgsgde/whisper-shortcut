@@ -237,7 +237,7 @@ class SettingsViewModel: ObservableObject {
   func openWhatsAppFeedback() {
     NSLog("💬 FEEDBACK: Opening WhatsApp Web feedback from SettingsViewModel")
 
-    let whatsappNumber = "+491628365293"
+    let whatsappNumber = "+4917641952181"
     let feedbackMessage = "Hi! I have feedback about WhisperShortcut:"
 
     if let webWhatsappURL = URL(
