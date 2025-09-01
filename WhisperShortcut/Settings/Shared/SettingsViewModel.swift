@@ -148,13 +148,13 @@ class SettingsViewModel: ObservableObject {
     return [
       "toggle dictation": data.toggleDictationEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.toggleDictation)
-        : ShortcutDefinition(key: .e, modifiers: [.command], isEnabled: false),
+        : ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
       "toggle prompting": data.togglePromptingEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.togglePrompting)
-        : ShortcutDefinition(key: .d, modifiers: [.command], isEnabled: false),
+        : ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
       "toggle voice response": data.toggleVoiceResponseEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.toggleVoiceResponse)
-        : ShortcutDefinition(key: .x, modifiers: [.command], isEnabled: false),
+        : ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
       "open ChatGPT": data.openChatGPTEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.openChatGPT)
         : ShortcutDefinition(key: .one, modifiers: [.command], isEnabled: false),
@@ -197,13 +197,13 @@ class SettingsViewModel: ObservableObject {
       stopRecording: shortcuts["toggle dictation"]!
         ?? ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
       startPrompting: shortcuts["toggle prompting"]!
-        ?? ShortcutDefinition(key: .j, modifiers: [.command, .shift], isEnabled: false),
+        ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
       stopPrompting: shortcuts["toggle prompting"]!
-        ?? ShortcutDefinition(key: .j, modifiers: [.command, .shift], isEnabled: false),
+        ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
       startVoiceResponse: shortcuts["toggle voice response"]!
-        ?? ShortcutDefinition(key: .k, modifiers: [.command, .shift], isEnabled: false),
+        ?? ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
       stopVoiceResponse: shortcuts["toggle voice response"]!
-        ?? ShortcutDefinition(key: .k, modifiers: [.command, .shift], isEnabled: false),
+        ?? ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
       openChatGPT: shortcuts["open ChatGPT"]!
         ?? ShortcutDefinition(key: .one, modifiers: [.command], isEnabled: false)
     )
