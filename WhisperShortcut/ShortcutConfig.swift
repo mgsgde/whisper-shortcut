@@ -105,13 +105,13 @@ struct ShortcutConfig: Codable {
   var openChatGPT: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
-    startRecording: ShortcutDefinition(key: .e, modifiers: [.command, .shift]),
-    stopRecording: ShortcutDefinition(key: .e, modifiers: [.command, .shift]),
-    startPrompting: ShortcutDefinition(key: .d, modifiers: [.command, .shift]),
-    stopPrompting: ShortcutDefinition(key: .d, modifiers: [.command, .shift]),
-    startVoiceResponse: ShortcutDefinition(key: .s, modifiers: [.command, .shift]),
-    stopVoiceResponse: ShortcutDefinition(key: .s, modifiers: [.command, .shift]),
-    openChatGPT: ShortcutDefinition(key: .one, modifiers: [.command])
+    startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
+    stopRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
+    startPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
+    stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
+    startVoiceResponse: ShortcutDefinition(key: .three, modifiers: [.command]),
+    stopVoiceResponse: ShortcutDefinition(key: .three, modifiers: [.command]),
+    openChatGPT: ShortcutDefinition(key: .four, modifiers: [.command])
   )
 }
 
