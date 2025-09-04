@@ -226,14 +226,6 @@ class MenuBarController: NSObject {
     toggleVoiceResponseItem.tag = 109  // Tag for updating shortcut
     menu.addItem(toggleVoiceResponseItem)
 
-    // Stop voice playback item (for interrupting speech)
-    let stopVoicePlaybackItem = NSMenuItem(
-      title: "Stop Voice Playback", action: #selector(stopVoicePlaybackFromMenu),
-      keyEquivalent: "")
-    stopVoicePlaybackItem.target = self
-    stopVoicePlaybackItem.tag = 111  // Tag for stop voice playback
-    stopVoicePlaybackItem.isHidden = true  // Initially hidden
-    menu.addItem(stopVoicePlaybackItem)
 
     menu.addItem(NSMenuItem.separator())
 
@@ -396,12 +388,6 @@ class MenuBarController: NSObject {
           : "Start Voice Response"
     }
 
-    // Update stop voice playback menu item
-    if let stopVoicePlaybackItem = menu.item(withTag: 111) {
-      stopVoicePlaybackItem.isEnabled = isVoicePlaying
-      stopVoicePlaybackItem.isHidden = !isVoicePlaying
-      stopVoicePlaybackItem.title = "Stop Voice Playback"
-    }
 
     // Icon is now handled by updateMenuBarIcon() which is called from updateUI()
     // Handle special case when no API key is configured
@@ -559,7 +545,9 @@ class MenuBarController: NSObject {
       stopVoiceResponseFromMenu()
     } else if isVoicePlaying {
       // Stop voice playback only
-      stopVoicePlaybackFromMenu()
+      audioPlaybackService?.stopPlayback()
+      isVoicePlaying = false
+      updateMenuState()
     } else if appMode.canStartNewRecording {
       // Start voice response
       startVoiceResponseFromMenu()
@@ -594,13 +582,6 @@ class MenuBarController: NSObject {
     audioRecorder?.stopRecording()
   }
 
-  @objc private func stopVoicePlaybackFromMenu() {
-    guard isVoicePlaying else { return }
-
-    audioPlaybackService?.stopPlayback()
-    isVoicePlaying = false
-    updateMenuState()
-  }
 
   @objc private func openChatGPTFromMenu() {
 
@@ -1141,7 +1122,9 @@ extension MenuBarController: ShortcutDelegate {
       stopVoiceResponseFromMenu()
     } else if isVoicePlaying {
       // Stop voice playback only
-      stopVoicePlaybackFromMenu()
+      audioPlaybackService?.stopPlayback()
+      isVoicePlaying = false
+      updateMenuState()
     } else if appMode.canStartNewRecording {
       // Start voice response
       startVoiceResponseFromMenu()
