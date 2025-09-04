@@ -130,7 +130,7 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   private var modelSection: some View {
     GPTModelSelectionView(
       title: "GPT Model",
-      selectedModel: $viewModel.data.selectedVoiceResponseGPTModel,
+      selectedModel: $viewModel.data.selectedVoiceResponseModel,
       onModelChanged: {
         Task {
           await viewModel.saveSettings()

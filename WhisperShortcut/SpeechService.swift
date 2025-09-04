@@ -67,7 +67,7 @@ class SpeechService {
   }()
 
   // MARK: - Transcription Mode Properties
-  private var selectedModel: TranscriptionModel = .gpt4oMiniTranscribe
+  private var selectedTranscriptionModel: TranscriptionModel = .gpt4oMiniTranscribe
 
   // MARK: - Prompt Mode Properties
   private var previousResponseId: String?  // Store previous response ID for conversation continuity
@@ -101,11 +101,11 @@ class SpeechService {
   // MARK: - Transcription Mode Configuration
   func setModel(_ model: TranscriptionModel) {
 
-    self.selectedModel = model
+    self.selectedTranscriptionModel = model
   }
 
   func getCurrentModel() -> TranscriptionModel {
-    return selectedModel
+    return selectedTranscriptionModel
   }
 
   // MARK: - Prompt Mode Configuration
@@ -274,7 +274,7 @@ class SpeechService {
   // MARK: - Transcription Mode Helpers
   private func createTranscriptionRequest(audioURL: URL, apiKey: String) throws -> URLRequest {
 
-    let apiURL = URL(string: selectedModel.apiEndpoint)!
+    let apiURL = URL(string: selectedTranscriptionModel.apiEndpoint)!
     var request = URLRequest(url: apiURL)
     request.httpMethod = "POST"
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -366,7 +366,7 @@ class SpeechService {
     async throws -> String
   {
     // Get the selected GPT model from UserDefaults based on mode
-    let modelKey = isVoiceResponse ? "selectedVoiceResponseGPTModel" : "selectedGPTModel"
+    let modelKey = isVoiceResponse ? "selectedVoiceResponseModel" : "selectedPromptModel"
     let selectedGPTModelString =
       UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
     let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5Mini
@@ -579,12 +579,14 @@ class SpeechService {
 
     // Prepare form fields
     var fields: [String: String] = [
-      "model": selectedModel.rawValue,
+      "model": selectedTranscriptionModel.rawValue,
       "response_format": "json",
     ]
 
     // Add prompt for GPT-4o models only if custom prompt is not empty
-    if selectedModel == .gpt4oTranscribe || selectedModel == .gpt4oMiniTranscribe {
+    if selectedTranscriptionModel == .gpt4oTranscribe
+      || selectedTranscriptionModel == .gpt4oMiniTranscribe
+    {
       if let customPrompt = UserDefaults.standard.string(forKey: "customPromptText"),
         !customPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       {

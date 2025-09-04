@@ -33,27 +33,28 @@ class SettingsViewModel: ObservableObject {
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
       let savedModel = TranscriptionModel(rawValue: savedModelString)
     {
-      data.selectedModel = savedModel
+      data.selectedTranscriptionModel = savedModel
     } else {
-      data.selectedModel = .gpt4oMiniTranscribe
+      data.selectedTranscriptionModel = .gpt4oMiniTranscribe
     }
 
-    // Load GPT model preferences
-    if let savedGPTModelString = UserDefaults.standard.string(forKey: "selectedGPTModel"),
-      let savedGPTModel = GPTModel(rawValue: savedGPTModelString)
+    // Load prompt model preference
+    if let savedPromptModelString = UserDefaults.standard.string(forKey: "selectedPromptModel"),
+      let savedPromptModel = GPTModel(rawValue: savedPromptModelString)
     {
-      data.selectedGPTModel = savedGPTModel
+      data.selectedPromptModel = savedPromptModel
     } else {
-      data.selectedGPTModel = .gpt5Mini
+      data.selectedPromptModel = .gpt5Mini
     }
 
-    if let savedVoiceResponseGPTModelString = UserDefaults.standard.string(
-      forKey: "selectedVoiceResponseGPTModel"),
-      let savedVoiceResponseGPTModel = GPTModel(rawValue: savedVoiceResponseGPTModelString)
+    // Load voice response model preference
+    if let savedVoiceResponseModelString = UserDefaults.standard.string(
+      forKey: "selectedVoiceResponseModel"),
+      let savedVoiceResponseModel = GPTModel(rawValue: savedVoiceResponseModelString)
     {
-      data.selectedVoiceResponseGPTModel = savedVoiceResponseGPTModel
+      data.selectedVoiceResponseModel = savedVoiceResponseModel
     } else {
-      data.selectedVoiceResponseGPTModel = .gpt5ChatLatest
+      data.selectedVoiceResponseModel = .gpt5ChatLatest
     }
 
     // Load custom prompt
@@ -176,10 +177,11 @@ class SettingsViewModel: ObservableObject {
     _ = KeychainManager.shared.saveAPIKey(data.apiKey)
 
     // Save model preferences
-    UserDefaults.standard.set(data.selectedModel.rawValue, forKey: "selectedTranscriptionModel")
-    UserDefaults.standard.set(data.selectedGPTModel.rawValue, forKey: "selectedGPTModel")
     UserDefaults.standard.set(
-      data.selectedVoiceResponseGPTModel.rawValue, forKey: "selectedVoiceResponseGPTModel")
+      data.selectedTranscriptionModel.rawValue, forKey: "selectedTranscriptionModel")
+    UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: "selectedPromptModel")
+    UserDefaults.standard.set(
+      data.selectedVoiceResponseModel.rawValue, forKey: "selectedVoiceResponseModel")
 
     // Save prompts
     UserDefaults.standard.set(data.customPromptText, forKey: "customPromptText")
@@ -210,7 +212,7 @@ class SettingsViewModel: ObservableObject {
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 
     // Notify about model change
-    NotificationCenter.default.post(name: .modelChanged, object: data.selectedModel)
+    NotificationCenter.default.post(name: .modelChanged, object: data.selectedTranscriptionModel)
 
     // Simulate save delay
     try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds

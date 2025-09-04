@@ -2,19 +2,19 @@ import SwiftUI
 
 /// Wiederverwendbare Komponente für Model-Auswahl
 struct ModelSelectionView: View {
-  @Binding var selectedModel: TranscriptionModel
+  @Binding var selectedTranscriptionModel: TranscriptionModel
   let title: String
   let models: [TranscriptionModel]
   let onModelChanged: (() -> Void)?
 
   init(
     title: String = "Transcription Model",
-    selectedModel: Binding<TranscriptionModel>,
+    selectedTranscriptionModel: Binding<TranscriptionModel>,
     models: [TranscriptionModel] = TranscriptionModel.allCases,
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
-    self._selectedModel = selectedModel
+    self._selectedTranscriptionModel = selectedTranscriptionModel
     self.models = models
     self.onModelChanged = onModelChanged
   }
@@ -30,17 +30,17 @@ struct ModelSelectionView: View {
         ForEach(models, id: \.self) { model in
           ZStack {
             Rectangle()
-              .fill(selectedModel == model ? Color.accentColor : Color.clear)
+              .fill(selectedTranscriptionModel == model ? Color.accentColor : Color.clear)
               .cornerRadius(SettingsConstants.cornerRadius)
 
             Text(model.displayName)
               .font(.system(.body, design: .default))
-              .foregroundColor(selectedModel == model ? .white : .primary)
+              .foregroundColor(selectedTranscriptionModel == model ? .white : .primary)
           }
           .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
           .contentShape(Rectangle())
           .onTapGesture {
-            selectedModel = model
+            selectedTranscriptionModel = model
             onModelChanged?()
           }
 
@@ -66,7 +66,7 @@ struct ModelSelectionView: View {
           .foregroundColor(.secondary)
           .textSelection(.enabled)
 
-        switch selectedModel {
+        switch selectedTranscriptionModel {
         case .gpt4oTranscribe:
           Text("• GPT-4o Transcribe: Highest accuracy and quality")
             .font(.callout)
@@ -94,9 +94,9 @@ struct ModelSelectionView: View {
 #if DEBUG
   struct ModelSelectionView_Previews: PreviewProvider {
     static var previews: some View {
-      @State var selectedModel: TranscriptionModel = .gpt4oMiniTranscribe
+      @State var selectedTranscriptionModel: TranscriptionModel = .gpt4oMiniTranscribe
 
-      ModelSelectionView(selectedModel: $selectedModel)
+      ModelSelectionView(selectedTranscriptionModel: $selectedTranscriptionModel)
         .padding()
         .frame(width: 600)
     }

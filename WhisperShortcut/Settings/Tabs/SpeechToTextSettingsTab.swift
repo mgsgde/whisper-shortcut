@@ -105,7 +105,7 @@ struct SpeechToTextSettingsTab: View {
   private var modelSection: some View {
     ModelSelectionView(
       title: "Transcription Model",
-      selectedModel: $viewModel.data.selectedModel,
+      selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
       onModelChanged: {
         Task {
           await viewModel.saveSettings()

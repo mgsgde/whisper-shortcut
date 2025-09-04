@@ -66,9 +66,9 @@ struct SettingsData {
   var openChatGPTEnabled: Bool = true
 
   // MARK: - Model & Prompt Settings
-  var selectedModel: TranscriptionModel = .gpt4oTranscribe
-  var selectedGPTModel: GPTModel = .gpt5Mini
-  var selectedVoiceResponseGPTModel: GPTModel = .gpt5ChatLatest
+  var selectedTranscriptionModel: TranscriptionModel = .gpt4oTranscribe
+  var selectedPromptModel: GPTModel = .gpt5Mini
+  var selectedVoiceResponseModel: GPTModel = .gpt5ChatLatest
   var customPromptText: String = ""
   var promptModeSystemPrompt: String = ""
   var voiceResponseSystemPrompt: String = ""
