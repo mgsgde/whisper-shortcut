@@ -368,8 +368,8 @@ class SpeechService {
     // Get the selected GPT model from UserDefaults based on mode
     let modelKey = isVoiceResponse ? "selectedVoiceResponseGPTModel" : "selectedGPTModel"
     let selectedGPTModelString =
-      UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-chat-latest"
-    let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5ChatLatest
+      UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
+    let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5Mini
 
     let url = URL(string: Constants.responsesEndpoint)!
     var request = URLRequest(url: url)

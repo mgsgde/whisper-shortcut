@@ -44,7 +44,7 @@ class SettingsViewModel: ObservableObject {
     {
       data.selectedGPTModel = savedGPTModel
     } else {
-      data.selectedGPTModel = .gpt5ChatLatest
+      data.selectedGPTModel = .gpt5Mini
     }
 
     if let savedVoiceResponseGPTModelString = UserDefaults.standard.string(

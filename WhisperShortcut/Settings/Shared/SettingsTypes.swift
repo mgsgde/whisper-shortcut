@@ -67,7 +67,7 @@ struct SettingsData {
 
   // MARK: - Model & Prompt Settings
   var selectedModel: TranscriptionModel = .gpt4oTranscribe
-  var selectedGPTModel: GPTModel = .gpt5ChatLatest
+  var selectedGPTModel: GPTModel = .gpt5Mini
   var selectedVoiceResponseGPTModel: GPTModel = .gpt5ChatLatest
   var customPromptText: String = ""
   var promptModeSystemPrompt: String = ""
