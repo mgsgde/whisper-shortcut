@@ -55,36 +55,21 @@ class AccessibilityPermissionManager {
     }
   }
 
-  /// Checks permission only at app startup if prompt feature was used before
-  static func checkAndRequestPermissionIfNeeded() {
-    let hasUsedPrompt = UserDefaults.standard.bool(forKey: "hasUsedPromptFeature")
-
-    // Only check if user has used prompt features before
-    guard hasUsedPrompt else {
-      return
-    }
-
-    let hasPermission = hasAccessibilityPermission()
-
-    if !hasPermission {
-      DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-        showAccessibilityPermissionDialog()
-      }
-    }
-  }
-
   /// Marks that the user has used the prompt feature
   static func markPromptFeatureUsed() {
     UserDefaults.standard.set(true, forKey: "hasUsedPromptFeature")
   }
 
   /// Checks permission when user tries to use prompt feature
+  /// This is now the ONLY place where accessibility permission is requested
   static func checkPermissionForPromptUsage() -> Bool {
+    // Mark that the user has tried the prompt feature (for future reference)
     markPromptFeatureUsed()
 
     let hasPermission = hasAccessibilityPermission()
 
     if !hasPermission {
+      // Show dialog immediately when user actually needs the permission
       showAccessibilityPermissionDialog()
       return false
     }
