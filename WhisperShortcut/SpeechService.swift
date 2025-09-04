@@ -259,12 +259,16 @@ class SpeechService {
       name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
 
     // Play the audio response
-    let playbackSuccess = try await audioPlaybackService.playAudio(data: audioData)
+    let playbackResult = try await audioPlaybackService.playAudio(data: audioData)
 
-    if playbackSuccess {
-
-    } else {
-      NSLog("⚠️ VOICE-RESPONSE-MODE: Audio playback failed")
+    switch playbackResult {
+    case .completedSuccessfully:
+      NSLog("✅ VOICE-RESPONSE-MODE: Audio playback completed successfully")
+    case .stoppedByUser:
+      NSLog("🔄 VOICE-RESPONSE-MODE: Audio playback stopped by user")
+      break
+    case .failed:
+      NSLog("❌ VOICE-RESPONSE-MODE: Audio playback failed due to system error")
       throw TranscriptionError.networkError("Audio playback failed")
     }
 

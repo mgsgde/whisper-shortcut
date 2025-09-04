@@ -8,13 +8,17 @@ class AudioPlaybackService: NSObject {
 
   private var audioPlayer: AVAudioPlayer?
   private var currentPlaybackCompletion: ((Bool) -> Void)?
+  private var wasStoppedByUser: Bool = false
 
   override init() {
     super.init()
   }
 
   // MARK: - Main Playback Method
-  func playAudio(data: Data) async throws -> Bool {
+  func playAudio(data: Data) async throws -> PlaybackResult {
+
+    // Reset user stop flag
+    wasStoppedByUser = false
 
     // Validate audio data
     try validateAudioData(data)
@@ -48,12 +52,20 @@ class AudioPlaybackService: NSObject {
     // Start playback and wait for completion
     return await withCheckedContinuation { continuation in
       currentPlaybackCompletion = { success in
-        continuation.resume(returning: success)
+        let result: PlaybackResult
+        if success {
+          result = .completedSuccessfully
+        } else if self.wasStoppedByUser {
+          result = .stoppedByUser
+        } else {
+          result = .failed
+        }
+        continuation.resume(returning: result)
       }
 
       guard let player = audioPlayer else {
 
-        continuation.resume(returning: false)
+        continuation.resume(returning: .failed)
         return
       }
 
@@ -61,14 +73,14 @@ class AudioPlaybackService: NSObject {
 
       } else {
 
-        continuation.resume(returning: false)
+        continuation.resume(returning: .failed)
       }
     }
   }
 
   // MARK: - Playback Control
   func stopPlayback() {
-    NSLog("🔇 AUDIO-PLAYBACK: Stopping playback")
+    wasStoppedByUser = true
     stopCurrentPlayback()
   }
 
@@ -83,7 +95,7 @@ class AudioPlaybackService: NSObject {
       audioPlayer = nil
     }
 
-    // Complete any pending playback with failure
+    // Complete any pending playback
     if let completion = currentPlaybackCompletion {
       currentPlaybackCompletion = nil
       completion(false)
@@ -98,28 +110,30 @@ class AudioPlaybackService: NSObject {
 
     // Check for common audio file headers
     let headerBytes = Array(data.prefix(16))
-    
+
     // MP3 header check (ID3 or MPEG sync)
     if headerBytes.count >= 3 {
       // ID3v2 header
       if headerBytes[0] == 0x49 && headerBytes[1] == 0x44 && headerBytes[2] == 0x33 {
         return
       }
-      
+
       // MPEG sync bytes
-      if (headerBytes[0] == 0xFF && (headerBytes[1] & 0xE0) == 0xE0) {
+      if headerBytes[0] == 0xFF && (headerBytes[1] & 0xE0) == 0xE0 {
         return
       }
     }
-    
+
     // WAV header check
     if headerBytes.count >= 12 {
-      if headerBytes[0] == 0x52 && headerBytes[1] == 0x49 && headerBytes[2] == 0x46 && headerBytes[3] == 0x46 &&
-         headerBytes[8] == 0x57 && headerBytes[9] == 0x41 && headerBytes[10] == 0x56 && headerBytes[11] == 0x45 {
+      if headerBytes[0] == 0x52 && headerBytes[1] == 0x49 && headerBytes[2] == 0x46
+        && headerBytes[3] == 0x46 && headerBytes[8] == 0x57 && headerBytes[9] == 0x41
+        && headerBytes[10] == 0x56 && headerBytes[11] == 0x45
+      {
         return
       }
     }
-    
+
     // If we get here, we couldn't identify the audio format
     // But we'll still try to play it - AVAudioPlayer might handle it
   }
@@ -163,6 +177,13 @@ extension AudioPlaybackService: AVAudioPlayerDelegate {
 
     audioPlayer = nil
   }
+}
+
+// MARK: - Audio Playback Result Types
+enum PlaybackResult {
+  case completedSuccessfully
+  case stoppedByUser
+  case failed
 }
 
 // MARK: - Audio Playback Error Types
