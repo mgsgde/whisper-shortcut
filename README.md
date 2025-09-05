@@ -8,7 +8,7 @@
   <img src="screenshots/images/powered-by-openai.png" width="30%" alt="OpenAI Integration">
 </div>
 
-📺 **[Watch Demo Video](https://youtu.be/HQz8CsgEvx4)**
+📺 **[Watch Demo Video](https://youtu.be/yz8cbaI6NYQ)**
 
 ## Support the Project  
 
