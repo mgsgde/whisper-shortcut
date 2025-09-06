@@ -160,7 +160,8 @@ struct GeneralSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Conversation Memory",
-        subtitle: "Automatically clear conversation history after this time to save costs"
+        subtitle:
+          "Automatically clear conversation history after this time to save costs (only applies when dictating prompts, not transcription)"
       )
 
       ConversationTimeoutSelectionView(selectedTimeout: $viewModel.data.conversationTimeout)
