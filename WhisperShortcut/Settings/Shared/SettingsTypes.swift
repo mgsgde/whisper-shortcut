@@ -88,13 +88,11 @@ struct SettingsData {
   var toggleDictation: String = ""
   var togglePrompting: String = ""
   var toggleVoiceResponse: String = ""
-  var openChatGPT: String = ""
 
   // MARK: - Toggle Shortcut Enable States
   var toggleDictationEnabled: Bool = true
   var togglePromptingEnabled: Bool = true
   var toggleVoiceResponseEnabled: Bool = true
-  var openChatGPTEnabled: Bool = true
 
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = .gpt4oTranscribe
@@ -118,7 +116,6 @@ enum SettingsFocusField: Hashable {
   case toggleDictation
   case togglePrompting
   case toggleVoiceResponse
-  case openChatGPT
   case customPrompt
   case promptModeSystemPrompt
   case voiceResponseSystemPrompt

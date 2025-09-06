@@ -226,17 +226,6 @@ class MenuBarController: NSObject {
     toggleVoiceResponseItem.tag = 109  // Tag for updating shortcut
     menu.addItem(toggleVoiceResponseItem)
 
-
-    menu.addItem(NSMenuItem.separator())
-
-    // Open ChatGPT item with configurable shortcut
-    let openChatGPTItem = NSMenuItem(
-      title: "Open ChatGPT", action: #selector(openChatGPTFromMenu), keyEquivalent: "")
-    openChatGPTItem.keyEquivalentModifierMask = []
-    openChatGPTItem.target = self
-    openChatGPTItem.tag = 107  // Tag for updating shortcut
-    menu.addItem(openChatGPTItem)
-
     menu.addItem(NSMenuItem.separator())
 
     // Settings item
@@ -388,7 +377,6 @@ class MenuBarController: NSObject {
           : "Start Voice Response"
     }
 
-
     // Icon is now handled by updateMenuBarIcon() which is called from updateUI()
     // Handle special case when no API key is configured
     if !hasAPIKey, let button = statusItem?.button {
@@ -457,18 +445,6 @@ class MenuBarController: NSObject {
       }
     }
 
-    // Update open ChatGPT shortcut
-    if let openChatGPTItem = menu.item(withTag: 107) {
-      if currentConfig.openChatGPT.isEnabled {
-        openChatGPTItem.keyEquivalent = currentConfig.openChatGPT.key.displayString.lowercased()
-        openChatGPTItem.keyEquivalentModifierMask = currentConfig.openChatGPT.modifiers
-        openChatGPTItem.title = "Open ChatGPT"
-      } else {
-        openChatGPTItem.keyEquivalent = ""
-        openChatGPTItem.keyEquivalentModifierMask = []
-        openChatGPTItem.title = "Open ChatGPT (Disabled)"
-      }
-    }
   }
 
   @objc private func toggleDictationFromMenu() {
@@ -580,51 +556,6 @@ class MenuBarController: NSObject {
     updateMenuState()
     stopAudioLevelMonitoring()
     audioRecorder?.stopRecording()
-  }
-
-
-  @objc private func openChatGPTFromMenu() {
-
-    openChatGPTApp()
-  }
-
-  private func openChatGPTApp() {
-    // First, try to open the ChatGPT desktop app if installed
-    let chatGPTAppPath = "/Applications/ChatGPT.app"
-    let chatGPTAppURL = URL(fileURLWithPath: chatGPTAppPath)
-
-    if FileManager.default.fileExists(atPath: chatGPTAppPath) {
-      let runningApp = NSWorkspace.shared.openApplication(
-        at: chatGPTAppURL, configuration: NSWorkspace.OpenConfiguration())
-      if runningApp != nil {
-
-        return
-      } else {
-
-      }
-    } else {
-
-    }
-
-    // Fallback: try to open ChatGPT in the default browser
-    let chatGPTURL = URL(string: "https://chat.openai.com")!
-
-    if NSWorkspace.shared.open(chatGPTURL) {
-
-    } else {
-
-      // Final fallback: try to open in Safari specifically
-      let safariURL = URL(string: "https://chat.openai.com")!
-      let safariAppURL = URL(fileURLWithPath: "/Applications/Safari.app")
-      let runningApp = NSWorkspace.shared.open(
-        [safariURL], withApplicationAt: safariAppURL, configuration: NSWorkspace.OpenConfiguration()
-      )
-      if runningApp != nil {
-
-      } else {
-
-      }
-    }
   }
 
   @objc private func openSettings() {
@@ -1131,7 +1062,4 @@ extension MenuBarController: ShortcutDelegate {
     }
   }
 
-  func openChatGPT() {
-    openChatGPTFromMenu()
-  }
 }

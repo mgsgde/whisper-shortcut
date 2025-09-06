@@ -21,13 +21,10 @@ class SettingsViewModel: ObservableObject {
     data.toggleDictation = currentConfig.startRecording.textDisplayString
     data.togglePrompting = currentConfig.startPrompting.textDisplayString
     data.toggleVoiceResponse = currentConfig.startVoiceResponse.textDisplayString
-    data.openChatGPT = currentConfig.openChatGPT.textDisplayString
-
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
     data.toggleVoiceResponseEnabled = currentConfig.startVoiceResponse.isEnabled
-    data.openChatGPTEnabled = currentConfig.openChatGPT.isEnabled
 
     // Load transcription model preference
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
@@ -128,12 +125,6 @@ class SettingsViewModel: ObservableObject {
       }
     }
 
-    if data.openChatGPTEnabled {
-      guard !data.openChatGPT.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter an open ChatGPT shortcut"
-      }
-    }
-
     // Validate shortcut parsing
     let shortcuts = parseShortcuts()
     for (name, shortcut) in shortcuts {
@@ -164,9 +155,6 @@ class SettingsViewModel: ObservableObject {
       "toggle voice response": data.toggleVoiceResponseEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.toggleVoiceResponse)
         : ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
-      "open ChatGPT": data.openChatGPTEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.openChatGPT)
-        : ShortcutDefinition(key: .one, modifiers: [.command], isEnabled: false),
     ]
   }
 
@@ -218,8 +206,6 @@ class SettingsViewModel: ObservableObject {
         ?? ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
       stopVoiceResponse: shortcuts["toggle voice response"]!
         ?? ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
-      openChatGPT: shortcuts["open ChatGPT"]!
-        ?? ShortcutDefinition(key: .one, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 

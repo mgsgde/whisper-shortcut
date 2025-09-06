@@ -19,18 +19,6 @@ struct GeneralSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
-      // Open ChatGPT Shortcut Section
-      openChatGPTSection
-
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
-
       // Conversation Timeout Section
       conversationTimeoutSection
 
@@ -107,50 +95,6 @@ struct GeneralSettingsTab: View {
         }
       }
       .fixedSize(horizontal: false, vertical: true)
-    }
-  }
-
-  // MARK: - Open ChatGPT Shortcut Section
-  @ViewBuilder
-  private var openChatGPTSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Open ChatGPT Shortcut",
-        subtitle: "Quick access to ChatGPT in your browser"
-      )
-
-      ShortcutInputRow(
-        label: "Open ChatGPT:",
-        placeholder: "e.g., command+1",
-        text: $viewModel.data.openChatGPT,
-        isEnabled: $viewModel.data.openChatGPTEnabled,
-        focusedField: .openChatGPT,
-        currentFocus: $focusedField,
-        onShortcutChanged: {
-          // Auto-save shortcuts
-          Task {
-            await viewModel.saveSettings()
-          }
-        }
-      )
-
-      // Available Keys Information
-      VStack(alignment: .leading, spacing: 8) {
-        Text("Available keys:")
-          .font(.callout)
-          .fontWeight(.semibold)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
-
-        Text(
-          "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • up • down • left • right • comma • period"
-        )
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .textSelection(.enabled)
-        .fixedSize(horizontal: false, vertical: true)
-      }
-      .textSelection(.enabled)
     }
   }
 

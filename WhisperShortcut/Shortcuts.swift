@@ -5,7 +5,6 @@ protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
   func toggleVoiceResponse()
-  func openChatGPT()
 }
 
 // Configurable shortcuts using ShortcutConfigManager
@@ -15,7 +14,6 @@ class Shortcuts {
   private var toggleDictationKey: HotKey?
   private var togglePromptingKey: HotKey?
   private var toggleVoiceResponseKey: HotKey?
-  private var openChatGPTKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -66,13 +64,6 @@ class Shortcuts {
       }
     }
 
-    if config.openChatGPT.isEnabled {
-      openChatGPTKey = HotKey(
-        key: config.openChatGPT.key, modifiers: config.openChatGPT.modifiers)
-      openChatGPTKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.openChatGPT()
-      }
-    }
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -87,7 +78,6 @@ class Shortcuts {
     toggleDictationKey = nil
     togglePromptingKey = nil
     toggleVoiceResponseKey = nil
-    openChatGPTKey = nil
   }
 
   deinit {
