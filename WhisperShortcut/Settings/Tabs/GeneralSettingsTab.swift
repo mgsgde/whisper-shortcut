@@ -31,6 +31,18 @@ struct GeneralSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
+      // Conversation Timeout Section
+      conversationTimeoutSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Support & Feedback Section
       supportFeedbackSection
     }
@@ -139,6 +151,25 @@ struct GeneralSettingsTab: View {
         .fixedSize(horizontal: false, vertical: true)
       }
       .textSelection(.enabled)
+    }
+  }
+
+  // MARK: - Conversation Timeout Section
+  @ViewBuilder
+  private var conversationTimeoutSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Conversation Memory",
+        subtitle: "Automatically clear conversation history after this time to save costs"
+      )
+
+      ConversationTimeoutSelectionView(selectedTimeout: $viewModel.data.conversationTimeout)
+        .onChange(of: viewModel.data.conversationTimeout) { _, _ in
+          // Auto-save timeout setting
+          Task {
+            await viewModel.saveSettings()
+          }
+        }
     }
   }
 

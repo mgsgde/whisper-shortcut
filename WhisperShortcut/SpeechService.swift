@@ -71,6 +71,7 @@ class SpeechService {
 
   // MARK: - Prompt Mode Properties
   private var previousResponseId: String?  // Store previous response ID for conversation continuity
+  private var previousResponseTimestamp: Date?  // Track when the last response was received
 
   init(
     keychainManager: KeychainManaging = KeychainManager.shared,
@@ -110,8 +111,27 @@ class SpeechService {
 
   // MARK: - Prompt Mode Configuration
   func clearConversationHistory() {
-
     previousResponseId = nil
+    previousResponseTimestamp = nil
+  }
+
+  private func isConversationExpired() -> Bool {
+    guard let timestamp = previousResponseTimestamp else {
+      return true  // No previous conversation
+    }
+
+    // Get timeout duration from settings (default: 5 minutes)
+    let timeoutMinutes = UserDefaults.standard.double(forKey: "conversationTimeoutMinutes")
+    let timeoutDuration = timeoutMinutes > 0 ? timeoutMinutes : 5.0
+
+    let expirationTime = timestamp.addingTimeInterval(timeoutDuration * 60)  // Convert to seconds
+    let isExpired = Date() > expirationTime
+
+    if isExpired {
+      clearConversationHistory()
+    }
+
+    return isExpired
   }
 
   // MARK: - Shared Validation
@@ -390,12 +410,15 @@ class SpeechService {
     let reasoningConfig =
       selectedGPTModel == .gpt5 ? GPT5ResponseRequest.ReasoningConfig(effort: "minimal") : nil
 
+    // Check if conversation has expired before using previous_response_id
+    let effectivePreviousResponseId = isConversationExpired() ? nil : previousResponseId
+
     let gpt5Request = GPT5ResponseRequest(
       model: selectedGPTModel.rawValue,
       input: fullInput,
       reasoning: reasoningConfig,
       text: GPT5ResponseRequest.TextConfig(verbosity: "medium"),
-      previous_response_id: previousResponseId
+      previous_response_id: effectivePreviousResponseId
     )
 
     request.httpBody = try JSONEncoder().encode(gpt5Request)
@@ -458,8 +481,9 @@ class SpeechService {
     do {
       let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
 
-      // Store the response ID for conversation continuity
+      // Store the response ID and timestamp for conversation continuity
       previousResponseId = result.id
+      previousResponseTimestamp = Date()
 
       // Extract text from the response structure
       for output in result.output {

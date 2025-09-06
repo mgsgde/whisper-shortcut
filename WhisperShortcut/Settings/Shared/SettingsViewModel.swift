@@ -88,6 +88,14 @@ class SettingsViewModel: ObservableObject {
       data.audioPlaybackSpeed = 1.0
     }
 
+    // Load conversation timeout
+    let savedTimeoutMinutes = UserDefaults.standard.double(forKey: "conversationTimeoutMinutes")
+    if savedTimeoutMinutes > 0 {
+      data.conversationTimeout = ConversationTimeout(rawValue: savedTimeoutMinutes) ?? .fiveMinutes
+    } else {
+      data.conversationTimeout = .fiveMinutes
+    }
+
     // Load API key
     data.apiKey = KeychainManager.shared.getAPIKey() ?? ""
 
@@ -190,6 +198,10 @@ class SettingsViewModel: ObservableObject {
 
     // Save audio playback speed
     UserDefaults.standard.set(data.audioPlaybackSpeed, forKey: "audioPlaybackSpeed")
+
+    // Save conversation timeout
+    UserDefaults.standard.set(
+      data.conversationTimeout.rawValue, forKey: "conversationTimeoutMinutes")
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()

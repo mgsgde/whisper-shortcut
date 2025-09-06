@@ -40,6 +40,37 @@ enum GPTModel: String, CaseIterable {
   }
 }
 
+// MARK: - Conversation Timeout Enum
+enum ConversationTimeout: Double, CaseIterable {
+  case oneMinute = 1.0
+  case fiveMinutes = 5.0
+  case tenMinutes = 10.0
+  case fifteenMinutes = 15.0
+  case thirtyMinutes = 30.0
+  case never = 0.0  // Deaktiviert Timeout
+
+  var displayName: String {
+    switch self {
+    case .oneMinute:
+      return "1 Minute"
+    case .fiveMinutes:
+      return "5 Minutes"
+    case .tenMinutes:
+      return "10 Minutes"
+    case .fifteenMinutes:
+      return "15 Minutes"
+    case .thirtyMinutes:
+      return "30 Minutes"
+    case .never:
+      return "Never"
+    }
+  }
+
+  var isRecommended: Bool {
+    return self == .fiveMinutes
+  }
+}
+
 // MARK: - Settings Tab Definition
 enum SettingsTab: String, CaseIterable {
   case general = "General"
@@ -73,6 +104,7 @@ struct SettingsData {
   var promptModeSystemPrompt: String = ""
   var voiceResponseSystemPrompt: String = ""
   var audioPlaybackSpeed: Double = 1.0
+  var conversationTimeout: ConversationTimeout = .fiveMinutes
 
   // MARK: - UI State
   var errorMessage: String = ""
