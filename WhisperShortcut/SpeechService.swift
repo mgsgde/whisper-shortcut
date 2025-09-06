@@ -176,12 +176,23 @@ class SpeechService {
     // Validate file
     try validateAudioFile(at: audioURL)
 
+    // Start timing for transcription request
+    let transcriptionStartTime = Date()
+    NSLog(
+      "⏱️ API-TIMING: Starting TRANSCRIPTION request with model \(selectedTranscriptionModel.rawValue)"
+    )
+
     // Create transcription request
     let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
 
     // Execute request
-
     let (data, response) = try await session.data(for: request)
+
+    // Calculate and log transcription duration
+    let transcriptionDuration = Date().timeIntervalSince(transcriptionStartTime)
+    NSLog(
+      "⏱️ API-TIMING: TRANSCRIPTION request completed in \(String(format: "%.2f", transcriptionDuration))s with model \(selectedTranscriptionModel.rawValue)"
+    )
 
     // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
@@ -197,10 +208,18 @@ class SpeechService {
     }
 
     // Parse result
+    let parseStartTime = Date()
     let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
+    let parseDuration = Date().timeIntervalSince(parseStartTime)
 
     // Validate transcribed text for empty/silent audio
     try validateTranscribedText(result.text)
+
+    // Log final timing summary for transcription
+    let totalTranscriptionDuration = Date().timeIntervalSince(transcriptionStartTime)
+    NSLog(
+      "⏱️ API-TIMING: TRANSCRIPTION total processing time \(String(format: "%.2f", totalTranscriptionDuration))s (network: \(String(format: "%.2f", transcriptionDuration))s, parse: \(String(format: "%.3f", parseDuration))s) - model: \(selectedTranscriptionModel.rawValue)"
+    )
 
     return result.text
   }
@@ -395,6 +414,11 @@ class SpeechService {
       UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
     let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5Mini
 
+    // Start timing for API request
+    let requestStartTime = Date()
+    let mode = isVoiceResponse ? "VOICE-RESPONSE" : "PROMPT"
+    NSLog("⏱️ API-TIMING: Starting \(mode) request with model \(selectedGPTModel.rawValue)")
+
     let url = URL(string: Constants.responsesEndpoint)!
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -426,6 +450,12 @@ class SpeechService {
     // Execute request
     let (data, response) = try await session.data(for: request)
 
+    // Calculate and log request duration
+    let requestDuration = Date().timeIntervalSince(requestStartTime)
+    NSLog(
+      "⏱️ API-TIMING: \(mode) request completed in \(String(format: "%.2f", requestDuration))s with model \(selectedGPTModel.rawValue)"
+    )
+
     // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
       NSLog("⚠️ PROMPT-MODE: Invalid response type from GPT-5")
@@ -442,7 +472,17 @@ class SpeechService {
     }
 
     // Parse and extract response
-    return try parseGPT5Response(data: data)
+    let parseStartTime = Date()
+    let result = try parseGPT5Response(data: data)
+    let parseDuration = Date().timeIntervalSince(parseStartTime)
+
+    // Log final timing summary
+    let totalDuration = Date().timeIntervalSince(requestStartTime)
+    NSLog(
+      "⏱️ API-TIMING: \(mode) total processing time \(String(format: "%.2f", totalDuration))s (network: \(String(format: "%.2f", requestDuration))s, parse: \(String(format: "%.3f", parseDuration))s) - model: \(selectedGPTModel.rawValue)"
+    )
+
+    return result
   }
 
   private func buildPromptInput(

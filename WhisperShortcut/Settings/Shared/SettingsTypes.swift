@@ -2,38 +2,54 @@ import Foundation
 
 // MARK: - GPT Model Enum
 enum GPTModel: String, CaseIterable {
+  case gpt5Nano = "gpt-5-nano"
+  case gpt5Mini = "gpt-5-mini"
   case gpt5ChatLatest = "gpt-5-chat-latest"
   case gpt5 = "gpt-5"
-  case gpt5Mini = "gpt-5-mini"
 
   var displayName: String {
     switch self {
+    case .gpt5Nano:
+      return "GPT-5 Nano"
+    case .gpt5Mini:
+      return "GPT-5 Mini"
     case .gpt5ChatLatest:
       return "GPT-5 Chat Latest"
     case .gpt5:
       return "GPT-5"
+    }
+  }
+
+  var description: String {
+    switch self {
+    case .gpt5Nano:
+      return "Ultraleicht • Günstig • Für einfache Prompts"
     case .gpt5Mini:
-      return "GPT-5 Mini"
+      return "Standard • Günstig • Gute Allround-Qualität"
+    case .gpt5ChatLatest:
+      return "Chat-optimiert • Schnell • Wie ChatGPT-App"
+    case .gpt5:
+      return "Reasoning-Power • Komplexe Antworten • Höchste Qualität"
     }
   }
 
   var isRecommended: Bool {
     switch self {
-    case .gpt5ChatLatest:
-      return true
     case .gpt5:
-      return false
-    case .gpt5Mini:
+      return true  // Default-Modell
+    case .gpt5Nano, .gpt5Mini, .gpt5ChatLatest:
       return false
     }
   }
 
   var costLevel: String {
     switch self {
+    case .gpt5Nano:
+      return "Minimal"
     case .gpt5Mini:
       return "Low"
     case .gpt5ChatLatest:
-      return "Medium"
+      return "High"  // Gleicher Preis wie GPT-5
     case .gpt5:
       return "High"
     }
@@ -96,8 +112,8 @@ struct SettingsData {
 
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = .gpt4oTranscribe
-  var selectedPromptModel: GPTModel = .gpt5Mini
-  var selectedVoiceResponseModel: GPTModel = .gpt5ChatLatest
+  var selectedPromptModel: GPTModel = .gpt5
+  var selectedVoiceResponseModel: GPTModel = .gpt5
   var customPromptText: String = ""
   var promptModeSystemPrompt: String = ""
   var voiceResponseSystemPrompt: String = ""

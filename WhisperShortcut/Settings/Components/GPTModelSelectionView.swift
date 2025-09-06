@@ -5,7 +5,7 @@ struct GPTModelSelectionView: View {
   let title: String
   @Binding var selectedModel: GPTModel
   let onModelChanged: (() -> Void)?
-  
+
   init(
     title: String,
     selectedModel: Binding<GPTModel>,
@@ -52,54 +52,51 @@ struct GPTModelSelectionView: View {
 
       // Model Details
       VStack(alignment: .leading, spacing: 8) {
-        Text("Model Details:")
+        Text(selectedModel.description)
           .font(.callout)
-          .fontWeight(.semibold)
           .foregroundColor(.secondary)
           .textSelection(.enabled)
 
-        switch selectedModel {
-        case .gpt5ChatLatest:
-          Text("• GPT-5 Chat Latest: Optimized for fast, general chat")
+        HStack {
+          Text("Cost:")
             .font(.callout)
+            .fontWeight(.medium)
             .foregroundColor(.secondary)
-            .textSelection(.enabled)
-          Text("• Best for: Quick responses, low latency, everyday use")
+
+          Text(selectedModel.costLevel)
             .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-          Text("• Cost: Medium")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-        case .gpt5:
-          Text("• GPT-5: Deep reasoning and complex tasks")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-          Text("• Best for: Complex problems, coding, detailed analysis")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-          Text("• Cost: High")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-        case .gpt5Mini:
-          Text("• GPT-5 Mini: Fast and efficient model")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-          Text("• Best for: Everyday use, quick responses")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-          Text("• Cost: Low")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
+            .fontWeight(.semibold)
+            .foregroundColor(costLevelColor(for: selectedModel.costLevel))
+        }
+
+        if selectedModel.isRecommended {
+          HStack {
+            Image(systemName: "star.fill")
+              .foregroundColor(.yellow)
+              .font(.caption)
+            Text("Recommended")
+              .font(.callout)
+              .fontWeight(.medium)
+              .foregroundColor(.secondary)
+          }
         }
       }
+    }
+  }
+
+  // MARK: - Helper Functions
+  private func costLevelColor(for costLevel: String) -> Color {
+    switch costLevel {
+    case "Minimal":
+      return .green
+    case "Low":
+      return .green
+    case "Medium":
+      return .orange
+    case "High":
+      return .red
+    default:
+      return .secondary
     }
   }
 }

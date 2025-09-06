@@ -41,7 +41,7 @@ class SettingsViewModel: ObservableObject {
     {
       data.selectedPromptModel = savedPromptModel
     } else {
-      data.selectedPromptModel = .gpt5Mini
+      data.selectedPromptModel = .gpt5
     }
 
     // Load voice response model preference
@@ -51,7 +51,7 @@ class SettingsViewModel: ObservableObject {
     {
       data.selectedVoiceResponseModel = savedVoiceResponseModel
     } else {
-      data.selectedVoiceResponseModel = .gpt5ChatLatest
+      data.selectedVoiceResponseModel = .gpt5
     }
 
     // Load custom prompt
