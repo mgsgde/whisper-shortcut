@@ -18,10 +18,7 @@ alwaysApply: true
 
 - **KISS Principle**: Keep It Simple, Stupid - Always choose the simplest, most elegant solution. Consider multiple approaches, then select the most robust one - not the first that comes to mind
 - **Automatic Rebuild & Restart**: **MANDATORY** - After every code change, automatically rebuild and restart the app so the user can immediately see and test the changes. **ALWAYS** use the rebuild script: Run `bash scripts/rebuild-and-restart.sh`
-- **Debug Logging**: **MANDATORY** - Always implement comprehensive NSLog statements for any new functionality with emoji prefixes for easy filtering. Use `NSLog()` in production code for debugging (removed before commit), use `print()` in tests for Xcode console output
-- **Test-Driven Development**: Write tests first, then implement features - follow the Red-Green-Refactor cycle. Maintain high test coverage for critical functionality, especially API interactions and core business logic
-- **Do not run tests automatically** unless explicitly requested by the user
-- **Always use the release script** (`./scripts/release.sh`) when creating releases, unless there's a specific reason not to
+- **Debug Logging**: **MANDATORY** - Use `NSLog()` (with emoji prefix) for new features; use `print()` in tests
 
 ## 🗣️ Communication and Understanding Rules
 
