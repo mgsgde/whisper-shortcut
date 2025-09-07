@@ -11,6 +11,7 @@ class AudioRecorder: NSObject {
 
   private var audioRecorder: AVAudioRecorder?
   private var recordingURL: URL?
+  
 
   // MARK: - Constants
   private enum Constants {
@@ -106,7 +107,6 @@ class AudioRecorder: NSObject {
 
       audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
       audioRecorder?.delegate = self
-      audioRecorder?.isMeteringEnabled = true
 
       let success = audioRecorder?.record() ?? false
       if success {
@@ -134,16 +134,6 @@ class AudioRecorder: NSObject {
 
   }
 
-  func getAudioLevels() -> (average: Float, peak: Float)? {
-    guard let recorder = audioRecorder, recorder.isRecording else {
-      return nil
-    }
-
-    recorder.updateMeters()
-    let averageLevel = recorder.averagePower(forChannel: 0)
-    let peakLevel = recorder.peakPower(forChannel: 0)
-    return (average: averageLevel, peak: peakLevel)
-  }
 
   func cleanup() {
     // Simple and safe cleanup

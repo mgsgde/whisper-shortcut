@@ -7,7 +7,6 @@ class MenuBarController: NSObject {
   // MARK: - Constants
   private enum Constants {
     static let blinkInterval: TimeInterval = 0.5
-    static let audioLevelUpdateInterval: TimeInterval = 0.1
     static let successDisplayTime: TimeInterval = 2.0
     static let errorDisplayTime: TimeInterval = 1.5
     static let transcribingDisplayTime: TimeInterval = 1.0
@@ -64,7 +63,6 @@ class MenuBarController: NSObject {
   private var shortcuts: Shortcuts?
   private var speechService: SpeechService?
   private var clipboardManager: ClipboardManager?
-  private var audioLevelTimer: Timer?
   private var audioPlaybackService: AudioPlaybackService?
   private var isVoicePlaying: Bool = false
 
@@ -545,7 +543,6 @@ class MenuBarController: NSObject {
     lastModeWasVoiceResponse = true
     isVoiceResponse = true
     updateMenuState()
-    startAudioLevelMonitoring()
     audioRecorder?.startRecording()
   }
 
@@ -554,7 +551,6 @@ class MenuBarController: NSObject {
 
     isVoiceResponse = false
     updateMenuState()
-    stopAudioLevelMonitoring()
     audioRecorder?.stopRecording()
   }
 
@@ -644,7 +640,6 @@ class MenuBarController: NSObject {
   }
 
   func cleanup() {
-    stopAudioLevelMonitoring()
     stopBlinking()
     shortcuts?.cleanup()
     audioRecorder?.cleanup()
@@ -855,6 +850,8 @@ extension MenuBarController: AudioRecorderDelegate {
         statusMenuItem.title = "🤖 Processing prompt..."
       } else if mode == "voice response" {
         statusMenuItem.title = "🔊 Processing voice response..."
+      } else if mode == "clipboard reading" {
+        statusMenuItem.title = "📋 Reading clipboard..."
       } else {
         statusMenuItem.title = "⏳ Transcribing..."
       }
@@ -1004,25 +1001,6 @@ extension MenuBarController: AudioRecorderDelegate {
     cmdUp?.post(tap: .cghidEventTap)
   }
 
-  private func startAudioLevelMonitoring() {
-    // Monitor audio levels every 0.5 seconds during recording
-    audioLevelTimer = Timer.scheduledTimer(
-      withTimeInterval: Constants.audioLevelUpdateInterval, repeats: true
-    ) { [weak self] _ in
-      if let levels = self?.audioRecorder?.getAudioLevels() {
-
-        // If levels are very low (below -50dB), warn about potential issues
-        if levels.average < -50 && levels.peak < -40 {
-
-        }
-      }
-    }
-  }
-
-  private func stopAudioLevelMonitoring() {
-    audioLevelTimer?.invalidate()
-    audioLevelTimer = nil
-  }
 }
 
 // MARK: - ShortcutDelegate Implementation
