@@ -41,7 +41,7 @@ class SettingsViewModel: ObservableObject {
     {
       data.selectedPromptModel = savedPromptModel
     } else {
-      data.selectedPromptModel = .gpt5
+      data.selectedPromptModel = SettingsDefaults.selectedPromptModel
     }
 
     // Load voice response model preference
@@ -51,7 +51,7 @@ class SettingsViewModel: ObservableObject {
     {
       data.selectedVoiceResponseModel = savedVoiceResponseModel
     } else {
-      data.selectedVoiceResponseModel = .gpt5
+      data.selectedVoiceResponseModel = SettingsDefaults.selectedVoiceResponseModel
     }
 
     // Load custom prompt
@@ -82,15 +82,36 @@ class SettingsViewModel: ObservableObject {
     if savedPlaybackSpeed > 0 {
       data.audioPlaybackSpeed = savedPlaybackSpeed
     } else {
-      data.audioPlaybackSpeed = 1.0
+      data.audioPlaybackSpeed = SettingsDefaults.audioPlaybackSpeed
     }
 
     // Load conversation timeout
     let savedTimeoutMinutes = UserDefaults.standard.double(forKey: "conversationTimeoutMinutes")
     if savedTimeoutMinutes > 0 {
-      data.conversationTimeout = ConversationTimeout(rawValue: savedTimeoutMinutes) ?? .fiveMinutes
+      data.conversationTimeout =
+        ConversationTimeout(rawValue: savedTimeoutMinutes) ?? SettingsDefaults.conversationTimeout
     } else {
-      data.conversationTimeout = .fiveMinutes
+      data.conversationTimeout = SettingsDefaults.conversationTimeout
+    }
+
+    // Load reasoning effort settings
+    if let savedPromptReasoningEffort = UserDefaults.standard.string(
+      forKey: "promptReasoningEffort"),
+      let promptReasoningEffort = ReasoningEffort(rawValue: savedPromptReasoningEffort)
+    {
+      data.promptReasoningEffort = promptReasoningEffort
+    } else {
+      data.promptReasoningEffort = SettingsDefaults.promptReasoningEffort
+    }
+
+    if let savedVoiceResponseReasoningEffort = UserDefaults.standard.string(
+      forKey: "voiceResponseReasoningEffort"),
+      let voiceResponseReasoningEffort = ReasoningEffort(
+        rawValue: savedVoiceResponseReasoningEffort)
+    {
+      data.voiceResponseReasoningEffort = voiceResponseReasoningEffort
+    } else {
+      data.voiceResponseReasoningEffort = SettingsDefaults.voiceResponseReasoningEffort
     }
 
     // Load API key
@@ -190,6 +211,11 @@ class SettingsViewModel: ObservableObject {
     // Save conversation timeout
     UserDefaults.standard.set(
       data.conversationTimeout.rawValue, forKey: "conversationTimeoutMinutes")
+
+    // Save reasoning effort settings
+    UserDefaults.standard.set(data.promptReasoningEffort.rawValue, forKey: "promptReasoningEffort")
+    UserDefaults.standard.set(
+      data.voiceResponseReasoningEffort.rawValue, forKey: "voiceResponseReasoningEffort")
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()

@@ -43,6 +43,18 @@ struct SpeechToPromptSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
+      // Reasoning Effort Section
+      reasoningEffortSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Usage Instructions Section
       usageInstructionsSection
     }
@@ -124,6 +136,29 @@ struct SpeechToPromptSettingsTab: View {
         }
       }
     )
+  }
+
+  // MARK: - Reasoning Effort Section
+  @ViewBuilder
+  private var reasoningEffortSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "GPT-5 Reasoning Effort",
+        subtitle:
+          "Control the depth of analysis for prompt responses. Higher effort provides better quality but slower responses."
+      )
+
+      ReasoningEffortSelectionView(
+        selectedEffort: $viewModel.data.promptReasoningEffort,
+        title: "Reasoning Effort",
+        description: "Controls analysis depth for prompt responses"
+      )
+      .onChange(of: viewModel.data.promptReasoningEffort) { _, _ in
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+    }
   }
 
   // MARK: - Usage Instructions

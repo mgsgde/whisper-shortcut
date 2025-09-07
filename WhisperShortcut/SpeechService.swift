@@ -430,9 +430,16 @@ class SpeechService {
       userMessage: userMessage, clipboardContext: clipboardContext, isVoiceResponse: isVoiceResponse
     )
 
-    // Only use reasoning config for GPT-5 (not for GPT-5 Chat Latest or GPT-5 Mini)
-    let reasoningConfig =
-      selectedGPTModel == .gpt5 ? GPT5ResponseRequest.ReasoningConfig(effort: "minimal") : nil
+    // Get reasoning effort from user settings
+    let reasoningEffortKey =
+      isVoiceResponse ? "voiceResponseReasoningEffort" : "promptReasoningEffort"
+    let defaultReasoningEffort =
+      isVoiceResponse
+      ? SettingsDefaults.voiceResponseReasoningEffort.rawValue
+      : SettingsDefaults.promptReasoningEffort.rawValue
+    let savedReasoningEffort =
+      UserDefaults.standard.string(forKey: reasoningEffortKey) ?? defaultReasoningEffort
+    let reasoningConfig = GPT5ResponseRequest.ReasoningConfig(effort: savedReasoningEffort)
 
     // Check if conversation has expired before using previous_response_id
     let effectivePreviousResponseId = isConversationExpired() ? nil : previousResponseId

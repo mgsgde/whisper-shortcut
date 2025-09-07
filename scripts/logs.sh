@@ -99,11 +99,10 @@ case $LOG_STYLE in
 esac
 
 # Build the log command
-LOG_CMD="log stream --predicate 'process == \"$PROCESS_NAME\"' --style $LOG_STYLE"
-
-# Add filter if specified
 if [[ -n "$FILTER" ]]; then
-    LOG_CMD="$LOG_CMD --predicate 'process == \"$PROCESS_NAME\" AND eventMessage CONTAINS \"$FILTER\"'"
+    LOG_CMD="log stream --predicate 'process == \"$PROCESS_NAME\" AND eventMessage CONTAINS \"$FILTER\"' --style $LOG_STYLE"
+else
+    LOG_CMD="log stream --predicate 'process == \"$PROCESS_NAME\"' --style $LOG_STYLE"
 fi
 
 # Show configuration
@@ -141,7 +140,11 @@ echo ""
 
 if [[ -n "$TIME_RANGE" ]]; then
     # Show historical logs
-    log show --predicate "process == \"$PROCESS_NAME\"" --last "$TIME_RANGE" --style "$LOG_STYLE"
+    if [[ -n "$FILTER" ]]; then
+        log show --predicate "process == \"$PROCESS_NAME\" AND eventMessage CONTAINS \"$FILTER\"" --last "$TIME_RANGE" --style "$LOG_STYLE"
+    else
+        log show --predicate "process == \"$PROCESS_NAME\"" --last "$TIME_RANGE" --style "$LOG_STYLE"
+    fi
 else
     # Stream real-time logs
     eval "$LOG_CMD"
