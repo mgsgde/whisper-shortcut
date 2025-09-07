@@ -224,6 +224,15 @@ class MenuBarController: NSObject {
     toggleVoiceResponseItem.tag = 109  // Tag for updating shortcut
     menu.addItem(toggleVoiceResponseItem)
 
+    // Read clipboard item with configurable shortcut
+    let readClipboardItem = NSMenuItem(
+      title: "Read Clipboard", action: #selector(readClipboardFromMenu),
+      keyEquivalent: "")
+    readClipboardItem.keyEquivalentModifierMask = []
+    readClipboardItem.target = self
+    readClipboardItem.tag = 110  // Tag for updating shortcut
+    menu.addItem(readClipboardItem)
+
     menu.addItem(NSMenuItem.separator())
 
     // Settings item
@@ -248,6 +257,7 @@ class MenuBarController: NSObject {
   private func setupComponents() {
     audioRecorder = AudioRecorder()
     shortcuts = Shortcuts()
+    shortcuts?.delegate = self  // Set MenuBarController as delegate
     clipboardManager = ClipboardManager()
     speechService = SpeechService(clipboardManager: clipboardManager)
     audioPlaybackService = AudioPlaybackService.shared
@@ -440,6 +450,19 @@ class MenuBarController: NSObject {
         toggleVoiceResponseItem.keyEquivalent = ""
         toggleVoiceResponseItem.keyEquivalentModifierMask = []
         toggleVoiceResponseItem.title = "Toggle Voice Response (Disabled)"
+      }
+    }
+
+    // Update read clipboard shortcut
+    if let readClipboardItem = menu.item(withTag: 110) {
+      if currentConfig.readClipboard.isEnabled {
+        readClipboardItem.keyEquivalent = currentConfig.readClipboard.key.displayString.lowercased()
+        readClipboardItem.keyEquivalentModifierMask = currentConfig.readClipboard.modifiers
+        readClipboardItem.title = "Read Clipboard"
+      } else {
+        readClipboardItem.keyEquivalent = ""
+        readClipboardItem.keyEquivalentModifierMask = []
+        readClipboardItem.title = "Read Clipboard (Disabled)"
       }
     }
 
@@ -1038,6 +1061,28 @@ extension MenuBarController: ShortcutDelegate {
       // Start voice response
       startVoiceResponseFromMenu()
     }
+  }
+
+  func readClipboard() {
+    NSLog("📋 READ-CLIPBOARD: Starting clipboard text-to-speech")
+
+    // Prevent conflicts with ongoing recordings
+    if appMode.isRecording {
+      NSLog("⚠️ READ-CLIPBOARD: Another recording is in progress, ignoring request")
+      return
+    }
+
+    Task {
+      do {
+        let _ = try await speechService?.readClipboardAsSpeech()
+      } catch {
+        NSLog("❌ READ-CLIPBOARD: Error reading clipboard: \(error)")
+      }
+    }
+  }
+
+  @objc private func readClipboardFromMenu() {
+    readClipboard()
   }
 
 }

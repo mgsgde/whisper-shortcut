@@ -102,6 +102,7 @@ struct ShortcutConfig: Codable {
   var stopPrompting: ShortcutDefinition
   var startVoiceResponse: ShortcutDefinition
   var stopVoiceResponse: ShortcutDefinition
+  var readClipboard: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
@@ -109,7 +110,8 @@ struct ShortcutConfig: Codable {
     startPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
     stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
     startVoiceResponse: ShortcutDefinition(key: .three, modifiers: [.command]),
-    stopVoiceResponse: ShortcutDefinition(key: .three, modifiers: [.command])
+    stopVoiceResponse: ShortcutDefinition(key: .three, modifiers: [.command]),
+    readClipboard: ShortcutDefinition(key: .four, modifiers: [.command])
   )
 }
 
@@ -210,6 +212,7 @@ class ShortcutConfigManager {
     static let stopPromptingKey = "shortcut_stop_prompting"
     static let startVoiceResponseKey = "shortcut_start_voice_response"
     static let stopVoiceResponseKey = "shortcut_stop_voice_response"
+    static let readClipboardKey = "shortcut_read_clipboard"
   }
 
   private let userDefaults = UserDefaults.standard
@@ -231,13 +234,16 @@ class ShortcutConfigManager {
       ?? ShortcutConfig.default.startVoiceResponse
     let stopVoiceResponse =
       loadShortcut(for: Constants.stopVoiceResponseKey) ?? ShortcutConfig.default.stopVoiceResponse
+    let readClipboard =
+      loadShortcut(for: Constants.readClipboardKey) ?? ShortcutConfig.default.readClipboard
     return ShortcutConfig(
       startRecording: startRecording,
       stopRecording: stopRecording,
       startPrompting: startPrompting,
       stopPrompting: stopPrompting,
       startVoiceResponse: startVoiceResponse,
-      stopVoiceResponse: stopVoiceResponse
+      stopVoiceResponse: stopVoiceResponse,
+      readClipboard: readClipboard
     )
   }
 
@@ -248,6 +254,7 @@ class ShortcutConfigManager {
     saveShortcut(config.stopPrompting, for: Constants.stopPromptingKey)
     saveShortcut(config.startVoiceResponse, for: Constants.startVoiceResponseKey)
     saveShortcut(config.stopVoiceResponse, for: Constants.stopVoiceResponseKey)
+    saveShortcut(config.readClipboard, for: Constants.readClipboardKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)
@@ -396,6 +403,7 @@ class ShortcutConfigManager {
     if shortcut == currentConfig.startRecording || shortcut == currentConfig.stopRecording
       || shortcut == currentConfig.startPrompting || shortcut == currentConfig.stopPrompting
       || shortcut == currentConfig.startVoiceResponse || shortcut == currentConfig.stopVoiceResponse
+      || shortcut == currentConfig.readClipboard
     {
       return .duplicate("This shortcut is already in use")
     }

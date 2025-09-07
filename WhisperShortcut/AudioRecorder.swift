@@ -11,7 +11,6 @@ class AudioRecorder: NSObject {
 
   private var audioRecorder: AVAudioRecorder?
   private var recordingURL: URL?
-  
 
   // MARK: - Constants
   private enum Constants {
@@ -55,18 +54,18 @@ class AudioRecorder: NSObject {
     // Check current microphone authorization status
     switch AVCaptureDevice.authorizationStatus(for: .audio) {
     case .authorized:
-  
+
       completion(true)
 
     case .notDetermined:
-  
+
       AVCaptureDevice.requestAccess(for: .audio) { granted in
         DispatchQueue.main.async {
           if granted {
-        
+
             completion(true)
           } else {
-        
+
             completion(false)
           }
         }
@@ -77,7 +76,7 @@ class AudioRecorder: NSObject {
       completion(false)
 
     @unknown default:
-  
+
       completion(false)
     }
   }
@@ -119,21 +118,20 @@ class AudioRecorder: NSObject {
           ])
       }
     } catch {
-  
+
       delegate?.audioRecorderDidFailWithError(error)
     }
   }
 
   func stopRecording() {
     guard let recorder = audioRecorder, recorder.isRecording else {
-  
+
       return
     }
 
     recorder.stop()
 
   }
-
 
   func cleanup() {
     // Simple and safe cleanup
@@ -155,13 +153,11 @@ extension AudioRecorder: AVAudioRecorderDelegate {
     audioRecorder = nil
 
     if flag, let url = recordingURL {
-  
 
       // Verify the file has content
       do {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         let fileSize = attributes[.size] as? Int64 ?? 0
-    
 
         if fileSize > 0 {
           delegate?.audioRecorderDidFinishRecording(audioURL: url)
@@ -174,7 +170,7 @@ extension AudioRecorder: AVAudioRecorderDelegate {
           delegate?.audioRecorderDidFailWithError(error)
         }
       } catch {
-    
+
         delegate?.audioRecorderDidFailWithError(error)
       }
     } else {
@@ -189,7 +185,7 @@ extension AudioRecorder: AVAudioRecorderDelegate {
 
   func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
     if let error = error {
-  
+
       delegate?.audioRecorderDidFailWithError(error)
     }
   }

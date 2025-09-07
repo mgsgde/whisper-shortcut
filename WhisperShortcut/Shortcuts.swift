@@ -5,6 +5,7 @@ protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
   func toggleVoiceResponse()
+  func readClipboard()
 }
 
 // Configurable shortcuts using ShortcutConfigManager
@@ -14,6 +15,7 @@ class Shortcuts {
   private var toggleDictationKey: HotKey?
   private var togglePromptingKey: HotKey?
   private var toggleVoiceResponseKey: HotKey?
+  private var readClipboardKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -64,6 +66,14 @@ class Shortcuts {
       }
     }
 
+    if config.readClipboard.isEnabled {
+      readClipboardKey = HotKey(
+        key: config.readClipboard.key, modifiers: config.readClipboard.modifiers)
+      readClipboardKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.readClipboard()
+      }
+    }
+
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -78,6 +88,7 @@ class Shortcuts {
     toggleDictationKey = nil
     togglePromptingKey = nil
     toggleVoiceResponseKey = nil
+    readClipboardKey = nil
   }
 
   deinit {

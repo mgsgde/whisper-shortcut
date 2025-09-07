@@ -83,6 +83,8 @@ struct SettingsView: View {
         case .speechToPromptWithVoiceResponse:
           SpeechToPromptWithVoiceResponseSettingsTab(
             viewModel: viewModel, focusedField: $focusedField)
+        case .readClipboard:
+          ReadClipboardSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         }
       }
       .padding(.horizontal, 24)
@@ -102,6 +104,8 @@ struct SettingsView: View {
       return "text.bubble"
     case .speechToPromptWithVoiceResponse:
       return "speaker.wave.2"
+    case .readClipboard:
+      return "doc.on.clipboard"
     }
   }
 
@@ -115,6 +119,8 @@ struct SettingsView: View {
       return "Model, Prompt and Shortcut"
     case .speechToPromptWithVoiceResponse:
       return "Model, Prompt, Shortcut and Playback Speed"
+    case .readClipboard:
+      return "Text-to-Speech for Clipboard Content"
     }
   }
 

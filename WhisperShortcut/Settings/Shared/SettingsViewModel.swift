@@ -21,10 +21,12 @@ class SettingsViewModel: ObservableObject {
     data.toggleDictation = currentConfig.startRecording.textDisplayString
     data.togglePrompting = currentConfig.startPrompting.textDisplayString
     data.toggleVoiceResponse = currentConfig.startVoiceResponse.textDisplayString
+    data.readClipboard = currentConfig.readClipboard.textDisplayString
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
     data.toggleVoiceResponseEnabled = currentConfig.startVoiceResponse.isEnabled
+    data.readClipboardEnabled = currentConfig.readClipboard.isEnabled
 
     // Load transcription model preference
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
@@ -83,6 +85,15 @@ class SettingsViewModel: ObservableObject {
       data.audioPlaybackSpeed = savedPlaybackSpeed
     } else {
       data.audioPlaybackSpeed = SettingsDefaults.audioPlaybackSpeed
+    }
+
+    // Load read clipboard playback speed
+    let savedReadClipboardPlaybackSpeed = UserDefaults.standard.double(
+      forKey: "readClipboardPlaybackSpeed")
+    if savedReadClipboardPlaybackSpeed > 0 {
+      data.readClipboardPlaybackSpeed = savedReadClipboardPlaybackSpeed
+    } else {
+      data.readClipboardPlaybackSpeed = SettingsDefaults.readClipboardPlaybackSpeed
     }
 
     // Load conversation timeout
@@ -146,6 +157,12 @@ class SettingsViewModel: ObservableObject {
       }
     }
 
+    if data.readClipboardEnabled {
+      guard !data.readClipboard.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return "Please enter a read clipboard shortcut"
+      }
+    }
+
     // Validate shortcut parsing
     let shortcuts = parseShortcuts()
     for (name, shortcut) in shortcuts {
@@ -176,6 +193,9 @@ class SettingsViewModel: ObservableObject {
       "toggle voice response": data.toggleVoiceResponseEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.toggleVoiceResponse)
         : ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
+      "read clipboard": data.readClipboardEnabled
+        ? ShortcutConfigManager.parseShortcut(from: data.readClipboard)
+        : ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false),
     ]
   }
 
@@ -208,6 +228,9 @@ class SettingsViewModel: ObservableObject {
     // Save audio playback speed
     UserDefaults.standard.set(data.audioPlaybackSpeed, forKey: "audioPlaybackSpeed")
 
+    // Save read clipboard playback speed
+    UserDefaults.standard.set(data.readClipboardPlaybackSpeed, forKey: "readClipboardPlaybackSpeed")
+
     // Save conversation timeout
     UserDefaults.standard.set(
       data.conversationTimeout.rawValue, forKey: "conversationTimeoutMinutes")
@@ -232,6 +255,8 @@ class SettingsViewModel: ObservableObject {
         ?? ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
       stopVoiceResponse: shortcuts["toggle voice response"]!
         ?? ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
+      readClipboard: shortcuts["read clipboard"]!
+        ?? ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 
