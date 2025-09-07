@@ -15,8 +15,4 @@ class SettingsManager {
     settingsWindowController?.showWindow()
   }
 
-  func closeSettings() {
-    settingsWindowController?.window?.close()
-    settingsWindowController = nil
-  }
 }

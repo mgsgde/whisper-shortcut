@@ -1,5 +1,4 @@
 import Foundation
-import LocalAuthentication
 import Security
 
 // Protocol for dependency injection and testing
