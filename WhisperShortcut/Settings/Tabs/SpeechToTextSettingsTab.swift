@@ -41,7 +41,7 @@ struct SpeechToTextSettingsTab: View {
   private var shortcutsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Toggle Shortcut",
+        title: "⌨️ Toggle Shortcut",
         subtitle: "Start/Stop Dictation with one shortcut"
       )
 
@@ -83,7 +83,7 @@ struct SpeechToTextSettingsTab: View {
   @ViewBuilder
   private var promptSection: some View {
     PromptTextEditor(
-      title: "Prompt",
+      title: "💬 Prompt",
       subtitle:
         "Describe domain terms for better transcription quality. Leave empty to use OpenAI's default.",
       helpText:
@@ -104,7 +104,7 @@ struct SpeechToTextSettingsTab: View {
   @ViewBuilder
   private var modelSection: some View {
     ModelSelectionView(
-      title: "Transcription Model",
+      title: "🎤 Transcription Model",
       selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
       onModelChanged: {
         Task {

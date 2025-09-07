@@ -41,7 +41,7 @@ struct GeneralSettingsTab: View {
   private var apiKeySection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "OpenAI API Key",
+        title: "🔑 OpenAI API Key",
         subtitle: "Required for transcription and AI assistant functionality"
       )
 
@@ -103,7 +103,7 @@ struct GeneralSettingsTab: View {
   private var conversationTimeoutSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Conversation Memory",
+        title: "🧠 Conversation Memory",
         subtitle:
           "Automatically clear conversation history after this time to save costs (only applies when dictating prompts, not transcription)"
       )
@@ -123,7 +123,7 @@ struct GeneralSettingsTab: View {
   private var reasoningEffortSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "GPT-5 Reasoning Effort",
+        title: "🧠 GPT-5 Reasoning Effort",
         subtitle:
           "Control the depth of analysis for GPT-5 models. Higher effort provides better quality but slower responses."
       )
@@ -162,7 +162,7 @@ struct GeneralSettingsTab: View {
   private var supportFeedbackSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Support & Feedback",
+        title: "💬 Support & Feedback",
         subtitle:
           "If you have feedback, if something doesn't work, or if you have suggestions for improvement, feel free to contact me via WhatsApp."
       )

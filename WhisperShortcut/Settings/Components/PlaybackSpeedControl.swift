@@ -4,7 +4,7 @@ import SwiftUI
 struct PlaybackSpeedControl: View {
   @Binding var playbackSpeed: Double
   let onSpeedChanged: (() -> Void)?
-  
+
   init(
     playbackSpeed: Binding<Double>,
     onSpeedChanged: (() -> Void)? = nil
@@ -16,7 +16,7 @@ struct PlaybackSpeedControl: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Playback Speed",
+        title: "🔊 Playback Speed",
         subtitle: "Controls how fast the AI voice response is played"
       )
 

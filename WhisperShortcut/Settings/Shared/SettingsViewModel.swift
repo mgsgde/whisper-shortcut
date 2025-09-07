@@ -79,21 +79,22 @@ class SettingsViewModel: ObservableObject {
       data.voiceResponseSystemPrompt = AppConstants.defaultVoiceResponseSystemPrompt
     }
 
-    // Load audio playback speed
-    let savedPlaybackSpeed = UserDefaults.standard.double(forKey: "audioPlaybackSpeed")
-    if savedPlaybackSpeed > 0 {
-      data.audioPlaybackSpeed = savedPlaybackSpeed
+    // Load voice response playback speed
+    let savedVoiceResponsePlaybackSpeed = UserDefaults.standard.double(
+      forKey: "voiceResponsePlaybackSpeed")
+    if savedVoiceResponsePlaybackSpeed > 0 {
+      data.voiceResponsePlaybackSpeed = savedVoiceResponsePlaybackSpeed
     } else {
-      data.audioPlaybackSpeed = SettingsDefaults.audioPlaybackSpeed
+      data.voiceResponsePlaybackSpeed = SettingsDefaults.voiceResponsePlaybackSpeed
     }
 
-    // Load read clipboard playback speed
-    let savedReadClipboardPlaybackSpeed = UserDefaults.standard.double(
-      forKey: "readClipboardPlaybackSpeed")
-    if savedReadClipboardPlaybackSpeed > 0 {
-      data.readClipboardPlaybackSpeed = savedReadClipboardPlaybackSpeed
+    // Load read selected text playback speed
+    let savedReadSelectedTextPlaybackSpeed = UserDefaults.standard.double(
+      forKey: "readSelectedTextPlaybackSpeed")
+    if savedReadSelectedTextPlaybackSpeed > 0 {
+      data.readSelectedTextPlaybackSpeed = savedReadSelectedTextPlaybackSpeed
     } else {
-      data.readClipboardPlaybackSpeed = SettingsDefaults.readClipboardPlaybackSpeed
+      data.readSelectedTextPlaybackSpeed = SettingsDefaults.readSelectedTextPlaybackSpeed
     }
 
     // Load conversation timeout
@@ -225,11 +226,12 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: "promptModeSystemPrompt")
     UserDefaults.standard.set(data.voiceResponseSystemPrompt, forKey: "voiceResponseSystemPrompt")
 
-    // Save audio playback speed
-    UserDefaults.standard.set(data.audioPlaybackSpeed, forKey: "audioPlaybackSpeed")
+    // Save voice response playback speed
+    UserDefaults.standard.set(data.voiceResponsePlaybackSpeed, forKey: "voiceResponsePlaybackSpeed")
 
-    // Save read clipboard playback speed
-    UserDefaults.standard.set(data.readClipboardPlaybackSpeed, forKey: "readClipboardPlaybackSpeed")
+    // Save read selected text playback speed
+    UserDefaults.standard.set(
+      data.readSelectedTextPlaybackSpeed, forKey: "readSelectedTextPlaybackSpeed")
 
     // Save conversation timeout
     UserDefaults.standard.set(

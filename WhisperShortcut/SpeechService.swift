@@ -279,7 +279,7 @@ class SpeechService {
 
     // Generate speech from response
     // Get playback speed setting for TTS generation
-    let playbackSpeed = UserDefaults.standard.double(forKey: "audioPlaybackSpeed")
+    let playbackSpeed = UserDefaults.standard.double(forKey: "voiceResponsePlaybackSpeed")
     let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
 
     let audioData: Data
@@ -347,30 +347,38 @@ class SpeechService {
 
   }
 
-  func readClipboardAsSpeech() async throws -> String {
-    NSLog("📋 CLIPBOARD-TTS: Starting clipboard text-to-speech")
+  func readSelectedTextAsSpeech() async throws -> String {
+    NSLog("📋 SELECTED-TEXT-TTS: Starting selected text text-to-speech")
 
-    // Get clipboard content
-    guard let clipboardText = getClipboardContext(), !clipboardText.isEmpty else {
-      NSLog("⚠️ CLIPBOARD-TTS: No text found in clipboard")
-      throw TranscriptionError.networkError("No text found in clipboard to read")
+    // Capture selected text by simulating Cmd+C
+    captureSelectedText()
+
+    // Small delay to allow the copy operation to complete
+    try await Task.sleep(nanoseconds: 100_000_000)  // 0.1 seconds
+
+    // Get the captured text from clipboard
+    guard let selectedText = getClipboardContext(), !selectedText.isEmpty else {
+      NSLog("⚠️ SELECTED-TEXT-TTS: No text found in selection")
+      throw TranscriptionError.networkError("No text selected to read")
     }
 
-    NSLog("📋 CLIPBOARD-TTS: Found clipboard text (\(clipboardText.count) characters)")
+    NSLog("📋 SELECTED-TEXT-TTS: Found selected text (\(selectedText.count) characters)")
 
     // Get playback speed setting for TTS generation
-    let playbackSpeed = UserDefaults.standard.double(forKey: "audioPlaybackSpeed")
+    let playbackSpeed = UserDefaults.standard.double(forKey: "readSelectedTextPlaybackSpeed")
     let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
 
-    // Generate speech from clipboard text
+    NSLog("📋 SELECTED-TEXT-TTS: Using playback speed: \(speed)x")
+
+    // Generate speech from selected text
     let audioData: Data
     do {
-      audioData = try await ttsService.generateSpeech(text: clipboardText, speed: speed)
+      audioData = try await ttsService.generateSpeech(text: selectedText, speed: speed)
     } catch let ttsError as TTSError {
-      NSLog("❌ CLIPBOARD-TTS: TTS error: \(ttsError.localizedDescription)")
+      NSLog("❌ SELECTED-TEXT-TTS: TTS error: \(ttsError.localizedDescription)")
       throw TranscriptionError.networkError(ttsError.localizedDescription)
     } catch {
-      NSLog("❌ CLIPBOARD-TTS: Unexpected TTS error: \(error.localizedDescription)")
+      NSLog("❌ SELECTED-TEXT-TTS: Unexpected TTS error: \(error.localizedDescription)")
       throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
     }
 
@@ -383,15 +391,15 @@ class SpeechService {
 
     switch playbackResult {
     case .completedSuccessfully:
-      NSLog("✅ CLIPBOARD-TTS: Audio playback completed successfully")
+      NSLog("✅ SELECTED-TEXT-TTS: Audio playback completed successfully")
     case .stoppedByUser:
-      NSLog("🔄 CLIPBOARD-TTS: Audio playback stopped by user")
+      NSLog("🔄 SELECTED-TEXT-TTS: Audio playback stopped by user")
     case .failed:
-      NSLog("❌ CLIPBOARD-TTS: Audio playback failed due to system error")
+      NSLog("❌ SELECTED-TEXT-TTS: Audio playback failed due to system error")
       throw TranscriptionError.networkError("Audio playback failed")
     }
 
-    return clipboardText
+    return selectedText
   }
 
   // MARK: - Prompt Mode Helpers
@@ -429,6 +437,23 @@ class SpeechService {
     }
 
     return trimmedText
+  }
+
+  private func captureSelectedText() {
+    // Simulate Cmd+C to copy selected text
+    let source = CGEventSource(stateID: .combinedSessionState)
+
+    // Create Cmd+C event
+    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true)  // C key
+    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
+
+    // Add Command modifier
+    cmdDown?.flags = .maskCommand
+    cmdUp?.flags = .maskCommand
+
+    // Post the events
+    cmdDown?.post(tap: .cghidEventTap)
+    cmdUp?.post(tap: .cghidEventTap)
   }
 
   private func executeGPT5Prompt(userMessage: String, clipboardContext: String?, apiKey: String)

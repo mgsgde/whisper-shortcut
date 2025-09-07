@@ -105,7 +105,7 @@ struct SettingsView: View {
     case .speechToPromptWithVoiceResponse:
       return "speaker.wave.2"
     case .readClipboard:
-      return "doc.on.clipboard"
+      return "text.cursor"
     }
   }
 
@@ -120,7 +120,7 @@ struct SettingsView: View {
     case .speechToPromptWithVoiceResponse:
       return "Model, Prompt, Shortcut and Playback Speed"
     case .readClipboard:
-      return "Text-to-Speech for Clipboard Content"
+      return "Shortcut and Playback Speed"
     }
   }
 

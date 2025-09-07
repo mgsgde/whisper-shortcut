@@ -77,7 +77,7 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   private var shortcutsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Toggle Shortcut",
+        title: "⌨️ Toggle Shortcut",
         subtitle:
           "Start/Stop Voice Response with one shortcut (uses selected text as context)"
       )
@@ -156,7 +156,7 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   private var reasoningEffortSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "GPT-5 Reasoning Effort",
+        title: "🧠 GPT-5 Reasoning Effort",
         subtitle:
           "Control the depth of analysis for voice responses. Higher effort provides better quality but slower responses."
       )
@@ -178,7 +178,7 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   @ViewBuilder
   private var playbackSpeedSection: some View {
     PlaybackSpeedControl(
-      playbackSpeed: $viewModel.data.audioPlaybackSpeed,
+      playbackSpeed: $viewModel.data.voiceResponsePlaybackSpeed,
       onSpeedChanged: {
         Task {
           await viewModel.saveSettings()
@@ -192,7 +192,7 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   private var usageInstructionsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "How to use Speech to Prompt with Voice Response",
+        title: "📋 How to use Speech to Prompt with Voice Response",
         subtitle: "Step-by-step instructions for using the voice response mode"
       )
 

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Read Clipboard Settings Tab - Shortcut, TTS Playback Speed, Usage Instructions
+/// Read Selected Text Settings Tab - Shortcut, TTS Playback Speed, Usage Instructions
 struct ReadClipboardSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
@@ -41,12 +41,12 @@ struct ReadClipboardSettingsTab: View {
   private var shortcutsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Read Clipboard Shortcut",
-        subtitle: "Use text-to-speech to read aloud the current clipboard content"
+        title: "⌨️ Shortcut",
+        subtitle: "Read Selected Text"
       )
 
       ShortcutInputRow(
-        label: "Read Clipboard:",
+        label: "Read Selected Text:",
         placeholder: "e.g., command+4",
         text: $viewModel.data.readClipboard,
         isEnabled: $viewModel.data.readClipboardEnabled,
@@ -84,8 +84,8 @@ struct ReadClipboardSettingsTab: View {
   private var playbackSpeedSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Text-to-Speech Playback Speed",
-        subtitle: "Adjust how fast the clipboard text is read aloud"
+        title: "🔊 Playback Speed",
+        subtitle: "Text-to-Speech"
       )
 
       HStack {
@@ -94,17 +94,17 @@ struct ReadClipboardSettingsTab: View {
           .fontWeight(.medium)
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
 
-        Slider(value: $viewModel.data.readClipboardPlaybackSpeed, in: 0.25...2.0, step: 0.25) {
+        Slider(value: $viewModel.data.readSelectedTextPlaybackSpeed, in: 0.25...2.0, step: 0.25) {
           Text("Playback Speed")
         }
         .frame(maxWidth: 300)
-        .onChange(of: viewModel.data.readClipboardPlaybackSpeed) { _, _ in
+        .onChange(of: viewModel.data.readSelectedTextPlaybackSpeed) { _, _ in
           Task {
             await viewModel.saveSettings()
           }
         }
 
-        Text("\(viewModel.data.readClipboardPlaybackSpeed, specifier: "%.2f")x")
+        Text("\(viewModel.data.readSelectedTextPlaybackSpeed, specifier: "%.2f")x")
           .font(.body)
           .fontWeight(.medium)
           .frame(width: 50, alignment: .leading)
@@ -117,8 +117,8 @@ struct ReadClipboardSettingsTab: View {
   private var usageInstructionsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "How to Use",
-        subtitle: "Simple instructions for reading clipboard content"
+        title: "📋 How to Use",
+        subtitle: "Simple instructions for reading selected text"
       )
 
       VStack(alignment: .leading, spacing: 12) {
@@ -130,12 +130,12 @@ struct ReadClipboardSettingsTab: View {
             .frame(width: 20, alignment: .leading)
 
           VStack(alignment: .leading, spacing: 4) {
-            Text("Copy text to clipboard")
+            Text("Select text to read")
               .font(.body)
               .fontWeight(.medium)
               .textSelection(.enabled)
 
-            Text("Copy any text you want to hear read aloud (⌘C or right-click → Copy)")
+            Text("Select any text you want to hear read aloud (click and drag to select)")
               .font(.callout)
               .foregroundColor(.secondary)
               .textSelection(.enabled)
@@ -175,7 +175,7 @@ struct ReadClipboardSettingsTab: View {
               .fontWeight(.medium)
               .textSelection(.enabled)
 
-            Text("The clipboard text will be read aloud using text-to-speech")
+            Text("The selected text will be read aloud using text-to-speech")
               .font(.callout)
               .foregroundColor(.secondary)
               .textSelection(.enabled)

@@ -65,7 +65,7 @@ struct SpeechToPromptSettingsTab: View {
   private var shortcutsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Toggle Shortcut",
+        title: "⌨️ Toggle Shortcut",
         subtitle: "Start/Stop Prompting with one shortcut (uses selected text as context)"
       )
 
@@ -143,7 +143,7 @@ struct SpeechToPromptSettingsTab: View {
   private var reasoningEffortSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "GPT-5 Reasoning Effort",
+        title: "🧠 GPT-5 Reasoning Effort",
         subtitle:
           "Control the depth of analysis for prompt responses. Higher effort provides better quality but slower responses."
       )
@@ -166,7 +166,7 @@ struct SpeechToPromptSettingsTab: View {
   private var usageInstructionsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "How to use Speech to Prompt",
+        title: "📋 How to use Speech to Prompt",
         subtitle: "Step-by-step instructions for using the prompt mode"
       )
 

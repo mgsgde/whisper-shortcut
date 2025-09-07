@@ -144,7 +144,7 @@ enum SettingsTab: String, CaseIterable {
   case speechToText = "Dictate"
   case speechToPrompt = "Dictate Prompt"
   case speechToPromptWithVoiceResponse = "Dictate Prompt and Speak"
-  case readClipboard = "Read Clipboard"
+  case readClipboard = "Read Selected Text"
 }
 
 // MARK: - Default Settings Configuration
@@ -171,8 +171,8 @@ struct SettingsDefaults {
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
   static let voiceResponseSystemPrompt = ""
-  static let audioPlaybackSpeed = 1.0
-  static let readClipboardPlaybackSpeed = 1.0
+  static let voiceResponsePlaybackSpeed = 1.0
+  static let readSelectedTextPlaybackSpeed = 1.0
   static let conversationTimeout = ConversationTimeout.fiveMinutes
 
   // Reasoning effort settings for GPT-5 models
@@ -209,8 +209,8 @@ struct SettingsData {
   var customPromptText: String = SettingsDefaults.customPromptText
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
   var voiceResponseSystemPrompt: String = SettingsDefaults.voiceResponseSystemPrompt
-  var audioPlaybackSpeed: Double = SettingsDefaults.audioPlaybackSpeed
-  var readClipboardPlaybackSpeed: Double = SettingsDefaults.readClipboardPlaybackSpeed
+  var voiceResponsePlaybackSpeed: Double = SettingsDefaults.voiceResponsePlaybackSpeed
+  var readSelectedTextPlaybackSpeed: Double = SettingsDefaults.readSelectedTextPlaybackSpeed
   var conversationTimeout: ConversationTimeout = SettingsDefaults.conversationTimeout
 
   // Reasoning effort settings for GPT-5 models

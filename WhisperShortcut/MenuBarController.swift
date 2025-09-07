@@ -223,14 +223,14 @@ class MenuBarController: NSObject {
     toggleVoiceResponseItem.tag = 109  // Tag for updating shortcut
     menu.addItem(toggleVoiceResponseItem)
 
-    // Read clipboard item with configurable shortcut
-    let readClipboardItem = NSMenuItem(
-      title: "Read Clipboard", action: #selector(readClipboardFromMenu),
+    // Read selected text item with configurable shortcut
+    let readSelectedTextItem = NSMenuItem(
+      title: "Read Selected Text", action: #selector(readSelectedTextFromMenu),
       keyEquivalent: "")
-    readClipboardItem.keyEquivalentModifierMask = []
-    readClipboardItem.target = self
-    readClipboardItem.tag = 110  // Tag for updating shortcut
-    menu.addItem(readClipboardItem)
+    readSelectedTextItem.keyEquivalentModifierMask = []
+    readSelectedTextItem.target = self
+    readSelectedTextItem.tag = 110  // Tag for updating shortcut
+    menu.addItem(readSelectedTextItem)
 
     menu.addItem(NSMenuItem.separator())
 
@@ -452,16 +452,17 @@ class MenuBarController: NSObject {
       }
     }
 
-    // Update read clipboard shortcut
-    if let readClipboardItem = menu.item(withTag: 110) {
+    // Update read selected text shortcut
+    if let readSelectedTextItem = menu.item(withTag: 110) {
       if currentConfig.readClipboard.isEnabled {
-        readClipboardItem.keyEquivalent = currentConfig.readClipboard.key.displayString.lowercased()
-        readClipboardItem.keyEquivalentModifierMask = currentConfig.readClipboard.modifiers
-        readClipboardItem.title = "Read Clipboard"
+        readSelectedTextItem.keyEquivalent = currentConfig.readClipboard.key.displayString
+          .lowercased()
+        readSelectedTextItem.keyEquivalentModifierMask = currentConfig.readClipboard.modifiers
+        readSelectedTextItem.title = "Read Selected Text"
       } else {
-        readClipboardItem.keyEquivalent = ""
-        readClipboardItem.keyEquivalentModifierMask = []
-        readClipboardItem.title = "Read Clipboard (Disabled)"
+        readSelectedTextItem.keyEquivalent = ""
+        readSelectedTextItem.keyEquivalentModifierMask = []
+        readSelectedTextItem.title = "Read Selected Text (Disabled)"
       }
     }
 
@@ -1062,26 +1063,32 @@ extension MenuBarController: ShortcutDelegate {
     }
   }
 
-  func readClipboard() {
-    NSLog("📋 READ-CLIPBOARD: Starting clipboard text-to-speech")
+  func readSelectedText() {
+    NSLog("📋 READ-SELECTED-TEXT: Starting selected text text-to-speech")
 
     // Prevent conflicts with ongoing recordings
     if appMode.isRecording {
-      NSLog("⚠️ READ-CLIPBOARD: Another recording is in progress, ignoring request")
+      NSLog("⚠️ READ-SELECTED-TEXT: Another recording is in progress, ignoring request")
+      return
+    }
+
+    // Check accessibility permission first
+    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
+      NSLog("⚠️ READ-SELECTED-TEXT: Accessibility permission required")
       return
     }
 
     Task {
       do {
-        let _ = try await speechService?.readClipboardAsSpeech()
+        let _ = try await speechService?.readSelectedTextAsSpeech()
       } catch {
-        NSLog("❌ READ-CLIPBOARD: Error reading clipboard: \(error)")
+        NSLog("❌ READ-SELECTED-TEXT: Error reading selected text: \(error)")
       }
     }
   }
 
-  @objc private func readClipboardFromMenu() {
-    readClipboard()
+  @objc private func readSelectedTextFromMenu() {
+    readSelectedText()
   }
 
 }
