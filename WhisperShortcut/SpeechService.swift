@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 // MARK: - Constants
@@ -260,6 +261,18 @@ class SpeechService {
       throw TranscriptionError.noAPIKey
     }
 
+    // Check if audio contains meaningful speech first
+    do {
+      let hasAudio = try hasMeaningfulAudio(audioURL: audioURL)
+      if !hasAudio {
+        NSLog("🔍 VOICE-RESPONSE-MODE: No meaningful audio detected - switching to clipboard TTS")
+        return try await readClipboardAsSpeech()
+      }
+    } catch {
+      NSLog(
+        "⚠️ VOICE-RESPONSE-MODE: Audio validation failed: \(error) - proceeding with transcription")
+    }
+
     // First, transcribe the audio to get the user's spoken text
 
     let spokenText = try await transcribe(audioURL: audioURL)
@@ -344,6 +357,112 @@ class SpeechService {
       throw TranscriptionError.noSpeechDetected
     }
 
+  }
+
+  private func hasMeaningfulAudio(audioURL: URL) throws -> Bool {
+    let audioFile = try AVAudioFile(forReading: audioURL)
+    let fileSize =
+      try FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64 ?? 0
+    let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
+
+    NSLog(
+      "🔍 AUDIO-VALIDATION: File size: \(fileSize) bytes, duration: \(String(format: "%.2f", duration))s"
+    )
+
+    // Basic checks first
+    guard fileSize > 1024 && duration > 0.3 else {
+      NSLog("🔍 AUDIO-VALIDATION: File too small or too short")
+      return false
+    }
+
+    // Analyze actual audio content
+    let frameCount = AVAudioFrameCount(audioFile.length)
+    let format = audioFile.processingFormat
+    let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)!
+
+    try audioFile.read(into: buffer)
+
+    guard let channelData = buffer.floatChannelData?[0] else {
+      NSLog("🔍 AUDIO-VALIDATION: No audio data available")
+      return false
+    }
+
+    // Calculate RMS (Root Mean Square) to measure audio energy
+    var sum: Float = 0.0
+    var peak: Float = 0.0
+    let sampleCount = Int(buffer.frameLength)
+
+    for i in 0..<sampleCount {
+      let sample = abs(channelData[i])
+      sum += sample * sample
+      peak = max(peak, sample)
+    }
+
+    let rms = sqrt(sum / Float(sampleCount))
+    let rmsDb = 20 * log10(rms + 1e-10)  // Convert to dB, avoid log(0)
+    let peakDb = 20 * log10(peak + 1e-10)
+
+    NSLog(
+      "🔍 AUDIO-VALIDATION: RMS: \(String(format: "%.1f", rmsDb))dB, Peak: \(String(format: "%.1f", peakDb))dB"
+    )
+
+    // Thresholds for meaningful speech
+    let rmsThreshold: Float = -40.0  // RMS above -40dB
+    let peakThreshold: Float = -20.0  // Peak above -20dB
+
+    let hasMeaning = rmsDb > rmsThreshold && peakDb > peakThreshold
+
+    NSLog(
+      "🔍 AUDIO-VALIDATION: Has meaningful audio: \(hasMeaning ? "YES" : "NO") (thresholds: RMS > \(rmsThreshold)dB, Peak > \(peakThreshold)dB)"
+    )
+    return hasMeaning
+  }
+
+  func readClipboardAsSpeech() async throws -> String {
+    NSLog("📋 CLIPBOARD-TTS: Starting clipboard text-to-speech")
+
+    // Get clipboard content
+    guard let clipboardText = getClipboardContext(), !clipboardText.isEmpty else {
+      NSLog("⚠️ CLIPBOARD-TTS: No text found in clipboard")
+      throw TranscriptionError.networkError("No text found in clipboard to read")
+    }
+
+    NSLog("📋 CLIPBOARD-TTS: Found clipboard text (\(clipboardText.count) characters)")
+
+    // Get playback speed setting for TTS generation
+    let playbackSpeed = UserDefaults.standard.double(forKey: "audioPlaybackSpeed")
+    let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
+
+    // Generate speech from clipboard text
+    let audioData: Data
+    do {
+      audioData = try await ttsService.generateSpeech(text: clipboardText, speed: speed)
+    } catch let ttsError as TTSError {
+      NSLog("❌ CLIPBOARD-TTS: TTS error: \(ttsError.localizedDescription)")
+      throw TranscriptionError.networkError(ttsError.localizedDescription)
+    } catch {
+      NSLog("❌ CLIPBOARD-TTS: Unexpected TTS error: \(error.localizedDescription)")
+      throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
+    }
+
+    // Notify that we're ready to speak
+    NotificationCenter.default.post(
+      name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
+
+    // Play the audio
+    let playbackResult = try await audioPlaybackService.playAudio(data: audioData)
+
+    switch playbackResult {
+    case .completedSuccessfully:
+      NSLog("✅ CLIPBOARD-TTS: Audio playback completed successfully")
+    case .stoppedByUser:
+      NSLog("🔄 CLIPBOARD-TTS: Audio playback stopped by user")
+    case .failed:
+      NSLog("❌ CLIPBOARD-TTS: Audio playback failed due to system error")
+      throw TranscriptionError.networkError("Audio playback failed")
+    }
+
+    return clipboardText
   }
 
   // MARK: - Prompt Mode Helpers
