@@ -41,9 +41,17 @@ bash ./scripts/logs.sh
 # Filter for specific functionality
 bash ./scripts/logs.sh -f 'PROMPT-MODE'
 
-# Show logs from last hour
-bash ./scripts/logs.sh -t 1h
+# Show logs from last 5 minutes (for quick verification)
+bash ./scripts/logs.sh -t 5m
 
 # Show help
 bash ./scripts/logs.sh -h
 ```
+
+### **Automatic Log Verification Rule**
+
+**MANDATORY** - When the user asks "does it work?" or "check if it works", automatically run:
+```bash
+bash ./scripts/logs.sh -t 5m
+```
+This shows the last 5 minutes of logs to verify functionality without requiring manual log checking.
