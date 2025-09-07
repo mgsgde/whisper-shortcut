@@ -11,11 +11,13 @@ struct SectionHeader: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 2) {  // Reduced from 4 to 2 for more compact spacing
-      Text(title)
-        .font(.title2)  // Increased from .title3 to .title2 for more prominent section headers
-        .fontWeight(.semibold)
-        .textSelection(.enabled)
+    VStack(alignment: .leading, spacing: 6) {  // Increased spacing between title and subtitle
+      HStack(spacing: 8) {  // Add spacing between emoji and text
+        Text(title)
+          .font(.title)  // Increased from .title2 to .title for more prominent section headers
+          .fontWeight(.semibold)
+          .textSelection(.enabled)
+      }
 
       if let subtitle = subtitle {
         Text(subtitle)

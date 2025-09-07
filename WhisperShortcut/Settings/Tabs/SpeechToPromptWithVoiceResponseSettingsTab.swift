@@ -120,7 +120,7 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   @ViewBuilder
   private var promptSection: some View {
     PromptTextEditor(
-      title: "AI Assistant System Prompt",
+      title: "🤖 System Prompt",
       subtitle:
         "Instructions for the AI assistant that will generate responses to be spoken aloud. Optimize for clear, natural speech.",
       helpText:
@@ -141,7 +141,7 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   @ViewBuilder
   private var modelSection: some View {
     GPTModelSelectionView(
-      title: "GPT Model",
+      title: "🧠 Prompt Model",
       selectedModel: $viewModel.data.selectedVoiceResponseModel,
       onModelChanged: {
         Task {
@@ -156,7 +156,7 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   private var reasoningEffortSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "🧠 GPT-5 Reasoning Effort",
+        title: "🧠 Reasoning Effort",
         subtitle:
           "Control the depth of analysis for voice responses. Higher effort provides better quality but slower responses."
       )
@@ -192,7 +192,7 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
   private var usageInstructionsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "📋 How to use Speech to Prompt with Voice Response",
+        title: "📋 How to Use",
         subtitle: "Step-by-step instructions for using the voice response mode"
       )
 

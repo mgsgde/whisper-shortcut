@@ -72,7 +72,7 @@ struct GeneralSettingsTab: View {
       }
 
       HStack(spacing: 0) {
-        Text("💡 Need an API key? Get one at ")
+        Text("Need an API key? Get one at ")
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)
@@ -93,6 +93,10 @@ struct GeneralSettingsTab: View {
             NSCursor.pop()
           }
         }
+
+        Text(" 💡")
+          .font(.callout)
+          .foregroundColor(.secondary)
       }
       .fixedSize(horizontal: false, vertical: true)
     }
@@ -123,7 +127,7 @@ struct GeneralSettingsTab: View {
   private var reasoningEffortSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "🧠 GPT-5 Reasoning Effort",
+        title: "🧠 Reasoning Effort",
         subtitle:
           "Control the depth of analysis for GPT-5 models. Higher effort provides better quality but slower responses."
       )
@@ -171,16 +175,16 @@ struct GeneralSettingsTab: View {
         viewModel.openWhatsAppFeedback()
       }) {
         HStack(alignment: .center, spacing: 16) {
-          Image("WhatsApp")
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .frame(width: 44, height: 44)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-
           Text("Thanks for using my app! :)")
             .font(.body)
             .fontWeight(.medium)
             .textSelection(.enabled)
+
+          Image("WhatsApp")
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: 32, height: 32)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
 
           Spacer()
         }

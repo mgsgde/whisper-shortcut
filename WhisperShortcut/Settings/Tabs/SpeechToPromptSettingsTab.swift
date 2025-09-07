@@ -107,7 +107,7 @@ struct SpeechToPromptSettingsTab: View {
   @ViewBuilder
   private var promptSection: some View {
     PromptTextEditor(
-      title: "AI Assistant System Prompt",
+      title: "🤖 System Prompt",
       subtitle:
         "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
       helpText:
@@ -128,7 +128,7 @@ struct SpeechToPromptSettingsTab: View {
   @ViewBuilder
   private var modelSection: some View {
     GPTModelSelectionView(
-      title: "GPT Model",
+      title: "🧠 Prompt Model",
       selectedModel: $viewModel.data.selectedPromptModel,
       onModelChanged: {
         Task {
@@ -143,7 +143,7 @@ struct SpeechToPromptSettingsTab: View {
   private var reasoningEffortSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "🧠 GPT-5 Reasoning Effort",
+        title: "🧠 Reasoning Effort",
         subtitle:
           "Control the depth of analysis for prompt responses. Higher effort provides better quality but slower responses."
       )
@@ -166,7 +166,7 @@ struct SpeechToPromptSettingsTab: View {
   private var usageInstructionsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "📋 How to use Speech to Prompt",
+        title: "📋 How to Use",
         subtitle: "Step-by-step instructions for using the prompt mode"
       )
 

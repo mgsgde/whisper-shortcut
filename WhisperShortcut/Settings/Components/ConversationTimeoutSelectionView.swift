@@ -5,12 +5,6 @@ struct ConversationTimeoutSelectionView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text("Conversation Timeout")
-        .font(.headline)
-
-      Text("Clear conversation history after this time to save costs")
-        .font(.caption)
-        .foregroundColor(.secondary)
 
       Picker("Conversation Timeout", selection: $selectedTimeout) {
         ForEach(ConversationTimeout.allCases, id: \.rawValue) { timeout in
