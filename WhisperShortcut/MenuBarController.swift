@@ -1,5 +1,6 @@
 import Cocoa
 import SwiftUI
+import Foundation
 
 class MenuBarController: NSObject {
 
@@ -265,9 +266,6 @@ class MenuBarController: NSObject {
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
       let savedModel = TranscriptionModel(rawValue: savedModelString)
     {
-      NSLog(
-        "🎯 MENU-CONTROLLER: Loading saved transcription model: \(savedModel.displayName) (\(savedModel.rawValue))"
-      )
       speechService?.setModel(savedModel)
     } else {
       // Set default model to GPT-4o Transcribe
@@ -786,7 +784,7 @@ extension MenuBarController: AudioRecorderDelegate {
         try FileManager.default.removeItem(at: audioURL)
 
       } catch {
-        NSLog("⚠️ VOICE-RESPONSE-MODE: Failed to clean up audio file: \(error)")
+        DebugLogger.logWarning("VOICE-RESPONSE-MODE: Failed to clean up audio file: \(error)")
       }
     }
   }
@@ -801,7 +799,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handleVoiceResponseError(_ error: TranscriptionError) -> Bool {
-    NSLog("❌ VOICE-RESPONSE-MODE: Voice response error: \(error)")
+    DebugLogger.logError("VOICE-RESPONSE-MODE: Voice response error: \(error)")
 
     let errorMessage = SpeechErrorFormatter.format(error)
 
@@ -814,7 +812,6 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handleTranscriptionSuccess(_ transcription: String) -> Bool {
-    NSLog("✅ Transcription successful: \(transcription)")
 
     // Copy to clipboard
     clipboardManager?.copyToClipboard(text: transcription)
@@ -825,7 +822,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handleTranscriptionError(_ error: TranscriptionError) -> Bool {
-    NSLog("❌ Transcription error: \(error)")
+    DebugLogger.logError("Transcription error: \(error)")
 
     let errorMessage = SpeechErrorFormatter.format(error)
 
@@ -838,7 +835,6 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handlePromptSuccess(_ response: String) -> Bool {
-    NSLog("✅ Prompt execution successful: \(response)")
 
     // Copy response to clipboard
     clipboardManager?.copyToClipboard(text: response)
@@ -850,7 +846,7 @@ extension MenuBarController: AudioRecorderDelegate {
   @MainActor
   private func handlePromptError(_ error: TranscriptionError) -> Bool {
 
-    NSLog("❌ Prompt execution error: \(error)")
+    DebugLogger.logError("Prompt execution error: \(error)")
 
     let errorMessage = SpeechErrorFormatter.format(error)
 
@@ -1064,17 +1060,16 @@ extension MenuBarController: ShortcutDelegate {
   }
 
   func readSelectedText() {
-    NSLog("📋 READ-SELECTED-TEXT: Starting selected text text-to-speech")
 
     // Prevent conflicts with ongoing recordings
     if appMode.isRecording {
-      NSLog("⚠️ READ-SELECTED-TEXT: Another recording is in progress, ignoring request")
+      DebugLogger.logWarning("READ-SELECTED-TEXT: Another recording is in progress, ignoring request")
       return
     }
 
     // Check accessibility permission first
     if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-      NSLog("⚠️ READ-SELECTED-TEXT: Accessibility permission required")
+      DebugLogger.logWarning("READ-SELECTED-TEXT: Accessibility permission required")
       return
     }
 
@@ -1082,7 +1077,7 @@ extension MenuBarController: ShortcutDelegate {
       do {
         let _ = try await speechService?.readSelectedTextAsSpeech()
       } catch {
-        NSLog("❌ READ-SELECTED-TEXT: Error reading selected text: \(error)")
+        DebugLogger.logError("READ-SELECTED-TEXT: Error reading selected text: \(error)")
       }
     }
   }

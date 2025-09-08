@@ -72,7 +72,7 @@ class AudioRecorder: NSObject {
       }
 
     case .denied, .restricted:
-      NSLog("❌ Microphone permission denied or restricted")
+      DebugLogger.logWarning("Microphone permission denied or restricted")
       completion(false)
 
     @unknown default:
@@ -109,7 +109,6 @@ class AudioRecorder: NSObject {
 
       let success = audioRecorder?.record() ?? false
       if success {
-        NSLog("✅ Recording started successfully")
       } else {
         throw NSError(
           domain: Constants.errorDomain, code: Constants.recordingFailedCode,

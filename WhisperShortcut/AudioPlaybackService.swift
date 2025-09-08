@@ -155,7 +155,6 @@ class AudioPlaybackService: NSObject {
 // MARK: - AVAudioPlayerDelegate
 extension AudioPlaybackService: AVAudioPlayerDelegate {
   func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-    NSLog("🔇 AUDIO-PLAYBACK: Playback finished successfully: \(flag)")
 
     // Notify that playback finished naturally
     NotificationCenter.default.post(name: NSNotification.Name("VoicePlaybackStopped"), object: nil)

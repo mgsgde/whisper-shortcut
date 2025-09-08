@@ -275,7 +275,7 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Error Handling
   func showError(_ message: String) {
-    NSLog("❌ SETTINGS-VM-ERROR: \(message)")
+    DebugLogger.logError("SETTINGS-VM-ERROR: \(message)")
     data.errorMessage = message
     data.showAlert = true
     data.isLoading = false
@@ -288,7 +288,6 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - WhatsApp Feedback
   func openWhatsAppFeedback() {
-    NSLog("💬 FEEDBACK: Opening WhatsApp Web feedback from SettingsViewModel")
 
     let whatsappNumber = "+4917641952181"
     let feedbackMessage = "Hi! I have feedback about WhisperShortcut:"
@@ -298,9 +297,8 @@ class SettingsViewModel: ObservableObject {
         "https://wa.me/\(whatsappNumber)?text=\(feedbackMessage.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
     ) {
       if NSWorkspace.shared.open(webWhatsappURL) {
-        NSLog("✅ FEEDBACK: Successfully opened WhatsApp Web from SettingsViewModel")
       } else {
-        NSLog("❌ FEEDBACK: Failed to open WhatsApp Web from SettingsViewModel")
+        DebugLogger.logError("FEEDBACK: Failed to open WhatsApp Web from SettingsViewModel")
       }
     }
   }

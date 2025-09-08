@@ -50,7 +50,7 @@ final class TTSIntegrationTests: XCTestCase {
     } catch let error as TTSError {
       XCTAssertEqual(error, .noAPIKey, "Should get noAPIKey error")
 
-      NSLog("✅ TTS Test passed: Got expected noAPIKey error")
+      print("✅ TTS Test passed: Got expected noAPIKey error")
     } catch {
       XCTFail("Should get TTSError, got: \(error)")
     }
@@ -63,9 +63,9 @@ final class TTSIntegrationTests: XCTestCase {
   func testRealOpenAITTSIntegration() async {
     // Try to get API key from config file first, then environment variable
     guard let apiKey = getTestAPIKey(), !apiKey.isEmpty else {
-      NSLog("⚠️ Skipping OpenAI TTS integration test - No API key configured")
-      NSLog("   Create 'test-config' file with OPENAI_API_KEY=your_key")
-      NSLog("   Or set environment variable: export OPENAI_API_KEY=your_key")
+      print("⚠️ Skipping OpenAI TTS integration test - No API key configured")
+      print("   Create 'test-config' file with OPENAI_API_KEY=your_key")
+      print("   Or set environment variable: export OPENAI_API_KEY=your_key")
       return
     }
 
@@ -75,11 +75,11 @@ final class TTSIntegrationTests: XCTestCase {
     // Test text for TTS
     let testText = "Hello, this is a test of the OpenAI text-to-speech functionality."
 
-    NSLog("🔊 Testing real OpenAI TTS with API key: \(String(apiKey.prefix(10)))...")
+    print("🔊 Testing real OpenAI TTS with API key: \(String(apiKey.prefix(10)))...")
 
     do {
       let audioData = try await ttsService.generateSpeech(text: testText)
-      NSLog("✅ OpenAI TTS successful: Generated \(audioData.count) bytes of audio")
+      print("✅ OpenAI TTS successful: Generated \(audioData.count) bytes of audio")
 
       // Basic validation - audio data should not be empty
       XCTAssertFalse(audioData.isEmpty, "Audio data should not be empty")
@@ -97,7 +97,7 @@ final class TTSIntegrationTests: XCTestCase {
 
     } catch {
       // Log the error but don't fail the test - might be expected if API key is invalid
-      NSLog("ℹ️ TTS generation failed with error: \(error.localizedDescription)")
+      print("ℹ️ TTS generation failed with error: \(error.localizedDescription)")
       // This might be expected if the API key is invalid or there are network issues
     }
   }
@@ -105,7 +105,7 @@ final class TTSIntegrationTests: XCTestCase {
   /// Test TTS with different text lengths
   func testTTSWithVariousTextLengths() async {
     guard let apiKey = getTestAPIKey(), !apiKey.isEmpty else {
-      NSLog("⚠️ Skipping TTS text length test - No API key configured")
+      print("⚠️ Skipping TTS text length test - No API key configured")
       return
     }
 
@@ -118,14 +118,14 @@ final class TTSIntegrationTests: XCTestCase {
     ]
 
     for (index, testText) in testCases.enumerated() {
-      NSLog("🔊 Testing TTS with text length \(testText.count) (case \(index + 1))")
+      print("🔊 Testing TTS with text length \(testText.count) (case \(index + 1))")
 
       do {
         let audioData = try await ttsService.generateSpeech(text: testText)
         XCTAssertFalse(audioData.isEmpty, "Audio data should not be empty for case \(index + 1)")
-        NSLog("✅ TTS case \(index + 1) successful: \(audioData.count) bytes")
+        print("✅ TTS case \(index + 1) successful: \(audioData.count) bytes")
       } catch {
-        NSLog("ℹ️ TTS case \(index + 1) failed: \(error.localizedDescription)")
+        print("ℹ️ TTS case \(index + 1) failed: \(error.localizedDescription)")
       }
     }
   }
@@ -133,7 +133,7 @@ final class TTSIntegrationTests: XCTestCase {
   /// Test TTS with special characters and Unicode
   func testTTSWithSpecialCharacters() async {
     guard let apiKey = getTestAPIKey(), !apiKey.isEmpty else {
-      NSLog("⚠️ Skipping TTS special characters test - No API key configured")
+      print("⚠️ Skipping TTS special characters test - No API key configured")
       return
     }
 
@@ -147,15 +147,15 @@ final class TTSIntegrationTests: XCTestCase {
     ]
 
     for (index, testText) in testTexts.enumerated() {
-      NSLog("🔊 Testing TTS with special characters (case \(index + 1)): \(testText)")
+      print("🔊 Testing TTS with special characters (case \(index + 1)): \(testText)")
 
       do {
         let audioData = try await ttsService.generateSpeech(text: testText)
         XCTAssertFalse(
           audioData.isEmpty, "Audio data should not be empty for special chars case \(index + 1)")
-        NSLog("✅ TTS special chars case \(index + 1) successful: \(audioData.count) bytes")
+        print("✅ TTS special chars case \(index + 1) successful: \(audioData.count) bytes")
       } catch {
-        NSLog("ℹ️ TTS special chars case \(index + 1) failed: \(error.localizedDescription)")
+        print("ℹ️ TTS special chars case \(index + 1) failed: \(error.localizedDescription)")
       }
     }
   }
@@ -165,7 +165,7 @@ final class TTSIntegrationTests: XCTestCase {
   /// Test that generated audio can be saved and loaded
   func testAudioDataPersistence() async {
     guard let apiKey = getTestAPIKey(), !apiKey.isEmpty else {
-      NSLog("⚠️ Skipping audio persistence test - No API key configured")
+      print("⚠️ Skipping audio persistence test - No API key configured")
       return
     }
 
@@ -190,7 +190,7 @@ final class TTSIntegrationTests: XCTestCase {
       // Clean up
       try FileManager.default.removeItem(at: tempURL)
 
-      NSLog("✅ Audio persistence test successful")
+      print("✅ Audio persistence test successful")
 
     } catch {
       XCTFail("Audio persistence test failed: \(error.localizedDescription)")
@@ -200,7 +200,7 @@ final class TTSIntegrationTests: XCTestCase {
   /// Test that generated audio has valid format
   func testAudioFormatValidation() async {
     guard let apiKey = getTestAPIKey(), !apiKey.isEmpty else {
-      NSLog("⚠️ Skipping audio format validation test - No API key configured")
+      print("⚠️ Skipping audio format validation test - No API key configured")
       return
     }
 
@@ -225,7 +225,7 @@ final class TTSIntegrationTests: XCTestCase {
       do {
         let audioPlayer = try AVAudioPlayer(contentsOf: tempURL)
         XCTAssertGreaterThan(audioPlayer.duration, 0, "Audio should have positive duration")
-        NSLog("✅ Audio format validation successful - Duration: \(audioPlayer.duration)s")
+        print("✅ Audio format validation successful - Duration: \(audioPlayer.duration)s")
       } catch {
         XCTFail("Generated audio has invalid format: \(error.localizedDescription)")
       }
@@ -240,7 +240,7 @@ final class TTSIntegrationTests: XCTestCase {
   /// Test TTS API error handling with invalid requests
   func testTTSErrorHandling() async {
     guard let apiKey = getTestAPIKey(), !apiKey.isEmpty else {
-      NSLog("⚠️ Skipping TTS error handling test - No API key configured")
+      print("⚠️ Skipping TTS error handling test - No API key configured")
       return
     }
 
@@ -252,9 +252,9 @@ final class TTSIntegrationTests: XCTestCase {
       XCTFail("Should have thrown error for empty text")
     } catch let error as TTSError {
       XCTAssertEqual(error, .invalidInput, "Should get invalidInput error for empty text")
-      NSLog("✅ Empty text error handling successful")
+      print("✅ Empty text error handling successful")
     } catch {
-      NSLog("ℹ️ Got unexpected error for empty text: \(error)")
+      print("ℹ️ Got unexpected error for empty text: \(error)")
     }
 
     // Test with extremely long text (over API limits)
@@ -263,12 +263,12 @@ final class TTSIntegrationTests: XCTestCase {
 
     do {
       _ = try await ttsService.generateSpeech(text: veryLongText)
-      NSLog("ℹ️ Very long text was accepted by API")
+      print("ℹ️ Very long text was accepted by API")
     } catch let error as TTSError {
-      NSLog("✅ Long text error handling: \(error)")
+      print("✅ Long text error handling: \(error)")
       // This might be expected depending on OpenAI's current limits
     } catch {
-      NSLog("ℹ️ Got unexpected error for long text: \(error)")
+      print("ℹ️ Got unexpected error for long text: \(error)")
     }
   }
 
@@ -287,9 +287,9 @@ final class TTSIntegrationTests: XCTestCase {
       XCTAssertTrue(
         error == .authenticationError || error == .networkError(""),
         "Should get auth or network error for invalid key")
-      NSLog("✅ Network error handling successful: \(error)")
+      print("✅ Network error handling successful: \(error)")
     } catch {
-      NSLog("ℹ️ Got unexpected error for invalid key: \(error)")
+      print("ℹ️ Got unexpected error for invalid key: \(error)")
     }
   }
 

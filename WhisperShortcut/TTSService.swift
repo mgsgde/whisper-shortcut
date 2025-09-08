@@ -38,39 +38,33 @@ class TTSService {
     text: String, voice: String = TTSConstants.defaultVoice,
     model: String = TTSConstants.defaultModel, speed: Double = 1.0
   ) async throws -> Data {
-    NSLog("🔊 TTS-SERVICE: Starting text-to-speech generation")
-    NSLog("🔊 TTS-SERVICE: Text length: \(text.count) characters")
-    NSLog("🔊 TTS-SERVICE: Speech speed: \(speed)x")
 
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      NSLog("⚠️ TTS-SERVICE: No API key available")
+      DebugLogger.logWarning("TTS-SERVICE: No API key available")
       throw TTSError.noAPIKey
     }
 
     // Validate input text
     try validateInputText(text)
-    NSLog("🔊 TTS-SERVICE: Input text validation passed")
 
     // Create request
     let request = try createTTSRequest(
       text: text, voice: voice, model: model, apiKey: apiKey, speed: speed)
-    NSLog("🔊 TTS-SERVICE: TTS request created")
 
     // Execute request
-    NSLog("🔊 TTS-SERVICE: Sending request to OpenAI TTS API")
     let (data, response) = try await session.data(for: request)
 
     // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
-      NSLog("⚠️ TTS-SERVICE: Invalid response type from OpenAI TTS")
+      DebugLogger.logWarning("TTS-SERVICE: Invalid response type from OpenAI TTS")
       throw TTSError.networkError("Invalid response type")
     }
 
     if httpResponse.statusCode != 200 {
-      NSLog("⚠️ TTS-SERVICE: OpenAI TTS HTTP error \(httpResponse.statusCode)")
+      DebugLogger.logWarning("TTS-SERVICE: OpenAI TTS HTTP error \(httpResponse.statusCode)")
       if let errorBody = String(data: data, encoding: .utf8) {
-        NSLog("⚠️ TTS-SERVICE: Error response body: \(errorBody)")
+        DebugLogger.logWarning("TTS-SERVICE: Error response body: \(errorBody)")
       }
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
@@ -79,7 +73,7 @@ class TTSService {
     // Validate audio data
     try validateAudioData(data)
 
-    NSLog("✅ TTS-SERVICE: Successfully generated \(data.count) bytes of audio")
+    DebugLogger.logSuccess("TTS-SERVICE: Successfully generated \(data.count) bytes of audio")
     return data
   }
 
@@ -89,8 +83,6 @@ class TTSService {
   ) throws
     -> URLRequest
   {
-    NSLog(
-      "🔧 TTS-SERVICE: Creating TTS request for model: \(model), voice: \(voice), speed: \(speed)x")
 
     guard let url = URL(string: TTSConstants.endpoint) else {
       throw TTSError.networkError("Invalid TTS endpoint URL")
@@ -111,7 +103,6 @@ class TTSService {
 
     request.httpBody = try JSONEncoder().encode(requestBody)
 
-    NSLog("🔧 TTS-SERVICE: TTS request created successfully")
     return request
   }
 
@@ -120,32 +111,30 @@ class TTSService {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
     if trimmedText.isEmpty {
-      NSLog("⚠️ TTS-SERVICE: Input text is empty")
+      DebugLogger.logWarning("TTS-SERVICE: Input text is empty")
       throw TTSError.invalidInput
     }
 
     if trimmedText.count > TTSConstants.maxTextLength {
-      NSLog(
-        "⚠️ TTS-SERVICE: Input text too long: \(trimmedText.count) > \(TTSConstants.maxTextLength)")
+      DebugLogger.logWarning("TTS-SERVICE: Input text too long: \(trimmedText.count) > \(TTSConstants.maxTextLength)")
       throw TTSError.invalidInput
     }
   }
 
   private func validateAudioData(_ data: Data) throws {
     if data.isEmpty {
-      NSLog("⚠️ TTS-SERVICE: Received empty audio data")
+      DebugLogger.logWarning("TTS-SERVICE: Received empty audio data")
       throw TTSError.audioGenerationFailed
     }
 
     if data.count < 100 {
-      NSLog("⚠️ TTS-SERVICE: Audio data suspiciously small: \(data.count) bytes")
+      DebugLogger.logWarning("TTS-SERVICE: Audio data suspiciously small: \(data.count) bytes")
       throw TTSError.audioGenerationFailed
     }
 
     // Log first few bytes for debugging
     let headerBytes = Array(data.prefix(16))
     let headerHex = headerBytes.map { String(format: "%02X", $0) }.joined(separator: " ")
-    NSLog("🔧 TTS-SERVICE: Audio header bytes: \(headerHex)")
 
     // More flexible audio format validation - OpenAI may return different formats
     let header = Array(data.prefix(10))
@@ -161,33 +150,27 @@ class TTSService {
       || header.starts(with: [0x66, 0x74, 0x79, 0x70])  // MP4/M4A (ftyp)
 
     if !hasValidAudioHeader {
-      NSLog("⚠️ TTS-SERVICE: Unrecognized audio format - continuing anyway")
+      DebugLogger.logWarning("TTS-SERVICE: Unrecognized audio format - continuing anyway")
       // Don't throw error, let the audio player try to handle it
     } else {
-      NSLog("✅ TTS-SERVICE: Recognized audio format")
     }
 
-    NSLog("✅ TTS-SERVICE: Audio data validation passed (\(data.count) bytes)")
   }
 
   // MARK: - Error Handling
   private func parseErrorResponse(data: Data, statusCode: Int) throws -> TTSError {
-    NSLog("🔧 TTS-SERVICE: Parsing error response (status: \(statusCode))")
 
     // Try to parse OpenAI error response
     if let errorResponse = try? JSONDecoder().decode(OpenAIErrorResponse.self, from: data) {
-      NSLog("🔧 TTS-SERVICE: Parsed OpenAI error response")
       return parseOpenAIError(errorResponse, statusCode: statusCode)
     }
 
     // Fallback to status code error
-    NSLog("🔧 TTS-SERVICE: Using status code fallback for error parsing")
     return parseStatusCodeError(statusCode)
   }
 
   private func parseOpenAIError(_ errorResponse: OpenAIErrorResponse, statusCode: Int) -> TTSError {
     let errorMessage = errorResponse.error?.message ?? "Unknown OpenAI error"
-    NSLog("🔧 TTS-SERVICE: OpenAI error message: \(errorMessage)")
 
     switch statusCode {
     case 401:

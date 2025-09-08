@@ -139,7 +139,7 @@ class SpeechService {
   func validateAPIKey(_ key: String) async throws -> Bool {
 
     guard !key.isEmpty else {
-      NSLog("⚠️ Error: API key is empty")
+      DebugLogger.logWarning("API key is empty")
       throw TranscriptionError.noAPIKey
     }
 
@@ -151,12 +151,12 @@ class SpeechService {
     let (data, response) = try await session.data(for: request)
 
     guard let httpResponse = response as? HTTPURLResponse else {
-      NSLog("⚠️ Error: Invalid response from API validation")
+      DebugLogger.logWarning("Invalid response from API validation")
       throw TranscriptionError.networkError("Invalid response")
     }
 
     if httpResponse.statusCode != 200 {
-      NSLog("⚠️ Error: API validation failed with status \(httpResponse.statusCode)")
+      DebugLogger.logWarning("API validation failed with status \(httpResponse.statusCode)")
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
@@ -170,7 +170,7 @@ class SpeechService {
 
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      NSLog("⚠️ TRANSCRIPTION-MODE: No API key available")
+      DebugLogger.logWarning("TRANSCRIPTION-MODE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
@@ -179,9 +179,6 @@ class SpeechService {
 
     // Start timing for transcription request
     let transcriptionStartTime = Date()
-    NSLog(
-      "⏱️ API-TIMING: Starting TRANSCRIPTION request with model \(selectedTranscriptionModel.rawValue)"
-    )
 
     // Create transcription request
     let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
@@ -191,19 +188,16 @@ class SpeechService {
 
     // Calculate and log transcription duration
     let transcriptionDuration = Date().timeIntervalSince(transcriptionStartTime)
-    NSLog(
-      "⏱️ API-TIMING: TRANSCRIPTION request completed in \(String(format: "%.2f", transcriptionDuration))s with model \(selectedTranscriptionModel.rawValue)"
-    )
 
     // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
-      NSLog("⚠️ TRANSCRIPTION-MODE: Invalid response type")
+      DebugLogger.logWarning("TRANSCRIPTION-MODE: Invalid response type")
       throw TranscriptionError.networkError("Invalid response")
     }
 
     // Check if the response indicates an error
     if httpResponse.statusCode != 200 {
-      NSLog("⚠️ TRANSCRIPTION-MODE: HTTP error \(httpResponse.statusCode)")
+      DebugLogger.logWarning("TRANSCRIPTION-MODE: HTTP error \(httpResponse.statusCode)")
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
@@ -218,9 +212,6 @@ class SpeechService {
 
     // Log final timing summary for transcription
     let totalTranscriptionDuration = Date().timeIntervalSince(transcriptionStartTime)
-    NSLog(
-      "⏱️ API-TIMING: TRANSCRIPTION total processing time \(String(format: "%.2f", totalTranscriptionDuration))s (network: \(String(format: "%.2f", transcriptionDuration))s, parse: \(String(format: "%.3f", parseDuration))s) - model: \(selectedTranscriptionModel.rawValue)"
-    )
 
     return result.text
   }
@@ -231,7 +222,7 @@ class SpeechService {
 
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      NSLog("⚠️ PROMPT-MODE: No API key available")
+      DebugLogger.logWarning("PROMPT-MODE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
@@ -257,7 +248,7 @@ class SpeechService {
 
     // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      NSLog("⚠️ VOICE-RESPONSE-MODE: No API key available")
+      DebugLogger.logWarning("VOICE-RESPONSE-MODE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
@@ -287,10 +278,10 @@ class SpeechService {
       audioData = try await ttsService.generateSpeech(text: response, speed: speed)
 
     } catch let ttsError as TTSError {
-      NSLog("❌ VOICE-RESPONSE-MODE: TTS error: \(ttsError.localizedDescription)")
+      DebugLogger.logError("VOICE-RESPONSE-MODE: TTS error: \(ttsError.localizedDescription)")
       throw TranscriptionError.networkError(ttsError.localizedDescription)
     } catch {
-      NSLog("❌ VOICE-RESPONSE-MODE: Unexpected TTS error: \(error.localizedDescription)")
+      DebugLogger.logError("VOICE-RESPONSE-MODE: Unexpected TTS error: \(error.localizedDescription)")
       throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
     }
 
@@ -303,12 +294,11 @@ class SpeechService {
 
     switch playbackResult {
     case .completedSuccessfully:
-      NSLog("✅ VOICE-RESPONSE-MODE: Audio playback completed successfully")
+      break
     case .stoppedByUser:
-      NSLog("🔄 VOICE-RESPONSE-MODE: Audio playback stopped by user")
       break
     case .failed:
-      NSLog("❌ VOICE-RESPONSE-MODE: Audio playback failed due to system error")
+      DebugLogger.logError("VOICE-RESPONSE-MODE: Audio playback failed due to system error")
       throw TranscriptionError.networkError("Audio playback failed")
     }
 
@@ -334,21 +324,20 @@ class SpeechService {
 
     // Check for empty or very short text
     if trimmedText.isEmpty || trimmedText.count < 3 {
-      NSLog("⚠️ TRANSCRIPTION-MODE: No meaningful speech detected")
+      DebugLogger.logWarning("TRANSCRIPTION-MODE: No meaningful speech detected")
       throw TranscriptionError.noSpeechDetected
     }
 
     // Check if the transcription returned the system prompt itself (common with silent audio)
     let defaultPrompt = AppConstants.defaultTranscriptionSystemPrompt
     if trimmedText.contains(defaultPrompt) || trimmedText.hasPrefix("context:") {
-      NSLog("⚠️ TRANSCRIPTION-MODE: System prompt detected in transcription")
+      DebugLogger.logWarning("TRANSCRIPTION-MODE: System prompt detected in transcription")
       throw TranscriptionError.noSpeechDetected
     }
 
   }
 
   func readSelectedTextAsSpeech() async throws -> String {
-    NSLog("📋 SELECTED-TEXT-TTS: Starting selected text text-to-speech")
 
     // Capture selected text by simulating Cmd+C
     captureSelectedText()
@@ -358,27 +347,25 @@ class SpeechService {
 
     // Get the captured text from clipboard
     guard let selectedText = getClipboardContext(), !selectedText.isEmpty else {
-      NSLog("⚠️ SELECTED-TEXT-TTS: No text found in selection")
+      DebugLogger.logWarning("SELECTED-TEXT-TTS: No text found in selection")
       throw TranscriptionError.networkError("No text selected to read")
     }
 
-    NSLog("📋 SELECTED-TEXT-TTS: Found selected text (\(selectedText.count) characters)")
 
     // Get playback speed setting for TTS generation
     let playbackSpeed = UserDefaults.standard.double(forKey: "readSelectedTextPlaybackSpeed")
     let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
 
-    NSLog("📋 SELECTED-TEXT-TTS: Using playback speed: \(speed)x")
 
     // Generate speech from selected text
     let audioData: Data
     do {
       audioData = try await ttsService.generateSpeech(text: selectedText, speed: speed)
     } catch let ttsError as TTSError {
-      NSLog("❌ SELECTED-TEXT-TTS: TTS error: \(ttsError.localizedDescription)")
+      DebugLogger.logError("SELECTED-TEXT-TTS: TTS error: \(ttsError.localizedDescription)")
       throw TranscriptionError.networkError(ttsError.localizedDescription)
     } catch {
-      NSLog("❌ SELECTED-TEXT-TTS: Unexpected TTS error: \(error.localizedDescription)")
+      DebugLogger.logError("SELECTED-TEXT-TTS: Unexpected TTS error: \(error.localizedDescription)")
       throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
     }
 
@@ -391,11 +378,11 @@ class SpeechService {
 
     switch playbackResult {
     case .completedSuccessfully:
-      NSLog("✅ SELECTED-TEXT-TTS: Audio playback completed successfully")
+      break
     case .stoppedByUser:
-      NSLog("🔄 SELECTED-TEXT-TTS: Audio playback stopped by user")
+      break
     case .failed:
-      NSLog("❌ SELECTED-TEXT-TTS: Audio playback failed due to system error")
+      DebugLogger.logError("SELECTED-TEXT-TTS: Audio playback failed due to system error")
       throw TranscriptionError.networkError("Audio playback failed")
     }
 
@@ -409,14 +396,14 @@ class SpeechService {
 
     // Check for empty or very short text
     if trimmedText.isEmpty || trimmedText.count < 3 {
-      NSLog("⚠️ PROMPT-MODE: No meaningful speech detected")
+      DebugLogger.logWarning("PROMPT-MODE: No meaningful speech detected")
       throw TranscriptionError.noSpeechDetected
     }
 
     // Check if the transcription returned the system prompt itself (common with silent audio)
     let defaultPrompt = AppConstants.defaultTranscriptionSystemPrompt
     if trimmedText.contains(defaultPrompt) || trimmedText.hasPrefix("context:") {
-      NSLog("⚠️ PROMPT-MODE: System prompt detected in transcription")
+      DebugLogger.logWarning("PROMPT-MODE: System prompt detected in transcription")
       throw TranscriptionError.noSpeechDetected
     }
   }
@@ -490,7 +477,6 @@ class SpeechService {
     // Start timing for API request
     let requestStartTime = Date()
     let mode = isVoiceResponse ? "VOICE-RESPONSE" : "PROMPT"
-    NSLog("⏱️ API-TIMING: Starting \(mode) request with model \(selectedGPTModel.rawValue)")
 
     let url = URL(string: Constants.responsesEndpoint)!
     var request = URLRequest(url: url)
@@ -532,20 +518,17 @@ class SpeechService {
 
     // Calculate and log request duration
     let requestDuration = Date().timeIntervalSince(requestStartTime)
-    NSLog(
-      "⏱️ API-TIMING: \(mode) request completed in \(String(format: "%.2f", requestDuration))s with model \(selectedGPTModel.rawValue)"
-    )
 
     // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
-      NSLog("⚠️ PROMPT-MODE: Invalid response type from GPT-5")
+      DebugLogger.logWarning("PROMPT-MODE: Invalid response type from GPT-5")
       throw TranscriptionError.networkError("Invalid response")
     }
 
     if httpResponse.statusCode != 200 {
-      NSLog("⚠️ PROMPT-MODE: GPT-5 HTTP error \(httpResponse.statusCode)")
+      DebugLogger.logWarning("PROMPT-MODE: GPT-5 HTTP error \(httpResponse.statusCode)")
       if let errorBody = String(data: data, encoding: .utf8) {
-        NSLog("⚠️ PROMPT-MODE: Error response body: \(errorBody)")
+        DebugLogger.logWarning("PROMPT-MODE: Error response body: \(errorBody)")
       }
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
@@ -558,9 +541,6 @@ class SpeechService {
 
     // Log final timing summary
     let totalDuration = Date().timeIntervalSince(requestStartTime)
-    NSLog(
-      "⏱️ API-TIMING: \(mode) total processing time \(String(format: "%.2f", totalDuration))s (network: \(String(format: "%.2f", requestDuration))s, parse: \(String(format: "%.3f", parseDuration))s) - model: \(selectedGPTModel.rawValue)"
-    )
 
     return result
   }
@@ -610,9 +590,6 @@ class SpeechService {
         if output.type == "message" {
           for content in output.content ?? [] {
             if content.type == "output_text" {
-              NSLog(
-                "✅ PROMPT-MODE: Successfully extracted response text (length: \(content.text.count))"
-              )
               return content.text
             }
           }
@@ -623,7 +600,7 @@ class SpeechService {
       if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
         as? [String: Any]
       {
-        NSLog("⚠️ PROMPT-MODE: Unexpected response structure, attempting fallback parsing")
+        DebugLogger.logWarning("PROMPT-MODE: Unexpected response structure, attempting fallback parsing")
       }
 
       throw TranscriptionError.networkError("Could not extract text from GPT-5 response")
@@ -632,7 +609,7 @@ class SpeechService {
       if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
         as? [String: Any]
       {
-        NSLog("⚠️ PROMPT-MODE: Failed to decode response, raw structure available")
+        DebugLogger.logWarning("PROMPT-MODE: Failed to decode response, raw structure available")
       }
 
       throw error
@@ -643,7 +620,7 @@ class SpeechService {
   func testGPT5Request() async throws -> String {
 
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      NSLog("⚠️ TEST: No API key available")
+      DebugLogger.logWarning("TEST: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
@@ -667,14 +644,14 @@ class SpeechService {
     let (data, response) = try await URLSession.shared.data(for: request)
 
     guard let httpResponse = response as? HTTPURLResponse else {
-      NSLog("⚠️ TEST: Invalid response type")
+      DebugLogger.logWarning("TEST: Invalid response type")
       throw TranscriptionError.networkError("Invalid response type")
     }
 
     if httpResponse.statusCode != 200 {
-      NSLog("⚠️ TEST: HTTP error \(httpResponse.statusCode)")
+      DebugLogger.logWarning("TEST: HTTP error \(httpResponse.statusCode)")
       if let errorBody = String(data: data, encoding: .utf8) {
-        NSLog("⚠️ TEST: Error body: \(errorBody)")
+        DebugLogger.logWarning("TEST: Error body: \(errorBody)")
       }
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
@@ -703,18 +680,18 @@ class SpeechService {
 
     let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
     guard let fileSize = attributes[.size] as? Int64 else {
-      NSLog("⚠️ Error: Cannot read file size")
+      DebugLogger.logWarning("Cannot read file size")
       throw TranscriptionError.fileError("Cannot read file size")
     }
 
     if fileSize == 0 {
-      NSLog("⚠️ Error: Empty audio file")
+      DebugLogger.logWarning("Empty audio file")
       throw TranscriptionError.emptyFile
     }
 
     // GPT-4o-transcribe has a 25MB limit, same as Whisper-1
     if fileSize > Constants.maxFileSize {
-      NSLog("⚠️ Error: File too large (\(fileSize) > \(Constants.maxFileSize))")
+      DebugLogger.logWarning("File too large (\(fileSize) > \(Constants.maxFileSize))")
       throw TranscriptionError.fileTooLarge
     }
 
