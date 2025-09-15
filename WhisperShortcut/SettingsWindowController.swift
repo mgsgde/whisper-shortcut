@@ -114,8 +114,8 @@ class SettingsWindowController: NSWindowController {
   }
 
   func showWindow() {
-    // Follow Apple's activation pattern
-    NSApp.setActivationPolicy(.regular)
+    // For LSUIElement apps, we can't change activation policy
+    // Just activate and show the window
     NSApp.activate(ignoringOtherApps: true)
 
     // Show window with proper focus
@@ -132,10 +132,8 @@ class SettingsWindowController: NSWindowController {
 // MARK: - NSWindowDelegate
 extension SettingsWindowController: NSWindowDelegate {
   func windowWillClose(_ notification: Notification) {
-    // Return to menu bar app when window closes
-    DispatchQueue.main.async {
-      NSApp.setActivationPolicy(.accessory)
-    }
+    // For LSUIElement apps, no need to change activation policy
+    // The app remains a menu bar app automatically
   }
 
   // Handle window resize events for better responsiveness

@@ -281,7 +281,8 @@ class SpeechService {
       DebugLogger.logError("VOICE-RESPONSE-MODE: TTS error: \(ttsError.localizedDescription)")
       throw TranscriptionError.networkError(ttsError.localizedDescription)
     } catch {
-      DebugLogger.logError("VOICE-RESPONSE-MODE: Unexpected TTS error: \(error.localizedDescription)")
+      DebugLogger.logError(
+        "VOICE-RESPONSE-MODE: Unexpected TTS error: \(error.localizedDescription)")
       throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
     }
 
@@ -351,11 +352,9 @@ class SpeechService {
       throw TranscriptionError.networkError("No text selected to read")
     }
 
-
     // Get playback speed setting for TTS generation
     let playbackSpeed = UserDefaults.standard.double(forKey: "readSelectedTextPlaybackSpeed")
     let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
-
 
     // Generate speech from selected text
     let audioData: Data
@@ -600,7 +599,8 @@ class SpeechService {
       if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
         as? [String: Any]
       {
-        DebugLogger.logWarning("PROMPT-MODE: Unexpected response structure, attempting fallback parsing")
+        DebugLogger.logWarning(
+          "PROMPT-MODE: Unexpected response structure, attempting fallback parsing")
       }
 
       throw TranscriptionError.networkError("Could not extract text from GPT-5 response")

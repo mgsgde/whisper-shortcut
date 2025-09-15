@@ -1,6 +1,6 @@
 import Cocoa
-import SwiftUI
 import Foundation
+import SwiftUI
 
 class MenuBarController: NSObject {
 
@@ -241,9 +241,9 @@ class MenuBarController: NSObject {
     settingsItem.target = self
     menu.addItem(settingsItem)
 
-    // Quit item
+    // Quit item - this will now properly quit the MenuBar app
     let quitItem = NSMenuItem(
-      title: "Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q")
+      title: "Quit WhisperShortcut Completely", action: #selector(quitApp), keyEquivalent: "q")
     quitItem.target = self
     menu.addItem(quitItem)
 
@@ -581,6 +581,12 @@ class MenuBarController: NSObject {
   }
 
   @objc private func quitApp() {
+    NSLog("🔄 MENUBAR: User requested complete app termination from menu")
+
+    // Set flag to indicate user wants to quit completely
+    UserDefaults.standard.set(true, forKey: "shouldTerminate")
+
+    // Terminate the app completely
     NSApplication.shared.terminate(nil)
   }
 
@@ -835,9 +841,15 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handlePromptSuccess(_ response: String) -> Bool {
+    NSLog("🤖 PROMPT-MODE: Success - showing popup notification")
 
     // Copy response to clipboard
     clipboardManager?.copyToClipboard(text: response)
+
+    // Show popup notification with the response text
+    PopupNotificationWindow.showPromptResponse(response)
+
+    // Also show the traditional menu bar success indicator
     showTemporaryPromptSuccess()
 
     return true  // Clean up audio file
@@ -1063,7 +1075,8 @@ extension MenuBarController: ShortcutDelegate {
 
     // Prevent conflicts with ongoing recordings
     if appMode.isRecording {
-      DebugLogger.logWarning("READ-SELECTED-TEXT: Another recording is in progress, ignoring request")
+      DebugLogger.logWarning(
+        "READ-SELECTED-TEXT: Another recording is in progress, ignoring request")
       return
     }
 
