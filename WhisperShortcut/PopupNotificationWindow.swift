@@ -20,18 +20,20 @@ class PopupNotificationWindow: NSWindow {
     static let maxHeight: CGFloat = 240  // More space for content
     static let minHeight: CGFloat = 100  // More breathing room
     static let cornerRadius: CGFloat = 12  // Modern macOS corner radius
-    static let shadowRadius: CGFloat = 16  // More prominent shadow like macOS
-    static let shadowOpacity: Float = 0.25  // Slightly more visible shadow
+    static let shadowRadius: CGFloat = 8  // Subtle shadow like native macOS notifications
+    static let shadowOpacity: Float = 0.15  // Very subtle, barely visible shadow
     static let animationDuration: TimeInterval = 0.25  // Smoother animation
     static let displayDuration: TimeInterval = 7.0  // Comfortable reading time
     static let errorDisplayDuration: TimeInterval = 30.0  // Long duration for error messages with feedback option
     static let outerPadding: CGFloat = 20  // Generous outer padding
     static let innerPadding: CGFloat = 16  // Inner content padding
     static let titleBottomSpacing: CGFloat = 12  // More space between title and text
+    static let iconSpacing: CGFloat = 12  // Better spacing between icon and text
     static let titleFontSize: CGFloat = 15  // Slightly larger for better readability
     static let textFontSize: CGFloat = 13  // Better readable text size
     static let maxPreviewLength = 120  // Slightly longer preview
-    static let screenMargin: CGFloat = 40  // More comfortable distance from screen edges
+    static let horizontalMargin: CGFloat = 50  // Distance from left/right screen edges
+    static let verticalMargin: CGFloat = 50  // Distance from top/bottom screen edges (slightly less for better visual balance)
   }
 
   // MARK: - Properties
@@ -47,10 +49,10 @@ class PopupNotificationWindow: NSWindow {
 
   // MARK: - Initialization
   init(title: String, text: String, isError: Bool = false) {
-    // Create window with specific style
+    // Create window with specific style for notifications
     super.init(
       contentRect: NSRect(x: 0, y: 0, width: Constants.windowWidth, height: 100),
-      styleMask: [.borderless],
+      styleMask: [],  // Completely borderless for custom styling
       backing: .buffered,
       defer: false
     )
@@ -95,17 +97,27 @@ class PopupNotificationWindow: NSWindow {
     // CRITICAL: Prevent this window from becoming main window or causing termination
     // These are implemented as override methods below
 
-    // Position window in top-right corner
-    positionWindow()
+    // Initial positioning will be handled in show() method
   }
 
   private func setupContentView() {
+    // Create container view for proper shadow/corner radius separation
+    let containerView = NSView()
+    containerView.wantsLayer = true
+
+    // Apply shadow to container (not masked)
+    containerView.layer?.shadowColor = NSColor.black.cgColor
+    containerView.layer?.shadowOffset = NSSize(width: 0, height: -2)  // Shadow above for bottom positioning
+    containerView.layer?.shadowRadius = Constants.shadowRadius
+    containerView.layer?.shadowOpacity = Constants.shadowOpacity
+    containerView.layer?.masksToBounds = false  // Allow shadow to show
+
     // Create visual effect view with modern macOS notification style
     let visualEffectView = NSVisualEffectView()
 
     // Use notification-style material for authentic macOS look
     if #available(macOS 10.14, *) {
-      visualEffectView.material = .popover  // More appropriate for notifications
+      visualEffectView.material = .popover
     } else {
       visualEffectView.material = .light
     }
@@ -114,19 +126,19 @@ class PopupNotificationWindow: NSWindow {
     visualEffectView.state = .active
     visualEffectView.wantsLayer = true
 
-    // Modern macOS styling
+    // Apply corner radius and masking to visual effect view
     visualEffectView.layer?.cornerRadius = Constants.cornerRadius
-    visualEffectView.layer?.masksToBounds = false
+    visualEffectView.layer?.masksToBounds = true  // Clip content to rounded corners
 
-    // Enhanced shadow for depth (macOS notification style)
-    visualEffectView.layer?.shadowColor = NSColor.black.cgColor
-    visualEffectView.layer?.shadowOffset = NSSize(width: 0, height: -2)  // Shadow above for bottom positioning
-    visualEffectView.layer?.shadowRadius = Constants.shadowRadius
-    visualEffectView.layer?.shadowOpacity = Constants.shadowOpacity
-
-    // Add subtle border for definition
-    visualEffectView.layer?.borderWidth = 0.5
-    visualEffectView.layer?.borderColor = NSColor.separatorColor.cgColor
+    // Add visual effect view to container
+    containerView.addSubview(visualEffectView)
+    visualEffectView.translatesAutoresizingMaskIntoConstraints = false
+    NSLayoutConstraint.activate([
+      visualEffectView.topAnchor.constraint(equalTo: containerView.topAnchor),
+      visualEffectView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+      visualEffectView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+      visualEffectView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+    ])
 
     // Create clickable content view for error feedback
     let clickableView = ClickableContentView()
@@ -142,7 +154,7 @@ class PopupNotificationWindow: NSWindow {
     ])
 
     customContentView = clickableView
-    contentView = visualEffectView
+    contentView = containerView
   }
 
   private func setupIcon(isError: Bool) {
@@ -165,7 +177,7 @@ class PopupNotificationWindow: NSWindow {
   private func setupLabels(title: String, text: String) {
     // Title label with improved typography
     titleLabel = NSTextField(labelWithString: title)
-    titleLabel.font = NSFont.systemFont(ofSize: Constants.titleFontSize, weight: .semibold)  // Better weight for readability
+    titleLabel.font = NSFont.systemFont(ofSize: Constants.titleFontSize, weight: .medium)  // Subtle, elegant weight like native notifications
     titleLabel.textColor = NSColor.labelColor
     titleLabel.alignment = .left
     titleLabel.isEditable = false
@@ -191,8 +203,8 @@ class PopupNotificationWindow: NSWindow {
 
     // Better text spacing and readability
     let paragraphStyle = NSMutableParagraphStyle()
-    paragraphStyle.lineSpacing = 2  // Add line spacing for better readability
-    paragraphStyle.paragraphSpacing = 4
+    paragraphStyle.lineSpacing = 3  // Improved line spacing for better readability
+    paragraphStyle.paragraphSpacing = 6  // Better paragraph spacing
 
     let attributedText = NSAttributedString(
       string: displayText,
@@ -233,10 +245,8 @@ class PopupNotificationWindow: NSWindow {
       }
     }
 
-    // Add visual feedback that the window is clickable
+    // Visual feedback through cursor change only - no border needed for clean design
     customContentView.wantsLayer = true
-    customContentView.layer?.borderWidth = 1
-    customContentView.layer?.borderColor = NSColor.systemBlue.withAlphaComponent(0.3).cgColor
 
     NSLog("✅ WHATSAPP-FEEDBACK: Error click handler setup completed")
   }
@@ -337,7 +347,8 @@ class PopupNotificationWindow: NSWindow {
 
         // Position WhatsApp icon to the right of title
         icon.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
-        icon.leadingAnchor.constraint(equalTo: titleLabel.trailingAnchor, constant: 8),
+        icon.leadingAnchor.constraint(
+          equalTo: titleLabel.trailingAnchor, constant: Constants.iconSpacing),
         icon.trailingAnchor.constraint(
           equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
         icon.widthAnchor.constraint(equalToConstant: 20),
@@ -352,7 +363,7 @@ class PopupNotificationWindow: NSWindow {
       NSLayoutConstraint.activate([
         // Title positioned after left icon
         titleLabel.leadingAnchor.constraint(
-          equalTo: iconLabel.trailingAnchor, constant: 8),
+          equalTo: iconLabel.trailingAnchor, constant: Constants.iconSpacing),
         titleLabel.trailingAnchor.constraint(
           equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
 
@@ -397,29 +408,15 @@ class PopupNotificationWindow: NSWindow {
       Constants.minHeight
     )
 
-    // Update window frame and position it properly
+    // Update window frame and position it properly (bottom-left)
     let newFrame = NSRect(
-      x: screenFrame.maxX - Constants.windowWidth - 20,
-      y: screenFrame.maxY - totalHeight - 50,  // Position from top with margin
+      x: screenFrame.minX + Constants.horizontalMargin,  // Left edge with margin
+      y: screenFrame.minY + Constants.verticalMargin,  // Bottom edge with margin
       width: Constants.windowWidth,
       height: totalHeight
     )
 
     setFrame(newFrame, display: true)
-  }
-
-  private func positionWindow() {
-    guard let screen = NSScreen.main else { return }
-
-    let screenFrame = screen.visibleFrame
-    let windowFrame = NSRect(
-      x: screenFrame.minX + Constants.screenMargin,  // Standard margin from left edge
-      y: screenFrame.minY + Constants.screenMargin,  // Standard margin from bottom
-      width: Constants.windowWidth,
-      height: Constants.minHeight
-    )
-
-    setFrame(windowFrame, display: false)
   }
 
   // MARK: - Helper Methods
@@ -462,8 +459,8 @@ class PopupNotificationWindow: NSWindow {
     guard let screen = NSScreen.main else { return }
     let screenFrame = screen.visibleFrame
     let targetFrame = NSRect(
-      x: screenFrame.minX + Constants.screenMargin,  // Standard margin from left edge
-      y: screenFrame.minY + Constants.screenMargin,  // Standard margin from bottom edge
+      x: screenFrame.minX + Constants.horizontalMargin,  // Left edge with margin
+      y: screenFrame.minY + Constants.verticalMargin,  // Bottom edge with margin
       width: Constants.windowWidth,
       height: frame.height
     )
