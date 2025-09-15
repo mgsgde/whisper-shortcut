@@ -6,7 +6,6 @@ class ClickableContentView: NSView {
   var onClickHandler: (() -> Void)?
 
   override func mouseDown(with event: NSEvent) {
-    NSLog("🔗 WHATSAPP-FEEDBACK: Content view clicked!")
     onClickHandler?()
     super.mouseDown(with: event)
   }
@@ -34,6 +33,8 @@ class PopupNotificationWindow: NSWindow {
     static let maxPreviewLength = 120  // Slightly longer preview
     static let horizontalMargin: CGFloat = 50  // Distance from left/right screen edges
     static let verticalMargin: CGFloat = 50  // Distance from top/bottom screen edges (slightly less for better visual balance)
+    static let iconAndSpacingWidth: CGFloat = 28  // Icon width + spacing for layout calculations
+    static let whatsappPhoneNumber = "+4917641952181"  // WhatsApp support number
   }
 
   // MARK: - Properties
@@ -216,12 +217,12 @@ class PopupNotificationWindow: NSWindow {
     )
     textLabel.attributedStringValue = attributedText
 
-    textLabel.preferredMaxLayoutWidth = Constants.windowWidth - (Constants.outerPadding * 2) - 28  // Account for icon width + spacing
+    textLabel.preferredMaxLayoutWidth =
+      Constants.windowWidth - (Constants.outerPadding * 2) - Constants.iconAndSpacingWidth
   }
 
   private func setupWhatsAppIcon() {
     guard let whatsappImage = NSImage(named: "WhatsApp") else {
-      NSLog("❌ WHATSAPP-FEEDBACK: WhatsApp image not found")
       return
     }
 
@@ -233,8 +234,6 @@ class PopupNotificationWindow: NSWindow {
     icon.imageScaling = .scaleProportionallyDown
     icon.wantsLayer = true
     icon.layer?.cornerRadius = 4
-
-    NSLog("✅ WHATSAPP-FEEDBACK: WhatsApp icon setup completed (positioned next to title)")
   }
 
   private func setupErrorClickHandler() {
@@ -247,13 +246,9 @@ class PopupNotificationWindow: NSWindow {
 
     // Visual feedback through cursor change only - no border needed for clean design
     customContentView.wantsLayer = true
-
-    NSLog("✅ WHATSAPP-FEEDBACK: Error click handler setup completed")
   }
 
   @objc private func errorWindowClicked() {
-    NSLog("🔗 WHATSAPP-FEEDBACK: Error window clicked, opening WhatsApp feedback")
-
     // First open WhatsApp, then close notification
     openWhatsAppFeedback()
 
@@ -264,23 +259,31 @@ class PopupNotificationWindow: NSWindow {
   }
 
   private func openWhatsAppFeedback() {
-    let whatsappNumber = "+4917641952181"
     let baseMessage = "Hi! I encountered an error in WhisperShortcut:"
-    let errorMessage = "\n\nError Details:\n\(errorText)"
+
+    // Limit error text length to prevent URL issues
+    let maxErrorLength = 500
+    let truncatedError =
+      errorText.count > maxErrorLength
+      ? String(errorText.prefix(maxErrorLength)) + "..."
+      : errorText
+
+    let errorMessage = "\n\nError Details:\n\(truncatedError)"
     let fullMessage = baseMessage + errorMessage
 
-    if let encodedMessage = fullMessage.addingPercentEncoding(
-      withAllowedCharacters: .urlQueryAllowed),
-      let whatsappURL = URL(string: "https://wa.me/\(whatsappNumber)?text=\(encodedMessage)")
-    {
-      // Open WhatsApp Web in default browser
-      let success = NSWorkspace.shared.open(whatsappURL)
-      if success {
-        NSLog("🔗 WHATSAPP-FEEDBACK: Successfully opened WhatsApp Web")
-      } else {
-        NSLog("❌ WHATSAPP-FEEDBACK: Failed to open WhatsApp Web")
-      }
+    guard
+      let encodedMessage = fullMessage.addingPercentEncoding(
+        withAllowedCharacters: .urlQueryAllowed),
+      let whatsappURL = URL(
+        string: "https://wa.me/\(Constants.whatsappPhoneNumber)?text=\(encodedMessage)"),
+      whatsappURL.scheme == "https",
+      whatsappURL.host == "wa.me"
+    else {
+      return
     }
+
+    // Open WhatsApp Web in default browser
+    NSWorkspace.shared.open(whatsappURL)
   }
 
   private func setupScrollView() {
@@ -386,7 +389,8 @@ class PopupNotificationWindow: NSWindow {
     // Calculate title height (icon and title are on same line)
     let titleHeight = max(
       titleLabel.intrinsicContentSize.height, iconLabel.intrinsicContentSize.height)
-    let availableWidth = Constants.windowWidth - (Constants.outerPadding * 2) - 28  // Account for icon width + spacing
+    let availableWidth =
+      Constants.windowWidth - (Constants.outerPadding * 2) - Constants.iconAndSpacingWidth
 
     // Set the preferred max layout width for proper text wrapping
     textLabel.preferredMaxLayoutWidth = availableWidth
@@ -490,8 +494,8 @@ class PopupNotificationWindow: NSWindow {
       self.animator().alphaValue = 0.0
       self.animator().setFrame(self.frame.offsetBy(dx: 0, dy: -20), display: true)  // Slide down for bottom-left position
     }) {
-      // Close window after animation
-      self.close()
+      // Hide window instead of closing to prevent app termination
+      self.orderOut(nil)  // Make window invisible
 
       // Remove from active popups to allow deallocation
       PopupNotificationWindow.activePopups.remove(self)
@@ -511,8 +515,7 @@ class PopupNotificationWindow: NSWindow {
   }
 
   override func close() {
-
-    // If close() is called directly (not from hide()), use hide() for proper cleanup
+    // Always use hide() for proper cleanup and to prevent app termination
     hide()
   }
 
@@ -520,6 +523,16 @@ class PopupNotificationWindow: NSWindow {
   override func mouseDown(with event: NSEvent) {
     // Hide popup when clicked
     hide()
+  }
+
+  // MARK: - Window Behavior Overrides
+  // CRITICAL: Prevent this window from becoming main window or causing app termination
+  override var canBecomeMain: Bool {
+    return false
+  }
+
+  override var canBecomeKey: Bool {
+    return false
   }
 
   // MARK: - Cleanup
@@ -546,49 +559,33 @@ extension PopupNotificationWindow {
     return value
   }
 
-  static func showPromptResponse(_ response: String) {
+  private static func showSuccessNotification(
+    title: String = "Text Copied to Clipboard", text: String
+  ) {
     guard arePopupNotificationsEnabled else {
       return
     }
 
     let popup = PopupNotificationWindow(
-      title: "Text Copied to Clipboard",
-      text: response
+      title: title,
+      text: text
     )
 
     // Keep strong reference until window closes
     activePopups.insert(popup)
     popup.show()
+  }
+
+  static func showPromptResponse(_ response: String) {
+    showSuccessNotification(text: response)
   }
 
   static func showTranscriptionResponse(_ transcription: String) {
-    guard arePopupNotificationsEnabled else {
-      return
-    }
-
-    let popup = PopupNotificationWindow(
-      title: "Text Copied to Clipboard",
-      text: transcription
-    )
-
-    // Keep strong reference until window closes
-    activePopups.insert(popup)
-    popup.show()
+    showSuccessNotification(text: transcription)
   }
 
   static func showVoiceResponse(_ response: String) {
-    guard arePopupNotificationsEnabled else {
-      return
-    }
-
-    let popup = PopupNotificationWindow(
-      title: "Text Copied to Clipboard",
-      text: response
-    )
-
-    // Keep strong reference until window closes
-    activePopups.insert(popup)
-    popup.show()
+    showSuccessNotification(text: response)
   }
 
   static func showError(_ error: String, title: String = "Error") {

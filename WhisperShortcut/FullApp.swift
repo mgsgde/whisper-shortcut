@@ -55,7 +55,6 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationWillTerminate(_ notification: Notification) {
     menuBarController?.cleanup()
-
   }
 
   private func setupEditMenu() {
