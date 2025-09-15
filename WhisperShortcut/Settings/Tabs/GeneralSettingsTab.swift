@@ -31,6 +31,18 @@ struct GeneralSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
+      // Popup Notifications Section
+      popupNotificationsSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Support & Feedback Section
       supportFeedbackSection
     }
@@ -158,6 +170,41 @@ struct GeneralSettingsTab: View {
           }
         }
       }
+    }
+  }
+
+  // MARK: - Popup Notifications Section
+  @ViewBuilder
+  private var popupNotificationsSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "🔔 Popup Notifications",
+        subtitle: "Show popup windows with transcription and AI response text"
+      )
+
+      HStack(alignment: .center, spacing: 16) {
+        Text("Show Notifications:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        Toggle("", isOn: $viewModel.data.showPopupNotifications)
+          .toggleStyle(SwitchToggleStyle())
+          .onChange(of: viewModel.data.showPopupNotifications) { _, _ in
+            Task {
+              await viewModel.saveSettings()
+            }
+          }
+
+        Spacer()
+      }
+
+      Text(
+        "When enabled, popup windows will appear showing the transcribed text, AI responses, and voice response text."
+      )
+      .font(.callout)
+      .foregroundColor(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
     }
   }
 

@@ -179,6 +179,9 @@ struct SettingsDefaults {
   static let promptReasoningEffort = ReasoningEffort.minimal
   static let voiceResponseReasoningEffort = ReasoningEffort.minimal
 
+  // MARK: - Notification Settings
+  static let showPopupNotifications = true
+
   // MARK: - UI State
   static let errorMessage = ""
   static let isLoading = false
@@ -216,6 +219,9 @@ struct SettingsData {
   // Reasoning effort settings for GPT-5 models
   var promptReasoningEffort: ReasoningEffort = SettingsDefaults.promptReasoningEffort
   var voiceResponseReasoningEffort: ReasoningEffort = SettingsDefaults.voiceResponseReasoningEffort
+
+  // MARK: - Notification Settings
+  var showPopupNotifications: Bool = SettingsDefaults.showPopupNotifications
 
   // MARK: - UI State
   var errorMessage: String = SettingsDefaults.errorMessage

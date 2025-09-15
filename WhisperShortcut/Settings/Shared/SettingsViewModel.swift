@@ -126,6 +126,14 @@ class SettingsViewModel: ObservableObject {
       data.voiceResponseReasoningEffort = SettingsDefaults.voiceResponseReasoningEffort
     }
 
+    // Load popup notifications setting
+    let showPopupNotificationsExists = UserDefaults.standard.object(forKey: "showPopupNotifications") != nil
+    if showPopupNotificationsExists {
+      data.showPopupNotifications = UserDefaults.standard.bool(forKey: "showPopupNotifications")
+    } else {
+      data.showPopupNotifications = SettingsDefaults.showPopupNotifications
+    }
+
     // Load API key
     data.apiKey = KeychainManager.shared.getAPIKey() ?? ""
 
@@ -241,6 +249,9 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(data.promptReasoningEffort.rawValue, forKey: "promptReasoningEffort")
     UserDefaults.standard.set(
       data.voiceResponseReasoningEffort.rawValue, forKey: "voiceResponseReasoningEffort")
+
+    // Save popup notifications setting
+    UserDefaults.standard.set(data.showPopupNotifications, forKey: "showPopupNotifications")
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()

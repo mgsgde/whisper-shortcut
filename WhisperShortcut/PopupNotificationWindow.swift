@@ -294,7 +294,29 @@ extension PopupNotificationWindow {
   // Static storage for active popups to prevent premature deallocation
   private static var activePopups: Set<PopupNotificationWindow> = []
 
+  // Helper to check if popup notifications are enabled
+  private static var arePopupNotificationsEnabled: Bool {
+    let keyExists = UserDefaults.standard.object(forKey: "showPopupNotifications") != nil
+    let value = UserDefaults.standard.bool(forKey: "showPopupNotifications")
+    
+    NSLog("🔔 POPUP-DEBUG: Key exists: \(keyExists), Value: \(value)")
+    
+    // Check if the key exists, if not, default to true (enabled)
+    if !keyExists {
+      NSLog("🔔 POPUP-DEBUG: Key doesn't exist, defaulting to enabled")
+      return true  // Default to enabled
+    }
+    
+    NSLog("🔔 POPUP-DEBUG: Using stored value: \(value)")
+    return value
+  }
+
   static func showPromptResponse(_ response: String) {
+    guard arePopupNotificationsEnabled else {
+      NSLog("🔔 POPUP: Popup notifications disabled - skipping prompt response popup")
+      return
+    }
+
     NSLog("🔔 POPUP: Creating prompt response popup")
 
     let popup = PopupNotificationWindow(
@@ -308,6 +330,11 @@ extension PopupNotificationWindow {
   }
 
   static func showTranscriptionResponse(_ transcription: String) {
+    guard arePopupNotificationsEnabled else {
+      NSLog("🔔 POPUP: Popup notifications disabled - skipping transcription response popup")
+      return
+    }
+
     NSLog("🔔 POPUP: Creating transcription response popup")
 
     let popup = PopupNotificationWindow(
@@ -321,6 +348,11 @@ extension PopupNotificationWindow {
   }
 
   static func showVoiceResponse(_ response: String) {
+    guard arePopupNotificationsEnabled else {
+      NSLog("🔔 POPUP: Popup notifications disabled - skipping voice response popup")
+      return
+    }
+
     NSLog("🔔 POPUP: Creating voice response popup")
 
     let popup = PopupNotificationWindow(
