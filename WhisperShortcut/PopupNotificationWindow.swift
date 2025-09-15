@@ -306,4 +306,30 @@ extension PopupNotificationWindow {
     activePopups.insert(popup)
     popup.show()
   }
+
+  static func showTranscriptionResponse(_ transcription: String) {
+    NSLog("🔔 POPUP: Creating transcription response popup")
+
+    let popup = PopupNotificationWindow(
+      title: "📝 Transcription Copied",
+      text: transcription
+    )
+
+    // Keep strong reference until window closes
+    activePopups.insert(popup)
+    popup.show()
+  }
+
+  static func showVoiceResponse(_ response: String) {
+    NSLog("🔔 POPUP: Creating voice response popup")
+
+    let popup = PopupNotificationWindow(
+      title: "🔊 Voice Response Copied",
+      text: response
+    )
+
+    // Keep strong reference until window closes
+    activePopups.insert(popup)
+    popup.show()
+  }
 }

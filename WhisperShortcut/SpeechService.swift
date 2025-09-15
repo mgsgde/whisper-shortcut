@@ -290,6 +290,15 @@ class SpeechService {
     NotificationCenter.default.post(
       name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
 
+    // Notify that playback is starting with the response text
+    await MainActor.run {
+      NotificationCenter.default.post(
+        name: NSNotification.Name("VoicePlaybackStartedWithText"),
+        object: nil,
+        userInfo: ["responseText": response]
+      )
+    }
+
     // Play the audio response
     let playbackResult = try await audioPlaybackService.playAudio(data: audioData)
 
