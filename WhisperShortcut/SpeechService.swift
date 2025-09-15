@@ -11,6 +11,15 @@ private enum Constants {
   static let chatEndpoint = "https://api.openai.com/v1/chat/completions"
   static let responsesEndpoint = "https://api.openai.com/v1/responses"  // New GPT-5 API
   static let modelsEndpoint = "https://api.openai.com/v1/models"
+
+  // Text validation
+  static let minimumTextLength = 3
+
+  // Audio validation
+  static let supportedAudioExtensions = ["wav", "mp3", "m4a", "flac", "ogg", "webm"]
+
+  // Timing delays
+  static let clipboardCopyDelay: UInt64 = 100_000_000  // 0.1 seconds in nanoseconds
 }
 
 // MARK: - Transcription Model Enum
@@ -177,17 +186,11 @@ class SpeechService {
     // Validate file
     try validateAudioFile(at: audioURL)
 
-    // Start timing for transcription request
-    let transcriptionStartTime = Date()
-
     // Create transcription request
     let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
 
     // Execute request
     let (data, response) = try await session.data(for: request)
-
-    // Calculate and log transcription duration
-    let transcriptionDuration = Date().timeIntervalSince(transcriptionStartTime)
 
     // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
@@ -203,15 +206,10 @@ class SpeechService {
     }
 
     // Parse result
-    let parseStartTime = Date()
     let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
-    let parseDuration = Date().timeIntervalSince(parseStartTime)
 
     // Validate transcribed text for empty/silent audio
-    try validateTranscribedText(result.text)
-
-    // Log final timing summary for transcription
-    let totalTranscriptionDuration = Date().timeIntervalSince(transcriptionStartTime)
+    try validateSpeechText(result.text, mode: "TRANSCRIPTION-MODE")
 
     return result.text
   }
@@ -231,7 +229,7 @@ class SpeechService {
     let spokenText = try await transcribe(audioURL: audioURL)
 
     // Validate spoken text
-    try validateSpokenText(spokenText)
+    try validateSpeechText(spokenText, mode: "PROMPT-MODE")
 
     // Get clipboard content as context if available
     let clipboardContext = getClipboardContext()
@@ -257,7 +255,7 @@ class SpeechService {
     let spokenText = try await transcribe(audioURL: audioURL)
 
     // Validate spoken text
-    try validateSpokenText(spokenText)
+    try validateSpeechText(spokenText, mode: "PROMPT-MODE")
 
     // Use provided clipboard context or get current clipboard
     let contextToUse = clipboardContext ?? getClipboardContext()
@@ -327,24 +325,34 @@ class SpeechService {
     return try createMultipartRequest(request: &request, audioURL: audioURL)
   }
 
-  private func validateTranscribedText(_ transcribedText: String) throws {
-
+  private func validateSpeechText(_ text: String, mode: String = "TRANSCRIPTION-MODE") throws {
     // Check if meaningful speech was detected
-    let trimmedText = transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
     // Check for empty or very short text
-    if trimmedText.isEmpty || trimmedText.count < 3 {
-      DebugLogger.logWarning("TRANSCRIPTION-MODE: No meaningful speech detected")
+    if trimmedText.isEmpty || trimmedText.count < Constants.minimumTextLength {
+      DebugLogger.logWarning("\(mode): No meaningful speech detected")
       throw TranscriptionError.noSpeechDetected
     }
 
     // Check if the transcription returned the system prompt itself (common with silent audio)
     let defaultPrompt = AppConstants.defaultTranscriptionSystemPrompt
     if trimmedText.contains(defaultPrompt) || trimmedText.hasPrefix("context:") {
-      DebugLogger.logWarning("TRANSCRIPTION-MODE: System prompt detected in transcription")
+      DebugLogger.logWarning("\(mode): System prompt detected in transcription")
       throw TranscriptionError.noSpeechDetected
     }
+  }
 
+  private func sanitizeUserInput(_ input: String) -> String {
+    // Trim whitespace and newlines
+    let sanitized = input.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    // Remove potentially problematic characters that could interfere with API calls
+    // Keep most characters but remove control characters except common ones
+    return sanitized.filter { char in
+      let scalar = char.unicodeScalars.first!
+      return !CharacterSet.controlCharacters.contains(scalar) || char == "\n" || char == "\t"
+    }
   }
 
   func readSelectedTextAsSpeech() async throws -> String {
@@ -353,7 +361,7 @@ class SpeechService {
     captureSelectedText()
 
     // Small delay to allow the copy operation to complete
-    try await Task.sleep(nanoseconds: 100_000_000)  // 0.1 seconds
+    try await Task.sleep(nanoseconds: Constants.clipboardCopyDelay)
 
     // Get the captured text from clipboard
     guard let selectedText = getClipboardContext(), !selectedText.isEmpty else {
@@ -398,23 +406,6 @@ class SpeechService {
   }
 
   // MARK: - Prompt Mode Helpers
-  private func validateSpokenText(_ spokenText: String) throws {
-    // Check if meaningful speech was detected
-    let trimmedText = spokenText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-    // Check for empty or very short text
-    if trimmedText.isEmpty || trimmedText.count < 3 {
-      DebugLogger.logWarning("PROMPT-MODE: No meaningful speech detected")
-      throw TranscriptionError.noSpeechDetected
-    }
-
-    // Check if the transcription returned the system prompt itself (common with silent audio)
-    let defaultPrompt = AppConstants.defaultTranscriptionSystemPrompt
-    if trimmedText.contains(defaultPrompt) || trimmedText.hasPrefix("context:") {
-      DebugLogger.logWarning("PROMPT-MODE: System prompt detected in transcription")
-      throw TranscriptionError.noSpeechDetected
-    }
-  }
 
   private func getClipboardContext() -> String? {
     guard let clipboardManager = clipboardManager else {
@@ -482,10 +473,6 @@ class SpeechService {
       UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
     let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5Mini
 
-    // Start timing for API request
-    let requestStartTime = Date()
-    let mode = isVoiceResponse ? "VOICE-RESPONSE" : "PROMPT"
-
     let url = URL(string: Constants.responsesEndpoint)!
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -524,9 +511,6 @@ class SpeechService {
     // Execute request
     let (data, response) = try await session.data(for: request)
 
-    // Calculate and log request duration
-    let requestDuration = Date().timeIntervalSince(requestStartTime)
-
     // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
       DebugLogger.logWarning("PROMPT-MODE: Invalid response type from GPT-5")
@@ -543,12 +527,7 @@ class SpeechService {
     }
 
     // Parse and extract response
-    let parseStartTime = Date()
     let result = try parseGPT5Response(data: data)
-    let parseDuration = Date().timeIntervalSince(parseStartTime)
-
-    // Log final timing summary
-    let totalDuration = Date().timeIntervalSince(requestStartTime)
 
     return result
   }
@@ -580,7 +559,9 @@ class SpeechService {
       fullInput += "\n\nContext (selected text from clipboard):\n\(context)"
     }
 
-    fullInput += "\n\nUser: \(userMessage)"
+    // Sanitize user input before adding to prompt
+    let sanitizedUserMessage = sanitizeUserInput(userMessage)
+    fullInput += "\n\nUser: \(sanitizedUserMessage)"
     return fullInput
   }
 
@@ -605,9 +586,7 @@ class SpeechService {
       }
 
       // Fallback: if we can't find the expected structure, try to extract any text
-      if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
-        as? [String: Any]
-      {
+      if (try? JSONSerialization.jsonObject(with: data, options: [])) != nil {
         DebugLogger.logWarning(
           "PROMPT-MODE: Unexpected response structure, attempting fallback parsing")
       }
@@ -615,9 +594,7 @@ class SpeechService {
       throw TranscriptionError.networkError("Could not extract text from GPT-5 response")
     } catch {
       // Try to parse as a generic dictionary to see the actual structure
-      if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [])
-        as? [String: Any]
-      {
+      if (try? JSONSerialization.jsonObject(with: data, options: [])) != nil {
         DebugLogger.logWarning("PROMPT-MODE: Failed to decode response, raw structure available")
       }
 
@@ -686,6 +663,12 @@ class SpeechService {
 
   // MARK: - Shared Infrastructure Helpers
   private func validateAudioFile(at url: URL) throws {
+    // Validate file format
+    let fileExtension = url.pathExtension.lowercased()
+    if !Constants.supportedAudioExtensions.contains(fileExtension) {
+      DebugLogger.logWarning("Unsupported audio format: \(fileExtension)")
+      throw TranscriptionError.fileError("Unsupported audio format: \(fileExtension)")
+    }
 
     let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
     guard let fileSize = attributes[.size] as? Int64 else {
@@ -703,7 +686,6 @@ class SpeechService {
       DebugLogger.logWarning("File too large (\(fileSize) > \(Constants.maxFileSize))")
       throw TranscriptionError.fileTooLarge
     }
-
   }
 
   private func createMultipartRequest(request: inout URLRequest, audioURL: URL) throws -> URLRequest
