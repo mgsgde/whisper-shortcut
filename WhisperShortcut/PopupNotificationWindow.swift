@@ -5,18 +5,19 @@ class PopupNotificationWindow: NSWindow {
 
   // MARK: - Constants
   private enum Constants {
-    static let windowWidth: CGFloat = 500
-    static let maxHeight: CGFloat = 400  // Reasonable max height to fit on screen
-    static let minHeight: CGFloat = 120
-    static let cornerRadius: CGFloat = 12
-    static let shadowRadius: CGFloat = 20
-    static let shadowOpacity: Float = 0.3
-    static let animationDuration: TimeInterval = 0.3
-    static let displayDuration: TimeInterval = 8.0
-    static let padding: CGFloat = 20
-    static let titleFontSize: CGFloat = 16
-    static let textFontSize: CGFloat = 13  // Slightly smaller for better fit
-    static let maxTextLength = 1500  // Reasonable limit for readability
+    static let windowWidth: CGFloat = 320  // Compact like macOS notifications
+    static let maxHeight: CGFloat = 200  // Smaller max height
+    static let minHeight: CGFloat = 80  // Smaller min height
+    static let cornerRadius: CGFloat = 10
+    static let shadowRadius: CGFloat = 12  // Subtler shadow
+    static let shadowOpacity: Float = 0.2  // Less prominent shadow
+    static let animationDuration: TimeInterval = 0.2  // Faster animation
+    static let displayDuration: TimeInterval = 5.0  // Comfortable reading time
+    static let padding: CGFloat = 16  // Tighter padding
+    static let titleFontSize: CGFloat = 14  // Smaller title
+    static let textFontSize: CGFloat = 12  // Smaller text
+    static let maxPreviewLength = 100  // Short preview only
+    static let screenMargin: CGFloat = 40  // More comfortable distance from screen edges
   }
 
   // MARK: - Properties
@@ -51,7 +52,7 @@ class PopupNotificationWindow: NSWindow {
     // Window properties
     isOpaque = false
     backgroundColor = NSColor.clear
-    level = .floating  // Use floating level for proper visibility
+    level = .statusBar  // Use highest level to ensure visibility above all windows
     ignoresMouseEvents = false
     hasShadow = true
     isMovable = false
@@ -68,15 +69,19 @@ class PopupNotificationWindow: NSWindow {
   }
 
   private func setupContentView() {
-    customContentView = NSView()
-    customContentView.wantsLayer = true
-    customContentView.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
-    customContentView.layer?.cornerRadius = Constants.cornerRadius
-    customContentView.layer?.shadowColor = NSColor.black.cgColor
-    customContentView.layer?.shadowOffset = NSSize(width: 0, height: -2)
-    customContentView.layer?.shadowRadius = Constants.shadowRadius
-    customContentView.layer?.shadowOpacity = Constants.shadowOpacity
+    // Create visual effect view for modern blur effect
+    let visualEffectView = NSVisualEffectView()
+    visualEffectView.material = .hudWindow
+    visualEffectView.blendingMode = .behindWindow
+    visualEffectView.state = .active
+    visualEffectView.wantsLayer = true
+    visualEffectView.layer?.cornerRadius = Constants.cornerRadius
+    visualEffectView.layer?.shadowColor = NSColor.black.cgColor
+    visualEffectView.layer?.shadowOffset = NSSize(width: 2, height: 4)  // Shadow to right and above for bottom-left position
+    visualEffectView.layer?.shadowRadius = Constants.shadowRadius
+    visualEffectView.layer?.shadowOpacity = Constants.shadowOpacity
 
+    customContentView = visualEffectView
     contentView = customContentView
   }
 
@@ -91,11 +96,8 @@ class PopupNotificationWindow: NSWindow {
     titleLabel.backgroundColor = NSColor.clear
     titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-    // Text label - show full text, no truncation
-    let displayText =
-      text.count > Constants.maxTextLength
-      ? String(text.prefix(Constants.maxTextLength)) + "\n\n... (Text truncated for display)"
-      : text
+    // Text label - show short preview only
+    let displayText = createPreviewText(from: text)
 
     textLabel = NSTextField(labelWithString: displayText)
     textLabel.font = NSFont.systemFont(ofSize: Constants.textFontSize)
@@ -205,25 +207,74 @@ class PopupNotificationWindow: NSWindow {
 
     let screenFrame = screen.visibleFrame
     let windowFrame = NSRect(
-      x: screenFrame.maxX - Constants.windowWidth - 20,
-      y: screenFrame.maxY - 100,
+      x: screenFrame.minX + Constants.screenMargin,  // 20px vom linken Rand
+      y: screenFrame.minY + Constants.screenMargin + Constants.minHeight,  // Popup höher positionieren
       width: Constants.windowWidth,
-      height: 100
+      height: Constants.minHeight
     )
 
+    NSLog("🔔 POPUP-POSITION: Screen frame: \(screenFrame)")
+    NSLog("🔔 POPUP-POSITION: Calculated window frame: \(windowFrame)")
+
     setFrame(windowFrame, display: false)
+
+    // Verify actual position after setting
+    let actualFrame = frame
+    NSLog("🔔 POPUP-POSITION: Actual window frame after setFrame: \(actualFrame)")
+  }
+
+  // MARK: - Helper Methods
+  private func createPreviewText(from text: String) -> String {
+    // Clean up text - remove extra whitespace and newlines
+    let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+      .replacingOccurrences(of: "\n+", with: " ", options: .regularExpression)
+      .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+
+    // Create short preview
+    if cleanText.count <= Constants.maxPreviewLength {
+      return cleanText
+    } else {
+      // Find a good break point (end of sentence or word)
+      let preview = String(cleanText.prefix(Constants.maxPreviewLength))
+      if let lastSentence = preview.lastIndex(of: "."),
+        lastSentence > preview.index(preview.startIndex, offsetBy: 30)
+      {
+        return String(preview[...lastSentence])
+      } else if let lastSpace = preview.lastIndex(of: " "),
+        lastSpace > preview.index(preview.startIndex, offsetBy: 20)
+      {
+        return String(preview[...lastSpace]) + "..."
+      } else {
+        return preview + "..."
+      }
+    }
   }
 
   // MARK: - Animation Methods
   func show() {
     NSLog("🔔 POPUP: Showing notification popup")
 
-    // Set initial alpha and scale
+    // Set initial alpha and position for bottom-left slide-in
     alphaValue = 0.0
-    setFrame(frame.offsetBy(dx: 0, dy: 20), display: false)
+    setFrame(frame.offsetBy(dx: 0, dy: -20), display: false)  // Start below final position
 
     // Show window without stealing focus or becoming main window
     orderFront(nil)
+
+    // Debug: Check actual position after showing
+    NSLog("🔔 POPUP-POSITION: Final position after show: \(frame)")
+
+    // CRITICAL: macOS repositions windows after show() - force our position again
+    guard let screen = NSScreen.main else { return }
+    let screenFrame = screen.visibleFrame
+    let targetFrame = NSRect(
+      x: screenFrame.minX + Constants.screenMargin,  // 20px vom linken Rand
+      y: screenFrame.minY + Constants.screenMargin,  // 20px Abstand vom unteren Rand (untere Kante des Popups)
+      width: Constants.windowWidth,
+      height: frame.height
+    )
+    setFrame(targetFrame, display: true)
+    NSLog("🔔 POPUP-POSITION: Forced position after macOS override: \(frame)")
 
     // Animate in
     NSAnimationContext.runAnimationGroup { context in
@@ -231,12 +282,11 @@ class PopupNotificationWindow: NSWindow {
       context.timingFunction = CAMediaTimingFunction(name: .easeOut)
 
       self.animator().alphaValue = 1.0
-      self.animator().setFrame(self.frame.offsetBy(dx: 0, dy: -20), display: true)
+      // No additional frame change needed - we already set the correct position above
     }
   }
 
   func hide() {
-    NSLog("🔔 POPUP: Hiding notification popup")
 
     // Cancel auto-hide timer
     autoHideTimer?.invalidate()
@@ -248,7 +298,7 @@ class PopupNotificationWindow: NSWindow {
       context.timingFunction = CAMediaTimingFunction(name: .easeIn)
 
       self.animator().alphaValue = 0.0
-      self.animator().setFrame(self.frame.offsetBy(dx: 0, dy: 20), display: true)
+      self.animator().setFrame(self.frame.offsetBy(dx: 0, dy: -20), display: true)  // Slide down for bottom-left position
     }) {
       // Close window after animation
       self.close()
@@ -270,7 +320,6 @@ class PopupNotificationWindow: NSWindow {
   }
 
   override func close() {
-    NSLog("🔔 POPUP: Window close() called directly - using hide() for proper cleanup")
 
     // If close() is called directly (not from hide()), use hide() for proper cleanup
     hide()
@@ -298,15 +347,15 @@ extension PopupNotificationWindow {
   private static var arePopupNotificationsEnabled: Bool {
     let keyExists = UserDefaults.standard.object(forKey: "showPopupNotifications") != nil
     let value = UserDefaults.standard.bool(forKey: "showPopupNotifications")
-    
+
     NSLog("🔔 POPUP-DEBUG: Key exists: \(keyExists), Value: \(value)")
-    
+
     // Check if the key exists, if not, default to true (enabled)
     if !keyExists {
       NSLog("🔔 POPUP-DEBUG: Key doesn't exist, defaulting to enabled")
       return true  // Default to enabled
     }
-    
+
     NSLog("🔔 POPUP-DEBUG: Using stored value: \(value)")
     return value
   }
@@ -320,7 +369,7 @@ extension PopupNotificationWindow {
     NSLog("🔔 POPUP: Creating prompt response popup")
 
     let popup = PopupNotificationWindow(
-      title: "🤖 AI Response Copied",
+      title: "📋 Text Copied to Clipboard",
       text: response
     )
 
@@ -338,7 +387,7 @@ extension PopupNotificationWindow {
     NSLog("🔔 POPUP: Creating transcription response popup")
 
     let popup = PopupNotificationWindow(
-      title: "📝 Transcription Copied",
+      title: "📋 Text Copied to Clipboard",
       text: transcription
     )
 
@@ -356,7 +405,7 @@ extension PopupNotificationWindow {
     NSLog("🔔 POPUP: Creating voice response popup")
 
     let popup = PopupNotificationWindow(
-      title: "🔊 Voice Response Copied",
+      title: "📋 Text Copied to Clipboard",
       text: response
     )
 
