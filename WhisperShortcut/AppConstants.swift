@@ -11,4 +11,7 @@ enum AppConstants {
 
   static let defaultVoiceResponseSystemPrompt =
     "You are an AI assistant. Your answers will be used for text to speech. Always reply in clear spoken language. Use short sentences. No lists. No tables. No special characters. No explanations about yourself. No meta comments. Give only the flowing text that can be read aloud directly."
+
+  // MARK: - Support Contact
+  static let whatsappSupportNumber = "+4917641952181"
 }

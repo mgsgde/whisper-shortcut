@@ -127,7 +127,8 @@ class SettingsViewModel: ObservableObject {
     }
 
     // Load popup notifications setting
-    let showPopupNotificationsExists = UserDefaults.standard.object(forKey: "showPopupNotifications") != nil
+    let showPopupNotificationsExists =
+      UserDefaults.standard.object(forKey: "showPopupNotifications") != nil
     if showPopupNotificationsExists {
       data.showPopupNotifications = UserDefaults.standard.bool(forKey: "showPopupNotifications")
     } else {
@@ -300,7 +301,7 @@ class SettingsViewModel: ObservableObject {
   // MARK: - WhatsApp Feedback
   func openWhatsAppFeedback() {
 
-    let whatsappNumber = "+4917641952181"
+    let whatsappNumber = AppConstants.whatsappSupportNumber
     let feedbackMessage = "Hi! I have feedback about WhisperShortcut:"
 
     if let webWhatsappURL = URL(

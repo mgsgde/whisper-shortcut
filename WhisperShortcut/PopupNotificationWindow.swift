@@ -1,3 +1,16 @@
+//
+//  PopupNotificationWindow.swift
+//  WhisperShortcut
+//
+//  A custom notification window that appears in the bottom-left corner of the screen
+//  with smooth animations and auto-hide functionality.
+//
+//  IMPORTANT BEHAVIOR NOTES:
+//  - macOS automatically repositions windows after show() - position correction required
+//  - macOS does NOT override styling properties (borders, shadows, etc.) - no correction needed
+//  - Tested and documented 2025-09-15 via systematic debugging
+//
+
 import AppKit
 import Foundation
 
@@ -34,7 +47,6 @@ class PopupNotificationWindow: NSWindow {
     static let horizontalMargin: CGFloat = 50  // Distance from left/right screen edges
     static let verticalMargin: CGFloat = 50  // Distance from top/bottom screen edges (slightly less for better visual balance)
     static let iconAndSpacingWidth: CGFloat = 28  // Icon width + spacing for layout calculations
-    static let whatsappPhoneNumber = "+4917641952181"  // WhatsApp support number
   }
 
   // MARK: - Properties
@@ -113,45 +125,41 @@ class PopupNotificationWindow: NSWindow {
     containerView.layer?.shadowOpacity = Constants.shadowOpacity
     containerView.layer?.masksToBounds = false  // Allow shadow to show
 
-    // Create visual effect view with modern macOS notification style
-    let visualEffectView = NSVisualEffectView()
+    // Create custom background view with clean styling
+    let backgroundView = NSView()
+    backgroundView.wantsLayer = true
 
-    // Use notification-style material for authentic macOS look
-    if #available(macOS 10.14, *) {
-      visualEffectView.material = .popover
-    } else {
-      visualEffectView.material = .light
-    }
+    // Create a clean, solid background with transparency
+    backgroundView.layer?.backgroundColor =
+      NSColor.controlBackgroundColor.withAlphaComponent(0.95).cgColor
+    backgroundView.layer?.cornerRadius = Constants.cornerRadius
+    backgroundView.layer?.masksToBounds = true
 
-    visualEffectView.blendingMode = .behindWindow
-    visualEffectView.state = .active
-    visualEffectView.wantsLayer = true
+    // Ensure absolutely no borders
+    backgroundView.layer?.borderWidth = 0
+    backgroundView.layer?.borderColor = NSColor.clear.cgColor
 
-    // Apply corner radius and masking to visual effect view
-    visualEffectView.layer?.cornerRadius = Constants.cornerRadius
-    visualEffectView.layer?.masksToBounds = true  // Clip content to rounded corners
-
-    // Add visual effect view to container
-    containerView.addSubview(visualEffectView)
-    visualEffectView.translatesAutoresizingMaskIntoConstraints = false
+    // Add background view to container
+    containerView.addSubview(backgroundView)
+    backgroundView.translatesAutoresizingMaskIntoConstraints = false
     NSLayoutConstraint.activate([
-      visualEffectView.topAnchor.constraint(equalTo: containerView.topAnchor),
-      visualEffectView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-      visualEffectView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-      visualEffectView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+      backgroundView.topAnchor.constraint(equalTo: containerView.topAnchor),
+      backgroundView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+      backgroundView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+      backgroundView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
     ])
 
     // Create clickable content view for error feedback
     let clickableView = ClickableContentView()
     clickableView.translatesAutoresizingMaskIntoConstraints = false
-    visualEffectView.addSubview(clickableView)
+    backgroundView.addSubview(clickableView)
 
-    // Make clickable view fill the entire visual effect view
+    // Make clickable view fill the entire background view
     NSLayoutConstraint.activate([
-      clickableView.topAnchor.constraint(equalTo: visualEffectView.topAnchor),
-      clickableView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor),
-      clickableView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor),
-      clickableView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor),
+      clickableView.topAnchor.constraint(equalTo: backgroundView.topAnchor),
+      clickableView.leadingAnchor.constraint(equalTo: backgroundView.leadingAnchor),
+      clickableView.trailingAnchor.constraint(equalTo: backgroundView.trailingAnchor),
+      clickableView.bottomAnchor.constraint(equalTo: backgroundView.bottomAnchor),
     ])
 
     customContentView = clickableView
@@ -275,7 +283,7 @@ class PopupNotificationWindow: NSWindow {
       let encodedMessage = fullMessage.addingPercentEncoding(
         withAllowedCharacters: .urlQueryAllowed),
       let whatsappURL = URL(
-        string: "https://wa.me/\(Constants.whatsappPhoneNumber)?text=\(encodedMessage)"),
+        string: "https://wa.me/\(AppConstants.whatsappSupportNumber)?text=\(encodedMessage)"),
       whatsappURL.scheme == "https",
       whatsappURL.host == "wa.me"
     else {
@@ -460,6 +468,13 @@ class PopupNotificationWindow: NSWindow {
     orderFront(nil)
 
     // CRITICAL: macOS repositions windows after show() - force our position again
+    //
+    // DEBUGGING RESULTS (2025-09-15):
+    // - macOS DOES override window position: Expected Y=50, Actual Y=30 (20px difference)
+    // - Position correction is REQUIRED for proper bottom-left placement
+    // - macOS does NOT override styling properties (borders, colors, etc.)
+    // - Styling enforcement is NOT needed and was removed after testing
+    //
     guard let screen = NSScreen.main else { return }
     let screenFrame = screen.visibleFrame
     let targetFrame = NSRect(
