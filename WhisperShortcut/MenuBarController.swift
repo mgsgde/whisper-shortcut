@@ -827,9 +827,15 @@ extension MenuBarController: AudioRecorderDelegate {
     DebugLogger.logError("VOICE-RESPONSE-MODE: Voice response error: \(error)")
 
     let errorMessage = SpeechErrorFormatter.format(error)
+    let shortTitle = SpeechErrorFormatter.shortStatus(error)
 
     // Copy error message to clipboard for troubleshooting
     clipboardManager?.copyToClipboard(text: errorMessage)
+
+    // Show error popup notification
+    PopupNotificationWindow.showError(errorMessage, title: shortTitle)
+
+    // Also show the traditional menu bar error indicator
     showTemporaryError()
 
     return true  // Clean up audio file
@@ -854,9 +860,15 @@ extension MenuBarController: AudioRecorderDelegate {
     DebugLogger.logError("Transcription error: \(error)")
 
     let errorMessage = SpeechErrorFormatter.format(error)
+    let shortTitle = SpeechErrorFormatter.shortStatus(error)
 
     // Copy error message to clipboard
     clipboardManager?.copyToClipboard(text: errorMessage)
+
+    // Show error popup notification
+    PopupNotificationWindow.showError(errorMessage, title: shortTitle)
+
+    // Also show the traditional menu bar error indicator
     showTemporaryError()
 
     return true  // Clean up audio file
@@ -882,9 +894,15 @@ extension MenuBarController: AudioRecorderDelegate {
     DebugLogger.logError("Prompt execution error: \(error)")
 
     let errorMessage = SpeechErrorFormatter.format(error)
+    let shortTitle = SpeechErrorFormatter.shortStatus(error)
 
     // Copy error message to clipboard
     clipboardManager?.copyToClipboard(text: errorMessage)
+
+    // Show error popup notification
+    PopupNotificationWindow.showError(errorMessage, title: shortTitle)
+
+    // Also show the traditional menu bar error indicator
     showTemporaryError()
 
     return true  // Clean up audio file

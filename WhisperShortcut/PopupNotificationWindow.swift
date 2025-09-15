@@ -1,6 +1,17 @@
 import AppKit
 import Foundation
 
+// Custom view that handles clicks for error feedback
+class ClickableContentView: NSView {
+  var onClickHandler: (() -> Void)?
+
+  override func mouseDown(with event: NSEvent) {
+    NSLog("🔗 WHATSAPP-FEEDBACK: Content view clicked!")
+    onClickHandler?()
+    super.mouseDown(with: event)
+  }
+}
+
 class PopupNotificationWindow: NSWindow {
 
   // MARK: - Constants
@@ -13,6 +24,7 @@ class PopupNotificationWindow: NSWindow {
     static let shadowOpacity: Float = 0.25  // Slightly more visible shadow
     static let animationDuration: TimeInterval = 0.25  // Smoother animation
     static let displayDuration: TimeInterval = 7.0  // Comfortable reading time
+    static let errorDisplayDuration: TimeInterval = 30.0  // Long duration for error messages with feedback option
     static let outerPadding: CGFloat = 20  // Generous outer padding
     static let innerPadding: CGFloat = 16  // Inner content padding
     static let titleBottomSpacing: CGFloat = 12  // More space between title and text
@@ -28,10 +40,13 @@ class PopupNotificationWindow: NSWindow {
   private var titleLabel: NSTextField!
   private var textLabel: NSTextField!
   private var scrollView: NSScrollView!
+  private var whatsappIcon: NSImageView?
   private var autoHideTimer: Timer?
+  private var isError: Bool = false
+  private var errorText: String = ""
 
   // MARK: - Initialization
-  init(title: String, text: String) {
+  init(title: String, text: String, isError: Bool = false) {
     // Create window with specific style
     super.init(
       contentRect: NSRect(x: 0, y: 0, width: Constants.windowWidth, height: 100),
@@ -40,15 +55,27 @@ class PopupNotificationWindow: NSWindow {
       defer: false
     )
 
+    // Store error state and text for WhatsApp feedback
+    self.isError = isError
+    self.errorText = text
+
     setupWindow()
     setupContentView()
-    setupIcon()
+    setupIcon(isError: isError)
     setupLabels(title: title, text: text)
     setupScrollView()
+    if isError {
+      setupWhatsAppIcon()
+    }
     layoutContent()
 
-    // Start auto-hide timer
-    startAutoHideTimer()
+    // Make error notifications clickable for WhatsApp feedback
+    if isError {
+      setupErrorClickHandler()
+    }
+
+    // Start auto-hide timer with appropriate duration
+    startAutoHideTimer(isError: isError)
   }
 
   // MARK: - Setup Methods
@@ -101,13 +128,29 @@ class PopupNotificationWindow: NSWindow {
     visualEffectView.layer?.borderWidth = 0.5
     visualEffectView.layer?.borderColor = NSColor.separatorColor.cgColor
 
-    customContentView = visualEffectView
-    contentView = customContentView
+    // Create clickable content view for error feedback
+    let clickableView = ClickableContentView()
+    clickableView.translatesAutoresizingMaskIntoConstraints = false
+    visualEffectView.addSubview(clickableView)
+
+    // Make clickable view fill the entire visual effect view
+    NSLayoutConstraint.activate([
+      clickableView.topAnchor.constraint(equalTo: visualEffectView.topAnchor),
+      clickableView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor),
+      clickableView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor),
+      clickableView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor),
+    ])
+
+    customContentView = clickableView
+    contentView = visualEffectView
   }
 
-  private func setupIcon() {
-    // Success icon (green checkmark like in status bar)
-    iconLabel = NSTextField(labelWithString: "✅")
+  private func setupIcon(isError: Bool) {
+    // For errors, skip the red X icon since we have WhatsApp icon for feedback
+    // Only show green checkmark for success
+    let iconText = isError ? "" : "✅"  // No icon for errors, green checkmark for success
+
+    iconLabel = NSTextField(labelWithString: iconText)
     iconLabel.font = NSFont.systemFont(ofSize: 16, weight: .medium)  // Slightly larger for visibility
     iconLabel.textColor = NSColor.labelColor
     iconLabel.alignment = .center
@@ -164,6 +207,72 @@ class PopupNotificationWindow: NSWindow {
     textLabel.preferredMaxLayoutWidth = Constants.windowWidth - (Constants.outerPadding * 2) - 28  // Account for icon width + spacing
   }
 
+  private func setupWhatsAppIcon() {
+    guard let whatsappImage = NSImage(named: "WhatsApp") else {
+      NSLog("❌ WHATSAPP-FEEDBACK: WhatsApp image not found")
+      return
+    }
+
+    whatsappIcon = NSImageView(image: whatsappImage)
+    guard let icon = whatsappIcon else { return }
+
+    // Icon styling - positioned next to title for better UX
+    icon.translatesAutoresizingMaskIntoConstraints = false
+    icon.imageScaling = .scaleProportionallyDown
+    icon.wantsLayer = true
+    icon.layer?.cornerRadius = 4
+
+    NSLog("✅ WHATSAPP-FEEDBACK: WhatsApp icon setup completed (positioned next to title)")
+  }
+
+  private func setupErrorClickHandler() {
+    // Set up click handler for the clickable content view
+    if let clickableView = customContentView as? ClickableContentView {
+      clickableView.onClickHandler = { [weak self] in
+        self?.errorWindowClicked()
+      }
+    }
+
+    // Add visual feedback that the window is clickable
+    customContentView.wantsLayer = true
+    customContentView.layer?.borderWidth = 1
+    customContentView.layer?.borderColor = NSColor.systemBlue.withAlphaComponent(0.3).cgColor
+
+    NSLog("✅ WHATSAPP-FEEDBACK: Error click handler setup completed")
+  }
+
+  @objc private func errorWindowClicked() {
+    NSLog("🔗 WHATSAPP-FEEDBACK: Error window clicked, opening WhatsApp feedback")
+
+    // First open WhatsApp, then close notification
+    openWhatsAppFeedback()
+
+    // Delay closing the notification slightly to ensure WhatsApp opens
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+      self.hide()
+    }
+  }
+
+  private func openWhatsAppFeedback() {
+    let whatsappNumber = "+4917641952181"
+    let baseMessage = "Hi! I encountered an error in WhisperShortcut:"
+    let errorMessage = "\n\nError Details:\n\(errorText)"
+    let fullMessage = baseMessage + errorMessage
+
+    if let encodedMessage = fullMessage.addingPercentEncoding(
+      withAllowedCharacters: .urlQueryAllowed),
+      let whatsappURL = URL(string: "https://wa.me/\(whatsappNumber)?text=\(encodedMessage)")
+    {
+      // Open WhatsApp Web in default browser
+      let success = NSWorkspace.shared.open(whatsappURL)
+      if success {
+        NSLog("🔗 WHATSAPP-FEEDBACK: Successfully opened WhatsApp Web")
+      } else {
+        NSLog("❌ WHATSAPP-FEEDBACK: Failed to open WhatsApp Web")
+      }
+    }
+  }
+
   private func setupScrollView() {
     scrollView = NSScrollView()
     scrollView.hasVerticalScroller = true
@@ -188,6 +297,11 @@ class PopupNotificationWindow: NSWindow {
     customContentView.addSubview(titleLabel)
     customContentView.addSubview(scrollView)
 
+    // Add WhatsApp icon for error notifications (positioned next to title)
+    if isError, let icon = whatsappIcon {
+      customContentView.addSubview(icon)
+    }
+
     // Set up constraints with improved spacing
     NSLayoutConstraint.activate([
       // Icon constraints
@@ -197,27 +311,56 @@ class PopupNotificationWindow: NSWindow {
         equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding),
       iconLabel.widthAnchor.constraint(equalToConstant: 20),  // Fixed width for icon
 
-      // Title label constraints with icon spacing
+      // Title label constraints - different spacing based on whether icon exists
       titleLabel.topAnchor.constraint(
         equalTo: customContentView.topAnchor, constant: Constants.outerPadding),
-      titleLabel.leadingAnchor.constraint(
-        equalTo: iconLabel.trailingAnchor, constant: 8),  // 8px spacing after icon
-      titleLabel.trailingAnchor.constraint(
-        equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
 
       // Scroll view constraints with better spacing
       scrollView.topAnchor.constraint(
         equalTo: titleLabel.bottomAnchor, constant: Constants.titleBottomSpacing),
       scrollView.leadingAnchor.constraint(
         equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding),
-      scrollView.trailingAnchor.constraint(
-        equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
       scrollView.bottomAnchor.constraint(
         equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
 
       // Text label width constraint (for proper wrapping)
       textLabel.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
     ])
+
+    // Set up constraints based on notification type
+    if isError, let icon = whatsappIcon {
+      // Error notifications: no left icon, WhatsApp icon on right
+      NSLayoutConstraint.activate([
+        // Title starts from left edge (no left icon)
+        titleLabel.leadingAnchor.constraint(
+          equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding),
+
+        // Position WhatsApp icon to the right of title
+        icon.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+        icon.leadingAnchor.constraint(equalTo: titleLabel.trailingAnchor, constant: 8),
+        icon.trailingAnchor.constraint(
+          equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
+        icon.widthAnchor.constraint(equalToConstant: 20),
+        icon.heightAnchor.constraint(equalToConstant: 20),
+
+        // Scroll view spans full width
+        scrollView.trailingAnchor.constraint(
+          equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
+      ])
+    } else {
+      // Success notifications: green checkmark on left, no right icon
+      NSLayoutConstraint.activate([
+        // Title positioned after left icon
+        titleLabel.leadingAnchor.constraint(
+          equalTo: iconLabel.trailingAnchor, constant: 8),
+        titleLabel.trailingAnchor.constraint(
+          equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
+
+        // Scroll view spans full width
+        scrollView.trailingAnchor.constraint(
+          equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
+      ])
+    }
 
     // Calculate and set window size
     updateWindowSize()
@@ -232,7 +375,7 @@ class PopupNotificationWindow: NSWindow {
     // Calculate title height (icon and title are on same line)
     let titleHeight = max(
       titleLabel.intrinsicContentSize.height, iconLabel.intrinsicContentSize.height)
-    let availableWidth = Constants.windowWidth - (Constants.outerPadding * 2) - 28  // Account for icon
+    let availableWidth = Constants.windowWidth - (Constants.outerPadding * 2) - 28  // Account for icon width + spacing
 
     // Set the preferred max layout width for proper text wrapping
     textLabel.preferredMaxLayoutWidth = availableWidth
@@ -359,9 +502,10 @@ class PopupNotificationWindow: NSWindow {
   }
 
   // MARK: - Timer Methods
-  private func startAutoHideTimer() {
+  private func startAutoHideTimer(isError: Bool) {
+    let duration = isError ? Constants.errorDisplayDuration : Constants.displayDuration
     autoHideTimer = Timer.scheduledTimer(
-      withTimeInterval: Constants.displayDuration, repeats: false
+      withTimeInterval: duration, repeats: false
     ) { [weak self] _ in
       DispatchQueue.main.async {
         self?.hide()
@@ -443,6 +587,22 @@ extension PopupNotificationWindow {
     let popup = PopupNotificationWindow(
       title: "Text Copied to Clipboard",
       text: response
+    )
+
+    // Keep strong reference until window closes
+    activePopups.insert(popup)
+    popup.show()
+  }
+
+  static func showError(_ error: String, title: String = "Error") {
+    guard arePopupNotificationsEnabled else {
+      return
+    }
+
+    let popup = PopupNotificationWindow(
+      title: title,
+      text: error,
+      isError: true
     )
 
     // Keep strong reference until window closes
