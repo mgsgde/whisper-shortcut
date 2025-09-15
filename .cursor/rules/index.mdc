@@ -49,10 +49,10 @@ bash ./scripts/logs.sh -t 5m
 bash ./scripts/logs.sh -h
 ```
 
-### **Automatic Log Verification Rule**
+### **Debugging Rule**
 
-**MANDATORY** - When the user asks "does it work?" or "check if it works", automatically run:
+**MANDATORY** - When debugging any issue, always check the logs first using:
 ```bash
-bash ./scripts/logs.sh -t 5m
+bash ./scripts/logs.sh -t 2m
 ```
-This shows the last 5 minutes of logs to verify functionality without requiring manual log checking.
+This shows the last 2 minutes of logs to understand what's happening in the application before making changes or assumptions.
