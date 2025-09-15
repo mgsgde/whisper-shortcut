@@ -5,23 +5,26 @@ class PopupNotificationWindow: NSWindow {
 
   // MARK: - Constants
   private enum Constants {
-    static let windowWidth: CGFloat = 320  // Compact like macOS notifications
-    static let maxHeight: CGFloat = 200  // Smaller max height
-    static let minHeight: CGFloat = 80  // Smaller min height
-    static let cornerRadius: CGFloat = 10
-    static let shadowRadius: CGFloat = 12  // Subtler shadow
-    static let shadowOpacity: Float = 0.2  // Less prominent shadow
-    static let animationDuration: TimeInterval = 0.2  // Faster animation
-    static let displayDuration: TimeInterval = 5.0  // Comfortable reading time
-    static let padding: CGFloat = 16  // Tighter padding
-    static let titleFontSize: CGFloat = 14  // Smaller title
-    static let textFontSize: CGFloat = 12  // Smaller text
-    static let maxPreviewLength = 100  // Short preview only
+    static let windowWidth: CGFloat = 360  // Slightly wider for better readability
+    static let maxHeight: CGFloat = 240  // More space for content
+    static let minHeight: CGFloat = 100  // More breathing room
+    static let cornerRadius: CGFloat = 12  // Modern macOS corner radius
+    static let shadowRadius: CGFloat = 16  // More prominent shadow like macOS
+    static let shadowOpacity: Float = 0.25  // Slightly more visible shadow
+    static let animationDuration: TimeInterval = 0.25  // Smoother animation
+    static let displayDuration: TimeInterval = 7.0  // Comfortable reading time
+    static let outerPadding: CGFloat = 20  // Generous outer padding
+    static let innerPadding: CGFloat = 16  // Inner content padding
+    static let titleBottomSpacing: CGFloat = 12  // More space between title and text
+    static let titleFontSize: CGFloat = 15  // Slightly larger for better readability
+    static let textFontSize: CGFloat = 13  // Better readable text size
+    static let maxPreviewLength = 120  // Slightly longer preview
     static let screenMargin: CGFloat = 40  // More comfortable distance from screen edges
   }
 
   // MARK: - Properties
   private var customContentView: NSView!
+  private var iconLabel: NSTextField!
   private var titleLabel: NSTextField!
   private var textLabel: NSTextField!
   private var scrollView: NSScrollView!
@@ -39,6 +42,7 @@ class PopupNotificationWindow: NSWindow {
 
     setupWindow()
     setupContentView()
+    setupIcon()
     setupLabels(title: title, text: text)
     setupScrollView()
     layoutContent()
@@ -69,39 +73,71 @@ class PopupNotificationWindow: NSWindow {
   }
 
   private func setupContentView() {
-    // Create visual effect view for modern blur effect
+    // Create visual effect view with modern macOS notification style
     let visualEffectView = NSVisualEffectView()
-    visualEffectView.material = .hudWindow
+
+    // Use notification-style material for authentic macOS look
+    if #available(macOS 10.14, *) {
+      visualEffectView.material = .popover  // More appropriate for notifications
+    } else {
+      visualEffectView.material = .light
+    }
+
     visualEffectView.blendingMode = .behindWindow
     visualEffectView.state = .active
     visualEffectView.wantsLayer = true
+
+    // Modern macOS styling
     visualEffectView.layer?.cornerRadius = Constants.cornerRadius
+    visualEffectView.layer?.masksToBounds = false
+
+    // Enhanced shadow for depth (macOS notification style)
     visualEffectView.layer?.shadowColor = NSColor.black.cgColor
-    visualEffectView.layer?.shadowOffset = NSSize(width: 2, height: 4)  // Shadow to right and above for bottom-left position
+    visualEffectView.layer?.shadowOffset = NSSize(width: 0, height: -2)  // Shadow above for bottom positioning
     visualEffectView.layer?.shadowRadius = Constants.shadowRadius
     visualEffectView.layer?.shadowOpacity = Constants.shadowOpacity
+
+    // Add subtle border for definition
+    visualEffectView.layer?.borderWidth = 0.5
+    visualEffectView.layer?.borderColor = NSColor.separatorColor.cgColor
 
     customContentView = visualEffectView
     contentView = customContentView
   }
 
+  private func setupIcon() {
+    // Success icon (green checkmark like in status bar)
+    iconLabel = NSTextField(labelWithString: "✅")
+    iconLabel.font = NSFont.systemFont(ofSize: 16, weight: .medium)  // Slightly larger for visibility
+    iconLabel.textColor = NSColor.labelColor
+    iconLabel.alignment = .center
+    iconLabel.isEditable = false
+    iconLabel.isBordered = false
+    iconLabel.backgroundColor = NSColor.clear
+    iconLabel.translatesAutoresizingMaskIntoConstraints = false
+    iconLabel.setContentHuggingPriority(.required, for: .horizontal)
+    iconLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+  }
+
   private func setupLabels(title: String, text: String) {
-    // Title label
+    // Title label with improved typography
     titleLabel = NSTextField(labelWithString: title)
-    titleLabel.font = NSFont.boldSystemFont(ofSize: Constants.titleFontSize)
+    titleLabel.font = NSFont.systemFont(ofSize: Constants.titleFontSize, weight: .semibold)  // Better weight for readability
     titleLabel.textColor = NSColor.labelColor
     titleLabel.alignment = .left
     titleLabel.isEditable = false
     titleLabel.isBordered = false
     titleLabel.backgroundColor = NSColor.clear
     titleLabel.translatesAutoresizingMaskIntoConstraints = false
+    titleLabel.lineBreakMode = .byTruncatingTail
+    titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
 
-    // Text label - show short preview only
+    // Text label with improved readability
     let displayText = createPreviewText(from: text)
 
     textLabel = NSTextField(labelWithString: displayText)
-    textLabel.font = NSFont.systemFont(ofSize: Constants.textFontSize)
-    textLabel.textColor = NSColor.secondaryLabelColor
+    textLabel.font = NSFont.systemFont(ofSize: Constants.textFontSize, weight: .regular)
+    textLabel.textColor = NSColor.labelColor  // Use primary label color for better readability
     textLabel.alignment = .left
     textLabel.isEditable = false
     textLabel.isBordered = false
@@ -109,7 +145,23 @@ class PopupNotificationWindow: NSWindow {
     textLabel.lineBreakMode = .byWordWrapping
     textLabel.maximumNumberOfLines = 0  // Unlimited lines
     textLabel.translatesAutoresizingMaskIntoConstraints = false
-    textLabel.preferredMaxLayoutWidth = Constants.windowWidth - (Constants.padding * 2)  // Ensure proper wrapping
+
+    // Better text spacing and readability
+    let paragraphStyle = NSMutableParagraphStyle()
+    paragraphStyle.lineSpacing = 2  // Add line spacing for better readability
+    paragraphStyle.paragraphSpacing = 4
+
+    let attributedText = NSAttributedString(
+      string: displayText,
+      attributes: [
+        .font: NSFont.systemFont(ofSize: Constants.textFontSize, weight: .regular),
+        .foregroundColor: NSColor.labelColor,
+        .paragraphStyle: paragraphStyle,
+      ]
+    )
+    textLabel.attributedStringValue = attributedText
+
+    textLabel.preferredMaxLayoutWidth = Constants.windowWidth - (Constants.outerPadding * 2) - 28  // Account for icon width + spacing
   }
 
   private func setupScrollView() {
@@ -132,27 +184,36 @@ class PopupNotificationWindow: NSWindow {
 
   private func layoutContent() {
     // Add subviews
+    customContentView.addSubview(iconLabel)
     customContentView.addSubview(titleLabel)
     customContentView.addSubview(scrollView)
 
-    // Set up constraints
+    // Set up constraints with improved spacing
     NSLayoutConstraint.activate([
-      // Title label constraints
-      titleLabel.topAnchor.constraint(
-        equalTo: customContentView.topAnchor, constant: Constants.padding),
-      titleLabel.leadingAnchor.constraint(
-        equalTo: customContentView.leadingAnchor, constant: Constants.padding),
-      titleLabel.trailingAnchor.constraint(
-        equalTo: customContentView.trailingAnchor, constant: -Constants.padding),
+      // Icon constraints
+      iconLabel.topAnchor.constraint(
+        equalTo: customContentView.topAnchor, constant: Constants.outerPadding),
+      iconLabel.leadingAnchor.constraint(
+        equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding),
+      iconLabel.widthAnchor.constraint(equalToConstant: 20),  // Fixed width for icon
 
-      // Scroll view constraints
-      scrollView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+      // Title label constraints with icon spacing
+      titleLabel.topAnchor.constraint(
+        equalTo: customContentView.topAnchor, constant: Constants.outerPadding),
+      titleLabel.leadingAnchor.constraint(
+        equalTo: iconLabel.trailingAnchor, constant: 8),  // 8px spacing after icon
+      titleLabel.trailingAnchor.constraint(
+        equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
+
+      // Scroll view constraints with better spacing
+      scrollView.topAnchor.constraint(
+        equalTo: titleLabel.bottomAnchor, constant: Constants.titleBottomSpacing),
       scrollView.leadingAnchor.constraint(
-        equalTo: customContentView.leadingAnchor, constant: Constants.padding),
+        equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding),
       scrollView.trailingAnchor.constraint(
-        equalTo: customContentView.trailingAnchor, constant: -Constants.padding),
+        equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
       scrollView.bottomAnchor.constraint(
-        equalTo: customContentView.bottomAnchor, constant: -Constants.padding),
+        equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
 
       // Text label width constraint (for proper wrapping)
       textLabel.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
@@ -168,9 +229,10 @@ class PopupNotificationWindow: NSWindow {
     let screenFrame = screen.visibleFrame
     let maxWindowHeight = min(Constants.maxHeight, screenFrame.height * 0.7)  // Max 70% of screen height
 
-    // Calculate title height
-    let titleHeight = titleLabel.intrinsicContentSize.height
-    let availableWidth = Constants.windowWidth - (Constants.padding * 2)
+    // Calculate title height (icon and title are on same line)
+    let titleHeight = max(
+      titleLabel.intrinsicContentSize.height, iconLabel.intrinsicContentSize.height)
+    let availableWidth = Constants.windowWidth - (Constants.outerPadding * 2) - 28  // Account for icon
 
     // Set the preferred max layout width for proper text wrapping
     textLabel.preferredMaxLayoutWidth = availableWidth
@@ -178,14 +240,17 @@ class PopupNotificationWindow: NSWindow {
     // Force layout to get accurate text measurements
     textLabel.layoutSubtreeIfNeeded()
 
-    // Calculate text content height
+    // Calculate text content height with improved spacing
     let textContentHeight = textLabel.intrinsicContentSize.height
-    let maxTextHeight = maxWindowHeight - Constants.padding - titleHeight - 8 - Constants.padding
+    let maxTextHeight =
+      maxWindowHeight - Constants.outerPadding - titleHeight - Constants.titleBottomSpacing
+      - Constants.outerPadding
     let actualTextHeight = min(textContentHeight, maxTextHeight)
 
-    // Calculate total window height
+    // Calculate total window height with better spacing
     let totalHeight = max(
-      Constants.padding + titleHeight + 8 + actualTextHeight + Constants.padding,
+      Constants.outerPadding + titleHeight + Constants.titleBottomSpacing + actualTextHeight
+        + Constants.outerPadding,
       Constants.minHeight
     )
 
@@ -205,8 +270,8 @@ class PopupNotificationWindow: NSWindow {
 
     let screenFrame = screen.visibleFrame
     let windowFrame = NSRect(
-      x: screenFrame.minX + Constants.screenMargin,  // 20px vom linken Rand
-      y: screenFrame.minY + Constants.screenMargin + Constants.minHeight,  // Popup höher positionieren
+      x: screenFrame.minX + Constants.screenMargin,  // Standard margin from left edge
+      y: screenFrame.minY + Constants.screenMargin,  // Standard margin from bottom
       width: Constants.windowWidth,
       height: Constants.minHeight
     )
@@ -254,8 +319,8 @@ class PopupNotificationWindow: NSWindow {
     guard let screen = NSScreen.main else { return }
     let screenFrame = screen.visibleFrame
     let targetFrame = NSRect(
-      x: screenFrame.minX + Constants.screenMargin,  // 20px vom linken Rand
-      y: screenFrame.minY + Constants.screenMargin,  // 20px Abstand vom unteren Rand (untere Kante des Popups)
+      x: screenFrame.minX + Constants.screenMargin,  // Standard margin from left edge
+      y: screenFrame.minY + Constants.screenMargin,  // Standard margin from bottom edge
       width: Constants.windowWidth,
       height: frame.height
     )
@@ -346,7 +411,7 @@ extension PopupNotificationWindow {
     }
 
     let popup = PopupNotificationWindow(
-      title: "📋 Text Copied to Clipboard",
+      title: "Text Copied to Clipboard",
       text: response
     )
 
@@ -361,7 +426,7 @@ extension PopupNotificationWindow {
     }
 
     let popup = PopupNotificationWindow(
-      title: "📋 Text Copied to Clipboard",
+      title: "Text Copied to Clipboard",
       text: transcription
     )
 
@@ -376,7 +441,7 @@ extension PopupNotificationWindow {
     }
 
     let popup = PopupNotificationWindow(
-      title: "📋 Text Copied to Clipboard",
+      title: "Text Copied to Clipboard",
       text: response
     )
 
