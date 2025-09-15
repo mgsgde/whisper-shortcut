@@ -589,8 +589,6 @@ class MenuBarController: NSObject {
   }
 
   @objc private func quitApp() {
-    NSLog("🔄 MENUBAR: User requested complete app termination from menu")
-
     // Set flag to indicate user wants to quit completely
     UserDefaults.standard.set(true, forKey: "shouldTerminate")
 
@@ -641,8 +639,6 @@ class MenuBarController: NSObject {
       if let userInfo = notification.userInfo,
         let responseText = userInfo["responseText"] as? String
       {
-        NSLog("🔊 VOICE-RESPONSE: Showing popup notification synchronized with audio playback")
-
         // Show popup notification synchronized with audio playback
         PopupNotificationWindow.showVoiceResponse(responseText)
       }
@@ -819,8 +815,6 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handleVoiceResponseSuccess(_ response: String) -> Bool {
-    NSLog("🔊 VOICE-RESPONSE: Success - audio playback completed")
-
     // Note: PopupNotificationWindow was already shown before audio playback
     // Just show the traditional menu bar success indicator
     showTemporarySuccess()
@@ -843,8 +837,6 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handleTranscriptionSuccess(_ transcription: String) -> Bool {
-    NSLog("📝 TRANSCRIPTION: Success - showing popup notification")
-
     // Copy to clipboard
     clipboardManager?.copyToClipboard(text: transcription)
 
@@ -872,8 +864,6 @@ extension MenuBarController: AudioRecorderDelegate {
 
   @MainActor
   private func handlePromptSuccess(_ response: String) -> Bool {
-    NSLog("🤖 PROMPT-MODE: Success - showing popup notification")
-
     // Copy response to clipboard
     clipboardManager?.copyToClipboard(text: response)
 

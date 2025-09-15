@@ -198,8 +198,6 @@ class PopupNotificationWindow: NSWindow {
     )
 
     setFrame(newFrame, display: true)
-
-    NSLog("🔔 POPUP: Window sized to \(totalHeight)px height, text content: \(textContentHeight)px")
   }
 
   private func positionWindow() {
@@ -213,14 +211,7 @@ class PopupNotificationWindow: NSWindow {
       height: Constants.minHeight
     )
 
-    NSLog("🔔 POPUP-POSITION: Screen frame: \(screenFrame)")
-    NSLog("🔔 POPUP-POSITION: Calculated window frame: \(windowFrame)")
-
     setFrame(windowFrame, display: false)
-
-    // Verify actual position after setting
-    let actualFrame = frame
-    NSLog("🔔 POPUP-POSITION: Actual window frame after setFrame: \(actualFrame)")
   }
 
   // MARK: - Helper Methods
@@ -252,17 +243,12 @@ class PopupNotificationWindow: NSWindow {
 
   // MARK: - Animation Methods
   func show() {
-    NSLog("🔔 POPUP: Showing notification popup")
-
     // Set initial alpha and position for bottom-left slide-in
     alphaValue = 0.0
     setFrame(frame.offsetBy(dx: 0, dy: -20), display: false)  // Start below final position
 
     // Show window without stealing focus or becoming main window
     orderFront(nil)
-
-    // Debug: Check actual position after showing
-    NSLog("🔔 POPUP-POSITION: Final position after show: \(frame)")
 
     // CRITICAL: macOS repositions windows after show() - force our position again
     guard let screen = NSScreen.main else { return }
@@ -274,7 +260,6 @@ class PopupNotificationWindow: NSWindow {
       height: frame.height
     )
     setFrame(targetFrame, display: true)
-    NSLog("🔔 POPUP-POSITION: Forced position after macOS override: \(frame)")
 
     // Animate in
     NSAnimationContext.runAnimationGroup { context in
@@ -334,7 +319,6 @@ class PopupNotificationWindow: NSWindow {
   // MARK: - Cleanup
   deinit {
     autoHideTimer?.invalidate()
-    NSLog("🔔 POPUP: PopupNotificationWindow deallocated")
   }
 }
 
@@ -348,25 +332,18 @@ extension PopupNotificationWindow {
     let keyExists = UserDefaults.standard.object(forKey: "showPopupNotifications") != nil
     let value = UserDefaults.standard.bool(forKey: "showPopupNotifications")
 
-    NSLog("🔔 POPUP-DEBUG: Key exists: \(keyExists), Value: \(value)")
-
     // Check if the key exists, if not, default to true (enabled)
     if !keyExists {
-      NSLog("🔔 POPUP-DEBUG: Key doesn't exist, defaulting to enabled")
       return true  // Default to enabled
     }
 
-    NSLog("🔔 POPUP-DEBUG: Using stored value: \(value)")
     return value
   }
 
   static func showPromptResponse(_ response: String) {
     guard arePopupNotificationsEnabled else {
-      NSLog("🔔 POPUP: Popup notifications disabled - skipping prompt response popup")
       return
     }
-
-    NSLog("🔔 POPUP: Creating prompt response popup")
 
     let popup = PopupNotificationWindow(
       title: "📋 Text Copied to Clipboard",
@@ -380,11 +357,8 @@ extension PopupNotificationWindow {
 
   static func showTranscriptionResponse(_ transcription: String) {
     guard arePopupNotificationsEnabled else {
-      NSLog("🔔 POPUP: Popup notifications disabled - skipping transcription response popup")
       return
     }
-
-    NSLog("🔔 POPUP: Creating transcription response popup")
 
     let popup = PopupNotificationWindow(
       title: "📋 Text Copied to Clipboard",
@@ -398,11 +372,8 @@ extension PopupNotificationWindow {
 
   static func showVoiceResponse(_ response: String) {
     guard arePopupNotificationsEnabled else {
-      NSLog("🔔 POPUP: Popup notifications disabled - skipping voice response popup")
       return
     }
-
-    NSLog("🔔 POPUP: Creating voice response popup")
 
     let popup = PopupNotificationWindow(
       title: "📋 Text Copied to Clipboard",

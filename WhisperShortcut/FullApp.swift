@@ -38,23 +38,18 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     // CRITICAL: MenuBar apps should NEVER terminate when windows close
-    NSLog("🔄 APP-DELEGATE: Preventing app termination after window closed")
     return false
   }
 
   func applicationShouldTerminate(_ application: NSApplication) -> NSApplication.TerminateReply {
-    NSLog("🔄 APP-DELEGATE: App termination requested")
-
     // Check if user explicitly wants to quit completely
     let shouldTerminate = UserDefaults.standard.bool(forKey: "shouldTerminate")
     if shouldTerminate {
-      NSLog("🔄 APP-DELEGATE: User explicitly quit - allowing termination")
       UserDefaults.standard.set(false, forKey: "shouldTerminate")  // Reset flag
       return .terminateNow
     }
 
     // LSUIElement apps should continue running in background
-    NSLog("🔄 APP-DELEGATE: Preventing termination - LSUIElement app continues in background")
     return .terminateCancel
   }
 
