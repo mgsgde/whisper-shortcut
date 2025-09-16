@@ -183,7 +183,7 @@ struct SettingsDefaults {
   static let voiceResponseSystemPrompt = ""
   static let voiceResponsePlaybackSpeed = 1.0
   static let readSelectedTextPlaybackSpeed = 1.0
-  static let conversationTimeout = ConversationTimeout.fiveMinutes
+  static let conversationTimeout = ConversationTimeout.oneMinute
 
   // Reasoning effort settings for GPT-5 models
   static let promptReasoningEffort = ReasoningEffort.minimal
