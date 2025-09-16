@@ -50,26 +50,30 @@ enum AppMode: Equatable {
     case prompting
     case voiceResponding
     case speaking
+    case readingText
 
     var statusText: String {
       switch self {
       case .transcribing: return "⏳ Transcribing..."
-      case .prompting: return "🤖 Processing prompt..."
-      case .voiceResponding: return "🔊 Processing voice response..."
-      case .speaking: return "🔈 Playing response..."
+      case .prompting: return "⏳ Processing prompt..."
+      case .voiceResponding: return "⏳ Processing voice response..."
+      case .speaking: return "🔊 Playing response..."
+      case .readingText: return "⏳ Reading text..."
       }
     }
 
     var shouldBlink: Bool {
       switch self {
       case .speaking: return false  // No blinking during audio playback
+      case .readingText: return true  // Blink during TTS generation, stop when audio starts
       default: return true
       }
     }
 
     var icon: String {
       switch self {
-      case .speaking: return "🔈"
+      case .speaking: return "🔊"
+      case .readingText: return "🔊"
       default: return "🎙️"
       }
     }
@@ -179,6 +183,11 @@ extension AppMode {
     return .processing(type: .speaking)
   }
 
+  /// Transition to reading text state (for read selected text)
+  func startReadingText() -> AppMode {
+    return .processing(type: .readingText)
+  }
+
   /// Finish all processing and return to idle
   func finish() -> AppMode {
     return .idle
@@ -247,6 +256,7 @@ extension AppMode.ProcessingType: CustomStringConvertible {
     case .prompting: return "prompting"
     case .voiceResponding: return "voiceResponding"
     case .speaking: return "speaking"
+    case .readingText: return "readingText"
     }
   }
 }

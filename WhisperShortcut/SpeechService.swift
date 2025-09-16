@@ -385,9 +385,16 @@ class SpeechService {
       throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
     }
 
-    // Notify that we're ready to speak
+    // Notify that we're ready to speak (for voice response mode)
     NotificationCenter.default.post(
       name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
+
+    // Notify that we're ready to read selected text (for read selected text mode)
+    NotificationCenter.default.post(
+      name: NSNotification.Name("ReadSelectedTextReadyToSpeak"),
+      object: nil,
+      userInfo: ["selectedText": selectedText]
+    )
 
     // Play the audio
     let playbackResult = try await audioPlaybackService.playAudio(data: audioData)

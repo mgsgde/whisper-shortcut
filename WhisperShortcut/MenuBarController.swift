@@ -130,7 +130,7 @@ class MenuBarController: NSObject {
 
   private func updateMenuBarIcon() {
     guard let button = statusItem?.button else { return }
-    let oldTitle = button.title
+    _ = button.title
 
     // Visual state overrides AppMode when active
     let newTitle: String
@@ -319,6 +319,14 @@ class MenuBarController: NSObject {
       object: nil
     )
 
+    // Listen for read selected text ready to speak (for popup notification)
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(readSelectedTextReadyToSpeak(_:)),
+      name: NSNotification.Name("ReadSelectedTextReadyToSpeak"),
+      object: nil
+    )
+
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(shortcutsChanged),
@@ -342,7 +350,7 @@ class MenuBarController: NSObject {
 
     // Update status text based on current mode (with visual state override)
     if let statusMenuItem = menu.item(withTag: 100) {
-      let oldStatus = statusMenuItem.title
+      _ = statusMenuItem.title
 
       // Visual state overrides AppMode when active
       let newStatus: String
@@ -652,6 +660,24 @@ class MenuBarController: NSObject {
     }
   }
 
+  @objc private func readSelectedTextReadyToSpeak(_ notification: Notification) {
+    DispatchQueue.main.async {
+      // Extract the text from the notification
+      if let userInfo = notification.userInfo,
+        let selectedText = userInfo["selectedText"] as? String
+      {
+        // Stop blinking and show the notification window
+        self.stopBlinking()
+
+        // Show popup notification with the text that will be read
+        PopupNotificationWindow.showReadingText(selectedText)
+
+        // Update to speaking mode (no blinking during audio playback)
+        self.appMode = self.appMode.startSpeaking()
+      }
+    }
+  }
+
   // MARK: - Blinking Animation
   private func startBlinking() {
     stopBlinking()  // Stop any existing blinking
@@ -674,13 +700,34 @@ class MenuBarController: NSObject {
   private func toggleBlinkState() {
     guard isBlinking, let button = statusItem?.button else { return }
 
-    // Toggle between loading icon and empty space for blinking effect
-    if button.title == "⏳" {
-      button.title = " "
-      button.toolTip = "Transcribing audio... Please wait"
+    // Use universal loading icon for all processing types
+    let loadingIcon = "⏳"
+    let tooltip: String
+
+    if case .processing(let type) = appMode {
+      switch type {
+      case .transcribing:
+        tooltip = "Transcribing audio... Please wait"
+      case .prompting:
+        tooltip = "Processing AI prompt... Please wait"
+      case .voiceResponding:
+        tooltip = "Processing voice response... Please wait"
+      case .readingText:
+        tooltip = "Reading text... Please wait"
+      case .speaking:
+        tooltip = "Playing response..."
+      }
     } else {
-      button.title = "⏳"
-      button.toolTip = "Transcribing audio... Please wait"
+      tooltip = "Processing... Please wait"
+    }
+
+    // Toggle between loading icon and empty space for blinking effect
+    if button.title == loadingIcon {
+      button.title = " "
+      button.toolTip = tooltip
+    } else {
+      button.title = loadingIcon
+      button.toolTip = tooltip
     }
   }
 
@@ -938,7 +985,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
     // Update menu bar icon to speaker
     if let button = statusItem?.button {
-      button.title = "🔈"
+      button.title = "🔊"
       button.toolTip = "Playing voice response..."
     }
 
@@ -946,7 +993,7 @@ extension MenuBarController: AudioRecorderDelegate {
     if let menu = statusItem?.menu,
       let statusMenuItem = menu.item(withTag: 100)
     {
-      statusMenuItem.title = "🔈 Playing response..."
+      statusMenuItem.title = "🔊 Playing response..."
     }
   }
 
@@ -976,33 +1023,18 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   private func showTemporaryPromptSuccess() {
-    // Stop blinking and show success indicator in menu bar
+    // Stop blinking and show success indicator
     stopBlinking()
 
-    if let button = statusItem?.button {
-      button.title = "🤖"
-      button.toolTip = "Prompt execution complete - response copied to clipboard"
+    // Set visual state (consistent with other modes)
+    visualState = .success("AI response copied to clipboard")
 
-      // Force immediate redraw to ensure visibility on all screens
-      button.needsDisplay = true
-      button.window?.displayIfNeeded()
+    // Business logic: immediately return to idle (allows new recordings)
+    appMode = .idle
 
-      // Also force the status item to update
-      statusItem?.button?.needsDisplay = true
-    }
-
-    // Update menu status
-    if let menu = statusItem?.menu,
-      let statusMenuItem = menu.item(withTag: 100)
-    {
-      statusMenuItem.title = "🤖 AI response copied to clipboard"
-    }
-
-    // Reset after 3 seconds - but don't trigger AppMode change immediately
+    // Reset visual state after 3 seconds
     DispatchQueue.main.asyncAfter(deadline: .now() + Constants.successDisplayTime) {
-
-      self.appMode = .idle
-      self.updateUI()
+      self.visualState = .normal
     }
   }
 
@@ -1111,11 +1143,12 @@ extension MenuBarController: ShortcutDelegate {
   }
 
   func readSelectedText() {
+    DebugLogger.logInfo("🔊 READ-SELECTED-TEXT: Starting read selected text")
 
-    // Prevent conflicts with ongoing recordings
-    if appMode.isRecording {
+    // Prevent conflicts with ongoing recordings or processing
+    if appMode.isBusy {
       DebugLogger.logWarning(
-        "READ-SELECTED-TEXT: Another recording is in progress, ignoring request")
+        "READ-SELECTED-TEXT: App is busy, ignoring request")
       return
     }
 
@@ -1125,11 +1158,48 @@ extension MenuBarController: ShortcutDelegate {
       return
     }
 
+    // Set app mode to reading text (shows loading icon)
+    appMode = appMode.startReadingText()
+
     Task {
       do {
-        let _ = try await speechService?.readSelectedTextAsSpeech()
+        let readText = try await speechService?.readSelectedTextAsSpeech()
+        DebugLogger.logInfo(
+          "🔊 READ-SELECTED-TEXT: Successfully read text: \(readText ?? "unknown")")
+
+        // Return to idle immediately after successful completion
+        await MainActor.run {
+          self.appMode = self.appMode.finish()
+          self.visualState = .normal
+        }
+
       } catch {
         DebugLogger.logError("READ-SELECTED-TEXT: Error reading selected text: \(error)")
+
+        // Show error state
+        await MainActor.run {
+          let errorMessage: String
+          let shortTitle: String
+
+          if let transcriptionError = error as? TranscriptionError {
+            errorMessage = SpeechErrorFormatter.format(transcriptionError)
+            shortTitle = SpeechErrorFormatter.shortStatus(transcriptionError)
+          } else {
+            errorMessage = "❌ Error reading text: \(error.localizedDescription)"
+            shortTitle = "❌ Read Error"
+          }
+
+          self.visualState = .error(errorMessage)
+
+          // Show error popup notification
+          PopupNotificationWindow.showError(errorMessage, title: shortTitle)
+        }
+
+        // Return to idle after error display
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.errorDisplayTime) {
+          self.appMode = self.appMode.finish()
+          self.visualState = .normal
+        }
       }
     }
   }
