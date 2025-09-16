@@ -54,6 +54,16 @@ enum GPTModel: String, CaseIterable {
       return "High"
     }
   }
+
+  /// Indicates whether this model supports reasoning parameters
+  var supportsReasoning: Bool {
+    switch self {
+    case .gpt5:
+      return true  // Only the full GPT-5 model supports reasoning
+    case .gpt5Nano, .gpt5Mini, .gpt5ChatLatest:
+      return false  // Chat-optimized and lighter models don't support reasoning
+    }
+  }
 }
 
 // MARK: - Reasoning Effort Enum

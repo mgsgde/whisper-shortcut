@@ -484,16 +484,26 @@ class SpeechService {
       userMessage: userMessage, clipboardContext: clipboardContext, isVoiceResponse: isVoiceResponse
     )
 
-    // Get reasoning effort from user settings
-    let reasoningEffortKey =
-      isVoiceResponse ? "voiceResponseReasoningEffort" : "promptReasoningEffort"
-    let defaultReasoningEffort =
-      isVoiceResponse
-      ? SettingsDefaults.voiceResponseReasoningEffort.rawValue
-      : SettingsDefaults.promptReasoningEffort.rawValue
-    let savedReasoningEffort =
-      UserDefaults.standard.string(forKey: reasoningEffortKey) ?? defaultReasoningEffort
-    let reasoningConfig = GPT5ResponseRequest.ReasoningConfig(effort: savedReasoningEffort)
+    // Get reasoning effort from user settings, but only for models that support it
+    let reasoningConfig: GPT5ResponseRequest.ReasoningConfig?
+    if selectedGPTModel.supportsReasoning {
+      let reasoningEffortKey =
+        isVoiceResponse ? "voiceResponseReasoningEffort" : "promptReasoningEffort"
+      let defaultReasoningEffort =
+        isVoiceResponse
+        ? SettingsDefaults.voiceResponseReasoningEffort.rawValue
+        : SettingsDefaults.promptReasoningEffort.rawValue
+      let savedReasoningEffort =
+        UserDefaults.standard.string(forKey: reasoningEffortKey) ?? defaultReasoningEffort
+      reasoningConfig = GPT5ResponseRequest.ReasoningConfig(effort: savedReasoningEffort)
+      DebugLogger.logInfo(
+        "PROMPT-MODE: Using reasoning effort '\(savedReasoningEffort)' for model \(selectedGPTModel.rawValue)"
+      )
+    } else {
+      reasoningConfig = nil
+      DebugLogger.logInfo(
+        "PROMPT-MODE: Model \(selectedGPTModel.rawValue) does not support reasoning parameters")
+    }
 
     // Check if conversation has expired before using previous_response_id
     let effectivePreviousResponseId = isConversationExpired() ? nil : previousResponseId
