@@ -284,7 +284,8 @@ class SpeechService {
       throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
     }
 
-    // Notify that we're ready to speak (TTS generation completed, audio ready to play)
+    // TTS generation completed, audio ready to play
+    // Notify that TTS is ready (but keep processing state for blinking)
     NotificationCenter.default.post(
       name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
 
@@ -385,9 +386,7 @@ class SpeechService {
       throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
     }
 
-    // Notify that we're ready to speak (for voice response mode)
-    NotificationCenter.default.post(
-      name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
+    // TTS generation completed for selected text reading
 
     // Notify that we're ready to read selected text (for read selected text mode)
     NotificationCenter.default.post(
