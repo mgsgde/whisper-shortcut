@@ -134,45 +134,6 @@ struct GeneralSettingsTab: View {
     }
   }
 
-  // MARK: - GPT-5 Reasoning Effort Section
-  @ViewBuilder
-  private var reasoningEffortSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "🧠 Reasoning Effort",
-        subtitle:
-          "Control the depth of analysis for GPT-5 models. Higher effort provides better quality but slower responses."
-      )
-
-      VStack(alignment: .leading, spacing: 16) {
-        ReasoningEffortSelectionView(
-          selectedEffort: $viewModel.data.promptReasoningEffort,
-          title: "Prompt Reasoning Effort",
-          description: "Controls analysis depth for 'Dictate, Prompt' mode"
-        )
-        .onChange(of: viewModel.data.promptReasoningEffort) { _, _ in
-          Task {
-            await viewModel.saveSettings()
-          }
-        }
-
-        Divider()
-          .padding(.vertical, 8)
-
-        ReasoningEffortSelectionView(
-          selectedEffort: $viewModel.data.voiceResponseReasoningEffort,
-          title: "Voice Response Reasoning Effort",
-          description: "Controls analysis depth for 'Dictate, Prompt and Speak' mode"
-        )
-        .onChange(of: viewModel.data.voiceResponseReasoningEffort) { _, _ in
-          Task {
-            await viewModel.saveSettings()
-          }
-        }
-      }
-    }
-  }
-
   // MARK: - Popup Notifications Section
   @ViewBuilder
   private var popupNotificationsSection: some View {

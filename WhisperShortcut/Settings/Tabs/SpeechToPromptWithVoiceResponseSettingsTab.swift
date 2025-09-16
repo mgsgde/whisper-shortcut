@@ -34,17 +34,19 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
       // Model Section
       modelSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      // Reasoning Effort Section (only show if model supports reasoning)
+      if viewModel.data.selectedVoiceResponseModel.supportsReasoning {
+        // Section Divider with spacing
+        VStack(spacing: 0) {
+          Spacer()
+            .frame(height: SettingsConstants.sectionSpacing)
+          SectionDivider()
+          Spacer()
+            .frame(height: SettingsConstants.sectionSpacing)
+        }
 
-      // Reasoning Effort Section
-      reasoningEffortSection
+        reasoningEffortSection
+      }
 
       // Section Divider with spacing
       VStack(spacing: 0) {
