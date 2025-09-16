@@ -177,7 +177,7 @@ struct SettingsDefaults {
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gpt4oMiniTranscribe
   static let selectedPromptModel = GPTModel.gpt5Mini
-  static let selectedVoiceResponseModel = GPTModel.gpt5Mini
+  static let selectedVoiceResponseModel = GPTModel.gpt5ChatLatest
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
   static let voiceResponseSystemPrompt = ""
