@@ -1,5 +1,6 @@
 import Cocoa
 import Foundation
+import HotKey
 import SwiftUI
 
 class MenuBarController: NSObject {
@@ -85,14 +86,23 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
-    // Recording actions
+    // Recording actions with keyboard shortcuts
     menu.addItem(
-      createMenuItem("Toggle Transcription", action: #selector(toggleTranscription), tag: 101))
-    menu.addItem(createMenuItem("Toggle Prompting", action: #selector(togglePrompting), tag: 102))
+      createMenuItemWithShortcut(
+        "Toggle Transcription", action: #selector(toggleTranscription),
+        shortcut: currentConfig.startRecording, tag: 101))
     menu.addItem(
-      createMenuItem("Toggle Voice Response", action: #selector(toggleVoiceResponse), tag: 103))
+      createMenuItemWithShortcut(
+        "Toggle Prompting", action: #selector(togglePrompting),
+        shortcut: currentConfig.startPrompting, tag: 102))
     menu.addItem(
-      createMenuItem("Read Selected Text", action: #selector(readSelectedText), tag: 104))
+      createMenuItemWithShortcut(
+        "Toggle Voice Response", action: #selector(toggleVoiceResponse),
+        shortcut: currentConfig.startVoiceResponse, tag: 103))
+    menu.addItem(
+      createMenuItemWithShortcut(
+        "Read Selected Text", action: #selector(readSelectedText),
+        shortcut: currentConfig.readClipboard, tag: 104))
 
     menu.addItem(NSMenuItem.separator())
 
@@ -111,6 +121,71 @@ class MenuBarController: NSObject {
     item.target = self
     item.tag = tag
     return item
+  }
+
+  private func createMenuItemWithShortcut(
+    _ title: String, action: Selector, shortcut: ShortcutDefinition, tag: Int = 0
+  ) -> NSMenuItem {
+    let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+    item.target = self
+    item.tag = tag
+
+    // Add keyboard shortcut display to the menu item
+    if shortcut.isEnabled {
+      // Set the actual key equivalent for single character keys
+      let keyChar = getKeyEquivalentCharacter(for: shortcut.key)
+      if !keyChar.isEmpty {
+        item.keyEquivalent = keyChar
+        item.keyEquivalentModifierMask = shortcut.modifiers
+      } else {
+        // For complex keys, show in title with proper spacing
+        item.title = "\(title)                    \(shortcut.displayString)"
+      }
+    }
+
+    return item
+  }
+
+  private func getKeyEquivalentCharacter(for key: Key) -> String {
+    switch key {
+    case .one: return "1"
+    case .two: return "2"
+    case .three: return "3"
+    case .four: return "4"
+    case .five: return "5"
+    case .six: return "6"
+    case .seven: return "7"
+    case .eight: return "8"
+    case .nine: return "9"
+    case .zero: return "0"
+    case .a: return "a"
+    case .b: return "b"
+    case .c: return "c"
+    case .d: return "d"
+    case .e: return "e"
+    case .f: return "f"
+    case .g: return "g"
+    case .h: return "h"
+    case .i: return "i"
+    case .j: return "j"
+    case .k: return "k"
+    case .l: return "l"
+    case .m: return "m"
+    case .n: return "n"
+    case .o: return "o"
+    case .p: return "p"
+    case .q: return "q"
+    case .r: return "r"
+    case .s: return "s"
+    case .t: return "t"
+    case .u: return "u"
+    case .v: return "v"
+    case .w: return "w"
+    case .x: return "x"
+    case .y: return "y"
+    case .z: return "z"
+    default: return ""  // For function keys and special keys
+    }
   }
 
   private func setupDelegates() {
@@ -540,6 +615,8 @@ class MenuBarController: NSObject {
     if let newConfig = notification.object as? ShortcutConfig {
       currentConfig = newConfig
       DispatchQueue.main.async {
+        // Recreate menu with updated shortcuts
+        self.statusItem?.menu = self.createMenu()
         self.updateUI()
       }
     }
