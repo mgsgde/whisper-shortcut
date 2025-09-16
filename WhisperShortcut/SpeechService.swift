@@ -396,8 +396,9 @@ class SpeechService {
       userInfo: ["selectedText": selectedText]
     )
 
-    // Play the audio
-    let playbackResult = try await audioPlaybackService.playAudio(data: audioData)
+    // Play the audio with read selected text type
+    let playbackResult = try await audioPlaybackService.playAudio(
+      data: audioData, playbackType: .readSelectedText)
 
     switch playbackResult {
     case .completedSuccessfully:

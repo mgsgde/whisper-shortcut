@@ -65,6 +65,7 @@ class MenuBarController: NSObject {
   private var clipboardManager: ClipboardManager?
   private var audioPlaybackService: AudioPlaybackService?
   private var isVoicePlaying: Bool = false
+  private var isReadingTextPlaying: Bool = false
 
   // MARK: - Configuration
   private var currentConfig: ShortcutConfig
@@ -327,6 +328,21 @@ class MenuBarController: NSObject {
       object: nil
     )
 
+    // Listen for read selected text playback status updates
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(readSelectedTextPlaybackStarted),
+      name: NSNotification.Name("ReadSelectedTextPlaybackStarted"),
+      object: nil
+    )
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(readSelectedTextPlaybackStopped),
+      name: NSNotification.Name("ReadSelectedTextPlaybackStopped"),
+      object: nil
+    )
+
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(shortcutsChanged),
@@ -472,11 +488,16 @@ class MenuBarController: NSObject {
         readSelectedTextItem.keyEquivalent = currentConfig.readClipboard.key.displayString
           .lowercased()
         readSelectedTextItem.keyEquivalentModifierMask = currentConfig.readClipboard.modifiers
-        readSelectedTextItem.title = "Read Selected Text"
+        readSelectedTextItem.title =
+          isReadingTextPlaying
+          ? "Stop Reading Text"
+          : "Read Selected Text"
+        readSelectedTextItem.isEnabled = appMode.canStartNewRecording || isReadingTextPlaying
       } else {
         readSelectedTextItem.keyEquivalent = ""
         readSelectedTextItem.keyEquivalentModifierMask = []
         readSelectedTextItem.title = "Read Selected Text (Disabled)"
+        readSelectedTextItem.isEnabled = false
       }
     }
 
@@ -675,6 +696,20 @@ class MenuBarController: NSObject {
         // Update to speaking mode (no blinking during audio playback)
         self.appMode = self.appMode.startSpeaking()
       }
+    }
+  }
+
+  @objc private func readSelectedTextPlaybackStarted() {
+    DispatchQueue.main.async {
+      self.isReadingTextPlaying = true
+      self.updateMenuState()
+    }
+  }
+
+  @objc private func readSelectedTextPlaybackStopped() {
+    DispatchQueue.main.async {
+      self.isReadingTextPlaying = false
+      self.updateMenuState()
     }
   }
 
@@ -1144,6 +1179,15 @@ extension MenuBarController: ShortcutDelegate {
 
   func readSelectedText() {
     DebugLogger.logInfo("🔊 READ-SELECTED-TEXT: Starting read selected text")
+
+    // If already playing, stop the playback
+    if isReadingTextPlaying {
+      DebugLogger.logInfo("🔊 READ-SELECTED-TEXT: Stopping current playback")
+      audioPlaybackService?.stopPlayback()
+      isReadingTextPlaying = false
+      updateMenuState()
+      return
+    }
 
     // Prevent conflicts with ongoing recordings or processing
     if appMode.isBusy {

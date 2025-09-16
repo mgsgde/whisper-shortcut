@@ -9,13 +9,16 @@ class AudioPlaybackService: NSObject {
   private var audioPlayer: AVAudioPlayer?
   private var currentPlaybackCompletion: ((Bool) -> Void)?
   private var wasStoppedByUser: Bool = false
+  private var currentPlaybackType: PlaybackType = .voiceResponse
 
   override init() {
     super.init()
   }
 
   // MARK: - Main Playback Method
-  func playAudio(data: Data) async throws -> PlaybackResult {
+  func playAudio(data: Data, playbackType: PlaybackType = .voiceResponse) async throws
+    -> PlaybackResult
+  {
 
     // Reset user stop flag
     wasStoppedByUser = false
@@ -26,8 +29,18 @@ class AudioPlaybackService: NSObject {
     // Stop any current playback
     stopCurrentPlayback()
 
-    // Notify that playback is starting
-    NotificationCenter.default.post(name: NSNotification.Name("VoicePlaybackStarted"), object: nil)
+    // Store the playback type for later use
+    currentPlaybackType = playbackType
+
+    // Notify that playback is starting based on type
+    switch playbackType {
+    case .voiceResponse:
+      NotificationCenter.default.post(
+        name: NSNotification.Name("VoicePlaybackStarted"), object: nil)
+    case .readSelectedText:
+      NotificationCenter.default.post(
+        name: NSNotification.Name("ReadSelectedTextPlaybackStarted"), object: nil)
+    }
 
     // Create temporary file for audio playback
     let tempURL = try createTemporaryAudioFile(data: data)
@@ -88,9 +101,15 @@ class AudioPlaybackService: NSObject {
     if let player = audioPlayer {
       if player.isPlaying {
         player.stop()
-        // Notify that playback was stopped
-        NotificationCenter.default.post(
-          name: NSNotification.Name("VoicePlaybackStopped"), object: nil)
+        // Notify that playback was stopped based on type
+        switch currentPlaybackType {
+        case .voiceResponse:
+          NotificationCenter.default.post(
+            name: NSNotification.Name("VoicePlaybackStopped"), object: nil)
+        case .readSelectedText:
+          NotificationCenter.default.post(
+            name: NSNotification.Name("ReadSelectedTextPlaybackStopped"), object: nil)
+        }
       }
       audioPlayer = nil
     }
@@ -156,8 +175,15 @@ class AudioPlaybackService: NSObject {
 extension AudioPlaybackService: AVAudioPlayerDelegate {
   func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
 
-    // Notify that playback finished naturally
-    NotificationCenter.default.post(name: NSNotification.Name("VoicePlaybackStopped"), object: nil)
+    // Notify that playback finished naturally based on type
+    switch currentPlaybackType {
+    case .voiceResponse:
+      NotificationCenter.default.post(
+        name: NSNotification.Name("VoicePlaybackStopped"), object: nil)
+    case .readSelectedText:
+      NotificationCenter.default.post(
+        name: NSNotification.Name("ReadSelectedTextPlaybackStopped"), object: nil)
+    }
 
     if let completion = currentPlaybackCompletion {
       currentPlaybackCompletion = nil
@@ -183,6 +209,12 @@ enum PlaybackResult {
   case completedSuccessfully
   case stoppedByUser
   case failed
+}
+
+// MARK: - Audio Playback Types
+enum PlaybackType {
+  case voiceResponse
+  case readSelectedText
 }
 
 // MARK: - Audio Playback Error Types
