@@ -185,10 +185,65 @@ class SettingsViewModel: ObservableObject {
     let enabledShortcuts = shortcuts.values.compactMap { $0 }
     let uniqueShortcuts = Set(enabledShortcuts)
     if enabledShortcuts.count != uniqueShortcuts.count {
+      // Find which shortcuts are duplicated
+      var shortcutCounts: [ShortcutDefinition: [String]] = [:]
+      for (name, shortcut) in shortcuts {
+        if let shortcut = shortcut {
+          shortcutCounts[shortcut, default: []].append(name)
+        }
+      }
+
+      let duplicatedShortcuts = shortcutCounts.filter { $0.value.count > 1 }
+      if let firstDuplicate = duplicatedShortcuts.first {
+        let shortcutDisplay = firstDuplicate.key.displayString
+        let conflictingActions = firstDuplicate.value.joined(separator: " and ")
+        return
+          "Shortcut '\(shortcutDisplay)' is used by both \(conflictingActions). Please use unique shortcuts."
+      }
+
       return "All enabled shortcuts must be different. Please use unique shortcuts."
     }
 
     return nil
+  }
+
+  // MARK: - Real-time Shortcut Validation
+  func validateShortcut(_ shortcutText: String, for field: SettingsFocusField) -> String? {
+    // Parse the shortcut
+    guard let shortcut = ShortcutConfigManager.parseShortcut(from: shortcutText) else {
+      if !shortcutText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        return "Invalid shortcut format"
+      }
+      return nil
+    }
+
+    // Check if this shortcut is already used by another field
+    let currentShortcuts = parseShortcuts()
+    for (name, existingShortcut) in currentShortcuts {
+      if let existingShortcut = existingShortcut,
+        existingShortcut == shortcut,
+        !isSameField(name: name, field: field)
+      {
+        return "Already used by \(name)"
+      }
+    }
+
+    return nil
+  }
+
+  private func isSameField(name: String, field: SettingsFocusField) -> Bool {
+    switch field {
+    case .toggleDictation:
+      return name == "toggle dictation"
+    case .togglePrompting:
+      return name == "toggle prompting"
+    case .toggleVoiceResponse:
+      return name == "toggle voice response"
+    case .readClipboard:
+      return name == "read clipboard"
+    default:
+      return false
+    }
   }
 
   // MARK: - Toggle Shortcut Parsing
@@ -217,6 +272,8 @@ class SettingsViewModel: ObservableObject {
     // Validate first
     if let error = validateSettings() {
       data.isLoading = false
+      // Show error to user instead of just returning it
+      showError(error)
       return error
     }
 

@@ -56,7 +56,8 @@ struct SpeechToTextSettingsTab: View {
           Task {
             await viewModel.saveSettings()
           }
-        }
+        },
+        validateShortcut: viewModel.validateShortcut
       )
 
       // Available Keys Information
