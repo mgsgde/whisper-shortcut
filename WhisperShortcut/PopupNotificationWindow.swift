@@ -442,12 +442,14 @@ class PopupNotificationWindow: NSWindow {
     if cleanText.count <= Constants.maxPreviewLength {
       return cleanText
     } else {
+      // CRITICAL: Always add ellipsis when text is truncated
       // Find a good break point (end of sentence or word)
       let preview = String(cleanText.prefix(Constants.maxPreviewLength))
       if let lastSentence = preview.lastIndex(of: "."),
         lastSentence > preview.index(preview.startIndex, offsetBy: 30)
       {
-        return String(preview[...lastSentence])
+        // Always add ellipsis when text is truncated, even at sentence end
+        return String(preview[...lastSentence]) + "..."
       } else if let lastSpace = preview.lastIndex(of: " "),
         lastSpace > preview.index(preview.startIndex, offsetBy: 20)
       {
