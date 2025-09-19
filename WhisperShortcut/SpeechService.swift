@@ -79,9 +79,9 @@ class SpeechService {
   // MARK: - Transcription Mode Properties
   private var selectedTranscriptionModel: TranscriptionModel = .gpt4oMiniTranscribe
 
-  // MARK: - Prompt Mode Properties
-  private var previousResponseId: String?  // Store previous response ID for conversation continuity
-  private var previousResponseTimestamp: Date?  // Track when the last response was received
+  // MARK: - Prompt/Conversation State
+  private var previousResponseId: String?            // Store previous response ID for conversation continuity
+  private var previousResponseTimestamp: Date?       // Track when the last response was received
 
   init(
     keychainManager: KeychainManaging = KeychainManager.shared,
@@ -100,18 +100,15 @@ class SpeechService {
   }
 
   func updateAPIKey(_ key: String) {
-
     _ = keychainManager.saveAPIKey(key)
   }
 
   func clearAPIKey() {
-
     _ = keychainManager.deleteAPIKey()
   }
 
   // MARK: - Transcription Mode Configuration
   func setModel(_ model: TranscriptionModel) {
-
     self.selectedTranscriptionModel = model
   }
 
@@ -119,22 +116,35 @@ class SpeechService {
     return selectedTranscriptionModel
   }
 
-  // MARK: - Prompt Mode Configuration
+  // MARK: - Conversation Management
   func clearConversationHistory() {
     previousResponseId = nil
     previousResponseTimestamp = nil
   }
 
-  private func isConversationExpired() -> Bool {
+  internal func isConversationExpired(isVoiceResponse: Bool) -> Bool {
     guard let timestamp = previousResponseTimestamp else {
       return true  // No previous conversation
     }
 
-    // Get timeout duration from settings (default: 5 minutes)
-    let timeoutMinutes = UserDefaults.standard.double(forKey: "conversationTimeoutMinutes")
-    let timeoutDuration = timeoutMinutes > 0 ? timeoutMinutes : 5.0
+    // Read per-mode timeout from settings
+    let key = isVoiceResponse
+      ? "voiceResponseConversationTimeoutMinutes" : "promptConversationTimeoutMinutes"
 
-    let expirationTime = timestamp.addingTimeInterval(timeoutDuration * 60)  // Convert to seconds
+    // If not set, fall back to defaults (1 minute as requested)
+    var timeoutMinutes = UserDefaults.standard.object(forKey: key) as? Double
+    if timeoutMinutes == nil {
+      // Fallback default per mode
+      timeoutMinutes = 1.0
+    }
+
+    // Never: 0.0 means no expiry
+    if let t = timeoutMinutes, t == 0.0 {
+      return false
+    }
+
+    let effectiveMinutes = (timeoutMinutes ?? 1.0)
+    let expirationTime = timestamp.addingTimeInterval(effectiveMinutes * 60)  // Convert to seconds
     let isExpired = Date() > expirationTime
 
     if isExpired {
@@ -146,7 +156,6 @@ class SpeechService {
 
   // MARK: - Shared Validation
   func validateAPIKey(_ key: String) async throws -> Bool {
-
     guard !key.isEmpty else {
       DebugLogger.logWarning("API key is empty")
       throw TranscriptionError.noAPIKey
@@ -174,107 +183,72 @@ class SpeechService {
   }
 
   // MARK: - Transcription Mode
-  /// Pure transcription using GPT-4o-transcribe models
   func transcribe(audioURL: URL) async throws -> String {
-
-    // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
       DebugLogger.logWarning("TRANSCRIPTION-MODE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
-    // Validate file
     try validateAudioFile(at: audioURL)
 
-    // Create transcription request
     let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
-
-    // Execute request
     let (data, response) = try await session.data(for: request)
 
-    // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
       DebugLogger.logWarning("TRANSCRIPTION-MODE: Invalid response type")
       throw TranscriptionError.networkError("Invalid response")
     }
 
-    // Check if the response indicates an error
     if httpResponse.statusCode != 200 {
       DebugLogger.logWarning("TRANSCRIPTION-MODE: HTTP error \(httpResponse.statusCode)")
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
 
-    // Parse result
     let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
-
-    // Validate transcribed text for empty/silent audio
     try validateSpeechText(result.text, mode: "TRANSCRIPTION-MODE")
-
     return result.text
   }
 
-  // MARK: - Prompt Mode
-  /// Transcribe audio and execute as prompt with GPT-5
+  // MARK: - Prompt Modes
   func executePrompt(audioURL: URL) async throws -> String {
-
-    // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
       DebugLogger.logWarning("PROMPT-MODE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
-    // First, transcribe the audio to get the user's spoken text
-
     let spokenText = try await transcribe(audioURL: audioURL)
-
-    // Validate spoken text
     try validateSpeechText(spokenText, mode: "PROMPT-MODE")
 
-    // Get clipboard content as context if available
     let clipboardContext = getClipboardContext()
-
-    // Execute prompt with GPT-5
     return try await executeGPT5Prompt(
       userMessage: spokenText, clipboardContext: clipboardContext, apiKey: apiKey)
   }
 
-  /// Execute prompt and play response as speech instead of copying to clipboard
   func executePromptWithVoiceResponse(audioURL: URL, clipboardContext: String? = nil) async throws
     -> String
   {
-
-    // Validate API key
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
       DebugLogger.logWarning("VOICE-RESPONSE-MODE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
-    // First, transcribe the audio to get the user's spoken text
-
     let spokenText = try await transcribe(audioURL: audioURL)
-
-    // Validate spoken text
     try validateSpeechText(spokenText, mode: "PROMPT-MODE")
 
-    // Use provided clipboard context or get current clipboard
     let contextToUse = clipboardContext ?? getClipboardContext()
 
     let response = try await executeGPT5PromptForVoiceResponse(
       userMessage: spokenText, clipboardContext: contextToUse, apiKey: apiKey)
 
-    // Copy response to clipboard immediately (same as normal prompt mode)
     clipboardManager?.copyToClipboard(text: response)
 
-    // Generate speech from response
-    // Get playback speed setting for TTS generation
     let playbackSpeed = UserDefaults.standard.double(forKey: "voiceResponsePlaybackSpeed")
     let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
 
     let audioData: Data
     do {
       audioData = try await ttsService.generateSpeech(text: response, speed: speed)
-
     } catch let ttsError as TTSError {
       DebugLogger.logError("VOICE-RESPONSE-MODE: TTS error: \(ttsError.localizedDescription)")
       throw TranscriptionError.networkError(ttsError.localizedDescription)
@@ -284,12 +258,9 @@ class SpeechService {
       throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
     }
 
-    // TTS generation completed, audio ready to play
-    // Notify that TTS is ready (but keep processing state for blinking)
     NotificationCenter.default.post(
       name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
 
-    // Notify that playback is starting with the response text
     await MainActor.run {
       NotificationCenter.default.post(
         name: NSNotification.Name("VoicePlaybackStartedWithText"),
@@ -298,14 +269,11 @@ class SpeechService {
       )
     }
 
-    // Play the audio response
     let playbackResult = try await audioPlaybackService.playAudio(data: audioData)
 
     switch playbackResult {
-    case .completedSuccessfully:
-      break
-    case .stoppedByUser:
-      break
+    case .completedSuccessfully: break
+    case .stoppedByUser: break
     case .failed:
       DebugLogger.logError("VOICE-RESPONSE-MODE: Audio playback failed due to system error")
       throw TranscriptionError.networkError("Audio playback failed")
@@ -316,27 +284,21 @@ class SpeechService {
 
   // MARK: - Transcription Mode Helpers
   private func createTranscriptionRequest(audioURL: URL, apiKey: String) throws -> URLRequest {
-
     let apiURL = URL(string: selectedTranscriptionModel.apiEndpoint)!
     var request = URLRequest(url: apiURL)
     request.httpMethod = "POST"
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-
-    // Create multipart form data using a more elegant approach
     return try createMultipartRequest(request: &request, audioURL: audioURL)
   }
 
   private func validateSpeechText(_ text: String, mode: String = "TRANSCRIPTION-MODE") throws {
-    // Check if meaningful speech was detected
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
-    // Check for empty or very short text
     if trimmedText.isEmpty || trimmedText.count < Constants.minimumTextLength {
       DebugLogger.logWarning("\(mode): No meaningful speech detected")
       throw TranscriptionError.noSpeechDetected
     }
 
-    // Check if the transcription returned the system prompt itself (common with silent audio)
     let defaultPrompt = AppConstants.defaultTranscriptionSystemPrompt
     if trimmedText.contains(defaultPrompt) || trimmedText.hasPrefix("context:") {
       DebugLogger.logWarning("\(mode): System prompt detected in transcription")
@@ -345,11 +307,7 @@ class SpeechService {
   }
 
   private func sanitizeUserInput(_ input: String) -> String {
-    // Trim whitespace and newlines
     let sanitized = input.trimmingCharacters(in: .whitespacesAndNewlines)
-
-    // Remove potentially problematic characters that could interfere with API calls
-    // Keep most characters but remove control characters except common ones
     return sanitized.filter { char in
       let scalar = char.unicodeScalars.first!
       return !CharacterSet.controlCharacters.contains(scalar) || char == "\n" || char == "\t"
@@ -357,24 +315,17 @@ class SpeechService {
   }
 
   func readSelectedTextAsSpeech() async throws -> String {
-
-    // Capture selected text by simulating Cmd+C
     captureSelectedText()
-
-    // Small delay to allow the copy operation to complete
     try await Task.sleep(nanoseconds: Constants.clipboardCopyDelay)
 
-    // Get the captured text from clipboard
     guard let selectedText = getClipboardContext(), !selectedText.isEmpty else {
       DebugLogger.logWarning("SELECTED-TEXT-TTS: No text found in selection")
       throw TranscriptionError.networkError("No text selected to read")
     }
 
-    // Get playback speed setting for TTS generation
     let playbackSpeed = UserDefaults.standard.double(forKey: "readSelectedTextPlaybackSpeed")
     let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
 
-    // Generate speech from selected text
     let audioData: Data
     do {
       audioData = try await ttsService.generateSpeech(text: selectedText, speed: speed)
@@ -386,24 +337,18 @@ class SpeechService {
       throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
     }
 
-    // TTS generation completed for selected text reading
-
-    // Notify that we're ready to read selected text (for read selected text mode)
     NotificationCenter.default.post(
       name: NSNotification.Name("ReadSelectedTextReadyToSpeak"),
       object: nil,
       userInfo: ["selectedText": selectedText]
     )
 
-    // Play the audio with read selected text type
     let playbackResult = try await audioPlaybackService.playAudio(
       data: audioData, playbackType: .readSelectedText)
 
     switch playbackResult {
-    case .completedSuccessfully:
-      break
-    case .stoppedByUser:
-      break
+    case .completedSuccessfully: break
+    case .stoppedByUser: break
     case .failed:
       DebugLogger.logError("SELECTED-TEXT-TTS: Audio playback failed due to system error")
       throw TranscriptionError.networkError("Audio playback failed")
@@ -413,38 +358,21 @@ class SpeechService {
   }
 
   // MARK: - Prompt Mode Helpers
-
   private func getClipboardContext() -> String? {
-    guard let clipboardManager = clipboardManager else {
-      return nil
-    }
-
-    guard let clipboardText = clipboardManager.getClipboardText() else {
-      return nil
-    }
+    guard let clipboardManager = clipboardManager else { return nil }
+    guard let clipboardText = clipboardManager.getClipboardText() else { return nil }
 
     let trimmedText = clipboardText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-    guard !trimmedText.isEmpty else {
-      return nil
-    }
-
+    guard !trimmedText.isEmpty else { return nil }
     return trimmedText
   }
 
   private func captureSelectedText() {
-    // Simulate Cmd+C to copy selected text
     let source = CGEventSource(stateID: .combinedSessionState)
-
-    // Create Cmd+C event
     let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true)  // C key
     let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
-
-    // Add Command modifier
     cmdDown?.flags = .maskCommand
     cmdUp?.flags = .maskCommand
-
-    // Post the events
     cmdDown?.post(tap: .cghidEventTap)
     cmdUp?.post(tap: .cghidEventTap)
   }
@@ -452,7 +380,6 @@ class SpeechService {
   private func executeGPT5Prompt(userMessage: String, clipboardContext: String?, apiKey: String)
     async throws -> String
   {
-
     return try await executeGPT5Response(
       userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey,
       isVoiceResponse: false)
@@ -463,7 +390,6 @@ class SpeechService {
   )
     async throws -> String
   {
-
     return try await executeGPT5Response(
       userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey,
       isVoiceResponse: true)
@@ -474,7 +400,6 @@ class SpeechService {
   )
     async throws -> String
   {
-    // Get the selected GPT model from UserDefaults based on mode
     let modelKey = isVoiceResponse ? "selectedVoiceResponseModel" : "selectedPromptModel"
     let selectedGPTModelString =
       UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
@@ -486,12 +411,10 @@ class SpeechService {
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-    // Build prompt input
     let fullInput = buildPromptInput(
       userMessage: userMessage, clipboardContext: clipboardContext, isVoiceResponse: isVoiceResponse
     )
 
-    // Get reasoning effort from user settings, but only for models that support it
     let reasoningConfig: GPT5ResponseRequest.ReasoningConfig?
     if selectedGPTModel.supportsReasoning {
       let reasoningEffortKey =
@@ -512,8 +435,8 @@ class SpeechService {
         "PROMPT-MODE: Model \(selectedGPTModel.rawValue) does not support reasoning parameters")
     }
 
-    // Check if conversation has expired before using previous_response_id
-    let effectivePreviousResponseId = isConversationExpired() ? nil : previousResponseId
+    let effectivePreviousResponseId = isConversationExpired(isVoiceResponse: isVoiceResponse)
+      ? nil : previousResponseId
 
     let gpt5Request = GPT5ResponseRequest(
       model: selectedGPTModel.rawValue,
@@ -525,10 +448,8 @@ class SpeechService {
 
     request.httpBody = try JSONEncoder().encode(gpt5Request)
 
-    // Execute request
     let (data, response) = try await session.data(for: request)
 
-    // Validate response
     guard let httpResponse = response as? HTTPURLResponse else {
       DebugLogger.logWarning("PROMPT-MODE: Invalid response type from GPT-5")
       throw TranscriptionError.networkError("Invalid response")
@@ -543,16 +464,13 @@ class SpeechService {
       throw error
     }
 
-    // Parse and extract response
     let result = try parseGPT5Response(data: data)
-
     return result
   }
 
   private func buildPromptInput(
     userMessage: String, clipboardContext: String?, isVoiceResponse: Bool = false
   ) -> String {
-    // Get system prompt from settings based on mode
     let baseSystemPrompt: String
     let customSystemPromptKey: String
 
@@ -566,7 +484,6 @@ class SpeechService {
 
     let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptKey)
 
-    // Combine base system prompt with custom prompt if available
     var fullInput = baseSystemPrompt
     if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
       fullInput += "\n\nAdditional instructions: \(customPrompt)"
@@ -576,22 +493,18 @@ class SpeechService {
       fullInput += "\n\nContext (selected text from clipboard):\n\(context)"
     }
 
-    // Sanitize user input before adding to prompt
     let sanitizedUserMessage = sanitizeUserInput(userMessage)
     fullInput += "\n\nUser: \(sanitizedUserMessage)"
     return fullInput
   }
 
   private func parseGPT5Response(data: Data) throws -> String {
-
     do {
       let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
 
-      // Store the response ID and timestamp for conversation continuity
       previousResponseId = result.id
       previousResponseTimestamp = Date()
 
-      // Extract text from the response structure
       for output in result.output {
         if output.type == "message" {
           for content in output.content ?? [] {
@@ -602,7 +515,6 @@ class SpeechService {
         }
       }
 
-      // Fallback: if we can't find the expected structure, try to extract any text
       if (try? JSONSerialization.jsonObject(with: data, options: [])) != nil {
         DebugLogger.logWarning(
           "PROMPT-MODE: Unexpected response structure, attempting fallback parsing")
@@ -610,7 +522,6 @@ class SpeechService {
 
       throw TranscriptionError.networkError("Could not extract text from GPT-5 response")
     } catch {
-      // Try to parse as a generic dictionary to see the actual structure
       if (try? JSONSerialization.jsonObject(with: data, options: [])) != nil {
         DebugLogger.logWarning("PROMPT-MODE: Failed to decode response, raw structure available")
       }
@@ -621,13 +532,11 @@ class SpeechService {
 
   // MARK: - Testing and Debugging
   func testGPT5Request() async throws -> String {
-
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
       DebugLogger.logWarning("TEST: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
-    // Test with a simple request
     let testRequest = GPT5ResponseRequest(
       model: "gpt-5-chat-latest",
       input: "Hello, this is a test message.",
@@ -660,15 +569,12 @@ class SpeechService {
       throw error
     }
 
-    // Parse result using the new structure
     let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
 
-    // Extract text from the response structure
     for output in result.output {
       if output.type == "message" {
         for content in output.content ?? [] {
           if content.type == "output_text" {
-
             return content.text
           }
         }
@@ -680,7 +586,6 @@ class SpeechService {
 
   // MARK: - Shared Infrastructure Helpers
   private func validateAudioFile(at url: URL) throws {
-    // Validate file format
     let fileExtension = url.pathExtension.lowercased()
     if !Constants.supportedAudioExtensions.contains(fileExtension) {
       DebugLogger.logWarning("Unsupported audio format: \(fileExtension)")
@@ -698,25 +603,20 @@ class SpeechService {
       throw TranscriptionError.emptyFile
     }
 
-    // GPT-4o-transcribe has a 25MB limit, same as Whisper-1
     if fileSize > Constants.maxFileSize {
       DebugLogger.logWarning("File too large (\(fileSize) > \(Constants.maxFileSize))")
       throw TranscriptionError.fileTooLarge
     }
   }
 
-  private func createMultipartRequest(request: inout URLRequest, audioURL: URL) throws -> URLRequest
-  {
-
+  private func createMultipartRequest(request: inout URLRequest, audioURL: URL) throws -> URLRequest {
     let boundary = "Boundary-\(UUID().uuidString)"
 
-    // Prepare form fields
     var fields: [String: String] = [
       "model": selectedTranscriptionModel.rawValue,
       "response_format": "json",
     ]
 
-    // Add prompt for GPT-4o models only if custom prompt is not empty
     if selectedTranscriptionModel == .gpt4oTranscribe
       || selectedTranscriptionModel == .gpt4oMiniTranscribe
     {
@@ -724,34 +624,23 @@ class SpeechService {
         !customPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       {
         fields["prompt"] = customPrompt
-
       }
-      // If prompt is empty or nil, don't send any prompt field to OpenAI
     }
 
-    // Prepare file
     let audioData = try Data(contentsOf: audioURL)
 
     let files: [String: (filename: String, contentType: String, data: Data)] = [
       "file": (filename: "audio.wav", contentType: "audio/wav", data: audioData)
     ]
 
-    // Set multipart form data using the elegant extension
     request.setMultipartFormData(boundary: boundary, fields: fields, files: files)
-
     return request
   }
 
   private func parseErrorResponse(data: Data, statusCode: Int) throws -> TranscriptionError {
-
-    // Try to parse the error response as JSON
     if let errorResponse = try? JSONDecoder().decode(OpenAIErrorResponse.self, from: data) {
-
       return parseOpenAIError(errorResponse, statusCode: statusCode)
     }
-
-    // If we can't parse JSON, fall back to status code
-
     return parseStatusCodeError(statusCode)
   }
 
@@ -764,12 +653,8 @@ class SpeechService {
     switch statusCode {
     case 401:
       if errorMessage.contains("incorrect api key") && !errorMessage.contains("invalid") {
-        // Only return incorrectAPIKey for very specific "incorrect api key" messages
-        // that don't also contain "invalid" (to avoid conflicts)
         return .incorrectAPIKey
       } else {
-        // Default to invalidAPIKey for all other authentication failures
-        // This includes "invalid api key", "authentication", and general 401 errors
         return .invalidAPIKey
       }
     case 403:
@@ -832,14 +717,12 @@ extension URLRequest {
 
     var body = Data()
 
-    // Add form fields
     for (name, value) in fields {
       body.append("--\(boundary)\r\n")
       body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
       body.append("\(value)\r\n")
     }
 
-    // Add files
     for (name, file) in files {
       body.append("--\(boundary)\r\n")
       body.append(
@@ -849,9 +732,7 @@ extension URLRequest {
       body.append("\r\n")
     }
 
-    // Close boundary
     body.append("--\(boundary)--\r\n")
-
     httpBody = body
   }
 }
@@ -861,7 +742,6 @@ struct WhisperResponse: Codable {
   let text: String
 }
 
-// Chat API Models
 struct ChatCompletionRequest: Codable {
   let model: String
   let messages: [ChatMessage]
@@ -896,17 +776,17 @@ struct GPT5ResponseRequest: Codable {
   let previous_response_id: String?
 
   struct ReasoningConfig: Codable {
-    let effort: String  // "minimal", "low", "medium", "high"
+    let effort: String
   }
 
   struct TextConfig: Codable {
-    let verbosity: String  // "low", "medium", "high"
+    let verbosity: String
   }
 }
 
 struct GPT5ResponseResponse: Codable {
   let output: [GPT5Output]
-  let id: String  // Added for conversation continuity
+  let id: String
 
   struct GPT5Output: Codable {
     let type: String
@@ -919,7 +799,6 @@ struct GPT5ResponseResponse: Codable {
   }
 }
 
-// GPT-4o-transcribe models support prompts for better transcription quality
 struct TranscriptionPrompt {
   let text: String
 
@@ -959,51 +838,32 @@ enum TranscriptionError: Error, Equatable {
 
   var title: String {
     switch self {
-    case .noAPIKey:
-      return "No API Key"
-    case .invalidAPIKey:
-      return "Invalid Authentication"
-    case .incorrectAPIKey:
-      return "Incorrect API Key"
-    case .countryNotSupported:
-      return "Country Not Supported"
-    case .invalidRequest:
-      return "Invalid Request"
-    case .permissionDenied:
-      return "Permission Denied"
-    case .notFound:
-      return "Not Found"
-    case .rateLimited:
-      return "Rate Limited"
-    case .quotaExceeded:
-      return "Quota Exceeded"
-    case .serverError:
-      return "Server Error"
-    case .serviceUnavailable:
-      return "Service Unavailable"
-    case .slowDown:
-      return "Slow Down"
-    case .networkError:
-      return "Network Error"
-    case .fileError:
-      return "File Error"
-    case .fileTooLarge:
-      return "File Too Large"
-    case .emptyFile:
-      return "Empty File"
-    case .noSpeechDetected:
-      return "No Speech Detected"
+    case .noAPIKey: return "No API Key"
+    case .invalidAPIKey: return "Invalid Authentication"
+    case .incorrectAPIKey: return "Incorrect API Key"
+    case .countryNotSupported: return "Country Not Supported"
+    case .invalidRequest: return "Invalid Request"
+    case .permissionDenied: return "Permission Denied"
+    case .notFound: return "Not Found"
+    case .rateLimited: return "Rate Limited"
+    case .quotaExceeded: return "Quota Exceeded"
+    case .serverError: return "Server Error"
+    case .serviceUnavailable: return "Service Unavailable"
+    case .slowDown: return "Slow Down"
+    case .networkError: return "Network Error"
+    case .fileError: return "File Error"
+    case .fileTooLarge: return "File Too Large"
+    case .emptyFile: return "Empty File"
+    case .noSpeechDetected: return "No Speech Detected"
     }
   }
 }
 
 // MARK: - Error Result Parser
 extension SpeechService {
-  /// Parse transcription result to determine if it contains an error message
   static func parseTranscriptionResult(_ text: String) -> (
     isError: Bool, errorType: TranscriptionError?
   ) {
-    // Check for error indicators
     let errorPrefixes = ["❌", "⚠️", "⏰", "⏳", "🔄"]
     let isError = errorPrefixes.contains { text.hasPrefix($0) }
 
@@ -1011,7 +871,6 @@ extension SpeechService {
       return (false, nil)
     }
 
-    // Map error messages to error types
     if text.contains("No API Key") {
       return (true, .noAPIKey)
     } else if text.contains("Incorrect API Key") {

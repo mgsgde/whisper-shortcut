@@ -119,6 +119,7 @@ enum ReasoningEffort: String, CaseIterable {
 
 // MARK: - Conversation Timeout Enum
 enum ConversationTimeout: Double, CaseIterable {
+  case thirtySeconds = 0.5
   case oneMinute = 1.0
   case fiveMinutes = 5.0
   case tenMinutes = 10.0
@@ -128,6 +129,8 @@ enum ConversationTimeout: Double, CaseIterable {
 
   var displayName: String {
     switch self {
+    case .thirtySeconds:
+      return "30 Seconds"
     case .oneMinute:
       return "1 Minute"
     case .fiveMinutes:
@@ -144,7 +147,8 @@ enum ConversationTimeout: Double, CaseIterable {
   }
 
   var isRecommended: Bool {
-    return self == .fiveMinutes
+    // Du wolltest Default 1 Minute – lassen wir 1 Minute weiterhin als Empfehlung
+    return self == .oneMinute
   }
 }
 
@@ -183,7 +187,10 @@ struct SettingsDefaults {
   static let voiceResponseSystemPrompt = ""
   static let voiceResponsePlaybackSpeed = 1.0
   static let readSelectedTextPlaybackSpeed = 1.0
-  static let conversationTimeout = ConversationTimeout.oneMinute
+
+  // Getrennte Conversation Memory Defaults (je 1 Minute als Default)
+  static let promptConversationTimeout = ConversationTimeout.oneMinute
+  static let voiceResponseConversationTimeout = ConversationTimeout.oneMinute
 
   // Reasoning effort settings for GPT-5 models
   static let promptReasoningEffort = ReasoningEffort.minimal
@@ -224,7 +231,11 @@ struct SettingsData {
   var voiceResponseSystemPrompt: String = SettingsDefaults.voiceResponseSystemPrompt
   var voiceResponsePlaybackSpeed: Double = SettingsDefaults.voiceResponsePlaybackSpeed
   var readSelectedTextPlaybackSpeed: Double = SettingsDefaults.readSelectedTextPlaybackSpeed
-  var conversationTimeout: ConversationTimeout = SettingsDefaults.conversationTimeout
+
+  // Getrennte Conversation Memory Settings
+  var promptConversationTimeout: ConversationTimeout = SettingsDefaults.promptConversationTimeout
+  var voiceResponseConversationTimeout: ConversationTimeout =
+    SettingsDefaults.voiceResponseConversationTimeout
 
   // Reasoning effort settings for GPT-5 models
   var promptReasoningEffort: ReasoningEffort = SettingsDefaults.promptReasoningEffort

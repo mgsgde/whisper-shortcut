@@ -57,6 +57,18 @@ struct SpeechToPromptSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
+      // Conversation Memory Section
+      conversationMemorySection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Usage Instructions Section
       usageInstructionsSection
     }
@@ -164,6 +176,25 @@ struct SpeechToPromptSettingsTab: View {
     }
   }
 
+  // MARK: - Conversation Memory Section
+  @ViewBuilder
+  private var conversationMemorySection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "🧠 Conversation Memory",
+        subtitle:
+          "Automatically clear conversation history after this time for prompt mode. Set to 'Never' to always continue the same conversation."
+      )
+
+      ConversationTimeoutSelectionView(selectedTimeout: $viewModel.data.promptConversationTimeout)
+        .onChange(of: viewModel.data.promptConversationTimeout) { _, _ in
+          Task {
+            await viewModel.saveSettings()
+          }
+        }
+    }
+  }
+
   // MARK: - Usage Instructions
   @ViewBuilder
   private var usageInstructionsSection: some View {
@@ -194,7 +225,7 @@ struct SpeechToPromptSettingsTab: View {
 
       SpeechToPromptSettingsTab(viewModel: SettingsViewModel(), focusedField: $focusedField)
         .padding()
-        .frame(width: 600, height: 800)
+        .frame(width: 600, height: 900)
     }
   }
 #endif

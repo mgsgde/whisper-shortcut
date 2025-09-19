@@ -9,13 +9,11 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Initialization
   init() {
-
     loadCurrentSettings()
   }
 
   // MARK: - Data Loading
   private func loadCurrentSettings() {
-
     // Load toggle shortcuts configuration
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     data.toggleDictation = currentConfig.startRecording.textDisplayString
@@ -97,13 +95,25 @@ class SettingsViewModel: ObservableObject {
       data.readSelectedTextPlaybackSpeed = SettingsDefaults.readSelectedTextPlaybackSpeed
     }
 
-    // Load conversation timeout
-    let savedTimeoutMinutes = UserDefaults.standard.double(forKey: "conversationTimeoutMinutes")
-    if savedTimeoutMinutes > 0 {
-      data.conversationTimeout =
-        ConversationTimeout(rawValue: savedTimeoutMinutes) ?? SettingsDefaults.conversationTimeout
+    // Load separated conversation timeouts
+    let savedPromptTimeout = UserDefaults.standard.double(
+      forKey: "promptConversationTimeoutMinutes")
+    if savedPromptTimeout >= 0 {
+      data.promptConversationTimeout =
+        ConversationTimeout(rawValue: savedPromptTimeout)
+        ?? SettingsDefaults.promptConversationTimeout
     } else {
-      data.conversationTimeout = SettingsDefaults.conversationTimeout
+      data.promptConversationTimeout = SettingsDefaults.promptConversationTimeout
+    }
+
+    let savedVoiceResponseTimeout = UserDefaults.standard.double(
+      forKey: "voiceResponseConversationTimeoutMinutes")
+    if savedVoiceResponseTimeout >= 0 {
+      data.voiceResponseConversationTimeout =
+        ConversationTimeout(rawValue: savedVoiceResponseTimeout)
+        ?? SettingsDefaults.voiceResponseConversationTimeout
+    } else {
+      data.voiceResponseConversationTimeout = SettingsDefaults.voiceResponseConversationTimeout
     }
 
     // Load reasoning effort settings
@@ -137,12 +147,10 @@ class SettingsViewModel: ObservableObject {
 
     // Load API key
     data.apiKey = KeychainManager.shared.getAPIKey() ?? ""
-
   }
 
   // MARK: - Validation
   func validateSettings() -> String? {
-
     // Validate API key
     guard !data.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       return "Please enter your OpenAI API key"
@@ -266,7 +274,6 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Save Settings
   func saveSettings() async -> String? {
-
     data.isLoading = true
 
     // Validate first
@@ -299,9 +306,12 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(
       data.readSelectedTextPlaybackSpeed, forKey: "readSelectedTextPlaybackSpeed")
 
-    // Save conversation timeout
+    // Save separated conversation timeouts
     UserDefaults.standard.set(
-      data.conversationTimeout.rawValue, forKey: "conversationTimeoutMinutes")
+      data.promptConversationTimeout.rawValue, forKey: "promptConversationTimeoutMinutes")
+    UserDefaults.standard.set(
+      data.voiceResponseConversationTimeout.rawValue,
+      forKey: "voiceResponseConversationTimeoutMinutes")
 
     // Save reasoning effort settings
     UserDefaults.standard.set(data.promptReasoningEffort.rawValue, forKey: "promptReasoningEffort")
@@ -357,7 +367,6 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - WhatsApp Feedback
   func openWhatsAppFeedback() {
-
     let whatsappNumber = AppConstants.whatsappSupportNumber
     let feedbackMessage = "Hi! I have feedback about WhisperShortcut:"
 

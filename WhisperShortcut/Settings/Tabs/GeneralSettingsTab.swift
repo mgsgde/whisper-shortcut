@@ -19,18 +19,6 @@ struct GeneralSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
-      // Conversation Timeout Section
-      conversationTimeoutSection
-
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
-
       // Popup Notifications Section
       popupNotificationsSection
 
@@ -111,26 +99,6 @@ struct GeneralSettingsTab: View {
           .foregroundColor(.secondary)
       }
       .fixedSize(horizontal: false, vertical: true)
-    }
-  }
-
-  // MARK: - Conversation Timeout Section
-  @ViewBuilder
-  private var conversationTimeoutSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "🧠 Conversation Memory",
-        subtitle:
-          "Automatically clear conversation history after this time to save costs (only applies when dictating prompts, not transcription)"
-      )
-
-      ConversationTimeoutSelectionView(selectedTimeout: $viewModel.data.conversationTimeout)
-        .onChange(of: viewModel.data.conversationTimeout) { _, _ in
-          // Auto-save timeout setting
-          Task {
-            await viewModel.saveSettings()
-          }
-        }
     }
   }
 
