@@ -119,16 +119,19 @@ enum ReasoningEffort: String, CaseIterable {
 
 // MARK: - Conversation Timeout Enum
 enum ConversationTimeout: Double, CaseIterable {
-  case thirtySeconds = 0.5
+  case off = -1.0            // Off: kein Memory, sofort „expired“
+  case thirtySeconds = 0.5   // 30 Sekunden
   case oneMinute = 1.0
   case fiveMinutes = 5.0
   case tenMinutes = 10.0
   case fifteenMinutes = 15.0
   case thirtyMinutes = 30.0
-  case never = 0.0  // Deaktiviert Timeout
+  case never = 0.0           // Nie ablaufen (unendlich Memory)
 
   var displayName: String {
     switch self {
+    case .off:
+      return "Off (No Memory)"
     case .thirtySeconds:
       return "30 Seconds"
     case .oneMinute:
@@ -147,7 +150,7 @@ enum ConversationTimeout: Double, CaseIterable {
   }
 
   var isRecommended: Bool {
-    // Du wolltest Default 1 Minute – lassen wir 1 Minute weiterhin als Empfehlung
+    // Empfehlung bleibt bei 1 Minute, wie gewünscht
     return self == .oneMinute
   }
 }
