@@ -43,11 +43,6 @@ struct ModelSelectionView: View {
             selectedTranscriptionModel = model
             onModelChanged?()
           }
-
-          if model != models.last {
-            Divider()
-              .frame(height: SettingsConstants.dividerHeight)
-          }
         }
       }
       .background(Color(.controlBackgroundColor))
@@ -60,33 +55,51 @@ struct ModelSelectionView: View {
 
       // Model Details
       VStack(alignment: .leading, spacing: 8) {
-        Text("Model Details:")
+        Text(selectedTranscriptionModel.description)
           .font(.callout)
-          .fontWeight(.semibold)
           .foregroundColor(.secondary)
           .textSelection(.enabled)
 
-        switch selectedTranscriptionModel {
-        case .gpt4oTranscribe:
-          Text("• GPT-4o Transcribe: Highest accuracy and quality")
+        HStack {
+          Text("Cost:")
             .font(.callout)
+            .fontWeight(.medium)
             .foregroundColor(.secondary)
-            .textSelection(.enabled)
-          Text("• Best for: Critical applications, maximum quality")
+
+          Text(selectedTranscriptionModel.costLevel)
             .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-        case .gpt4oMiniTranscribe:
-          Text("• GPT-4o Mini: Recommended - Great quality at lower cost")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-          Text("• Best for: Everyday use, balanced performance")
-            .font(.callout)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
+            .fontWeight(.semibold)
+            .foregroundColor(costLevelColor(for: selectedTranscriptionModel.costLevel))
+        }
+
+        if selectedTranscriptionModel.isRecommended {
+          HStack {
+            Image(systemName: "star.fill")
+              .foregroundColor(.yellow)
+              .font(.caption)
+            Text("Recommended")
+              .font(.callout)
+              .fontWeight(.medium)
+              .foregroundColor(.secondary)
+          }
         }
       }
+    }
+  }
+
+  // MARK: - Helper Functions
+  private func costLevelColor(for costLevel: String) -> Color {
+    switch costLevel {
+    case "Minimal":
+      return .green
+    case "Low":
+      return .green
+    case "Medium":
+      return .orange
+    case "High":
+      return .red
+    default:
+      return .secondary
     }
   }
 }

@@ -57,6 +57,15 @@ enum TranscriptionModel: String, CaseIterable {
       return "High"
     }
   }
+
+  var description: String {
+    switch self {
+    case .gpt4oTranscribe:
+      return "Highest accuracy and quality • Best for critical applications"
+    case .gpt4oMiniTranscribe:
+      return "Recommended • Great quality at lower cost • Best for everyday use"
+    }
+  }
 }
 
 // MARK: - Core Service

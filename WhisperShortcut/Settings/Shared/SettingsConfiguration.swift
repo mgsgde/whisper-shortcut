@@ -35,9 +35,11 @@ enum GPTModel: String, CaseIterable {
 
   var isRecommended: Bool {
     switch self {
-    case .gpt5:
-      return true  // Default-Modell
-    case .gpt5Nano, .gpt5Mini, .gpt5ChatLatest:
+    case .gpt5Mini:
+      return true  // Recommended for Dictate Prompt
+    case .gpt5ChatLatest:
+      return true  // Recommended for Dictate Prompt and Speak
+    case .gpt5Nano, .gpt5:
       return false
     }
   }
