@@ -61,7 +61,7 @@ final class HistoryLogger {
 
   func exportRecentToTempFile(limit: Int = 20) -> URL? {
     var snapshot: [Entry] = []
-    ioQueue.sync { snapshot = Array(entries.suffix(limit)) }
+    ioQueue.sync { snapshot = Array(entries.suffix(limit).reversed()) }
 
     let formatter = DateFormatter()
     formatter.dateFormat = Constants.dateFormat
