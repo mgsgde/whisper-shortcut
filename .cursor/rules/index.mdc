@@ -18,7 +18,7 @@ alwaysApply: true
 
 - **KISS Principle**: Keep It Simple, Stupid - Always choose the simplest, most elegant solution. Consider multiple approaches, then select the most robust one - not the first that comes to mind
 - **Automatic Rebuild & Restart**: **MANDATORY** - After every code change, automatically rebuild and restart the app so the user can immediately see and test the changes. **ALWAYS** use the rebuild script: Run `bash scripts/rebuild-and-restart.sh`
-- **Debug Logging**: **MANDATORY** - Use `NSLog()` (with emoji prefix) for new features; use `print()` in tests
+- **Debug Logging**: **MANDATORY** - Use `DebugLogger` methods for all logging; NEVER use `NSLog()` or `print()` statements
 - Do not execute tests. Tests are executed manually with xcode by user.
 
 ## 🗣️ Communication and Understanding Rules
