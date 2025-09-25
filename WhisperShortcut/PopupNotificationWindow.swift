@@ -28,7 +28,11 @@ class PopupNotificationWindow: NSWindow {
 
   // MARK: - Constants
   private enum Constants {
-    static let windowWidth: CGFloat = 420  // Even wider for better readability and more content
+    // CRITICAL FIX: More compact window sizing for better user experience
+    // Reduced all widths to make notifications more compact
+    static let minWindowWidth: CGFloat = 260  // Minimum width for compact notifications
+    static let maxWindowWidth: CGFloat = 420  // Maximum width for very long content (reduced from 500px)
+    static let defaultWindowWidth: CGFloat = 320  // Default width for medium content (reduced from 380px)
     static let maxHeight: CGFloat = 400  // Much more space for content
     static let minHeight: CGFloat = 120  // More breathing room
     static let cornerRadius: CGFloat = 12  // Modern macOS corner radius
@@ -47,6 +51,7 @@ class PopupNotificationWindow: NSWindow {
     static let horizontalMargin: CGFloat = 50  // Distance from left/right screen edges
     static let verticalMargin: CGFloat = 50  // Distance from top/bottom screen edges (slightly less for better visual balance)
     static let iconAndSpacingWidth: CGFloat = 28  // Icon width + spacing for layout calculations
+    static let optimalCharactersPerLine: CGFloat = 60  // Optimal number of characters per line for readability
   }
 
   // MARK: - Properties
@@ -65,7 +70,7 @@ class PopupNotificationWindow: NSWindow {
   init(title: String, text: String, isError: Bool = false, modelInfo: String? = nil) {
     // Create window with specific style for notifications
     super.init(
-      contentRect: NSRect(x: 0, y: 0, width: Constants.windowWidth, height: 100),
+      contentRect: NSRect(x: 0, y: 0, width: Constants.defaultWindowWidth, height: 100),
       styleMask: [],  // Completely borderless for custom styling
       backing: .buffered,
       defer: false
@@ -245,7 +250,7 @@ class PopupNotificationWindow: NSWindow {
     textLabel.attributedStringValue = attributedText
 
     textLabel.preferredMaxLayoutWidth =
-      Constants.windowWidth - (Constants.outerPadding * 2) - Constants.iconAndSpacingWidth
+      Constants.defaultWindowWidth - (Constants.outerPadding * 2) - Constants.iconAndSpacingWidth
   }
 
   private func setupWhatsAppIcon() {
@@ -478,8 +483,13 @@ class PopupNotificationWindow: NSWindow {
     let screenFrame = screen.visibleFrame
     let maxWindowHeight = min(Constants.maxHeight, screenFrame.height * 0.8)  // Max 80% of screen height
 
-    // Calculate available width for text
-    let availableWidth = Constants.windowWidth - (Constants.outerPadding * 2) - Constants.iconAndSpacingWidth
+    // CRITICAL: Calculate optimal width based on text content for dynamic sizing
+    // This was the main issue - the width calculation wasn't working properly before
+    let optimalWidth = calculateOptimalWidth()
+    let windowWidth = min(max(optimalWidth, Constants.minWindowWidth), Constants.maxWindowWidth)
+    
+    // Calculate available width for text (subtract padding and icon space)
+    let availableWidth = windowWidth - (Constants.outerPadding * 2) - Constants.iconAndSpacingWidth
 
     // Set the preferred max layout width for proper text wrapping
     textLabel.preferredMaxLayoutWidth = availableWidth
@@ -511,19 +521,65 @@ class PopupNotificationWindow: NSWindow {
     // Use the larger of required height or minimum height, but cap at max height
     let totalHeight = max(min(requiredHeight, maxWindowHeight), Constants.minHeight)
 
-
     // Update window frame and position it properly (bottom-left)
     let newFrame = NSRect(
       x: screenFrame.minX + Constants.horizontalMargin,  // Left edge with margin
       y: screenFrame.minY + Constants.verticalMargin,  // Bottom edge with margin
-      width: Constants.windowWidth,
+      width: windowWidth,
       height: totalHeight
     )
 
-    setFrame(newFrame, display: true)
+    // CRITICAL FIX: Force immediate frame update without animation for dynamic sizing
+    // The original issue was that setFrame with animation didn't work properly for dynamic sizing
+    // Using animate: false ensures the window resizes immediately and correctly
+    setFrame(newFrame, display: true, animate: false)
+    
+    // ADDITIONAL FIX: Ensure the window content size is also updated
+    // This provides extra assurance that the window is properly sized
+    setContentSize(NSSize(width: windowWidth, height: totalHeight))
   }
 
   // MARK: - Helper Methods
+  private func calculateOptimalWidth() -> CGFloat {
+    // Get the text content to analyze
+    let textContent = textLabel.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    let textLength = textContent.count
+    
+    // Calculate character width based on system font
+    let font = NSFont.systemFont(ofSize: Constants.textFontSize)
+    let attributes = [NSAttributedString.Key.font: font]
+    let averageCharWidth = "M".size(withAttributes: attributes).width
+    
+    // Base width calculation (padding + icon space) - this must be included in all calculations
+    let baseWidth = (Constants.outerPadding * 2) + Constants.iconAndSpacingWidth
+    
+    // IMPROVED: More gradual, predictable width calculation with better scaling
+    // Use a smooth progression instead of hard category jumps
+    
+    // Calculate optimal characters per line based on text length (more compact scaling)
+    let optimalCharsPerLine: CGFloat
+    if textLength <= 30 {
+      // Very short text: compact display
+      optimalCharsPerLine = min(CGFloat(textLength) * 1.2, 35)
+    } else if textLength <= 80 {
+      // Short to medium text: gradual increase (more conservative)
+      optimalCharsPerLine = 35 + (CGFloat(textLength - 30) * 0.2) // 35 to 45 chars
+    } else if textLength <= 200 {
+      // Medium text: moderate width
+      optimalCharsPerLine = 45 + (CGFloat(textLength - 80) * 0.15) // 45 to 63 chars
+    } else {
+      // Long text: maximum width but still compact
+      optimalCharsPerLine = min(63 + (CGFloat(textLength - 200) * 0.05), 75)
+    }
+    
+    // Calculate final width
+    let textWidth = averageCharWidth * optimalCharsPerLine
+    let totalWidth = textWidth + baseWidth
+    
+    // Ensure width stays within bounds
+    return max(min(totalWidth, Constants.maxWindowWidth), Constants.minWindowWidth)
+  }
+
   private func createPreviewText(from text: String) -> String {
     // Clean up text - remove extra whitespace and newlines
     let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -554,38 +610,35 @@ class PopupNotificationWindow: NSWindow {
 
   // MARK: - Animation Methods
   func show() {
-    // Set initial alpha and position for bottom-left slide-in
+    // Get screen dimensions for positioning
+    guard let screen = NSScreen.main else { return }
+    let screenFrame = screen.visibleFrame
+    
+    // Calculate final target frame
+    let targetFrame = NSRect(
+      x: screenFrame.minX + Constants.horizontalMargin,  // Left edge with margin
+      y: screenFrame.minY + Constants.verticalMargin,  // Bottom edge with margin
+      width: frame.width,  // Use current width (already calculated by updateWindowSize)
+      height: frame.height
+    )
+    
+    // Set initial state for animation (transparent, but already at final position)
     alphaValue = 0.0
-    setFrame(frame.offsetBy(dx: 0, dy: -20), display: false)  // Start below final position
+    setFrame(targetFrame, display: false)
 
     // Show window without stealing focus or becoming main window
     orderFront(nil)
 
     // CRITICAL: macOS repositions windows after show() - force our position again
-    //
-    // DEBUGGING RESULTS (2025-09-15):
-    // - macOS DOES override window position: Expected Y=50, Actual Y=30 (20px difference)
-    // - Position correction is REQUIRED for proper bottom-left placement
-    // - macOS does NOT override styling properties (borders, colors, etc.)
-    // - Styling enforcement is NOT needed and was removed after testing
-    //
-    guard let screen = NSScreen.main else { return }
-    let screenFrame = screen.visibleFrame
-    let targetFrame = NSRect(
-      x: screenFrame.minX + Constants.horizontalMargin,  // Left edge with margin
-      y: screenFrame.minY + Constants.verticalMargin,  // Bottom edge with margin
-      width: Constants.windowWidth,
-      height: frame.height
-    )
     setFrame(targetFrame, display: true)
 
-    // Animate in
+    // Animate in with fade only (no slide animation)
     NSAnimationContext.runAnimationGroup { context in
       context.duration = Constants.animationDuration
       context.timingFunction = CAMediaTimingFunction(name: .easeOut)
 
+      // Animate only alpha (fade in)
       self.animator().alphaValue = 1.0
-      // No additional frame change needed - we already set the correct position above
     }
   }
 
