@@ -59,7 +59,7 @@ final class HistoryLogger {
     }
   }
 
-  func exportRecentToTempFile(limit: Int = 20) -> URL? {
+  func exportRecentToTempFile(limit: Int = 50) -> URL? {
     var snapshot: [Entry] = []
     ioQueue.sync { snapshot = Array(entries.suffix(limit).reversed()) }
 
