@@ -147,31 +147,62 @@ struct GeneralSettingsTab: View {
           "If you have feedback, if something doesn't work, or if you have suggestions for improvement, feel free to contact me via WhatsApp."
       )
 
-      Button(action: {
-        viewModel.openWhatsAppFeedback()
-      }) {
-        HStack(alignment: .center, spacing: 16) {
-          Text("Thanks for using my app! :)")
-            .font(.body)
-            .fontWeight(.medium)
-            .textSelection(.enabled)
+      VStack(spacing: 12) {
+        // WhatsApp Feedback Button
+        Button(action: {
+          viewModel.openWhatsAppFeedback()
+        }) {
+          HStack(alignment: .center, spacing: 16) {
+            Text("Thanks for using my app! :)")
+              .font(.body)
+              .fontWeight(.medium)
+              .textSelection(.enabled)
 
-          Image("WhatsApp")
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .frame(width: 32, height: 32)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            Image("WhatsApp")
+              .resizable()
+              .aspectRatio(contentMode: .fit)
+              .frame(width: 32, height: 32)
+              .clipShape(RoundedRectangle(cornerRadius: 8))
 
-          Spacer()
+            Spacer()
+          }
         }
-      }
-      .buttonStyle(PlainButtonStyle())
-      .help("Contact via WhatsApp")
-      .onHover { isHovered in
-        if isHovered {
-          NSCursor.pointingHand.push()
-        } else {
-          NSCursor.pop()
+        .buttonStyle(PlainButtonStyle())
+        .help("Contact via WhatsApp")
+        .onHover { isHovered in
+          if isHovered {
+            NSCursor.pointingHand.push()
+          } else {
+            NSCursor.pop()
+          }
+        }
+
+        // App Store Link Copy Button
+        Button(action: {
+          viewModel.copyAppStoreLink()
+        }) {
+          HStack(alignment: .center, spacing: 16) {
+            Text(viewModel.data.appStoreLinkCopied ? "Link copied!" : "Share with friends")
+              .font(.body)
+              .fontWeight(.medium)
+              .textSelection(.enabled)
+              .foregroundColor(viewModel.data.appStoreLinkCopied ? .green : .primary)
+
+            Image(systemName: viewModel.data.appStoreLinkCopied ? "checkmark.circle.fill" : "link")
+              .font(.system(size: 20))
+              .foregroundColor(viewModel.data.appStoreLinkCopied ? .green : .blue)
+
+            Spacer()
+          }
+        }
+        .buttonStyle(PlainButtonStyle())
+        .help(viewModel.data.appStoreLinkCopied ? "App Store link copied to clipboard" : "Copy App Store link to clipboard")
+        .onHover { isHovered in
+          if isHovered {
+            NSCursor.pointingHand.push()
+          } else {
+            NSCursor.pop()
+          }
         }
       }
     }

@@ -253,6 +253,7 @@ struct SettingsData {
   var errorMessage: String = SettingsDefaults.errorMessage
   var isLoading: Bool = SettingsDefaults.isLoading
   var showAlert: Bool = SettingsDefaults.showAlert
+  var appStoreLinkCopied: Bool = false
 }
 
 // MARK: - Focus States Enum

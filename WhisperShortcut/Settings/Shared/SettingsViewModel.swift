@@ -380,4 +380,26 @@ class SettingsViewModel: ObservableObject {
       }
     }
   }
+
+  // MARK: - App Store Link
+  func copyAppStoreLink() {
+    let appStoreURL = "https://apps.apple.com/us/app/whispershortcut/id6749648401"
+    
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    pasteboard.setString(appStoreURL, forType: .string)
+    
+    // Show visual feedback
+    data.appStoreLinkCopied = true
+    
+    // Reset the feedback after 2 seconds
+    Task {
+      try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+      await MainActor.run {
+        data.appStoreLinkCopied = false
+      }
+    }
+    
+    NSLog("🔗 APP-STORE: App Store link copied to clipboard")
+  }
 }
