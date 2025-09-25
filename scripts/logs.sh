@@ -98,16 +98,16 @@ case $LOG_STYLE in
         ;;
 esac
 
-# Build the log command
+# Build the log command - Filter for ONLY our app's logs using subsystem
 if [[ -n "$FILTER" ]]; then
-    LOG_CMD="log stream --predicate 'process == \"$PROCESS_NAME\" AND eventMessage CONTAINS \"$FILTER\"' --style $LOG_STYLE"
+    LOG_CMD="log stream --predicate 'subsystem == \"com.magnusgoedde.whispershortcut\" AND eventMessage CONTAINS \"$FILTER\"' --style $LOG_STYLE"
 else
-    LOG_CMD="log stream --predicate 'process == \"$PROCESS_NAME\"' --style $LOG_STYLE"
+    LOG_CMD="log stream --predicate 'subsystem == \"com.magnusgoedde.whispershortcut\"' --style $LOG_STYLE"
 fi
 
 # Show configuration
 echo -e "${GREEN}🔍 Starting WhisperShortcut Log Stream${NC}"
-echo -e "${BLUE}Process:${NC} $PROCESS_NAME"
+echo -e "${BLUE}Subsystem:${NC} com.magnusgoedde.whispershortcut (ONLY your app logs)"
 echo -e "${BLUE}Style:${NC} $LOG_STYLE"
 if [[ -n "$FILTER" ]]; then
     echo -e "${BLUE}Filter:${NC} $FILTER"
@@ -128,10 +128,12 @@ fi
 # Show helpful tips
 echo -e "${CYAN}💡 Tips:${NC}"
 echo -e "  • Press Ctrl+C to stop logging"
-echo -e "  • Use -f 'Speech-to-Prompt-Mode' to debug speech-to-prompt issues"
-echo -e "  • Use -f 'Speech-to-Text-Mode' to debug speech-to-text issues"
-echo -e "  • Use -f 'Speech-to-Prompt-with-Voice-Responses-Mode' to debug speech-to-prompt-with-voice-responses issues"
-echo -e "  • Use -f 'Error' to see only error messages"
+echo -e "  • Use -f '🎤' to see speech-related logs"
+echo -e "  • Use -f '❌' to see error logs"
+echo -e "  • Use -f '✅' to see success logs"
+echo -e "  • Use -f '⚠️' to see warning logs"
+echo -e "  • Use -f '🔍' to see debug logs"
+echo -e "  • Use -f 'ℹ️' to see info logs"
 echo ""
 
 # Execute the log command
@@ -139,11 +141,11 @@ echo -e "${GREEN}📋 Starting log stream...${NC}"
 echo ""
 
 if [[ -n "$TIME_RANGE" ]]; then
-    # Show historical logs
+    # Show historical logs - Filter for ONLY our app's logs using subsystem
     if [[ -n "$FILTER" ]]; then
-        log show --predicate "process == \"$PROCESS_NAME\" AND eventMessage CONTAINS \"$FILTER\"" --last "$TIME_RANGE" --style "$LOG_STYLE"
+        log show --predicate "subsystem == \"com.magnusgoedde.whispershortcut\" AND eventMessage CONTAINS \"$FILTER\"" --last "$TIME_RANGE" --style "$LOG_STYLE"
     else
-        log show --predicate "process == \"$PROCESS_NAME\"" --last "$TIME_RANGE" --style "$LOG_STYLE"
+        log show --predicate "subsystem == \"com.magnusgoedde.whispershortcut\"" --last "$TIME_RANGE" --style "$LOG_STYLE"
     fi
 else
     # Stream real-time logs
