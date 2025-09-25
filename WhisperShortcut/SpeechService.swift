@@ -125,6 +125,25 @@ class SpeechService {
   func getCurrentModel() -> TranscriptionModel {
     return selectedTranscriptionModel
   }
+  
+  // MARK: - Model Information for Notifications
+  func getTranscriptionModelInfo() -> String {
+    return selectedTranscriptionModel.displayName
+  }
+  
+  func getPromptModelInfo() -> String {
+    let modelKey = "selectedPromptModel"
+    let selectedGPTModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
+    let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5Mini
+    return selectedGPTModel.displayName
+  }
+  
+  func getVoiceResponseModelInfo() -> String {
+    let modelKey = "selectedVoiceResponseModel"
+    let selectedGPTModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
+    let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5Mini
+    return selectedGPTModel.displayName
+  }
 
   // MARK: - Conversation Management
   func clearConversationHistory() {

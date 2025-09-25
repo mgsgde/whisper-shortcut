@@ -423,8 +423,9 @@ class MenuBarController: NSObject {
       clipboardManager.copyToClipboard(text: result)
 
       await MainActor.run {
-        // Show popup notification with the transcription text
-        PopupNotificationWindow.showTranscriptionResponse(result)
+        // Show popup notification with the transcription text and model info
+        let modelInfo = self.speechService.getTranscriptionModelInfo()
+        PopupNotificationWindow.showTranscriptionResponse(result, modelInfo: modelInfo)
         self.appState = self.appState.showSuccess("Transcription copied to clipboard")
       }
     } catch {
@@ -460,8 +461,9 @@ class MenuBarController: NSObject {
       clipboardManager.copyToClipboard(text: result)
 
       await MainActor.run {
-        // Show popup notification with the response text
-        PopupNotificationWindow.showPromptResponse(result)
+        // Show popup notification with the response text and model info
+        let modelInfo = self.speechService.getPromptModelInfo()
+        PopupNotificationWindow.showPromptResponse(result, modelInfo: modelInfo)
         self.appState = self.appState.showSuccess("AI response copied to clipboard")
       }
     } catch {
@@ -582,7 +584,8 @@ class MenuBarController: NSObject {
         let responseText = userInfo["responseText"] as? String
       {
         // Show popup notification synchronized with audio playback
-        PopupNotificationWindow.showVoiceResponse(responseText)
+        let modelInfo = self.speechService.getVoiceResponseModelInfo()
+        PopupNotificationWindow.showVoiceResponse(responseText, modelInfo: modelInfo)
       }
     }
   }

@@ -28,9 +28,9 @@ class PopupNotificationWindow: NSWindow {
 
   // MARK: - Constants
   private enum Constants {
-    static let windowWidth: CGFloat = 360  // Slightly wider for better readability
-    static let maxHeight: CGFloat = 240  // More space for content
-    static let minHeight: CGFloat = 100  // More breathing room
+    static let windowWidth: CGFloat = 420  // Even wider for better readability and more content
+    static let maxHeight: CGFloat = 400  // Much more space for content
+    static let minHeight: CGFloat = 120  // More breathing room
     static let cornerRadius: CGFloat = 12  // Modern macOS corner radius
     static let shadowRadius: CGFloat = 8  // Subtle shadow like native macOS notifications
     static let shadowOpacity: Float = 0.15  // Very subtle, barely visible shadow
@@ -39,11 +39,11 @@ class PopupNotificationWindow: NSWindow {
     static let errorDisplayDuration: TimeInterval = 30.0  // Long duration for error messages with feedback option
     static let outerPadding: CGFloat = 20  // Generous outer padding
     static let innerPadding: CGFloat = 16  // Inner content padding
-    static let titleBottomSpacing: CGFloat = 12  // More space between title and text
+    static let titleBottomSpacing: CGFloat = 16  // More space between title and text
     static let iconSpacing: CGFloat = 12  // Better spacing between icon and text
     static let titleFontSize: CGFloat = 15  // Slightly larger for better readability
     static let textFontSize: CGFloat = 13  // Better readable text size
-    static let maxPreviewLength = 120  // Slightly longer preview
+    static let maxPreviewLength = 180  // Even longer preview for better readability
     static let horizontalMargin: CGFloat = 50  // Distance from left/right screen edges
     static let verticalMargin: CGFloat = 50  // Distance from top/bottom screen edges (slightly less for better visual balance)
     static let iconAndSpacingWidth: CGFloat = 28  // Icon width + spacing for layout calculations
@@ -53,6 +53,7 @@ class PopupNotificationWindow: NSWindow {
   private var customContentView: NSView!
   private var iconLabel: NSTextField!
   private var titleLabel: NSTextField!
+  private var modelInfoLabel: NSTextField!
   private var textLabel: NSTextField!
   private var scrollView: NSScrollView!
   private var whatsappIcon: NSImageView?
@@ -61,7 +62,7 @@ class PopupNotificationWindow: NSWindow {
   private var errorText: String = ""
 
   // MARK: - Initialization
-  init(title: String, text: String, isError: Bool = false) {
+  init(title: String, text: String, isError: Bool = false, modelInfo: String? = nil) {
     // Create window with specific style for notifications
     super.init(
       contentRect: NSRect(x: 0, y: 0, width: Constants.windowWidth, height: 100),
@@ -77,7 +78,7 @@ class PopupNotificationWindow: NSWindow {
     setupWindow()
     setupContentView()
     setupIcon(isError: isError)
-    setupLabels(title: title, text: text)
+    setupLabels(title: title, text: text, modelInfo: modelInfo)
     setupScrollView()
     if isError {
       setupWhatsAppIcon()
@@ -183,7 +184,7 @@ class PopupNotificationWindow: NSWindow {
     iconLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
   }
 
-  private func setupLabels(title: String, text: String) {
+  private func setupLabels(title: String, text: String, modelInfo: String?) {
     // Title label with improved typography
     titleLabel = NSTextField(labelWithString: title)
     titleLabel.font = NSFont.systemFont(ofSize: Constants.titleFontSize, weight: .medium)  // Subtle, elegant weight like native notifications
@@ -195,6 +196,22 @@ class PopupNotificationWindow: NSWindow {
     titleLabel.translatesAutoresizingMaskIntoConstraints = false
     titleLabel.lineBreakMode = .byTruncatingTail
     titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+
+    // Model info label (only shown for success notifications with model info)
+    if let modelInfo = modelInfo, !isError {
+      modelInfoLabel = NSTextField(labelWithString: "🤖 \(modelInfo)")
+      modelInfoLabel.font = NSFont.systemFont(ofSize: 11, weight: .regular)
+      modelInfoLabel.textColor = NSColor.secondaryLabelColor
+      modelInfoLabel.alignment = .left
+      modelInfoLabel.isEditable = false
+      modelInfoLabel.isBordered = false
+      modelInfoLabel.backgroundColor = NSColor.clear
+      modelInfoLabel.translatesAutoresizingMaskIntoConstraints = false
+      modelInfoLabel.lineBreakMode = .byTruncatingTail
+      modelInfoLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+    } else {
+      modelInfoLabel = nil
+    }
 
     // Text label with improved readability
     let displayText = createPreviewText(from: text)
@@ -310,12 +327,22 @@ class PopupNotificationWindow: NSWindow {
     // Ensure the text label can expand properly
     textLabel.setContentHuggingPriority(.defaultLow, for: .vertical)
     textLabel.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+    
+    // Set minimum height for scroll view to ensure it's always visible
+    scrollView.setContentHuggingPriority(.defaultLow, for: .vertical)
+    scrollView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
   }
 
   private func layoutContent() {
     // Add subviews
     customContentView.addSubview(iconLabel)
     customContentView.addSubview(titleLabel)
+    
+    // Add model info label if it exists
+    if let modelInfoLabel = modelInfoLabel {
+      customContentView.addSubview(modelInfoLabel)
+    }
+    
     customContentView.addSubview(scrollView)
 
     // Add WhatsApp icon for error notifications (positioned next to title)
@@ -338,7 +365,8 @@ class PopupNotificationWindow: NSWindow {
 
       // Scroll view constraints with better spacing
       scrollView.topAnchor.constraint(
-        equalTo: titleLabel.bottomAnchor, constant: Constants.titleBottomSpacing),
+        equalTo: (modelInfoLabel?.bottomAnchor ?? titleLabel.bottomAnchor), 
+        constant: Constants.titleBottomSpacing),
       scrollView.leadingAnchor.constraint(
         equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding),
       scrollView.bottomAnchor.constraint(
@@ -347,6 +375,18 @@ class PopupNotificationWindow: NSWindow {
       // Text label width constraint (for proper wrapping)
       textLabel.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
     ])
+
+    // Add model info label constraints if it exists
+    if let modelInfoLabel = modelInfoLabel {
+      NSLayoutConstraint.activate([
+        modelInfoLabel.topAnchor.constraint(
+          equalTo: titleLabel.bottomAnchor, constant: 4),
+        modelInfoLabel.leadingAnchor.constraint(
+          equalTo: titleLabel.leadingAnchor),
+        modelInfoLabel.trailingAnchor.constraint(
+          equalTo: titleLabel.trailingAnchor),
+      ])
+    }
 
     // Set up constraints based on notification type
     if isError, let icon = whatsappIcon {
@@ -392,33 +432,41 @@ class PopupNotificationWindow: NSWindow {
     // Get screen dimensions to ensure popup fits
     guard let screen = NSScreen.main else { return }
     let screenFrame = screen.visibleFrame
-    let maxWindowHeight = min(Constants.maxHeight, screenFrame.height * 0.7)  // Max 70% of screen height
+    let maxWindowHeight = min(Constants.maxHeight, screenFrame.height * 0.8)  // Max 80% of screen height
 
-    // Calculate title height (icon and title are on same line)
-    let titleHeight = max(
-      titleLabel.intrinsicContentSize.height, iconLabel.intrinsicContentSize.height)
-    let availableWidth =
-      Constants.windowWidth - (Constants.outerPadding * 2) - Constants.iconAndSpacingWidth
+    // Calculate available width for text
+    let availableWidth = Constants.windowWidth - (Constants.outerPadding * 2) - Constants.iconAndSpacingWidth
 
     // Set the preferred max layout width for proper text wrapping
     textLabel.preferredMaxLayoutWidth = availableWidth
 
-    // Force layout to get accurate text measurements
+    // Force layout to get accurate measurements for all components
+    customContentView.layoutSubtreeIfNeeded()
+    titleLabel.layoutSubtreeIfNeeded()
+    modelInfoLabel?.layoutSubtreeIfNeeded()
     textLabel.layoutSubtreeIfNeeded()
 
-    // Calculate text content height with improved spacing
+    // Calculate component heights
+    let titleHeight = max(titleLabel.intrinsicContentSize.height, iconLabel.intrinsicContentSize.height)
+    let modelInfoHeight = modelInfoLabel?.intrinsicContentSize.height ?? 0
     let textContentHeight = textLabel.intrinsicContentSize.height
-    let maxTextHeight =
-      maxWindowHeight - Constants.outerPadding - titleHeight - Constants.titleBottomSpacing
-      - Constants.outerPadding
-    let actualTextHeight = min(textContentHeight, maxTextHeight)
 
-    // Calculate total window height with better spacing
-    let totalHeight = max(
-      Constants.outerPadding + titleHeight + Constants.titleBottomSpacing + actualTextHeight
-        + Constants.outerPadding,
-      Constants.minHeight
-    )
+    // Calculate spacing between components
+    let titleToModelSpacing = modelInfoLabel != nil ? 4.0 : 0.0  // Small gap between title and model info
+    let modelToTextSpacing = Constants.titleBottomSpacing  // Gap before text content
+
+    // Calculate total required height
+    let requiredHeight = Constants.outerPadding +  // Top padding
+                         titleHeight +  // Title height
+                         titleToModelSpacing +  // Gap to model info
+                         modelInfoHeight +  // Model info height
+                         modelToTextSpacing +  // Gap to text
+                         textContentHeight +  // Text content height
+                         Constants.outerPadding  // Bottom padding
+
+    // Use the larger of required height or minimum height, but cap at max height
+    let totalHeight = max(min(requiredHeight, maxWindowHeight), Constants.minHeight)
+
 
     // Update window frame and position it properly (bottom-left)
     let newFrame = NSRect(
@@ -438,20 +486,20 @@ class PopupNotificationWindow: NSWindow {
       .replacingOccurrences(of: "\n+", with: " ", options: .regularExpression)
       .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
 
-    // Create short preview
-    if cleanText.count <= Constants.maxPreviewLength {
+    // For popup notifications, show more text since we have better sizing now
+    let maxLength = Constants.maxPreviewLength * 2  // Double the preview length
+    
+    if cleanText.count <= maxLength {
       return cleanText
     } else {
-      // CRITICAL: Always add ellipsis when text is truncated
       // Find a good break point (end of sentence or word)
-      let preview = String(cleanText.prefix(Constants.maxPreviewLength))
+      let preview = String(cleanText.prefix(maxLength))
       if let lastSentence = preview.lastIndex(of: "."),
-        lastSentence > preview.index(preview.startIndex, offsetBy: 30)
+        lastSentence > preview.index(preview.startIndex, offsetBy: 50)
       {
-        // Always add ellipsis when text is truncated, even at sentence end
         return String(preview[...lastSentence]) + "..."
       } else if let lastSpace = preview.lastIndex(of: " "),
-        lastSpace > preview.index(preview.startIndex, offsetBy: 20)
+        lastSpace > preview.index(preview.startIndex, offsetBy: 30)
       {
         return String(preview[...lastSpace]) + "..."
       } else {
@@ -577,7 +625,7 @@ extension PopupNotificationWindow {
   }
 
   private static func showSuccessNotification(
-    title: String = "Text Copied to Clipboard", text: String
+    title: String = "Text Copied to Clipboard", text: String, modelInfo: String? = nil
   ) {
     guard arePopupNotificationsEnabled else {
       return
@@ -585,7 +633,8 @@ extension PopupNotificationWindow {
 
     let popup = PopupNotificationWindow(
       title: title,
-      text: text
+      text: text,
+      modelInfo: modelInfo
     )
 
     // Keep strong reference until window closes
@@ -593,16 +642,16 @@ extension PopupNotificationWindow {
     popup.show()
   }
 
-  static func showPromptResponse(_ response: String) {
-    showSuccessNotification(text: response)
+  static func showPromptResponse(_ response: String, modelInfo: String? = nil) {
+    showSuccessNotification(text: response, modelInfo: modelInfo)
   }
 
-  static func showTranscriptionResponse(_ transcription: String) {
-    showSuccessNotification(text: transcription)
+  static func showTranscriptionResponse(_ transcription: String, modelInfo: String? = nil) {
+    showSuccessNotification(text: transcription, modelInfo: modelInfo)
   }
 
-  static func showVoiceResponse(_ response: String) {
-    showSuccessNotification(text: response)
+  static func showVoiceResponse(_ response: String, modelInfo: String? = nil) {
+    showSuccessNotification(text: response, modelInfo: modelInfo)
   }
 
   static func showReadingText(_ text: String) {
