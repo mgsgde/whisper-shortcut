@@ -340,24 +340,9 @@ class PopupNotificationWindow: NSWindow {
       return
     }
 
-    // Prefer Cursor if installed, otherwise fall back to default handler
-    let cursorAppPath = "/Applications/Cursor.app"
-    if FileManager.default.fileExists(atPath: cursorAppPath) {
-      let appURL = URL(fileURLWithPath: cursorAppPath, isDirectory: true)
-      let config = NSWorkspace.OpenConfiguration()
-      NSWorkspace.shared.open([fileURL], withApplicationAt: appURL, configuration: config) {
-        app, error in
-        if let error = error {
-          NSLog("🪟 Popup: Failed to open with Cursor – \(error.localizedDescription). Falling back to default.")
-          NSWorkspace.shared.open(fileURL)
-        } else {
-          NSLog("🪟 Popup: Opened recent history in Cursor at \(fileURL.path)")
-        }
-      }
-    } else {
-      NSWorkspace.shared.open(fileURL)
-      NSLog("🪟 Popup: Opened recent history in default editor at \(fileURL.path)")
-    }
+    // Always use the system default handler
+    NSWorkspace.shared.open(fileURL)
+    NSLog("🪟 Popup: Opened recent history via default handler at \(fileURL.path)")
   }
 
   private func setupScrollView() {
