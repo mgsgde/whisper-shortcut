@@ -87,6 +87,7 @@ class SpeechService {
     keychainManager: KeychainManaging = KeychainManager.shared,
     clipboardManager: ClipboardManager? = nil
   ) {
+    DebugLogger.logSpeech("🎤 SPEECH: SpeechService init called")
     self.keychainManager = keychainManager
     self.clipboardManager = clipboardManager
     self.ttsService = TTSService(keychainManager: keychainManager)
@@ -184,8 +185,10 @@ class SpeechService {
 
   // MARK: - Transcription Mode
   func transcribe(audioURL: URL) async throws -> String {
+    DebugLogger.logSpeech("🎤 TRANSCRIPTION-MODE: Starting transcription for \(audioURL.lastPathComponent)")
+
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      DebugLogger.logWarning("TRANSCRIPTION-MODE: No API key available")
+      DebugLogger.logError("❌ TRANSCRIPTION-MODE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
@@ -195,18 +198,20 @@ class SpeechService {
     let (data, response) = try await session.data(for: request)
 
     guard let httpResponse = response as? HTTPURLResponse else {
-      DebugLogger.logWarning("TRANSCRIPTION-MODE: Invalid response type")
+      DebugLogger.logError("❌ TRANSCRIPTION-MODE: Invalid response type")
       throw TranscriptionError.networkError("Invalid response")
     }
 
     if httpResponse.statusCode != 200 {
-      DebugLogger.logWarning("TRANSCRIPTION-MODE: HTTP error \(httpResponse.statusCode)")
+      DebugLogger.logError("❌ TRANSCRIPTION-MODE: HTTP error \(httpResponse.statusCode)")
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
 
     let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
     try validateSpeechText(result.text, mode: "TRANSCRIPTION-MODE")
+    DebugLogger.logSpeech("✅ TRANSCRIPTION-MODE: Returning transcribed text")
+
     return result.text
   }
 
@@ -251,7 +256,7 @@ class SpeechService {
       audioData = try await ttsService.generateSpeech(text: response, speed: speed)
     } catch let ttsError as TTSError {
       DebugLogger.logError("VOICE-RESPONSE-MODE: TTS error: \(ttsError.localizedDescription)")
-      throw TranscriptionError.networkError(ttsError.localizedDescription)
+      throw TranscriptionError.ttsError(ttsError)
     } catch {
       DebugLogger.logError(
         "VOICE-RESPONSE-MODE: Unexpected TTS error: \(error.localizedDescription)")
@@ -331,7 +336,8 @@ class SpeechService {
       audioData = try await ttsService.generateSpeech(text: selectedText, speed: speed)
     } catch let ttsError as TTSError {
       DebugLogger.logError("SELECTED-TEXT-TTS: TTS error: \(ttsError.localizedDescription)")
-      throw TranscriptionError.networkError(ttsError.localizedDescription)
+      DebugLogger.logError("SELECTED-TEXT-TTS: TTS error type: \(ttsError)")
+      throw TranscriptionError.ttsError(ttsError)
     } catch {
       DebugLogger.logError("SELECTED-TEXT-TTS: Unexpected TTS error: \(error.localizedDescription)")
       throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
@@ -835,6 +841,7 @@ enum TranscriptionError: Error, Equatable {
   case fileTooLarge
   case emptyFile
   case noSpeechDetected
+  case ttsError(TTSError)
 
   var title: String {
     switch self {
@@ -855,6 +862,7 @@ enum TranscriptionError: Error, Equatable {
     case .fileTooLarge: return "File Too Large"
     case .emptyFile: return "Empty File"
     case .noSpeechDetected: return "No Speech Detected"
+    case .ttsError: return "Text-to-Speech Error"
     }
   }
 }

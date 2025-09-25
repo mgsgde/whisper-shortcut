@@ -194,6 +194,8 @@ struct SpeechErrorFormatter {
 
         Try recording again with clear speech.
         """
+    case .ttsError(let ttsError):
+      return formatTTSError(ttsError)
     }
   }
 
@@ -226,8 +228,62 @@ struct SpeechErrorFormatter {
       return "❌ Empty File"
     case .noSpeechDetected:
       return "🎤 No Speech"
+    case .ttsError:
+      return "❌ TTS Error"
     default:
       return "❌ Error"
+    }
+  }
+
+  // MARK: - TTS Error Formatting
+  static func formatTTSError(_ ttsError: TTSError) -> String {
+    switch ttsError {
+    case .textTooLong(let characterCount, let maxLength):
+      return """
+        📏 Text Too Long for Speech
+
+        The selected text is too long to be read aloud.
+        
+        Current length: \(characterCount) characters
+        Maximum allowed: \(maxLength) characters
+        
+        Please select a shorter text or break it into smaller parts.
+        """
+    case .noAPIKey:
+      return """
+        ⚠️ No API Key for Speech
+
+        Please configure your OpenAI API key in Settings to use text-to-speech.
+        """
+    case .invalidInput:
+      return """
+        ❌ Invalid Text for Speech
+
+        The text cannot be converted to speech.
+        Please try with different text.
+        """
+    case .authenticationError:
+      return """
+        ❌ Speech Authentication Error
+
+        Your API key is invalid or has expired.
+        Please check your OpenAI API key in Settings.
+        """
+    case .networkError(let message):
+      return """
+        🌐 Speech Network Error
+
+        Error: \(message)
+        
+        Please check your internet connection and try again.
+        """
+    case .audioGenerationFailed:
+      return """
+        🔊 Speech Generation Failed
+
+        Unable to generate audio from the text.
+        Please try again or select different text.
+        """
     }
   }
 }

@@ -14,7 +14,7 @@ class AudioRecorder: NSObject {
 
   // MARK: - Constants
   private enum Constants {
-    static let sampleRate: Double = 16000.0  // 16kHz is optimal for Whisper
+    static let sampleRate: Double = 24000.0  // 24kHz to match realtime API requirements
     static let numberOfChannels = 1  // Mono
     static let bitDepth = 16
     static let errorDomain = "WhisperShortcut"
@@ -26,6 +26,7 @@ class AudioRecorder: NSObject {
 
   override init() {
     super.init()
+    DebugLogger.logAudio("🎵 AUDIO: AudioRecorder init called")
     setupAudioSession()
   }
 

@@ -6,7 +6,8 @@ private enum TTSConstants {
   static let endpoint = "https://api.openai.com/v1/audio/speech"
   static let requestTimeout: TimeInterval = 30.0
   static let maxTextLength = 4096  // OpenAI TTS text limit
-  static let defaultVoice = "onyx"  // OpenAI voice options: alloy, echo, fable, onyx, nova, shimmer, coral, verse, ballad, ash, sage, marin, cedar
+  static let defaultVoice = "onyx"  // OpenAI TTS voice options: alloy, echo, fable, onyx, nova, shimmer, coral, verse, ballad, ash, sage, cedar
+  // Realtime API voice options: alloy, ash, ballad, coral, echo, sage, shimmer, verse
   static let defaultModel = "gpt-4o-mini-tts"  // gpt-4o-mini-tts, gpt-4o-tts, tts-1, tts-1-hd
   static let outputFormat = "mp3"  // mp3, opus, aac, flac, wav, pcm
 }
@@ -117,7 +118,7 @@ class TTSService {
 
     if trimmedText.count > TTSConstants.maxTextLength {
       DebugLogger.logWarning("TTS-SERVICE: Input text too long: \(trimmedText.count) > \(TTSConstants.maxTextLength)")
-      throw TTSError.invalidInput
+      throw TTSError.textTooLong(characterCount: trimmedText.count, maxLength: TTSConstants.maxTextLength)
     }
   }
 
@@ -132,11 +133,6 @@ class TTSService {
       throw TTSError.audioGenerationFailed
     }
 
-    // Log first few bytes for debugging
-    let headerBytes = Array(data.prefix(16))
-    let headerHex = headerBytes.map { String(format: "%02X", $0) }.joined(separator: " ")
-
-    // More flexible audio format validation - OpenAI may return different formats
     let header = Array(data.prefix(10))
     let hasValidAudioHeader =
       header.starts(with: [0x49, 0x44, 0x33])  // ID3 tag
@@ -144,15 +140,13 @@ class TTSService {
       || header.starts(with: [0xFF, 0xFA])  // MPEG Layer 3 (MP3)
       || header.starts(with: [0xFF, 0xF3])  // MPEG Layer 3 (MP3)
       || header.starts(with: [0xFF, 0xF2])  // MPEG Layer 3 (MP3)
-      || (header[0] == 0xFF && (header[1] & 0xE0) == 0xE0)  // Any MPEG audio frame
+      || (header.first == 0xFF && header.count > 1 && (header[1] & 0xE0) == 0xE0)  // Any MPEG audio frame
       || header.starts(with: Array("RIFF".utf8))  // WAV
       || header.starts(with: Array("OggS".utf8))  // OGG
       || header.starts(with: [0x66, 0x74, 0x79, 0x70])  // MP4/M4A (ftyp)
 
     if !hasValidAudioHeader {
-      DebugLogger.logWarning("TTS-SERVICE: Unrecognized audio format - continuing anyway")
-      // Don't throw error, let the audio player try to handle it
-    } else {
+      DebugLogger.logWarning("TTS-SERVICE: Unrecognized audio format - proceeding")
     }
 
   }
@@ -215,6 +209,7 @@ struct TTSRequest: Codable {
 enum TTSError: Error, Equatable {
   case noAPIKey
   case invalidInput
+  case textTooLong(characterCount: Int, maxLength: Int)
   case authenticationError
   case networkError(String)
   case audioGenerationFailed
@@ -225,6 +220,8 @@ enum TTSError: Error, Equatable {
       return "No OpenAI API key available"
     case .invalidInput:
       return "Invalid input text for TTS"
+    case .textTooLong(let characterCount, let maxLength):
+      return "Text too long for speech synthesis: \(characterCount) characters (maximum: \(maxLength))"
     case .authenticationError:
       return "Authentication failed with OpenAI API"
     case .networkError(let message):
@@ -247,6 +244,13 @@ enum TTSError: Error, Equatable {
     case .invalidInput:
       code = 2
       userInfo = [NSLocalizedDescriptionKey: self.localizedDescription]
+    case .textTooLong(let characterCount, let maxLength):
+      code = 6
+      userInfo = [
+        NSLocalizedDescriptionKey: self.localizedDescription,
+        "characterCount": characterCount,
+        "maxLength": maxLength
+      ]
     case .authenticationError:
       code = 3
       userInfo = [NSLocalizedDescriptionKey: self.localizedDescription]
