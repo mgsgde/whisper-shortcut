@@ -2,9 +2,12 @@
   "name": "whispershortcut-screenshots",
   "version": "1.0.0",
   "description": "Screenshot generation tools for WhisperShortcut App Store images",
-  "main": "capture-screenshot.js",
+  "main": "js/capture-all.js",
   "scripts": {
-    "capture": "node capture-screenshot.js",
+    "capture": "node js/capture-all.js",
+    "capture-speech-to-text": "node js/capture-all.js speech-to-text",
+    "capture-speech-to-prompt": "node js/capture-all.js speech-to-prompt",
+    "capture-powered-by-openai": "node js/capture-all.js powered-by-openai",
     "install-deps": "npm install puppeteer"
   },
   "dependencies": {
