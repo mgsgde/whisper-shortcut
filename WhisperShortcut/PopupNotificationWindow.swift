@@ -88,6 +88,8 @@ class PopupNotificationWindow: NSWindow {
     // Make error notifications clickable for WhatsApp feedback
     if isError {
       setupErrorClickHandler()
+    } else {
+      setupSuccessClickHandler()
     }
 
     // Start auto-hide timer with appropriate duration
@@ -273,11 +275,28 @@ class PopupNotificationWindow: NSWindow {
     customContentView.wantsLayer = true
   }
 
+  private func setupSuccessClickHandler() {
+    if let clickableView = customContentView as? ClickableContentView {
+      clickableView.onClickHandler = { [weak self] in
+        self?.successWindowClicked()
+      }
+    }
+
+    customContentView.wantsLayer = true
+  }
+
   @objc private func errorWindowClicked() {
     // First open WhatsApp, then close notification
     openWhatsAppFeedback()
 
     // Delay closing the notification slightly to ensure WhatsApp opens
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+      self.hide()
+    }
+  }
+
+  @objc private func successWindowClicked() {
+    openRecentHistory()
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
       self.hide()
     }
@@ -309,6 +328,31 @@ class PopupNotificationWindow: NSWindow {
 
     // Open WhatsApp Web in default browser
     NSWorkspace.shared.open(whatsappURL)
+  }
+
+  private func openRecentHistory(limit: Int = 20) {
+    guard let fileURL = HistoryLogger.shared.exportRecentToTempFile(limit: limit) else {
+      return
+    }
+
+    // Prefer Cursor if installed, otherwise fall back to default handler
+    let cursorAppPath = "/Applications/Cursor.app"
+    if FileManager.default.fileExists(atPath: cursorAppPath) {
+      let appURL = URL(fileURLWithPath: cursorAppPath, isDirectory: true)
+      let config = NSWorkspace.OpenConfiguration()
+      NSWorkspace.shared.open([fileURL], withApplicationAt: appURL, configuration: config) {
+        app, error in
+        if let error = error {
+          NSLog("🪟 Popup: Failed to open with Cursor – \(error.localizedDescription). Falling back to default.")
+          NSWorkspace.shared.open(fileURL)
+        } else {
+          NSLog("🪟 Popup: Opened recent history in Cursor at \(fileURL.path)")
+        }
+      }
+    } else {
+      NSWorkspace.shared.open(fileURL)
+      NSLog("🪟 Popup: Opened recent history in default editor at \(fileURL.path)")
+    }
   }
 
   private func setupScrollView() {
@@ -643,18 +687,22 @@ extension PopupNotificationWindow {
   }
 
   static func showPromptResponse(_ response: String, modelInfo: String? = nil) {
+    HistoryLogger.shared.log(type: .prompt, text: response)
     showSuccessNotification(text: response, modelInfo: modelInfo)
   }
 
   static func showTranscriptionResponse(_ transcription: String, modelInfo: String? = nil) {
+    HistoryLogger.shared.log(type: .transcription, text: transcription)
     showSuccessNotification(text: transcription, modelInfo: modelInfo)
   }
 
   static func showVoiceResponse(_ response: String, modelInfo: String? = nil) {
+    HistoryLogger.shared.log(type: .voiceResponse, text: response)
     showSuccessNotification(text: response, modelInfo: modelInfo)
   }
 
   static func showReadingText(_ text: String) {
+    HistoryLogger.shared.log(type: .readingText, text: text)
     showSuccessNotification(title: "🔊 Reading Text", text: text)
   }
 
