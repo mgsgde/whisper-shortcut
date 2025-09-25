@@ -106,8 +106,9 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
-    // Settings and quit
+    // Settings, history and quit
     menu.addItem(createMenuItem("Settings...", action: #selector(openSettings)))
+    menu.addItem(createMenuItem("View History...", action: #selector(openHistory)))
     menu.addItem(
       createMenuItem("Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q"))
 
@@ -407,6 +408,16 @@ class MenuBarController: NSObject {
 
   @objc private func openSettings() {
     SettingsManager.shared.showSettings()
+  }
+
+  @objc private func openHistory() {
+    // Export recent history to temp file and open it
+    if let historyURL = HistoryLogger.shared.exportRecentToTempFile() {
+      NSWorkspace.shared.open(historyURL)
+      DebugLogger.logInfo("📖 Opened history file: \(historyURL.path)")
+    } else {
+      DebugLogger.logError("❌ Failed to export history file")
+    }
   }
 
   @objc private func quitApp() {
