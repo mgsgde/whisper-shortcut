@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import NaturalLanguage
 
 // MARK: - Constants
 private enum Constants {
@@ -332,91 +333,78 @@ class SpeechService {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return [] }
 
-    // Split by paragraph double newlines first to preserve structure
-    let paragraphs = trimmed.components(separatedBy: "\n\n")
+    // Language-agnostic sentence tokenization
+    let tokenizer = NLTokenizer(unit: .sentence)
+    tokenizer.string = trimmed
 
-    func splitParagraphIntoSentences(_ paragraph: String) -> [String] {
-      // Split on sentence boundaries: period, exclamation, question + following whitespace
-      let pattern = "(?<=[\\.\\!\\?])\\s+"
-      guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-        return [paragraph]
+    var sentences: [String] = []
+    tokenizer.enumerateTokens(in: trimmed.startIndex..<trimmed.endIndex) { range, _ in
+      let s = String(trimmed[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+      if !s.isEmpty { sentences.append(s) }
+      return true
+    }
+
+    // If NLTokenizer failed to find boundaries, fallback to whole text
+    if sentences.isEmpty { sentences = [trimmed] }
+
+    func splitOversized(_ segment: String, limit: Int) -> [String] {
+      var result: [String] = []
+      var remaining = segment
+      while remaining.count > limit {
+        // Find last whitespace within limit to avoid mid-word split
+        let idx = remaining.index(remaining.startIndex, offsetBy: limit)
+        let head = String(remaining[..<idx])
+        if let lastSpace = head.lastIndex(where: { $0.isWhitespace }) {
+          let part = String(remaining[..<lastSpace]).trimmingCharacters(in: .whitespacesAndNewlines)
+          if !part.isEmpty { result.append(part) }
+          remaining = String(remaining[remaining.index(after: lastSpace)...])
+        } else {
+          // No whitespace, hard split
+          result.append(head)
+          remaining = String(remaining[idx...])
+        }
       }
-
-      let ns = paragraph as NSString
-      let fullRange = NSRange(location: 0, length: ns.length)
-      var sentences: [String] = []
-      var lastLocation = 0
-
-      regex.enumerateMatches(in: paragraph, options: [], range: fullRange) { match, _, _ in
-        guard let match = match else { return }
-        let range = NSRange(location: lastLocation, length: match.range.location - lastLocation)
-        let sentence = ns.substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines)
-        if !sentence.isEmpty { sentences.append(sentence) }
-        lastLocation = match.range.location + match.range.length
-      }
-
-      if lastLocation < ns.length {
-        let tail = ns.substring(from: lastLocation).trimmingCharacters(in: .whitespacesAndNewlines)
-        if !tail.isEmpty { sentences.append(tail) }
-      }
-      return sentences
+      let tail = remaining.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !tail.isEmpty { result.append(tail) }
+      return result
     }
 
     var chunks: [String] = []
-    var currentChunk = ""
+    var current = ""
 
-    func flushCurrentChunk() {
-      let trimmedChunk = currentChunk.trimmingCharacters(in: .whitespacesAndNewlines)
-      if !trimmedChunk.isEmpty { chunks.append(trimmedChunk) }
-      currentChunk = ""
+    func flush() {
+      let t = current.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !t.isEmpty { chunks.append(t) }
+      current = ""
     }
 
-    for (pIndex, paragraph) in paragraphs.enumerated() {
-      let sentences = splitParagraphIntoSentences(paragraph)
-      for sentence in sentences {
-        if sentence.count > maxLen {
-          // Flush existing before hard-splitting an oversized sentence
-          flushCurrentChunk()
-          var remaining = sentence
-          while remaining.count > maxLen {
-            let idx = remaining.index(remaining.startIndex, offsetBy: maxLen)
-            let part = String(remaining[..<idx])
-            chunks.append(part)
-            remaining = String(remaining[idx...])
-          }
-          if !remaining.isEmpty { currentChunk = remaining }
-          continue
-        }
-
-        if currentChunk.isEmpty {
-          currentChunk = sentence
-        } else if currentChunk.count + 1 + sentence.count <= maxLen {
-          currentChunk += " " + sentence
-        } else {
-          flushCurrentChunk()
-          currentChunk = sentence
-        }
+    for sentence in sentences {
+      if sentence.count > maxLen {
+        // Close current before splitting large sentence
+        flush()
+        chunks.append(contentsOf: splitOversized(sentence, limit: maxLen))
+        continue
       }
 
-      // Try to preserve paragraph separation if space allows
-      if pIndex < paragraphs.count - 1 {
-        let paragraphSeparator = "\n\n"
-        if currentChunk.count + paragraphSeparator.count <= maxLen {
-          currentChunk += paragraphSeparator
-        } else {
-          flushCurrentChunk()
-        }
+      if current.isEmpty {
+        current = sentence
+      } else if current.count + 1 + sentence.count <= maxLen {
+        current += " " + sentence
+      } else {
+        flush()
+        current = sentence
       }
     }
 
-    flushCurrentChunk()
+    flush()
     return chunks
   }
 
   private func playTextAsSpeechChunked(
     _ text: String, playbackType: PlaybackType, speed: Double
   ) async throws {
-    let maxLen = TTSService.maxAllowedTextLength
+    // Keep a small safety margin under provider limit for JSON overhead
+    let maxLen = max(512, TTSService.maxAllowedTextLength - 64)
     let chunks = splitTextForTTS(text, maxLen: maxLen)
     if chunks.isEmpty { return }
 
