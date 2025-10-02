@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import NaturalLanguage
 
 // MARK: - Constants
 private enum Constants {
@@ -20,6 +21,13 @@ private enum Constants {
 
   // Timing delays
   static let clipboardCopyDelay: UInt64 = 100_000_000  // 0.1 seconds in nanoseconds
+  
+  // Audio chunking constants
+  static let maxChunkDuration: TimeInterval = 120.0  // 2 minutes per chunk
+  static let maxChunkSize = 10 * 1024 * 1024  // 10MB per chunk
+  static let chunkOverlapDuration: TimeInterval = 3.0  // 3 seconds overlap
+  static let minimumSilenceDuration: TimeInterval = 0.8  // 0.8 seconds minimum silence
+  static let silenceThreshold: Float = -40.0  // dB threshold for silence detection
 }
 
 // MARK: - Transcription Model Enum
@@ -222,25 +230,12 @@ class SpeechService {
 
     try validateAudioFile(at: audioURL)
 
-    let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
-    let (data, response) = try await session.data(for: request)
-
-    guard let httpResponse = response as? HTTPURLResponse else {
-      DebugLogger.logError("❌ TRANSCRIPTION-MODE: Invalid response type")
-      throw TranscriptionError.networkError("Invalid response")
-    }
-
-    if httpResponse.statusCode != 200 {
-      DebugLogger.logError("❌ TRANSCRIPTION-MODE: HTTP error \(httpResponse.statusCode)")
-      let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
-      throw error
-    }
-
-    let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
-    try validateSpeechText(result.text, mode: "TRANSCRIPTION-MODE")
+    // Use chunked transcription for better performance and robustness
+    let transcribedText = try await transcribeAudioChunked(audioURL)
+    try validateSpeechText(transcribedText, mode: "TRANSCRIPTION-MODE")
     DebugLogger.logSpeech("✅ TRANSCRIPTION-MODE: Returning transcribed text")
 
-    return result.text
+    return transcribedText
   }
 
   // MARK: - Prompt Modes
@@ -279,18 +274,6 @@ class SpeechService {
     let playbackSpeed = UserDefaults.standard.double(forKey: "voiceResponsePlaybackSpeed")
     let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
 
-    let audioData: Data
-    do {
-      audioData = try await ttsService.generateSpeech(text: response, speed: speed)
-    } catch let ttsError as TTSError {
-      DebugLogger.logError("VOICE-RESPONSE-MODE: TTS error: \(ttsError.localizedDescription)")
-      throw TranscriptionError.ttsError(ttsError)
-    } catch {
-      DebugLogger.logError(
-        "VOICE-RESPONSE-MODE: Unexpected TTS error: \(error.localizedDescription)")
-      throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
-    }
-
     NotificationCenter.default.post(
       name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
 
@@ -302,15 +285,7 @@ class SpeechService {
       )
     }
 
-    let playbackResult = try await audioPlaybackService.playAudio(data: audioData)
-
-    switch playbackResult {
-    case .completedSuccessfully: break
-    case .stoppedByUser: break
-    case .failed:
-      DebugLogger.logError("VOICE-RESPONSE-MODE: Audio playback failed due to system error")
-      throw TranscriptionError.networkError("Audio playback failed")
-    }
+    try await playTextAsSpeechChunked(response, playbackType: .voiceResponse, speed: speed)
 
     return response
   }
@@ -347,6 +322,500 @@ class SpeechService {
     }
   }
 
+  // MARK: - Audio Chunking Helpers
+  
+  // MARK: - Audio Analysis Utilities
+  private func getAudioDuration(_ audioURL: URL) -> TimeInterval {
+    let asset = AVAsset(url: audioURL)
+    return CMTimeGetSeconds(asset.duration)
+  }
+  
+  private func getAudioSize(_ audioURL: URL) -> Int64 {
+    do {
+      let attributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
+      return attributes[.size] as? Int64 ?? 0
+    } catch {
+      DebugLogger.logWarning("STT-CHUNKING: Could not get audio file size: \(error)")
+      return 0
+    }
+  }
+  
+  // MARK: - Silence Detection
+  private func detectSilencePauses(_ audioURL: URL) -> [TimeInterval] {
+    guard let audioFile = try? AVAudioFile(forReading: audioURL) else {
+      DebugLogger.logWarning("STT-CHUNKING: Could not open audio file for silence detection")
+      return []
+    }
+    
+    let format = audioFile.processingFormat
+    let frameCount = AVAudioFrameCount(audioFile.length)
+    
+    guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+      DebugLogger.logWarning("STT-CHUNKING: Could not create audio buffer")
+      return []
+    }
+    
+    do {
+      try audioFile.read(into: buffer)
+    } catch {
+      DebugLogger.logWarning("STT-CHUNKING: Could not read audio file: \(error)")
+      return []
+    }
+    
+    guard let floatChannelData = buffer.floatChannelData else {
+      DebugLogger.logWarning("STT-CHUNKING: No float channel data available")
+      return []
+    }
+    
+    let channelData = floatChannelData[0]
+    let frameLength = Int(buffer.frameLength)
+    let sampleRate = format.sampleRate
+    
+    var silenceBreaks: [TimeInterval] = []
+    var silenceStart: TimeInterval? = nil
+    
+    // Analyze audio in 0.1 second windows
+    let windowSize = Int(sampleRate * 0.1)
+    
+    for i in stride(from: 0, to: frameLength, by: windowSize) {
+      let endIndex = min(i + windowSize, frameLength)
+      var rms: Float = 0.0
+      
+      // Calculate RMS for this window
+      for j in i..<endIndex {
+        let sample = channelData[j]
+        rms += sample * sample
+      }
+      rms = sqrt(rms / Float(endIndex - i))
+      
+      // Convert to dB
+      let dB = 20 * log10(rms + 1e-10)  // Add small value to avoid log(0)
+      let currentTime = TimeInterval(i) / sampleRate
+      
+      if dB < Constants.silenceThreshold {
+        // Silence detected
+        if silenceStart == nil {
+          silenceStart = currentTime
+        }
+      } else {
+        // Sound detected
+        if let start = silenceStart {
+          let silenceDuration = currentTime - start
+          if silenceDuration >= Constants.minimumSilenceDuration {
+            // Found meaningful silence - use middle point as break
+            silenceBreaks.append(start + silenceDuration / 2)
+          }
+          silenceStart = nil
+        }
+      }
+    }
+    
+    DebugLogger.logInfo("STT-CHUNKING: Detected \(silenceBreaks.count) silence breaks")
+    return silenceBreaks
+  }
+  
+  // MARK: - Audio Splitting
+  private func splitAudioIntelligently(_ audioURL: URL) -> [URL] {
+    let audioDuration = getAudioDuration(audioURL)
+    let audioSize = getAudioSize(audioURL)
+    
+    DebugLogger.logInfo("STT-CHUNKING: Audio duration: \(audioDuration)s, size: \(audioSize) bytes")
+    
+    // Check if chunking is needed
+    if audioDuration <= Constants.maxChunkDuration && audioSize <= Constants.maxChunkSize {
+      DebugLogger.logInfo("STT-CHUNKING: Audio is small enough, no chunking needed")
+      return [audioURL]
+    }
+    
+    // 1. Try silence-based splitting first
+    let silenceBreaks = detectSilencePauses(audioURL)
+    if !silenceBreaks.isEmpty {
+      DebugLogger.logInfo("STT-CHUNKING: Using silence-based splitting")
+      return splitAudioAtSilence(audioURL, breaks: silenceBreaks)
+    }
+    
+    // 2. Fallback: Time-based splitting
+    if audioDuration > Constants.maxChunkDuration {
+      DebugLogger.logInfo("STT-CHUNKING: Using time-based splitting")
+      return splitAudioByTime(audioURL)
+    }
+    
+    // 3. Fallback: Size-based splitting
+    if audioSize > Constants.maxChunkSize {
+      DebugLogger.logInfo("STT-CHUNKING: Using size-based splitting")
+      return splitAudioBySize(audioURL)
+    }
+    
+    // Should not reach here, but return original as fallback
+    return [audioURL]
+  }
+  
+  private func splitAudioAtSilence(_ audioURL: URL, breaks: [TimeInterval]) -> [URL] {
+    var chunkURLs: [URL] = []
+    let audioDuration = getAudioDuration(audioURL)
+    
+    var startTime: TimeInterval = 0
+    
+    for breakTime in breaks {
+      // Only create chunk if it's long enough and not too long
+      let chunkDuration = breakTime - startTime
+      if chunkDuration >= 10.0 && chunkDuration <= Constants.maxChunkDuration {
+        if let chunkURL = extractAudioSegment(audioURL, start: startTime, duration: chunkDuration) {
+          chunkURLs.append(chunkURL)
+          startTime = max(0, breakTime - Constants.chunkOverlapDuration)  // Add overlap
+        }
+      } else if chunkDuration > Constants.maxChunkDuration {
+        // Chunk too long, split by time
+        let timeChunks = splitAudioByTimeRange(audioURL, start: startTime, end: breakTime)
+        chunkURLs.append(contentsOf: timeChunks)
+        startTime = max(0, breakTime - Constants.chunkOverlapDuration)
+      }
+    }
+    
+    // Handle remaining audio
+    if startTime < audioDuration - 5.0 {  // At least 5 seconds remaining
+      let remainingDuration = audioDuration - startTime
+      if let finalChunk = extractAudioSegment(audioURL, start: startTime, duration: remainingDuration) {
+        chunkURLs.append(finalChunk)
+      }
+    }
+    
+    return chunkURLs
+  }
+  
+  private func splitAudioByTime(_ audioURL: URL) -> [URL] {
+    let audioDuration = getAudioDuration(audioURL)
+    var chunkURLs: [URL] = []
+    var startTime: TimeInterval = 0
+    
+    while startTime < audioDuration {
+      let remainingDuration = audioDuration - startTime
+      let chunkDuration = min(Constants.maxChunkDuration, remainingDuration)
+      
+      if let chunkURL = extractAudioSegment(audioURL, start: startTime, duration: chunkDuration) {
+        chunkURLs.append(chunkURL)
+      }
+      
+      startTime += chunkDuration - Constants.chunkOverlapDuration  // Add overlap
+      if startTime >= audioDuration - Constants.chunkOverlapDuration {
+        break
+      }
+    }
+    
+    return chunkURLs
+  }
+  
+  private func splitAudioByTimeRange(_ audioURL: URL, start: TimeInterval, end: TimeInterval) -> [URL] {
+    var chunkURLs: [URL] = []
+    var currentStart = start
+    
+    while currentStart < end {
+      let remainingDuration = end - currentStart
+      let chunkDuration = min(Constants.maxChunkDuration, remainingDuration)
+      
+      if let chunkURL = extractAudioSegment(audioURL, start: currentStart, duration: chunkDuration) {
+        chunkURLs.append(chunkURL)
+      }
+      
+      currentStart += chunkDuration - Constants.chunkOverlapDuration
+      if currentStart >= end - Constants.chunkOverlapDuration {
+        break
+      }
+    }
+    
+    return chunkURLs
+  }
+  
+  private func splitAudioBySize(_ audioURL: URL) -> [URL] {
+    // For size-based splitting, we estimate based on duration
+    // This is a simplified approach - in practice, audio compression varies
+    let audioDuration = getAudioDuration(audioURL)
+    let audioSize = getAudioSize(audioURL)
+    let bytesPerSecond = Double(audioSize) / audioDuration
+    let maxDurationForSize = Double(Constants.maxChunkSize) / bytesPerSecond
+    
+    let effectiveMaxDuration = min(maxDurationForSize, Constants.maxChunkDuration)
+    
+    var chunkURLs: [URL] = []
+    var startTime: TimeInterval = 0
+    
+    while startTime < audioDuration {
+      let remainingDuration = audioDuration - startTime
+      let chunkDuration = min(effectiveMaxDuration, remainingDuration)
+      
+      if let chunkURL = extractAudioSegment(audioURL, start: startTime, duration: chunkDuration) {
+        chunkURLs.append(chunkURL)
+      }
+      
+      startTime += chunkDuration - Constants.chunkOverlapDuration
+      if startTime >= audioDuration - Constants.chunkOverlapDuration {
+        break
+      }
+    }
+    
+    return chunkURLs
+  }
+  
+  private func extractAudioSegment(_ audioURL: URL, start: TimeInterval, duration: TimeInterval) -> URL? {
+    let tempDir = FileManager.default.temporaryDirectory
+    let segmentURL = tempDir.appendingPathComponent("audio_chunk_\(UUID().uuidString).wav")
+    
+    let asset = AVAsset(url: audioURL)
+    
+    guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+      DebugLogger.logWarning("STT-CHUNKING: Could not create export session")
+      return nil
+    }
+    
+    exportSession.outputURL = segmentURL
+    exportSession.outputFileType = .m4a
+    
+    let startTime = CMTime(seconds: start, preferredTimescale: 1000)
+    let endTime = CMTime(seconds: start + duration, preferredTimescale: 1000)
+    exportSession.timeRange = CMTimeRange(start: startTime, end: endTime)
+    
+    let semaphore = DispatchSemaphore(value: 0)
+    var success = false
+    
+    exportSession.exportAsynchronously {
+      success = exportSession.status == .completed
+      if !success {
+        DebugLogger.logWarning("STT-CHUNKING: Export failed: \(exportSession.error?.localizedDescription ?? "Unknown error")")
+      }
+      semaphore.signal()
+    }
+    
+    semaphore.wait()
+    
+    return success ? segmentURL : nil
+  }
+  
+  // MARK: - Chunked Transcription
+  private func transcribeAudioChunked(_ audioURL: URL) async throws -> String {
+    let chunks = splitAudioIntelligently(audioURL)
+    
+    if chunks.count == 1 {
+      DebugLogger.logInfo("STT-CHUNKING: Single chunk, using regular transcription")
+      return try await transcribeSingleChunk(chunks[0])
+    }
+    
+    DebugLogger.logInfo("STT-CHUNKING: Transcribing \(chunks.count) audio chunks")
+    
+    var transcriptions: [String] = []
+    
+    // Process chunks sequentially to maintain order
+    for (index, chunkURL) in chunks.enumerated() {
+      DebugLogger.logInfo("STT-CHUNKING: Processing chunk \(index + 1)/\(chunks.count)")
+      
+      do {
+        let transcription = try await transcribeSingleChunk(chunkURL)
+        transcriptions.append(transcription)
+      } catch {
+        DebugLogger.logError("STT-CHUNKING: Failed to transcribe chunk \(index + 1): \(error)")
+        // Continue with other chunks instead of failing completely
+        transcriptions.append("[Transcription failed for segment \(index + 1)]")
+      }
+      
+      // Clean up temporary chunk file
+      try? FileManager.default.removeItem(at: chunkURL)
+    }
+    
+    // Merge transcriptions intelligently
+    let mergedTranscription = mergeTranscriptions(transcriptions)
+    DebugLogger.logSuccess("STT-CHUNKING: Successfully merged \(chunks.count) transcriptions")
+    
+    return mergedTranscription
+  }
+  
+  private func transcribeSingleChunk(_ audioURL: URL) async throws -> String {
+    guard let apiKey = self.apiKey, !apiKey.isEmpty else {
+      throw TranscriptionError.noAPIKey
+    }
+    
+    try validateAudioFile(at: audioURL)
+    
+    let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
+    let (data, response) = try await session.data(for: request)
+    
+    guard let httpResponse = response as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response")
+    }
+    
+    if httpResponse.statusCode != 200 {
+      let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
+      throw error
+    }
+    
+    let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
+    return result.text
+  }
+  
+  private func mergeTranscriptions(_ transcriptions: [String]) -> String {
+    guard !transcriptions.isEmpty else { return "" }
+    
+    if transcriptions.count == 1 {
+      return transcriptions[0].trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    var merged = transcriptions[0].trimmingCharacters(in: .whitespacesAndNewlines)
+    
+    for i in 1..<transcriptions.count {
+      let current = transcriptions[i].trimmingCharacters(in: .whitespacesAndNewlines)
+      
+      // Try to find overlap between end of merged and start of current
+      let overlap = findTranscriptionOverlap(merged, current)
+      
+      if overlap.count > 5 {  // Meaningful overlap found
+        // Remove overlap from current transcription
+        let remainingCurrent = String(current.dropFirst(overlap.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !remainingCurrent.isEmpty {
+          merged += " " + remainingCurrent
+        }
+      } else {
+        // No meaningful overlap, just concatenate with space
+        if !current.isEmpty {
+          merged += " " + current
+        }
+      }
+    }
+    
+    return merged
+  }
+  
+  private func findTranscriptionOverlap(_ text1: String, _ text2: String) -> String {
+    let words1 = text1.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+    let words2 = text2.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+    
+    var maxOverlap = ""
+    
+    // Look for overlapping word sequences (minimum 2 words)
+    for i in max(0, words1.count - 10)..<words1.count {
+      for j in 0..<min(words2.count, 10) {
+        let suffix = Array(words1[i...])
+        let prefix = Array(words2[0...j])
+        
+        if suffix.count >= 2 && prefix.count >= 2 && suffix == prefix {
+          let overlap = suffix.joined(separator: " ")
+          if overlap.count > maxOverlap.count {
+            maxOverlap = overlap
+          }
+        }
+      }
+    }
+    
+    return maxOverlap
+  }
+
+  // MARK: - TTS Chunking Helpers
+  private func splitTextForTTS(_ text: String, maxLen: Int) -> [String] {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return [] }
+
+    // Language-agnostic sentence tokenization
+    let tokenizer = NLTokenizer(unit: .sentence)
+    tokenizer.string = trimmed
+
+    var sentences: [String] = []
+    tokenizer.enumerateTokens(in: trimmed.startIndex..<trimmed.endIndex) { range, _ in
+      let s = String(trimmed[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+      if !s.isEmpty { sentences.append(s) }
+      return true
+    }
+
+    // If NLTokenizer failed to find boundaries, fallback to whole text
+    if sentences.isEmpty { sentences = [trimmed] }
+
+    func splitOversized(_ segment: String, limit: Int) -> [String] {
+      var result: [String] = []
+      var remaining = segment
+      while remaining.count > limit {
+        // Find last whitespace within limit to avoid mid-word split
+        let idx = remaining.index(remaining.startIndex, offsetBy: limit)
+        let head = String(remaining[..<idx])
+        if let lastSpace = head.lastIndex(where: { $0.isWhitespace }) {
+          let part = String(remaining[..<lastSpace]).trimmingCharacters(in: .whitespacesAndNewlines)
+          if !part.isEmpty { result.append(part) }
+          remaining = String(remaining[remaining.index(after: lastSpace)...])
+        } else {
+          // No whitespace, hard split
+          result.append(head)
+          remaining = String(remaining[idx...])
+        }
+      }
+      let tail = remaining.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !tail.isEmpty { result.append(tail) }
+      return result
+    }
+
+    var chunks: [String] = []
+    var current = ""
+
+    func flush() {
+      let t = current.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !t.isEmpty { chunks.append(t) }
+      current = ""
+    }
+
+    for sentence in sentences {
+      if sentence.count > maxLen {
+        // Close current before splitting large sentence
+        flush()
+        chunks.append(contentsOf: splitOversized(sentence, limit: maxLen))
+        continue
+      }
+
+      if current.isEmpty {
+        current = sentence
+      } else if current.count + 1 + sentence.count <= maxLen {
+        current += " " + sentence
+      } else {
+        flush()
+        current = sentence
+      }
+    }
+
+    flush()
+    return chunks
+  }
+
+  private func playTextAsSpeechChunked(
+    _ text: String, playbackType: PlaybackType, speed: Double
+  ) async throws {
+    // Keep a small safety margin under provider limit for JSON overhead
+    let maxLen = max(512, TTSService.maxAllowedTextLength - 64)
+    let chunks = splitTextForTTS(text, maxLen: maxLen)
+    if chunks.isEmpty { return }
+
+    DebugLogger.logInfo("TTS-CHUNKING: Playing text in \(chunks.count) chunk(s)")
+
+    for (index, chunk) in chunks.enumerated() {
+      DebugLogger.logInfo(
+        "TTS-CHUNKING: Generating audio for chunk \(index + 1)/\(chunks.count) (\(chunk.count) chars)")
+      let audioData: Data
+      do {
+        audioData = try await ttsService.generateSpeech(text: chunk, speed: speed)
+      } catch let ttsError as TTSError {
+        DebugLogger.logError("TTS-CHUNKING: TTS error on chunk \(index + 1): \(ttsError.localizedDescription)")
+        throw TranscriptionError.ttsError(ttsError)
+      } catch {
+        DebugLogger.logError("TTS-CHUNKING: Unexpected TTS error on chunk \(index + 1): \(error.localizedDescription)")
+        throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
+      }
+
+      let result = try await audioPlaybackService.playAudio(data: audioData, playbackType: playbackType)
+      switch result {
+      case .completedSuccessfully:
+        continue
+      case .stoppedByUser:
+        DebugLogger.logInfo("TTS-CHUNKING: Playback stopped by user at chunk \(index + 1)")
+        return
+      case .failed:
+        DebugLogger.logError("TTS-CHUNKING: Audio playback failed at chunk \(index + 1)")
+        throw TranscriptionError.networkError("Audio playback failed")
+      }
+    }
+  }
+
   func readSelectedTextAsSpeech() async throws -> String {
     captureSelectedText()
     try await Task.sleep(nanoseconds: Constants.clipboardCopyDelay)
@@ -359,34 +828,12 @@ class SpeechService {
     let playbackSpeed = UserDefaults.standard.double(forKey: "readSelectedTextPlaybackSpeed")
     let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
 
-    let audioData: Data
-    do {
-      audioData = try await ttsService.generateSpeech(text: selectedText, speed: speed)
-    } catch let ttsError as TTSError {
-      DebugLogger.logError("SELECTED-TEXT-TTS: TTS error: \(ttsError.localizedDescription)")
-      DebugLogger.logError("SELECTED-TEXT-TTS: TTS error type: \(ttsError)")
-      throw TranscriptionError.ttsError(ttsError)
-    } catch {
-      DebugLogger.logError("SELECTED-TEXT-TTS: Unexpected TTS error: \(error.localizedDescription)")
-      throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
-    }
-
     NotificationCenter.default.post(
       name: NSNotification.Name("ReadSelectedTextReadyToSpeak"),
       object: nil,
       userInfo: ["selectedText": selectedText]
     )
-
-    let playbackResult = try await audioPlaybackService.playAudio(
-      data: audioData, playbackType: .readSelectedText)
-
-    switch playbackResult {
-    case .completedSuccessfully: break
-    case .stoppedByUser: break
-    case .failed:
-      DebugLogger.logError("SELECTED-TEXT-TTS: Audio playback failed due to system error")
-      throw TranscriptionError.networkError("Audio playback failed")
-    }
+    try await playTextAsSpeechChunked(selectedText, playbackType: .readSelectedText, speed: speed)
 
     return selectedText
   }

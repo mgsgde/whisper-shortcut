@@ -17,6 +17,9 @@ class TTSService {
   private let keychainManager: KeychainManaging
   private let session: URLSession
 
+  // Expose maximum allowed text length for external callers
+  static var maxAllowedTextLength: Int { TTSConstants.maxTextLength }
+
   private var apiKey: String? {
     return keychainManager.getAPIKey()
   }
