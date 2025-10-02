@@ -4,7 +4,7 @@ import NaturalLanguage
 
 // MARK: - Constants
 private enum Constants {
-  static let maxFileSize = 25 * 1024 * 1024  // 25MB
+  static let maxFileSize = 20 * 1024 * 1024  // 20MB - optimal für OpenAI's 25MB Limit
   static let requestTimeout: TimeInterval = 30.0
   static let resourceTimeout: TimeInterval = 120.0
   static let validationTimeout: TimeInterval = 10.0
@@ -24,7 +24,7 @@ private enum Constants {
   
   // Audio chunking constants - PRODUCTION VALUES
   static let maxChunkDuration: TimeInterval = 120.0  // 2 minutes per chunk
-  static let maxChunkSize = 10 * 1024 * 1024  // 10MB per chunk  
+  static let maxChunkSize = 20 * 1024 * 1024  // 20MB per chunk - optimal  
   static let chunkOverlapDuration: TimeInterval = 3.0  // 3 seconds overlap
   static let minimumSilenceDuration: TimeInterval = 0.8  // 0.8 seconds minimum silence
   static let silenceThreshold: Float = -40.0  // dB threshold for silence detection
@@ -236,10 +236,10 @@ class SpeechService {
 
     try validateAudioFile(at: audioURL)
 
-    // SMART CHUNKING STRATEGY: Based on file size limits
+    // SMART CHUNKING STRATEGY: Based on OpenAI API file size limits
     if audioSize <= Constants.maxFileSize {
-      // File ≤25MB: Send to OpenAI directly (with server-side chunking if beneficial)
-      DebugLogger.logInfo("🔍 CHUNKING-STRATEGY: File ≤25MB, using OpenAI direct upload with server-side chunking")
+      // File ≤25MB: Send to OpenAI directly with server-side chunking
+      DebugLogger.logInfo("🔍 CHUNKING-STRATEGY: File ≤25MB, using OpenAI direct upload with server-side chunking (Duration: \(audioDuration)s, Size: \(audioSize) bytes)")
       
       let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
       let (data, response) = try await session.data(for: request)
@@ -262,7 +262,7 @@ class SpeechService {
       
     } else {
       // File >25MB: Use client-side chunking first, then send multiple requests
-      DebugLogger.logInfo("🔍 CHUNKING-STRATEGY: File >25MB, using CLIENT-SIDE chunking (multiple API calls)")
+      DebugLogger.logInfo("🔍 CHUNKING-STRATEGY: File >25MB, using CLIENT-SIDE chunking (multiple API calls) (Duration: \(audioDuration)s, Size: \(audioSize) bytes)")
       
       let transcribedText = try await transcribeAudioChunked(audioURL)
       DebugLogger.logInfo("🔍 CHUNKING-STRATEGY: Client-side chunked transcription completed, result length: \(transcribedText.count) chars")
@@ -1214,8 +1214,30 @@ class SpeechService {
 
     let audioData = try Data(contentsOf: audioURL)
 
+    // Determine correct content type based on file extension
+    let fileExtension = audioURL.pathExtension.lowercased()
+    let contentType: String
+    let filename: String
+    
+    switch fileExtension {
+    case "m4a":
+      contentType = "audio/m4a"
+      filename = "audio.m4a"
+    case "wav":
+      contentType = "audio/wav" 
+      filename = "audio.wav"
+    case "mp3":
+      contentType = "audio/mpeg"
+      filename = "audio.mp3"
+    default:
+      contentType = "audio/wav"
+      filename = "audio.wav"
+    }
+    
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Using content type: \(contentType), filename: \(filename)")
+    
     let files: [String: (filename: String, contentType: String, data: Data)] = [
-      "file": (filename: "audio.wav", contentType: "audio/wav", data: audioData)
+      "file": (filename: filename, contentType: contentType, data: audioData)
     ]
 
     request.setMultipartFormData(boundary: boundary, fields: fields, files: files)
