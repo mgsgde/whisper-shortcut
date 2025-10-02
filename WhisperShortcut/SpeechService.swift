@@ -904,39 +904,94 @@ class SpeechService {
   private func playTextAsSpeechChunked(
     _ text: String, playbackType: PlaybackType, speed: Double
   ) async throws {
-    // Keep a small safety margin under provider limit for JSON overhead
-    let maxLen = max(512, TTSService.maxAllowedTextLength - 64)
+    // Use OpenAI TTS API limit with safety margin
+    let maxLen = max(512, TTSService.maxAllowedTextLength - 64)  // 4032 chars (4096 - 64 safety)
     let chunks = splitTextForTTS(text, maxLen: maxLen)
-    if chunks.isEmpty { return }
+    
+    DebugLogger.logInfo("🔍 TTS-CHUNKING: Original text length: \(text.count) chars")
+    DebugLogger.logInfo("🔍 TTS-CHUNKING: Chunk size: \(maxLen) chars")
+    DebugLogger.logInfo("🔍 TTS-CHUNKING: Split into \(chunks.count) chunks")
+    
+    if chunks.isEmpty { 
+      DebugLogger.logWarning("🔍 TTS-CHUNKING: No chunks to play")
+      return 
+    }
 
-    DebugLogger.logInfo("TTS-CHUNKING: Playing text in \(chunks.count) chunk(s)")
+    DebugLogger.logInfo("🔍 TTS-CHUNKING: Playing text in \(chunks.count) chunk(s)")
 
-    for (index, chunk) in chunks.enumerated() {
-      DebugLogger.logInfo(
-        "TTS-CHUNKING: Generating audio for chunk \(index + 1)/\(chunks.count) (\(chunk.count) chars)")
-    let audioData: Data
+    // Pre-generate first chunk
+    var currentAudioData: Data?
+    var nextAudioTask: Task<Data, Error>?
+    
+    // Start generating first chunk
+    DebugLogger.logInfo("🔍 TTS-CHUNKING: Pre-generating chunk 1")
     do {
-        audioData = try await ttsService.generateSpeech(text: chunk, speed: speed)
+      currentAudioData = try await ttsService.generateSpeech(text: chunks[0], speed: speed)
+      DebugLogger.logInfo("🔍 TTS-CHUNKING: Chunk 1 pre-generated successfully")
     } catch let ttsError as TTSError {
-        DebugLogger.logError("TTS-CHUNKING: TTS error on chunk \(index + 1): \(ttsError.localizedDescription)")
+      DebugLogger.logError("🔍 TTS-CHUNKING: TTS error on chunk 1: \(ttsError.localizedDescription)")
       throw TranscriptionError.ttsError(ttsError)
     } catch {
-        DebugLogger.logError("TTS-CHUNKING: Unexpected TTS error on chunk \(index + 1): \(error.localizedDescription)")
+      DebugLogger.logError("🔍 TTS-CHUNKING: Unexpected TTS error on chunk 1: \(error.localizedDescription)")
       throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
     }
 
+    for (index, chunk) in chunks.enumerated() {
+      DebugLogger.logInfo("🔍 TTS-CHUNKING: Processing chunk \(index + 1)/\(chunks.count) (\(chunk.count) chars)")
+      
+      // Start generating next chunk in parallel (if exists)
+      if index + 1 < chunks.count {
+        let nextChunk = chunks[index + 1]
+        DebugLogger.logInfo("🔍 TTS-CHUNKING: Starting parallel generation of chunk \(index + 2)")
+        nextAudioTask = Task {
+          return try await ttsService.generateSpeech(text: nextChunk, speed: speed)
+        }
+      }
+      
+      // Use current audio data (already generated)
+      guard let audioData = currentAudioData else {
+        DebugLogger.logError("🔍 TTS-CHUNKING: No audio data available for chunk \(index + 1)")
+        throw TranscriptionError.networkError("No audio data available")
+      }
+
+      DebugLogger.logInfo("🔍 TTS-CHUNKING: Playing audio for chunk \(index + 1)")
       let result = try await audioPlaybackService.playAudio(data: audioData, playbackType: playbackType)
+      
+      // While playing, wait for next chunk generation to complete
+      if let nextTask = nextAudioTask {
+        do {
+          currentAudioData = try await nextTask.value
+          DebugLogger.logInfo("🔍 TTS-CHUNKING: Chunk \(index + 2) generated in parallel")
+        } catch let ttsError as TTSError {
+          DebugLogger.logError("🔍 TTS-CHUNKING: TTS error on chunk \(index + 2): \(ttsError.localizedDescription)")
+          currentAudioData = nil
+        } catch {
+          DebugLogger.logError("🔍 TTS-CHUNKING: Unexpected TTS error on chunk \(index + 2): \(error.localizedDescription)")
+          currentAudioData = nil
+        }
+        nextAudioTask = nil
+      } else {
+        currentAudioData = nil
+      }
+      
       switch result {
       case .completedSuccessfully:
+        DebugLogger.logInfo("🔍 TTS-CHUNKING: Chunk \(index + 1) playback completed successfully")
         continue
       case .stoppedByUser:
-        DebugLogger.logInfo("TTS-CHUNKING: Playback stopped by user at chunk \(index + 1)")
+        DebugLogger.logInfo("🔍 TTS-CHUNKING: Playback stopped by user at chunk \(index + 1)")
+        // Cancel any pending generation
+        nextAudioTask?.cancel()
         return
       case .failed:
-        DebugLogger.logError("TTS-CHUNKING: Audio playback failed at chunk \(index + 1)")
+        DebugLogger.logError("🔍 TTS-CHUNKING: Audio playback failed at chunk \(index + 1)")
+        // Cancel any pending generation
+        nextAudioTask?.cancel()
         throw TranscriptionError.networkError("Audio playback failed")
       }
     }
+    
+    DebugLogger.logSuccess("🔍 TTS-CHUNKING: All \(chunks.count) chunks played successfully")
   }
 
   func readSelectedTextAsSpeech() async throws -> String {
