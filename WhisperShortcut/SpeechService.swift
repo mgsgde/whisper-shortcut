@@ -22,9 +22,9 @@ private enum Constants {
   // Timing delays
   static let clipboardCopyDelay: UInt64 = 100_000_000  // 0.1 seconds in nanoseconds
   
-  // Audio chunking constants
+  // Audio chunking constants - PRODUCTION VALUES
   static let maxChunkDuration: TimeInterval = 120.0  // 2 minutes per chunk
-  static let maxChunkSize = 10 * 1024 * 1024  // 10MB per chunk
+  static let maxChunkSize = 10 * 1024 * 1024  // 10MB per chunk  
   static let chunkOverlapDuration: TimeInterval = 3.0  // 3 seconds overlap
   static let minimumSilenceDuration: TimeInterval = 0.8  // 0.8 seconds minimum silence
   static let silenceThreshold: Float = -40.0  // dB threshold for silence detection
@@ -222,6 +222,12 @@ class SpeechService {
   // MARK: - Transcription Mode
   func transcribe(audioURL: URL) async throws -> String {
     DebugLogger.logSpeech("🎤 TRANSCRIPTION-MODE: Starting transcription for \(audioURL.lastPathComponent)")
+    
+    // TEMPORARY DEBUG: Log audio file details
+    let audioDuration = getAudioDuration(audioURL)
+    let audioSize = getAudioSize(audioURL)
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Audio file - Duration: \(audioDuration)s, Size: \(audioSize) bytes")
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Chunk limits - Max Duration: \(Constants.maxChunkDuration)s, Max Size: \(Constants.maxChunkSize) bytes")
 
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
       DebugLogger.logError("❌ TRANSCRIPTION-MODE: No API key available")
@@ -230,12 +236,40 @@ class SpeechService {
 
     try validateAudioFile(at: audioURL)
 
-    // Use chunked transcription for better performance and robustness
-    let transcribedText = try await transcribeAudioChunked(audioURL)
-    try validateSpeechText(transcribedText, mode: "TRANSCRIPTION-MODE")
-    DebugLogger.logSpeech("✅ TRANSCRIPTION-MODE: Returning transcribed text")
+    // SMART CHUNKING STRATEGY: Based on file size limits
+    if audioSize <= Constants.maxFileSize {
+      // File ≤25MB: Send to OpenAI directly (with server-side chunking if beneficial)
+      DebugLogger.logInfo("🔍 CHUNKING-STRATEGY: File ≤25MB, using OpenAI direct upload with server-side chunking")
+      
+      let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
+      let (data, response) = try await session.data(for: request)
 
-    return transcribedText
+      guard let httpResponse = response as? HTTPURLResponse else {
+        DebugLogger.logError("❌ TRANSCRIPTION-MODE: Invalid response type")
+        throw TranscriptionError.networkError("Invalid response")
+      }
+
+      if httpResponse.statusCode != 200 {
+        DebugLogger.logError("❌ TRANSCRIPTION-MODE: HTTP error \(httpResponse.statusCode)")
+        let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
+        throw error
+      }
+
+      let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
+      try validateSpeechText(result.text, mode: "TRANSCRIPTION-MODE")
+      DebugLogger.logSpeech("✅ TRANSCRIPTION-MODE: Returning transcribed text")
+      return result.text
+      
+    } else {
+      // File >25MB: Use client-side chunking first, then send multiple requests
+      DebugLogger.logInfo("🔍 CHUNKING-STRATEGY: File >25MB, using CLIENT-SIDE chunking (multiple API calls)")
+      
+      let transcribedText = try await transcribeAudioChunked(audioURL)
+      DebugLogger.logInfo("🔍 CHUNKING-STRATEGY: Client-side chunked transcription completed, result length: \(transcribedText.count) chars")
+      try validateSpeechText(transcribedText, mode: "TRANSCRIPTION-MODE")
+      DebugLogger.logSpeech("✅ TRANSCRIPTION-MODE: Returning transcribed text")
+      return transcribedText
+    }
   }
 
   // MARK: - Prompt Modes
@@ -419,30 +453,34 @@ class SpeechService {
     let audioDuration = getAudioDuration(audioURL)
     let audioSize = getAudioSize(audioURL)
     
-    DebugLogger.logInfo("STT-CHUNKING: Audio duration: \(audioDuration)s, size: \(audioSize) bytes")
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: splitAudioIntelligently() called")
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Audio duration: \(audioDuration)s, size: \(audioSize) bytes")
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Limits - Duration: \(Constants.maxChunkDuration)s, Size: \(Constants.maxChunkSize) bytes")
     
     // Check if chunking is needed
     if audioDuration <= Constants.maxChunkDuration && audioSize <= Constants.maxChunkSize {
-      DebugLogger.logInfo("STT-CHUNKING: Audio is small enough, no chunking needed")
+      DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Audio is small enough, no chunking needed")
       return [audioURL]
     }
     
     // 1. Try silence-based splitting first
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Attempting silence detection...")
     let silenceBreaks = detectSilencePauses(audioURL)
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Found \(silenceBreaks.count) silence breaks: \(silenceBreaks)")
     if !silenceBreaks.isEmpty {
-      DebugLogger.logInfo("STT-CHUNKING: Using silence-based splitting")
+      DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Using silence-based splitting")
       return splitAudioAtSilence(audioURL, breaks: silenceBreaks)
     }
     
     // 2. Fallback: Time-based splitting
     if audioDuration > Constants.maxChunkDuration {
-      DebugLogger.logInfo("STT-CHUNKING: Using time-based splitting")
+      DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Using time-based splitting (duration \(audioDuration)s > \(Constants.maxChunkDuration)s)")
       return splitAudioByTime(audioURL)
     }
     
     // 3. Fallback: Size-based splitting
     if audioSize > Constants.maxChunkSize {
-      DebugLogger.logInfo("STT-CHUNKING: Using size-based splitting")
+      DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Using size-based splitting (size \(audioSize) > \(Constants.maxChunkSize))")
       return splitAudioBySize(audioURL)
     }
     
@@ -558,12 +596,18 @@ class SpeechService {
   
   private func extractAudioSegment(_ audioURL: URL, start: TimeInterval, duration: TimeInterval) -> URL? {
     let tempDir = FileManager.default.temporaryDirectory
-    let segmentURL = tempDir.appendingPathComponent("audio_chunk_\(UUID().uuidString).wav")
+    let segmentURL = tempDir.appendingPathComponent("audio_chunk_\(UUID().uuidString).m4a")
+    
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Extracting segment - start: \(start)s, duration: \(duration)s")
     
     let asset = AVAsset(url: audioURL)
+    let assetDuration = CMTimeGetSeconds(asset.duration)
     
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Asset duration: \(assetDuration)s")
+    
+    // Use M4A preset for better compatibility with Whisper API
     guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
-      DebugLogger.logWarning("STT-CHUNKING: Could not create export session")
+      DebugLogger.logWarning("🔍 DEBUG-CHUNKING: Could not create export session")
       return nil
     }
     
@@ -574,13 +618,18 @@ class SpeechService {
     let endTime = CMTime(seconds: start + duration, preferredTimescale: 1000)
     exportSession.timeRange = CMTimeRange(start: startTime, end: endTime)
     
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Time range - start: \(startTime.seconds)s, end: \(endTime.seconds)s")
+    
     let semaphore = DispatchSemaphore(value: 0)
     var success = false
     
     exportSession.exportAsynchronously {
-      success = exportSession.status == .completed
+      success = exportSession.status == AVAssetExportSession.Status.completed
       if !success {
-        DebugLogger.logWarning("STT-CHUNKING: Export failed: \(exportSession.error?.localizedDescription ?? "Unknown error")")
+        DebugLogger.logError("🔍 DEBUG-CHUNKING: Export failed: \(exportSession.error?.localizedDescription ?? "Unknown error")")
+        DebugLogger.logError("🔍 DEBUG-CHUNKING: Export status: \(exportSession.status.rawValue)")
+      } else {
+        DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Export successful: \(segmentURL.lastPathComponent)")
       }
       semaphore.signal()
     }
@@ -592,26 +641,30 @@ class SpeechService {
   
   // MARK: - Chunked Transcription
   private func transcribeAudioChunked(_ audioURL: URL) async throws -> String {
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: transcribeAudioChunked() called")
     let chunks = splitAudioIntelligently(audioURL)
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: splitAudioIntelligently returned \(chunks.count) chunks")
     
     if chunks.count == 1 {
-      DebugLogger.logInfo("STT-CHUNKING: Single chunk, using regular transcription")
+      DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Single chunk, using regular transcription")
       return try await transcribeSingleChunk(chunks[0])
     }
     
-    DebugLogger.logInfo("STT-CHUNKING: Transcribing \(chunks.count) audio chunks")
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Transcribing \(chunks.count) audio chunks")
     
     var transcriptions: [String] = []
     
     // Process chunks sequentially to maintain order
     for (index, chunkURL) in chunks.enumerated() {
-      DebugLogger.logInfo("STT-CHUNKING: Processing chunk \(index + 1)/\(chunks.count)")
+      DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Processing chunk \(index + 1)/\(chunks.count)")
+      DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Chunk URL: \(chunkURL.lastPathComponent)")
       
       do {
         let transcription = try await transcribeSingleChunk(chunkURL)
+        DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Chunk \(index + 1) transcription: '\(transcription.prefix(100))...'")
         transcriptions.append(transcription)
       } catch {
-        DebugLogger.logError("STT-CHUNKING: Failed to transcribe chunk \(index + 1): \(error)")
+        DebugLogger.logError("🔍 DEBUG-CHUNKING: Failed to transcribe chunk \(index + 1): \(error)")
         // Continue with other chunks instead of failing completely
         transcriptions.append("[Transcription failed for segment \(index + 1)]")
       }
@@ -621,33 +674,80 @@ class SpeechService {
     }
     
     // Merge transcriptions intelligently
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Merging \(transcriptions.count) transcriptions...")
     let mergedTranscription = mergeTranscriptions(transcriptions)
-    DebugLogger.logSuccess("STT-CHUNKING: Successfully merged \(chunks.count) transcriptions")
+    DebugLogger.logSuccess("🔍 DEBUG-CHUNKING: Successfully merged \(chunks.count) transcriptions, final length: \(mergedTranscription.count) chars")
     
     return mergedTranscription
   }
   
   private func transcribeSingleChunk(_ audioURL: URL) async throws -> String {
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: transcribeSingleChunk() called for: \(audioURL.lastPathComponent)")
+    
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
+      DebugLogger.logError("🔍 DEBUG-CHUNKING: No API key available for chunk transcription")
       throw TranscriptionError.noAPIKey
     }
     
-    try validateAudioFile(at: audioURL)
+    // Detailed chunk file validation
+    do {
+      try validateAudioFile(at: audioURL)
+      DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Chunk file validation passed")
+    } catch {
+      DebugLogger.logError("🔍 DEBUG-CHUNKING: Chunk file validation failed: \(error)")
+      throw error
+    }
+    
+    // Log chunk file details
+    let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64) ?? 0
+    let audioDuration = getAudioDuration(audioURL)
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Chunk details - Size: \(fileSize) bytes, Duration: \(audioDuration)s")
     
     let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Created transcription request for chunk")
+    
     let (data, response) = try await session.data(for: request)
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Received response for chunk - Data size: \(data.count) bytes")
     
     guard let httpResponse = response as? HTTPURLResponse else {
+      DebugLogger.logError("🔍 DEBUG-CHUNKING: Invalid response type for chunk")
       throw TranscriptionError.networkError("Invalid response")
     }
     
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: HTTP Status Code: \(httpResponse.statusCode)")
+    
     if httpResponse.statusCode != 200 {
+      DebugLogger.logError("🔍 DEBUG-CHUNKING: HTTP error \(httpResponse.statusCode) for chunk")
+      
+      // Log detailed error response
+      if let errorString = String(data: data, encoding: .utf8) {
+        DebugLogger.logError("🔍 DEBUG-CHUNKING: Error response body: \(errorString)")
+      } else {
+        DebugLogger.logError("🔍 DEBUG-CHUNKING: Error response body could not be decoded as UTF-8")
+      }
+      
+      // Try to parse structured error
+      if let errorResponse = try? JSONDecoder().decode(OpenAIErrorResponse.self, from: data) {
+        DebugLogger.logError("🔍 DEBUG-CHUNKING: OpenAI Error - Type: \(errorResponse.error?.type ?? "unknown"), Message: \(errorResponse.error?.message ?? "unknown")")
+      }
+      
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
     
-    let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
-    return result.text
+    DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Successful response, attempting to decode JSON")
+    
+    do {
+      let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
+      DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Successfully decoded transcription result: '\(result.text.prefix(50))...'")
+      return result.text
+    } catch {
+      DebugLogger.logError("🔍 DEBUG-CHUNKING: Failed to decode JSON response: \(error)")
+      if let responseString = String(data: data, encoding: .utf8) {
+        DebugLogger.logError("🔍 DEBUG-CHUNKING: Raw response: \(responseString)")
+      }
+      throw TranscriptionError.networkError("Failed to decode transcription response")
+    }
   }
   
   private func mergeTranscriptions(_ transcriptions: [String]) -> String {
@@ -791,16 +891,16 @@ class SpeechService {
     for (index, chunk) in chunks.enumerated() {
       DebugLogger.logInfo(
         "TTS-CHUNKING: Generating audio for chunk \(index + 1)/\(chunks.count) (\(chunk.count) chars)")
-      let audioData: Data
-      do {
+    let audioData: Data
+    do {
         audioData = try await ttsService.generateSpeech(text: chunk, speed: speed)
-      } catch let ttsError as TTSError {
+    } catch let ttsError as TTSError {
         DebugLogger.logError("TTS-CHUNKING: TTS error on chunk \(index + 1): \(ttsError.localizedDescription)")
-        throw TranscriptionError.ttsError(ttsError)
-      } catch {
+      throw TranscriptionError.ttsError(ttsError)
+    } catch {
         DebugLogger.logError("TTS-CHUNKING: Unexpected TTS error on chunk \(index + 1): \(error.localizedDescription)")
-        throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
-      }
+      throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
+    }
 
       let result = try await audioPlaybackService.playAudio(data: audioData, playbackType: playbackType)
       switch result {
@@ -1097,6 +1197,10 @@ class SpeechService {
       "model": selectedTranscriptionModel.rawValue,
       "response_format": "json",
     ]
+    
+    // Always use server-side auto chunking - let OpenAI decide optimal strategy
+    fields["chunking_strategy"] = "auto"
+    DebugLogger.logInfo("🔍 SERVER-CHUNKING: Using auto chunking for optimal transcription quality")
 
     if selectedTranscriptionModel == .gpt4oTranscribe
       || selectedTranscriptionModel == .gpt4oMiniTranscribe
