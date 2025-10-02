@@ -28,6 +28,10 @@ private enum Constants {
   static let chunkOverlapDuration: TimeInterval = 3.0  // 3 seconds overlap
   static let minimumSilenceDuration: TimeInterval = 0.8  // 0.8 seconds minimum silence
   static let silenceThreshold: Float = -40.0  // dB threshold for silence detection
+  
+  // Retry configuration for robust chunking
+  static let maxRetryAttempts = 2  // Maximum retry attempts per chunk (optimal balance)
+  static let retryDelaySeconds: TimeInterval = 1.5  // Shorter delay for better UX
 }
 
 // MARK: - Transcription Model Enum
@@ -659,15 +663,8 @@ class SpeechService {
       DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Processing chunk \(index + 1)/\(chunks.count)")
       DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Chunk URL: \(chunkURL.lastPathComponent)")
       
-      do {
-        let transcription = try await transcribeSingleChunk(chunkURL)
-        DebugLogger.logInfo("🔍 DEBUG-CHUNKING: Chunk \(index + 1) transcription: '\(transcription.prefix(100))...'")
-        transcriptions.append(transcription)
-      } catch {
-        DebugLogger.logError("🔍 DEBUG-CHUNKING: Failed to transcribe chunk \(index + 1): \(error)")
-        // Continue with other chunks instead of failing completely
-        transcriptions.append("[Transcription failed for segment \(index + 1)]")
-      }
+      let transcription = await transcribeChunkWithRetry(chunkURL, chunkIndex: index + 1, totalChunks: chunks.count)
+      transcriptions.append(transcription)
       
       // Clean up temporary chunk file
       try? FileManager.default.removeItem(at: chunkURL)
@@ -679,6 +676,32 @@ class SpeechService {
     DebugLogger.logSuccess("🔍 DEBUG-CHUNKING: Successfully merged \(chunks.count) transcriptions, final length: \(mergedTranscription.count) chars")
     
     return mergedTranscription
+  }
+  
+  private func transcribeChunkWithRetry(_ audioURL: URL, chunkIndex: Int, totalChunks: Int) async -> String {
+    var lastError: Error?
+    
+    for attempt in 1...Constants.maxRetryAttempts {
+      do {
+        let transcription = try await transcribeSingleChunk(audioURL)
+        if attempt > 1 {
+          DebugLogger.logSuccess("🔍 RETRY-CHUNKING: Chunk \(chunkIndex) succeeded on attempt \(attempt)")
+        }
+        return transcription
+      } catch {
+        lastError = error
+        DebugLogger.logWarning("🔍 RETRY-CHUNKING: Chunk \(chunkIndex) attempt \(attempt) failed: \(error)")
+        
+        if attempt < Constants.maxRetryAttempts {
+          DebugLogger.logInfo("🔍 RETRY-CHUNKING: Retrying chunk \(chunkIndex) in \(Constants.retryDelaySeconds)s...")
+          try? await Task.sleep(nanoseconds: UInt64(Constants.retryDelaySeconds * 1_000_000_000))
+        }
+      }
+    }
+    
+    // All retries failed
+    DebugLogger.logError("🔍 RETRY-CHUNKING: Chunk \(chunkIndex) failed after \(Constants.maxRetryAttempts) attempts")
+    return "[Transcription failed for segment \(chunkIndex) after \(Constants.maxRetryAttempts) attempts: \(lastError?.localizedDescription ?? "Unknown error")]"
   }
   
   private func transcribeSingleChunk(_ audioURL: URL) async throws -> String {
