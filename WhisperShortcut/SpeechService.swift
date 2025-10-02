@@ -279,18 +279,6 @@ class SpeechService {
     let playbackSpeed = UserDefaults.standard.double(forKey: "voiceResponsePlaybackSpeed")
     let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
 
-    let audioData: Data
-    do {
-      audioData = try await ttsService.generateSpeech(text: response, speed: speed)
-    } catch let ttsError as TTSError {
-      DebugLogger.logError("VOICE-RESPONSE-MODE: TTS error: \(ttsError.localizedDescription)")
-      throw TranscriptionError.ttsError(ttsError)
-    } catch {
-      DebugLogger.logError(
-        "VOICE-RESPONSE-MODE: Unexpected TTS error: \(error.localizedDescription)")
-      throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
-    }
-
     NotificationCenter.default.post(
       name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
 
@@ -302,15 +290,7 @@ class SpeechService {
       )
     }
 
-    let playbackResult = try await audioPlaybackService.playAudio(data: audioData)
-
-    switch playbackResult {
-    case .completedSuccessfully: break
-    case .stoppedByUser: break
-    case .failed:
-      DebugLogger.logError("VOICE-RESPONSE-MODE: Audio playback failed due to system error")
-      throw TranscriptionError.networkError("Audio playback failed")
-    }
+    try await playTextAsSpeechChunked(response, playbackType: .voiceResponse, speed: speed)
 
     return response
   }
@@ -347,6 +327,129 @@ class SpeechService {
     }
   }
 
+  // MARK: - TTS Chunking Helpers
+  private func splitTextForTTS(_ text: String, maxLen: Int) -> [String] {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return [] }
+
+    // Split by paragraph double newlines first to preserve structure
+    let paragraphs = trimmed.components(separatedBy: "\n\n")
+
+    func splitParagraphIntoSentences(_ paragraph: String) -> [String] {
+      // Split on sentence boundaries: period, exclamation, question + following whitespace
+      let pattern = "(?<=[\\.\\!\\?])\\s+"
+      guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+        return [paragraph]
+      }
+
+      let ns = paragraph as NSString
+      let fullRange = NSRange(location: 0, length: ns.length)
+      var sentences: [String] = []
+      var lastLocation = 0
+
+      regex.enumerateMatches(in: paragraph, options: [], range: fullRange) { match, _, _ in
+        guard let match = match else { return }
+        let range = NSRange(location: lastLocation, length: match.range.location - lastLocation)
+        let sentence = ns.substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !sentence.isEmpty { sentences.append(sentence) }
+        lastLocation = match.range.location + match.range.length
+      }
+
+      if lastLocation < ns.length {
+        let tail = ns.substring(from: lastLocation).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !tail.isEmpty { sentences.append(tail) }
+      }
+      return sentences
+    }
+
+    var chunks: [String] = []
+    var currentChunk = ""
+
+    func flushCurrentChunk() {
+      let trimmedChunk = currentChunk.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !trimmedChunk.isEmpty { chunks.append(trimmedChunk) }
+      currentChunk = ""
+    }
+
+    for (pIndex, paragraph) in paragraphs.enumerated() {
+      let sentences = splitParagraphIntoSentences(paragraph)
+      for sentence in sentences {
+        if sentence.count > maxLen {
+          // Flush existing before hard-splitting an oversized sentence
+          flushCurrentChunk()
+          var remaining = sentence
+          while remaining.count > maxLen {
+            let idx = remaining.index(remaining.startIndex, offsetBy: maxLen)
+            let part = String(remaining[..<idx])
+            chunks.append(part)
+            remaining = String(remaining[idx...])
+          }
+          if !remaining.isEmpty { currentChunk = remaining }
+          continue
+        }
+
+        if currentChunk.isEmpty {
+          currentChunk = sentence
+        } else if currentChunk.count + 1 + sentence.count <= maxLen {
+          currentChunk += " " + sentence
+        } else {
+          flushCurrentChunk()
+          currentChunk = sentence
+        }
+      }
+
+      // Try to preserve paragraph separation if space allows
+      if pIndex < paragraphs.count - 1 {
+        let paragraphSeparator = "\n\n"
+        if currentChunk.count + paragraphSeparator.count <= maxLen {
+          currentChunk += paragraphSeparator
+        } else {
+          flushCurrentChunk()
+        }
+      }
+    }
+
+    flushCurrentChunk()
+    return chunks
+  }
+
+  private func playTextAsSpeechChunked(
+    _ text: String, playbackType: PlaybackType, speed: Double
+  ) async throws {
+    let maxLen = TTSService.maxAllowedTextLength
+    let chunks = splitTextForTTS(text, maxLen: maxLen)
+    if chunks.isEmpty { return }
+
+    DebugLogger.logInfo("TTS-CHUNKING: Playing text in \(chunks.count) chunk(s)")
+
+    for (index, chunk) in chunks.enumerated() {
+      DebugLogger.logInfo(
+        "TTS-CHUNKING: Generating audio for chunk \(index + 1)/\(chunks.count) (\(chunk.count) chars)")
+      let audioData: Data
+      do {
+        audioData = try await ttsService.generateSpeech(text: chunk, speed: speed)
+      } catch let ttsError as TTSError {
+        DebugLogger.logError("TTS-CHUNKING: TTS error on chunk \(index + 1): \(ttsError.localizedDescription)")
+        throw TranscriptionError.ttsError(ttsError)
+      } catch {
+        DebugLogger.logError("TTS-CHUNKING: Unexpected TTS error on chunk \(index + 1): \(error.localizedDescription)")
+        throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
+      }
+
+      let result = try await audioPlaybackService.playAudio(data: audioData, playbackType: playbackType)
+      switch result {
+      case .completedSuccessfully:
+        continue
+      case .stoppedByUser:
+        DebugLogger.logInfo("TTS-CHUNKING: Playback stopped by user at chunk \(index + 1)")
+        return
+      case .failed:
+        DebugLogger.logError("TTS-CHUNKING: Audio playback failed at chunk \(index + 1)")
+        throw TranscriptionError.networkError("Audio playback failed")
+      }
+    }
+  }
+
   func readSelectedTextAsSpeech() async throws -> String {
     captureSelectedText()
     try await Task.sleep(nanoseconds: Constants.clipboardCopyDelay)
@@ -359,34 +462,12 @@ class SpeechService {
     let playbackSpeed = UserDefaults.standard.double(forKey: "readSelectedTextPlaybackSpeed")
     let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
 
-    let audioData: Data
-    do {
-      audioData = try await ttsService.generateSpeech(text: selectedText, speed: speed)
-    } catch let ttsError as TTSError {
-      DebugLogger.logError("SELECTED-TEXT-TTS: TTS error: \(ttsError.localizedDescription)")
-      DebugLogger.logError("SELECTED-TEXT-TTS: TTS error type: \(ttsError)")
-      throw TranscriptionError.ttsError(ttsError)
-    } catch {
-      DebugLogger.logError("SELECTED-TEXT-TTS: Unexpected TTS error: \(error.localizedDescription)")
-      throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
-    }
-
     NotificationCenter.default.post(
       name: NSNotification.Name("ReadSelectedTextReadyToSpeak"),
       object: nil,
       userInfo: ["selectedText": selectedText]
     )
-
-    let playbackResult = try await audioPlaybackService.playAudio(
-      data: audioData, playbackType: .readSelectedText)
-
-    switch playbackResult {
-    case .completedSuccessfully: break
-    case .stoppedByUser: break
-    case .failed:
-      DebugLogger.logError("SELECTED-TEXT-TTS: Audio playback failed due to system error")
-      throw TranscriptionError.networkError("Audio playback failed")
-    }
+    try await playTextAsSpeechChunked(selectedText, playbackType: .readSelectedText, speed: speed)
 
     return selectedText
   }
