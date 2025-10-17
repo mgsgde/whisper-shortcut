@@ -144,10 +144,7 @@ class SpeechService {
   }
   
   func getPromptModelInfo() -> String {
-    let modelKey = "selectedPromptModel"
-    let selectedGPTModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
-    let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5Mini
-    return selectedGPTModel.displayName
+    return GPTAudioModel.gptAudioMini.displayName
   }
   
   func getVoiceResponseModelInfo() -> String {
@@ -265,18 +262,125 @@ class SpeechService {
   }
 
   // MARK: - Prompt Modes
-  func executePrompt(audioURL: URL) async throws -> String {
+  func executePromptWithGPTAudio(audioURL: URL) async throws -> String {
+    DebugLogger.logSpeech("🎤 GPT-AUDIO-PROMPT: Starting prompt with audio input")
+    
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      DebugLogger.logWarning("PROMPT-MODE: No API key available")
+      DebugLogger.logError("❌ GPT-AUDIO-PROMPT: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
-    let spokenText = try await transcribe(audioURL: audioURL)
-    try validateSpeechText(spokenText, mode: "PROMPT-MODE")
-
+    // Get clipboard context
     let clipboardContext = getClipboardContext()
-    return try await executeGPT5Prompt(
-      userMessage: spokenText, clipboardContext: clipboardContext, apiKey: apiKey)
+    
+    // Convert audio to base64
+    let audioData = try Data(contentsOf: audioURL)
+    let base64Audio = audioData.base64EncodedString()
+    
+    // Determine audio format from file extension
+    let audioFormat = audioURL.pathExtension.lowercased()
+    let supportedFormat: String
+    switch audioFormat {
+    case "wav":
+      supportedFormat = "wav"
+    case "mp3":
+      supportedFormat = "mp3"
+    case "m4a":
+      supportedFormat = "mp4"  // m4a is actually mp4 audio
+    default:
+      supportedFormat = "wav"  // fallback
+    }
+    
+    DebugLogger.logInfo("GPT-AUDIO-PROMPT: Audio format: \(supportedFormat), size: \(audioData.count) bytes")
+    
+    // Build request
+    let url = URL(string: Constants.chatEndpoint)!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    
+    // Build system prompt
+    let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
+    let customSystemPromptKey = "promptModeSystemPrompt"
+    let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptKey)
+    
+    var systemPrompt = baseSystemPrompt
+    if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
+      systemPrompt += "\n\nAdditional instructions: \(customPrompt)"
+    }
+    
+    // Create messages
+    var messages: [GPTAudioChatRequest.GPTAudioMessage] = []
+    
+    // System message
+    messages.append(GPTAudioChatRequest.GPTAudioMessage(
+      role: "system",
+      content: .text(systemPrompt)
+    ))
+    
+    // User message with text context and audio
+    var contentParts: [GPTAudioChatRequest.GPTAudioMessage.ContentPart] = []
+    
+    // Add clipboard context if available
+    if let context = clipboardContext {
+      contentParts.append(GPTAudioChatRequest.GPTAudioMessage.ContentPart(
+        type: "text",
+        text: "Context (selected text from clipboard):\n\(context)",
+        input_audio: nil
+      ))
+    }
+    
+    // Add audio input
+    contentParts.append(GPTAudioChatRequest.GPTAudioMessage.ContentPart(
+      type: "input_audio",
+      text: nil,
+      input_audio: GPTAudioChatRequest.GPTAudioMessage.ContentPart.InputAudio(
+        data: base64Audio,
+        format: supportedFormat
+      )
+    ))
+    
+    messages.append(GPTAudioChatRequest.GPTAudioMessage(
+      role: "user",
+      content: .multiContent(contentParts)
+    ))
+    
+    let chatRequest = GPTAudioChatRequest(
+      model: GPTAudioModel.gptAudioMini.rawValue,
+      messages: messages
+    )
+    
+    request.httpBody = try JSONEncoder().encode(chatRequest)
+    
+    DebugLogger.logInfo("GPT-AUDIO-PROMPT: Sending request to GPT-Audio API")
+    
+    let (data, response) = try await session.data(for: request)
+    
+    guard let httpResponse = response as? HTTPURLResponse else {
+      DebugLogger.logWarning("GPT-AUDIO-PROMPT: Invalid response type")
+      throw TranscriptionError.networkError("Invalid response")
+    }
+    
+    if httpResponse.statusCode != 200 {
+      DebugLogger.logWarning("GPT-AUDIO-PROMPT: HTTP error \(httpResponse.statusCode)")
+      if let errorBody = String(data: data, encoding: .utf8) {
+        DebugLogger.logWarning("GPT-AUDIO-PROMPT: Error response body: \(errorBody)")
+      }
+      let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
+      throw error
+    }
+    
+    let result = try JSONDecoder().decode(GPTAudioChatResponse.self, from: data)
+    
+    guard let firstChoice = result.choices.first,
+          let content = firstChoice.message.content else {
+      DebugLogger.logWarning("GPT-AUDIO-PROMPT: No content in response")
+      throw TranscriptionError.networkError("No content in GPT-Audio response")
+    }
+    
+    DebugLogger.logSpeech("✅ GPT-AUDIO-PROMPT: Successfully received response")
+    return content
   }
 
   func executePromptWithVoiceResponse(audioURL: URL, clipboardContext: String? = nil) async throws
@@ -1357,6 +1461,89 @@ struct GPT5ResponseResponse: Codable {
     struct GPT5Content: Codable {
       let type: String
       let text: String
+    }
+  }
+}
+
+// GPT-Audio Models
+enum GPTAudioModel: String, CaseIterable {
+  case gptAudio = "gpt-audio"
+  case gptAudioMini = "gpt-audio-mini"
+  
+  var displayName: String {
+    switch self {
+    case .gptAudio:
+      return "GPT-Audio"
+    case .gptAudioMini:
+      return "GPT-Audio Mini"
+    }
+  }
+  
+  var isRecommended: Bool {
+    return self == .gptAudioMini
+  }
+}
+
+// GPT-Audio Chat Completion Request
+struct GPTAudioChatRequest: Codable {
+  let model: String
+  let messages: [GPTAudioMessage]
+  
+  struct GPTAudioMessage: Codable {
+    let role: String
+    let content: MessageContent
+    
+    enum MessageContent: Codable {
+      case text(String)
+      case multiContent([ContentPart])
+      
+      func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .text(let string):
+          try container.encode(string)
+        case .multiContent(let parts):
+          try container.encode(parts)
+        }
+      }
+      
+      init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let string = try? container.decode(String.self) {
+          self = .text(string)
+        } else if let parts = try? container.decode([ContentPart].self) {
+          self = .multiContent(parts)
+        } else {
+          throw DecodingError.dataCorruptedError(
+            in: container,
+            debugDescription: "Invalid message content"
+          )
+        }
+      }
+    }
+    
+    struct ContentPart: Codable {
+      let type: String
+      let text: String?
+      let input_audio: InputAudio?
+      
+      struct InputAudio: Codable {
+        let data: String
+        let format: String
+      }
+    }
+  }
+}
+
+// GPT-Audio Chat Completion Response
+struct GPTAudioChatResponse: Codable {
+  let choices: [GPTAudioChoice]
+  
+  struct GPTAudioChoice: Codable {
+    let message: GPTAudioResponseMessage
+    
+    struct GPTAudioResponseMessage: Codable {
+      let content: String?
     }
   }
 }

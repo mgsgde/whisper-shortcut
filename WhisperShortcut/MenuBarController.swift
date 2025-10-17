@@ -468,7 +468,7 @@ class MenuBarController: NSObject {
 
   private func performPrompting(audioURL: URL) async {
     do {
-      let result = try await speechService.executePrompt(audioURL: audioURL)
+      let result = try await speechService.executePromptWithGPTAudio(audioURL: audioURL)
       clipboardManager.copyToClipboard(text: result)
 
       await MainActor.run {
