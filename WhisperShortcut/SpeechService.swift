@@ -144,14 +144,15 @@ class SpeechService {
   }
   
   func getPromptModelInfo() -> String {
-    return GPTAudioModel.gptAudioMini.displayName
+    let modelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel") ?? "gpt-audio-mini"
+    let model = GPTAudioModel(rawValue: modelString) ?? .gptAudioMini
+    return model.displayName
   }
   
   func getVoiceResponseModelInfo() -> String {
-    let modelKey = "selectedVoiceResponseModel"
-    let selectedGPTModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
-    let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5Mini
-    return selectedGPTModel.displayName
+    let modelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel") ?? "gpt-audio-mini"
+    let model = GPTAudioModel(rawValue: modelString) ?? .gptAudioMini
+    return model.displayName
   }
 
   // MARK: - Conversation Management
@@ -310,6 +311,10 @@ class SpeechService {
       systemPrompt += "\n\nAdditional instructions: \(customPrompt)"
     }
     
+    // Get selected model from settings
+    let modelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel") ?? "gpt-audio-mini"
+    let selectedModel = GPTAudioModel(rawValue: modelString) ?? .gptAudioMini
+    
     // Create messages
     var messages: [GPTAudioChatRequest.GPTAudioMessage] = []
     
@@ -347,7 +352,7 @@ class SpeechService {
     ))
     
     let chatRequest = GPTAudioChatRequest(
-      model: GPTAudioModel.gptAudioMini.rawValue,
+      model: selectedModel.rawValue,
       messages: messages
     )
     
@@ -386,20 +391,130 @@ class SpeechService {
   func executePromptWithVoiceResponse(audioURL: URL, clipboardContext: String? = nil) async throws
     -> String
   {
+    DebugLogger.logSpeech("🎤 GPT-AUDIO-VOICE: Starting voice response with audio input")
+    
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      DebugLogger.logWarning("VOICE-RESPONSE-MODE: No API key available")
+      DebugLogger.logError("❌ GPT-AUDIO-VOICE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
-    let spokenText = try await transcribe(audioURL: audioURL)
-    try validateSpeechText(spokenText, mode: "PROMPT-MODE")
-
+    // Get clipboard context
     let contextToUse = clipboardContext ?? getClipboardContext()
-
-    let response = try await executeGPT5PromptForVoiceResponse(
-      userMessage: spokenText, clipboardContext: contextToUse, apiKey: apiKey)
-
-    clipboardManager?.copyToClipboard(text: response)
+    
+    // Convert audio to base64
+    let audioData = try Data(contentsOf: audioURL)
+    let base64Audio = audioData.base64EncodedString()
+    
+    // Determine audio format from file extension
+    let audioFormat = audioURL.pathExtension.lowercased()
+    let supportedFormat: String
+    switch audioFormat {
+    case "wav":
+      supportedFormat = "wav"
+    case "mp3":
+      supportedFormat = "mp3"
+    case "m4a":
+      supportedFormat = "mp4"  // m4a is actually mp4 audio
+    default:
+      supportedFormat = "wav"  // fallback
+    }
+    
+    DebugLogger.logInfo("GPT-AUDIO-VOICE: Audio format: \(supportedFormat), size: \(audioData.count) bytes")
+    
+    // Build request
+    let url = URL(string: Constants.chatEndpoint)!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    
+    // Build system prompt
+    let baseSystemPrompt = AppConstants.defaultVoiceResponseSystemPrompt
+    let customSystemPromptKey = "voiceResponseSystemPrompt"
+    let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptKey)
+    
+    var systemPrompt = baseSystemPrompt
+    if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
+      systemPrompt += "\n\nAdditional instructions: \(customPrompt)"
+    }
+    
+    // Get selected model from settings
+    let modelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel") ?? "gpt-audio-mini"
+    let selectedModel = GPTAudioModel(rawValue: modelString) ?? .gptAudioMini
+    
+    // Create messages
+    var messages: [GPTAudioChatRequest.GPTAudioMessage] = []
+    
+    // System message
+    messages.append(GPTAudioChatRequest.GPTAudioMessage(
+      role: "system",
+      content: .text(systemPrompt)
+    ))
+    
+    // User message with text context and audio
+    var contentParts: [GPTAudioChatRequest.GPTAudioMessage.ContentPart] = []
+    
+    // Add clipboard context if available
+    if let context = contextToUse {
+      contentParts.append(GPTAudioChatRequest.GPTAudioMessage.ContentPart(
+        type: "text",
+        text: "Context (selected text from clipboard):\n\(context)",
+        input_audio: nil
+      ))
+    }
+    
+    // Add audio input
+    contentParts.append(GPTAudioChatRequest.GPTAudioMessage.ContentPart(
+      type: "input_audio",
+      text: nil,
+      input_audio: GPTAudioChatRequest.GPTAudioMessage.ContentPart.InputAudio(
+        data: base64Audio,
+        format: supportedFormat
+      )
+    ))
+    
+    messages.append(GPTAudioChatRequest.GPTAudioMessage(
+      role: "user",
+      content: .multiContent(contentParts)
+    ))
+    
+    let chatRequest = GPTAudioChatRequest(
+      model: selectedModel.rawValue,
+      messages: messages
+    )
+    
+    request.httpBody = try JSONEncoder().encode(chatRequest)
+    
+    DebugLogger.logInfo("GPT-AUDIO-VOICE: Sending request to GPT-Audio API")
+    
+    let (data, response) = try await session.data(for: request)
+    
+    guard let httpResponse = response as? HTTPURLResponse else {
+      DebugLogger.logWarning("GPT-AUDIO-VOICE: Invalid response type")
+      throw TranscriptionError.networkError("Invalid response")
+    }
+    
+    if httpResponse.statusCode != 200 {
+      DebugLogger.logWarning("GPT-AUDIO-VOICE: HTTP error \(httpResponse.statusCode)")
+      if let errorBody = String(data: data, encoding: .utf8) {
+        DebugLogger.logWarning("GPT-AUDIO-VOICE: Error response body: \(errorBody)")
+      }
+      let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
+      throw error
+    }
+    
+    let result = try JSONDecoder().decode(GPTAudioChatResponse.self, from: data)
+    
+    guard let firstChoice = result.choices.first,
+          let content = firstChoice.message.content else {
+      DebugLogger.logWarning("GPT-AUDIO-VOICE: No content in response")
+      throw TranscriptionError.networkError("No content in GPT-Audio response")
+    }
+    
+    DebugLogger.logSpeech("✅ GPT-AUDIO-VOICE: Successfully received response")
+    
+    // Copy to clipboard
+    clipboardManager?.copyToClipboard(text: content)
 
     let playbackSpeed = UserDefaults.standard.double(forKey: "voiceResponsePlaybackSpeed")
     let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
@@ -411,13 +526,13 @@ class SpeechService {
       NotificationCenter.default.post(
         name: NSNotification.Name("VoicePlaybackStartedWithText"),
         object: nil,
-        userInfo: ["responseText": response]
+        userInfo: ["responseText": content]
       )
     }
 
-    try await playTextAsSpeechChunked(response, playbackType: .voiceResponse, speed: speed)
+    try await playTextAsSpeechChunked(content, playbackType: .voiceResponse, speed: speed)
 
-    return response
+    return content
   }
 
   // MARK: - Transcription Mode Helpers
@@ -1019,212 +1134,6 @@ class SpeechService {
     cmdUp?.post(tap: .cghidEventTap)
   }
 
-  private func executeGPT5Prompt(userMessage: String, clipboardContext: String?, apiKey: String)
-    async throws -> String
-  {
-    return try await executeGPT5Response(
-      userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey,
-      isVoiceResponse: false)
-  }
-
-  private func executeGPT5PromptForVoiceResponse(
-    userMessage: String, clipboardContext: String?, apiKey: String
-  )
-    async throws -> String
-  {
-    return try await executeGPT5Response(
-      userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey,
-      isVoiceResponse: true)
-  }
-
-  private func executeGPT5Response(
-    userMessage: String, clipboardContext: String?, apiKey: String, isVoiceResponse: Bool = false
-  )
-    async throws -> String
-  {
-    let modelKey = isVoiceResponse ? "selectedVoiceResponseModel" : "selectedPromptModel"
-    let selectedGPTModelString =
-      UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
-    let selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5Mini
-
-    let url = URL(string: Constants.responsesEndpoint)!
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-    let fullInput = buildPromptInput(
-      userMessage: userMessage, clipboardContext: clipboardContext, isVoiceResponse: isVoiceResponse
-    )
-
-    let reasoningConfig: GPT5ResponseRequest.ReasoningConfig?
-    if selectedGPTModel.supportsReasoning {
-      let reasoningEffortKey =
-        isVoiceResponse ? "voiceResponseReasoningEffort" : "promptReasoningEffort"
-      let defaultReasoningEffort =
-        isVoiceResponse
-        ? SettingsDefaults.voiceResponseReasoningEffort.rawValue
-        : SettingsDefaults.promptReasoningEffort.rawValue
-      let savedReasoningEffort =
-        UserDefaults.standard.string(forKey: reasoningEffortKey) ?? defaultReasoningEffort
-      reasoningConfig = GPT5ResponseRequest.ReasoningConfig(effort: savedReasoningEffort)
-      DebugLogger.logInfo(
-        "PROMPT-MODE: Using reasoning effort '\(savedReasoningEffort)' for model \(selectedGPTModel.rawValue)"
-      )
-    } else {
-      reasoningConfig = nil
-      DebugLogger.logInfo(
-        "PROMPT-MODE: Model \(selectedGPTModel.rawValue) does not support reasoning parameters")
-    }
-
-    let effectivePreviousResponseId = isConversationExpired(isVoiceResponse: isVoiceResponse)
-      ? nil : previousResponseId
-
-    let gpt5Request = GPT5ResponseRequest(
-      model: selectedGPTModel.rawValue,
-      input: fullInput,
-      reasoning: reasoningConfig,
-      text: GPT5ResponseRequest.TextConfig(verbosity: "medium"),
-      previous_response_id: effectivePreviousResponseId
-    )
-
-    request.httpBody = try JSONEncoder().encode(gpt5Request)
-
-    let (data, response) = try await session.data(for: request)
-
-    guard let httpResponse = response as? HTTPURLResponse else {
-      DebugLogger.logWarning("PROMPT-MODE: Invalid response type from GPT-5")
-      throw TranscriptionError.networkError("Invalid response")
-    }
-
-    if httpResponse.statusCode != 200 {
-      DebugLogger.logWarning("PROMPT-MODE: GPT-5 HTTP error \(httpResponse.statusCode)")
-      if let errorBody = String(data: data, encoding: .utf8) {
-        DebugLogger.logWarning("PROMPT-MODE: Error response body: \(errorBody)")
-      }
-      let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
-      throw error
-    }
-
-    let result = try parseGPT5Response(data: data)
-    return result
-  }
-
-  private func buildPromptInput(
-    userMessage: String, clipboardContext: String?, isVoiceResponse: Bool = false
-  ) -> String {
-    let baseSystemPrompt: String
-    let customSystemPromptKey: String
-
-    if isVoiceResponse {
-      baseSystemPrompt = AppConstants.defaultVoiceResponseSystemPrompt
-      customSystemPromptKey = "voiceResponseSystemPrompt"
-    } else {
-      baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
-      customSystemPromptKey = "promptModeSystemPrompt"
-    }
-
-    let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptKey)
-
-    var fullInput = baseSystemPrompt
-    if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
-      fullInput += "\n\nAdditional instructions: \(customPrompt)"
-    }
-
-    if let context = clipboardContext {
-      fullInput += "\n\nContext (selected text from clipboard):\n\(context)"
-    }
-
-    let sanitizedUserMessage = sanitizeUserInput(userMessage)
-    fullInput += "\n\nUser: \(sanitizedUserMessage)"
-    return fullInput
-  }
-
-  private func parseGPT5Response(data: Data) throws -> String {
-    do {
-      let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
-
-      previousResponseId = result.id
-      previousResponseTimestamp = Date()
-
-      for output in result.output {
-        if output.type == "message" {
-          for content in output.content ?? [] {
-            if content.type == "output_text" {
-              return content.text
-            }
-          }
-        }
-      }
-
-      if (try? JSONSerialization.jsonObject(with: data, options: [])) != nil {
-        DebugLogger.logWarning(
-          "PROMPT-MODE: Unexpected response structure, attempting fallback parsing")
-      }
-
-      throw TranscriptionError.networkError("Could not extract text from GPT-5 response")
-    } catch {
-      if (try? JSONSerialization.jsonObject(with: data, options: [])) != nil {
-        DebugLogger.logWarning("PROMPT-MODE: Failed to decode response, raw structure available")
-      }
-
-      throw error
-    }
-  }
-
-  // MARK: - Testing and Debugging
-  func testGPT5Request() async throws -> String {
-    guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      DebugLogger.logWarning("TEST: No API key available")
-      throw TranscriptionError.noAPIKey
-    }
-
-    let testRequest = GPT5ResponseRequest(
-      model: "gpt-5-chat-latest",
-      input: "Hello, this is a test message.",
-      reasoning: nil,
-      text: nil,
-      previous_response_id: nil
-    )
-
-    let url = URL(string: Constants.responsesEndpoint)!
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-    request.httpBody = try JSONEncoder().encode(testRequest)
-
-    let (data, response) = try await URLSession.shared.data(for: request)
-
-    guard let httpResponse = response as? HTTPURLResponse else {
-      DebugLogger.logWarning("TEST: Invalid response type")
-      throw TranscriptionError.networkError("Invalid response type")
-    }
-
-    if httpResponse.statusCode != 200 {
-      DebugLogger.logWarning("TEST: HTTP error \(httpResponse.statusCode)")
-      if let errorBody = String(data: data, encoding: .utf8) {
-        DebugLogger.logWarning("TEST: Error body: \(errorBody)")
-      }
-      let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
-      throw error
-    }
-
-    let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
-
-    for output in result.output {
-      if output.type == "message" {
-        for content in output.content ?? [] {
-          if content.type == "output_text" {
-            return content.text
-          }
-        }
-      }
-    }
-
-    throw TranscriptionError.networkError("Could not extract text from test response")
-  }
 
   // MARK: - Shared Infrastructure Helpers
   private func validateAudioFile(at url: URL) throws {
@@ -1431,57 +1340,6 @@ struct ChatCompletionResponse: Codable {
 
 struct ChatChoice: Codable {
   let message: ChatMessage
-}
-
-// GPT-5 Responses API Models (New)
-struct GPT5ResponseRequest: Codable {
-  let model: String
-  let input: String
-  let reasoning: ReasoningConfig?
-  let text: TextConfig?
-  let previous_response_id: String?
-
-  struct ReasoningConfig: Codable {
-    let effort: String
-  }
-
-  struct TextConfig: Codable {
-    let verbosity: String
-  }
-}
-
-struct GPT5ResponseResponse: Codable {
-  let output: [GPT5Output]
-  let id: String
-
-  struct GPT5Output: Codable {
-    let type: String
-    let content: [GPT5Content]?
-
-    struct GPT5Content: Codable {
-      let type: String
-      let text: String
-    }
-  }
-}
-
-// GPT-Audio Models
-enum GPTAudioModel: String, CaseIterable {
-  case gptAudio = "gpt-audio"
-  case gptAudioMini = "gpt-audio-mini"
-  
-  var displayName: String {
-    switch self {
-    case .gptAudio:
-      return "GPT-Audio"
-    case .gptAudioMini:
-      return "GPT-Audio Mini"
-    }
-  }
-  
-  var isRecommended: Bool {
-    return self == .gptAudioMini
-  }
 }
 
 // GPT-Audio Chat Completion Request

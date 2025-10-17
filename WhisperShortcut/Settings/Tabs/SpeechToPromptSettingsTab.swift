@@ -34,20 +34,6 @@ struct SpeechToPromptSettingsTab: View {
       // Model Section
       modelSection
 
-      // Reasoning Effort Section (only show if model supports reasoning)
-      if viewModel.data.selectedPromptModel.supportsReasoning {
-        // Section Divider with spacing
-        VStack(spacing: 0) {
-          Spacer()
-            .frame(height: SettingsConstants.sectionSpacing)
-          SectionDivider()
-          Spacer()
-            .frame(height: SettingsConstants.sectionSpacing)
-        }
-
-        reasoningEffortSection
-      }
-
       // Section Divider with spacing
       VStack(spacing: 0) {
         Spacer()
@@ -143,37 +129,14 @@ struct SpeechToPromptSettingsTab: View {
   @ViewBuilder
   private var modelSection: some View {
     GPTModelSelectionView(
-      title: "🧠 Prompt Model",
-      selectedModel: $viewModel.data.selectedPromptModel,
+      title: "🧠 GPT-Audio Model",
+      selectedModel: $viewModel.data.selectedGPTAudioModel,
       onModelChanged: {
         Task {
           await viewModel.saveSettings()
         }
       }
     )
-  }
-
-  // MARK: - Reasoning Effort Section
-  @ViewBuilder
-  private var reasoningEffortSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "🧠 Reasoning Effort",
-        subtitle:
-          "Control the depth of analysis for prompt responses. Higher effort provides better quality but slower responses."
-      )
-
-      ReasoningEffortSelectionView(
-        selectedEffort: $viewModel.data.promptReasoningEffort,
-        title: "Reasoning Effort",
-        description: "Controls analysis depth for prompt responses"
-      )
-      .onChange(of: viewModel.data.promptReasoningEffort) { _, _ in
-        Task {
-          await viewModel.saveSettings()
-        }
-      }
-    }
   }
 
   // MARK: - Conversation Memory Section

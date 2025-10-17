@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// Wiederverwendbare Komponente für die GPT-Modellauswahl
+/// Wiederverwendbare Komponente für die GPT-Audio-Modellauswahl
 struct GPTModelSelectionView: View {
   let title: String
-  @Binding var selectedModel: GPTModel
+  @Binding var selectedModel: GPTAudioModel
   let onModelChanged: (() -> Void)?
 
   init(
     title: String,
-    selectedModel: Binding<GPTModel>,
+    selectedModel: Binding<GPTAudioModel>,
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
@@ -20,11 +20,11 @@ struct GPTModelSelectionView: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: title,
-        subtitle: "Choose the AI model for generating responses"
+        subtitle: "Choose between GPT-Audio Mini (fast & cheap) or GPT-Audio (best quality)"
       )
 
       HStack(spacing: SettingsConstants.modelSpacing) {
-        ForEach(GPTModel.allCases, id: \.self) { model in
+        ForEach(GPTAudioModel.allCases, id: \.self) { model in
           ZStack {
             Rectangle()
               .fill(selectedModel == model ? Color.accentColor : Color.clear)
@@ -104,9 +104,9 @@ struct GPTModelSelectionView: View {
 #if DEBUG
   struct GPTModelSelectionView_Previews: PreviewProvider {
     static var previews: some View {
-      @State var selectedModel: GPTModel = .gpt5Mini
+      @State var selectedModel: GPTAudioModel = .gptAudioMini
 
-      GPTModelSelectionView(title: "GPT Model", selectedModel: $selectedModel)
+      GPTModelSelectionView(title: "GPT-Audio Model", selectedModel: $selectedModel)
         .padding()
         .frame(width: 600)
     }
