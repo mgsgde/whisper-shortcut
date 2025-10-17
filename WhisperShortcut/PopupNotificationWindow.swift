@@ -62,6 +62,7 @@ class PopupNotificationWindow: NSWindow {
   private var textLabel: NSTextField!
   private var scrollView: NSScrollView!
   private var whatsappIcon: NSImageView?
+  private var closeButton: NSButton!
   private var autoHideTimer: Timer?
   private var isError: Bool = false
   private var errorText: String = ""
@@ -82,6 +83,7 @@ class PopupNotificationWindow: NSWindow {
 
     setupWindow()
     setupContentView()
+    setupCloseButton()
     setupIcon(isError: isError)
     setupLabels(title: title, text: text, modelInfo: modelInfo)
     setupScrollView()
@@ -172,6 +174,39 @@ class PopupNotificationWindow: NSWindow {
 
     customContentView = clickableView
     contentView = containerView
+  }
+
+  private func setupCloseButton() {
+    closeButton = NSButton()
+    closeButton.title = ""
+    closeButton.bezelStyle = .circular
+    closeButton.isBordered = false
+    closeButton.wantsLayer = true
+    closeButton.translatesAutoresizingMaskIntoConstraints = false
+    
+    // Create a close symbol (X)
+    let closeSymbol = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Close")
+    closeButton.image = closeSymbol
+    closeButton.imagePosition = .imageOnly
+    closeButton.contentTintColor = NSColor.secondaryLabelColor
+    
+    // Make button slightly transparent
+    closeButton.alphaValue = 0.6
+    
+    // Add hover effect
+    closeButton.layer?.cornerRadius = 10
+    
+    // Set action
+    closeButton.target = self
+    closeButton.action = #selector(closeButtonClicked)
+    
+    // Size constraints
+    closeButton.setContentHuggingPriority(.required, for: .horizontal)
+    closeButton.setContentHuggingPriority(.required, for: .vertical)
+  }
+
+  @objc private func closeButtonClicked() {
+    hide()
   }
 
   private func setupIcon(isError: Bool) {
@@ -369,6 +404,7 @@ class PopupNotificationWindow: NSWindow {
 
   private func layoutContent() {
     // Add subviews
+    customContentView.addSubview(closeButton)
     customContentView.addSubview(iconLabel)
     customContentView.addSubview(titleLabel)
     
@@ -386,6 +422,14 @@ class PopupNotificationWindow: NSWindow {
 
     // Set up constraints with improved spacing
     NSLayoutConstraint.activate([
+      // Close button constraints (top-right corner)
+      closeButton.topAnchor.constraint(
+        equalTo: customContentView.topAnchor, constant: 8),
+      closeButton.trailingAnchor.constraint(
+        equalTo: customContentView.trailingAnchor, constant: -8),
+      closeButton.widthAnchor.constraint(equalToConstant: 20),
+      closeButton.heightAnchor.constraint(equalToConstant: 20),
+      
       // Icon constraints
       iconLabel.topAnchor.constraint(
         equalTo: customContentView.topAnchor, constant: Constants.outerPadding),
@@ -430,12 +474,12 @@ class PopupNotificationWindow: NSWindow {
         titleLabel.leadingAnchor.constraint(
           equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding),
 
-        // Position WhatsApp icon to the right of title
+        // Position WhatsApp icon to the right of title (leave space for close button)
         icon.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
         icon.leadingAnchor.constraint(
           equalTo: titleLabel.trailingAnchor, constant: Constants.iconSpacing),
         icon.trailingAnchor.constraint(
-          equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
+          lessThanOrEqualTo: closeButton.leadingAnchor, constant: -8),
         icon.widthAnchor.constraint(equalToConstant: 20),
         icon.heightAnchor.constraint(equalToConstant: 20),
 
@@ -444,13 +488,13 @@ class PopupNotificationWindow: NSWindow {
           equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
       ])
     } else {
-      // Success notifications: green checkmark on left, no right icon
+      // Success notifications: green checkmark on left, close button on right
       NSLayoutConstraint.activate([
-        // Title positioned after left icon
+        // Title positioned after left icon (leave space for close button)
         titleLabel.leadingAnchor.constraint(
           equalTo: iconLabel.trailingAnchor, constant: Constants.iconSpacing),
         titleLabel.trailingAnchor.constraint(
-          equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
+          lessThanOrEqualTo: closeButton.leadingAnchor, constant: -8),
 
         // Scroll view spans full width
         scrollView.trailingAnchor.constraint(

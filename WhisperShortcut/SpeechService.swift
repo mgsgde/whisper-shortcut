@@ -352,7 +352,9 @@ class SpeechService {
     
     let chatRequest = GPTAudioChatRequest(
       model: selectedModel.rawValue,
-      messages: messages
+      messages: messages,
+      modalities: nil,
+      audio: nil
     )
     
     request.httpBody = try JSONEncoder().encode(chatRequest)
@@ -383,8 +385,23 @@ class SpeechService {
       throw TranscriptionError.networkError("No content in GPT-Audio response")
     }
     
+    // Extract text from content
+    let textContent: String
+    switch content {
+    case .text(let text):
+      textContent = text
+    case .multiContent(let parts):
+      var extractedText = ""
+      for part in parts {
+        if part.type == "text", let text = part.text {
+          extractedText += text
+        }
+      }
+      textContent = extractedText
+    }
+    
     DebugLogger.logSpeech("✅ GPT-AUDIO-PROMPT: Successfully received response")
-    return content
+    return textContent
   }
 
   func executePromptWithVoiceResponse(audioURL: URL, clipboardContext: String? = nil) async throws
@@ -399,7 +416,7 @@ class SpeechService {
 
     // Get clipboard context
     let contextToUse = clipboardContext ?? getClipboardContext()
-    
+
     // Convert audio to base64
     let audioData = try Data(contentsOf: audioURL)
     let base64Audio = audioData.base64EncodedString()
@@ -479,16 +496,18 @@ class SpeechService {
     
     let chatRequest = GPTAudioChatRequest(
       model: selectedModel.rawValue,
-      messages: messages
+      messages: messages,
+      modalities: ["text", "audio"],
+      audio: GPTAudioChatRequest.AudioConfig(voice: "alloy", format: "mp3")
     )
     
     request.httpBody = try JSONEncoder().encode(chatRequest)
     
-    DebugLogger.logInfo("GPT-AUDIO-VOICE: Sending request to GPT-Audio API")
+    DebugLogger.logInfo("GPT-AUDIO-VOICE: Sending request to GPT-Audio API with audio output")
     
-    let (data, response) = try await session.data(for: request)
+    let (data, responseData) = try await session.data(for: request)
     
-    guard let httpResponse = response as? HTTPURLResponse else {
+    guard let httpResponse = responseData as? HTTPURLResponse else {
       DebugLogger.logWarning("GPT-AUDIO-VOICE: Invalid response type")
       throw TranscriptionError.networkError("Invalid response")
     }
@@ -504,19 +523,65 @@ class SpeechService {
     
     let result = try JSONDecoder().decode(GPTAudioChatResponse.self, from: data)
     
-    guard let firstChoice = result.choices.first,
-          let content = firstChoice.message.content else {
-      DebugLogger.logWarning("GPT-AUDIO-VOICE: No content in response")
-      throw TranscriptionError.networkError("No content in GPT-Audio response")
+    guard let firstChoice = result.choices.first else {
+      DebugLogger.logWarning("GPT-AUDIO-VOICE: No choices in response")
+      throw TranscriptionError.networkError("No choices in GPT-Audio response")
     }
     
-    DebugLogger.logSpeech("✅ GPT-AUDIO-VOICE: Successfully received response")
+    // Extract text content for clipboard and display
+    var textContent = ""
+    if let content = firstChoice.message.content {
+      switch content {
+      case .text(let text):
+        textContent = text
+      case .multiContent(let parts):
+        // Extract text from multi-content
+        for part in parts {
+          if part.type == "text", let text = part.text {
+            textContent += text
+          }
+        }
+      }
+    }
     
-    // Copy to clipboard
-    clipboardManager?.copyToClipboard(text: content)
-
-    let playbackSpeed = UserDefaults.standard.double(forKey: "voiceResponsePlaybackSpeed")
-    let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
+    // Extract audio output
+    guard let audioOutput = firstChoice.message.audio else {
+      DebugLogger.logWarning("GPT-AUDIO-VOICE: No audio output in response, falling back to TTS")
+      // Fallback to TTS if no audio
+      clipboardManager?.copyToClipboard(text: textContent)
+      let playbackSpeed = UserDefaults.standard.double(forKey: "voiceResponsePlaybackSpeed")
+      let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
+      
+      NotificationCenter.default.post(
+        name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
+      
+      await MainActor.run {
+        NotificationCenter.default.post(
+          name: NSNotification.Name("VoicePlaybackStartedWithText"),
+          object: nil,
+          userInfo: ["responseText": textContent]
+        )
+      }
+      
+      try await playTextAsSpeechChunked(textContent, playbackType: .voiceResponse, speed: speed)
+      return textContent
+    }
+    
+    DebugLogger.logSpeech("✅ GPT-AUDIO-VOICE: Successfully received audio response (no TTS needed!)")
+    
+    // Decode base64 audio
+    guard let audioData = Data(base64Encoded: audioOutput.data) else {
+      DebugLogger.logWarning("GPT-AUDIO-VOICE: Failed to decode base64 audio")
+      throw TranscriptionError.networkError("Failed to decode audio data")
+    }
+    
+    DebugLogger.logInfo("GPT-AUDIO-VOICE: Decoded audio size: \(audioData.count) bytes")
+    
+    // Copy transcript to clipboard (falls vorhanden, sonst textContent)
+    let transcriptText = audioOutput.transcript ?? textContent
+    if !transcriptText.isEmpty {
+      clipboardManager?.copyToClipboard(text: transcriptText)
+    }
 
     NotificationCenter.default.post(
       name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
@@ -525,13 +590,24 @@ class SpeechService {
       NotificationCenter.default.post(
         name: NSNotification.Name("VoicePlaybackStartedWithText"),
         object: nil,
-        userInfo: ["responseText": content]
+        userInfo: ["responseText": transcriptText]
       )
     }
 
-    try await playTextAsSpeechChunked(content, playbackType: .voiceResponse, speed: speed)
+    // Play audio directly (NO TTS!)
+    let playbackResult = try await audioPlaybackService.playAudio(data: audioData, playbackType: .voiceResponse)
+    
+    switch playbackResult {
+    case .completedSuccessfully:
+      DebugLogger.logInfo("GPT-AUDIO-VOICE: Audio playback completed successfully")
+    case .stoppedByUser:
+      DebugLogger.logInfo("GPT-AUDIO-VOICE: Audio playback stopped by user")
+    case .failed:
+      DebugLogger.logWarning("GPT-AUDIO-VOICE: Audio playback failed")
+      throw TranscriptionError.networkError("Audio playback failed")
+    }
 
-    return content
+    return transcriptText
   }
 
   // MARK: - Transcription Mode Helpers
@@ -1320,6 +1396,13 @@ struct WhisperResponse: Codable {
 struct GPTAudioChatRequest: Codable {
   let model: String
   let messages: [GPTAudioMessage]
+  let modalities: [String]?
+  let audio: AudioConfig?
+  
+  struct AudioConfig: Codable {
+    let voice: String
+    let format: String
+  }
   
   struct GPTAudioMessage: Codable {
     let role: String
@@ -1375,7 +1458,55 @@ struct GPTAudioChatResponse: Codable {
     let message: GPTAudioResponseMessage
     
     struct GPTAudioResponseMessage: Codable {
-      let content: String?
+      let content: ResponseContent?
+      let audio: AudioOutput?
+    }
+    
+    enum ResponseContent: Codable {
+      case text(String)
+      case multiContent([ResponseContentPart])
+      
+      func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .text(let string):
+          try container.encode(string)
+        case .multiContent(let parts):
+          try container.encode(parts)
+        }
+      }
+      
+      init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let string = try? container.decode(String.self) {
+          self = .text(string)
+        } else if let parts = try? container.decode([ResponseContentPart].self) {
+          self = .multiContent(parts)
+        } else {
+          throw DecodingError.dataCorruptedError(
+            in: container,
+            debugDescription: "Invalid response content"
+          )
+        }
+      }
+    }
+    
+    struct ResponseContentPart: Codable {
+      let type: String
+      let text: String?
+      let audio: AudioContentPart?
+    }
+    
+    struct AudioContentPart: Codable {
+      let data: String
+      let transcript: String?
+    }
+    
+    struct AudioOutput: Codable {
+      let id: String
+      let data: String
+      let transcript: String?
+      let expires_at: Int?
     }
   }
 }
