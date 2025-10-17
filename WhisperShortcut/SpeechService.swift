@@ -10,7 +10,6 @@ private enum Constants {
   static let validationTimeout: TimeInterval = 10.0
   static let transcriptionEndpoint = "https://api.openai.com/v1/audio/transcriptions"
   static let chatEndpoint = "https://api.openai.com/v1/chat/completions"
-  static let responsesEndpoint = "https://api.openai.com/v1/responses"  // New GPT-5 API
   static let modelsEndpoint = "https://api.openai.com/v1/models"
 
   // Text validation
@@ -1315,31 +1314,6 @@ extension URLRequest {
 // MARK: - Models
 struct WhisperResponse: Codable {
   let text: String
-}
-
-struct ChatCompletionRequest: Codable {
-  let model: String
-  let messages: [ChatMessage]
-  let maxTokens: Int
-  let temperature: Double
-
-  enum CodingKeys: String, CodingKey {
-    case model, messages, temperature
-    case maxTokens = "max_tokens"
-  }
-}
-
-struct ChatMessage: Codable {
-  let role: String
-  let content: String
-}
-
-struct ChatCompletionResponse: Codable {
-  let choices: [ChatChoice]
-}
-
-struct ChatChoice: Codable {
-  let message: ChatMessage
 }
 
 // GPT-Audio Chat Completion Request

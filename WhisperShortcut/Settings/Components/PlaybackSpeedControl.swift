@@ -21,13 +21,8 @@ struct PlaybackSpeedControl: View {
       )
 
       HStack {
-        Text("Speed:")
-          .font(.body)
-          .fontWeight(.medium)
-          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
-
         Slider(value: $playbackSpeed, in: 0.25...2.0, step: 0.25) {
-          Text("Playback Speed")
+          Text("")
         }
         .frame(maxWidth: 300)
         .onChange(of: playbackSpeed) { _, _ in
