@@ -15,12 +15,6 @@ struct ConversationTimeoutSelectionView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
             }
-            Spacer()
-            if timeout == .never {
-              Text("May increase costs")
-                .font(.caption)
-                .foregroundColor(.orange)
-            }
           }
           .tag(timeout)
         }
@@ -31,6 +25,6 @@ struct ConversationTimeoutSelectionView: View {
 }
 
 #Preview {
-  ConversationTimeoutSelectionView(selectedTimeout: .constant(.tenMinutes))
+  ConversationTimeoutSelectionView(selectedTimeout: .constant(.thirtySeconds))
     .padding()
 }

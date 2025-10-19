@@ -39,39 +39,26 @@ enum GPTAudioModel: String, CaseIterable {
 
 // MARK: - Conversation Timeout Enum
 enum ConversationTimeout: Double, CaseIterable {
-  case off = -1.0            // Off: kein Memory, sofort „expired“
+  case noMemory = 0.0        // No memory - instant expiry
   case thirtySeconds = 0.5   // 30 Sekunden
   case oneMinute = 1.0
   case fiveMinutes = 5.0
-  case tenMinutes = 10.0
-  case fifteenMinutes = 15.0
-  case thirtyMinutes = 30.0
-  case never = 0.0           // Nie ablaufen (unendlich Memory)
 
   var displayName: String {
     switch self {
-    case .off:
-      return "Off (No Memory)"
+    case .noMemory:
+      return "0 Seconds (No Memory)"
     case .thirtySeconds:
       return "30 Seconds"
     case .oneMinute:
       return "1 Minute"
     case .fiveMinutes:
       return "5 Minutes"
-    case .tenMinutes:
-      return "10 Minutes"
-    case .fifteenMinutes:
-      return "15 Minutes"
-    case .thirtyMinutes:
-      return "30 Minutes"
-    case .never:
-      return "Never"
     }
   }
 
   var isRecommended: Bool {
-    // Empfehlung bleibt bei 1 Minute, wie gewünscht
-    return self == .oneMinute
+    return self == .thirtySeconds
   }
 }
 
@@ -110,9 +97,9 @@ struct SettingsDefaults {
   static let voiceResponsePlaybackSpeed = 1.0
   static let readSelectedTextPlaybackSpeed = 1.0
 
-  // Getrennte Conversation Memory Defaults (je 1 Minute als Default)
-  static let promptConversationTimeout = ConversationTimeout.oneMinute
-  static let voiceResponseConversationTimeout = ConversationTimeout.oneMinute
+  // Getrennte Conversation Memory Defaults (je 30 Sekunden als Default)
+  static let promptConversationTimeout = ConversationTimeout.thirtySeconds
+  static let voiceResponseConversationTimeout = ConversationTimeout.thirtySeconds
 
   // MARK: - Notification Settings
   static let showPopupNotifications = true

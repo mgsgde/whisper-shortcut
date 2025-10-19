@@ -100,8 +100,8 @@ class SpeechService {
   private var selectedTranscriptionModel: TranscriptionModel = .gpt4oMiniTranscribe
 
   // MARK: - Prompt/Conversation State
-  private var previousResponseId: String?            // Store previous response ID for conversation continuity
   private var previousResponseTimestamp: Date?       // Track when the last response was received
+  private var conversationMessages: [GPTAudioChatRequest.GPTAudioMessage] = []
 
   init(
     keychainManager: KeychainManaging = KeychainManager.shared,
@@ -156,8 +156,9 @@ class SpeechService {
 
   // MARK: - Conversation Management
   func clearConversationHistory() {
-    previousResponseId = nil
     previousResponseTimestamp = nil
+    conversationMessages = []
+    DebugLogger.logInfo("CONVERSATION: History cleared")
   }
 
   internal func isConversationExpired(isVoiceResponse: Bool) -> Bool {
@@ -169,20 +170,16 @@ class SpeechService {
     let key = isVoiceResponse
       ? "voiceResponseConversationTimeoutMinutes" : "promptConversationTimeoutMinutes"
 
-    // If not set, fall back to defaults (1 minute as requested)
-    var timeoutMinutes = UserDefaults.standard.object(forKey: key) as? Double
-    if timeoutMinutes == nil {
-      // Fallback default per mode
-      timeoutMinutes = 1.0
+    // If not set, fall back to default (30 seconds)
+    let timeoutMinutes = UserDefaults.standard.object(forKey: key) as? Double ?? 0.5
+
+    // No memory mode: 0.0 means instant expiry
+    if timeoutMinutes == 0.0 {
+      clearConversationHistory()
+      return true
     }
 
-    // Never: 0.0 means no expiry
-    if let t = timeoutMinutes, t == 0.0 {
-      return false
-    }
-
-    let effectiveMinutes = (timeoutMinutes ?? 1.0)
-    let expirationTime = timestamp.addingTimeInterval(effectiveMinutes * 60)  // Convert to seconds
+    let expirationTime = timestamp.addingTimeInterval(timeoutMinutes * 60)  // Convert to seconds
     let isExpired = Date() > expirationTime
 
     if isExpired {
@@ -323,6 +320,12 @@ class SpeechService {
       content: .text(systemPrompt)
     ))
     
+    // Add conversation history if not expired
+    if !isConversationExpired(isVoiceResponse: false) {
+      messages.append(contentsOf: conversationMessages)
+      DebugLogger.logInfo("GPT-AUDIO-PROMPT: Including \(conversationMessages.count) history messages")
+    }
+    
     // User message with text context and audio
     var contentParts: [GPTAudioChatRequest.GPTAudioMessage.ContentPart] = []
     
@@ -400,6 +403,24 @@ class SpeechService {
       textContent = extractedText
     }
     
+    // Save conversation for next request (text-only, no audio data)
+    let userMessageText: String
+    if let context = clipboardContext {
+      userMessageText = "User spoke (with context: \(context))"
+    } else {
+      userMessageText = "User spoke"
+    }
+    
+    conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
+      role: "user",
+      content: .text(userMessageText)
+    ))
+    conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
+      role: "assistant",
+      content: .text(textContent)
+    ))
+    previousResponseTimestamp = Date()
+    
     DebugLogger.logSpeech("✅ GPT-AUDIO-PROMPT: Successfully received response")
     return textContent
   }
@@ -466,6 +487,12 @@ class SpeechService {
       role: "system",
       content: .text(systemPrompt)
     ))
+    
+    // Add conversation history if not expired
+    if !isConversationExpired(isVoiceResponse: true) {
+      messages.append(contentsOf: conversationMessages)
+      DebugLogger.logInfo("GPT-AUDIO-VOICE: Including \(conversationMessages.count) history messages")
+    }
     
     // User message with text context and audio
     var contentParts: [GPTAudioChatRequest.GPTAudioMessage.ContentPart] = []
@@ -606,6 +633,24 @@ class SpeechService {
       DebugLogger.logWarning("GPT-AUDIO-VOICE: Audio playback failed")
       throw TranscriptionError.networkError("Audio playback failed")
     }
+
+    // Save conversation for next request (text-only, no audio data)
+    let userMessageText: String
+    if let context = contextToUse {
+      userMessageText = "User spoke (with context: \(context))"
+    } else {
+      userMessageText = "User spoke"
+    }
+    
+    conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
+      role: "user",
+      content: .text(userMessageText)
+    ))
+    conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
+      role: "assistant",
+      content: .text(transcriptText)
+    ))
+    previousResponseTimestamp = Date()
 
     return transcriptText
   }
