@@ -1192,7 +1192,7 @@ class SpeechService {
   // MARK: - Prompt Mode Helpers
   private func getClipboardContext() -> String? {
     guard let clipboardManager = clipboardManager else { return nil }
-    guard let clipboardText = clipboardManager.getClipboardText() else { return nil }
+    guard let clipboardText = clipboardManager.getCleanedClipboardText() else { return nil }
 
     let trimmedText = clipboardText.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedText.isEmpty else { return nil }
