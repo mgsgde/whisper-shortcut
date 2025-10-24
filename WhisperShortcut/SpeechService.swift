@@ -247,14 +247,16 @@ class SpeechService {
       }
 
       let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
-      try validateSpeechText(result.text, mode: "TRANSCRIPTION-MODE")
-      return result.text
+      let normalizedText = normalizeTranscriptionText(result.text)
+      try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
+      return normalizedText
       
     } else {
       // File >20MB: Use client-side chunking first, then send multiple requests
       let transcribedText = try await transcribeAudioChunked(audioURL)
-      try validateSpeechText(transcribedText, mode: "TRANSCRIPTION-MODE")
-      return transcribedText
+      let normalizedText = normalizeTranscriptionText(transcribedText)
+      try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
+      return normalizedText
     }
   }
 
@@ -1021,46 +1023,72 @@ class SpeechService {
     guard !transcriptions.isEmpty else { return "" }
     
     if transcriptions.count == 1 {
-      return transcriptions[0].trimmingCharacters(in: .whitespacesAndNewlines)
+      return normalizeTranscriptionText(transcriptions[0])
     }
     
-    var merged = transcriptions[0].trimmingCharacters(in: .whitespacesAndNewlines)
+    var merged = normalizeTranscriptionText(transcriptions[0])
     
     for i in 1..<transcriptions.count {
-      let current = transcriptions[i].trimmingCharacters(in: .whitespacesAndNewlines)
+      let current = normalizeTranscriptionText(transcriptions[i])
+      
+      if current.isEmpty {
+        continue
+      }
       
       // Try to find overlap between end of merged and start of current
       let overlap = findTranscriptionOverlap(merged, current)
       
       if overlap.count > 5 {  // Meaningful overlap found
         // Remove overlap from current transcription
-        let remainingCurrent = String(current.dropFirst(overlap.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        let remainingCurrent = normalizeTranscriptionText(String(current.dropFirst(overlap.count)))
         if !remainingCurrent.isEmpty {
-          merged += " " + remainingCurrent
+          // Only add space if merged doesn't already end with whitespace
+          if merged.last?.isWhitespace == true {
+            merged += remainingCurrent
+          } else {
+            merged += " " + remainingCurrent
+          }
         }
       } else {
         // No meaningful overlap, just concatenate with space
-        if !current.isEmpty {
+        // Only add space if merged doesn't already end with whitespace
+        if merged.last?.isWhitespace == true {
+          merged += current
+        } else {
           merged += " " + current
         }
       }
     }
     
-    return merged
+    return normalizeTranscriptionText(merged)
+  }
+  
+  private func normalizeTranscriptionText(_ text: String) -> String {
+    // Remove excessive whitespace and normalize line breaks
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    
+    // Replace multiple consecutive whitespace characters with single space
+    let normalized = trimmed.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+    
+    return normalized
   }
   
   private func findTranscriptionOverlap(_ text1: String, _ text2: String) -> String {
     let words1 = text1.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
     let words2 = text2.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
     
+    // If either text has fewer than 2 words, no meaningful overlap possible
+    guard words1.count >= 2 && words2.count >= 2 else { return "" }
+    
     var maxOverlap = ""
     
-    // Look for overlapping word sequences (minimum 2 words)
-    for i in max(0, words1.count - 10)..<words1.count {
-      for j in 0..<min(words2.count, 10) {
+    // Look for overlapping word sequences (minimum 2 words, maximum 5 words for better accuracy)
+    for i in max(0, words1.count - 5)..<words1.count {
+      for j in 0..<min(words2.count, 5) {
         let suffix = Array(words1[i...])
         let prefix = Array(words2[0...j])
         
+        // Check if suffix and prefix match exactly
         if suffix.count >= 2 && prefix.count >= 2 && suffix == prefix {
           let overlap = suffix.joined(separator: " ")
           if overlap.count > maxOverlap.count {
@@ -1070,7 +1098,8 @@ class SpeechService {
       }
     }
     
-    return maxOverlap
+    // Only return overlap if it's meaningful (at least 2 words and reasonable length)
+    return maxOverlap.count > 5 ? maxOverlap : ""
   }
 
   // MARK: - TTS Chunking Helpers
@@ -1661,3 +1690,5 @@ extension SpeechService {
     }
   }
 }
+
+
