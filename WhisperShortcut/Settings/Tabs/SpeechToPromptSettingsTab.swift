@@ -128,15 +128,31 @@ struct SpeechToPromptSettingsTab: View {
   // MARK: - Model Section
   @ViewBuilder
   private var modelSection: some View {
-    GPTModelSelectionView(
-      title: "🧠 GPT-Audio Model",
-      selectedModel: $viewModel.data.selectedGPTAudioModel,
-      onModelChanged: {
-        Task {
-          await viewModel.saveSettings()
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      // GPT Model Selection
+      GPT5ModelSelectionView(
+        title: "🧠 GPT Model",
+        selectedModel: $viewModel.data.selectedPromptModel,
+        onModelChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
         }
+      )
+      
+      // Reasoning Effort Selection (only for models that support it)
+      if viewModel.data.selectedPromptModel.supportsReasoning {
+        ReasoningEffortSelectionView(
+          title: "⚡ Reasoning Effort",
+          selectedEffort: $viewModel.data.promptReasoningEffort,
+          onEffortChanged: {
+            Task {
+              await viewModel.saveSettings()
+            }
+          }
+        )
       }
-    )
+    }
   }
 
   // MARK: - Conversation Memory Section

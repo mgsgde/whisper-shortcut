@@ -35,7 +35,16 @@ class SettingsViewModel: ObservableObject {
       data.selectedTranscriptionModel = .gpt4oMiniTranscribe
     }
 
-    // Load GPT-Audio model preference
+    // Load GPT model preference (for Prompt Mode)
+    if let savedModelString = UserDefaults.standard.string(forKey: "selectedPromptModel"),
+      let savedModel = GPTModel(rawValue: savedModelString)
+    {
+      data.selectedPromptModel = savedModel
+    } else {
+      data.selectedPromptModel = SettingsDefaults.selectedPromptModel
+    }
+
+    // Load GPT-Audio model preference (for Voice Response Mode)
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel"),
       let savedModel = GPTAudioModel(rawValue: savedModelString)
     {
@@ -67,14 +76,6 @@ class SettingsViewModel: ObservableObject {
       data.voiceResponseSystemPrompt = AppConstants.defaultVoiceResponseSystemPrompt
     }
 
-    // Load voice response playback speed
-    let savedVoiceResponsePlaybackSpeed = UserDefaults.standard.double(
-      forKey: "voiceResponsePlaybackSpeed")
-    if savedVoiceResponsePlaybackSpeed > 0 {
-      data.voiceResponsePlaybackSpeed = savedVoiceResponsePlaybackSpeed
-    } else {
-      data.voiceResponsePlaybackSpeed = SettingsDefaults.voiceResponsePlaybackSpeed
-    }
 
     // Load read selected text playback speed
     let savedReadSelectedTextPlaybackSpeed = UserDefaults.standard.double(
@@ -104,6 +105,23 @@ class SettingsViewModel: ObservableObject {
         ?? SettingsDefaults.voiceResponseConversationTimeout
     } else {
       data.voiceResponseConversationTimeout = SettingsDefaults.voiceResponseConversationTimeout
+    }
+
+    // Load reasoning effort settings
+    if let savedPromptReasoningEffort = UserDefaults.standard.string(forKey: "promptReasoningEffort"),
+      let promptEffort = ReasoningEffort(rawValue: savedPromptReasoningEffort)
+    {
+      data.promptReasoningEffort = promptEffort
+    } else {
+      data.promptReasoningEffort = SettingsDefaults.promptReasoningEffort
+    }
+
+    if let savedVoiceResponseReasoningEffort = UserDefaults.standard.string(forKey: "voiceResponseReasoningEffort"),
+      let voiceResponseEffort = ReasoningEffort(rawValue: savedVoiceResponseReasoningEffort)
+    {
+      data.voiceResponseReasoningEffort = voiceResponseEffort
+    } else {
+      data.voiceResponseReasoningEffort = SettingsDefaults.voiceResponseReasoningEffort
     }
 
     // Load popup notifications setting
@@ -260,15 +278,17 @@ class SettingsViewModel: ObservableObject {
     // Save model preferences
     UserDefaults.standard.set(
       data.selectedTranscriptionModel.rawValue, forKey: "selectedTranscriptionModel")
+    UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: "selectedPromptModel")
     UserDefaults.standard.set(data.selectedGPTAudioModel.rawValue, forKey: "selectedGPTAudioModel")
+    
+    // Save reasoning effort settings
+    UserDefaults.standard.set(data.promptReasoningEffort.rawValue, forKey: "promptReasoningEffort")
+    UserDefaults.standard.set(data.voiceResponseReasoningEffort.rawValue, forKey: "voiceResponseReasoningEffort")
 
     // Save prompts
     UserDefaults.standard.set(data.customPromptText, forKey: "customPromptText")
     UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: "promptModeSystemPrompt")
     UserDefaults.standard.set(data.voiceResponseSystemPrompt, forKey: "voiceResponseSystemPrompt")
-
-    // Save voice response playback speed
-    UserDefaults.standard.set(data.voiceResponsePlaybackSpeed, forKey: "voiceResponsePlaybackSpeed")
 
     // Save read selected text playback speed
     UserDefaults.standard.set(

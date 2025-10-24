@@ -43,17 +43,6 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
-      // Playback Speed Section
-      playbackSpeedSection
-
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
 
       // Conversation Memory Section
       conversationMemorySection
@@ -152,18 +141,6 @@ struct SpeechToPromptWithVoiceResponseSettingsTab: View {
     )
   }
 
-  // MARK: - Playback Speed Section
-  @ViewBuilder
-  private var playbackSpeedSection: some View {
-    PlaybackSpeedControl(
-      playbackSpeed: $viewModel.data.voiceResponsePlaybackSpeed,
-      onSpeedChanged: {
-        Task {
-          await viewModel.saveSettings()
-        }
-      }
-    )
-  }
 
   // MARK: - Conversation Memory Section
   @ViewBuilder
