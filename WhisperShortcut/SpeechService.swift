@@ -109,7 +109,6 @@ class SpeechService {
     keychainManager: KeychainManaging = KeychainManager.shared,
     clipboardManager: ClipboardManager? = nil
   ) {
-    DebugLogger.logSpeech("🎤 SPEECH: SpeechService init called")
     self.keychainManager = keychainManager
     self.clipboardManager = clipboardManager
     self.ttsService = TTSService(keychainManager: keychainManager)
@@ -162,7 +161,6 @@ class SpeechService {
     previousResponseTimestamp = nil
     previousResponseId = nil
     conversationMessages = []
-    DebugLogger.logInfo("CONVERSATION: History cleared")
   }
 
   internal func isConversationExpired(isVoiceResponse: Bool) -> Bool {
@@ -196,7 +194,6 @@ class SpeechService {
   // MARK: - Shared Validation
   func validateAPIKey(_ key: String) async throws -> Bool {
     guard !key.isEmpty else {
-      DebugLogger.logWarning("API key is empty")
       throw TranscriptionError.noAPIKey
     }
 
@@ -208,12 +205,10 @@ class SpeechService {
     let (data, response) = try await session.data(for: request)
 
     guard let httpResponse = response as? HTTPURLResponse else {
-      DebugLogger.logWarning("Invalid response from API validation")
       throw TranscriptionError.networkError("Invalid response")
     }
 
     if httpResponse.statusCode != 200 {
-      DebugLogger.logWarning("API validation failed with status \(httpResponse.statusCode)")
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
@@ -223,13 +218,10 @@ class SpeechService {
 
   // MARK: - Transcription Mode
   func transcribe(audioURL: URL) async throws -> String {
-    DebugLogger.logSpeech("🎤 TRANSCRIPTION-MODE: Starting transcription for \(audioURL.lastPathComponent)")
-    
     let audioDuration = getAudioDuration(audioURL)
     let audioSize = getAudioSize(audioURL)
 
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      DebugLogger.logError("❌ TRANSCRIPTION-MODE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
@@ -266,10 +258,7 @@ class SpeechService {
 
   // MARK: - Prompt Modes
   func executePrompt(audioURL: URL) async throws -> String {
-    DebugLogger.logSpeech("🎤 PROMPT-MODE: Starting unified prompt execution")
-    
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      DebugLogger.logWarning("PROMPT-MODE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
@@ -278,25 +267,17 @@ class SpeechService {
     let selectedPromptModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
     let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? .gpt5Mini
     
-    DebugLogger.logInfo("PROMPT-MODE: Selected model: \(selectedPromptModel.displayName)")
-    DebugLogger.logInfo("PROMPT-MODE: Model type: \(selectedPromptModel.requiresTranscription ? "Text-based (GPT-5)" : "Audio-based (GPT-Audio)")")
-    DebugLogger.logInfo("PROMPT-MODE: Model supports reasoning: \(selectedPromptModel.supportsReasoning)")
-    
     if selectedPromptModel.requiresTranscription {
       // GPT-5 models: transcribe first, then use text API
-      DebugLogger.logSpeech("🎤 PROMPT-MODE: Using GPT-5 path - transcribing audio first")
       let spokenText = try await transcribe(audioURL: audioURL)
       try validateSpeechText(spokenText, mode: "PROMPT-MODE")
-      DebugLogger.logInfo("PROMPT-MODE: Transcription completed: \(spokenText.prefix(100))...")
 
       let clipboardContext = getClipboardContext()
-      DebugLogger.logInfo("PROMPT-MODE: Clipboard context available: \(clipboardContext != nil)")
       
       return try await executeGPT5Prompt(
         userMessage: spokenText, clipboardContext: clipboardContext, apiKey: apiKey, selectedModel: selectedPromptModel)
     } else {
       // GPT-Audio models: use audio directly
-      DebugLogger.logSpeech("🎤 PROMPT-MODE: Using GPT-Audio path - sending audio directly")
       return try await executePromptWithAudioModel(audioURL: audioURL)
     }
   }
@@ -304,7 +285,6 @@ class SpeechService {
   private func executeGPT5Prompt(userMessage: String, clipboardContext: String?, apiKey: String, selectedModel: PromptModel)
     async throws -> String
   {
-    DebugLogger.logInfo("PROMPT-MODE: Executing GPT-5 prompt with model: \(selectedModel.displayName)")
     return try await executeGPT5Response(
       userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey,
       isVoiceResponse: false, selectedModel: selectedModel)
@@ -329,20 +309,16 @@ class SpeechService {
     
     if let model = selectedModel {
       // Use provided model (for Prompt Mode)
-      DebugLogger.logInfo("PROMPT-MODE: Converting PromptModel to GPTModel: \(model.displayName)")
       guard let gptModel = model.asGPTModel else {
-        DebugLogger.logError("PROMPT-MODE: Failed to convert PromptModel to GPTModel")
         throw TranscriptionError.networkError("Selected model is not a GPT-5 model")
       }
       selectedGPTModel = gptModel
-      DebugLogger.logInfo("PROMPT-MODE: Using GPT-5 model: \(selectedGPTModel.displayName)")
     } else {
       // Use UserDefaults (for Voice Response Mode)
       let modelKey = isVoiceResponse ? "selectedVoiceResponseModel" : "selectedPromptModel"
       let selectedGPTModelString =
         UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
       selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5Mini
-      DebugLogger.logInfo("PROMPT-MODE: Using UserDefaults model: \(selectedGPTModel.displayName)")
     }
 
     let url = URL(string: Constants.responsesEndpoint)!
@@ -366,13 +342,8 @@ class SpeechService {
       let savedReasoningEffort =
         UserDefaults.standard.string(forKey: reasoningEffortKey) ?? defaultReasoningEffort
       reasoningConfig = GPT5ResponseRequest.ReasoningConfig(effort: savedReasoningEffort)
-      DebugLogger.logInfo(
-        "PROMPT-MODE: Using reasoning effort '\(savedReasoningEffort)' for model \(selectedGPTModel.rawValue)"
-      )
     } else {
       reasoningConfig = nil
-      DebugLogger.logInfo(
-        "PROMPT-MODE: Model \(selectedGPTModel.rawValue) does not support reasoning parameters")
     }
 
     let effectivePreviousResponseId = isConversationExpired(isVoiceResponse: isVoiceResponse)
@@ -396,21 +367,15 @@ class SpeechService {
     let (data, response) = try await session.data(for: request)
 
     guard let httpResponse = response as? HTTPURLResponse else {
-      DebugLogger.logWarning("PROMPT-MODE: Invalid response type from GPT-5")
       throw TranscriptionError.networkError("Invalid response")
     }
 
     if httpResponse.statusCode != 200 {
-      DebugLogger.logWarning("PROMPT-MODE: GPT-5 HTTP error \(httpResponse.statusCode)")
-      if let errorBody = String(data: data, encoding: .utf8) {
-        DebugLogger.logWarning("PROMPT-MODE: Error response body: \(errorBody)")
-      }
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
 
     let result = try parseGPT5Response(data: data)
-    DebugLogger.logInfo("PROMPT-MODE: GPT-5 response received: \(result.prefix(100))...")
     return result
   }
 
@@ -479,10 +444,7 @@ class SpeechService {
   func executePromptWithVoiceResponse(audioURL: URL, clipboardContext: String? = nil) async throws
     -> String
   {
-    DebugLogger.logSpeech("🎤 GPT-AUDIO-VOICE: Starting voice response with audio input")
-    
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      DebugLogger.logError("❌ GPT-AUDIO-VOICE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
@@ -507,7 +469,6 @@ class SpeechService {
       supportedFormat = "wav"  // fallback
     }
     
-    DebugLogger.logInfo("GPT-AUDIO-VOICE: Audio format: \(supportedFormat), size: \(audioData.count) bytes")
     
     // Build request
     let url = URL(string: Constants.chatEndpoint)!
@@ -542,7 +503,6 @@ class SpeechService {
     // Add conversation history if not expired
     if !isConversationExpired(isVoiceResponse: true) {
       messages.append(contentsOf: conversationMessages)
-      DebugLogger.logInfo("GPT-AUDIO-VOICE: Including \(conversationMessages.count) history messages")
     }
     
     // User message with text context and audio
@@ -581,20 +541,13 @@ class SpeechService {
     
     request.httpBody = try JSONEncoder().encode(chatRequest)
     
-    DebugLogger.logInfo("GPT-AUDIO-VOICE: Sending request to GPT-Audio API with audio output")
-    
     let (data, responseData) = try await session.data(for: request)
     
     guard let httpResponse = responseData as? HTTPURLResponse else {
-      DebugLogger.logWarning("GPT-AUDIO-VOICE: Invalid response type")
       throw TranscriptionError.networkError("Invalid response")
     }
     
     if httpResponse.statusCode != 200 {
-      DebugLogger.logWarning("GPT-AUDIO-VOICE: HTTP error \(httpResponse.statusCode)")
-      if let errorBody = String(data: data, encoding: .utf8) {
-        DebugLogger.logWarning("GPT-AUDIO-VOICE: Error response body: \(errorBody)")
-      }
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
@@ -602,7 +555,6 @@ class SpeechService {
     let result = try JSONDecoder().decode(GPTAudioChatResponse.self, from: data)
     
     guard let firstChoice = result.choices.first else {
-      DebugLogger.logWarning("GPT-AUDIO-VOICE: No choices in response")
       throw TranscriptionError.networkError("No choices in GPT-Audio response")
     }
     
@@ -624,7 +576,6 @@ class SpeechService {
     
     // Extract audio output
     guard let audioOutput = firstChoice.message.audio else {
-      DebugLogger.logWarning("GPT-AUDIO-VOICE: No audio output in response, falling back to TTS")
       // Fallback to TTS if no audio
       clipboardManager?.copyToClipboard(text: textContent)
       let speed = 1.0  // Fixed playback speed for GPT Audio (not user-configurable)
@@ -644,15 +595,10 @@ class SpeechService {
       return textContent
     }
     
-    DebugLogger.logSpeech("✅ GPT-AUDIO-VOICE: Successfully received audio response (no TTS needed!)")
-    
     // Decode base64 audio
     guard let audioData = Data(base64Encoded: audioOutput.data) else {
-      DebugLogger.logWarning("GPT-AUDIO-VOICE: Failed to decode base64 audio")
       throw TranscriptionError.networkError("Failed to decode audio data")
     }
-    
-    DebugLogger.logInfo("GPT-AUDIO-VOICE: Decoded audio size: \(audioData.count) bytes")
     
     // Copy transcript to clipboard (falls vorhanden, sonst textContent)
     let transcriptText = audioOutput.transcript ?? textContent
@@ -676,11 +622,10 @@ class SpeechService {
     
     switch playbackResult {
     case .completedSuccessfully:
-      DebugLogger.logInfo("GPT-AUDIO-VOICE: Audio playback completed successfully")
+      break
     case .stoppedByUser:
-      DebugLogger.logInfo("GPT-AUDIO-VOICE: Audio playback stopped by user")
+      break
     case .failed:
-      DebugLogger.logWarning("GPT-AUDIO-VOICE: Audio playback failed")
       throw TranscriptionError.networkError("Audio playback failed")
     }
 
@@ -706,10 +651,7 @@ class SpeechService {
   }
 
   func executePromptWithAudioModel(audioURL: URL) async throws -> String {
-    DebugLogger.logSpeech("🎤 PROMPT-AUDIO-MODE: Starting prompt with audio model")
-    
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      DebugLogger.logError("❌ PROMPT-AUDIO-MODE: No API key available")
       throw TranscriptionError.noAPIKey
     }
 
@@ -734,7 +676,7 @@ class SpeechService {
       supportedFormat = "wav"  // fallback
     }
     
-    DebugLogger.logInfo("PROMPT-AUDIO-MODE: Audio format: \(supportedFormat), size: \(audioData.count) bytes")
+    
     
     // Build request
     let url = URL(string: Constants.chatEndpoint)!
@@ -757,15 +699,14 @@ class SpeechService {
     let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gpt-audio-mini"
     let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gptAudioMini
     
-    DebugLogger.logInfo("PROMPT-AUDIO-MODE: Selected PromptModel: \(selectedPromptModel.displayName)")
+    
     
     // Convert to GPTAudioModel for API call
     guard let audioModel = selectedPromptModel.asGPTAudioModel else {
-      DebugLogger.logError("PROMPT-AUDIO-MODE: Failed to convert PromptModel to GPTAudioModel")
       throw TranscriptionError.networkError("Selected model is not a GPT-Audio model")
     }
     
-    DebugLogger.logInfo("PROMPT-AUDIO-MODE: Using GPT-Audio model: \(audioModel.displayName)")
+    
     
     // Create messages
     var messages: [GPTAudioChatRequest.GPTAudioMessage] = []
@@ -779,9 +720,6 @@ class SpeechService {
     // Add conversation history if not expired
     if !isConversationExpired(isVoiceResponse: false) {
       messages.append(contentsOf: conversationMessages)
-      DebugLogger.logInfo("PROMPT-AUDIO-MODE: Including \(conversationMessages.count) history messages")
-    } else {
-      DebugLogger.logInfo("PROMPT-AUDIO-MODE: Conversation expired, starting fresh")
     }
     
     // User message with text context and audio
@@ -789,14 +727,11 @@ class SpeechService {
     
     // Add clipboard context if available
     if let context = clipboardContext {
-      DebugLogger.logInfo("PROMPT-AUDIO-MODE: Adding clipboard context: \(context.prefix(50))...")
       contentParts.append(GPTAudioChatRequest.GPTAudioMessage.ContentPart(
         type: "text",
         text: "Context (selected text from clipboard):\n\(context)",
         input_audio: nil
       ))
-    } else {
-      DebugLogger.logInfo("PROMPT-AUDIO-MODE: No clipboard context available")
     }
     
     // Add audio input
@@ -824,60 +759,42 @@ class SpeechService {
     
     request.httpBody = try JSONEncoder().encode(chatRequest)
     
-    DebugLogger.logInfo("PROMPT-AUDIO-MODE: Sending request to GPT-Audio API (text output only)")
     
+
     let (data, responseData) = try await session.data(for: request)
     
     guard let httpResponse = responseData as? HTTPURLResponse else {
-      DebugLogger.logWarning("PROMPT-AUDIO-MODE: Invalid response type")
       throw TranscriptionError.networkError("Invalid response")
     }
     
     if httpResponse.statusCode != 200 {
-      DebugLogger.logWarning("PROMPT-AUDIO-MODE: HTTP error \(httpResponse.statusCode)")
-      if let errorBody = String(data: data, encoding: .utf8) {
-        DebugLogger.logWarning("PROMPT-AUDIO-MODE: Error response body: \(errorBody)")
-      }
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
     
     let result = try JSONDecoder().decode(GPTAudioChatResponse.self, from: data)
     
-    DebugLogger.logInfo("PROMPT-AUDIO-MODE: API response received, choices count: \(result.choices.count)")
-    
     guard let firstChoice = result.choices.first else {
-      DebugLogger.logWarning("PROMPT-AUDIO-MODE: No choices in response")
       throw TranscriptionError.networkError("No choices in GPT-Audio response")
     }
     
-    DebugLogger.logInfo("PROMPT-AUDIO-MODE: First choice message content type: \(type(of: firstChoice.message.content))")
+    
     
     // Extract text content for clipboard and display
     var textContent = ""
     if let content = firstChoice.message.content {
-      DebugLogger.logInfo("PROMPT-AUDIO-MODE: Processing content: \(content)")
       switch content {
       case .text(let text):
-        DebugLogger.logInfo("PROMPT-AUDIO-MODE: Text content: '\(text)'")
         textContent = text
       case .multiContent(let parts):
-        DebugLogger.logInfo("PROMPT-AUDIO-MODE: Multi-content with \(parts.count) parts")
         // Extract text from multi-content
-        for (index, part) in parts.enumerated() {
-          DebugLogger.logInfo("PROMPT-AUDIO-MODE: Part \(index): type=\(part.type), text=\(part.text ?? "nil")")
+        for part in parts {
           if part.type == "text", let text = part.text {
             textContent += text
           }
         }
       }
-    } else {
-      DebugLogger.logWarning("PROMPT-AUDIO-MODE: No content in response message")
     }
-    
-    DebugLogger.logSpeech("✅ PROMPT-AUDIO-MODE: Successfully received text response: \(textContent.prefix(100))...")
-    DebugLogger.logInfo("PROMPT-AUDIO-MODE: Full response length: \(textContent.count) characters")
-    DebugLogger.logInfo("PROMPT-AUDIO-MODE: Full response content: '\(textContent)'")
     
     // Save conversation for next request (text-only, no audio data)
     let userMessageText: String
@@ -887,7 +804,7 @@ class SpeechService {
       userMessageText = "User spoke"
     }
     
-    DebugLogger.logInfo("PROMPT-AUDIO-MODE: Saving conversation history")
+    
     conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
       role: "user",
       content: .text(userMessageText)
@@ -914,13 +831,11 @@ class SpeechService {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
     if trimmedText.isEmpty || trimmedText.count < Constants.minimumTextLength {
-      DebugLogger.logWarning("\(mode): No meaningful speech detected")
       throw TranscriptionError.noSpeechDetected
     }
 
     let defaultPrompt = AppConstants.defaultTranscriptionSystemPrompt
     if trimmedText.contains(defaultPrompt) || trimmedText.hasPrefix("context:") {
-      DebugLogger.logWarning("\(mode): System prompt detected in transcription")
       throw TranscriptionError.noSpeechDetected
     }
   }
@@ -946,7 +861,6 @@ class SpeechService {
       let attributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
       return attributes[.size] as? Int64 ?? 0
     } catch {
-      DebugLogger.logWarning("STT-CHUNKING: Could not get audio file size: \(error)")
       return 0
     }
   }
@@ -954,7 +868,6 @@ class SpeechService {
   // MARK: - Silence Detection
   private func detectSilencePauses(_ audioURL: URL) -> [TimeInterval] {
     guard let audioFile = try? AVAudioFile(forReading: audioURL) else {
-      DebugLogger.logWarning("STT-CHUNKING: Could not open audio file for silence detection")
       return []
     }
     
@@ -962,19 +875,16 @@ class SpeechService {
     let frameCount = AVAudioFrameCount(audioFile.length)
     
     guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
-      DebugLogger.logWarning("STT-CHUNKING: Could not create audio buffer")
       return []
     }
     
     do {
       try audioFile.read(into: buffer)
     } catch {
-      DebugLogger.logWarning("STT-CHUNKING: Could not read audio file: \(error)")
       return []
     }
     
     guard let floatChannelData = buffer.floatChannelData else {
-      DebugLogger.logWarning("STT-CHUNKING: No float channel data available")
       return []
     }
     
@@ -1490,7 +1400,6 @@ class SpeechService {
     try await Task.sleep(nanoseconds: Constants.clipboardCopyDelay)
 
     guard let selectedText = getClipboardContext(), !selectedText.isEmpty else {
-      DebugLogger.logWarning("SELECTED-TEXT-TTS: No text found in selection")
       throw TranscriptionError.networkError("No text selected to read")
     }
 
@@ -1532,23 +1441,19 @@ class SpeechService {
   private func validateAudioFile(at url: URL) throws {
     let fileExtension = url.pathExtension.lowercased()
     if !Constants.supportedAudioExtensions.contains(fileExtension) {
-      DebugLogger.logWarning("Unsupported audio format: \(fileExtension)")
       throw TranscriptionError.fileError("Unsupported audio format: \(fileExtension)")
     }
 
     let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
     guard let fileSize = attributes[.size] as? Int64 else {
-      DebugLogger.logWarning("Cannot read file size")
       throw TranscriptionError.fileError("Cannot read file size")
     }
 
     if fileSize == 0 {
-      DebugLogger.logWarning("Empty audio file")
       throw TranscriptionError.emptyFile
     }
 
     if fileSize > Constants.maxFileSize {
-      DebugLogger.logWarning("File too large (\(fileSize) > \(Constants.maxFileSize))")
       throw TranscriptionError.fileTooLarge
     }
   }
@@ -1629,17 +1534,8 @@ class SpeechService {
         }
       }
 
-      if (try? JSONSerialization.jsonObject(with: data, options: [])) != nil {
-        DebugLogger.logWarning(
-          "PROMPT-MODE: Unexpected response structure, attempting fallback parsing")
-      }
-
       throw TranscriptionError.networkError("Could not extract text from GPT-5 response")
     } catch {
-      if (try? JSONSerialization.jsonObject(with: data, options: [])) != nil {
-        DebugLogger.logWarning("PROMPT-MODE: Failed to decode response, raw structure available")
-      }
-
       throw error
     }
   }

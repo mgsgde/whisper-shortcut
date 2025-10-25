@@ -44,7 +44,6 @@ import os.log
 /// DebugLogger.log("General message")
 /// DebugLogger.logError("Error occurred")
 /// DebugLogger.logDebug("Debug information")
-/// DebugLogger.logInfo("Info message")
 /// DebugLogger.logWarning("Warning message")
 /// DebugLogger.logSuccess("Success message")
 /// ```

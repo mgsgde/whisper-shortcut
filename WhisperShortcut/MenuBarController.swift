@@ -8,7 +8,7 @@ class MenuBarController: NSObject {
   // MARK: - Single Source of Truth
   private var appState: AppState = .idle {
     didSet {
-      DebugLogger.logInfo("🔄 State transition: \(oldValue) → \(appState)")
+      
       updateUI()
 
       // Auto-reset feedback states after their duration
@@ -414,7 +414,7 @@ class MenuBarController: NSObject {
     // Export recent history to temp file and open it
     if let historyURL = HistoryLogger.shared.exportRecentToTempFile() {
       NSWorkspace.shared.open(historyURL)
-      DebugLogger.logInfo("📖 Opened history file: \(historyURL.path)")
+      
     } else {
       DebugLogger.logError("❌ Failed to export history file")
     }
@@ -584,7 +584,7 @@ class MenuBarController: NSObject {
   // MARK: - TTS Ready Handlers (Keep Processing State for Blinking)
   @objc private func voiceResponseReadyToSpeak() {
     // TTS is ready but keep processing state with blinking until actual playback starts
-    DebugLogger.logInfo("🔊 Voice response TTS ready - maintaining processing state for blinking")
+    
     // DO NOT change state here - let VoicePlaybackStarted handle the transition
   }
 
@@ -612,8 +612,6 @@ class MenuBarController: NSObject {
 
         // DO NOT change state here - keep processing state for blinking
         // Let ReadSelectedTextPlaybackStarted handle the transition to playback
-        DebugLogger.logInfo(
-          "📖 Read selected text TTS ready - maintaining processing state for blinking")
       }
     }
   }

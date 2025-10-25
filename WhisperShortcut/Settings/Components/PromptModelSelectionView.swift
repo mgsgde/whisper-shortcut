@@ -41,7 +41,7 @@ struct PromptModelSelectionView: View {
           .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
           .contentShape(Rectangle())
           .onTapGesture {
-            DebugLogger.logInfo("SETTINGS: User selected model: \(model.displayName) (requires transcription: \(model.requiresTranscription))")
+            
             selectedModel = model
             onModelChanged?()
           }
