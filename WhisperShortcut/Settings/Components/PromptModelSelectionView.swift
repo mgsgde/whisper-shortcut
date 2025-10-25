@@ -36,10 +36,6 @@ struct PromptModelSelectionView: View {
                 .font(.system(.body, design: .default))
                 .fontWeight(.medium)
                 .foregroundColor(selectedModel == model ? .white : .primary)
-              
-              Text(model.requiresTranscription ? "Text-based" : "Audio-based")
-                .font(.caption2)
-                .foregroundColor(selectedModel == model ? .white.opacity(0.8) : .secondary)
             }
           }
           .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
@@ -75,18 +71,6 @@ struct PromptModelSelectionView: View {
             .font(.callout)
             .fontWeight(.semibold)
             .foregroundColor(costLevelColor(for: selectedModel.costLevel))
-          
-          Spacer()
-          
-          Text("Type:")
-            .font(.callout)
-            .fontWeight(.medium)
-            .foregroundColor(.secondary)
-          
-          Text(selectedModel.requiresTranscription ? "Text-based" : "Audio-based")
-            .font(.callout)
-            .fontWeight(.semibold)
-            .foregroundColor(.blue)
         }
 
         if selectedModel.isRecommended {

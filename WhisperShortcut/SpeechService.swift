@@ -844,28 +844,40 @@ class SpeechService {
     
     let result = try JSONDecoder().decode(GPTAudioChatResponse.self, from: data)
     
+    DebugLogger.logInfo("PROMPT-AUDIO-MODE: API response received, choices count: \(result.choices.count)")
+    
     guard let firstChoice = result.choices.first else {
       DebugLogger.logWarning("PROMPT-AUDIO-MODE: No choices in response")
       throw TranscriptionError.networkError("No choices in GPT-Audio response")
     }
     
+    DebugLogger.logInfo("PROMPT-AUDIO-MODE: First choice message content type: \(type(of: firstChoice.message.content))")
+    
     // Extract text content for clipboard and display
     var textContent = ""
     if let content = firstChoice.message.content {
+      DebugLogger.logInfo("PROMPT-AUDIO-MODE: Processing content: \(content)")
       switch content {
       case .text(let text):
+        DebugLogger.logInfo("PROMPT-AUDIO-MODE: Text content: '\(text)'")
         textContent = text
       case .multiContent(let parts):
+        DebugLogger.logInfo("PROMPT-AUDIO-MODE: Multi-content with \(parts.count) parts")
         // Extract text from multi-content
-        for part in parts {
+        for (index, part) in parts.enumerated() {
+          DebugLogger.logInfo("PROMPT-AUDIO-MODE: Part \(index): type=\(part.type), text=\(part.text ?? "nil")")
           if part.type == "text", let text = part.text {
             textContent += text
           }
         }
       }
+    } else {
+      DebugLogger.logWarning("PROMPT-AUDIO-MODE: No content in response message")
     }
     
     DebugLogger.logSpeech("✅ PROMPT-AUDIO-MODE: Successfully received text response: \(textContent.prefix(100))...")
+    DebugLogger.logInfo("PROMPT-AUDIO-MODE: Full response length: \(textContent.count) characters")
+    DebugLogger.logInfo("PROMPT-AUDIO-MODE: Full response content: '\(textContent)'")
     
     // Save conversation for next request (text-only, no audio data)
     let userMessageText: String

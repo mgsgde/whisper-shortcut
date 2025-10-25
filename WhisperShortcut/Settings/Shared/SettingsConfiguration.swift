@@ -146,11 +146,9 @@ enum PromptModel: String, CaseIterable {
   
   var isRecommended: Bool {
     switch self {
-    case .gpt5:
-      return true  // Default GPT-5 model
     case .gptAudioMini:
       return true  // Default GPT-Audio model
-    case .gpt5Nano, .gpt5Mini, .gpt5ChatLatest, .gptAudio:
+    case .gpt5, .gpt5Nano, .gpt5Mini, .gpt5ChatLatest, .gptAudio:
       return false
     }
   }
@@ -314,7 +312,7 @@ struct SettingsDefaults {
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gpt4oMiniTranscribe
-  static let selectedPromptModel = PromptModel.gpt5Mini
+  static let selectedPromptModel = PromptModel.gptAudioMini
   static let selectedGPTAudioModel = GPTAudioModel.gptAudioMini
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
