@@ -1,69 +1,7 @@
 import Foundation
 
-// MARK: - GPT Model Enum (for Prompt Mode)
-enum GPTModel: String, CaseIterable {
-  case gpt5Nano = "gpt-5-nano"
-  case gpt5Mini = "gpt-5-mini"
-  case gpt5ChatLatest = "gpt-5-chat-latest"
-  case gpt5 = "gpt-5"
-
-  var displayName: String {
-    switch self {
-    case .gpt5Nano:
-      return "GPT-5 Nano"
-    case .gpt5Mini:
-      return "GPT-5 Mini"
-    case .gpt5ChatLatest:
-      return "GPT-5 Chat Latest"
-    case .gpt5:
-      return "GPT-5"
-    }
-  }
-
-  var description: String {
-    switch self {
-    case .gpt5Nano:
-      return "Ultraleicht • Günstig • Für einfache Prompts"
-    case .gpt5Mini:
-      return "Standard • Günstig • Gute Allround-Qualität"
-    case .gpt5ChatLatest:
-      return "Chat-optimiert • Schnell • Wie ChatGPT-App"
-    case .gpt5:
-      return "Reasoning-Power • Komplexe Antworten • Höchste Qualität"
-    }
-  }
-
-  var isRecommended: Bool {
-    switch self {
-    case .gpt5:
-      return true  // Default-Modell
-    case .gpt5Nano, .gpt5Mini, .gpt5ChatLatest:
-      return false
-    }
-  }
-
-  var costLevel: String {
-    switch self {
-    case .gpt5Nano:
-      return "Minimal"
-    case .gpt5Mini:
-      return "Low"
-    case .gpt5ChatLatest:
-      return "High"  // Gleicher Preis wie GPT-5
-    case .gpt5:
-      return "High"
-    }
-  }
-
-  var supportsReasoning: Bool {
-    switch self {
-    case .gpt5:
-      return true
-    case .gpt5Nano, .gpt5Mini, .gpt5ChatLatest:
-      return false
-    }
-  }
-}
+// MARK: - GPT Model Enum (for Prompt Mode) - REMOVED
+// GPT-5 models removed - only using GPT-Audio models now
 
 // MARK: - Reasoning Effort Enum
 enum ReasoningEffort: String, CaseIterable {
@@ -98,28 +36,14 @@ enum ReasoningEffort: String, CaseIterable {
   }
 }
 
-// MARK: - Unified Prompt Model Enum (for Prompt Mode)
+// MARK: - Unified Prompt Model Enum (for Prompt Mode) - Simplified to GPT-Audio only
 enum PromptModel: String, CaseIterable {
-  // GPT-5 Models (text-based, require transcription)
-  case gpt5Nano = "gpt-5-nano"
-  case gpt5Mini = "gpt-5-mini"
-  case gpt5ChatLatest = "gpt-5-chat-latest"
-  case gpt5 = "gpt-5"
-  
   // GPT-Audio Models (audio-based, direct audio input)
   case gptAudio = "gpt-audio"
   case gptAudioMini = "gpt-audio-mini"
   
   var displayName: String {
     switch self {
-    case .gpt5Nano:
-      return "GPT-5 Nano"
-    case .gpt5Mini:
-      return "GPT-5 Mini"
-    case .gpt5ChatLatest:
-      return "GPT-5 Chat Latest"
-    case .gpt5:
-      return "GPT-5"
     case .gptAudio:
       return "GPT-Audio"
     case .gptAudioMini:
@@ -129,14 +53,6 @@ enum PromptModel: String, CaseIterable {
   
   var description: String {
     switch self {
-    case .gpt5Nano:
-      return "Ultraleicht • Günstig • Für einfache Prompts"
-    case .gpt5Mini:
-      return "Standard • Günstig • Gute Allround-Qualität"
-    case .gpt5ChatLatest:
-      return "Chat-optimiert • Schnell • Wie ChatGPT-App"
-    case .gpt5:
-      return "Reasoning-Power • Komplexe Antworten • Höchste Qualität"
     case .gptAudio:
       return "Best quality • Native audio understanding • For complex tasks"
     case .gptAudioMini:
@@ -148,21 +64,13 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gptAudioMini:
       return true  // Default GPT-Audio model
-    case .gpt5, .gpt5Nano, .gpt5Mini, .gpt5ChatLatest, .gptAudio:
+    case .gptAudio:
       return false
     }
   }
   
   var costLevel: String {
     switch self {
-    case .gpt5Nano:
-      return "Minimal"
-    case .gpt5Mini:
-      return "Low"
-    case .gpt5ChatLatest:
-      return "High"
-    case .gpt5:
-      return "High"
     case .gptAudio:
       return "High"
     case .gptAudioMini:
@@ -171,48 +79,22 @@ enum PromptModel: String, CaseIterable {
   }
   
   var supportsReasoning: Bool {
-    switch self {
-    case .gpt5:
-      return true
-    case .gpt5Nano, .gpt5Mini, .gpt5ChatLatest, .gptAudio, .gptAudioMini:
-      return false
-    }
+    // GPT-Audio models don't support reasoning parameters
+    return false
   }
   
   var requiresTranscription: Bool {
-    switch self {
-    case .gpt5Nano, .gpt5Mini, .gpt5ChatLatest, .gpt5:
-      return true  // GPT-5 models need text input
-    case .gptAudio, .gptAudioMini:
-      return false  // GPT-Audio models accept audio directly
-    }
+    // GPT-Audio models accept audio directly
+    return false
   }
   
-  // Convert to internal GPTModel for API calls (for GPT-5 models)
-  var asGPTModel: GPTModel? {
-    switch self {
-    case .gpt5Nano:
-      return .gpt5Nano
-    case .gpt5Mini:
-      return .gpt5Mini
-    case .gpt5ChatLatest:
-      return .gpt5ChatLatest
-    case .gpt5:
-      return .gpt5
-    case .gptAudio, .gptAudioMini:
-      return nil  // Not GPT-5 models
-    }
-  }
-  
-  // Convert to internal GPTAudioModel for API calls (for GPT-Audio models)
+  // Convert to internal GPTAudioModel for API calls
   var asGPTAudioModel: GPTAudioModel? {
     switch self {
     case .gptAudio:
       return .gptAudio
     case .gptAudioMini:
       return .gptAudioMini
-    case .gpt5Nano, .gpt5Mini, .gpt5ChatLatest, .gpt5:
-      return nil  // Not GPT-Audio models
     }
   }
 }

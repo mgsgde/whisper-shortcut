@@ -20,7 +20,7 @@ struct PromptModelSelectionView: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: title,
-        subtitle: "Choose between GPT-5 models (text-based) and GPT-Audio models (direct audio input)"
+        subtitle: "Choose between GPT-Audio models for direct audio input processing"
       )
 
       // Model Selection Grid
@@ -108,7 +108,7 @@ struct PromptModelSelectionView: View {
 #if DEBUG
   struct PromptModelSelectionView_Previews: PreviewProvider {
     static var previews: some View {
-      @State var selectedModel: PromptModel = .gpt5Mini
+      @State var selectedModel: PromptModel = .gptAudioMini
 
       PromptModelSelectionView(title: "Model Selection", selectedModel: $selectedModel)
         .padding()

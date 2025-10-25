@@ -35,35 +35,13 @@ class SettingsViewModel: ObservableObject {
       data.selectedTranscriptionModel = .gpt4oMiniTranscribe
     }
 
-    // Load Prompt model preference (for Prompt Mode) with migration from old GPTModel
+    // Load Prompt model preference (for Prompt Mode) - simplified to GPT-Audio only
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedPromptModel"),
       let savedModel = PromptModel(rawValue: savedModelString)
     {
-      
       data.selectedPromptModel = savedModel
     } else {
-      // Migration: Check for old GPTModel format and convert to PromptModel
-      if let oldModelString = UserDefaults.standard.string(forKey: "selectedPromptModel"),
-         let oldModel = GPTModel(rawValue: oldModelString) {
-        
-        // Convert old GPTModel to corresponding PromptModel
-        switch oldModel {
-        case .gpt5Nano:
-          data.selectedPromptModel = .gpt5Nano
-        case .gpt5Mini:
-          data.selectedPromptModel = .gpt5Mini
-        case .gpt5ChatLatest:
-          data.selectedPromptModel = .gpt5ChatLatest
-        case .gpt5:
-          data.selectedPromptModel = .gpt5
-        }
-        // Save the migrated value
-        UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: "selectedPromptModel")
-        
-      } else {
-        
-        data.selectedPromptModel = SettingsDefaults.selectedPromptModel
-      }
+      data.selectedPromptModel = SettingsDefaults.selectedPromptModel
     }
 
     // Load GPT-Audio model preference (for Voice Response Mode)

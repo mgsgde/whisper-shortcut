@@ -140,18 +140,7 @@ struct SpeechToPromptSettingsTab: View {
         }
       )
       
-      // Reasoning Effort Selection (only for models that support it)
-      if viewModel.data.selectedPromptModel.supportsReasoning {
-        ReasoningEffortSelectionView(
-          title: "⚡ Reasoning Effort",
-          selectedEffort: $viewModel.data.promptReasoningEffort,
-          onEffortChanged: {
-            Task {
-              await viewModel.saveSettings()
-            }
-          }
-        )
-      }
+      // Reasoning Effort removed - GPT-Audio models don't support reasoning
     }
   }
 

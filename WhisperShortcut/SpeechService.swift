@@ -11,7 +11,7 @@ private enum Constants {
   static let transcriptionEndpoint = "https://api.openai.com/v1/audio/transcriptions"
   static let chatEndpoint = "https://api.openai.com/v1/chat/completions"
   static let modelsEndpoint = "https://api.openai.com/v1/models"
-  static let responsesEndpoint = "https://api.openai.com/v1/responses"
+  // GPT-5 responses endpoint removed - only using GPT-Audio models now
 
   // Text validation
   static let minimumTextLength = 3
@@ -145,8 +145,8 @@ class SpeechService {
   
   func getPromptModelInfo() -> String {
     let modelKey = "selectedPromptModel"
-    let selectedPromptModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
-    let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? .gpt5Mini
+    let selectedPromptModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gpt-audio-mini"
+    let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? .gptAudioMini
     return selectedPromptModel.displayName
   }
   
@@ -261,122 +261,12 @@ class SpeechService {
       throw TranscriptionError.noAPIKey
     }
 
-    // Get selected model to determine routing
-    let modelKey = "selectedPromptModel"
-    let selectedPromptModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
-    let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? .gpt5Mini
-    
-    if selectedPromptModel.requiresTranscription {
-      // GPT-5 models: transcribe first, then use text API
-      let spokenText = try await transcribe(audioURL: audioURL)
-      try validateSpeechText(spokenText, mode: "PROMPT-MODE")
-
-      let clipboardContext = getClipboardContext()
-      
-      return try await executeGPT5Prompt(
-        userMessage: spokenText, clipboardContext: clipboardContext, apiKey: apiKey, selectedModel: selectedPromptModel)
-    } else {
-      // GPT-Audio models: use audio directly
-      return try await executePromptWithAudioModel(audioURL: audioURL)
-    }
+    // GPT-Audio models: use audio directly (simplified - no more GPT-5 models)
+    return try await executePromptWithAudioModel(audioURL: audioURL)
   }
 
-  private func executeGPT5Prompt(userMessage: String, clipboardContext: String?, apiKey: String, selectedModel: PromptModel)
-    async throws -> String
-  {
-    return try await executeGPT5Response(
-      userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey,
-      isVoiceResponse: false, selectedModel: selectedModel)
-  }
-
-  private func executeGPT5PromptForVoiceResponse(
-    userMessage: String, clipboardContext: String?, apiKey: String
-  )
-    async throws -> String
-  {
-    return try await executeGPT5Response(
-      userMessage: userMessage, clipboardContext: clipboardContext, apiKey: apiKey,
-      isVoiceResponse: true)
-  }
-
-  private func executeGPT5Response(
-    userMessage: String, clipboardContext: String?, apiKey: String, isVoiceResponse: Bool = false, selectedModel: PromptModel? = nil
-  )
-    async throws -> String
-  {
-    let selectedGPTModel: GPTModel
-    
-    if let model = selectedModel {
-      // Use provided model (for Prompt Mode)
-      guard let gptModel = model.asGPTModel else {
-        throw TranscriptionError.networkError("Selected model is not a GPT-5 model")
-      }
-      selectedGPTModel = gptModel
-    } else {
-      // Use UserDefaults (for Voice Response Mode)
-      let modelKey = isVoiceResponse ? "selectedVoiceResponseModel" : "selectedPromptModel"
-      let selectedGPTModelString =
-        UserDefaults.standard.string(forKey: modelKey) ?? "gpt-5-mini"
-      selectedGPTModel = GPTModel(rawValue: selectedGPTModelString) ?? .gpt5Mini
-    }
-
-    let url = URL(string: Constants.responsesEndpoint)!
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-    let (userInput, systemInstructions) = buildPromptInputSeparated(
-      userMessage: userMessage, clipboardContext: clipboardContext, isVoiceResponse: isVoiceResponse
-    )
-
-    let reasoningConfig: GPT5ResponseRequest.ReasoningConfig?
-    if selectedGPTModel.supportsReasoning {
-      let reasoningEffortKey =
-        isVoiceResponse ? "voiceResponseReasoningEffort" : "promptReasoningEffort"
-      let defaultReasoningEffort =
-        isVoiceResponse
-        ? SettingsDefaults.voiceResponseReasoningEffort.rawValue
-        : SettingsDefaults.promptReasoningEffort.rawValue
-      let savedReasoningEffort =
-        UserDefaults.standard.string(forKey: reasoningEffortKey) ?? defaultReasoningEffort
-      reasoningConfig = GPT5ResponseRequest.ReasoningConfig(effort: savedReasoningEffort)
-    } else {
-      reasoningConfig = nil
-    }
-
-    let effectivePreviousResponseId = isConversationExpired(isVoiceResponse: isVoiceResponse)
-      ? nil : previousResponseId
-
-    let gpt5Request = GPT5ResponseRequest(
-      model: selectedGPTModel.rawValue,
-      input: userInput,
-      instructions: systemInstructions,
-      reasoning: reasoningConfig,
-      text: GPT5ResponseRequest.TextConfig(
-        format: GPT5ResponseRequest.TextConfig.TextFormat(type: "text")
-      ),
-      previous_response_id: effectivePreviousResponseId,
-      temperature: 1.0,
-      max_output_tokens: nil
-    )
-
-    request.httpBody = try JSONEncoder().encode(gpt5Request)
-
-    let (data, response) = try await session.data(for: request)
-
-    guard let httpResponse = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response")
-    }
-
-    if httpResponse.statusCode != 200 {
-      let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
-      throw error
-    }
-
-    let result = try parseGPT5Response(data: data)
-    return result
-  }
+  // MARK: - GPT-5 Functions Removed
+  // All GPT-5 related functions removed - only using GPT-Audio models now
 
   private func buildPromptInput(
     userMessage: String, clipboardContext: String?, isVoiceResponse: Bool = false
@@ -1614,28 +1504,8 @@ class SpeechService {
     return parseStatusCodeError(statusCode)
   }
 
-  private func parseGPT5Response(data: Data) throws -> String {
-    do {
-      let result = try JSONDecoder().decode(GPT5ResponseResponse.self, from: data)
-
-      previousResponseId = result.id
-      previousResponseTimestamp = Date()
-
-      for output in result.output {
-        if output.type == "message" {
-          for content in output.content ?? [] {
-            if content.type == "output_text" {
-              return content.text
-            }
-          }
-        }
-      }
-
-      throw TranscriptionError.networkError("Could not extract text from GPT-5 response")
-    } catch {
-      throw error
-    }
-  }
+  // MARK: - GPT-5 Response Parsing Removed
+  // GPT-5 response parsing removed - only using GPT-Audio models now
 
   private func parseOpenAIError(_ errorResponse: OpenAIErrorResponse, statusCode: Int)
     -> TranscriptionError
@@ -1735,45 +1605,8 @@ struct WhisperResponse: Codable {
   let text: String
 }
 
-// GPT-5 Response Request
-struct GPT5ResponseRequest: Codable {
-  let model: String
-  let input: String
-  let instructions: String?
-  let reasoning: ReasoningConfig?
-  let text: TextConfig?
-  let previous_response_id: String?
-  let temperature: Double?
-  let max_output_tokens: Int?
-
-  struct ReasoningConfig: Codable {
-    let effort: String
-  }
-
-  struct TextConfig: Codable {
-    let format: TextFormat?
-    
-    struct TextFormat: Codable {
-      let type: String
-    }
-  }
-}
-
-// GPT-5 Response Response
-struct GPT5ResponseResponse: Codable {
-  let output: [GPT5Output]
-  let id: String
-
-  struct GPT5Output: Codable {
-    let type: String
-    let content: [GPT5Content]?
-
-    struct GPT5Content: Codable {
-      let type: String
-      let text: String
-    }
-  }
-}
+// MARK: - GPT-5 Response Structures Removed
+// GPT-5 response structures removed - only using GPT-Audio models now
 
 // GPT-Audio Chat Completion Request
 struct GPTAudioChatRequest: Codable {
