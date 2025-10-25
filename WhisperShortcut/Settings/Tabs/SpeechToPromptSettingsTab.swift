@@ -129,9 +129,9 @@ struct SpeechToPromptSettingsTab: View {
   @ViewBuilder
   private var modelSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      // GPT Model Selection
-      GPT5ModelSelectionView(
-        title: "🧠 GPT Model",
+      // Model Selection (GPT-5 and GPT-Audio)
+      PromptModelSelectionView(
+        title: "🧠 Model Selection",
         selectedModel: $viewModel.data.selectedPromptModel,
         onModelChanged: {
           Task {

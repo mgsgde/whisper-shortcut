@@ -98,6 +98,127 @@ enum ReasoningEffort: String, CaseIterable {
   }
 }
 
+// MARK: - Unified Prompt Model Enum (for Prompt Mode)
+enum PromptModel: String, CaseIterable {
+  // GPT-5 Models (text-based, require transcription)
+  case gpt5Nano = "gpt-5-nano"
+  case gpt5Mini = "gpt-5-mini"
+  case gpt5ChatLatest = "gpt-5-chat-latest"
+  case gpt5 = "gpt-5"
+  
+  // GPT-Audio Models (audio-based, direct audio input)
+  case gptAudio = "gpt-audio"
+  case gptAudioMini = "gpt-audio-mini"
+  
+  var displayName: String {
+    switch self {
+    case .gpt5Nano:
+      return "GPT-5 Nano"
+    case .gpt5Mini:
+      return "GPT-5 Mini"
+    case .gpt5ChatLatest:
+      return "GPT-5 Chat Latest"
+    case .gpt5:
+      return "GPT-5"
+    case .gptAudio:
+      return "GPT-Audio"
+    case .gptAudioMini:
+      return "GPT-Audio Mini"
+    }
+  }
+  
+  var description: String {
+    switch self {
+    case .gpt5Nano:
+      return "Ultraleicht • Günstig • Für einfache Prompts"
+    case .gpt5Mini:
+      return "Standard • Günstig • Gute Allround-Qualität"
+    case .gpt5ChatLatest:
+      return "Chat-optimiert • Schnell • Wie ChatGPT-App"
+    case .gpt5:
+      return "Reasoning-Power • Komplexe Antworten • Höchste Qualität"
+    case .gptAudio:
+      return "Best quality • Native audio understanding • For complex tasks"
+    case .gptAudioMini:
+      return "Recommended • Great quality at lower cost • Best for everyday use"
+    }
+  }
+  
+  var isRecommended: Bool {
+    switch self {
+    case .gpt5:
+      return true  // Default GPT-5 model
+    case .gptAudioMini:
+      return true  // Default GPT-Audio model
+    case .gpt5Nano, .gpt5Mini, .gpt5ChatLatest, .gptAudio:
+      return false
+    }
+  }
+  
+  var costLevel: String {
+    switch self {
+    case .gpt5Nano:
+      return "Minimal"
+    case .gpt5Mini:
+      return "Low"
+    case .gpt5ChatLatest:
+      return "High"
+    case .gpt5:
+      return "High"
+    case .gptAudio:
+      return "High"
+    case .gptAudioMini:
+      return "Low"
+    }
+  }
+  
+  var supportsReasoning: Bool {
+    switch self {
+    case .gpt5:
+      return true
+    case .gpt5Nano, .gpt5Mini, .gpt5ChatLatest, .gptAudio, .gptAudioMini:
+      return false
+    }
+  }
+  
+  var requiresTranscription: Bool {
+    switch self {
+    case .gpt5Nano, .gpt5Mini, .gpt5ChatLatest, .gpt5:
+      return true  // GPT-5 models need text input
+    case .gptAudio, .gptAudioMini:
+      return false  // GPT-Audio models accept audio directly
+    }
+  }
+  
+  // Convert to internal GPTModel for API calls (for GPT-5 models)
+  var asGPTModel: GPTModel? {
+    switch self {
+    case .gpt5Nano:
+      return .gpt5Nano
+    case .gpt5Mini:
+      return .gpt5Mini
+    case .gpt5ChatLatest:
+      return .gpt5ChatLatest
+    case .gpt5:
+      return .gpt5
+    case .gptAudio, .gptAudioMini:
+      return nil  // Not GPT-5 models
+    }
+  }
+  
+  // Convert to internal GPTAudioModel for API calls (for GPT-Audio models)
+  var asGPTAudioModel: GPTAudioModel? {
+    switch self {
+    case .gptAudio:
+      return .gptAudio
+    case .gptAudioMini:
+      return .gptAudioMini
+    case .gpt5Nano, .gpt5Mini, .gpt5ChatLatest, .gpt5:
+      return nil  // Not GPT-Audio models
+    }
+  }
+}
+
 // MARK: - GPT Audio Model Enum (for Voice Response Mode)
 enum GPTAudioModel: String, CaseIterable {
   case gptAudio = "gpt-audio"
@@ -193,7 +314,7 @@ struct SettingsDefaults {
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gpt4oMiniTranscribe
-  static let selectedPromptModel = GPTModel.gpt5Mini
+  static let selectedPromptModel = PromptModel.gpt5Mini
   static let selectedGPTAudioModel = GPTAudioModel.gptAudioMini
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
@@ -236,7 +357,7 @@ struct SettingsData {
 
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
-  var selectedPromptModel: GPTModel = SettingsDefaults.selectedPromptModel
+  var selectedPromptModel: PromptModel = SettingsDefaults.selectedPromptModel
   var selectedGPTAudioModel: GPTAudioModel = SettingsDefaults.selectedGPTAudioModel
   var customPromptText: String = SettingsDefaults.customPromptText
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
