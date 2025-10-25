@@ -4,7 +4,7 @@ import Foundation
 enum AppConstants {
   // MARK: - Default Prompts
   static let defaultTranscriptionSystemPrompt =
-    "Please transcribe this audio accurately, but remove filler words and disfluencies. Keep only the intended meaning. Numbers should be written as digits, not words. Preserve correct punctuation and grammar."
+    "Convert speech to clean text with proper punctuation."
 
   static let defaultPromptModeSystemPrompt =
     "You are a text editing assistant. The user will provide selected text and speak instructions for how to modify it. Return ONLY the modified text without any explanations, meta-comments, or markdown formatting. Do not add intros like 'Here is...' or outros like 'Let me know if...'. Just return the clean, modified text directly."

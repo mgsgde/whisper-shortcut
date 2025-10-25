@@ -218,7 +218,6 @@ class SpeechService {
 
   // MARK: - Transcription Mode
   func transcribe(audioURL: URL) async throws -> String {
-    let audioDuration = getAudioDuration(audioURL)
     let audioSize = getAudioSize(audioURL)
 
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
@@ -576,8 +575,7 @@ class SpeechService {
     
     // Extract audio output
     guard let audioOutput = firstChoice.message.audio else {
-      // Fallback to TTS if no audio
-      clipboardManager?.copyToClipboard(text: textContent)
+      // Fallback to TTS if no audio (Voice Response Mode - no clipboard copy)
       let speed = 1.0  // Fixed playback speed for GPT Audio (not user-configurable)
       
       NotificationCenter.default.post(
@@ -600,11 +598,8 @@ class SpeechService {
       throw TranscriptionError.networkError("Failed to decode audio data")
     }
     
-    // Copy transcript to clipboard (falls vorhanden, sonst textContent)
+    // Extract transcript (Voice Response Mode - no clipboard copy to maintain Voice-First approach)
     let transcriptText = audioOutput.transcript ?? textContent
-    if !transcriptText.isEmpty {
-      clipboardManager?.copyToClipboard(text: transcriptText)
-    }
 
     NotificationCenter.default.post(
       name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
@@ -834,8 +829,51 @@ class SpeechService {
       throw TranscriptionError.noSpeechDetected
     }
 
+    // Enhanced prompt detection - check for various prompt patterns
     let defaultPrompt = AppConstants.defaultTranscriptionSystemPrompt
-    if trimmedText.contains(defaultPrompt) || trimmedText.hasPrefix("context:") {
+    let lowercasedText = trimmedText.lowercased()
+    
+    // Check for exact prompt match
+    if trimmedText.contains(defaultPrompt) {
+      throw TranscriptionError.noSpeechDetected
+    }
+    
+    // Check for partial prompt patterns that might appear in transcription
+    let promptKeywords = [
+      "convert speech to",
+      "clean text with",
+      "proper punctuation",
+      "transcribe this audio",
+      "remove filler words",
+      "disfluencies"
+    ]
+    
+    let promptKeywordCount = promptKeywords.filter { lowercasedText.contains($0) }.count
+    
+    // If more than 2 prompt keywords are found, likely a prompt leak
+    if promptKeywordCount > 2 {
+      DebugLogger.log("PROMPT-DETECTION: Detected prompt leak in transcription: \(promptKeywordCount) keywords found")
+      throw TranscriptionError.noSpeechDetected
+    }
+    
+    // Check for context prefix
+    if trimmedText.hasPrefix("context:") {
+      throw TranscriptionError.noSpeechDetected
+    }
+    
+    // Check for system-like responses that might be prompt echoes
+    let systemPatterns = [
+      "here is the transcription",
+      "transcription:",
+      "audio transcription:",
+      "transcribed text:",
+      "the audio says:",
+      "the transcription is:"
+    ]
+    
+    let systemPatternCount = systemPatterns.filter { lowercasedText.hasPrefix($0) }.count
+    if systemPatternCount > 0 {
+      DebugLogger.log("PROMPT-DETECTION: Detected system pattern in transcription: \(systemPatterns.filter { lowercasedText.hasPrefix($0) }.first ?? "unknown")")
       throw TranscriptionError.noSpeechDetected
     }
   }
@@ -1224,7 +1262,66 @@ class SpeechService {
     // Replace multiple consecutive whitespace characters with single space
     let normalized = trimmed.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
     
-    return normalized
+    // Additional cleanup to remove potential prompt remnants
+    let cleaned = cleanTranscriptionText(normalized)
+    
+    return cleaned
+  }
+  
+  private func cleanTranscriptionText(_ text: String) -> String {
+    var cleaned = text
+    let originalLength = cleaned.count
+    
+    // Remove common prompt remnants that might appear at the beginning
+    let promptPrefixes = [
+      "convert speech to",
+      "clean text with",
+      "proper punctuation",
+      "transcribe this audio",
+      "please transcribe",
+      "transcription:",
+      "audio transcription:",
+      "here is the transcription:",
+      "the transcription is:",
+      "transcribed text:",
+      "the audio says:"
+    ]
+    
+    let lowercasedText = cleaned.lowercased()
+    for prefix in promptPrefixes {
+      if lowercasedText.hasPrefix(prefix) {
+        DebugLogger.log("PROMPT-CLEANUP: Removed prefix: '\(prefix)' from transcription")
+        cleaned = String(cleaned.dropFirst(prefix.count))
+        break
+      }
+    }
+    
+    // Remove common prompt remnants that might appear at the end
+    let promptSuffixes = [
+      "with proper punctuation",
+      "clean text with",
+      "keep only the intended meaning",
+      "remove filler words",
+      "preserve correct punctuation",
+      "numbers should be written as digits"
+    ]
+    
+    for suffix in promptSuffixes {
+      if lowercasedText.hasSuffix(suffix) {
+        DebugLogger.log("PROMPT-CLEANUP: Removed suffix: '\(suffix)' from transcription")
+        cleaned = String(cleaned.dropLast(suffix.count))
+        break
+      }
+    }
+    
+    // Clean up any remaining whitespace
+    cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+    
+    if cleaned.count != originalLength {
+      DebugLogger.log("PROMPT-CLEANUP: Text cleaned: \(originalLength) -> \(cleaned.count) characters")
+    }
+    
+    return cleaned
   }
   
   private func findTranscriptionOverlap(_ text1: String, _ text2: String) -> String {
@@ -1352,7 +1449,7 @@ class SpeechService {
       throw TranscriptionError.networkError("Text-to-speech failed: \(error.localizedDescription)")
     }
 
-    for (index, chunk) in chunks.enumerated() {
+    for (index, _) in chunks.enumerated() {
       // Start generating next chunk in parallel (if exists)
       if index + 1 < chunks.count {
         let nextChunk = chunks[index + 1]
