@@ -144,66 +144,133 @@ struct GeneralSettingsTab: View {
       SectionHeader(
         title: "💬 Support & Feedback",
         subtitle:
-          "If you have feedback, if something doesn't work, or if you have suggestions for improvement, feel free to contact me via WhatsApp."
+          "If you have feedback, if sth doesn't work, or if you have suggestions for improvement, feel free to contact me via WhatsApp."
       )
 
-      VStack(spacing: 12) {
-        // WhatsApp Feedback Button
-        Button(action: {
-          viewModel.openWhatsAppFeedback()
-        }) {
-          HStack(alignment: .center, spacing: 16) {
-            Text("Thanks for using my app! :)")
+      VStack(alignment: .leading, spacing: 20) {
+        // Main Action Buttons
+        VStack(spacing: 12) {
+          // WhatsApp Contact Button
+          Button(action: {
+            viewModel.openWhatsAppFeedback()
+          }) {
+            HStack(alignment: .center, spacing: 12) {
+              Image("WhatsApp")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 18, height: 18)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .opacity(0.85)
+              
+              Text("Contact me on WhatsApp")
+                .font(.body)
+                .fontWeight(.medium)
+                .textSelection(.enabled)
+
+              Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(12)
+          }
+          .buttonStyle(PlainButtonStyle())
+          .help("Contact via WhatsApp")
+          .onHover { isHovered in
+            if isHovered {
+              NSCursor.pointingHand.push()
+            } else {
+              NSCursor.pop()
+            }
+          }
+
+          // App Store Review Button
+          Button(action: {
+            viewModel.openAppStoreReview()
+          }) {
+            HStack(alignment: .center, spacing: 12) {
+              Image(systemName: "star.fill")
+                .font(.system(size: 18))
+                .foregroundColor(.orange)
+                .opacity(0.85)
+              
+              Text("Leave a Review")
+                .font(.body)
+                .fontWeight(.medium)
+                .textSelection(.enabled)
+
+              Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(12)
+          }
+          .buttonStyle(PlainButtonStyle())
+          .help("Leave a review on the App Store")
+          .onHover { isHovered in
+            if isHovered {
+              NSCursor.pointingHand.push()
+            } else {
+              NSCursor.pop()
+            }
+          }
+          // Share with Friends Button
+          Button(action: {
+            viewModel.copyAppStoreLink()
+          }) {
+            HStack(alignment: .center, spacing: 12) {
+              Image(systemName: viewModel.data.appStoreLinkCopied ? "checkmark.circle.fill" : "link")
+                .font(.system(size: 18))
+                .foregroundColor(viewModel.data.appStoreLinkCopied ? .green : .blue)
+                .opacity(0.85)
+              
+              Text(viewModel.data.appStoreLinkCopied ? "Link copied!" : "Share with Friends")
+                .font(.body)
+                .fontWeight(.medium)
+                .textSelection(.enabled)
+
+              Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(12)
+          }
+          .buttonStyle(PlainButtonStyle())
+          .help(viewModel.data.appStoreLinkCopied ? "App Store link copied to clipboard" : "Copy App Store link to clipboard")
+          .onHover { isHovered in
+            if isHovered {
+              NSCursor.pointingHand.push()
+            } else {
+              NSCursor.pop()
+            }
+          }
+        }
+        
+        // Developer Footer (no divider)
+        HStack(spacing: 16) {
+          Image("me")
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: 64, height: 64)
+            .clipShape(Circle())
+          
+          VStack(alignment: .leading, spacing: 4) {
+            Text("— Magnus • Developer")
               .font(.body)
-              .fontWeight(.medium)
-              .textSelection(.enabled)
-
-            Image("WhatsApp")
-              .resizable()
-              .aspectRatio(contentMode: .fit)
-              .frame(width: 32, height: 32)
-              .clipShape(RoundedRectangle(cornerRadius: 8))
-
-            Spacer()
+              .foregroundColor(.secondary)
+              .opacity(0.8)
+            
+            Text("Karlsruhe, Germany 🇩🇪")
+              .font(.subheadline)
+              .foregroundColor(.secondary)
+              .opacity(0.7)
           }
+          
+          Spacer()
         }
-        .buttonStyle(PlainButtonStyle())
-        .help("Contact via WhatsApp")
-        .onHover { isHovered in
-          if isHovered {
-            NSCursor.pointingHand.push()
-          } else {
-            NSCursor.pop()
-          }
-        }
-
-        // App Store Link Copy Button
-        Button(action: {
-          viewModel.copyAppStoreLink()
-        }) {
-          HStack(alignment: .center, spacing: 16) {
-            Text(viewModel.data.appStoreLinkCopied ? "Link copied!" : "Share with friends")
-              .font(.body)
-              .fontWeight(.medium)
-              .textSelection(.enabled)
-              .foregroundColor(viewModel.data.appStoreLinkCopied ? .green : .primary)
-
-            Image(systemName: viewModel.data.appStoreLinkCopied ? "checkmark.circle.fill" : "link")
-              .font(.system(size: 20))
-              .foregroundColor(viewModel.data.appStoreLinkCopied ? .green : .blue)
-
-            Spacer()
-          }
-        }
-        .buttonStyle(PlainButtonStyle())
-        .help(viewModel.data.appStoreLinkCopied ? "App Store link copied to clipboard" : "Copy App Store link to clipboard")
-        .onHover { isHovered in
-          if isHovered {
-            NSCursor.pointingHand.push()
-          } else {
-            NSCursor.pop()
-          }
-        }
+        .padding(.top, 12)
       }
     }
   }

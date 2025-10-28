@@ -385,4 +385,19 @@ class SettingsViewModel: ObservableObject {
     
     NSLog("🔗 APP-STORE: App Store link copied to clipboard")
   }
+
+  // MARK: - App Store Review
+  func openAppStoreReview() {
+    let reviewURL = "https://apps.apple.com/us/app/whispershortcut/id6749648401?action=write-review"
+    
+    if let url = URL(string: reviewURL) {
+      if NSWorkspace.shared.open(url) {
+        DebugLogger.logInfo("REVIEW: Opened App Store review page")
+      } else {
+        DebugLogger.logError("REVIEW: Failed to open App Store review page")
+      }
+    } else {
+      DebugLogger.logError("REVIEW: Invalid review URL")
+    }
+  }
 }
