@@ -5,8 +5,8 @@ import NaturalLanguage
 // MARK: - Constants
 private enum Constants {
   static let maxFileSize = 20 * 1024 * 1024  // 20MB - optimal für OpenAI's 25MB Limit
-  static let requestTimeout: TimeInterval = 30.0
-  static let resourceTimeout: TimeInterval = 120.0
+  static let requestTimeout: TimeInterval = 60.0
+  static let resourceTimeout: TimeInterval = 300.0
   static let validationTimeout: TimeInterval = 10.0
   static let transcriptionEndpoint = "https://api.openai.com/v1/audio/transcriptions"
   static let chatEndpoint = "https://api.openai.com/v1/chat/completions"
@@ -228,24 +228,8 @@ class SpeechService {
 
     // SMART CHUNKING STRATEGY: Based on OpenAI API file size limits
     if audioSize <= Constants.maxFileSize {
-      // File ≤20MB: Send to OpenAI directly with server-side chunking
-      let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
-      let (data, response) = try await session.data(for: request)
-
-      guard let httpResponse = response as? HTTPURLResponse else {
-        throw TranscriptionError.networkError("Invalid response")
-      }
-
-      if httpResponse.statusCode != 200 {
-        let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
-        throw error
-      }
-
-      let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
-      let normalizedText = normalizeTranscriptionText(result.text)
-      try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
-      return normalizedText
-      
+      // File ≤20MB: Send to OpenAI directly with retry logic
+      return try await transcribeSingleFileWithRetry(audioURL: audioURL, apiKey: apiKey)
     } else {
       // File >20MB: Use client-side chunking first, then send multiple requests
       let transcribedText = try await transcribeAudioChunked(audioURL)
@@ -253,6 +237,61 @@ class SpeechService {
       try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
       return normalizedText
     }
+  }
+  
+  // MARK: - Single File Transcription with Retry
+  private func transcribeSingleFileWithRetry(audioURL: URL, apiKey: String) async throws -> String {
+    var lastError: Error?
+    
+    for attempt in 1...Constants.maxRetryAttempts {
+      do {
+        let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
+        
+        do {
+          let (data, response) = try await session.data(for: request)
+
+          guard let httpResponse = response as? HTTPURLResponse else {
+            throw TranscriptionError.networkError("Invalid response")
+          }
+
+          if httpResponse.statusCode != 200 {
+            let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
+            throw error
+          }
+
+          let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
+          let normalizedText = normalizeTranscriptionText(result.text)
+          try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
+          
+          if attempt > 1 {
+            DebugLogger.log("TRANSCRIPTION-RETRY: Success on attempt \(attempt)")
+          }
+          return normalizedText
+        } catch let error as URLError {
+          // Handle specific URL errors including timeouts
+          if error.code == .timedOut {
+            if error.localizedDescription.contains("request") {
+              throw TranscriptionError.requestTimeout
+            } else {
+              throw TranscriptionError.resourceTimeout
+            }
+          } else {
+            throw TranscriptionError.networkError(error.localizedDescription)
+          }
+        }
+      } catch {
+        lastError = error
+        
+        if attempt < Constants.maxRetryAttempts {
+          DebugLogger.log("TRANSCRIPTION-RETRY: Attempt \(attempt) failed, retrying in \(Constants.retryDelaySeconds)s: \(error.localizedDescription)")
+          try? await Task.sleep(nanoseconds: UInt64(Constants.retryDelaySeconds * 1_000_000_000))
+        }
+      }
+    }
+    
+    // All retries failed
+    DebugLogger.log("TRANSCRIPTION-RETRY: All \(Constants.maxRetryAttempts) attempts failed")
+    throw lastError ?? TranscriptionError.networkError("Transcription failed after retries")
   }
 
   // MARK: - Prompt Modes
@@ -1759,6 +1798,8 @@ enum TranscriptionError: Error, Equatable {
   case serviceUnavailable
   case slowDown
   case networkError(String)
+  case requestTimeout
+  case resourceTimeout
   case fileError(String)
   case fileTooLarge
   case emptyFile
@@ -1780,6 +1821,8 @@ enum TranscriptionError: Error, Equatable {
     case .serviceUnavailable: return "Service Unavailable"
     case .slowDown: return "Slow Down"
     case .networkError: return "Network Error"
+    case .requestTimeout: return "Request Timeout"
+    case .resourceTimeout: return "Resource Timeout"
     case .fileError: return "File Error"
     case .fileTooLarge: return "File Too Large"
     case .emptyFile: return "Empty File"
@@ -1813,6 +1856,10 @@ extension SpeechService {
       return (true, .rateLimited)
     } else if text.contains("Quota Exceeded") {
       return (true, .quotaExceeded)
+    } else if text.contains("Request Timeout") {
+      return (true, .requestTimeout)
+    } else if text.contains("Resource Timeout") {
+      return (true, .resourceTimeout)
     } else if text.contains("Timeout") {
       return (true, .networkError("Timeout"))
     } else if text.contains("Network Error") {

@@ -29,7 +29,7 @@ class TTSService {
 
     let config = URLSessionConfiguration.default
     config.timeoutIntervalForRequest = TTSConstants.requestTimeout
-    config.timeoutIntervalForResource = TTSConstants.requestTimeout
+    config.timeoutIntervalForResource = 300.0  // 5 min for TTS generation
     self.session = URLSession(configuration: config)
   }
 

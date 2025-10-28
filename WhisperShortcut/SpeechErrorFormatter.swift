@@ -132,22 +132,50 @@ struct SpeechErrorFormatter {
         Please reduce your request rate to its original level, maintain a consistent rate for at least \(Constants.slowDownWaitTime), and then gradually increase it.
         """
 
+    case .requestTimeout:
+      return """
+        ⏰ Request Timeout
+
+        The server took too long to start responding (over 60 seconds).
+
+        This usually means:
+        • OpenAI servers are overloaded
+        • Your internet connection is very slow
+        • The API endpoint is temporarily unavailable
+
+        Solutions:
+        • Wait a moment and try again
+        • Check your internet connection
+        • Try with a shorter recording
+        """
+        
+    case .resourceTimeout:
+      return """
+        ⏰ Resource Timeout
+
+        The entire request took too long to complete (over 5 minutes).
+
+        This usually means:
+        • Very large audio file (close to 20MB limit)
+        • Slow internet connection during upload/download
+        • OpenAI processing is taking unusually long
+
+        Solutions:
+        • Try with a shorter recording
+        • Check your internet connection speed
+        • The app will automatically retry (up to 2 attempts)
+        """
+        
     case .networkError(let details):
       if details.lowercased().contains("timeout") {
         return """
-          ⏰ Request Timeout
+          ⏰ Generic Timeout
 
-          The request took too long and was cancelled.
+          The request timed out for an unknown reason.
 
-          Possible causes:
-          • Slow internet connection
-          • Large audio file
-          • OpenAI servers overloaded
+          Error: \(details)
 
-          Tips:
-          • Try again
-          • Use shorter recordings
-          • Check your internet connection
+          Please try again or use a shorter recording.
           """
       } else {
         return """
@@ -216,6 +244,10 @@ struct SpeechErrorFormatter {
       return "⏳ Quota Exceeded"
     case .networkError:
       return "⏰ Network Error"
+    case .requestTimeout:
+      return "⏰ Request Timeout"
+    case .resourceTimeout:
+      return "⏰ Resource Timeout"
     case .serverError:
       return "❌ Server Error"
     case .serviceUnavailable:
