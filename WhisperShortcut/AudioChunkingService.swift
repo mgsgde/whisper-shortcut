@@ -22,8 +22,11 @@ class AudioChunkingService {
   
   // MARK: - Audio Analysis
   func getAudioDuration(_ audioURL: URL) -> TimeInterval {
-    let asset = AVAsset(url: audioURL)
-    return CMTimeGetSeconds(asset.duration)
+    let asset = AVURLAsset(url: audioURL)
+    // Use synchronous access to duration for backward compatibility
+    // The async version would require changing all callers to async
+    let duration = asset.duration
+    return CMTimeGetSeconds(duration)
   }
   
   func getAudioSize(_ audioURL: URL) -> Int64 {
@@ -246,7 +249,7 @@ class AudioChunkingService {
     let tempDir = FileManager.default.temporaryDirectory
     let segmentURL = tempDir.appendingPathComponent("audio_chunk_\(UUID().uuidString).m4a")
     
-    let asset = AVAsset(url: audioURL)
+    let asset = AVURLAsset(url: audioURL)
     
     // Use M4A preset for better compatibility with Whisper API
     guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
@@ -263,8 +266,9 @@ class AudioChunkingService {
     let semaphore = DispatchSemaphore(value: 0)
     var success = false
     
-    exportSession.exportAsynchronously {
-      success = exportSession.status == AVAssetExportSession.Status.completed
+    Task {
+      await exportSession.export()
+      success = exportSession.status == .completed
       semaphore.signal()
     }
     

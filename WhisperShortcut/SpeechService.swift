@@ -305,12 +305,8 @@ class SpeechService {
       throw TranscriptionError.noAPIKey
     }
 
-    // GPT-Audio models: use audio directly (simplified - no more GPT-5 models)
     return try await executePromptWithAudioModel(audioURL: audioURL)
   }
-
-  // MARK: - GPT-5 Functions Removed
-  // All GPT-5 related functions removed - only using GPT-Audio models now
 
   private func buildPromptInput(
     userMessage: String, clipboardContext: String?, isVoiceResponse: Bool = false
@@ -1322,9 +1318,6 @@ class SpeechService {
     }
     return parseStatusCodeError(statusCode)
   }
-
-  // MARK: - GPT-5 Response Parsing Removed
-  // GPT-5 response parsing removed - only using GPT-Audio models now
 
   private func parseOpenAIError(_ errorResponse: OpenAIErrorResponse, statusCode: Int)
     -> TranscriptionError
