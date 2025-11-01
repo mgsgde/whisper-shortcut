@@ -68,7 +68,7 @@ class PopupNotificationWindow: NSWindow {
   private var errorText: String = ""
 
   // MARK: - Initialization
-  init(title: String, text: String, isError: Bool = false, modelInfo: String? = nil) {
+  init(title: String, text: String, isError: Bool = false, isCancelled: Bool = false, modelInfo: String? = nil) {
     // Create window with specific style for notifications
     super.init(
       contentRect: NSRect(x: 0, y: 0, width: Constants.defaultWindowWidth, height: 100),
@@ -84,7 +84,7 @@ class PopupNotificationWindow: NSWindow {
     setupWindow()
     setupContentView()
     setupCloseButton()
-    setupIcon(isError: isError)
+    setupIcon(isError: isError, isCancelled: isCancelled)
     setupLabels(title: title, text: text, modelInfo: modelInfo)
     setupScrollView()
     if isError {
@@ -209,10 +209,16 @@ class PopupNotificationWindow: NSWindow {
     hide()
   }
 
-  private func setupIcon(isError: Bool) {
-    // For errors, skip the red X icon since we have WhatsApp icon for feedback
-    // Only show green checkmark for success
-    let iconText = isError ? "" : "✅"  // No icon for errors, green checkmark for success
+  private func setupIcon(isError: Bool, isCancelled: Bool = false) {
+    // Icon selection based on notification type
+    let iconText: String
+    if isCancelled {
+      iconText = "⏸️"  // Pause icon for cancelled operations
+    } else if isError {
+      iconText = ""  // No icon for errors (WhatsApp icon is shown instead)
+    } else {
+      iconText = "✅"  // Green checkmark for success
+    }
 
     iconLabel = NSTextField(labelWithString: iconText)
     iconLabel.font = NSFont.systemFont(ofSize: 16, weight: .medium)  // Slightly larger for visibility
@@ -797,6 +803,23 @@ extension PopupNotificationWindow {
       title: title,
       text: error,
       isError: true
+    )
+
+    // Keep strong reference until window closes
+    activePopups.insert(popup)
+    popup.show()
+  }
+
+  static func showCancelled(_ message: String) {
+    guard arePopupNotificationsEnabled else {
+      return
+    }
+
+    let popup = PopupNotificationWindow(
+      title: "Cancelled",
+      text: message,
+      isError: false,
+      isCancelled: true
     )
 
     // Keep strong reference until window closes

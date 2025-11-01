@@ -344,6 +344,14 @@ class MenuBarController: NSObject {
 
   // MARK: - Actions (Simplified Logic)
   @objc private func toggleTranscription() {
+    // Check if currently processing transcription - if so, cancel it
+    if case .processing(.transcribing) = appState {
+      speechService.cancelTranscription()
+      appState = .idle
+      PopupNotificationWindow.showCancelled("Transcription cancelled")
+      return
+    }
+    
     switch appState.recordingMode {
     case .transcription:
       audioRecorder.stopRecording()
@@ -358,6 +366,14 @@ class MenuBarController: NSObject {
   }
 
   @objc internal func togglePrompting() {
+    // Check if currently processing prompt - if so, cancel it
+    if case .processing(.prompting) = appState {
+      speechService.cancelPrompt()
+      appState = .idle
+      PopupNotificationWindow.showCancelled("Prompt cancelled")
+      return
+    }
+    
     switch appState.recordingMode {
     case .prompt:
       audioRecorder.stopRecording()
@@ -439,6 +455,12 @@ class MenuBarController: NSObject {
         PopupNotificationWindow.showTranscriptionResponse(result, modelInfo: modelInfo)
         self.appState = self.appState.showSuccess("Transcription copied to clipboard")
       }
+    } catch is CancellationError {
+      // Task was cancelled - just cleanup and return to idle
+      DebugLogger.log("CANCELLATION: Transcription task was cancelled")
+      await MainActor.run {
+        self.appState = .idle
+      }
     } catch {
       await MainActor.run {
         let errorMessage: String
@@ -477,6 +499,12 @@ class MenuBarController: NSObject {
         PopupNotificationWindow.showPromptResponse(result, modelInfo: modelInfo)
         self.appState = self.appState.showSuccess("AI response copied to clipboard")
       }
+    } catch is CancellationError {
+      // Task was cancelled - just cleanup and return to idle
+      DebugLogger.log("CANCELLATION: Prompt task was cancelled")
+      await MainActor.run {
+        self.appState = .idle
+      }
     } catch {
       await MainActor.run {
         let errorMessage: String
@@ -510,6 +538,12 @@ class MenuBarController: NSObject {
       // Voice Response Mode - no clipboard copy to maintain Voice-First approach
 
       // State will be updated to playback by notification handlers
+    } catch is CancellationError {
+      // Task was cancelled - just cleanup and return to idle
+      DebugLogger.log("CANCELLATION: Voice response task was cancelled")
+      await MainActor.run {
+        self.appState = .idle
+      }
     } catch {
       await MainActor.run {
         let errorMessage: String

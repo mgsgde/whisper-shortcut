@@ -105,6 +105,11 @@ class SpeechService {
   private var previousResponseId: String?            // Track the last response ID for conversation continuity
   private var conversationMessages: [GPTAudioChatRequest.GPTAudioMessage] = []
 
+  // MARK: - Task Tracking for Cancellation
+  private var currentTranscriptionTask: Task<String, Error>?
+  private var currentPromptTask: Task<String, Error>?
+  private var currentVoiceResponseTask: Task<String, Error>?
+
   init(
     keychainManager: KeychainManaging = KeychainManager.shared,
     clipboardManager: ClipboardManager? = nil
@@ -163,6 +168,27 @@ class SpeechService {
     conversationMessages = []
   }
 
+  // MARK: - Cancellation Methods
+  func cancelTranscription() {
+    DebugLogger.log("CANCELLATION: Cancelling transcription task")
+    currentTranscriptionTask?.cancel()
+    currentTranscriptionTask = nil
+  }
+
+  func cancelPrompt() {
+    DebugLogger.log("CANCELLATION: Cancelling prompt task")
+    currentPromptTask?.cancel()
+    currentPromptTask = nil
+  }
+
+  func cancelVoiceResponse() {
+    DebugLogger.log("CANCELLATION: Cancelling voice response task")
+    currentVoiceResponseTask?.cancel()
+    currentVoiceResponseTask = nil
+    // Also stop any ongoing TTS generation
+    ttsService.cancelGeneration()
+  }
+
   internal func isConversationExpired(isVoiceResponse: Bool) -> Bool {
     guard let timestamp = previousResponseTimestamp else {
       return true  // No previous conversation
@@ -216,8 +242,27 @@ class SpeechService {
     return true
   }
 
-  // MARK: - Transcription Mode
+  // MARK: - Transcription Mode (Public API with Task Tracking)
   func transcribe(audioURL: URL) async throws -> String {
+    // Create and store task for cancellation support
+    let task = Task<String, Error> {
+      try await self.performTranscription(audioURL: audioURL)
+    }
+    
+    currentTranscriptionTask = task
+    
+    do {
+      let result = try await task.value
+      currentTranscriptionTask = nil
+      return result
+    } catch {
+      currentTranscriptionTask = nil
+      throw error
+    }
+  }
+
+  // MARK: - Transcription Mode (Private Implementation)
+  private func performTranscription(audioURL: URL) async throws -> String {
     let audioSize = getAudioSize(audioURL)
 
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
@@ -275,10 +320,18 @@ class SpeechService {
             } else {
               throw TranscriptionError.resourceTimeout
             }
+          } else if error.code == .cancelled {
+            // Task was cancelled - propagate immediately
+            DebugLogger.log("TRANSCRIPTION-RETRY: Request cancelled by user")
+            throw CancellationError()
           } else {
             throw TranscriptionError.networkError(error.localizedDescription)
           }
         }
+      } catch is CancellationError {
+        // Task was cancelled - propagate immediately without retry
+        DebugLogger.log("TRANSCRIPTION-RETRY: Cancelled on attempt \(attempt)")
+        throw CancellationError()
       } catch {
         lastError = error
         
@@ -294,8 +347,27 @@ class SpeechService {
     throw lastError ?? TranscriptionError.networkError("Transcription failed after retries")
   }
 
-  // MARK: - Prompt Modes
+  // MARK: - Prompt Modes (Public API with Task Tracking)
   func executePrompt(audioURL: URL) async throws -> String {
+    // Create and store task for cancellation support
+    let task = Task<String, Error> {
+      try await self.performPrompt(audioURL: audioURL)
+    }
+    
+    currentPromptTask = task
+    
+    do {
+      let result = try await task.value
+      currentPromptTask = nil
+      return result
+    } catch {
+      currentPromptTask = nil
+      throw error
+    }
+  }
+
+  // MARK: - Prompt Modes (Private Implementation)
+  private func performPrompt(audioURL: URL) async throws -> String {
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
       throw TranscriptionError.noAPIKey
     }
@@ -370,6 +442,26 @@ class SpeechService {
   }
 
   func executePromptWithVoiceResponse(audioURL: URL, clipboardContext: String? = nil) async throws
+    -> String
+  {
+    // Create and store task for cancellation support
+    let task = Task<String, Error> {
+      try await self.performVoiceResponse(audioURL: audioURL, clipboardContext: clipboardContext)
+    }
+    
+    currentVoiceResponseTask = task
+    
+    do {
+      let result = try await task.value
+      currentVoiceResponseTask = nil
+      return result
+    } catch {
+      currentVoiceResponseTask = nil
+      throw error
+    }
+  }
+
+  private func performVoiceResponse(audioURL: URL, clipboardContext: String? = nil) async throws
     -> String
   {
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
@@ -1100,6 +1192,10 @@ class SpeechService {
       do {
         let transcription = try await transcribeSingleChunk(audioURL)
         return transcription
+      } catch is CancellationError {
+        // Task was cancelled - propagate immediately
+        DebugLogger.log("CHUNK-RETRY: Chunk \(chunkIndex) cancelled on attempt \(attempt)")
+        return "[Cancelled]"
       } catch {
         lastError = error
         
@@ -1121,22 +1217,28 @@ class SpeechService {
     try validateAudioFile(at: audioURL)
     
     let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
-    let (data, response) = try await session.data(for: request)
-    
-    guard let httpResponse = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response")
-    }
-    
-    if httpResponse.statusCode != 200 {
-      let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
-      throw error
-    }
     
     do {
-      let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
-      return result.text
-    } catch {
-      throw TranscriptionError.networkError("Failed to decode transcription response")
+      let (data, response) = try await session.data(for: request)
+      
+      guard let httpResponse = response as? HTTPURLResponse else {
+        throw TranscriptionError.networkError("Invalid response")
+      }
+      
+      if httpResponse.statusCode != 200 {
+        let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
+        throw error
+      }
+      
+      do {
+        let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
+        return result.text
+      } catch {
+        throw TranscriptionError.networkError("Failed to decode transcription response")
+      }
+    } catch let error as URLError where error.code == .cancelled {
+      // Request was cancelled - propagate as CancellationError
+      throw CancellationError()
     }
   }
   

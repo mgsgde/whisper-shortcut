@@ -20,6 +20,9 @@ class TTSService {
   // Expose maximum allowed text length for external callers
   static var maxAllowedTextLength: Int { TTSConstants.maxTextLength }
 
+  // MARK: - Task Tracking for Cancellation
+  private var currentTTSTask: Task<Data, Error>?
+
   private var apiKey: String? {
     return keychainManager.getAPIKey()
   }
@@ -37,8 +40,37 @@ class TTSService {
     _ = keychainManager.saveAPIKey(apiKey)
   }
 
-  // MARK: - Main TTS Generation Method
+  // MARK: - Cancellation Method
+  func cancelGeneration() {
+    DebugLogger.log("TTS-CANCELLATION: Cancelling TTS generation task")
+    currentTTSTask?.cancel()
+    currentTTSTask = nil
+  }
+
+  // MARK: - Main TTS Generation Method (Public API with Task Tracking)
   func generateSpeech(
+    text: String, voice: String = TTSConstants.defaultVoice,
+    model: String = TTSConstants.defaultModel, speed: Double = 1.0
+  ) async throws -> Data {
+    // Create and store task for cancellation support
+    let task = Task<Data, Error> {
+      try await self.performTTSGeneration(text: text, voice: voice, model: model, speed: speed)
+    }
+    
+    currentTTSTask = task
+    
+    do {
+      let result = try await task.value
+      currentTTSTask = nil
+      return result
+    } catch {
+      currentTTSTask = nil
+      throw error
+    }
+  }
+
+  // MARK: - TTS Generation (Private Implementation)
+  private func performTTSGeneration(
     text: String, voice: String = TTSConstants.defaultVoice,
     model: String = TTSConstants.defaultModel, speed: Double = 1.0
   ) async throws -> Data {
