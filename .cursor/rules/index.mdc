@@ -14,6 +14,10 @@ alwaysApply: true
 - **Build**: Xcode project
 - **Target**: macOS 15.5+ (Sequoia or later)
 
+## 🏗️ Architecture
+
+For detailed architecture and implementation guide, see: [Architecture Guide](./architecture.md)
+
 ## ⚡ Critical Rules
 
 - **KISS Principle**: Keep It Simple, Stupid - Always choose the simplest, most elegant solution. Consider multiple approaches, then select the most robust one - not the first that comes to mind
