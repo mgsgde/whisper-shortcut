@@ -11,7 +11,6 @@ private enum Constants {
   static let transcriptionEndpoint = "https://api.openai.com/v1/audio/transcriptions"
   static let chatEndpoint = "https://api.openai.com/v1/chat/completions"
   static let modelsEndpoint = "https://api.openai.com/v1/models"
-  // GPT-5 responses endpoint removed - only using GPT-Audio models now
 
   // Text validation
   static let minimumTextLength = 3
@@ -22,62 +21,9 @@ private enum Constants {
   // Timing delays
   static let clipboardCopyDelay: UInt64 = 100_000_000  // 0.1 seconds in nanoseconds
   
-  // Audio chunking constants - PRODUCTION VALUES
-  static let maxChunkDuration: TimeInterval = 120.0  // 2 minutes per chunk
-  static let maxChunkSize = 20 * 1024 * 1024  // 20MB per chunk - optimal  
-  static let chunkOverlapDuration: TimeInterval = 3.0  // 3 seconds overlap
-  static let minimumSilenceDuration: TimeInterval = 0.8  // 0.8 seconds minimum silence
-  static let silenceThreshold: Float = -40.0  // dB threshold for silence detection
-  
-  // Retry configuration for robust chunking
+  // Retry configuration
   static let maxRetryAttempts = 2  // Maximum retry attempts per chunk (optimal balance)
   static let retryDelaySeconds: TimeInterval = 1.5  // Shorter delay for better UX
-}
-
-// MARK: - Transcription Model Enum
-enum TranscriptionModel: String, CaseIterable {
-  case gpt4oTranscribe = "gpt-4o-transcribe"
-  case gpt4oMiniTranscribe = "gpt-4o-mini-transcribe"
-
-  var displayName: String {
-    switch self {
-    case .gpt4oTranscribe:
-      return "GPT-4o Transcribe"
-    case .gpt4oMiniTranscribe:
-      return "GPT-4o Mini Transcribe"
-    }
-  }
-
-  var apiEndpoint: String {
-    return Constants.transcriptionEndpoint
-  }
-
-  var isRecommended: Bool {
-    switch self {
-    case .gpt4oMiniTranscribe:
-      return true
-    case .gpt4oTranscribe:
-      return false
-    }
-  }
-
-  var costLevel: String {
-    switch self {
-    case .gpt4oMiniTranscribe:
-      return "Low"
-    case .gpt4oTranscribe:
-      return "High"
-    }
-  }
-
-  var description: String {
-    switch self {
-    case .gpt4oTranscribe:
-      return "Highest accuracy and quality • Best for critical applications"
-    case .gpt4oMiniTranscribe:
-      return "Recommended • Great quality at lower cost • Best for everyday use"
-    }
-  }
 }
 
 // MARK: - Core Service
@@ -87,6 +33,7 @@ class SpeechService {
   private let keychainManager: KeychainManaging
   private let ttsService: TTSService
   private let audioPlaybackService: AudioPlaybackService
+  private let audioChunkingService: AudioChunkingService
   private var clipboardManager: ClipboardManager?
 
   // Custom session with appropriate timeouts
@@ -118,6 +65,7 @@ class SpeechService {
     self.clipboardManager = clipboardManager
     self.ttsService = TTSService(keychainManager: keychainManager)
     self.audioPlaybackService = AudioPlaybackService.shared
+    self.audioChunkingService = AudioChunkingService()
 
   }
 
@@ -257,7 +205,7 @@ class SpeechService {
 
   // MARK: - Transcription Mode (Private Implementation)
   private func performTranscription(audioURL: URL) async throws -> String {
-    let audioSize = getAudioSize(audioURL)
+    let audioSize = audioChunkingService.getAudioSize(audioURL)
 
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
       throw TranscriptionError.noAPIKey
@@ -886,262 +834,13 @@ class SpeechService {
     }
   }
 
-  // MARK: - Audio Chunking Helpers
-  
-  // MARK: - Audio Analysis Utilities
-  private func getAudioDuration(_ audioURL: URL) -> TimeInterval {
-    let asset = AVAsset(url: audioURL)
-    return CMTimeGetSeconds(asset.duration)
-  }
-  
-  private func getAudioSize(_ audioURL: URL) -> Int64 {
-    do {
-      let attributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
-      return attributes[.size] as? Int64 ?? 0
-    } catch {
-      return 0
-    }
-  }
-  
-  // MARK: - Silence Detection
-  private func detectSilencePauses(_ audioURL: URL) -> [TimeInterval] {
-    guard let audioFile = try? AVAudioFile(forReading: audioURL) else {
-      return []
-    }
-    
-    let format = audioFile.processingFormat
-    let frameCount = AVAudioFrameCount(audioFile.length)
-    
-    guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
-      return []
-    }
-    
-    do {
-      try audioFile.read(into: buffer)
-    } catch {
-      return []
-    }
-    
-    guard let floatChannelData = buffer.floatChannelData else {
-      return []
-    }
-    
-    let channelData = floatChannelData[0]
-    let frameLength = Int(buffer.frameLength)
-    let sampleRate = format.sampleRate
-    
-    var silenceBreaks: [TimeInterval] = []
-    var silenceStart: TimeInterval? = nil
-    
-    // Analyze audio in 0.1 second windows
-    let windowSize = Int(sampleRate * 0.1)
-    
-    for i in stride(from: 0, to: frameLength, by: windowSize) {
-      let endIndex = min(i + windowSize, frameLength)
-      var rms: Float = 0.0
-      
-      // Calculate RMS for this window
-      for j in i..<endIndex {
-        let sample = channelData[j]
-        rms += sample * sample
-      }
-      rms = sqrt(rms / Float(endIndex - i))
-      
-      // Convert to dB
-      let dB = 20 * log10(rms + 1e-10)  // Add small value to avoid log(0)
-      let currentTime = TimeInterval(i) / sampleRate
-      
-      if dB < Constants.silenceThreshold {
-        // Silence detected
-        if silenceStart == nil {
-          silenceStart = currentTime
-        }
-      } else {
-        // Sound detected
-        if let start = silenceStart {
-          let silenceDuration = currentTime - start
-          if silenceDuration >= Constants.minimumSilenceDuration {
-            // Found meaningful silence - use middle point as break
-            silenceBreaks.append(start + silenceDuration / 2)
-          }
-          silenceStart = nil
-        }
-      }
-    }
-    
-    return silenceBreaks
-  }
-  
-  // MARK: - Audio Splitting
-  private func splitAudioIntelligently(_ audioURL: URL) -> [URL] {
-    let audioDuration = getAudioDuration(audioURL)
-    let audioSize = getAudioSize(audioURL)
-    
-    // Check if chunking is needed
-    if audioDuration <= Constants.maxChunkDuration && audioSize <= Constants.maxChunkSize {
-      return [audioURL]
-    }
-    
-    // 1. Try silence-based splitting first
-    let silenceBreaks = detectSilencePauses(audioURL)
-    if !silenceBreaks.isEmpty {
-      return splitAudioAtSilence(audioURL, breaks: silenceBreaks)
-    }
-    
-    // 2. Fallback: Time-based splitting
-    if audioDuration > Constants.maxChunkDuration {
-      return splitAudioByTime(audioURL)
-    }
-    
-    // 3. Fallback: Size-based splitting
-    if audioSize > Constants.maxChunkSize {
-      return splitAudioBySize(audioURL)
-    }
-    
-    // Should not reach here, but return original as fallback
-    return [audioURL]
-  }
-  
-  private func splitAudioAtSilence(_ audioURL: URL, breaks: [TimeInterval]) -> [URL] {
-    var chunkURLs: [URL] = []
-    let audioDuration = getAudioDuration(audioURL)
-    
-    var startTime: TimeInterval = 0
-    
-    for breakTime in breaks {
-      // Only create chunk if it's long enough and not too long
-      let chunkDuration = breakTime - startTime
-      if chunkDuration >= 10.0 && chunkDuration <= Constants.maxChunkDuration {
-        if let chunkURL = extractAudioSegment(audioURL, start: startTime, duration: chunkDuration) {
-          chunkURLs.append(chunkURL)
-          startTime = max(0, breakTime - Constants.chunkOverlapDuration)  // Add overlap
-        }
-      } else if chunkDuration > Constants.maxChunkDuration {
-        // Chunk too long, split by time
-        let timeChunks = splitAudioByTimeRange(audioURL, start: startTime, end: breakTime)
-        chunkURLs.append(contentsOf: timeChunks)
-        startTime = max(0, breakTime - Constants.chunkOverlapDuration)
-      }
-    }
-    
-    // Handle remaining audio
-    if startTime < audioDuration - 5.0 {  // At least 5 seconds remaining
-      let remainingDuration = audioDuration - startTime
-      if let finalChunk = extractAudioSegment(audioURL, start: startTime, duration: remainingDuration) {
-        chunkURLs.append(finalChunk)
-      }
-    }
-    
-    return chunkURLs
-  }
-  
-  private func splitAudioByTime(_ audioURL: URL) -> [URL] {
-    let audioDuration = getAudioDuration(audioURL)
-    var chunkURLs: [URL] = []
-    var startTime: TimeInterval = 0
-    
-    while startTime < audioDuration {
-      let remainingDuration = audioDuration - startTime
-      let chunkDuration = min(Constants.maxChunkDuration, remainingDuration)
-      
-      if let chunkURL = extractAudioSegment(audioURL, start: startTime, duration: chunkDuration) {
-        chunkURLs.append(chunkURL)
-      }
-      
-      startTime += chunkDuration - Constants.chunkOverlapDuration  // Add overlap
-      if startTime >= audioDuration - Constants.chunkOverlapDuration {
-        break
-      }
-    }
-    
-    return chunkURLs
-  }
-  
-  private func splitAudioByTimeRange(_ audioURL: URL, start: TimeInterval, end: TimeInterval) -> [URL] {
-    var chunkURLs: [URL] = []
-    var currentStart = start
-    
-    while currentStart < end {
-      let remainingDuration = end - currentStart
-      let chunkDuration = min(Constants.maxChunkDuration, remainingDuration)
-      
-      if let chunkURL = extractAudioSegment(audioURL, start: currentStart, duration: chunkDuration) {
-        chunkURLs.append(chunkURL)
-      }
-      
-      currentStart += chunkDuration - Constants.chunkOverlapDuration
-      if currentStart >= end - Constants.chunkOverlapDuration {
-        break
-      }
-    }
-    
-    return chunkURLs
-  }
-  
-  private func splitAudioBySize(_ audioURL: URL) -> [URL] {
-    // For size-based splitting, we estimate based on duration
-    // This is a simplified approach - in practice, audio compression varies
-    let audioDuration = getAudioDuration(audioURL)
-    let audioSize = getAudioSize(audioURL)
-    let bytesPerSecond = Double(audioSize) / audioDuration
-    let maxDurationForSize = Double(Constants.maxChunkSize) / bytesPerSecond
-    
-    let effectiveMaxDuration = min(maxDurationForSize, Constants.maxChunkDuration)
-    
-    var chunkURLs: [URL] = []
-    var startTime: TimeInterval = 0
-    
-    while startTime < audioDuration {
-      let remainingDuration = audioDuration - startTime
-      let chunkDuration = min(effectiveMaxDuration, remainingDuration)
-      
-      if let chunkURL = extractAudioSegment(audioURL, start: startTime, duration: chunkDuration) {
-        chunkURLs.append(chunkURL)
-      }
-      
-      startTime += chunkDuration - Constants.chunkOverlapDuration
-      if startTime >= audioDuration - Constants.chunkOverlapDuration {
-        break
-      }
-    }
-    
-    return chunkURLs
-  }
-  
-  private func extractAudioSegment(_ audioURL: URL, start: TimeInterval, duration: TimeInterval) -> URL? {
-    let tempDir = FileManager.default.temporaryDirectory
-    let segmentURL = tempDir.appendingPathComponent("audio_chunk_\(UUID().uuidString).m4a")
-    
-    let asset = AVAsset(url: audioURL)
-    
-    // Use M4A preset for better compatibility with Whisper API
-    guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
-      return nil
-    }
-    
-    exportSession.outputURL = segmentURL
-    exportSession.outputFileType = .m4a
-    
-    let startTime = CMTime(seconds: start, preferredTimescale: 1000)
-    let endTime = CMTime(seconds: start + duration, preferredTimescale: 1000)
-    exportSession.timeRange = CMTimeRange(start: startTime, end: endTime)
-    
-    let semaphore = DispatchSemaphore(value: 0)
-    var success = false
-    
-    exportSession.exportAsynchronously {
-      success = exportSession.status == AVAssetExportSession.Status.completed
-      semaphore.signal()
-    }
-    
-    semaphore.wait()
-    
-    return success ? segmentURL : nil
-  }
-  
   // MARK: - Chunked Transcription
   private func transcribeAudioChunked(_ audioURL: URL) async throws -> String {
-    let chunks = splitAudioIntelligently(audioURL)
+    let chunks = audioChunkingService.splitAudioIntelligently(
+      audioURL, 
+      maxDuration: 120.0,  // 2 minutes per chunk
+      maxSize: Int64(Constants.maxFileSize)
+    )
     
     if chunks.count == 1 {
       return try await transcribeSingleChunk(chunks[0])
@@ -1720,198 +1419,6 @@ extension URLRequest {
   }
 }
 
-// MARK: - Models
-struct WhisperResponse: Codable {
-  let text: String
-}
-
-// MARK: - GPT-5 Response Structures Removed
-// GPT-5 response structures removed - only using GPT-Audio models now
-
-// GPT-Audio Chat Completion Request
-struct GPTAudioChatRequest: Codable {
-  let model: String
-  let messages: [GPTAudioMessage]
-  let modalities: [String]?
-  let audio: AudioConfig?
-  
-  struct AudioConfig: Codable {
-    let voice: String
-    let format: String
-  }
-  
-  struct GPTAudioMessage: Codable {
-    let role: String
-    let content: MessageContent
-    
-    enum MessageContent: Codable {
-      case text(String)
-      case multiContent([ContentPart])
-      
-      func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .text(let string):
-          try container.encode(string)
-        case .multiContent(let parts):
-          try container.encode(parts)
-        }
-      }
-      
-      init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let string = try? container.decode(String.self) {
-          self = .text(string)
-        } else if let parts = try? container.decode([ContentPart].self) {
-          self = .multiContent(parts)
-        } else {
-          throw DecodingError.dataCorruptedError(
-            in: container,
-            debugDescription: "Invalid message content"
-          )
-        }
-      }
-    }
-    
-    struct ContentPart: Codable {
-      let type: String
-      let text: String?
-      let input_audio: InputAudio?
-      
-      struct InputAudio: Codable {
-        let data: String
-        let format: String
-      }
-    }
-  }
-}
-
-// GPT-Audio Chat Completion Response
-struct GPTAudioChatResponse: Codable {
-  let choices: [GPTAudioChoice]
-  
-  struct GPTAudioChoice: Codable {
-    let message: GPTAudioResponseMessage
-    
-    struct GPTAudioResponseMessage: Codable {
-      let content: ResponseContent?
-      let audio: AudioOutput?
-    }
-    
-    enum ResponseContent: Codable {
-      case text(String)
-      case multiContent([ResponseContentPart])
-      
-      func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .text(let string):
-          try container.encode(string)
-        case .multiContent(let parts):
-          try container.encode(parts)
-        }
-      }
-      
-      init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let string = try? container.decode(String.self) {
-          self = .text(string)
-        } else if let parts = try? container.decode([ResponseContentPart].self) {
-          self = .multiContent(parts)
-        } else {
-          throw DecodingError.dataCorruptedError(
-            in: container,
-            debugDescription: "Invalid response content"
-          )
-        }
-      }
-    }
-    
-    struct ResponseContentPart: Codable {
-      let type: String
-      let text: String?
-      let audio: AudioContentPart?
-    }
-    
-    struct AudioContentPart: Codable {
-      let data: String
-      let transcript: String?
-    }
-    
-    struct AudioOutput: Codable {
-      let id: String
-      let data: String
-      let transcript: String?
-      let expires_at: Int?
-    }
-  }
-}
-
-struct TranscriptionPrompt {
-  let text: String
-
-  static let defaultPrompt = TranscriptionPrompt(
-    text: AppConstants.defaultTranscriptionSystemPrompt)
-}
-
-struct OpenAIErrorResponse: Codable {
-  let error: OpenAIError?
-}
-
-struct OpenAIError: Codable {
-  let message: String?
-  let type: String?
-  let code: String?
-}
-
-// MARK: - Error Types
-enum TranscriptionError: Error, Equatable {
-  case noAPIKey
-  case invalidAPIKey
-  case incorrectAPIKey
-  case countryNotSupported
-  case invalidRequest
-  case permissionDenied
-  case notFound
-  case rateLimited
-  case quotaExceeded
-  case serverError(Int)
-  case serviceUnavailable
-  case slowDown
-  case networkError(String)
-  case requestTimeout
-  case resourceTimeout
-  case fileError(String)
-  case fileTooLarge
-  case emptyFile
-  case noSpeechDetected
-  case ttsError(TTSError)
-
-  var title: String {
-    switch self {
-    case .noAPIKey: return "No API Key"
-    case .invalidAPIKey: return "Invalid Authentication"
-    case .incorrectAPIKey: return "Incorrect API Key"
-    case .countryNotSupported: return "Country Not Supported"
-    case .invalidRequest: return "Invalid Request"
-    case .permissionDenied: return "Permission Denied"
-    case .notFound: return "Not Found"
-    case .rateLimited: return "Rate Limited"
-    case .quotaExceeded: return "Quota Exceeded"
-    case .serverError: return "Server Error"
-    case .serviceUnavailable: return "Service Unavailable"
-    case .slowDown: return "Slow Down"
-    case .networkError: return "Network Error"
-    case .requestTimeout: return "Request Timeout"
-    case .resourceTimeout: return "Resource Timeout"
-    case .fileError: return "File Error"
-    case .fileTooLarge: return "File Too Large"
-    case .emptyFile: return "Empty File"
-    case .noSpeechDetected: return "No Speech Detected"
-    case .ttsError: return "Text-to-Speech Error"
-    }
-  }
-}
 
 // MARK: - Error Result Parser
 extension SpeechService {
@@ -1960,28 +1467,4 @@ extension SpeechService {
     }
   }
 }
-
-// MARK: - Chat Completions API Models
-struct ChatCompletionResponse: Codable {
-  let id: String?
-  let choices: [ChatChoice]
-  let usage: Usage?
-}
-
-struct ChatChoice: Codable {
-  let message: ChatMessage
-  let finish_reason: String?
-}
-
-struct ChatMessage: Codable {
-  let role: String
-  let content: String
-}
-
-struct Usage: Codable {
-  let prompt_tokens: Int?
-  let completion_tokens: Int?
-  let total_tokens: Int?
-}
-
 

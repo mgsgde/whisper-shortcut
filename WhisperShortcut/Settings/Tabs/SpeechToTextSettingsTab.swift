@@ -89,7 +89,7 @@ struct SpeechToTextSettingsTab: View {
         "Describe domain terms for better transcription quality. Leave empty to use OpenAI's default.",
       helpText:
         "Enter domain-specific terms, jargon, or context that will help improve transcription accuracy for your specific use case.",
-      defaultValue: TranscriptionPrompt.defaultPrompt.text,
+      defaultValue: AppConstants.defaultTranscriptionSystemPrompt,
       text: $viewModel.data.customPromptText,
       focusedField: .customPrompt,
       currentFocus: $focusedField,

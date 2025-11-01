@@ -57,7 +57,7 @@ class SettingsViewModel: ObservableObject {
     if let savedCustomPrompt = UserDefaults.standard.string(forKey: "customPromptText") {
       data.customPromptText = savedCustomPrompt
     } else {
-      data.customPromptText = TranscriptionPrompt.defaultPrompt.text
+      data.customPromptText = AppConstants.defaultTranscriptionSystemPrompt
     }
 
     // Load prompt mode system prompt
