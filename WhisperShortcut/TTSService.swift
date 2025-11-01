@@ -58,15 +58,9 @@ class TTSService {
     }
     
     currentTTSTask = task
+    defer { currentTTSTask = nil }
     
-    do {
-      let result = try await task.value
-      currentTTSTask = nil
-      return result
-    } catch {
-      currentTTSTask = nil
-      throw error
-    }
+    return try await task.value
   }
 
   // MARK: - TTS Generation (Private Implementation)

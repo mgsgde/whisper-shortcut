@@ -250,15 +250,9 @@ class SpeechService {
     }
     
     currentTranscriptionTask = task
+    defer { currentTranscriptionTask = nil }
     
-    do {
-      let result = try await task.value
-      currentTranscriptionTask = nil
-      return result
-    } catch {
-      currentTranscriptionTask = nil
-      throw error
-    }
+    return try await task.value
   }
 
   // MARK: - Transcription Mode (Private Implementation)
@@ -291,47 +285,44 @@ class SpeechService {
     for attempt in 1...Constants.maxRetryAttempts {
       do {
         let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
-        
-        do {
-          let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
-          guard let httpResponse = response as? HTTPURLResponse else {
-            throw TranscriptionError.networkError("Invalid response")
-          }
-
-          if httpResponse.statusCode != 200 {
-            let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
-            throw error
-          }
-
-          let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
-          let normalizedText = normalizeTranscriptionText(result.text)
-          try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
-          
-          if attempt > 1 {
-            DebugLogger.log("TRANSCRIPTION-RETRY: Success on attempt \(attempt)")
-          }
-          return normalizedText
-        } catch let error as URLError {
-          // Handle specific URL errors including timeouts
-          if error.code == .timedOut {
-            if error.localizedDescription.contains("request") {
-              throw TranscriptionError.requestTimeout
-            } else {
-              throw TranscriptionError.resourceTimeout
-            }
-          } else if error.code == .cancelled {
-            // Task was cancelled - propagate immediately
-            DebugLogger.log("TRANSCRIPTION-RETRY: Request cancelled by user")
-            throw CancellationError()
-          } else {
-            throw TranscriptionError.networkError(error.localizedDescription)
-          }
+        guard let httpResponse = response as? HTTPURLResponse else {
+          throw TranscriptionError.networkError("Invalid response")
         }
+
+        if httpResponse.statusCode != 200 {
+          let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
+          throw error
+        }
+
+        let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
+        let normalizedText = normalizeTranscriptionText(result.text)
+        try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
+        
+        if attempt > 1 {
+          DebugLogger.log("TRANSCRIPTION-RETRY: Success on attempt \(attempt)")
+        }
+        return normalizedText
+        
       } catch is CancellationError {
         // Task was cancelled - propagate immediately without retry
         DebugLogger.log("TRANSCRIPTION-RETRY: Cancelled on attempt \(attempt)")
         throw CancellationError()
+        
+      } catch let error as URLError {
+        // Handle specific URL errors
+        if error.code == .cancelled {
+          DebugLogger.log("TRANSCRIPTION-RETRY: Request cancelled by user")
+          throw CancellationError()
+        } else if error.code == .timedOut {
+          throw error.localizedDescription.contains("request") 
+            ? TranscriptionError.requestTimeout 
+            : TranscriptionError.resourceTimeout
+        } else {
+          throw TranscriptionError.networkError(error.localizedDescription)
+        }
+        
       } catch {
         lastError = error
         
@@ -355,15 +346,9 @@ class SpeechService {
     }
     
     currentPromptTask = task
+    defer { currentPromptTask = nil }
     
-    do {
-      let result = try await task.value
-      currentPromptTask = nil
-      return result
-    } catch {
-      currentPromptTask = nil
-      throw error
-    }
+    return try await task.value
   }
 
   // MARK: - Prompt Modes (Private Implementation)
@@ -450,15 +435,9 @@ class SpeechService {
     }
     
     currentVoiceResponseTask = task
+    defer { currentVoiceResponseTask = nil }
     
-    do {
-      let result = try await task.value
-      currentVoiceResponseTask = nil
-      return result
-    } catch {
-      currentVoiceResponseTask = nil
-      throw error
-    }
+    return try await task.value
   }
 
   private func performVoiceResponse(audioURL: URL, clipboardContext: String? = nil) async throws

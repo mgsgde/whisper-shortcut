@@ -393,16 +393,9 @@ class MenuBarController: NSObject {
   }
 
   @objc internal func toggleVoiceResponse() {
-    // Check if currently processing voice response - if so, cancel it
-    if case .processing(.voiceResponding) = appState {
-      speechService.cancelVoiceResponse()
-      appState = .idle
-      PopupNotificationWindow.showCancelled("Voice response cancelled")
-      return
-    }
-    
-    // Check if preparing TTS - if so, cancel it
-    if case .processing(.preparingTTS) = appState {
+    // Cancel if currently processing voice response or preparing TTS
+    if case .processing(let mode) = appState, 
+       mode == .voiceResponding || mode == .preparingTTS {
       speechService.cancelVoiceResponse()
       appState = .idle
       PopupNotificationWindow.showCancelled("Voice response cancelled")
