@@ -232,6 +232,8 @@ enum TranscriptionError: Error, Equatable {
   case fileTooLarge
   case emptyFile
   case noSpeechDetected
+  case textTooShort
+  case promptLeakDetected
   case ttsError(TTSError)
 
   var title: String {
@@ -255,6 +257,8 @@ enum TranscriptionError: Error, Equatable {
     case .fileTooLarge: return "File Too Large"
     case .emptyFile: return "Empty File"
     case .noSpeechDetected: return "No Speech Detected"
+    case .textTooShort: return "Text Too Short"
+    case .promptLeakDetected: return "API Response Issue"
     case .ttsError: return "Text-to-Speech Error"
     }
   }

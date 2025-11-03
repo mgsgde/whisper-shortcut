@@ -13,7 +13,7 @@ private enum Constants {
   static let modelsEndpoint = "https://api.openai.com/v1/models"
 
   // Text validation
-  static let minimumTextLength = 3
+  static let minimumTextLength = 1  // Allow single character responses like "Yes", "OK", etc.
 
   // Audio validation
   static let supportedAudioExtensions = ["wav", "mp3", "m4a", "flac", "ogg", "webm"]
@@ -768,9 +768,12 @@ class SpeechService {
 
   private func validateSpeechText(_ text: String, mode: String = "TRANSCRIPTION-MODE") throws {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    
+    // Debug logging to see what Whisper actually returned
+    DebugLogger.log("VALIDATION: Received text from API (length: \(trimmedText.count)): '\(trimmedText)'")
 
     if trimmedText.isEmpty || trimmedText.count < Constants.minimumTextLength {
-      throw TranscriptionError.noSpeechDetected
+      throw TranscriptionError.textTooShort
     }
 
     // Enhanced prompt detection - check for various prompt patterns
@@ -779,7 +782,7 @@ class SpeechService {
     
     // Check for exact prompt match
     if trimmedText.contains(defaultPrompt) {
-      throw TranscriptionError.noSpeechDetected
+      throw TranscriptionError.promptLeakDetected
     }
     
     // Check for partial prompt patterns that might appear in transcription
@@ -797,12 +800,12 @@ class SpeechService {
     // If more than 2 prompt keywords are found, likely a prompt leak
     if promptKeywordCount > 2 {
       DebugLogger.log("PROMPT-DETECTION: Detected prompt leak in transcription: \(promptKeywordCount) keywords found")
-      throw TranscriptionError.noSpeechDetected
+      throw TranscriptionError.promptLeakDetected
     }
     
     // Check for context prefix
     if trimmedText.hasPrefix("context:") {
-      throw TranscriptionError.noSpeechDetected
+      throw TranscriptionError.promptLeakDetected
     }
     
     // Check for system-like responses that might be prompt echoes
@@ -818,7 +821,7 @@ class SpeechService {
     let systemPatternCount = systemPatterns.filter { lowercasedText.hasPrefix($0) }.count
     if systemPatternCount > 0 {
       DebugLogger.log("PROMPT-DETECTION: Detected system pattern in transcription: \(systemPatterns.filter { lowercasedText.hasPrefix($0) }.first ?? "unknown")")
-      throw TranscriptionError.noSpeechDetected
+      throw TranscriptionError.promptLeakDetected
     }
   }
 

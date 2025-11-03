@@ -222,6 +222,26 @@ struct SpeechErrorFormatter {
 
         Try recording again with clear speech.
         """
+    case .textTooShort:
+      return """
+        🎤 Very Short Text Detected
+
+        Only very little text was recognized. This could mean:
+        • You spoke too quietly or monotonously
+        • The microphone didn't pick up clear audio
+        • You spoke very briefly
+
+        Try recording again and speak louder and more clearly.
+        """
+    case .promptLeakDetected:
+      return """
+        ⚠️ API Response Issue
+
+        The transcription service returned an unexpected response.
+        This is typically a temporary API issue.
+
+        Please record again. If the problem persists, the audio might be unclear.
+        """
     case .ttsError(let ttsError):
       return formatTTSError(ttsError)
     }
@@ -260,6 +280,10 @@ struct SpeechErrorFormatter {
       return "❌ Empty File"
     case .noSpeechDetected:
       return "🎤 No Speech"
+    case .textTooShort:
+      return "🎤 Text Too Short"
+    case .promptLeakDetected:
+      return "⚠️ API Issue"
     case .ttsError:
       return "❌ TTS Error"
     default:
