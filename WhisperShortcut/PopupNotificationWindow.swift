@@ -342,10 +342,8 @@ class PopupNotificationWindow: NSWindow {
   }
 
   @objc private func successWindowClicked() {
-    openRecentHistory()
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-      self.hide()
-    }
+    // Success notifications no longer open history
+    self.hide()
   }
 
   private func openWhatsAppFeedback() {
@@ -376,15 +374,6 @@ class PopupNotificationWindow: NSWindow {
     NSWorkspace.shared.open(whatsappURL)
   }
 
-  private func openRecentHistory(limit: Int = 20) {
-    guard let fileURL = HistoryLogger.shared.exportRecentToTempFile(limit: limit) else {
-      return
-    }
-
-    // Always use the system default handler
-    NSWorkspace.shared.open(fileURL)
-    NSLog("🪟 Popup: Opened recent history via default handler at \(fileURL.path)")
-  }
 
   private func setupScrollView() {
     scrollView = NSScrollView()
@@ -775,22 +764,18 @@ extension PopupNotificationWindow {
   }
 
   static func showPromptResponse(_ response: String, modelInfo: String? = nil) {
-    HistoryLogger.shared.log(type: .prompt, text: response)
     showSuccessNotification(text: response, modelInfo: modelInfo)
   }
 
   static func showTranscriptionResponse(_ transcription: String, modelInfo: String? = nil) {
-    HistoryLogger.shared.log(type: .transcription, text: transcription)
     showSuccessNotification(text: transcription, modelInfo: modelInfo)
   }
 
   static func showVoiceResponse(_ response: String, modelInfo: String? = nil) {
-    HistoryLogger.shared.log(type: .voiceResponse, text: response)
     showSuccessNotification(text: response, modelInfo: modelInfo)
   }
 
   static func showReadingText(_ text: String) {
-    HistoryLogger.shared.log(type: .readingText, text: text)
     showSuccessNotification(title: "🔊 Reading Text", text: text)
   }
 
