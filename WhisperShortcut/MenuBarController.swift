@@ -32,6 +32,7 @@ class MenuBarController: NSObject {
   private let clipboardManager: ClipboardManager
   private let audioPlaybackService: AudioPlaybackService
   private let shortcuts: Shortcuts
+  private let reviewPrompter: ReviewPrompter
 
   // MARK: - Configuration
   private var currentConfig: ShortcutConfig
@@ -47,6 +48,7 @@ class MenuBarController: NSObject {
     self.clipboardManager = clipboardManager
     self.audioPlaybackService = audioPlaybackService
     self.shortcuts = shortcuts
+    self.reviewPrompter = ReviewPrompter.shared
     self.currentConfig = ShortcutConfigManager.shared.loadConfiguration()
 
     // Initialize speech service with clipboard manager
@@ -457,6 +459,9 @@ class MenuBarController: NSObject {
     do {
       let result = try await speechService.transcribe(audioURL: audioURL)
       clipboardManager.copyToClipboard(text: result)
+      
+      // Record successful operation for review prompt
+      reviewPrompter.recordSuccessfulOperation(window: statusItem?.button?.window)
 
       await MainActor.run {
         // Show popup notification with the transcription text and model info
@@ -501,6 +506,9 @@ class MenuBarController: NSObject {
     do {
       let result = try await speechService.executePrompt(audioURL: audioURL)
       clipboardManager.copyToClipboard(text: result)
+      
+      // Record successful operation for review prompt
+      reviewPrompter.recordSuccessfulOperation(window: statusItem?.button?.window)
 
       await MainActor.run {
         // Show popup notification with the response text and model info
@@ -545,6 +553,9 @@ class MenuBarController: NSObject {
       // Keep processing(voiceResponding) state for blinking - don't change to preparingTTS
       _ = try await speechService.executePromptWithVoiceResponse(audioURL: audioURL)
       // Voice Response Mode - no clipboard copy to maintain Voice-First approach
+      
+      // Record successful operation for review prompt
+      reviewPrompter.recordSuccessfulOperation(window: statusItem?.button?.window)
 
       // State will be updated to playback by notification handlers
     } catch is CancellationError {
