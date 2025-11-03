@@ -519,8 +519,11 @@ class SpeechService {
     
     // Extract audio output
     guard let audioOutput = firstChoice.message.audio else {
-      // Fallback to TTS if no audio (Voice Response Mode - no clipboard copy)
+      // Fallback to TTS if no audio
       let speed = 1.0  // Fixed playback speed for GPT Audio (not user-configurable)
+      
+      // Copy to clipboard immediately before audio playback
+      clipboardManager?.copyToClipboard(text: textContent)
       
       NotificationCenter.default.post(
         name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
@@ -542,8 +545,11 @@ class SpeechService {
       throw TranscriptionError.networkError("Failed to decode audio data")
     }
     
-    // Extract transcript (Voice Response Mode - no clipboard copy to maintain Voice-First approach)
+    // Extract transcript
     let transcriptText = audioOutput.transcript ?? textContent
+
+    // Copy to clipboard immediately before audio playback
+    clipboardManager?.copyToClipboard(text: transcriptText)
 
     NotificationCenter.default.post(
       name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
