@@ -8,7 +8,9 @@ class ReviewPrompter {
   // MARK: - Constants
   private enum Constants {
     static let successfulOperationsCountKey = "successfulOperationsCount"
+    static let lastReviewPromptDateKey = "lastReviewPromptDate"
     static let operationThreshold = 10
+    static let minimumDaysBetweenPrompts = 30.0 // Only prompt once every 30 days minimum
   }
   
   // MARK: - Singleton
@@ -30,12 +32,39 @@ class ReviewPrompter {
     
     // Check if threshold is reached
     if newCount >= Constants.operationThreshold {
-      DebugLogger.log("REVIEW: Threshold reached! Triggering review prompt...")
-      showReviewPrompt(window: window)
-      
-      // Reset counter after showing prompt
-      resetCounter()
+      // Check if enough time has passed since last prompt
+      if shouldShowPrompt() {
+        DebugLogger.log("REVIEW: Threshold reached and time condition met! Triggering review prompt...")
+        showReviewPrompt(window: window)
+        
+        // Reset counter and update last prompt date
+        resetCounter()
+        updateLastPromptDate()
+      } else {
+        DebugLogger.log("REVIEW: Threshold reached but not enough time has passed since last prompt. Skipping.")
+      }
     }
+  }
+  
+  /// Check if enough time has passed since the last review prompt
+  /// - Returns: True if prompt should be shown, false otherwise
+  private func shouldShowPrompt() -> Bool {
+    guard let lastPromptDate = UserDefaults.standard.object(forKey: Constants.lastReviewPromptDateKey) as? Date else {
+      // No previous prompt date, allow prompt
+      return true
+    }
+    
+    let daysSinceLastPrompt = Date().timeIntervalSince(lastPromptDate) / (60 * 60 * 24)
+    
+    DebugLogger.log("REVIEW: Days since last prompt: \(String(format: "%.1f", daysSinceLastPrompt))")
+    
+    return daysSinceLastPrompt >= Constants.minimumDaysBetweenPrompts
+  }
+  
+  /// Update the last prompt date to now
+  private func updateLastPromptDate() {
+    UserDefaults.standard.set(Date(), forKey: Constants.lastReviewPromptDateKey)
+    DebugLogger.log("REVIEW: Last prompt date updated to now")
   }
   
   /// Show the native macOS review prompt
@@ -60,10 +89,11 @@ class ReviewPrompter {
     return UserDefaults.standard.integer(forKey: Constants.successfulOperationsCountKey)
   }
   
-  /// Manually reset the counter (for testing purposes)
+  /// Manually reset the counter and last prompt date (for testing purposes)
   func manualReset() {
     resetCounter()
-    DebugLogger.log("REVIEW: Manual counter reset performed")
+    UserDefaults.standard.removeObject(forKey: Constants.lastReviewPromptDateKey)
+    DebugLogger.log("REVIEW: Manual counter and date reset performed")
   }
 }
 
