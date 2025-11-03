@@ -551,8 +551,8 @@ class MenuBarController: NSObject {
   private func performVoiceResponse(audioURL: URL) async {
     do {
       // Keep processing(voiceResponding) state for blinking - don't change to preparingTTS
-      _ = try await speechService.executePromptWithVoiceResponse(audioURL: audioURL)
-      // Voice Response Mode - no clipboard copy to maintain Voice-First approach
+      let result = try await speechService.executePromptWithVoiceResponse(audioURL: audioURL)
+      clipboardManager.copyToClipboard(text: result)
       
       // Record successful operation for review prompt
       reviewPrompter.recordSuccessfulOperation(window: statusItem?.button?.window)
