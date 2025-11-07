@@ -230,8 +230,16 @@ class SpeechService {
   private func transcribeSingleFileWithRetry(audioURL: URL, apiKey: String) async throws -> String {
     var lastError: Error?
     
+    // Log audio metadata before starting
+    let audioSize = audioChunkingService.getAudioSize(audioURL)
+    DebugLogger.log("TRANSCRIPTION-REQUEST: Starting transcription - Attempt 1/\(Constants.maxRetryAttempts), Model=\(selectedTranscriptionModel.rawValue)")
+    
     for attempt in 1...Constants.maxRetryAttempts {
       do {
+        if attempt > 1 {
+          DebugLogger.log("TRANSCRIPTION-REQUEST: Retry attempt \(attempt)/\(Constants.maxRetryAttempts)")
+        }
+        
         let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
         let (data, response) = try await session.data(for: request)
 
@@ -240,17 +248,28 @@ class SpeechService {
         }
 
         if httpResponse.statusCode != 200 {
+          DebugLogger.log("TRANSCRIPTION-RESPONSE: HTTP error \(httpResponse.statusCode)")
           let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
           throw error
         }
 
         let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
+        
+        // Log raw response from Whisper
+        DebugLogger.log("TRANSCRIPTION-RESPONSE: Raw text from Whisper (length: \(result.text.count)): '\(result.text)'")
+        
         let normalizedText = normalizeTranscriptionText(result.text)
+        
+        // Log normalized text
+        DebugLogger.log("TRANSCRIPTION-RESPONSE: Normalized text (length: \(normalizedText.count)): '\(normalizedText)'")
+        
         try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
         
         if attempt > 1 {
           DebugLogger.log("TRANSCRIPTION-RETRY: Success on attempt \(attempt)")
         }
+        
+        DebugLogger.logSuccess("TRANSCRIPTION-RESPONSE: Transcription completed successfully")
         return normalizedText
         
       } catch is CancellationError {
@@ -391,12 +410,23 @@ class SpeechService {
       throw TranscriptionError.noAPIKey
     }
 
+    DebugLogger.log("VOICE-RESPONSE-REQUEST: Starting voice response execution")
+    
     // Get clipboard context
     let contextToUse = clipboardContext ?? getClipboardContext()
+    if let context = contextToUse {
+      DebugLogger.log("VOICE-RESPONSE-REQUEST: Clipboard context present (length: \(context.count)): '\(context)'")
+    } else {
+      DebugLogger.log("VOICE-RESPONSE-REQUEST: No clipboard context")
+    }
 
     // Convert audio to base64
     let audioData = try Data(contentsOf: audioURL)
     let base64Audio = audioData.base64EncodedString()
+    
+    // Log audio metadata
+    logAudioMetadata(audioURL, prefix: "VOICE-RESPONSE-REQUEST:")
+    DebugLogger.log("VOICE-RESPONSE-REQUEST: Base64 audio length: \(base64Audio.count) characters")
     
     // Determine audio format from file extension
     let audioFormat = audioURL.pathExtension.lowercased()
@@ -412,6 +442,7 @@ class SpeechService {
       supportedFormat = "wav"  // fallback
     }
     
+    DebugLogger.log("VOICE-RESPONSE-REQUEST: Audio format: \(supportedFormat)")
     
     // Build request
     let url = URL(string: Constants.chatEndpoint)!
@@ -425,14 +456,46 @@ class SpeechService {
     let customSystemPromptKey = "voiceResponseSystemPrompt"
     let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptKey)
     
-    var systemPrompt = baseSystemPrompt
+    DebugLogger.log("VOICE-RESPONSE-REQUEST: Base system prompt: '\(baseSystemPrompt)'")
+    
+    // Custom prompt REPLACES base prompt if set
+    let systemPrompt: String
     if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
-      systemPrompt += "\n\nAdditional instructions: \(customPrompt)"
+      systemPrompt = customPrompt
+      DebugLogger.log("VOICE-RESPONSE-REQUEST: Using custom system prompt (replaces base): '\(customPrompt)'")
+    } else {
+      systemPrompt = baseSystemPrompt
+      DebugLogger.log("VOICE-RESPONSE-REQUEST: Using base system prompt (no custom prompt set)")
     }
+    
+    DebugLogger.log("VOICE-RESPONSE-REQUEST: Final system prompt: '\(systemPrompt)'")
     
     // Get selected model from settings
     let modelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel") ?? "gpt-audio-mini"
     let selectedModel = GPTAudioModel(rawValue: modelString) ?? .gptAudioMini
+    
+    DebugLogger.log("VOICE-RESPONSE-REQUEST: Selected model: \(selectedModel.rawValue)")
+    
+    // Check conversation state
+    let conversationExpired = isConversationExpired(isVoiceResponse: true)
+    DebugLogger.log("VOICE-RESPONSE-REQUEST: CONTEXT: Conversation expired: \(conversationExpired)")
+    DebugLogger.log("VOICE-RESPONSE-REQUEST: CONTEXT: Current conversation message count: \(conversationMessages.count)")
+    
+    if !conversationExpired && !conversationMessages.isEmpty {
+      DebugLogger.log("VOICE-RESPONSE-REQUEST: CONTEXT: Using conversation history with \(conversationMessages.count) messages")
+      for (index, message) in conversationMessages.enumerated() {
+        let contentPreview: String
+        switch message.content {
+        case .text(let text):
+          contentPreview = text.prefix(100) + (text.count > 100 ? "..." : "")
+        case .multiContent(let parts):
+          contentPreview = "\(parts.count) content parts"
+        }
+        DebugLogger.log("VOICE-RESPONSE-REQUEST: CONTEXT: Message \(index + 1): role=\(message.role), content=\(contentPreview)")
+      }
+    } else {
+      DebugLogger.log("VOICE-RESPONSE-REQUEST: CONTEXT: Starting fresh conversation (no history)")
+    }
     
     // Create messages
     var messages: [GPTAudioChatRequest.GPTAudioMessage] = []
@@ -455,7 +518,12 @@ class SpeechService {
     if let context = contextToUse {
       contentParts.append(GPTAudioChatRequest.GPTAudioMessage.ContentPart(
         type: "text",
-        text: "Context (selected text from clipboard):\n\(context)",
+        text: """
+        SELECTED TEXT (use this as main context for my question):
+        \(context)
+        
+        [My voice question/instruction follows]
+        """,
         input_audio: nil
       ))
     }
@@ -482,7 +550,11 @@ class SpeechService {
       audio: GPTAudioChatRequest.AudioConfig(voice: "alloy", format: "mp3")
     )
     
+    DebugLogger.log("VOICE-RESPONSE-REQUEST: Request structure - Model: \(selectedModel.rawValue), Modalities: text+audio, Voice: alloy, Total messages: \(messages.count)")
+    
     request.httpBody = try JSONEncoder().encode(chatRequest)
+    
+    DebugLogger.log("VOICE-RESPONSE-REQUEST: Sending request to OpenAI...")
     
     let (data, responseData) = try await session.data(for: request)
     
@@ -490,12 +562,17 @@ class SpeechService {
       throw TranscriptionError.networkError("Invalid response")
     }
     
+    DebugLogger.log("VOICE-RESPONSE-RESPONSE: Received HTTP status: \(httpResponse.statusCode)")
+    
     if httpResponse.statusCode != 200 {
+      DebugLogger.log("VOICE-RESPONSE-RESPONSE: HTTP error \(httpResponse.statusCode)")
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
     
     let result = try JSONDecoder().decode(GPTAudioChatResponse.self, from: data)
+    
+    DebugLogger.log("VOICE-RESPONSE-RESPONSE: Successfully decoded response, choices count: \(result.choices.count)")
     
     guard let firstChoice = result.choices.first else {
       throw TranscriptionError.networkError("No choices in GPT-Audio response")
@@ -507,18 +584,24 @@ class SpeechService {
       switch content {
       case .text(let text):
         textContent = text
+        DebugLogger.log("VOICE-RESPONSE-RESPONSE: Raw response text (length: \(text.count)): '\(text)'")
       case .multiContent(let parts):
+        DebugLogger.log("VOICE-RESPONSE-RESPONSE: Multi-content response with \(parts.count) parts")
         // Extract text from multi-content
         for part in parts {
           if part.type == "text", let text = part.text {
             textContent += text
           }
         }
+        DebugLogger.log("VOICE-RESPONSE-RESPONSE: Extracted text content (length: \(textContent.count)): '\(textContent)'")
       }
+    } else {
+      DebugLogger.log("VOICE-RESPONSE-RESPONSE: No content in response")
     }
     
     // Extract audio output
     guard let audioOutput = firstChoice.message.audio else {
+      DebugLogger.log("VOICE-RESPONSE-RESPONSE: No audio in response, falling back to TTS")
       // Fallback to TTS if no audio
       let speed = 1.0  // Fixed playback speed for GPT Audio (not user-configurable)
       
@@ -542,11 +625,20 @@ class SpeechService {
     
     // Decode base64 audio
     guard let audioData = Data(base64Encoded: audioOutput.data) else {
+      DebugLogger.logError("VOICE-RESPONSE-RESPONSE: Failed to decode base64 audio data")
       throw TranscriptionError.networkError("Failed to decode audio data")
     }
     
+    DebugLogger.log("VOICE-RESPONSE-RESPONSE: Successfully decoded audio data (\(audioData.count) bytes)")
+    
     // Extract transcript
     let transcriptText = audioOutput.transcript ?? textContent
+    
+    if let transcript = audioOutput.transcript {
+      DebugLogger.log("VOICE-RESPONSE-RESPONSE: Audio transcript present: '\(transcript)'")
+    } else {
+      DebugLogger.log("VOICE-RESPONSE-RESPONSE: No audio transcript, using text content")
+    }
 
     // Copy to clipboard immediately before audio playback
     clipboardManager?.copyToClipboard(text: transcriptText)
@@ -562,6 +654,8 @@ class SpeechService {
       )
     }
 
+    DebugLogger.log("VOICE-RESPONSE-RESPONSE: Starting audio playback...")
+    
     // Play audio directly (NO TTS!)
     let playbackResult = try await audioPlaybackService.playAudio(data: audioData, playbackType: .voiceResponse)
     
@@ -591,6 +685,9 @@ class SpeechService {
       content: .text(transcriptText)
     ))
     previousResponseTimestamp = Date()
+    
+    DebugLogger.log("VOICE-RESPONSE-RESPONSE: Conversation updated - Total messages now: \(conversationMessages.count)")
+    DebugLogger.logSuccess("VOICE-RESPONSE-RESPONSE: Voice response execution completed successfully")
 
     return transcriptText
   }
@@ -600,12 +697,23 @@ class SpeechService {
       throw TranscriptionError.noAPIKey
     }
 
+    DebugLogger.log("PROMPT-MODE-REQUEST: Starting prompt mode execution")
+    
     // Get clipboard context
     let clipboardContext = getClipboardContext()
+    if let context = clipboardContext {
+      DebugLogger.log("PROMPT-MODE-REQUEST: Clipboard context present (length: \(context.count)): '\(context)'")
+    } else {
+      DebugLogger.log("PROMPT-MODE-REQUEST: No clipboard context")
+    }
 
     // Convert audio to base64
     let audioData = try Data(contentsOf: audioURL)
     let base64Audio = audioData.base64EncodedString()
+    
+    // Log audio metadata
+    logAudioMetadata(audioURL, prefix: "PROMPT-MODE-REQUEST:")
+    DebugLogger.log("PROMPT-MODE-REQUEST: Base64 audio length: \(base64Audio.count) characters")
     
     // Determine audio format from file extension
     let audioFormat = audioURL.pathExtension.lowercased()
@@ -621,7 +729,7 @@ class SpeechService {
       supportedFormat = "wav"  // fallback
     }
     
-    
+    DebugLogger.log("PROMPT-MODE-REQUEST: Audio format: \(supportedFormat)")
     
     // Build request
     let url = URL(string: Constants.chatEndpoint)!
@@ -635,23 +743,51 @@ class SpeechService {
     let customSystemPromptKey = "promptModeSystemPrompt"
     let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptKey)
     
-    var systemPrompt = baseSystemPrompt
+    DebugLogger.log("PROMPT-MODE-REQUEST: Base system prompt: '\(baseSystemPrompt)'")
+    
+    // Custom prompt REPLACES base prompt if set
+    let systemPrompt: String
     if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
-      systemPrompt += "\n\nAdditional instructions: \(customPrompt)"
+      systemPrompt = customPrompt
+      DebugLogger.log("PROMPT-MODE-REQUEST: Using custom system prompt (replaces base): '\(customPrompt)'")
+    } else {
+      systemPrompt = baseSystemPrompt
+      DebugLogger.log("PROMPT-MODE-REQUEST: Using base system prompt (no custom prompt set)")
     }
+    
+    DebugLogger.log("PROMPT-MODE-REQUEST: Final system prompt: '\(systemPrompt)'")
     
     // Get selected model from settings
     let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gpt-audio-mini"
     let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gptAudioMini
     
-    
+    DebugLogger.log("PROMPT-MODE-REQUEST: Selected model: \(selectedPromptModel.rawValue)")
     
     // Convert to GPTAudioModel for API call
     guard let audioModel = selectedPromptModel.asGPTAudioModel else {
       throw TranscriptionError.networkError("Selected model is not a GPT-Audio model")
     }
     
+    // Check conversation state
+    let conversationExpired = isConversationExpired(isVoiceResponse: false)
+    DebugLogger.log("PROMPT-MODE-REQUEST: CONTEXT: Conversation expired: \(conversationExpired)")
+    DebugLogger.log("PROMPT-MODE-REQUEST: CONTEXT: Current conversation message count: \(conversationMessages.count)")
     
+    if !conversationExpired && !conversationMessages.isEmpty {
+      DebugLogger.log("PROMPT-MODE-REQUEST: CONTEXT: Using conversation history with \(conversationMessages.count) messages")
+      for (index, message) in conversationMessages.enumerated() {
+        let contentPreview: String
+        switch message.content {
+        case .text(let text):
+          contentPreview = text.prefix(100) + (text.count > 100 ? "..." : "")
+        case .multiContent(let parts):
+          contentPreview = "\(parts.count) content parts"
+        }
+        DebugLogger.log("PROMPT-MODE-REQUEST: CONTEXT: Message \(index + 1): role=\(message.role), content=\(contentPreview)")
+      }
+    } else {
+      DebugLogger.log("PROMPT-MODE-REQUEST: CONTEXT: Starting fresh conversation (no history)")
+    }
     
     // Create messages
     var messages: [GPTAudioChatRequest.GPTAudioMessage] = []
@@ -674,7 +810,14 @@ class SpeechService {
     if let context = clipboardContext {
       contentParts.append(GPTAudioChatRequest.GPTAudioMessage.ContentPart(
         type: "text",
-        text: "Context (selected text from clipboard):\n\(context)",
+        text: """
+        TASK: Apply my voice instruction to the following text.
+        
+        TEXT TO PROCESS:
+        \(context)
+        
+        Now listen to my voice instruction and apply it to the text above.
+        """,
         input_audio: nil
       ))
     }
@@ -702,9 +845,11 @@ class SpeechService {
       audio: nil  // No audio output needed
     )
     
+    DebugLogger.log("PROMPT-MODE-REQUEST: Request structure - Model: \(audioModel.rawValue), Modalities: text only, Total messages: \(messages.count)")
+    
     request.httpBody = try JSONEncoder().encode(chatRequest)
     
-    
+    DebugLogger.log("PROMPT-MODE-REQUEST: Sending request to OpenAI...")
 
     let (data, responseData) = try await session.data(for: request)
     
@@ -712,18 +857,21 @@ class SpeechService {
       throw TranscriptionError.networkError("Invalid response")
     }
     
+    DebugLogger.log("PROMPT-MODE-RESPONSE: Received HTTP status: \(httpResponse.statusCode)")
+    
     if httpResponse.statusCode != 200 {
+      DebugLogger.log("PROMPT-MODE-RESPONSE: HTTP error \(httpResponse.statusCode)")
       let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
       throw error
     }
     
     let result = try JSONDecoder().decode(GPTAudioChatResponse.self, from: data)
     
+    DebugLogger.log("PROMPT-MODE-RESPONSE: Successfully decoded response, choices count: \(result.choices.count)")
+    
     guard let firstChoice = result.choices.first else {
       throw TranscriptionError.networkError("No choices in GPT-Audio response")
     }
-    
-    
     
     // Extract text content for clipboard and display
     var textContent = ""
@@ -731,14 +879,19 @@ class SpeechService {
       switch content {
       case .text(let text):
         textContent = text
+        DebugLogger.log("PROMPT-MODE-RESPONSE: Raw response text (length: \(text.count)): '\(text)'")
       case .multiContent(let parts):
+        DebugLogger.log("PROMPT-MODE-RESPONSE: Multi-content response with \(parts.count) parts")
         // Extract text from multi-content
         for part in parts {
           if part.type == "text", let text = part.text {
             textContent += text
           }
         }
+        DebugLogger.log("PROMPT-MODE-RESPONSE: Extracted text content (length: \(textContent.count)): '\(textContent)'")
       }
+    } else {
+      DebugLogger.log("PROMPT-MODE-RESPONSE: No content in response")
     }
     
     // Save conversation for next request (text-only, no audio data)
@@ -749,7 +902,6 @@ class SpeechService {
       userMessageText = "User spoke"
     }
     
-    
     conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
       role: "user",
       content: .text(userMessageText)
@@ -759,6 +911,9 @@ class SpeechService {
       content: .text(textContent)
     ))
     previousResponseTimestamp = Date()
+    
+    DebugLogger.log("PROMPT-MODE-RESPONSE: Conversation updated - Total messages now: \(conversationMessages.count)")
+    DebugLogger.logSuccess("PROMPT-MODE-RESPONSE: Prompt mode execution completed successfully")
 
     return textContent
   }
@@ -1249,6 +1404,76 @@ class SpeechService {
 
 
   // MARK: - Shared Infrastructure Helpers
+  
+  /// Logs comprehensive audio file metadata for debugging
+  private func logAudioMetadata(_ audioURL: URL, prefix: String) {
+    do {
+      let attributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
+      guard let fileSize = attributes[.size] as? Int64 else {
+        DebugLogger.log("\(prefix) AUDIO-METADATA: Unable to read file size")
+        return
+      }
+      
+      let fileSizeMB = Double(fileSize) / (1024.0 * 1024.0)
+      let fileExtension = audioURL.pathExtension.lowercased()
+      let filename = audioURL.lastPathComponent
+      
+      // Try to estimate duration from WAV header if possible
+      var durationInfo = "unknown"
+      if fileExtension == "wav" {
+        if let duration = estimateWAVDuration(audioURL) {
+          durationInfo = String(format: "%.2f seconds", duration)
+        }
+      }
+      
+      DebugLogger.log("\(prefix) AUDIO-METADATA: File=\(filename), Size=\(fileSize) bytes (\(String(format: "%.2f", fileSizeMB)) MB), Format=\(fileExtension), Duration=\(durationInfo)")
+    } catch {
+      DebugLogger.log("\(prefix) AUDIO-METADATA: Error reading file metadata: \(error.localizedDescription)")
+    }
+  }
+  
+  /// Estimates duration of WAV file from header information
+  private func estimateWAVDuration(_ audioURL: URL) -> Double? {
+    guard let fileHandle = try? FileHandle(forReadingFrom: audioURL) else {
+      return nil
+    }
+    defer { try? fileHandle.close() }
+    
+    // Read WAV header (first 44 bytes minimum)
+    guard let headerData = try? fileHandle.read(upToCount: 44), headerData.count >= 44 else {
+      return nil
+    }
+    
+    // Check RIFF header
+    let riffHeader = String(data: headerData[0..<4], encoding: .ascii)
+    guard riffHeader == "RIFF" else { return nil }
+    
+    // Check WAVE format
+    let waveFormat = String(data: headerData[8..<12], encoding: .ascii)
+    guard waveFormat == "WAVE" else { return nil }
+    
+    // Extract sample rate (bytes 24-27, little endian)
+    let sampleRate = headerData.withUnsafeBytes { ptr -> UInt32 in
+      ptr.load(fromByteOffset: 24, as: UInt32.self)
+    }
+    
+    // Extract byte rate (bytes 28-31, little endian)
+    let byteRate = headerData.withUnsafeBytes { ptr -> UInt32 in
+      ptr.load(fromByteOffset: 28, as: UInt32.self)
+    }
+    
+    guard byteRate > 0 else { return nil }
+    
+    // Get total file size
+    guard let fileSize = try? fileHandle.seekToEnd() else { return nil }
+    
+    // Calculate duration: (file_size - header_size) / byte_rate
+    let audioDataSize = Double(fileSize - 44)
+    let duration = audioDataSize / Double(byteRate)
+    
+    return duration
+  }
+  
   private func validateAudioFile(at url: URL) throws {
     let fileExtension = url.pathExtension.lowercased()
     if !Constants.supportedAudioExtensions.contains(fileExtension) {
@@ -1287,10 +1512,18 @@ class SpeechService {
         !customPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       {
         fields["prompt"] = customPrompt
+        DebugLogger.log("TRANSCRIPTION-REQUEST: Using custom prompt: '\(customPrompt)'")
+      } else {
+        DebugLogger.log("TRANSCRIPTION-REQUEST: No custom prompt set")
       }
     }
 
     let audioData = try Data(contentsOf: audioURL)
+    
+    // Log request parameters
+    DebugLogger.log("TRANSCRIPTION-REQUEST: Model=\(fields["model"] ?? "unknown")")
+    DebugLogger.log("TRANSCRIPTION-REQUEST: Response format=\(fields["response_format"] ?? "unknown")")
+    DebugLogger.log("TRANSCRIPTION-REQUEST: Chunking strategy=\(fields["chunking_strategy"] ?? "none")")
 
     // Determine correct content type based on file extension
     let fileExtension = audioURL.pathExtension.lowercased()
@@ -1312,6 +1545,9 @@ class SpeechService {
       filename = "audio.wav"
     }
     
+    // Log audio file metadata
+    logAudioMetadata(audioURL, prefix: "TRANSCRIPTION-REQUEST:")
+    DebugLogger.log("TRANSCRIPTION-REQUEST: Audio content type=\(contentType), filename=\(filename)")
     
     let files: [String: (filename: String, contentType: String, data: Data)] = [
       "file": (filename: filename, contentType: contentType, data: audioData)
