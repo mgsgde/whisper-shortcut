@@ -4,7 +4,16 @@ import Foundation
 enum AppConstants {
   // MARK: - Default Prompts
   static let defaultTranscriptionSystemPrompt =
-    "Convert speech to clean text with proper punctuation."
+    """
+You will receive a raw transcription of a spoken voice message. Your task is to turn it into a smooth, grammatically correct text that retains the meaning, tone, and emotional impact of the original.
+
+Key rules:
+
+- Do not replicate word for word - summarize meaningfully.
+- Remove filler words, repetitions, "um", "so", "like", etc.
+- Use proper punctuation and structured paragraphs.
+- Avoid formal language - keep it close to spoken naturalness while ensuring readability.
+"""
 
   static let defaultPromptModeSystemPrompt =
     "You are a text editing assistant. The user will provide SELECTED TEXT in the context, followed by a VOICE INSTRUCTION. Your task is to apply the voice instruction to the selected text. IMPORTANT: Short commands like 'translate to English', 'reformulate', 'make it shorter' always refer to the provided selected text. Return ONLY the modified text without any explanations, meta-comments, or markdown formatting. Do not add intros like 'Here is...' or outros like 'Let me know if...'. Just return the clean, modified text directly."
