@@ -11,6 +11,7 @@ class SettingsViewModel: ObservableObject {
   init() {
     loadCurrentSettings()
   }
+  
 
   // MARK: - Data Loading
   private func loadCurrentSettings() {
@@ -53,28 +54,17 @@ class SettingsViewModel: ObservableObject {
       data.selectedGPTAudioModel = SettingsDefaults.selectedGPTAudioModel
     }
 
-    // Load custom prompt
-    if let savedCustomPrompt = UserDefaults.standard.string(forKey: "customPromptText") {
-      data.customPromptText = savedCustomPrompt
-    } else {
-      data.customPromptText = AppConstants.defaultTranscriptionSystemPrompt
-    }
+    // Load custom prompt (with fallback to default)
+    data.customPromptText = UserDefaults.standard.string(forKey: "customPromptText") 
+      ?? AppConstants.defaultTranscriptionSystemPrompt
 
-    // Load prompt mode system prompt
-    if let savedSystemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt") {
-      data.promptModeSystemPrompt = savedSystemPrompt
-    } else {
-      data.promptModeSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
-    }
+    // Load prompt mode system prompt (with fallback to default)
+    data.promptModeSystemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
+      ?? AppConstants.defaultPromptModeSystemPrompt
 
-    // Load voice response system prompt
-    if let savedVoiceResponseSystemPrompt = UserDefaults.standard.string(
-      forKey: "voiceResponseSystemPrompt")
-    {
-      data.voiceResponseSystemPrompt = savedVoiceResponseSystemPrompt
-    } else {
-      data.voiceResponseSystemPrompt = AppConstants.defaultVoiceResponseSystemPrompt
-    }
+    // Load voice response system prompt (with fallback to default)
+    data.voiceResponseSystemPrompt = UserDefaults.standard.string(forKey: "voiceResponseSystemPrompt")
+      ?? AppConstants.defaultVoiceResponseSystemPrompt
 
 
     // Load read selected text playback speed

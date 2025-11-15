@@ -1320,13 +1320,18 @@ class SpeechService {
     // Always use server-side auto chunking - let OpenAI decide optimal strategy
     fields["chunking_strategy"] = "auto"
 
-    if selectedTranscriptionModel == .gpt4oTranscribe
+    // Add prompt if model supports it
+    let supportsPrompt = selectedTranscriptionModel == .gpt4oTranscribe
       || selectedTranscriptionModel == .gpt4oMiniTranscribe
-    {
-      if let customPrompt = UserDefaults.standard.string(forKey: "customPromptText"),
-        !customPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      {
-        fields["prompt"] = customPrompt
+    
+    if supportsPrompt {
+      let customPrompt = UserDefaults.standard.string(forKey: "customPromptText")
+        ?? AppConstants.defaultTranscriptionSystemPrompt
+      
+      let promptToUse = customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+      
+      if !promptToUse.isEmpty {
+        fields["prompt"] = promptToUse
       }
     }
 
