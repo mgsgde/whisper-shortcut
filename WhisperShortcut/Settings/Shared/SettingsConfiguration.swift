@@ -200,6 +200,7 @@ struct SettingsDefaults {
   static let promptModeSystemPrompt = ""
   static let voiceResponseSystemPrompt = ""
   static let readSelectedTextPlaybackSpeed = 1.0
+  static let transcriptionLanguage = ""  // Empty = Auto-Detect
   
   // MARK: - Reasoning Effort Settings
   static let promptReasoningEffort = ReasoningEffort.medium
@@ -243,6 +244,7 @@ struct SettingsData {
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
   var voiceResponseSystemPrompt: String = SettingsDefaults.voiceResponseSystemPrompt
   var readSelectedTextPlaybackSpeed: Double = SettingsDefaults.readSelectedTextPlaybackSpeed
+  var transcriptionLanguage: String = SettingsDefaults.transcriptionLanguage
   
   // MARK: - Reasoning Effort Settings
   var promptReasoningEffort: ReasoningEffort = SettingsDefaults.promptReasoningEffort
@@ -273,4 +275,5 @@ enum SettingsFocusField: Hashable {
   case customPrompt
   case promptModeSystemPrompt
   case voiceResponseSystemPrompt
+  case transcriptionLanguage
 }

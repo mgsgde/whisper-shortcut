@@ -1319,6 +1319,14 @@ class SpeechService {
     
     // Always use server-side auto chunking - let OpenAI decide optimal strategy
     fields["chunking_strategy"] = "auto"
+    
+    // Set language if specified (empty = Auto-Detect, no parameter sent)
+    let transcriptionLanguage = UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? ""
+    let languageToUse = transcriptionLanguage.trimmingCharacters(in: .whitespacesAndNewlines)
+    
+    if !languageToUse.isEmpty {
+      fields["language"] = languageToUse
+    }
 
     // Add prompt if model supports it
     let supportsPrompt = selectedTranscriptionModel == .gpt4oTranscribe
@@ -1360,6 +1368,7 @@ class SpeechService {
     let files: [String: (filename: String, contentType: String, data: Data)] = [
       "file": (filename: filename, contentType: contentType, data: audioData)
     ]
+
 
     request.setMultipartFormData(boundary: boundary, fields: fields, files: files)
     return request
