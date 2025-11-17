@@ -5,7 +5,7 @@ enum AppConstants {
   // MARK: - Default Prompts
   static let defaultTranscriptionSystemPrompt =
     """
-You will receive a raw transcription of a spoken voice message. Your task is to turn it into a smooth, grammatically correct text that retains the meaning, tone, and emotional impact of the original.
+You are a professional transcription service. Your task is to turn it into a smooth, grammatically correct text that retains the meaning, tone, and emotional impact of the original.
 
 Key rules:
 
