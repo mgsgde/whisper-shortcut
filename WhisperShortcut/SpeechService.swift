@@ -73,6 +73,10 @@ class SpeechService {
   private var apiKey: String? {
     keychainManager.getAPIKey()
   }
+  
+  private var googleAPIKey: String? {
+    keychainManager.getGoogleAPIKey()
+  }
 
   func updateAPIKey(_ key: String) {
     _ = keychainManager.saveAPIKey(key)
@@ -205,6 +209,14 @@ class SpeechService {
 
   // MARK: - Transcription Mode (Private Implementation)
   private func performTranscription(audioURL: URL) async throws -> String {
+    // Check if using Gemini model
+    if selectedTranscriptionModel.isGemini {
+      // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
+      try validateAudioFileFormat(at: audioURL)
+      return try await transcribeWithGemini(audioURL: audioURL)
+    }
+    
+    // OpenAI transcription (existing logic)
     let audioSize = audioChunkingService.getAudioSize(audioURL)
 
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
@@ -802,6 +814,308 @@ class SpeechService {
     return textContent
   }
 
+  // MARK: - Gemini Transcription
+  private func transcribeWithGemini(audioURL: URL) async throws -> String {
+    guard let apiKey = self.googleAPIKey, !apiKey.isEmpty else {
+      throw TranscriptionError.noAPIKey
+    }
+    
+    try validateAudioFile(at: audioURL)
+    
+    let audioSize = audioChunkingService.getAudioSize(audioURL)
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Starting transcription, file size: \(audioSize) bytes")
+    
+    // For files >20MB, use Files API (resumable upload)
+    // For files ≤20MB, use inline base64
+    if audioSize > Constants.maxFileSize {
+      return try await transcribeWithGeminiFilesAPI(audioURL: audioURL, apiKey: apiKey)
+    } else {
+      return try await transcribeWithGeminiInline(audioURL: audioURL, apiKey: apiKey)
+    }
+  }
+  
+  private func transcribeWithGeminiInline(audioURL: URL, apiKey: String) async throws -> String {
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Using inline audio (file ≤20MB)")
+    
+    // Read audio file and convert to base64
+    let audioData = try Data(contentsOf: audioURL)
+    let base64Audio = audioData.base64EncodedString()
+    
+    // Determine MIME type from file extension
+    let fileExtension = audioURL.pathExtension.lowercased()
+    let mimeType = getGeminiMimeType(for: fileExtension)
+    
+    // Get custom prompt from settings (same as OpenAI)
+    let customPrompt = UserDefaults.standard.string(forKey: "customPromptText")
+      ?? AppConstants.defaultTranscriptionSystemPrompt
+    let promptToUse = customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
+    
+    // Create request
+    let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=\(apiKey)")!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    
+    // Build request body
+    let requestBody: [String: Any] = [
+      "contents": [
+        [
+          "parts": [
+            [
+              "text": promptToUse.isEmpty ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting." : promptToUse
+            ],
+            [
+              "inline_data": [
+                "mime_type": mimeType,
+                "data": base64Audio
+              ]
+            ]
+          ]
+        ]
+      ]
+    ]
+    
+    request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+    
+    // Make request with retry logic
+    var lastError: Error?
+    for attempt in 1...Constants.maxRetryAttempts {
+      do {
+        if attempt > 1 {
+          DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Attempt \(attempt)/\(Constants.maxRetryAttempts)")
+        }
+        
+        let (data, response) = try await session.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+          throw TranscriptionError.networkError("Invalid response")
+        }
+        
+        if httpResponse.statusCode != 200 {
+          DebugLogger.log("GEMINI-TRANSCRIPTION-ERROR: HTTP \(httpResponse.statusCode)")
+          let error = try parseGeminiErrorResponse(data: data, statusCode: httpResponse.statusCode)
+          throw error
+        }
+        
+        // Parse response
+        let geminiResponse = try JSONDecoder().decode(GeminiResponse.self, from: data)
+        let transcript = extractTextFromGeminiResponse(geminiResponse)
+        let normalizedText = normalizeTranscriptionText(transcript)
+        try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
+        
+        if attempt > 1 {
+          DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Success on attempt \(attempt)")
+        }
+        
+        return normalizedText
+        
+      } catch is CancellationError {
+        DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Cancelled on attempt \(attempt)")
+        throw CancellationError()
+      } catch let error as URLError {
+        if error.code == .cancelled {
+          DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Request cancelled by user")
+          throw CancellationError()
+        } else if error.code == .timedOut {
+          throw error.localizedDescription.contains("request")
+            ? TranscriptionError.requestTimeout
+            : TranscriptionError.resourceTimeout
+        } else {
+          throw TranscriptionError.networkError(error.localizedDescription)
+        }
+      } catch {
+        lastError = error
+        if attempt < Constants.maxRetryAttempts {
+          DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Attempt \(attempt) failed, retrying in \(Constants.retryDelaySeconds)s: \(error.localizedDescription)")
+          try? await Task.sleep(nanoseconds: UInt64(Constants.retryDelaySeconds * 1_000_000_000))
+        }
+      }
+    }
+    
+    DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: All \(Constants.maxRetryAttempts) attempts failed")
+    throw lastError ?? TranscriptionError.networkError("Gemini transcription failed after retries")
+  }
+  
+  private func transcribeWithGeminiFilesAPI(audioURL: URL, apiKey: String) async throws -> String {
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Using Files API (file >20MB)")
+    
+    // Step 1: Upload file using resumable upload
+    let fileURI = try await uploadFileToGemini(audioURL: audioURL, apiKey: apiKey)
+    
+    // Step 2: Use file URI for transcription
+    return try await transcribeWithGeminiFileURI(fileURI: fileURI, apiKey: apiKey)
+  }
+  
+  private func uploadFileToGemini(audioURL: URL, apiKey: String) async throws -> String {
+    let audioData = try Data(contentsOf: audioURL)
+    let fileExtension = audioURL.pathExtension.lowercased()
+    let mimeType = getGeminiMimeType(for: fileExtension)
+    let numBytes = audioData.count
+    
+    // Step 1: Initialize resumable upload
+    let initURL = URL(string: "https://generativelanguage.googleapis.com/upload/v1beta/files?key=\(apiKey)")!
+    var initRequest = URLRequest(url: initURL)
+    initRequest.httpMethod = "POST"
+    initRequest.setValue("resumable", forHTTPHeaderField: "X-Goog-Upload-Protocol")
+    initRequest.setValue("start", forHTTPHeaderField: "X-Goog-Upload-Command")
+    initRequest.setValue("\(numBytes)", forHTTPHeaderField: "X-Goog-Upload-Header-Content-Length")
+    initRequest.setValue(mimeType, forHTTPHeaderField: "X-Goog-Upload-Header-Content-Type")
+    initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    
+    let metadata: [String: Any] = [
+      "file": [
+        "display_name": "audio_\(Date().timeIntervalSince1970)"
+      ]
+    ]
+    initRequest.httpBody = try JSONSerialization.data(withJSONObject: metadata)
+    
+    let (initData, initResponse) = try await session.data(for: initRequest)
+    guard let httpResponse = initResponse as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response")
+    }
+    
+    guard httpResponse.statusCode == 200 else {
+      let error = try parseGeminiErrorResponse(data: initData, statusCode: httpResponse.statusCode)
+      throw error
+    }
+    
+    // Extract upload URL from response headers
+    let allHeaders = httpResponse.allHeaderFields
+    guard let uploadURLString = allHeaders["X-Goog-Upload-URL"] as? String,
+          let uploadURL = URL(string: uploadURLString) else {
+      throw TranscriptionError.networkError("Failed to get upload URL")
+    }
+    
+    // Step 2: Upload file data
+    var uploadRequest = URLRequest(url: uploadURL)
+    uploadRequest.httpMethod = "PUT"
+    uploadRequest.setValue("\(numBytes)", forHTTPHeaderField: "Content-Length")
+    uploadRequest.setValue("0", forHTTPHeaderField: "X-Goog-Upload-Offset")
+    uploadRequest.setValue("upload, finalize", forHTTPHeaderField: "X-Goog-Upload-Command")
+    uploadRequest.httpBody = audioData
+    
+    let (uploadData, uploadResponse) = try await session.data(for: uploadRequest)
+    guard let uploadHttpResponse = uploadResponse as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response")
+    }
+    
+    guard uploadHttpResponse.statusCode == 200 else {
+      let error = try parseGeminiErrorResponse(data: uploadData, statusCode: uploadHttpResponse.statusCode)
+      throw error
+    }
+    
+    // Parse file info to get URI
+    let fileInfo = try JSONDecoder().decode(GeminiFileInfo.self, from: uploadData)
+    return fileInfo.file.uri
+  }
+  
+  private func transcribeWithGeminiFileURI(fileURI: String, apiKey: String) async throws -> String {
+    // Get custom prompt from settings (same as OpenAI)
+    let customPrompt = UserDefaults.standard.string(forKey: "customPromptText")
+      ?? AppConstants.defaultTranscriptionSystemPrompt
+    let promptToUse = customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
+    
+    let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(apiKey)")!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    
+    let requestBody: [String: Any] = [
+      "contents": [
+        [
+          "parts": [
+            [
+              "text": promptToUse.isEmpty ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting." : promptToUse
+            ],
+            [
+              "file_data": [
+                "file_uri": fileURI,
+                "mime_type": "audio/wav"  // Default, will be determined by file
+              ]
+            ]
+          ]
+        ]
+      ]
+    ]
+    
+    request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+    
+    let (data, response) = try await session.data(for: request)
+    guard let httpResponse = response as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response")
+    }
+    
+    if httpResponse.statusCode != 200 {
+      let error = try parseGeminiErrorResponse(data: data, statusCode: httpResponse.statusCode)
+      throw error
+    }
+    
+    let geminiResponse = try JSONDecoder().decode(GeminiResponse.self, from: data)
+    let transcript = extractTextFromGeminiResponse(geminiResponse)
+    let normalizedText = normalizeTranscriptionText(transcript)
+    try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
+    
+    return normalizedText
+  }
+  
+  private func getGeminiMimeType(for fileExtension: String) -> String {
+    switch fileExtension {
+    case "wav": return "audio/wav"
+    case "mp3": return "audio/mp3"
+    case "aiff": return "audio/aiff"
+    case "aac": return "audio/aac"
+    case "ogg": return "audio/ogg"
+    case "flac": return "audio/flac"
+    default: return "audio/wav"
+    }
+  }
+  
+  private func extractTextFromGeminiResponse(_ response: GeminiResponse) -> String {
+    guard let candidate = response.candidates.first,
+          let content = candidate.content,
+          let parts = content.parts else {
+      return ""
+    }
+    
+    // Extract text from parts
+    var text = ""
+    for part in parts {
+      if let partText = part.text {
+        text += partText
+      }
+    }
+    
+    return text
+  }
+  
+  private func parseGeminiErrorResponse(data: Data, statusCode: Int) throws -> TranscriptionError {
+    // Try to parse Gemini error format
+    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+       let error = json["error"] as? [String: Any],
+       let message = error["message"] as? String {
+      DebugLogger.log("GEMINI-ERROR: \(message)")
+      
+      // Map common Gemini errors to TranscriptionError
+      let lowerMessage = message.lowercased()
+      if lowerMessage.contains("api key") || lowerMessage.contains("authentication") {
+        return statusCode == 401 ? .invalidAPIKey : .incorrectAPIKey
+      }
+      if lowerMessage.contains("quota") || lowerMessage.contains("exceeded") {
+        return .quotaExceeded
+      }
+      if lowerMessage.contains("rate limit") {
+        return .rateLimited
+      }
+    }
+    
+    // Fall back to status code parsing
+    return parseStatusCodeError(statusCode)
+  }
+
   // MARK: - Transcription Mode Helpers
   private func createTranscriptionRequest(audioURL: URL, apiKey: String) throws -> URLRequest {
     let apiURL = URL(string: selectedTranscriptionModel.apiEndpoint)!
@@ -1290,11 +1604,8 @@ class SpeechService {
   // MARK: - Shared Infrastructure Helpers
   
   private func validateAudioFile(at url: URL) throws {
-    let fileExtension = url.pathExtension.lowercased()
-    if !Constants.supportedAudioExtensions.contains(fileExtension) {
-      throw TranscriptionError.fileError("Unsupported audio format: \(fileExtension)")
-    }
-
+    try validateAudioFileFormat(at: url)
+    
     let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
     guard let fileSize = attributes[.size] as? Int64 else {
       throw TranscriptionError.fileError("Cannot read file size")
@@ -1306,6 +1617,16 @@ class SpeechService {
 
     if fileSize > Constants.maxFileSize {
       throw TranscriptionError.fileTooLarge
+    }
+  }
+  
+  private func validateAudioFileFormat(at url: URL) throws {
+    let fileExtension = url.pathExtension.lowercased()
+    // Gemini supports: wav, mp3, aiff, aac, ogg, flac
+    // OpenAI supports: wav, mp3, m4a, flac, ogg, webm
+    let supportedExtensions = ["wav", "mp3", "m4a", "flac", "ogg", "webm", "aiff", "aac"]
+    if !supportedExtensions.contains(fileExtension) {
+      throw TranscriptionError.fileError("Unsupported audio format: \(fileExtension)")
     }
   }
 

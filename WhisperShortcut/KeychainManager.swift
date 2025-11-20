@@ -7,6 +7,10 @@ protocol KeychainManaging {
   func getAPIKey() -> String?
   func deleteAPIKey() -> Bool
   func hasAPIKey() -> Bool
+  func saveGoogleAPIKey(_ apiKey: String) -> Bool
+  func getGoogleAPIKey() -> String?
+  func deleteGoogleAPIKey() -> Bool
+  func hasGoogleAPIKey() -> Bool
 }
 
 class KeychainManager: KeychainManaging {
@@ -16,9 +20,11 @@ class KeychainManager: KeychainManaging {
   private enum Constants {
     static let serviceName = "com.whispershortcut.openai"
     static let accountName = "api-key"
+    static let googleAccountName = "google-api-key"
   }
 
   private var cachedAPIKey: String?
+  private var cachedGoogleAPIKey: String?
 
   private init() {}
 
@@ -116,5 +122,94 @@ class KeychainManager: KeychainManaging {
 
   private func clearCache() {
     cachedAPIKey = nil
+  }
+
+  // MARK: - Google API Key Management
+
+  func saveGoogleAPIKey(_ apiKey: String) -> Bool {
+    clearGoogleCache()
+    _ = deleteGoogleAPIKey()
+    guard let data = apiKey.data(using: .utf8) else {
+      return false
+    }
+
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: Constants.serviceName,
+      kSecAttrAccount as String: Constants.googleAccountName,
+      kSecValueData as String: data,
+      kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+    ]
+
+    let status = SecItemAdd(query as CFDictionary, nil)
+
+    if status == errSecSuccess {
+      return true
+    } else {
+      return false
+    }
+  }
+
+  func getGoogleAPIKey() -> String? {
+    if let cached = cachedGoogleAPIKey { return cached }
+
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: Constants.serviceName,
+      kSecAttrAccount as String: Constants.googleAccountName,
+      kSecReturnData as String: true,
+      kSecMatchLimit as String: kSecMatchLimitOne,
+    ]
+
+    var result: AnyObject?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+    if status == errSecSuccess, let data = result as? Data,
+      let apiKey = String(data: data, encoding: .utf8)
+    {
+      cachedGoogleAPIKey = apiKey
+      return apiKey
+    } else {
+      return nil
+    }
+  }
+
+  func deleteGoogleAPIKey() -> Bool {
+    clearGoogleCache()
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: Constants.serviceName,
+      kSecAttrAccount as String: Constants.googleAccountName,
+    ]
+    let status = SecItemDelete(query as CFDictionary)
+
+    if status == errSecSuccess || status == errSecItemNotFound {
+      return true
+    } else {
+      return false
+    }
+  }
+
+  func hasGoogleAPIKey() -> Bool {
+    // Check if cached key exists first
+    if cachedGoogleAPIKey != nil { return true }
+
+    // Check if key exists in keychain without reading the data
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: Constants.serviceName,
+      kSecAttrAccount as String: Constants.googleAccountName,
+      kSecReturnAttributes as String: true,
+      kSecMatchLimit as String: kSecMatchLimitOne,
+    ]
+
+    var result: AnyObject?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+    return status == errSecSuccess
+  }
+
+  private func clearGoogleCache() {
+    cachedGoogleAPIKey = nil
   }
 }

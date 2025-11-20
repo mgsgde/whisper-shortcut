@@ -128,6 +128,9 @@ class SettingsViewModel: ObservableObject {
 
     // Load API key
     data.apiKey = KeychainManager.shared.getAPIKey() ?? ""
+    
+    // Load Google API key
+    data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
   }
 
   // MARK: - Validation
@@ -291,6 +294,9 @@ class SettingsViewModel: ObservableObject {
 
     // Save API key
     _ = KeychainManager.shared.saveAPIKey(data.apiKey)
+    
+    // Save Google API key
+    _ = KeychainManager.shared.saveGoogleAPIKey(data.googleAPIKey)
 
     // Save model preferences
     UserDefaults.standard.set(

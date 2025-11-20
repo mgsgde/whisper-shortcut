@@ -11,6 +11,7 @@ import Foundation
 enum TranscriptionModel: String, CaseIterable {
   case gpt4oTranscribe = "gpt-4o-transcribe"
   case gpt4oMiniTranscribe = "gpt-4o-mini-transcribe"
+  case gemini25FlashLite = "gemini-2.5-flash-lite"
 
   var displayName: String {
     switch self {
@@ -18,28 +19,35 @@ enum TranscriptionModel: String, CaseIterable {
       return "GPT-4o Transcribe"
     case .gpt4oMiniTranscribe:
       return "GPT-4o Mini Transcribe"
+    case .gemini25FlashLite:
+      return "Gemini 2.5 Flash-Lite"
     }
   }
 
   var apiEndpoint: String {
-    return "https://api.openai.com/v1/audio/transcriptions"
+    switch self {
+    case .gpt4oTranscribe, .gpt4oMiniTranscribe:
+      return "https://api.openai.com/v1/audio/transcriptions"
+    case .gemini25FlashLite:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
+    }
   }
 
   var isRecommended: Bool {
     switch self {
     case .gpt4oMiniTranscribe:
       return true
-    case .gpt4oTranscribe:
+    case .gpt4oTranscribe, .gemini25FlashLite:
       return false
     }
   }
 
   var costLevel: String {
     switch self {
-    case .gpt4oMiniTranscribe:
+    case .gpt4oMiniTranscribe, .gemini25FlashLite:
       return "Low"
     case .gpt4oTranscribe:
-      return "High"
+      return "Medium"
     }
   }
 
@@ -49,7 +57,13 @@ enum TranscriptionModel: String, CaseIterable {
       return "Highest accuracy and quality • Best for critical applications"
     case .gpt4oMiniTranscribe:
       return "Recommended • Great quality at lower cost • Best for everyday use"
+    case .gemini25FlashLite:
+      return "Google's fastest Gemini model • Superior latency • Cost-efficient • Best for high-volume transcription"
     }
+  }
+  
+  var isGemini: Bool {
+    return self == .gemini25FlashLite
   }
 }
 
@@ -209,6 +223,31 @@ struct OpenAIError: Codable {
   let message: String?
   let type: String?
   let code: String?
+}
+
+// MARK: - Gemini Response Models
+struct GeminiResponse: Codable {
+  let candidates: [GeminiCandidate]
+  
+  struct GeminiCandidate: Codable {
+    let content: GeminiContent?
+  }
+  
+  struct GeminiContent: Codable {
+    let parts: [GeminiPart]?
+  }
+  
+  struct GeminiPart: Codable {
+    let text: String?
+  }
+}
+
+struct GeminiFileInfo: Codable {
+  let file: GeminiFile
+  
+  struct GeminiFile: Codable {
+    let uri: String
+  }
 }
 
 // MARK: - Transcription Error

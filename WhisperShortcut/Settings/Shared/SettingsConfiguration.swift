@@ -179,6 +179,7 @@ enum SettingsTab: String, CaseIterable {
 struct SettingsDefaults {
   // MARK: - Global Settings
   static let apiKey = ""
+  static let googleAPIKey = ""
 
   // MARK: - Toggle Shortcut Settings
   static let toggleDictation = ""
@@ -223,6 +224,7 @@ struct SettingsDefaults {
 struct SettingsData {
   // MARK: - Global Settings
   var apiKey: String = SettingsDefaults.apiKey
+  var googleAPIKey: String = SettingsDefaults.googleAPIKey
 
   // MARK: - Toggle Shortcut Settings
   var toggleDictation: String = SettingsDefaults.toggleDictation
@@ -268,6 +270,7 @@ struct SettingsData {
 // MARK: - Focus States Enum
 enum SettingsFocusField: Hashable {
   case apiKey
+  case googleAPIKey
   case toggleDictation
   case togglePrompting
   case toggleVoiceResponse
