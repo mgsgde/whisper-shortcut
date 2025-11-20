@@ -11,6 +11,7 @@ import Foundation
 enum TranscriptionModel: String, CaseIterable {
   case gpt4oTranscribe = "gpt-4o-transcribe"
   case gpt4oMiniTranscribe = "gpt-4o-mini-transcribe"
+  case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
 
   var displayName: String {
@@ -19,6 +20,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "GPT-4o Transcribe"
     case .gpt4oMiniTranscribe:
       return "GPT-4o Mini Transcribe"
+    case .gemini25Flash:
+      return "Gemini 2.5 Flash"
     case .gemini25FlashLite:
       return "Gemini 2.5 Flash-Lite"
     }
@@ -28,6 +31,8 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gpt4oTranscribe, .gpt4oMiniTranscribe:
       return "https://api.openai.com/v1/audio/transcriptions"
+    case .gemini25Flash:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     case .gemini25FlashLite:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
     }
@@ -37,14 +42,14 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gpt4oMiniTranscribe:
       return true
-    case .gpt4oTranscribe, .gemini25FlashLite:
+    case .gpt4oTranscribe, .gemini25Flash, .gemini25FlashLite:
       return false
     }
   }
 
   var costLevel: String {
     switch self {
-    case .gpt4oMiniTranscribe, .gemini25FlashLite:
+    case .gpt4oMiniTranscribe, .gemini25Flash, .gemini25FlashLite:
       return "Low"
     case .gpt4oTranscribe:
       return "Medium"
@@ -57,13 +62,15 @@ enum TranscriptionModel: String, CaseIterable {
       return "Highest accuracy and quality • Best for critical applications"
     case .gpt4oMiniTranscribe:
       return "Recommended • Great quality at lower cost • Best for everyday use"
+    case .gemini25Flash:
+      return "Google's Gemini model • Fast and efficient • Alternative to OpenAI"
     case .gemini25FlashLite:
       return "Google's fastest Gemini model • Superior latency • Cost-efficient • Best for high-volume transcription"
     }
   }
   
   var isGemini: Bool {
-    return self == .gemini25FlashLite
+    return self == .gemini25Flash || self == .gemini25FlashLite
   }
 }
 
@@ -253,6 +260,7 @@ struct GeminiFileInfo: Codable {
 // MARK: - Transcription Error
 enum TranscriptionError: Error, Equatable {
   case noAPIKey
+  case noGoogleAPIKey
   case invalidAPIKey
   case incorrectAPIKey
   case countryNotSupported
@@ -278,6 +286,7 @@ enum TranscriptionError: Error, Equatable {
   var title: String {
     switch self {
     case .noAPIKey: return "No API Key"
+    case .noGoogleAPIKey: return "No Google API Key"
     case .invalidAPIKey: return "Invalid Authentication"
     case .incorrectAPIKey: return "Incorrect API Key"
     case .countryNotSupported: return "Country Not Supported"

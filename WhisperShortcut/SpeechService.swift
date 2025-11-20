@@ -817,7 +817,7 @@ class SpeechService {
   // MARK: - Gemini Transcription
   private func transcribeWithGemini(audioURL: URL) async throws -> String {
     guard let apiKey = self.googleAPIKey, !apiKey.isEmpty else {
-      throw TranscriptionError.noAPIKey
+      throw TranscriptionError.noGoogleAPIKey
     }
     
     try validateAudioFile(at: audioURL)
@@ -852,8 +852,11 @@ class SpeechService {
     
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
     
-    // Create request
-    let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=\(apiKey)")!
+    // Create request with dynamic endpoint based on selected model
+    let endpoint = selectedTranscriptionModel.apiEndpoint
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(selectedTranscriptionModel.displayName) (\(selectedTranscriptionModel.rawValue))")
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
+    let url = URL(string: "\(endpoint)?key=\(apiKey)")!
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1019,7 +1022,11 @@ class SpeechService {
     
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
     
-    let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(apiKey)")!
+    // Create request with dynamic endpoint based on selected model
+    let endpoint = selectedTranscriptionModel.apiEndpoint
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(selectedTranscriptionModel.displayName) (\(selectedTranscriptionModel.rawValue))")
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
+    let url = URL(string: "\(endpoint)?key=\(apiKey)")!
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")

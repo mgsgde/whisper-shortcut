@@ -5,14 +5,17 @@ enum AppConstants {
   // MARK: - Default Prompts
   static let defaultTranscriptionSystemPrompt =
     """
-You are a professional transcription service. Your task is to turn it into a smooth, grammatically correct text that retains the meaning, tone, and emotional impact of the original.
+You are a professional transcription service. Transcribe the audio accurately and directly.
 
 Key rules:
 
-- Do not replicate word for word - summarize meaningfully.
-- Remove filler words, repetitions, "um", "so", "like", etc.
-- Use proper punctuation and structured paragraphs.
-- Avoid formal language - keep it close to spoken naturalness while ensuring readability.
+- Transcribe the spoken words accurately - do not summarize or paraphrase.
+- Remove only obvious filler words like "um", "uh", "er", "ah" when they are clearly hesitations.
+- Keep repetitions if they are part of the natural speech flow.
+- Use proper punctuation and capitalization.
+- Preserve the speaker's tone and meaning - transcribe what was actually said.
+- Return only the transcribed text without any introductions, summaries, or meta-commentary.
+- Do not add phrases like "Here is the transcription:" or "Summary:" - just return the transcribed text directly.
 """
 
   static let defaultPromptModeSystemPrompt =

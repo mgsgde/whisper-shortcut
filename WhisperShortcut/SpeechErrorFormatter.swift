@@ -22,6 +22,15 @@ struct SpeechErrorFormatter {
         Without a valid API key, transcription cannot be performed.
         """
 
+    case .noGoogleAPIKey:
+      return """
+        ⚠️ No Google API Key Configured
+
+        You have selected a Gemini model, but no Google API key is configured.
+        Please open Settings and add your Google API key in the "Google API Key" section.
+        Without a valid Google API key, Gemini transcription cannot be performed.
+        """
+
     case .invalidAPIKey:
       return """
         ❌ Authentication Error
@@ -252,6 +261,8 @@ struct SpeechErrorFormatter {
     switch error {
     case .noAPIKey:
       return "⚠️ No API Key"
+    case .noGoogleAPIKey:
+      return "⚠️ No Google API Key"
     case .invalidAPIKey:
       return "❌ Invalid Authentication"
     case .incorrectAPIKey:
