@@ -209,8 +209,6 @@ class SpeechService {
 
   // MARK: - Transcription Mode (Private Implementation)
   private func performTranscription(audioURL: URL) async throws -> String {
-    let totalStartTime = Date()
-    
     // Check if using Gemini model
     if selectedTranscriptionModel.isGemini {
       // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
@@ -241,15 +239,11 @@ class SpeechService {
       result = normalizedText
     }
     
-    let totalDuration = Date().timeIntervalSince(totalStartTime)
-    DebugLogger.log("OPENAI-TRANSCRIPTION: Total transcription time: \(String(format: "%.2f", totalDuration))s")
-    
     return result
   }
   
   // MARK: - Single File Transcription with Retry
   private func transcribeSingleFileWithRetry(audioURL: URL, apiKey: String) async throws -> String {
-    let transcriptionStartTime = Date()
     var lastError: Error?
     
     for attempt in 1...Constants.maxRetryAttempts {
@@ -259,16 +253,10 @@ class SpeechService {
         }
         
         // Build request
-        let requestBuildStartTime = Date()
         let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
-        let requestBuildDuration = Date().timeIntervalSince(requestBuildStartTime)
-        DebugLogger.log("OPENAI-TRANSCRIPTION: Request build: \(String(format: "%.3f", requestBuildDuration))s")
         
         // Make API request
-        let apiRequestStartTime = Date()
         let (data, response) = try await session.data(for: request)
-        let apiRequestDuration = Date().timeIntervalSince(apiRequestStartTime)
-        DebugLogger.log("OPENAI-TRANSCRIPTION: API request completed in \(String(format: "%.2f", apiRequestDuration))s")
 
         guard let httpResponse = response as? HTTPURLResponse else {
           throw TranscriptionError.networkError("Invalid response")
@@ -281,19 +269,13 @@ class SpeechService {
         }
 
         // Parse response
-        let parseStartTime = Date()
         let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
         let normalizedText = normalizeTranscriptionText(result.text)
         try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
-        let parseDuration = Date().timeIntervalSince(parseStartTime)
-        DebugLogger.log("OPENAI-TRANSCRIPTION: Response parsing: \(String(format: "%.3f", parseDuration))s")
         
         if attempt > 1 {
           DebugLogger.log("OPENAI-TRANSCRIPTION-RETRY: Success on attempt \(attempt)")
         }
-        
-        let transcriptionDuration = Date().timeIntervalSince(transcriptionStartTime)
-        DebugLogger.log("OPENAI-TRANSCRIPTION: Transcription total: \(String(format: "%.2f", transcriptionDuration))s (Request build: \(String(format: "%.3f", requestBuildDuration))s, API: \(String(format: "%.2f", apiRequestDuration))s, Parse: \(String(format: "%.3f", parseDuration))s)")
         
         return normalizedText
         
@@ -842,8 +824,6 @@ class SpeechService {
 
   // MARK: - Gemini Transcription
   private func transcribeWithGemini(audioURL: URL) async throws -> String {
-    let totalStartTime = Date()
-    
     guard let apiKey = self.googleAPIKey, !apiKey.isEmpty else {
       DebugLogger.log("GEMINI-TRANSCRIPTION: ERROR - No Google API key found in keychain")
       throw TranscriptionError.noGoogleAPIKey
@@ -868,24 +848,15 @@ class SpeechService {
       result = try await transcribeWithGeminiInline(audioURL: audioURL, apiKey: apiKey)
     }
     
-    let totalDuration = Date().timeIntervalSince(totalStartTime)
-    DebugLogger.log("GEMINI-TRANSCRIPTION: Total transcription time: \(String(format: "%.2f", totalDuration))s")
-    
     return result
   }
   
   private func transcribeWithGeminiInline(audioURL: URL, apiKey: String) async throws -> String {
-    let inlineStartTime = Date()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using inline audio (file ≤20MB)")
     
     // Read audio file and convert to base64
-    let readStartTime = Date()
     let audioData = try Data(contentsOf: audioURL)
-    let base64StartTime = Date()
     let base64Audio = audioData.base64EncodedString()
-    let base64Duration = Date().timeIntervalSince(base64StartTime)
-    let readDuration = Date().timeIntervalSince(readStartTime)
-    DebugLogger.log("GEMINI-TRANSCRIPTION: Audio file read: \(String(format: "%.3f", readDuration))s, Base64 encoding: \(String(format: "%.3f", base64Duration))s (total: \(String(format: "%.3f", readDuration + base64Duration))s)")
     
     // Determine MIME type from file extension
     let fileExtension = audioURL.pathExtension.lowercased()
@@ -908,7 +879,6 @@ class SpeechService {
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     
     // Build request body
-    let requestBuildStartTime = Date()
     let requestBody: [String: Any] = [
       "contents": [
         [
@@ -928,8 +898,6 @@ class SpeechService {
     ]
     
     request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
-    let requestBuildDuration = Date().timeIntervalSince(requestBuildStartTime)
-    DebugLogger.log("GEMINI-TRANSCRIPTION: Request body build: \(String(format: "%.3f", requestBuildDuration))s")
     
     // Make request with retry logic
     var lastError: Error?
@@ -939,10 +907,7 @@ class SpeechService {
           DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Attempt \(attempt)/\(Constants.maxRetryAttempts)")
         }
         
-        let apiRequestStartTime = Date()
         let (data, response) = try await session.data(for: request)
-        let apiRequestDuration = Date().timeIntervalSince(apiRequestStartTime)
-        DebugLogger.log("GEMINI-TRANSCRIPTION: API request completed in \(String(format: "%.2f", apiRequestDuration))s")
         
         guard let httpResponse = response as? HTTPURLResponse else {
           throw TranscriptionError.networkError("Invalid response")
@@ -968,20 +933,14 @@ class SpeechService {
         }
         
         // Parse response
-        let parseStartTime = Date()
         let geminiResponse = try JSONDecoder().decode(GeminiResponse.self, from: data)
         let transcript = extractTextFromGeminiResponse(geminiResponse)
         let normalizedText = normalizeTranscriptionText(transcript)
         try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
-        let parseDuration = Date().timeIntervalSince(parseStartTime)
-        DebugLogger.log("GEMINI-TRANSCRIPTION: Response parsing: \(String(format: "%.3f", parseDuration))s")
         
         if attempt > 1 {
           DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Success on attempt \(attempt)")
         }
-        
-        let inlineDuration = Date().timeIntervalSince(inlineStartTime)
-        DebugLogger.log("GEMINI-TRANSCRIPTION: Inline transcription total: \(String(format: "%.2f", inlineDuration))s (API: \(String(format: "%.2f", apiRequestDuration))s, Parse: \(String(format: "%.3f", parseDuration))s)")
         
         return normalizedText
         
@@ -1013,7 +972,6 @@ class SpeechService {
   }
   
   private func transcribeWithGeminiFilesAPI(audioURL: URL, apiKey: String) async throws -> String {
-    let filesAPIStartTime = Date()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using Files API (file >20MB)")
     
     // Step 1: Upload file using resumable upload
@@ -1022,26 +980,17 @@ class SpeechService {
     // Step 2: Use file URI for transcription
     let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, apiKey: apiKey)
     
-    let filesAPIDuration = Date().timeIntervalSince(filesAPIStartTime)
-    DebugLogger.log("GEMINI-TRANSCRIPTION: Files API total time: \(String(format: "%.2f", filesAPIDuration))s")
-    
     return result
   }
   
   private func uploadFileToGemini(audioURL: URL, apiKey: String) async throws -> String {
-    let uploadStartTime = Date()
-    
-    let readStartTime = Date()
     let audioData = try Data(contentsOf: audioURL)
-    let readDuration = Date().timeIntervalSince(readStartTime)
-    DebugLogger.log("GEMINI-TRANSCRIPTION: File read for upload: \(String(format: "%.3f", readDuration))s")
     
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = getGeminiMimeType(for: fileExtension)
     let numBytes = audioData.count
     
     // Step 1: Initialize resumable upload
-    let initStartTime = Date()
     let initURL = URL(string: "https://generativelanguage.googleapis.com/upload/v1beta/files?key=\(apiKey)")!
     var initRequest = URLRequest(url: initURL)
     initRequest.httpMethod = "POST"
@@ -1059,8 +1008,6 @@ class SpeechService {
     initRequest.httpBody = try JSONSerialization.data(withJSONObject: metadata)
     
     let (initData, initResponse) = try await session.data(for: initRequest)
-    let initDuration = Date().timeIntervalSince(initStartTime)
-    DebugLogger.log("GEMINI-TRANSCRIPTION: Upload initialization: \(String(format: "%.2f", initDuration))s")
     
     guard let httpResponse = initResponse as? HTTPURLResponse else {
       throw TranscriptionError.networkError("Invalid response")
@@ -1079,7 +1026,6 @@ class SpeechService {
     }
     
     // Step 2: Upload file data
-    let dataUploadStartTime = Date()
     var uploadRequest = URLRequest(url: uploadURL)
     uploadRequest.httpMethod = "PUT"
     uploadRequest.setValue("\(numBytes)", forHTTPHeaderField: "Content-Length")
@@ -1088,8 +1034,6 @@ class SpeechService {
     uploadRequest.httpBody = audioData
     
     let (uploadData, uploadResponse) = try await session.data(for: uploadRequest)
-    let dataUploadDuration = Date().timeIntervalSince(dataUploadStartTime)
-    DebugLogger.log("GEMINI-TRANSCRIPTION: File data upload: \(String(format: "%.2f", dataUploadDuration))s (\(numBytes) bytes)")
     
     guard let uploadHttpResponse = uploadResponse as? HTTPURLResponse else {
       throw TranscriptionError.networkError("Invalid response")
@@ -1103,15 +1047,10 @@ class SpeechService {
     // Parse file info to get URI
     let fileInfo = try JSONDecoder().decode(GeminiFileInfo.self, from: uploadData)
     
-    let uploadDuration = Date().timeIntervalSince(uploadStartTime)
-    DebugLogger.log("GEMINI-TRANSCRIPTION: Total upload time: \(String(format: "%.2f", uploadDuration))s (Init: \(String(format: "%.2f", initDuration))s, Data: \(String(format: "%.2f", dataUploadDuration))s)")
-    
     return fileInfo.file.uri
   }
   
   private func transcribeWithGeminiFileURI(fileURI: String, apiKey: String) async throws -> String {
-    let fileURIStartTime = Date()
-    
     // Get custom prompt from settings (same as OpenAI)
     let customPrompt = UserDefaults.standard.string(forKey: "customPromptText")
       ?? AppConstants.defaultTranscriptionSystemPrompt
@@ -1148,10 +1087,7 @@ class SpeechService {
     
     request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
     
-    let apiRequestStartTime = Date()
     let (data, response) = try await session.data(for: request)
-    let apiRequestDuration = Date().timeIntervalSince(apiRequestStartTime)
-    DebugLogger.log("GEMINI-TRANSCRIPTION: File URI API request: \(String(format: "%.2f", apiRequestDuration))s")
     
     guard let httpResponse = response as? HTTPURLResponse else {
       throw TranscriptionError.networkError("Invalid response")
@@ -1162,16 +1098,10 @@ class SpeechService {
       throw error
     }
     
-    let parseStartTime = Date()
     let geminiResponse = try JSONDecoder().decode(GeminiResponse.self, from: data)
     let transcript = extractTextFromGeminiResponse(geminiResponse)
     let normalizedText = normalizeTranscriptionText(transcript)
     try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
-    let parseDuration = Date().timeIntervalSince(parseStartTime)
-    DebugLogger.log("GEMINI-TRANSCRIPTION: File URI response parsing: \(String(format: "%.3f", parseDuration))s")
-    
-    let fileURIDuration = Date().timeIntervalSince(fileURIStartTime)
-    DebugLogger.log("GEMINI-TRANSCRIPTION: File URI transcription total: \(String(format: "%.2f", fileURIDuration))s (API: \(String(format: "%.2f", apiRequestDuration))s, Parse: \(String(format: "%.3f", parseDuration))s)")
     
     return normalizedText
   }

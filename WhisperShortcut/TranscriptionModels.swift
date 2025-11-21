@@ -1,8 +1,8 @@
 //
-//  OpenAIModels.swift
+//  TranscriptionModels.swift
 //  WhisperShortcut
 //
-//  Data models for OpenAI API interactions
+//  Data models for transcription API interactions (OpenAI and Gemini)
 //
 
 import Foundation
@@ -325,3 +325,4 @@ enum TranscriptionError: Error, Equatable {
     }
   }
 }
+
