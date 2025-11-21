@@ -102,13 +102,13 @@ class SpeechService {
   
   func getPromptModelInfo() -> String {
     let modelKey = "selectedPromptModel"
-    let selectedPromptModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gpt-audio-mini"
-    let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? .gptAudioMini
+    let selectedPromptModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gemini-2.5-pro"
+    let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? .gemini25Pro
     return selectedPromptModel.displayName
   }
   
   func getVoiceResponseModelInfo() -> String {
-    let modelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseModel") ?? "gpt-audio-mini"
+    let modelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseModel") ?? "gemini-2.5-pro"
     let model = VoiceResponseModel(rawValue: modelString) ?? .gptAudioMini
     return model.displayName
   }
@@ -453,8 +453,8 @@ class SpeechService {
     DebugLogger.log("VOICE-RESPONSE: Clipboard context: \(hasContext ? "present" : "none")")
     
     // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseModel") ?? "gpt-audio-mini"
-    let selectedModel = VoiceResponseModel(rawValue: modelString) ?? .gptAudioMini
+    let modelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseModel") ?? "gemini-2.5-pro"
+    let selectedModel = VoiceResponseModel(rawValue: modelString) ?? .gemini25Pro
     
     // Route to Gemini or GPT-Audio based on model type
     if selectedModel.isGemini {
@@ -689,8 +689,8 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE: Clipboard context: \(hasContext ? "present" : "none")")
     
     // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gpt-audio-mini"
-    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gptAudioMini
+    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gemini-2.5-pro"
+    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Pro
     
     // Route to Gemini or GPT-Audio based on model type
     if selectedPromptModel.isGemini {
@@ -875,8 +875,8 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution")
     
     // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gpt-audio-mini"
-    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gptAudioMini
+    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gemini-2.5-pro"
+    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Pro
     
     // Convert to TranscriptionModel to get API endpoint
     guard let transcriptionModel = selectedPromptModel.asTranscriptionModel else {
@@ -1064,8 +1064,8 @@ class SpeechService {
     DebugLogger.log("VOICE-RESPONSE-GEMINI: Starting execution")
     
     // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseModel") ?? "gpt-audio-mini"
-    let selectedModel = VoiceResponseModel(rawValue: modelString) ?? .gptAudioMini
+    let modelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseModel") ?? "gemini-2.5-pro"
+    let selectedModel = VoiceResponseModel(rawValue: modelString) ?? .gemini25Pro
     
     // Convert to TranscriptionModel to get API endpoint
     guard let transcriptionModel = selectedModel.asTranscriptionModel else {
