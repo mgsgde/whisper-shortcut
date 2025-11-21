@@ -26,7 +26,7 @@ struct ModelSelectionView: View {
         subtitle: "Choose the transcription model for speech recognition"
       )
 
-      HStack(spacing: SettingsConstants.modelSpacing) {
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
         ForEach(models, id: \.self) { model in
           ZStack {
             Rectangle()
@@ -51,7 +51,6 @@ struct ModelSelectionView: View {
         RoundedRectangle(cornerRadius: 8)
           .stroke(Color(.separatorColor), lineWidth: 1)
       )
-      .frame(height: SettingsConstants.modelSelectionHeight)
 
       // Model Details
       VStack(alignment: .leading, spacing: 8) {

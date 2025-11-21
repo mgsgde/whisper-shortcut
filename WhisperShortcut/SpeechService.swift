@@ -209,6 +209,8 @@ class SpeechService {
 
   // MARK: - Transcription Mode (Private Implementation)
   private func performTranscription(audioURL: URL) async throws -> String {
+    let totalStartTime = Date()
+    
     // Check if using Gemini model
     if selectedTranscriptionModel.isGemini {
       // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
@@ -218,6 +220,7 @@ class SpeechService {
     
     // OpenAI transcription (existing logic)
     let audioSize = audioChunkingService.getAudioSize(audioURL)
+    DebugLogger.log("OPENAI-TRANSCRIPTION: Starting transcription, file size: \(audioSize) bytes, model: \(selectedTranscriptionModel.displayName)")
 
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
       throw TranscriptionError.noAPIKey
@@ -225,61 +228,84 @@ class SpeechService {
 
     try validateAudioFile(at: audioURL)
 
+    let result: String
     // SMART CHUNKING STRATEGY: Based on OpenAI API file size limits
     if audioSize <= Constants.maxFileSize {
       // File ≤20MB: Send to OpenAI directly with retry logic
-      return try await transcribeSingleFileWithRetry(audioURL: audioURL, apiKey: apiKey)
+      result = try await transcribeSingleFileWithRetry(audioURL: audioURL, apiKey: apiKey)
     } else {
       // File >20MB: Use client-side chunking first, then send multiple requests
       let transcribedText = try await transcribeAudioChunked(audioURL)
       let normalizedText = normalizeTranscriptionText(transcribedText)
       try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
-      return normalizedText
+      result = normalizedText
     }
+    
+    let totalDuration = Date().timeIntervalSince(totalStartTime)
+    DebugLogger.log("OPENAI-TRANSCRIPTION: Total transcription time: \(String(format: "%.2f", totalDuration))s")
+    
+    return result
   }
   
   // MARK: - Single File Transcription with Retry
   private func transcribeSingleFileWithRetry(audioURL: URL, apiKey: String) async throws -> String {
+    let transcriptionStartTime = Date()
     var lastError: Error?
     
     for attempt in 1...Constants.maxRetryAttempts {
       do {
         if attempt > 1 {
-          DebugLogger.log("TRANSCRIPTION-RETRY: Attempt \(attempt)/\(Constants.maxRetryAttempts)")
+          DebugLogger.log("OPENAI-TRANSCRIPTION-RETRY: Attempt \(attempt)/\(Constants.maxRetryAttempts)")
         }
         
+        // Build request
+        let requestBuildStartTime = Date()
         let request = try createTranscriptionRequest(audioURL: audioURL, apiKey: apiKey)
+        let requestBuildDuration = Date().timeIntervalSince(requestBuildStartTime)
+        DebugLogger.log("OPENAI-TRANSCRIPTION: Request build: \(String(format: "%.3f", requestBuildDuration))s")
+        
+        // Make API request
+        let apiRequestStartTime = Date()
         let (data, response) = try await session.data(for: request)
+        let apiRequestDuration = Date().timeIntervalSince(apiRequestStartTime)
+        DebugLogger.log("OPENAI-TRANSCRIPTION: API request completed in \(String(format: "%.2f", apiRequestDuration))s")
 
         guard let httpResponse = response as? HTTPURLResponse else {
           throw TranscriptionError.networkError("Invalid response")
         }
 
         if httpResponse.statusCode != 200 {
-          DebugLogger.log("TRANSCRIPTION-ERROR: HTTP \(httpResponse.statusCode)")
+          DebugLogger.log("OPENAI-TRANSCRIPTION-ERROR: HTTP \(httpResponse.statusCode)")
           let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
           throw error
         }
 
+        // Parse response
+        let parseStartTime = Date()
         let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
         let normalizedText = normalizeTranscriptionText(result.text)
         try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
+        let parseDuration = Date().timeIntervalSince(parseStartTime)
+        DebugLogger.log("OPENAI-TRANSCRIPTION: Response parsing: \(String(format: "%.3f", parseDuration))s")
         
         if attempt > 1 {
-          DebugLogger.log("TRANSCRIPTION-RETRY: Success on attempt \(attempt)")
+          DebugLogger.log("OPENAI-TRANSCRIPTION-RETRY: Success on attempt \(attempt)")
         }
+        
+        let transcriptionDuration = Date().timeIntervalSince(transcriptionStartTime)
+        DebugLogger.log("OPENAI-TRANSCRIPTION: Transcription total: \(String(format: "%.2f", transcriptionDuration))s (Request build: \(String(format: "%.3f", requestBuildDuration))s, API: \(String(format: "%.2f", apiRequestDuration))s, Parse: \(String(format: "%.3f", parseDuration))s)")
         
         return normalizedText
         
       } catch is CancellationError {
         // Task was cancelled - propagate immediately without retry
-        DebugLogger.log("TRANSCRIPTION-RETRY: Cancelled on attempt \(attempt)")
+        DebugLogger.log("OPENAI-TRANSCRIPTION-RETRY: Cancelled on attempt \(attempt)")
         throw CancellationError()
         
       } catch let error as URLError {
         // Handle specific URL errors
         if error.code == .cancelled {
-          DebugLogger.log("TRANSCRIPTION-RETRY: Request cancelled by user")
+          DebugLogger.log("OPENAI-TRANSCRIPTION-RETRY: Request cancelled by user")
           throw CancellationError()
         } else if error.code == .timedOut {
           throw error.localizedDescription.contains("request") 
@@ -293,14 +319,14 @@ class SpeechService {
         lastError = error
         
         if attempt < Constants.maxRetryAttempts {
-          DebugLogger.log("TRANSCRIPTION-RETRY: Attempt \(attempt) failed, retrying in \(Constants.retryDelaySeconds)s: \(error.localizedDescription)")
+          DebugLogger.log("OPENAI-TRANSCRIPTION-RETRY: Attempt \(attempt) failed, retrying in \(Constants.retryDelaySeconds)s: \(error.localizedDescription)")
           try? await Task.sleep(nanoseconds: UInt64(Constants.retryDelaySeconds * 1_000_000_000))
         }
       }
     }
     
     // All retries failed
-    DebugLogger.log("TRANSCRIPTION-RETRY: All \(Constants.maxRetryAttempts) attempts failed")
+    DebugLogger.log("OPENAI-TRANSCRIPTION-RETRY: All \(Constants.maxRetryAttempts) attempts failed")
     throw lastError ?? TranscriptionError.networkError("Transcription failed after retries")
   }
 
@@ -816,30 +842,50 @@ class SpeechService {
 
   // MARK: - Gemini Transcription
   private func transcribeWithGemini(audioURL: URL) async throws -> String {
+    let totalStartTime = Date()
+    
     guard let apiKey = self.googleAPIKey, !apiKey.isEmpty else {
+      DebugLogger.log("GEMINI-TRANSCRIPTION: ERROR - No Google API key found in keychain")
       throw TranscriptionError.noGoogleAPIKey
     }
+    
+    // Log API key status (without exposing the key itself)
+    let keyPrefix = String(apiKey.prefix(8))
+    let keyLength = apiKey.count
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Google API key found (prefix: \(keyPrefix)..., length: \(keyLength) chars)")
     
     try validateAudioFile(at: audioURL)
     
     let audioSize = audioChunkingService.getAudioSize(audioURL)
     DebugLogger.log("GEMINI-TRANSCRIPTION: Starting transcription, file size: \(audioSize) bytes")
     
+    let result: String
     // For files >20MB, use Files API (resumable upload)
     // For files ≤20MB, use inline base64
     if audioSize > Constants.maxFileSize {
-      return try await transcribeWithGeminiFilesAPI(audioURL: audioURL, apiKey: apiKey)
+      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, apiKey: apiKey)
     } else {
-      return try await transcribeWithGeminiInline(audioURL: audioURL, apiKey: apiKey)
+      result = try await transcribeWithGeminiInline(audioURL: audioURL, apiKey: apiKey)
     }
+    
+    let totalDuration = Date().timeIntervalSince(totalStartTime)
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Total transcription time: \(String(format: "%.2f", totalDuration))s")
+    
+    return result
   }
   
   private func transcribeWithGeminiInline(audioURL: URL, apiKey: String) async throws -> String {
+    let inlineStartTime = Date()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using inline audio (file ≤20MB)")
     
     // Read audio file and convert to base64
+    let readStartTime = Date()
     let audioData = try Data(contentsOf: audioURL)
+    let base64StartTime = Date()
     let base64Audio = audioData.base64EncodedString()
+    let base64Duration = Date().timeIntervalSince(base64StartTime)
+    let readDuration = Date().timeIntervalSince(readStartTime)
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Audio file read: \(String(format: "%.3f", readDuration))s, Base64 encoding: \(String(format: "%.3f", base64Duration))s (total: \(String(format: "%.3f", readDuration + base64Duration))s)")
     
     // Determine MIME type from file extension
     let fileExtension = audioURL.pathExtension.lowercased()
@@ -862,6 +908,7 @@ class SpeechService {
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     
     // Build request body
+    let requestBuildStartTime = Date()
     let requestBody: [String: Any] = [
       "contents": [
         [
@@ -881,6 +928,8 @@ class SpeechService {
     ]
     
     request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+    let requestBuildDuration = Date().timeIntervalSince(requestBuildStartTime)
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Request body build: \(String(format: "%.3f", requestBuildDuration))s")
     
     // Make request with retry logic
     var lastError: Error?
@@ -890,27 +939,49 @@ class SpeechService {
           DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Attempt \(attempt)/\(Constants.maxRetryAttempts)")
         }
         
+        let apiRequestStartTime = Date()
         let (data, response) = try await session.data(for: request)
+        let apiRequestDuration = Date().timeIntervalSince(apiRequestStartTime)
+        DebugLogger.log("GEMINI-TRANSCRIPTION: API request completed in \(String(format: "%.2f", apiRequestDuration))s")
         
         guard let httpResponse = response as? HTTPURLResponse else {
           throw TranscriptionError.networkError("Invalid response")
         }
         
         if httpResponse.statusCode != 200 {
+          // Log detailed error information
+          let errorBody = String(data: data, encoding: .utf8) ?? "Unable to decode error response"
           DebugLogger.log("GEMINI-TRANSCRIPTION-ERROR: HTTP \(httpResponse.statusCode)")
+          DebugLogger.log("GEMINI-TRANSCRIPTION-ERROR: Response body: \(errorBody.prefix(500))")
+          
+          // Check for rate limiting or quota issues
+          if httpResponse.statusCode == 429 {
+            DebugLogger.log("GEMINI-TRANSCRIPTION-ERROR: Rate limit exceeded - API may be throttling requests")
+          } else if httpResponse.statusCode == 403 {
+            DebugLogger.log("GEMINI-TRANSCRIPTION-ERROR: Forbidden - Check API key permissions and quota")
+          } else if httpResponse.statusCode == 401 {
+            DebugLogger.log("GEMINI-TRANSCRIPTION-ERROR: Unauthorized - Invalid API key")
+          }
+          
           let error = try parseGeminiErrorResponse(data: data, statusCode: httpResponse.statusCode)
           throw error
         }
         
         // Parse response
+        let parseStartTime = Date()
         let geminiResponse = try JSONDecoder().decode(GeminiResponse.self, from: data)
         let transcript = extractTextFromGeminiResponse(geminiResponse)
         let normalizedText = normalizeTranscriptionText(transcript)
         try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
+        let parseDuration = Date().timeIntervalSince(parseStartTime)
+        DebugLogger.log("GEMINI-TRANSCRIPTION: Response parsing: \(String(format: "%.3f", parseDuration))s")
         
         if attempt > 1 {
           DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Success on attempt \(attempt)")
         }
+        
+        let inlineDuration = Date().timeIntervalSince(inlineStartTime)
+        DebugLogger.log("GEMINI-TRANSCRIPTION: Inline transcription total: \(String(format: "%.2f", inlineDuration))s (API: \(String(format: "%.2f", apiRequestDuration))s, Parse: \(String(format: "%.3f", parseDuration))s)")
         
         return normalizedText
         
@@ -942,22 +1013,35 @@ class SpeechService {
   }
   
   private func transcribeWithGeminiFilesAPI(audioURL: URL, apiKey: String) async throws -> String {
+    let filesAPIStartTime = Date()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using Files API (file >20MB)")
     
     // Step 1: Upload file using resumable upload
     let fileURI = try await uploadFileToGemini(audioURL: audioURL, apiKey: apiKey)
     
     // Step 2: Use file URI for transcription
-    return try await transcribeWithGeminiFileURI(fileURI: fileURI, apiKey: apiKey)
+    let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, apiKey: apiKey)
+    
+    let filesAPIDuration = Date().timeIntervalSince(filesAPIStartTime)
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Files API total time: \(String(format: "%.2f", filesAPIDuration))s")
+    
+    return result
   }
   
   private func uploadFileToGemini(audioURL: URL, apiKey: String) async throws -> String {
+    let uploadStartTime = Date()
+    
+    let readStartTime = Date()
     let audioData = try Data(contentsOf: audioURL)
+    let readDuration = Date().timeIntervalSince(readStartTime)
+    DebugLogger.log("GEMINI-TRANSCRIPTION: File read for upload: \(String(format: "%.3f", readDuration))s")
+    
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = getGeminiMimeType(for: fileExtension)
     let numBytes = audioData.count
     
     // Step 1: Initialize resumable upload
+    let initStartTime = Date()
     let initURL = URL(string: "https://generativelanguage.googleapis.com/upload/v1beta/files?key=\(apiKey)")!
     var initRequest = URLRequest(url: initURL)
     initRequest.httpMethod = "POST"
@@ -975,6 +1059,9 @@ class SpeechService {
     initRequest.httpBody = try JSONSerialization.data(withJSONObject: metadata)
     
     let (initData, initResponse) = try await session.data(for: initRequest)
+    let initDuration = Date().timeIntervalSince(initStartTime)
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Upload initialization: \(String(format: "%.2f", initDuration))s")
+    
     guard let httpResponse = initResponse as? HTTPURLResponse else {
       throw TranscriptionError.networkError("Invalid response")
     }
@@ -992,6 +1079,7 @@ class SpeechService {
     }
     
     // Step 2: Upload file data
+    let dataUploadStartTime = Date()
     var uploadRequest = URLRequest(url: uploadURL)
     uploadRequest.httpMethod = "PUT"
     uploadRequest.setValue("\(numBytes)", forHTTPHeaderField: "Content-Length")
@@ -1000,6 +1088,9 @@ class SpeechService {
     uploadRequest.httpBody = audioData
     
     let (uploadData, uploadResponse) = try await session.data(for: uploadRequest)
+    let dataUploadDuration = Date().timeIntervalSince(dataUploadStartTime)
+    DebugLogger.log("GEMINI-TRANSCRIPTION: File data upload: \(String(format: "%.2f", dataUploadDuration))s (\(numBytes) bytes)")
+    
     guard let uploadHttpResponse = uploadResponse as? HTTPURLResponse else {
       throw TranscriptionError.networkError("Invalid response")
     }
@@ -1011,10 +1102,16 @@ class SpeechService {
     
     // Parse file info to get URI
     let fileInfo = try JSONDecoder().decode(GeminiFileInfo.self, from: uploadData)
+    
+    let uploadDuration = Date().timeIntervalSince(uploadStartTime)
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Total upload time: \(String(format: "%.2f", uploadDuration))s (Init: \(String(format: "%.2f", initDuration))s, Data: \(String(format: "%.2f", dataUploadDuration))s)")
+    
     return fileInfo.file.uri
   }
   
   private func transcribeWithGeminiFileURI(fileURI: String, apiKey: String) async throws -> String {
+    let fileURIStartTime = Date()
+    
     // Get custom prompt from settings (same as OpenAI)
     let customPrompt = UserDefaults.standard.string(forKey: "customPromptText")
       ?? AppConstants.defaultTranscriptionSystemPrompt
@@ -1051,7 +1148,11 @@ class SpeechService {
     
     request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
     
+    let apiRequestStartTime = Date()
     let (data, response) = try await session.data(for: request)
+    let apiRequestDuration = Date().timeIntervalSince(apiRequestStartTime)
+    DebugLogger.log("GEMINI-TRANSCRIPTION: File URI API request: \(String(format: "%.2f", apiRequestDuration))s")
+    
     guard let httpResponse = response as? HTTPURLResponse else {
       throw TranscriptionError.networkError("Invalid response")
     }
@@ -1061,10 +1162,16 @@ class SpeechService {
       throw error
     }
     
+    let parseStartTime = Date()
     let geminiResponse = try JSONDecoder().decode(GeminiResponse.self, from: data)
     let transcript = extractTextFromGeminiResponse(geminiResponse)
     let normalizedText = normalizeTranscriptionText(transcript)
     try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
+    let parseDuration = Date().timeIntervalSince(parseStartTime)
+    DebugLogger.log("GEMINI-TRANSCRIPTION: File URI response parsing: \(String(format: "%.3f", parseDuration))s")
+    
+    let fileURIDuration = Date().timeIntervalSince(fileURIStartTime)
+    DebugLogger.log("GEMINI-TRANSCRIPTION: File URI transcription total: \(String(format: "%.2f", fileURIDuration))s (API: \(String(format: "%.2f", apiRequestDuration))s, Parse: \(String(format: "%.3f", parseDuration))s)")
     
     return normalizedText
   }
