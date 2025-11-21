@@ -198,6 +198,7 @@ struct SettingsDefaults {
   static let selectedPromptModel = PromptModel.gptAudioMini
   static let selectedGPTAudioModel = GPTAudioModel.gptAudioMini
   static let customPromptText = ""
+  static let dictationDifficultWords = ""
   static let promptModeSystemPrompt = ""
   static let voiceResponseSystemPrompt = ""
   static let readSelectedTextPlaybackSpeed = 1.0
@@ -243,6 +244,7 @@ struct SettingsData {
   var selectedPromptModel: PromptModel = SettingsDefaults.selectedPromptModel
   var selectedGPTAudioModel: GPTAudioModel = SettingsDefaults.selectedGPTAudioModel
   var customPromptText: String = SettingsDefaults.customPromptText
+  var dictationDifficultWords: String = SettingsDefaults.dictationDifficultWords
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
   var voiceResponseSystemPrompt: String = SettingsDefaults.voiceResponseSystemPrompt
   var readSelectedTextPlaybackSpeed: Double = SettingsDefaults.readSelectedTextPlaybackSpeed
@@ -276,6 +278,7 @@ enum SettingsFocusField: Hashable {
   case toggleVoiceResponse
   case readClipboard
   case customPrompt
+  case dictationDifficultWords
   case promptModeSystemPrompt
   case voiceResponseSystemPrompt
   case transcriptionLanguage

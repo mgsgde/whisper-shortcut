@@ -58,6 +58,9 @@ class SettingsViewModel: ObservableObject {
     data.customPromptText = UserDefaults.standard.string(forKey: "customPromptText") 
       ?? AppConstants.defaultTranscriptionSystemPrompt
 
+    // Load dictation difficult words (empty by default)
+    data.dictationDifficultWords = UserDefaults.standard.string(forKey: "dictationDifficultWords") ?? ""
+
     // Load prompt mode system prompt (with fallback to default)
     data.promptModeSystemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
       ?? AppConstants.defaultPromptModeSystemPrompt
@@ -310,6 +313,7 @@ class SettingsViewModel: ObservableObject {
 
     // Save prompts
     UserDefaults.standard.set(data.customPromptText, forKey: "customPromptText")
+    UserDefaults.standard.set(data.dictationDifficultWords, forKey: "dictationDifficultWords")
     UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: "promptModeSystemPrompt")
     UserDefaults.standard.set(data.voiceResponseSystemPrompt, forKey: "voiceResponseSystemPrompt")
 

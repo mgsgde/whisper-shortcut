@@ -32,6 +32,18 @@ struct SpeechToTextSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
+      // Difficult Words Section
+      difficultWordsSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Language Section
       languageSection
 
@@ -105,6 +117,25 @@ struct SpeechToTextSettingsTab: View {
       defaultValue: AppConstants.defaultTranscriptionSystemPrompt,
       text: $viewModel.data.customPromptText,
       focusedField: .customPrompt,
+      currentFocus: $focusedField,
+      onTextChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+    )
+  }
+
+  // MARK: - Difficult Words Section
+  @ViewBuilder
+  private var difficultWordsSection: some View {
+    PromptTextEditor(
+      title: "🔤 Difficult Words",
+      subtitle: "One word per line. Words that are difficult to transcribe correctly.",
+      helpText: "Enter one word per line. Empty lines will be ignored.",
+      defaultValue: "",
+      text: $viewModel.data.dictationDifficultWords,
+      focusedField: .dictationDifficultWords,
       currentFocus: $focusedField,
       onTextChanged: {
         Task {

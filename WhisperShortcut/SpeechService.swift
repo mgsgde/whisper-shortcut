@@ -120,6 +120,38 @@ class SpeechService {
     conversationMessages = []
   }
 
+  // MARK: - Prompt Building
+  /// Builds the combined dictation prompt from normal prompt and difficult words
+  /// - Returns: Combined prompt string with difficult words appended if present
+  private func buildDictationPrompt() -> String {
+    // Get normal prompt
+    let customPrompt = UserDefaults.standard.string(forKey: "customPromptText")
+      ?? AppConstants.defaultTranscriptionSystemPrompt
+    let normalPrompt = customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    
+    // Get difficult words
+    let difficultWordsText = UserDefaults.standard.string(forKey: "dictationDifficultWords") ?? ""
+    let difficultWords = difficultWordsText
+      .components(separatedBy: .newlines)
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    
+    // If no difficult words, return normal prompt
+    guard !difficultWords.isEmpty else {
+      return normalPrompt
+    }
+    
+    // Combine words into comma-separated list
+    let wordsList = difficultWords.joined(separator: ", ")
+    
+    // Combine prompts
+    if normalPrompt.isEmpty {
+      return "Important words to transcribe correctly: \(wordsList)"
+    } else {
+      return "\(normalPrompt)\n\nImportant words to transcribe correctly: \(wordsList)"
+    }
+  }
+
   // MARK: - Cancellation Methods
   func cancelTranscription() {
     DebugLogger.log("CANCELLATION: Cancelling transcription task")
@@ -862,10 +894,8 @@ class SpeechService {
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = getGeminiMimeType(for: fileExtension)
     
-    // Get custom prompt from settings (same as OpenAI)
-    let customPrompt = UserDefaults.standard.string(forKey: "customPromptText")
-      ?? AppConstants.defaultTranscriptionSystemPrompt
-    let promptToUse = customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    // Get combined prompt (normal prompt + difficult words)
+    let promptToUse = buildDictationPrompt()
     
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
     
@@ -1051,10 +1081,8 @@ class SpeechService {
   }
   
   private func transcribeWithGeminiFileURI(fileURI: String, apiKey: String) async throws -> String {
-    // Get custom prompt from settings (same as OpenAI)
-    let customPrompt = UserDefaults.standard.string(forKey: "customPromptText")
-      ?? AppConstants.defaultTranscriptionSystemPrompt
-    let promptToUse = customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    // Get combined prompt (normal prompt + difficult words)
+    let promptToUse = buildDictationPrompt()
     
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
     
@@ -1698,10 +1726,7 @@ class SpeechService {
       || selectedTranscriptionModel == .gpt4oMiniTranscribe
     
     if supportsPrompt {
-      let customPrompt = UserDefaults.standard.string(forKey: "customPromptText")
-        ?? AppConstants.defaultTranscriptionSystemPrompt
-      
-      let promptToUse = customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+      let promptToUse = buildDictationPrompt()
       
       if !promptToUse.isEmpty {
         fields["prompt"] = promptToUse
