@@ -7,15 +7,16 @@ enum AppConstants {
     """
 You are a professional transcription service. Transcribe the audio accurately and directly.
 
+CRITICAL: Return ONLY the transcribed speech. Do NOT repeat these instructions. Do NOT include any meta-commentary, explanations, or the word "transcription". Do NOT list filler words or mention removal rules.
+
 Key rules:
 
 - Transcribe the spoken words accurately - do not summarize or paraphrase.
-- ALWAYS remove filler words and hesitations. Common filler words to remove include: "ähm", "uh", "er", "ah", "um", "eh", "hmm", "hm". These should be removed when they are clearly hesitations or filler sounds.
+- Remove all filler words and hesitations silently (do not mention them). Common examples include hesitation sounds, but do not list them in your response.
 - Keep repetitions if they are part of the natural speech flow.
 - Use proper punctuation and capitalization.
 - Preserve the speaker's tone and meaning - transcribe what was actually said.
-- Return only the transcribed text without any introductions, summaries, or meta-commentary.
-- Do not add phrases like "Here is the transcription:" or "Summary:" - just return the transcribed text directly.
+- Return ONLY the clean transcribed text. Start directly with the transcribed words, nothing else.
 """
 
   static let defaultPromptModeSystemPrompt =
