@@ -24,6 +24,6 @@ enum SettingsConstants {
 
   // MARK: - Visual
   static let cornerRadius: CGFloat = 8
-  static let textEditorHeight: CGFloat = 120
+  static let textEditorHeight: CGFloat = 160
   static let sectionDividerHeight: CGFloat = 1  // Height for section divider lines
 }
