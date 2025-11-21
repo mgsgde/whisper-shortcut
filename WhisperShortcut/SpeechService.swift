@@ -1965,14 +1965,8 @@ class SpeechService {
   private func playTextAsSpeechChunked(
     _ text: String, playbackType: PlaybackType, speed: Double
   ) async throws {
-    // Get TTS provider from settings (only for readSelectedText, default to OpenAI for voiceResponse)
-    let provider: TTSProvider
-    if playbackType == .readSelectedText {
-      let providerString = UserDefaults.standard.string(forKey: "readSelectedTextTTSProvider") ?? "openai"
-      provider = TTSProvider(rawValue: providerString) ?? .openAI
-    } else {
-      provider = .openAI  // Voice response always uses OpenAI
-    }
+    // Always use OpenAI TTS (voiceResponse always uses OpenAI)
+    let provider: TTSProvider = .openAI
     
     // Use appropriate TTS API limit with safety margin
     let maxLen: Int
@@ -2044,27 +2038,6 @@ class SpeechService {
     }
   }
 
-  func readSelectedTextAsSpeech() async throws -> String {
-    captureSelectedText()
-    try await Task.sleep(nanoseconds: Constants.clipboardCopyDelay)
-
-    guard let selectedText = getClipboardContext(), !selectedText.isEmpty else {
-      throw TranscriptionError.networkError("No text selected to read")
-    }
-
-    let playbackSpeed = UserDefaults.standard.double(forKey: "readSelectedTextPlaybackSpeed")
-    let speed = playbackSpeed > 0 ? playbackSpeed : 1.0
-
-    NotificationCenter.default.post(
-      name: NSNotification.Name("ReadSelectedTextReadyToSpeak"),
-      object: nil,
-      userInfo: ["selectedText": selectedText]
-    )
-    try await playTextAsSpeechChunked(selectedText, playbackType: .readSelectedText, speed: speed)
-
-    return selectedText
-  }
-
   // MARK: - Prompt Mode Helpers
   private func getClipboardContext() -> String? {
     guard let clipboardManager = clipboardManager else { return nil }
@@ -2074,17 +2047,6 @@ class SpeechService {
     guard !trimmedText.isEmpty else { return nil }
     return trimmedText
   }
-
-  private func captureSelectedText() {
-    let source = CGEventSource(stateID: .combinedSessionState)
-    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true)  // C key
-    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
-    cmdDown?.flags = .maskCommand
-    cmdUp?.flags = .maskCommand
-    cmdDown?.post(tap: .cghidEventTap)
-    cmdUp?.post(tap: .cghidEventTap)
-  }
-
 
   // MARK: - Shared Infrastructure Helpers
   

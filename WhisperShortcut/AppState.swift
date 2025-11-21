@@ -80,7 +80,6 @@ enum AppState: Equatable {
   // MARK: - Playback States
   enum PlaybackMode: Equatable {
     case voiceResponse
-    case readingText
 
     var icon: String { return "🔊" }
     var shouldBlink: Bool { return false }
@@ -88,14 +87,12 @@ enum AppState: Equatable {
     var statusText: String {
       switch self {
       case .voiceResponse: return "🔊 Playing voice response..."
-      case .readingText: return "🔊 Reading selected text..."
       }
     }
 
     var tooltip: String {
       switch self {
       case .voiceResponse: return "Playing voice response... Click to stop"
-      case .readingText: return "Reading text... Click to stop"
       }
     }
   }
@@ -294,10 +291,6 @@ extension AppState {
     return !isBusy && hasAPIKey
   }
 
-  /// Whether text reading can be started
-  func canStartTextReading(hasAPIKey: Bool) -> Bool {
-    return !isBusy && hasAPIKey
-  }
 
   /// Whether current recording can be stopped
   var canStopRecording: Bool {
@@ -348,7 +341,6 @@ extension AppState.PlaybackMode: CustomStringConvertible {
   var description: String {
     switch self {
     case .voiceResponse: return "voiceResponse"
-    case .readingText: return "readingText"
     }
   }
 }

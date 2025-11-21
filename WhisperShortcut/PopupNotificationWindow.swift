@@ -775,9 +775,6 @@ extension PopupNotificationWindow {
     showSuccessNotification(text: response, modelInfo: modelInfo)
   }
 
-  static func showReadingText(_ text: String) {
-    showSuccessNotification(title: "🔊 Reading Text", text: text)
-  }
 
   static func showError(_ error: String, title: String = "Error") {
     guard arePopupNotificationsEnabled else {

@@ -101,10 +101,6 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Toggle Voice Response", action: #selector(toggleVoiceResponse),
         shortcut: currentConfig.startVoiceResponse, tag: 103))
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Read Selected Text", action: #selector(readSelectedText),
-        shortcut: currentConfig.readClipboard, tag: 104))
 
     menu.addItem(NSMenuItem.separator())
 
@@ -199,11 +195,8 @@ class MenuBarController: NSObject {
     let notifications = [
       ("VoicePlaybackStarted", #selector(handleVoicePlaybackStarted)),
       ("VoicePlaybackStopped", #selector(handleVoicePlaybackStopped)),
-      ("ReadSelectedTextPlaybackStarted", #selector(handleTextPlaybackStarted)),
-      ("ReadSelectedTextPlaybackStopped", #selector(handleTextPlaybackStopped)),
       ("VoiceResponseReadyToSpeak", #selector(voiceResponseReadyToSpeak)),
       ("VoicePlaybackStartedWithText", #selector(voicePlaybackStartedWithText(_:))),
-      ("ReadSelectedTextReadyToSpeak", #selector(readSelectedTextReadyToSpeak(_:))),
     ]
 
     for (name, selector) in notifications {
@@ -289,12 +282,6 @@ class MenuBarController: NSObject {
       title: getVoiceResponseTitle(),
       enabled: appState.canStartVoiceResponse(hasAPIKey: hasAPIKey)
         || appState.recordingMode == .voiceResponse || appState.playbackMode == .voiceResponse)
-
-    updateMenuItem(
-      menu, tag: 104,
-      title: appState.playbackMode == .readingText ? "Stop Reading" : "Read Selected Text",
-      enabled: appState.canStartTextReading(hasAPIKey: hasAPIKey)
-        || appState.playbackMode == .readingText)
 
     // Handle special case when no API key is configured
     if !hasAPIKey, let button = statusItem?.button {
@@ -418,19 +405,6 @@ class MenuBarController: NSObject {
     }
   }
 
-  @objc internal func readSelectedText() {
-    if appState.playbackMode == .readingText {
-      audioPlaybackService.stopPlayback()
-    } else if appState.canStartTextReading(hasAPIKey: KeychainManager.shared.hasAPIKey()) {
-      // Check accessibility permission first
-      if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-        return
-      }
-      Task {
-        await performTextReading()
-      }
-    }
-  }
 
   @objc private func openSettings() {
     SettingsManager.shared.showSettings()
@@ -578,33 +552,6 @@ class MenuBarController: NSObject {
     try? FileManager.default.removeItem(at: audioURL)
   }
 
-  private func performTextReading() async {
-    do {
-      // Keep processing(preparingTTS) state for blinking - this is correct for read mode
-      appState = appState.startTTSPreparation()
-      _ = try await speechService.readSelectedTextAsSpeech()
-
-      // State will be updated to playback by notification handlers
-    } catch {
-      await MainActor.run {
-        let errorMessage: String
-        let shortTitle: String
-
-        if let transcriptionError = error as? TranscriptionError {
-          errorMessage = SpeechErrorFormatter.format(transcriptionError)
-          shortTitle = SpeechErrorFormatter.shortStatus(transcriptionError)
-        } else {
-          errorMessage = "Text reading failed: \(error.localizedDescription)"
-          shortTitle = "Text Reading Error"
-        }
-
-        // Show error popup notification
-        PopupNotificationWindow.showError(errorMessage, title: shortTitle)
-
-        self.appState = self.appState.showError(errorMessage)
-      }
-    }
-  }
 
   // MARK: - Notification Handlers (Simple State Updates)
   @objc private func handleVoicePlaybackStarted() {
@@ -615,13 +562,6 @@ class MenuBarController: NSObject {
     appState = appState.stopPlayback()
   }
 
-  @objc private func handleTextPlaybackStarted() {
-    appState = appState.startPlayback(.readingText)
-  }
-
-  @objc private func handleTextPlaybackStopped() {
-    appState = appState.stopPlayback()
-  }
 
   // MARK: - TTS Ready Handlers (Keep Processing State for Blinking)
   @objc private func voiceResponseReadyToSpeak() {
@@ -643,20 +583,6 @@ class MenuBarController: NSObject {
     }
   }
 
-  @objc private func readSelectedTextReadyToSpeak(_ notification: Notification) {
-    DispatchQueue.main.async {
-      // Extract the text from the notification
-      if let userInfo = notification.userInfo,
-        let selectedText = userInfo["selectedText"] as? String
-      {
-        // Show popup notification with the text that will be read
-        PopupNotificationWindow.showReadingText(selectedText)
-
-        // DO NOT change state here - keep processing state for blinking
-        // Let ReadSelectedTextPlaybackStarted handle the transition to playback
-      }
-    }
-  }
 
   @objc private func apiKeyUpdated() {
     // Update menu state when API key changes
@@ -735,5 +661,5 @@ extension MenuBarController: AudioRecorderDelegate {
 // MARK: - ShortcutDelegate (Simple Forwarding)
 extension MenuBarController: ShortcutDelegate {
   func toggleDictation() { toggleTranscription() }
-  // togglePrompting, toggleVoiceResponse, and readSelectedText are already implemented above
+  // togglePrompting and toggleVoiceResponse are already implemented above
 }

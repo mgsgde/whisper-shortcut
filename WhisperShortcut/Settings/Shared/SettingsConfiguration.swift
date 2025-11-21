@@ -323,7 +323,6 @@ enum SettingsTab: String, CaseIterable {
   case speechToText = "Dictate"
   case speechToPrompt = "Dictate Prompt"
   case speechToPromptWithVoiceResponse = "Dictate Prompt and Speak"
-  case readClipboard = "Read Selected Text"
 }
 
 // MARK: - Default Settings Configuration
@@ -336,13 +335,11 @@ struct SettingsDefaults {
   static let toggleDictation = ""
   static let togglePrompting = ""
   static let toggleVoiceResponse = ""
-  static let readClipboard = ""
 
   // MARK: - Toggle Shortcut Enable States
   static let toggleDictationEnabled = true
   static let togglePromptingEnabled = true
   static let toggleVoiceResponseEnabled = true
-  static let readClipboardEnabled = true
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gpt4oMiniTranscribe
@@ -352,8 +349,6 @@ struct SettingsDefaults {
   static let dictationDifficultWords = ""
   static let promptModeSystemPrompt = ""
   static let voiceResponseSystemPrompt = ""
-  static let readSelectedTextPlaybackSpeed = 1.0
-  static let readSelectedTextTTSProvider = TTSProvider.openAI
   static let transcriptionLanguage = ""  // Empty = Auto-Detect
   
   // MARK: - Reasoning Effort Settings
@@ -383,13 +378,11 @@ struct SettingsData {
   var toggleDictation: String = SettingsDefaults.toggleDictation
   var togglePrompting: String = SettingsDefaults.togglePrompting
   var toggleVoiceResponse: String = SettingsDefaults.toggleVoiceResponse
-  var readClipboard: String = SettingsDefaults.readClipboard
 
   // MARK: - Toggle Shortcut Enable States
   var toggleDictationEnabled: Bool = SettingsDefaults.toggleDictationEnabled
   var togglePromptingEnabled: Bool = SettingsDefaults.togglePromptingEnabled
   var toggleVoiceResponseEnabled: Bool = SettingsDefaults.toggleVoiceResponseEnabled
-  var readClipboardEnabled: Bool = SettingsDefaults.readClipboardEnabled
 
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
@@ -399,8 +392,6 @@ struct SettingsData {
   var dictationDifficultWords: String = SettingsDefaults.dictationDifficultWords
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
   var voiceResponseSystemPrompt: String = SettingsDefaults.voiceResponseSystemPrompt
-  var readSelectedTextPlaybackSpeed: Double = SettingsDefaults.readSelectedTextPlaybackSpeed
-  var readSelectedTextTTSProvider: TTSProvider = SettingsDefaults.readSelectedTextTTSProvider
   var transcriptionLanguage: String = SettingsDefaults.transcriptionLanguage
   
   // MARK: - Reasoning Effort Settings
@@ -429,7 +420,6 @@ enum SettingsFocusField: Hashable {
   case toggleDictation
   case togglePrompting
   case toggleVoiceResponse
-  case readClipboard
   case customPrompt
   case dictationDifficultWords
   case promptModeSystemPrompt

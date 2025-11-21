@@ -20,12 +20,10 @@ class SettingsViewModel: ObservableObject {
     data.toggleDictation = currentConfig.startRecording.textDisplayString
     data.togglePrompting = currentConfig.startPrompting.textDisplayString
     data.toggleVoiceResponse = currentConfig.startVoiceResponse.textDisplayString
-    data.readClipboard = currentConfig.readClipboard.textDisplayString
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
     data.toggleVoiceResponseEnabled = currentConfig.startVoiceResponse.isEnabled
-    data.readClipboardEnabled = currentConfig.readClipboard.isEnabled
 
     // Load transcription model preference
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
@@ -82,14 +80,6 @@ class SettingsViewModel: ObservableObject {
       ?? AppConstants.defaultVoiceResponseSystemPrompt
 
 
-    // Load read selected text playback speed
-    let savedReadSelectedTextPlaybackSpeed = UserDefaults.standard.double(
-      forKey: "readSelectedTextPlaybackSpeed")
-    if savedReadSelectedTextPlaybackSpeed > 0 {
-      data.readSelectedTextPlaybackSpeed = savedReadSelectedTextPlaybackSpeed
-    } else {
-      data.readSelectedTextPlaybackSpeed = SettingsDefaults.readSelectedTextPlaybackSpeed
-    }
 
     // Load separated conversation timeouts
     let savedPromptTimeout = UserDefaults.standard.double(
@@ -141,15 +131,6 @@ class SettingsViewModel: ObservableObject {
     // Load transcription language (empty = Auto-Detect)
     data.transcriptionLanguage = UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? ""
 
-    // Load Read Selected Text TTS Provider
-    if let savedProviderString = UserDefaults.standard.string(forKey: "readSelectedTextTTSProvider"),
-      let savedProvider = TTSProvider(rawValue: savedProviderString)
-    {
-      data.readSelectedTextTTSProvider = savedProvider
-    } else {
-      data.readSelectedTextTTSProvider = SettingsDefaults.readSelectedTextTTSProvider
-    }
-
     // Load API key
     data.apiKey = KeychainManager.shared.getAPIKey() ?? ""
     
@@ -183,11 +164,6 @@ class SettingsViewModel: ObservableObject {
       }
     }
 
-    if data.readClipboardEnabled {
-      guard !data.readClipboard.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a read clipboard shortcut"
-      }
-    }
 
     // Validate shortcut parsing
     let shortcuts = parseShortcuts()
@@ -279,8 +255,6 @@ class SettingsViewModel: ObservableObject {
       return name == "toggle prompting"
     case .toggleVoiceResponse:
       return name == "toggle voice response"
-    case .readClipboard:
-      return name == "read clipboard"
     default:
       return false
     }
@@ -298,9 +272,6 @@ class SettingsViewModel: ObservableObject {
       "toggle voice response": data.toggleVoiceResponseEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.toggleVoiceResponse)
         : ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
-      "read clipboard": data.readClipboardEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.readClipboard)
-        : ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false),
     ]
   }
 
@@ -338,10 +309,6 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: "promptModeSystemPrompt")
     UserDefaults.standard.set(data.voiceResponseSystemPrompt, forKey: "voiceResponseSystemPrompt")
 
-    // Save read selected text playback speed
-    UserDefaults.standard.set(
-      data.readSelectedTextPlaybackSpeed, forKey: "readSelectedTextPlaybackSpeed")
-
     // Save separated conversation timeouts
     UserDefaults.standard.set(
       data.promptConversationTimeout.rawValue, forKey: "promptConversationTimeoutMinutes")
@@ -354,9 +321,6 @@ class SettingsViewModel: ObservableObject {
 
     // Save transcription language
     UserDefaults.standard.set(data.transcriptionLanguage, forKey: "transcriptionLanguage")
-
-    // Save Read Selected Text TTS Provider
-    UserDefaults.standard.set(data.readSelectedTextTTSProvider.rawValue, forKey: "readSelectedTextTTSProvider")
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()
@@ -372,9 +336,7 @@ class SettingsViewModel: ObservableObject {
       startVoiceResponse: shortcuts["toggle voice response"]!
         ?? ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
       stopVoiceResponse: shortcuts["toggle voice response"]!
-        ?? ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
-      readClipboard: shortcuts["read clipboard"]!
-        ?? ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false)
+        ?? ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 

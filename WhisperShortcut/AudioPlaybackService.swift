@@ -32,15 +32,9 @@ class AudioPlaybackService: NSObject {
     // Store the playback type for later use
     currentPlaybackType = playbackType
 
-    // Notify that playback is starting based on type
-    switch playbackType {
-    case .voiceResponse:
-      NotificationCenter.default.post(
-        name: NSNotification.Name("VoicePlaybackStarted"), object: nil)
-    case .readSelectedText:
-      NotificationCenter.default.post(
-        name: NSNotification.Name("ReadSelectedTextPlaybackStarted"), object: nil)
-    }
+    // Notify that playback is starting
+    NotificationCenter.default.post(
+      name: NSNotification.Name("VoicePlaybackStarted"), object: nil)
 
     // Create temporary file for audio playback
     let tempURL = try createTemporaryAudioFile(data: data)
@@ -102,14 +96,8 @@ class AudioPlaybackService: NSObject {
       if player.isPlaying {
         player.stop()
         // Notify that playback was stopped based on type
-        switch currentPlaybackType {
-        case .voiceResponse:
-          NotificationCenter.default.post(
-            name: NSNotification.Name("VoicePlaybackStopped"), object: nil)
-        case .readSelectedText:
-          NotificationCenter.default.post(
-            name: NSNotification.Name("ReadSelectedTextPlaybackStopped"), object: nil)
-        }
+        NotificationCenter.default.post(
+          name: NSNotification.Name("VoicePlaybackStopped"), object: nil)
       }
       audioPlayer = nil
     }
@@ -180,9 +168,6 @@ extension AudioPlaybackService: AVAudioPlayerDelegate {
     case .voiceResponse:
       NotificationCenter.default.post(
         name: NSNotification.Name("VoicePlaybackStopped"), object: nil)
-    case .readSelectedText:
-      NotificationCenter.default.post(
-        name: NSNotification.Name("ReadSelectedTextPlaybackStopped"), object: nil)
     }
 
     if let completion = currentPlaybackCompletion {
@@ -214,7 +199,6 @@ enum PlaybackResult {
 // MARK: - Audio Playback Types
 enum PlaybackType {
   case voiceResponse
-  case readSelectedText
 }
 
 // MARK: - Audio Playback Error Types
