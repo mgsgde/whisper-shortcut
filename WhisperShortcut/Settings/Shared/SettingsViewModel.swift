@@ -129,6 +129,15 @@ class SettingsViewModel: ObservableObject {
     // Load transcription language (empty = Auto-Detect)
     data.transcriptionLanguage = UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? ""
 
+    // Load Read Selected Text TTS Provider
+    if let savedProviderString = UserDefaults.standard.string(forKey: "readSelectedTextTTSProvider"),
+      let savedProvider = TTSProvider(rawValue: savedProviderString)
+    {
+      data.readSelectedTextTTSProvider = savedProvider
+    } else {
+      data.readSelectedTextTTSProvider = SettingsDefaults.readSelectedTextTTSProvider
+    }
+
     // Load API key
     data.apiKey = KeychainManager.shared.getAPIKey() ?? ""
     
@@ -333,6 +342,9 @@ class SettingsViewModel: ObservableObject {
 
     // Save transcription language
     UserDefaults.standard.set(data.transcriptionLanguage, forKey: "transcriptionLanguage")
+
+    // Save Read Selected Text TTS Provider
+    UserDefaults.standard.set(data.readSelectedTextTTSProvider.rawValue, forKey: "readSelectedTextTTSProvider")
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()

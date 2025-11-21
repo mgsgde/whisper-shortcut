@@ -19,6 +19,18 @@ struct ReadClipboardSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
+      // TTS Provider Section
+      ttsProviderSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Playback Speed Section
       playbackSpeedSection
 
@@ -77,6 +89,61 @@ struct ReadClipboardSettingsTab: View {
         .fixedSize(horizontal: false, vertical: true)
       }
       .textSelection(.enabled)
+    }
+  }
+
+  // MARK: - TTS Provider Section
+  @ViewBuilder
+  private var ttsProviderSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "🔊 TTS Provider",
+        subtitle: "Choose between OpenAI and Google Text-to-Speech"
+      )
+
+      VStack(alignment: .leading, spacing: 12) {
+        ForEach(TTSProvider.allCases, id: \.self) { provider in
+          HStack(spacing: 12) {
+            Button(action: {
+              viewModel.data.readSelectedTextTTSProvider = provider
+              Task {
+                await viewModel.saveSettings()
+              }
+            }) {
+              HStack(spacing: 8) {
+                Image(systemName: viewModel.data.readSelectedTextTTSProvider == provider ? "checkmark.circle.fill" : "circle")
+                  .foregroundColor(viewModel.data.readSelectedTextTTSProvider == provider ? .blue : .secondary)
+                  .font(.system(size: 16))
+                
+                VStack(alignment: .leading, spacing: 4) {
+                  Text(provider.displayName)
+                    .font(.body)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                  
+                  Text(provider.description)
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                if provider.isRecommended {
+                  Text("Recommended")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(4)
+                }
+              }
+            }
+            .buttonStyle(.plain)
+          }
+        }
+      }
     }
   }
 

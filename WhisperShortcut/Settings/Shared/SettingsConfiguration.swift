@@ -86,7 +86,7 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gptAudioMini:
       return true  // Default GPT-Audio model
-    case .gptAudio, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
+    case .gptAudio, .gemini20, .gemini20Flash, .gemini20FlashLite, .gemini25, .gemini25Flash, .gemini25FlashLite:
       return false
     }
   }
@@ -121,7 +121,7 @@ enum PromptModel: String, CaseIterable {
       return .gptAudio
     case .gptAudioMini:
       return .gptAudioMini
-    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
+    case .gemini20, .gemini20Flash, .gemini20FlashLite, .gemini25, .gemini25Flash, .gemini25FlashLite:
       return nil
     }
   }
@@ -232,6 +232,34 @@ enum GPTAudioModel: String, CaseIterable {
   }
 }
 
+// MARK: - TTS Provider Enum
+enum TTSProvider: String, CaseIterable {
+  case openAI = "openai"
+  case google = "google"
+  
+  var displayName: String {
+    switch self {
+    case .openAI:
+      return "OpenAI"
+    case .google:
+      return "Google"
+    }
+  }
+  
+  var description: String {
+    switch self {
+    case .openAI:
+      return "OpenAI TTS (gpt-4o-mini-tts)"
+    case .google:
+      return "Google Cloud Text-to-Speech"
+    }
+  }
+  
+  var isRecommended: Bool {
+    return self == .openAI
+  }
+}
+
 // MARK: - Conversation Timeout Enum
 enum ConversationTimeout: Double, CaseIterable {
   case noMemory = 0.0        // No memory - instant expiry
@@ -293,6 +321,7 @@ struct SettingsDefaults {
   static let promptModeSystemPrompt = ""
   static let voiceResponseSystemPrompt = ""
   static let readSelectedTextPlaybackSpeed = 1.0
+  static let readSelectedTextTTSProvider = TTSProvider.openAI
   static let transcriptionLanguage = ""  // Empty = Auto-Detect
   
   // MARK: - Reasoning Effort Settings
@@ -339,6 +368,7 @@ struct SettingsData {
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
   var voiceResponseSystemPrompt: String = SettingsDefaults.voiceResponseSystemPrompt
   var readSelectedTextPlaybackSpeed: Double = SettingsDefaults.readSelectedTextPlaybackSpeed
+  var readSelectedTextTTSProvider: TTSProvider = SettingsDefaults.readSelectedTextTTSProvider
   var transcriptionLanguage: String = SettingsDefaults.transcriptionLanguage
   
   // MARK: - Reasoning Effort Settings

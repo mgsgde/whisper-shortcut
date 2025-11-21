@@ -1965,8 +1965,23 @@ class SpeechService {
   private func playTextAsSpeechChunked(
     _ text: String, playbackType: PlaybackType, speed: Double
   ) async throws {
-    // Use OpenAI TTS API limit with safety margin
-    let maxLen = max(512, TTSService.maxAllowedTextLength - 64)  // 4032 chars (4096 - 64 safety)
+    // Get TTS provider from settings (only for readSelectedText, default to OpenAI for voiceResponse)
+    let provider: TTSProvider
+    if playbackType == .readSelectedText {
+      let providerString = UserDefaults.standard.string(forKey: "readSelectedTextTTSProvider") ?? "openai"
+      provider = TTSProvider(rawValue: providerString) ?? .openAI
+    } else {
+      provider = .openAI  // Voice response always uses OpenAI
+    }
+    
+    // Use appropriate TTS API limit with safety margin
+    let maxLen: Int
+    if provider == .google {
+      maxLen = max(512, TTSService.maxAllowedTextLengthGoogle - 64)  // 4936 chars (5000 - 64 safety)
+    } else {
+      maxLen = max(512, TTSService.maxAllowedTextLength - 64)  // 4032 chars (4096 - 64 safety)
+    }
+    
     let chunks = splitTextForTTS(text, maxLen: maxLen)
     
     if chunks.isEmpty { 
@@ -1979,7 +1994,7 @@ class SpeechService {
     
     // Start generating first chunk
     do {
-      currentAudioData = try await ttsService.generateSpeech(text: chunks[0], speed: speed)
+      currentAudioData = try await ttsService.generateSpeech(text: chunks[0], speed: speed, provider: provider)
     } catch let ttsError as TTSError {
       throw TranscriptionError.ttsError(ttsError)
     } catch {
@@ -1991,7 +2006,7 @@ class SpeechService {
       if index + 1 < chunks.count {
         let nextChunk = chunks[index + 1]
         nextAudioTask = Task {
-          return try await ttsService.generateSpeech(text: nextChunk, speed: speed)
+          return try await ttsService.generateSpeech(text: nextChunk, speed: speed, provider: provider)
         }
       }
       

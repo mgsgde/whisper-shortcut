@@ -3,13 +3,17 @@ import Foundation
 
 // MARK: - TTS Service Constants
 private enum TTSConstants {
-  static let endpoint = "https://api.openai.com/v1/audio/speech"
+  static let openAIEndpoint = "https://api.openai.com/v1/audio/speech"
+  static let googleEndpoint = "https://texttospeech.googleapis.com/v1/text:synthesize"
   static let requestTimeout: TimeInterval = 30.0
   static let maxTextLength = 4096  // OpenAI TTS text limit
+  static let googleMaxTextLength = 5000  // Google TTS text limit
   static let defaultVoice = "onyx"  // OpenAI TTS voice options: alloy, echo, fable, onyx, nova, shimmer, coral, verse, ballad, ash, sage, cedar
   // Realtime API voice options: alloy, ash, ballad, coral, echo, sage, shimmer, verse
   static let defaultModel = "gpt-4o-mini-tts"  // gpt-4o-mini-tts, gpt-4o-tts, tts-1, tts-1-hd
   static let outputFormat = "mp3"  // mp3, opus, aac, flac, wav, pcm
+  static let googleVoice = "en-US-Wavenet-D"  // Google TTS voice
+  static let googleLanguageCode = "en-US"  // Google TTS language code
 }
 
 // MARK: - TTS Service Implementation
@@ -19,6 +23,9 @@ class TTSService {
 
   // Expose maximum allowed text length for external callers
   static var maxAllowedTextLength: Int { TTSConstants.maxTextLength }
+  
+  // Expose maximum allowed text length for Google TTS
+  static var maxAllowedTextLengthGoogle: Int { TTSConstants.googleMaxTextLength }
 
   // MARK: - Task Tracking for Cancellation
   private var currentTTSTask: Task<Data, Error>?
@@ -50,11 +57,17 @@ class TTSService {
   // MARK: - Main TTS Generation Method (Public API with Task Tracking)
   func generateSpeech(
     text: String, voice: String = TTSConstants.defaultVoice,
-    model: String = TTSConstants.defaultModel, speed: Double = 1.0
+    model: String = TTSConstants.defaultModel, speed: Double = 1.0,
+    provider: TTSProvider = .openAI
   ) async throws -> Data {
     // Create and store task for cancellation support
     let task = Task<Data, Error> {
-      try await self.performTTSGeneration(text: text, voice: voice, model: model, speed: speed)
+      switch provider {
+      case .openAI:
+        return try await self.performOpenAITTSGeneration(text: text, voice: voice, model: model, speed: speed)
+      case .google:
+        return try await self.performGoogleTTSGeneration(text: text, speed: speed)
+      }
     }
     
     currentTTSTask = task
@@ -63,8 +76,8 @@ class TTSService {
     return try await task.value
   }
 
-  // MARK: - TTS Generation (Private Implementation)
-  private func performTTSGeneration(
+  // MARK: - OpenAI TTS Generation (Private Implementation)
+  private func performOpenAITTSGeneration(
     text: String, voice: String = TTSConstants.defaultVoice,
     model: String = TTSConstants.defaultModel, speed: Double = 1.0
   ) async throws -> Data {
@@ -76,10 +89,10 @@ class TTSService {
     }
 
     // Validate input text
-    try validateInputText(text)
+    try validateInputText(text, maxLength: TTSConstants.maxTextLength)
 
     // Create request
-    let request = try createTTSRequest(
+    let request = try createOpenAITTSRequest(
       text: text, voice: voice, model: model, apiKey: apiKey, speed: speed)
 
     // Execute request
@@ -107,14 +120,64 @@ class TTSService {
     return data
   }
 
+  // MARK: - Google TTS Generation (Private Implementation)
+  private func performGoogleTTSGeneration(
+    text: String, speed: Double = 1.0
+  ) async throws -> Data {
+    // Validate API key
+    guard let apiKey = keychainManager.getGoogleAPIKey(), !apiKey.isEmpty else {
+      DebugLogger.logWarning("TTS-SERVICE: No Google API key available")
+      throw TTSError.noAPIKey
+    }
+
+    // Validate input text
+    try validateInputText(text, maxLength: TTSConstants.googleMaxTextLength)
+
+    // Create request
+    let request = try createGoogleTTSRequest(text: text, apiKey: apiKey, speed: speed)
+
+    // Execute request
+    let (data, response) = try await session.data(for: request)
+
+    // Validate response
+    guard let httpResponse = response as? HTTPURLResponse else {
+      DebugLogger.logWarning("TTS-SERVICE: Invalid response type from Google TTS")
+      throw TTSError.networkError("Invalid response type")
+    }
+
+    if httpResponse.statusCode != 200 {
+      DebugLogger.logWarning("TTS-SERVICE: Google TTS HTTP error \(httpResponse.statusCode)")
+      if let errorBody = String(data: data, encoding: .utf8) {
+        DebugLogger.logWarning("TTS-SERVICE: Error response body: \(errorBody)")
+      }
+      let error = try parseGoogleErrorResponse(data: data, statusCode: httpResponse.statusCode)
+      throw error
+    }
+
+    // Parse Google TTS response
+    let googleResponse = try JSONDecoder().decode(GoogleTTSResponse.self, from: data)
+    
+    // Decode base64 audio content
+    guard let audioData = Data(base64Encoded: googleResponse.audioContent) else {
+      DebugLogger.logWarning("TTS-SERVICE: Failed to decode Google TTS audio content")
+      throw TTSError.audioGenerationFailed
+    }
+
+    // Validate audio data
+    try validateAudioData(audioData)
+
+    DebugLogger.logSuccess("TTS-SERVICE: Successfully generated \(audioData.count) bytes of audio from Google TTS")
+    return audioData
+  }
+
   // MARK: - Request Creation
-  private func createTTSRequest(
+  private func createOpenAITTSRequest(
     text: String, voice: String, model: String, apiKey: String, speed: Double
   ) throws
     -> URLRequest
   {
 
-    guard let url = URL(string: TTSConstants.endpoint) else {
+    guard let url = URL(string: TTSConstants.openAIEndpoint) else {
       throw TTSError.networkError("Invalid TTS endpoint URL")
     }
 
@@ -136,8 +199,39 @@ class TTSService {
     return request
   }
 
+  private func createGoogleTTSRequest(
+    text: String, apiKey: String, speed: Double
+  ) throws -> URLRequest {
+    guard let url = URL(string: "\(TTSConstants.googleEndpoint)?key=\(apiKey)") else {
+      throw TTSError.networkError("Invalid Google TTS endpoint URL")
+    }
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+
+    // Google TTS speed is 0.25 to 4.0, with 1.0 as normal
+    let googleSpeed = max(0.25, min(4.0, speed))
+
+    let requestBody = GoogleTTSRequest(
+      input: GoogleTTSInput(text: text),
+      voice: GoogleTTSVoice(
+        languageCode: TTSConstants.googleLanguageCode,
+        name: TTSConstants.googleVoice
+      ),
+      audioConfig: GoogleTTSAudioConfig(
+        audioEncoding: "MP3",
+        speakingRate: googleSpeed
+      )
+    )
+
+    request.httpBody = try JSONEncoder().encode(requestBody)
+
+    return request
+  }
+
   // MARK: - Validation Methods
-  private func validateInputText(_ text: String) throws {
+  private func validateInputText(_ text: String, maxLength: Int) throws {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
     if trimmedText.isEmpty {
@@ -145,9 +239,9 @@ class TTSService {
       throw TTSError.invalidInput
     }
 
-    if trimmedText.count > TTSConstants.maxTextLength {
-      DebugLogger.logWarning("TTS-SERVICE: Input text too long: \(trimmedText.count) > \(TTSConstants.maxTextLength)")
-      throw TTSError.textTooLong(characterCount: trimmedText.count, maxLength: TTSConstants.maxTextLength)
+    if trimmedText.count > maxLength {
+      DebugLogger.logWarning("TTS-SERVICE: Input text too long: \(trimmedText.count) > \(maxLength)")
+      throw TTSError.textTooLong(characterCount: trimmedText.count, maxLength: maxLength)
     }
   }
 
@@ -181,6 +275,29 @@ class TTSService {
   }
 
   // MARK: - Error Handling
+  private func parseGoogleErrorResponse(data: Data, statusCode: Int) throws -> TTSError {
+    // Try to parse Google error response
+    if let errorResponse = try? JSONDecoder().decode(GoogleErrorResponse.self, from: data) {
+      let errorMessage = errorResponse.error?.message ?? "Unknown Google error"
+      
+      switch statusCode {
+      case 401:
+        return .authenticationError
+      case 400:
+        return .invalidInput
+      case 429:
+        return .networkError("Rate limit exceeded")
+      case 500...599:
+        return .networkError("Server error: \(errorMessage)")
+      default:
+        return .networkError("HTTP \(statusCode): \(errorMessage)")
+      }
+    }
+    
+    // Fallback to status code error
+    return parseStatusCodeError(statusCode)
+  }
+
   private func parseErrorResponse(data: Data, statusCode: Int) throws -> TTSError {
 
     // Try to parse OpenAI error response
@@ -295,4 +412,57 @@ enum TTSError: Error, Equatable {
 
     return NSError(domain: domain, code: code, userInfo: userInfo)
   }
+}
+
+// MARK: - Google TTS Request Models
+struct GoogleTTSRequest: Codable {
+  let input: GoogleTTSInput
+  let voice: GoogleTTSVoice
+  let audioConfig: GoogleTTSAudioConfig
+  
+  enum CodingKeys: String, CodingKey {
+    case input
+    case voice
+    case audioConfig = "audioConfig"
+  }
+}
+
+struct GoogleTTSInput: Codable {
+  let text: String
+}
+
+struct GoogleTTSVoice: Codable {
+  let languageCode: String
+  let name: String
+  
+  enum CodingKeys: String, CodingKey {
+    case languageCode
+    case name
+  }
+}
+
+struct GoogleTTSAudioConfig: Codable {
+  let audioEncoding: String
+  let speakingRate: Double
+  
+  enum CodingKeys: String, CodingKey {
+    case audioEncoding
+    case speakingRate
+  }
+}
+
+// MARK: - Google TTS Response Models
+struct GoogleTTSResponse: Codable {
+  let audioContent: String
+}
+
+// MARK: - Google Error Response Model
+struct GoogleErrorResponse: Codable {
+  let error: GoogleError?
+}
+
+struct GoogleError: Codable {
+  let code: Int?
+  let message: String?
+  let status: String?
 }
