@@ -31,7 +31,7 @@ class SettingsViewModel: ObservableObject {
     {
       data.selectedTranscriptionModel = savedModel
     } else {
-      data.selectedTranscriptionModel = .gpt4oMiniTranscribe
+      data.selectedTranscriptionModel = SettingsDefaults.selectedTranscriptionModel
     }
 
     // Load Prompt model preference (for Prompt Mode) - simplified to GPT-Audio only

@@ -234,8 +234,8 @@ class MenuBarController: NSObject {
     {
       speechService.setModel(savedModel)
     } else {
-      // Set default model to GPT-4o Transcribe
-      speechService.setModel(.gpt4oTranscribe)
+      // Set default model from SettingsDefaults
+      speechService.setModel(SettingsDefaults.selectedTranscriptionModel)
     }
 
     // Setup shortcuts

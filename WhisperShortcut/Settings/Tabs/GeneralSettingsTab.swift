@@ -7,8 +7,8 @@ struct GeneralSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      // API Key Section
-      apiKeySection
+      // Google API Key Section
+      googleAPIKeySection
 
       // Section Divider with spacing
       VStack(spacing: 0) {
@@ -19,8 +19,8 @@ struct GeneralSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
-      // Google API Key Section
-      googleAPIKeySection
+      // API Key Section
+      apiKeySection
 
       // Section Divider with spacing
       VStack(spacing: 0) {
@@ -120,7 +120,7 @@ struct GeneralSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "🔑 Google API Key",
-        subtitle: "Required for Gemini transcription functionality"
+        subtitle: "Recommended • Required for Gemini transcription functionality"
       )
 
       HStack(alignment: .center, spacing: 16) {

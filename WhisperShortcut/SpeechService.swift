@@ -45,7 +45,7 @@ class SpeechService {
   }()
 
   // MARK: - Transcription Mode Properties
-  private var selectedTranscriptionModel: TranscriptionModel = .gpt4oMiniTranscribe
+  private var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
 
   // MARK: - Prompt/Conversation State
   private var previousResponseTimestamp: Date?       // Track when the last response was received
