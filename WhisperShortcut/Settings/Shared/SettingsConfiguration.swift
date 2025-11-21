@@ -349,7 +349,6 @@ struct SettingsDefaults {
   static let dictationDifficultWords = ""
   static let promptModeSystemPrompt = ""
   static let voiceResponseSystemPrompt = ""
-  static let transcriptionLanguage = ""  // Empty = Auto-Detect
   
   // MARK: - Reasoning Effort Settings
   static let promptReasoningEffort = ReasoningEffort.medium
@@ -392,7 +391,6 @@ struct SettingsData {
   var dictationDifficultWords: String = SettingsDefaults.dictationDifficultWords
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
   var voiceResponseSystemPrompt: String = SettingsDefaults.voiceResponseSystemPrompt
-  var transcriptionLanguage: String = SettingsDefaults.transcriptionLanguage
   
   // MARK: - Reasoning Effort Settings
   var promptReasoningEffort: ReasoningEffort = SettingsDefaults.promptReasoningEffort
@@ -424,5 +422,4 @@ enum SettingsFocusField: Hashable {
   case dictationDifficultWords
   case promptModeSystemPrompt
   case voiceResponseSystemPrompt
-  case transcriptionLanguage
 }

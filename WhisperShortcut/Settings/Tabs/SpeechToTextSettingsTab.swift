@@ -4,7 +4,6 @@ import SwiftUI
 struct SpeechToTextSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
-  @State private var languageValidationError: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -34,18 +33,6 @@ struct SpeechToTextSettingsTab: View {
 
       // Difficult Words Section
       difficultWordsSection
-
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
-
-      // Language Section
-      languageSection
 
       // Section Divider with spacing
       VStack(spacing: 0) {
@@ -143,68 +130,6 @@ struct SpeechToTextSettingsTab: View {
         }
       }
     )
-  }
-
-  // MARK: - Language Section
-  @ViewBuilder
-  private var languageSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "🌐 Language",
-        subtitle: "ISO-639-1 code (e.g., 'en', 'de', 'fr'). Leave empty for auto-detection."
-      )
-
-      VStack(alignment: .leading, spacing: 8) {
-        HStack(alignment: .center, spacing: 16) {
-          Text("Language Code:")
-            .font(.body)
-            .fontWeight(.medium)
-            .frame(width: SettingsConstants.labelWidth, alignment: .leading)
-            .textSelection(.enabled)
-
-          TextField("Auto-Detect (leave empty)", text: $viewModel.data.transcriptionLanguage)
-            .textFieldStyle(.roundedBorder)
-            .font(.system(.body, design: .monospaced))
-            .frame(height: SettingsConstants.textFieldHeight)
-            .frame(maxWidth: 300)
-            .focused($focusedField, equals: .transcriptionLanguage)
-            .autocorrectionDisabled()
-            .overlay(
-              RoundedRectangle(cornerRadius: 6)
-                .stroke(languageValidationError != nil ? Color.red.opacity(0.7) : Color.clear, lineWidth: 1)
-                .padding(0)
-            )
-            .onChange(of: viewModel.data.transcriptionLanguage) { _, newValue in
-              // Validate in real-time
-              languageValidationError = viewModel.validateLanguageCode(newValue)
-              
-              // Only save if validation passes
-              if languageValidationError == nil {
-                Task {
-                  await viewModel.saveSettings()
-                }
-              }
-            }
-
-          Spacer()
-        }
-
-        // Show validation error
-        if let error = languageValidationError {
-          Text(error)
-            .font(.callout)
-            .foregroundColor(.red)
-            .textSelection(.enabled)
-        }
-
-        // Help text
-        Text("Enter a 2-letter ISO-639-1 language code (e.g., 'en' for English, 'de' for German, 'fr' for French). Leave empty to let OpenAI automatically detect the language.")
-          .font(.callout)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
   }
 
   // MARK: - Model Section

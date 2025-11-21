@@ -128,9 +128,6 @@ class SettingsViewModel: ObservableObject {
       data.showPopupNotifications = SettingsDefaults.showPopupNotifications
     }
 
-    // Load transcription language (empty = Auto-Detect)
-    data.transcriptionLanguage = UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? ""
-
     // Load API key
     data.apiKey = KeychainManager.shared.getAPIKey() ?? ""
     
@@ -196,30 +193,6 @@ class SettingsViewModel: ObservableObject {
       return "All enabled shortcuts must be different. Please use unique shortcuts."
     }
 
-    return nil
-  }
-
-  // MARK: - Language Code Validation
-  func validateLanguageCode(_ code: String) -> String? {
-    // Empty string is valid (Auto-Detect)
-    let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty {
-      return nil
-    }
-    
-    // Must be exactly 2 lowercase letters (ISO-639-1 format)
-    if trimmed.count != 2 {
-      return "Language code must be exactly 2 characters (e.g., 'en', 'de', 'fr')"
-    }
-    
-    // Check if all characters are lowercase letters
-    let lowercaseLetters = CharacterSet.lowercaseLetters
-    for char in trimmed.unicodeScalars {
-      if !lowercaseLetters.contains(char) {
-        return "Language code must be lowercase letters only (e.g., 'en', 'de', 'fr')"
-      }
-    }
-    
     return nil
   }
 
@@ -318,9 +291,6 @@ class SettingsViewModel: ObservableObject {
 
     // Save popup notifications setting
     UserDefaults.standard.set(data.showPopupNotifications, forKey: "showPopupNotifications")
-
-    // Save transcription language
-    UserDefaults.standard.set(data.transcriptionLanguage, forKey: "transcriptionLanguage")
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()
