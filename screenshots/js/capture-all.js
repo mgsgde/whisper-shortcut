@@ -10,6 +10,7 @@
  *   node capture-all.js speech-to-text     # Capture specific screenshot
  *   node capture-all.js speech-to-prompt   # Capture specific screenshot
  *   node capture-all.js powered-by-openai  # Capture specific screenshot
+ *   node capture-all.js powered-by-gemini  # Capture specific screenshot
  */
 
 const puppeteer = require('puppeteer');
@@ -31,6 +32,11 @@ const screenshots = [
     name: 'powered-by-openai',
     html: 'powered-by-openai.html', 
     output: 'powered-by-openai.png'
+  },
+  {
+    name: 'powered-by-gemini',
+    html: 'powered-by-gemini.html', 
+    output: 'powered-by-gemini.png'
   }
 ];
 
@@ -76,7 +82,7 @@ async function captureScreenshot(config) {
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     // Take screenshot
-    const outputPath = path.join(__dirname, '..', 'images', config.output);
+    const outputPath = path.join(__dirname, '..', 'output', config.output);
     await page.screenshot({ 
       path: outputPath,
       fullPage: false,
