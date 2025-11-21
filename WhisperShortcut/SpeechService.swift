@@ -928,12 +928,12 @@ class SpeechService {
         // Extract text from GPT message
         switch gptMessage.content {
         case .text(let text):
-          parts.append(GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil))
+          parts.append(GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil, url: nil))
         case .multiContent(let contentParts):
           // Extract text from multi-content parts
           for part in contentParts {
             if part.type == "text", let text = part.text {
-              parts.append(GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil))
+              parts.append(GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil, url: nil))
             }
           }
         }
@@ -957,7 +957,7 @@ class SpeechService {
       
       Now listen to my voice instruction and apply it to the text above.
       """
-      userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil))
+      userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
     }
     
     // Add audio input
@@ -971,7 +971,8 @@ class SpeechService {
       userParts.append(GeminiChatRequest.GeminiChatPart(
         text: nil,
         inlineData: nil,
-        fileData: GeminiChatRequest.GeminiFileData(fileUri: fileURI, mimeType: mimeType)
+        fileData: GeminiChatRequest.GeminiFileData(fileUri: fileURI, mimeType: mimeType),
+        url: nil
       ))
     } else {
       // Use inline data for small files
@@ -980,7 +981,8 @@ class SpeechService {
       userParts.append(GeminiChatRequest.GeminiChatPart(
         text: nil,
         inlineData: GeminiChatRequest.GeminiInlineData(mimeType: mimeType, data: base64Audio),
-        fileData: nil
+        fileData: nil,
+        url: nil
       ))
     }
     
@@ -992,10 +994,11 @@ class SpeechService {
       parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
     )
     
-    // Create request
+    // Create request (no tools for prompt mode)
     let chatRequest = GeminiChatRequest(
       contents: contents,
-      systemInstruction: systemInstruction
+      systemInstruction: systemInstruction,
+      tools: nil
     )
     
     request.httpBody = try JSONEncoder().encode(chatRequest)
@@ -1113,11 +1116,11 @@ class SpeechService {
         
         switch gptMessage.content {
         case .text(let text):
-          parts.append(GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil))
+          parts.append(GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil, url: nil))
         case .multiContent(let contentParts):
           for part in contentParts {
             if part.type == "text", let text = part.text {
-              parts.append(GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil))
+              parts.append(GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil, url: nil))
             }
           }
         }
@@ -1139,7 +1142,7 @@ class SpeechService {
       
       [My voice question/instruction follows]
       """
-      userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil))
+      userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
     }
     
     // Add audio input
@@ -1153,7 +1156,8 @@ class SpeechService {
       userParts.append(GeminiChatRequest.GeminiChatPart(
         text: nil,
         inlineData: nil,
-        fileData: GeminiChatRequest.GeminiFileData(fileUri: fileURI, mimeType: mimeType)
+        fileData: GeminiChatRequest.GeminiFileData(fileUri: fileURI, mimeType: mimeType),
+        url: nil
       ))
     } else {
       // Use inline data for small files
@@ -1162,7 +1166,8 @@ class SpeechService {
       userParts.append(GeminiChatRequest.GeminiChatPart(
         text: nil,
         inlineData: GeminiChatRequest.GeminiInlineData(mimeType: mimeType, data: base64Audio),
-        fileData: nil
+        fileData: nil,
+        url: nil
       ))
     }
     
@@ -1174,41 +1179,99 @@ class SpeechService {
       parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
     )
     
-    // Create request
-    let chatRequest = GeminiChatRequest(
-      contents: contents,
-      systemInstruction: systemInstruction
-    )
+    // Create tools array with Google Search
+    let tools: [GeminiChatRequest.GeminiTool] = [
+      GeminiChatRequest.GeminiTool(
+        googleSearch: GeminiChatRequest.GeminiTool.GoogleSearch()
+      )
+    ]
+    DebugLogger.log("VOICE-RESPONSE-GEMINI: Enabling Google Search tool")
     
-    request.httpBody = try JSONEncoder().encode(chatRequest)
+    // Handle tool execution loop (for built-in tools, Gemini executes automatically, but may need multiple rounds)
+    var finalTextContent = ""
+    var currentContents = contents
+    let maxToolRounds = 5  // Maximum number of tool execution rounds
+    var round = 0
     
-    let (data, responseData) = try await session.data(for: request)
-    
-    guard let httpResponse = responseData as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response")
-    }
-    
-    if httpResponse.statusCode != 200 {
-      DebugLogger.log("VOICE-RESPONSE-GEMINI-ERROR: HTTP \(httpResponse.statusCode)")
-      let error = try parseGeminiErrorResponse(data: data, statusCode: httpResponse.statusCode)
-      throw error
-    }
-    
-    let result = try JSONDecoder().decode(GeminiChatResponse.self, from: data)
-    
-    guard let firstCandidate = result.candidates.first else {
-      throw TranscriptionError.networkError("No candidates in Gemini response")
-    }
-    
-    // Extract text content
-    var textContent = ""
-    for part in firstCandidate.content.parts {
-      if let text = part.text {
-        textContent += text
+    while round < maxToolRounds {
+      round += 1
+      DebugLogger.log("VOICE-RESPONSE-GEMINI: Tool execution round \(round)")
+      
+      // Create request for this round
+      let roundRequest = GeminiChatRequest(
+        contents: currentContents,
+        systemInstruction: systemInstruction,
+        tools: tools
+      )
+      
+      request.httpBody = try JSONEncoder().encode(roundRequest)
+      
+      let (data, responseData) = try await session.data(for: request)
+      
+      guard let httpResponse = responseData as? HTTPURLResponse else {
+        throw TranscriptionError.networkError("Invalid response")
+      }
+      
+      if httpResponse.statusCode != 200 {
+        DebugLogger.log("VOICE-RESPONSE-GEMINI-ERROR: HTTP \(httpResponse.statusCode)")
+        let error = try parseGeminiErrorResponse(data: data, statusCode: httpResponse.statusCode)
+        throw error
+      }
+      
+      let result = try JSONDecoder().decode(GeminiChatResponse.self, from: data)
+      
+      guard let firstCandidate = result.candidates.first else {
+        throw TranscriptionError.networkError("No candidates in Gemini response")
+      }
+      
+      // Check if there are function calls (tool usage)
+      var hasFunctionCalls = false
+      var textContent = ""
+      for part in firstCandidate.content.parts {
+        if let text = part.text {
+          textContent += text
+        }
+        if let functionCall = part.functionCall {
+          hasFunctionCalls = true
+          DebugLogger.log("VOICE-RESPONSE-GEMINI: Tool function call detected: \(functionCall.name ?? "unknown")")
+          if let args = functionCall.args {
+            DebugLogger.log("VOICE-RESPONSE-GEMINI: Function call args: \(args)")
+          }
+        }
+      }
+      
+      // Log response status
+      if !textContent.isEmpty {
+        DebugLogger.log("VOICE-RESPONSE-GEMINI: Received text response (length: \(textContent.count) chars)")
+      }
+      
+      // Add model response to conversation history for next round
+      if !textContent.isEmpty {
+        currentContents.append(GeminiChatRequest.GeminiChatContent(
+          role: "model",
+          parts: [GeminiChatRequest.GeminiChatPart(text: textContent, inlineData: nil, fileData: nil, url: nil)]
+        ))
+      }
+      
+      // If no function calls, we have the final answer
+      if !hasFunctionCalls {
+        finalTextContent = textContent
+        DebugLogger.log("VOICE-RESPONSE-GEMINI: Final response received (no more tool calls)")
+        break
+      }
+      
+      // For built-in tools, Gemini executes them automatically, so we should have the final response
+      // But if there are function calls, we continue the loop
+      // Note: For built-in tools like Google Search, Gemini typically executes them in one round
+      // This loop handles edge cases where multiple rounds might be needed
+      if round >= maxToolRounds {
+        finalTextContent = textContent
+        DebugLogger.log("VOICE-RESPONSE-GEMINI: Reached max tool rounds, using current response")
+        break
       }
     }
     
-    let normalizedText = normalizeTranscriptionText(textContent)
+    let normalizedText = normalizeTranscriptionText(finalTextContent)
     try validateSpeechText(normalizedText, mode: "VOICE-RESPONSE-GEMINI")
     
     // Copy to clipboard immediately before audio playback

@@ -289,6 +289,7 @@ struct GeminiFileInfo: Codable {
 struct GeminiChatRequest: Codable {
   let contents: [GeminiChatContent]
   let systemInstruction: GeminiSystemInstruction?
+  let tools: [GeminiTool]?
   
   struct GeminiChatContent: Codable {
     let role: String  // "user" or "model"
@@ -299,11 +300,13 @@ struct GeminiChatRequest: Codable {
     let text: String?
     let inlineData: GeminiInlineData?
     let fileData: GeminiFileData?
+    let url: String?
     
     enum CodingKeys: String, CodingKey {
       case text
       case inlineData = "inline_data"
       case fileData = "file_data"
+      case url
     }
   }
   
@@ -334,6 +337,19 @@ struct GeminiChatRequest: Codable {
   struct GeminiSystemPart: Codable {
     let text: String
   }
+  
+  // MARK: - Gemini Tools
+  struct GeminiTool: Codable {
+    let googleSearch: GoogleSearch?
+    
+    enum CodingKeys: String, CodingKey {
+      case googleSearch = "google_search"
+    }
+    
+    struct GoogleSearch: Codable {
+      // Empty struct - Google Search tool requires no parameters
+    }
+  }
 }
 
 struct GeminiChatResponse: Codable {
@@ -357,10 +373,76 @@ struct GeminiChatResponse: Codable {
   struct GeminiChatResponsePart: Codable {
     let text: String?
     let inlineData: GeminiInlineData?
+    let functionCall: GeminiFunctionCall?
     
     enum CodingKeys: String, CodingKey {
       case text
       case inlineData = "inline_data"
+      case functionCall = "function_call"
+    }
+  }
+  
+  struct GeminiFunctionCall: Codable {
+    let name: String?
+    let args: [String: AnyCodable]?
+    
+    enum CodingKeys: String, CodingKey {
+      case name
+      case args
+    }
+  }
+  
+  // Helper for decoding arbitrary JSON values in function call args
+  struct AnyCodable: Codable {
+    let value: Any
+    
+    init(_ value: Any) {
+      self.value = value
+    }
+    
+    init(from decoder: Decoder) throws {
+      let container = try decoder.singleValueContainer()
+      if let bool = try? container.decode(Bool.self) {
+        value = bool
+      } else if let int = try? container.decode(Int.self) {
+        value = int
+      } else if let double = try? container.decode(Double.self) {
+        value = double
+      } else if let string = try? container.decode(String.self) {
+        value = string
+      } else if let array = try? container.decode([AnyCodable].self) {
+        value = array.map { $0.value }
+      } else if let dict = try? container.decode([String: AnyCodable].self) {
+        value = dict.mapValues { $0.value }
+      } else {
+        throw DecodingError.dataCorruptedError(
+          in: container,
+          debugDescription: "AnyCodable value cannot be decoded"
+        )
+      }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+      var container = encoder.singleValueContainer()
+      switch value {
+      case let bool as Bool:
+        try container.encode(bool)
+      case let int as Int:
+        try container.encode(int)
+      case let double as Double:
+        try container.encode(double)
+      case let string as String:
+        try container.encode(string)
+      case let array as [Any]:
+        try container.encode(array.map { AnyCodable($0) })
+      case let dict as [String: Any]:
+        try container.encode(dict.mapValues { AnyCodable($0) })
+      default:
+        throw EncodingError.invalidValue(
+          value,
+          EncodingError.Context(codingPath: container.codingPath, debugDescription: "AnyCodable value cannot be encoded")
+        )
+      }
     }
   }
   
