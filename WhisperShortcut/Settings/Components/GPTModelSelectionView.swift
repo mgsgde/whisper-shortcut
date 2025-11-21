@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// Wiederverwendbare Komponente für die GPT-Audio-Modellauswahl
+/// Wiederverwendbare Komponente für die Voice Response Modellauswahl
 struct GPTModelSelectionView: View {
   let title: String
-  @Binding var selectedModel: GPTAudioModel
+  @Binding var selectedModel: VoiceResponseModel
   let onModelChanged: (() -> Void)?
 
   init(
     title: String,
-    selectedModel: Binding<GPTAudioModel>,
+    selectedModel: Binding<VoiceResponseModel>,
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
@@ -25,7 +25,7 @@ struct GPTModelSelectionView: View {
 
       // Model Selection Grid - 3 columns to accommodate 6 models
       LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: SettingsConstants.modelSpacing) {
-        ForEach(GPTAudioModel.allCases, id: \.self) { model in
+        ForEach(VoiceResponseModel.allCases, id: \.self) { model in
           ZStack {
             Rectangle()
               .fill(selectedModel == model ? Color.accentColor : Color.clear)
@@ -104,9 +104,9 @@ struct GPTModelSelectionView: View {
 #if DEBUG
   struct GPTModelSelectionView_Previews: PreviewProvider {
     static var previews: some View {
-      @State var selectedModel: GPTAudioModel = .gptAudioMini
+      @State var selectedModel: VoiceResponseModel = .gptAudioMini
 
-      GPTModelSelectionView(title: "GPT-Audio Model", selectedModel: $selectedModel)
+      GPTModelSelectionView(title: "Voice Response Model", selectedModel: $selectedModel)
         .padding()
         .frame(width: 600)
     }

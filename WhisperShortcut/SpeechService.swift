@@ -108,8 +108,8 @@ class SpeechService {
   }
   
   func getVoiceResponseModelInfo() -> String {
-    let modelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel") ?? "gpt-audio-mini"
-    let model = GPTAudioModel(rawValue: modelString) ?? .gptAudioMini
+    let modelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseModel") ?? "gpt-audio-mini"
+    let model = VoiceResponseModel(rawValue: modelString) ?? .gptAudioMini
     return model.displayName
   }
 
@@ -453,8 +453,8 @@ class SpeechService {
     DebugLogger.log("VOICE-RESPONSE: Clipboard context: \(hasContext ? "present" : "none")")
     
     // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel") ?? "gpt-audio-mini"
-    let selectedModel = GPTAudioModel(rawValue: modelString) ?? .gptAudioMini
+    let modelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseModel") ?? "gpt-audio-mini"
+    let selectedModel = VoiceResponseModel(rawValue: modelString) ?? .gptAudioMini
     
     // Route to Gemini or GPT-Audio based on model type
     if selectedModel.isGemini {
@@ -742,8 +742,8 @@ class SpeechService {
       DebugLogger.log("PROMPT-MODE: Using base system prompt")
     }
     
-    // Convert to GPTAudioModel for API call
-    guard let audioModel = selectedPromptModel.asGPTAudioModel else {
+    // Convert to VoiceResponseModel for API call
+    guard let audioModel = selectedPromptModel.asVoiceResponseModel else {
       throw TranscriptionError.networkError("Selected model is not a GPT-Audio model")
     }
     
@@ -1061,8 +1061,8 @@ class SpeechService {
     DebugLogger.log("VOICE-RESPONSE-GEMINI: Starting execution")
     
     // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel") ?? "gpt-audio-mini"
-    let selectedModel = GPTAudioModel(rawValue: modelString) ?? .gptAudioMini
+    let modelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseModel") ?? "gpt-audio-mini"
+    let selectedModel = VoiceResponseModel(rawValue: modelString) ?? .gptAudioMini
     
     // Convert to TranscriptionModel to get API endpoint
     guard let transcriptionModel = selectedModel.asTranscriptionModel else {

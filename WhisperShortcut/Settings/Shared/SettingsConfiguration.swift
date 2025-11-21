@@ -43,12 +43,12 @@ enum PromptModel: String, CaseIterable {
   case gptAudioMini = "gpt-audio-mini"
   
   // Gemini Models (multimodal, direct audio input)
-  case gemini20 = "gemini-2.0"
   case gemini20Flash = "gemini-2.0-flash"
   case gemini20FlashLite = "gemini-2.0-flash-lite"
-  case gemini25 = "gemini-2.5"
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
+  case gemini25Pro = "gemini-2.5-pro"
+  case gemini35Pro = "gemini-3.5-pro"
   
   var displayName: String {
     switch self {
@@ -56,18 +56,18 @@ enum PromptModel: String, CaseIterable {
       return "GPT-Audio"
     case .gptAudioMini:
       return "GPT-Audio Mini"
-    case .gemini20:
-      return "Gemini 2.0"
     case .gemini20Flash:
       return "Gemini 2.0 Flash"
     case .gemini20FlashLite:
       return "Gemini 2.0 Flash-Lite"
-    case .gemini25:
-      return "Gemini 2.5"
     case .gemini25Flash:
       return "Gemini 2.5 Flash"
     case .gemini25FlashLite:
       return "Gemini 2.5 Flash-Lite"
+    case .gemini25Pro:
+      return "Gemini 2.5 Pro"
+    case .gemini35Pro:
+      return "Gemini 3.5 Pro"
     }
   }
   
@@ -77,18 +77,18 @@ enum PromptModel: String, CaseIterable {
       return "Best quality • Native audio understanding • For complex tasks"
     case .gptAudioMini:
       return "Recommended • Great quality at lower cost • Best for everyday use"
-    case .gemini20:
-      return "Google's Gemini 2.0 standard model • Higher quality • Best for complex tasks • Multimodal audio processing"
     case .gemini20Flash:
       return "Google's Gemini 2.0 model • Fast and efficient • Multimodal audio processing"
     case .gemini20FlashLite:
       return "Google's Gemini 2.0 Flash-Lite • Fastest latency • Cost-efficient • Multimodal"
-    case .gemini25:
-      return "Google's Gemini 2.5 standard model • Higher quality • Best for complex tasks • Multimodal audio processing"
     case .gemini25Flash:
       return "Google's Gemini 2.5 model • Fast and efficient • Multimodal audio processing"
     case .gemini25FlashLite:
       return "Google's fastest Gemini model • Superior latency • Cost-efficient • Multimodal"
+    case .gemini25Pro:
+      return "Google's Gemini 2.5 Pro model • Higher quality • Best for complex tasks • Multimodal audio processing"
+    case .gemini35Pro:
+      return "Google's Gemini 3.5 Pro model • Highest quality • Best for complex tasks • Multimodal audio processing"
     }
   }
   
@@ -96,7 +96,7 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gptAudioMini:
       return true  // Default GPT-Audio model
-    case .gptAudio, .gemini20, .gemini20Flash, .gemini20FlashLite, .gemini25, .gemini25Flash, .gemini25FlashLite:
+    case .gptAudio, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25Pro, .gemini35Pro:
       return false
     }
   }
@@ -107,7 +107,7 @@ enum PromptModel: String, CaseIterable {
       return "High"
     case .gptAudioMini, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
       return "Low"
-    case .gemini20, .gemini25:
+    case .gemini25Pro, .gemini35Pro:
       return "Medium"
     }
   }
@@ -123,17 +123,17 @@ enum PromptModel: String, CaseIterable {
   }
   
   var isGemini: Bool {
-    return self == .gemini20 || self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25 || self == .gemini25Flash || self == .gemini25FlashLite
+    return self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25Flash || self == .gemini25FlashLite || self == .gemini25Pro || self == .gemini35Pro
   }
   
-  // Convert to internal GPTAudioModel for API calls (only for GPT-Audio models)
-  var asGPTAudioModel: GPTAudioModel? {
+  // Convert to internal VoiceResponseModel for API calls (only for GPT-Audio models)
+  var asVoiceResponseModel: VoiceResponseModel? {
     switch self {
     case .gptAudio:
       return .gptAudio
     case .gptAudioMini:
       return .gptAudioMini
-    case .gemini20, .gemini20Flash, .gemini20FlashLite, .gemini25, .gemini25Flash, .gemini25FlashLite:
+    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25Pro, .gemini35Pro:
       return nil
     }
   }
@@ -141,36 +141,36 @@ enum PromptModel: String, CaseIterable {
   // Convert to TranscriptionModel for API endpoint access (for Gemini models)
   var asTranscriptionModel: TranscriptionModel? {
     switch self {
-    case .gemini20:
-      return .gemini20
     case .gemini20Flash:
       return .gemini20Flash
     case .gemini20FlashLite:
       return .gemini20FlashLite
-    case .gemini25:
-      return .gemini25
     case .gemini25Flash:
       return .gemini25Flash
     case .gemini25FlashLite:
       return .gemini25FlashLite
+    case .gemini25Pro:
+      return .gemini25Pro
+    case .gemini35Pro:
+      return .gemini35Pro
     case .gptAudio, .gptAudioMini:
       return nil
     }
   }
 }
 
-// MARK: - GPT Audio Model Enum (for Voice Response Mode) - GPT-Audio and Gemini multimodal models
-enum GPTAudioModel: String, CaseIterable {
+// MARK: - Voice Response Model Enum (for Voice Response Mode) - GPT-Audio and Gemini multimodal models
+enum VoiceResponseModel: String, CaseIterable {
   case gptAudio = "gpt-audio"
   case gptAudioMini = "gpt-audio-mini"
   
   // Gemini Models (multimodal, direct audio input)
-  case gemini20 = "gemini-2.0"
   case gemini20Flash = "gemini-2.0-flash"
   case gemini20FlashLite = "gemini-2.0-flash-lite"
-  case gemini25 = "gemini-2.5"
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
+  case gemini25Pro = "gemini-2.5-pro"
+  case gemini35Pro = "gemini-3.5-pro"
   
   var displayName: String {
     switch self {
@@ -178,18 +178,18 @@ enum GPTAudioModel: String, CaseIterable {
       return "GPT-Audio"
     case .gptAudioMini:
       return "GPT-Audio Mini"
-    case .gemini20:
-      return "Gemini 2.0"
     case .gemini20Flash:
       return "Gemini 2.0 Flash"
     case .gemini20FlashLite:
       return "Gemini 2.0 Flash-Lite"
-    case .gemini25:
-      return "Gemini 2.5"
     case .gemini25Flash:
       return "Gemini 2.5 Flash"
     case .gemini25FlashLite:
       return "Gemini 2.5 Flash-Lite"
+    case .gemini25Pro:
+      return "Gemini 2.5 Pro"
+    case .gemini35Pro:
+      return "Gemini 3.5 Pro"
     }
   }
   
@@ -199,18 +199,18 @@ enum GPTAudioModel: String, CaseIterable {
       return "Best quality • Native audio understanding • For complex tasks"
     case .gptAudioMini:
       return "Recommended • Great quality at lower cost • Best for everyday use"
-    case .gemini20:
-      return "Google's Gemini 2.0 standard model • Higher quality • Best for complex tasks • Multimodal audio processing"
     case .gemini20Flash:
       return "Google's Gemini 2.0 model • Fast and efficient • Multimodal audio processing"
     case .gemini20FlashLite:
       return "Google's Gemini 2.0 Flash-Lite • Fastest latency • Cost-efficient • Multimodal"
-    case .gemini25:
-      return "Google's Gemini 2.5 standard model • Higher quality • Best for complex tasks • Multimodal audio processing"
     case .gemini25Flash:
       return "Google's Gemini 2.5 model • Fast and efficient • Multimodal audio processing"
     case .gemini25FlashLite:
       return "Google's fastest Gemini model • Superior latency • Cost-efficient • Multimodal"
+    case .gemini25Pro:
+      return "Google's Gemini 2.5 Pro model • Higher quality • Best for complex tasks • Multimodal audio processing"
+    case .gemini35Pro:
+      return "Google's Gemini 3.5 Pro model • Highest quality • Best for complex tasks • Multimodal audio processing"
     }
   }
   
@@ -224,7 +224,7 @@ enum GPTAudioModel: String, CaseIterable {
       return "High"
     case .gptAudioMini, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
       return "Low"
-    case .gemini20, .gemini25:
+    case .gemini25Pro, .gemini35Pro:
       return "Medium"
     }
   }
@@ -240,24 +240,24 @@ enum GPTAudioModel: String, CaseIterable {
   }
   
   var isGemini: Bool {
-    return self == .gemini20 || self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25 || self == .gemini25Flash || self == .gemini25FlashLite
+    return self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25Flash || self == .gemini25FlashLite || self == .gemini25Pro || self == .gemini35Pro
   }
   
   // Convert to TranscriptionModel for API endpoint access (for Gemini models)
   var asTranscriptionModel: TranscriptionModel? {
     switch self {
-    case .gemini20:
-      return .gemini20
     case .gemini20Flash:
       return .gemini20Flash
     case .gemini20FlashLite:
       return .gemini20FlashLite
-    case .gemini25:
-      return .gemini25
     case .gemini25Flash:
       return .gemini25Flash
     case .gemini25FlashLite:
       return .gemini25FlashLite
+    case .gemini25Pro:
+      return .gemini25Pro
+    case .gemini35Pro:
+      return .gemini35Pro
     case .gptAudio, .gptAudioMini:
       return nil
     }
@@ -347,7 +347,7 @@ struct SettingsDefaults {
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gpt4oMiniTranscribe
   static let selectedPromptModel = PromptModel.gptAudioMini
-  static let selectedGPTAudioModel = GPTAudioModel.gptAudioMini
+  static let selectedVoiceResponseModel = VoiceResponseModel.gptAudioMini
   static let customPromptText = ""
   static let dictationDifficultWords = ""
   static let promptModeSystemPrompt = ""
@@ -394,7 +394,7 @@ struct SettingsData {
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
   var selectedPromptModel: PromptModel = SettingsDefaults.selectedPromptModel
-  var selectedGPTAudioModel: GPTAudioModel = SettingsDefaults.selectedGPTAudioModel
+  var selectedVoiceResponseModel: VoiceResponseModel = SettingsDefaults.selectedVoiceResponseModel
   var customPromptText: String = SettingsDefaults.customPromptText
   var dictationDifficultWords: String = SettingsDefaults.dictationDifficultWords
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt

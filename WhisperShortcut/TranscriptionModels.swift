@@ -11,12 +11,12 @@ import Foundation
 enum TranscriptionModel: String, CaseIterable {
   case gpt4oTranscribe = "gpt-4o-transcribe"
   case gpt4oMiniTranscribe = "gpt-4o-mini-transcribe"
-  case gemini20 = "gemini-2.0"
   case gemini20Flash = "gemini-2.0-flash"
   case gemini20FlashLite = "gemini-2.0-flash-lite"
-  case gemini25 = "gemini-2.5"
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
+  case gemini25Pro = "gemini-2.5-pro"
+  case gemini35Pro = "gemini-3.5-pro"
 
   var displayName: String {
     switch self {
@@ -24,18 +24,18 @@ enum TranscriptionModel: String, CaseIterable {
       return "GPT-4o Transcribe"
     case .gpt4oMiniTranscribe:
       return "GPT-4o Mini Transcribe"
-    case .gemini20:
-      return "Gemini 2.0"
     case .gemini20Flash:
       return "Gemini 2.0 Flash"
     case .gemini20FlashLite:
       return "Gemini 2.0 Flash-Lite"
-    case .gemini25:
-      return "Gemini 2.5"
     case .gemini25Flash:
       return "Gemini 2.5 Flash"
     case .gemini25FlashLite:
       return "Gemini 2.5 Flash-Lite"
+    case .gemini25Pro:
+      return "Gemini 2.5 Pro"
+    case .gemini35Pro:
+      return "Gemini 3.5 Pro"
     }
   }
 
@@ -43,18 +43,18 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gpt4oTranscribe, .gpt4oMiniTranscribe:
       return "https://api.openai.com/v1/audio/transcriptions"
-    case .gemini20:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0:generateContent"
     case .gemini20Flash:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
     case .gemini20FlashLite:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent"
-    case .gemini25:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5:generateContent"
     case .gemini25Flash:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     case .gemini25FlashLite:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
+    case .gemini25Pro:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
+    case .gemini35Pro:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-pro:generateContent"
     }
   }
 
@@ -62,7 +62,7 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gpt4oMiniTranscribe:
       return true
-    case .gpt4oTranscribe, .gemini20, .gemini20Flash, .gemini20FlashLite, .gemini25, .gemini25Flash, .gemini25FlashLite:
+    case .gpt4oTranscribe, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25Pro, .gemini35Pro:
       return false
     }
   }
@@ -71,7 +71,7 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gpt4oMiniTranscribe, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
       return "Low"
-    case .gpt4oTranscribe, .gemini20, .gemini25:
+    case .gpt4oTranscribe, .gemini25Pro, .gemini35Pro:
       return "Medium"
     }
   }
@@ -82,23 +82,23 @@ enum TranscriptionModel: String, CaseIterable {
       return "Highest accuracy and quality • Best for critical applications"
     case .gpt4oMiniTranscribe:
       return "Recommended • Great quality at lower cost • Best for everyday use"
-    case .gemini20:
-      return "Google's Gemini 2.0 standard model • Higher quality • Best for complex tasks"
     case .gemini20Flash:
       return "Google's Gemini 2.0 model • Fast and efficient • Alternative to OpenAI"
     case .gemini20FlashLite:
       return "Google's Gemini 2.0 Flash-Lite model • Fastest latency • Cost-efficient"
-    case .gemini25:
-      return "Google's Gemini 2.5 standard model • Higher quality • Best for complex tasks"
     case .gemini25Flash:
       return "Google's Gemini 2.5 model • Fast and efficient • Alternative to OpenAI"
     case .gemini25FlashLite:
       return "Google's fastest Gemini model • Superior latency • Cost-efficient • Best for high-volume transcription"
+    case .gemini25Pro:
+      return "Google's Gemini 2.5 Pro model • Higher quality • Best for complex tasks • Multimodal audio processing"
+    case .gemini35Pro:
+      return "Google's Gemini 3.5 Pro model • Highest quality • Best for complex tasks • Multimodal audio processing"
     }
   }
   
   var isGemini: Bool {
-    return self == .gemini20 || self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25 || self == .gemini25Flash || self == .gemini25FlashLite
+    return self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25Flash || self == .gemini25FlashLite || self == .gemini25Pro || self == .gemini35Pro
   }
 }
 

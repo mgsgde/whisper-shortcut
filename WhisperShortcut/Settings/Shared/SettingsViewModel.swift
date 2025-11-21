@@ -45,13 +45,25 @@ class SettingsViewModel: ObservableObject {
       data.selectedPromptModel = SettingsDefaults.selectedPromptModel
     }
 
-    // Load GPT-Audio model preference (for Voice Response Mode)
-    if let savedModelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel"),
-      let savedModel = GPTAudioModel(rawValue: savedModelString)
+    // Load Voice Response model preference (for Voice Response Mode)
+    // Support migration from old key "selectedGPTAudioModel" to new key "selectedVoiceResponseModel"
+    var savedModelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseModel")
+    if savedModelString == nil {
+      // Try old key for migration
+      savedModelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel")
+      if let oldValue = savedModelString {
+        // Migrate to new key
+        UserDefaults.standard.set(oldValue, forKey: "selectedVoiceResponseModel")
+        UserDefaults.standard.removeObject(forKey: "selectedGPTAudioModel")
+      }
+    }
+    
+    if let modelString = savedModelString,
+      let savedModel = VoiceResponseModel(rawValue: modelString)
     {
-      data.selectedGPTAudioModel = savedModel
+      data.selectedVoiceResponseModel = savedModel
     } else {
-      data.selectedGPTAudioModel = SettingsDefaults.selectedGPTAudioModel
+      data.selectedVoiceResponseModel = SettingsDefaults.selectedVoiceResponseModel
     }
 
     // Load custom prompt (with fallback to default)
@@ -314,7 +326,7 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(
       data.selectedTranscriptionModel.rawValue, forKey: "selectedTranscriptionModel")
     UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: "selectedPromptModel")
-    UserDefaults.standard.set(data.selectedGPTAudioModel.rawValue, forKey: "selectedGPTAudioModel")
+    UserDefaults.standard.set(data.selectedVoiceResponseModel.rawValue, forKey: "selectedVoiceResponseModel")
     
     // Save reasoning effort settings
     UserDefaults.standard.set(data.promptReasoningEffort.rawValue, forKey: "promptReasoningEffort")
