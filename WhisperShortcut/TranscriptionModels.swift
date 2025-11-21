@@ -271,6 +271,96 @@ struct GeminiFileInfo: Codable {
   }
 }
 
+// MARK: - Gemini Chat Request/Response Models (for multimodal prompt/voice response modes)
+struct GeminiChatRequest: Codable {
+  let contents: [GeminiChatContent]
+  let systemInstruction: GeminiSystemInstruction?
+  
+  struct GeminiChatContent: Codable {
+    let role: String  // "user" or "model"
+    let parts: [GeminiChatPart]
+  }
+  
+  struct GeminiChatPart: Codable {
+    let text: String?
+    let inlineData: GeminiInlineData?
+    let fileData: GeminiFileData?
+    
+    enum CodingKeys: String, CodingKey {
+      case text
+      case inlineData = "inline_data"
+      case fileData = "file_data"
+    }
+  }
+  
+  struct GeminiInlineData: Codable {
+    let mimeType: String
+    let data: String
+    
+    enum CodingKeys: String, CodingKey {
+      case mimeType = "mime_type"
+      case data
+    }
+  }
+  
+  struct GeminiFileData: Codable {
+    let fileUri: String
+    let mimeType: String
+    
+    enum CodingKeys: String, CodingKey {
+      case fileUri = "file_uri"
+      case mimeType = "mime_type"
+    }
+  }
+  
+  struct GeminiSystemInstruction: Codable {
+    let parts: [GeminiSystemPart]
+  }
+  
+  struct GeminiSystemPart: Codable {
+    let text: String
+  }
+}
+
+struct GeminiChatResponse: Codable {
+  let candidates: [GeminiChatCandidate]
+  
+  struct GeminiChatCandidate: Codable {
+    let content: GeminiChatContent
+    let finishReason: String?
+    
+    enum CodingKeys: String, CodingKey {
+      case content
+      case finishReason = "finish_reason"
+    }
+  }
+  
+  struct GeminiChatContent: Codable {
+    let parts: [GeminiChatResponsePart]
+    let role: String?
+  }
+  
+  struct GeminiChatResponsePart: Codable {
+    let text: String?
+    let inlineData: GeminiInlineData?
+    
+    enum CodingKeys: String, CodingKey {
+      case text
+      case inlineData = "inline_data"
+    }
+  }
+  
+  struct GeminiInlineData: Codable {
+    let mimeType: String
+    let data: String
+    
+    enum CodingKeys: String, CodingKey {
+      case mimeType = "mime_type"
+      case data
+    }
+  }
+}
+
 // MARK: - Transcription Error
 enum TranscriptionError: Error, Equatable {
   case noAPIKey

@@ -20,10 +20,11 @@ struct GPTModelSelectionView: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: title,
-        subtitle: "Choose between GPT-Audio Mini (fast & cheap) or GPT-Audio (best quality)"
+        subtitle: "Choose between GPT-Audio and Gemini multimodal models for direct audio input processing"
       )
 
-      HStack(spacing: SettingsConstants.modelSpacing) {
+      // Model Selection Grid - 3 columns to accommodate 6 models
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: SettingsConstants.modelSpacing) {
         ForEach(GPTAudioModel.allCases, id: \.self) { model in
           ZStack {
             Rectangle()
@@ -48,7 +49,6 @@ struct GPTModelSelectionView: View {
         RoundedRectangle(cornerRadius: 8)
           .stroke(Color(.separatorColor), lineWidth: 1)
       )
-      .frame(height: SettingsConstants.modelSelectionHeight)
 
       // Model Details
       VStack(alignment: .leading, spacing: 8) {

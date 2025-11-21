@@ -445,16 +445,26 @@ class SpeechService {
   private func performVoiceResponse(audioURL: URL, clipboardContext: String? = nil) async throws
     -> String
   {
-    guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      throw TranscriptionError.noAPIKey
-    }
-
     DebugLogger.log("VOICE-RESPONSE: Starting execution")
     
     // Get clipboard context
     let contextToUse = clipboardContext ?? getClipboardContext()
     let hasContext = contextToUse != nil
     DebugLogger.log("VOICE-RESPONSE: Clipboard context: \(hasContext ? "present" : "none")")
+    
+    // Get selected model from settings
+    let modelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel") ?? "gpt-audio-mini"
+    let selectedModel = GPTAudioModel(rawValue: modelString) ?? .gptAudioMini
+    
+    // Route to Gemini or GPT-Audio based on model type
+    if selectedModel.isGemini {
+      return try await executeVoiceResponseWithGemini(audioURL: audioURL, clipboardContext: contextToUse)
+    }
+    
+    // GPT-Audio path (existing logic)
+    guard let apiKey = self.apiKey, !apiKey.isEmpty else {
+      throw TranscriptionError.noAPIKey
+    }
 
     // Convert audio to base64
     let audioData = try Data(contentsOf: audioURL)
@@ -495,10 +505,6 @@ class SpeechService {
       systemPrompt = baseSystemPrompt
       DebugLogger.log("VOICE-RESPONSE: Using base system prompt")
     }
-    
-    // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel") ?? "gpt-audio-mini"
-    let selectedModel = GPTAudioModel(rawValue: modelString) ?? .gptAudioMini
     
     // Check conversation state
     let conversationExpired = isConversationExpired(isVoiceResponse: true)
@@ -675,16 +681,26 @@ class SpeechService {
   }
 
   func executePromptWithAudioModel(audioURL: URL) async throws -> String {
-    guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      throw TranscriptionError.noAPIKey
-    }
-
     DebugLogger.log("PROMPT-MODE: Starting execution")
     
     // Get clipboard context
     let clipboardContext = getClipboardContext()
     let hasContext = clipboardContext != nil
     DebugLogger.log("PROMPT-MODE: Clipboard context: \(hasContext ? "present" : "none")")
+    
+    // Get selected model from settings
+    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gpt-audio-mini"
+    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gptAudioMini
+    
+    // Route to Gemini or GPT-Audio based on model type
+    if selectedPromptModel.isGemini {
+      return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext)
+    }
+    
+    // GPT-Audio path (existing logic)
+    guard let apiKey = self.apiKey, !apiKey.isEmpty else {
+      throw TranscriptionError.noAPIKey
+    }
 
     // Convert audio to base64
     let audioData = try Data(contentsOf: audioURL)
@@ -725,10 +741,6 @@ class SpeechService {
       systemPrompt = baseSystemPrompt
       DebugLogger.log("PROMPT-MODE: Using base system prompt")
     }
-    
-    // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gpt-audio-mini"
-    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gptAudioMini
     
     // Convert to GPTAudioModel for API call
     guard let audioModel = selectedPromptModel.asGPTAudioModel else {
@@ -852,6 +864,392 @@ class SpeechService {
     DebugLogger.logSuccess("PROMPT-MODE: Completed successfully")
 
     return textContent
+  }
+  
+  // MARK: - Gemini Prompt Mode
+  private func executePromptWithGemini(audioURL: URL, clipboardContext: String?) async throws -> String {
+    guard let googleAPIKey = self.googleAPIKey, !googleAPIKey.isEmpty else {
+      throw TranscriptionError.noGoogleAPIKey
+    }
+    
+    DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution")
+    
+    // Get selected model from settings
+    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gpt-audio-mini"
+    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gptAudioMini
+    
+    // Convert to TranscriptionModel to get API endpoint
+    guard let transcriptionModel = selectedPromptModel.asTranscriptionModel else {
+      throw TranscriptionError.networkError("Selected model is not a Gemini model")
+    }
+    
+    let endpoint = transcriptionModel.apiEndpoint
+    DebugLogger.log("PROMPT-MODE-GEMINI: Using model: \(selectedPromptModel.displayName) (\(selectedPromptModel.rawValue))")
+    DebugLogger.log("PROMPT-MODE-GEMINI: Using endpoint: \(endpoint)")
+    
+    // Get clipboard context
+    let hasContext = clipboardContext != nil
+    DebugLogger.log("PROMPT-MODE-GEMINI: Clipboard context: \(hasContext ? "present" : "none")")
+    
+    // Build system prompt
+    let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
+    let customSystemPromptKey = "promptModeSystemPrompt"
+    let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptKey)
+    
+    let systemPrompt: String
+    if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
+      systemPrompt = customPrompt
+      DebugLogger.log("PROMPT-MODE-GEMINI: Using custom system prompt")
+    } else {
+      systemPrompt = baseSystemPrompt
+      DebugLogger.log("PROMPT-MODE-GEMINI: Using base system prompt")
+    }
+    
+    // Check conversation state
+    let conversationExpired = isConversationExpired(isVoiceResponse: false)
+    DebugLogger.log("PROMPT-MODE-GEMINI: Conversation \(conversationExpired ? "expired" : "active") (\(conversationMessages.count) messages)")
+    
+    // Build request
+    let url = URL(string: "\(endpoint)?key=\(googleAPIKey)")!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    
+    // Build contents array with conversation history and current message
+    var contents: [GeminiChatRequest.GeminiChatContent] = []
+    
+    // Add conversation history if not expired (convert from GPT format to Gemini format)
+    if !conversationExpired {
+      for gptMessage in conversationMessages {
+        // Convert GPT message to Gemini format
+        let role = gptMessage.role == "user" ? "user" : "model"
+        var parts: [GeminiChatRequest.GeminiChatPart] = []
+        
+        // Extract text from GPT message
+        switch gptMessage.content {
+        case .text(let text):
+          parts.append(GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil))
+        case .multiContent(let contentParts):
+          // Extract text from multi-content parts
+          for part in contentParts {
+            if part.type == "text", let text = part.text {
+              parts.append(GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil))
+            }
+          }
+        }
+        
+        if !parts.isEmpty {
+          contents.append(GeminiChatRequest.GeminiChatContent(role: role, parts: parts))
+        }
+      }
+    }
+    
+    // Build current user message parts
+    var userParts: [GeminiChatRequest.GeminiChatPart] = []
+    
+    // Add clipboard context if available
+    if let context = clipboardContext {
+      let contextText = """
+      TASK: Apply my voice instruction to the following text.
+      
+      TEXT TO PROCESS:
+      \(context)
+      
+      Now listen to my voice instruction and apply it to the text above.
+      """
+      userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil))
+    }
+    
+    // Add audio input
+    let audioSize = audioChunkingService.getAudioSize(audioURL)
+    let fileExtension = audioURL.pathExtension.lowercased()
+    let mimeType = getGeminiMimeType(for: fileExtension)
+    
+    if audioSize > Constants.maxFileSize {
+      // Use Files API for large files
+      let fileURI = try await uploadFileToGemini(audioURL: audioURL, apiKey: googleAPIKey)
+      userParts.append(GeminiChatRequest.GeminiChatPart(
+        text: nil,
+        inlineData: nil,
+        fileData: GeminiChatRequest.GeminiFileData(fileUri: fileURI, mimeType: mimeType)
+      ))
+    } else {
+      // Use inline data for small files
+      let audioData = try Data(contentsOf: audioURL)
+      let base64Audio = audioData.base64EncodedString()
+      userParts.append(GeminiChatRequest.GeminiChatPart(
+        text: nil,
+        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: mimeType, data: base64Audio),
+        fileData: nil
+      ))
+    }
+    
+    // Add current user message
+    contents.append(GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts))
+    
+    // Build system instruction
+    let systemInstruction = GeminiChatRequest.GeminiSystemInstruction(
+      parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
+    )
+    
+    // Create request
+    let chatRequest = GeminiChatRequest(
+      contents: contents,
+      systemInstruction: systemInstruction
+    )
+    
+    request.httpBody = try JSONEncoder().encode(chatRequest)
+    
+    let (data, responseData) = try await session.data(for: request)
+    
+    guard let httpResponse = responseData as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response")
+    }
+    
+    if httpResponse.statusCode != 200 {
+      DebugLogger.log("PROMPT-MODE-GEMINI-ERROR: HTTP \(httpResponse.statusCode)")
+      let error = try parseGeminiErrorResponse(data: data, statusCode: httpResponse.statusCode)
+      throw error
+    }
+    
+    let result = try JSONDecoder().decode(GeminiChatResponse.self, from: data)
+    
+    guard let firstCandidate = result.candidates.first else {
+      throw TranscriptionError.networkError("No candidates in Gemini response")
+    }
+    
+    // Extract text content
+    var textContent = ""
+    for part in firstCandidate.content.parts {
+      if let text = part.text {
+        textContent += text
+      }
+    }
+    
+    let normalizedText = normalizeTranscriptionText(textContent)
+    try validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
+    
+    // Save conversation for next request (text-only, no audio data)
+    let userMessageText: String
+    if let context = clipboardContext {
+      userMessageText = "User spoke (with context: \(context))"
+    } else {
+      userMessageText = "User spoke"
+    }
+    
+    conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
+      role: "user",
+      content: .text(userMessageText)
+    ))
+    conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
+      role: "assistant",
+      content: .text(normalizedText)
+    ))
+    previousResponseTimestamp = Date()
+    
+    DebugLogger.logSuccess("PROMPT-MODE-GEMINI: Completed successfully")
+    
+    return normalizedText
+  }
+  
+  // MARK: - Gemini Voice Response Mode
+  private func executeVoiceResponseWithGemini(audioURL: URL, clipboardContext: String?) async throws -> String {
+    guard let googleAPIKey = self.googleAPIKey, !googleAPIKey.isEmpty else {
+      throw TranscriptionError.noGoogleAPIKey
+    }
+    
+    DebugLogger.log("VOICE-RESPONSE-GEMINI: Starting execution")
+    
+    // Get selected model from settings
+    let modelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel") ?? "gpt-audio-mini"
+    let selectedModel = GPTAudioModel(rawValue: modelString) ?? .gptAudioMini
+    
+    // Convert to TranscriptionModel to get API endpoint
+    guard let transcriptionModel = selectedModel.asTranscriptionModel else {
+      throw TranscriptionError.networkError("Selected model is not a Gemini model")
+    }
+    
+    let endpoint = transcriptionModel.apiEndpoint
+    DebugLogger.log("VOICE-RESPONSE-GEMINI: Using model: \(selectedModel.displayName) (\(selectedModel.rawValue))")
+    DebugLogger.log("VOICE-RESPONSE-GEMINI: Using endpoint: \(endpoint)")
+    
+    // Get clipboard context
+    let contextToUse = clipboardContext ?? getClipboardContext()
+    let hasContext = contextToUse != nil
+    DebugLogger.log("VOICE-RESPONSE-GEMINI: Clipboard context: \(hasContext ? "present" : "none")")
+    
+    // Build system prompt
+    let baseSystemPrompt = AppConstants.defaultVoiceResponseSystemPrompt
+    let customSystemPromptKey = "voiceResponseSystemPrompt"
+    let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptKey)
+    
+    let systemPrompt: String
+    if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
+      systemPrompt = customPrompt
+      DebugLogger.log("VOICE-RESPONSE-GEMINI: Using custom system prompt")
+    } else {
+      systemPrompt = baseSystemPrompt
+      DebugLogger.log("VOICE-RESPONSE-GEMINI: Using base system prompt")
+    }
+    
+    // Check conversation state
+    let conversationExpired = isConversationExpired(isVoiceResponse: true)
+    DebugLogger.log("VOICE-RESPONSE-GEMINI: Conversation \(conversationExpired ? "expired" : "active") (\(conversationMessages.count) messages)")
+    
+    // Build request
+    let url = URL(string: "\(endpoint)?key=\(googleAPIKey)")!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    
+    // Build contents array with conversation history and current message
+    var contents: [GeminiChatRequest.GeminiChatContent] = []
+    
+    // Add conversation history if not expired (convert from GPT format to Gemini format)
+    if !conversationExpired {
+      for gptMessage in conversationMessages {
+        let role = gptMessage.role == "user" ? "user" : "model"
+        var parts: [GeminiChatRequest.GeminiChatPart] = []
+        
+        switch gptMessage.content {
+        case .text(let text):
+          parts.append(GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil))
+        case .multiContent(let contentParts):
+          for part in contentParts {
+            if part.type == "text", let text = part.text {
+              parts.append(GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil))
+            }
+          }
+        }
+        
+        if !parts.isEmpty {
+          contents.append(GeminiChatRequest.GeminiChatContent(role: role, parts: parts))
+        }
+      }
+    }
+    
+    // Build current user message parts
+    var userParts: [GeminiChatRequest.GeminiChatPart] = []
+    
+    // Add clipboard context if available
+    if let context = contextToUse {
+      let contextText = """
+      SELECTED TEXT (use this as main context for my question):
+      \(context)
+      
+      [My voice question/instruction follows]
+      """
+      userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil))
+    }
+    
+    // Add audio input
+    let audioSize = audioChunkingService.getAudioSize(audioURL)
+    let fileExtension = audioURL.pathExtension.lowercased()
+    let mimeType = getGeminiMimeType(for: fileExtension)
+    
+    if audioSize > Constants.maxFileSize {
+      // Use Files API for large files
+      let fileURI = try await uploadFileToGemini(audioURL: audioURL, apiKey: googleAPIKey)
+      userParts.append(GeminiChatRequest.GeminiChatPart(
+        text: nil,
+        inlineData: nil,
+        fileData: GeminiChatRequest.GeminiFileData(fileUri: fileURI, mimeType: mimeType)
+      ))
+    } else {
+      // Use inline data for small files
+      let audioData = try Data(contentsOf: audioURL)
+      let base64Audio = audioData.base64EncodedString()
+      userParts.append(GeminiChatRequest.GeminiChatPart(
+        text: nil,
+        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: mimeType, data: base64Audio),
+        fileData: nil
+      ))
+    }
+    
+    // Add current user message
+    contents.append(GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts))
+    
+    // Build system instruction
+    let systemInstruction = GeminiChatRequest.GeminiSystemInstruction(
+      parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
+    )
+    
+    // Create request
+    let chatRequest = GeminiChatRequest(
+      contents: contents,
+      systemInstruction: systemInstruction
+    )
+    
+    request.httpBody = try JSONEncoder().encode(chatRequest)
+    
+    let (data, responseData) = try await session.data(for: request)
+    
+    guard let httpResponse = responseData as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response")
+    }
+    
+    if httpResponse.statusCode != 200 {
+      DebugLogger.log("VOICE-RESPONSE-GEMINI-ERROR: HTTP \(httpResponse.statusCode)")
+      let error = try parseGeminiErrorResponse(data: data, statusCode: httpResponse.statusCode)
+      throw error
+    }
+    
+    let result = try JSONDecoder().decode(GeminiChatResponse.self, from: data)
+    
+    guard let firstCandidate = result.candidates.first else {
+      throw TranscriptionError.networkError("No candidates in Gemini response")
+    }
+    
+    // Extract text content
+    var textContent = ""
+    for part in firstCandidate.content.parts {
+      if let text = part.text {
+        textContent += text
+      }
+    }
+    
+    let normalizedText = normalizeTranscriptionText(textContent)
+    try validateSpeechText(normalizedText, mode: "VOICE-RESPONSE-GEMINI")
+    
+    // Copy to clipboard immediately before audio playback
+    clipboardManager?.copyToClipboard(text: normalizedText)
+    
+    NotificationCenter.default.post(
+      name: NSNotification.Name("VoiceResponseReadyToSpeak"), object: nil)
+    
+    await MainActor.run {
+      NotificationCenter.default.post(
+        name: NSNotification.Name("VoicePlaybackStartedWithText"),
+        object: nil,
+        userInfo: ["responseText": normalizedText]
+      )
+    }
+    
+    // Use TTS to convert text to speech (Gemini doesn't provide audio output in this API)
+    let speed = 1.0  // Fixed playback speed for Gemini (not user-configurable)
+    try await playTextAsSpeechChunked(normalizedText, playbackType: .voiceResponse, speed: speed)
+    
+    // Save conversation for next request (text-only, no audio data)
+    let userMessageText: String
+    if let context = contextToUse {
+      userMessageText = "User spoke (with context: \(context))"
+    } else {
+      userMessageText = "User spoke"
+    }
+    
+    conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
+      role: "user",
+      content: .text(userMessageText)
+    ))
+    conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
+      role: "assistant",
+      content: .text(normalizedText)
+    ))
+    previousResponseTimestamp = Date()
+    
+    DebugLogger.logSuccess("VOICE-RESPONSE-GEMINI: Completed successfully")
+    
+    return normalizedText
   }
 
   // MARK: - Gemini Transcription

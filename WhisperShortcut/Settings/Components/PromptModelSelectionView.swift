@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Unified model selection component for Prompt Mode (GPT-5 and GPT-Audio models)
+/// Unified model selection component for Prompt Mode (GPT-Audio and Gemini multimodal models)
 struct PromptModelSelectionView: View {
   let title: String
   @Binding var selectedModel: PromptModel
@@ -20,11 +20,11 @@ struct PromptModelSelectionView: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: title,
-        subtitle: "Choose between GPT-Audio models for direct audio input processing"
+        subtitle: "Choose between GPT-Audio and Gemini multimodal models for direct audio input processing"
       )
 
-      // Model Selection Grid
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
+      // Model Selection Grid - 3 columns to accommodate 6 models
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: SettingsConstants.modelSpacing) {
         ForEach(PromptModel.allCases, id: \.self) { model in
           ZStack {
             Rectangle()

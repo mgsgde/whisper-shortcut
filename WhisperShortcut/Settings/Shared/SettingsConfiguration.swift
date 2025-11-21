@@ -36,11 +36,17 @@ enum ReasoningEffort: String, CaseIterable {
   }
 }
 
-// MARK: - Unified Prompt Model Enum (for Prompt Mode) - Simplified to GPT-Audio only
+// MARK: - Unified Prompt Model Enum (for Prompt Mode) - GPT-Audio and Gemini multimodal models
 enum PromptModel: String, CaseIterable {
   // GPT-Audio Models (audio-based, direct audio input)
   case gptAudio = "gpt-audio"
   case gptAudioMini = "gpt-audio-mini"
+  
+  // Gemini Models (multimodal, direct audio input)
+  case gemini20Flash = "gemini-2.0-flash"
+  case gemini20FlashLite = "gemini-2.0-flash-lite"
+  case gemini25Flash = "gemini-2.5-flash"
+  case gemini25FlashLite = "gemini-2.5-flash-lite"
   
   var displayName: String {
     switch self {
@@ -48,6 +54,14 @@ enum PromptModel: String, CaseIterable {
       return "GPT-Audio"
     case .gptAudioMini:
       return "GPT-Audio Mini"
+    case .gemini20Flash:
+      return "Gemini 2.0 Flash"
+    case .gemini20FlashLite:
+      return "Gemini 2.0 Flash-Lite"
+    case .gemini25Flash:
+      return "Gemini 2.5 Flash"
+    case .gemini25FlashLite:
+      return "Gemini 2.5 Flash-Lite"
     }
   }
   
@@ -57,6 +71,14 @@ enum PromptModel: String, CaseIterable {
       return "Best quality • Native audio understanding • For complex tasks"
     case .gptAudioMini:
       return "Recommended • Great quality at lower cost • Best for everyday use"
+    case .gemini20Flash:
+      return "Google's Gemini 2.0 model • Fast and efficient • Multimodal audio processing"
+    case .gemini20FlashLite:
+      return "Google's Gemini 2.0 Flash-Lite • Fastest latency • Cost-efficient • Multimodal"
+    case .gemini25Flash:
+      return "Google's Gemini 2.5 model • Fast and efficient • Multimodal audio processing"
+    case .gemini25FlashLite:
+      return "Google's fastest Gemini model • Superior latency • Cost-efficient • Multimodal"
     }
   }
   
@@ -64,7 +86,7 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gptAudioMini:
       return true  // Default GPT-Audio model
-    case .gptAudio:
+    case .gptAudio, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
       return false
     }
   }
@@ -73,36 +95,64 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gptAudio:
       return "High"
-    case .gptAudioMini:
+    case .gptAudioMini, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
       return "Low"
     }
   }
   
   var supportsReasoning: Bool {
-    // GPT-Audio models don't support reasoning parameters
+    // GPT-Audio and Gemini models don't support reasoning parameters
     return false
   }
   
   var requiresTranscription: Bool {
-    // GPT-Audio models accept audio directly
+    // Both GPT-Audio and Gemini models accept audio directly (multimodal)
     return false
   }
   
-  // Convert to internal GPTAudioModel for API calls
+  var isGemini: Bool {
+    return self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25Flash || self == .gemini25FlashLite
+  }
+  
+  // Convert to internal GPTAudioModel for API calls (only for GPT-Audio models)
   var asGPTAudioModel: GPTAudioModel? {
     switch self {
     case .gptAudio:
       return .gptAudio
     case .gptAudioMini:
       return .gptAudioMini
+    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
+      return nil
+    }
+  }
+  
+  // Convert to TranscriptionModel for API endpoint access (for Gemini models)
+  var asTranscriptionModel: TranscriptionModel? {
+    switch self {
+    case .gemini20Flash:
+      return .gemini20Flash
+    case .gemini20FlashLite:
+      return .gemini20FlashLite
+    case .gemini25Flash:
+      return .gemini25Flash
+    case .gemini25FlashLite:
+      return .gemini25FlashLite
+    case .gptAudio, .gptAudioMini:
+      return nil
     }
   }
 }
 
-// MARK: - GPT Audio Model Enum (for Voice Response Mode)
+// MARK: - GPT Audio Model Enum (for Voice Response Mode) - GPT-Audio and Gemini multimodal models
 enum GPTAudioModel: String, CaseIterable {
   case gptAudio = "gpt-audio"
   case gptAudioMini = "gpt-audio-mini"
+  
+  // Gemini Models (multimodal, direct audio input)
+  case gemini20Flash = "gemini-2.0-flash"
+  case gemini20FlashLite = "gemini-2.0-flash-lite"
+  case gemini25Flash = "gemini-2.5-flash"
+  case gemini25FlashLite = "gemini-2.5-flash-lite"
   
   var displayName: String {
     switch self {
@@ -110,6 +160,14 @@ enum GPTAudioModel: String, CaseIterable {
       return "GPT-Audio"
     case .gptAudioMini:
       return "GPT-Audio Mini"
+    case .gemini20Flash:
+      return "Gemini 2.0 Flash"
+    case .gemini20FlashLite:
+      return "Gemini 2.0 Flash-Lite"
+    case .gemini25Flash:
+      return "Gemini 2.5 Flash"
+    case .gemini25FlashLite:
+      return "Gemini 2.5 Flash-Lite"
     }
   }
   
@@ -119,6 +177,14 @@ enum GPTAudioModel: String, CaseIterable {
       return "Best quality • Native audio understanding • For complex tasks"
     case .gptAudioMini:
       return "Recommended • Great quality at lower cost • Best for everyday use"
+    case .gemini20Flash:
+      return "Google's Gemini 2.0 model • Fast and efficient • Multimodal audio processing"
+    case .gemini20FlashLite:
+      return "Google's Gemini 2.0 Flash-Lite • Fastest latency • Cost-efficient • Multimodal"
+    case .gemini25Flash:
+      return "Google's Gemini 2.5 model • Fast and efficient • Multimodal audio processing"
+    case .gemini25FlashLite:
+      return "Google's fastest Gemini model • Superior latency • Cost-efficient • Multimodal"
     }
   }
   
@@ -130,14 +196,39 @@ enum GPTAudioModel: String, CaseIterable {
     switch self {
     case .gptAudio:
       return "High"
-    case .gptAudioMini:
+    case .gptAudioMini, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
       return "Low"
     }
   }
   
   var supportsReasoning: Bool {
-    // GPT-Audio models don't support reasoning parameters
+    // GPT-Audio and Gemini models don't support reasoning parameters
     return false
+  }
+  
+  var requiresTranscription: Bool {
+    // Both GPT-Audio and Gemini models accept audio directly (multimodal)
+    return false
+  }
+  
+  var isGemini: Bool {
+    return self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25Flash || self == .gemini25FlashLite
+  }
+  
+  // Convert to TranscriptionModel for API endpoint access (for Gemini models)
+  var asTranscriptionModel: TranscriptionModel? {
+    switch self {
+    case .gemini20Flash:
+      return .gemini20Flash
+    case .gemini20FlashLite:
+      return .gemini20FlashLite
+    case .gemini25Flash:
+      return .gemini25Flash
+    case .gemini25FlashLite:
+      return .gemini25FlashLite
+    case .gptAudio, .gptAudioMini:
+      return nil
+    }
   }
 }
 
