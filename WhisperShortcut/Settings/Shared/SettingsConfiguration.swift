@@ -317,6 +317,62 @@ enum ConversationTimeout: Double, CaseIterable {
   }
 }
 
+// MARK: - Notification Position Enum
+enum NotificationPosition: String, CaseIterable {
+  case leftBottom = "left-bottom"
+  case rightBottom = "right-bottom"
+  case leftTop = "left-top"
+  case rightTop = "right-top"
+  
+  var displayName: String {
+    switch self {
+    case .leftBottom:
+      return "Links unten"
+    case .rightBottom:
+      return "Rechts unten"
+    case .leftTop:
+      return "Links oben"
+    case .rightTop:
+      return "Rechts oben"
+    }
+  }
+  
+  var isRecommended: Bool {
+    return self == .leftBottom
+  }
+}
+
+// MARK: - Notification Duration Enum
+enum NotificationDuration: Double, CaseIterable {
+  case threeSeconds = 3.0
+  case fiveSeconds = 5.0
+  case sevenSeconds = 7.0
+  case tenSeconds = 10.0
+  case fifteenSeconds = 15.0
+  case thirtySeconds = 30.0
+  
+  var displayName: String {
+    switch self {
+    case .threeSeconds:
+      return "3 Sekunden"
+    case .fiveSeconds:
+      return "5 Sekunden"
+    case .sevenSeconds:
+      return "7 Sekunden"
+    case .tenSeconds:
+      return "10 Sekunden"
+    case .fifteenSeconds:
+      return "15 Sekunden"
+    case .thirtySeconds:
+      return "30 Sekunden"
+    }
+  }
+  
+  var isRecommended: Bool {
+    return self == .sevenSeconds
+  }
+}
+
 // MARK: - Settings Tab Definition
 enum SettingsTab: String, CaseIterable {
   case general = "General"
@@ -360,6 +416,9 @@ struct SettingsDefaults {
 
   // MARK: - Notification Settings
   static let showPopupNotifications = true
+  static let notificationPosition = NotificationPosition.leftBottom
+  static let notificationDuration = NotificationDuration.sevenSeconds
+  static let errorNotificationDuration = NotificationDuration.thirtySeconds
 
   // MARK: - UI State
   static let errorMessage = ""
@@ -403,6 +462,9 @@ struct SettingsData {
 
   // MARK: - Notification Settings
   var showPopupNotifications: Bool = SettingsDefaults.showPopupNotifications
+  var notificationPosition: NotificationPosition = SettingsDefaults.notificationPosition
+  var notificationDuration: NotificationDuration = SettingsDefaults.notificationDuration
+  var errorNotificationDuration: NotificationDuration = SettingsDefaults.errorNotificationDuration
 
   // MARK: - UI State
   var errorMessage: String = SettingsDefaults.errorMessage

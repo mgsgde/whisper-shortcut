@@ -545,10 +545,14 @@ class PopupNotificationWindow: NSWindow {
     // Use the larger of required height or minimum height, but cap at max height
     let totalHeight = max(min(requiredHeight, maxWindowHeight), Constants.minHeight)
 
-    // Update window frame and position it properly (bottom-left)
+    // Get position from settings
+    let position = getNotificationPosition()
+    let (x, y) = calculatePosition(screenFrame: screenFrame, windowWidth: windowWidth, windowHeight: totalHeight, position: position)
+
+    // Update window frame and position it properly
     let newFrame = NSRect(
-      x: screenFrame.minX + Constants.horizontalMargin,  // Left edge with margin
-      y: screenFrame.minY + Constants.verticalMargin,  // Bottom edge with margin
+      x: x,
+      y: y,
       width: windowWidth,
       height: totalHeight
     )
@@ -561,6 +565,44 @@ class PopupNotificationWindow: NSWindow {
     // ADDITIONAL FIX: Ensure the window content size is also updated
     // This provides extra assurance that the window is properly sized
     setContentSize(NSSize(width: windowWidth, height: totalHeight))
+  }
+  
+  // MARK: - Position Calculation
+  private func getNotificationPosition() -> NotificationPosition {
+    if let savedPositionString = UserDefaults.standard.string(forKey: "notificationPosition"),
+      let savedPosition = NotificationPosition(rawValue: savedPositionString)
+    {
+      return savedPosition
+    }
+    return NotificationPosition.leftBottom  // Default
+  }
+  
+  private func calculatePosition(screenFrame: NSRect, windowWidth: CGFloat, windowHeight: CGFloat, position: NotificationPosition) -> (x: CGFloat, y: CGFloat) {
+    let horizontalMargin = Constants.horizontalMargin
+    let verticalMargin = Constants.verticalMargin
+    
+    switch position {
+    case .leftBottom:
+      return (
+        x: screenFrame.minX + horizontalMargin,
+        y: screenFrame.minY + verticalMargin
+      )
+    case .rightBottom:
+      return (
+        x: screenFrame.maxX - windowWidth - horizontalMargin,
+        y: screenFrame.minY + verticalMargin
+      )
+    case .leftTop:
+      return (
+        x: screenFrame.minX + horizontalMargin,
+        y: screenFrame.maxY - windowHeight - verticalMargin
+      )
+    case .rightTop:
+      return (
+        x: screenFrame.maxX - windowWidth - horizontalMargin,
+        y: screenFrame.maxY - windowHeight - verticalMargin
+      )
+    }
   }
 
   // MARK: - Helper Methods
@@ -649,10 +691,14 @@ class PopupNotificationWindow: NSWindow {
     guard let screen = NSScreen.main else { return }
     let screenFrame = screen.visibleFrame
     
+    // Get position from settings
+    let position = getNotificationPosition()
+    let (x, y) = calculatePosition(screenFrame: screenFrame, windowWidth: frame.width, windowHeight: frame.height, position: position)
+    
     // Calculate final target frame
     let targetFrame = NSRect(
-      x: screenFrame.minX + Constants.horizontalMargin,  // Left edge with margin
-      y: screenFrame.minY + Constants.verticalMargin,  // Bottom edge with margin
+      x: x,
+      y: y,
       width: frame.width,  // Use current width (already calculated by updateWindowSize)
       height: frame.height
     )
@@ -689,7 +735,16 @@ class PopupNotificationWindow: NSWindow {
       context.timingFunction = CAMediaTimingFunction(name: .easeIn)
 
       self.animator().alphaValue = 0.0
-      self.animator().setFrame(self.frame.offsetBy(dx: 0, dy: -20), display: true)  // Slide down for bottom-left position
+      // Slide animation based on position
+      let position = self.getNotificationPosition()
+      let slideOffset: CGFloat
+      switch position {
+      case .leftBottom, .rightBottom:
+        slideOffset = -20  // Slide down for bottom positions
+      case .leftTop, .rightTop:
+        slideOffset = 20   // Slide up for top positions
+      }
+      self.animator().setFrame(self.frame.offsetBy(dx: 0, dy: slideOffset), display: true)
     }) {
       // Hide window instead of closing to prevent app termination
       self.orderOut(nil)  // Make window invisible
@@ -701,7 +756,24 @@ class PopupNotificationWindow: NSWindow {
 
   // MARK: - Timer Methods
   private func startAutoHideTimer(isError: Bool) {
-    let duration = isError ? Constants.errorDisplayDuration : Constants.displayDuration
+    // Get duration from settings
+    let duration: TimeInterval
+    if isError {
+      let savedErrorDuration = UserDefaults.standard.double(forKey: "errorNotificationDuration")
+      if savedErrorDuration > 0, let errorDuration = NotificationDuration(rawValue: savedErrorDuration) {
+        duration = errorDuration.rawValue
+      } else {
+        duration = Constants.errorDisplayDuration
+      }
+    } else {
+      let savedDuration = UserDefaults.standard.double(forKey: "notificationDuration")
+      if savedDuration > 0, let notificationDuration = NotificationDuration(rawValue: savedDuration) {
+        duration = notificationDuration.rawValue
+      } else {
+        duration = Constants.displayDuration
+      }
+    }
+    
     autoHideTimer = Timer.scheduledTimer(
       withTimeInterval: duration, repeats: false
     ) { [weak self] _ in

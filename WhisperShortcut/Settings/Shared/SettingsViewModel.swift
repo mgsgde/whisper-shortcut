@@ -127,6 +127,33 @@ class SettingsViewModel: ObservableObject {
     } else {
       data.showPopupNotifications = SettingsDefaults.showPopupNotifications
     }
+    
+    // Load notification position
+    if let savedPositionString = UserDefaults.standard.string(forKey: "notificationPosition"),
+      let savedPosition = NotificationPosition(rawValue: savedPositionString)
+    {
+      data.notificationPosition = savedPosition
+    } else {
+      data.notificationPosition = SettingsDefaults.notificationPosition
+    }
+    
+    // Load notification duration
+    let savedDuration = UserDefaults.standard.double(forKey: "notificationDuration")
+    if savedDuration > 0 {
+      data.notificationDuration = NotificationDuration(rawValue: savedDuration)
+        ?? SettingsDefaults.notificationDuration
+    } else {
+      data.notificationDuration = SettingsDefaults.notificationDuration
+    }
+    
+    // Load error notification duration
+    let savedErrorDuration = UserDefaults.standard.double(forKey: "errorNotificationDuration")
+    if savedErrorDuration > 0 {
+      data.errorNotificationDuration = NotificationDuration(rawValue: savedErrorDuration)
+        ?? SettingsDefaults.errorNotificationDuration
+    } else {
+      data.errorNotificationDuration = SettingsDefaults.errorNotificationDuration
+    }
 
     // Load API key
     data.apiKey = KeychainManager.shared.getAPIKey() ?? ""
@@ -291,6 +318,11 @@ class SettingsViewModel: ObservableObject {
 
     // Save popup notifications setting
     UserDefaults.standard.set(data.showPopupNotifications, forKey: "showPopupNotifications")
+    
+    // Save notification position and duration
+    UserDefaults.standard.set(data.notificationPosition.rawValue, forKey: "notificationPosition")
+    UserDefaults.standard.set(data.notificationDuration.rawValue, forKey: "notificationDuration")
+    UserDefaults.standard.set(data.errorNotificationDuration.rawValue, forKey: "errorNotificationDuration")
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()
