@@ -605,10 +605,21 @@ class PopupNotificationWindow: NSWindow {
   }
 
   private func createPreviewText(from text: String) -> String {
-    // Clean up text - remove extra whitespace and newlines
-    let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-      .replacingOccurrences(of: "\n+", with: " ", options: .regularExpression)
-      .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+    // Preserve line breaks in preview text
+    // Only normalize excessive whitespace within lines, but keep newlines
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    
+    // Normalize multiple consecutive newlines to max 2
+    let normalizedNewlines = trimmed.replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
+    
+    // Normalize spaces/tabs within each line (but preserve newlines)
+    let lines = normalizedNewlines.components(separatedBy: "\n")
+    let normalizedLines = lines.map { line in
+      // Replace multiple consecutive spaces/tabs with single space
+      line.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespaces)
+    }
+    let cleanText = normalizedLines.joined(separator: "\n")
 
     // For popup notifications, show more text since we have better sizing now
     let maxLength = Constants.maxPreviewLength * 2  // Double the preview length

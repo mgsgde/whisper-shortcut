@@ -1859,8 +1859,19 @@ class SpeechService {
     // Remove excessive whitespace and normalize line breaks
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     
-    // Replace multiple consecutive whitespace characters with single space
-    let normalized = trimmed.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+    // Preserve line breaks: normalize multiple spaces/tabs to single space, but keep newlines
+    // Step 1: Normalize multiple consecutive newlines to max 2
+    let normalizedNewlines = trimmed.replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
+    
+    // Step 2: Normalize spaces/tabs within each line (but preserve newlines)
+    // Split by newlines, normalize each line, then rejoin
+    let lines = normalizedNewlines.components(separatedBy: "\n")
+    let normalizedLines = lines.map { line in
+      // Replace multiple consecutive spaces/tabs with single space
+      line.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespaces)
+    }
+    let normalized = normalizedLines.joined(separator: "\n")
     
     // Additional cleanup to remove potential prompt remnants
     let cleaned = cleanTranscriptionText(normalized)
