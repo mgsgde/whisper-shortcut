@@ -504,8 +504,12 @@ class PopupNotificationWindow: NSWindow {
   private func updateWindowSize() {
     // Get screen dimensions to ensure popup fits
     guard let screen = NSScreen.main else { return }
-    let screenFrame = screen.visibleFrame
-    let maxWindowHeight = min(Constants.maxHeight, screenFrame.height * 0.8)  // Max 80% of screen height
+    let fullScreenFrame = screen.frame  // Full screen frame for position calculation
+    let visibleFrame = screen.visibleFrame  // Visible frame for height calculations
+    let maxWindowHeight = min(Constants.maxHeight, visibleFrame.height * 0.8)  // Max 80% of screen height
+    
+    // Calculate menu bar height (difference between full frame and visible frame at top)
+    let menuBarHeight = fullScreenFrame.maxY - visibleFrame.maxY
 
     // CRITICAL: Calculate optimal width based on text content for dynamic sizing
     // This was the main issue - the width calculation wasn't working properly before
@@ -547,7 +551,7 @@ class PopupNotificationWindow: NSWindow {
 
     // Get position from settings
     let position = getNotificationPosition()
-    let (x, y) = calculatePosition(screenFrame: screenFrame, windowWidth: windowWidth, windowHeight: totalHeight, position: position)
+    let (x, y) = calculatePosition(screenFrame: fullScreenFrame, windowWidth: windowWidth, windowHeight: totalHeight, position: position, menuBarHeight: menuBarHeight)
 
     // Update window frame and position it properly
     let newFrame = NSRect(
@@ -577,7 +581,7 @@ class PopupNotificationWindow: NSWindow {
     return NotificationPosition.leftBottom  // Default
   }
   
-  private func calculatePosition(screenFrame: NSRect, windowWidth: CGFloat, windowHeight: CGFloat, position: NotificationPosition) -> (x: CGFloat, y: CGFloat) {
+  private func calculatePosition(screenFrame: NSRect, windowWidth: CGFloat, windowHeight: CGFloat, position: NotificationPosition, menuBarHeight: CGFloat) -> (x: CGFloat, y: CGFloat) {
     let horizontalMargin = Constants.horizontalMargin
     let verticalMarginTop = Constants.verticalMarginTop
     let verticalMarginBottom = Constants.verticalMarginBottom
@@ -596,17 +600,17 @@ class PopupNotificationWindow: NSWindow {
     case .leftTop:
       return (
         x: screenFrame.minX + horizontalMargin,
-        y: screenFrame.maxY - windowHeight - verticalMarginTop
+        y: screenFrame.maxY - windowHeight - verticalMarginTop - menuBarHeight
       )
     case .rightTop:
       return (
         x: screenFrame.maxX - windowWidth - horizontalMargin,
-        y: screenFrame.maxY - windowHeight - verticalMarginTop
+        y: screenFrame.maxY - windowHeight - verticalMarginTop - menuBarHeight
       )
     case .centerTop:
       return (
         x: screenFrame.midX - windowWidth / 2,
-        y: screenFrame.maxY - windowHeight - verticalMarginTop
+        y: screenFrame.maxY - windowHeight - verticalMarginTop - menuBarHeight
       )
     case .centerBottom:
       return (
@@ -700,11 +704,15 @@ class PopupNotificationWindow: NSWindow {
   func show() {
     // Get screen dimensions for positioning
     guard let screen = NSScreen.main else { return }
-    let screenFrame = screen.visibleFrame
+    let fullScreenFrame = screen.frame  // Full screen frame for position calculation
+    let visibleFrame = screen.visibleFrame
+    
+    // Calculate menu bar height (difference between full frame and visible frame at top)
+    let menuBarHeight = fullScreenFrame.maxY - visibleFrame.maxY
     
     // Get position from settings
     let position = getNotificationPosition()
-    let (x, y) = calculatePosition(screenFrame: screenFrame, windowWidth: frame.width, windowHeight: frame.height, position: position)
+    let (x, y) = calculatePosition(screenFrame: fullScreenFrame, windowWidth: frame.width, windowHeight: frame.height, position: position, menuBarHeight: menuBarHeight)
     
     // Calculate final target frame
     let targetFrame = NSRect(
