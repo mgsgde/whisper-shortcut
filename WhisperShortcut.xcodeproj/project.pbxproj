@@ -7,24 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		BF070B1E2E4B5966005CB23D /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BF070B1D2E4B5966005CB23D /* HotKey */; };
 		BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BFBC35F42E3E129600BAC747 /* HotKey */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		BF3C90D52E3E0CC2001D325B /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = BF3C90BE2E3E0CC0001D325B /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = BF3C90C52E3E0CC0001D325B;
-			remoteInfo = WhisperShortcut;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		BF28B8222E4216F0007CF2EE /* WhisperShortcut.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = WhisperShortcut.xctestplan; sourceTree = "<group>"; };
 		BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhisperShortcut.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		BF3C90D42E3E0CC2001D325B /* WhisperShortcutTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WhisperShortcutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -46,11 +36,6 @@
 			path = WhisperShortcut;
 			sourceTree = "<group>";
 		};
-		BF3C90D72E3E0CC2001D325B /* WhisperShortcutTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = WhisperShortcutTests;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,23 +47,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		BF3C90D12E3E0CC2001D325B /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				BF070B1E2E4B5966005CB23D /* HotKey in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		BF3C90BD2E3E0CC0001D325B = {
 			isa = PBXGroup;
 			children = (
-				BF28B8222E4216F0007CF2EE /* WhisperShortcut.xctestplan */,
 				BF3C90C82E3E0CC0001D325B /* WhisperShortcut */,
-				BF3C90D72E3E0CC2001D325B /* WhisperShortcutTests */,
 				BFBC35F32E3E129600BAC747 /* Frameworks */,
 				BF3C90C72E3E0CC0001D325B /* Products */,
 			);
@@ -88,7 +63,6 @@
 			isa = PBXGroup;
 			children = (
 				BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */,
-				BF3C90D42E3E0CC2001D325B /* WhisperShortcutTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -126,30 +100,6 @@
 			productReference = BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */;
 			productType = "com.apple.product-type.application";
 		};
-		BF3C90D32E3E0CC2001D325B /* WhisperShortcutTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = BF3C90EB2E3E0CC2001D325B /* Build configuration list for PBXNativeTarget "WhisperShortcutTests" */;
-			buildPhases = (
-				BF3C90D02E3E0CC2001D325B /* Sources */,
-				BF3C90D12E3E0CC2001D325B /* Frameworks */,
-				BF3C90D22E3E0CC2001D325B /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				BF3C90D62E3E0CC2001D325B /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				BF3C90D72E3E0CC2001D325B /* WhisperShortcutTests */,
-			);
-			name = WhisperShortcutTests;
-			packageProductDependencies = (
-				BF070B1D2E4B5966005CB23D /* HotKey */,
-			);
-			productName = WhisperShortcutTests;
-			productReference = BF3C90D42E3E0CC2001D325B /* WhisperShortcutTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -162,10 +112,6 @@
 				TargetAttributes = {
 					BF3C90C52E3E0CC0001D325B = {
 						CreatedOnToolsVersion = 16.4;
-					};
-					BF3C90D32E3E0CC2001D325B = {
-						CreatedOnToolsVersion = 16.4;
-						TestTargetID = BF3C90C52E3E0CC0001D325B;
 					};
 				};
 			};
@@ -187,20 +133,12 @@
 			projectRoot = "";
 			targets = (
 				BF3C90C52E3E0CC0001D325B /* WhisperShortcut */,
-				BF3C90D32E3E0CC2001D325B /* WhisperShortcutTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		BF3C90C42E3E0CC0001D325B /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		BF3C90D22E3E0CC2001D325B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -217,21 +155,9 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		BF3C90D02E3E0CC2001D325B /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		BF3C90D62E3E0CC2001D325B /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = BF3C90C52E3E0CC0001D325B /* WhisperShortcut */;
-			targetProxy = BF3C90D52E3E0CC2001D325B /* PBXContainerItemProxy */;
-		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -412,44 +338,6 @@
 			};
 			name = Release;
 		};
-		BF3C90EC2E3E0CC2001D325B /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
-				DEVELOPMENT_TEAM = Z59J7V26UT;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = WhisperShortcutTests/Info.plist;
-				MACOSX_DEPLOYMENT_TARGET = 15.5;
-				MARKETING_VERSION = 1.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcutTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WhisperShortcut.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/WhisperShortcut";
-			};
-			name = Debug;
-		};
-		BF3C90ED2E3E0CC2001D325B /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
-				DEVELOPMENT_TEAM = Z59J7V26UT;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = WhisperShortcutTests/Info.plist;
-				MACOSX_DEPLOYMENT_TARGET = 15.5;
-				MARKETING_VERSION = 1.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcutTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WhisperShortcut.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/WhisperShortcut";
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -471,15 +359,6 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		BF3C90EB2E3E0CC2001D325B /* Build configuration list for PBXNativeTarget "WhisperShortcutTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				BF3C90EC2E3E0CC2001D325B /* Debug */,
-				BF3C90ED2E3E0CC2001D325B /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -494,11 +373,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		BF070B1D2E4B5966005CB23D /* HotKey */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */;
-			productName = HotKey;
-		};
 		BFBC35F42E3E129600BAC747 /* HotKey */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */;
