@@ -28,18 +28,17 @@ class PopupNotificationWindow: NSWindow {
 
   // MARK: - Constants
   private enum Constants {
-    // CRITICAL FIX: More compact window sizing for better user experience
-    // Reduced all widths to make notifications more compact
-    static let minWindowWidth: CGFloat = 260  // Minimum width for compact notifications
-    static let maxWindowWidth: CGFloat = 420  // Maximum width for very long content (reduced from 500px)
-    static let defaultWindowWidth: CGFloat = 320  // Default width for medium content (reduced from 380px)
-    static let maxHeight: CGFloat = 400  // Much more space for content
-    static let minHeight: CGFloat = 120  // More breathing room
+    // Window sizing: wider and flatter for less intrusive appearance
+    static let minWindowWidth: CGFloat = 320  // Minimum width for notifications
+    static let maxWindowWidth: CGFloat = 550  // Maximum width for very long content
+    static let defaultWindowWidth: CGFloat = 420  // Default width for medium content
+    static let maxHeight: CGFloat = 250  // Reduced height for flatter appearance
+    static let minHeight: CGFloat = 80  // Reduced minimum height
     static let cornerRadius: CGFloat = 12  // Modern macOS corner radius
     static let shadowRadius: CGFloat = 8  // Subtle shadow like native macOS notifications
     static let shadowOpacity: Float = 0.15  // Very subtle, barely visible shadow
     static let animationDuration: TimeInterval = 0.25  // Smoother animation
-    static let displayDuration: TimeInterval = 7.0  // Comfortable reading time
+    static let displayDuration: TimeInterval = 3.0  // Default display time
     static let errorDisplayDuration: TimeInterval = 30.0  // Long duration for error messages with feedback option
     static let outerPadding: CGFloat = 20  // Generous outer padding
     static let innerPadding: CGFloat = 16  // Inner content padding
@@ -48,10 +47,11 @@ class PopupNotificationWindow: NSWindow {
     static let titleFontSize: CGFloat = 15  // Slightly larger for better readability
     static let textFontSize: CGFloat = 13  // Better readable text size
     static let maxPreviewLength = 180  // Even longer preview for better readability
-    static let horizontalMargin: CGFloat = 50  // Distance from left/right screen edges
-    static let verticalMargin: CGFloat = 50  // Distance from top/bottom screen edges (slightly less for better visual balance)
+    static let horizontalMargin: CGFloat = 30  // Distance from left/right screen edges
+    static let verticalMarginTop: CGFloat = 15  // Distance from top screen edge
+    static let verticalMarginBottom: CGFloat = 30  // Distance from bottom screen edge
     static let iconAndSpacingWidth: CGFloat = 28  // Icon width + spacing for layout calculations
-    static let optimalCharactersPerLine: CGFloat = 60  // Optimal number of characters per line for readability
+    static let optimalCharactersPerLine: CGFloat = 85  // Optimal number of characters per line for wider display
   }
 
   // MARK: - Properties
@@ -579,28 +579,39 @@ class PopupNotificationWindow: NSWindow {
   
   private func calculatePosition(screenFrame: NSRect, windowWidth: CGFloat, windowHeight: CGFloat, position: NotificationPosition) -> (x: CGFloat, y: CGFloat) {
     let horizontalMargin = Constants.horizontalMargin
-    let verticalMargin = Constants.verticalMargin
+    let verticalMarginTop = Constants.verticalMarginTop
+    let verticalMarginBottom = Constants.verticalMarginBottom
     
     switch position {
     case .leftBottom:
       return (
         x: screenFrame.minX + horizontalMargin,
-        y: screenFrame.minY + verticalMargin
+        y: screenFrame.minY + verticalMarginBottom
       )
     case .rightBottom:
       return (
         x: screenFrame.maxX - windowWidth - horizontalMargin,
-        y: screenFrame.minY + verticalMargin
+        y: screenFrame.minY + verticalMarginBottom
       )
     case .leftTop:
       return (
         x: screenFrame.minX + horizontalMargin,
-        y: screenFrame.maxY - windowHeight - verticalMargin
+        y: screenFrame.maxY - windowHeight - verticalMarginTop
       )
     case .rightTop:
       return (
         x: screenFrame.maxX - windowWidth - horizontalMargin,
-        y: screenFrame.maxY - windowHeight - verticalMargin
+        y: screenFrame.maxY - windowHeight - verticalMarginTop
+      )
+    case .centerTop:
+      return (
+        x: screenFrame.midX - windowWidth / 2,
+        y: screenFrame.maxY - windowHeight - verticalMarginTop
+      )
+    case .centerBottom:
+      return (
+        x: screenFrame.midX - windowWidth / 2,
+        y: screenFrame.minY + verticalMarginBottom
       )
     }
   }
@@ -622,20 +633,20 @@ class PopupNotificationWindow: NSWindow {
     // IMPROVED: More gradual, predictable width calculation with better scaling
     // Use a smooth progression instead of hard category jumps
     
-    // Calculate optimal characters per line based on text length (more compact scaling)
+    // Calculate optimal characters per line based on text length (prefer even wider display)
     let optimalCharsPerLine: CGFloat
     if textLength <= 30 {
-      // Very short text: compact display
-      optimalCharsPerLine = min(CGFloat(textLength) * 1.2, 35)
+      // Very short text: wider display
+      optimalCharsPerLine = min(CGFloat(textLength) * 1.5, 50)
     } else if textLength <= 80 {
-      // Short to medium text: gradual increase (more conservative)
-      optimalCharsPerLine = 35 + (CGFloat(textLength - 30) * 0.2) // 35 to 45 chars
+      // Short to medium text: gradual increase
+      optimalCharsPerLine = 50 + (CGFloat(textLength - 30) * 0.3) // 50 to 65 chars
     } else if textLength <= 200 {
-      // Medium text: moderate width
-      optimalCharsPerLine = 45 + (CGFloat(textLength - 80) * 0.15) // 45 to 63 chars
+      // Medium text: wider width
+      optimalCharsPerLine = 65 + (CGFloat(textLength - 80) * 0.2) // 65 to 89 chars
     } else {
-      // Long text: maximum width but still compact
-      optimalCharsPerLine = min(63 + (CGFloat(textLength - 200) * 0.05), 75)
+      // Long text: maximum width for wider display
+      optimalCharsPerLine = min(89 + (CGFloat(textLength - 200) * 0.07), 100)
     }
     
     // Calculate final width
@@ -739,9 +750,9 @@ class PopupNotificationWindow: NSWindow {
       let position = self.getNotificationPosition()
       let slideOffset: CGFloat
       switch position {
-      case .leftBottom, .rightBottom:
+      case .leftBottom, .rightBottom, .centerBottom:
         slideOffset = -20  // Slide down for bottom positions
-      case .leftTop, .rightTop:
+      case .leftTop, .rightTop, .centerTop:
         slideOffset = 20   // Slide up for top positions
       }
       self.animator().setFrame(self.frame.offsetBy(dx: 0, dy: slideOffset), display: true)

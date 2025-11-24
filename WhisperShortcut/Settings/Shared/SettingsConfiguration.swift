@@ -323,6 +323,8 @@ enum NotificationPosition: String, CaseIterable {
   case rightBottom = "right-bottom"
   case leftTop = "left-top"
   case rightTop = "right-top"
+  case centerTop = "center-top"
+  case centerBottom = "center-bottom"
   
   var displayName: String {
     switch self {
@@ -334,6 +336,10 @@ enum NotificationPosition: String, CaseIterable {
       return "Links oben"
     case .rightTop:
       return "Rechts oben"
+    case .centerTop:
+      return "Mittig oben"
+    case .centerBottom:
+      return "Mittig unten"
     }
   }
   
@@ -344,6 +350,7 @@ enum NotificationPosition: String, CaseIterable {
 
 // MARK: - Notification Duration Enum
 enum NotificationDuration: Double, CaseIterable {
+  case oneSecond = 1.0
   case threeSeconds = 3.0
   case fiveSeconds = 5.0
   case sevenSeconds = 7.0
@@ -353,6 +360,8 @@ enum NotificationDuration: Double, CaseIterable {
   
   var displayName: String {
     switch self {
+    case .oneSecond:
+      return "1 Sekunde"
     case .threeSeconds:
       return "3 Sekunden"
     case .fiveSeconds:
@@ -369,7 +378,7 @@ enum NotificationDuration: Double, CaseIterable {
   }
   
   var isRecommended: Bool {
-    return self == .sevenSeconds
+    return self == .threeSeconds
   }
 }
 
@@ -417,7 +426,7 @@ struct SettingsDefaults {
   // MARK: - Notification Settings
   static let showPopupNotifications = true
   static let notificationPosition = NotificationPosition.leftBottom
-  static let notificationDuration = NotificationDuration.sevenSeconds
+  static let notificationDuration = NotificationDuration.threeSeconds
   static let errorNotificationDuration = NotificationDuration.thirtySeconds
 
   // MARK: - UI State
