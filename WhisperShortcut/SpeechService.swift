@@ -144,11 +144,13 @@ class SpeechService {
     // Combine words into comma-separated list
     let wordsList = difficultWords.joined(separator: ", ")
     
-    // Combine prompts
+    // Combine prompts with Gemini-optimized formulation
+    // This formulation clearly indicates difficult words are reference only
+    // and should only be used if actually heard in the audio
     if normalPrompt.isEmpty {
-      return "Important words to transcribe correctly: \(wordsList)"
+      return "Spelling reference (use only if heard in audio): \(wordsList). CRITICAL: Transcribe ONLY what is spoken. Do NOT add words from this list if not heard. Do NOT include this instruction in your output."
     } else {
-      return "\(normalPrompt)\n\nImportant words to transcribe correctly: \(wordsList)"
+      return "\(normalPrompt)\n\nSpelling reference (use only if heard in audio): \(wordsList). CRITICAL: Transcribe ONLY what is spoken. Do NOT add words from this list if not heard. Do NOT include this instruction in your output."
     }
   }
 
