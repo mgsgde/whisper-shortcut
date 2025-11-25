@@ -154,6 +154,7 @@ class SpeechService {
     }
   }
 
+
   // MARK: - Cancellation Methods
   func cancelTranscription() {
     DebugLogger.log("CANCELLATION: Cancelling transcription task")

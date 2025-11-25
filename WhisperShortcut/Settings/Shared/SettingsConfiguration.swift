@@ -407,9 +407,9 @@ struct SettingsDefaults {
   static let toggleVoiceResponseEnabled = true
 
   // MARK: - Model & Prompt Settings
-  static let selectedTranscriptionModel = TranscriptionModel.gemini20FlashLite
-  static let selectedPromptModel = PromptModel.gemini25Pro
-  static let selectedVoiceResponseModel = VoiceResponseModel.gemini25Pro
+  static let selectedTranscriptionModel = TranscriptionModel.gemini25Flash
+  static let selectedPromptModel = PromptModel.gemini25Flash
+  static let selectedVoiceResponseModel = VoiceResponseModel.gemini35Pro
   static let customPromptText = ""
   static let dictationDifficultWords = ""
   static let promptModeSystemPrompt = ""
