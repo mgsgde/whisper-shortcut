@@ -7,6 +7,18 @@ struct GeneralSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
+      // Launch at Login Section
+      launchAtLoginSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Google API Key Section
       googleAPIKeySection
 
@@ -45,6 +57,34 @@ struct GeneralSettingsTab: View {
 
       // Support & Feedback Section
       supportFeedbackSection
+    }
+  }
+
+  // MARK: - Launch at Login Section
+  @ViewBuilder
+  private var launchAtLoginSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "🚀 Startup",
+        subtitle: "Automatically start WhisperShortcut when you log in"
+      )
+
+      HStack(alignment: .center, spacing: 16) {
+        Text("Launch at Login:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        Toggle("", isOn: Binding(
+          get: { viewModel.data.launchAtLogin },
+          set: { newValue in
+            viewModel.setLaunchAtLogin(newValue)
+          }
+        ))
+        .toggleStyle(SwitchToggleStyle())
+
+        Spacer()
+      }
     }
   }
 

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import ServiceManagement
 
 /// ViewModel für centralized Settings State Management
 @MainActor
@@ -160,6 +161,9 @@ class SettingsViewModel: ObservableObject {
     
     // Load Google API key
     data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
+    
+    // Load Launch at Login state
+    data.launchAtLogin = SMAppService.mainApp.status == .enabled
   }
 
   // MARK: - Validation
@@ -351,6 +355,36 @@ class SettingsViewModel: ObservableObject {
     data.isLoading = false
 
     return nil
+  }
+
+  // MARK: - Launch at Login
+  func setLaunchAtLogin(_ enabled: Bool) {
+    do {
+      if enabled {
+        if SMAppService.mainApp.status == .enabled {
+          DebugLogger.logInfo("LAUNCH: App is already registered for launch at login")
+        } else {
+          try SMAppService.mainApp.register()
+          DebugLogger.logInfo("LAUNCH: Successfully registered for launch at login")
+        }
+      } else {
+        if SMAppService.mainApp.status == .enabled {
+          try SMAppService.mainApp.unregister()
+          DebugLogger.logInfo("LAUNCH: Successfully unregistered from launch at login")
+        } else {
+          DebugLogger.logInfo("LAUNCH: App is already unregistered from launch at login")
+        }
+      }
+      
+      // Update state
+      data.launchAtLogin = SMAppService.mainApp.status == .enabled
+      
+    } catch {
+      DebugLogger.logError("LAUNCH: Failed to toggle launch at login: \(error.localizedDescription)")
+      // Revert state on error
+      data.launchAtLogin = SMAppService.mainApp.status == .enabled
+      showError("Failed to update Launch at Login setting: \(error.localizedDescription)")
+    }
   }
 
   // MARK: - Error Handling

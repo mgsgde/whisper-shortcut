@@ -395,6 +395,7 @@ struct SettingsDefaults {
   // MARK: - Global Settings
   static let apiKey = ""
   static let googleAPIKey = ""
+  static let launchAtLogin = false
 
   // MARK: - Toggle Shortcut Settings
   static let toggleDictation = ""
@@ -440,6 +441,7 @@ struct SettingsData {
   // MARK: - Global Settings
   var apiKey: String = SettingsDefaults.apiKey
   var googleAPIKey: String = SettingsDefaults.googleAPIKey
+  var launchAtLogin: Bool = SettingsDefaults.launchAtLogin
 
   // MARK: - Toggle Shortcut Settings
   var toggleDictation: String = SettingsDefaults.toggleDictation
