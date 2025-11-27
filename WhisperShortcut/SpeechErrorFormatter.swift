@@ -14,12 +14,13 @@ struct SpeechErrorFormatter {
   /// Format a TranscriptionError into a user-friendly message
   static func format(_ error: TranscriptionError) -> String {
     switch error {
-    case .noAPIKey:
+    case .noOpenAIAPIKey:
       return """
-        ⚠️ No API Key Configured
+        ⚠️ No OpenAI API Key Configured
 
-        Please open Settings and add your OpenAI API key.
-        Without a valid API key, transcription cannot be performed.
+        You have selected an OpenAI model, but no OpenAI API key is configured.
+        Please open Settings and add your OpenAI API key in the "OpenAI API Key" section.
+        Without a valid OpenAI API key, OpenAI transcription cannot be performed.
         """
 
     case .noGoogleAPIKey:
@@ -259,8 +260,8 @@ struct SpeechErrorFormatter {
   /// Get a short status message for menu bar display
   static func shortStatus(_ error: TranscriptionError) -> String {
     switch error {
-    case .noAPIKey:
-      return "⚠️ No API Key"
+    case .noOpenAIAPIKey:
+      return "⚠️ No OpenAI API Key"
     case .noGoogleAPIKey:
       return "⚠️ No Google API Key"
     case .invalidAPIKey:

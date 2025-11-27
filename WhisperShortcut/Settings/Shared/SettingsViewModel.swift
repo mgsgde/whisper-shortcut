@@ -168,9 +168,35 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Validation
   func validateSettings() -> String? {
-    // Validate API key
-    guard !data.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      return "Please enter your OpenAI API key"
+    // Context-aware API key validation
+    let usesOpenAI = !data.selectedTranscriptionModel.isGemini || 
+                     !data.selectedPromptModel.isGemini || 
+                     !data.selectedVoiceResponseModel.isGemini
+                     
+    let usesGemini = data.selectedTranscriptionModel.isGemini || 
+                     data.selectedPromptModel.isGemini || 
+                     data.selectedVoiceResponseModel.isGemini
+
+    // Validate OpenAI API key if an OpenAI model is selected
+    if usesOpenAI {
+      guard !data.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        var services = [String]()
+        if !data.selectedTranscriptionModel.isGemini { services.append("Transcription") }
+        if !data.selectedPromptModel.isGemini { services.append("Prompt") }
+        if !data.selectedVoiceResponseModel.isGemini { services.append("Voice Response") }
+        return "Please enter your OpenAI API key (required for \(services.joined(separator: ", ")))"
+      }
+    }
+    
+    // Validate Google API key if a Gemini model is selected
+    if usesGemini {
+      guard !data.googleAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        var services = [String]()
+        if data.selectedTranscriptionModel.isGemini { services.append("Transcription") }
+        if data.selectedPromptModel.isGemini { services.append("Prompt") }
+        if data.selectedVoiceResponseModel.isGemini { services.append("Voice Response") }
+        return "Please enter your Google API key (required for \(services.joined(separator: ", ")))"
+      }
     }
 
     // Validate toggle shortcuts (only if enabled)

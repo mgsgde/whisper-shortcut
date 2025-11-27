@@ -17,6 +17,10 @@ enum TranscriptionModel: String, CaseIterable {
   case gemini25FlashLite = "gemini-2.5-flash-lite"
   case gemini25Pro = "gemini-2.5-pro"
   case gemini35Pro = "gemini-3.5-pro"
+  // TTS-enabled models (native audio output support)
+  case gemini25FlashTTS = "gemini-2.5-flash-preview-tts"
+  case gemini25ProTTS = "gemini-2.5-pro-preview-tts"
+  case gemini35ProTTS = "gemini-3.5-pro-preview-tts"
 
   var displayName: String {
     switch self {
@@ -36,6 +40,12 @@ enum TranscriptionModel: String, CaseIterable {
       return "Gemini 2.5 Pro"
     case .gemini35Pro:
       return "Gemini 3.5 Pro"
+    case .gemini25FlashTTS:
+      return "Gemini 2.5 Flash (TTS)"
+    case .gemini25ProTTS:
+      return "Gemini 2.5 Pro (TTS)"
+    case .gemini35ProTTS:
+      return "Gemini 3.5 Pro (TTS)"
     }
   }
 
@@ -55,6 +65,12 @@ enum TranscriptionModel: String, CaseIterable {
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
     case .gemini35Pro:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-pro:generateContent"
+    case .gemini25FlashTTS:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent"
+    case .gemini25ProTTS:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-tts:generateContent"
+    case .gemini35ProTTS:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-pro-preview-tts:generateContent"
     }
   }
 
@@ -62,16 +78,16 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gpt4oMiniTranscribe:
       return true
-    case .gpt4oTranscribe, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25Pro, .gemini35Pro:
+    case .gpt4oTranscribe, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25Pro, .gemini35Pro, .gemini25FlashTTS, .gemini25ProTTS, .gemini35ProTTS:
       return false
     }
   }
 
   var costLevel: String {
     switch self {
-    case .gpt4oMiniTranscribe, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
+    case .gpt4oMiniTranscribe, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25FlashTTS:
       return "Low"
-    case .gpt4oTranscribe, .gemini25Pro, .gemini35Pro:
+    case .gpt4oTranscribe, .gemini25Pro, .gemini35Pro, .gemini25ProTTS, .gemini35ProTTS:
       return "Medium"
     }
   }
@@ -94,11 +110,21 @@ enum TranscriptionModel: String, CaseIterable {
       return "Google's Gemini 2.5 Pro model • Higher quality • Best for complex tasks • Multimodal audio processing"
     case .gemini35Pro:
       return "Google's Gemini 3.5 Pro model • Highest quality • Best for complex tasks • Multimodal audio processing"
+    case .gemini25FlashTTS:
+      return "Gemini 2.5 Flash with native audio output • Fast • TTS-enabled for Voice Response"
+    case .gemini25ProTTS:
+      return "Gemini 2.5 Pro with native audio output • Higher quality • TTS-enabled for Voice Response"
+    case .gemini35ProTTS:
+      return "Gemini 3.5 Pro with native audio output • Highest quality • TTS-enabled for Voice Response"
     }
   }
   
   var isGemini: Bool {
-    return self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25Flash || self == .gemini25FlashLite || self == .gemini25Pro || self == .gemini35Pro
+    return self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25Flash || self == .gemini25FlashLite || self == .gemini25Pro || self == .gemini35Pro || self == .gemini25FlashTTS || self == .gemini25ProTTS || self == .gemini35ProTTS
+  }
+  
+  var isGeminiTTS: Bool {
+    return self == .gemini25FlashTTS || self == .gemini25ProTTS || self == .gemini35ProTTS
   }
 }
 
@@ -290,6 +316,25 @@ struct GeminiChatRequest: Codable {
   let contents: [GeminiChatContent]
   let systemInstruction: GeminiSystemInstruction?
   let tools: [GeminiTool]?
+  let generationConfig: GeminiGenerationConfig?
+  
+  enum CodingKeys: String, CodingKey {
+    case contents
+    case systemInstruction = "system_instruction"
+    case tools
+    case generationConfig = "generationConfig"
+  }
+  
+  // MARK: - Generation Config
+  struct GeminiGenerationConfig: Codable {
+    let responseModalities: [String]?
+    let speechConfig: GeminiSpeechConfig?
+    
+    enum CodingKeys: String, CodingKey {
+      case responseModalities = "responseModalities"
+      case speechConfig = "speechConfig"
+    }
+  }
   
   struct GeminiChatContent: Codable {
     let role: String  // "user" or "model"
@@ -348,6 +393,31 @@ struct GeminiChatRequest: Codable {
     
     struct GoogleSearch: Codable {
       // Empty struct - Google Search tool requires no parameters
+    }
+  }
+  
+  // MARK: - Audio Output Configuration
+  struct GeminiSpeechConfig: Codable {
+    let voiceConfig: GeminiVoiceConfig?
+    
+    enum CodingKeys: String, CodingKey {
+      case voiceConfig = "voice_config"
+    }
+  }
+  
+  struct GeminiVoiceConfig: Codable {
+    let prebuiltVoiceConfig: GeminiPrebuiltVoiceConfig?
+    
+    enum CodingKeys: String, CodingKey {
+      case prebuiltVoiceConfig = "prebuilt_voice_config"
+    }
+  }
+  
+  struct GeminiPrebuiltVoiceConfig: Codable {
+    let voiceName: String
+    
+    enum CodingKeys: String, CodingKey {
+      case voiceName = "voice_name"
     }
   }
 }
@@ -459,7 +529,7 @@ struct GeminiChatResponse: Codable {
 
 // MARK: - Transcription Error
 enum TranscriptionError: Error, Equatable {
-  case noAPIKey
+  case noOpenAIAPIKey
   case noGoogleAPIKey
   case invalidAPIKey
   case incorrectAPIKey
@@ -485,7 +555,7 @@ enum TranscriptionError: Error, Equatable {
 
   var title: String {
     switch self {
-    case .noAPIKey: return "No API Key"
+    case .noOpenAIAPIKey: return "No OpenAI API Key"
     case .noGoogleAPIKey: return "No Google API Key"
     case .invalidAPIKey: return "Invalid Authentication"
     case .incorrectAPIKey: return "Incorrect API Key"

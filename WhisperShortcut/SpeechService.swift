@@ -207,7 +207,7 @@ class SpeechService {
   // MARK: - Shared Validation
   func validateAPIKey(_ key: String) async throws -> Bool {
     guard !key.isEmpty else {
-      throw TranscriptionError.noAPIKey
+      throw TranscriptionError.noOpenAIAPIKey
     }
 
     let url = URL(string: Constants.modelsEndpoint)!
@@ -256,7 +256,7 @@ class SpeechService {
     DebugLogger.log("OPENAI-TRANSCRIPTION: Starting transcription, file size: \(audioSize) bytes, model: \(selectedTranscriptionModel.displayName)")
 
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      throw TranscriptionError.noAPIKey
+      throw TranscriptionError.noOpenAIAPIKey
     }
 
     try validateAudioFile(at: audioURL)
@@ -362,11 +362,26 @@ class SpeechService {
 
   // MARK: - Prompt Modes (Private Implementation)
   private func performPrompt(audioURL: URL) async throws -> String {
-    guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      throw TranscriptionError.noAPIKey
+    // Get clipboard context
+    let clipboardContext = getClipboardContext()
+    
+    // Get selected model from settings
+    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gemini-2.5-pro"
+    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Pro
+    
+    // Check if using Gemini model
+    if selectedPromptModel.isGemini {
+      // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
+      try validateAudioFileFormat(at: audioURL)
+      // Execute prompt with Gemini (it handles its own key validation)
+      return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext)
     }
 
-    return try await executePromptWithAudioModel(audioURL: audioURL)
+    guard let apiKey = self.apiKey, !apiKey.isEmpty else {
+      throw TranscriptionError.noOpenAIAPIKey
+    }
+
+    return try await executePromptWithGPTAudio(audioURL: audioURL)
   }
 
   private func buildPromptInput(
@@ -466,7 +481,7 @@ class SpeechService {
     
     // GPT-Audio path (existing logic)
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      throw TranscriptionError.noAPIKey
+      throw TranscriptionError.noOpenAIAPIKey
     }
 
     // Convert audio to base64
@@ -683,7 +698,7 @@ class SpeechService {
     return transcriptText
   }
 
-  func executePromptWithAudioModel(audioURL: URL) async throws -> String {
+  func executePromptWithGPTAudio(audioURL: URL) async throws -> String {
     DebugLogger.log("PROMPT-MODE: Starting execution")
     
     // Get clipboard context
@@ -695,14 +710,9 @@ class SpeechService {
     let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gemini-2.5-pro"
     let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Pro
     
-    // Route to Gemini or GPT-Audio based on model type
-    if selectedPromptModel.isGemini {
-      return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext)
-    }
-    
-    // GPT-Audio path (existing logic)
+    // GPT-Audio path
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      throw TranscriptionError.noAPIKey
+      throw TranscriptionError.noOpenAIAPIKey
     }
 
     // Convert audio to base64
@@ -997,11 +1007,12 @@ class SpeechService {
       parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
     )
     
-    // Create request (no tools for prompt mode)
+    // Create request (no tools for prompt mode, no audio output needed)
     let chatRequest = GeminiChatRequest(
       contents: contents,
       systemInstruction: systemInstruction,
-      tools: nil
+      tools: nil,
+      generationConfig: nil
     )
     
     request.httpBody = try JSONEncoder().encode(chatRequest)
@@ -1192,6 +1203,7 @@ class SpeechService {
     
     // Handle tool execution loop (for built-in tools, Gemini executes automatically, but may need multiple rounds)
     var finalTextContent = ""
+    var finalAudioData: Data?
     var currentContents = contents
     let maxToolRounds = 5  // Maximum number of tool execution rounds
     var round = 0
@@ -1201,10 +1213,31 @@ class SpeechService {
       DebugLogger.log("VOICE-RESPONSE-GEMINI: Tool execution round \(round)")
       
       // Create request for this round
+      // Note: Audio output parameters (response_modalities, speech_config) are only supported
+      // in TTS-enabled model variants (e.g., gemini-2.5-flash-preview-tts).
+      // Regular models like gemini-2.5-pro don't support these parameters.
+      // For regular models, we skip audio output params and use TTS fallback instead.
+      let modelName = selectedModel.rawValue.lowercased()
+      let supportsAudioOutput = modelName.contains("tts") || modelName.contains("-audio")
+      
+      if supportsAudioOutput {
+        DebugLogger.log("VOICE-RESPONSE-GEMINI: Using audio output parameters (TTS-enabled model detected)")
+      } else {
+        DebugLogger.log("VOICE-RESPONSE-GEMINI: Skipping audio output parameters (using TTS fallback)")
+      }
+      
       let roundRequest = GeminiChatRequest(
         contents: currentContents,
         systemInstruction: systemInstruction,
-        tools: tools
+        tools: tools,
+        generationConfig: supportsAudioOutput ? GeminiChatRequest.GeminiGenerationConfig(
+          responseModalities: ["AUDIO", "TEXT"],
+          speechConfig: GeminiChatRequest.GeminiSpeechConfig(
+            voiceConfig: GeminiChatRequest.GeminiVoiceConfig(
+              prebuiltVoiceConfig: GeminiChatRequest.GeminiPrebuiltVoiceConfig(voiceName: "Kore")
+            )
+          )
+        ) : nil
       )
       
       request.httpBody = try JSONEncoder().encode(roundRequest)
@@ -1216,7 +1249,10 @@ class SpeechService {
       }
       
       if httpResponse.statusCode != 200 {
-        DebugLogger.log("VOICE-RESPONSE-GEMINI-ERROR: HTTP \(httpResponse.statusCode)")
+        // Log full error response for debugging
+        if let errorString = String(data: data, encoding: .utf8) {
+          DebugLogger.log("VOICE-RESPONSE-GEMINI-ERROR: HTTP \(httpResponse.statusCode), Response: \(errorString.prefix(500))")
+        }
         let error = try parseGeminiErrorResponse(data: data, statusCode: httpResponse.statusCode)
         throw error
       }
@@ -1230,6 +1266,7 @@ class SpeechService {
       // Check if there are function calls (tool usage)
       var hasFunctionCalls = false
       var textContent = ""
+      var roundAudioData: Data?
       for part in firstCandidate.content.parts {
         if let text = part.text {
           textContent += text
@@ -1239,6 +1276,16 @@ class SpeechService {
           DebugLogger.log("VOICE-RESPONSE-GEMINI: Tool function call detected: \(functionCall.name ?? "unknown")")
           if let args = functionCall.args {
             DebugLogger.log("VOICE-RESPONSE-GEMINI: Function call args: \(args)")
+          }
+        }
+        // Check for audio in inline_data
+        if let inlineData = part.inlineData,
+           inlineData.mimeType.hasPrefix("audio/") {
+          if let audioBase64 = Data(base64Encoded: inlineData.data) {
+            roundAudioData = audioBase64
+            DebugLogger.log("VOICE-RESPONSE-GEMINI: Found audio in response (mimeType: \(inlineData.mimeType), size: \(audioBase64.count) bytes)")
+          } else {
+            DebugLogger.log("VOICE-RESPONSE-GEMINI: Failed to decode audio from base64")
           }
         }
       }
@@ -1259,8 +1306,16 @@ class SpeechService {
       // If no function calls, we have the final answer
       if !hasFunctionCalls {
         finalTextContent = textContent
+        if let audio = roundAudioData {
+          finalAudioData = audio
+        }
         DebugLogger.log("VOICE-RESPONSE-GEMINI: Final response received (no more tool calls)")
         break
+      }
+      
+      // Store audio data from this round if available (in case it's the final round)
+      if let audio = roundAudioData {
+        finalAudioData = audio
       }
       
       // For built-in tools, Gemini executes them automatically, so we should have the final response
@@ -1269,13 +1324,20 @@ class SpeechService {
       // This loop handles edge cases where multiple rounds might be needed
       if round >= maxToolRounds {
         finalTextContent = textContent
+        if let audio = roundAudioData {
+          finalAudioData = audio
+        }
         DebugLogger.log("VOICE-RESPONSE-GEMINI: Reached max tool rounds, using current response")
         break
       }
     }
     
     let normalizedText = normalizeTranscriptionText(finalTextContent)
-    try validateSpeechText(normalizedText, mode: "VOICE-RESPONSE-GEMINI")
+    
+    // Use text from response if available, otherwise validate empty text is allowed for audio-only responses
+    if !normalizedText.isEmpty {
+      try validateSpeechText(normalizedText, mode: "VOICE-RESPONSE-GEMINI")
+    }
     
     // Copy to clipboard immediately before audio playback
     clipboardManager?.copyToClipboard(text: normalizedText)
@@ -1291,9 +1353,27 @@ class SpeechService {
       )
     }
     
-    // Use TTS to convert text to speech (Gemini doesn't provide audio output in this API)
-    let speed = 1.0  // Fixed playback speed for Gemini (not user-configurable)
-    try await playTextAsSpeechChunked(normalizedText, playbackType: .voiceResponse, speed: speed)
+    // Play audio directly if available, otherwise fallback to TTS
+    if let audioData = finalAudioData {
+      DebugLogger.log("VOICE-RESPONSE-GEMINI: Playing native audio from Gemini (NO TTS!)")
+      
+      // Play audio directly (NO TTS!)
+      let playbackResult = try await audioPlaybackService.playAudio(data: audioData, playbackType: .voiceResponse)
+      
+      switch playbackResult {
+      case .completedSuccessfully:
+        break
+      case .stoppedByUser:
+        break
+      case .failed:
+        throw TranscriptionError.networkError("Audio playback failed")
+      }
+    } else {
+      // Fallback to TTS if no audio was returned
+      DebugLogger.log("VOICE-RESPONSE-GEMINI: No audio in response, using TTS fallback")
+      let speed = 1.0  // Fixed playback speed for Gemini (not user-configurable)
+      try await playTextAsSpeechChunked(normalizedText, playbackType: .voiceResponse, speed: speed)
+    }
     
     // Save conversation for next request (text-only, no audio data)
     let userMessageText: String
@@ -1783,7 +1863,7 @@ class SpeechService {
   
   private func transcribeSingleChunk(_ audioURL: URL) async throws -> String {
     guard let apiKey = self.apiKey, !apiKey.isEmpty else {
-      throw TranscriptionError.noAPIKey
+      throw TranscriptionError.noOpenAIAPIKey
     }
     
     try validateAudioFile(at: audioURL)
@@ -2042,8 +2122,35 @@ class SpeechService {
   private func playTextAsSpeechChunked(
     _ text: String, playbackType: PlaybackType, speed: Double
   ) async throws {
-    // Always use OpenAI TTS (voiceResponse always uses OpenAI)
-    let provider: TTSProvider = .openAI
+    // Determine TTS provider based on available keys and selected model
+    let provider: TTSProvider
+    
+    // If Voice Response Mode and using Gemini, prefer Google TTS
+    // Or if we have a Google Key but no OpenAI Key, use Google TTS
+    let hasOpenAIKey = self.apiKey != nil && !self.apiKey!.isEmpty
+    let hasGoogleKey = keychainManager.getGoogleAPIKey() != nil && !keychainManager.getGoogleAPIKey()!.isEmpty
+    
+    if playbackType == .voiceResponse {
+        // Get selected model from settings
+        let modelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseModel") ?? "gemini-2.5-pro"
+        let selectedModel = VoiceResponseModel(rawValue: modelString) ?? .gemini25Pro
+        
+        if selectedModel.isGemini {
+            // If using Gemini Voice Response, prefer Google TTS unless no Google Key (unlikely if we got here)
+            provider = hasGoogleKey ? .google : .openAI
+        } else {
+            // Using GPT-Audio, use OpenAI TTS
+            provider = .openAI
+        }
+    } else if hasGoogleKey && !hasOpenAIKey {
+        // If we only have Google Key, use Google TTS
+        provider = .google
+    } else {
+        // Default to OpenAI (legacy behavior)
+        provider = .openAI
+    }
+    
+    DebugLogger.log("TTS-PLAYBACK: Using provider: \(provider.rawValue)")
     
     // Use appropriate TTS API limit with safety margin
     let maxLen: Int
@@ -2322,7 +2429,7 @@ extension SpeechService {
     }
 
     if text.contains("No API Key") {
-      return (true, .noAPIKey)
+      return (true, .noOpenAIAPIKey)
     } else if text.contains("Incorrect API Key") {
       return (true, .incorrectAPIKey)
     } else if text.contains("Country Not Supported") {

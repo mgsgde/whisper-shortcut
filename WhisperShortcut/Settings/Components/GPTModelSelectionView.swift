@@ -25,7 +25,7 @@ struct GPTModelSelectionView: View {
 
       // Model Selection Grid - 3 columns to accommodate 6 models
       LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: SettingsConstants.modelSpacing) {
-        ForEach(VoiceResponseModel.allCases, id: \.self) { model in
+        ForEach(VoiceResponseModel.allCases.filter { $0.supportsNativeAudioOutput }, id: \.self) { model in
           ZStack {
             Rectangle()
               .fill(selectedModel == model ? Color.accentColor : Color.clear)

@@ -49,6 +49,10 @@ enum PromptModel: String, CaseIterable {
   case gemini25FlashLite = "gemini-2.5-flash-lite"
   case gemini25Pro = "gemini-2.5-pro"
   case gemini35Pro = "gemini-3.5-pro"
+  // TTS-enabled models (native audio output support)
+  case gemini25FlashTTS = "gemini-2.5-flash-preview-tts"
+  case gemini25ProTTS = "gemini-2.5-pro-preview-tts"
+  case gemini35ProTTS = "gemini-3.5-pro-preview-tts"
   
   var displayName: String {
     switch self {
@@ -68,6 +72,12 @@ enum PromptModel: String, CaseIterable {
       return "Gemini 2.5 Pro"
     case .gemini35Pro:
       return "Gemini 3.5 Pro"
+    case .gemini25FlashTTS:
+      return "Gemini 2.5 Flash (TTS)"
+    case .gemini25ProTTS:
+      return "Gemini 2.5 Pro (TTS)"
+    case .gemini35ProTTS:
+      return "Gemini 3.5 Pro (TTS)"
     }
   }
   
@@ -89,6 +99,12 @@ enum PromptModel: String, CaseIterable {
       return "Google's Gemini 2.5 Pro model • Higher quality • Best for complex tasks • Multimodal audio processing"
     case .gemini35Pro:
       return "Google's Gemini 3.5 Pro model • Highest quality • Best for complex tasks • Multimodal audio processing"
+    case .gemini25FlashTTS:
+      return "Gemini 2.5 Flash with native audio output • Fast • TTS-enabled for Voice Response"
+    case .gemini25ProTTS:
+      return "Gemini 2.5 Pro with native audio output • Higher quality • TTS-enabled for Voice Response"
+    case .gemini35ProTTS:
+      return "Gemini 3.5 Pro with native audio output • Highest quality • TTS-enabled for Voice Response"
     }
   }
   
@@ -96,7 +112,7 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gptAudioMini:
       return true  // Default GPT-Audio model
-    case .gptAudio, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25Pro, .gemini35Pro:
+    case .gptAudio, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25Pro, .gemini35Pro, .gemini25FlashTTS, .gemini25ProTTS, .gemini35ProTTS:
       return false
     }
   }
@@ -105,9 +121,9 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gptAudio:
       return "High"
-    case .gptAudioMini, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
+    case .gptAudioMini, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25FlashTTS:
       return "Low"
-    case .gemini25Pro, .gemini35Pro:
+    case .gemini25Pro, .gemini35Pro, .gemini25ProTTS, .gemini35ProTTS:
       return "Medium"
     }
   }
@@ -123,7 +139,20 @@ enum PromptModel: String, CaseIterable {
   }
   
   var isGemini: Bool {
-    return self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25Flash || self == .gemini25FlashLite || self == .gemini25Pro || self == .gemini35Pro
+    return self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25Flash || self == .gemini25FlashLite || self == .gemini25Pro || self == .gemini35Pro || self == .gemini25FlashTTS || self == .gemini25ProTTS || self == .gemini35ProTTS
+  }
+  
+  var supportsNativeAudioOutput: Bool {
+    switch self {
+    case .gptAudio, .gptAudioMini, .gemini25FlashTTS, .gemini25ProTTS, .gemini35ProTTS:
+      return true
+    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25Pro, .gemini35Pro:
+      return false
+    }
+  }
+  
+  var isGeminiTTS: Bool {
+    return self == .gemini25FlashTTS || self == .gemini25ProTTS || self == .gemini35ProTTS
   }
   
   // Convert to internal VoiceResponseModel for API calls (only for GPT-Audio models)
@@ -133,7 +162,7 @@ enum PromptModel: String, CaseIterable {
       return .gptAudio
     case .gptAudioMini:
       return .gptAudioMini
-    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25Pro, .gemini35Pro:
+    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25Pro, .gemini35Pro, .gemini25FlashTTS, .gemini25ProTTS, .gemini35ProTTS:
       return nil
     }
   }
@@ -153,6 +182,12 @@ enum PromptModel: String, CaseIterable {
       return .gemini25Pro
     case .gemini35Pro:
       return .gemini35Pro
+    case .gemini25FlashTTS:
+      return .gemini25FlashTTS
+    case .gemini25ProTTS:
+      return .gemini25ProTTS
+    case .gemini35ProTTS:
+      return .gemini35ProTTS
     case .gptAudio, .gptAudioMini:
       return nil
     }
@@ -171,6 +206,10 @@ enum VoiceResponseModel: String, CaseIterable {
   case gemini25FlashLite = "gemini-2.5-flash-lite"
   case gemini25Pro = "gemini-2.5-pro"
   case gemini35Pro = "gemini-3.5-pro"
+  // TTS-enabled models (native audio output support)
+  case gemini25FlashTTS = "gemini-2.5-flash-preview-tts"
+  case gemini25ProTTS = "gemini-2.5-pro-preview-tts"
+  case gemini35ProTTS = "gemini-3.5-pro-preview-tts"
   
   var displayName: String {
     switch self {
@@ -190,6 +229,12 @@ enum VoiceResponseModel: String, CaseIterable {
       return "Gemini 2.5 Pro"
     case .gemini35Pro:
       return "Gemini 3.5 Pro"
+    case .gemini25FlashTTS:
+      return "Gemini 2.5 Flash (TTS)"
+    case .gemini25ProTTS:
+      return "Gemini 2.5 Pro (TTS)"
+    case .gemini35ProTTS:
+      return "Gemini 3.5 Pro (TTS)"
     }
   }
   
@@ -211,6 +256,12 @@ enum VoiceResponseModel: String, CaseIterable {
       return "Google's Gemini 2.5 Pro model • Higher quality • Best for complex tasks • Multimodal audio processing"
     case .gemini35Pro:
       return "Google's Gemini 3.5 Pro model • Highest quality • Best for complex tasks • Multimodal audio processing"
+    case .gemini25FlashTTS:
+      return "Gemini 2.5 Flash with native audio output • Fast • TTS-enabled for Voice Response"
+    case .gemini25ProTTS:
+      return "Gemini 2.5 Pro with native audio output • Higher quality • TTS-enabled for Voice Response"
+    case .gemini35ProTTS:
+      return "Gemini 3.5 Pro with native audio output • Highest quality • TTS-enabled for Voice Response"
     }
   }
   
@@ -222,9 +273,9 @@ enum VoiceResponseModel: String, CaseIterable {
     switch self {
     case .gptAudio:
       return "High"
-    case .gptAudioMini, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
+    case .gptAudioMini, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25FlashTTS:
       return "Low"
-    case .gemini25Pro, .gemini35Pro:
+    case .gemini25Pro, .gemini35Pro, .gemini25ProTTS, .gemini35ProTTS:
       return "Medium"
     }
   }
@@ -240,7 +291,20 @@ enum VoiceResponseModel: String, CaseIterable {
   }
   
   var isGemini: Bool {
-    return self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25Flash || self == .gemini25FlashLite || self == .gemini25Pro || self == .gemini35Pro
+    return self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25Flash || self == .gemini25FlashLite || self == .gemini25Pro || self == .gemini35Pro || self == .gemini25FlashTTS || self == .gemini25ProTTS || self == .gemini35ProTTS
+  }
+  
+  var supportsNativeAudioOutput: Bool {
+    switch self {
+    case .gptAudio, .gptAudioMini, .gemini25FlashTTS, .gemini25ProTTS, .gemini35ProTTS:
+      return true
+    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25Pro, .gemini35Pro:
+      return false
+    }
+  }
+  
+  var isGeminiTTS: Bool {
+    return self == .gemini25FlashTTS || self == .gemini25ProTTS || self == .gemini35ProTTS
   }
   
   // Convert to TranscriptionModel for API endpoint access (for Gemini models)
@@ -258,6 +322,12 @@ enum VoiceResponseModel: String, CaseIterable {
       return .gemini25Pro
     case .gemini35Pro:
       return .gemini35Pro
+    case .gemini25FlashTTS:
+      return .gemini25FlashTTS
+    case .gemini25ProTTS:
+      return .gemini25ProTTS
+    case .gemini35ProTTS:
+      return .gemini35ProTTS
     case .gptAudio, .gptAudioMini:
       return nil
     }
