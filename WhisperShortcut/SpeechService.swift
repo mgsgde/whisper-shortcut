@@ -960,20 +960,7 @@ class SpeechService {
     // Build current user message parts
     var userParts: [GeminiChatRequest.GeminiChatPart] = []
     
-    // Add clipboard context if available
-    if let context = clipboardContext {
-      let contextText = """
-      TASK: Apply my voice instruction to the following text.
-      
-      TEXT TO PROCESS:
-      \(context)
-      
-      Now listen to my voice instruction and apply it to the text above.
-      """
-      userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
-    }
-    
-    // Add audio input
+    // Add audio input first
     let audioSize = audioChunkingService.getAudioSize(audioURL)
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = getGeminiMimeType(for: fileExtension)
@@ -997,6 +984,18 @@ class SpeechService {
         fileData: nil,
         url: nil
       ))
+    }
+    
+    // Add clipboard context AFTER audio (so Gemini processes audio with context in mind)
+    if let context = clipboardContext {
+      let contextText = """
+      IMPORTANT: Apply the voice instruction you just heard to the following text:
+      
+      \(context)
+      
+      Process the text above according to the voice instruction.
+      """
+      userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
     }
     
     // Add current user message
@@ -1122,8 +1121,11 @@ class SpeechService {
     // Build contents array with conversation history and current message
     var contents: [GeminiChatRequest.GeminiChatContent] = []
     
-    // Add conversation history if not expired (convert from GPT format to Gemini format)
-    if !conversationExpired {
+    // TTS models don't support multiturn chat, so skip conversation history for them
+    let supportsMultiturn = !selectedModel.isGeminiTTS
+    
+    // Add conversation history if not expired and model supports multiturn (convert from GPT format to Gemini format)
+    if !conversationExpired && supportsMultiturn {
       for gptMessage in conversationMessages {
         let role = gptMessage.role == "user" ? "user" : "model"
         var parts: [GeminiChatRequest.GeminiChatPart] = []
@@ -1143,6 +1145,8 @@ class SpeechService {
           contents.append(GeminiChatRequest.GeminiChatContent(role: role, parts: parts))
         }
       }
+    } else if !supportsMultiturn {
+      DebugLogger.log("VOICE-RESPONSE-GEMINI: TTS model detected - skipping conversation history (multiturn not supported)")
     }
     
     // Build current user message parts
@@ -1159,30 +1163,40 @@ class SpeechService {
       userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
     }
     
-    // Add audio input
-    let audioSize = audioChunkingService.getAudioSize(audioURL)
-    let fileExtension = audioURL.pathExtension.lowercased()
-    let mimeType = getGeminiMimeType(for: fileExtension)
-    
-    if audioSize > Constants.maxFileSize {
-      // Use Files API for large files
-      let fileURI = try await uploadFileToGemini(audioURL: audioURL, apiKey: googleAPIKey)
-      userParts.append(GeminiChatRequest.GeminiChatPart(
-        text: nil,
-        inlineData: nil,
-        fileData: GeminiChatRequest.GeminiFileData(fileUri: fileURI, mimeType: mimeType),
-        url: nil
-      ))
+    // Check if this is a TTS model (TTS models don't support audio input, need transcription first)
+    if selectedModel.isGeminiTTS {
+      // TTS models don't support audio input, so we need to transcribe first
+      DebugLogger.log("VOICE-RESPONSE-GEMINI: TTS model detected - transcribing audio first")
+      let transcribedText = try await transcribeWithGemini(audioURL: audioURL)
+      DebugLogger.log("VOICE-RESPONSE-GEMINI: Transcription result: \(transcribedText.prefix(100))...")
+      userParts.append(GeminiChatRequest.GeminiChatPart(text: transcribedText, inlineData: nil, fileData: nil, url: nil))
     } else {
-      // Use inline data for small files
-      let audioData = try Data(contentsOf: audioURL)
-      let base64Audio = audioData.base64EncodedString()
-      userParts.append(GeminiChatRequest.GeminiChatPart(
-        text: nil,
-        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: mimeType, data: base64Audio),
-        fileData: nil,
-        url: nil
-      ))
+      // Regular Gemini models support audio input directly
+      // Add audio input
+      let audioSize = audioChunkingService.getAudioSize(audioURL)
+      let fileExtension = audioURL.pathExtension.lowercased()
+      let mimeType = getGeminiMimeType(for: fileExtension)
+      
+      if audioSize > Constants.maxFileSize {
+        // Use Files API for large files
+        let fileURI = try await uploadFileToGemini(audioURL: audioURL, apiKey: googleAPIKey)
+        userParts.append(GeminiChatRequest.GeminiChatPart(
+          text: nil,
+          inlineData: nil,
+          fileData: GeminiChatRequest.GeminiFileData(fileUri: fileURI, mimeType: mimeType),
+          url: nil
+        ))
+      } else {
+        // Use inline data for small files
+        let audioData = try Data(contentsOf: audioURL)
+        let base64Audio = audioData.base64EncodedString()
+        userParts.append(GeminiChatRequest.GeminiChatPart(
+          text: nil,
+          inlineData: GeminiChatRequest.GeminiInlineData(mimeType: mimeType, data: base64Audio),
+          fileData: nil,
+          url: nil
+        ))
+      }
     }
     
     // Add current user message
@@ -1193,13 +1207,18 @@ class SpeechService {
       parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
     )
     
-    // Create tools array with Google Search
-    let tools: [GeminiChatRequest.GeminiTool] = [
+    // TTS models don't support tools (like Google Search), so only enable for non-TTS models
+    let tools: [GeminiChatRequest.GeminiTool]? = supportsMultiturn ? [
       GeminiChatRequest.GeminiTool(
         googleSearch: GeminiChatRequest.GeminiTool.GoogleSearch()
       )
-    ]
-    DebugLogger.log("VOICE-RESPONSE-GEMINI: Enabling Google Search tool")
+    ] : nil
+    
+    if tools != nil {
+      DebugLogger.log("VOICE-RESPONSE-GEMINI: Enabling Google Search tool")
+    } else {
+      DebugLogger.log("VOICE-RESPONSE-GEMINI: TTS model detected - disabling tools (not supported)")
+    }
     
     // Handle tool execution loop (for built-in tools, Gemini executes automatically, but may need multiple rounds)
     var finalTextContent = ""
@@ -1219,19 +1238,27 @@ class SpeechService {
       // For regular models, we skip audio output params and use TTS fallback instead.
       let modelName = selectedModel.rawValue.lowercased()
       let supportsAudioOutput = modelName.contains("tts") || modelName.contains("-audio")
+      let isTTSModel = selectedModel.isGeminiTTS
       
       if supportsAudioOutput {
-        DebugLogger.log("VOICE-RESPONSE-GEMINI: Using audio output parameters (TTS-enabled model detected)")
+        if isTTSModel {
+          DebugLogger.log("VOICE-RESPONSE-GEMINI: Using audio output parameters (TTS model - AUDIO only)")
+        } else {
+          DebugLogger.log("VOICE-RESPONSE-GEMINI: Using audio output parameters (GPT-Audio model)")
+        }
       } else {
         DebugLogger.log("VOICE-RESPONSE-GEMINI: Skipping audio output parameters (using TTS fallback)")
       }
+      
+      // TTS models only support AUDIO modality, not AUDIO + TEXT
+      let responseModalities: [String]? = supportsAudioOutput ? (isTTSModel ? ["AUDIO"] : ["AUDIO", "TEXT"]) : nil
       
       let roundRequest = GeminiChatRequest(
         contents: currentContents,
         systemInstruction: systemInstruction,
         tools: tools,
         generationConfig: supportsAudioOutput ? GeminiChatRequest.GeminiGenerationConfig(
-          responseModalities: ["AUDIO", "TEXT"],
+          responseModalities: responseModalities,
           speechConfig: GeminiChatRequest.GeminiSpeechConfig(
             voiceConfig: GeminiChatRequest.GeminiVoiceConfig(
               prebuiltVoiceConfig: GeminiChatRequest.GeminiPrebuiltVoiceConfig(voiceName: "Kore")
@@ -1376,22 +1403,27 @@ class SpeechService {
     }
     
     // Save conversation for next request (text-only, no audio data)
-    let userMessageText: String
-    if let context = contextToUse {
-      userMessageText = "User spoke (with context: \(context))"
+    // TTS models don't support multiturn chat, so don't save conversation history
+    if supportsMultiturn {
+      let userMessageText: String
+      if let context = contextToUse {
+        userMessageText = "User spoke (with context: \(context))"
+      } else {
+        userMessageText = "User spoke"
+      }
+      
+      conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
+        role: "user",
+        content: .text(userMessageText)
+      ))
+      conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
+        role: "assistant",
+        content: .text(normalizedText)
+      ))
+      previousResponseTimestamp = Date()
     } else {
-      userMessageText = "User spoke"
+      DebugLogger.log("VOICE-RESPONSE-GEMINI: TTS model - not saving conversation history")
     }
-    
-    conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
-      role: "user",
-      content: .text(userMessageText)
-    ))
-    conversationMessages.append(GPTAudioChatRequest.GPTAudioMessage(
-      role: "assistant",
-      content: .text(normalizedText)
-    ))
-    previousResponseTimestamp = Date()
     
     DebugLogger.logSuccess("VOICE-RESPONSE-GEMINI: Completed successfully")
     
