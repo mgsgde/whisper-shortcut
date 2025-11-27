@@ -29,23 +29,11 @@
         <key>NSMicrophoneUsageDescription</key>
         <string>This app needs microphone access to record audio for transcription.</string>
         <key>NSKeychainUsageDescription</key>
-        <string>This app needs keychain access to securely store your OpenAI API key.</string>
+        <string>This app needs keychain access to securely store your Google API key.</string>
         <key>NSAppTransportSecurity</key>
         <dict>
             <key>NSAllowsArbitraryLoads</key>
             <false />
-            <key>NSExceptionDomains</key>
-            <dict>
-                <key>api.openai.com</key>
-                <dict>
-                    <key>NSExceptionRequiresForwardSecrecy</key>
-                    <false />
-                    <key>NSExceptionMinimumTLSVersion</key>
-                    <string>TLSv1.2</string>
-                    <key>NSIncludesSubdomains</key>
-                    <true />
-                </dict>
-            </dict>
         </dict>
         <key>ITSAppUsesNonExemptEncryption</key>
         <false />

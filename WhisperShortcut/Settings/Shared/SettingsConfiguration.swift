@@ -1,8 +1,5 @@
 import Foundation
 
-// MARK: - GPT Model Enum (for Prompt Mode) - REMOVED
-// GPT-5 models removed - only using GPT-Audio models now
-
 // MARK: - Reasoning Effort Enum
 enum ReasoningEffort: String, CaseIterable {
   case low = "low"
@@ -99,10 +96,6 @@ enum PromptModel: String, CaseIterable {
   }
   
   var supportsNativeAudioOutput: Bool {
-    return false
-  }
-  
-  var isGeminiTTS: Bool {
     return false
   }
   

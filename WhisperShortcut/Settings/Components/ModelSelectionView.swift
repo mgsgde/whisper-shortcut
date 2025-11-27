@@ -27,8 +27,7 @@ struct ModelSelectionView: View {
       )
 
       LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
-        // Filter out Gemini TTS models - they should only appear in "Dictate Prompt and Speak" settings
-        ForEach(models.filter { !$0.isGeminiTTS }, id: \.self) { model in
+        ForEach(models, id: \.self) { model in
           ZStack {
             Rectangle()
               .fill(selectedTranscriptionModel == model ? Color.accentColor : Color.clear)

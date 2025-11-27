@@ -98,7 +98,7 @@ struct SpeechToTextSettingsTab: View {
     PromptTextEditor(
       title: "💬 Prompt",
       subtitle:
-        "Describe domain terms for better transcription quality. Leave empty to use OpenAI's default.",
+        "Describe domain terms for better transcription quality. Leave empty to use Gemini's default.",
       helpText:
         "Enter domain-specific terms, jargon, or context that will help improve transcription accuracy for your specific use case.",
       defaultValue: AppConstants.defaultTranscriptionSystemPrompt,

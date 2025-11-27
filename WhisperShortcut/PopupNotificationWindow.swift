@@ -873,11 +873,6 @@ extension PopupNotificationWindow {
     showSuccessNotification(text: transcription, modelInfo: modelInfo)
   }
 
-  static func showVoiceResponse(_ response: String, modelInfo: String? = nil) {
-    showSuccessNotification(text: response, modelInfo: modelInfo)
-  }
-
-
   static func showError(_ error: String, title: String = "Error") {
     guard arePopupNotificationsEnabled else {
       return

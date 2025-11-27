@@ -2,7 +2,7 @@
 //  TranscriptionModels.swift
 //  WhisperShortcut
 //
-//  Data models for transcription API interactions (OpenAI and Gemini)
+//  Data models for transcription API interactions (Gemini)
 //
 
 import Foundation
@@ -73,37 +73,6 @@ enum TranscriptionModel: String, CaseIterable {
     return true
   }
   
-  var isGeminiTTS: Bool {
-    return false
-  }
-}
-
-// MARK: - Transcription Response
-struct WhisperResponse: Codable {
-  let text: String
-}
-
-// MARK: - Chat Completions API Models
-struct ChatCompletionResponse: Codable {
-  let id: String?
-  let choices: [ChatChoice]
-  let usage: Usage?
-}
-
-struct ChatChoice: Codable {
-  let message: ChatMessage
-  let finish_reason: String?
-}
-
-struct ChatMessage: Codable {
-  let role: String
-  let content: String
-}
-
-struct Usage: Codable {
-  let prompt_tokens: Int?
-  let completion_tokens: Int?
-  let total_tokens: Int?
 }
 
 // MARK: - Gemini Response Models

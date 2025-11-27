@@ -309,7 +309,7 @@ class MenuBarController: NSObject {
     case .transcription:
       audioRecorder.stopRecording()
     case .none:
-      if appState.canStartTranscription(hasAPIKey: KeychainManager.shared.hasAPIKey()) {
+      if appState.canStartTranscription(hasAPIKey: KeychainManager.shared.hasGoogleAPIKey()) {
         appState = appState.startRecording(.transcription)
         audioRecorder.startRecording()
       }
@@ -331,7 +331,7 @@ class MenuBarController: NSObject {
     case .prompt:
       audioRecorder.stopRecording()
     case .none:
-      if appState.canStartPrompting(hasAPIKey: KeychainManager.shared.hasAPIKey()) {
+      if appState.canStartPrompting(hasAPIKey: KeychainManager.shared.hasGoogleAPIKey()) {
         // Check accessibility permission first
         if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
           return

@@ -746,50 +746,6 @@ class SpeechService {
     }
   }
   
-  private func mergeTranscriptions(_ transcriptions: [String]) -> String {
-    guard !transcriptions.isEmpty else { return "" }
-    
-    if transcriptions.count == 1 {
-      return normalizeTranscriptionText(transcriptions[0])
-    }
-    
-    var merged = normalizeTranscriptionText(transcriptions[0])
-    
-    for i in 1..<transcriptions.count {
-      let current = normalizeTranscriptionText(transcriptions[i])
-      
-      if current.isEmpty {
-        continue
-      }
-      
-      // Try to find overlap between end of merged and start of current
-      let overlap = findTranscriptionOverlap(merged, current)
-      
-      if overlap.count > 5 {  // Meaningful overlap found
-        // Remove overlap from current transcription
-        let remainingCurrent = normalizeTranscriptionText(String(current.dropFirst(overlap.count)))
-        if !remainingCurrent.isEmpty {
-          // Only add space if merged doesn't already end with whitespace
-          if merged.last?.isWhitespace == true {
-            merged += remainingCurrent
-          } else {
-            merged += " " + remainingCurrent
-          }
-        }
-      } else {
-        // No meaningful overlap, just concatenate with space
-        // Only add space if merged doesn't already end with whitespace
-        if merged.last?.isWhitespace == true {
-          merged += current
-        } else {
-          merged += " " + current
-        }
-      }
-    }
-    
-    return normalizeTranscriptionText(merged)
-  }
-  
   private func normalizeTranscriptionText(_ text: String) -> String {
     // Remove excessive whitespace and normalize line breaks
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -869,35 +825,6 @@ class SpeechService {
     
     return cleaned
   }
-  
-  private func findTranscriptionOverlap(_ text1: String, _ text2: String) -> String {
-    let words1 = text1.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
-    let words2 = text2.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
-    
-    // If either text has fewer than 2 words, no meaningful overlap possible
-    guard words1.count >= 2 && words2.count >= 2 else { return "" }
-    
-    var maxOverlap = ""
-    
-    // Look for overlapping word sequences (minimum 2 words, maximum 5 words for better accuracy)
-    for i in max(0, words1.count - 5)..<words1.count {
-      for j in 0..<min(words2.count, 5) {
-        let suffix = Array(words1[i...])
-        let prefix = Array(words2[0...j])
-        
-        // Check if suffix and prefix match exactly
-        if suffix.count >= 2 && prefix.count >= 2 && suffix == prefix {
-          let overlap = suffix.joined(separator: " ")
-          if overlap.count > maxOverlap.count {
-            maxOverlap = overlap
-          }
-        }
-      }
-    }
-    
-    // Only return overlap if it's meaningful (at least 2 words and reasonable length)
-    return maxOverlap.count > 5 ? maxOverlap : ""
-  }
 
   // MARK: - Prompt Mode Helpers
   private func getClipboardContext() -> String? {
@@ -931,7 +858,6 @@ class SpeechService {
   private func validateAudioFileFormat(at url: URL) throws {
     let fileExtension = url.pathExtension.lowercased()
     // Gemini supports: wav, mp3, aiff, aac, ogg, flac
-    // OpenAI supports: wav, mp3, m4a, flac, ogg, webm
     let supportedExtensions = ["wav", "mp3", "m4a", "flac", "ogg", "webm", "aiff", "aac"]
     if !supportedExtensions.contains(fileExtension) {
       throw TranscriptionError.fileError("Unsupported audio format: \(fileExtension)")
