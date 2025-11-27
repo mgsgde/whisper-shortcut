@@ -349,7 +349,7 @@ class MenuBarController: NSObject {
   }
 
   @objc func openSettings() {
-    SettingsManager.shared.showSettings()
+    SettingsManager.shared.toggleSettings()
   }
 
   @objc private func quitApp() {
