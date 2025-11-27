@@ -252,6 +252,7 @@ class SettingsViewModel: ObservableObject {
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()
+    let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     let newConfig = ShortcutConfig(
       startRecording: shortcuts["toggle dictation"]!
         ?? ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
@@ -260,7 +261,8 @@ class SettingsViewModel: ObservableObject {
       startPrompting: shortcuts["toggle prompting"]!
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
       stopPrompting: shortcuts["toggle prompting"]!
-        ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false)
+        ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
+      openSettings: currentConfig.openSettings
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 

@@ -4,6 +4,7 @@ import HotKey
 protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
+  func openSettings()
 }
 
 // Configurable shortcuts using ShortcutConfigManager
@@ -12,6 +13,7 @@ class Shortcuts {
 
   private var toggleDictationKey: HotKey?
   private var togglePromptingKey: HotKey?
+  private var openSettingsKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -54,6 +56,15 @@ class Shortcuts {
       }
     }
 
+    // Create settings shortcut (only if enabled)
+    if config.openSettings.isEnabled {
+      openSettingsKey = HotKey(
+        key: config.openSettings.key, modifiers: config.openSettings.modifiers)
+      openSettingsKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.openSettings()
+      }
+    }
+
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -67,6 +78,7 @@ class Shortcuts {
   func cleanup() {
     toggleDictationKey = nil
     togglePromptingKey = nil
+    openSettingsKey = nil
   }
 
   deinit {

@@ -98,7 +98,10 @@ class MenuBarController: NSObject {
     menu.addItem(NSMenuItem.separator())
 
     // Settings and quit
-    menu.addItem(createMenuItem("Settings...", action: #selector(openSettings)))
+    menu.addItem(
+      createMenuItemWithShortcut(
+        "Settings...", action: #selector(openSettings),
+        shortcut: currentConfig.openSettings, tag: 103))
     menu.addItem(
       createMenuItem("Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q"))
 
@@ -345,7 +348,7 @@ class MenuBarController: NSObject {
     }
   }
 
-  @objc private func openSettings() {
+  @objc func openSettings() {
     SettingsManager.shared.showSettings()
   }
 
@@ -528,4 +531,5 @@ extension MenuBarController: AudioRecorderDelegate {
 extension MenuBarController: ShortcutDelegate {
   func toggleDictation() { toggleTranscription() }
   // togglePrompting is already implemented above
+  // openSettings is already implemented above
 }

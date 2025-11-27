@@ -100,12 +100,14 @@ struct ShortcutConfig: Codable {
   var stopRecording: ShortcutDefinition
   var startPrompting: ShortcutDefinition
   var stopPrompting: ShortcutDefinition
+  var openSettings: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
     stopRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
     startPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
-    stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command])
+    stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
+    openSettings: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true)
   )
 }
 
@@ -204,6 +206,7 @@ class ShortcutConfigManager {
     static let stopRecordingKey = "shortcut_stop_recording"
     static let startPromptingKey = "shortcut_start_prompting"
     static let stopPromptingKey = "shortcut_stop_prompting"
+    static let openSettingsKey = "shortcut_open_settings"
   }
 
   private let userDefaults = UserDefaults.standard
@@ -220,11 +223,14 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.startPromptingKey) ?? ShortcutConfig.default.startPrompting
     let stopPrompting =
       loadShortcut(for: Constants.stopPromptingKey) ?? ShortcutConfig.default.stopPrompting
+    let openSettings =
+      loadShortcut(for: Constants.openSettingsKey) ?? ShortcutConfig.default.openSettings
     return ShortcutConfig(
       startRecording: startRecording,
       stopRecording: stopRecording,
       startPrompting: startPrompting,
-      stopPrompting: stopPrompting
+      stopPrompting: stopPrompting,
+      openSettings: openSettings
     )
   }
 
@@ -233,6 +239,7 @@ class ShortcutConfigManager {
     saveShortcut(config.stopRecording, for: Constants.stopRecordingKey)
     saveShortcut(config.startPrompting, for: Constants.startPromptingKey)
     saveShortcut(config.stopPrompting, for: Constants.stopPromptingKey)
+    saveShortcut(config.openSettings, for: Constants.openSettingsKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)
@@ -380,6 +387,7 @@ class ShortcutConfigManager {
     let currentConfig = loadConfiguration()
     if shortcut == currentConfig.startRecording || shortcut == currentConfig.stopRecording
       || shortcut == currentConfig.startPrompting || shortcut == currentConfig.stopPrompting
+      || shortcut == currentConfig.openSettings
     {
       return .duplicate("This shortcut is already in use")
     }
