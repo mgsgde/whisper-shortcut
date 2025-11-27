@@ -27,7 +27,6 @@ class SpeechService {
 
   // MARK: - Shared Infrastructure
   private let keychainManager: KeychainManaging
-  private let audioChunkingService: AudioChunkingService
   private var clipboardManager: ClipboardManager?
 
   // Custom session with appropriate timeouts
@@ -52,7 +51,6 @@ class SpeechService {
   ) {
     self.keychainManager = keychainManager
     self.clipboardManager = clipboardManager
-    self.audioChunkingService = AudioChunkingService()
   }
 
   // MARK: - Shared API Key Management
@@ -191,57 +189,6 @@ class SpeechService {
     throw TranscriptionError.networkError("Unsupported model type")
   }
 
-  private func buildPromptInput(
-    userMessage: String, clipboardContext: String?
-  ) -> String {
-    let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
-    let customSystemPromptKey = "promptModeSystemPrompt"
-
-    let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptKey)
-
-    var fullInput = baseSystemPrompt
-    if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
-      fullInput += "\n\nAdditional instructions: \(customPrompt)"
-    }
-
-    if let context = clipboardContext {
-      fullInput += "\n\nContext (selected text from clipboard):\n\(context)"
-    }
-
-    let sanitizedUserMessage = sanitizeUserInput(userMessage)
-    fullInput += "\n\nUser: \(sanitizedUserMessage)"
-    return fullInput
-  }
-
-  private func buildPromptInputSeparated(
-    userMessage: String, clipboardContext: String?
-  ) -> (userInput: String, systemInstructions: String) {
-    let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
-    let customSystemPromptKey = "promptModeSystemPrompt"
-
-    let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptKey)
-
-    var systemInstructions = baseSystemPrompt
-    if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
-      systemInstructions += "\n\nAdditional instructions: \(customPrompt)"
-    }
-
-    var userInput = ""
-    if let context = clipboardContext {
-      userInput += "Context (selected text from clipboard):\n\(context)\n\n"
-    }
-
-    let sanitizedUserMessage = sanitizeUserInput(userMessage)
-    userInput += sanitizedUserMessage
-
-    return (userInput: userInput, systemInstructions: systemInstructions)
-  }
-
-  func executePromptWithGPTAudio(audioURL: URL) async throws -> String {
-    // This method is no longer used - we only support Gemini models now
-    throw TranscriptionError.networkError("GPT-Audio models are no longer supported")
-  }
-  
   // MARK: - Gemini Prompt Mode
   private func executePromptWithGemini(audioURL: URL, clipboardContext: String?) async throws -> String {
     guard let googleAPIKey = self.googleAPIKey, !googleAPIKey.isEmpty else {
@@ -294,7 +241,14 @@ class SpeechService {
     var userParts: [GeminiChatRequest.GeminiChatPart] = []
     
     // Add audio input first
-    let audioSize = audioChunkingService.getAudioSize(audioURL)
+    let audioSize: Int64 = {
+      do {
+        let attributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
+        return attributes[.size] as? Int64 ?? 0
+      } catch {
+        return 0
+      }
+    }()
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = getGeminiMimeType(for: fileExtension)
     
@@ -397,7 +351,14 @@ class SpeechService {
     
     try validateAudioFile(at: audioURL)
     
-    let audioSize = audioChunkingService.getAudioSize(audioURL)
+    let audioSize: Int64 = {
+      do {
+        let attributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
+        return attributes[.size] as? Int64 ?? 0
+      } catch {
+        return 0
+      }
+    }()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Starting transcription, file size: \(audioSize) bytes")
     
     let result: String
