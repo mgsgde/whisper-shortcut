@@ -4,7 +4,7 @@
 
 ## Overview
 
-WhisperShortcut is a macOS menu bar application that provides real-time audio transcription using OpenAI's Whisper API. This privacy policy explains how we handle your data and what information is collected, stored, or transmitted.
+WhisperShortcut is a macOS menu bar application that provides real-time audio transcription using Google's Gemini API. This privacy policy explains how we handle your data and what information is collected, stored, or transmitted.
 
 ## Data Collection Summary
 
@@ -20,9 +20,9 @@ WhisperShortcut is a macOS menu bar application that provides real-time audio tr
 
 ### 1. API Key (Required for Functionality)
 
-- **What**: Your OpenAI API key
+- **What**: Your Google API key
 - **Where**: Stored securely in macOS Keychain
-- **Purpose**: Required to use OpenAI's Whisper transcription service
+- **Purpose**: Required to use Google's Gemini transcription service
 - **Retention**: Stored locally until you delete it
 - **Access**: Only accessible by the app on your device
 
@@ -53,15 +53,15 @@ WhisperShortcut is a macOS menu bar application that provides real-time audio tr
 
 ## Third-Party Services
 
-### OpenAI Whisper API
+### Google Gemini API
 
-- **Service**: Audio transcription
+- **Service**: Audio transcription and processing
 - **Data Sent**: Temporary audio files for transcription
 - **Data Received**: Transcribed text
-- **Privacy**: Subject to OpenAI's privacy policy
-- **Retention**: OpenAI may retain data according to their policy
+- **Privacy**: Subject to Google's privacy policy
+- **Retention**: Google may retain data according to their policy
 
-**Note**: When you use WhisperShortcut, your audio is sent to OpenAI's servers for transcription. Please review [OpenAI's Privacy Policy](https://openai.com/privacy) for details on how they handle your data.
+**Note**: When you use WhisperShortcut, your audio is sent to Google's servers for transcription. Please review [Google's Privacy Policy](https://policies.google.com/privacy) for details on how they handle your data.
 
 ## Data Storage and Security
 
