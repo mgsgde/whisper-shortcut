@@ -244,11 +244,9 @@ class SpeechService {
     if let context = clipboardContext {
       DebugLogger.log("PROMPT-MODE-GEMINI: Adding clipboard context to request (length: \(context.count) chars)")
       let contextText = """
-      IMPORTANT: Apply the voice instruction you will hear to the following text:
+      SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):
       
       \(context)
-      
-      Process the text above according to the voice instruction.
       """
       userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
     } else {
