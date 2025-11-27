@@ -100,16 +100,12 @@ struct ShortcutConfig: Codable {
   var stopRecording: ShortcutDefinition
   var startPrompting: ShortcutDefinition
   var stopPrompting: ShortcutDefinition
-  var startVoiceResponse: ShortcutDefinition
-  var stopVoiceResponse: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
     stopRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
     startPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
-    stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
-    startVoiceResponse: ShortcutDefinition(key: .three, modifiers: [.command]),
-    stopVoiceResponse: ShortcutDefinition(key: .three, modifiers: [.command])
+    stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command])
   )
 }
 
@@ -208,8 +204,6 @@ class ShortcutConfigManager {
     static let stopRecordingKey = "shortcut_stop_recording"
     static let startPromptingKey = "shortcut_start_prompting"
     static let stopPromptingKey = "shortcut_stop_prompting"
-    static let startVoiceResponseKey = "shortcut_start_voice_response"
-    static let stopVoiceResponseKey = "shortcut_stop_voice_response"
   }
 
   private let userDefaults = UserDefaults.standard
@@ -226,18 +220,11 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.startPromptingKey) ?? ShortcutConfig.default.startPrompting
     let stopPrompting =
       loadShortcut(for: Constants.stopPromptingKey) ?? ShortcutConfig.default.stopPrompting
-    let startVoiceResponse =
-      loadShortcut(for: Constants.startVoiceResponseKey)
-      ?? ShortcutConfig.default.startVoiceResponse
-    let stopVoiceResponse =
-      loadShortcut(for: Constants.stopVoiceResponseKey) ?? ShortcutConfig.default.stopVoiceResponse
     return ShortcutConfig(
       startRecording: startRecording,
       stopRecording: stopRecording,
       startPrompting: startPrompting,
-      stopPrompting: stopPrompting,
-      startVoiceResponse: startVoiceResponse,
-      stopVoiceResponse: stopVoiceResponse
+      stopPrompting: stopPrompting
     )
   }
 
@@ -246,8 +233,6 @@ class ShortcutConfigManager {
     saveShortcut(config.stopRecording, for: Constants.stopRecordingKey)
     saveShortcut(config.startPrompting, for: Constants.startPromptingKey)
     saveShortcut(config.stopPrompting, for: Constants.stopPromptingKey)
-    saveShortcut(config.startVoiceResponse, for: Constants.startVoiceResponseKey)
-    saveShortcut(config.stopVoiceResponse, for: Constants.stopVoiceResponseKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)
@@ -395,7 +380,6 @@ class ShortcutConfigManager {
     let currentConfig = loadConfiguration()
     if shortcut == currentConfig.startRecording || shortcut == currentConfig.stopRecording
       || shortcut == currentConfig.startPrompting || shortcut == currentConfig.stopPrompting
-      || shortcut == currentConfig.startVoiceResponse || shortcut == currentConfig.stopVoiceResponse
     {
       return .duplicate("This shortcut is already in use")
     }

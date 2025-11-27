@@ -80,9 +80,6 @@ struct SettingsView: View {
           SpeechToTextSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .speechToPrompt:
           SpeechToPromptSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .speechToPromptWithVoiceResponse:
-          SpeechToPromptWithVoiceResponseSettingsTab(
-            viewModel: viewModel, focusedField: $focusedField)
         }
       }
       .padding(.horizontal, 24)
@@ -100,8 +97,6 @@ struct SettingsView: View {
       return "mic"
     case .speechToPrompt:
       return "text.bubble"
-    case .speechToPromptWithVoiceResponse:
-      return "speaker.wave.2"
     }
   }
 
@@ -113,8 +108,6 @@ struct SettingsView: View {
       return "Model, Prompt and Shortcut"
     case .speechToPrompt:
       return "Model, Prompt and Shortcut"
-    case .speechToPromptWithVoiceResponse:
-      return "Model, Prompt, Shortcut and Playback Speed"
     }
   }
 
@@ -133,7 +126,7 @@ struct SettingsView: View {
       if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
         window.makeKeyAndOrderFront(nil)
       }
-      focusedField = .apiKey
+      focusedField = .googleAPIKey
     }
   }
 

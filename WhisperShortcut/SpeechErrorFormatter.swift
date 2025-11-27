@@ -6,23 +6,12 @@ struct SpeechErrorFormatter {
   // MARK: - Constants
   private enum Constants {
     static let maxFileSize = "25MB"
-    static let openAIPlatformURL = "platform.openai.com"
-    static let billingPath = "Settings → Billing"
     static let slowDownWaitTime = "15 minutes"
   }
 
   /// Format a TranscriptionError into a user-friendly message
   static func format(_ error: TranscriptionError) -> String {
     switch error {
-    case .noOpenAIAPIKey:
-      return """
-        ⚠️ No OpenAI API Key Configured
-
-        You have selected an OpenAI model, but no OpenAI API key is configured.
-        Please open Settings and add your OpenAI API key in the "OpenAI API Key" section.
-        Without a valid OpenAI API key, OpenAI transcription cannot be performed.
-        """
-
     case .noGoogleAPIKey:
       return """
         ⚠️ No Google API Key Configured
@@ -37,7 +26,7 @@ struct SpeechErrorFormatter {
         ❌ Authentication Error
 
         Your API key is invalid or has expired.
-        Please check your OpenAI API key in Settings.
+        Please check your Google API key in Settings.
         """
 
     case .incorrectAPIKey:
@@ -53,7 +42,7 @@ struct SpeechErrorFormatter {
         ❌ Country Not Supported
 
         You are accessing the API from an unsupported country, region, or territory.
-        Please see OpenAI's documentation for supported regions.
+        Please see Google's documentation for supported regions.
         """
 
     case .invalidRequest:
@@ -87,18 +76,15 @@ struct SpeechErrorFormatter {
         You have exceeded the rate limit for this API.
 
         Common causes for new users:
-        • No billing method configured - OpenAI requires payment setup
+        • No billing method configured - Google requires payment setup
         • Account has no credits or usage quota reached
         • Too many requests in a short time period
 
         To resolve:
-        1. Visit \(Constants.openAIPlatformURL)
-        2. Go to \(Constants.billingPath)
+        1. Visit Google Cloud Console
+        2. Go to Billing settings
         3. Add a payment method
-        4. Purchase prepaid credits
-
-        Note: OpenAI no longer provides free trial credits.
-        You must add billing information to use the API.
+        4. Enable the Gemini API
 
         Please wait a moment and try again after setting up billing.
         """
@@ -110,8 +96,8 @@ struct SpeechErrorFormatter {
         You have exceeded your current quota. Please check your plan and billing details.
 
         To resolve:
-        1. Visit \(Constants.openAIPlatformURL)
-        2. Go to \(Constants.billingPath)
+        1. Visit Google Cloud Console
+        2. Go to Billing settings
         3. Check your current usage and limits
         4. Add more credits or upgrade your plan
 
@@ -122,7 +108,7 @@ struct SpeechErrorFormatter {
       return """
         ❌ Server Error (\(code))
 
-        An error occurred on OpenAI's servers.
+        An error occurred on Google's servers.
         Please try again later.
         """
 
@@ -130,7 +116,7 @@ struct SpeechErrorFormatter {
       return """
         🔄 Service Unavailable
 
-        OpenAI's service is temporarily unavailable.
+        Google's service is temporarily unavailable.
         Please try again in a few moments.
         """
 
@@ -149,7 +135,7 @@ struct SpeechErrorFormatter {
         The server took too long to start responding (over 60 seconds).
 
         This usually means:
-        • OpenAI servers are overloaded
+        • Google servers are overloaded
         • Your internet connection is very slow
         • The API endpoint is temporarily unavailable
 
@@ -168,7 +154,7 @@ struct SpeechErrorFormatter {
         This usually means:
         • Very large audio file (close to 20MB limit)
         • Slow internet connection during upload/download
-        • OpenAI processing is taking unusually long
+        • Google processing is taking unusually long
 
         Solutions:
         • Try with a shorter recording
@@ -252,16 +238,12 @@ struct SpeechErrorFormatter {
 
         Please record again. If the problem persists, the audio might be unclear.
         """
-    case .ttsError(let ttsError):
-      return formatTTSError(ttsError)
     }
   }
 
   /// Get a short status message for menu bar display
   static func shortStatus(_ error: TranscriptionError) -> String {
     switch error {
-    case .noOpenAIAPIKey:
-      return "⚠️ No OpenAI API Key"
     case .noGoogleAPIKey:
       return "⚠️ No Google API Key"
     case .invalidAPIKey:
@@ -296,62 +278,9 @@ struct SpeechErrorFormatter {
       return "🎤 Text Too Short"
     case .promptLeakDetected:
       return "⚠️ API Issue"
-    case .ttsError:
-      return "❌ TTS Error"
     default:
       return "❌ Error"
     }
   }
 
-  // MARK: - TTS Error Formatting
-  static func formatTTSError(_ ttsError: TTSError) -> String {
-    switch ttsError {
-    case .textTooLong(let characterCount, let maxLength):
-      return """
-        📏 Text Too Long for Speech
-
-        The selected text is too long to be read aloud.
-        
-        Current length: \(characterCount) characters
-        Maximum allowed: \(maxLength) characters
-        
-        Please select a shorter text or break it into smaller parts.
-        """
-    case .noAPIKey:
-      return """
-        ⚠️ No API Key for Speech
-
-        Please configure your OpenAI API key in Settings to use text-to-speech.
-        """
-    case .invalidInput:
-      return """
-        ❌ Invalid Text for Speech
-
-        The text cannot be converted to speech.
-        Please try with different text.
-        """
-    case .authenticationError:
-      return """
-        ❌ Speech Authentication Error
-
-        Your API key is invalid or has expired.
-        Please check your OpenAI API key in Settings.
-        """
-    case .networkError(let message):
-      return """
-        🌐 Speech Network Error
-
-        Error: \(message)
-        
-        Please check your internet connection and try again.
-        """
-    case .audioGenerationFailed:
-      return """
-        🔊 Speech Generation Failed
-
-        Unable to generate audio from the text.
-        Please try again or select different text.
-        """
-    }
-  }
 }

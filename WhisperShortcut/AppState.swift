@@ -14,20 +14,17 @@ enum AppState: Equatable {
   case idle
   case recording(RecordingMode)
   case processing(ProcessingMode)
-  case playback(PlaybackMode)
   case feedback(FeedbackMode)
 
   // MARK: - Recording States
   enum RecordingMode: Equatable {
     case transcription
     case prompt
-    case voiceResponse
 
     var icon: String {
       switch self {
       case .transcription: return "🔴"
       case .prompt: return "🤖"
-      case .voiceResponse: return "🔊"
       }
     }
 
@@ -35,7 +32,6 @@ enum AppState: Equatable {
       switch self {
       case .transcription: return "🔴 Recording for transcription..."
       case .prompt: return "🔴 Recording for AI prompt..."
-      case .voiceResponse: return "🔴 Recording for voice response..."
       }
     }
 
@@ -43,7 +39,6 @@ enum AppState: Equatable {
       switch self {
       case .transcription: return "Recording for transcription... Click to stop"
       case .prompt: return "Recording for AI prompt... Click to stop"
-      case .voiceResponse: return "Recording for voice response... Click to stop"
       }
     }
   }
@@ -52,8 +47,6 @@ enum AppState: Equatable {
   enum ProcessingMode: Equatable {
     case transcribing
     case prompting
-    case voiceResponding
-    case preparingTTS
 
     var icon: String { return "⏳" }
     var shouldBlink: Bool { return true }
@@ -62,8 +55,6 @@ enum AppState: Equatable {
       switch self {
       case .transcribing: return "⏳ Transcribing audio..."
       case .prompting: return "⏳ Processing AI prompt..."
-      case .voiceResponding: return "⏳ Processing voice response..."
-      case .preparingTTS: return "⏳ Preparing speech..."
       }
     }
 
@@ -71,28 +62,6 @@ enum AppState: Equatable {
       switch self {
       case .transcribing: return "Transcribing audio... Please wait"
       case .prompting: return "Processing AI prompt... Please wait"
-      case .voiceResponding: return "Processing voice response... Please wait"
-      case .preparingTTS: return "Preparing speech... Please wait"
-      }
-    }
-  }
-
-  // MARK: - Playback States
-  enum PlaybackMode: Equatable {
-    case voiceResponse
-
-    var icon: String { return "🔊" }
-    var shouldBlink: Bool { return false }
-
-    var statusText: String {
-      switch self {
-      case .voiceResponse: return "🔊 Playing voice response..."
-      }
-    }
-
-    var tooltip: String {
-      switch self {
-      case .voiceResponse: return "Playing voice response... Click to stop"
       }
     }
   }
@@ -140,7 +109,6 @@ extension AppState {
     case .idle: return "🎙️"
     case .recording(let mode): return mode.icon
     case .processing(let mode): return mode.icon
-    case .playback(let mode): return mode.icon
     case .feedback(let mode): return mode.icon
     }
   }
@@ -151,7 +119,6 @@ extension AppState {
     case .idle: return "Ready to record"
     case .recording(let mode): return mode.statusText
     case .processing(let mode): return mode.statusText
-    case .playback(let mode): return mode.statusText
     case .feedback(let mode): return mode.statusText
     }
   }
@@ -162,7 +129,6 @@ extension AppState {
     case .idle: return "WhisperShortcut - Click to record"
     case .recording(let mode): return mode.tooltip
     case .processing(let mode): return mode.tooltip
-    case .playback(let mode): return mode.tooltip
     case .feedback(let mode): return mode.tooltip
     }
   }
@@ -171,7 +137,6 @@ extension AppState {
   var shouldBlink: Bool {
     switch self {
     case .processing(let mode): return mode.shouldBlink
-    case .playback(let mode): return mode.shouldBlink
     default: return false
     }
   }
@@ -196,21 +161,9 @@ extension AppState {
     return false
   }
 
-  /// Whether currently playing audio
-  var isPlayingAudio: Bool {
-    if case .playback = self { return true }
-    return false
-  }
-
   /// Current recording mode if recording
   var recordingMode: RecordingMode? {
     if case .recording(let mode) = self { return mode }
-    return nil
-  }
-
-  /// Current playback mode if playing
-  var playbackMode: PlaybackMode? {
-    if case .playback(let mode) = self { return mode }
     return nil
   }
 }
@@ -231,27 +184,12 @@ extension AppState {
     switch recordingMode {
     case .transcription: processingMode = .transcribing
     case .prompt: processingMode = .prompting
-    case .voiceResponse: processingMode = .voiceResponding
     }
 
     return .processing(processingMode)
   }
 
-  /// Start audio playback
-  func startPlayback(_ mode: PlaybackMode) -> AppState {
-    return .playback(mode)
-  }
 
-  /// Stop audio playback
-  func stopPlayback() -> AppState {
-    guard case .playback = self else { return self }
-    return .idle
-  }
-
-  /// Start TTS preparation
-  func startTTSPreparation() -> AppState {
-    return .processing(.preparingTTS)
-  }
 
   /// Show success feedback
   func showSuccess(_ message: String) -> AppState {
@@ -286,20 +224,9 @@ extension AppState {
     return !isBusy && hasAPIKey
   }
 
-  /// Whether voice response can be started
-  func canStartVoiceResponse(hasAPIKey: Bool) -> Bool {
-    return !isBusy && hasAPIKey
-  }
-
-
   /// Whether current recording can be stopped
   var canStopRecording: Bool {
     return isRecording
-  }
-
-  /// Whether current playback can be stopped
-  var canStopPlayback: Bool {
-    return isPlayingAudio
   }
 }
 
@@ -310,7 +237,6 @@ extension AppState: CustomStringConvertible {
     case .idle: return "idle"
     case .recording(let mode): return "recording(\(mode))"
     case .processing(let mode): return "processing(\(mode))"
-    case .playback(let mode): return "playback(\(mode))"
     case .feedback(let mode): return "feedback(\(mode))"
     }
   }
@@ -321,7 +247,6 @@ extension AppState.RecordingMode: CustomStringConvertible {
     switch self {
     case .transcription: return "transcription"
     case .prompt: return "prompt"
-    case .voiceResponse: return "voiceResponse"
     }
   }
 }
@@ -331,16 +256,6 @@ extension AppState.ProcessingMode: CustomStringConvertible {
     switch self {
     case .transcribing: return "transcribing"
     case .prompting: return "prompting"
-    case .voiceResponding: return "voiceResponding"
-    case .preparingTTS: return "preparingTTS"
-    }
-  }
-}
-
-extension AppState.PlaybackMode: CustomStringConvertible {
-  var description: String {
-    switch self {
-    case .voiceResponse: return "voiceResponse"
     }
   }
 }

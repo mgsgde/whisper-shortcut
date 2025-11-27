@@ -9,7 +9,6 @@
  *   node capture-all.js                    # Capture all screenshots
  *   node capture-all.js speech-to-text     # Capture specific screenshot
  *   node capture-all.js speech-to-prompt   # Capture specific screenshot
- *   node capture-all.js powered-by-openai  # Capture specific screenshot
  *   node capture-all.js powered-by-gemini  # Capture specific screenshot
  */
 
@@ -27,11 +26,6 @@ const screenshots = [
     name: 'speech-to-prompt', 
     html: 'speech-to-prompt.html',
     output: 'speech-to-prompt.png'
-  },
-  {
-    name: 'powered-by-openai',
-    html: 'powered-by-openai.html', 
-    output: 'powered-by-openai.png'
   },
   {
     name: 'powered-by-gemini',

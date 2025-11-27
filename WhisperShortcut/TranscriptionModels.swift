@@ -9,25 +9,13 @@ import Foundation
 
 // MARK: - Transcription Model Enum
 enum TranscriptionModel: String, CaseIterable {
-  case gpt4oTranscribe = "gpt-4o-transcribe"
-  case gpt4oMiniTranscribe = "gpt-4o-mini-transcribe"
   case gemini20Flash = "gemini-2.0-flash"
   case gemini20FlashLite = "gemini-2.0-flash-lite"
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
-  case gemini25Pro = "gemini-2.5-pro"
-  case gemini35Pro = "gemini-3.5-pro"
-  // TTS-enabled models (native audio output support)
-  case gemini25FlashTTS = "gemini-2.5-flash-preview-tts"
-  case gemini25ProTTS = "gemini-2.5-pro-preview-tts"
-  case gemini35ProTTS = "gemini-3.5-pro-preview-tts"
 
   var displayName: String {
     switch self {
-    case .gpt4oTranscribe:
-      return "GPT-4o Transcribe"
-    case .gpt4oMiniTranscribe:
-      return "GPT-4o Mini Transcribe"
     case .gemini20Flash:
       return "Gemini 2.0 Flash"
     case .gemini20FlashLite:
@@ -36,23 +24,11 @@ enum TranscriptionModel: String, CaseIterable {
       return "Gemini 2.5 Flash"
     case .gemini25FlashLite:
       return "Gemini 2.5 Flash-Lite"
-    case .gemini25Pro:
-      return "Gemini 2.5 Pro"
-    case .gemini35Pro:
-      return "Gemini 3.5 Pro"
-    case .gemini25FlashTTS:
-      return "Gemini 2.5 Flash (TTS)"
-    case .gemini25ProTTS:
-      return "Gemini 2.5 Pro (TTS)"
-    case .gemini35ProTTS:
-      return "Gemini 3.5 Pro (TTS)"
     }
   }
 
   var apiEndpoint: String {
     switch self {
-    case .gpt4oTranscribe, .gpt4oMiniTranscribe:
-      return "https://api.openai.com/v1/audio/transcriptions"
     case .gemini20Flash:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
     case .gemini20FlashLite:
@@ -61,195 +37,50 @@ enum TranscriptionModel: String, CaseIterable {
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     case .gemini25FlashLite:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
-    case .gemini25Pro:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
-    case .gemini35Pro:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-pro:generateContent"
-    case .gemini25FlashTTS:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent"
-    case .gemini25ProTTS:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-tts:generateContent"
-    case .gemini35ProTTS:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-pro-preview-tts:generateContent"
     }
   }
 
   var isRecommended: Bool {
     switch self {
-    case .gpt4oMiniTranscribe:
+    case .gemini20Flash:
       return true
-    case .gpt4oTranscribe, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25Pro, .gemini35Pro, .gemini25FlashTTS, .gemini25ProTTS, .gemini35ProTTS:
+    case .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
       return false
     }
   }
 
   var costLevel: String {
     switch self {
-    case .gpt4oMiniTranscribe, .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini25FlashTTS:
+    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
       return "Low"
-    case .gpt4oTranscribe, .gemini25Pro, .gemini35Pro, .gemini25ProTTS, .gemini35ProTTS:
-      return "Medium"
     }
   }
 
   var description: String {
     switch self {
-    case .gpt4oTranscribe:
-      return "Highest accuracy and quality • Best for critical applications"
-    case .gpt4oMiniTranscribe:
-      return "Recommended • Great quality at lower cost • Best for everyday use"
     case .gemini20Flash:
-      return "Google's Gemini 2.0 model • Fast and efficient • Alternative to OpenAI"
+      return "Google's Gemini 2.0 Flash model • Fast and efficient"
     case .gemini20FlashLite:
       return "Google's Gemini 2.0 Flash-Lite model • Fastest latency • Cost-efficient"
     case .gemini25Flash:
-      return "Google's Gemini 2.5 model • Fast and efficient • Alternative to OpenAI"
+      return "Google's Gemini 2.5 Flash model • Fast and efficient"
     case .gemini25FlashLite:
-      return "Google's fastest Gemini model • Superior latency • Cost-efficient • Best for high-volume transcription"
-    case .gemini25Pro:
-      return "Google's Gemini 2.5 Pro model • Higher quality • Best for complex tasks • Multimodal audio processing"
-    case .gemini35Pro:
-      return "Google's Gemini 3.5 Pro model • Highest quality • Best for complex tasks • Multimodal audio processing"
-    case .gemini25FlashTTS:
-      return "Gemini 2.5 Flash with native audio output • Fast • TTS-enabled for Voice Response"
-    case .gemini25ProTTS:
-      return "Gemini 2.5 Pro with native audio output • Higher quality • TTS-enabled for Voice Response"
-    case .gemini35ProTTS:
-      return "Gemini 3.5 Pro with native audio output • Highest quality • TTS-enabled for Voice Response"
+      return "Google's Gemini 2.5 Flash-Lite model • Fastest latency • Cost-efficient"
     }
   }
   
   var isGemini: Bool {
-    return self == .gemini20Flash || self == .gemini20FlashLite || self == .gemini25Flash || self == .gemini25FlashLite || self == .gemini25Pro || self == .gemini35Pro || self == .gemini25FlashTTS || self == .gemini25ProTTS || self == .gemini35ProTTS
+    return true
   }
   
   var isGeminiTTS: Bool {
-    return self == .gemini25FlashTTS || self == .gemini25ProTTS || self == .gemini35ProTTS
+    return false
   }
 }
 
 // MARK: - Transcription Response
 struct WhisperResponse: Codable {
   let text: String
-}
-
-// MARK: - GPT-Audio Chat Completion Request
-struct GPTAudioChatRequest: Codable {
-  let model: String
-  let messages: [GPTAudioMessage]
-  let modalities: [String]?
-  let audio: AudioConfig?
-  
-  struct AudioConfig: Codable {
-    let voice: String
-    let format: String
-  }
-  
-  struct GPTAudioMessage: Codable {
-    let role: String
-    let content: MessageContent
-    
-    enum MessageContent: Codable {
-      case text(String)
-      case multiContent([ContentPart])
-      
-      func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .text(let string):
-          try container.encode(string)
-        case .multiContent(let parts):
-          try container.encode(parts)
-        }
-      }
-      
-      init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let string = try? container.decode(String.self) {
-          self = .text(string)
-        } else if let parts = try? container.decode([ContentPart].self) {
-          self = .multiContent(parts)
-        } else {
-          throw DecodingError.dataCorruptedError(
-            in: container,
-            debugDescription: "Invalid message content"
-          )
-        }
-      }
-    }
-    
-    struct ContentPart: Codable {
-      let type: String
-      let text: String?
-      let input_audio: InputAudio?
-      
-      struct InputAudio: Codable {
-        let data: String
-        let format: String
-      }
-    }
-  }
-}
-
-// MARK: - GPT-Audio Chat Completion Response
-struct GPTAudioChatResponse: Codable {
-  let choices: [GPTAudioChoice]
-  
-  struct GPTAudioChoice: Codable {
-    let message: GPTAudioResponseMessage
-    
-    struct GPTAudioResponseMessage: Codable {
-      let content: ResponseContent?
-      let audio: AudioOutput?
-    }
-    
-    enum ResponseContent: Codable {
-      case text(String)
-      case multiContent([ResponseContentPart])
-      
-      func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .text(let string):
-          try container.encode(string)
-        case .multiContent(let parts):
-          try container.encode(parts)
-        }
-      }
-      
-      init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let string = try? container.decode(String.self) {
-          self = .text(string)
-        } else if let parts = try? container.decode([ResponseContentPart].self) {
-          self = .multiContent(parts)
-        } else {
-          throw DecodingError.dataCorruptedError(
-            in: container,
-            debugDescription: "Invalid response content"
-          )
-        }
-      }
-    }
-    
-    struct ResponseContentPart: Codable {
-      let type: String
-      let text: String?
-      let audio: AudioContentPart?
-    }
-    
-    struct AudioContentPart: Codable {
-      let data: String
-      let transcript: String?
-    }
-    
-    struct AudioOutput: Codable {
-      let id: String
-      let data: String
-      let transcript: String?
-      let expires_at: Int?
-    }
-  }
 }
 
 // MARK: - Chat Completions API Models
@@ -273,17 +104,6 @@ struct Usage: Codable {
   let prompt_tokens: Int?
   let completion_tokens: Int?
   let total_tokens: Int?
-}
-
-// MARK: - Error Response Models
-struct OpenAIErrorResponse: Codable {
-  let error: OpenAIError?
-}
-
-struct OpenAIError: Codable {
-  let message: String?
-  let type: String?
-  let code: String?
 }
 
 // MARK: - Gemini Response Models
@@ -529,7 +349,6 @@ struct GeminiChatResponse: Codable {
 
 // MARK: - Transcription Error
 enum TranscriptionError: Error, Equatable {
-  case noOpenAIAPIKey
   case noGoogleAPIKey
   case invalidAPIKey
   case incorrectAPIKey
@@ -551,11 +370,9 @@ enum TranscriptionError: Error, Equatable {
   case noSpeechDetected
   case textTooShort
   case promptLeakDetected
-  case ttsError(TTSError)
 
   var title: String {
     switch self {
-    case .noOpenAIAPIKey: return "No OpenAI API Key"
     case .noGoogleAPIKey: return "No Google API Key"
     case .invalidAPIKey: return "Invalid Authentication"
     case .incorrectAPIKey: return "Incorrect API Key"
@@ -577,7 +394,6 @@ enum TranscriptionError: Error, Equatable {
     case .noSpeechDetected: return "No Speech Detected"
     case .textTooShort: return "Text Too Short"
     case .promptLeakDetected: return "API Response Issue"
-    case .ttsError: return "Text-to-Speech Error"
     }
   }
 }

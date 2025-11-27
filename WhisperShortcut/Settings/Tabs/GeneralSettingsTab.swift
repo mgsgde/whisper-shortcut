@@ -31,18 +31,6 @@ struct GeneralSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
-      // API Key Section
-      apiKeySection
-
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
-
       // Popup Notifications Section
       popupNotificationsSection
 
@@ -85,72 +73,6 @@ struct GeneralSettingsTab: View {
 
         Spacer()
       }
-    }
-  }
-
-  // MARK: - API Key Section
-  @ViewBuilder
-  private var apiKeySection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "🔑 OpenAI API Key",
-        subtitle: "Required for transcription and AI assistant functionality"
-      )
-
-      HStack(alignment: .center, spacing: 16) {
-        Text("API Key:")
-          .font(.body)
-          .fontWeight(.medium)
-          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
-          .textSelection(.enabled)
-
-        TextField("sk-...", text: $viewModel.data.apiKey)
-          .textFieldStyle(.roundedBorder)
-          .font(.system(.body, design: .monospaced))
-          .frame(height: SettingsConstants.textFieldHeight)
-          .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
-          .onAppear {
-            viewModel.data.apiKey = KeychainManager.shared.getAPIKey() ?? ""
-          }
-          .focused($focusedField, equals: .apiKey)
-          .onChange(of: viewModel.data.apiKey) { _, newValue in
-            // Auto-save API key to keychain
-            Task {
-              _ = KeychainManager.shared.saveAPIKey(newValue)
-            }
-          }
-
-        Spacer()
-      }
-
-      HStack(spacing: 0) {
-        Text("Need an API key? Get one at ")
-          .font(.callout)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
-
-        Link(
-          destination: URL(string: "https://platform.openai.com/account/api-keys")!
-        ) {
-          Text("platform.openai.com/account/api-keys")
-            .font(.callout)
-            .foregroundColor(.blue)
-            .underline()
-            .textSelection(.enabled)
-        }
-        .onHover { isHovered in
-          if isHovered {
-            NSCursor.pointingHand.push()
-          } else {
-            NSCursor.pop()
-          }
-        }
-
-        Text(" 💡")
-          .font(.callout)
-          .foregroundColor(.secondary)
-      }
-      .fixedSize(horizontal: false, vertical: true)
     }
   }
 

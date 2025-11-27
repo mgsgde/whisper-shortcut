@@ -109,7 +109,7 @@ struct PromptModelSelectionView: View {
 #if DEBUG
   struct PromptModelSelectionView_Previews: PreviewProvider {
     static var previews: some View {
-      @State var selectedModel: PromptModel = .gptAudioMini
+      @State var selectedModel: PromptModel = .gemini20Flash
 
       PromptModelSelectionView(title: "Model Selection", selectedModel: $selectedModel)
         .padding()

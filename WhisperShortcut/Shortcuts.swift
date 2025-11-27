@@ -4,7 +4,6 @@ import HotKey
 protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
-  func toggleVoiceResponse()
 }
 
 // Configurable shortcuts using ShortcutConfigManager
@@ -13,7 +12,6 @@ class Shortcuts {
 
   private var toggleDictationKey: HotKey?
   private var togglePromptingKey: HotKey?
-  private var toggleVoiceResponseKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -56,14 +54,6 @@ class Shortcuts {
       }
     }
 
-    if config.startVoiceResponse.isEnabled {
-      toggleVoiceResponseKey = HotKey(
-        key: config.startVoiceResponse.key, modifiers: config.startVoiceResponse.modifiers)
-      toggleVoiceResponseKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.toggleVoiceResponse()
-      }
-    }
-
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -77,7 +67,6 @@ class Shortcuts {
   func cleanup() {
     toggleDictationKey = nil
     togglePromptingKey = nil
-    toggleVoiceResponseKey = nil
   }
 
   deinit {

@@ -20,11 +20,9 @@ class SettingsViewModel: ObservableObject {
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     data.toggleDictation = currentConfig.startRecording.textDisplayString
     data.togglePrompting = currentConfig.startPrompting.textDisplayString
-    data.toggleVoiceResponse = currentConfig.startVoiceResponse.textDisplayString
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
-    data.toggleVoiceResponseEnabled = currentConfig.startVoiceResponse.isEnabled
 
     // Load transcription model preference
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
@@ -44,27 +42,6 @@ class SettingsViewModel: ObservableObject {
       data.selectedPromptModel = SettingsDefaults.selectedPromptModel
     }
 
-    // Load Voice Response model preference (for Voice Response Mode)
-    // Support migration from old key "selectedGPTAudioModel" to new key "selectedVoiceResponseModel"
-    var savedModelString = UserDefaults.standard.string(forKey: "selectedVoiceResponseModel")
-    if savedModelString == nil {
-      // Try old key for migration
-      savedModelString = UserDefaults.standard.string(forKey: "selectedGPTAudioModel")
-      if let oldValue = savedModelString {
-        // Migrate to new key
-        UserDefaults.standard.set(oldValue, forKey: "selectedVoiceResponseModel")
-        UserDefaults.standard.removeObject(forKey: "selectedGPTAudioModel")
-      }
-    }
-    
-    if let modelString = savedModelString,
-      let savedModel = VoiceResponseModel(rawValue: modelString)
-    {
-      data.selectedVoiceResponseModel = savedModel
-    } else {
-      data.selectedVoiceResponseModel = SettingsDefaults.selectedVoiceResponseModel
-    }
-
     // Load custom prompt (with fallback to default)
     data.customPromptText = UserDefaults.standard.string(forKey: "customPromptText") 
       ?? AppConstants.defaultTranscriptionSystemPrompt
@@ -76,33 +53,6 @@ class SettingsViewModel: ObservableObject {
     data.promptModeSystemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
       ?? AppConstants.defaultPromptModeSystemPrompt
 
-    // Load voice response system prompt (with fallback to default)
-    data.voiceResponseSystemPrompt = UserDefaults.standard.string(forKey: "voiceResponseSystemPrompt")
-      ?? AppConstants.defaultVoiceResponseSystemPrompt
-
-
-
-    // Load separated conversation timeouts
-    let savedPromptTimeout = UserDefaults.standard.double(
-      forKey: "promptConversationTimeoutMinutes")
-    if savedPromptTimeout >= 0 {
-      data.promptConversationTimeout =
-        ConversationTimeout(rawValue: savedPromptTimeout)
-        ?? SettingsDefaults.promptConversationTimeout
-    } else {
-      data.promptConversationTimeout = SettingsDefaults.promptConversationTimeout
-    }
-
-    let savedVoiceResponseTimeout = UserDefaults.standard.double(
-      forKey: "voiceResponseConversationTimeoutMinutes")
-    if savedVoiceResponseTimeout >= 0 {
-      data.voiceResponseConversationTimeout =
-        ConversationTimeout(rawValue: savedVoiceResponseTimeout)
-        ?? SettingsDefaults.voiceResponseConversationTimeout
-    } else {
-      data.voiceResponseConversationTimeout = SettingsDefaults.voiceResponseConversationTimeout
-    }
-
     // Load reasoning effort settings
     if let savedPromptReasoningEffort = UserDefaults.standard.string(forKey: "promptReasoningEffort"),
       let promptEffort = ReasoningEffort(rawValue: savedPromptReasoningEffort)
@@ -110,14 +60,6 @@ class SettingsViewModel: ObservableObject {
       data.promptReasoningEffort = promptEffort
     } else {
       data.promptReasoningEffort = SettingsDefaults.promptReasoningEffort
-    }
-
-    if let savedVoiceResponseReasoningEffort = UserDefaults.standard.string(forKey: "voiceResponseReasoningEffort"),
-      let voiceResponseEffort = ReasoningEffort(rawValue: savedVoiceResponseReasoningEffort)
-    {
-      data.voiceResponseReasoningEffort = voiceResponseEffort
-    } else {
-      data.voiceResponseReasoningEffort = SettingsDefaults.voiceResponseReasoningEffort
     }
 
     // Load popup notifications setting
@@ -156,9 +98,6 @@ class SettingsViewModel: ObservableObject {
       data.errorNotificationDuration = SettingsDefaults.errorNotificationDuration
     }
 
-    // Load API key
-    data.apiKey = KeychainManager.shared.getAPIKey() ?? ""
-    
     // Load Google API key
     data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
     
@@ -168,33 +107,15 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Validation
   func validateSettings() -> String? {
-    // Context-aware API key validation
-    let usesOpenAI = !data.selectedTranscriptionModel.isGemini || 
-                     !data.selectedPromptModel.isGemini || 
-                     !data.selectedVoiceResponseModel.isGemini
-                     
-    let usesGemini = data.selectedTranscriptionModel.isGemini || 
-                     data.selectedPromptModel.isGemini || 
-                     data.selectedVoiceResponseModel.isGemini
-
-    // Validate OpenAI API key if an OpenAI model is selected
-    if usesOpenAI {
-      guard !data.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        var services = [String]()
-        if !data.selectedTranscriptionModel.isGemini { services.append("Transcription") }
-        if !data.selectedPromptModel.isGemini { services.append("Prompt") }
-        if !data.selectedVoiceResponseModel.isGemini { services.append("Voice Response") }
-        return "Please enter your OpenAI API key (required for \(services.joined(separator: ", ")))"
-      }
-    }
-    
     // Validate Google API key if a Gemini model is selected
+    let usesGemini = data.selectedTranscriptionModel.isGemini || 
+                     data.selectedPromptModel.isGemini
+
     if usesGemini {
       guard !data.googleAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         var services = [String]()
         if data.selectedTranscriptionModel.isGemini { services.append("Transcription") }
         if data.selectedPromptModel.isGemini { services.append("Prompt") }
-        if data.selectedVoiceResponseModel.isGemini { services.append("Voice Response") }
         return "Please enter your Google API key (required for \(services.joined(separator: ", ")))"
       }
     }
@@ -211,13 +132,6 @@ class SettingsViewModel: ObservableObject {
         return "Please enter a toggle prompting shortcut"
       }
     }
-
-    if data.toggleVoiceResponseEnabled {
-      guard !data.toggleVoiceResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a toggle voice response shortcut"
-      }
-    }
-
 
     // Validate shortcut parsing
     let shortcuts = parseShortcuts()
@@ -283,8 +197,6 @@ class SettingsViewModel: ObservableObject {
       return name == "toggle dictation"
     case .togglePrompting:
       return name == "toggle prompting"
-    case .toggleVoiceResponse:
-      return name == "toggle voice response"
     default:
       return false
     }
@@ -299,9 +211,6 @@ class SettingsViewModel: ObservableObject {
       "toggle prompting": data.togglePromptingEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.togglePrompting)
         : ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
-      "toggle voice response": data.toggleVoiceResponseEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.toggleVoiceResponse)
-        : ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
     ]
   }
 
@@ -317,9 +226,6 @@ class SettingsViewModel: ObservableObject {
       return error
     }
 
-    // Save API key
-    _ = KeychainManager.shared.saveAPIKey(data.apiKey)
-    
     // Save Google API key
     _ = KeychainManager.shared.saveGoogleAPIKey(data.googleAPIKey)
 
@@ -327,24 +233,14 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(
       data.selectedTranscriptionModel.rawValue, forKey: "selectedTranscriptionModel")
     UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: "selectedPromptModel")
-    UserDefaults.standard.set(data.selectedVoiceResponseModel.rawValue, forKey: "selectedVoiceResponseModel")
     
     // Save reasoning effort settings
     UserDefaults.standard.set(data.promptReasoningEffort.rawValue, forKey: "promptReasoningEffort")
-    UserDefaults.standard.set(data.voiceResponseReasoningEffort.rawValue, forKey: "voiceResponseReasoningEffort")
 
     // Save prompts
     UserDefaults.standard.set(data.customPromptText, forKey: "customPromptText")
     UserDefaults.standard.set(data.dictationDifficultWords, forKey: "dictationDifficultWords")
     UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: "promptModeSystemPrompt")
-    UserDefaults.standard.set(data.voiceResponseSystemPrompt, forKey: "voiceResponseSystemPrompt")
-
-    // Save separated conversation timeouts
-    UserDefaults.standard.set(
-      data.promptConversationTimeout.rawValue, forKey: "promptConversationTimeoutMinutes")
-    UserDefaults.standard.set(
-      data.voiceResponseConversationTimeout.rawValue,
-      forKey: "voiceResponseConversationTimeoutMinutes")
 
     // Save popup notifications setting
     UserDefaults.standard.set(data.showPopupNotifications, forKey: "showPopupNotifications")
@@ -364,11 +260,7 @@ class SettingsViewModel: ObservableObject {
       startPrompting: shortcuts["toggle prompting"]!
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
       stopPrompting: shortcuts["toggle prompting"]!
-        ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
-      startVoiceResponse: shortcuts["toggle voice response"]!
-        ?? ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false),
-      stopVoiceResponse: shortcuts["toggle voice response"]!
-        ?? ShortcutDefinition(key: .s, modifiers: [.command, .shift], isEnabled: false)
+        ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 

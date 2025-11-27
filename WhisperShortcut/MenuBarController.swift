@@ -30,7 +30,6 @@ class MenuBarController: NSObject {
   private let audioRecorder: AudioRecorder
   private let speechService: SpeechService
   private let clipboardManager: ClipboardManager
-  private let audioPlaybackService: AudioPlaybackService
   private let shortcuts: Shortcuts
   private let reviewPrompter: ReviewPrompter
 
@@ -41,12 +40,10 @@ class MenuBarController: NSObject {
     audioRecorder: AudioRecorder = AudioRecorder(),
     speechService: SpeechService? = nil,
     clipboardManager: ClipboardManager = ClipboardManager(),
-    audioPlaybackService: AudioPlaybackService = AudioPlaybackService.shared,
     shortcuts: Shortcuts = Shortcuts()
   ) {
     self.audioRecorder = audioRecorder
     self.clipboardManager = clipboardManager
-    self.audioPlaybackService = audioPlaybackService
     self.shortcuts = shortcuts
     self.reviewPrompter = ReviewPrompter.shared
     self.currentConfig = ShortcutConfigManager.shared.loadConfiguration()
@@ -97,10 +94,6 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Toggle Prompting", action: #selector(togglePrompting),
         shortcut: currentConfig.startPrompting, tag: 102))
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Toggle Voice Response", action: #selector(toggleVoiceResponse),
-        shortcut: currentConfig.startVoiceResponse, tag: 103))
 
     menu.addItem(NSMenuItem.separator())
 
@@ -192,18 +185,6 @@ class MenuBarController: NSObject {
   }
 
   private func setupNotifications() {
-    let notifications = [
-      ("VoicePlaybackStarted", #selector(handleVoicePlaybackStarted)),
-      ("VoicePlaybackStopped", #selector(handleVoicePlaybackStopped)),
-      ("VoiceResponseReadyToSpeak", #selector(voiceResponseReadyToSpeak)),
-      ("VoicePlaybackStartedWithText", #selector(voicePlaybackStartedWithText(_:))),
-    ]
-
-    for (name, selector) in notifications {
-      NotificationCenter.default.addObserver(
-        self, selector: selector, name: NSNotification.Name(name), object: nil)
-    }
-
     // Listen for API key updates and shortcut changes
     NotificationCenter.default.addObserver(
       self,
@@ -258,7 +239,7 @@ class MenuBarController: NSObject {
   private func updateMenuItems() {
     guard let menu = statusItem?.menu else { return }
 
-    let hasAPIKey = KeychainManager.shared.hasAPIKey()
+    let hasAPIKey = KeychainManager.shared.hasGoogleAPIKey()
 
     // Update status
     menu.item(withTag: 100)?.title = appState.statusText
@@ -277,12 +258,6 @@ class MenuBarController: NSObject {
       enabled: appState.canStartPrompting(hasAPIKey: hasAPIKey) || appState.recordingMode == .prompt
     )
 
-    updateMenuItem(
-      menu, tag: 103,
-      title: getVoiceResponseTitle(),
-      enabled: appState.canStartVoiceResponse(hasAPIKey: hasAPIKey)
-        || appState.recordingMode == .voiceResponse || appState.playbackMode == .voiceResponse)
-
     // Handle special case when no API key is configured
     if !hasAPIKey, let button = statusItem?.button {
       button.title = "⚠️"
@@ -294,16 +269,6 @@ class MenuBarController: NSObject {
     guard let item = menu.item(withTag: tag) else { return }
     item.title = title
     item.isEnabled = enabled
-  }
-
-  private func getVoiceResponseTitle() -> String {
-    if appState.recordingMode == .voiceResponse {
-      return "Stop Voice Response"
-    } else if appState.playbackMode == .voiceResponse {
-      return "Stop Voice Playback"
-    } else {
-      return "Start Voice Response"
-    }
   }
 
   private func updateBlinking() {
@@ -379,32 +344,6 @@ class MenuBarController: NSObject {
       break
     }
   }
-
-  @objc internal func toggleVoiceResponse() {
-    // Cancel if currently processing voice response or preparing TTS
-    if case .processing(let mode) = appState, 
-       mode == .voiceResponding || mode == .preparingTTS {
-      speechService.cancelVoiceResponse()
-      appState = .idle
-      PopupNotificationWindow.showCancelled("Voice response cancelled")
-      return
-    }
-    
-    if appState.recordingMode == .voiceResponse {
-      audioRecorder.stopRecording()
-    } else if appState.playbackMode == .voiceResponse {
-      audioPlaybackService.stopPlayback()
-    } else if appState.canStartVoiceResponse(hasAPIKey: KeychainManager.shared.hasAPIKey()) {
-      // Check accessibility permission first
-      if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-        return
-      }
-      simulateCopyPaste()
-      appState = appState.startRecording(.voiceResponse)
-      audioRecorder.startRecording()
-    }
-  }
-
 
   @objc private func openSettings() {
     SettingsManager.shared.showSettings()
@@ -511,77 +450,6 @@ class MenuBarController: NSObject {
     try? FileManager.default.removeItem(at: audioURL)
   }
 
-  private func performVoiceResponse(audioURL: URL) async {
-    do {
-      // Keep processing(voiceResponding) state for blinking - don't change to preparingTTS
-      _ = try await speechService.executePromptWithVoiceResponse(audioURL: audioURL)
-      
-      // Record successful operation for review prompt
-      reviewPrompter.recordSuccessfulOperation(window: statusItem?.button?.window)
-
-      // State will be updated to playback by notification handlers
-    } catch is CancellationError {
-      // Task was cancelled - just cleanup and return to idle
-      DebugLogger.log("CANCELLATION: Voice response task was cancelled")
-      await MainActor.run {
-        self.appState = .idle
-      }
-    } catch {
-      await MainActor.run {
-        let errorMessage: String
-        let shortTitle: String
-
-        if let transcriptionError = error as? TranscriptionError {
-          errorMessage = SpeechErrorFormatter.format(transcriptionError)
-          shortTitle = SpeechErrorFormatter.shortStatus(transcriptionError)
-        } else {
-          errorMessage = "Voice response failed: \(error.localizedDescription)"
-          shortTitle = "Voice Response Error"
-        }
-
-        // Copy error message to clipboard
-        self.clipboardManager.copyToClipboard(text: errorMessage)
-
-        // Show error popup notification
-        PopupNotificationWindow.showError(errorMessage, title: shortTitle)
-
-        self.appState = self.appState.showError(errorMessage)
-      }
-    }
-
-    try? FileManager.default.removeItem(at: audioURL)
-  }
-
-
-  // MARK: - Notification Handlers (Simple State Updates)
-  @objc private func handleVoicePlaybackStarted() {
-    appState = appState.startPlayback(.voiceResponse)
-  }
-
-  @objc private func handleVoicePlaybackStopped() {
-    appState = appState.stopPlayback()
-  }
-
-
-  // MARK: - TTS Ready Handlers (Keep Processing State for Blinking)
-  @objc private func voiceResponseReadyToSpeak() {
-    // TTS is ready but keep processing state with blinking until actual playback starts
-    
-    // DO NOT change state here - let VoicePlaybackStarted handle the transition
-  }
-
-  @objc private func voicePlaybackStartedWithText(_ notification: Notification) {
-    DispatchQueue.main.async {
-      // Extract the response text from the notification
-      if let userInfo = notification.userInfo,
-        let responseText = userInfo["responseText"] as? String
-      {
-        // Show popup notification synchronized with audio playback
-        let modelInfo = self.speechService.getVoiceResponseModelInfo()
-        PopupNotificationWindow.showVoiceResponse(responseText, modelInfo: modelInfo)
-      }
-    }
-  }
 
 
   @objc private func apiKeyUpdated() {
@@ -647,8 +515,6 @@ extension MenuBarController: AudioRecorderDelegate {
         await performTranscription(audioURL: audioURL)
       case .prompt:
         await performPrompting(audioURL: audioURL)
-      case .voiceResponse:
-        await performVoiceResponse(audioURL: audioURL)
       }
     }
   }
@@ -661,5 +527,5 @@ extension MenuBarController: AudioRecorderDelegate {
 // MARK: - ShortcutDelegate (Simple Forwarding)
 extension MenuBarController: ShortcutDelegate {
   func toggleDictation() { toggleTranscription() }
-  // togglePrompting and toggleVoiceResponse are already implemented above
+  // togglePrompting is already implemented above
 }

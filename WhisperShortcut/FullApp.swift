@@ -24,7 +24,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Microphone permission will be requested automatically when recording starts
 
     // First check if API key exists without triggering a prompt
-    if KeychainManager.shared.hasAPIKey() {
+    if KeychainManager.shared.hasGoogleAPIKey() {
 
       // Now read the key (this will cache it and avoid future prompts)
       _ = KeychainManager.shared.getAPIKey()
