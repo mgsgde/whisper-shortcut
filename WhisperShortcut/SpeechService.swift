@@ -240,7 +240,22 @@ class SpeechService {
     // Build current user message parts
     var userParts: [GeminiChatRequest.GeminiChatPart] = []
     
-    // Add audio input first
+    // Add clipboard context FIRST (so Gemini knows the context before processing audio)
+    if let context = clipboardContext {
+      DebugLogger.log("PROMPT-MODE-GEMINI: Adding clipboard context to request (length: \(context.count) chars)")
+      let contextText = """
+      IMPORTANT: Apply the voice instruction you will hear to the following text:
+      
+      \(context)
+      
+      Process the text above according to the voice instruction.
+      """
+      userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
+    } else {
+      DebugLogger.log("PROMPT-MODE-GEMINI: No clipboard context to add")
+    }
+    
+    // Add audio input AFTER context (so Gemini processes audio with context in mind)
     let audioSize: Int64 = {
       do {
         let attributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
@@ -271,18 +286,6 @@ class SpeechService {
         fileData: nil,
         url: nil
       ))
-    }
-    
-    // Add clipboard context AFTER audio (so Gemini processes audio with context in mind)
-    if let context = clipboardContext {
-      let contextText = """
-      IMPORTANT: Apply the voice instruction you just heard to the following text:
-      
-      \(context)
-      
-      Process the text above according to the voice instruction.
-      """
-      userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
     }
     
     // Add current user message
@@ -828,11 +831,21 @@ class SpeechService {
 
   // MARK: - Prompt Mode Helpers
   private func getClipboardContext() -> String? {
-    guard let clipboardManager = clipboardManager else { return nil }
-    guard let clipboardText = clipboardManager.getCleanedClipboardText() else { return nil }
+    guard let clipboardManager = clipboardManager else {
+      DebugLogger.log("PROMPT-MODE: Clipboard manager is nil")
+      return nil
+    }
+    guard let clipboardText = clipboardManager.getCleanedClipboardText() else {
+      DebugLogger.log("PROMPT-MODE: No clipboard text found")
+      return nil
+    }
 
     let trimmedText = clipboardText.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmedText.isEmpty else { return nil }
+    guard !trimmedText.isEmpty else {
+      DebugLogger.log("PROMPT-MODE: Clipboard text is empty after trimming")
+      return nil
+    }
+    DebugLogger.log("PROMPT-MODE: Clipboard context found (length: \(trimmedText.count) chars)")
     return trimmedText
   }
 
