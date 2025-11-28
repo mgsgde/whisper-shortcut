@@ -74,8 +74,8 @@ class SpeechService {
   
   func getPromptModelInfo() -> String {
     let modelKey = "selectedPromptModel"
-    let selectedPromptModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gemini-2.0-flash"
-    let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? .gemini20Flash
+    let selectedPromptModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gemini-2.5-flash"
+    let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? .gemini25Flash
     return selectedPromptModel.displayName
   }
 
@@ -174,8 +174,8 @@ class SpeechService {
     let clipboardContext = getClipboardContext()
     
     // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gemini-2.0-flash"
-    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini20Flash
+    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gemini-2.5-flash"
+    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Flash
     
     // Check if using Gemini model
     if selectedPromptModel.isGemini {
@@ -198,8 +198,8 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution")
     
     // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gemini-2.0-flash"
-    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini20Flash
+    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gemini-2.5-flash"
+    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Flash
     
     // Convert to TranscriptionModel to get API endpoint
     guard let transcriptionModel = selectedPromptModel.asTranscriptionModel else {
