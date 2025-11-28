@@ -126,17 +126,17 @@ enum NotificationPosition: String, CaseIterable {
   var displayName: String {
     switch self {
     case .leftBottom:
-      return "Links unten"
+      return "Left bottom"
     case .rightBottom:
-      return "Rechts unten"
+      return "Right bottom"
     case .leftTop:
-      return "Links oben"
+      return "Left top"
     case .rightTop:
-      return "Rechts oben"
+      return "Right top"
     case .centerTop:
-      return "Mittig oben"
+      return "Center top"
     case .centerBottom:
-      return "Mittig unten"
+      return "Center bottom"
     }
   }
   
@@ -158,19 +158,19 @@ enum NotificationDuration: Double, CaseIterable {
   var displayName: String {
     switch self {
     case .oneSecond:
-      return "1 Sekunde"
+      return "1 second"
     case .threeSeconds:
-      return "3 Sekunden"
+      return "3 seconds"
     case .fiveSeconds:
-      return "5 Sekunden"
+      return "5 seconds"
     case .sevenSeconds:
-      return "7 Sekunden"
+      return "7 seconds"
     case .tenSeconds:
-      return "10 Sekunden"
+      return "10 seconds"
     case .fifteenSeconds:
-      return "15 Sekunden"
+      return "15 seconds"
     case .thirtySeconds:
-      return "30 Sekunden"
+      return "30 seconds"
     }
   }
   

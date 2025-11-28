@@ -194,7 +194,7 @@ struct GeneralSettingsTab: View {
 
       // Duration Selection
       HStack(alignment: .center, spacing: 16) {
-        Text("Dauer:")
+        Text("Duration:")
           .font(.body)
           .fontWeight(.medium)
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
@@ -204,7 +204,7 @@ struct GeneralSettingsTab: View {
             HStack {
               Text(duration.displayName)
               if duration.isRecommended {
-                Text("(Empfohlen)")
+                Text("(Recommended)")
                   .font(.caption)
                   .foregroundColor(.secondary)
               }
