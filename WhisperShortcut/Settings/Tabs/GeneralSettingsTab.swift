@@ -19,6 +19,18 @@ struct GeneralSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
+      // Keyboard Shortcuts Section
+      keyboardShortcutsSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Google API Key Section
       googleAPIKeySection
 
@@ -73,6 +85,50 @@ struct GeneralSettingsTab: View {
 
         Spacer()
       }
+    }
+  }
+
+  // MARK: - Keyboard Shortcuts Section
+  @ViewBuilder
+  private var keyboardShortcutsSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "⌨️ Keyboard Shortcuts",
+        subtitle: "Open/Close Settings window with a keyboard shortcut"
+      )
+
+      ShortcutInputRow(
+        label: "Toggle Settings:",
+        placeholder: "e.g., command+3",
+        text: $viewModel.data.openSettings,
+        isEnabled: $viewModel.data.openSettingsEnabled,
+        focusedField: .toggleSettings,
+        currentFocus: $focusedField,
+        onShortcutChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
+        },
+        validateShortcut: viewModel.validateShortcut
+      )
+
+      // Available Keys Information
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Available keys:")
+          .font(.callout)
+          .fontWeight(.semibold)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+
+        Text(
+          "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • up • down • left • right • comma • period"
+        )
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+      .textSelection(.enabled)
     }
   }
 

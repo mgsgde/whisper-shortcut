@@ -20,9 +20,11 @@ class SettingsViewModel: ObservableObject {
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     data.toggleDictation = currentConfig.startRecording.textDisplayString
     data.togglePrompting = currentConfig.startPrompting.textDisplayString
+    data.openSettings = currentConfig.openSettings.textDisplayString
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
+    data.openSettingsEnabled = currentConfig.openSettings.isEnabled
 
     // Load transcription model preference
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
@@ -133,6 +135,12 @@ class SettingsViewModel: ObservableObject {
       }
     }
 
+    if data.openSettingsEnabled {
+      guard !data.openSettings.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return "Please enter an open settings shortcut"
+      }
+    }
+
     // Validate shortcut parsing
     let shortcuts = parseShortcuts()
     for (name, shortcut) in shortcuts {
@@ -197,6 +205,8 @@ class SettingsViewModel: ObservableObject {
       return name == "toggle dictation"
     case .togglePrompting:
       return name == "toggle prompting"
+    case .toggleSettings:
+      return name == "open settings"
     default:
       return false
     }
@@ -211,6 +221,9 @@ class SettingsViewModel: ObservableObject {
       "toggle prompting": data.togglePromptingEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.togglePrompting)
         : ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
+      "open settings": data.openSettingsEnabled
+        ? ShortcutConfigManager.parseShortcut(from: data.openSettings)
+        : ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
     ]
   }
 
@@ -252,7 +265,6 @@ class SettingsViewModel: ObservableObject {
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()
-    let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     let newConfig = ShortcutConfig(
       startRecording: shortcuts["toggle dictation"]!
         ?? ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
@@ -262,7 +274,8 @@ class SettingsViewModel: ObservableObject {
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
       stopPrompting: shortcuts["toggle prompting"]!
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
-      openSettings: currentConfig.openSettings
+      openSettings: shortcuts["open settings"]!
+        ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 

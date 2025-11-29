@@ -35,6 +35,7 @@ struct ModelSelectionView: View {
 
             Text(model.displayName)
               .font(.system(.body, design: .default))
+              .fontWeight(.medium)
               .foregroundColor(selectedTranscriptionModel == model ? .white : .primary)
           }
           .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)

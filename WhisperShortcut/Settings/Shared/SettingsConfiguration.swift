@@ -195,10 +195,12 @@ struct SettingsDefaults {
   // MARK: - Toggle Shortcut Settings
   static let toggleDictation = ""
   static let togglePrompting = ""
+  static let openSettings = ""
 
   // MARK: - Toggle Shortcut Enable States
   static let toggleDictationEnabled = true
   static let togglePromptingEnabled = true
+  static let openSettingsEnabled = true
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini25Flash
@@ -231,10 +233,12 @@ struct SettingsData {
   // MARK: - Toggle Shortcut Settings
   var toggleDictation: String = SettingsDefaults.toggleDictation
   var togglePrompting: String = SettingsDefaults.togglePrompting
+  var openSettings: String = SettingsDefaults.openSettings
 
   // MARK: - Toggle Shortcut Enable States
   var toggleDictationEnabled: Bool = SettingsDefaults.toggleDictationEnabled
   var togglePromptingEnabled: Bool = SettingsDefaults.togglePromptingEnabled
+  var openSettingsEnabled: Bool = SettingsDefaults.openSettingsEnabled
 
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
@@ -264,6 +268,7 @@ enum SettingsFocusField: Hashable {
   case googleAPIKey
   case toggleDictation
   case togglePrompting
+  case toggleSettings
   case customPrompt
   case dictationDifficultWords
   case promptModeSystemPrompt

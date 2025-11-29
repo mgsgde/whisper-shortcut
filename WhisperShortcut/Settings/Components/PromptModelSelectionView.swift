@@ -23,20 +23,18 @@ struct PromptModelSelectionView: View {
         subtitle: "Choose between GPT-Audio and Gemini multimodal models for direct audio input processing"
       )
 
-      // Model Selection Grid - 3 columns to accommodate 6 models
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: SettingsConstants.modelSpacing) {
+      // Model Selection Grid
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
         ForEach(PromptModel.allCases, id: \.self) { model in
           ZStack {
             Rectangle()
               .fill(selectedModel == model ? Color.accentColor : Color.clear)
               .cornerRadius(SettingsConstants.cornerRadius)
 
-            VStack(spacing: 4) {
-              Text(model.displayName)
-                .font(.system(.body, design: .default))
-                .fontWeight(.medium)
-                .foregroundColor(selectedModel == model ? .white : .primary)
-            }
+            Text(model.displayName)
+              .font(.system(.body, design: .default))
+              .fontWeight(.medium)
+              .foregroundColor(selectedModel == model ? .white : .primary)
           }
           .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
           .contentShape(Rectangle())
