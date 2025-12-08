@@ -203,7 +203,7 @@ struct SettingsDefaults {
   static let openSettingsEnabled = true
 
   // MARK: - Model & Prompt Settings
-  static let selectedTranscriptionModel = TranscriptionModel.gemini25Flash
+  static let selectedTranscriptionModel = TranscriptionModel.gemini25FlashLite
   static let selectedPromptModel = PromptModel.gemini25Flash
   static let customPromptText = ""
   static let dictationDifficultWords = ""
