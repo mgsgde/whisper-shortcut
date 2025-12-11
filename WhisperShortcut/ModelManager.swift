@@ -154,29 +154,13 @@ class ModelManager: ObservableObject {
     do {
       DebugLogger.log("MODEL-MANAGER: Starting download for \(modelName)...")
       
-      // Try to use explicit download method if available
-      // This ensures files are downloaded before we try to initialize
+      // Download the model using WhisperKit's download method
       let downloadedModelPath = try await WhisperKit.download(
         variant: modelName,
         downloadBase: whisperKitDir
       )
       
       DebugLogger.log("MODEL-MANAGER: Download completed to: \(downloadedModelPath.path)")
-      
-      // Now initialize to verify it works
-      // Use the actual path where the model was downloaded
-      // WhisperKit.download returns the full path to the model directory
-      let config = WhisperKitConfig(
-        modelFolder: downloadedModelPath.path
-      )
-      
-      DebugLogger.log("MODEL-MANAGER: Initializing WhisperKit with downloaded model at \(downloadedModelPath.path)...")
-      let whisperKit = try await WhisperKit(config)
-      
-      // Verify WhisperKit initialized successfully
-      guard whisperKit != nil else {
-        throw ModelError.downloadFailed("WhisperKit initialization returned nil")
-      }
       
       // Verify the model is actually available on disk
       let isAvailable = isModelAvailable(type)
@@ -187,7 +171,7 @@ class ModelManager: ObservableObject {
         throw ModelError.downloadFailed("Model downloaded but not properly available. Please try downloading again.")
       }
       
-      DebugLogger.logSuccess("MODEL-MANAGER: WhisperKit model \(type.displayName) is ready")
+      DebugLogger.logSuccess("MODEL-MANAGER: Model \(type.displayName) downloaded successfully")
     } catch let error as ModelError {
       // Re-throw our custom errors
       throw error
@@ -214,7 +198,7 @@ class ModelManager: ObservableObject {
         DebugLogger.logError("MODEL-MANAGER: Error userInfo: \(nsError.userInfo)")
       }
       
-      throw ModelError.downloadFailed("Failed to download/initialize WhisperKit: \(errorMessage)")
+      throw ModelError.downloadFailed("Failed to download WhisperKit model: \(errorMessage)")
     }
   }
   
