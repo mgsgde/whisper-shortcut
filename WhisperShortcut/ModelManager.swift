@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 import WhisperKit
 
 // MARK: - Model Type Enum
@@ -50,8 +51,10 @@ enum OfflineModelType: String, CaseIterable {
 }
 
 // MARK: - Model Manager
-class ModelManager {
+class ModelManager: ObservableObject {
   static let shared = ModelManager()
+  
+  @Published var downloadingModels: Set<OfflineModelType> = []
   
   private let fileManager = FileManager.default
   
@@ -116,6 +119,18 @@ class ModelManager {
   
   // MARK: - Download Model
   func downloadModel(_ type: OfflineModelType) async throws {
+    // Add model to downloading set on main actor
+    await MainActor.run {
+      downloadingModels.insert(type)
+    }
+    
+    // Use defer to ensure we always remove from downloading set, even on error
+    defer {
+      Task { @MainActor in
+        downloadingModels.remove(type)
+      }
+    }
+    
     // WhisperKit handles downloads automatically
     // This method triggers model initialization which will download if needed
     DebugLogger.log("MODEL-MANAGER: Triggering WhisperKit model download for \(type.displayName)")

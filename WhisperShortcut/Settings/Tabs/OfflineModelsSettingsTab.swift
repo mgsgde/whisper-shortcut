@@ -3,7 +3,7 @@ import SwiftUI
 /// Offline Models Settings Tab - Download and manage offline Whisper models
 struct OfflineModelsSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
-  @State private var downloadingModels: Set<OfflineModelType> = []
+  @ObservedObject var modelManager = ModelManager.shared
   @State private var errorMessage: String?
   @State private var showError = false
   @State private var successMessage: String?
@@ -95,9 +95,10 @@ struct OfflineModelsSettingsTab: View {
   // MARK: - Model Row
   @ViewBuilder
   private func modelRow(for modelType: OfflineModelType) -> some View {
-    // Use @State to trigger view updates when model status changes
-    let isAvailable = ModelManager.shared.isModelAvailable(modelType)
-    let isDownloading = downloadingModels.contains(modelType)
+    // Check if model is currently downloading (takes precedence)
+    let isDownloading = modelManager.downloadingModels.contains(modelType)
+    // Only check availability if not downloading (prevents "Downloaded / 0 MB" glitch)
+    let isAvailable = !isDownloading && ModelManager.shared.isModelAvailable(modelType)
     let modelSize = ModelManager.shared.getModelSize(modelType)
 
     VStack(alignment: .leading, spacing: 8) {
@@ -122,22 +123,31 @@ struct OfflineModelsSettingsTab: View {
           }
 
           HStack(spacing: 12) {
-            // Status
+            // Status - prioritize downloading status
             HStack(spacing: 4) {
-              Image(systemName: isAvailable ? "checkmark.circle.fill" : "circle")
-                .foregroundColor(isAvailable ? .green : .secondary)
-                .font(.caption)
-              Text(isAvailable ? "Downloaded" : "Not downloaded")
-                .font(.caption)
-                .foregroundColor(.secondary)
+              if isDownloading {
+                Image(systemName: "arrow.down.circle.fill")
+                  .foregroundColor(.blue)
+                  .font(.caption)
+                Text("Downloading...")
+                  .font(.caption)
+                  .foregroundColor(.secondary)
+              } else {
+                Image(systemName: isAvailable ? "checkmark.circle.fill" : "circle")
+                  .foregroundColor(isAvailable ? .green : .secondary)
+                  .font(.caption)
+                Text(isAvailable ? "Downloaded" : "Not downloaded")
+                  .font(.caption)
+                  .foregroundColor(.secondary)
+              }
             }
 
-            // Size
-            if let size = modelSize {
+            // Size - only show if not downloading and model is available
+            if !isDownloading, let size = modelSize {
               Text("• \(ModelManager.shared.formatSize(size))")
                 .font(.caption)
                 .foregroundColor(.secondary)
-            } else {
+            } else if !isDownloading {
               Text("• ~\(modelType.estimatedSizeMB) MB")
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -186,13 +196,11 @@ struct OfflineModelsSettingsTab: View {
 
   // MARK: - Actions
   private func downloadModel(_ modelType: OfflineModelType) {
-    downloadingModels.insert(modelType)
-
+    // ModelManager now handles the downloading state internally
     Task {
       do {
         try await ModelManager.shared.downloadModel(modelType)
         await MainActor.run {
-          downloadingModels.remove(modelType)
           DebugLogger.logSuccess("OFFLINE-UI: Successfully downloaded \(modelType.displayName)")
           
           // Show success message
@@ -211,7 +219,6 @@ struct OfflineModelsSettingsTab: View {
         }
       } catch {
         await MainActor.run {
-          downloadingModels.remove(modelType)
           errorMessage = "Failed to download \(modelType.displayName): \(error.localizedDescription)"
           showError = true
           DebugLogger.logError("OFFLINE-UI: Failed to download \(modelType.displayName): \(error.localizedDescription)")
