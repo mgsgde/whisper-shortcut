@@ -9,10 +9,17 @@ import Foundation
 
 // MARK: - Transcription Model Enum
 enum TranscriptionModel: String, CaseIterable {
+  // Gemini models (online)
   case gemini20Flash = "gemini-2.0-flash"
   case gemini20FlashLite = "gemini-2.0-flash-lite"
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
+  
+  // Offline Whisper models
+  case whisperTiny = "whisper-tiny"
+  case whisperBase = "whisper-base"
+  case whisperSmall = "whisper-small"
+  case whisperMedium = "whisper-medium"
 
   var displayName: String {
     switch self {
@@ -24,6 +31,14 @@ enum TranscriptionModel: String, CaseIterable {
       return "Gemini 2.5 Flash"
     case .gemini25FlashLite:
       return "Gemini 2.5 Flash-Lite"
+    case .whisperTiny:
+      return "Whisper Tiny (Offline)"
+    case .whisperBase:
+      return "Whisper Base (Offline)"
+    case .whisperSmall:
+      return "Whisper Small (Offline)"
+    case .whisperMedium:
+      return "Whisper Medium (Offline)"
     }
   }
 
@@ -37,14 +52,16 @@ enum TranscriptionModel: String, CaseIterable {
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     case .gemini25FlashLite:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium:
+      return "" // Offline models don't use API endpoints
     }
   }
 
   var isRecommended: Bool {
     switch self {
-    case .gemini20Flash:
+    case .gemini20Flash, .whisperBase:
       return true
-    case .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
+    case .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .whisperTiny, .whisperSmall, .whisperMedium:
       return false
     }
   }
@@ -53,6 +70,8 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
       return "Low"
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium:
+      return "Free (Offline)"
     }
   }
 
@@ -66,13 +85,81 @@ enum TranscriptionModel: String, CaseIterable {
       return "Google's Gemini 2.5 Flash model • Fast and efficient"
     case .gemini25FlashLite:
       return "Google's Gemini 2.5 Flash-Lite model • Fastest latency • Cost-efficient"
+    case .whisperTiny:
+      return "OpenAI Whisper Tiny • Fastest • ~75MB • Offline"
+    case .whisperBase:
+      return "OpenAI Whisper Base • Recommended • ~140MB • Offline"
+    case .whisperSmall:
+      return "OpenAI Whisper Small • Better quality • ~460MB • Offline"
+    case .whisperMedium:
+      return "OpenAI Whisper Medium • Best quality • ~1.5GB • Offline"
     }
   }
   
   var isGemini: Bool {
-    return true
+    switch self {
+    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
+      return true
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium:
+      return false
+    }
   }
   
+  var isOffline: Bool {
+    return !isGemini
+  }
+  
+  var offlineModelType: OfflineModelType? {
+    switch self {
+    case .whisperTiny: return .whisperTiny
+    case .whisperBase: return .whisperBase
+    case .whisperSmall: return .whisperSmall
+    case .whisperMedium: return .whisperMedium
+    default: return nil
+    }
+  }
+  
+}
+
+// MARK: - Gemini Transcription Request Models
+struct GeminiTranscriptionRequest: Codable {
+  let contents: [GeminiTranscriptionContent]
+  
+  struct GeminiTranscriptionContent: Codable {
+    let parts: [GeminiTranscriptionPart]
+  }
+  
+  struct GeminiTranscriptionPart: Codable {
+    let text: String?
+    let inlineData: GeminiInlineData?
+    let fileData: GeminiFileData?
+    
+    enum CodingKeys: String, CodingKey {
+      case text
+      case inlineData = "inline_data"
+      case fileData = "file_data"
+    }
+  }
+  
+  struct GeminiInlineData: Codable {
+    let mimeType: String
+    let data: String
+    
+    enum CodingKeys: String, CodingKey {
+      case mimeType = "mime_type"
+      case data
+    }
+  }
+  
+  struct GeminiFileData: Codable {
+    let fileUri: String
+    let mimeType: String
+    
+    enum CodingKeys: String, CodingKey {
+      case fileUri = "file_uri"
+      case mimeType = "mime_type"
+    }
+  }
 }
 
 // MARK: - Gemini Response Models
@@ -339,6 +426,7 @@ enum TranscriptionError: Error, Equatable {
   case noSpeechDetected
   case textTooShort
   case promptLeakDetected
+  case modelNotAvailable(OfflineModelType)
 
   var title: String {
     switch self {
@@ -363,6 +451,7 @@ enum TranscriptionError: Error, Equatable {
     case .noSpeechDetected: return "No Speech Detected"
     case .textTooShort: return "Text Too Short"
     case .promptLeakDetected: return "API Response Issue"
+    case .modelNotAvailable: return "Model Not Available"
     }
   }
 }

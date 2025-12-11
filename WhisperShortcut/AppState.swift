@@ -215,13 +215,13 @@ extension AppState {
 // MARK: - Menu Enablement Logic
 extension AppState {
   /// Whether transcription can be started
-  func canStartTranscription(hasAPIKey: Bool) -> Bool {
-    return !isBusy && hasAPIKey
+  func canStartTranscription(hasAPIKey: Bool, hasOfflineModel: Bool = false) -> Bool {
+    return !isBusy && (hasAPIKey || hasOfflineModel)
   }
 
   /// Whether prompting can be started
-  func canStartPrompting(hasAPIKey: Bool) -> Bool {
-    return !isBusy && hasAPIKey
+  func canStartPrompting(hasAPIKey: Bool, hasOfflineModel: Bool = false) -> Bool {
+    return !isBusy && (hasAPIKey || hasOfflineModel)
   }
 
   /// Whether current recording can be stopped

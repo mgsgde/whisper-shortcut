@@ -238,6 +238,30 @@ struct SpeechErrorFormatter {
 
         Please record again. If the problem persists, the audio might be unclear.
         """
+    case .modelNotAvailable(let modelType):
+      let sizeText: String
+      if let size = ModelManager.shared.getModelSize(modelType) {
+        sizeText = ModelManager.shared.formatSize(size)
+      } else {
+        sizeText = "~\(modelType.estimatedSizeMB) MB"
+      }
+      
+      return """
+        📥 Model Not Downloaded
+
+        The offline model "\(modelType.displayName)" is not yet downloaded.
+
+        Estimated size: \(sizeText)
+
+        To download the model:
+        1. Open Settings (click the menu bar icon and select "Settings")
+        2. Go to the "Offline Models" tab
+        3. Click "Download" next to \(modelType.displayName)
+        4. Wait for the download to complete (this may take several minutes)
+        5. Try transcribing again
+
+        Note: Models are downloaded from HuggingFace and stored locally on your Mac. Once downloaded, they work completely offline.
+        """
     }
   }
 
@@ -278,6 +302,8 @@ struct SpeechErrorFormatter {
       return "🎤 Text Too Short"
     case .promptLeakDetected:
       return "⚠️ API Issue"
+    case .modelNotAvailable:
+      return "📥 Model Not Available"
     default:
       return "❌ Error"
     }

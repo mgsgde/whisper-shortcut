@@ -243,6 +243,18 @@ class MenuBarController: NSObject {
     guard let menu = statusItem?.menu else { return }
 
     let hasAPIKey = KeychainManager.shared.hasGoogleAPIKey()
+    
+    // Check for offline transcription models
+    let selectedTranscriptionModel = TranscriptionModel(
+      rawValue: UserDefaults.standard.string(forKey: "selectedTranscriptionModel") 
+        ?? SettingsDefaults.selectedTranscriptionModel.rawValue
+    ) ?? SettingsDefaults.selectedTranscriptionModel
+    
+    let hasOfflineTranscriptionModel = selectedTranscriptionModel.isOffline && 
+      ModelManager.shared.isModelAvailable(selectedTranscriptionModel.offlineModelType ?? .whisperBase)
+    
+    // Prompt mode always requires API key (no offline support)
+    let hasOfflinePromptModel = false
 
     // Update status
     menu.item(withTag: 100)?.title = appState.statusText
@@ -252,19 +264,20 @@ class MenuBarController: NSObject {
       menu, tag: 101,
       title: appState.recordingMode == .transcription
         ? "Stop Transcription" : "Start Transcription",
-      enabled: appState.canStartTranscription(hasAPIKey: hasAPIKey)
+      enabled: appState.canStartTranscription(hasAPIKey: hasAPIKey, hasOfflineModel: hasOfflineTranscriptionModel)
         || appState.recordingMode == .transcription)
 
     updateMenuItem(
       menu, tag: 102,
       title: appState.recordingMode == .prompt ? "Stop Prompting" : "Start Prompting",
-      enabled: appState.canStartPrompting(hasAPIKey: hasAPIKey) || appState.recordingMode == .prompt
+      enabled: appState.canStartPrompting(hasAPIKey: hasAPIKey, hasOfflineModel: hasOfflinePromptModel) 
+        || appState.recordingMode == .prompt
     )
 
-    // Handle special case when no API key is configured
-    if !hasAPIKey, let button = statusItem?.button {
+    // Handle special case when no API key and no offline model is configured
+    if !hasAPIKey && !hasOfflineTranscriptionModel && !hasOfflinePromptModel, let button = statusItem?.button {
       button.title = "⚠️"
-      button.toolTip = "API key required - click to configure"
+      button.toolTip = "API key or offline model required - click to configure"
     }
   }
 
@@ -312,7 +325,15 @@ class MenuBarController: NSObject {
     case .transcription:
       audioRecorder.stopRecording()
     case .none:
-      if appState.canStartTranscription(hasAPIKey: KeychainManager.shared.hasGoogleAPIKey()) {
+      let hasAPIKey = KeychainManager.shared.hasGoogleAPIKey()
+      let selectedModel = TranscriptionModel(
+        rawValue: UserDefaults.standard.string(forKey: "selectedTranscriptionModel") 
+          ?? SettingsDefaults.selectedTranscriptionModel.rawValue
+      ) ?? SettingsDefaults.selectedTranscriptionModel
+      let hasOfflineModel = selectedModel.isOffline && 
+        ModelManager.shared.isModelAvailable(selectedModel.offlineModelType ?? .whisperBase)
+      
+      if appState.canStartTranscription(hasAPIKey: hasAPIKey, hasOfflineModel: hasOfflineModel) {
         appState = appState.startRecording(.transcription)
         audioRecorder.startRecording()
       }
@@ -334,7 +355,10 @@ class MenuBarController: NSObject {
     case .prompt:
       audioRecorder.stopRecording()
     case .none:
-      if appState.canStartPrompting(hasAPIKey: KeychainManager.shared.hasGoogleAPIKey()) {
+      // Prompt mode always requires API key (no offline support yet)
+      let hasAPIKey = KeychainManager.shared.hasGoogleAPIKey()
+      
+      if appState.canStartPrompting(hasAPIKey: hasAPIKey, hasOfflineModel: false) {
         // Check accessibility permission first
         if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
           return

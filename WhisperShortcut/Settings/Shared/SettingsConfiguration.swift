@@ -88,11 +88,15 @@ enum PromptModel: String, CaseIterable {
   }
   
   var requiresTranscription: Bool {
-    return false
+    return false // Gemini models process audio directly
   }
   
   var isGemini: Bool {
-    return true
+    return true // All prompt models are Gemini (offline LLM support planned for future)
+  }
+  
+  var isOffline: Bool {
+    return false // Prompt mode doesn't support offline models yet
   }
   
   var supportsNativeAudioOutput: Bool {
@@ -179,11 +183,101 @@ enum NotificationDuration: Double, CaseIterable {
   }
 }
 
+// MARK: - Whisper Language Enum
+enum WhisperLanguage: String, CaseIterable {
+  case auto = "auto"
+  case en = "en"
+  case de = "de"
+  case fr = "fr"
+  case es = "es"
+  case it = "it"
+  case pt = "pt"
+  case ru = "ru"
+  case ja = "ja"
+  case ko = "ko"
+  case zh = "zh"
+  case nl = "nl"
+  case pl = "pl"
+  case tr = "tr"
+  case sv = "sv"
+  case da = "da"
+  case no = "no"
+  case fi = "fi"
+  case cs = "cs"
+  case hu = "hu"
+  case ro = "ro"
+  case el = "el"
+  case ar = "ar"
+  case hi = "hi"
+  
+  var displayName: String {
+    switch self {
+    case .auto:
+      return "Auto-detect"
+    case .en:
+      return "English"
+    case .de:
+      return "German"
+    case .fr:
+      return "French"
+    case .es:
+      return "Spanish"
+    case .it:
+      return "Italian"
+    case .pt:
+      return "Portuguese"
+    case .ru:
+      return "Russian"
+    case .ja:
+      return "Japanese"
+    case .ko:
+      return "Korean"
+    case .zh:
+      return "Chinese"
+    case .nl:
+      return "Dutch"
+    case .pl:
+      return "Polish"
+    case .tr:
+      return "Turkish"
+    case .sv:
+      return "Swedish"
+    case .da:
+      return "Danish"
+    case .no:
+      return "Norwegian"
+    case .fi:
+      return "Finnish"
+    case .cs:
+      return "Czech"
+    case .hu:
+      return "Hungarian"
+    case .ro:
+      return "Romanian"
+    case .el:
+      return "Greek"
+    case .ar:
+      return "Arabic"
+    case .hi:
+      return "Hindi"
+    }
+  }
+  
+  var isRecommended: Bool {
+    return self == .auto
+  }
+  
+  var languageCode: String? {
+    return self == .auto ? nil : self.rawValue
+  }
+}
+
 // MARK: - Settings Tab Definition
 enum SettingsTab: String, CaseIterable {
   case general = "General"
   case speechToText = "Dictate"
   case speechToPrompt = "Dictate Prompt"
+  case offlineModels = "Offline Models"
 }
 
 // MARK: - Default Settings Configuration
@@ -211,6 +305,9 @@ struct SettingsDefaults {
   
   // MARK: - Reasoning Effort Settings
   static let promptReasoningEffort = ReasoningEffort.medium
+
+  // MARK: - Whisper Language Settings
+  static let whisperLanguage = WhisperLanguage.auto
 
   // MARK: - Notification Settings
   static let showPopupNotifications = true
@@ -249,6 +346,9 @@ struct SettingsData {
   
   // MARK: - Reasoning Effort Settings
   var promptReasoningEffort: ReasoningEffort = SettingsDefaults.promptReasoningEffort
+
+  // MARK: - Whisper Language Settings
+  var whisperLanguage: WhisperLanguage = SettingsDefaults.whisperLanguage
 
   // MARK: - Notification Settings
   var showPopupNotifications: Bool = SettingsDefaults.showPopupNotifications

@@ -79,7 +79,7 @@ struct PromptTextEditor: View {
         title: "Custom Prompt",
         subtitle: "Domain Terms & Context:",
         helpText:
-          "Describe domain terms for better transcription quality. Leave empty to use Gemini's default.",
+          "Describe domain terms for better transcription quality. Only used for Gemini models (not Whisper). Leave empty to use Gemini's default.",
         defaultValue: "Default prompt text",
         text: $text,
         focusedField: .customPrompt,

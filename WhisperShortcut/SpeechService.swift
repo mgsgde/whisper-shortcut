@@ -69,6 +69,9 @@ class SpeechService {
   
   // MARK: - Model Information for Notifications
   func getTranscriptionModelInfo() -> String {
+    if selectedTranscriptionModel.isOffline {
+      return LocalSpeechService.shared.getCurrentModelInfo() ?? selectedTranscriptionModel.displayName
+    }
     return selectedTranscriptionModel.displayName
   }
   
@@ -142,15 +145,49 @@ class SpeechService {
 
   // MARK: - Transcription Mode (Private Implementation)
   private func performTranscription(audioURL: URL) async throws -> String {
+    // Check if using offline model
+    if selectedTranscriptionModel.isOffline {
+      // For offline models, use LocalSpeechService
+      guard let offlineModelType = selectedTranscriptionModel.offlineModelType else {
+        throw TranscriptionError.networkError("Invalid offline model type")
+      }
+      
+      // Check if model is available before attempting to use it
+      if !ModelManager.shared.isModelAvailable(offlineModelType) {
+        throw TranscriptionError.modelNotAvailable(offlineModelType)
+      }
+      
+      // Initialize model if not already initialized
+      if !LocalSpeechService.shared.isReady() {
+        try await LocalSpeechService.shared.initializeModel(offlineModelType)
+      }
+      
+      // Validate format
+      try validateAudioFileFormat(at: audioURL)
+      
+      // Get language setting for Whisper (defaults to auto-detect)
+      let savedLanguageString = UserDefaults.standard.string(forKey: "whisperLanguage")
+      let savedLanguage = WhisperLanguage(rawValue: savedLanguageString ?? WhisperLanguage.auto.rawValue) ?? WhisperLanguage.auto
+      let languageString = savedLanguage.languageCode // Returns nil for .auto, which enables auto-detect
+      
+      if savedLanguage == .auto {
+        DebugLogger.log("LOCAL-SPEECH: Using auto-detect language (default)")
+      } else {
+        DebugLogger.log("LOCAL-SPEECH: Using language setting: \(savedLanguage.displayName) (\(savedLanguage.rawValue))")
+      }
+      
+      // Transcribe using local service
+      return try await LocalSpeechService.shared.transcribe(audioURL: audioURL, language: languageString)
+    }
+    
     // Check if using Gemini model
-    // Only Gemini models are supported now
     if selectedTranscriptionModel.isGemini {
       // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
       try validateAudioFileFormat(at: audioURL)
       return try await transcribeWithGemini(audioURL: audioURL)
     }
     
-    // Should never reach here since we only support Gemini models
+    // Should never reach here
     throw TranscriptionError.networkError("Unsupported transcription model")
   }
   
@@ -177,20 +214,21 @@ class SpeechService {
     let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gemini-2.5-flash"
     let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Flash
     
-    // Check if using Gemini model
-    if selectedPromptModel.isGemini {
-      // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
-      try validateAudioFileFormat(at: audioURL)
-      // Execute prompt with Gemini (it handles its own key validation)
-      return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext)
+    // Prompt mode ALWAYS requires Gemini API key (no offline support yet)
+    // All PromptModel cases are Gemini models, so this should always be true
+    guard selectedPromptModel.isGemini else {
+      throw TranscriptionError.networkError("Prompt mode requires Gemini model")
     }
-
-    // Should never reach here since we only support Gemini models now
-    throw TranscriptionError.networkError("Unsupported model type")
+    
+    // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
+    try validateAudioFileFormat(at: audioURL)
+    // Execute prompt with Gemini (it handles its own key validation)
+    return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext)
   }
 
   // MARK: - Gemini Prompt Mode
   private func executePromptWithGemini(audioURL: URL, clipboardContext: String?) async throws -> String {
+    // Only check API key for Gemini models (offline models bypass this)
     guard let googleAPIKey = self.googleAPIKey, !googleAPIKey.isEmpty else {
       throw TranscriptionError.noGoogleAPIKey
     }
@@ -229,10 +267,7 @@ class SpeechService {
     }
     
     // Build request
-    let url = URL(string: "\(endpoint)?key=\(googleAPIKey)")!
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    var request = createGeminiRequest(endpoint: endpoint, apiKey: googleAPIKey)
     
     // Build contents array with current message only
     var contents: [GeminiChatRequest.GeminiChatContent] = []
@@ -254,14 +289,7 @@ class SpeechService {
     }
     
     // Add audio input AFTER context (so Gemini processes audio with context in mind)
-    let audioSize: Int64 = {
-      do {
-        let attributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
-        return attributes[.size] as? Int64 ?? 0
-      } catch {
-        return 0
-      }
-    }()
+    let audioSize = getAudioFileSize(at: audioURL)
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = getGeminiMimeType(for: fileExtension)
     
@@ -304,19 +332,13 @@ class SpeechService {
     
     request.httpBody = try JSONEncoder().encode(chatRequest)
     
-    let (data, responseData) = try await session.data(for: request)
-    
-    guard let httpResponse = responseData as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response")
-    }
-    
-    if httpResponse.statusCode != 200 {
-      DebugLogger.log("PROMPT-MODE-GEMINI-ERROR: HTTP \(httpResponse.statusCode)")
-      let error = try parseGeminiErrorResponse(data: data, statusCode: httpResponse.statusCode)
-      throw error
-    }
-    
-    let result = try JSONDecoder().decode(GeminiChatResponse.self, from: data)
+    // Make request
+    let result = try await performGeminiRequest(
+      request,
+      responseType: GeminiChatResponse.self,
+      mode: "PROMPT-MODE-GEMINI",
+      withRetry: false
+    )
     
     guard let firstCandidate = result.candidates.first else {
       throw TranscriptionError.networkError("No candidates in Gemini response")
@@ -330,16 +352,105 @@ class SpeechService {
       }
     }
     
-    let normalizedText = normalizeTranscriptionText(textContent)
-    try validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
+    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(textContent)
+    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
     
     DebugLogger.logSuccess("PROMPT-MODE-GEMINI: Completed successfully")
     
     return normalizedText
   }
 
+  // MARK: - Gemini API Helpers
+  
+  /// Creates a URLRequest for Gemini API with proper headers
+  private func createGeminiRequest(endpoint: String, apiKey: String) -> URLRequest {
+    let url = URL(string: "\(endpoint)?key=\(apiKey)")!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    return request
+  }
+  
+  /// Generic helper to perform Gemini API requests with error handling and retry logic
+  private func performGeminiRequest<T: Decodable>(
+    _ request: URLRequest,
+    responseType: T.Type,
+    mode: String = "GEMINI",
+    withRetry: Bool = false
+  ) async throws -> T {
+    var lastError: Error?
+    let maxAttempts = withRetry ? Constants.maxRetryAttempts : 1
+    
+    for attempt in 1...maxAttempts {
+      do {
+        if attempt > 1 {
+          DebugLogger.log("\(mode)-RETRY: Attempt \(attempt)/\(maxAttempts)")
+        }
+        
+        let (data, response) = try await session.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+          throw TranscriptionError.networkError("Invalid response")
+        }
+        
+        if httpResponse.statusCode != 200 {
+          // Log detailed error information
+          let errorBody = String(data: data, encoding: .utf8) ?? "Unable to decode error response"
+          DebugLogger.log("\(mode)-ERROR: HTTP \(httpResponse.statusCode)")
+          DebugLogger.log("\(mode)-ERROR: Response body: \(errorBody.prefix(500))")
+          
+          // Check for rate limiting or quota issues
+          if httpResponse.statusCode == 429 {
+            DebugLogger.log("\(mode)-ERROR: Rate limit exceeded - API may be throttling requests")
+          } else if httpResponse.statusCode == 403 {
+            DebugLogger.log("\(mode)-ERROR: Forbidden - Check API key permissions and quota")
+          } else if httpResponse.statusCode == 401 {
+            DebugLogger.log("\(mode)-ERROR: Unauthorized - Invalid API key")
+          }
+          
+          let error = try parseGeminiErrorResponse(data: data, statusCode: httpResponse.statusCode)
+          throw error
+        }
+        
+        // Parse response
+        let result = try JSONDecoder().decode(T.self, from: data)
+        
+        if attempt > 1 {
+          DebugLogger.log("\(mode)-RETRY: Success on attempt \(attempt)")
+        }
+        
+        return result
+        
+      } catch is CancellationError {
+        DebugLogger.log("\(mode)-RETRY: Cancelled on attempt \(attempt)")
+        throw CancellationError()
+      } catch let error as URLError {
+        if error.code == .cancelled {
+          DebugLogger.log("\(mode)-RETRY: Request cancelled by user")
+          throw CancellationError()
+        } else if error.code == .timedOut {
+          throw error.localizedDescription.contains("request")
+            ? TranscriptionError.requestTimeout
+            : TranscriptionError.resourceTimeout
+        } else {
+          throw TranscriptionError.networkError(error.localizedDescription)
+        }
+      } catch {
+        lastError = error
+        if attempt < maxAttempts {
+          DebugLogger.log("\(mode)-RETRY: Attempt \(attempt) failed, retrying in \(Constants.retryDelaySeconds)s: \(error.localizedDescription)")
+          try? await Task.sleep(nanoseconds: UInt64(Constants.retryDelaySeconds * 1_000_000_000))
+        }
+      }
+    }
+    
+    DebugLogger.log("\(mode)-RETRY: All \(maxAttempts) attempts failed")
+    throw lastError ?? TranscriptionError.networkError("Gemini request failed after retries")
+  }
+
   // MARK: - Gemini Transcription
   private func transcribeWithGemini(audioURL: URL) async throws -> String {
+    // Only check API key for Gemini models (offline models bypass this)
     guard let apiKey = self.googleAPIKey, !apiKey.isEmpty else {
       DebugLogger.log("GEMINI-TRANSCRIPTION: ERROR - No Google API key found in keychain")
       throw TranscriptionError.noGoogleAPIKey
@@ -352,14 +463,7 @@ class SpeechService {
     
     try validateAudioFile(at: audioURL)
     
-    let audioSize: Int64 = {
-      do {
-        let attributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
-        return attributes[.size] as? Int64 ?? 0
-      } catch {
-        return 0
-      }
-    }()
+    let audioSize = getAudioFileSize(at: audioURL)
     DebugLogger.log("GEMINI-TRANSCRIPTION: Starting transcription, file size: \(audioSize) bytes")
     
     let result: String
@@ -394,102 +498,43 @@ class SpeechService {
     let endpoint = selectedTranscriptionModel.apiEndpoint
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(selectedTranscriptionModel.displayName) (\(selectedTranscriptionModel.rawValue))")
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
-    let url = URL(string: "\(endpoint)?key=\(apiKey)")!
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     
-    // Build request body
-    let requestBody: [String: Any] = [
-      "contents": [
-        [
-          "parts": [
-            [
-              "text": promptToUse.isEmpty ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting." : promptToUse
-            ],
-            [
-              "inline_data": [
-                "mime_type": mimeType,
-                "data": base64Audio
-              ]
-            ]
+    // Build request using Codable struct
+    let transcriptionRequest = GeminiTranscriptionRequest(
+      contents: [
+        GeminiTranscriptionRequest.GeminiTranscriptionContent(
+          parts: [
+            GeminiTranscriptionRequest.GeminiTranscriptionPart(
+              text: promptToUse.isEmpty ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting." : promptToUse,
+              inlineData: nil,
+              fileData: nil
+            ),
+            GeminiTranscriptionRequest.GeminiTranscriptionPart(
+              text: nil,
+              inlineData: GeminiTranscriptionRequest.GeminiInlineData(mimeType: mimeType, data: base64Audio),
+              fileData: nil
+            )
           ]
-        ]
+        )
       ]
-    ]
+    )
     
-    request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+    var request = createGeminiRequest(endpoint: endpoint, apiKey: apiKey)
+    request.httpBody = try JSONEncoder().encode(transcriptionRequest)
     
     // Make request with retry logic
-    var lastError: Error?
-    for attempt in 1...Constants.maxRetryAttempts {
-      do {
-        if attempt > 1 {
-          DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Attempt \(attempt)/\(Constants.maxRetryAttempts)")
-        }
-        
-        let (data, response) = try await session.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-          throw TranscriptionError.networkError("Invalid response")
-        }
-        
-        if httpResponse.statusCode != 200 {
-          // Log detailed error information
-          let errorBody = String(data: data, encoding: .utf8) ?? "Unable to decode error response"
-          DebugLogger.log("GEMINI-TRANSCRIPTION-ERROR: HTTP \(httpResponse.statusCode)")
-          DebugLogger.log("GEMINI-TRANSCRIPTION-ERROR: Response body: \(errorBody.prefix(500))")
-          
-          // Check for rate limiting or quota issues
-          if httpResponse.statusCode == 429 {
-            DebugLogger.log("GEMINI-TRANSCRIPTION-ERROR: Rate limit exceeded - API may be throttling requests")
-          } else if httpResponse.statusCode == 403 {
-            DebugLogger.log("GEMINI-TRANSCRIPTION-ERROR: Forbidden - Check API key permissions and quota")
-          } else if httpResponse.statusCode == 401 {
-            DebugLogger.log("GEMINI-TRANSCRIPTION-ERROR: Unauthorized - Invalid API key")
-          }
-          
-          let error = try parseGeminiErrorResponse(data: data, statusCode: httpResponse.statusCode)
-          throw error
-        }
-        
-        // Parse response
-        let geminiResponse = try JSONDecoder().decode(GeminiResponse.self, from: data)
-        let transcript = extractTextFromGeminiResponse(geminiResponse)
-        let normalizedText = normalizeTranscriptionText(transcript)
-        try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
-        
-        if attempt > 1 {
-          DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Success on attempt \(attempt)")
-        }
-        
-        return normalizedText
-        
-      } catch is CancellationError {
-        DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Cancelled on attempt \(attempt)")
-        throw CancellationError()
-      } catch let error as URLError {
-        if error.code == .cancelled {
-          DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Request cancelled by user")
-          throw CancellationError()
-        } else if error.code == .timedOut {
-          throw error.localizedDescription.contains("request")
-            ? TranscriptionError.requestTimeout
-            : TranscriptionError.resourceTimeout
-        } else {
-          throw TranscriptionError.networkError(error.localizedDescription)
-        }
-      } catch {
-        lastError = error
-        if attempt < Constants.maxRetryAttempts {
-          DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: Attempt \(attempt) failed, retrying in \(Constants.retryDelaySeconds)s: \(error.localizedDescription)")
-          try? await Task.sleep(nanoseconds: UInt64(Constants.retryDelaySeconds * 1_000_000_000))
-        }
-      }
-    }
+    let geminiResponse = try await performGeminiRequest(
+      request,
+      responseType: GeminiResponse.self,
+      mode: "GEMINI-TRANSCRIPTION",
+      withRetry: true
+    )
     
-    DebugLogger.log("GEMINI-TRANSCRIPTION-RETRY: All \(Constants.maxRetryAttempts) attempts failed")
-    throw lastError ?? TranscriptionError.networkError("Gemini transcription failed after retries")
+    let transcript = extractTextFromGeminiResponse(geminiResponse)
+    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(transcript)
+    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
+    
+    return normalizedText
   }
   
   private func transcribeWithGeminiFilesAPI(audioURL: URL, apiKey: String) async throws -> String {
@@ -581,46 +626,41 @@ class SpeechService {
     let endpoint = selectedTranscriptionModel.apiEndpoint
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(selectedTranscriptionModel.displayName) (\(selectedTranscriptionModel.rawValue))")
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
-    let url = URL(string: "\(endpoint)?key=\(apiKey)")!
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     
-    let requestBody: [String: Any] = [
-      "contents": [
-        [
-          "parts": [
-            [
-              "text": promptToUse.isEmpty ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting." : promptToUse
-            ],
-            [
-              "file_data": [
-                "file_uri": fileURI,
-                "mime_type": "audio/wav"  // Default, will be determined by file
-              ]
-            ]
+    // Build request using Codable struct
+    let transcriptionRequest = GeminiTranscriptionRequest(
+      contents: [
+        GeminiTranscriptionRequest.GeminiTranscriptionContent(
+          parts: [
+            GeminiTranscriptionRequest.GeminiTranscriptionPart(
+              text: promptToUse.isEmpty ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting." : promptToUse,
+              inlineData: nil,
+              fileData: nil
+            ),
+            GeminiTranscriptionRequest.GeminiTranscriptionPart(
+              text: nil,
+              inlineData: nil,
+              fileData: GeminiTranscriptionRequest.GeminiFileData(fileUri: fileURI, mimeType: "audio/wav")
+            )
           ]
-        ]
+        )
       ]
-    ]
+    )
     
-    request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+    var request = createGeminiRequest(endpoint: endpoint, apiKey: apiKey)
+    request.httpBody = try JSONEncoder().encode(transcriptionRequest)
     
-    let (data, response) = try await session.data(for: request)
+    // Make request
+    let geminiResponse = try await performGeminiRequest(
+      request,
+      responseType: GeminiResponse.self,
+      mode: "GEMINI-TRANSCRIPTION",
+      withRetry: false
+    )
     
-    guard let httpResponse = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response")
-    }
-    
-    if httpResponse.statusCode != 200 {
-      let error = try parseGeminiErrorResponse(data: data, statusCode: httpResponse.statusCode)
-      throw error
-    }
-    
-    let geminiResponse = try JSONDecoder().decode(GeminiResponse.self, from: data)
     let transcript = extractTextFromGeminiResponse(geminiResponse)
-    let normalizedText = normalizeTranscriptionText(transcript)
-    try validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
+    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(transcript)
+    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
     
     return normalizedText
   }
@@ -679,154 +719,6 @@ class SpeechService {
     return parseStatusCodeError(statusCode)
   }
 
-
-  private func validateSpeechText(_ text: String, mode: String = "TRANSCRIPTION-MODE") throws {
-    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    
-    // Debug logging to see what Whisper actually returned
-    DebugLogger.log("VALIDATION: Received text from API (length: \(trimmedText.count)): '\(trimmedText)'")
-
-    if trimmedText.isEmpty || trimmedText.count < Constants.minimumTextLength {
-      throw TranscriptionError.textTooShort
-    }
-
-    // Enhanced prompt detection - check for various prompt patterns
-    let defaultPrompt = AppConstants.defaultTranscriptionSystemPrompt
-    let lowercasedText = trimmedText.lowercased()
-    
-    // Check for exact prompt match
-    if trimmedText.contains(defaultPrompt) {
-      throw TranscriptionError.promptLeakDetected
-    }
-    
-    // Check for partial prompt patterns that might appear in transcription
-    let promptKeywords = [
-      "convert speech to",
-      "clean text with",
-      "proper punctuation",
-      "transcribe this audio",
-      "remove filler words",
-      "disfluencies"
-    ]
-    
-    let promptKeywordCount = promptKeywords.filter { lowercasedText.contains($0) }.count
-    
-    // If more than 2 prompt keywords are found, likely a prompt leak
-    if promptKeywordCount > 2 {
-      DebugLogger.log("PROMPT-DETECTION: Detected prompt leak in transcription: \(promptKeywordCount) keywords found")
-      throw TranscriptionError.promptLeakDetected
-    }
-    
-    // Check for context prefix
-    if trimmedText.hasPrefix("context:") {
-      throw TranscriptionError.promptLeakDetected
-    }
-    
-    // Check for system-like responses that might be prompt echoes
-    let systemPatterns = [
-      "here is the transcription",
-      "transcription:",
-      "audio transcription:",
-      "transcribed text:",
-      "the audio says:",
-      "the transcription is:"
-    ]
-    
-    let systemPatternCount = systemPatterns.filter { lowercasedText.hasPrefix($0) }.count
-    if systemPatternCount > 0 {
-      DebugLogger.log("PROMPT-DETECTION: Detected system pattern in transcription: \(systemPatterns.filter { lowercasedText.hasPrefix($0) }.first ?? "unknown")")
-      throw TranscriptionError.promptLeakDetected
-    }
-  }
-
-  private func sanitizeUserInput(_ input: String) -> String {
-    let sanitized = input.trimmingCharacters(in: .whitespacesAndNewlines)
-    return sanitized.filter { char in
-      let scalar = char.unicodeScalars.first!
-      return !CharacterSet.controlCharacters.contains(scalar) || char == "\n" || char == "\t"
-    }
-  }
-  
-  private func normalizeTranscriptionText(_ text: String) -> String {
-    // Remove excessive whitespace and normalize line breaks
-    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    
-    // Preserve line breaks: normalize multiple spaces/tabs to single space, but keep newlines
-    // Step 1: Normalize multiple consecutive newlines to max 2
-    let normalizedNewlines = trimmed.replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
-    
-    // Step 2: Normalize spaces/tabs within each line (but preserve newlines)
-    // Split by newlines, normalize each line, then rejoin
-    let lines = normalizedNewlines.components(separatedBy: "\n")
-    let normalizedLines = lines.map { line in
-      // Replace multiple consecutive spaces/tabs with single space
-      line.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
-        .trimmingCharacters(in: .whitespaces)
-    }
-    let normalized = normalizedLines.joined(separator: "\n")
-    
-    // Additional cleanup to remove potential prompt remnants
-    let cleaned = cleanTranscriptionText(normalized)
-    
-    return cleaned
-  }
-  
-  private func cleanTranscriptionText(_ text: String) -> String {
-    var cleaned = text
-    let originalLength = cleaned.count
-    
-    // Remove common prompt remnants that might appear at the beginning
-    let promptPrefixes = [
-      "convert speech to",
-      "clean text with",
-      "proper punctuation",
-      "transcribe this audio",
-      "please transcribe",
-      "transcription:",
-      "audio transcription:",
-      "here is the transcription:",
-      "the transcription is:",
-      "transcribed text:",
-      "the audio says:"
-    ]
-    
-    let lowercasedText = cleaned.lowercased()
-    for prefix in promptPrefixes {
-      if lowercasedText.hasPrefix(prefix) {
-        DebugLogger.log("PROMPT-CLEANUP: Removed prefix: '\(prefix)' from transcription")
-        cleaned = String(cleaned.dropFirst(prefix.count))
-        break
-      }
-    }
-    
-    // Remove common prompt remnants that might appear at the end
-    let promptSuffixes = [
-      "with proper punctuation",
-      "clean text with",
-      "keep only the intended meaning",
-      "remove filler words",
-      "preserve correct punctuation",
-      "numbers should be written as digits"
-    ]
-    
-    for suffix in promptSuffixes {
-      if lowercasedText.hasSuffix(suffix) {
-        DebugLogger.log("PROMPT-CLEANUP: Removed suffix: '\(suffix)' from transcription")
-        cleaned = String(cleaned.dropLast(suffix.count))
-        break
-      }
-    }
-    
-    // Clean up any remaining whitespace
-    cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-    
-    if cleaned.count != originalLength {
-      DebugLogger.log("PROMPT-CLEANUP: Text cleaned: \(originalLength) -> \(cleaned.count) characters")
-    }
-    
-    return cleaned
-  }
-
   // MARK: - Prompt Mode Helpers
   private func getClipboardContext() -> String? {
     guard let clipboardManager = clipboardManager else {
@@ -848,6 +740,15 @@ class SpeechService {
   }
 
   // MARK: - Shared Infrastructure Helpers
+  
+  private func getAudioFileSize(at url: URL) -> Int64 {
+    do {
+      let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+      return attributes[.size] as? Int64 ?? 0
+    } catch {
+      return 0
+    }
+  }
   
   private func validateAudioFile(at url: URL) throws {
     try validateAudioFileFormat(at: url)
@@ -891,44 +792,6 @@ class SpeechService {
   }
 }
 
-// MARK: - Data Extensions
-extension Data {
-  mutating func append(_ string: String) {
-    if let data = string.data(using: .utf8) {
-      append(data)
-    }
-  }
-}
-
-// MARK: - Multipart Form Data Extension
-extension URLRequest {
-  mutating func setMultipartFormData(
-    boundary: String, fields: [String: String],
-    files: [String: (filename: String, contentType: String, data: Data)]
-  ) {
-    setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-    var body = Data()
-
-    for (name, value) in fields {
-      body.append("--\(boundary)\r\n")
-      body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
-      body.append("\(value)\r\n")
-    }
-
-    for (name, file) in files {
-      body.append("--\(boundary)\r\n")
-      body.append(
-        "Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(file.filename)\"\r\n")
-      body.append("Content-Type: \(file.contentType)\r\n\r\n")
-      body.append(file.data)
-      body.append("\r\n")
-    }
-
-    body.append("--\(boundary)--\r\n")
-    httpBody = body
-  }
-}
 
 
 // MARK: - Error Result Parser

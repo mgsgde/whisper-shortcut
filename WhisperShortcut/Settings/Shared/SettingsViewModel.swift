@@ -51,6 +51,15 @@ class SettingsViewModel: ObservableObject {
     // Load dictation difficult words (empty by default)
     data.dictationDifficultWords = UserDefaults.standard.string(forKey: "dictationDifficultWords") ?? ""
 
+    // Load Whisper language setting
+    if let savedLanguageString = UserDefaults.standard.string(forKey: "whisperLanguage"),
+      let savedLanguage = WhisperLanguage(rawValue: savedLanguageString)
+    {
+      data.whisperLanguage = savedLanguage
+    } else {
+      data.whisperLanguage = SettingsDefaults.whisperLanguage
+    }
+
     // Load prompt mode system prompt (with fallback to default)
     data.promptModeSystemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
       ?? AppConstants.defaultPromptModeSystemPrompt
@@ -109,16 +118,25 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Validation
   func validateSettings() -> String? {
-    // Validate Google API key if a Gemini model is selected
-    let usesGemini = data.selectedTranscriptionModel.isGemini || 
-                     data.selectedPromptModel.isGemini
-
-    if usesGemini {
+    // Prompt mode ALWAYS requires API key (no offline support yet)
+    let usesGeminiPrompt = data.selectedPromptModel.isGemini
+    if usesGeminiPrompt {
       guard !data.googleAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        var services = [String]()
-        if data.selectedTranscriptionModel.isGemini { services.append("Transcription") }
-        if data.selectedPromptModel.isGemini { services.append("Prompt") }
-        return "Please enter your Google API key (required for \(services.joined(separator: ", ")))"
+        return "Please enter your Google API key (required for Prompt Mode)"
+      }
+    }
+    
+    // Transcription: Only require API key if using Gemini and no offline model is available
+    let usesGeminiTranscription = data.selectedTranscriptionModel.isGemini
+    if usesGeminiTranscription {
+      // Check if offline model is available
+      let hasOfflineTranscription = data.selectedTranscriptionModel.isOffline && 
+        ModelManager.shared.isModelAvailable(data.selectedTranscriptionModel.offlineModelType ?? .whisperBase)
+      
+      if !hasOfflineTranscription {
+        guard !data.googleAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+          return "Please enter your Google API key (required for Transcription) or select an offline Whisper model"
+        }
       }
     }
 
@@ -254,6 +272,9 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(data.customPromptText, forKey: "customPromptText")
     UserDefaults.standard.set(data.dictationDifficultWords, forKey: "dictationDifficultWords")
     UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: "promptModeSystemPrompt")
+    
+    // Save Whisper language setting
+    UserDefaults.standard.set(data.whisperLanguage.rawValue, forKey: "whisperLanguage")
 
     // Save popup notifications setting
     UserDefaults.standard.set(data.showPopupNotifications, forKey: "showPopupNotifications")

@@ -7,11 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		BF31AC7C2EEB2B8200C1DEA3 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */; };
 		BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BFBC35F42E3E129600BAC747 /* HotKey */; };
 /* End PBXBuildFile section */
-
-/* Begin PBXContainerItemProxy section */
-/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhisperShortcut.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -43,6 +41,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BF31AC7C2EEB2B8200C1DEA3 /* WhisperKit in Frameworks */,
 				BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -95,6 +94,7 @@
 			name = WhisperShortcut;
 			packageProductDependencies = (
 				BFBC35F42E3E129600BAC747 /* HotKey */,
+				BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */,
 			);
 			productName = WhisperShortcut;
 			productReference = BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */;
@@ -126,6 +126,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */,
+				BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BF3C90C72E3E0CC0001D325B /* Products */;
@@ -156,9 +157,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		BF3C90E62E3E0CC2001D325B /* Debug */ = {
@@ -370,9 +368,22 @@
 				kind = branch;
 			};
 		};
+		BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/WhisperKit";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			productName = WhisperKit;
+		};
 		BFBC35F42E3E129600BAC747 /* HotKey */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */;
