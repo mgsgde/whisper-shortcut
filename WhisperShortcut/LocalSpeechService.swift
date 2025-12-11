@@ -9,7 +9,7 @@ import Foundation
 import AVFoundation
 import WhisperKit
 
-class LocalSpeechService {
+actor LocalSpeechService {
   static let shared = LocalSpeechService()
   
   private var whisperKit: WhisperKit?
@@ -19,7 +19,18 @@ class LocalSpeechService {
   
   // MARK: - Initialize Model
   func initializeModel(_ modelType: OfflineModelType) async throws {
+    // Check if already initialized with the same model
+    if let current = currentModelType, current == modelType, whisperKit != nil {
+      DebugLogger.log("LOCAL-SPEECH: Model \(modelType.displayName) already loaded")
+      return
+    }
+
     DebugLogger.log("LOCAL-SPEECH: Initializing WhisperKit model: \(modelType.displayName)")
+    
+    // Unload previous model if exists
+    if whisperKit != nil {
+      await unloadModel()
+    }
     
     // Resolve the actual model path using ModelManager
     guard let modelPath = ModelManager.shared.resolveModelPath(for: modelType) else {
@@ -38,6 +49,13 @@ class LocalSpeechService {
     currentModelType = modelType
     
     DebugLogger.logSuccess("LOCAL-SPEECH: Model initialized successfully")
+  }
+  
+  // MARK: - Unload Model
+  func unloadModel() {
+    DebugLogger.log("LOCAL-SPEECH: Unloading model")
+    whisperKit = nil
+    currentModelType = nil
   }
   
   // MARK: - Transcribe Audio

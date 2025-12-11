@@ -392,9 +392,11 @@ class MenuBarController: NSObject {
       // Record successful operation for review prompt
       reviewPrompter.recordSuccessfulOperation(window: statusItem?.button?.window)
 
+      // Get model info asynchronously before UI update
+      let modelInfo = await self.speechService.getTranscriptionModelInfo()
+      
       await MainActor.run {
         // Show popup notification with the transcription text and model info
-        let modelInfo = self.speechService.getTranscriptionModelInfo()
         PopupNotificationWindow.showTranscriptionResponse(result, modelInfo: modelInfo)
         self.appState = self.appState.showSuccess("Transcription copied to clipboard")
       }

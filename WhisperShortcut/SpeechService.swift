@@ -60,7 +60,15 @@ class SpeechService {
 
   // MARK: - Transcription Mode Configuration
   func setModel(_ model: TranscriptionModel) {
+    let oldModel = self.selectedTranscriptionModel
     self.selectedTranscriptionModel = model
+    
+    // If switching away from offline model, unload it to free memory
+    if oldModel.isOffline && !model.isOffline {
+      Task {
+        await LocalSpeechService.shared.unloadModel()
+      }
+    }
   }
 
   func getCurrentModel() -> TranscriptionModel {
@@ -68,9 +76,9 @@ class SpeechService {
   }
   
   // MARK: - Model Information for Notifications
-  func getTranscriptionModelInfo() -> String {
+  func getTranscriptionModelInfo() async -> String {
     if selectedTranscriptionModel.isOffline {
-      return LocalSpeechService.shared.getCurrentModelInfo() ?? selectedTranscriptionModel.displayName
+      return await LocalSpeechService.shared.getCurrentModelInfo() ?? selectedTranscriptionModel.displayName
     }
     return selectedTranscriptionModel.displayName
   }
@@ -158,7 +166,7 @@ class SpeechService {
       }
       
       // Initialize model if not already initialized
-      if !LocalSpeechService.shared.isReady() {
+      if await !LocalSpeechService.shared.isReady() {
         try await LocalSpeechService.shared.initializeModel(offlineModelType)
       }
       
