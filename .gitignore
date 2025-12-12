@@ -127,3 +127,6 @@ release/
 screenshots/node_modules/
 
 test-config
+
+# Todo files
+todo*.md
