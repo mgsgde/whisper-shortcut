@@ -5,6 +5,11 @@ import SwiftUI
 
 class MenuBarController: NSObject {
 
+  // MARK: - Constants
+  private enum Constants {
+    static let audioTailCaptureDelay: TimeInterval = 0.1  // Delay to capture audio tail and prevent cut-off sentences
+  }
+
   // MARK: - Single Source of Truth
   private var appState: AppState = .idle {
     didSet {
@@ -341,8 +346,8 @@ class MenuBarController: NSObject {
     
     switch appState.recordingMode {
     case .transcription:
-      // Add 0.3-second delay to capture audio tail and prevent cut-off sentences
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+      // Add delay to capture audio tail and prevent cut-off sentences
+      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
         self?.audioRecorder.stopRecording()
       }
     case .none:
@@ -374,8 +379,8 @@ class MenuBarController: NSObject {
     
     switch appState.recordingMode {
     case .prompt:
-      // Add 0.3-second delay to capture audio tail and prevent cut-off sentences
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+      // Add delay to capture audio tail and prevent cut-off sentences
+      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
         self?.audioRecorder.stopRecording()
       }
     case .none:
