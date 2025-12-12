@@ -341,8 +341,8 @@ class MenuBarController: NSObject {
     
     switch appState.recordingMode {
     case .transcription:
-      // Add 0.6-second delay to capture audio tail and prevent cut-off sentences
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+      // Add 0.3-second delay to capture audio tail and prevent cut-off sentences
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
         self?.audioRecorder.stopRecording()
       }
     case .none:
@@ -374,8 +374,8 @@ class MenuBarController: NSObject {
     
     switch appState.recordingMode {
     case .prompt:
-      // Add 0.6-second delay to capture audio tail and prevent cut-off sentences
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+      // Add 0.3-second delay to capture audio tail and prevent cut-off sentences
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
         self?.audioRecorder.stopRecording()
       }
     case .none:
