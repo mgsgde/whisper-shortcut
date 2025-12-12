@@ -341,7 +341,10 @@ class MenuBarController: NSObject {
     
     switch appState.recordingMode {
     case .transcription:
-      audioRecorder.stopRecording()
+      // Add 0.6-second delay to capture audio tail and prevent cut-off sentences
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+        self?.audioRecorder.stopRecording()
+      }
     case .none:
       let hasAPIKey = KeychainManager.shared.hasGoogleAPIKey()
       let selectedModel = TranscriptionModel(
@@ -371,7 +374,10 @@ class MenuBarController: NSObject {
     
     switch appState.recordingMode {
     case .prompt:
-      audioRecorder.stopRecording()
+      // Add 0.6-second delay to capture audio tail and prevent cut-off sentences
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+        self?.audioRecorder.stopRecording()
+      }
     case .none:
       // Prompt mode always requires API key (no offline support yet)
       let hasAPIKey = KeychainManager.shared.hasGoogleAPIKey()

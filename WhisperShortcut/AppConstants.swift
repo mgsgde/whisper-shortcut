@@ -16,6 +16,7 @@ Key rules:
 - Keep repetitions if they are part of the natural speech flow.
 - Use proper punctuation and capitalization.
 - Preserve the speaker's tone and meaning - transcribe what was actually said.
+- Ensure the final sentence is complete, even if the audio ends abruptly.
 - Return ONLY the clean transcribed text. Start directly with the transcribed words, nothing else.
 """
 
