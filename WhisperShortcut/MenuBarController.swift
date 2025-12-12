@@ -213,13 +213,31 @@ class MenuBarController: NSObject {
 
   private func loadModelConfiguration() {
     // Load saved model preference and set it on the transcription service
+    let selectedModel: TranscriptionModel
     if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
       let savedModel = TranscriptionModel(rawValue: savedModelString)
     {
+      selectedModel = savedModel
       speechService.setModel(savedModel)
     } else {
       // Set default model from SettingsDefaults
+      selectedModel = SettingsDefaults.selectedTranscriptionModel
       speechService.setModel(SettingsDefaults.selectedTranscriptionModel)
+    }
+
+    // Pre-initialize offline models in the background if available
+    if selectedModel.isOffline,
+       let offlineModelType = selectedModel.offlineModelType,
+       ModelManager.shared.isModelAvailable(offlineModelType) {
+      DebugLogger.log("MENU-BAR: Pre-loading offline model \(offlineModelType.displayName) in background")
+      Task {
+        do {
+          try await LocalSpeechService.shared.initializeModel(offlineModelType)
+          DebugLogger.logSuccess("MENU-BAR: Successfully pre-loaded offline model \(offlineModelType.displayName)")
+        } catch {
+          DebugLogger.logError("MENU-BAR: Failed to pre-load offline model \(offlineModelType.displayName): \(error.localizedDescription)")
+        }
+      }
     }
 
     // Setup shortcuts
