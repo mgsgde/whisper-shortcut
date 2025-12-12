@@ -1,6 +1,6 @@
 # WhisperShortcut
 
-**Speech-to-text** shortcut with **Google Gemini**
+**Speech-to-Text** and **Voice-to-Prompt** shortcut for macOS with **Google Gemini** and **Offline Whisper** support
 
 <div align="center">
   <img src="screenshots/output/speech-to-text.png" width="50%" alt="Speech-to-Text Feature">
@@ -16,10 +16,23 @@ If you like WhisperShortcut, please leave a review or buy it on the App Store to
 
 ## How it works
 
-1. **Setup** - Configure your Gemini API key [here](https://aistudio.google.com/app/apikey)
+### Transcription Mode (Speech-to-Text)
+
+Choose between **cloud** (Google Gemini) or **offline** (Whisper) transcription:
+
+1. **Setup** - For cloud transcription: Configure your Gemini API key [here](https://aistudio.google.com/app/apikey). For offline transcription: Download a Whisper model in Settings (no API key needed).
 2. **Press Shortcut** - Start recording with a keyboard shortcut
-3. **Transcribe** - Uses Google Gemini for accurate speech-to-text
-4. **Paste from Clipboard** - Automatically copies transcription to your clipboard
+3. **Transcribe** - Uses your selected model (Gemini or Whisper) for accurate speech-to-text
+4. **Copy to Clipboard** - Automatically copies transcription to your clipboard
+
+### Prompt Mode (Voice-to-Prompt)
+
+Speak instructions that apply to selected clipboard text:
+
+1. **Select Text** - Copy text you want to modify to your clipboard
+2. **Press Shortcut** - Start recording your voice instruction
+3. **Process** - Gemini processes both your voice instruction and the selected text
+4. **Get Result** - Modified text is automatically copied to your clipboard
 
 ## Installation
 
@@ -34,9 +47,11 @@ bash install.sh
 
 ## Features
 
-- **Speech-to-Text Transcription**: Audio → Text transcription using Google Gemini models
-- **Smart Clipboard Integration**: Automatic copy to clipboard
-- **Customizable Shortcuts**: Configurable keyboard shortcuts
+- **Speech-to-Text Transcription**: Audio → Text transcription using Google Gemini (cloud) or Whisper (offline)
+- **Voice-to-Prompt Mode**: Speak instructions to modify selected clipboard text using Gemini AI
+- **Offline Support (Privacy Mode)**: Use local Whisper models for completely offline transcription
+- **Smart Clipboard Integration**: Automatic copy to clipboard for both modes
+- **Customizable Shortcuts**: Configurable keyboard shortcuts for each mode
   
 ## Development
 
@@ -44,7 +59,7 @@ bash install.sh
 
 - macOS 15.5+
 - Xcode 16.0+
-- Gemini API key
+- Gemini API key (required only for cloud transcription and prompt mode; optional for offline Whisper transcription)
 
 ### Open in Xcode
 
