@@ -10,6 +10,7 @@
  *   node capture-all.js speech-to-text     # Capture specific screenshot
  *   node capture-all.js speech-to-prompt   # Capture specific screenshot
  *   node capture-all.js powered-by-gemini  # Capture specific screenshot
+ *   node capture-all.js powered-by-whisper # Capture specific screenshot
  */
 
 const puppeteer = require('puppeteer');
@@ -31,6 +32,11 @@ const screenshots = [
     name: 'powered-by-gemini',
     html: 'powered-by-gemini.html', 
     output: 'powered-by-gemini.png'
+  },
+  {
+    name: 'powered-by-whisper',
+    html: 'powered-by-whisper.html',
+    output: 'powered-by-whisper.png'
   }
 ];
 
