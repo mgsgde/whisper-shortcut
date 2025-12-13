@@ -5,6 +5,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     name: Build, Sign, Notarize, and Release
@@ -88,6 +91,9 @@ jobs:
 
           # Copy app to DMG directory
           cp -R "$APP_PATH" "$DMG_TEMP/"
+
+          # Create a link to Applications directory
+          ln -s /Applications "$DMG_TEMP/Applications"
 
           # Create DMG
           hdiutil create -volname "$VOLUME_NAME" \
