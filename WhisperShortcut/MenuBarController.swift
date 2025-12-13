@@ -7,7 +7,7 @@ class MenuBarController: NSObject {
 
   // MARK: - Constants
   private enum Constants {
-    static let audioTailCaptureDelay: TimeInterval = 0.1  // Delay to capture audio tail and prevent cut-off sentences
+    static let audioTailCaptureDelay: TimeInterval = 0.2  // Delay to capture audio tail and prevent cut-off sentences
   }
 
   // MARK: - Single Source of Truth
