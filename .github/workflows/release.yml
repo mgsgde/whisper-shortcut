@@ -45,6 +45,18 @@ jobs:
           # Make keychain default for codesign
           security default-keychain -s $KEYCHAIN_PATH
 
+          # Find and store the certificate identity for later use
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ -z "$IDENTITY" ]; then
+            echo "❌ Error: Developer ID Application certificate not found after import"
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+            exit 1
+          fi
+          echo "CERT_IDENTITY=$IDENTITY" >> $GITHUB_ENV
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
+          echo "Found certificate identity: $IDENTITY"
+
       - name: Build and archive
         run: |
           xcodebuild clean archive \
@@ -85,6 +97,23 @@ jobs:
 
           echo "DMG_PATH=$DMG_PATH" >> $GITHUB_ENV
 
+      - name: Sign DMG
+        run: |
+          # Unlock the keychain (needed for codesign)
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Sign the DMG with the imported certificate identity
+          codesign --force --verify --verbose --sign "$CERT_IDENTITY" --keychain "$KEYCHAIN_PATH" "$DMG_PATH"
+
+          # Verify DMG signature
+          codesign --verify --verbose "$DMG_PATH" || {
+            echo "❌ Error: DMG signature verification failed"
+            codesign -dvv "$DMG_PATH"
+            exit 1
+          }
+
+          echo "✅ DMG signed successfully"
+
       - name: Notarize app
         env:
           NOTARY_USERNAME: ${{ secrets.NOTARY_USERNAME }}
@@ -104,7 +133,13 @@ jobs:
 
       - name: Verify notarization
         run: |
+          # Verify stapling
           xcrun stapler validate "$DMG_PATH"
+
+          # Verify code signature
+          codesign --verify --verbose "$DMG_PATH"
+
+          # Verify Gatekeeper acceptance
           spctl -a -vvv -t install "$DMG_PATH"
 
       - name: Get version from tag
