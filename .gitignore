@@ -130,3 +130,5 @@ test-config
 
 # Todo files
 todo*.md
+
+developer-id-cert.p12
