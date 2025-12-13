@@ -54,19 +54,19 @@ security export -k "$KEYCHAIN_PATH" -t identities -f pkcs12 -P "$P12_PASSWORD" -
     KEY_FILE="/tmp/key.pem"
     
     # Export certificate
-    security find-certificate -c "$CERT_NAME" -a -p > "$CERT_FILE"
+    security find-certificate -c "$FULL_CERT_NAME" -a -p > "$CERT_FILE"
     
     # Try to find and export the private key
     # This might require the keychain password
     echo "Please enter your Mac login password (for keychain access):"
-    security find-certificate -c "$CERT_NAME" -a -p | openssl pkcs12 -export -out "$OUTPUT_FILE" -passout pass:"$P12_PASSWORD" -nokeys 2>/dev/null || {
+    security find-certificate -c "$FULL_CERT_NAME" -a -p | openssl pkcs12 -export -out "$OUTPUT_FILE" -passout pass:"$P12_PASSWORD" -nokeys 2>/dev/null || {
         echo ""
         echo "❌ Could not export private key automatically."
         echo ""
         echo "📋 Manual steps:"
         echo "1. Open Keychain Access"
         echo "2. Select 'login' keychain (left sidebar)"
-        echo "3. Search for 'Developer ID Application: Magnus Gödde'"
+        echo "3. Search for '$FULL_CERT_NAME'"
         echo "4. Expand the certificate (click arrow)"
         echo "5. Select BOTH the certificate AND the private key (Cmd+Click)"
         echo "6. Right-click → Export 2 items..."
