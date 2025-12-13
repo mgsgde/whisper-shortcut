@@ -8,11 +8,17 @@
 
 📺 **[Watch Demo Video](https://youtu.be/yz8cbaI6NYQ)**
 
-## Support the Project  
+## Download & Support
 
-**[Buy on Mac App Store](https://apps.apple.com/us/app/whispershortcut/id6749648401)**  
+**[Download for FREE via GitHub Releases](https://github.com/mgsgde/whisper-shortcut/releases)**
 
-If you like WhisperShortcut, please leave a review or buy it on the App Store to support the project! ⭐ It’s optional — you can also install it for free yourself.
+### Support the Project ❤️
+
+WhisperShortcut is open source and free to use. If you want to support the development, you can purchase the app on the App Store:
+
+**[Buy on Mac App Store](https://apps.apple.com/us/app/whispershortcut/id6749648401)**
+
+This is **completely optional**. If you like the app, a purchase or a review on the App Store is a fantastic way to say thank you! ⭐
 
 ## How it works
 
@@ -35,6 +41,13 @@ Speak instructions that apply to selected clipboard text:
 4. **Get Result** - Modified text is automatically copied to your clipboard
 
 ## Installation
+
+### Recommended: Download App
+
+1. Download the latest `.dmg` file from the [Releases page](https://github.com/mgsgde/whisper-shortcut/releases).
+2. Open the DMG and drag `WhisperShortcut` to your Applications folder.
+
+### Build from Source
 
 ```bash
 # Clone the repository
@@ -68,6 +81,19 @@ git clone https://github.com/mgsgde/whisper-shortcut.git
 cd whisper-shortcut
 open WhisperShortcut.xcodeproj
 ```
+
+### Release Process
+
+To create a new release:
+
+1. Update the version number in Xcode (`Target > General > Version`).
+2. Run the release helper script:
+
+   ```bash
+   scripts/create-release.sh
+   ```
+
+   This will tag the commit and trigger the GitHub Action to build and release the app.
 
 ## License
 
