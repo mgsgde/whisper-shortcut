@@ -454,5 +454,17 @@ enum TranscriptionError: Error, Equatable {
     case .modelNotAvailable: return "Model Not Available"
     }
   }
+  
+  /// Determines if this error is retryable (temporary/transient errors)
+  var isRetryable: Bool {
+    switch self {
+    // Retryable errors (temporary issues)
+    case .networkError, .requestTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .rateLimited, .slowDown:
+      return true
+    // Non-retryable errors (configuration/permanent issues)
+    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .quotaExceeded, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest:
+      return false
+    }
+  }
 }
 

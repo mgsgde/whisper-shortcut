@@ -63,12 +63,17 @@ class PopupNotificationWindow: NSWindow {
   private var scrollView: NSScrollView!
   private var whatsappIcon: NSImageView?
   private var closeButton: NSButton!
+  private var retryButton: NSButton?
+  private var whatsappButton: NSButton?
   private var autoHideTimer: Timer?
   private var isError: Bool = false
   private var errorText: String = ""
+  private var retryAction: (() -> Void)?
+  private var dismissAction: (() -> Void)?
+  private var wasRetried: Bool = false
 
   // MARK: - Initialization
-  init(title: String, text: String, isError: Bool = false, isCancelled: Bool = false, modelInfo: String? = nil) {
+  init(title: String, text: String, isError: Bool = false, isCancelled: Bool = false, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil) {
     // Create window with specific style for notifications
     super.init(
       contentRect: NSRect(x: 0, y: 0, width: Constants.defaultWindowWidth, height: 100),
@@ -80,6 +85,8 @@ class PopupNotificationWindow: NSWindow {
     // Store error state and text for WhatsApp feedback
     self.isError = isError
     self.errorText = text
+    self.retryAction = retryAction
+    self.dismissAction = dismissAction
 
     setupWindow()
     setupContentView()
@@ -88,19 +95,23 @@ class PopupNotificationWindow: NSWindow {
     setupLabels(title: title, text: text, modelInfo: modelInfo)
     setupScrollView()
     if isError {
-      setupWhatsAppIcon()
+      setupWhatsAppButton()
+      if retryAction != nil {
+        setupRetryButton()
+      }
     }
     layoutContent()
 
-    // Make error notifications clickable for WhatsApp feedback
-    if isError {
-      setupErrorClickHandler()
-    } else {
+    // Only success notifications are clickable (to close)
+    if !isError {
       setupSuccessClickHandler()
     }
 
     // Start auto-hide timer with appropriate duration
-    startAutoHideTimer(isError: isError)
+    // Don't auto-hide error notifications with retry button - let user decide when to dismiss
+    if !isError || retryAction == nil {
+      startAutoHideTimer(isError: isError)
+    }
   }
 
   // MARK: - Setup Methods
@@ -209,6 +220,34 @@ class PopupNotificationWindow: NSWindow {
     hide()
   }
 
+  private func setupRetryButton() {
+    retryButton = NSButton()
+    guard let retryButton = retryButton else { return }
+    
+    retryButton.title = "Retry"
+    retryButton.bezelStyle = .rounded
+    retryButton.isBordered = true
+    retryButton.wantsLayer = true
+    retryButton.translatesAutoresizingMaskIntoConstraints = false
+    
+    // Set action
+    retryButton.target = self
+    retryButton.action = #selector(retryButtonClicked)
+    
+    // Size constraints
+    retryButton.setContentHuggingPriority(.required, for: .horizontal)
+    retryButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+  }
+
+  @objc private func retryButtonClicked() {
+    // Mark that retry was clicked
+    wasRetried = true
+    // Execute retry action
+    retryAction?()
+    // Close the window (don't call dismissAction since we're retrying)
+    hide()
+  }
+
   private func setupIcon(isError: Bool, isCancelled: Bool = false) {
     // Icon selection based on notification type
     let iconText: String
@@ -261,19 +300,8 @@ class PopupNotificationWindow: NSWindow {
       modelInfoLabel = nil
     }
 
-    // Text label with improved readability
+    // Text field with improved readability and text selection support
     let displayText = createPreviewText(from: text)
-
-    textLabel = NSTextField(labelWithString: displayText)
-    textLabel.font = NSFont.systemFont(ofSize: Constants.textFontSize, weight: .regular)
-    textLabel.textColor = NSColor.labelColor  // Use primary label color for better readability
-    textLabel.alignment = .left
-    textLabel.isEditable = false
-    textLabel.isBordered = false
-    textLabel.backgroundColor = NSColor.clear
-    textLabel.lineBreakMode = .byWordWrapping
-    textLabel.maximumNumberOfLines = 0  // Unlimited lines
-    textLabel.translatesAutoresizingMaskIntoConstraints = false
 
     // Better text spacing and readability
     let paragraphStyle = NSMutableParagraphStyle()
@@ -288,37 +316,44 @@ class PopupNotificationWindow: NSWindow {
         .paragraphStyle: paragraphStyle,
       ]
     )
-    textLabel.attributedStringValue = attributedText
 
+    // Use NSTextField (not label) to allow text selection
+    textLabel = NSTextField()
+    textLabel.attributedStringValue = attributedText
+    textLabel.isEditable = false
+    textLabel.isSelectable = true  // Allow text selection for copy/paste
+    textLabel.isBordered = false
+    textLabel.backgroundColor = NSColor.clear
+    textLabel.drawsBackground = false
+    textLabel.lineBreakMode = .byWordWrapping
+    textLabel.maximumNumberOfLines = 0  // Unlimited lines
+    textLabel.translatesAutoresizingMaskIntoConstraints = false
+    
     textLabel.preferredMaxLayoutWidth =
       Constants.defaultWindowWidth - (Constants.outerPadding * 2) - Constants.iconAndSpacingWidth
   }
 
-  private func setupWhatsAppIcon() {
-    guard let whatsappImage = NSImage(named: "WhatsApp") else {
-      return
-    }
-
-    whatsappIcon = NSImageView(image: whatsappImage)
-    guard let icon = whatsappIcon else { return }
-
-    // Icon styling - positioned next to title for better UX
-    icon.translatesAutoresizingMaskIntoConstraints = false
-    icon.imageScaling = .scaleProportionallyDown
-    icon.wantsLayer = true
-    icon.layer?.cornerRadius = 4
+  private func setupWhatsAppButton() {
+    whatsappButton = NSButton()
+    guard let whatsappButton = whatsappButton else { return }
+    
+    whatsappButton.title = "Contact Support"
+    whatsappButton.bezelStyle = .rounded
+    whatsappButton.isBordered = true
+    whatsappButton.wantsLayer = true
+    whatsappButton.translatesAutoresizingMaskIntoConstraints = false
+    
+    // Set action
+    whatsappButton.target = self
+    whatsappButton.action = #selector(whatsappButtonClicked)
+    
+    // Size constraints - button should fit its content, not stretch
+    whatsappButton.setContentHuggingPriority(.required, for: .horizontal)
+    whatsappButton.setContentCompressionResistancePriority(.required, for: .horizontal)
   }
 
-  private func setupErrorClickHandler() {
-    // Set up click handler for the clickable content view
-    if let clickableView = customContentView as? ClickableContentView {
-      clickableView.onClickHandler = { [weak self] in
-        self?.errorWindowClicked()
-      }
-    }
-
-    // Visual feedback through cursor change only - no border needed for clean design
-    customContentView.wantsLayer = true
+  @objc private func whatsappButtonClicked() {
+    openWhatsAppFeedback()
   }
 
   private func setupSuccessClickHandler() {
@@ -329,16 +364,6 @@ class PopupNotificationWindow: NSWindow {
     }
 
     customContentView.wantsLayer = true
-  }
-
-  @objc private func errorWindowClicked() {
-    // First open WhatsApp, then close notification
-    openWhatsAppFeedback()
-
-    // Delay closing the notification slightly to ensure WhatsApp opens
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-      self.hide()
-    }
   }
 
   @objc private func successWindowClicked() {
@@ -410,9 +435,14 @@ class PopupNotificationWindow: NSWindow {
     
     customContentView.addSubview(scrollView)
 
-    // Add WhatsApp icon for error notifications (positioned next to title)
-    if isError, let icon = whatsappIcon {
-      customContentView.addSubview(icon)
+    // Add WhatsApp button for error notifications
+    if isError, let whatsappButton = whatsappButton {
+      customContentView.addSubview(whatsappButton)
+    }
+    
+    // Add retry button for error notifications with retry action
+    if isError, let retryButton = retryButton {
+      customContentView.addSubview(retryButton)
     }
 
     // Set up constraints with improved spacing
@@ -442,8 +472,6 @@ class PopupNotificationWindow: NSWindow {
         constant: Constants.titleBottomSpacing),
       scrollView.leadingAnchor.constraint(
         equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding),
-      scrollView.bottomAnchor.constraint(
-        equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
 
       // Text label width constraint (for proper wrapping)
       textLabel.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
@@ -462,26 +490,64 @@ class PopupNotificationWindow: NSWindow {
     }
 
     // Set up constraints based on notification type
-    if isError, let icon = whatsappIcon {
-      // Error notifications: no left icon, WhatsApp icon on right
+    if isError {
+      // Error notifications: no left icon
       NSLayoutConstraint.activate([
         // Title starts from left edge (no left icon)
         titleLabel.leadingAnchor.constraint(
           equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding),
 
-        // Position WhatsApp icon to the right of title (leave space for close button)
-        icon.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
-        icon.leadingAnchor.constraint(
-          equalTo: titleLabel.trailingAnchor, constant: Constants.iconSpacing),
-        icon.trailingAnchor.constraint(
-          lessThanOrEqualTo: closeButton.leadingAnchor, constant: -8),
-        icon.widthAnchor.constraint(equalToConstant: 20),
-        icon.heightAnchor.constraint(equalToConstant: 20),
-
         // Scroll view spans full width
         scrollView.trailingAnchor.constraint(
           equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
       ])
+      
+      // Add button constraints (WhatsApp and/or Retry) - position them below scroll view
+      let hasRetryButton = retryButton != nil
+      let hasWhatsAppButton = whatsappButton != nil
+      
+      if hasRetryButton || hasWhatsAppButton {
+        // Both buttons are positioned below scroll view
+        let buttonSpacing: CGFloat = 8
+        let topAnchor = scrollView.bottomAnchor
+        
+        if let retryButton = retryButton {
+          NSLayoutConstraint.activate([
+            retryButton.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            retryButton.leadingAnchor.constraint(
+              equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding),
+            retryButton.bottomAnchor.constraint(
+              equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
+            retryButton.heightAnchor.constraint(equalToConstant: 28),
+          ])
+        }
+        
+        if let whatsappButton = whatsappButton {
+          NSLayoutConstraint.activate([
+            whatsappButton.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            whatsappButton.bottomAnchor.constraint(
+              equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
+            whatsappButton.heightAnchor.constraint(equalToConstant: 28),
+          ])
+          
+          if let retryButton = retryButton {
+            // Position WhatsApp button next to retry button
+            whatsappButton.leadingAnchor.constraint(
+              equalTo: retryButton.trailingAnchor, constant: buttonSpacing).isActive = true
+          } else {
+            // Only WhatsApp button, position it at the start
+            whatsappButton.leadingAnchor.constraint(
+              equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding).isActive = true
+          }
+          // Don't constrain width - let button size to its intrinsic content size
+        }
+      } else {
+        // No buttons, scroll view goes to bottom
+        NSLayoutConstraint.activate([
+          scrollView.bottomAnchor.constraint(
+            equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
+        ])
+      }
     } else {
       // Success notifications: green checkmark on left, close button on right
       NSLayoutConstraint.activate([
@@ -494,6 +560,8 @@ class PopupNotificationWindow: NSWindow {
         // Scroll view spans full width
         scrollView.trailingAnchor.constraint(
           equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
+        scrollView.bottomAnchor.constraint(
+          equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
       ])
     }
 
@@ -537,6 +605,10 @@ class PopupNotificationWindow: NSWindow {
     let titleToModelSpacing = modelInfoLabel != nil ? 4.0 : 0.0  // Small gap between title and model info
     let modelToTextSpacing = Constants.titleBottomSpacing  // Gap before text content
 
+    // Calculate button height if present (retry and/or WhatsApp buttons)
+    let hasButtons = (retryButton != nil || whatsappButton != nil)
+    let buttonHeight = hasButtons ? 28.0 + 12.0 : 0.0  // Button height + spacing
+    
     // Calculate total required height
     let requiredHeight = Constants.outerPadding +  // Top padding
                          titleHeight +  // Title height
@@ -544,6 +616,7 @@ class PopupNotificationWindow: NSWindow {
                          modelInfoHeight +  // Model info height
                          modelToTextSpacing +  // Gap to text
                          textContentHeight +  // Text content height
+                         buttonHeight +  // Button height + spacing (for retry and/or WhatsApp buttons)
                          Constants.outerPadding  // Bottom padding
 
     // Use the larger of required height or minimum height, but cap at max height
@@ -743,7 +816,6 @@ class PopupNotificationWindow: NSWindow {
   }
 
   func hide() {
-
     // Cancel auto-hide timer
     autoHideTimer?.invalidate()
     autoHideTimer = nil
@@ -768,6 +840,15 @@ class PopupNotificationWindow: NSWindow {
       // Hide window instead of closing to prevent app termination
       self.orderOut(nil)  // Make window invisible
 
+      // Call dismiss action only if:
+      // 1. Retry was NOT clicked (wasRetried == false)
+      // 2. dismissAction exists (for cleanup when no retry option)
+      // 3. retryAction is nil (no retry button was shown, so cleanup is safe)
+      // If retryAction exists but retry wasn't clicked, we keep the file for menu retry
+      if !self.wasRetried, let dismissAction = self.dismissAction, self.retryAction == nil {
+        dismissAction()
+      }
+      
       // Remove from active popups to allow deallocation
       PopupNotificationWindow.activePopups.remove(self)
     }
@@ -809,7 +890,16 @@ class PopupNotificationWindow: NSWindow {
 
   // MARK: - Mouse Events
   override func mouseDown(with event: NSEvent) {
-    // Hide popup when clicked
+    // Only hide on click if it's not the button areas
+    // The buttons will handle their own clicks
+    let location = event.locationInWindow
+    if let retryButton = retryButton, retryButton.frame.contains(location) {
+      return  // Let the retry button handle the click
+    }
+    if let whatsappButton = whatsappButton, whatsappButton.frame.contains(location) {
+      return  // Let the WhatsApp button handle the click
+    }
+    // Hide popup when clicked elsewhere
     hide()
   }
 
@@ -873,7 +963,7 @@ extension PopupNotificationWindow {
     showSuccessNotification(text: transcription, modelInfo: modelInfo)
   }
 
-  static func showError(_ error: String, title: String = "Error") {
+  static func showError(_ error: String, title: String = "Error", retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil) {
     guard arePopupNotificationsEnabled else {
       return
     }
@@ -881,7 +971,9 @@ extension PopupNotificationWindow {
     let popup = PopupNotificationWindow(
       title: title,
       text: error,
-      isError: true
+      isError: true,
+      retryAction: retryAction,
+      dismissAction: dismissAction
     )
 
     // Keep strong reference until window closes
