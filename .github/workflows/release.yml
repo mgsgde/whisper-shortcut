@@ -155,21 +155,39 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION"
 
+      - name: Prepare Release Notes
+        id: release_notes
+        run: |
+          if [ -f ".github/RELEASE_NOTES.md" ]; then
+            echo "✅ Found RELEASE_NOTES.md, using it for release body"
+            # Read the file and escape it properly for GitHub Actions
+            RELEASE_BODY=$(cat .github/RELEASE_NOTES.md)
+            # Use a delimiter that's unlikely to appear in the content
+            {
+              echo 'body<<EOF'
+              echo "$RELEASE_BODY"
+              echo EOF
+            } >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ RELEASE_NOTES.md not found, using default release body"
+            {
+              echo 'body<<EOF'
+              echo "## WhisperShortcut ${{ steps.get_version.outputs.version }}"
+              echo ""
+              echo "### Installation"
+              echo "1. Download the DMG file"
+              echo "2. Open the DMG and drag WhisperShortcut to your Applications folder"
+              echo "3. Open WhisperShortcut from Applications (you may need to allow it in System Settings > Privacy & Security)"
+              echo EOF
+            } >> $GITHUB_OUTPUT
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: ${{ env.DMG_PATH }}
           name: Release ${{ steps.get_version.outputs.version }}
-          body: |
-            ## WhisperShortcut ${{ steps.get_version.outputs.version }}
-
-            ### Installation
-            1. Download the DMG file
-            2. Open the DMG and drag WhisperShortcut to your Applications folder
-            3. Open WhisperShortcut from Applications (you may need to allow it in System Settings > Privacy & Security)
-
-            ### Changes
-            See the [changelog](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}) for details.
+          body: ${{ steps.release_notes.outputs.body }}
           draft: false
           prerelease: false
         env:
