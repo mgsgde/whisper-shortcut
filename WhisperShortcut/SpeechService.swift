@@ -7,6 +7,9 @@ private enum Constants {
   static let maxFileSize = 20 * 1024 * 1024  // 20MB - optimal für Gemini's file size limits
   static let requestTimeout: TimeInterval = 60.0
   static let resourceTimeout: TimeInterval = 300.0
+  
+  // DEBUG: Set to true to force Files API usage even for small files (for testing)
+  static let debugForceFilesAPI = false
 
   // Text validation
   static let minimumTextLength = 1  // Allow single character responses like "Yes", "OK", etc.
@@ -477,7 +480,11 @@ class SpeechService {
     let result: String
     // For files >20MB, use Files API (resumable upload)
     // For files ≤20MB, use inline base64
-    if audioSize > Constants.maxFileSize {
+    // DEBUG: Can force Files API usage via Constants.debugForceFilesAPI
+    if Constants.debugForceFilesAPI {
+      DebugLogger.log("GEMINI-TRANSCRIPTION: DEBUG - Forcing Files API usage (debugForceFilesAPI = true)")
+      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, apiKey: apiKey)
+    } else if audioSize > Constants.maxFileSize {
       result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, apiKey: apiKey)
     } else {
       result = try await transcribeWithGeminiInline(audioURL: audioURL, apiKey: apiKey)
@@ -558,13 +565,16 @@ class SpeechService {
   }
   
   private func uploadFileToGemini(audioURL: URL, apiKey: String) async throws -> String {
+    DebugLogger.log("GEMINI-FILES-API: Starting file upload")
     let audioData = try Data(contentsOf: audioURL)
     
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = getGeminiMimeType(for: fileExtension)
     let numBytes = audioData.count
+    DebugLogger.log("GEMINI-FILES-API: File size: \(numBytes) bytes, MIME type: \(mimeType)")
     
     // Step 1: Initialize resumable upload
+    DebugLogger.log("GEMINI-FILES-API: Step 1 - Initializing resumable upload")
     let initURL = URL(string: "https://generativelanguage.googleapis.com/upload/v1beta/files?key=\(apiKey)")!
     var initRequest = URLRequest(url: initURL)
     initRequest.httpMethod = "POST"
@@ -584,22 +594,45 @@ class SpeechService {
     let (initData, initResponse) = try await session.data(for: initRequest)
     
     guard let httpResponse = initResponse as? HTTPURLResponse else {
+      DebugLogger.log("GEMINI-FILES-API: ERROR - Invalid response type")
       throw TranscriptionError.networkError("Invalid response")
     }
     
+    DebugLogger.log("GEMINI-FILES-API: Init response status: \(httpResponse.statusCode)")
+    
     guard httpResponse.statusCode == 200 else {
+      let errorBody = String(data: initData, encoding: .utf8) ?? "Unable to decode error response"
+      DebugLogger.log("GEMINI-FILES-API: ERROR - Init failed with status \(httpResponse.statusCode): \(errorBody.prefix(500))")
       let error = try parseGeminiErrorResponse(data: initData, statusCode: httpResponse.statusCode)
       throw error
     }
     
-    // Extract upload URL from response headers
+    // Extract upload URL from response headers (case-insensitive search)
     let allHeaders = httpResponse.allHeaderFields
-    guard let uploadURLString = allHeaders["X-Goog-Upload-URL"] as? String,
+    DebugLogger.log("GEMINI-FILES-API: Response headers: \(allHeaders.keys)")
+    
+    // Search for upload URL header case-insensitively
+    var uploadURLString: String?
+    for (key, value) in allHeaders {
+      if let keyString = key as? String,
+         keyString.lowercased() == "x-goog-upload-url",
+         let valueString = value as? String {
+        uploadURLString = valueString
+        DebugLogger.log("GEMINI-FILES-API: Found upload URL header: \(keyString) = \(valueString)")
+        break
+      }
+    }
+    
+    guard let uploadURLString = uploadURLString,
           let uploadURL = URL(string: uploadURLString) else {
+      DebugLogger.log("GEMINI-FILES-API: ERROR - Failed to get upload URL from headers. Available headers: \(allHeaders)")
       throw TranscriptionError.networkError("Failed to get upload URL")
     }
     
+    DebugLogger.log("GEMINI-FILES-API: Got upload URL, proceeding to Step 2")
+    
     // Step 2: Upload file data
+    DebugLogger.log("GEMINI-FILES-API: Step 2 - Uploading file data (\(numBytes) bytes)")
     var uploadRequest = URLRequest(url: uploadURL)
     uploadRequest.httpMethod = "PUT"
     uploadRequest.setValue("\(numBytes)", forHTTPHeaderField: "Content-Length")
@@ -610,21 +643,29 @@ class SpeechService {
     let (uploadData, uploadResponse) = try await session.data(for: uploadRequest)
     
     guard let uploadHttpResponse = uploadResponse as? HTTPURLResponse else {
+      DebugLogger.log("GEMINI-FILES-API: ERROR - Invalid upload response type")
       throw TranscriptionError.networkError("Invalid response")
     }
     
+    DebugLogger.log("GEMINI-FILES-API: Upload response status: \(uploadHttpResponse.statusCode)")
+    
     guard uploadHttpResponse.statusCode == 200 else {
+      let errorBody = String(data: uploadData, encoding: .utf8) ?? "Unable to decode error response"
+      DebugLogger.log("GEMINI-FILES-API: ERROR - Upload failed with status \(uploadHttpResponse.statusCode): \(errorBody.prefix(500))")
       let error = try parseGeminiErrorResponse(data: uploadData, statusCode: uploadHttpResponse.statusCode)
       throw error
     }
     
     // Parse file info to get URI
+    DebugLogger.log("GEMINI-FILES-API: Upload successful, parsing file info")
     let fileInfo = try JSONDecoder().decode(GeminiFileInfo.self, from: uploadData)
+    DebugLogger.log("GEMINI-FILES-API: File URI: \(fileInfo.file.uri)")
     
     return fileInfo.file.uri
   }
   
   private func transcribeWithGeminiFileURI(fileURI: String, apiKey: String) async throws -> String {
+    DebugLogger.log("GEMINI-FILES-API: Starting transcription with file URI")
     // Get combined prompt (normal prompt + difficult words)
     let promptToUse = buildDictationPrompt()
     
