@@ -565,16 +565,14 @@ class SpeechService {
   }
   
   private func uploadFileToGemini(audioURL: URL, apiKey: String) async throws -> String {
-    DebugLogger.log("GEMINI-FILES-API: Starting file upload")
     let audioData = try Data(contentsOf: audioURL)
     
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = getGeminiMimeType(for: fileExtension)
     let numBytes = audioData.count
-    DebugLogger.log("GEMINI-FILES-API: File size: \(numBytes) bytes, MIME type: \(mimeType)")
+    DebugLogger.log("GEMINI-FILES-API: Uploading file (\(numBytes) bytes, \(mimeType))")
     
     // Step 1: Initialize resumable upload
-    DebugLogger.log("GEMINI-FILES-API: Step 1 - Initializing resumable upload")
     let initURL = URL(string: "https://generativelanguage.googleapis.com/upload/v1beta/files?key=\(apiKey)")!
     var initRequest = URLRequest(url: initURL)
     initRequest.httpMethod = "POST"
@@ -598,8 +596,6 @@ class SpeechService {
       throw TranscriptionError.networkError("Invalid response")
     }
     
-    DebugLogger.log("GEMINI-FILES-API: Init response status: \(httpResponse.statusCode)")
-    
     guard httpResponse.statusCode == 200 else {
       let errorBody = String(data: initData, encoding: .utf8) ?? "Unable to decode error response"
       DebugLogger.log("GEMINI-FILES-API: ERROR - Init failed with status \(httpResponse.statusCode): \(errorBody.prefix(500))")
@@ -609,7 +605,6 @@ class SpeechService {
     
     // Extract upload URL from response headers (case-insensitive search)
     let allHeaders = httpResponse.allHeaderFields
-    DebugLogger.log("GEMINI-FILES-API: Response headers: \(allHeaders.keys)")
     
     // Search for upload URL header case-insensitively
     var uploadURLString: String?
@@ -618,21 +613,17 @@ class SpeechService {
          keyString.lowercased() == "x-goog-upload-url",
          let valueString = value as? String {
         uploadURLString = valueString
-        DebugLogger.log("GEMINI-FILES-API: Found upload URL header: \(keyString) = \(valueString)")
         break
       }
     }
     
     guard let uploadURLString = uploadURLString,
           let uploadURL = URL(string: uploadURLString) else {
-      DebugLogger.log("GEMINI-FILES-API: ERROR - Failed to get upload URL from headers. Available headers: \(allHeaders)")
+      DebugLogger.log("GEMINI-FILES-API: ERROR - Failed to get upload URL from headers")
       throw TranscriptionError.networkError("Failed to get upload URL")
     }
     
-    DebugLogger.log("GEMINI-FILES-API: Got upload URL, proceeding to Step 2")
-    
     // Step 2: Upload file data
-    DebugLogger.log("GEMINI-FILES-API: Step 2 - Uploading file data (\(numBytes) bytes)")
     var uploadRequest = URLRequest(url: uploadURL)
     uploadRequest.httpMethod = "PUT"
     uploadRequest.setValue("\(numBytes)", forHTTPHeaderField: "Content-Length")
@@ -647,8 +638,6 @@ class SpeechService {
       throw TranscriptionError.networkError("Invalid response")
     }
     
-    DebugLogger.log("GEMINI-FILES-API: Upload response status: \(uploadHttpResponse.statusCode)")
-    
     guard uploadHttpResponse.statusCode == 200 else {
       let errorBody = String(data: uploadData, encoding: .utf8) ?? "Unable to decode error response"
       DebugLogger.log("GEMINI-FILES-API: ERROR - Upload failed with status \(uploadHttpResponse.statusCode): \(errorBody.prefix(500))")
@@ -657,15 +646,13 @@ class SpeechService {
     }
     
     // Parse file info to get URI
-    DebugLogger.log("GEMINI-FILES-API: Upload successful, parsing file info")
     let fileInfo = try JSONDecoder().decode(GeminiFileInfo.self, from: uploadData)
-    DebugLogger.log("GEMINI-FILES-API: File URI: \(fileInfo.file.uri)")
+    DebugLogger.log("GEMINI-FILES-API: Upload successful, file URI: \(fileInfo.file.uri)")
     
     return fileInfo.file.uri
   }
   
   private func transcribeWithGeminiFileURI(fileURI: String, apiKey: String) async throws -> String {
-    DebugLogger.log("GEMINI-FILES-API: Starting transcription with file URI")
     // Get combined prompt (normal prompt + difficult words)
     let promptToUse = buildDictationPrompt()
     
