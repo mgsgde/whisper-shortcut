@@ -658,12 +658,12 @@ class SpeechService {
     var request = createGeminiRequest(endpoint: endpoint, apiKey: apiKey)
     request.httpBody = try JSONEncoder().encode(transcriptionRequest)
     
-    // Make request
+    // Make request with retry logic
     let geminiResponse = try await performGeminiRequest(
       request,
       responseType: GeminiResponse.self,
       mode: "GEMINI-TRANSCRIPTION",
-      withRetry: false
+      withRetry: true
     )
     
     let transcript = extractTextFromGeminiResponse(geminiResponse)

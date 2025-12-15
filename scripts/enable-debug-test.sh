@@ -11,3 +11,4 @@ echo "To disable it, run:"
 echo "  defaults write com.magnusgoedde.whispershortcut enableDebugTestMenu -bool false"
 echo ""
 echo "You may need to restart the app for changes to take effect."
+
