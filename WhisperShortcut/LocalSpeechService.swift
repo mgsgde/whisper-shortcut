@@ -29,13 +29,13 @@ actor LocalSpeechService {
     
     // Unload previous model if exists
     if whisperKit != nil {
-      await unloadModel()
+      unloadModel()
     }
     
     // Resolve the actual model path using ModelManager
     guard let modelPath = ModelManager.shared.resolveModelPath(for: modelType) else {
       DebugLogger.logError("LOCAL-SPEECH: Model path not found for \(modelType.displayName)")
-      throw TranscriptionError.fileError("Model not found. Please download it first in Settings.")
+      throw TranscriptionError.modelNotAvailable(modelType)
     }
     
     DebugLogger.log("LOCAL-SPEECH: Using model path: \(modelPath.path)")
@@ -45,10 +45,28 @@ actor LocalSpeechService {
       modelFolder: modelPath.path
     )
     
-    whisperKit = try await WhisperKit(config)
-    currentModelType = modelType
-    
-    DebugLogger.logSuccess("LOCAL-SPEECH: Model initialized successfully")
+    do {
+      whisperKit = try await WhisperKit(config)
+      currentModelType = modelType
+      DebugLogger.logSuccess("LOCAL-SPEECH: Model initialized successfully")
+    } catch {
+      // Check if error is related to missing or incomplete model files
+      let errorMessage = error.localizedDescription
+      DebugLogger.logError("LOCAL-SPEECH: WhisperKit initialization failed: \(errorMessage)")
+      
+      // Check for common model-related errors
+      let lowercasedError = errorMessage.lowercased()
+      if lowercasedError.contains("mil network") ||
+         lowercasedError.contains("mlmodelc") ||
+         lowercasedError.contains("model") && (lowercasedError.contains("not found") || lowercasedError.contains("missing") || lowercasedError.contains("read")) {
+        // This is a model availability issue
+        DebugLogger.logError("LOCAL-SPEECH: Model appears to be missing or incomplete")
+        throw TranscriptionError.modelNotAvailable(modelType)
+      }
+      
+      // For other errors, wrap in fileError with more context
+      throw TranscriptionError.fileError("Failed to load model: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
+    }
   }
   
   // MARK: - Unload Model
@@ -91,13 +109,37 @@ actor LocalSpeechService {
     
     // Use the correct API signature: audioPath: String, decodeOptions: DecodingOptions?
     // We use the return value for the final text to avoid duplication issues in the callback
-    let transcriptionResults = try await whisperKit.transcribe(
-      audioPath: audioURL.path,
-      decodeOptions: decodeOptions
-    ) { progress in
-      // Optional: Log progress if needed, but don't accumulate text here for the final result
-      // to avoid "This ... This is ... This is a ..." duplication patterns
-      return true // Continue processing
+    let transcriptionResults: [TranscriptionResult]
+    do {
+      transcriptionResults = try await whisperKit.transcribe(
+        audioPath: audioURL.path,
+        decodeOptions: decodeOptions
+      ) { progress in
+        // Optional: Log progress if needed, but don't accumulate text here for the final result
+        // to avoid "This ... This is ... This is a ..." duplication patterns
+        return true // Continue processing
+      }
+    } catch {
+      // Check if error is related to missing or incomplete model files
+      let errorMessage = error.localizedDescription
+      DebugLogger.logError("LOCAL-SPEECH: Transcription failed: \(errorMessage)")
+      
+      // Check for common model-related errors
+      let lowercasedError = errorMessage.lowercased()
+      if lowercasedError.contains("mil network") ||
+         lowercasedError.contains("mlmodelc") ||
+         lowercasedError.contains("model") && (lowercasedError.contains("not found") || lowercasedError.contains("missing") || lowercasedError.contains("read") || lowercasedError.contains("load")) {
+        // This is a model availability issue
+        DebugLogger.logError("LOCAL-SPEECH: Model appears to be missing or incomplete during transcription")
+        if let modelType = currentModelType {
+          throw TranscriptionError.modelNotAvailable(modelType)
+        } else {
+          throw TranscriptionError.fileError("Model is missing or incomplete. Please download it in Settings.")
+        }
+      }
+      
+      // For other errors, re-throw as fileError with context
+      throw TranscriptionError.fileError("Transcription failed: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
     }
     
     // Combine all segments into a single text

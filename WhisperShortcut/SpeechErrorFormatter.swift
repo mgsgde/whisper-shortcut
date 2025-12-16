@@ -184,6 +184,28 @@ struct SpeechErrorFormatter {
       }
 
     case .fileError(let details):
+      // Check if this is actually a model-related error
+      let lowercasedDetails = details.lowercased()
+      if lowercasedDetails.contains("model") && (lowercasedDetails.contains("not found") || lowercasedDetails.contains("download") || lowercasedDetails.contains("missing")) {
+        // This is likely a model availability issue that wasn't caught properly
+        return """
+          📥 Model Not Available
+
+          The offline model could not be loaded.
+
+          \(details)
+
+          To download the model:
+          1. Open Settings (click the menu bar icon and select "Settings")
+          2. Go to the "Offline Models" tab
+          3. Click "Download" next to your selected model
+          4. Wait for the download to complete
+          5. Try transcribing again
+
+          Note: If the model was already downloaded, it may be incomplete or corrupted. Try deleting and re-downloading it.
+          """
+      }
+      
       return """
         ❌ File Error
 
