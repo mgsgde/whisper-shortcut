@@ -37,6 +37,10 @@ class MenuBarController: NSObject {
   private let clipboardManager: ClipboardManager
   private let shortcuts: Shortcuts
   private let reviewPrompter: ReviewPrompter
+  
+  // MARK: - State Tracking (Prevent Race Conditions)
+  private var currentTranscriptionAudioURL: URL?
+  private var processedAudioURLs: Set<URL> = []
 
   // MARK: - Configuration
   private var currentConfig: ShortcutConfig
@@ -325,6 +329,12 @@ class MenuBarController: NSObject {
     // Check if currently processing transcription - if so, cancel it
     if case .processing(.transcribing) = appState {
       speechService.cancelTranscription()
+      // Clean up the audio file immediately to prevent race conditions
+      if let audioURL = currentTranscriptionAudioURL {
+        try? FileManager.default.removeItem(at: audioURL)
+        currentTranscriptionAudioURL = nil
+        processedAudioURLs.remove(audioURL)
+      }
       appState = .idle
       PopupNotificationWindow.showCancelled("Transcription cancelled")
       return
@@ -354,6 +364,9 @@ class MenuBarController: NSObject {
     // Check if currently processing prompt - if so, cancel it
     if case .processing(.prompting) = appState {
       speechService.cancelPrompt()
+      // Clean up the audio file immediately to prevent race conditions
+      // Note: For prompting, we don't track the URL separately, but we should still clean up
+      // The processedAudioURLs set will prevent duplicate processing
       appState = .idle
       PopupNotificationWindow.showCancelled("Prompt cancelled")
       return
@@ -492,6 +505,11 @@ class MenuBarController: NSObject {
         // Show popup notification with the transcription text and model info
         PopupNotificationWindow.showTranscriptionResponse(result, modelInfo: modelInfo)
         self.appState = self.appState.showSuccess("Transcription copied to clipboard")
+        // Clear tracking after successful completion
+        if self.currentTranscriptionAudioURL == audioURL {
+          self.currentTranscriptionAudioURL = nil
+        }
+        self.processedAudioURLs.remove(audioURL)
       }
       
       // Cleanup on success
@@ -501,11 +519,23 @@ class MenuBarController: NSObject {
       DebugLogger.log("CANCELLATION: Transcription task was cancelled")
       await MainActor.run {
         self.appState = .idle
+        // Clear tracking on cancellation
+        if self.currentTranscriptionAudioURL == audioURL {
+          self.currentTranscriptionAudioURL = nil
+        }
+        self.processedAudioURLs.remove(audioURL)
       }
       // Cleanup on cancellation
       try? FileManager.default.removeItem(at: audioURL)
     } catch {
       await handleProcessingError(error: error, audioURL: audioURL, mode: .transcription)
+      // Clear tracking on error (file will be cleaned up in handleProcessingError if needed)
+      await MainActor.run {
+        if self.currentTranscriptionAudioURL == audioURL {
+          self.currentTranscriptionAudioURL = nil
+        }
+        self.processedAudioURLs.remove(audioURL)
+      }
     }
   }
 
@@ -522,6 +552,8 @@ class MenuBarController: NSObject {
         let modelInfo = self.speechService.getPromptModelInfo()
         PopupNotificationWindow.showPromptResponse(result, modelInfo: modelInfo)
         self.appState = self.appState.showSuccess("AI response copied to clipboard")
+        // Clear tracking after successful completion
+        self.processedAudioURLs.remove(audioURL)
       }
       
       // Cleanup on success
@@ -531,11 +563,17 @@ class MenuBarController: NSObject {
       DebugLogger.log("CANCELLATION: Prompt task was cancelled")
       await MainActor.run {
         self.appState = .idle
+        // Clear tracking on cancellation
+        self.processedAudioURLs.remove(audioURL)
       }
       // Cleanup on cancellation
       try? FileManager.default.removeItem(at: audioURL)
     } catch {
       await handleProcessingError(error: error, audioURL: audioURL, mode: .prompt)
+      // Clear tracking on error (file will be cleaned up in handleProcessingError if needed)
+      await MainActor.run {
+        self.processedAudioURLs.remove(audioURL)
+      }
     }
   }
 
@@ -591,8 +629,25 @@ class MenuBarController: NSObject {
 // MARK: - AudioRecorderDelegate (Clean State Transitions)
 extension MenuBarController: AudioRecorderDelegate {
   func audioRecorderDidFinishRecording(audioURL: URL) {
+    // Prevent processing the same audio file multiple times (race condition protection)
+    guard !processedAudioURLs.contains(audioURL) else {
+      DebugLogger.logWarning("AUDIO: Ignoring duplicate audioRecorderDidFinishRecording for \(audioURL.lastPathComponent)")
+      return
+    }
+    
     // Simple state-based dispatch - no complex mode tracking needed!
-    guard case .recording(let recordingMode) = appState else { return }
+    guard case .recording(let recordingMode) = appState else {
+      DebugLogger.logWarning("AUDIO: audioRecorderDidFinishRecording called but appState is not recording")
+      return
+    }
+
+    // Mark this URL as processed to prevent duplicate processing
+    processedAudioURLs.insert(audioURL)
+    
+    // Track the audio URL for transcription cancellation
+    if recordingMode == .transcription {
+      currentTranscriptionAudioURL = audioURL
+    }
 
     // Transition to processing
     appState = appState.stopRecording()
