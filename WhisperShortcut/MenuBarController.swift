@@ -40,10 +40,6 @@ class MenuBarController: NSObject {
 
   // MARK: - Configuration
   private var currentConfig: ShortcutConfig
-  
-  // MARK: - Debug Testing
-  // DEBUG: Commented out for production
-  // private var shouldSimulateErrorOnNextRecording: TranscriptionError?
 
   init(
     audioRecorder: AudioRecorder = AudioRecorder(),
@@ -105,24 +101,6 @@ class MenuBarController: NSObject {
         shortcut: currentConfig.startPrompting, tag: 102))
 
     menu.addItem(NSMenuItem.separator())
-    
-    // DEBUG: Commented out for production
-    // Debug: Test Retry functionality (simulate timeout error)
-    // Available in all builds, but only shown if debug mode is enabled
-    // if UserDefaults.standard.bool(forKey: "enableDebugTestMenu") {
-    //   menu.addItem(
-    //     createMenuItem("🧪 Next Recording → Timeout Error", action: #selector(enableTimeoutSimulation), keyEquivalent: ""))
-    //   menu.addItem(
-    //     createMenuItem("🧪 Next Recording → Network Error", action: #selector(enableNetworkErrorSimulation), keyEquivalent: ""))
-    //   if shouldSimulateErrorOnNextRecording != nil {
-    //     let statusItem = NSMenuItem(title: "✅ Error simulation enabled", action: nil, keyEquivalent: "")
-    //     statusItem.isEnabled = false  // Make it non-clickable
-    //     menu.addItem(statusItem)
-    //     menu.addItem(
-    //       createMenuItem("   (Click to disable)", action: #selector(disableErrorSimulation), keyEquivalent: ""))
-    //   }
-    //   menu.addItem(NSMenuItem.separator())
-    // }
 
     // Settings and quit
     menu.addItem(
@@ -240,17 +218,8 @@ class MenuBarController: NSObject {
 
   private func loadModelConfiguration() {
     // Load saved model preference and set it on the transcription service
-    let selectedModel: TranscriptionModel
-    if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
-      let savedModel = TranscriptionModel(rawValue: savedModelString)
-    {
-      selectedModel = savedModel
-      speechService.setModel(savedModel)
-    } else {
-      // Set default model from SettingsDefaults
-      selectedModel = SettingsDefaults.selectedTranscriptionModel
-      speechService.setModel(SettingsDefaults.selectedTranscriptionModel)
-    }
+    let selectedModel = TranscriptionModel.loadSelected()
+    speechService.setModel(selectedModel)
 
     // Pre-initialize offline models in the background if available
     if selectedModel.isOffline,
@@ -290,13 +259,8 @@ class MenuBarController: NSObject {
     let hasAPIKey = KeychainManager.shared.hasGoogleAPIKey()
     
     // Check for offline transcription models
-    let selectedTranscriptionModel = TranscriptionModel(
-      rawValue: UserDefaults.standard.string(forKey: "selectedTranscriptionModel") 
-        ?? SettingsDefaults.selectedTranscriptionModel.rawValue
-    ) ?? SettingsDefaults.selectedTranscriptionModel
-    
-    let hasOfflineTranscriptionModel = selectedTranscriptionModel.isOffline && 
-      ModelManager.shared.isModelAvailable(selectedTranscriptionModel.offlineModelType ?? .whisperBase)
+    let selectedTranscriptionModel = TranscriptionModel.loadSelected()
+    let hasOfflineTranscriptionModel = selectedTranscriptionModel.isOfflineModelAvailable()
     
     // Prompt mode always requires API key (no offline support)
     let hasOfflinePromptModel = false
@@ -374,12 +338,8 @@ class MenuBarController: NSObject {
       }
     case .none:
       let hasAPIKey = KeychainManager.shared.hasGoogleAPIKey()
-      let selectedModel = TranscriptionModel(
-        rawValue: UserDefaults.standard.string(forKey: "selectedTranscriptionModel") 
-          ?? SettingsDefaults.selectedTranscriptionModel.rawValue
-      ) ?? SettingsDefaults.selectedTranscriptionModel
-      let hasOfflineModel = selectedModel.isOffline && 
-        ModelManager.shared.isModelAvailable(selectedModel.offlineModelType ?? .whisperBase)
+      let selectedModel = TranscriptionModel.loadSelected()
+      let hasOfflineModel = selectedModel.isOfflineModelAvailable()
       
       if appState.canStartTranscription(hasAPIKey: hasAPIKey, hasOfflineModel: hasOfflineModel) {
         appState = appState.startRecording(.transcription)
@@ -426,60 +386,10 @@ class MenuBarController: NSObject {
   @objc func openSettings() {
     SettingsManager.shared.toggleSettings()
   }
-  
-  // MARK: - Debug Testing
-  // DEBUG: Commented out for production
-  // @objc private func enableTimeoutSimulation() {
-  //   shouldSimulateErrorOnNextRecording = .requestTimeout
-  //   DebugLogger.log("DEBUG: Enabled timeout error simulation for next recording")
-  //   updateUI()  // Update menu to show status
-  //   PopupNotificationWindow.showTranscriptionResponse("Timeout error will be simulated on next recording", modelInfo: "Debug Mode")
-  // }
-  // 
-  // @objc private func enableNetworkErrorSimulation() {
-  //   shouldSimulateErrorOnNextRecording = .networkError("The request timed out.")
-  //   DebugLogger.log("DEBUG: Enabled network error simulation for next recording")
-  //   updateUI()  // Update menu to show status
-  //   PopupNotificationWindow.showTranscriptionResponse("Network error will be simulated on next recording", modelInfo: "Debug Mode")
-  // }
-  // 
-  // @objc private func disableErrorSimulation() {
-  //   shouldSimulateErrorOnNextRecording = nil
-  //   DebugLogger.log("DEBUG: Disabled error simulation")
-  //   updateUI()  // Update menu to hide status
-  // }
-  // 
-  // /// Performs prompting but simulates a specific error for testing
-  // private func performPromptingWithSimulatedError(audioURL: URL, error: TranscriptionError) async {
-  //   // Set processing state
-  //   await MainActor.run {
-  //     appState = .processing(.prompting)
-  //   }
-  //   
-  //   // Wait a moment to simulate processing
-  //   try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-  //   
-  //   // Now throw the simulated error using unified error handler
-  //   await handleProcessingError(error: error, audioURL: audioURL, mode: .prompt)
-  // }
-  // 
-  // /// Performs transcription but simulates a specific error for testing
-  // private func performTranscriptionWithSimulatedError(audioURL: URL, error: TranscriptionError) async {
-  //   // Set processing state
-  //   await MainActor.run {
-  //     appState = .processing(.transcribing)
-  //   }
-  //   
-  //   // Wait a moment to simulate processing
-  //   try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-  //   
-  //   // Now throw the simulated error using unified error handler
-  //   await handleProcessingError(error: error, audioURL: audioURL, mode: .transcription)
-  // }
 
   @objc private func quitApp() {
     // Set flag to indicate user wants to quit completely
-    UserDefaults.standard.set(true, forKey: "shouldTerminate")
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.shouldTerminate)
     // Terminate the app completely
     NSApplication.shared.terminate(nil)
   }
@@ -568,16 +478,6 @@ class MenuBarController: NSObject {
   }
   
   private func performTranscription(audioURL: URL) async {
-    // DEBUG: Commented out for production
-    // Check if we should simulate an error for debugging
-    // if let simulatedError = shouldSimulateErrorOnNextRecording {
-    //   shouldSimulateErrorOnNextRecording = nil  // Reset after use
-    //   DebugLogger.log("DEBUG: Simulating error for testing: \(simulatedError)")
-    //   await performTranscriptionWithSimulatedError(audioURL: audioURL, error: simulatedError)
-    //   updateUI()  // Update menu to remove simulation status
-    //   return
-    // }
-    
     do {
       let result = try await speechService.transcribe(audioURL: audioURL)
       clipboardManager.copyToClipboard(text: result)
@@ -610,16 +510,6 @@ class MenuBarController: NSObject {
   }
 
   private func performPrompting(audioURL: URL) async {
-    // DEBUG: Commented out for production
-    // Check if we should simulate an error for debugging
-    // if let simulatedError = shouldSimulateErrorOnNextRecording {
-    //   shouldSimulateErrorOnNextRecording = nil  // Reset after use
-    //   DebugLogger.log("DEBUG: Simulating error for testing: \(simulatedError)")
-    //   await performPromptingWithSimulatedError(audioURL: audioURL, error: simulatedError)
-    //   updateUI()  // Update menu to remove simulation status
-    //   return
-    // }
-    
     do {
       let result = try await speechService.executePrompt(audioURL: audioURL)
       clipboardManager.copyToClipboard(text: result)

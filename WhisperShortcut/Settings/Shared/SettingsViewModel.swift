@@ -27,16 +27,10 @@ class SettingsViewModel: ObservableObject {
     data.openSettingsEnabled = currentConfig.openSettings.isEnabled
 
     // Load transcription model preference
-    if let savedModelString = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
-      let savedModel = TranscriptionModel(rawValue: savedModelString)
-    {
-      data.selectedTranscriptionModel = savedModel
-    } else {
-      data.selectedTranscriptionModel = SettingsDefaults.selectedTranscriptionModel
-    }
+    data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
     // Load Prompt model preference (for Prompt Mode) - simplified to GPT-Audio only
-    if let savedModelString = UserDefaults.standard.string(forKey: "selectedPromptModel"),
+    if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel),
       let savedModel = PromptModel(rawValue: savedModelString)
     {
       data.selectedPromptModel = savedModel
@@ -45,14 +39,14 @@ class SettingsViewModel: ObservableObject {
     }
 
     // Load custom prompt (with fallback to default)
-    data.customPromptText = UserDefaults.standard.string(forKey: "customPromptText") 
+    data.customPromptText = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) 
       ?? AppConstants.defaultTranscriptionSystemPrompt
 
     // Load dictation difficult words (empty by default)
-    data.dictationDifficultWords = UserDefaults.standard.string(forKey: "dictationDifficultWords") ?? ""
+    data.dictationDifficultWords = UserDefaults.standard.string(forKey: UserDefaultsKeys.dictationDifficultWords) ?? ""
 
     // Load Whisper language setting
-    if let savedLanguageString = UserDefaults.standard.string(forKey: "whisperLanguage"),
+    if let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage),
       let savedLanguage = WhisperLanguage(rawValue: savedLanguageString)
     {
       data.whisperLanguage = savedLanguage
@@ -61,11 +55,11 @@ class SettingsViewModel: ObservableObject {
     }
 
     // Load prompt mode system prompt (with fallback to default)
-    data.promptModeSystemPrompt = UserDefaults.standard.string(forKey: "promptModeSystemPrompt")
+    data.promptModeSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)
       ?? AppConstants.defaultPromptModeSystemPrompt
 
     // Load reasoning effort settings
-    if let savedPromptReasoningEffort = UserDefaults.standard.string(forKey: "promptReasoningEffort"),
+    if let savedPromptReasoningEffort = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptReasoningEffort),
       let promptEffort = ReasoningEffort(rawValue: savedPromptReasoningEffort)
     {
       data.promptReasoningEffort = promptEffort
@@ -75,15 +69,15 @@ class SettingsViewModel: ObservableObject {
 
     // Load popup notifications setting
     let showPopupNotificationsExists =
-      UserDefaults.standard.object(forKey: "showPopupNotifications") != nil
+      UserDefaults.standard.object(forKey: UserDefaultsKeys.showPopupNotifications) != nil
     if showPopupNotificationsExists {
-      data.showPopupNotifications = UserDefaults.standard.bool(forKey: "showPopupNotifications")
+      data.showPopupNotifications = UserDefaults.standard.bool(forKey: UserDefaultsKeys.showPopupNotifications)
     } else {
       data.showPopupNotifications = SettingsDefaults.showPopupNotifications
     }
     
     // Load notification position
-    if let savedPositionString = UserDefaults.standard.string(forKey: "notificationPosition"),
+    if let savedPositionString = UserDefaults.standard.string(forKey: UserDefaultsKeys.notificationPosition),
       let savedPosition = NotificationPosition(rawValue: savedPositionString)
     {
       data.notificationPosition = savedPosition
@@ -92,7 +86,7 @@ class SettingsViewModel: ObservableObject {
     }
     
     // Load notification duration
-    let savedDuration = UserDefaults.standard.double(forKey: "notificationDuration")
+    let savedDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.notificationDuration)
     if savedDuration > 0 {
       data.notificationDuration = NotificationDuration(rawValue: savedDuration)
         ?? SettingsDefaults.notificationDuration
@@ -101,7 +95,7 @@ class SettingsViewModel: ObservableObject {
     }
     
     // Load error notification duration
-    let savedErrorDuration = UserDefaults.standard.double(forKey: "errorNotificationDuration")
+    let savedErrorDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.errorNotificationDuration)
     if savedErrorDuration > 0 {
       data.errorNotificationDuration = NotificationDuration(rawValue: savedErrorDuration)
         ?? SettingsDefaults.errorNotificationDuration
@@ -257,27 +251,27 @@ class SettingsViewModel: ObservableObject {
 
     // Save model preferences
     UserDefaults.standard.set(
-      data.selectedTranscriptionModel.rawValue, forKey: "selectedTranscriptionModel")
-    UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: "selectedPromptModel")
+      data.selectedTranscriptionModel.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
     
     // Save reasoning effort settings
-    UserDefaults.standard.set(data.promptReasoningEffort.rawValue, forKey: "promptReasoningEffort")
+    UserDefaults.standard.set(data.promptReasoningEffort.rawValue, forKey: UserDefaultsKeys.promptReasoningEffort)
 
     // Save prompts
-    UserDefaults.standard.set(data.customPromptText, forKey: "customPromptText")
-    UserDefaults.standard.set(data.dictationDifficultWords, forKey: "dictationDifficultWords")
-    UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: "promptModeSystemPrompt")
+    UserDefaults.standard.set(data.customPromptText, forKey: UserDefaultsKeys.customPromptText)
+    UserDefaults.standard.set(data.dictationDifficultWords, forKey: UserDefaultsKeys.dictationDifficultWords)
+    UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
     
     // Save Whisper language setting
-    UserDefaults.standard.set(data.whisperLanguage.rawValue, forKey: "whisperLanguage")
+    UserDefaults.standard.set(data.whisperLanguage.rawValue, forKey: UserDefaultsKeys.whisperLanguage)
 
     // Save popup notifications setting
-    UserDefaults.standard.set(data.showPopupNotifications, forKey: "showPopupNotifications")
+    UserDefaults.standard.set(data.showPopupNotifications, forKey: UserDefaultsKeys.showPopupNotifications)
     
     // Save notification position and duration
-    UserDefaults.standard.set(data.notificationPosition.rawValue, forKey: "notificationPosition")
-    UserDefaults.standard.set(data.notificationDuration.rawValue, forKey: "notificationDuration")
-    UserDefaults.standard.set(data.errorNotificationDuration.rawValue, forKey: "errorNotificationDuration")
+    UserDefaults.standard.set(data.notificationPosition.rawValue, forKey: UserDefaultsKeys.notificationPosition)
+    UserDefaults.standard.set(data.notificationDuration.rawValue, forKey: UserDefaultsKeys.notificationDuration)
+    UserDefaults.standard.set(data.errorNotificationDuration.rawValue, forKey: UserDefaultsKeys.errorNotificationDuration)
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()

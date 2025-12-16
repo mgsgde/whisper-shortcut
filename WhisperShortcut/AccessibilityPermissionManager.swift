@@ -57,7 +57,7 @@ class AccessibilityPermissionManager {
 
   /// Marks that the user has used the prompt feature
   static func markPromptFeatureUsed() {
-    UserDefaults.standard.set(true, forKey: "hasUsedPromptFeature")
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasUsedPromptFeature)
   }
 
   /// Checks permission when user tries to use prompt feature

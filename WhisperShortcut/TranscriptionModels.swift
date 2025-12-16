@@ -119,6 +119,27 @@ enum TranscriptionModel: String, CaseIterable {
     }
   }
   
+  // MARK: - Model Loading
+  /// Loads the selected transcription model from UserDefaults, or returns the default model
+  /// - Returns: The selected TranscriptionModel, or the default if none is saved
+  static func loadSelected() -> TranscriptionModel {
+    if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel),
+       let savedModel = TranscriptionModel(rawValue: savedModelString) {
+      return savedModel
+    }
+    return SettingsDefaults.selectedTranscriptionModel
+  }
+  
+  // MARK: - Model Availability
+  /// Checks if this model is an offline model and if it's available
+  /// - Returns: True if the model is offline and available, false otherwise
+  func isOfflineModelAvailable() -> Bool {
+    guard isOffline, let offlineModelType = offlineModelType else {
+      return false
+    }
+    return ModelManager.shared.isModelAvailable(offlineModelType)
+  }
+  
 }
 
 // MARK: - Gemini Transcription Request Models

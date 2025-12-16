@@ -27,7 +27,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     if KeychainManager.shared.hasGoogleAPIKey() {
 
       // Now read the key (this will cache it and avoid future prompts)
-      _ = KeychainManager.shared.getAPIKey()
+      _ = KeychainManager.shared.getGoogleAPIKey()
     } else {
 
       DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
@@ -43,9 +43,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationShouldTerminate(_ application: NSApplication) -> NSApplication.TerminateReply {
     // Check if user explicitly wants to quit completely
-    let shouldTerminate = UserDefaults.standard.bool(forKey: "shouldTerminate")
+    let shouldTerminate = UserDefaults.standard.bool(forKey: UserDefaultsKeys.shouldTerminate)
     if shouldTerminate {
-      UserDefaults.standard.set(false, forKey: "shouldTerminate")  // Reset flag
+      UserDefaults.standard.set(false, forKey: UserDefaultsKeys.shouldTerminate)  // Reset flag
       return .terminateNow
     }
 

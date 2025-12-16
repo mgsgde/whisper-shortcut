@@ -87,8 +87,7 @@ class SpeechService {
   }
   
   func getPromptModelInfo() -> String {
-    let modelKey = "selectedPromptModel"
-    let selectedPromptModelString = UserDefaults.standard.string(forKey: modelKey) ?? "gemini-2.5-flash"
+    let selectedPromptModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? "gemini-2.5-flash"
     let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? .gemini25Flash
     return selectedPromptModel.displayName
   }
@@ -98,12 +97,12 @@ class SpeechService {
   /// - Returns: Combined prompt string with difficult words appended if present
   private func buildDictationPrompt() -> String {
     // Get normal prompt
-    let customPrompt = UserDefaults.standard.string(forKey: "customPromptText")
+    let customPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText)
       ?? AppConstants.defaultTranscriptionSystemPrompt
     let normalPrompt = customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
     
     // Get difficult words
-    let difficultWordsText = UserDefaults.standard.string(forKey: "dictationDifficultWords") ?? ""
+    let difficultWordsText = UserDefaults.standard.string(forKey: UserDefaultsKeys.dictationDifficultWords) ?? ""
     let difficultWords = difficultWordsText
       .components(separatedBy: .newlines)
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -177,7 +176,7 @@ class SpeechService {
       try validateAudioFileFormat(at: audioURL)
       
       // Get language setting for Whisper (defaults to auto-detect)
-      let savedLanguageString = UserDefaults.standard.string(forKey: "whisperLanguage")
+      let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage)
       let savedLanguage = WhisperLanguage(rawValue: savedLanguageString ?? WhisperLanguage.auto.rawValue) ?? WhisperLanguage.auto
       let languageString = savedLanguage.languageCode // Returns nil for .auto, which enables auto-detect
       
@@ -222,7 +221,7 @@ class SpeechService {
     let clipboardContext = getClipboardContext()
     
     // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gemini-2.5-flash"
+    let modelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? "gemini-2.5-flash"
     let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Flash
     
     // Prompt mode ALWAYS requires Gemini API key (no offline support yet)
@@ -247,7 +246,7 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution")
     
     // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: "selectedPromptModel") ?? "gemini-2.5-flash"
+    let modelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? "gemini-2.5-flash"
     let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Flash
     
     // Convert to TranscriptionModel to get API endpoint
@@ -265,8 +264,7 @@ class SpeechService {
     
     // Build system prompt
     let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
-    let customSystemPromptKey = "promptModeSystemPrompt"
-    let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptKey)
+    let customSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)
     
     let systemPrompt: String
     if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {

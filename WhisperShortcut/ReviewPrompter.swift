@@ -7,8 +7,6 @@ class ReviewPrompter {
   
   // MARK: - Constants
   private enum Constants {
-    static let successfulOperationsCountKey = "successfulOperationsCount"
-    static let lastReviewPromptDateKey = "lastReviewPromptDate"
     static let operationThreshold = 10
     static let minimumDaysBetweenPrompts = 30.0 // Only prompt once every 30 days minimum
   }
@@ -23,10 +21,10 @@ class ReviewPrompter {
   /// Record a successful operation and check if review prompt should be shown
   /// - Parameter window: The window to present the review prompt on (typically status item button window)
   func recordSuccessfulOperation(window: NSWindow?) {
-    let currentCount = UserDefaults.standard.integer(forKey: Constants.successfulOperationsCountKey)
+    let currentCount = UserDefaults.standard.integer(forKey: UserDefaultsKeys.successfulOperationsCount)
     let newCount = currentCount + 1
     
-    UserDefaults.standard.set(newCount, forKey: Constants.successfulOperationsCountKey)
+    UserDefaults.standard.set(newCount, forKey: UserDefaultsKeys.successfulOperationsCount)
     
     DebugLogger.log("REVIEW: Successful operation recorded. Count: \(newCount)/\(Constants.operationThreshold)")
     
@@ -49,7 +47,7 @@ class ReviewPrompter {
   /// Check if enough time has passed since the last review prompt
   /// - Returns: True if prompt should be shown, false otherwise
   private func shouldShowPrompt() -> Bool {
-    guard let lastPromptDate = UserDefaults.standard.object(forKey: Constants.lastReviewPromptDateKey) as? Date else {
+    guard let lastPromptDate = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastReviewPromptDate) as? Date else {
       // No previous prompt date, allow prompt
       return true
     }
@@ -63,7 +61,7 @@ class ReviewPrompter {
   
   /// Update the last prompt date to now
   private func updateLastPromptDate() {
-    UserDefaults.standard.set(Date(), forKey: Constants.lastReviewPromptDateKey)
+    UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.lastReviewPromptDate)
     DebugLogger.log("REVIEW: Last prompt date updated to now")
   }
   
@@ -80,19 +78,19 @@ class ReviewPrompter {
   
   /// Reset the counter after showing a review prompt
   private func resetCounter() {
-    UserDefaults.standard.set(0, forKey: Constants.successfulOperationsCountKey)
+    UserDefaults.standard.set(0, forKey: UserDefaultsKeys.successfulOperationsCount)
     DebugLogger.log("REVIEW: Counter reset to 0")
   }
   
   /// Get the current count (for debugging/testing purposes)
   func getCurrentCount() -> Int {
-    return UserDefaults.standard.integer(forKey: Constants.successfulOperationsCountKey)
+    return UserDefaults.standard.integer(forKey: UserDefaultsKeys.successfulOperationsCount)
   }
   
   /// Manually reset the counter and last prompt date (for testing purposes)
   func manualReset() {
     resetCounter()
-    UserDefaults.standard.removeObject(forKey: Constants.lastReviewPromptDateKey)
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.lastReviewPromptDate)
     DebugLogger.log("REVIEW: Manual counter and date reset performed")
   }
 }

@@ -646,7 +646,7 @@ class PopupNotificationWindow: NSWindow {
   
   // MARK: - Position Calculation
   private func getNotificationPosition() -> NotificationPosition {
-    if let savedPositionString = UserDefaults.standard.string(forKey: "notificationPosition"),
+    if let savedPositionString = UserDefaults.standard.string(forKey: UserDefaultsKeys.notificationPosition),
       let savedPosition = NotificationPosition(rawValue: savedPositionString)
     {
       return savedPosition
@@ -859,14 +859,14 @@ class PopupNotificationWindow: NSWindow {
     // Get duration from settings
     let duration: TimeInterval
     if isError {
-      let savedErrorDuration = UserDefaults.standard.double(forKey: "errorNotificationDuration")
+      let savedErrorDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.errorNotificationDuration)
       if savedErrorDuration > 0, let errorDuration = NotificationDuration(rawValue: savedErrorDuration) {
         duration = errorDuration.rawValue
       } else {
         duration = Constants.errorDisplayDuration
       }
     } else {
-      let savedDuration = UserDefaults.standard.double(forKey: "notificationDuration")
+      let savedDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.notificationDuration)
       if savedDuration > 0, let notificationDuration = NotificationDuration(rawValue: savedDuration) {
         duration = notificationDuration.rawValue
       } else {
@@ -926,8 +926,8 @@ extension PopupNotificationWindow {
 
   // Helper to check if popup notifications are enabled
   private static var arePopupNotificationsEnabled: Bool {
-    let keyExists = UserDefaults.standard.object(forKey: "showPopupNotifications") != nil
-    let value = UserDefaults.standard.bool(forKey: "showPopupNotifications")
+    let keyExists = UserDefaults.standard.object(forKey: UserDefaultsKeys.showPopupNotifications) != nil
+    let value = UserDefaults.standard.bool(forKey: UserDefaultsKeys.showPopupNotifications)
 
     // Check if the key exists, if not, default to true (enabled)
     if !keyExists {
