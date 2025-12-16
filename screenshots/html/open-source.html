@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhisperShortcut - Professional Features</title>
+    <title>WhisperShortcut - Open Source</title>
     <style>
         * {
             margin: 0;
@@ -33,24 +33,34 @@
             gap: 80px;
         }
 
-        .settings-section {
+        .github-section {
             flex: 1;
             display: flex;
             justify-content: center;
             align-items: center;
         }
 
-        .settings-image {
+        .github-image {
             position: relative;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
         }
 
-        .settings-image img {
+        .github-image img {
             max-width: 800px;
             max-height: 600px;
             object-fit: contain;
+        }
+
+        .github-url {
+            font-size: 20px;
+            font-weight: 400;
+            color: rgba(255, 255, 255, 0.85);
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+            letter-spacing: 0.3px;
         }
 
         .content-section {
@@ -95,27 +105,29 @@
             .content-subtitle {
                 font-size: 24px;
             }
+
+            .github-url {
+                font-size: 18px;
+            }
         }
     </style>
 </head>
 
 <body>
     <div class="main-content">
-        <div class="settings-section">
-            <div class="settings-image">
-                <img src="../assets/settings-offline-models.png" alt="WhisperShortcut Offline Models Settings" />
+        <div class="github-section">
+            <div class="github-image">
+                <img src="../assets/github.png" alt="GitHub Logo" />
+                <p class="github-url">https://github.com/mgsgde/whisper-shortcut</p>
             </div>
         </div>
 
         <div class="content-section">
-            <h2 class="content-title">Powered by Whisper</h2>
-            <p class="content-subtitle">Privacy advantages with local large language models - Transcribe offline without
-                internet connection</p>
+            <h2 class="content-title">Open Source</h2>
+            <p class="content-subtitle">Transparent, community-driven, and free - Contribute, fork, and customize to your needs</p>
         </div>
     </div>
 </body>
 
 </html>
-
-
 

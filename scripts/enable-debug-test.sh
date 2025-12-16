@@ -12,3 +12,5 @@ echo "  defaults write com.magnusgoedde.whispershortcut enableDebugTestMenu -boo
 echo ""
 echo "You may need to restart the app for changes to take effect."
 
+
+
