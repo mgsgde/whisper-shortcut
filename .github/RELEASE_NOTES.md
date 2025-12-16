@@ -1,4 +1,4 @@
-# Release Notes - Version 5.2.2
+# Release Notes - Version 5.2.3
 
 ## Installation
 
@@ -6,27 +6,22 @@ Download the latest version from the [Releases page](https://github.com/mgsgde/w
 
 ## Changes
 
-### Improved Error Messages
+### Bug Fixes
 
-- **Better feedback for missing offline models**: When an offline Whisper model is not yet downloaded, the app now displays a clear, user-friendly error message with step-by-step instructions on how to download the model, instead of showing technical error messages like "Error in reading the MIL network."
+- **Fixed transcription interruptions and race conditions**: Resolved an issue where transcriptions could be interrupted or processed multiple times when the shortcut was pressed during an active transcription. The app now properly tracks and prevents duplicate processing of audio files, ensuring each transcription completes successfully without interruptions.
 
-### Code Quality Improvements
+### Improved Reliability
 
-- **Centralized UserDefaults keys**: All UserDefaults keys are now managed through a centralized `UserDefaultsKeys` enum, improving code maintainability and reducing the risk of typos.
-- **Simplified model loading logic**: Refactored model loading to use centralized methods, making the codebase cleaner and easier to maintain.
-- **Removed debug code**: Cleaned up commented-out debug code to improve production readiness.
-
-### Documentation
-
-- **Updated screenshots and documentation**: Added documentation and screenshots for the open-source feature.
+- **Better state management**: Enhanced audio processing state tracking to prevent race conditions and ensure clean transitions between recording, processing, and idle states.
+- **Automatic cleanup**: Improved cleanup of audio files when transcriptions are cancelled or completed, preventing file system clutter and potential conflicts.
 
 ## Technical Details
 
-- Enhanced error handling in `LocalSpeechService` to detect and properly handle missing or incomplete WhisperKit model files
-- Improved `SpeechErrorFormatter` to provide detailed guidance when models are not available
-- Refactored `TranscriptionModel` with new `loadSelected()` and `isOfflineModelAvailable()` methods
-- Replaced all hardcoded UserDefaults string literals with constants from `UserDefaultsKeys`
-- Fixed bug in `FullApp.swift` where wrong KeychainManager method was called
+- Added `processedAudioURLs` tracking to prevent duplicate processing of the same audio file
+- Implemented `currentTranscriptionAudioURL` tracking for proper cancellation handling
+- Enhanced `audioRecorderDidFinishRecording` with duplicate detection and state validation
+- Improved cleanup logic in `performTranscription` and `performPrompting` methods
+- Added immediate file cleanup when transcriptions are cancelled
 
 ---
 
