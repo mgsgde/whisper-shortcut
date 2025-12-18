@@ -82,6 +82,12 @@ struct PromptModelSelectionView: View {
               .foregroundColor(.secondary)
           }
         }
+
+        Text("Note: The first execution may take longer as the model needs to be initialized. Subsequent prompts will be faster.")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
   }
