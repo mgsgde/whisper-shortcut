@@ -508,6 +508,33 @@ class MenuBarController: NSObject {
   
   private func performTTSWithCommand(audioURL: URL) async {
     do {
+      // Check if audio is likely empty before transcription
+      if speechService.isAudioLikelyEmpty(at: audioURL) {
+        DebugLogger.log("TTS: Audio too short, skipping transcription, using direct TTS")
+        // Clean up audio file
+        try? FileManager.default.removeItem(at: audioURL)
+        
+        // Get selected text and proceed with direct TTS (same as empty command path)
+        guard let selectedText = clipboardManager.getCleanedClipboardText(),
+              !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+          await MainActor.run {
+            self.appState = self.appState.showError("No text selected")
+            PopupNotificationWindow.showError("No text selected", title: "TTS Error")
+          }
+          return
+        }
+        
+        await MainActor.run {
+          self.appState = .processing(.ttsProcessing)
+        }
+        
+        let audioData = try await speechService.readTextAloud(selectedText)
+        await MainActor.run {
+          self.playTTSAudio(audioData: audioData)
+        }
+        return
+      }
+      
       // First, transcribe the audio to get the voice command
       let voiceCommand = try await speechService.transcribe(audioURL: audioURL)
       let trimmedCommand = voiceCommand.trimmingCharacters(in: .whitespacesAndNewlines)

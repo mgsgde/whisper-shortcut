@@ -811,6 +811,26 @@ class SpeechService {
       throw TranscriptionError.fileError("Unsupported audio format: \(fileExtension)")
     }
   }
+  
+  func isAudioLikelyEmpty(at url: URL) -> Bool {
+    do {
+      let audioFile = try AVAudioFile(forReading: url)
+      let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
+      
+      DebugLogger.log("AUDIO-CHECK: Audio duration: \(String(format: "%.2f", duration)) seconds")
+      
+      let minimumDuration: Double = 0.5  // 500ms minimum for meaningful speech
+      if duration < minimumDuration {
+        DebugLogger.log("AUDIO-CHECK: Audio too short (< \(minimumDuration)s), treating as empty")
+        return true
+      }
+      
+      return false
+    } catch {
+      DebugLogger.logWarning("AUDIO-CHECK: Could not analyze audio duration: \(error.localizedDescription), proceeding with transcription")
+      return false  // On error, allow transcription to proceed
+    }
+  }
 
 
 
