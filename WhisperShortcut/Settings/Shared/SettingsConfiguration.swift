@@ -40,6 +40,7 @@ enum PromptModel: String, CaseIterable {
   case gemini20FlashLite = "gemini-2.0-flash-lite"
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
+  case gemini3Flash = "gemini-3-flash-preview"
   
   var displayName: String {
     switch self {
@@ -51,6 +52,8 @@ enum PromptModel: String, CaseIterable {
       return "Gemini 2.5 Flash"
     case .gemini25FlashLite:
       return "Gemini 2.5 Flash-Lite"
+    case .gemini3Flash:
+      return "Gemini 3 Flash"
     }
   }
   
@@ -64,6 +67,8 @@ enum PromptModel: String, CaseIterable {
       return "Google's Gemini 2.5 Flash model • Fast and efficient • Multimodal audio processing"
     case .gemini25FlashLite:
       return "Google's Gemini 2.5 Flash-Lite • Fastest latency • Cost-efficient • Multimodal"
+    case .gemini3Flash:
+      return "Google's Gemini 3 Flash model • Latest 3-series • Pro-level intelligence at Flash speed • Multimodal"
     }
   }
   
@@ -71,14 +76,14 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gemini20Flash:
       return true
-    case .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
+    case .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini3Flash:
       return false
     }
   }
   
   var costLevel: String {
     switch self {
-    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite:
+    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini3Flash:
       return "Low"
     }
   }
@@ -114,6 +119,8 @@ enum PromptModel: String, CaseIterable {
       return .gemini25Flash
     case .gemini25FlashLite:
       return .gemini25FlashLite
+    case .gemini3Flash:
+      return .gemini3Flash
     }
   }
 }
