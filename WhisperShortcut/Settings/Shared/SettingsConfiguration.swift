@@ -289,11 +289,13 @@ struct SettingsDefaults {
   // MARK: - Toggle Shortcut Settings
   static let toggleDictation = ""
   static let togglePrompting = ""
+  static let readSelectedText = ""
   static let openSettings = ""
 
   // MARK: - Toggle Shortcut Enable States
   static let toggleDictationEnabled = true
   static let togglePromptingEnabled = true
+  static let readSelectedTextEnabled = true
   static let openSettingsEnabled = true
 
   // MARK: - Model & Prompt Settings
@@ -330,11 +332,13 @@ struct SettingsData {
   // MARK: - Toggle Shortcut Settings
   var toggleDictation: String = SettingsDefaults.toggleDictation
   var togglePrompting: String = SettingsDefaults.togglePrompting
+  var readSelectedText: String = SettingsDefaults.readSelectedText
   var openSettings: String = SettingsDefaults.openSettings
 
   // MARK: - Toggle Shortcut Enable States
   var toggleDictationEnabled: Bool = SettingsDefaults.toggleDictationEnabled
   var togglePromptingEnabled: Bool = SettingsDefaults.togglePromptingEnabled
+  var readSelectedTextEnabled: Bool = SettingsDefaults.readSelectedTextEnabled
   var openSettingsEnabled: Bool = SettingsDefaults.openSettingsEnabled
 
   // MARK: - Model & Prompt Settings
@@ -368,6 +372,7 @@ enum SettingsFocusField: Hashable {
   case googleAPIKey
   case toggleDictation
   case togglePrompting
+  case toggleReadSelectedText
   case toggleSettings
   case customPrompt
   case dictationDifficultWords

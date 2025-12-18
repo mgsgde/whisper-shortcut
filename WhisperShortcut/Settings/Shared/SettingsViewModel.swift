@@ -20,10 +20,12 @@ class SettingsViewModel: ObservableObject {
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     data.toggleDictation = currentConfig.startRecording.textDisplayString
     data.togglePrompting = currentConfig.startPrompting.textDisplayString
+    data.readSelectedText = currentConfig.readSelectedText.textDisplayString
     data.openSettings = currentConfig.openSettings.textDisplayString
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
+    data.readSelectedTextEnabled = currentConfig.readSelectedText.isEnabled
     data.openSettingsEnabled = currentConfig.openSettings.isEnabled
 
     // Load transcription model preference
@@ -142,6 +144,12 @@ class SettingsViewModel: ObservableObject {
       }
     }
 
+    if data.readSelectedTextEnabled {
+      guard !data.readSelectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return "Please enter a read selected text shortcut"
+      }
+    }
+
     if data.openSettingsEnabled {
       guard !data.openSettings.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         return "Please enter an open settings shortcut"
@@ -212,6 +220,8 @@ class SettingsViewModel: ObservableObject {
       return name == "toggle dictation"
     case .togglePrompting:
       return name == "toggle prompting"
+    case .toggleReadSelectedText:
+      return name == "read selected text"
     case .toggleSettings:
       return name == "open settings"
     default:
@@ -228,9 +238,12 @@ class SettingsViewModel: ObservableObject {
       "toggle prompting": data.togglePromptingEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.togglePrompting)
         : ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
+      "read selected text": data.readSelectedTextEnabled
+        ? ShortcutConfigManager.parseShortcut(from: data.readSelectedText)
+        : ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
       "open settings": data.openSettingsEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.openSettings)
-        : ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
+        : ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false),
     ]
   }
 
@@ -284,8 +297,10 @@ class SettingsViewModel: ObservableObject {
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
       stopPrompting: shortcuts["toggle prompting"]!
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
+      readSelectedText: shortcuts["read selected text"]!
+        ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
       openSettings: shortcuts["open settings"]!
-        ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false)
+        ?? ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 

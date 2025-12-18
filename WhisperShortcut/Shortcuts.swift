@@ -4,6 +4,7 @@ import HotKey
 protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
+  func readSelectedText()
   func openSettings()
 }
 
@@ -13,6 +14,7 @@ class Shortcuts {
 
   private var toggleDictationKey: HotKey?
   private var togglePromptingKey: HotKey?
+  private var readSelectedTextKey: HotKey?
   private var openSettingsKey: HotKey?
   private var currentConfig: ShortcutConfig
 
@@ -56,6 +58,15 @@ class Shortcuts {
       }
     }
 
+    // Create read selected text shortcut (only if enabled)
+    if config.readSelectedText.isEnabled {
+      readSelectedTextKey = HotKey(
+        key: config.readSelectedText.key, modifiers: config.readSelectedText.modifiers)
+      readSelectedTextKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.readSelectedText()
+      }
+    }
+
     // Create settings shortcut (only if enabled)
     if config.openSettings.isEnabled {
       openSettingsKey = HotKey(
@@ -78,6 +89,7 @@ class Shortcuts {
   func cleanup() {
     toggleDictationKey = nil
     togglePromptingKey = nil
+    readSelectedTextKey = nil
     openSettingsKey = nil
   }
 

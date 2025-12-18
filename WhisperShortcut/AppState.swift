@@ -20,11 +20,13 @@ enum AppState: Equatable {
   enum RecordingMode: Equatable {
     case transcription
     case prompt
+    case tts
 
     var icon: String {
       switch self {
       case .transcription: return "🔴"
       case .prompt: return "🤖"
+      case .tts: return "🔊"
       }
     }
 
@@ -32,6 +34,7 @@ enum AppState: Equatable {
       switch self {
       case .transcription: return "🔴 Recording for transcription..."
       case .prompt: return "🔴 Recording for AI prompt..."
+      case .tts: return "🔊 Recording voice command..."
       }
     }
 
@@ -39,6 +42,7 @@ enum AppState: Equatable {
       switch self {
       case .transcription: return "Recording for transcription... Click to stop"
       case .prompt: return "Recording for AI prompt... Click to stop"
+      case .tts: return "Recording voice command... Click to stop or wait"
       }
     }
   }
@@ -47,6 +51,7 @@ enum AppState: Equatable {
   enum ProcessingMode: Equatable {
     case transcribing
     case prompting
+    case ttsProcessing
 
     var icon: String { return "⏳" }
     var shouldBlink: Bool { return true }
@@ -55,6 +60,7 @@ enum AppState: Equatable {
       switch self {
       case .transcribing: return "⏳ Transcribing audio..."
       case .prompting: return "⏳ Processing AI prompt..."
+      case .ttsProcessing: return "⏳ Processing text-to-speech..."
       }
     }
 
@@ -62,6 +68,7 @@ enum AppState: Equatable {
       switch self {
       case .transcribing: return "Transcribing audio... Please wait"
       case .prompting: return "Processing AI prompt... Please wait"
+      case .ttsProcessing: return "Processing text-to-speech... Please wait"
       }
     }
   }
@@ -184,6 +191,7 @@ extension AppState {
     switch recordingMode {
     case .transcription: processingMode = .transcribing
     case .prompt: processingMode = .prompting
+    case .tts: processingMode = .ttsProcessing
     }
 
     return .processing(processingMode)
@@ -247,6 +255,7 @@ extension AppState.RecordingMode: CustomStringConvertible {
     switch self {
     case .transcription: return "transcription"
     case .prompt: return "prompt"
+    case .tts: return "tts"
     }
   }
 }
@@ -256,6 +265,7 @@ extension AppState.ProcessingMode: CustomStringConvertible {
     switch self {
     case .transcribing: return "transcribing"
     case .prompting: return "prompting"
+    case .ttsProcessing: return "ttsProcessing"
     }
   }
 }

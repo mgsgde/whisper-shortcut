@@ -100,6 +100,7 @@ struct ShortcutConfig: Codable {
   var stopRecording: ShortcutDefinition
   var startPrompting: ShortcutDefinition
   var stopPrompting: ShortcutDefinition
+  var readSelectedText: ShortcutDefinition
   var openSettings: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
@@ -107,7 +108,8 @@ struct ShortcutConfig: Codable {
     stopRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
     startPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
     stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
-    openSettings: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true)
+    readSelectedText: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
+    openSettings: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true)
   )
 }
 
@@ -206,6 +208,7 @@ class ShortcutConfigManager {
     static let stopRecordingKey = "shortcut_stop_recording"
     static let startPromptingKey = "shortcut_start_prompting"
     static let stopPromptingKey = "shortcut_stop_prompting"
+    static let readSelectedTextKey = "shortcut_read_selected_text"
     static let openSettingsKey = "shortcut_open_settings"
   }
 
@@ -223,6 +226,8 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.startPromptingKey) ?? ShortcutConfig.default.startPrompting
     let stopPrompting =
       loadShortcut(for: Constants.stopPromptingKey) ?? ShortcutConfig.default.stopPrompting
+    let readSelectedText =
+      loadShortcut(for: Constants.readSelectedTextKey) ?? ShortcutConfig.default.readSelectedText
     let openSettings =
       loadShortcut(for: Constants.openSettingsKey) ?? ShortcutConfig.default.openSettings
     return ShortcutConfig(
@@ -230,6 +235,7 @@ class ShortcutConfigManager {
       stopRecording: stopRecording,
       startPrompting: startPrompting,
       stopPrompting: stopPrompting,
+      readSelectedText: readSelectedText,
       openSettings: openSettings
     )
   }
@@ -239,6 +245,7 @@ class ShortcutConfigManager {
     saveShortcut(config.stopRecording, for: Constants.stopRecordingKey)
     saveShortcut(config.startPrompting, for: Constants.startPromptingKey)
     saveShortcut(config.stopPrompting, for: Constants.stopPromptingKey)
+    saveShortcut(config.readSelectedText, for: Constants.readSelectedTextKey)
     saveShortcut(config.openSettings, for: Constants.openSettingsKey)
 
     // Post notification for shortcut updates
@@ -387,7 +394,7 @@ class ShortcutConfigManager {
     let currentConfig = loadConfiguration()
     if shortcut == currentConfig.startRecording || shortcut == currentConfig.stopRecording
       || shortcut == currentConfig.startPrompting || shortcut == currentConfig.stopPrompting
-      || shortcut == currentConfig.openSettings
+      || shortcut == currentConfig.readSelectedText || shortcut == currentConfig.openSettings
     {
       return .duplicate("This shortcut is already in use")
     }

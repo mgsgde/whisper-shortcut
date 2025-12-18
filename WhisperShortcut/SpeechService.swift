@@ -47,6 +47,7 @@ class SpeechService {
   // MARK: - Task Tracking for Cancellation
   private var currentTranscriptionTask: Task<String, Error>?
   private var currentPromptTask: Task<String, Error>?
+  private var currentTTSTask: Task<Data, Error>?
 
   init(
     keychainManager: KeychainManaging = KeychainManager.shared,
@@ -138,6 +139,12 @@ class SpeechService {
     DebugLogger.log("CANCELLATION: Cancelling prompt task")
     currentPromptTask?.cancel()
     currentPromptTask = nil
+  }
+  
+  func cancelTTS() {
+    DebugLogger.log("CANCELLATION: Cancelling TTS task")
+    currentTTSTask?.cancel()
+    currentTTSTask = nil
   }
 
   // MARK: - Transcription Mode (Public API with Task Tracking)
@@ -336,7 +343,8 @@ class SpeechService {
       contents: contents,
       systemInstruction: systemInstruction,
       tools: nil,
-      generationConfig: nil
+      generationConfig: nil,
+      model: nil
     )
     
     request.httpBody = try JSONEncoder().encode(chatRequest)
@@ -368,6 +376,233 @@ class SpeechService {
     
     return normalizedText
   }
+  
+  // MARK: - Text-based Prompt Mode (for TTS flow)
+  func executePromptWithText(textCommand: String, selectedText: String) async throws -> String {
+    // Only check API key for Gemini models
+    guard let googleAPIKey = self.googleAPIKey, !googleAPIKey.isEmpty else {
+      throw TranscriptionError.noGoogleAPIKey
+    }
+    
+    DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command")
+    
+    // Get selected model from settings
+    let modelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? "gemini-2.5-flash"
+    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Flash
+    
+    // Convert to TranscriptionModel to get API endpoint
+    guard let transcriptionModel = selectedPromptModel.asTranscriptionModel else {
+      throw TranscriptionError.networkError("Selected model is not a Gemini model")
+    }
+    
+    let endpoint = transcriptionModel.apiEndpoint
+    DebugLogger.log("PROMPT-MODE-TEXT: Using model: \(selectedPromptModel.displayName)")
+    
+    // Build system prompt
+    let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
+    let customSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)
+    
+    let systemPrompt: String
+    if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
+      systemPrompt = customPrompt
+    } else {
+      systemPrompt = baseSystemPrompt
+    }
+    
+    // Build request
+    var request = createGeminiRequest(endpoint: endpoint, apiKey: googleAPIKey)
+    
+    // Build contents with selected text and text command
+    let contextText = """
+    SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):
+    
+    \(selectedText)
+    """
+    
+    let commandText = """
+    VOICE INSTRUCTION (what to do with the selected text):
+    
+    \(textCommand)
+    """
+    
+    let contents = [
+      GeminiChatRequest.GeminiChatContent(
+        role: "user",
+        parts: [
+          GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil),
+          GeminiChatRequest.GeminiChatPart(text: commandText, inlineData: nil, fileData: nil, url: nil)
+        ]
+      )
+    ]
+    
+    // Build system instruction
+    let systemInstruction = GeminiChatRequest.GeminiSystemInstruction(
+      parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
+    )
+    
+    // Create request
+    let chatRequest = GeminiChatRequest(
+      contents: contents,
+      systemInstruction: systemInstruction,
+      tools: nil,
+      generationConfig: nil,
+      model: nil
+    )
+    
+    request.httpBody = try JSONEncoder().encode(chatRequest)
+    
+    // Make request
+    let result = try await performGeminiRequest(
+      request,
+      responseType: GeminiChatResponse.self,
+      mode: "PROMPT-MODE-TEXT",
+      withRetry: false
+    )
+    
+    guard let firstCandidate = result.candidates.first else {
+      throw TranscriptionError.networkError("No candidates in Gemini response")
+    }
+    
+    // Extract text content
+    var textContent = ""
+    for part in firstCandidate.content.parts {
+      if let text = part.text {
+        textContent += text
+      }
+    }
+    
+    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(textContent)
+    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-TEXT")
+    
+    DebugLogger.logSuccess("PROMPT-MODE-TEXT: Completed successfully")
+    
+    return normalizedText
+  }
+  
+  // MARK: - Text-to-Speech Mode
+  func readTextAloud(_ text: String) async throws -> Data {
+    // Create and store task for cancellation support
+    let task = Task<Data, Error> {
+      try await self.performTTS(text: text)
+    }
+    
+    currentTTSTask = task
+    
+    do {
+      let result = try await task.value
+      currentTTSTask = nil
+      return result
+    } catch is CancellationError {
+      currentTTSTask = nil
+      throw CancellationError()
+    } catch {
+      currentTTSTask = nil
+      throw error
+    }
+  }
+  
+  private func performTTS(text: String) async throws -> Data {
+    guard let googleAPIKey = googleAPIKey else {
+      throw TranscriptionError.noGoogleAPIKey
+    }
+    
+    // Validate input text
+    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedText.isEmpty else {
+      throw TranscriptionError.networkError("Text is empty")
+    }
+    
+    DebugLogger.log("TTS: Starting text-to-speech for text (length: \(trimmedText.count) chars)")
+    
+    // TTS-specific endpoint
+    let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent"
+    
+    // Build request
+    var request = createGeminiRequest(endpoint: endpoint, apiKey: googleAPIKey)
+    
+    // Build contents with text input
+    let contents = [
+      GeminiChatRequest.GeminiChatContent(
+        role: "user",
+        parts: [
+          GeminiChatRequest.GeminiChatPart(
+            text: trimmedText,
+            inlineData: nil,
+            fileData: nil,
+            url: nil
+          )
+        ]
+      )
+    ]
+    
+    // Build generation config with audio output
+    let generationConfig = GeminiChatRequest.GeminiGenerationConfig(
+      responseModalities: ["AUDIO"],
+      speechConfig: GeminiChatRequest.GeminiSpeechConfig(
+        voiceConfig: GeminiChatRequest.GeminiVoiceConfig(
+          prebuiltVoiceConfig: GeminiChatRequest.GeminiPrebuiltVoiceConfig(
+            voiceName: "Charon"  // Male voice: informative and clear
+          )
+        )
+      )
+    )
+    
+    // Create request
+    let chatRequest = GeminiChatRequest(
+      contents: contents,
+      systemInstruction: nil,
+      tools: nil,
+      generationConfig: generationConfig,
+      model: "gemini-2.5-flash-preview-tts"  // Required for TTS models
+    )
+    
+    request.httpBody = try JSONEncoder().encode(chatRequest)
+    
+    DebugLogger.log("TTS: Making request to Gemini TTS API (text length: \(trimmedText.count) chars)")
+    
+    // Make request
+    let result = try await performGeminiRequest(
+      request,
+      responseType: GeminiChatResponse.self,
+      mode: "TTS",
+      withRetry: false
+    )
+    
+    DebugLogger.log("TTS: Received response from Gemini API")
+    
+    guard let firstCandidate = result.candidates.first else {
+      DebugLogger.logError("TTS: No candidates in response")
+      throw TranscriptionError.networkError("No candidates in Gemini TTS response")
+    }
+    
+    DebugLogger.log("TTS: Found \(result.candidates.count) candidate(s)")
+    DebugLogger.log("TTS: Candidate has \(firstCandidate.content.parts.count) part(s)")
+    
+    // Extract audio data from response
+    for (index, part) in firstCandidate.content.parts.enumerated() {
+      DebugLogger.log("TTS: Checking part \(index): has text=\(part.text != nil), has inlineData=\(part.inlineData != nil)")
+      
+      if let inlineData = part.inlineData {
+        DebugLogger.log("TTS: Found inlineData with mimeType=\(inlineData.mimeType), data length=\(inlineData.data.count) chars")
+        
+        // Decode base64 audio data
+        guard let audioData = Data(base64Encoded: inlineData.data) else {
+          DebugLogger.logError("TTS: Failed to decode base64 audio data (data length: \(inlineData.data.count) chars)")
+          throw TranscriptionError.networkError("Failed to decode base64 audio data")
+        }
+        
+        DebugLogger.logSuccess("TTS: Successfully generated audio (size: \(audioData.count) bytes)")
+        return audioData
+      }
+      
+      if let text = part.text {
+        DebugLogger.log("TTS: Part \(index) contains text instead of audio: \(text.prefix(100))")
+      }
+    }
+    
+    DebugLogger.logError("TTS: No audio data found in any part of the response")
+    throw TranscriptionError.networkError("No audio data found in TTS response")
+  }
 
   // MARK: - Gemini API Helpers
   
@@ -377,6 +612,8 @@ class SpeechService {
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    // Set timeout - use resourceTimeout for TTS which can take longer
+    request.timeoutInterval = Constants.resourceTimeout
     return request
   }
   
@@ -396,7 +633,9 @@ class SpeechService {
           DebugLogger.log("\(mode)-RETRY: Attempt \(attempt)/\(maxAttempts)")
         }
         
+        DebugLogger.log("\(mode): Sending request (attempt \(attempt)/\(maxAttempts))")
         let (data, response) = try await session.data(for: request)
+        DebugLogger.log("\(mode): Received response")
         
         guard let httpResponse = response as? HTTPURLResponse else {
           throw TranscriptionError.networkError("Invalid response")
@@ -422,13 +661,100 @@ class SpeechService {
         }
         
         // Parse response
-        let result = try JSONDecoder().decode(T.self, from: data)
+        DebugLogger.log("\(mode): Parsing response (data size: \(data.count) bytes)")
         
-        if attempt > 1 {
-          DebugLogger.log("\(mode)-RETRY: Success on attempt \(attempt)")
+        // Log raw response for debugging (especially for TTS) - BEFORE decoding
+        if mode == "TTS" {
+          DebugLogger.log("TTS: Starting response analysis...")
+          // Check if data is valid
+          guard data.count > 0 else {
+            DebugLogger.logError("TTS: Response data is empty")
+            throw TranscriptionError.networkError("Empty response from TTS API")
+          }
+          
+          // Try to parse as JSON first to validate structure
+          do {
+            let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            if let jsonObject = jsonObject {
+              DebugLogger.log("TTS: Response is valid JSON with keys: \(jsonObject.keys.joined(separator: ", "))")
+              
+              if let candidates = jsonObject["candidates"] as? [[String: Any]], let firstCandidate = candidates.first {
+                DebugLogger.log("TTS: Found \(candidates.count) candidate(s), first candidate keys: \(firstCandidate.keys.joined(separator: ", "))")
+                
+                if let content = firstCandidate["content"] as? [String: Any] {
+                  DebugLogger.log("TTS: Content keys: \(content.keys.joined(separator: ", "))")
+                  
+                  if let parts = content["parts"] as? [[String: Any]], let firstPart = parts.first {
+                    DebugLogger.log("TTS: Found \(parts.count) part(s), first part keys: \(firstPart.keys.joined(separator: ", "))")
+                    
+                    if let inlineData = firstPart["inlineData"] as? [String: Any] {
+                      DebugLogger.log("TTS: ✅ inlineData found with keys: \(inlineData.keys.joined(separator: ", "))")
+                      if let mimeType = inlineData["mimeType"] as? String {
+                        DebugLogger.log("TTS: MIME type: \(mimeType)")
+                      }
+                      if let dataString = inlineData["data"] as? String {
+                        DebugLogger.log("TTS: Base64 data length: \(dataString.count) chars (approx \(dataString.count * 3 / 4) bytes when decoded)")
+                      } else {
+                        DebugLogger.logError("TTS: inlineData exists but 'data' field is missing or wrong type")
+                      }
+                    } else {
+                      DebugLogger.logError("TTS: ❌ No inlineData found in first part")
+                      // Log what we actually have
+                      for (key, value) in firstPart {
+                        DebugLogger.log("TTS: Part has key '\(key)' with type: \(type(of: value))")
+                      }
+                    }
+                  } else {
+                    DebugLogger.logError("TTS: No parts found in content")
+                  }
+                } else {
+                  DebugLogger.logError("TTS: No content found in candidate")
+                }
+              } else {
+                DebugLogger.logError("TTS: No candidates found in response")
+              }
+            } else {
+              DebugLogger.logError("TTS: Response is not a dictionary")
+            }
+          } catch {
+            DebugLogger.logError("TTS: Failed to parse JSON: \(error.localizedDescription)")
+            // Try to log first 500 chars anyway
+            if let jsonString = String(data: data.prefix(500), encoding: .utf8) {
+              DebugLogger.log("TTS: First 500 bytes as string: \(jsonString)")
+            }
+          }
         }
         
-        return result
+        // Now try to decode
+        do {
+          DebugLogger.log("\(mode): Attempting to decode response...")
+          let result = try JSONDecoder().decode(T.self, from: data)
+          DebugLogger.log("\(mode): ✅ Decoding successful")
+          
+          if attempt > 1 {
+            DebugLogger.log("\(mode)-RETRY: Success on attempt \(attempt)")
+          }
+          
+          return result
+        } catch let decodingError as DecodingError {
+          DebugLogger.logError("\(mode): ❌ Decoding error: \(decodingError)")
+          switch decodingError {
+          case .keyNotFound(let key, let context):
+            DebugLogger.logError("\(mode): Missing key '\(key.stringValue)' at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+          case .typeMismatch(let type, let context):
+            DebugLogger.logError("\(mode): Type mismatch for type '\(type)' at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+          case .valueNotFound(let type, let context):
+            DebugLogger.logError("\(mode): Value not found for type '\(type)' at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+          case .dataCorrupted(let context):
+            DebugLogger.logError("\(mode): Data corrupted at path: \(context.codingPath.map { $0.stringValue }.joined(separator: ".")), error: \(context.debugDescription)")
+          @unknown default:
+            DebugLogger.logError("\(mode): Unknown decoding error: \(decodingError)")
+          }
+          throw decodingError
+        } catch {
+          DebugLogger.logError("\(mode): Unexpected parsing error: \(error.localizedDescription)")
+          throw error
+        }
         
       } catch is CancellationError {
         DebugLogger.log("\(mode)-RETRY: Cancelled on attempt \(attempt)")

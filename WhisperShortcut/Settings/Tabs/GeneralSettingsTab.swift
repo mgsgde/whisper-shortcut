@@ -94,12 +94,27 @@ struct GeneralSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "⌨️ Keyboard Shortcuts",
-        subtitle: "Open/Close Settings window with a keyboard shortcut"
+        subtitle: "Configure keyboard shortcuts for various features"
+      )
+
+      ShortcutInputRow(
+        label: "Read Selected Text:",
+        placeholder: "e.g., command+3",
+        text: $viewModel.data.readSelectedText,
+        isEnabled: $viewModel.data.readSelectedTextEnabled,
+        focusedField: .toggleReadSelectedText,
+        currentFocus: $focusedField,
+        onShortcutChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
+        },
+        validateShortcut: viewModel.validateShortcut
       )
 
       ShortcutInputRow(
         label: "Toggle Settings:",
-        placeholder: "e.g., command+3",
+        placeholder: "e.g., command+4",
         text: $viewModel.data.openSettings,
         isEnabled: $viewModel.data.openSettingsEnabled,
         focusedField: .toggleSettings,

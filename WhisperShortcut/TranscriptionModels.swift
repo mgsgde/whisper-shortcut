@@ -167,7 +167,7 @@ struct GeminiTranscriptionRequest: Codable {
     let data: String
     
     enum CodingKeys: String, CodingKey {
-      case mimeType = "mime_type"
+      case mimeType  // API returns "mimeType" (camelCase), not "mime_type"
       case data
     }
   }
@@ -214,12 +214,14 @@ struct GeminiChatRequest: Codable {
   let systemInstruction: GeminiSystemInstruction?
   let tools: [GeminiTool]?
   let generationConfig: GeminiGenerationConfig?
+  let model: String?  // Optional model field (required for TTS models)
   
   enum CodingKeys: String, CodingKey {
     case contents
     case systemInstruction = "system_instruction"
     case tools
     case generationConfig = "generationConfig"
+    case model
   }
   
   // MARK: - Generation Config
@@ -257,7 +259,7 @@ struct GeminiChatRequest: Codable {
     let data: String
     
     enum CodingKeys: String, CodingKey {
-      case mimeType = "mime_type"
+      case mimeType  // API returns "mimeType" (camelCase), not "mime_type"
       case data
     }
   }
@@ -344,7 +346,7 @@ struct GeminiChatResponse: Codable {
     
     enum CodingKeys: String, CodingKey {
       case text
-      case inlineData = "inline_data"
+      case inlineData  // API returns "inlineData" (camelCase), not "inline_data"
       case functionCall = "function_call"
     }
   }
@@ -418,7 +420,7 @@ struct GeminiChatResponse: Codable {
     let data: String
     
     enum CodingKeys: String, CodingKey {
-      case mimeType = "mime_type"
+      case mimeType  // API returns "mimeType" (camelCase), not "mime_type"
       case data
     }
   }

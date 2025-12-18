@@ -2,6 +2,7 @@ import Cocoa
 import Foundation
 import HotKey
 import SwiftUI
+import AVFoundation
 
 class MenuBarController: NSObject {
 
@@ -41,6 +42,10 @@ class MenuBarController: NSObject {
   // MARK: - State Tracking (Prevent Race Conditions)
   private var currentTranscriptionAudioURL: URL?
   private var processedAudioURLs: Set<URL> = []
+  private var currentTTSAudioURL: URL?
+  private var audioPlayer: AVAudioPlayer?
+  private var audioEngine: AVAudioEngine?
+  private var audioPlayerNode: AVAudioPlayerNode?
 
   // MARK: - Configuration
   private var currentConfig: ShortcutConfig
@@ -103,6 +108,10 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Toggle Prompting", action: #selector(togglePrompting),
         shortcut: currentConfig.startPrompting, tag: 102))
+    menu.addItem(
+      createMenuItemWithShortcut(
+        "Read Selected Text", action: #selector(readSelectedText),
+        shortcut: currentConfig.readSelectedText, tag: 104))
 
     menu.addItem(NSMenuItem.separator())
 
@@ -286,6 +295,12 @@ class MenuBarController: NSObject {
       enabled: appState.canStartPrompting(hasAPIKey: hasAPIKey, hasOfflineModel: hasOfflinePromptModel) 
         || appState.recordingMode == .prompt
     )
+    
+    updateMenuItem(
+      menu, tag: 104,
+      title: appState.recordingMode == .tts ? "Stop Recording" : "Read Selected Text",
+      enabled: (hasAPIKey && !appState.isBusy) || appState.recordingMode == .tts
+    )
 
     // Handle special case when no API key and no offline model is configured
     if !hasAPIKey && !hasOfflineTranscriptionModel && !hasOfflinePromptModel, let button = statusItem?.button {
@@ -399,6 +414,275 @@ class MenuBarController: NSObject {
   @objc func openSettings() {
     SettingsManager.shared.toggleSettings()
   }
+  
+  @objc private func handleReadSelectedText() {
+    // Check if currently processing TTS - if so, cancel it
+    if case .processing(.ttsProcessing) = appState {
+      speechService.cancelTTS()
+      audioPlayer?.stop()
+      audioPlayer = nil
+      audioEngine?.stop()
+      audioPlayerNode?.stop()
+      audioEngine = nil
+      audioPlayerNode = nil
+      if let audioURL = currentTTSAudioURL {
+        try? FileManager.default.removeItem(at: audioURL)
+        currentTTSAudioURL = nil
+      }
+      appState = .idle
+      PopupNotificationWindow.showCancelled("TTS cancelled")
+      return
+    }
+    
+    // Check if currently playing audio - if so, stop it
+    if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
+      audioPlayer?.stop()
+      audioPlayer = nil
+      audioEngine?.stop()
+      audioPlayerNode?.stop()
+      audioEngine = nil
+      audioPlayerNode = nil
+      if let audioURL = currentTTSAudioURL {
+        try? FileManager.default.removeItem(at: audioURL)
+        currentTTSAudioURL = nil
+      }
+      appState = .idle
+      return
+    }
+    
+    switch appState.recordingMode {
+    case .tts:
+      // Stop recording
+      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
+        self?.audioRecorder.stopRecording()
+      }
+    case .none:
+      // Check accessibility permission first
+      if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
+        return
+      }
+      
+      // Start recording for voice command
+      let hasAPIKey = KeychainManager.shared.hasGoogleAPIKey()
+      if hasAPIKey {
+        simulateCopyPaste()
+        appState = appState.startRecording(.tts)
+        audioRecorder.startRecording()
+      } else {
+        // No API key - try direct TTS without command
+        performDirectTTS()
+      }
+    default:
+      break
+    }
+  }
+  
+  private func performDirectTTS() {
+    // Get selected text from clipboard
+    guard let selectedText = clipboardManager.getCleanedClipboardText(),
+          !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      PopupNotificationWindow.showError("No text selected", title: "TTS Error")
+      return
+    }
+    
+    appState = .processing(.ttsProcessing)
+    
+    Task {
+      do {
+        let audioData = try await speechService.readTextAloud(selectedText)
+        await MainActor.run {
+          self.playTTSAudio(audioData: audioData)
+        }
+      } catch {
+        DebugLogger.logError("TTS-ERROR: Failed to generate speech: \(error.localizedDescription)")
+        if let transcriptionError = error as? TranscriptionError {
+          DebugLogger.logError("TTS-ERROR: TranscriptionError type: \(transcriptionError)")
+        }
+        await MainActor.run {
+          self.appState = self.appState.showError("TTS failed: \(error.localizedDescription)")
+          PopupNotificationWindow.showError("Failed to generate speech: \(error.localizedDescription)", title: "TTS Error")
+        }
+      }
+    }
+  }
+  
+  private func performTTSWithCommand(audioURL: URL) async {
+    do {
+      // First, transcribe the audio to get the voice command
+      let voiceCommand = try await speechService.transcribe(audioURL: audioURL)
+      let trimmedCommand = voiceCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+      
+      // Clean up transcription audio
+      try? FileManager.default.removeItem(at: audioURL)
+      
+      // Get selected text from clipboard
+      guard let selectedText = clipboardManager.getCleanedClipboardText(),
+            !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        await MainActor.run {
+          self.appState = self.appState.showError("No text selected")
+          PopupNotificationWindow.showError("No text selected", title: "TTS Error")
+        }
+        return
+      }
+      
+      // Check if command is empty/null
+      if trimmedCommand.isEmpty {
+        // No command - direct TTS
+        DebugLogger.log("TTS: No voice command detected, using direct TTS")
+        await MainActor.run {
+          self.appState = .processing(.ttsProcessing)
+        }
+        
+        let audioData = try await speechService.readTextAloud(selectedText)
+        await MainActor.run {
+          self.playTTSAudio(audioData: audioData)
+        }
+      } else {
+        // Command exists - apply prompt mode first
+        DebugLogger.log("TTS: Voice command detected: \(trimmedCommand)")
+        await MainActor.run {
+          self.appState = .processing(.prompting)
+        }
+        
+        // Apply prompt mode: selected text + command (using text-based method)
+        let promptResult = try await speechService.executePromptWithText(textCommand: trimmedCommand, selectedText: selectedText)
+        
+        // Now TTS the result
+        await MainActor.run {
+          self.appState = .processing(.ttsProcessing)
+        }
+        
+        let audioData = try await speechService.readTextAloud(promptResult)
+        await MainActor.run {
+          self.playTTSAudio(audioData: audioData)
+        }
+      }
+    } catch is CancellationError {
+      DebugLogger.log("CANCELLATION: TTS task was cancelled")
+      await MainActor.run {
+        self.appState = .idle
+      }
+      try? FileManager.default.removeItem(at: audioURL)
+    } catch {
+      DebugLogger.logError("TTS-ERROR: Failed to process TTS request: \(error.localizedDescription)")
+      if let transcriptionError = error as? TranscriptionError {
+        DebugLogger.logError("TTS-ERROR: TranscriptionError type: \(transcriptionError)")
+      }
+      await MainActor.run {
+        self.appState = self.appState.showError("TTS failed: \(error.localizedDescription)")
+        PopupNotificationWindow.showError("Failed to process: \(error.localizedDescription)", title: "TTS Error")
+      }
+      try? FileManager.default.removeItem(at: audioURL)
+    }
+  }
+  
+  private func playTTSAudio(audioData: Data) {
+    DebugLogger.log("TTS-PLAYBACK: Starting audio playback (data size: \(audioData.count) bytes)")
+    
+    // PCM format: 16-bit signed little-endian, 24kHz, mono
+    let sampleRate: Double = 24000
+    let channels: UInt32 = 1
+    let bitsPerChannel: UInt32 = 16
+    
+    do {
+      // Create audio format
+      guard let audioFormat = AVAudioFormat(
+        commonFormat: .pcmFormatInt16,
+        sampleRate: sampleRate,
+        channels: channels,
+        interleaved: false
+      ) else {
+        DebugLogger.logError("TTS-PLAYBACK: Failed to create audio format")
+        throw NSError(domain: "TTS", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create audio format"])
+      }
+      
+      DebugLogger.log("TTS-PLAYBACK: Audio format created (sampleRate: \(sampleRate), channels: \(channels))")
+      
+      // Calculate frame count
+      let bytesPerFrame = Int(channels * (bitsPerChannel / 8))
+      let frameCount = audioData.count / bytesPerFrame
+      
+      DebugLogger.log("TTS-PLAYBACK: Calculated frame count: \(frameCount) (bytesPerFrame: \(bytesPerFrame))")
+      
+      // Create PCM buffer
+      guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: AVAudioFrameCount(frameCount)) else {
+        DebugLogger.logError("TTS-PLAYBACK: Failed to create audio buffer")
+        throw NSError(domain: "TTS", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to create audio buffer"])
+      }
+      
+      buffer.frameLength = AVAudioFrameCount(frameCount)
+      
+      // Copy PCM data to buffer
+      audioData.withUnsafeBytes { bytes in
+        guard let baseAddress = bytes.baseAddress else { return }
+        let int16Pointer = baseAddress.assumingMemoryBound(to: Int16.self)
+        
+        // Copy to buffer's channel data
+        if let channelData = buffer.int16ChannelData {
+          for i in 0..<frameCount {
+            channelData[0][i] = int16Pointer[i]
+          }
+        }
+      }
+      
+      DebugLogger.log("TTS-PLAYBACK: PCM data copied to buffer")
+      
+      // Stop any existing playback
+      if let existingEngine = audioEngine {
+        existingEngine.stop()
+        audioEngine = nil
+      }
+      if let existingNode = audioPlayerNode {
+        existingNode.stop()
+        audioPlayerNode = nil
+      }
+      
+      // Create audio engine for playback
+      let engine = AVAudioEngine()
+      let playerNode = AVAudioPlayerNode()
+      
+      engine.attach(playerNode)
+      engine.connect(playerNode, to: engine.mainMixerNode, format: audioFormat)
+      
+      // Store references to prevent deallocation
+      self.audioEngine = engine
+      self.audioPlayerNode = playerNode
+      
+      DebugLogger.log("TTS-PLAYBACK: Audio engine configured, starting engine...")
+      try engine.start()
+      DebugLogger.log("TTS-PLAYBACK: Audio engine started successfully")
+      
+      // Schedule buffer for playback
+      playerNode.scheduleBuffer(buffer) {
+        DebugLogger.log("TTS-PLAYBACK: Buffer playback completed")
+        DispatchQueue.main.async {
+          engine.stop()
+          self.audioEngine = nil
+          self.audioPlayerNode = nil
+          self.audioPlayer = nil
+          self.currentTTSAudioURL = nil
+          self.appState = self.appState.showSuccess("Audio playback completed")
+          DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            if case .feedback = self.appState {
+              self.appState = .idle
+            }
+          }
+        }
+      }
+      
+      DebugLogger.log("TTS-PLAYBACK: Buffer scheduled, starting playback...")
+      playerNode.play()
+      DebugLogger.logSuccess("TTS-PLAYBACK: Playback started")
+      appState = appState.showSuccess("Playing audio...")
+      
+    } catch {
+      DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.localizedDescription)")
+      appState = appState.showError("Failed to play audio: \(error.localizedDescription)")
+      currentTTSAudioURL = nil
+      audioEngine = nil
+      audioPlayerNode = nil
+    }
+  }
 
   @objc private func quitApp() {
     // Set flag to indicate user wants to quit completely
@@ -468,6 +752,8 @@ class MenuBarController: NSObject {
             await self.performTranscription(audioURL: audioURL)
           case .prompt:
             await self.performPrompting(audioURL: audioURL)
+          case .tts:
+            await self.performTTSWithCommand(audioURL: audioURL)
           }
         }
       } : nil
@@ -647,6 +933,8 @@ extension MenuBarController: AudioRecorderDelegate {
     // Track the audio URL for transcription cancellation
     if recordingMode == .transcription {
       currentTranscriptionAudioURL = audioURL
+    } else if recordingMode == .tts {
+      currentTTSAudioURL = audioURL
     }
 
     // Transition to processing
@@ -659,6 +947,8 @@ extension MenuBarController: AudioRecorderDelegate {
         await performTranscription(audioURL: audioURL)
       case .prompt:
         await performPrompting(audioURL: audioURL)
+      case .tts:
+        await performTTSWithCommand(audioURL: audioURL)
       }
     }
   }
@@ -672,5 +962,6 @@ extension MenuBarController: AudioRecorderDelegate {
 extension MenuBarController: ShortcutDelegate {
   func toggleDictation() { toggleTranscription() }
   // togglePrompting is already implemented above
+  @objc func readSelectedText() { handleReadSelectedText() }
   // openSettings is already implemented above
 }
