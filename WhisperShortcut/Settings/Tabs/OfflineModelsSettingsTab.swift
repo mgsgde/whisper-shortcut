@@ -80,7 +80,7 @@ struct OfflineModelsSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Available Models",
-        subtitle: "Select a model to download or manage"
+        subtitle: "Select a model to download or manage. Note: The first execution may take longer as the model needs to be initialized. Subsequent prompts will be faster."
       )
 
       VStack(spacing: 12) {
@@ -204,7 +204,7 @@ struct OfflineModelsSettingsTab: View {
           DebugLogger.logSuccess("OFFLINE-UI: Successfully downloaded \(modelType.displayName)")
           
           // Show success message
-          successMessage = "\(modelType.displayName) was successfully downloaded."
+          successMessage = "\(modelType.displayName) was successfully downloaded.\n\nNote: The first execution may take longer as the model needs to be initialized. Subsequent prompts will be faster."
           showSuccess = true
           
           // Give WhisperKit a moment to finish writing files
