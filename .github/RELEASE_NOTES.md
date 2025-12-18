@@ -1,4 +1,4 @@
-# Release Notes - Version 5.2.3
+# Release Notes for Version 5.2.4
 
 ## Installation
 
@@ -6,23 +6,36 @@ Download the latest version from the [Releases page](https://github.com/mgsgde/w
 
 ## Changes
 
-### Bug Fixes
+### 🎙️ Text-to-Speech (TTS) Functionality
 
-- **Fixed transcription interruptions and race conditions**: Resolved an issue where transcriptions could be interrupted or processed multiple times when the shortcut was pressed during an active transcription. The app now properly tracks and prevents duplicate processing of audio files, ensuring each transcription completes successfully without interruptions.
+This release introduces a powerful new Text-to-Speech feature that allows you to have selected text read aloud using high-quality voice synthesis.
 
-### Improved Reliability
+**New Features:**
 
-- **Better state management**: Enhanced audio processing state tracking to prevent race conditions and ensure clean transitions between recording, processing, and idle states.
-- **Automatic cleanup**: Improved cleanup of audio files when transcriptions are cancelled or completed, preventing file system clutter and potential conflicts.
+- **Read Selected Text**: Select any text in any application and have it read aloud with a customizable keyboard shortcut
+- **Configurable Shortcut**: Set your preferred keyboard shortcut for the "Read Selected Text" feature in Settings
+- **Voice Selection**: Choose from a variety of system voices in the Settings menu
+- **Playback Controls**: Start, pause, and cancel audio playback directly from the menu bar
+- **Smart Error Handling**: Improved error messages and logging for better troubleshooting
 
-## Technical Details
+**Technical Improvements:**
 
-- Added `processedAudioURLs` tracking to prevent duplicate processing of the same audio file
-- Implemented `currentTranscriptionAudioURL` tracking for proper cancellation handling
-- Enhanced `audioRecorderDidFinishRecording` with duplicate detection and state validation
-- Improved cleanup logic in `performTranscription` and `performPrompting` methods
-- Added immediate file cleanup when transcriptions are cancelled
+- Enhanced MenuBarController with comprehensive TTS command handling
+- Updated SpeechService to support TTS requests and cancellation
+- Refactored settings and UI components for better TTS integration
+- Improved audio duration validation before transcription
+- Better file size and text validation constants for clarity
+
+**User Experience:**
+
+- Updated menu terminology to "Prompt & Read" for better clarity
+- Streamlined menu bar interface for TTS operations
+- Enhanced error handling and user feedback
+
+## What's Next
+
+We're continuously working on improving WhisperShortcut. If you have suggestions or encounter any issues, please [open an issue](https://github.com/mgsgde/whisper-shortcut/issues) on GitHub.
 
 ---
 
-For more information, visit the [GitHub repository](https://github.com/mgsgde/whisper-shortcut).
+**Full Changelog**: [5.2.3...5.2.4](https://github.com/mgsgde/whisper-shortcut/compare/v5.2.3...v5.2.4)
