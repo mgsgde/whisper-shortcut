@@ -146,7 +146,7 @@ class SettingsViewModel: ObservableObject {
 
     if data.readSelectedTextEnabled {
       guard !data.readSelectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a read selected text shortcut"
+        return "Please enter a prompt & read shortcut"
       }
     }
 

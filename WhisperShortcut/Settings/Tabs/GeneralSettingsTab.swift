@@ -98,7 +98,7 @@ struct GeneralSettingsTab: View {
       )
 
       ShortcutInputRow(
-        label: "Read Selected Text:",
+        label: "Prompt & Read:",
         placeholder: "e.g., command+3",
         text: $viewModel.data.readSelectedText,
         isEnabled: $viewModel.data.readSelectedTextEnabled,

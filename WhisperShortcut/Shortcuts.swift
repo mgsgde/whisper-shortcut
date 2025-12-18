@@ -58,7 +58,7 @@ class Shortcuts {
       }
     }
 
-    // Create read selected text shortcut (only if enabled)
+    // Create prompt & read shortcut (only if enabled)
     if config.readSelectedText.isEnabled {
       readSelectedTextKey = HotKey(
         key: config.readSelectedText.key, modifiers: config.readSelectedText.modifiers)

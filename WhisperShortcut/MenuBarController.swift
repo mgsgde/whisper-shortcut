@@ -110,7 +110,7 @@ class MenuBarController: NSObject {
         shortcut: currentConfig.startPrompting, tag: 102))
     menu.addItem(
       createMenuItemWithShortcut(
-        "Read Selected Text", action: #selector(readSelectedText),
+        "Prompt & Read", action: #selector(readSelectedText),
         shortcut: currentConfig.readSelectedText, tag: 104))
 
     menu.addItem(NSMenuItem.separator())
@@ -298,7 +298,7 @@ class MenuBarController: NSObject {
     
     updateMenuItem(
       menu, tag: 104,
-      title: appState.recordingMode == .tts ? "Stop Recording" : "Read Selected Text",
+      title: appState.recordingMode == .tts ? "Stop Recording" : "Prompt & Read",
       enabled: (hasAPIKey && !appState.isBusy) || appState.recordingMode == .tts
     )
 
