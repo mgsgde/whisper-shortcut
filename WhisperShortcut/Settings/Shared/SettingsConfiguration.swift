@@ -305,6 +305,9 @@ struct SettingsDefaults {
   static let dictationDifficultWords = ""
   static let promptModeSystemPrompt = ""
   
+  // MARK: - Read Aloud Settings
+  static let selectedReadAloudVoice = "Charon"
+  
   // MARK: - Reasoning Effort Settings
   static let promptReasoningEffort = ReasoningEffort.medium
 
@@ -348,6 +351,9 @@ struct SettingsData {
   var dictationDifficultWords: String = SettingsDefaults.dictationDifficultWords
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
   
+  // MARK: - Read Aloud Settings
+  var selectedReadAloudVoice: String = SettingsDefaults.selectedReadAloudVoice
+  
   // MARK: - Reasoning Effort Settings
   var promptReasoningEffort: ReasoningEffort = SettingsDefaults.promptReasoningEffort
 
@@ -377,4 +383,5 @@ enum SettingsFocusField: Hashable {
   case customPrompt
   case dictationDifficultWords
   case promptModeSystemPrompt
+  case readAloudVoice
 }

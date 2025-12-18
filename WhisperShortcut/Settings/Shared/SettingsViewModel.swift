@@ -60,6 +60,10 @@ class SettingsViewModel: ObservableObject {
     data.promptModeSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)
       ?? AppConstants.defaultPromptModeSystemPrompt
 
+    // Load read aloud voice setting
+    data.selectedReadAloudVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoice)
+      ?? SettingsDefaults.selectedReadAloudVoice
+
     // Load reasoning effort settings
     if let savedPromptReasoningEffort = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptReasoningEffort),
       let promptEffort = ReasoningEffort(rawValue: savedPromptReasoningEffort)
@@ -274,6 +278,9 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(data.customPromptText, forKey: UserDefaultsKeys.customPromptText)
     UserDefaults.standard.set(data.dictationDifficultWords, forKey: UserDefaultsKeys.dictationDifficultWords)
     UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
+    
+    // Save read aloud voice setting
+    UserDefaults.standard.set(data.selectedReadAloudVoice, forKey: UserDefaultsKeys.selectedReadAloudVoice)
     
     // Save Whisper language setting
     UserDefaults.standard.set(data.whisperLanguage.rawValue, forKey: UserDefaultsKeys.whisperLanguage)

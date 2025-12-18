@@ -13,6 +13,9 @@ enum UserDefaultsKeys {
   static let promptModeSystemPrompt = "promptModeSystemPrompt"
   static let promptReasoningEffort = "promptReasoningEffort"
   
+  // MARK: - Read Aloud Settings
+  static let selectedReadAloudVoice = "selected_read_aloud_voice"
+  
   // MARK: - Whisper Settings
   static let whisperLanguage = "whisperLanguage"
   

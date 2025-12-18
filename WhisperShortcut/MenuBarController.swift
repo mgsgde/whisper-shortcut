@@ -102,15 +102,15 @@ class MenuBarController: NSObject {
     // Recording actions with keyboard shortcuts
     menu.addItem(
       createMenuItemWithShortcut(
-        "Toggle Transcription", action: #selector(toggleTranscription),
+        "Dictate", action: #selector(toggleTranscription),
         shortcut: currentConfig.startRecording, tag: 101))
     menu.addItem(
       createMenuItemWithShortcut(
-        "Toggle Prompting", action: #selector(togglePrompting),
+        "Dictate Prompt", action: #selector(togglePrompting),
         shortcut: currentConfig.startPrompting, tag: 102))
     menu.addItem(
       createMenuItemWithShortcut(
-        "Prompt & Read", action: #selector(readSelectedText),
+        "Dictate Prompt & Read", action: #selector(readSelectedText),
         shortcut: currentConfig.readSelectedText, tag: 104))
 
     menu.addItem(NSMenuItem.separator())
@@ -285,20 +285,20 @@ class MenuBarController: NSObject {
     updateMenuItem(
       menu, tag: 101,
       title: appState.recordingMode == .transcription
-        ? "Stop Transcription" : "Start Transcription",
+        ? "Stop Dictate" : "Dictate",
       enabled: appState.canStartTranscription(hasAPIKey: hasAPIKey, hasOfflineModel: hasOfflineTranscriptionModel)
         || appState.recordingMode == .transcription)
 
     updateMenuItem(
       menu, tag: 102,
-      title: appState.recordingMode == .prompt ? "Stop Prompting" : "Start Prompting",
+      title: appState.recordingMode == .prompt ? "Stop Dictate Prompt" : "Dictate Prompt",
       enabled: appState.canStartPrompting(hasAPIKey: hasAPIKey, hasOfflineModel: hasOfflinePromptModel) 
         || appState.recordingMode == .prompt
     )
     
     updateMenuItem(
       menu, tag: 104,
-      title: appState.recordingMode == .tts ? "Stop Recording" : "Prompt & Read",
+      title: appState.recordingMode == .tts ? "Stop Dictate Prompt & Read" : "Dictate Prompt & Read",
       enabled: (hasAPIKey && !appState.isBusy) || appState.recordingMode == .tts
     )
 

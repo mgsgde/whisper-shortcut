@@ -471,10 +471,10 @@ class SpeechService {
   }
   
   // MARK: - Text-to-Speech Mode
-  func readTextAloud(_ text: String) async throws -> Data {
+  func readTextAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
     // Create and store task for cancellation support
     let task = Task<Data, Error> {
-      try await self.performTTS(text: text)
+      try await self.performTTS(text: text, voiceName: voiceName)
     }
     
     currentTTSTask = task
@@ -492,7 +492,7 @@ class SpeechService {
     }
   }
   
-  private func performTTS(text: String) async throws -> Data {
+  private func performTTS(text: String, voiceName: String? = nil) async throws -> Data {
     guard let googleAPIKey = googleAPIKey else {
       throw TranscriptionError.noGoogleAPIKey
     }
@@ -503,7 +503,10 @@ class SpeechService {
       throw TranscriptionError.networkError("Text is empty")
     }
     
-    DebugLogger.log("TTS: Starting text-to-speech for text (length: \(trimmedText.count) chars)")
+    // Load voice from UserDefaults if not provided
+    let selectedVoice = voiceName ?? UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoice) ?? SettingsDefaults.selectedReadAloudVoice
+    
+    DebugLogger.log("TTS: Starting text-to-speech for text (length: \(trimmedText.count) chars) with voice: \(selectedVoice)")
     
     // TTS-specific endpoint
     let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent"
@@ -532,7 +535,7 @@ class SpeechService {
       speechConfig: GeminiChatRequest.GeminiSpeechConfig(
         voiceConfig: GeminiChatRequest.GeminiVoiceConfig(
           prebuiltVoiceConfig: GeminiChatRequest.GeminiPrebuiltVoiceConfig(
-            voiceName: "Charon"  // Male voice: informative and clear
+            voiceName: selectedVoice
           )
         )
       )

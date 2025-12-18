@@ -43,6 +43,9 @@ struct SpeechToPromptSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
+      // Read Aloud Settings Section
+      readAloudSettingsSection
+
       // Section Divider with spacing
       VStack(spacing: 0) {
         Spacer()
@@ -141,6 +144,19 @@ struct SpeechToPromptSettingsTab: View {
     }
   }
 
+
+  // MARK: - Read Aloud Settings Section
+  @ViewBuilder
+  private var readAloudSettingsSection: some View {
+    ReadAloudVoiceSelectionView(
+      selectedVoice: $viewModel.data.selectedReadAloudVoice,
+      onVoiceChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+    )
+  }
 
   // MARK: - Usage Instructions
   @ViewBuilder
