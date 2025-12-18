@@ -5,7 +5,6 @@ struct SpeechErrorFormatter {
 
   // MARK: - Constants
   private enum Constants {
-    static let maxFileSize = "25MB"
     static let slowDownWaitTime = "15 minutes"
   }
 
@@ -218,7 +217,7 @@ struct SpeechErrorFormatter {
       return """
         ❌ File Too Large
 
-        The audio file is larger than \(Constants.maxFileSize) and cannot be transcribed.
+        The audio file is larger than \(AppConstants.maxFileSizeDisplay) and cannot be transcribed.
         Please use a shorter recording.
         """
 

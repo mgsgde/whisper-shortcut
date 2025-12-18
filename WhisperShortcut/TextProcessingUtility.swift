@@ -99,7 +99,7 @@ enum TextProcessingUtility {
     // Debug logging to see what Whisper actually returned
     DebugLogger.log("VALIDATION: Received text from \(mode) (length: \(trimmedText.count)): '\(trimmedText)'")
     
-    if trimmedText.isEmpty || trimmedText.count < Constants.minimumTextLength {
+    if trimmedText.isEmpty || trimmedText.count < AppConstants.minimumTextLength {
       throw TranscriptionError.textTooShort
     }
     
@@ -152,9 +152,6 @@ enum TextProcessingUtility {
     }
   }
   
-  // MARK: - Constants
-  private enum Constants {
-    static let minimumTextLength = 1  // Allow single character responses like "Yes", "OK", etc.
-  }
+  // Text validation uses AppConstants.minimumTextLength
 }
 
