@@ -80,6 +80,10 @@ struct SettingsView: View {
           SpeechToTextSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .speechToPrompt:
           SpeechToPromptSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+        case .promptAndRead:
+          PromptAndReadSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+        case .readAloud:
+          ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .offlineModels:
           OfflineModelsSettingsTab(viewModel: viewModel)
         }
@@ -99,6 +103,10 @@ struct SettingsView: View {
       return "mic"
     case .speechToPrompt:
       return "text.bubble"
+    case .promptAndRead:
+      return "text.bubble.fill"
+    case .readAloud:
+      return "speaker.wave.2"
     case .offlineModels:
       return "arrow.down.circle"
     }
@@ -111,7 +119,11 @@ struct SettingsView: View {
     case .speechToText:
       return "Model, Prompt and Shortcut"
     case .speechToPrompt:
-      return "Model, Prompt and Shortcut"
+      return "Toggle Prompting Shortcut"
+    case .promptAndRead:
+      return "Shortcut, Prompt, Model and Voice"
+    case .readAloud:
+      return "Shortcut and Voice Selection"
     case .offlineModels:
       return "Download and manage offline models"
     }

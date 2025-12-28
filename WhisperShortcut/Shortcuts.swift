@@ -5,6 +5,7 @@ protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
   func readSelectedText()
+  func readAloud()
   func openSettings()
 }
 
@@ -15,6 +16,7 @@ class Shortcuts {
   private var toggleDictationKey: HotKey?
   private var togglePromptingKey: HotKey?
   private var readSelectedTextKey: HotKey?
+  private var readAloudKey: HotKey?
   private var openSettingsKey: HotKey?
   private var currentConfig: ShortcutConfig
 
@@ -67,6 +69,15 @@ class Shortcuts {
       }
     }
 
+    // Create read aloud shortcut (only if enabled)
+    if config.readAloud.isEnabled {
+      readAloudKey = HotKey(
+        key: config.readAloud.key, modifiers: config.readAloud.modifiers)
+      readAloudKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.readAloud()
+      }
+    }
+
     // Create settings shortcut (only if enabled)
     if config.openSettings.isEnabled {
       openSettingsKey = HotKey(
@@ -90,6 +101,7 @@ class Shortcuts {
     toggleDictationKey = nil
     togglePromptingKey = nil
     readSelectedTextKey = nil
+    readAloudKey = nil
     openSettingsKey = nil
   }
 

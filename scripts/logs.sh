@@ -105,6 +105,9 @@ else
     LOG_CMD="log stream --predicate 'subsystem == \"com.magnusgoedde.whispershortcut\"' --style $LOG_STYLE"
 fi
 
+# Clear console
+clear
+
 # Show configuration
 echo -e "${GREEN}🔍 Starting WhisperShortcut Log Stream${NC}"
 echo -e "${BLUE}Subsystem:${NC} com.magnusgoedde.whispershortcut (ONLY your app logs)"

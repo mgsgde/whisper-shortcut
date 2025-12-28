@@ -112,6 +112,10 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Dictate Prompt & Read", action: #selector(readSelectedText),
         shortcut: currentConfig.readSelectedText, tag: 104))
+    menu.addItem(
+      createMenuItemWithShortcut(
+        "Read Aloud", action: #selector(readAloud),
+        shortcut: currentConfig.readAloud, tag: 105))
 
     menu.addItem(NSMenuItem.separator())
 
@@ -538,6 +542,40 @@ class MenuBarController: NSObject {
   }
   
   private func performDirectTTS() {
+    // Check if currently processing TTS - if so, cancel it
+    if case .processing(.ttsProcessing) = appState {
+      speechService.cancelTTS()
+      audioPlayer?.stop()
+      audioPlayer = nil
+      audioEngine?.stop()
+      audioPlayerNode?.stop()
+      audioEngine = nil
+      audioPlayerNode = nil
+      if let audioURL = currentTTSAudioURL {
+        try? FileManager.default.removeItem(at: audioURL)
+        currentTTSAudioURL = nil
+      }
+      appState = .idle
+      PopupNotificationWindow.showCancelled("TTS cancelled")
+      return
+    }
+    
+    // Check if currently playing audio - if so, stop it
+    if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
+      audioPlayer?.stop()
+      audioPlayer = nil
+      audioEngine?.stop()
+      audioPlayerNode?.stop()
+      audioEngine = nil
+      audioPlayerNode = nil
+      if let audioURL = currentTTSAudioURL {
+        try? FileManager.default.removeItem(at: audioURL)
+        currentTTSAudioURL = nil
+      }
+      appState = .idle
+      return
+    }
+    
     // Get selected text from clipboard
     guard let selectedText = clipboardManager.getCleanedClipboardText(),
           !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -675,14 +713,16 @@ class MenuBarController: NSObject {
         }
         
         // Apply prompt mode: selected text + command (using text-based method)
-        let promptResult = try await speechService.executePromptWithText(textCommand: trimmedCommand, selectedText: selectedText)
+        let promptResult = try await speechService.executePromptWithText(textCommand: trimmedCommand, selectedText: selectedText, mode: .promptAndRead)
         
-        // Now TTS the result
+        // Now TTS the result using Prompt & Read voice
         await MainActor.run {
           self.appState = .processing(.ttsProcessing)
         }
         
-        let audioData = try await speechService.readTextAloud(promptResult)
+        // Get Prompt & Read voice from UserDefaults
+        let promptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice) ?? SettingsDefaults.selectedPromptAndReadVoice
+        let audioData = try await speechService.readTextAloud(promptResult, voiceName: promptAndReadVoice)
         await MainActor.run {
           self.playTTSAudio(audioData: audioData)
         }
@@ -957,7 +997,7 @@ class MenuBarController: NSObject {
 
   private func performPrompting(audioURL: URL) async {
     do {
-      let result = try await speechService.executePrompt(audioURL: audioURL)
+      let result = try await speechService.executePrompt(audioURL: audioURL, mode: .togglePrompting)
       clipboardManager.copyToClipboard(text: result)
       
       // Record successful operation for review prompt
@@ -1145,5 +1185,14 @@ extension MenuBarController: ShortcutDelegate {
   func toggleDictation() { toggleTranscription() }
   // togglePrompting is already implemented above
   @objc func readSelectedText() { handleReadSelectedText() }
+  @objc func readAloud() {
+    // Copy selected text to clipboard first (same as handleReadSelectedText does)
+    simulateCopyPaste()
+    
+    // Wait a bit for clipboard to update after Cmd+C, then read
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+      self?.performDirectTTS()
+    }
+  }
   // openSettings is already implemented above
 }

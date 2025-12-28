@@ -284,6 +284,8 @@ enum SettingsTab: String, CaseIterable {
   case general = "General"
   case speechToText = "Dictate"
   case speechToPrompt = "Dictate Prompt"
+  case promptAndRead = "Prompt & Read"
+  case readAloud = "Read Aloud"
   case offlineModels = "Offline Models"
 }
 
@@ -297,23 +299,28 @@ struct SettingsDefaults {
   static let toggleDictation = ""
   static let togglePrompting = ""
   static let readSelectedText = ""
+  static let readAloud = ""
   static let openSettings = ""
 
   // MARK: - Toggle Shortcut Enable States
   static let toggleDictationEnabled = true
   static let togglePromptingEnabled = true
   static let readSelectedTextEnabled = true
+  static let readAloudEnabled = true
   static let openSettingsEnabled = true
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini20Flash
   static let selectedPromptModel = PromptModel.gemini20Flash
+  static let selectedPromptAndReadModel = PromptModel.gemini20Flash
   static let customPromptText = ""
   static let dictationDifficultWords = ""
   static let promptModeSystemPrompt = ""
+  static let promptAndReadSystemPrompt = ""
   
   // MARK: - Read Aloud Settings
   static let selectedReadAloudVoice = "Charon"
+  static let selectedPromptAndReadVoice = "Charon"
   
   // MARK: - Reasoning Effort Settings
   static let promptReasoningEffort = ReasoningEffort.medium
@@ -343,23 +350,28 @@ struct SettingsData {
   var toggleDictation: String = SettingsDefaults.toggleDictation
   var togglePrompting: String = SettingsDefaults.togglePrompting
   var readSelectedText: String = SettingsDefaults.readSelectedText
+  var readAloud: String = SettingsDefaults.readAloud
   var openSettings: String = SettingsDefaults.openSettings
 
   // MARK: - Toggle Shortcut Enable States
   var toggleDictationEnabled: Bool = SettingsDefaults.toggleDictationEnabled
   var togglePromptingEnabled: Bool = SettingsDefaults.togglePromptingEnabled
   var readSelectedTextEnabled: Bool = SettingsDefaults.readSelectedTextEnabled
+  var readAloudEnabled: Bool = SettingsDefaults.readAloudEnabled
   var openSettingsEnabled: Bool = SettingsDefaults.openSettingsEnabled
 
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
   var selectedPromptModel: PromptModel = SettingsDefaults.selectedPromptModel
+  var selectedPromptAndReadModel: PromptModel = SettingsDefaults.selectedPromptAndReadModel
   var customPromptText: String = SettingsDefaults.customPromptText
   var dictationDifficultWords: String = SettingsDefaults.dictationDifficultWords
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
+  var promptAndReadSystemPrompt: String = SettingsDefaults.promptAndReadSystemPrompt
   
   // MARK: - Read Aloud Settings
   var selectedReadAloudVoice: String = SettingsDefaults.selectedReadAloudVoice
+  var selectedPromptAndReadVoice: String = SettingsDefaults.selectedPromptAndReadVoice
   
   // MARK: - Reasoning Effort Settings
   var promptReasoningEffort: ReasoningEffort = SettingsDefaults.promptReasoningEffort
@@ -386,9 +398,11 @@ enum SettingsFocusField: Hashable {
   case toggleDictation
   case togglePrompting
   case toggleReadSelectedText
+  case toggleReadAloud
   case toggleSettings
   case customPrompt
   case dictationDifficultWords
   case promptModeSystemPrompt
+  case promptAndReadSystemPrompt
   case readAloudVoice
 }

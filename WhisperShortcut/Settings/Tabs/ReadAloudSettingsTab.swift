@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Speech to Prompt Settings Tab - Shortcuts, Prompt, GPT Model
-struct SpeechToPromptSettingsTab: View {
+/// Read Aloud Settings Tab - Shortcut and Voice Selection
+struct ReadAloudSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
 
@@ -9,6 +9,18 @@ struct SpeechToPromptSettingsTab: View {
     VStack(alignment: .leading, spacing: 0) {
       // Shortcuts Section
       shortcutsSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
+      // Read Aloud Voice Selection Section
+      readAloudVoiceSection
     }
   }
 
@@ -18,15 +30,15 @@ struct SpeechToPromptSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "⌨️ Keyboard Shortcuts",
-        subtitle: "Configure shortcut for toggle prompting mode"
+        subtitle: "Configure shortcut for reading selected text aloud"
       )
 
       ShortcutInputRow(
-        label: "Toggle Prompting:",
-        placeholder: "e.g., command+2",
-        text: $viewModel.data.togglePrompting,
-        isEnabled: $viewModel.data.togglePromptingEnabled,
-        focusedField: .togglePrompting,
+        label: "Read Aloud:",
+        placeholder: "e.g., command+4",
+        text: $viewModel.data.readAloud,
+        isEnabled: $viewModel.data.readAloudEnabled,
+        focusedField: .toggleReadAloud,
         currentFocus: $focusedField,
         onShortcutChanged: {
           Task {
@@ -56,16 +68,29 @@ struct SpeechToPromptSettingsTab: View {
     }
   }
 
+  // MARK: - Read Aloud Voice Selection Section
+  @ViewBuilder
+  private var readAloudVoiceSection: some View {
+    ReadAloudVoiceSelectionView(
+      selectedVoice: $viewModel.data.selectedReadAloudVoice,
+      onVoiceChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+    )
+  }
 }
 
 #if DEBUG
-  struct SpeechToPromptSettingsTab_Previews: PreviewProvider {
+  struct ReadAloudSettingsTab_Previews: PreviewProvider {
     static var previews: some View {
       @FocusState var focusedField: SettingsFocusField?
 
-      SpeechToPromptSettingsTab(viewModel: SettingsViewModel(), focusedField: $focusedField)
+      ReadAloudSettingsTab(viewModel: SettingsViewModel(), focusedField: $focusedField)
         .padding()
-        .frame(width: 600, height: 900)
+        .frame(width: 600, height: 500)
     }
   }
 #endif
+

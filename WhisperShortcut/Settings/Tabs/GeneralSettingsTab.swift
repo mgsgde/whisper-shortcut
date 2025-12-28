@@ -99,7 +99,7 @@ struct GeneralSettingsTab: View {
 
       ShortcutInputRow(
         label: "Toggle Settings:",
-        placeholder: "e.g., command+4",
+        placeholder: "e.g., command+5",
         text: $viewModel.data.openSettings,
         isEnabled: $viewModel.data.openSettingsEnabled,
         focusedField: .toggleSettings,

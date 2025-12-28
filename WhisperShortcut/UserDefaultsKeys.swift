@@ -6,15 +6,18 @@ enum UserDefaultsKeys {
   // MARK: - Model Settings
   static let selectedTranscriptionModel = "selectedTranscriptionModel"
   static let selectedPromptModel = "selectedPromptModel"
+  static let selectedPromptAndReadModel = "selectedPromptAndReadModel"
   
   // MARK: - Prompt Settings
   static let customPromptText = "customPromptText"
   static let dictationDifficultWords = "dictationDifficultWords"
   static let promptModeSystemPrompt = "promptModeSystemPrompt"
+  static let promptAndReadSystemPrompt = "promptAndReadSystemPrompt"
   static let promptReasoningEffort = "promptReasoningEffort"
   
   // MARK: - Read Aloud Settings
   static let selectedReadAloudVoice = "selected_read_aloud_voice"
+  static let selectedPromptAndReadVoice = "selectedPromptAndReadVoice"
   
   // MARK: - Whisper Settings
   static let whisperLanguage = "whisperLanguage"

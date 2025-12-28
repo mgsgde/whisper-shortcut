@@ -21,11 +21,13 @@ class SettingsViewModel: ObservableObject {
     data.toggleDictation = currentConfig.startRecording.textDisplayString
     data.togglePrompting = currentConfig.startPrompting.textDisplayString
     data.readSelectedText = currentConfig.readSelectedText.textDisplayString
+    data.readAloud = currentConfig.readAloud.textDisplayString
     data.openSettings = currentConfig.openSettings.textDisplayString
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
     data.readSelectedTextEnabled = currentConfig.readSelectedText.isEnabled
+    data.readAloudEnabled = currentConfig.readAloud.isEnabled
     data.openSettingsEnabled = currentConfig.openSettings.isEnabled
 
     // Load transcription model preference
@@ -63,6 +65,36 @@ class SettingsViewModel: ObservableObject {
     // Load read aloud voice setting
     data.selectedReadAloudVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoice)
       ?? SettingsDefaults.selectedReadAloudVoice
+
+    // Load Prompt & Read specific settings (with migration from Toggle Prompting if not set)
+    if let savedPromptAndReadModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadModel),
+      let savedPromptAndReadModel = PromptModel(rawValue: savedPromptAndReadModelString)
+    {
+      data.selectedPromptAndReadModel = savedPromptAndReadModel
+    } else {
+      // Migration: Use Toggle Prompting model if Prompt & Read model not set
+      data.selectedPromptAndReadModel = data.selectedPromptModel
+    }
+
+    // Load Prompt & Read system prompt (with migration from Toggle Prompting if not set)
+    if let savedPromptAndReadSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt),
+      !savedPromptAndReadSystemPrompt.isEmpty
+    {
+      data.promptAndReadSystemPrompt = savedPromptAndReadSystemPrompt
+    } else {
+      // Migration: Use Toggle Prompting prompt if Prompt & Read prompt not set
+      data.promptAndReadSystemPrompt = data.promptModeSystemPrompt
+    }
+
+    // Load Prompt & Read voice (with migration from Read Aloud voice if not set)
+    if let savedPromptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice),
+      !savedPromptAndReadVoice.isEmpty
+    {
+      data.selectedPromptAndReadVoice = savedPromptAndReadVoice
+    } else {
+      // Migration: Use Read Aloud voice if Prompt & Read voice not set
+      data.selectedPromptAndReadVoice = data.selectedReadAloudVoice
+    }
 
     // Load reasoning effort settings
     if let savedPromptReasoningEffort = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptReasoningEffort),
@@ -154,6 +186,12 @@ class SettingsViewModel: ObservableObject {
       }
     }
 
+    if data.readAloudEnabled {
+      guard !data.readAloud.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return "Please enter a read aloud shortcut"
+      }
+    }
+
     if data.openSettingsEnabled {
       guard !data.openSettings.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         return "Please enter an open settings shortcut"
@@ -226,6 +264,8 @@ class SettingsViewModel: ObservableObject {
       return name == "toggle prompting"
     case .toggleReadSelectedText:
       return name == "read selected text"
+    case .toggleReadAloud:
+      return name == "read aloud"
     case .toggleSettings:
       return name == "open settings"
     default:
@@ -245,9 +285,12 @@ class SettingsViewModel: ObservableObject {
       "read selected text": data.readSelectedTextEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.readSelectedText)
         : ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
+      "read aloud": data.readAloudEnabled
+        ? ShortcutConfigManager.parseShortcut(from: data.readAloud)
+        : ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false),
       "open settings": data.openSettingsEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.openSettings)
-        : ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false),
+        : ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false),
     ]
   }
 
@@ -270,6 +313,7 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(
       data.selectedTranscriptionModel.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
     UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
+    UserDefaults.standard.set(data.selectedPromptAndReadModel.rawValue, forKey: UserDefaultsKeys.selectedPromptAndReadModel)
     
     // Save reasoning effort settings
     UserDefaults.standard.set(data.promptReasoningEffort.rawValue, forKey: UserDefaultsKeys.promptReasoningEffort)
@@ -278,9 +322,11 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(data.customPromptText, forKey: UserDefaultsKeys.customPromptText)
     UserDefaults.standard.set(data.dictationDifficultWords, forKey: UserDefaultsKeys.dictationDifficultWords)
     UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
+    UserDefaults.standard.set(data.promptAndReadSystemPrompt, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
     
-    // Save read aloud voice setting
+    // Save read aloud voice settings
     UserDefaults.standard.set(data.selectedReadAloudVoice, forKey: UserDefaultsKeys.selectedReadAloudVoice)
+    UserDefaults.standard.set(data.selectedPromptAndReadVoice, forKey: UserDefaultsKeys.selectedPromptAndReadVoice)
     
     // Save Whisper language setting
     UserDefaults.standard.set(data.whisperLanguage.rawValue, forKey: UserDefaultsKeys.whisperLanguage)
@@ -306,8 +352,10 @@ class SettingsViewModel: ObservableObject {
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
       readSelectedText: shortcuts["read selected text"]!
         ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
+      readAloud: shortcuts["read aloud"]!
+        ?? ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false),
       openSettings: shortcuts["open settings"]!
-        ?? ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false)
+        ?? ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 

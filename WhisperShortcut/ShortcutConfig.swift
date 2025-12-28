@@ -211,6 +211,7 @@ class ShortcutConfigManager {
     static let startPromptingKey = "shortcut_start_prompting"
     static let stopPromptingKey = "shortcut_stop_prompting"
     static let readSelectedTextKey = "shortcut_read_selected_text"
+    static let readAloudKey = "shortcut_read_aloud"
     static let openSettingsKey = "shortcut_open_settings"
   }
 
@@ -230,6 +231,8 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.stopPromptingKey) ?? ShortcutConfig.default.stopPrompting
     let readSelectedText =
       loadShortcut(for: Constants.readSelectedTextKey) ?? ShortcutConfig.default.readSelectedText
+    let readAloud =
+      loadShortcut(for: Constants.readAloudKey) ?? ShortcutConfig.default.readAloud
     let openSettings =
       loadShortcut(for: Constants.openSettingsKey) ?? ShortcutConfig.default.openSettings
     return ShortcutConfig(
@@ -238,6 +241,7 @@ class ShortcutConfigManager {
       startPrompting: startPrompting,
       stopPrompting: stopPrompting,
       readSelectedText: readSelectedText,
+      readAloud: readAloud,
       openSettings: openSettings
     )
   }
@@ -248,6 +252,7 @@ class ShortcutConfigManager {
     saveShortcut(config.startPrompting, for: Constants.startPromptingKey)
     saveShortcut(config.stopPrompting, for: Constants.stopPromptingKey)
     saveShortcut(config.readSelectedText, for: Constants.readSelectedTextKey)
+    saveShortcut(config.readAloud, for: Constants.readAloudKey)
     saveShortcut(config.openSettings, for: Constants.openSettingsKey)
 
     // Post notification for shortcut updates
@@ -396,7 +401,8 @@ class ShortcutConfigManager {
     let currentConfig = loadConfiguration()
     if shortcut == currentConfig.startRecording || shortcut == currentConfig.stopRecording
       || shortcut == currentConfig.startPrompting || shortcut == currentConfig.stopPrompting
-      || shortcut == currentConfig.readSelectedText || shortcut == currentConfig.openSettings
+      || shortcut == currentConfig.readSelectedText || shortcut == currentConfig.readAloud
+      || shortcut == currentConfig.openSettings
     {
       return .duplicate("This shortcut is already in use")
     }

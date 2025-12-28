@@ -2,6 +2,12 @@ import AVFoundation
 import Foundation
 import NaturalLanguage
 
+// MARK: - Prompt Mode Enum
+enum PromptMode {
+  case togglePrompting
+  case promptAndRead
+}
+
 // MARK: - Constants
 private enum Constants {
   static let requestTimeout: TimeInterval = 60.0
@@ -209,10 +215,10 @@ class SpeechService {
   
 
   // MARK: - Prompt Modes (Public API with Task Tracking)
-  func executePrompt(audioURL: URL) async throws -> String {
+  func executePrompt(audioURL: URL, mode: PromptMode = .togglePrompting) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
-      try await self.performPrompt(audioURL: audioURL)
+      try await self.performPrompt(audioURL: audioURL, mode: mode)
     }
     
     currentPromptTask = task
@@ -222,12 +228,13 @@ class SpeechService {
   }
 
   // MARK: - Prompt Modes (Private Implementation)
-  private func performPrompt(audioURL: URL) async throws -> String {
+  private func performPrompt(audioURL: URL, mode: PromptMode) async throws -> String {
     // Get clipboard context
     let clipboardContext = getClipboardContext()
     
-    // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? "gemini-2.5-flash"
+    // Get selected model from settings based on mode
+    let modelKey = mode == .togglePrompting ? UserDefaultsKeys.selectedPromptModel : UserDefaultsKeys.selectedPromptAndReadModel
+    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? "gemini-2.5-flash"
     let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Flash
     
     // Prompt mode ALWAYS requires Gemini API key (no offline support yet)
@@ -239,20 +246,21 @@ class SpeechService {
     // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
     try validateAudioFileFormat(at: audioURL)
     // Execute prompt with Gemini (it handles its own key validation)
-    return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext)
+    return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode)
   }
 
   // MARK: - Gemini Prompt Mode
-  private func executePromptWithGemini(audioURL: URL, clipboardContext: String?) async throws -> String {
+  private func executePromptWithGemini(audioURL: URL, clipboardContext: String?, mode: PromptMode) async throws -> String {
     // Only check API key for Gemini models (offline models bypass this)
     guard let googleAPIKey = self.googleAPIKey, !googleAPIKey.isEmpty else {
       throw TranscriptionError.noGoogleAPIKey
     }
     
-    DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution")
+    DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt & Read"))")
     
-    // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? "gemini-2.5-flash"
+    // Get selected model from settings based on mode
+    let modelKey = mode == .togglePrompting ? UserDefaultsKeys.selectedPromptModel : UserDefaultsKeys.selectedPromptAndReadModel
+    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? "gemini-2.5-flash"
     let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Flash
     
     // Convert to TranscriptionModel to get API endpoint
@@ -268,9 +276,10 @@ class SpeechService {
     let hasContext = clipboardContext != nil
     DebugLogger.log("PROMPT-MODE-GEMINI: Clipboard context: \(hasContext ? "present" : "none")")
     
-    // Build system prompt
+    // Build system prompt based on mode
     let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
-    let customSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)
+    let promptKey = mode == .togglePrompting ? UserDefaultsKeys.promptModeSystemPrompt : UserDefaultsKeys.promptAndReadSystemPrompt
+    let customSystemPrompt = UserDefaults.standard.string(forKey: promptKey)
     
     let systemPrompt: String
     if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
@@ -377,16 +386,17 @@ class SpeechService {
   }
   
   // MARK: - Text-based Prompt Mode (for TTS flow)
-  func executePromptWithText(textCommand: String, selectedText: String) async throws -> String {
+  func executePromptWithText(textCommand: String, selectedText: String, mode: PromptMode = .togglePrompting) async throws -> String {
     // Only check API key for Gemini models
     guard let googleAPIKey = self.googleAPIKey, !googleAPIKey.isEmpty else {
       throw TranscriptionError.noGoogleAPIKey
     }
     
-    DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command")
+    DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt & Read"))")
     
-    // Get selected model from settings
-    let modelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? "gemini-2.5-flash"
+    // Get selected model from settings based on mode
+    let modelKey = mode == .togglePrompting ? UserDefaultsKeys.selectedPromptModel : UserDefaultsKeys.selectedPromptAndReadModel
+    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? "gemini-2.5-flash"
     let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Flash
     
     // Convert to TranscriptionModel to get API endpoint
@@ -397,9 +407,10 @@ class SpeechService {
     let endpoint = transcriptionModel.apiEndpoint
     DebugLogger.log("PROMPT-MODE-TEXT: Using model: \(selectedPromptModel.displayName)")
     
-    // Build system prompt
+    // Build system prompt based on mode
     let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
-    let customSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)
+    let promptKey = mode == .togglePrompting ? UserDefaultsKeys.promptModeSystemPrompt : UserDefaultsKeys.promptAndReadSystemPrompt
+    let customSystemPrompt = UserDefaults.standard.string(forKey: promptKey)
     
     let systemPrompt: String
     if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
