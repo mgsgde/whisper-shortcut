@@ -13,11 +13,14 @@ enum UserDefaultsKeys {
   static let dictationDifficultWords = "dictationDifficultWords"
   static let promptModeSystemPrompt = "promptModeSystemPrompt"
   static let promptAndReadSystemPrompt = "promptAndReadSystemPrompt"
-  static let promptReasoningEffort = "promptReasoningEffort"
   
   // MARK: - Read Aloud Settings
-  static let selectedReadAloudVoice = "selected_read_aloud_voice"
+  static let selectedReadAloudVoice = "selectedReadAloudVoice"
   static let selectedPromptAndReadVoice = "selectedPromptAndReadVoice"
+  
+  // MARK: - Legacy Keys (for migration)
+  static let selectedReadAloudVoiceLegacy = "selected_read_aloud_voice"
+  static let selectedTTSModel = "selectedTTSModel"
   
   // MARK: - Whisper Settings
   static let whisperLanguage = "whisperLanguage"

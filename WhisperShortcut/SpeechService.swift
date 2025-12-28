@@ -85,8 +85,8 @@ class SpeechService {
   }
   
   func getPromptModelInfo() -> String {
-    let selectedPromptModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? "gemini-2.5-flash"
-    let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? .gemini25Flash
+    let selectedPromptModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? SettingsDefaults.selectedPromptModel.rawValue
+    let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? SettingsDefaults.selectedPromptModel
     return selectedPromptModel.displayName
   }
 
@@ -234,8 +234,9 @@ class SpeechService {
     
     // Get selected model from settings based on mode
     let modelKey = mode == .togglePrompting ? UserDefaultsKeys.selectedPromptModel : UserDefaultsKeys.selectedPromptAndReadModel
-    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? "gemini-2.5-flash"
-    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Flash
+    let defaultModel = mode == .togglePrompting ? SettingsDefaults.selectedPromptModel : SettingsDefaults.selectedPromptAndReadModel
+    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? defaultModel.rawValue
+    let selectedPromptModel = PromptModel(rawValue: modelString) ?? defaultModel
     
     // Prompt mode ALWAYS requires Gemini API key (no offline support yet)
     // All PromptModel cases are Gemini models, so this should always be true
@@ -260,8 +261,9 @@ class SpeechService {
     
     // Get selected model from settings based on mode
     let modelKey = mode == .togglePrompting ? UserDefaultsKeys.selectedPromptModel : UserDefaultsKeys.selectedPromptAndReadModel
-    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? "gemini-2.5-flash"
-    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Flash
+    let defaultModel = mode == .togglePrompting ? SettingsDefaults.selectedPromptModel : SettingsDefaults.selectedPromptAndReadModel
+    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? defaultModel.rawValue
+    let selectedPromptModel = PromptModel(rawValue: modelString) ?? defaultModel
     
     // Convert to TranscriptionModel to get API endpoint
     guard let transcriptionModel = selectedPromptModel.asTranscriptionModel else {
@@ -277,7 +279,9 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE-GEMINI: Clipboard context: \(hasContext ? "present" : "none")")
     
     // Build system prompt based on mode
-    let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
+    let baseSystemPrompt = mode == .togglePrompting 
+      ? AppConstants.defaultPromptModeSystemPrompt 
+      : AppConstants.defaultPromptAndReadSystemPrompt
     let promptKey = mode == .togglePrompting ? UserDefaultsKeys.promptModeSystemPrompt : UserDefaultsKeys.promptAndReadSystemPrompt
     let customSystemPrompt = UserDefaults.standard.string(forKey: promptKey)
     
@@ -396,8 +400,9 @@ class SpeechService {
     
     // Get selected model from settings based on mode
     let modelKey = mode == .togglePrompting ? UserDefaultsKeys.selectedPromptModel : UserDefaultsKeys.selectedPromptAndReadModel
-    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? "gemini-2.5-flash"
-    let selectedPromptModel = PromptModel(rawValue: modelString) ?? .gemini25Flash
+    let defaultModel = mode == .togglePrompting ? SettingsDefaults.selectedPromptModel : SettingsDefaults.selectedPromptAndReadModel
+    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? defaultModel.rawValue
+    let selectedPromptModel = PromptModel(rawValue: modelString) ?? defaultModel
     
     // Convert to TranscriptionModel to get API endpoint
     guard let transcriptionModel = selectedPromptModel.asTranscriptionModel else {
@@ -408,7 +413,9 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE-TEXT: Using model: \(selectedPromptModel.displayName)")
     
     // Build system prompt based on mode
-    let baseSystemPrompt = AppConstants.defaultPromptModeSystemPrompt
+    let baseSystemPrompt = mode == .togglePrompting 
+      ? AppConstants.defaultPromptModeSystemPrompt 
+      : AppConstants.defaultPromptAndReadSystemPrompt
     let promptKey = mode == .togglePrompting ? UserDefaultsKeys.promptModeSystemPrompt : UserDefaultsKeys.promptAndReadSystemPrompt
     let customSystemPrompt = UserDefaults.standard.string(forKey: promptKey)
     
@@ -516,10 +523,19 @@ class SpeechService {
     // Load voice from UserDefaults if not provided
     let selectedVoice = voiceName ?? UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoice) ?? SettingsDefaults.selectedReadAloudVoice
     
-    DebugLogger.log("TTS: Starting text-to-speech for text (length: \(trimmedText.count) chars) with voice: \(selectedVoice)")
+    // Load TTS model from UserDefaults
+    let selectedTTSModel: TTSModel
+    if let savedTTSModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTTSModel),
+       let savedTTSModel = TTSModel(rawValue: savedTTSModelString) {
+      selectedTTSModel = savedTTSModel
+    } else {
+      selectedTTSModel = SettingsDefaults.selectedTTSModel
+    }
     
-    // TTS-specific endpoint
-    let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent"
+    DebugLogger.log("TTS: Starting text-to-speech for text (length: \(trimmedText.count) chars) with voice: \(selectedVoice), model: \(selectedTTSModel.displayName)")
+    
+    // TTS-specific endpoint from selected model
+    let endpoint = selectedTTSModel.apiEndpoint
     
     // Build request
     var request = geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)
@@ -557,7 +573,7 @@ class SpeechService {
       systemInstruction: nil,
       tools: nil,
       generationConfig: generationConfig,
-      model: "gemini-2.5-flash-preview-tts"  // Required for TTS models
+      model: selectedTTSModel.modelName  // Required for TTS models
     )
     
     request.httpBody = try JSONEncoder().encode(chatRequest)

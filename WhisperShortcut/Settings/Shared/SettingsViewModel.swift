@@ -62,9 +62,26 @@ class SettingsViewModel: ObservableObject {
     data.promptModeSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)
       ?? AppConstants.defaultPromptModeSystemPrompt
 
-    // Load read aloud voice setting
-    data.selectedReadAloudVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoice)
-      ?? SettingsDefaults.selectedReadAloudVoice
+    // Load read aloud voice setting (with migration from legacy key)
+    if let savedVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoice) {
+      data.selectedReadAloudVoice = savedVoice
+    } else if let legacyVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoiceLegacy) {
+      // Migration: Copy from legacy key to new key
+      data.selectedReadAloudVoice = legacyVoice
+      UserDefaults.standard.set(legacyVoice, forKey: UserDefaultsKeys.selectedReadAloudVoice)
+      // Optionally remove legacy key (but keep it for now in case of rollback)
+    } else {
+      data.selectedReadAloudVoice = SettingsDefaults.selectedReadAloudVoice
+    }
+
+    // Load TTS model setting
+    if let savedTTSModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTTSModel),
+      let savedTTSModel = TTSModel(rawValue: savedTTSModelString)
+    {
+      data.selectedTTSModel = savedTTSModel
+    } else {
+      data.selectedTTSModel = SettingsDefaults.selectedTTSModel
+    }
 
     // Load Prompt & Read specific settings (with migration from Toggle Prompting if not set)
     if let savedPromptAndReadModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadModel),
@@ -76,15 +93,9 @@ class SettingsViewModel: ObservableObject {
       data.selectedPromptAndReadModel = data.selectedPromptModel
     }
 
-    // Load Prompt & Read system prompt (with migration from Toggle Prompting if not set)
-    if let savedPromptAndReadSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt),
-      !savedPromptAndReadSystemPrompt.isEmpty
-    {
-      data.promptAndReadSystemPrompt = savedPromptAndReadSystemPrompt
-    } else {
-      // Migration: Use Toggle Prompting prompt if Prompt & Read prompt not set
-      data.promptAndReadSystemPrompt = data.promptModeSystemPrompt
-    }
+    // Load Prompt & Read system prompt (with fallback to default)
+    data.promptAndReadSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
+      ?? AppConstants.defaultPromptAndReadSystemPrompt
 
     // Load Prompt & Read voice (with migration from Read Aloud voice if not set)
     if let savedPromptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice),
@@ -94,15 +105,6 @@ class SettingsViewModel: ObservableObject {
     } else {
       // Migration: Use Read Aloud voice if Prompt & Read voice not set
       data.selectedPromptAndReadVoice = data.selectedReadAloudVoice
-    }
-
-    // Load reasoning effort settings
-    if let savedPromptReasoningEffort = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptReasoningEffort),
-      let promptEffort = ReasoningEffort(rawValue: savedPromptReasoningEffort)
-    {
-      data.promptReasoningEffort = promptEffort
-    } else {
-      data.promptReasoningEffort = SettingsDefaults.promptReasoningEffort
     }
 
     // Load popup notifications setting
@@ -314,9 +316,6 @@ class SettingsViewModel: ObservableObject {
       data.selectedTranscriptionModel.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
     UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
     UserDefaults.standard.set(data.selectedPromptAndReadModel.rawValue, forKey: UserDefaultsKeys.selectedPromptAndReadModel)
-    
-    // Save reasoning effort settings
-    UserDefaults.standard.set(data.promptReasoningEffort.rawValue, forKey: UserDefaultsKeys.promptReasoningEffort)
 
     // Save prompts
     UserDefaults.standard.set(data.customPromptText, forKey: UserDefaultsKeys.customPromptText)
@@ -327,6 +326,7 @@ class SettingsViewModel: ObservableObject {
     // Save read aloud voice settings
     UserDefaults.standard.set(data.selectedReadAloudVoice, forKey: UserDefaultsKeys.selectedReadAloudVoice)
     UserDefaults.standard.set(data.selectedPromptAndReadVoice, forKey: UserDefaultsKeys.selectedPromptAndReadVoice)
+    UserDefaults.standard.set(data.selectedTTSModel.rawValue, forKey: UserDefaultsKeys.selectedTTSModel)
     
     // Save Whisper language setting
     UserDefaults.standard.set(data.whisperLanguage.rawValue, forKey: UserDefaultsKeys.whisperLanguage)

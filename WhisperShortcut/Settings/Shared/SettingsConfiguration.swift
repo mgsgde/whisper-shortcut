@@ -125,6 +125,51 @@ enum PromptModel: String, CaseIterable {
   }
 }
 
+// MARK: - TTS Model Enum (for Text-to-Speech)
+enum TTSModel: String, CaseIterable {
+  case gemini25FlashTTS = "gemini-2.5-flash-preview-tts"
+  case gemini25ProTTS = "gemini-2.5-pro-preview-tts"
+  
+  var displayName: String {
+    switch self {
+    case .gemini25FlashTTS:
+      return "Gemini 2.5 Flash TTS"
+    case .gemini25ProTTS:
+      return "Gemini 2.5 Pro TTS"
+    }
+  }
+  
+  var description: String {
+    switch self {
+    case .gemini25FlashTTS:
+      return "Google's Gemini 2.5 Flash TTS model • Fast and efficient • Recommended"
+    case .gemini25ProTTS:
+      return "Google's Gemini 2.5 Pro TTS model • Higher quality • Better voice synthesis"
+    }
+  }
+  
+  var apiEndpoint: String {
+    switch self {
+    case .gemini25FlashTTS:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent"
+    case .gemini25ProTTS:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-tts:generateContent"
+    }
+  }
+  
+  var modelName: String {
+    return self.rawValue
+  }
+  
+  var isRecommended: Bool {
+    return self == .gemini25FlashTTS
+  }
+  
+  var costLevel: String {
+    return "Low"
+  }
+}
+
 // MARK: - Notification Position Enum
 enum NotificationPosition: String, CaseIterable {
   case leftBottom = "left-bottom"
@@ -320,9 +365,7 @@ struct SettingsDefaults {
   // MARK: - Read Aloud Settings
   static let selectedReadAloudVoice = "Charon"
   static let selectedPromptAndReadVoice = "Charon"
-  
-  // MARK: - Reasoning Effort Settings
-  static let promptReasoningEffort = ReasoningEffort.medium
+  static let selectedTTSModel = TTSModel.gemini25FlashTTS
 
   // MARK: - Whisper Language Settings
   static let whisperLanguage = WhisperLanguage.auto
@@ -371,9 +414,7 @@ struct SettingsData {
   // MARK: - Read Aloud Settings
   var selectedReadAloudVoice: String = SettingsDefaults.selectedReadAloudVoice
   var selectedPromptAndReadVoice: String = SettingsDefaults.selectedPromptAndReadVoice
-  
-  // MARK: - Reasoning Effort Settings
-  var promptReasoningEffort: ReasoningEffort = SettingsDefaults.promptReasoningEffort
+  var selectedTTSModel: TTSModel = SettingsDefaults.selectedTTSModel
 
   // MARK: - Whisper Language Settings
   var whisperLanguage: WhisperLanguage = SettingsDefaults.whisperLanguage

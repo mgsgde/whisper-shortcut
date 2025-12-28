@@ -113,7 +113,7 @@ struct PromptAndReadSettingsTab: View {
         "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
       helpText:
         "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
-      defaultValue: AppConstants.defaultPromptModeSystemPrompt,
+      defaultValue: AppConstants.defaultPromptAndReadSystemPrompt,
       text: $viewModel.data.promptAndReadSystemPrompt,
       focusedField: .promptAndReadSystemPrompt,
       currentFocus: $focusedField,

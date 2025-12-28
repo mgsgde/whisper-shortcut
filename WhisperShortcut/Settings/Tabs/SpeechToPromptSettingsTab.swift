@@ -11,13 +11,19 @@ struct SpeechToPromptSettingsTab: View {
       shortcutsSection
       
       // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      sectionDivider
+      
+      // Model Selection Section
+      modelSection
+      
+      // Section Divider with spacing
+      sectionDivider
+      
+      // System Prompt Section
+      promptSection
+      
+      // Section Divider with spacing
+      sectionDivider
       
       // Usage Instructions Section
       usageInstructionsSection
@@ -66,6 +72,53 @@ struct SpeechToPromptSettingsTab: View {
       }
       .textSelection(.enabled)
     }
+  }
+  
+  // MARK: - Section Divider Helper
+  @ViewBuilder
+  private var sectionDivider: some View {
+    VStack(spacing: 0) {
+      Spacer()
+        .frame(height: SettingsConstants.sectionSpacing)
+      SectionDivider()
+      Spacer()
+        .frame(height: SettingsConstants.sectionSpacing)
+    }
+  }
+
+  // MARK: - Model Selection Section
+  @ViewBuilder
+  private var modelSection: some View {
+    PromptModelSelectionView(
+      title: "🧠 Model Selection",
+      selectedModel: $viewModel.data.selectedPromptModel,
+      onModelChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+    )
+  }
+
+  // MARK: - System Prompt Section
+  @ViewBuilder
+  private var promptSection: some View {
+    PromptTextEditor(
+      title: "🤖 System Prompt",
+      subtitle:
+        "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
+      helpText:
+        "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
+      defaultValue: AppConstants.defaultPromptModeSystemPrompt,
+      text: $viewModel.data.promptModeSystemPrompt,
+      focusedField: .promptModeSystemPrompt,
+      currentFocus: $focusedField,
+      onTextChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+    )
   }
   
   // MARK: - Usage Instructions

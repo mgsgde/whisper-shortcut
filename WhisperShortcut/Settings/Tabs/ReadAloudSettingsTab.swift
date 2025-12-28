@@ -19,6 +19,18 @@ struct ReadAloudSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
+      // TTS Model Selection Section
+      ttsModelSelectionSection
+      
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Read Aloud Voice Selection Section
       readAloudVoiceSection
       
@@ -78,6 +90,19 @@ struct ReadAloudSettingsTab: View {
       }
       .textSelection(.enabled)
     }
+  }
+
+  // MARK: - TTS Model Selection Section
+  @ViewBuilder
+  private var ttsModelSelectionSection: some View {
+    TTSModelSelectionView(
+      selectedTTSModel: $viewModel.data.selectedTTSModel,
+      onModelChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+    )
   }
 
   // MARK: - Read Aloud Voice Selection Section
