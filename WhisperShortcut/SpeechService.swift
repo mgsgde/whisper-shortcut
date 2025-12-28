@@ -564,12 +564,12 @@ class SpeechService {
     
     DebugLogger.log("TTS: Making request to Gemini TTS API (text length: \(trimmedText.count) chars)")
     
-    // Make request
+    // Make request with retry logic (helps with network issues)
     let result = try await geminiClient.performRequest(
       request,
       responseType: GeminiChatResponse.self,
       mode: "TTS",
-      withRetry: false
+      withRetry: true
     )
     
     DebugLogger.log("TTS: Received response from Gemini API")

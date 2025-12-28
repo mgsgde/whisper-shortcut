@@ -4,6 +4,7 @@ import HotKey
 import SwiftUI
 import AVFoundation
 
+
 class MenuBarController: NSObject {
 
   // MARK: - Constants

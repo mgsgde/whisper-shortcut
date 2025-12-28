@@ -252,4 +252,5 @@ struct DebugLogger {
     // Use .default instead of .info since .info doesn't show in logs
     os_log(.default, log: appLog, "%{public}@", logMessage)
   }
+  
 }
