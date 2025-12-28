@@ -286,7 +286,6 @@ enum SettingsTab: String, CaseIterable {
   case speechToPrompt = "Dictate Prompt"
   case promptAndRead = "Dictate Prompt & Read"
   case readAloud = "Read Aloud"
-  case offlineModels = "Offline Models"
 }
 
 // MARK: - Default Settings Configuration

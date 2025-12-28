@@ -84,8 +84,6 @@ struct SettingsView: View {
           PromptAndReadSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .readAloud:
           ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .offlineModels:
-          OfflineModelsSettingsTab(viewModel: viewModel)
         }
       }
       .padding(.horizontal, 24)
@@ -107,15 +105,13 @@ struct SettingsView: View {
       return "text.bubble.fill"
     case .readAloud:
       return "speaker.wave.2"
-    case .offlineModels:
-      return "arrow.down.circle"
     }
   }
 
   private func description(for tab: SettingsTab) -> String {
     switch tab {
     case .general:
-      return "API Key, Keyboard Shortcuts and Feedback"
+      return "API Key, Keyboard Shortcuts, Offline Models and Feedback"
     case .speechToText:
       return "Model, Prompt and Shortcut"
     case .speechToPrompt:
@@ -124,8 +120,6 @@ struct SettingsView: View {
       return "Shortcut, Prompt, Model and Voice"
     case .readAloud:
       return "Shortcut and Voice Selection"
-    case .offlineModels:
-      return "Download and manage offline models"
     }
   }
 
