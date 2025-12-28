@@ -28,42 +28,34 @@ class KeychainManager: KeychainManaging {
 
   private init() {}
 
-  // MARK: - API Key Management
-
-  func saveAPIKey(_ apiKey: String) -> Bool {
-    clearCache()
-    _ = deleteAPIKey()
+  // MARK: - Generic Keychain Operations
+  
+  private func saveKey(_ apiKey: String, accountName: String, cache: inout String?) -> Bool {
+    clearCache(accountName: accountName, cache: &cache)
+    _ = deleteKey(accountName: accountName, cache: &cache)
     guard let data = apiKey.data(using: .utf8) else {
-
       return false
     }
 
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: Constants.serviceName,
-      kSecAttrAccount as String: Constants.accountName,
+      kSecAttrAccount as String: accountName,
       kSecValueData as String: data,
       kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
     ]
 
     let status = SecItemAdd(query as CFDictionary, nil)
-
-    if status == errSecSuccess {
-
-      return true
-    } else {
-
-      return false
-    }
+    return status == errSecSuccess
   }
-
-  func getAPIKey() -> String? {
-    if let cached = cachedAPIKey { return cached }
+  
+  private func getKey(accountName: String, cache: inout String?) -> String? {
+    if let cached = cache { return cached }
 
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: Constants.serviceName,
-      kSecAttrAccount as String: Constants.accountName,
+      kSecAttrAccount as String: accountName,
       kSecReturnData as String: true,
       kSecMatchLimit as String: kSecMatchLimitOne,
     ]
@@ -74,142 +66,79 @@ class KeychainManager: KeychainManaging {
     if status == errSecSuccess, let data = result as? Data,
       let apiKey = String(data: data, encoding: .utf8)
     {
-
-      cachedAPIKey = apiKey
+      cache = apiKey
       return apiKey
     } else {
-
       return nil
     }
   }
-
-  func deleteAPIKey() -> Bool {
-    clearCache()
+  
+  private func deleteKey(accountName: String, cache: inout String?) -> Bool {
+    clearCache(accountName: accountName, cache: &cache)
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: Constants.serviceName,
-      kSecAttrAccount as String: Constants.accountName,
+      kSecAttrAccount as String: accountName,
     ]
     let status = SecItemDelete(query as CFDictionary)
-
-    if status == errSecSuccess || status == errSecItemNotFound {
-
-      return true
-    } else {
-
-      return false
-    }
+    return status == errSecSuccess || status == errSecItemNotFound
   }
-
-  func hasAPIKey() -> Bool {
+  
+  private func hasKey(accountName: String, cache: String?) -> Bool {
     // Check if cached key exists first
-    if cachedAPIKey != nil { return true }
+    if cache != nil { return true }
 
     // Check if key exists in keychain without reading the data
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: Constants.serviceName,
-      kSecAttrAccount as String: Constants.accountName,
+      kSecAttrAccount as String: accountName,
       kSecReturnAttributes as String: true,
       kSecMatchLimit as String: kSecMatchLimitOne,
     ]
 
     var result: AnyObject?
     let status = SecItemCopyMatching(query as CFDictionary, &result)
-
     return status == errSecSuccess
   }
+  
+  private func clearCache(accountName: String, cache: inout String?) {
+    cache = nil
+  }
 
-  private func clearCache() {
-    cachedAPIKey = nil
+  // MARK: - API Key Management
+
+  func saveAPIKey(_ apiKey: String) -> Bool {
+    return saveKey(apiKey, accountName: Constants.accountName, cache: &cachedAPIKey)
+  }
+
+  func getAPIKey() -> String? {
+    return getKey(accountName: Constants.accountName, cache: &cachedAPIKey)
+  }
+
+  func deleteAPIKey() -> Bool {
+    return deleteKey(accountName: Constants.accountName, cache: &cachedAPIKey)
+  }
+
+  func hasAPIKey() -> Bool {
+    return hasKey(accountName: Constants.accountName, cache: cachedAPIKey)
   }
 
   // MARK: - Google API Key Management
 
   func saveGoogleAPIKey(_ apiKey: String) -> Bool {
-    clearGoogleCache()
-    _ = deleteGoogleAPIKey()
-    guard let data = apiKey.data(using: .utf8) else {
-      return false
-    }
-
-    let query: [String: Any] = [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: Constants.serviceName,
-      kSecAttrAccount as String: Constants.googleAccountName,
-      kSecValueData as String: data,
-      kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-    ]
-
-    let status = SecItemAdd(query as CFDictionary, nil)
-
-    if status == errSecSuccess {
-      return true
-    } else {
-      return false
-    }
+    return saveKey(apiKey, accountName: Constants.googleAccountName, cache: &cachedGoogleAPIKey)
   }
 
   func getGoogleAPIKey() -> String? {
-    if let cached = cachedGoogleAPIKey { return cached }
-
-    let query: [String: Any] = [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: Constants.serviceName,
-      kSecAttrAccount as String: Constants.googleAccountName,
-      kSecReturnData as String: true,
-      kSecMatchLimit as String: kSecMatchLimitOne,
-    ]
-
-    var result: AnyObject?
-    let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-    if status == errSecSuccess, let data = result as? Data,
-      let apiKey = String(data: data, encoding: .utf8)
-    {
-      cachedGoogleAPIKey = apiKey
-      return apiKey
-    } else {
-      return nil
-    }
+    return getKey(accountName: Constants.googleAccountName, cache: &cachedGoogleAPIKey)
   }
 
   func deleteGoogleAPIKey() -> Bool {
-    clearGoogleCache()
-    let query: [String: Any] = [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: Constants.serviceName,
-      kSecAttrAccount as String: Constants.googleAccountName,
-    ]
-    let status = SecItemDelete(query as CFDictionary)
-
-    if status == errSecSuccess || status == errSecItemNotFound {
-      return true
-    } else {
-      return false
-    }
+    return deleteKey(accountName: Constants.googleAccountName, cache: &cachedGoogleAPIKey)
   }
 
   func hasGoogleAPIKey() -> Bool {
-    // Check if cached key exists first
-    if cachedGoogleAPIKey != nil { return true }
-
-    // Check if key exists in keychain without reading the data
-    let query: [String: Any] = [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: Constants.serviceName,
-      kSecAttrAccount as String: Constants.googleAccountName,
-      kSecReturnAttributes as String: true,
-      kSecMatchLimit as String: kSecMatchLimitOne,
-    ]
-
-    var result: AnyObject?
-    let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-    return status == errSecSuccess
-  }
-
-  private func clearGoogleCache() {
-    cachedGoogleAPIKey = nil
+    return hasKey(accountName: Constants.googleAccountName, cache: cachedGoogleAPIKey)
   }
 }

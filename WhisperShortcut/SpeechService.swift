@@ -497,18 +497,9 @@ class SpeechService {
     }
     
     currentTTSTask = task
+    defer { currentTTSTask = nil }
     
-    do {
-      let result = try await task.value
-      currentTTSTask = nil
-      return result
-    } catch is CancellationError {
-      currentTTSTask = nil
-      throw CancellationError()
-    } catch {
-      currentTTSTask = nil
-      throw error
-    }
+    return try await task.value
   }
   
   private func performTTS(text: String, voiceName: String? = nil) async throws -> Data {
@@ -870,30 +861,7 @@ class SpeechService {
       let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
       
       DebugLogger.log("AUDIO-CHECK: Audio duration: \(String(format: "%.2f", duration)) seconds")
-      
-      // #region agent log
-      let logData: [String: Any] = [
-        "sessionId": "debug-session",
-        "runId": "run1",
-        "hypothesisId": "E",
-        "location": "SpeechService.swift:856",
-        "message": "isAudioLikelyEmpty check",
-        "data": [
-          "duration": duration,
-          "minimumDuration": 0.5,
-          "isEmpty": duration < 0.5
-        ],
-        "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
-      ]
-      if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
-        try? logFile.seekToEnd()
-        try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData)) ?? Data()))
-        try? logFile.write(Data("\n".utf8))
-        try? logFile.close()
-      } else {
-        try? (try? JSONSerialization.data(withJSONObject: logData))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
-      }
-      // #endregion
+      DebugLogger.logDebug("isAudioLikelyEmpty check - duration: \(duration), minimumDuration: 0.5, isEmpty: \(duration < 0.5)")
       
       let minimumDuration: Double = 0.5  // 500ms minimum for meaningful speech
       if duration < minimumDuration {
@@ -904,25 +872,7 @@ class SpeechService {
       return false
     } catch {
       DebugLogger.logWarning("AUDIO-CHECK: Could not analyze audio duration: \(error.localizedDescription), proceeding with transcription")
-      // #region agent log
-      let logData: [String: Any] = [
-        "sessionId": "debug-session",
-        "runId": "run1",
-        "hypothesisId": "E",
-        "location": "SpeechService.swift:870",
-        "message": "isAudioLikelyEmpty error",
-        "data": ["error": error.localizedDescription],
-        "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
-      ]
-      if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
-        try? logFile.seekToEnd()
-        try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData)) ?? Data()))
-        try? logFile.write(Data("\n".utf8))
-        try? logFile.close()
-      } else {
-        try? (try? JSONSerialization.data(withJSONObject: logData))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
-      }
-      // #endregion
+      DebugLogger.logDebug("isAudioLikelyEmpty error - error: \(error.localizedDescription)")
       return false  // On error, allow transcription to proceed
     }
   }
@@ -932,53 +882,4 @@ class SpeechService {
   // Status code error parsing is now handled by GeminiAPIClient
 }
 
-
-
-// MARK: - Error Result Parser
-extension SpeechService {
-  static func parseTranscriptionResult(_ text: String) -> (
-    isError: Bool, errorType: TranscriptionError?
-  ) {
-    let errorPrefixes = ["❌", "⚠️", "⏰", "⏳", "🔄"]
-    let isError = errorPrefixes.contains { text.hasPrefix($0) }
-
-    guard isError else {
-      return (false, nil)
-    }
-
-    if text.contains("No API Key") {
-      return (true, .noGoogleAPIKey)
-    } else if text.contains("Incorrect API Key") {
-      return (true, .incorrectAPIKey)
-    } else if text.contains("Country Not Supported") {
-      return (true, .countryNotSupported)
-    } else if text.contains("Authentication") || text.contains("invalid API key") {
-      return (true, .invalidAPIKey)
-    } else if text.contains("Rate Limit") {
-      return (true, .rateLimited)
-    } else if text.contains("Quota Exceeded") {
-      return (true, .quotaExceeded)
-    } else if text.contains("Request Timeout") {
-      return (true, .requestTimeout)
-    } else if text.contains("Resource Timeout") {
-      return (true, .resourceTimeout)
-    } else if text.contains("Timeout") {
-      return (true, .networkError("Timeout"))
-    } else if text.contains("Network Error") {
-      return (true, .networkError("Network"))
-    } else if text.contains("Server Error") {
-      return (true, .serverError(500))
-    } else if text.contains("Service Unavailable") {
-      return (true, .serviceUnavailable)
-    } else if text.contains("Slow Down") {
-      return (true, .slowDown)
-    } else if text.contains("File Too Large") {
-      return (true, .fileTooLarge)
-    } else if text.contains("Empty") {
-      return (true, .emptyFile)
-    } else {
-      return (true, .serverError(0))
-    }
-  }
-}
 

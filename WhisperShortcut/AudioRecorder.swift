@@ -158,29 +158,7 @@ extension AudioRecorder: AVAudioRecorderDelegate {
       do {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         let fileSize = attributes[.size] as? Int64 ?? 0
-
-        // #region agent log
-        let logData: [String: Any] = [
-          "sessionId": "debug-session",
-          "runId": "run1",
-          "hypothesisId": "F",
-          "location": "AudioRecorder.swift:162",
-          "message": "Audio file size check",
-          "data": [
-            "fileSize": fileSize,
-            "isEmpty": fileSize == 0
-          ],
-          "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
-        ]
-        if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
-          try? logFile.seekToEnd()
-          try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData)) ?? Data()))
-          try? logFile.write(Data("\n".utf8))
-          try? logFile.close()
-        } else {
-          try? (try? JSONSerialization.data(withJSONObject: logData))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
-        }
-        // #endregion
+        DebugLogger.logDebug("Audio file size check - fileSize: \(fileSize), isEmpty: \(fileSize == 0)")
         if fileSize > 0 {
           delegate?.audioRecorderDidFinishRecording(audioURL: url)
         } else {

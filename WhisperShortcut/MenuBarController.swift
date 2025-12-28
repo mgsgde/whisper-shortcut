@@ -163,45 +163,16 @@ class MenuBarController: NSObject {
   }
 
   private func getKeyEquivalentCharacter(for key: Key) -> String {
-    switch key {
-    case .one: return "1"
-    case .two: return "2"
-    case .three: return "3"
-    case .four: return "4"
-    case .five: return "5"
-    case .six: return "6"
-    case .seven: return "7"
-    case .eight: return "8"
-    case .nine: return "9"
-    case .zero: return "0"
-    case .a: return "a"
-    case .b: return "b"
-    case .c: return "c"
-    case .d: return "d"
-    case .e: return "e"
-    case .f: return "f"
-    case .g: return "g"
-    case .h: return "h"
-    case .i: return "i"
-    case .j: return "j"
-    case .k: return "k"
-    case .l: return "l"
-    case .m: return "m"
-    case .n: return "n"
-    case .o: return "o"
-    case .p: return "p"
-    case .q: return "q"
-    case .r: return "r"
-    case .s: return "s"
-    case .t: return "t"
-    case .u: return "u"
-    case .v: return "v"
-    case .w: return "w"
-    case .x: return "x"
-    case .y: return "y"
-    case .z: return "z"
-    default: return ""  // For function keys and special keys
-    }
+    let keyMap: [Key: String] = [
+      .one: "1", .two: "2", .three: "3", .four: "4", .five: "5",
+      .six: "6", .seven: "7", .eight: "8", .nine: "9", .zero: "0",
+      .a: "a", .b: "b", .c: "c", .d: "d", .e: "e", .f: "f",
+      .g: "g", .h: "h", .i: "i", .j: "j", .k: "k", .l: "l",
+      .m: "m", .n: "n", .o: "o", .p: "p", .q: "q", .r: "r",
+      .s: "s", .t: "t", .u: "u", .v: "v", .w: "w", .x: "x",
+      .y: "y", .z: "z"
+    ]
+    return keyMap[key] ?? ""  // For function keys and special keys
   }
 
   private func setupDelegates() {
@@ -350,7 +321,7 @@ class MenuBarController: NSObject {
       speechService.cancelTranscription()
       // Clean up the audio file immediately to prevent race conditions
       if let audioURL = currentTranscriptionAudioURL {
-        try? FileManager.default.removeItem(at: audioURL)
+        cleanupAudioFile(at: audioURL)
         currentTranscriptionAudioURL = nil
         processedAudioURLs.remove(audioURL)
       }
@@ -420,28 +391,8 @@ class MenuBarController: NSObject {
   }
   
   @objc private func handleReadSelectedText() {
-    // #region agent log
-    let logData: [String: Any] = [
-      "sessionId": "debug-session",
-      "runId": "run1",
-      "hypothesisId": "A",
-      "location": "MenuBarController.swift:418",
-      "message": "handleReadSelectedText called",
-      "data": [
-        "appState": "\(appState)",
-        "recordingMode": appState.recordingMode == .tts ? "tts" : "\(appState.recordingMode)"
-      ],
-      "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
-    ]
-    if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
-      try? logFile.seekToEnd()
-      try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData)) ?? Data()))
-      try? logFile.write(Data("\n".utf8))
-      try? logFile.close()
-    } else {
-      try? (try? JSONSerialization.data(withJSONObject: logData))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
-    }
-    // #endregion
+    let recordingModeStr = appState.recordingMode == .tts ? "tts" : String(describing: appState.recordingMode ?? .none)
+    DebugLogger.logDebug("handleReadSelectedText called - appState: \(appState), recordingMode: \(recordingModeStr)")
     // Check if currently processing TTS - if so, cancel it
     if case .processing(.ttsProcessing) = appState {
       speechService.cancelTTS()
@@ -451,10 +402,8 @@ class MenuBarController: NSObject {
       audioPlayerNode?.stop()
       audioEngine = nil
       audioPlayerNode = nil
-      if let audioURL = currentTTSAudioURL {
-        try? FileManager.default.removeItem(at: audioURL)
-        currentTTSAudioURL = nil
-      }
+      cleanupAudioFile(at: currentTTSAudioURL)
+      currentTTSAudioURL = nil
       appState = .idle
       PopupNotificationWindow.showCancelled("TTS cancelled")
       return
@@ -468,10 +417,8 @@ class MenuBarController: NSObject {
       audioPlayerNode?.stop()
       audioEngine = nil
       audioPlayerNode = nil
-      if let audioURL = currentTTSAudioURL {
-        try? FileManager.default.removeItem(at: audioURL)
-        currentTTSAudioURL = nil
-      }
+      cleanupAudioFile(at: currentTTSAudioURL)
+      currentTTSAudioURL = nil
       appState = .idle
       return
     }
@@ -479,25 +426,7 @@ class MenuBarController: NSObject {
     switch appState.recordingMode {
     case .tts:
       // Stop recording
-      // #region agent log
-      let logData3: [String: Any] = [
-        "sessionId": "debug-session",
-        "runId": "run1",
-        "hypothesisId": "A",
-        "location": "MenuBarController.swift:455",
-        "message": "Stopping TTS recording (second press)",
-        "data": ["delay": Constants.audioTailCaptureDelay],
-        "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
-      ]
-      if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
-        try? logFile.seekToEnd()
-        try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData3)) ?? Data()))
-        try? logFile.write(Data("\n".utf8))
-        try? logFile.close()
-      } else {
-        try? (try? JSONSerialization.data(withJSONObject: logData3))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
-      }
-      // #endregion
+      DebugLogger.logDebug("Stopping TTS recording (second press) - delay: \(Constants.audioTailCaptureDelay)")
       DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
         self?.audioRecorder.stopRecording()
       }
@@ -512,25 +441,7 @@ class MenuBarController: NSObject {
       if hasAPIKey {
         simulateCopyPaste()
         appState = appState.startRecording(.tts)
-        // #region agent log
-        let logData2: [String: Any] = [
-          "sessionId": "debug-session",
-          "runId": "run1",
-          "hypothesisId": "A",
-          "location": "MenuBarController.swift:469",
-          "message": "Starting TTS recording",
-          "data": ["hasAPIKey": hasAPIKey],
-          "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
-        ]
-        if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
-          try? logFile.seekToEnd()
-          try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData2)) ?? Data()))
-          try? logFile.write(Data("\n".utf8))
-          try? logFile.close()
-        } else {
-          try? (try? JSONSerialization.data(withJSONObject: logData2))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
-        }
-        // #endregion
+        DebugLogger.logDebug("Starting TTS recording - hasAPIKey: \(hasAPIKey)")
         audioRecorder.startRecording()
       } else {
         // No API key - try direct TTS without command
@@ -545,16 +456,7 @@ class MenuBarController: NSObject {
     // Check if currently processing TTS - if so, cancel it
     if case .processing(.ttsProcessing) = appState {
       speechService.cancelTTS()
-      audioPlayer?.stop()
-      audioPlayer = nil
-      audioEngine?.stop()
-      audioPlayerNode?.stop()
-      audioEngine = nil
-      audioPlayerNode = nil
-      if let audioURL = currentTTSAudioURL {
-        try? FileManager.default.removeItem(at: audioURL)
-        currentTTSAudioURL = nil
-      }
+      stopTTSPlayback()
       appState = .idle
       PopupNotificationWindow.showCancelled("TTS cancelled")
       return
@@ -562,16 +464,7 @@ class MenuBarController: NSObject {
     
     // Check if currently playing audio - if so, stop it
     if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
-      audioPlayer?.stop()
-      audioPlayer = nil
-      audioEngine?.stop()
-      audioPlayerNode?.stop()
-      audioEngine = nil
-      audioPlayerNode = nil
-      if let audioURL = currentTTSAudioURL {
-        try? FileManager.default.removeItem(at: audioURL)
-        currentTTSAudioURL = nil
-      }
+      stopTTSPlayback()
       appState = .idle
       return
     }
@@ -606,54 +499,16 @@ class MenuBarController: NSObject {
   
   private func performTTSWithCommand(audioURL: URL) async {
     do {
-      // #region agent log
       let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64) ?? 0
-      let logData: [String: Any] = [
-        "sessionId": "debug-session",
-        "runId": "run1",
-        "hypothesisId": "D",
-        "location": "MenuBarController.swift:509",
-        "message": "performTTSWithCommand started",
-        "data": [
-          "audioURL": audioURL.lastPathComponent,
-          "fileSize": fileSize
-        ],
-        "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
-      ]
-      if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
-        try? logFile.seekToEnd()
-        try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData)) ?? Data()))
-        try? logFile.write(Data("\n".utf8))
-        try? logFile.close()
-      } else {
-        try? (try? JSONSerialization.data(withJSONObject: logData))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
-      }
-      // #endregion
+      DebugLogger.logDebug("performTTSWithCommand started - audioURL: \(audioURL.lastPathComponent), fileSize: \(fileSize)")
+      
       // Check if audio is likely empty before transcription
       let isEmpty = speechService.isAudioLikelyEmpty(at: audioURL)
-      // #region agent log
-      let logData2: [String: Any] = [
-        "sessionId": "debug-session",
-        "runId": "run1",
-        "hypothesisId": "D",
-        "location": "MenuBarController.swift:512",
-        "message": "isAudioLikelyEmpty result",
-        "data": ["isEmpty": isEmpty],
-        "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
-      ]
-      if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
-        try? logFile.seekToEnd()
-        try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData2)) ?? Data()))
-        try? logFile.write(Data("\n".utf8))
-        try? logFile.close()
-      } else {
-        try? (try? JSONSerialization.data(withJSONObject: logData2))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
-      }
-      // #endregion
+      DebugLogger.logDebug("isAudioLikelyEmpty result - isEmpty: \(isEmpty)")
       if isEmpty {
         DebugLogger.log("TTS: Audio too short, skipping transcription, using direct TTS")
         // Clean up audio file
-        try? FileManager.default.removeItem(at: audioURL)
+        cleanupAudioFile(at: audioURL)
         
         // Get selected text and proceed with direct TTS (same as empty command path)
         guard let selectedText = clipboardManager.getCleanedClipboardText(),
@@ -681,7 +536,7 @@ class MenuBarController: NSObject {
       let trimmedCommand = voiceCommand.trimmingCharacters(in: .whitespacesAndNewlines)
       
       // Clean up transcription audio
-      try? FileManager.default.removeItem(at: audioURL)
+      cleanupAudioFile(at: audioURL)
       
       // Get selected text from clipboard
       guard let selectedText = clipboardManager.getCleanedClipboardText(),
@@ -732,7 +587,7 @@ class MenuBarController: NSObject {
       await MainActor.run {
         self.appState = .idle
       }
-      try? FileManager.default.removeItem(at: audioURL)
+      cleanupAudioFile(at: audioURL)
     } catch {
       DebugLogger.logError("TTS-ERROR: Failed to process TTS request: \(error.localizedDescription)")
       if let transcriptionError = error as? TranscriptionError {
@@ -742,7 +597,7 @@ class MenuBarController: NSObject {
         self.appState = self.appState.showError("TTS failed: \(error.localizedDescription)")
         PopupNotificationWindow.showError("Failed to process: \(error.localizedDescription)", title: "TTS Error")
       }
-      try? FileManager.default.removeItem(at: audioURL)
+      cleanupAudioFile(at: audioURL)
     }
   }
   
@@ -825,17 +680,16 @@ class MenuBarController: NSObject {
       // Schedule buffer for playback
       playerNode.scheduleBuffer(buffer) {
         DebugLogger.log("TTS-PLAYBACK: Buffer playback completed")
-        DispatchQueue.main.async {
+        Task { @MainActor in
           engine.stop()
           self.audioEngine = nil
           self.audioPlayerNode = nil
           self.audioPlayer = nil
           self.currentTTSAudioURL = nil
           self.appState = self.appState.showSuccess("Audio playback completed")
-          DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            if case .feedback = self.appState {
-              self.appState = .idle
-            }
+          try? await Task.sleep(nanoseconds: 2_000_000_000) // 2.0 seconds
+          if case .feedback = self.appState {
+            self.appState = .idle
           }
         }
       }
@@ -930,7 +784,7 @@ class MenuBarController: NSObject {
       
       // Define dismiss action (only for non-retryable errors)
       let dismissAction: (() -> Void)? = isRetryable ? nil : {
-        try? FileManager.default.removeItem(at: audioURL)
+        self.cleanupAudioFile(at: audioURL)
       }
       
       // Set error state
@@ -941,7 +795,7 @@ class MenuBarController: NSObject {
       
       // Clean up non-retryable errors immediately
       if !isRetryable {
-        try? FileManager.default.removeItem(at: audioURL)
+        cleanupAudioFile(at: audioURL)
       }
     }
   }
@@ -969,7 +823,7 @@ class MenuBarController: NSObject {
       }
       
       // Cleanup on success
-      try? FileManager.default.removeItem(at: audioURL)
+      cleanupAudioFile(at: audioURL)
     } catch is CancellationError {
       // Task was cancelled - just cleanup and return to idle
       DebugLogger.log("CANCELLATION: Transcription task was cancelled")
@@ -982,7 +836,7 @@ class MenuBarController: NSObject {
         self.processedAudioURLs.remove(audioURL)
       }
       // Cleanup on cancellation
-      try? FileManager.default.removeItem(at: audioURL)
+      cleanupAudioFile(at: audioURL)
     } catch {
       await handleProcessingError(error: error, audioURL: audioURL, mode: .transcription)
       // Clear tracking on error (file will be cleaned up in handleProcessingError if needed)
@@ -1013,7 +867,7 @@ class MenuBarController: NSObject {
       }
       
       // Cleanup on success
-      try? FileManager.default.removeItem(at: audioURL)
+      cleanupAudioFile(at: audioURL)
     } catch is CancellationError {
       // Task was cancelled - just cleanup and return to idle
       DebugLogger.log("CANCELLATION: Prompt task was cancelled")
@@ -1023,7 +877,7 @@ class MenuBarController: NSObject {
         self.processedAudioURLs.remove(audioURL)
       }
       // Cleanup on cancellation
-      try? FileManager.default.removeItem(at: audioURL)
+      cleanupAudioFile(at: audioURL)
     } catch {
       await handleProcessingError(error: error, audioURL: audioURL, mode: .prompt)
       // Clear tracking on error (file will be cleaned up in handleProcessingError if needed)
@@ -1060,6 +914,29 @@ class MenuBarController: NSObject {
   }
 
   // MARK: - Utility
+  /// Safely removes an audio file, logging any errors
+  private func cleanupAudioFile(at url: URL?) {
+    guard let url = url else { return }
+    do {
+      try FileManager.default.removeItem(at: url)
+      DebugLogger.logDebug("Cleaned up audio file: \(url.lastPathComponent)")
+    } catch {
+      DebugLogger.logWarning("Failed to clean up audio file \(url.lastPathComponent): \(error.localizedDescription)")
+    }
+  }
+  
+  /// Stops all TTS audio playback and cleans up resources
+  private func stopTTSPlayback() {
+    audioPlayer?.stop()
+    audioPlayer = nil
+    audioEngine?.stop()
+    audioPlayerNode?.stop()
+    audioEngine = nil
+    audioPlayerNode = nil
+    cleanupAudioFile(at: currentTTSAudioURL)
+    currentTTSAudioURL = nil
+  }
+  
   private func simulateCopyPaste() {
     let source = CGEventSource(stateID: .combinedSessionState)
     let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true)
@@ -1085,31 +962,9 @@ class MenuBarController: NSObject {
 // MARK: - AudioRecorderDelegate (Clean State Transitions)
 extension MenuBarController: AudioRecorderDelegate {
   func audioRecorderDidFinishRecording(audioURL: URL) {
-    // #region agent log
     let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64) ?? 0
-    let logData: [String: Any] = [
-      "sessionId": "debug-session",
-      "runId": "run1",
-      "hypothesisId": "C",
-      "location": "MenuBarController.swift:944",
-      "message": "audioRecorderDidFinishRecording called",
-      "data": [
-        "audioURL": audioURL.lastPathComponent,
-        "fileSize": fileSize,
-        "appState": "\(appState)",
-        "recordingMode": appState.recordingMode == .tts ? "tts" : "\(appState.recordingMode)"
-      ],
-      "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
-    ]
-    if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
-      try? logFile.seekToEnd()
-      try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData)) ?? Data()))
-      try? logFile.write(Data("\n".utf8))
-      try? logFile.close()
-    } else {
-      try? (try? JSONSerialization.data(withJSONObject: logData))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
-    }
-    // #endregion
+    let recordingModeStr = appState.recordingMode == .tts ? "tts" : String(describing: appState.recordingMode ?? .none)
+    DebugLogger.logDebug("audioRecorderDidFinishRecording called - audioURL: \(audioURL.lastPathComponent), fileSize: \(fileSize), appState: \(appState), recordingMode: \(recordingModeStr)")
     // Prevent processing the same audio file multiple times (race condition protection)
     guard !processedAudioURLs.contains(audioURL) else {
       DebugLogger.logWarning("AUDIO: Ignoring duplicate audioRecorderDidFinishRecording for \(audioURL.lastPathComponent)")
@@ -1149,33 +1004,9 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   func audioRecorderDidFailWithError(_ error: Error) {
-    // #region agent log
     let errorCode = (error as NSError).code
     let errorDomain = (error as NSError).domain
-    let logData: [String: Any] = [
-      "sessionId": "debug-session",
-      "runId": "run1",
-      "hypothesisId": "B",
-      "location": "MenuBarController.swift:983",
-      "message": "audioRecorderDidFailWithError called",
-      "data": [
-        "errorCode": errorCode,
-        "errorDomain": errorDomain,
-        "errorDescription": error.localizedDescription,
-        "appState": "\(appState)",
-        "isEmptyFileError": errorCode == 1004
-      ],
-      "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
-    ]
-    if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
-      try? logFile.seekToEnd()
-      try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData)) ?? Data()))
-      try? logFile.write(Data("\n".utf8))
-      try? logFile.close()
-    } else {
-      try? (try? JSONSerialization.data(withJSONObject: logData))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
-    }
-    // #endregion
+    DebugLogger.logDebug("audioRecorderDidFailWithError called - errorCode: \(errorCode), errorDomain: \(errorDomain), errorDescription: \(error.localizedDescription), appState: \(appState), isEmptyFileError: \(errorCode == 1004)")
     appState = appState.showError("Recording failed: \(error.localizedDescription)")
   }
 }
