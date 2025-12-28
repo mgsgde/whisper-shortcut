@@ -481,7 +481,7 @@ enum TranscriptionError: Error, Equatable {
     case .noSpeechDetected: return "No Speech Detected"
     case .textTooShort: return "Text Too Short"
     case .promptLeakDetected: return "API Response Issue"
-    case .modelNotAvailable: return "Model Not Available"
+    case .modelNotAvailable: return "Model Not Downloaded"
     }
   }
   

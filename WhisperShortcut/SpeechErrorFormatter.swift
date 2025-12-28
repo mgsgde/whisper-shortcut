@@ -188,7 +188,7 @@ struct SpeechErrorFormatter {
       if lowercasedDetails.contains("model") && (lowercasedDetails.contains("not found") || lowercasedDetails.contains("download") || lowercasedDetails.contains("missing")) {
         // This is likely a model availability issue that wasn't caught properly
         return """
-          📥 Model Not Available
+          📥 Model Not Downloaded
 
           The offline model could not be loaded.
 
@@ -324,7 +324,7 @@ struct SpeechErrorFormatter {
     case .promptLeakDetected:
       return "⚠️ API Issue"
     case .modelNotAvailable:
-      return "📥 Model Not Available"
+      return "📥 Model Not Downloaded"
     default:
       return "❌ Error"
     }
