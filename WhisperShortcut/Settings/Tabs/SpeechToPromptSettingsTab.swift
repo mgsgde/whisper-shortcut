@@ -9,6 +9,18 @@ struct SpeechToPromptSettingsTab: View {
     VStack(alignment: .leading, spacing: 0) {
       // Shortcuts Section
       shortcutsSection
+      
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+      
+      // Usage Instructions Section
+      usageInstructionsSection
     }
   }
 
@@ -53,6 +65,32 @@ struct SpeechToPromptSettingsTab: View {
         .fixedSize(horizontal: false, vertical: true)
       }
       .textSelection(.enabled)
+    }
+  }
+  
+  // MARK: - Usage Instructions
+  @ViewBuilder
+  private var usageInstructionsSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "📋 How to Use",
+        subtitle: "Step-by-step instructions for using dictate prompt mode"
+      )
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text("1. Select text")
+          .textSelection(.enabled)
+        Text("2. Press your configured shortcut")
+          .textSelection(.enabled)
+        Text("3. Dictate your prompt instruction")
+          .textSelection(.enabled)
+        Text("4. Press the shortcut again to stop")
+          .textSelection(.enabled)
+        Text("5. Modified text is automatically copied to clipboard")
+          .textSelection(.enabled)
+      }
+      .font(.callout)
+      .foregroundColor(.secondary)
     }
   }
 

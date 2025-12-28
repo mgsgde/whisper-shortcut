@@ -39,6 +39,9 @@ struct SpeechToTextSettingsTab: View {
         // Section Divider with spacing
         sectionDivider
       }
+      
+      // Usage Instructions Section
+      usageInstructionsSection
     }
   }
   
@@ -187,6 +190,30 @@ struct SpeechToTextSettingsTab: View {
         }
       }
     )
+  }
+  
+  // MARK: - Usage Instructions
+  @ViewBuilder
+  private var usageInstructionsSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "📋 How to Use",
+        subtitle: "Step-by-step instructions for using dictation mode"
+      )
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text("1. Press your configured shortcut")
+          .textSelection(.enabled)
+        Text("2. Speak your text")
+          .textSelection(.enabled)
+        Text("3. Press the shortcut again to stop")
+          .textSelection(.enabled)
+        Text("4. Transcription is automatically copied to clipboard")
+          .textSelection(.enabled)
+      }
+      .font(.callout)
+      .foregroundColor(.secondary)
+    }
   }
 }
 

@@ -448,7 +448,7 @@ class SettingsViewModel: ObservableObject {
       }
     }
     
-    NSLog("🔗 APP-STORE: App Store link copied to clipboard")
+    DebugLogger.logInfo("APP-STORE: App Store link copied to clipboard")
   }
 
   // MARK: - App Store Review

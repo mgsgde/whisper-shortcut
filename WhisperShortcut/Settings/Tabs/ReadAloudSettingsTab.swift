@@ -21,6 +21,18 @@ struct ReadAloudSettingsTab: View {
 
       // Read Aloud Voice Selection Section
       readAloudVoiceSection
+      
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+      
+      // Usage Instructions Section
+      usageInstructionsSection
     }
   }
 
@@ -79,6 +91,28 @@ struct ReadAloudSettingsTab: View {
         }
       }
     )
+  }
+  
+  // MARK: - Usage Instructions
+  @ViewBuilder
+  private var usageInstructionsSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "📋 How to Use",
+        subtitle: "Step-by-step instructions for using read aloud mode"
+      )
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text("1. Select text in any application")
+          .textSelection(.enabled)
+        Text("2. Press your configured shortcut")
+          .textSelection(.enabled)
+        Text("3. Selected text is read aloud automatically")
+          .textSelection(.enabled)
+      }
+      .font(.callout)
+      .foregroundColor(.secondary)
+    }
   }
 }
 
