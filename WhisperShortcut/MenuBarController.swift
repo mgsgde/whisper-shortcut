@@ -416,6 +416,28 @@ class MenuBarController: NSObject {
   }
   
   @objc private func handleReadSelectedText() {
+    // #region agent log
+    let logData: [String: Any] = [
+      "sessionId": "debug-session",
+      "runId": "run1",
+      "hypothesisId": "A",
+      "location": "MenuBarController.swift:418",
+      "message": "handleReadSelectedText called",
+      "data": [
+        "appState": "\(appState)",
+        "recordingMode": appState.recordingMode == .tts ? "tts" : "\(appState.recordingMode)"
+      ],
+      "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
+    ]
+    if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
+      try? logFile.seekToEnd()
+      try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData)) ?? Data()))
+      try? logFile.write(Data("\n".utf8))
+      try? logFile.close()
+    } else {
+      try? (try? JSONSerialization.data(withJSONObject: logData))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
+    }
+    // #endregion
     // Check if currently processing TTS - if so, cancel it
     if case .processing(.ttsProcessing) = appState {
       speechService.cancelTTS()
@@ -453,6 +475,25 @@ class MenuBarController: NSObject {
     switch appState.recordingMode {
     case .tts:
       // Stop recording
+      // #region agent log
+      let logData3: [String: Any] = [
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "A",
+        "location": "MenuBarController.swift:455",
+        "message": "Stopping TTS recording (second press)",
+        "data": ["delay": Constants.audioTailCaptureDelay],
+        "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
+      ]
+      if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
+        try? logFile.seekToEnd()
+        try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData3)) ?? Data()))
+        try? logFile.write(Data("\n".utf8))
+        try? logFile.close()
+      } else {
+        try? (try? JSONSerialization.data(withJSONObject: logData3))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
+      }
+      // #endregion
       DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
         self?.audioRecorder.stopRecording()
       }
@@ -467,6 +508,25 @@ class MenuBarController: NSObject {
       if hasAPIKey {
         simulateCopyPaste()
         appState = appState.startRecording(.tts)
+        // #region agent log
+        let logData2: [String: Any] = [
+          "sessionId": "debug-session",
+          "runId": "run1",
+          "hypothesisId": "A",
+          "location": "MenuBarController.swift:469",
+          "message": "Starting TTS recording",
+          "data": ["hasAPIKey": hasAPIKey],
+          "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
+        ]
+        if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
+          try? logFile.seekToEnd()
+          try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData2)) ?? Data()))
+          try? logFile.write(Data("\n".utf8))
+          try? logFile.close()
+        } else {
+          try? (try? JSONSerialization.data(withJSONObject: logData2))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
+        }
+        // #endregion
         audioRecorder.startRecording()
       } else {
         // No API key - try direct TTS without command
@@ -508,8 +568,51 @@ class MenuBarController: NSObject {
   
   private func performTTSWithCommand(audioURL: URL) async {
     do {
+      // #region agent log
+      let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64) ?? 0
+      let logData: [String: Any] = [
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "D",
+        "location": "MenuBarController.swift:509",
+        "message": "performTTSWithCommand started",
+        "data": [
+          "audioURL": audioURL.lastPathComponent,
+          "fileSize": fileSize
+        ],
+        "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
+      ]
+      if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
+        try? logFile.seekToEnd()
+        try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData)) ?? Data()))
+        try? logFile.write(Data("\n".utf8))
+        try? logFile.close()
+      } else {
+        try? (try? JSONSerialization.data(withJSONObject: logData))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
+      }
+      // #endregion
       // Check if audio is likely empty before transcription
-      if speechService.isAudioLikelyEmpty(at: audioURL) {
+      let isEmpty = speechService.isAudioLikelyEmpty(at: audioURL)
+      // #region agent log
+      let logData2: [String: Any] = [
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "D",
+        "location": "MenuBarController.swift:512",
+        "message": "isAudioLikelyEmpty result",
+        "data": ["isEmpty": isEmpty],
+        "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
+      ]
+      if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
+        try? logFile.seekToEnd()
+        try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData2)) ?? Data()))
+        try? logFile.write(Data("\n".utf8))
+        try? logFile.close()
+      } else {
+        try? (try? JSONSerialization.data(withJSONObject: logData2))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
+      }
+      // #endregion
+      if isEmpty {
         DebugLogger.log("TTS: Audio too short, skipping transcription, using direct TTS")
         // Clean up audio file
         try? FileManager.default.removeItem(at: audioURL)
@@ -942,6 +1045,31 @@ class MenuBarController: NSObject {
 // MARK: - AudioRecorderDelegate (Clean State Transitions)
 extension MenuBarController: AudioRecorderDelegate {
   func audioRecorderDidFinishRecording(audioURL: URL) {
+    // #region agent log
+    let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64) ?? 0
+    let logData: [String: Any] = [
+      "sessionId": "debug-session",
+      "runId": "run1",
+      "hypothesisId": "C",
+      "location": "MenuBarController.swift:944",
+      "message": "audioRecorderDidFinishRecording called",
+      "data": [
+        "audioURL": audioURL.lastPathComponent,
+        "fileSize": fileSize,
+        "appState": "\(appState)",
+        "recordingMode": appState.recordingMode == .tts ? "tts" : "\(appState.recordingMode)"
+      ],
+      "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
+    ]
+    if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
+      try? logFile.seekToEnd()
+      try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData)) ?? Data()))
+      try? logFile.write(Data("\n".utf8))
+      try? logFile.close()
+    } else {
+      try? (try? JSONSerialization.data(withJSONObject: logData))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
+    }
+    // #endregion
     // Prevent processing the same audio file multiple times (race condition protection)
     guard !processedAudioURLs.contains(audioURL) else {
       DebugLogger.logWarning("AUDIO: Ignoring duplicate audioRecorderDidFinishRecording for \(audioURL.lastPathComponent)")
@@ -981,6 +1109,33 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   func audioRecorderDidFailWithError(_ error: Error) {
+    // #region agent log
+    let errorCode = (error as NSError).code
+    let errorDomain = (error as NSError).domain
+    let logData: [String: Any] = [
+      "sessionId": "debug-session",
+      "runId": "run1",
+      "hypothesisId": "B",
+      "location": "MenuBarController.swift:983",
+      "message": "audioRecorderDidFailWithError called",
+      "data": [
+        "errorCode": errorCode,
+        "errorDomain": errorDomain,
+        "errorDescription": error.localizedDescription,
+        "appState": "\(appState)",
+        "isEmptyFileError": errorCode == 1004
+      ],
+      "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
+    ]
+    if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
+      try? logFile.seekToEnd()
+      try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData)) ?? Data()))
+      try? logFile.write(Data("\n".utf8))
+      try? logFile.close()
+    } else {
+      try? (try? JSONSerialization.data(withJSONObject: logData))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
+    }
+    // #endregion
     appState = appState.showError("Recording failed: \(error.localizedDescription)")
   }
 }

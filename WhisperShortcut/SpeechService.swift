@@ -153,6 +153,8 @@ class SpeechService {
 
   // MARK: - Transcription Mode (Private Implementation)
   private func performTranscription(audioURL: URL) async throws -> String {
+    let startTime = CFAbsoluteTimeGetCurrent()
+    
     // Check if using offline model
     if selectedTranscriptionModel.isOffline {
       // For offline models, use LocalSpeechService
@@ -185,14 +187,20 @@ class SpeechService {
       }
       
       // Transcribe using local service
-      return try await LocalSpeechService.shared.transcribe(audioURL: audioURL, language: languageString)
+      let result = try await LocalSpeechService.shared.transcribe(audioURL: audioURL, language: languageString)
+      let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
+      DebugLogger.log("SPEED: Whisper transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
+      return result
     }
     
     // Check if using Gemini model
     if selectedTranscriptionModel.isGemini {
       // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
       try validateAudioFileFormat(at: audioURL)
-      return try await transcribeWithGemini(audioURL: audioURL)
+      let result = try await transcribeWithGemini(audioURL: audioURL)
+      let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
+      DebugLogger.log("SPEED: Gemini transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
+      return result
     }
     
     // Should never reach here
@@ -602,6 +610,8 @@ class SpeechService {
 
   // MARK: - Gemini Transcription
   private func transcribeWithGemini(audioURL: URL) async throws -> String {
+    let apiStartTime = CFAbsoluteTimeGetCurrent()
+    
     // Only check API key for Gemini models (offline models bypass this)
     guard let apiKey = self.googleAPIKey, !apiKey.isEmpty else {
       DebugLogger.log("GEMINI-TRANSCRIPTION: ERROR - No Google API key found in keychain")
@@ -631,15 +641,22 @@ class SpeechService {
       result = try await transcribeWithGeminiInline(audioURL: audioURL, apiKey: apiKey)
     }
     
+    let apiElapsedTime = CFAbsoluteTimeGetCurrent() - apiStartTime
+    DebugLogger.log("SPEED: Gemini API call completed in \(String(format: "%.3f", apiElapsedTime))s (\(String(format: "%.0f", apiElapsedTime * 1000))ms)")
+    
     return result
   }
   
   private func transcribeWithGeminiInline(audioURL: URL, apiKey: String) async throws -> String {
+    let inlineStartTime = CFAbsoluteTimeGetCurrent()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using inline audio (file ≤20MB)")
     
     // Read audio file and convert to base64
+    let encodeStartTime = CFAbsoluteTimeGetCurrent()
     let audioData = try Data(contentsOf: audioURL)
     let base64Audio = audioData.base64EncodedString()
+    let encodeTime = CFAbsoluteTimeGetCurrent() - encodeStartTime
+    DebugLogger.log("SPEED: Base64 encoding took \(String(format: "%.3f", encodeTime))s (\(String(format: "%.0f", encodeTime * 1000))ms)")
     
     // Determine MIME type from file extension
     let fileExtension = audioURL.pathExtension.lowercased()
@@ -679,28 +696,41 @@ class SpeechService {
     request.httpBody = try JSONEncoder().encode(transcriptionRequest)
     
     // Make request with retry logic
+    let networkStartTime = CFAbsoluteTimeGetCurrent()
     let geminiResponse = try await geminiClient.performRequest(
       request,
       responseType: GeminiResponse.self,
       mode: "GEMINI-TRANSCRIPTION",
       withRetry: true
     )
+    let networkTime = CFAbsoluteTimeGetCurrent() - networkStartTime
+    DebugLogger.log("SPEED: Gemini API network request took \(String(format: "%.3f", networkTime))s (\(String(format: "%.0f", networkTime * 1000))ms)")
     
     let transcript = geminiClient.extractText(from: geminiResponse)
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(transcript)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
     
+    let inlineElapsedTime = CFAbsoluteTimeGetCurrent() - inlineStartTime
+    DebugLogger.log("SPEED: Gemini inline transcription total time: \(String(format: "%.3f", inlineElapsedTime))s (\(String(format: "%.0f", inlineElapsedTime * 1000))ms)")
+    
     return normalizedText
   }
   
   private func transcribeWithGeminiFilesAPI(audioURL: URL, apiKey: String) async throws -> String {
+    let filesAPIStartTime = CFAbsoluteTimeGetCurrent()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using Files API (file >20MB)")
     
     // Step 1: Upload file using resumable upload
+    let uploadStartTime = CFAbsoluteTimeGetCurrent()
     let fileURI = try await geminiClient.uploadFile(audioURL: audioURL, apiKey: apiKey)
+    let uploadTime = CFAbsoluteTimeGetCurrent() - uploadStartTime
+    DebugLogger.log("SPEED: File upload took \(String(format: "%.3f", uploadTime))s (\(String(format: "%.0f", uploadTime * 1000))ms)")
     
     // Step 2: Use file URI for transcription
     let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, apiKey: apiKey)
+    
+    let filesAPIElapsedTime = CFAbsoluteTimeGetCurrent() - filesAPIStartTime
+    DebugLogger.log("SPEED: Gemini Files API transcription total time: \(String(format: "%.3f", filesAPIElapsedTime))s (\(String(format: "%.0f", filesAPIElapsedTime * 1000))ms)")
     
     return result
   }
@@ -708,6 +738,8 @@ class SpeechService {
   // File upload is now handled by GeminiAPIClient
   
   private func transcribeWithGeminiFileURI(fileURI: String, apiKey: String) async throws -> String {
+    let fileURIStartTime = CFAbsoluteTimeGetCurrent()
+    
     // Get combined prompt (normal prompt + difficult words)
     let promptToUse = buildDictationPrompt()
     
@@ -742,16 +774,22 @@ class SpeechService {
     request.httpBody = try JSONEncoder().encode(transcriptionRequest)
     
     // Make request with retry logic
+    let networkStartTime = CFAbsoluteTimeGetCurrent()
     let geminiResponse = try await geminiClient.performRequest(
       request,
       responseType: GeminiResponse.self,
       mode: "GEMINI-TRANSCRIPTION",
       withRetry: true
     )
+    let networkTime = CFAbsoluteTimeGetCurrent() - networkStartTime
+    DebugLogger.log("SPEED: Gemini API network request (FileURI) took \(String(format: "%.3f", networkTime))s (\(String(format: "%.0f", networkTime * 1000))ms)")
     
     let transcript = geminiClient.extractText(from: geminiResponse)
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(transcript)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
+    
+    let fileURIElapsedTime = CFAbsoluteTimeGetCurrent() - fileURIStartTime
+    DebugLogger.log("SPEED: Gemini FileURI transcription took \(String(format: "%.3f", fileURIElapsedTime))s (\(String(format: "%.0f", fileURIElapsedTime * 1000))ms)")
     
     return normalizedText
   }
@@ -822,6 +860,30 @@ class SpeechService {
       
       DebugLogger.log("AUDIO-CHECK: Audio duration: \(String(format: "%.2f", duration)) seconds")
       
+      // #region agent log
+      let logData: [String: Any] = [
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "E",
+        "location": "SpeechService.swift:856",
+        "message": "isAudioLikelyEmpty check",
+        "data": [
+          "duration": duration,
+          "minimumDuration": 0.5,
+          "isEmpty": duration < 0.5
+        ],
+        "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
+      ]
+      if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
+        try? logFile.seekToEnd()
+        try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData)) ?? Data()))
+        try? logFile.write(Data("\n".utf8))
+        try? logFile.close()
+      } else {
+        try? (try? JSONSerialization.data(withJSONObject: logData))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
+      }
+      // #endregion
+      
       let minimumDuration: Double = 0.5  // 500ms minimum for meaningful speech
       if duration < minimumDuration {
         DebugLogger.log("AUDIO-CHECK: Audio too short (< \(minimumDuration)s), treating as empty")
@@ -831,6 +893,25 @@ class SpeechService {
       return false
     } catch {
       DebugLogger.logWarning("AUDIO-CHECK: Could not analyze audio duration: \(error.localizedDescription), proceeding with transcription")
+      // #region agent log
+      let logData: [String: Any] = [
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "E",
+        "location": "SpeechService.swift:870",
+        "message": "isAudioLikelyEmpty error",
+        "data": ["error": error.localizedDescription],
+        "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
+      ]
+      if let logFile = FileHandle(forWritingAtPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log") {
+        try? logFile.seekToEnd()
+        try? logFile.write(Data((try? JSONSerialization.data(withJSONObject: logData)) ?? Data()))
+        try? logFile.write(Data("\n".utf8))
+        try? logFile.close()
+      } else {
+        try? (try? JSONSerialization.data(withJSONObject: logData))?.write(to: URL(fileURLWithPath: "/Users/mgsgde/whisper-shortcut/.cursor/debug.log"), options: .atomic)
+      }
+      // #endregion
       return false  // On error, allow transcription to proceed
     }
   }

@@ -101,6 +101,7 @@ struct ShortcutConfig: Codable {
   var startPrompting: ShortcutDefinition
   var stopPrompting: ShortcutDefinition
   var readSelectedText: ShortcutDefinition
+  var readAloud: ShortcutDefinition
   var openSettings: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
@@ -109,7 +110,8 @@ struct ShortcutConfig: Codable {
     startPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
     stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
     readSelectedText: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
-    openSettings: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true)
+    readAloud: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true),
+    openSettings: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true)
   )
 }
 

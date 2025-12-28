@@ -65,8 +65,8 @@ struct SpeechToPromptSettingsTab: View {
   private var shortcutsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "⌨️ Toggle Shortcut",
-        subtitle: "Start/Stop Prompting with one shortcut (uses selected text as context)"
+        title: "⌨️ Keyboard Shortcuts",
+        subtitle: "Configure shortcuts for prompting and prompt with read aloud"
       )
 
       ShortcutInputRow(
@@ -75,6 +75,21 @@ struct SpeechToPromptSettingsTab: View {
         text: $viewModel.data.togglePrompting,
         isEnabled: $viewModel.data.togglePromptingEnabled,
         focusedField: .togglePrompting,
+        currentFocus: $focusedField,
+        onShortcutChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
+        },
+        validateShortcut: viewModel.validateShortcut
+      )
+
+      ShortcutInputRow(
+        label: "Prompt & Read:",
+        placeholder: "e.g., command+3",
+        text: $viewModel.data.readSelectedText,
+        isEnabled: $viewModel.data.readSelectedTextEnabled,
+        focusedField: .toggleReadSelectedText,
         currentFocus: $focusedField,
         onShortcutChanged: {
           Task {

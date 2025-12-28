@@ -98,21 +98,6 @@ struct GeneralSettingsTab: View {
       )
 
       ShortcutInputRow(
-        label: "Prompt & Read:",
-        placeholder: "e.g., command+3",
-        text: $viewModel.data.readSelectedText,
-        isEnabled: $viewModel.data.readSelectedTextEnabled,
-        focusedField: .toggleReadSelectedText,
-        currentFocus: $focusedField,
-        onShortcutChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        },
-        validateShortcut: viewModel.validateShortcut
-      )
-
-      ShortcutInputRow(
         label: "Toggle Settings:",
         placeholder: "e.g., command+4",
         text: $viewModel.data.openSettings,

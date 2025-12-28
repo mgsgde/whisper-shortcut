@@ -78,6 +78,8 @@ actor LocalSpeechService {
   
   // MARK: - Transcribe Audio
   func transcribe(audioURL: URL, language: String? = nil) async throws -> String {
+    let transcribeStartTime = CFAbsoluteTimeGetCurrent()
+    
     guard let whisperKit = whisperKit else {
       throw TranscriptionError.fileError("WhisperKit not initialized")
     }
@@ -99,6 +101,15 @@ actor LocalSpeechService {
       throw TranscriptionError.fileError("Audio file not found")
     }
     
+    // Get audio duration for reference
+    do {
+      let audioFile = try AVAudioFile(forReading: audioURL)
+      let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
+      DebugLogger.log("LOCAL-SPEECH: Audio duration: \(String(format: "%.2f", duration))s")
+    } catch {
+      DebugLogger.log("LOCAL-SPEECH: Could not determine audio duration")
+    }
+    
     // Transcribe using WhisperKit with DecodingOptions
     // Configure options to skip special tokens and use specified language
     var decodeOptions = DecodingOptions(skipSpecialTokens: true)
@@ -110,6 +121,7 @@ actor LocalSpeechService {
     // Use the correct API signature: audioPath: String, decodeOptions: DecodingOptions?
     // We use the return value for the final text to avoid duplication issues in the callback
     let transcriptionResults: [TranscriptionResult]
+    let whisperKitStartTime = CFAbsoluteTimeGetCurrent()
     do {
       transcriptionResults = try await whisperKit.transcribe(
         audioPath: audioURL.path,
@@ -119,6 +131,8 @@ actor LocalSpeechService {
         // to avoid "This ... This is ... This is a ..." duplication patterns
         return true // Continue processing
       }
+      let whisperKitTime = CFAbsoluteTimeGetCurrent() - whisperKitStartTime
+      DebugLogger.log("SPEED: WhisperKit transcribe call took \(String(format: "%.3f", whisperKitTime))s (\(String(format: "%.0f", whisperKitTime * 1000))ms)")
     } catch {
       // Check if error is related to missing or incomplete model files
       let errorMessage = error.localizedDescription
@@ -153,7 +167,10 @@ actor LocalSpeechService {
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(text)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "LOCAL-SPEECH")
     
+    let totalElapsedTime = CFAbsoluteTimeGetCurrent() - transcribeStartTime
     DebugLogger.logSuccess("LOCAL-SPEECH: Transcription completed")
+    DebugLogger.log("SPEED: Whisper transcription total time: \(String(format: "%.3f", totalElapsedTime))s (\(String(format: "%.0f", totalElapsedTime * 1000))ms)")
+    
     return normalizedText
   }
   
