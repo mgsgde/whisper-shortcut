@@ -174,6 +174,10 @@ class AudioChunker {
             throw AudioChunkerError.noAudioTrack
         }
 
+        // Load source format description for passthrough
+        let formatDescriptions = try await audioTrack.load(.formatDescriptions)
+        let sourceFormatHint = formatDescriptions.first
+
         // Create asset reader
         let reader = try AVAssetReader(asset: asset)
         reader.timeRange = timeRange
@@ -199,7 +203,13 @@ class AudioChunker {
         // Create asset writer
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .wav)
 
-        let writerInput = AVAssetWriterInput(mediaType: .audio, outputSettings: outputSettings)
+        // Use passthrough mode with source format hint for better compatibility
+        // This avoids crashes from incompatible output settings
+        let writerInput = AVAssetWriterInput(
+            mediaType: .audio,
+            outputSettings: nil,
+            sourceFormatHint: sourceFormatHint
+        )
         writerInput.expectsMediaDataInRealTime = false
 
         guard writer.canAdd(writerInput) else {

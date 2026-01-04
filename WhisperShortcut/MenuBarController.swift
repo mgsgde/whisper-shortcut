@@ -735,6 +735,12 @@ class MenuBarController: NSObject {
   ///   - mode: The recording mode (.transcription or .prompt)
   private func handleProcessingError(error: Error, audioURL: URL, mode: AppState.RecordingMode) async {
     await MainActor.run {
+      // Dismiss any processing popup before showing error
+      PopupNotificationWindow.dismissProcessing()
+
+      // Log error to user-accessible crash log
+      CrashLogger.shared.logError(error, context: "Processing error for \(mode)", state: self.appState)
+
       var errorMessage: String
       let shortTitle: String
       let transcriptionError: TranscriptionError?
@@ -823,6 +829,8 @@ class MenuBarController: NSObject {
       let modelInfo = await self.speechService.getTranscriptionModelInfo()
       
       await MainActor.run {
+        // Dismiss any processing popup before showing result
+        PopupNotificationWindow.dismissProcessing()
         // Show popup notification with the transcription text and model info
         PopupNotificationWindow.showTranscriptionResponse(result, modelInfo: modelInfo)
         self.appState = self.appState.showSuccess("Transcription copied to clipboard")
@@ -840,6 +848,8 @@ class MenuBarController: NSObject {
       // Task was cancelled - just cleanup and return to idle
       DebugLogger.log("CANCELLATION: Transcription task was cancelled")
       await MainActor.run {
+        // Dismiss any processing popup
+        PopupNotificationWindow.dismissProcessing()
         self.appState = .idle
         // Clear chunk progress and tracking on cancellation
         self.chunkProgress = nil
@@ -1046,7 +1056,17 @@ extension MenuBarController: ShortcutDelegate {
 extension MenuBarController: ChunkProgressDelegate {
   func chunkProgressUpdated(completed: Int, total: Int) {
     chunkProgress = (completed, total)
+
+    // Update app state to show chunk progress
+    appState = .processing(.processingChunks(completed: completed, total: total))
     updateMenuBarIcon()
+
+    // Update processing popup
+    PopupNotificationWindow.updateProcessing(
+      title: "Processing Audio",
+      message: "Processing chunk \(completed) of \(total)..."
+    )
+
     DebugLogger.log("CHUNK-PROGRESS: \(completed)/\(total) chunks complete")
   }
 
@@ -1057,18 +1077,41 @@ extension MenuBarController: ChunkProgressDelegate {
   func chunkFailed(index: Int, error: Error, willRetry: Bool) {
     if willRetry {
       DebugLogger.logWarning("CHUNK-PROGRESS: Chunk \(index) failed, retrying...")
+      PopupNotificationWindow.updateProcessingMessage("Chunk \(index + 1) failed, retrying...")
     } else {
       DebugLogger.logError("CHUNK-PROGRESS: Chunk \(index) failed: \(error.localizedDescription)")
+      // Log to crash logger for user reference
+      CrashLogger.shared.logError(error, context: "Chunk \(index) transcription failed", state: appState)
     }
   }
 
   func chunkingStarted(totalChunks: Int) {
     chunkProgress = (0, totalChunks)
+
+    // Update app state to show splitting phase
+    appState = .processing(.splitting)
     updateMenuBarIcon()
+
+    // Show persistent processing popup
+    PopupNotificationWindow.showProcessing(
+      "Splitting audio into \(totalChunks) chunks...",
+      title: "Processing Long Audio"
+    )
+
     DebugLogger.log("CHUNK-PROGRESS: Started chunking, \(totalChunks) total chunks")
   }
 
   func mergingStarted() {
+    // Update app state to show merging phase
+    appState = .processing(.merging)
+    updateMenuBarIcon()
+
+    // Update processing popup
+    PopupNotificationWindow.updateProcessing(
+      title: "Almost Done",
+      message: "Merging transcription results..."
+    )
+
     DebugLogger.log("CHUNK-PROGRESS: Merging transcripts...")
   }
 }
