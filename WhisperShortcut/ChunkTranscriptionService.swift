@@ -158,6 +158,11 @@ class ChunkTranscriptionService {
                     await semaphore.wait()
                     defer { Task { await semaphore.signal() } }
 
+                    // Notify delegate that chunk is now actively processing
+                    await MainActor.run {
+                        self.progressDelegate?.chunkStarted(index: chunk.index)
+                    }
+
                     do {
                         let transcript = try await self.transcribeChunk(
                             chunk: chunk,
@@ -253,6 +258,8 @@ class ChunkTranscriptionService {
                             error: errorToReport,
                             willRetry: true
                         )
+                        // Re-notify that chunk is starting again (retry)
+                        self.progressDelegate?.chunkStarted(index: chunk.index)
                     }
                     DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) attempt \(attempt)/\(maxRetries)")
                 }
