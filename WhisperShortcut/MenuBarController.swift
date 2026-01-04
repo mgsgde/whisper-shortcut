@@ -51,6 +51,9 @@ class MenuBarController: NSObject {
   // MARK: - Configuration
   private var currentConfig: ShortcutConfig
 
+  // MARK: - Chunk Progress Tracking
+  private var chunkProgress: (completed: Int, total: Int)?
+
   init(
     audioRecorder: AudioRecorder = AudioRecorder(),
     speechService: SpeechService? = nil,
@@ -179,6 +182,7 @@ class MenuBarController: NSObject {
   private func setupDelegates() {
     audioRecorder.delegate = self
     shortcuts.delegate = self
+    speechService.chunkProgressDelegate = self
   }
 
   private func setupNotifications() {
@@ -239,7 +243,13 @@ class MenuBarController: NSObject {
   private func updateMenuBarIcon() {
     guard let button = statusItem?.button else { return }
     button.title = appState.icon
-    button.toolTip = appState.tooltip
+
+    // Show chunk progress in tooltip during processing if available
+    if case .processing = appState, let progress = chunkProgress {
+      button.toolTip = "Transcribing [\(progress.completed)/\(progress.total)]"
+    } else {
+      button.toolTip = appState.tooltip
+    }
   }
 
   private func updateMenuItems() {
@@ -816,7 +826,8 @@ class MenuBarController: NSObject {
         // Show popup notification with the transcription text and model info
         PopupNotificationWindow.showTranscriptionResponse(result, modelInfo: modelInfo)
         self.appState = self.appState.showSuccess("Transcription copied to clipboard")
-        // Clear tracking after successful completion
+        // Clear chunk progress and tracking after successful completion
+        self.chunkProgress = nil
         if self.currentTranscriptionAudioURL == audioURL {
           self.currentTranscriptionAudioURL = nil
         }
@@ -830,7 +841,8 @@ class MenuBarController: NSObject {
       DebugLogger.log("CANCELLATION: Transcription task was cancelled")
       await MainActor.run {
         self.appState = .idle
-        // Clear tracking on cancellation
+        // Clear chunk progress and tracking on cancellation
+        self.chunkProgress = nil
         if self.currentTranscriptionAudioURL == audioURL {
           self.currentTranscriptionAudioURL = nil
         }
@@ -840,8 +852,9 @@ class MenuBarController: NSObject {
       cleanupAudioFile(at: audioURL)
     } catch {
       await handleProcessingError(error: error, audioURL: audioURL, mode: .transcription)
-      // Clear tracking on error (file will be cleaned up in handleProcessingError if needed)
+      // Clear chunk progress and tracking on error (file will be cleaned up in handleProcessingError if needed)
       await MainActor.run {
+        self.chunkProgress = nil
         if self.currentTranscriptionAudioURL == audioURL {
           self.currentTranscriptionAudioURL = nil
         }
@@ -1020,11 +1033,42 @@ extension MenuBarController: ShortcutDelegate {
   @objc func readAloud() {
     // Copy selected text to clipboard first (same as handleReadSelectedText does)
     simulateCopyPaste()
-    
+
     // Wait a bit for clipboard to update after Cmd+C, then read
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
       self?.performDirectTTS()
     }
   }
   // openSettings is already implemented above
+}
+
+// MARK: - ChunkProgressDelegate (Chunked Transcription Progress)
+extension MenuBarController: ChunkProgressDelegate {
+  func chunkProgressUpdated(completed: Int, total: Int) {
+    chunkProgress = (completed, total)
+    updateMenuBarIcon()
+    DebugLogger.log("CHUNK-PROGRESS: \(completed)/\(total) chunks complete")
+  }
+
+  func chunkCompleted(index: Int, text: String) {
+    DebugLogger.log("CHUNK-PROGRESS: Chunk \(index) completed (\(text.prefix(50))...)")
+  }
+
+  func chunkFailed(index: Int, error: Error, willRetry: Bool) {
+    if willRetry {
+      DebugLogger.logWarning("CHUNK-PROGRESS: Chunk \(index) failed, retrying...")
+    } else {
+      DebugLogger.logError("CHUNK-PROGRESS: Chunk \(index) failed: \(error.localizedDescription)")
+    }
+  }
+
+  func chunkingStarted(totalChunks: Int) {
+    chunkProgress = (0, totalChunks)
+    updateMenuBarIcon()
+    DebugLogger.log("CHUNK-PROGRESS: Started chunking, \(totalChunks) total chunks")
+  }
+
+  func mergingStarted() {
+    DebugLogger.log("CHUNK-PROGRESS: Merging transcripts...")
+  }
 }
