@@ -3,13 +3,16 @@
 //  WhisperShortcut
 //
 //  User-accessible crash/error logging for debugging.
-//  Logs are written to ~/Library/Logs/WhisperShortcut/
+//  Logs are written to Library/Logs/WhisperShortcut/
+//  Note: In sandboxed apps, this resolves to the container path:
+//  ~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Logs/WhisperShortcut/
 //
 
 import Foundation
 
 /// Logs errors to a user-accessible location for debugging.
-/// All logs are written to ~/Library/Logs/WhisperShortcut/
+/// Uses FileManager's standard API (consistent with ModelManager).
+/// In sandboxed apps, logs are written to the container's Library/Logs directory.
 class CrashLogger {
     static let shared = CrashLogger()
 
@@ -17,9 +20,11 @@ class CrashLogger {
     private let dateFormatter: DateFormatter
 
     init() {
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        logDirectory = homeDir
-            .appendingPathComponent("Library/Logs/WhisperShortcut")
+        // Use FileManager's standard API to get the Library directory (consistent with ModelManager)
+        // In sandboxed apps, this returns the container's Library directory
+        let libraryDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+        logDirectory = libraryDir
+            .appendingPathComponent("Logs/WhisperShortcut")
 
         // Create log directory if it doesn't exist
         try? FileManager.default.createDirectory(
@@ -46,7 +51,7 @@ class CrashLogger {
         let content = """
         WhisperShortcut Error Log
         =========================
-        Timestamp: \(Date())
+        Timestamp: \(timestamp)
         Context: \(context)
         App State: \(state?.description ?? "unknown")
 
@@ -57,7 +62,7 @@ class CrashLogger {
 
         ---
         Logs location: \(logDirectory.path)
-        To view logs: open ~/Library/Logs/WhisperShortcut/
+        To view logs: open \(logDirectory.path)
         """
 
         do {
@@ -81,7 +86,7 @@ class CrashLogger {
         var content = """
         WhisperShortcut Crash Log
         =========================
-        Timestamp: \(Date())
+        Timestamp: \(timestamp)
         Context: \(context)
         App Version: \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown")
         Build: \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown")
@@ -103,7 +108,7 @@ class CrashLogger {
 
         ---
         Logs location: \(logDirectory.path)
-        To view logs: open ~/Library/Logs/WhisperShortcut/
+        To view logs: open \(logDirectory.path)
         """
 
         do {
