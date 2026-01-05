@@ -1,21 +1,31 @@
-# Release Notes for Version 5.2.6
+# Release Notes - Version 5.3.0
 
-## What's New
+## Installation
 
-- **New "Read Aloud" Feature**: Added text-to-speech functionality with customizable voice selection settings
-- **Enhanced Settings UI**: Completely refactored settings interface with improved organization, better model availability messaging, and streamlined user experience
-- **Improved TTS and Prompt Settings**: Enhanced text-to-speech and prompt processing settings with new model support and UI improvements
-- **Better Performance Tracking**: Enhanced logging and performance tracking throughout the app for better debugging and optimization
+Download the latest version from the [Releases page](https://github.com/your-repo/releases) or update through the App Store.
 
-## Improvements
+## Changes
 
-- Refactored GeneralSettingsTab layout for better section organization
-- Removed offline models section and integrated model information more seamlessly
-- Enhanced usage instructions for speech features
-- Improved structured logging for TTS processes across multiple components
-- Refactored audio handling and logging in MenuBarController and AudioRecorder
-- Added model initialization time notes to help users understand performance expectations
+### 🎉 Major Features
+
+- **Chunked Audio Transcription**: Added support for chunked audio transcription for long recordings. The app now automatically splits long audio recordings into smaller chunks and processes them in parallel, significantly improving performance and reliability for extended transcription sessions.
+
+### ✨ Enhancements
+
+- **Per-Chunk Status Grid UI**: New real-time status grid interface that provides visibility into the parallel processing of audio chunks. You can now see the progress and status of each chunk as it's being processed, giving you better insight into the transcription workflow.
+
+### 🐛 Bug Fixes
+
+- **Long Recording Crash Fix**: Fixed a critical crash that occurred when processing very long recordings. The app now handles extended recording sessions reliably.
+
+### 🔧 Improvements
+
+- **CrashLogger Refactoring**: Improved crash logging by using FileManager for log directory path management, making the logging system more robust and reliable.
+
+### 🧹 Maintenance
+
+- Updated `.gitignore` to exclude `.claude/` and `.env` files from version control.
 
 ---
 
-**Full Changelog**: [5.2.5...5.2.6](https://github.com/mgsgde/whisper-shortcut/compare/v5.2.5...v5.2.6)
+**Full Changelog**: <https://github.com/your-repo/compare/v5.2.6...v5.3.0>
