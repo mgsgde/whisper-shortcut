@@ -538,6 +538,21 @@ class SpeechService {
     
     DebugLogger.log("TTS: Starting text-to-speech for text (length: \(trimmedText.count) chars) with voice: \(selectedVoice), model: \(selectedTTSModel.displayName)")
     
+    // Check if text needs chunking
+    let chunker = TextChunker()
+    if chunker.needsChunking(trimmedText) {
+      DebugLogger.log("TTS: Using chunked synthesis (text length > \(AppConstants.ttsChunkingThresholdChars) chars)")
+      let chunkService = ChunkTTSService()
+      return try await chunkService.synthesize(
+        text: trimmedText,
+        voiceName: selectedVoice,
+        apiKey: googleAPIKey,
+        model: selectedTTSModel
+      )
+    } else {
+      DebugLogger.log("TTS: Using single-request synthesis (text length <= \(AppConstants.ttsChunkingThresholdChars) chars)")
+    }
+    
     // TTS-specific endpoint from selected model
     let endpoint = selectedTTSModel.apiEndpoint
     

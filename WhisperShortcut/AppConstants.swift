@@ -52,4 +52,15 @@ Key rules:
   /// Maximum number of concurrent API calls during chunked transcription.
   /// Higher values are faster but may hit rate limits on free tier.
   static let maxConcurrentChunks: Int = 3
+
+  // MARK: - TTS Chunking
+  /// Threshold character count above which text will be chunked for TTS.
+  /// Text shorter than this will be sent as a single request.
+  /// Lower values enable earlier chunking for better latency through parallelization.
+  static let ttsChunkingThresholdChars: Int = 3000
+
+  /// Maximum characters per TTS chunk.
+  /// Smaller chunks = lower latency per chunk, better parallelization, but more API calls.
+  /// 3000 chars ≈ ~600 words ≈ ~40 seconds of audio (optimal balance for latency).
+  static let ttsChunkSizeChars: Int = 3000
 }
