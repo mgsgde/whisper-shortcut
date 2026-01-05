@@ -424,15 +424,3 @@ struct SpeechToTextSettingsTab: View {
     }
   }
 }
-
-#if DEBUG
-  struct SpeechToTextSettingsTab_Previews: PreviewProvider {
-    static var previews: some View {
-      @FocusState var focusedField: SettingsFocusField?
-
-      SpeechToTextSettingsTab(viewModel: SettingsViewModel(), focusedField: $focusedField)
-        .padding()
-        .frame(width: 600, height: 800)
-    }
-  }
-#endif

@@ -104,23 +104,3 @@ struct ShortcutInputRow: View {
   }
 }
 
-#if DEBUG
-  struct ShortcutInputRow_Previews: PreviewProvider {
-    static var previews: some View {
-      @State var text = "command+e"
-      @State var isEnabled = true
-      @FocusState var currentFocus: SettingsFocusField?
-
-      ShortcutInputRow(
-        label: "Toggle Dictation:",
-        placeholder: "e.g., command+e",
-        text: $text,
-        isEnabled: $isEnabled,
-        focusedField: .toggleDictation,
-        currentFocus: $currentFocus
-      )
-      .padding()
-      .frame(width: 600)
-    }
-  }
-#endif

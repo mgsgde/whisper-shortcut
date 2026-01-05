@@ -68,25 +68,3 @@ struct PromptTextEditor: View {
     }
   }
 }
-
-#if DEBUG
-  struct PromptTextEditor_Previews: PreviewProvider {
-    static var previews: some View {
-      @State var text = "Enter your custom prompt here..."
-      @FocusState var currentFocus: SettingsFocusField?
-
-      PromptTextEditor(
-        title: "Custom Prompt",
-        subtitle: "Domain Terms & Context:",
-        helpText:
-          "Describe domain terms for better transcription quality. Only used for Gemini models (not Whisper). Leave empty to use Gemini's default.",
-        defaultValue: "Default prompt text",
-        text: $text,
-        focusedField: .customPrompt,
-        currentFocus: $currentFocus
-      )
-      .padding()
-      .frame(width: 600)
-    }
-  }
-#endif

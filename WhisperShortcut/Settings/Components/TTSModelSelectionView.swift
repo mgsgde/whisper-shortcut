@@ -98,16 +98,4 @@ struct TTSModelSelectionView: View {
   }
 }
 
-#if DEBUG
-  struct TTSModelSelectionView_Previews: PreviewProvider {
-    static var previews: some View {
-      @State var selectedTTSModel: TTSModel = .gemini25FlashTTS
-
-      TTSModelSelectionView(selectedTTSModel: $selectedTTSModel)
-        .padding()
-        .frame(width: 600)
-    }
-  }
-#endif
-
 

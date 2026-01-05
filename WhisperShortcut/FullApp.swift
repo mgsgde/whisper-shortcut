@@ -121,7 +121,7 @@ class FullWhisperShortcut {
     // Full implementation using all components
 
     // Check for multiple instances to prevent double menu bar icons
-    let bundleID = Bundle.main.bundleIdentifier ?? "com.magnusgoedde.whispershortcut"
+    let bundleID = Bundle.main.bundleIdentifier ?? Constants.defaultBundleID
     let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
 
     if runningApps.count > 1 {

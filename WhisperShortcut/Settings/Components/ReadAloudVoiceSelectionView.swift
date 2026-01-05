@@ -103,15 +103,4 @@ struct ReadAloudVoiceSelectionView: View {
   }
 }
 
-#if DEBUG
-  struct ReadAloudVoiceSelectionView_Previews: PreviewProvider {
-    static var previews: some View {
-      @State var selectedVoice: String = "Charon"
-      
-      ReadAloudVoiceSelectionView(selectedVoice: $selectedVoice)
-        .padding()
-        .frame(width: 600)
-    }
-  }
-#endif
 

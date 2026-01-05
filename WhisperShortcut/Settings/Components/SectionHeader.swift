@@ -29,18 +29,3 @@ struct SectionHeader: View {
   }
 }
 
-#if DEBUG
-  struct SectionHeader_Previews: PreviewProvider {
-    static var previews: some View {
-      VStack(spacing: 20) {
-        SectionHeader(title: "Shortcuts")
-
-        SectionHeader(
-          title: "Shortcuts",
-          subtitle: "Configure keyboard shortcuts for different modes"
-        )
-      }
-      .padding()
-    }
-  }
-#endif

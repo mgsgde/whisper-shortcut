@@ -141,15 +141,3 @@ struct ReadAloudSettingsTab: View {
   }
 }
 
-#if DEBUG
-  struct ReadAloudSettingsTab_Previews: PreviewProvider {
-    static var previews: some View {
-      @FocusState var focusedField: SettingsFocusField?
-
-      ReadAloudSettingsTab(viewModel: SettingsViewModel(), focusedField: $focusedField)
-        .padding()
-        .frame(width: 600, height: 500)
-    }
-  }
-#endif
-

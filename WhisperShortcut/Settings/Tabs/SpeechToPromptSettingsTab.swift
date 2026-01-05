@@ -148,15 +148,3 @@ struct SpeechToPromptSettingsTab: View {
   }
 
 }
-
-#if DEBUG
-  struct SpeechToPromptSettingsTab_Previews: PreviewProvider {
-    static var previews: some View {
-      @FocusState var focusedField: SettingsFocusField?
-
-      SpeechToPromptSettingsTab(viewModel: SettingsViewModel(), focusedField: $focusedField)
-        .padding()
-        .frame(width: 600, height: 900)
-    }
-  }
-#endif

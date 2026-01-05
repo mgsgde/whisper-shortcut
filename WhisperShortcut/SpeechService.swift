@@ -299,7 +299,7 @@ class SpeechService {
     }
     
     // Build request
-    var request = geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)
+    var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)
     
     // Build contents array with current message only
     var contents: [GeminiChatRequest.GeminiChatContent] = []
@@ -431,7 +431,7 @@ class SpeechService {
     }
     
     // Build request
-    var request = geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)
+    var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)
     
     // Build contents with selected text and text command
     let contextText = """
@@ -542,7 +542,7 @@ class SpeechService {
     let endpoint = selectedTTSModel.apiEndpoint
     
     // Build request
-    var request = geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)
+    var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)
     
     // Build contents with text input
     let contents = [
@@ -746,7 +746,7 @@ class SpeechService {
       ]
     )
     
-    var request = geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
+    var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
     request.httpBody = try JSONEncoder().encode(transcriptionRequest)
     
     // Make request with retry logic
@@ -824,7 +824,7 @@ class SpeechService {
       ]
     )
     
-    var request = geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
+    var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
     request.httpBody = try JSONEncoder().encode(transcriptionRequest)
     
     // Make request with retry logic

@@ -70,15 +70,6 @@ struct DebugLogger {
   // MARK: - File Logging
   private static let fileLogger = FileLogger.shared
   
-  #if DEBUG
-  /// Test method: Reset current date to force creation of new log file on next log
-  /// This allows testing daily log rotation without waiting for the next day
-  /// Usage: Call this method, then trigger any log action to see a new file created
-  static func testResetLogDate() {
-    fileLogger.resetCurrentDateForTesting()
-  }
-  #endif
-  
   // MARK: - Modern os_log Methods
   
   /// Logs a debug message using Apple's Unified Logging System
@@ -543,16 +534,4 @@ private class FileLogger {
       closeAllHandles()
     }
   }
-  
-  #if DEBUG
-  /// Test method: Reset current date to force creation of new log file on next log
-  /// This allows testing daily log rotation without waiting for the next day
-  fileprivate func resetCurrentDateForTesting() {
-    fileQueue.async { [weak self] in
-      guard let self = self else { return }
-      self.closeAllHandles()
-      self.currentDate = nil
-    }
-  }
-  #endif
 }

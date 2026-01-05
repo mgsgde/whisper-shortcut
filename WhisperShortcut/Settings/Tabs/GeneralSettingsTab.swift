@@ -426,15 +426,3 @@ struct GeneralSettingsTab: View {
     }
   }
 }
-
-#if DEBUG
-  struct GeneralSettingsTab_Previews: PreviewProvider {
-    static var previews: some View {
-      @FocusState var focusedField: SettingsFocusField?
-
-      GeneralSettingsTab(viewModel: SettingsViewModel(), focusedField: $focusedField)
-        .padding()
-        .frame(width: 600, height: 400)
-    }
-  }
-#endif

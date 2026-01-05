@@ -274,7 +274,7 @@ class ChunkTranscriptionService {
 
                 // Build request
                 let endpoint = model.apiEndpoint
-                var request = geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
+                var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
 
                 let transcriptionRequest = GeminiTranscriptionRequest(
                     contents: [

@@ -182,15 +182,3 @@ struct PromptAndReadSettingsTab: View {
   }
 }
 
-#if DEBUG
-  struct PromptAndReadSettingsTab_Previews: PreviewProvider {
-    static var previews: some View {
-      @FocusState var focusedField: SettingsFocusField?
-
-      PromptAndReadSettingsTab(viewModel: SettingsViewModel(), focusedField: $focusedField)
-        .padding()
-        .frame(width: 600, height: 900)
-    }
-  }
-#endif
-

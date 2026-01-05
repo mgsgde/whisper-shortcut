@@ -27,8 +27,20 @@ class GeminiAPIClient {
   
   // MARK: - Request Creation
   /// Creates a URLRequest for Gemini API with proper headers
-  func createRequest(endpoint: String, apiKey: String) -> URLRequest {
-    let url = URL(string: "\(endpoint)?key=\(apiKey)")!
+  /// Uses URLComponents to properly encode the API key in query parameters
+  func createRequest(endpoint: String, apiKey: String) throws -> URLRequest {
+    // Endpoint is a constant, but use URLComponents for proper query parameter encoding
+    guard let baseURL = URL(string: endpoint),
+          var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+      throw TranscriptionError.invalidRequest
+    }
+    
+    components.queryItems = [URLQueryItem(name: "key", value: apiKey)]
+    
+    guard let url = components.url else {
+      throw TranscriptionError.invalidRequest
+    }
+    
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -241,7 +253,18 @@ class GeminiAPIClient {
     DebugLogger.log("GEMINI-FILES-API: Uploading file (\(numBytes) bytes, \(mimeType))")
     
     // Step 1: Initialize resumable upload
-    let initURL = URL(string: "\(Constants.filesAPIBaseURL)?key=\(apiKey)")!
+    // Use URLComponents for proper query parameter encoding
+    guard let baseURL = URL(string: Constants.filesAPIBaseURL),
+          var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+      throw TranscriptionError.invalidRequest
+    }
+    
+    components.queryItems = [URLQueryItem(name: "key", value: apiKey)]
+    
+    guard let initURL = components.url else {
+      throw TranscriptionError.invalidRequest
+    }
+    
     var initRequest = URLRequest(url: initURL)
     initRequest.httpMethod = "POST"
     initRequest.setValue("resumable", forHTTPHeaderField: "X-Goog-Upload-Protocol")

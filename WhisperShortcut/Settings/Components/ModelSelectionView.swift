@@ -103,15 +103,3 @@ struct ModelSelectionView: View {
     }
   }
 }
-
-#if DEBUG
-  struct ModelSelectionView_Previews: PreviewProvider {
-    static var previews: some View {
-      @State var selectedTranscriptionModel: TranscriptionModel = .gemini20Flash
-
-      ModelSelectionView(selectedTranscriptionModel: $selectedTranscriptionModel)
-        .padding()
-        .frame(width: 600)
-    }
-  }
-#endif
