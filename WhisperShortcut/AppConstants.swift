@@ -51,7 +51,7 @@ Key rules:
 
   /// Maximum number of concurrent API calls during chunked transcription.
   /// Higher values are faster but may hit rate limits on free tier.
-  static let maxConcurrentChunks: Int = 3
+  static let maxConcurrentChunks: Int = 5
 
   // MARK: - TTS Chunking
   /// Maximum characters per TTS chunk.
