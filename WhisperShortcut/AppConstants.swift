@@ -61,6 +61,11 @@ Key rules:
 
   /// Maximum characters per TTS chunk.
   /// Smaller chunks = lower latency per chunk, better parallelization, but more API calls.
-  /// 1000 chars ≈ ~200 words ≈ ~13 seconds of audio (optimal for testing and low latency).
-  static let ttsChunkSizeChars: Int = 1000
+  /// 500 chars ≈ ~100 words ≈ ~6-7 seconds of audio (optimal for very low latency).
+  static let ttsChunkSizeChars: Int = 500
+
+  /// Minimum characters per chunk (as percentage of chunk size).
+  /// Prevents splitting too early when natural boundaries are found near the start.
+  /// 0.7 = 70% of chunk size = minimum 700 chars per chunk (when chunk size is 1000).
+  static let ttsChunkMinSizeRatio: Double = 0.7
 }

@@ -498,8 +498,7 @@ class MenuBarController: NSObject {
         let audioData = try await speechService.readTextAloud(selectedText)
         await MainActor.run {
           self.isProcessingTTS = false
-        }
-        await MainActor.run {
+          PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
         }
       } catch {
@@ -547,6 +546,7 @@ class MenuBarController: NSObject {
         let audioData = try await speechService.readTextAloud(selectedText)
         await MainActor.run {
           self.isProcessingTTS = false
+          PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
         }
         return
@@ -581,6 +581,7 @@ class MenuBarController: NSObject {
         let audioData = try await speechService.readTextAloud(selectedText)
         await MainActor.run {
           self.isProcessingTTS = false
+          PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
         }
       } else {
@@ -604,6 +605,7 @@ class MenuBarController: NSObject {
         let audioData = try await speechService.readTextAloud(promptResult, voiceName: promptAndReadVoice)
         await MainActor.run {
           self.isProcessingTTS = false
+          PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
         }
       }

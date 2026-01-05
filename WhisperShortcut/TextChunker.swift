@@ -134,6 +134,7 @@ class TextChunker {
 
     /// Find the best split point within the maximum length.
     /// Tries sentence boundaries first, then word boundaries, then character limit.
+    /// Only searches in the last portion of the chunk to prevent splitting too early.
     /// - Parameters:
     ///   - text: The text to search in
     ///   - maxLength: Maximum length for the chunk
@@ -147,24 +148,40 @@ class TextChunker {
             return startOffset
         }
 
-        let searchRange = text.startIndex..<text.index(text.startIndex, offsetBy: searchLength)
+        // Calculate minimum chunk size (prevent splitting too early)
+        let minChunkSize = Int(Double(chunkSize) * AppConstants.ttsChunkMinSizeRatio)
+        
+        // Only search in the last portion of the chunk (last 30% or minimum 200 chars)
+        // This ensures we don't split too early when natural boundaries are found near the start
+        let searchStartOffset = max(0, searchLength - max(200, Int(Double(searchLength) * 0.3)))
+        let searchRange = text.index(text.startIndex, offsetBy: searchStartOffset)..<text.index(text.startIndex, offsetBy: searchLength)
         let searchText = String(text[searchRange])
+        
+        // Ensure we don't split before minimum chunk size
+        let minSplitPoint = max(minChunkSize, searchStartOffset)
 
         // Try to find sentence boundary (., !, ? followed by space or newline)
         if let sentenceEnd = findSentenceBoundary(in: searchText) {
-            DebugLogger.logDebug("TTS-CHUNKER: Found sentence boundary at position \(startOffset + sentenceEnd)")
-            return startOffset + sentenceEnd
+            let absolutePosition = startOffset + searchStartOffset + sentenceEnd
+            if absolutePosition >= startOffset + minSplitPoint {
+                DebugLogger.logDebug("TTS-CHUNKER: Found sentence boundary at position \(absolutePosition)")
+                return absolutePosition
+            }
         }
 
         // Fallback: find word boundary (space or newline)
         if let wordEnd = findWordBoundary(in: searchText) {
-            DebugLogger.logDebug("TTS-CHUNKER: Found word boundary at position \(startOffset + wordEnd)")
-            return startOffset + wordEnd
+            let absolutePosition = startOffset + searchStartOffset + wordEnd
+            if absolutePosition >= startOffset + minSplitPoint {
+                DebugLogger.logDebug("TTS-CHUNKER: Found word boundary at position \(absolutePosition)")
+                return absolutePosition
+            }
         }
 
-        // Last resort: split at character limit
-        DebugLogger.logDebug("TTS-CHUNKER: No boundary found, splitting at character limit \(startOffset + searchLength)")
-        return startOffset + searchLength
+        // Last resort: split at character limit (but respect minimum)
+        let splitPoint = max(startOffset + minSplitPoint, startOffset + searchLength)
+        DebugLogger.logDebug("TTS-CHUNKER: No boundary found, splitting at position \(splitPoint)")
+        return splitPoint
     }
 
     /// Find sentence boundary in text.
