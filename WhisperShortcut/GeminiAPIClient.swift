@@ -180,14 +180,41 @@ class GeminiAPIClient {
         DebugLogger.log("\(mode)-RETRY: Cancelled on attempt \(attempt)")
         throw CancellationError()
       } catch let error as URLError {
+        // Log detailed network error information
+        DebugLogger.logError("\(mode)-NETWORK-ERROR: URLError code: \(error.code.rawValue), description: \(error.localizedDescription)")
+        if let failingURL = error.userInfo["NSErrorFailingURLStringKey"] as? String {
+          DebugLogger.logError("\(mode)-NETWORK-ERROR: Failing URL: \(failingURL)")
+        }
+        if let underlyingError = error.userInfo["NSUnderlyingErrorKey"] as? Error {
+          DebugLogger.logError("\(mode)-NETWORK-ERROR: Underlying error: \(underlyingError.localizedDescription)")
+        }
+        
         if error.code == .cancelled {
           DebugLogger.log("\(mode)-RETRY: Request cancelled by user")
           throw CancellationError()
         } else if error.code == .timedOut {
+          DebugLogger.logError("\(mode)-NETWORK-ERROR: Request timed out")
           throw error.localizedDescription.contains("request")
             ? TranscriptionError.requestTimeout
             : TranscriptionError.resourceTimeout
+        } else if error.code.rawValue == -1005 || error.localizedDescription.contains("connection was lost") || error.localizedDescription.contains("network connection") {
+          // Network connection lost (code -1005)
+          DebugLogger.logError("\(mode)-NETWORK-ERROR: Connection lost (URLError code: \(error.code.rawValue)) - will retry if attempts remaining")
+          lastError = TranscriptionError.networkError("Network connection lost: \(error.localizedDescription)")
+          if attempt < maxAttempts {
+            DebugLogger.log("\(mode)-RETRY: Connection lost, retrying in \(Constants.retryDelaySeconds)s...")
+            try? await Task.sleep(nanoseconds: UInt64(Constants.retryDelaySeconds * 1_000_000_000))
+            continue
+          }
+          throw TranscriptionError.networkError("Network connection lost: \(error.localizedDescription)")
         } else {
+          DebugLogger.logError("\(mode)-NETWORK-ERROR: Other network error: \(error.localizedDescription)")
+          lastError = TranscriptionError.networkError(error.localizedDescription)
+          if attempt < maxAttempts {
+            DebugLogger.log("\(mode)-RETRY: Network error, retrying in \(Constants.retryDelaySeconds)s...")
+            try? await Task.sleep(nanoseconds: UInt64(Constants.retryDelaySeconds * 1_000_000_000))
+            continue
+          }
           throw TranscriptionError.networkError(error.localizedDescription)
         }
       } catch {

@@ -149,10 +149,17 @@ class AudioRecorder: NSObject {
 // MARK: - AVAudioRecorderDelegate
 extension AudioRecorder: AVAudioRecorderDelegate {
   func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
-    // Clean up the recorder instance to release microphone
-    audioRecorder = nil
+    // Store URL before cleanup
+    let url = recordingURL
+    
+    // Delay cleanup to allow CoreAudio to finish I/O cycle and prevent "Abandoning I/O cycle" errors
+    // This gives CoreAudio time to complete its reconfiguration before we release the recorder
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+      self?.audioRecorder = nil
+      DebugLogger.logAudio("🎵 AUDIO: AudioRecorder cleaned up after delay")
+    }
 
-    if flag, let url = recordingURL {
+    if flag, let url = url {
 
       // Verify the file has content
       do {

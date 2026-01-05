@@ -740,8 +740,8 @@ class MenuBarController: NSObject {
       // Dismiss any processing popup before showing error
       PopupNotificationWindow.dismissProcessing()
 
-      // Log error to user-accessible crash log
-      CrashLogger.shared.logError(error, context: "Processing error for \(mode)", state: self.appState)
+      // Log error to file (replaces CrashLogger)
+      DebugLogger.logError(error, context: "Processing error for \(mode)", state: self.appState)
 
       var errorMessage: String
       let shortTitle: String
@@ -1157,8 +1157,8 @@ extension MenuBarController: ChunkProgressDelegate {
       )
 
       DebugLogger.logError("CHUNK-PROGRESS: Chunk \(index) failed: \(error.localizedDescription)")
-      // Log to crash logger for user reference
-      CrashLogger.shared.logError(error, context: "Chunk \(index) transcription failed", state: appState)
+      // Log to file (replaces CrashLogger)
+      DebugLogger.logError(error, context: "Chunk \(index) transcription failed", state: appState)
     }
   }
 
