@@ -27,6 +27,9 @@ enum ChunkedTTSError: Error, LocalizedError {
 class ChunkTTSService {
     // MARK: - Properties
 
+    /// Delegate for receiving progress updates.
+    weak var progressDelegate: ChunkProgressDelegate?
+
     /// Maximum concurrent API calls.
     let maxConcurrency: Int
 
@@ -87,6 +90,16 @@ class ChunkTTSService {
 
         DebugLogger.log("TTS-CHUNK-SERVICE: Split into \(chunks.count) chunks (max concurrency: \(maxConcurrency), max retries: \(maxRetries))")
 
+        // Notify delegate about chunking start
+        await MainActor.run {
+            if let delegate = progressDelegate {
+                DebugLogger.log("TTS-CHUNK-SERVICE: Notifying delegate about chunking start (\(chunks.count) chunks)")
+                delegate.chunkingStarted(totalChunks: chunks.count)
+            } else {
+                DebugLogger.logWarning("TTS-CHUNK-SERVICE: No progress delegate set - UI progress won't be shown")
+            }
+        }
+
         // If only one chunk, process directly
         if chunks.count == 1 {
             DebugLogger.log("TTS-CHUNK-SERVICE: Single chunk, processing directly")
@@ -110,6 +123,11 @@ class ChunkTTSService {
             apiKey: apiKey,
             model: model
         )
+
+        // Notify delegate about merging start
+        await MainActor.run {
+            progressDelegate?.mergingStarted()
+        }
 
         // Merge audio chunks
         DebugLogger.log("TTS-CHUNK-SERVICE: Merging \(audioChunks.count) audio chunks")
@@ -146,6 +164,11 @@ class ChunkTTSService {
 
                     DebugLogger.log("TTS-CHUNK-SERVICE: Chunk \(chunk.index + 1)/\(totalChunks) started processing (\(chunk.text.count) chars)")
 
+                    // Notify delegate that chunk started
+                    await MainActor.run {
+                        progressDelegate?.chunkStarted(index: chunk.index)
+                    }
+
                     do {
                         let audioData = try await self.synthesizeChunk(
                             chunk: chunk,
@@ -172,11 +195,23 @@ class ChunkTTSService {
 
                     DebugLogger.logSuccess("TTS-CHUNK-SERVICE: Chunk \(audioChunk.index + 1)/\(totalChunks) completed successfully (\(audioChunk.data.count) bytes)")
 
+                    // Notify delegate that chunk completed
+                    await MainActor.run {
+                        progressDelegate?.chunkCompleted(index: audioChunk.index, text: "Audio synthesized (\(audioChunk.data.count) bytes)")
+                        progressDelegate?.chunkProgressUpdated(completed: completed, total: totalChunks)
+                    }
+
                 case .failure(let error):
                     if let chunkError = error as? ChunkError {
                         await accumulator.addError(index: chunkError.index, error: chunkError.error)
 
                         DebugLogger.logError("TTS-CHUNK-SERVICE: Chunk \(chunkError.index + 1)/\(totalChunks) failed: \(chunkError.error.localizedDescription)")
+
+                        // Notify delegate that chunk failed (no retry at this level - retries happen in synthesizeChunk)
+                        await MainActor.run {
+                            progressDelegate?.chunkFailed(index: chunkError.index, error: chunkError.error, willRetry: false)
+                            progressDelegate?.chunkProgressUpdated(completed: completed, total: totalChunks)
+                        }
                     }
                 }
             }
@@ -222,6 +257,11 @@ class ChunkTTSService {
                 // Report retry status
                 if attempt > 1 {
                     DebugLogger.log("TTS-CHUNK-SERVICE: Chunk \(chunk.index) attempt \(attempt)/\(maxRetries)")
+                    // Notify delegate about retry
+                    let errorToReport = lastError ?? TranscriptionError.networkError("Retrying")
+                    await MainActor.run {
+                        progressDelegate?.chunkFailed(index: chunk.index, error: errorToReport, willRetry: true)
+                    }
                 }
 
                 // Build request

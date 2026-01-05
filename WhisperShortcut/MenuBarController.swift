@@ -53,6 +53,7 @@ class MenuBarController: NSObject {
 
   // MARK: - Chunk Progress Tracking
   private var chunkStatuses: [ChunkStatus] = []
+  private var isProcessingTTS: Bool = false
 
   init(
     audioRecorder: AudioRecorder = AudioRecorder(),
@@ -490,10 +491,14 @@ class MenuBarController: NSObject {
     }
     
     appState = .processing(.ttsProcessing)
+    isProcessingTTS = true
     
     Task {
       do {
         let audioData = try await speechService.readTextAloud(selectedText)
+        await MainActor.run {
+          self.isProcessingTTS = false
+        }
         await MainActor.run {
           self.playTTSAudio(audioData: audioData)
         }
@@ -503,6 +508,7 @@ class MenuBarController: NSObject {
           DebugLogger.logError("TTS-ERROR: TranscriptionError type: \(transcriptionError)")
         }
         await MainActor.run {
+          self.isProcessingTTS = false
           self.appState = self.appState.showError("TTS failed: \(error.localizedDescription)")
           PopupNotificationWindow.showError("Failed to generate speech: \(error.localizedDescription)", title: "TTS Error")
         }
@@ -535,10 +541,12 @@ class MenuBarController: NSObject {
         
         await MainActor.run {
           self.appState = .processing(.ttsProcessing)
+          self.isProcessingTTS = true
         }
         
         let audioData = try await speechService.readTextAloud(selectedText)
         await MainActor.run {
+          self.isProcessingTTS = false
           self.playTTSAudio(audioData: audioData)
         }
         return
@@ -567,10 +575,12 @@ class MenuBarController: NSObject {
         DebugLogger.log("TTS: No voice command detected, using direct TTS")
         await MainActor.run {
           self.appState = .processing(.ttsProcessing)
+          self.isProcessingTTS = true
         }
         
         let audioData = try await speechService.readTextAloud(selectedText)
         await MainActor.run {
+          self.isProcessingTTS = false
           self.playTTSAudio(audioData: audioData)
         }
       } else {
@@ -586,12 +596,14 @@ class MenuBarController: NSObject {
         // Now TTS the result using Prompt & Read voice
         await MainActor.run {
           self.appState = .processing(.ttsProcessing)
+          self.isProcessingTTS = true
         }
         
         // Get Prompt & Read voice from UserDefaults
         let promptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice) ?? SettingsDefaults.selectedPromptAndReadVoice
         let audioData = try await speechService.readTextAloud(promptResult, voiceName: promptAndReadVoice)
         await MainActor.run {
+          self.isProcessingTTS = false
           self.playTTSAudio(audioData: audioData)
         }
       }
@@ -1069,17 +1081,33 @@ extension MenuBarController: ChunkProgressDelegate {
     // Initialize all chunks as pending
     chunkStatuses = Array(repeating: .pending, count: totalChunks)
 
-    // Update app state to show splitting phase
-    appState = .processing(.splitting)
+    // Check if this is TTS or transcription
+    let isTTS = isProcessingTTS
+
+    // Update app state to show splitting phase (but preserve TTS context)
+    if isTTS {
+      // For TTS, we'll use a custom approach - keep ttsProcessing but show splitting
+      // Actually, let's use splitting but remember it's TTS via a different mechanism
+      appState = .processing(.splitting)
+    } else {
+      appState = .processing(.splitting)
+    }
     updateMenuBarIcon()
 
-    // Show persistent processing popup
-    PopupNotificationWindow.showProcessing(
-      "Splitting audio into \(totalChunks) chunks...",
-      title: "Processing Long Audio"
-    )
+    // Show persistent processing popup with appropriate message
+    if isTTS {
+      PopupNotificationWindow.showProcessing(
+        "Splitting text into \(totalChunks) chunks...",
+        title: "Processing Long Text"
+      )
+    } else {
+      PopupNotificationWindow.showProcessing(
+        "Splitting audio into \(totalChunks) chunks...",
+        title: "Processing Long Audio"
+      )
+    }
 
-    DebugLogger.log("CHUNK-PROGRESS: Started chunking, \(totalChunks) total chunks")
+    DebugLogger.log("CHUNK-PROGRESS: Started chunking, \(totalChunks) total chunks (TTS: \(isTTS))")
   }
 
   func chunkStarted(index: Int) {
@@ -1092,10 +1120,13 @@ extension MenuBarController: ChunkProgressDelegate {
     appState = .processing(.processingChunks(statuses: chunkStatuses))
     updateMenuBarIcon()
 
+    // Check if this is TTS or transcription
+    let isTTS = isProcessingTTS
+
     // Update processing popup with status grid
     let statusGrid = generateStatusGrid()
     PopupNotificationWindow.updateProcessing(
-      title: "Processing Audio",
+      title: isTTS ? "Synthesizing Speech" : "Processing Audio",
       message: statusGrid
     )
 
@@ -1118,10 +1149,13 @@ extension MenuBarController: ChunkProgressDelegate {
     appState = .processing(.processingChunks(statuses: chunkStatuses))
     updateMenuBarIcon()
 
+    // Check if this is TTS or transcription
+    let isTTS = isProcessingTTS
+
     // Update processing popup with status grid
     let statusGrid = generateStatusGrid()
     PopupNotificationWindow.updateProcessing(
-      title: "Processing Audio",
+      title: isTTS ? "Synthesizing Speech" : "Processing Audio",
       message: statusGrid
     )
 
@@ -1166,16 +1200,26 @@ extension MenuBarController: ChunkProgressDelegate {
     // Clear chunk statuses (no longer needed for display)
     chunkStatuses = []
 
+    // Check if this is TTS or transcription
+    let isTTS = isProcessingTTS
+
     // Update app state to show merging phase
     appState = .processing(.merging)
     updateMenuBarIcon()
 
-    // Update processing popup
-    PopupNotificationWindow.updateProcessing(
-      title: "Almost Done",
-      message: "Merging transcription results..."
-    )
+    // Update processing popup with appropriate message
+    if isTTS {
+      PopupNotificationWindow.updateProcessing(
+        title: "Almost Done",
+        message: "Merging audio chunks..."
+      )
+    } else {
+      PopupNotificationWindow.updateProcessing(
+        title: "Almost Done",
+        message: "Merging transcription results..."
+      )
+    }
 
-    DebugLogger.log("CHUNK-PROGRESS: Merging transcripts...")
+    DebugLogger.log("CHUNK-PROGRESS: Merging \(isTTS ? "audio chunks" : "transcripts")...")
   }
 }

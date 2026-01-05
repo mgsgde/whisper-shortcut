@@ -543,6 +543,7 @@ class SpeechService {
     if chunker.needsChunking(trimmedText) {
       DebugLogger.log("TTS: Using chunked synthesis (text length > \(AppConstants.ttsChunkingThresholdChars) chars)")
       let chunkService = ChunkTTSService()
+      chunkService.progressDelegate = chunkProgressDelegate
       return try await chunkService.synthesize(
         text: trimmedText,
         voiceName: selectedVoice,
