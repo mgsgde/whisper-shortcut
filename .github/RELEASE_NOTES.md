@@ -28,4 +28,4 @@ Download the latest version from the [Releases page](https://github.com/mgsgde/w
 
 ---
 
-**Full Changelog**: <https://github.com/mgsgde/whisper-shortcut/compare/v5.2.6...v5.3.0>
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v5.2.6...v5.3.0
