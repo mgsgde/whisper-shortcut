@@ -1,31 +1,33 @@
-# Release Notes - Version 5.3.0
+# Release v5.3.1
 
 ## Installation
 
-Download the latest version from the [Releases page](https://github.com/mgsgde/whisper-shortcut/releases) or update through the App Store.
+Download the latest release from [GitHub Releases](https://github.com/mgsgde/whisper-shortcut/releases).
 
 ## Changes
 
-### 🎉 Major Features
+### Performance Improvements
 
-- **Chunked Audio Transcription**: Added support for chunked audio transcription for long recordings. The app now automatically splits long audio recordings into smaller chunks and processes them in parallel, significantly improving performance and reliability for extended transcription sessions.
+- **Enhanced TTS Chunking**: Implemented intelligent text-to-speech chunking logic for improved synthesis performance with large texts
+- **Optimized Processing**: Added progress notifications and adjustable chunk sizes for better user experience during TTS processing
+- **Increased Concurrency**: Increased maximum concurrent API calls for improved transcription performance
 
-### ✨ Enhancements
+### Improvements
 
-- **Per-Chunk Status Grid UI**: New real-time status grid interface that provides visibility into the parallel processing of audio chunks. You can now see the progress and status of each chunk as it's being processed, giving you better insight into the transcription workflow.
+- Simplified TTS chunking logic and improved prompt model selection
+- Enhanced error logging by replacing CrashLogger with DebugLogger
+- Updated GeminiAPIClient request creation and removed debug preview methods
 
-### 🐛 Bug Fixes
+### Bug Fixes
 
-- **Long Recording Crash Fix**: Fixed a critical crash that occurred when processing very long recordings. The app now handles extended recording sessions reliably.
+- Fixed GitHub repository links in release notes
+- Removed angle brackets from changelog links
 
-### 🔧 Improvements
+### Documentation
 
-- **CrashLogger Refactoring**: Improved crash logging by using FileManager for log directory path management, making the logging system more robust and reliable.
+- Enhanced README with advanced features and new modes
+- Updated screenshot assets
 
-### 🧹 Maintenance
+## Full Changelog
 
-- Updated `.gitignore` to exclude `.claude/` and `.env` files from version control.
-
----
-
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v5.2.6...v5.3.0
+For a complete list of changes, see the [full changelog](https://github.com/mgsgde/whisper-shortcut/compare/v5.3.0...v5.3.1).
