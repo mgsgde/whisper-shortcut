@@ -49,11 +49,11 @@ class TextChunker {
     /// - Parameter text: The text to check
     /// - Returns: True if the text should be chunked
     func needsChunking(_ text: String) -> Bool {
-        let needsChunking = text.count > AppConstants.ttsChunkingThresholdChars
+        let needsChunking = text.count > AppConstants.ttsChunkSizeChars
         if needsChunking {
-            DebugLogger.log("TTS-CHUNKER: Text needs chunking (length: \(text.count) chars, threshold: \(AppConstants.ttsChunkingThresholdChars))")
+            DebugLogger.log("TTS-CHUNKER: Text needs chunking (length: \(text.count) chars, threshold: \(AppConstants.ttsChunkSizeChars))")
         } else {
-            DebugLogger.logDebug("TTS-CHUNKER: Text does not need chunking (length: \(text.count) chars, threshold: \(AppConstants.ttsChunkingThresholdChars))")
+            DebugLogger.logDebug("TTS-CHUNKER: Text does not need chunking (length: \(text.count) chars, threshold: \(AppConstants.ttsChunkSizeChars))")
         }
         return needsChunking
     }

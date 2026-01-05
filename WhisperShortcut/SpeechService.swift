@@ -93,6 +93,21 @@ class SpeechService {
     let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? SettingsDefaults.selectedPromptModel
     return selectedPromptModel.displayName
   }
+  
+  // MARK: - Prompt Model Selection Helper
+  /// Gets the selected prompt model for the given mode
+  /// - Parameter mode: The prompt mode (togglePrompting or promptAndRead)
+  /// - Returns: The selected PromptModel based on UserDefaults or default
+  private func getPromptModel(for mode: PromptMode) -> PromptModel {
+    let modelKey = mode == .togglePrompting 
+      ? UserDefaultsKeys.selectedPromptModel 
+      : UserDefaultsKeys.selectedPromptAndReadModel
+    let defaultModel = mode == .togglePrompting 
+      ? SettingsDefaults.selectedPromptModel 
+      : SettingsDefaults.selectedPromptAndReadModel
+    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? defaultModel.rawValue
+    return PromptModel(rawValue: modelString) ?? defaultModel
+  }
 
   // MARK: - Prompt Building
   /// Builds the combined dictation prompt from normal prompt and difficult words
@@ -237,10 +252,7 @@ class SpeechService {
     let clipboardContext = getClipboardContext()
     
     // Get selected model from settings based on mode
-    let modelKey = mode == .togglePrompting ? UserDefaultsKeys.selectedPromptModel : UserDefaultsKeys.selectedPromptAndReadModel
-    let defaultModel = mode == .togglePrompting ? SettingsDefaults.selectedPromptModel : SettingsDefaults.selectedPromptAndReadModel
-    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? defaultModel.rawValue
-    let selectedPromptModel = PromptModel(rawValue: modelString) ?? defaultModel
+    let selectedPromptModel = getPromptModel(for: mode)
     
     // Prompt mode ALWAYS requires Gemini API key (no offline support yet)
     // All PromptModel cases are Gemini models, so this should always be true
@@ -264,10 +276,7 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt & Read"))")
     
     // Get selected model from settings based on mode
-    let modelKey = mode == .togglePrompting ? UserDefaultsKeys.selectedPromptModel : UserDefaultsKeys.selectedPromptAndReadModel
-    let defaultModel = mode == .togglePrompting ? SettingsDefaults.selectedPromptModel : SettingsDefaults.selectedPromptAndReadModel
-    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? defaultModel.rawValue
-    let selectedPromptModel = PromptModel(rawValue: modelString) ?? defaultModel
+    let selectedPromptModel = getPromptModel(for: mode)
     
     // Convert to TranscriptionModel to get API endpoint
     guard let transcriptionModel = selectedPromptModel.asTranscriptionModel else {
@@ -403,10 +412,7 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt & Read"))")
     
     // Get selected model from settings based on mode
-    let modelKey = mode == .togglePrompting ? UserDefaultsKeys.selectedPromptModel : UserDefaultsKeys.selectedPromptAndReadModel
-    let defaultModel = mode == .togglePrompting ? SettingsDefaults.selectedPromptModel : SettingsDefaults.selectedPromptAndReadModel
-    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? defaultModel.rawValue
-    let selectedPromptModel = PromptModel(rawValue: modelString) ?? defaultModel
+    let selectedPromptModel = getPromptModel(for: mode)
     
     // Convert to TranscriptionModel to get API endpoint
     guard let transcriptionModel = selectedPromptModel.asTranscriptionModel else {
@@ -541,7 +547,7 @@ class SpeechService {
     // Check if text needs chunking
     let chunker = TextChunker()
     if chunker.needsChunking(trimmedText) {
-      DebugLogger.log("TTS: Using chunked synthesis (text length > \(AppConstants.ttsChunkingThresholdChars) chars)")
+      DebugLogger.log("TTS: Using chunked synthesis (text length > \(AppConstants.ttsChunkSizeChars) chars)")
       let chunkService = ChunkTTSService()
       chunkService.progressDelegate = chunkProgressDelegate
       return try await chunkService.synthesize(
@@ -551,7 +557,7 @@ class SpeechService {
         model: selectedTTSModel
       )
     } else {
-      DebugLogger.log("TTS: Using single-request synthesis (text length <= \(AppConstants.ttsChunkingThresholdChars) chars)")
+      DebugLogger.log("TTS: Using single-request synthesis (text length <= \(AppConstants.ttsChunkSizeChars) chars)")
     }
     
     // TTS-specific endpoint from selected model

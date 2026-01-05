@@ -53,7 +53,7 @@ class ClipboardManager {
     }
 
     // Add period if missing and text doesn't end with punctuation
-    if !formatted.isEmpty && !Constants.punctuation.contains(formatted.last!) {
+    if let lastChar = formatted.last, !Constants.punctuation.contains(lastChar) {
       formatted += "."
     }
 
