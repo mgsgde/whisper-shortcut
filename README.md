@@ -31,6 +31,11 @@ Choose between **cloud** (Google Gemini) or **offline** (Whisper) transcription:
 3. **Transcribe** - Uses your selected model (Gemini or Whisper) for accurate speech-to-text
 4. **Copy to Clipboard** - Automatically copies transcription to your clipboard
 
+**Advanced Features:**
+
+- **Chunked Transcription**: Long recordings are automatically split into chunks and processed in parallel for better performance
+- **Real-time Progress**: See the status of each chunk as it's being processed
+
 ### Prompt Mode (Voice-to-Prompt)
 
 Speak instructions that apply to selected clipboard text:
@@ -39,6 +44,22 @@ Speak instructions that apply to selected clipboard text:
 2. **Press Shortcut** - Start recording your voice instruction
 3. **Process** - Gemini processes both your voice instruction and the selected text
 4. **Get Result** - Modified text is automatically copied to your clipboard
+
+### Read Aloud Mode (Text-to-Speech)
+
+Read selected text aloud using AI-powered voices:
+
+1. **Select Text** - Copy text you want to hear to your clipboard
+2. **Press Shortcut** - Start the read aloud process
+3. **Listen** - Selected text is read aloud using your chosen voice
+
+### Prompt & Read Mode
+
+Combine AI prompting with text-to-speech in one workflow:
+
+1. **Select Text** - Copy text you want to modify to your clipboard
+2. **Press Shortcut** - Start recording your voice instruction
+3. **Process & Read** - Gemini processes your voice instruction and selected text, then reads the result aloud automatically
 
 ## Installation
 
@@ -61,10 +82,15 @@ bash install.sh
 ## Features
 
 - **Speech-to-Text Transcription**: Audio → Text transcription using Google Gemini (cloud) or Whisper (offline)
+  - **Chunked Transcription**: Automatic parallel processing of long recordings for improved performance
+  - **Real-time Progress Tracking**: Visual status grid showing progress of each audio chunk
 - **Voice-to-Prompt Mode**: Speak instructions to modify selected clipboard text using Gemini AI
+- **Read Aloud Mode**: Text-to-speech functionality to read selected text aloud with AI voices
+- **Prompt & Read Mode**: Combined workflow that processes text with AI and reads the result aloud
 - **Offline Support (Privacy Mode)**: Use local Whisper models for completely offline transcription
-- **Smart Clipboard Integration**: Automatic copy to clipboard for both modes
+- **Smart Clipboard Integration**: Automatic copy to clipboard for transcription and prompt modes
 - **Customizable Shortcuts**: Configurable keyboard shortcuts for each mode
+- **Multiple TTS Models**: Choose from various text-to-speech models and voices
   
 ## Development
 
