@@ -35,6 +35,10 @@ class SpeechService {
   private var clipboardManager: ClipboardManager?
   private let geminiClient: GeminiAPIClient
 
+  // MARK: - Chunked Transcription
+  /// Delegate for receiving chunk progress updates during long audio transcription.
+  weak var chunkProgressDelegate: ChunkProgressDelegate?
+
   // MARK: - Transcription Mode Properties
   private var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
 
@@ -629,28 +633,38 @@ class SpeechService {
   // MARK: - Gemini Transcription
   private func transcribeWithGemini(audioURL: URL) async throws -> String {
     let apiStartTime = CFAbsoluteTimeGetCurrent()
-    
+
     // Only check API key for Gemini models (offline models bypass this)
     guard let apiKey = self.googleAPIKey, !apiKey.isEmpty else {
       DebugLogger.log("GEMINI-TRANSCRIPTION: ERROR - No Google API key found in keychain")
       throw TranscriptionError.noGoogleAPIKey
     }
-    
+
     // Log API key status (without exposing the key itself)
     let keyPrefix = String(apiKey.prefix(8))
     let keyLength = apiKey.count
     DebugLogger.log("GEMINI-TRANSCRIPTION: Google API key found (prefix: \(keyPrefix)..., length: \(keyLength) chars)")
-    
+
     try validateAudioFile(at: audioURL)
-    
+
     let audioSize = getAudioFileSize(at: audioURL)
     DebugLogger.log("GEMINI-TRANSCRIPTION: Starting transcription, file size: \(audioSize) bytes")
-    
+
+    // Check audio duration for chunking decision
+    let audioDuration = try await getAudioDuration(audioURL)
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Audio duration: \(String(format: "%.1f", audioDuration))s")
+
     let result: String
+
+    // Use chunking for long audio (>45s by default)
+    if audioDuration > AppConstants.chunkingThresholdSeconds {
+      DebugLogger.log("GEMINI-TRANSCRIPTION: Using chunked transcription (duration > \(AppConstants.chunkingThresholdSeconds)s)")
+      result = try await transcribeWithChunking(audioURL: audioURL, apiKey: apiKey)
+    }
     // For files >20MB, use Files API (resumable upload)
     // For files ≤20MB, use inline base64
     // DEBUG: Can force Files API usage via Constants.debugForceFilesAPI
-    if Constants.debugForceFilesAPI {
+    else if Constants.debugForceFilesAPI {
       DebugLogger.log("GEMINI-TRANSCRIPTION: DEBUG - Forcing Files API usage (debugForceFilesAPI = true)")
       result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, apiKey: apiKey)
     } else if audioSize > AppConstants.maxFileSizeBytes {
@@ -658,11 +672,33 @@ class SpeechService {
     } else {
       result = try await transcribeWithGeminiInline(audioURL: audioURL, apiKey: apiKey)
     }
-    
+
     let apiElapsedTime = CFAbsoluteTimeGetCurrent() - apiStartTime
     DebugLogger.log("SPEED: Gemini API call completed in \(String(format: "%.3f", apiElapsedTime))s (\(String(format: "%.0f", apiElapsedTime * 1000))ms)")
-    
+
     return result
+  }
+
+  // MARK: - Chunked Transcription
+  private func transcribeWithChunking(audioURL: URL, apiKey: String) async throws -> String {
+    let chunkService = ChunkTranscriptionService(geminiClient: geminiClient)
+    chunkService.progressDelegate = chunkProgressDelegate
+
+    let prompt = buildDictationPrompt()
+
+    return try await chunkService.transcribe(
+      fileURL: audioURL,
+      apiKey: apiKey,
+      model: selectedTranscriptionModel,
+      prompt: prompt
+    )
+  }
+
+  // MARK: - Audio Duration Helper
+  private func getAudioDuration(_ url: URL) async throws -> TimeInterval {
+    let asset = AVURLAsset(url: url)
+    let duration = try await asset.load(.duration)
+    return CMTimeGetSeconds(duration)
   }
   
   private func transcribeWithGeminiInline(audioURL: URL, apiKey: String) async throws -> String {

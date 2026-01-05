@@ -1,0 +1,382 @@
+//
+//  ChunkTranscriptionService.swift
+//  WhisperShortcut
+//
+//  Parallel chunk transcription with retry and result aggregation.
+//
+
+import AVFoundation
+import Foundation
+
+/// Errors specific to chunked transcription.
+enum ChunkedTranscriptionError: Error, LocalizedError {
+    case chunkingFailed(Error)
+    case allChunksFailed(errors: [(index: Int, error: Error)])
+    case partialSuccess(text: String, failedChunks: [Int])
+
+    var errorDescription: String? {
+        switch self {
+        case .chunkingFailed(let error):
+            return "Failed to chunk audio: \(error.localizedDescription)"
+        case .allChunksFailed(let errors):
+            return "All \(errors.count) chunks failed to transcribe"
+        case .partialSuccess(_, let failedChunks):
+            return "Partial transcription: \(failedChunks.count) chunk(s) failed"
+        }
+    }
+}
+
+/// Service for transcribing long audio files by splitting into chunks
+/// and processing them in parallel with retry logic.
+class ChunkTranscriptionService {
+    // MARK: - Properties
+
+    /// Delegate for receiving progress updates.
+    weak var progressDelegate: ChunkProgressDelegate?
+
+    /// Maximum concurrent API calls.
+    let maxConcurrency: Int
+
+    /// Maximum retry attempts per chunk.
+    let maxRetries: Int
+
+    /// Base retry delay (exponential backoff applied).
+    let retryDelay: TimeInterval
+
+    /// Audio chunker for splitting files.
+    private let chunker: AudioChunker
+
+    /// Gemini API client for making requests.
+    private let geminiClient: GeminiAPIClient
+
+    // MARK: - Initialization
+
+    init(
+        maxConcurrency: Int = AppConstants.maxConcurrentChunks,
+        maxRetries: Int = 3,
+        retryDelay: TimeInterval = 1.5,
+        geminiClient: GeminiAPIClient? = nil
+    ) {
+        self.maxConcurrency = maxConcurrency
+        self.maxRetries = maxRetries
+        self.retryDelay = retryDelay
+        self.chunker = AudioChunker()
+        self.geminiClient = geminiClient ?? GeminiAPIClient()
+    }
+
+    deinit {
+        chunker.cleanup()
+    }
+
+    // MARK: - Public API
+
+    /// Transcribe an audio file using chunking if needed.
+    /// - Parameters:
+    ///   - fileURL: URL of the audio file
+    ///   - apiKey: Gemini API key
+    ///   - model: Transcription model to use
+    ///   - prompt: Custom transcription prompt
+    /// - Returns: Transcribed text
+    func transcribe(
+        fileURL: URL,
+        apiKey: String,
+        model: TranscriptionModel,
+        prompt: String
+    ) async throws -> String {
+        let startTime = CFAbsoluteTimeGetCurrent()
+
+        // Split audio into chunks
+        let chunks: [AudioChunk]
+        do {
+            chunks = try await chunker.splitAudio(fileURL: fileURL)
+        } catch {
+            throw ChunkedTranscriptionError.chunkingFailed(error)
+        }
+
+        DebugLogger.log("CHUNK-SERVICE: Split into \(chunks.count) chunks")
+
+        // Notify delegate
+        await MainActor.run {
+            progressDelegate?.chunkingStarted(totalChunks: chunks.count)
+        }
+
+        // If only one chunk, process directly
+        if chunks.count == 1 {
+            let result = try await transcribeChunk(
+                chunk: chunks[0],
+                apiKey: apiKey,
+                model: model,
+                prompt: prompt,
+                totalChunks: 1
+            )
+            return result.text
+        }
+
+        // Transcribe chunks in parallel
+        let transcripts = try await transcribeParallel(
+            chunks: chunks,
+            apiKey: apiKey,
+            model: model,
+            prompt: prompt
+        )
+
+        // Notify delegate about merging
+        await MainActor.run {
+            progressDelegate?.mergingStarted()
+        }
+
+        // Merge transcripts
+        let result = TranscriptMerger.merge(transcripts)
+
+        let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
+        DebugLogger.log("CHUNK-SERVICE: Total transcription time: \(String(format: "%.2f", elapsedTime))s")
+
+        // Cleanup chunk files
+        chunker.cleanup(chunks: chunks)
+
+        return result
+    }
+
+    // MARK: - Parallel Processing
+
+    private func transcribeParallel(
+        chunks: [AudioChunk],
+        apiKey: String,
+        model: TranscriptionModel,
+        prompt: String
+    ) async throws -> [ChunkTranscript] {
+        let semaphore = AsyncSemaphore(value: maxConcurrency)
+        let totalChunks = chunks.count
+
+        // Use actor for thread-safe accumulation
+        let accumulator = ResultAccumulator()
+
+        try await withThrowingTaskGroup(of: Result<ChunkTranscript, Error>.self) { group in
+            for chunk in chunks {
+                group.addTask { [self] in
+                    // Wait for semaphore
+                    await semaphore.wait()
+                    defer { Task { await semaphore.signal() } }
+
+                    // Notify delegate that chunk is now actively processing
+                    await MainActor.run {
+                        self.progressDelegate?.chunkStarted(index: chunk.index)
+                    }
+
+                    do {
+                        let transcript = try await self.transcribeChunk(
+                            chunk: chunk,
+                            apiKey: apiKey,
+                            model: model,
+                            prompt: prompt,
+                            totalChunks: totalChunks
+                        )
+                        return .success(transcript)
+                    } catch {
+                        return .failure(ChunkError(index: chunk.index, error: error))
+                    }
+                }
+            }
+
+            // Collect results
+            for try await result in group {
+                let currentCompleted = await accumulator.incrementCompleted()
+
+                switch result {
+                case .success(let transcript):
+                    await accumulator.addTranscript(transcript)
+
+                    await MainActor.run { [currentCompleted] in
+                        self.progressDelegate?.chunkProgressUpdated(
+                            completed: currentCompleted,
+                            total: totalChunks
+                        )
+                        self.progressDelegate?.chunkCompleted(
+                            index: transcript.index,
+                            text: transcript.text
+                        )
+                    }
+
+                case .failure(let error):
+                    if let chunkError = error as? ChunkError {
+                        await accumulator.addError(index: chunkError.index, error: chunkError.error)
+
+                        await MainActor.run { [currentCompleted] in
+                            self.progressDelegate?.chunkProgressUpdated(
+                                completed: currentCompleted,
+                                total: totalChunks
+                            )
+                            self.progressDelegate?.chunkFailed(
+                                index: chunkError.index,
+                                error: chunkError.error,
+                                willRetry: false
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Get final results
+        let transcripts = await accumulator.getTranscripts()
+        let errors = await accumulator.getErrors()
+
+        // Handle results
+        if transcripts.isEmpty {
+            throw ChunkedTranscriptionError.allChunksFailed(errors: errors)
+        }
+
+        if !errors.isEmpty {
+            // Partial success - log warning but return what we have
+            let failedIndices = errors.map { $0.index }
+            DebugLogger.logWarning("CHUNK-SERVICE: Partial success - \(failedIndices.count) chunks failed: \(failedIndices)")
+            // The caller can decide how to handle partial results
+        }
+
+        return transcripts.sorted { $0.index < $1.index }
+    }
+
+    // MARK: - Single Chunk Processing
+
+    private func transcribeChunk(
+        chunk: AudioChunk,
+        apiKey: String,
+        model: TranscriptionModel,
+        prompt: String,
+        totalChunks: Int
+    ) async throws -> ChunkTranscript {
+        var lastError: Error?
+
+        for attempt in 1...maxRetries {
+            do {
+                // Report retry status
+                if attempt > 1 {
+                    let errorToReport = lastError ?? TranscriptionError.networkError("Unknown")
+                    await MainActor.run {
+                        self.progressDelegate?.chunkFailed(
+                            index: chunk.index,
+                            error: errorToReport,
+                            willRetry: true
+                        )
+                        // Re-notify that chunk is starting again (retry)
+                        self.progressDelegate?.chunkStarted(index: chunk.index)
+                    }
+                    DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) attempt \(attempt)/\(maxRetries)")
+                }
+
+                // Read and encode audio
+                let audioData = try Data(contentsOf: chunk.url)
+                let base64Audio = audioData.base64EncodedString()
+
+                // Get MIME type
+                let fileExtension = chunk.url.pathExtension.lowercased()
+                let mimeType = geminiClient.getMimeType(for: fileExtension)
+
+                // Build request
+                let endpoint = model.apiEndpoint
+                var request = geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
+
+                let transcriptionRequest = GeminiTranscriptionRequest(
+                    contents: [
+                        GeminiTranscriptionRequest.GeminiTranscriptionContent(
+                            parts: [
+                                GeminiTranscriptionRequest.GeminiTranscriptionPart(
+                                    text: prompt.isEmpty
+                                        ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting."
+                                        : prompt,
+                                    inlineData: nil,
+                                    fileData: nil
+                                ),
+                                GeminiTranscriptionRequest.GeminiTranscriptionPart(
+                                    text: nil,
+                                    inlineData: GeminiTranscriptionRequest.GeminiInlineData(
+                                        mimeType: mimeType,
+                                        data: base64Audio
+                                    ),
+                                    fileData: nil
+                                )
+                            ]
+                        )
+                    ]
+                )
+
+                request.httpBody = try JSONEncoder().encode(transcriptionRequest)
+
+                // Make request (without GeminiAPIClient's internal retry - we handle it here)
+                let response = try await geminiClient.performRequest(
+                    request,
+                    responseType: GeminiResponse.self,
+                    mode: "CHUNK-\(chunk.index)",
+                    withRetry: false
+                )
+
+                // Extract text
+                let text = geminiClient.extractText(from: response)
+                let normalizedText = TextProcessingUtility.normalizeTranscriptionText(text)
+
+                DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) transcribed (\(normalizedText.count) chars)")
+
+                return ChunkTranscript(
+                    text: normalizedText,
+                    index: chunk.index,
+                    startTime: chunk.startTime,
+                    endTime: chunk.endTime
+                )
+
+            } catch {
+                lastError = error
+
+                // Check if error is retryable
+                if let transcriptionError = error as? TranscriptionError,
+                   !transcriptionError.isRetryable {
+                    throw error
+                }
+
+                // Don't retry on last attempt
+                if attempt < maxRetries {
+                    let delay = retryDelay * pow(2.0, Double(attempt - 1))
+                    DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) failed, retrying in \(delay)s")
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                }
+            }
+        }
+
+        throw lastError ?? TranscriptionError.networkError("Chunk transcription failed")
+    }
+}
+
+// MARK: - Helper Types
+
+/// Wrapper error to track which chunk failed.
+private struct ChunkError: Error {
+    let index: Int
+    let error: Error
+}
+
+/// Actor for thread-safe accumulation of transcription results.
+private actor ResultAccumulator {
+    private var transcripts: [ChunkTranscript] = []
+    private var errors: [(index: Int, error: Error)] = []
+    private var completedCount = 0
+
+    func incrementCompleted() -> Int {
+        completedCount += 1
+        return completedCount
+    }
+
+    func addTranscript(_ transcript: ChunkTranscript) {
+        transcripts.append(transcript)
+    }
+
+    func addError(index: Int, error: Error) {
+        errors.append((index: index, error: error))
+    }
+
+    func getTranscripts() -> [ChunkTranscript] {
+        return transcripts
+    }
+
+    func getErrors() -> [(index: Int, error: Error)] {
+        return errors
+    }
+}

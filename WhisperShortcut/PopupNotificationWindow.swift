@@ -924,6 +924,9 @@ extension PopupNotificationWindow {
   // Static storage for active popups to prevent premature deallocation
   private static var activePopups: Set<PopupNotificationWindow> = []
 
+  // Static storage for the current processing popup (persistent until dismissed)
+  private static var processingPopup: PopupNotificationWindow?
+
   // Helper to check if popup notifications are enabled
   private static var arePopupNotificationsEnabled: Bool {
     let keyExists = UserDefaults.standard.object(forKey: UserDefaultsKeys.showPopupNotifications) != nil
@@ -996,5 +999,72 @@ extension PopupNotificationWindow {
     // Keep strong reference until window closes
     activePopups.insert(popup)
     popup.show()
+  }
+
+  // MARK: - Processing Popup (Persistent during long operations)
+
+  /// Show a processing popup that stays visible until explicitly dismissed.
+  /// Use this for long-running operations like chunked transcription.
+  /// - Parameters:
+  ///   - message: The processing message to display
+  ///   - title: Optional title (defaults to "Processing")
+  static func showProcessing(_ message: String, title: String = "Processing") {
+    guard arePopupNotificationsEnabled else {
+      return
+    }
+
+    // Dismiss any existing processing popup
+    dismissProcessing()
+
+    let popup = PopupNotificationWindow(
+      title: title,
+      text: message,
+      isError: false,
+      isCancelled: false
+    )
+
+    // Disable auto-hide for processing popups
+    popup.autoHideTimer?.invalidate()
+    popup.autoHideTimer = nil
+
+    processingPopup = popup
+    activePopups.insert(popup)
+    popup.show()
+  }
+
+  /// Update the message of the current processing popup.
+  /// - Parameter message: The new message to display
+  static func updateProcessingMessage(_ message: String) {
+    guard let popup = processingPopup else {
+      // If no processing popup exists, create one
+      showProcessing(message)
+      return
+    }
+
+    // Update the text label
+    popup.textLabel?.stringValue = message
+  }
+
+  /// Update both title and message of the current processing popup.
+  /// - Parameters:
+  ///   - title: The new title
+  ///   - message: The new message
+  static func updateProcessing(title: String, message: String) {
+    guard let popup = processingPopup else {
+      showProcessing(message, title: title)
+      return
+    }
+
+    popup.titleLabel?.stringValue = title
+    popup.textLabel?.stringValue = message
+  }
+
+  /// Dismiss the current processing popup.
+  static func dismissProcessing() {
+    guard let popup = processingPopup else { return }
+
+    popup.close()
+    activePopups.remove(popup)
+    processingPopup = nil
   }
 }

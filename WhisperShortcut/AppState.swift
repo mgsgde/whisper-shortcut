@@ -53,14 +53,54 @@ enum AppState: Equatable {
     case prompting
     case ttsProcessing
 
-    var icon: String { return "⏳" }
+    // Chunking-specific states for long audio
+    case splitting                                        // Splitting audio into chunks
+    case processingChunks(statuses: [ChunkStatus])        // Per-chunk status tracking
+    case merging                                          // Merging transcription results
+
+    var icon: String {
+      switch self {
+      case .splitting: return "✂️"
+      case .merging: return "🔗"
+      default: return "⏳"
+      }
+    }
+
     var shouldBlink: Bool { return true }
+
+    // Computed properties for chunk status
+    var completedCount: Int {
+      if case .processingChunks(let statuses) = self {
+        return statuses.filter { $0 == .completed }.count
+      }
+      return 0
+    }
+
+    var activeCount: Int {
+      if case .processingChunks(let statuses) = self {
+        return statuses.filter { $0 == .active }.count
+      }
+      return 0
+    }
+
+    var totalCount: Int {
+      if case .processingChunks(let statuses) = self {
+        return statuses.count
+      }
+      return 0
+    }
 
     var statusText: String {
       switch self {
       case .transcribing: return "⏳ Transcribing audio..."
       case .prompting: return "⏳ Processing AI prompt..."
       case .ttsProcessing: return "⏳ Processing text-to-speech..."
+      case .splitting: return "✂️ Splitting audio into chunks..."
+      case .processingChunks(let statuses):
+        let active = statuses.filter { $0 == .active }.count
+        let done = statuses.filter { $0 == .completed }.count
+        return "⏳ \(active) processing, \(done)/\(statuses.count) done"
+      case .merging: return "🔗 Merging transcription..."
       }
     }
 
@@ -69,6 +109,12 @@ enum AppState: Equatable {
       case .transcribing: return "Transcribing audio... Please wait"
       case .prompting: return "Processing AI prompt... Please wait"
       case .ttsProcessing: return "Processing text-to-speech... Please wait"
+      case .splitting: return "Audio is long - splitting into chunks for processing..."
+      case .processingChunks(let statuses):
+        let active = statuses.filter { $0 == .active }.count
+        let done = statuses.filter { $0 == .completed }.count
+        return "Transcribing [\(done)/\(statuses.count)] - \(active) active"
+      case .merging: return "All chunks complete - merging results..."
       }
     }
   }
@@ -266,6 +312,12 @@ extension AppState.ProcessingMode: CustomStringConvertible {
     case .transcribing: return "transcribing"
     case .prompting: return "prompting"
     case .ttsProcessing: return "ttsProcessing"
+    case .splitting: return "splitting"
+    case .processingChunks(let statuses):
+      let active = statuses.filter { $0 == .active }.count
+      let done = statuses.filter { $0 == .completed }.count
+      return "processingChunks(\(done)/\(statuses.count), \(active) active)"
+    case .merging: return "merging"
     }
   }
 }

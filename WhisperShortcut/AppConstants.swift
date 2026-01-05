@@ -35,4 +35,21 @@ Key rules:
   
   // MARK: - Text Validation
   static let minimumTextLength = 1  // Allow single character responses like "Yes", "OK", etc.
+
+  // MARK: - Audio Chunking
+  /// Threshold duration (in seconds) above which audio will be chunked for transcription.
+  /// Audio shorter than this will be sent as a single request.
+  static let chunkingThresholdSeconds: TimeInterval = 45.0
+
+  /// Duration of each audio chunk in seconds.
+  /// Optimal for fast API responses while maintaining context.
+  static let chunkDurationSeconds: TimeInterval = 45.0
+
+  /// Overlap duration between chunks in seconds.
+  /// Provides context continuity and helps with transcript merging.
+  static let chunkOverlapSeconds: TimeInterval = 2.0
+
+  /// Maximum number of concurrent API calls during chunked transcription.
+  /// Higher values are faster but may hit rate limits on free tier.
+  static let maxConcurrentChunks: Int = 3
 }
