@@ -195,6 +195,31 @@ struct GeneralSettingsTab: View {
           .foregroundColor(.secondary)
       }
       .fixedSize(horizontal: false, vertical: true)
+
+      HStack(spacing: 0) {
+        Text("Configure rate limits at ")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+
+        Link(
+          destination: URL(string: "https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com/quotas")!
+        ) {
+          Text("console.cloud.google.com/.../quotas")
+            .font(.callout)
+            .foregroundColor(.blue)
+            .underline()
+            .textSelection(.enabled)
+        }
+        .onHover { isHovered in
+          if isHovered {
+            NSCursor.pointingHand.push()
+          } else {
+            NSCursor.pop()
+          }
+        }
+      }
+      .fixedSize(horizontal: false, vertical: true)
     }
   }
 
