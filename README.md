@@ -12,13 +12,11 @@
 
 **[Download for FREE via GitHub Releases](https://github.com/mgsgde/whisper-shortcut/releases)**
 
-### Support the Project ❤️
+### Support the Project
 
-WhisperShortcut is open source and free to use. If you want to support the development, you can purchase the app on the App Store:
+WhisperShortcut is open source and free to use. If you want to support the development, you can purchase and review the app on the App Store:
 
 **[Buy on Mac App Store](https://apps.apple.com/us/app/whispershortcut/id6749648401)**
-
-This is **completely optional**. If you like the app, a purchase or a review on the App Store is a fantastic way to say thank you! ⭐
 
 ## How it works
 
@@ -100,31 +98,10 @@ bash install.sh
 - Xcode 16.0+
 - Gemini API key (required only for cloud transcription and prompt mode; optional for offline Whisper transcription)
 
-### Open in Xcode
-
-```bash
-git clone https://github.com/mgsgde/whisper-shortcut.git
-cd whisper-shortcut
-open WhisperShortcut.xcodeproj
-```
-
-### Release Process
-
-To create a new release:
-
-1. Update the version number in Xcode (`Target > General > Version`).
-2. Run the release helper script:
-
-   ```bash
-   scripts/create-release.sh
-   ```
-
-   This will tag the commit and trigger the GitHub Action to build and release the app.
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-Made with ❤️ in Karlsruhe, Germany
+Made in Karlsruhe, Germany by [@mgsgde](https://github.com/mgsgde)
