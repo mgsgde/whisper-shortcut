@@ -1005,40 +1005,72 @@ extension MenuBarController: AudioRecorderDelegate {
     let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64) ?? 0
     let recordingModeStr = appState.recordingMode == .tts ? "tts" : String(describing: appState.recordingMode ?? .none)
     DebugLogger.logDebug("audioRecorderDidFinishRecording called - audioURL: \(audioURL.lastPathComponent), fileSize: \(fileSize), appState: \(appState), recordingMode: \(recordingModeStr)")
-    // Prevent processing the same audio file multiple times (race condition protection)
-    guard !processedAudioURLs.contains(audioURL) else {
-      DebugLogger.logWarning("AUDIO: Ignoring duplicate audioRecorderDidFinishRecording for \(audioURL.lastPathComponent)")
-      return
-    }
-    
-    // Simple state-based dispatch - no complex mode tracking needed!
-    guard case .recording(let recordingMode) = appState else {
-      DebugLogger.logWarning("AUDIO: audioRecorderDidFinishRecording called but appState is not recording")
-      return
-    }
 
-    // Mark this URL as processed to prevent duplicate processing
-    processedAudioURLs.insert(audioURL)
-    
-    // Track the audio URL for transcription cancellation
-    if recordingMode == .transcription {
-      currentTranscriptionAudioURL = audioURL
-    } else if recordingMode == .tts {
-      currentTTSAudioURL = audioURL
-    }
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      // Prevent processing the same audio file multiple times (race condition protection)
+      guard !self.processedAudioURLs.contains(audioURL) else {
+        DebugLogger.logWarning("AUDIO: Ignoring duplicate audioRecorderDidFinishRecording for \(audioURL.lastPathComponent)")
+        return
+      }
 
-    // Transition to processing
-    appState = appState.stopRecording()
+      guard case .recording(let recordingMode) = self.appState else {
+        DebugLogger.logWarning("AUDIO: audioRecorderDidFinishRecording called but appState is not recording")
+        return
+      }
 
-    // Execute appropriate async operation
-    Task {
-      switch recordingMode {
-      case .transcription:
-        await performTranscription(audioURL: audioURL)
-      case .prompt:
-        await performPrompting(audioURL: audioURL)
-      case .tts:
-        await performTTSWithCommand(audioURL: audioURL)
+      // Recording safeguard: confirm above duration (same pattern as AccessibilityPermissionManager)
+      let threshold: ConfirmAboveDuration
+      if UserDefaults.standard.object(forKey: UserDefaultsKeys.confirmAboveDurationSeconds) != nil,
+         let t = ConfirmAboveDuration(rawValue: UserDefaults.standard.double(forKey: UserDefaultsKeys.confirmAboveDurationSeconds))
+      {
+        threshold = t
+      } else {
+        threshold = SettingsDefaults.confirmAboveDuration
+      }
+
+      if threshold != .never,
+         let duration = self.speechService.getAudioDuration(url: audioURL),
+         duration > threshold.rawValue
+      {
+        let mins = Int(duration) / 60
+        let secs = Int(duration) % 60
+        let timeStr = secs > 0 ? "\(mins) min \(secs) s" : "\(mins) min"
+        let alert = NSAlert()
+        alert.messageText = "Long recording"
+        alert.informativeText = "This recording is \(timeStr) long. Process anyway? (API usage may incur costs.)"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Process")
+        alert.addButton(withTitle: "Cancel")
+        let response = alert.runModal()
+        if response != .alertFirstButtonReturn {
+          DebugLogger.log("RECORDING-SAFEGUARD: User cancelled processing for long recording (\(timeStr))")
+          self.cleanupAudioFile(at: audioURL)
+          self.appState = .idle
+          return
+        }
+      }
+
+      // Mark this URL as processed to prevent duplicate processing
+      self.processedAudioURLs.insert(audioURL)
+
+      if recordingMode == .transcription {
+        self.currentTranscriptionAudioURL = audioURL
+      } else if recordingMode == .tts {
+        self.currentTTSAudioURL = audioURL
+      }
+
+      self.appState = self.appState.stopRecording()
+
+      Task {
+        switch recordingMode {
+        case .transcription:
+          await self.performTranscription(audioURL: audioURL)
+        case .prompt:
+          await self.performPrompting(audioURL: audioURL)
+        case .tts:
+          await self.performTTSWithCommand(audioURL: audioURL)
+        }
       }
     }
   }

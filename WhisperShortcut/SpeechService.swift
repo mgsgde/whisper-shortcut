@@ -929,26 +929,33 @@ class SpeechService {
     }
   }
   
-  func isAudioLikelyEmpty(at url: URL) -> Bool {
+  /// Returns audio duration in seconds, or nil if duration could not be determined.
+  /// Used by isAudioLikelyEmpty and by recording safeguard (confirm above duration).
+  func getAudioDuration(url: URL) -> TimeInterval? {
     do {
       let audioFile = try AVAudioFile(forReading: url)
       let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
-      
-      DebugLogger.log("AUDIO-CHECK: Audio duration: \(String(format: "%.2f", duration)) seconds")
-      DebugLogger.logDebug("isAudioLikelyEmpty check - duration: \(duration), minimumDuration: 0.5, isEmpty: \(duration < 0.5)")
-      
-      let minimumDuration: Double = 0.5  // 500ms minimum for meaningful speech
-      if duration < minimumDuration {
-        DebugLogger.log("AUDIO-CHECK: Audio too short (< \(minimumDuration)s), treating as empty")
-        return true
-      }
-      
-      return false
+      DebugLogger.logDebug("AUDIO-CHECK: getAudioDuration \(String(format: "%.2f", duration))s at \(url.lastPathComponent)")
+      return duration
     } catch {
-      DebugLogger.logWarning("AUDIO-CHECK: Could not analyze audio duration: \(error.localizedDescription), proceeding with transcription")
-      DebugLogger.logDebug("isAudioLikelyEmpty error - error: \(error.localizedDescription)")
-      return false  // On error, allow transcription to proceed
+      DebugLogger.logWarning("AUDIO-CHECK: Could not get audio duration: \(error.localizedDescription)")
+      return nil
     }
+  }
+
+  func isAudioLikelyEmpty(at url: URL) -> Bool {
+    guard let duration = getAudioDuration(url: url) else {
+      DebugLogger.logDebug("isAudioLikelyEmpty: no duration, allowing transcription")
+      return false
+    }
+    DebugLogger.log("AUDIO-CHECK: Audio duration: \(String(format: "%.2f", duration)) seconds")
+    let minimumDuration: Double = 0.5
+    let isEmpty = duration < minimumDuration
+    DebugLogger.logDebug("isAudioLikelyEmpty - duration: \(duration), minimum: \(minimumDuration), isEmpty: \(isEmpty)")
+    if isEmpty {
+      DebugLogger.log("AUDIO-CHECK: Audio too short (< \(minimumDuration)s), treating as empty")
+    }
+    return isEmpty
   }
 
 

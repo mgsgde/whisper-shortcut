@@ -235,6 +235,29 @@ enum NotificationDuration: Double, CaseIterable {
   }
 }
 
+// MARK: - Confirm Above Duration (Recording Safeguard)
+enum ConfirmAboveDuration: Double, CaseIterable {
+  case never = 0
+  case oneMinute = 60
+  case twoMinutes = 120
+  case fiveMinutes = 300
+  case tenMinutes = 600
+
+  var displayName: String {
+    switch self {
+    case .never: return "Never"
+    case .oneMinute: return "1 minute"
+    case .twoMinutes: return "2 minutes"
+    case .fiveMinutes: return "5 minutes"
+    case .tenMinutes: return "10 minutes"
+    }
+  }
+
+  var isRecommended: Bool {
+    return self == .twoMinutes
+  }
+}
+
 // MARK: - Whisper Language Enum
 enum WhisperLanguage: String, CaseIterable {
   case auto = "auto"
@@ -376,6 +399,9 @@ struct SettingsDefaults {
   static let notificationDuration = NotificationDuration.threeSeconds
   static let errorNotificationDuration = NotificationDuration.thirtySeconds
 
+  // MARK: - Recording Safeguards
+  static let confirmAboveDuration = ConfirmAboveDuration.twoMinutes
+
   // MARK: - UI State
   static let errorMessage = ""
   static let isLoading = false
@@ -424,6 +450,9 @@ struct SettingsData {
   var notificationPosition: NotificationPosition = SettingsDefaults.notificationPosition
   var notificationDuration: NotificationDuration = SettingsDefaults.notificationDuration
   var errorNotificationDuration: NotificationDuration = SettingsDefaults.errorNotificationDuration
+
+  // MARK: - Recording Safeguards
+  var confirmAboveDuration: ConfirmAboveDuration = SettingsDefaults.confirmAboveDuration
 
   // MARK: - UI State
   var errorMessage: String = SettingsDefaults.errorMessage

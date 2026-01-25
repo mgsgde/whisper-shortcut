@@ -143,6 +143,16 @@ class SettingsViewModel: ObservableObject {
       data.errorNotificationDuration = SettingsDefaults.errorNotificationDuration
     }
 
+    // Load recording safeguard: confirm above duration (0 = never)
+    let savedConfirmDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.confirmAboveDurationSeconds)
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.confirmAboveDurationSeconds) != nil,
+       let parsed = ConfirmAboveDuration(rawValue: savedConfirmDuration)
+    {
+      data.confirmAboveDuration = parsed
+    } else {
+      data.confirmAboveDuration = SettingsDefaults.confirmAboveDuration
+    }
+
     // Load Google API key
     data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
     
@@ -338,6 +348,9 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(data.notificationPosition.rawValue, forKey: UserDefaultsKeys.notificationPosition)
     UserDefaults.standard.set(data.notificationDuration.rawValue, forKey: UserDefaultsKeys.notificationDuration)
     UserDefaults.standard.set(data.errorNotificationDuration.rawValue, forKey: UserDefaultsKeys.errorNotificationDuration)
+
+    // Save recording safeguard
+    UserDefaults.standard.set(data.confirmAboveDuration.rawValue, forKey: UserDefaultsKeys.confirmAboveDurationSeconds)
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()

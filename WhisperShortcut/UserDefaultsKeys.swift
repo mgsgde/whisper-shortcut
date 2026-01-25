@@ -30,6 +30,9 @@ enum UserDefaultsKeys {
   static let notificationPosition = "notificationPosition"
   static let notificationDuration = "notificationDuration"
   static let errorNotificationDuration = "errorNotificationDuration"
+
+  // MARK: - Recording Safeguards
+  static let confirmAboveDurationSeconds = "confirmAboveDurationSeconds"
   
   // MARK: - App State
   static let shouldTerminate = "shouldTerminate"
