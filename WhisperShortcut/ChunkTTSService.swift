@@ -225,6 +225,12 @@ class ChunkTTSService {
 
         // Handle results
         if audioChunks.isEmpty {
+            // Check if all errors are cancellation errors - if so, propagate as CancellationError
+            let allCancelled = errors.allSatisfy { $0.error is CancellationError }
+            if allCancelled {
+                DebugLogger.log("TTS-CHUNK-SERVICE: All chunks were cancelled - propagating cancellation")
+                throw CancellationError()
+            }
             DebugLogger.logError("TTS-CHUNK-SERVICE: All chunks failed - throwing error")
             throw ChunkedTTSError.allChunksFailed(errors: errors)
         }

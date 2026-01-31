@@ -423,8 +423,9 @@ class MenuBarController: NSObject {
       speechService.cancelTTS()
       stopTTSPlayback()
       isProcessingTTS = false
+      PopupNotificationWindow.dismissProcessing()
       appState = .idle
-      PopupNotificationWindow.showCancelled("TTS cancelled")
+      // No notification shown - user initiated the cancellation
       return
     }
     
@@ -477,8 +478,9 @@ class MenuBarController: NSObject {
       speechService.cancelTTS()
       stopTTSPlayback()
       isProcessingTTS = false
+      PopupNotificationWindow.dismissProcessing()
       appState = .idle
-      PopupNotificationWindow.showCancelled("TTS cancelled")
+      // No notification shown - user initiated the cancellation
       return
     }
     
@@ -1117,8 +1119,9 @@ extension MenuBarController: ShortcutDelegate {
       speechService.cancelTTS()
       stopTTSPlayback()
       isProcessingTTS = false
+      PopupNotificationWindow.dismissProcessing()
       appState = .idle
-      PopupNotificationWindow.showCancelled("TTS cancelled")
+      // No notification shown - user initiated the cancellation
       return
     }
     // If audio is playing, stop it
