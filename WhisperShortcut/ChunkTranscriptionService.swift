@@ -223,6 +223,12 @@ class ChunkTranscriptionService {
 
         // Handle results
         if transcripts.isEmpty {
+            // Check if all errors are cancellation errors - if so, propagate as CancellationError
+            let allCancelled = errors.allSatisfy { $0.error is CancellationError }
+            if allCancelled {
+                DebugLogger.log("CHUNK-SERVICE: All chunks were cancelled - propagating cancellation")
+                throw CancellationError()
+            }
             throw ChunkedTranscriptionError.allChunksFailed(errors: errors)
         }
 

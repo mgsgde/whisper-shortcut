@@ -350,8 +350,9 @@ class MenuBarController: NSObject {
         currentTranscriptionAudioURL = nil
         processedAudioURLs.remove(audioURL)
       }
+      PopupNotificationWindow.dismissProcessing()
       appState = .idle
-      PopupNotificationWindow.showCancelled("Transcription cancelled")
+      // No notification shown - user initiated the cancellation
       return
     }
     
@@ -382,8 +383,9 @@ class MenuBarController: NSObject {
       // Clean up the audio file immediately to prevent race conditions
       // Note: For prompting, we don't track the URL separately, but we should still clean up
       // The processedAudioURLs set will prevent duplicate processing
+      PopupNotificationWindow.dismissProcessing()
       appState = .idle
-      PopupNotificationWindow.showCancelled("Prompt cancelled")
+      // No notification shown - user initiated the cancellation
       return
     }
     
