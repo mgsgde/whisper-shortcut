@@ -55,6 +55,17 @@ class MenuBarController: NSObject {
   private var chunkStatuses: [ChunkStatus] = []
   private var isProcessingTTS: Bool = false
 
+  /// True when TTS is running in any phase: .ttsProcessing, or chunked phases (.splitting, .processingChunks, .merging) while isProcessingTTS is set.
+  private var isTTSRunning: Bool {
+    if case .processing(.ttsProcessing) = appState { return true }
+    guard isProcessingTTS else { return false }
+    switch appState {
+    case .processing(.splitting), .processing(.merging): return true
+    case .processing(.processingChunks): return true
+    default: return false
+    }
+  }
+
   init(
     audioRecorder: AudioRecorder = AudioRecorder(),
     speechService: SpeechService? = nil,
@@ -407,17 +418,11 @@ class MenuBarController: NSObject {
   @objc private func handleReadSelectedText() {
     let recordingModeStr = appState.recordingMode == .tts ? "tts" : String(describing: appState.recordingMode ?? .none)
     DebugLogger.logDebug("handleReadSelectedText called - appState: \(appState), recordingMode: \(recordingModeStr)")
-    // Check if currently processing TTS - if so, cancel it
-    if case .processing(.ttsProcessing) = appState {
+    // Check if currently processing TTS (any phase: ttsProcessing, splitting, chunks, merging) - if so, cancel it
+    if isTTSRunning {
       speechService.cancelTTS()
-      audioPlayer?.stop()
-      audioPlayer = nil
-      audioEngine?.stop()
-      audioPlayerNode?.stop()
-      audioEngine = nil
-      audioPlayerNode = nil
-      cleanupAudioFile(at: currentTTSAudioURL)
-      currentTTSAudioURL = nil
+      stopTTSPlayback()
+      isProcessingTTS = false
       appState = .idle
       PopupNotificationWindow.showCancelled("TTS cancelled")
       return
@@ -467,10 +472,11 @@ class MenuBarController: NSObject {
   }
   
   private func performDirectTTS() {
-    // Check if currently processing TTS - if so, cancel it
-    if case .processing(.ttsProcessing) = appState {
+    // Check if currently processing TTS (any phase: ttsProcessing, splitting, chunks, merging) - if so, cancel it
+    if isTTSRunning {
       speechService.cancelTTS()
       stopTTSPlayback()
+      isProcessingTTS = false
       appState = .idle
       PopupNotificationWindow.showCancelled("TTS cancelled")
       return
@@ -501,6 +507,13 @@ class MenuBarController: NSObject {
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
         }
+      } catch is CancellationError {
+        DebugLogger.log("CANCELLATION: TTS task was cancelled")
+        await MainActor.run {
+          self.isProcessingTTS = false
+          PopupNotificationWindow.dismissProcessing()
+          if self.appState != .idle { self.appState = .idle }
+        }
       } catch {
         DebugLogger.logError("TTS-ERROR: Failed to generate speech: \(error.localizedDescription)")
         if let transcriptionError = error as? TranscriptionError {
@@ -508,8 +521,11 @@ class MenuBarController: NSObject {
         }
         await MainActor.run {
           self.isProcessingTTS = false
-          self.appState = self.appState.showError("TTS failed: \(error.localizedDescription)")
-          PopupNotificationWindow.showError("Failed to generate speech: \(error.localizedDescription)", title: "TTS Error")
+          PopupNotificationWindow.dismissProcessing()
+          if self.appState != .idle {
+            self.appState = self.appState.showError("TTS failed: \(error.localizedDescription)")
+            PopupNotificationWindow.showError("Failed to generate speech: \(error.localizedDescription)", title: "TTS Error")
+          }
         }
       }
     }
@@ -612,7 +628,9 @@ class MenuBarController: NSObject {
     } catch is CancellationError {
       DebugLogger.log("CANCELLATION: TTS task was cancelled")
       await MainActor.run {
-        self.appState = .idle
+        self.isProcessingTTS = false
+        PopupNotificationWindow.dismissProcessing()
+        if self.appState != .idle { self.appState = .idle }
       }
       cleanupAudioFile(at: audioURL)
     } catch {
@@ -621,8 +639,12 @@ class MenuBarController: NSObject {
         DebugLogger.logError("TTS-ERROR: TranscriptionError type: \(transcriptionError)")
       }
       await MainActor.run {
-        self.appState = self.appState.showError("TTS failed: \(error.localizedDescription)")
-        PopupNotificationWindow.showError("Failed to process: \(error.localizedDescription)", title: "TTS Error")
+        self.isProcessingTTS = false
+        PopupNotificationWindow.dismissProcessing()
+        if self.appState != .idle {
+          self.appState = self.appState.showError("TTS failed: \(error.localizedDescription)")
+          PopupNotificationWindow.showError("Failed to process: \(error.localizedDescription)", title: "TTS Error")
+        }
       }
       cleanupAudioFile(at: audioURL)
     }
@@ -978,7 +1000,8 @@ class MenuBarController: NSObject {
   }
   
   private func simulateCopyPaste() {
-    let source = CGEventSource(stateID: .combinedSessionState)
+    // Use HID system state so Cmd+C is delivered to the frontmost app (the one with the selection)
+    let source = CGEventSource(stateID: .hidSystemState)
     let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true)
     let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
 
@@ -1089,12 +1112,32 @@ extension MenuBarController: ShortcutDelegate {
   // togglePrompting is already implemented above
   @objc func readSelectedText() { handleReadSelectedText() }
   @objc func readAloud() {
-    // Copy selected text to clipboard first (same as handleReadSelectedText does)
-    simulateCopyPaste()
-
-    // Wait a bit for clipboard to update after Cmd+C, then read
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-      self?.performDirectTTS()
+    // If TTS is running (synthesizing or chunked phases), cancel immediately without Cmd+C or delay
+    if isTTSRunning {
+      speechService.cancelTTS()
+      stopTTSPlayback()
+      isProcessingTTS = false
+      appState = .idle
+      PopupNotificationWindow.showCancelled("TTS cancelled")
+      return
+    }
+    // If audio is playing, stop it
+    if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
+      stopTTSPlayback()
+      appState = .idle
+      return
+    }
+    // Check accessibility permission first (required for simulateCopyPaste)
+    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
+      return
+    }
+    // Defer copy + TTS to next run loop so hotkey handler returns first and the app with the selection keeps focus for Cmd+C
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.simulateCopyPaste()
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+        self?.performDirectTTS()
+      }
     }
   }
   // openSettings is already implemented above

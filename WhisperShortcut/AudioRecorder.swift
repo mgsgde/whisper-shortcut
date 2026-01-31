@@ -31,8 +31,10 @@ class AudioRecorder: NSObject {
   }
 
   private func setupAudioSession() {
-    // For macOS, AVAudioSession is not available - AVAudioRecorder handles audio setup automatically
-
+    // Note: On macOS, AVAudioSession is not available (it's an iOS/tvOS API).
+    // AVAudioRecorder handles audio setup automatically on macOS, so no manual
+    // session configuration is needed. This method is kept for consistency with
+    // the initialization pattern and potential future cross-platform support.
   }
 
   func startRecording() {

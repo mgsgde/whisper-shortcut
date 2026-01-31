@@ -19,12 +19,6 @@ class ClipboardManager {
 
     pasteboard.clearContents()
     pasteboard.setString(formattedText, forType: .string)
-
-      _ =
-      formattedText.count > Constants.maxPreviewLength
-      ? String(formattedText.prefix(Constants.maxPreviewLength)) + "..."
-      : formattedText
-
   }
 
   func getClipboardText() -> String? {
