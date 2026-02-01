@@ -667,7 +667,10 @@ class SpeechService {
     let keyLength = apiKey.count
     DebugLogger.log("GEMINI-TRANSCRIPTION: Google API key found (prefix: \(keyPrefix)..., length: \(keyLength) chars)")
 
-    try validateAudioFile(at: audioURL)
+    // Only validate format, not size - Gemini handles large files via:
+    // 1. Chunking for long audio (>45s)
+    // 2. Files API for large files (>20MB)
+    try validateAudioFileFormat(at: audioURL)
 
     let audioSize = getAudioFileSize(at: audioURL)
     DebugLogger.log("GEMINI-TRANSCRIPTION: Starting transcription, file size: \(audioSize) bytes")
