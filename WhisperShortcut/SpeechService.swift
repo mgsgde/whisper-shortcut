@@ -272,32 +272,44 @@ class SpeechService {
     guard let googleAPIKey = self.googleAPIKey, !googleAPIKey.isEmpty else {
       throw TranscriptionError.noGoogleAPIKey
     }
-    
+
     DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt & Read"))")
-    
+
+    // Transcribe the audio instruction first (for conversation history)
+    // This gives us the user's voice command as text for context in follow-up prompts
+    let userInstruction: String
+    do {
+      userInstruction = try await transcribeAudioForHistory(audioURL: audioURL, apiKey: googleAPIKey)
+      DebugLogger.log("PROMPT-MODE-GEMINI: Transcribed voice instruction: \"\(userInstruction.prefix(50))...\"")
+    } catch {
+      DebugLogger.logWarning("PROMPT-MODE-GEMINI: Failed to transcribe instruction, proceeding without history context: \(error.localizedDescription)")
+      // Fall back to a placeholder if transcription fails
+      userInstruction = "(voice instruction)"
+    }
+
     // Get selected model from settings based on mode
     let selectedPromptModel = getPromptModel(for: mode)
-    
+
     // Convert to TranscriptionModel to get API endpoint
     guard let transcriptionModel = selectedPromptModel.asTranscriptionModel else {
       throw TranscriptionError.networkError("Selected model is not a Gemini model")
     }
-    
+
     let endpoint = transcriptionModel.apiEndpoint
     DebugLogger.log("PROMPT-MODE-GEMINI: Using model: \(selectedPromptModel.displayName) (\(selectedPromptModel.rawValue))")
     DebugLogger.log("PROMPT-MODE-GEMINI: Using endpoint: \(endpoint)")
-    
+
     // Get clipboard context
     let hasContext = clipboardContext != nil
     DebugLogger.log("PROMPT-MODE-GEMINI: Clipboard context: \(hasContext ? "present" : "none")")
-    
+
     // Build system prompt based on mode
-    let baseSystemPrompt = mode == .togglePrompting 
-      ? AppConstants.defaultPromptModeSystemPrompt 
+    let baseSystemPrompt = mode == .togglePrompting
+      ? AppConstants.defaultPromptModeSystemPrompt
       : AppConstants.defaultPromptAndReadSystemPrompt
     let promptKey = mode == .togglePrompting ? UserDefaultsKeys.promptModeSystemPrompt : UserDefaultsKeys.promptAndReadSystemPrompt
     let customSystemPrompt = UserDefaults.standard.string(forKey: promptKey)
-    
+
     let systemPrompt: String
     if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
       systemPrompt = customPrompt
@@ -306,34 +318,40 @@ class SpeechService {
       systemPrompt = baseSystemPrompt
       DebugLogger.log("PROMPT-MODE-GEMINI: Using base system prompt")
     }
-    
+
     // Build request
     var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)
-    
-    // Build contents array with current message only
-    var contents: [GeminiChatRequest.GeminiChatContent] = []
-    
+
+    // Build contents array - start with conversation history
+    let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
+    var contents: [GeminiChatRequest.GeminiChatContent] = historyContents
+
+    let historyCount = historyContents.count / 2  // Each turn = 2 messages (user + model)
+    if historyCount > 0 {
+      DebugLogger.log("PROMPT-MODE-GEMINI: Including \(historyCount) previous turns from conversation history")
+    }
+
     // Build current user message parts
     var userParts: [GeminiChatRequest.GeminiChatPart] = []
-    
+
     // Add clipboard context FIRST (so Gemini knows the context before processing audio)
     if let context = clipboardContext {
       DebugLogger.log("PROMPT-MODE-GEMINI: Adding clipboard context to request (length: \(context.count) chars)")
       let contextText = """
       SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):
-      
+
       \(context)
       """
       userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
     } else {
       DebugLogger.log("PROMPT-MODE-GEMINI: No clipboard context to add")
     }
-    
+
     // Add audio input AFTER context (so Gemini processes audio with context in mind)
     let audioSize = getAudioFileSize(at: audioURL)
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = geminiClient.getMimeType(for: fileExtension)
-    
+
     if audioSize > AppConstants.maxFileSizeBytes {
       // Use Files API for large files
       let fileURI = try await geminiClient.uploadFile(audioURL: audioURL, apiKey: googleAPIKey)
@@ -354,15 +372,15 @@ class SpeechService {
         url: nil
       ))
     }
-    
+
     // Add current user message
     contents.append(GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts))
-    
+
     // Build system instruction
     let systemInstruction = GeminiChatRequest.GeminiSystemInstruction(
       parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
     )
-    
+
     // Create request (no tools for prompt mode, no audio output needed)
     let chatRequest = GeminiChatRequest(
       contents: contents,
@@ -371,9 +389,9 @@ class SpeechService {
       generationConfig: nil,
       model: nil
     )
-    
+
     request.httpBody = try JSONEncoder().encode(chatRequest)
-    
+
     // Make request
     let result = try await geminiClient.performRequest(
       request,
@@ -381,11 +399,11 @@ class SpeechService {
       mode: "PROMPT-MODE-GEMINI",
       withRetry: false
     )
-    
+
     guard let firstCandidate = result.candidates.first else {
       throw TranscriptionError.networkError("No candidates in Gemini response")
     }
-    
+
     // Extract text content
     var textContent = ""
     for part in firstCandidate.content.parts {
@@ -393,13 +411,72 @@ class SpeechService {
         textContent += text
       }
     }
-    
+
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(textContent)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
-    
+
+    // Append to conversation history for follow-up prompts
+    PromptConversationHistory.shared.append(
+      mode: mode,
+      selectedText: clipboardContext,
+      userInstruction: userInstruction,
+      modelResponse: normalizedText
+    )
+
     DebugLogger.logSuccess("PROMPT-MODE-GEMINI: Completed successfully")
-    
+
     return normalizedText
+  }
+
+  /// Transcribes audio to text for use in conversation history.
+  /// Uses a lightweight transcription call to get the user's voice instruction as text.
+  private func transcribeAudioForHistory(audioURL: URL, apiKey: String) async throws -> String {
+    // Use the existing transcription logic but with a simpler prompt
+    let audioData = try Data(contentsOf: audioURL)
+    let base64Audio = audioData.base64EncodedString()
+    let fileExtension = audioURL.pathExtension.lowercased()
+    let mimeType = geminiClient.getMimeType(for: fileExtension)
+
+    // Use Gemini Flash for fast, cheap transcription
+    let endpoint = "models/gemini-2.0-flash:generateContent"
+    var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
+
+    let userParts: [GeminiChatRequest.GeminiChatPart] = [
+      GeminiChatRequest.GeminiChatPart(
+        text: nil,
+        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: mimeType, data: base64Audio),
+        fileData: nil,
+        url: nil
+      )
+    ]
+
+    let systemInstruction = GeminiChatRequest.GeminiSystemInstruction(
+      parts: [GeminiChatRequest.GeminiSystemPart(text: "Transcribe this audio exactly. Return only the transcribed text, nothing else.")]
+    )
+
+    let chatRequest = GeminiChatRequest(
+      contents: [GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts)],
+      systemInstruction: systemInstruction,
+      tools: nil,
+      generationConfig: nil,
+      model: nil
+    )
+
+    request.httpBody = try JSONEncoder().encode(chatRequest)
+
+    let result = try await geminiClient.performRequest(
+      request,
+      responseType: GeminiChatResponse.self,
+      mode: "PROMPT-HISTORY-TRANSCRIBE",
+      withRetry: false
+    )
+
+    guard let firstCandidate = result.candidates.first,
+          let text = firstCandidate.content.parts.first?.text else {
+      throw TranscriptionError.networkError("No transcription in response")
+    }
+
+    return text.trimmingCharacters(in: .whitespacesAndNewlines)
   }
   
   // MARK: - Text-based Prompt Mode (for TTS flow)
@@ -408,51 +485,61 @@ class SpeechService {
     guard let googleAPIKey = self.googleAPIKey, !googleAPIKey.isEmpty else {
       throw TranscriptionError.noGoogleAPIKey
     }
-    
+
     DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt & Read"))")
-    
+
     // Get selected model from settings based on mode
     let selectedPromptModel = getPromptModel(for: mode)
-    
+
     // Convert to TranscriptionModel to get API endpoint
     guard let transcriptionModel = selectedPromptModel.asTranscriptionModel else {
       throw TranscriptionError.networkError("Selected model is not a Gemini model")
     }
-    
+
     let endpoint = transcriptionModel.apiEndpoint
     DebugLogger.log("PROMPT-MODE-TEXT: Using model: \(selectedPromptModel.displayName)")
-    
+
     // Build system prompt based on mode
-    let baseSystemPrompt = mode == .togglePrompting 
-      ? AppConstants.defaultPromptModeSystemPrompt 
+    let baseSystemPrompt = mode == .togglePrompting
+      ? AppConstants.defaultPromptModeSystemPrompt
       : AppConstants.defaultPromptAndReadSystemPrompt
     let promptKey = mode == .togglePrompting ? UserDefaultsKeys.promptModeSystemPrompt : UserDefaultsKeys.promptAndReadSystemPrompt
     let customSystemPrompt = UserDefaults.standard.string(forKey: promptKey)
-    
+
     let systemPrompt: String
     if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
       systemPrompt = customPrompt
     } else {
       systemPrompt = baseSystemPrompt
     }
-    
+
     // Build request
     var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)
-    
-    // Build contents with selected text and text command
+
+    // Build contents array - start with conversation history
+    let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
+    var contents: [GeminiChatRequest.GeminiChatContent] = historyContents
+
+    let historyCount = historyContents.count / 2  // Each turn = 2 messages (user + model)
+    if historyCount > 0 {
+      DebugLogger.log("PROMPT-MODE-TEXT: Including \(historyCount) previous turns from conversation history")
+    }
+
+    // Build current user message with selected text and text command
     let contextText = """
     SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):
-    
+
     \(selectedText)
     """
-    
+
     let commandText = """
     VOICE INSTRUCTION (what to do with the selected text):
-    
+
     \(textCommand)
     """
-    
-    let contents = [
+
+    // Add current user message
+    contents.append(
       GeminiChatRequest.GeminiChatContent(
         role: "user",
         parts: [
@@ -460,13 +547,13 @@ class SpeechService {
           GeminiChatRequest.GeminiChatPart(text: commandText, inlineData: nil, fileData: nil, url: nil)
         ]
       )
-    ]
-    
+    )
+
     // Build system instruction
     let systemInstruction = GeminiChatRequest.GeminiSystemInstruction(
       parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
     )
-    
+
     // Create request
     let chatRequest = GeminiChatRequest(
       contents: contents,
@@ -475,9 +562,9 @@ class SpeechService {
       generationConfig: nil,
       model: nil
     )
-    
+
     request.httpBody = try JSONEncoder().encode(chatRequest)
-    
+
     // Make request
     let result = try await geminiClient.performRequest(
       request,
@@ -485,11 +572,11 @@ class SpeechService {
       mode: "PROMPT-MODE-TEXT",
       withRetry: false
     )
-    
+
     guard let firstCandidate = result.candidates.first else {
       throw TranscriptionError.networkError("No candidates in Gemini response")
     }
-    
+
     // Extract text content
     var textContent = ""
     for part in firstCandidate.content.parts {
@@ -497,12 +584,20 @@ class SpeechService {
         textContent += text
       }
     }
-    
+
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(textContent)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-TEXT")
-    
+
+    // Append to conversation history for follow-up prompts
+    PromptConversationHistory.shared.append(
+      mode: mode,
+      selectedText: selectedText,
+      userInstruction: textCommand,
+      modelResponse: normalizedText
+    )
+
     DebugLogger.logSuccess("PROMPT-MODE-TEXT: Completed successfully")
-    
+
     return normalizedText
   }
   

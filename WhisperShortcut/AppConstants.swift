@@ -53,6 +53,15 @@ Key rules:
   /// Higher values are faster but may hit rate limits on free tier.
   static let maxConcurrentChunks: Int = 5
 
+  // MARK: - Prompt Conversation History
+  /// Maximum number of previous turns to include in prompt requests.
+  /// Higher values provide more context but increase API costs and latency.
+  static let promptHistoryMaxTurns: Int = 5
+
+  /// Inactivity timeout in seconds before conversation history is automatically cleared.
+  /// If no prompt interaction occurs within this time, the next prompt starts a fresh conversation.
+  static let promptHistoryInactivityTimeoutSeconds: TimeInterval = 300.0  // 5 minutes
+
   // MARK: - TTS Chunking
   /// Maximum characters per TTS chunk.
   /// Text longer than this will be chunked for parallel processing.

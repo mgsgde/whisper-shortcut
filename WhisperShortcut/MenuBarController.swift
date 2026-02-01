@@ -135,6 +135,17 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
+    // Conversation history management
+    let historyCount = PromptConversationHistory.shared.totalTurnCount()
+    let historyTitle = historyCount > 0
+      ? "New Conversation (\(historyCount) messages)"
+      : "New Conversation"
+    let historyItem = createMenuItem(historyTitle, action: #selector(clearConversationHistory), tag: 106)
+    historyItem.isEnabled = historyCount > 0
+    menu.addItem(historyItem)
+
+    menu.addItem(NSMenuItem.separator())
+
     // Settings and quit
     menu.addItem(
       createMenuItemWithShortcut(
@@ -415,6 +426,11 @@ class MenuBarController: NSObject {
 
   @objc func openSettings() {
     SettingsManager.shared.toggleSettings()
+  }
+
+  @objc func clearConversationHistory() {
+    PromptConversationHistory.shared.clearAll()
+    DebugLogger.log("UI: Conversation history cleared by user")
   }
   
   @objc private func handleReadSelectedText() {
