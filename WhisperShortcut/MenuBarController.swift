@@ -313,6 +313,13 @@ class MenuBarController: NSObject {
       enabled: (hasAPIKey && !appState.isBusy) || appState.recordingMode == .tts
     )
 
+    // Update conversation history item (title and enabled state reflect current count)
+    let historyCount = PromptConversationHistory.shared.totalTurnCount()
+    let historyTitle = historyCount > 0
+      ? "New Conversation (\(historyCount) messages)"
+      : "New Conversation"
+    updateMenuItem(menu, tag: 106, title: historyTitle, enabled: historyCount > 0)
+
     // Handle special case when no API key and no offline model is configured
     if !hasAPIKey && !hasOfflineTranscriptionModel && !hasOfflinePromptModel, let button = statusItem?.button {
       button.title = "⚠️"
@@ -431,6 +438,7 @@ class MenuBarController: NSObject {
   @objc func clearConversationHistory() {
     PromptConversationHistory.shared.clearAll()
     DebugLogger.log("UI: Conversation history cleared by user")
+    updateUI()
   }
   
   @objc private func handleReadSelectedText() {

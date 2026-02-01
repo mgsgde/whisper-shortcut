@@ -275,16 +275,16 @@ class SpeechService {
 
     DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt & Read"))")
 
-    // Transcribe the audio instruction first (for conversation history)
-    // This gives us the user's voice command as text for context in follow-up prompts
-    let userInstruction: String
-    do {
-      userInstruction = try await transcribeAudioForHistory(audioURL: audioURL, apiKey: googleAPIKey)
-      DebugLogger.log("PROMPT-MODE-GEMINI: Transcribed voice instruction: \"\(userInstruction.prefix(50))...\"")
-    } catch {
-      DebugLogger.logWarning("PROMPT-MODE-GEMINI: Failed to transcribe instruction, proceeding without history context: \(error.localizedDescription)")
-      // Fall back to a placeholder if transcription fails
-      userInstruction = "(voice instruction)"
+    // Run transcription for history in parallel with main prompt (no extra latency)
+    let transcriptionTask = Task<String, Never> {
+      do {
+        let text = try await transcribeAudioForHistory(audioURL: audioURL, apiKey: googleAPIKey)
+        DebugLogger.log("PROMPT-MODE-GEMINI: Transcribed voice instruction for history: \"\(text.prefix(50))...\"")
+        return text
+      } catch {
+        DebugLogger.logWarning("PROMPT-MODE-GEMINI: Failed to transcribe instruction for history: \(error.localizedDescription)")
+        return "(voice instruction)"
+      }
     }
 
     // Get selected model from settings based on mode
@@ -415,7 +415,8 @@ class SpeechService {
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(textContent)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
 
-    // Append to conversation history for follow-up prompts
+    // Append to conversation history (use transcription result from parallel task)
+    let userInstruction = await transcriptionTask.value
     PromptConversationHistory.shared.append(
       mode: mode,
       selectedText: clipboardContext,
