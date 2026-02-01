@@ -415,8 +415,26 @@ class SpeechService {
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(textContent)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
 
-    // Append to conversation history (use transcription result from parallel task)
-    let userInstruction = await transcriptionTask.value
+    // Append to conversation history (use transcription result from parallel task, with timeout so we never block)
+    let userInstruction: String
+    var historyTranscriptionResult: String?
+    await withTaskGroup(of: String?.self) { group in
+      group.addTask { await transcriptionTask.value }
+      group.addTask {
+        try? await Task.sleep(nanoseconds: 10_000_000_000)  // 10 seconds
+        return nil
+      }
+      for await value in group {
+        if historyTranscriptionResult == nil {
+          historyTranscriptionResult = value
+          group.cancelAll()
+        }
+      }
+    }
+    userInstruction = historyTranscriptionResult ?? "(voice instruction)"
+    if historyTranscriptionResult == nil {
+      DebugLogger.logWarning("PROMPT-MODE-GEMINI: History transcription timed out, using placeholder")
+    }
     PromptConversationHistory.shared.append(
       mode: mode,
       selectedText: clipboardContext,
