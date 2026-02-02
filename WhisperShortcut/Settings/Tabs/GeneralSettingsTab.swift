@@ -55,6 +55,18 @@ struct GeneralSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
+      // Clipboard Behavior Section
+      clipboardBehaviorSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Keyboard Shortcuts Section
       keyboardShortcutsSection
 
@@ -363,6 +375,39 @@ struct GeneralSettingsTab: View {
 
         Spacer()
       }
+    }
+  }
+
+  // MARK: - Clipboard Behavior Section
+  @ViewBuilder
+  private var clipboardBehaviorSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "📋 Clipboard Behavior",
+        subtitle: "Configure what happens after dictation or prompt mode completes"
+      )
+
+      HStack(alignment: .center, spacing: 16) {
+        Text("Auto-paste:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        Toggle("", isOn: $viewModel.data.autoPasteAfterDictation)
+          .toggleStyle(SwitchToggleStyle())
+          .onChange(of: viewModel.data.autoPasteAfterDictation) { _, _ in
+            Task {
+              await viewModel.saveSettings()
+            }
+          }
+
+        Spacer()
+      }
+
+      Text("When enabled, transcriptions and AI responses are automatically pasted at the cursor position (simulates ⌘V). Works for both Dictate and Dictate Prompt modes.")
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 

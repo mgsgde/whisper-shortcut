@@ -115,23 +115,6 @@ struct SpeechToTextSettingsTab: View {
         validateShortcut: viewModel.validateShortcut
       )
 
-      // Auto-paste toggle
-      Toggle(isOn: $viewModel.data.autoPasteAfterDictation) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Auto-paste after dictation")
-            .font(.body)
-          Text("Automatically paste transcription at cursor position (simulates ⌘V)")
-            .font(.caption)
-            .foregroundColor(.secondary)
-        }
-      }
-      .toggleStyle(.checkbox)
-      .onChange(of: viewModel.data.autoPasteAfterDictation) {
-        Task {
-          await viewModel.saveSettings()
-        }
-      }
-
       // Available Keys Information
       VStack(alignment: .leading, spacing: 8) {
         Text("Available keys:")
