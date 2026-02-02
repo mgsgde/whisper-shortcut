@@ -405,6 +405,9 @@ struct SettingsDefaults {
   // MARK: - Recording Safeguards
   static let confirmAboveDuration = ConfirmAboveDuration.twoMinutes
 
+  // MARK: - Auto-Paste Settings
+  static let autoPasteAfterDictation = false
+
   // MARK: - UI State
   static let errorMessage = ""
   static let isLoading = false
@@ -457,6 +460,9 @@ struct SettingsData {
 
   // MARK: - Recording Safeguards
   var confirmAboveDuration: ConfirmAboveDuration = SettingsDefaults.confirmAboveDuration
+
+  // MARK: - Auto-Paste Settings
+  var autoPasteAfterDictation: Bool = SettingsDefaults.autoPasteAfterDictation
 
   // MARK: - UI State
   var errorMessage: String = SettingsDefaults.errorMessage

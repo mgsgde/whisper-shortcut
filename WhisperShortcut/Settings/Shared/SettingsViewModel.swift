@@ -161,6 +161,13 @@ class SettingsViewModel: ObservableObject {
       data.confirmAboveDuration = SettingsDefaults.confirmAboveDuration
     }
 
+    // Load auto-paste setting
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.autoPasteAfterDictation) != nil {
+      data.autoPasteAfterDictation = UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoPasteAfterDictation)
+    } else {
+      data.autoPasteAfterDictation = SettingsDefaults.autoPasteAfterDictation
+    }
+
     // Load Google API key
     data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
     
@@ -360,6 +367,9 @@ class SettingsViewModel: ObservableObject {
 
     // Save recording safeguard
     UserDefaults.standard.set(data.confirmAboveDuration.rawValue, forKey: UserDefaultsKeys.confirmAboveDurationSeconds)
+
+    // Save auto-paste setting
+    UserDefaults.standard.set(data.autoPasteAfterDictation, forKey: UserDefaultsKeys.autoPasteAfterDictation)
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()

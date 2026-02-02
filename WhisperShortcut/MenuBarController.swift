@@ -933,7 +933,12 @@ class MenuBarController: NSObject {
     do {
       let result = try await speechService.transcribe(audioURL: audioURL)
       clipboardManager.copyToClipboard(text: result)
-      
+
+      // Auto-paste if enabled
+      await MainActor.run {
+        self.autoPasteIfEnabled()
+      }
+
       // Record successful operation for review prompt
       reviewPrompter.recordSuccessfulOperation(window: statusItem?.button?.window)
 
@@ -989,7 +994,12 @@ class MenuBarController: NSObject {
     do {
       let result = try await speechService.executePrompt(audioURL: audioURL, mode: .togglePrompting)
       clipboardManager.copyToClipboard(text: result)
-      
+
+      // Auto-paste if enabled
+      await MainActor.run {
+        self.autoPasteIfEnabled()
+      }
+
       // Record successful operation for review prompt
       reviewPrompter.recordSuccessfulOperation(window: statusItem?.button?.window)
 
@@ -1085,6 +1095,33 @@ class MenuBarController: NSObject {
 
     cmdDown?.post(tap: .cghidEventTap)
     cmdUp?.post(tap: .cghidEventTap)
+  }
+
+  /// Simulates Cmd+V paste keystroke to paste clipboard contents at cursor position
+  private func simulatePaste() {
+    // Use HID system state so Cmd+V is delivered to the frontmost app
+    let source = CGEventSource(stateID: .hidSystemState)
+    // Virtual key 0x09 is 'V'
+    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true)
+    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false)
+
+    cmdDown?.flags = .maskCommand
+    cmdUp?.flags = .maskCommand
+
+    cmdDown?.post(tap: .cghidEventTap)
+    cmdUp?.post(tap: .cghidEventTap)
+  }
+
+  /// Performs auto-paste if enabled in settings
+  private func autoPasteIfEnabled() {
+    let autoPasteEnabled = UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoPasteAfterDictation)
+    if autoPasteEnabled {
+      // Small delay to ensure clipboard is ready
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+        self?.simulatePaste()
+        DebugLogger.log("AUTO-PASTE: Pasted transcription at cursor position")
+      }
+    }
   }
 
   func cleanup() {

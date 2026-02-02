@@ -34,6 +34,9 @@ enum UserDefaultsKeys {
 
   // MARK: - Recording Safeguards
   static let confirmAboveDurationSeconds = "confirmAboveDurationSeconds"
+
+  // MARK: - Auto-Paste Settings
+  static let autoPasteAfterDictation = "autoPasteAfterDictation"
   
   // MARK: - App State
   static let shouldTerminate = "shouldTerminate"

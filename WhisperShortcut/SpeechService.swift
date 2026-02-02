@@ -15,7 +15,7 @@ private enum Constants {
   
   // DEBUG: Set to true to force Files API usage even for small files (for testing)
   static let debugForceFilesAPI = false
-
+    
   // Audio validation
   static let supportedAudioExtensions = ["wav", "mp3", "m4a", "flac", "ogg", "webm"]
 
