@@ -8,10 +8,15 @@
     "capture-speech-to-text": "node js/capture-all.js speech-to-text",
     "capture-speech-to-prompt": "node js/capture-all.js speech-to-prompt",
     "capture-powered-by-openai": "node js/capture-all.js powered-by-openai",
-    "install-deps": "npm install puppeteer"
+    "capture-star-history": "node js/capture-all.js star-history",
+    "install-deps": "npm install puppeteer",
+    "preview": "live-server ."
   },
   "dependencies": {
     "puppeteer": "^21.11.0"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2"
   },
   "keywords": [
     "screenshot",

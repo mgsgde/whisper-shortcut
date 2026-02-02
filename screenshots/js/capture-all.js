@@ -12,6 +12,7 @@
  *   node capture-all.js powered-by-gemini  # Capture specific screenshot
  *   node capture-all.js powered-by-whisper # Capture specific screenshot
  *   node capture-all.js open-source        # Capture specific screenshot
+ *   node capture-all.js star-history       # Capture specific screenshot
  */
 
 const puppeteer = require('puppeteer');
@@ -43,6 +44,11 @@ const screenshots = [
     name: 'open-source',
     html: 'open-source.html',
     output: 'open-source.png'
+  },
+  {
+    name: 'star-history',
+    html: 'star-history.html',
+    output: 'star-history.png'
   }
 ];
 
