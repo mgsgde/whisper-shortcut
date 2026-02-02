@@ -125,6 +125,12 @@ final class PromptConversationHistory {
     return promptModeHistory.count + promptAndReadHistory.count
   }
 
+  /// Returns true if the specified mode has an active (non-expired) conversation history.
+  func hasActiveHistory(for mode: PromptMode) -> Bool {
+    checkAndClearIfInactive(mode: mode)
+    return turnCount(for: mode) > 0
+  }
+
   // MARK: - Private Helpers
 
   private func getHistory(for mode: PromptMode) -> [PromptHistoryTurn] {

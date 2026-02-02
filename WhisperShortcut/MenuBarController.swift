@@ -481,7 +481,7 @@ class MenuBarController: NSObject {
       if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
         return
       }
-      
+
       // Start recording for voice command
       let hasAPIKey = KeychainManager.shared.hasGoogleAPIKey()
       if hasAPIKey {
@@ -599,51 +599,68 @@ class MenuBarController: NSObject {
       // First, transcribe the audio to get the voice command
       let voiceCommand = try await speechService.transcribe(audioURL: audioURL)
       let trimmedCommand = voiceCommand.trimmingCharacters(in: .whitespacesAndNewlines)
-      
+
       // Clean up transcription audio
       cleanupAudioFile(at: audioURL)
-      
-      // Get selected text from clipboard
-      guard let selectedText = clipboardManager.getCleanedClipboardText(),
-            !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        await MainActor.run {
-          self.appState = self.appState.showError("No text selected")
-          PopupNotificationWindow.showError("No text selected", title: "TTS Error")
-        }
-        return
-      }
-      
+
+      // Get selected text from clipboard (may be nil for follow-up questions)
+      let clipboardText = clipboardManager.getCleanedClipboardText()
+      let selectedText = clipboardText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? clipboardText : nil
+      let hasActiveHistory = PromptConversationHistory.shared.hasActiveHistory(for: .promptAndRead)
+
+      DebugLogger.logDebug("TTS: selectedText=\(selectedText != nil ? "present (\(selectedText!.count) chars)" : "nil"), hasActiveHistory=\(hasActiveHistory), command=\(trimmedCommand.isEmpty ? "empty" : "present")")
+
       // Check if command is empty/null
       if trimmedCommand.isEmpty {
-        // No command - direct TTS
+        // No command - direct TTS requires selected text
+        guard let text = selectedText else {
+          await MainActor.run {
+            self.appState = self.appState.showError("No text selected")
+            PopupNotificationWindow.showError("No text selected. Select text to read aloud, or speak a question for follow-up.", title: "Read Aloud")
+          }
+          return
+        }
+
         DebugLogger.log("TTS: No voice command detected, using direct TTS")
         await MainActor.run {
           self.appState = .processing(.ttsProcessing)
           self.isProcessingTTS = true
         }
-        
-        let audioData = try await speechService.readTextAloud(selectedText)
+
+        let audioData = try await speechService.readTextAloud(text)
         await MainActor.run {
           self.isProcessingTTS = false
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
         }
       } else {
-        // Command exists - apply prompt mode first
+        // Command exists - need either selected text OR active history for follow-up
+        if selectedText == nil && !hasActiveHistory {
+          await MainActor.run {
+            self.appState = self.appState.showError("No text selected")
+            PopupNotificationWindow.showError("No text selected and no conversation history. Select text first, then ask questions.", title: "Read Aloud")
+          }
+          return
+        }
+
+        if selectedText == nil {
+          DebugLogger.log("TTS: Follow-up question (no new text, using conversation history)")
+        }
+
         DebugLogger.log("TTS: Voice command detected: \(trimmedCommand)")
         await MainActor.run {
           self.appState = .processing(.prompting)
         }
-        
-        // Apply prompt mode: selected text + command (using text-based method)
+
+        // Apply prompt mode: selected text (may be nil) + command
         let promptResult = try await speechService.executePromptWithText(textCommand: trimmedCommand, selectedText: selectedText, mode: .promptAndRead)
-        
+
         // Now TTS the result using Prompt & Read voice
         await MainActor.run {
           self.appState = .processing(.ttsProcessing)
           self.isProcessingTTS = true
         }
-        
+
         // Get Prompt & Read voice from UserDefaults
         let promptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice) ?? SettingsDefaults.selectedPromptAndReadVoice
         let audioData = try await speechService.readTextAloud(promptResult, voiceName: promptAndReadVoice)

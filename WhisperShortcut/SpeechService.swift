@@ -499,13 +499,14 @@ class SpeechService {
   }
   
   // MARK: - Text-based Prompt Mode (for TTS flow)
-  func executePromptWithText(textCommand: String, selectedText: String, mode: PromptMode = .togglePrompting) async throws -> String {
+  func executePromptWithText(textCommand: String, selectedText: String?, mode: PromptMode = .togglePrompting) async throws -> String {
     // Only check API key for Gemini models
     guard let googleAPIKey = self.googleAPIKey, !googleAPIKey.isEmpty else {
       throw TranscriptionError.noGoogleAPIKey
     }
 
-    DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt & Read"))")
+    let hasSelectedText = selectedText != nil && !selectedText!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt & Read"), hasSelectedText: \(hasSelectedText))")
 
     // Get selected model from settings based on mode
     let selectedPromptModel = getPromptModel(for: mode)
@@ -544,27 +545,32 @@ class SpeechService {
       DebugLogger.log("PROMPT-MODE-TEXT: Including \(historyCount) previous turns from conversation history")
     }
 
-    // Build current user message with selected text and text command
-    let contextText = """
-    SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):
+    // Build current user message parts
+    var userParts: [GeminiChatRequest.GeminiChatPart] = []
 
-    \(selectedText)
-    """
+    // Add clipboard context if present (so Gemini knows what to apply the instruction to)
+    if let text = selectedText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      let contextText = """
+      SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):
 
+      \(text)
+      """
+      userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
+    }
+
+    // Add voice instruction
     let commandText = """
-    VOICE INSTRUCTION (what to do with the selected text):
+    VOICE INSTRUCTION\(hasSelectedText ? " (what to do with the selected text)" : ""):
 
     \(textCommand)
     """
+    userParts.append(GeminiChatRequest.GeminiChatPart(text: commandText, inlineData: nil, fileData: nil, url: nil))
 
     // Add current user message
     contents.append(
       GeminiChatRequest.GeminiChatContent(
         role: "user",
-        parts: [
-          GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil),
-          GeminiChatRequest.GeminiChatPart(text: commandText, inlineData: nil, fileData: nil, url: nil)
-        ]
+        parts: userParts
       )
     )
 
