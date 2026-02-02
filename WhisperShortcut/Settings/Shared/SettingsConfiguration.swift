@@ -389,6 +389,9 @@ struct SettingsDefaults {
   static let selectedReadAloudVoice = "Charon"
   static let selectedPromptAndReadVoice = "Charon"
   static let selectedTTSModel = TTSModel.gemini25FlashTTS
+  static let readAloudPlaybackRateMin: Float = 0.5
+  static let readAloudPlaybackRateMax: Float = 2.0
+  static let readAloudPlaybackRate: Float = 1.0
 
   // MARK: - Whisper Language Settings
   static let whisperLanguage = WhisperLanguage.auto
@@ -441,6 +444,7 @@ struct SettingsData {
   var selectedReadAloudVoice: String = SettingsDefaults.selectedReadAloudVoice
   var selectedPromptAndReadVoice: String = SettingsDefaults.selectedPromptAndReadVoice
   var selectedTTSModel: TTSModel = SettingsDefaults.selectedTTSModel
+  var readAloudPlaybackRate: Float = SettingsDefaults.readAloudPlaybackRate
 
   // MARK: - Whisper Language Settings
   var whisperLanguage: WhisperLanguage = SettingsDefaults.whisperLanguage

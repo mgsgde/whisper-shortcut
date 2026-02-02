@@ -42,6 +42,18 @@ struct ReadAloudSettingsTab: View {
         Spacer()
           .frame(height: SettingsConstants.sectionSpacing)
       }
+
+      // Speech Speed Section
+      speechSpeedSection
+      
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
       
       // Usage Instructions Section
       usageInstructionsSection
@@ -116,6 +128,35 @@ struct ReadAloudSettingsTab: View {
         }
       }
     )
+  }
+
+  // MARK: - Speech Speed Section
+  @ViewBuilder
+  private var speechSpeedSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Speed",
+        subtitle: "Playback speed for read aloud (1.0 = normal, higher = faster)"
+      )
+
+      HStack(spacing: 12) {
+        Slider(
+          value: $viewModel.data.readAloudPlaybackRate,
+          in: SettingsDefaults.readAloudPlaybackRateMin...SettingsDefaults.readAloudPlaybackRateMax,
+          step: 0.05
+        )
+        .onChange(of: viewModel.data.readAloudPlaybackRate) { _, _ in
+          Task {
+            await viewModel.saveSettings()
+          }
+        }
+        Text(String(format: "%.1f×", viewModel.data.readAloudPlaybackRate))
+          .font(.callout)
+          .fontWeight(.medium)
+          .foregroundColor(.secondary)
+          .frame(minWidth: 36, alignment: .trailing)
+      }
+    }
   }
   
   // MARK: - Usage Instructions

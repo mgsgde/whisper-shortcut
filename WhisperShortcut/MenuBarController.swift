@@ -739,18 +739,33 @@ class MenuBarController: NSObject {
         audioPlayerNode = nil
       }
       
-      // Create audio engine for playback
+      // Read playback rate from settings (clamp to valid range)
+      let rate: Float
+      if UserDefaults.standard.object(forKey: UserDefaultsKeys.readAloudPlaybackRate) != nil {
+        let saved = UserDefaults.standard.float(forKey: UserDefaultsKeys.readAloudPlaybackRate)
+        rate = min(max(saved, SettingsDefaults.readAloudPlaybackRateMin), SettingsDefaults.readAloudPlaybackRateMax)
+      } else {
+        rate = SettingsDefaults.readAloudPlaybackRate
+      }
+      DebugLogger.log("TTS-PLAYBACK: Playback rate: \(rate)")
+
+      // Create audio engine for playback with varispeed (preserves pitch when changing speed)
       let engine = AVAudioEngine()
       let playerNode = AVAudioPlayerNode()
-      
+      let varispeedNode = AVAudioUnitVarispeed()
+
       engine.attach(playerNode)
-      engine.connect(playerNode, to: engine.mainMixerNode, format: audioFormat)
-      
+      engine.attach(varispeedNode)
+      engine.connect(playerNode, to: varispeedNode, format: audioFormat)
+      engine.connect(varispeedNode, to: engine.mainMixerNode, format: audioFormat)
+
+      varispeedNode.rate = rate
+
       // Store references to prevent deallocation
       self.audioEngine = engine
       self.audioPlayerNode = playerNode
       
-      DebugLogger.log("TTS-PLAYBACK: Audio engine configured, starting engine...")
+      DebugLogger.log("TTS-PLAYBACK: Audio engine configured (rate: \(rate)), starting engine...")
       try engine.start()
       DebugLogger.log("TTS-PLAYBACK: Audio engine started successfully")
       

@@ -17,6 +17,7 @@ enum UserDefaultsKeys {
   // MARK: - Read Aloud Settings
   static let selectedReadAloudVoice = "selectedReadAloudVoice"
   static let selectedPromptAndReadVoice = "selectedPromptAndReadVoice"
+  static let readAloudPlaybackRate = "readAloudPlaybackRate"
   
   // MARK: - Legacy Keys (for migration)
   static let selectedReadAloudVoiceLegacy = "selected_read_aloud_voice"
