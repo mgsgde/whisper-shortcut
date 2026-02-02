@@ -4,7 +4,6 @@ import HotKey
 import SwiftUI
 import AVFoundation
 
-
 class MenuBarController: NSObject {
 
   // MARK: - Constants
@@ -47,6 +46,7 @@ class MenuBarController: NSObject {
   private var audioPlayer: AVAudioPlayer?
   private var audioEngine: AVAudioEngine?
   private var audioPlayerNode: AVAudioPlayerNode?
+  private var timePitchNode: AVAudioUnitTimePitch?
 
   // MARK: - Configuration
   private var currentConfig: ShortcutConfig
@@ -680,7 +680,7 @@ class MenuBarController: NSObject {
   
   private func playTTSAudio(audioData: Data) {
     DebugLogger.log("TTS-PLAYBACK: Starting audio playback (data size: \(audioData.count) bytes)")
-    
+
     // PCM format: 16-bit signed little-endian, 24kHz, mono
     let sampleRate: Double = 24000
     let channels: UInt32 = 1
@@ -698,14 +698,10 @@ class MenuBarController: NSObject {
         throw NSError(domain: "TTS", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create audio format"])
       }
       
-      DebugLogger.log("TTS-PLAYBACK: Audio format created (sampleRate: \(sampleRate), channels: \(channels))")
-      
       // Calculate frame count
       let bytesPerFrame = Int(channels * (bitsPerChannel / 8))
       let frameCount = audioData.count / bytesPerFrame
-      
-      DebugLogger.log("TTS-PLAYBACK: Calculated frame count: \(frameCount) (bytesPerFrame: \(bytesPerFrame))")
-      
+
       // Create PCM buffer
       guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: AVAudioFrameCount(frameCount)) else {
         DebugLogger.logError("TTS-PLAYBACK: Failed to create audio buffer")
@@ -726,9 +722,7 @@ class MenuBarController: NSObject {
           }
         }
       }
-      
-      DebugLogger.log("TTS-PLAYBACK: PCM data copied to buffer")
-      
+
       // Stop any existing playback
       if let existingEngine = audioEngine {
         existingEngine.stop()
@@ -747,35 +741,74 @@ class MenuBarController: NSObject {
       } else {
         rate = SettingsDefaults.readAloudPlaybackRate
       }
-      DebugLogger.log("TTS-PLAYBACK: Playback rate: \(rate)")
 
-      // Create audio engine for playback with varispeed (preserves pitch when changing speed)
+      // AVAudioUnitTimePitch does not accept Int16; use Float32 for rate != 1.0 to avoid crash on connect.
+      let playbackBuffer: AVAudioPCMBuffer
+      let playbackFormat: AVAudioFormat
+      if rate != 1.0 {
+        guard let floatFormat = AVAudioFormat(
+          commonFormat: .pcmFormatFloat32,
+          sampleRate: sampleRate,
+          channels: channels,
+          interleaved: false
+        ) else {
+          DebugLogger.logError("TTS-PLAYBACK: Failed to create Float32 format")
+          throw NSError(domain: "TTS", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to create Float32 format"])
+        }
+        guard let floatBuffer = AVAudioPCMBuffer(pcmFormat: floatFormat, frameCapacity: AVAudioFrameCount(frameCount)) else {
+          DebugLogger.logError("TTS-PLAYBACK: Failed to create Float32 buffer")
+          throw NSError(domain: "TTS", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to create Float32 buffer"])
+        }
+        floatBuffer.frameLength = AVAudioFrameCount(frameCount)
+        audioData.withUnsafeBytes { bytes in
+          guard let baseAddress = bytes.baseAddress else { return }
+          let int16Pointer = baseAddress.assumingMemoryBound(to: Int16.self)
+          if let floatChannelData = floatBuffer.floatChannelData {
+            for i in 0..<frameCount {
+              floatChannelData[0][i] = Float(int16Pointer[i]) / 32768.0
+            }
+          }
+        }
+        playbackBuffer = floatBuffer
+        playbackFormat = floatFormat
+      } else {
+        playbackBuffer = buffer
+        playbackFormat = buffer.format
+      }
+
+      // Create audio engine for playback; use TimePitch when rate != 1.0 (more reliable on macOS)
       let engine = AVAudioEngine()
       let playerNode = AVAudioPlayerNode()
-      let varispeedNode = AVAudioUnitVarispeed()
-
       engine.attach(playerNode)
-      engine.attach(varispeedNode)
-      engine.connect(playerNode, to: varispeedNode, format: audioFormat)
-      engine.connect(varispeedNode, to: engine.mainMixerNode, format: audioFormat)
 
-      varispeedNode.rate = rate
+      if rate != 1.0 {
+        let pitchNode = AVAudioUnitTimePitch()
+        pitchNode.rate = rate
+        pitchNode.pitch = 0  // no additional pitch shift
+        engine.attach(pitchNode)
+        engine.connect(playerNode, to: pitchNode, format: playbackFormat)
+        engine.connect(pitchNode, to: engine.mainMixerNode, format: playbackFormat)
+        self.timePitchNode = pitchNode
+      } else {
+        engine.connect(playerNode, to: engine.mainMixerNode, format: buffer.format)
+        self.timePitchNode = nil
+      }
 
       // Store references to prevent deallocation
       self.audioEngine = engine
       self.audioPlayerNode = playerNode
-      
-      DebugLogger.log("TTS-PLAYBACK: Audio engine configured (rate: \(rate)), starting engine...")
+
       try engine.start()
-      DebugLogger.log("TTS-PLAYBACK: Audio engine started successfully")
-      
-      // Schedule buffer for playback
-      playerNode.scheduleBuffer(buffer) {
-        DebugLogger.log("TTS-PLAYBACK: Buffer playback completed")
+
+      // Schedule buffer for playback (use playbackBuffer: Float32 when rate != 1.0, else Int16)
+      playerNode.scheduleBuffer(playbackBuffer) {
+        DebugLogger.log("TTS-PLAYBACK: Playback completed")
         Task { @MainActor in
-          engine.stop()
+          self.audioPlayerNode?.stop()
+          self.audioEngine?.stop()
           self.audioEngine = nil
           self.audioPlayerNode = nil
+          self.timePitchNode = nil
           self.audioPlayer = nil
           self.currentTTSAudioURL = nil
           self.appState = self.appState.showSuccess("Audio playback completed")
@@ -785,8 +818,6 @@ class MenuBarController: NSObject {
           }
         }
       }
-      
-      DebugLogger.log("TTS-PLAYBACK: Buffer scheduled, starting playback...")
       playerNode.play()
       DebugLogger.logSuccess("TTS-PLAYBACK: Playback started")
       appState = appState.showSuccess("Playing audio...")
@@ -1034,10 +1065,11 @@ class MenuBarController: NSObject {
   private func stopTTSPlayback() {
     audioPlayer?.stop()
     audioPlayer = nil
-    audioEngine?.stop()
     audioPlayerNode?.stop()
+    audioEngine?.stop()
     audioEngine = nil
     audioPlayerNode = nil
+    timePitchNode = nil
     cleanupAudioFile(at: currentTTSAudioURL)
     currentTTSAudioURL = nil
   }
