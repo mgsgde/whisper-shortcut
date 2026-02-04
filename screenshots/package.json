@@ -18,6 +18,13 @@
   "devDependencies": {
     "live-server": "^1.2.2"
   },
+  "overrides": {
+    "ws": "^8.17.1",
+    "tar-fs": "^3.0.9",
+    "braces": "^3.0.3",
+    "js-yaml": "^4.1.1",
+    "micromatch": "^4.0.8"
+  },
   "keywords": [
     "screenshot",
     "app-store",
