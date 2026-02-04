@@ -115,9 +115,6 @@ class ChunkTranscriptionService {
     /// Delegate for receiving progress updates.
     weak var progressDelegate: ChunkProgressDelegate?
 
-    /// Maximum concurrent API calls.
-    let maxConcurrency: Int
-
     /// Maximum retry attempts per chunk.
     let maxRetries: Int
 
@@ -136,12 +133,10 @@ class ChunkTranscriptionService {
     // MARK: - Initialization
 
     init(
-        maxConcurrency: Int = AppConstants.maxConcurrentChunks,
         maxRetries: Int = 5,  // Increased from 3 to handle rate limiting with proper delays
         retryDelay: TimeInterval = 1.5,
         geminiClient: GeminiAPIClient? = nil
     ) {
-        self.maxConcurrency = maxConcurrency
         self.maxRetries = maxRetries
         self.retryDelay = retryDelay
         self.chunker = AudioChunker()
@@ -229,7 +224,6 @@ class ChunkTranscriptionService {
         model: TranscriptionModel,
         prompt: String
     ) async throws -> [ChunkTranscript] {
-        let semaphore = AsyncSemaphore(value: maxConcurrency)
         let totalChunks = chunks.count
 
         // Use actor for thread-safe accumulation
@@ -238,10 +232,6 @@ class ChunkTranscriptionService {
         try await withThrowingTaskGroup(of: Result<ChunkTranscript, Error>.self) { group in
             for chunk in chunks {
                 group.addTask { [self] in
-                    // Wait for semaphore
-                    await semaphore.wait()
-                    defer { Task { await semaphore.signal() } }
-
                     // Notify delegate that chunk is now actively processing
                     await MainActor.run {
                         self.progressDelegate?.chunkStarted(index: chunk.index)

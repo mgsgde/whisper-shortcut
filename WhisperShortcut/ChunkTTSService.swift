@@ -106,9 +106,6 @@ class ChunkTTSService {
     /// Delegate for receiving progress updates.
     weak var progressDelegate: ChunkProgressDelegate?
 
-    /// Maximum concurrent API calls.
-    let maxConcurrency: Int
-
     /// Maximum retry attempts per chunk.
     let maxRetries: Int
 
@@ -127,12 +124,10 @@ class ChunkTTSService {
     // MARK: - Initialization
 
     init(
-        maxConcurrency: Int = AppConstants.maxConcurrentChunks,
         maxRetries: Int = 5,  // Increased from 3 to handle rate limiting with proper delays
         retryDelay: TimeInterval = 1.5,
         geminiClient: GeminiAPIClient? = nil
     ) {
-        self.maxConcurrency = maxConcurrency
         self.maxRetries = maxRetries
         self.retryDelay = retryDelay
         self.chunker = TextChunker()
@@ -167,7 +162,7 @@ class ChunkTTSService {
             throw ChunkedTTSError.chunkingFailed(error)
         }
 
-        DebugLogger.log("TTS-CHUNK-SERVICE: Split into \(chunks.count) chunks (max concurrency: \(maxConcurrency), max retries: \(maxRetries))")
+        DebugLogger.log("TTS-CHUNK-SERVICE: Split into \(chunks.count) chunks (max retries: \(maxRetries))")
 
         // Notify delegate about chunking start
         await MainActor.run {
@@ -226,10 +221,9 @@ class ChunkTTSService {
         apiKey: String,
         model: TTSModel
     ) async throws -> [AudioChunkData] {
-        let semaphore = AsyncSemaphore(value: maxConcurrency)
         let totalChunks = chunks.count
 
-        DebugLogger.log("TTS-CHUNK-SERVICE: Starting parallel synthesis (total chunks: \(totalChunks), max concurrency: \(maxConcurrency))")
+        DebugLogger.log("TTS-CHUNK-SERVICE: Starting parallel synthesis (total chunks: \(totalChunks))")
 
         // Use actor for thread-safe accumulation
         let accumulator = ResultAccumulator()
@@ -237,10 +231,6 @@ class ChunkTTSService {
         try await withThrowingTaskGroup(of: Result<AudioChunkData, Error>.self) { group in
             for chunk in chunks {
                 group.addTask { [self] in
-                    // Wait for semaphore
-                    await semaphore.wait()
-                    defer { Task { await semaphore.signal() } }
-
                     DebugLogger.log("TTS-CHUNK-SERVICE: Chunk \(chunk.index + 1)/\(totalChunks) started processing (\(chunk.text.count) chars)")
 
                     // Notify delegate that chunk started

@@ -49,10 +49,6 @@ Key rules:
   /// Provides context continuity and helps with transcript merging.
   static let chunkOverlapSeconds: TimeInterval = 2.0
 
-  /// Maximum number of concurrent API calls during chunked transcription.
-  /// Higher values are faster but may hit rate limits on free tier.
-  static let maxConcurrentChunks: Int = 5
-
   // MARK: - Prompt Conversation History
   /// Maximum number of previous turns to include in prompt requests.
   /// Higher values provide more context but increase API costs and latency.
