@@ -442,8 +442,8 @@ enum TranscriptionError: Error, Equatable {
   case invalidRequest
   case permissionDenied
   case notFound
-  case rateLimited
-  case quotaExceeded
+  case rateLimited(retryAfter: TimeInterval?)
+  case quotaExceeded(retryAfter: TimeInterval?)
   case serverError(Int)
   case serviceUnavailable
   case slowDown
@@ -484,15 +484,30 @@ enum TranscriptionError: Error, Equatable {
     case .modelNotAvailable: return "Model Not Downloaded"
     }
   }
+
+  /// Returns the retry delay if this error has one
+  var retryAfter: TimeInterval? {
+    switch self {
+    case .rateLimited(let retryAfter), .quotaExceeded(let retryAfter):
+      return retryAfter
+    default:
+      return nil
+    }
+  }
   
   /// Determines if this error is retryable (temporary/transient errors)
   var isRetryable: Bool {
     switch self {
     // Retryable errors (temporary issues)
-    case .networkError, .requestTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .rateLimited, .slowDown:
+    case .networkError, .requestTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown:
       return true
+    // Rate limited and quota exceeded are retryable if we have a retry delay
+    case .rateLimited(let retryAfter):
+      return retryAfter != nil
+    case .quotaExceeded(let retryAfter):
+      return retryAfter != nil
     // Non-retryable errors (configuration/permanent issues)
-    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .quotaExceeded, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest:
+    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest:
       return false
     }
   }

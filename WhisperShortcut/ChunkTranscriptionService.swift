@@ -26,6 +26,62 @@ enum ChunkedTranscriptionError: Error, LocalizedError {
     }
 }
 
+/// Actor to coordinate rate limiting across all chunk tasks.
+/// When one chunk hits a 429, all chunks pause together.
+actor RateLimitCoordinator {
+    /// Time until which all requests should wait
+    private var pauseUntil: Date = .distantPast
+
+    /// Number of consecutive rate limit errors (for adaptive backoff)
+    private var consecutiveRateLimits: Int = 0
+
+    /// Wait if we're currently in a rate-limited period
+    func waitIfNeeded() async {
+        let now = Date()
+        if pauseUntil > now {
+            let waitTime = pauseUntil.timeIntervalSince(now)
+            DebugLogger.log("RATE-LIMIT-COORDINATOR: Waiting \(String(format: "%.1f", waitTime))s before next request")
+            try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+        }
+    }
+
+    /// Report a rate limit error with optional retry delay from API
+    func reportRateLimit(retryAfter: TimeInterval?) {
+        consecutiveRateLimits += 1
+
+        // Use API-provided delay, or calculate exponential backoff
+        let delay: TimeInterval
+        if let retryAfter = retryAfter {
+            // Add small buffer to API-provided delay
+            delay = retryAfter + 2.0
+            DebugLogger.log("RATE-LIMIT-COORDINATOR: API requested \(retryAfter)s delay, using \(delay)s")
+        } else {
+            // Exponential backoff: 30s, 60s, 120s, capped at 120s
+            delay = min(30.0 * pow(2.0, Double(consecutiveRateLimits - 1)), 120.0)
+            DebugLogger.log("RATE-LIMIT-COORDINATOR: No API delay, using exponential backoff: \(delay)s")
+        }
+
+        let newPauseUntil = Date().addingTimeInterval(delay)
+        if newPauseUntil > pauseUntil {
+            pauseUntil = newPauseUntil
+            DebugLogger.log("RATE-LIMIT-COORDINATOR: All chunks paused until \(pauseUntil)")
+        }
+    }
+
+    /// Report a successful request (resets consecutive counter)
+    func reportSuccess() {
+        if consecutiveRateLimits > 0 {
+            DebugLogger.log("RATE-LIMIT-COORDINATOR: Request succeeded, resetting rate limit counter")
+            consecutiveRateLimits = 0
+        }
+    }
+
+    /// Get current pause status for logging
+    func isPaused() -> Bool {
+        return pauseUntil > Date()
+    }
+}
+
 /// Service for transcribing long audio files by splitting into chunks
 /// and processing them in parallel with retry logic.
 class ChunkTranscriptionService {
@@ -49,11 +105,14 @@ class ChunkTranscriptionService {
     /// Gemini API client for making requests.
     private let geminiClient: GeminiAPIClient
 
+    /// Coordinator for global rate limiting across all chunks.
+    private let rateLimitCoordinator = RateLimitCoordinator()
+
     // MARK: - Initialization
 
     init(
         maxConcurrency: Int = AppConstants.maxConcurrentChunks,
-        maxRetries: Int = 3,
+        maxRetries: Int = 5,  // Increased from 3 to handle rate limiting with proper delays
         retryDelay: TimeInterval = 1.5,
         geminiClient: GeminiAPIClient? = nil
     ) {
@@ -255,6 +314,12 @@ class ChunkTranscriptionService {
 
         for attempt in 1...maxRetries {
             do {
+                // Wait if we're in a rate-limited period (global coordination)
+                await rateLimitCoordinator.waitIfNeeded()
+
+                // Check for cancellation after waiting
+                try Task.checkCancellation()
+
                 // Report retry status
                 if attempt > 1 {
                     let errorToReport = lastError ?? TranscriptionError.networkError("Unknown")
@@ -316,6 +381,9 @@ class ChunkTranscriptionService {
                     withRetry: false
                 )
 
+                // Report success to coordinator (resets rate limit counter)
+                await rateLimitCoordinator.reportSuccess()
+
                 // Extract text
                 let text = geminiClient.extractText(from: response)
                 let normalizedText = TextProcessingUtility.normalizeTranscriptionText(text)
@@ -332,16 +400,40 @@ class ChunkTranscriptionService {
             } catch {
                 lastError = error
 
-                // Check if error is retryable
-                if let transcriptionError = error as? TranscriptionError,
-                   !transcriptionError.isRetryable {
-                    throw error
+                // Check if this is a rate limit or quota error with retry info
+                if let transcriptionError = error as? TranscriptionError {
+                    switch transcriptionError {
+                    case .rateLimited(let retryAfter), .quotaExceeded(let retryAfter):
+                        // Report to coordinator so all chunks pause
+                        await rateLimitCoordinator.reportRateLimit(retryAfter: retryAfter)
+
+                        // If we have a retry delay, this error is retryable
+                        if retryAfter != nil && attempt < maxRetries {
+                            DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) hit rate limit, will retry after coordinator wait")
+                            continue
+                        }
+
+                    default:
+                        break
+                    }
+
+                    // Non-retryable errors should fail immediately
+                    if !transcriptionError.isRetryable {
+                        throw error
+                    }
                 }
 
                 // Don't retry on last attempt
                 if attempt < maxRetries {
-                    let delay = retryDelay * pow(2.0, Double(attempt - 1))
-                    DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) failed, retrying in \(delay)s")
+                    // Use API-provided delay if available, otherwise exponential backoff
+                    let delay: TimeInterval
+                    if let transcriptionError = error as? TranscriptionError,
+                       let retryAfter = transcriptionError.retryAfter {
+                        delay = retryAfter
+                    } else {
+                        delay = retryDelay * pow(2.0, Double(attempt - 1))
+                    }
+                    DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) failed, retrying in \(String(format: "%.1f", delay))s")
                     try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 }
             }

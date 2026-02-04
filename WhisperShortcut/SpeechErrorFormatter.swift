@@ -68,7 +68,8 @@ struct SpeechErrorFormatter {
         Please try again.
         """
 
-    case .rateLimited:
+    case .rateLimited(let retryAfter):
+      let waitMessage = retryAfter.map { "Please wait \(Int($0)) seconds and try again." } ?? "Please wait a moment and try again after setting up billing."
       return """
         ⏳ Rate Limit Exceeded
 
@@ -85,22 +86,25 @@ struct SpeechErrorFormatter {
         3. Add a payment method
         4. Enable the Gemini API
 
-        Please wait a moment and try again after setting up billing.
+        \(waitMessage)
         """
 
-    case .quotaExceeded:
+    case .quotaExceeded(let retryAfter):
+      let waitMessage = retryAfter.map { "Please wait \(Int($0)) seconds and try again." } ?? "Please try again after adding more credits."
       return """
         ⏳ Quota Exceeded
 
         You have exceeded your current quota. Please check your plan and billing details.
 
-        To resolve:
-        1. Visit Google Cloud Console
-        2. Go to Billing settings
-        3. Check your current usage and limits
-        4. Add more credits or upgrade your plan
+        Check your current usage and quotas:
+        https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com/quotas
 
-        Please try again after adding more credits.
+        To resolve:
+        1. Visit the link above to see your quota and usage
+        2. Go to Billing settings in Google Cloud Console
+        3. Add more credits or upgrade your plan
+
+        \(waitMessage)
         """
 
     case .serverError(let code):

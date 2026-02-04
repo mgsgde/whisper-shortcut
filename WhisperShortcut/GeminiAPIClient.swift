@@ -1,5 +1,43 @@
 import Foundation
 
+// MARK: - Gemini Error Response Models
+/// Structured error response from Gemini API
+struct GeminiErrorResponse: Codable {
+    let error: GeminiErrorDetail
+
+    struct GeminiErrorDetail: Codable {
+        let code: Int
+        let message: String
+        let status: String?
+    }
+
+    /// Extracts the retry delay in seconds from the message text.
+    /// Parses patterns like "Please retry in 55.764008118s." from the message.
+    func extractRetryDelay() -> TimeInterval? {
+        return Self.parseRetryDelayFromMessage(error.message)
+    }
+
+    /// Parses "Please retry in X.Xs" from an error message string
+    static func parseRetryDelayFromMessage(_ message: String) -> TimeInterval? {
+        // Pattern: "Please retry in 55.764008118s." or "retry in 30s"
+        // Use regex to find the pattern
+        let pattern = #"[Rr]etry in\s+(\d+(?:\.\d+)?)\s*s"#
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []),
+              let match = regex.firstMatch(
+                  in: message,
+                  options: [],
+                  range: NSRange(message.startIndex..., in: message)
+              ),
+              let numberRange = Range(match.range(at: 1), in: message) else {
+            return nil
+        }
+
+        let numberString = String(message[numberRange])
+        return Double(numberString)
+    }
+}
+
 // MARK: - Gemini API Client
 /// Centralized client for all Gemini API interactions
 /// Eliminates code duplication and improves maintainability
@@ -9,7 +47,7 @@ class GeminiAPIClient {
   private enum Constants {
     static let requestTimeout: TimeInterval = 60.0
     static let resourceTimeout: TimeInterval = 300.0
-    static let maxRetryAttempts = 2
+    static let maxRetryAttempts = 4  // Increased to handle rate limiting with proper delays
     static let retryDelaySeconds: TimeInterval = 1.5
     static let filesAPIBaseURL = "https://generativelanguage.googleapis.com/upload/v1beta/files"
   }
@@ -231,13 +269,24 @@ class GeminiAPIClient {
         }
       } catch {
         lastError = error
+
+        // Check if this is a rate limit error with a retry delay
+        if let transcriptionError = error as? TranscriptionError,
+           let retryAfter = transcriptionError.retryAfter {
+          // Use the API-provided retry delay
+          let waitTime = retryAfter + 2.0  // Add small buffer
+          DebugLogger.log("\(mode)-RETRY: Rate limited, waiting \(String(format: "%.1f", waitTime))s as requested by API...")
+          try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+          continue  // Always retry after API-requested wait
+        }
+
         if attempt < maxAttempts {
           DebugLogger.log("\(mode)-RETRY: Attempt \(attempt) failed, retrying in \(Constants.retryDelaySeconds)s: \(error.localizedDescription)")
           try? await Task.sleep(nanoseconds: UInt64(Constants.retryDelaySeconds * 1_000_000_000))
         }
       }
     }
-    
+
     DebugLogger.log("\(mode)-RETRY: All \(maxAttempts) attempts failed")
     throw lastError ?? TranscriptionError.networkError("Gemini request failed after retries")
   }
@@ -379,37 +428,66 @@ class GeminiAPIClient {
   
   /// Parses Gemini error responses into TranscriptionError
   func parseErrorResponse(data: Data, statusCode: Int) throws -> TranscriptionError {
-    // Try to parse Gemini error format
-    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-       let error = json["error"] as? [String: Any],
-       let message = error["message"] as? String {
+    // Try to parse structured Gemini error format with RetryInfo
+    var retryAfter: TimeInterval? = nil
+
+    if let errorResponse = try? JSONDecoder().decode(GeminiErrorResponse.self, from: data) {
+      retryAfter = errorResponse.extractRetryDelay()
+      if let retryAfter = retryAfter {
+        DebugLogger.log("GEMINI-ERROR: Found retryDelay: \(retryAfter)s")
+      }
+
+      let message = errorResponse.error.message
       DebugLogger.log("GEMINI-ERROR: \(message)")
-      
+
       // Map common Gemini errors to TranscriptionError
       let lowerMessage = message.lowercased()
       if lowerMessage.contains("api key") || lowerMessage.contains("authentication") {
         return statusCode == 401 ? .invalidAPIKey : .incorrectAPIKey
       }
       if lowerMessage.contains("quota") || lowerMessage.contains("exceeded") {
-        return .quotaExceeded
+        return .quotaExceeded(retryAfter: retryAfter)
       }
       if lowerMessage.contains("rate limit") {
-        return .rateLimited
+        return .rateLimited(retryAfter: retryAfter)
+      }
+    } else if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = json["error"] as? [String: Any],
+              let message = error["message"] as? String {
+      // Fallback to manual JSON parsing
+      DebugLogger.log("GEMINI-ERROR: \(message)")
+
+      // Try to extract retry delay from the message text
+      let fallbackRetryAfter = GeminiErrorResponse.parseRetryDelayFromMessage(message)
+      if let fallbackRetryAfter = fallbackRetryAfter {
+        DebugLogger.log("GEMINI-ERROR: Found retryDelay in message: \(fallbackRetryAfter)s")
+        retryAfter = fallbackRetryAfter
+      }
+
+      let lowerMessage = message.lowercased()
+      if lowerMessage.contains("api key") || lowerMessage.contains("authentication") {
+        return statusCode == 401 ? .invalidAPIKey : .incorrectAPIKey
+      }
+      if lowerMessage.contains("quota") || lowerMessage.contains("exceeded") {
+        return .quotaExceeded(retryAfter: retryAfter)
+      }
+      if lowerMessage.contains("rate limit") {
+        return .rateLimited(retryAfter: retryAfter)
       }
     }
-    
+
     // Fall back to status code parsing
-    return parseStatusCodeError(statusCode)
+    return parseStatusCodeError(statusCode, retryAfter: retryAfter)
   }
-  
+
   /// Maps HTTP status codes to TranscriptionError
-  private func parseStatusCodeError(_ statusCode: Int) -> TranscriptionError {
+  private func parseStatusCodeError(_ statusCode: Int, retryAfter: TimeInterval? = nil) -> TranscriptionError {
     switch statusCode {
     case 400: return .invalidRequest
     case 401: return .invalidAPIKey
     case 403: return .permissionDenied
     case 404: return .notFound
-    case 429: return .rateLimited
+    case 429: return .rateLimited(retryAfter: retryAfter)
     case 500: return .serverError(statusCode)
     case 503: return .serviceUnavailable
     default: return .serverError(statusCode)
