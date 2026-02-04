@@ -7,6 +7,82 @@
 
 import Foundation
 
+/// Actor to coordinate rate limiting across all TTS chunk tasks.
+/// When one chunk hits a 429, all chunks pause together.
+actor TTSRateLimitCoordinator {
+    /// Time until which all requests should wait
+    private var pauseUntil: Date = .distantPast
+
+    /// Number of consecutive rate limit errors (for adaptive backoff)
+    private var consecutiveRateLimits: Int = 0
+
+    /// Whether we've already shown a notification for the current wait period
+    private var notificationShown: Bool = false
+
+    /// Wait if we're currently in a rate-limited period
+    func waitIfNeeded() async {
+        let now = Date()
+        if pauseUntil > now {
+            let waitTime = pauseUntil.timeIntervalSince(now)
+            DebugLogger.log("TTS-RATE-LIMIT-COORDINATOR: Waiting \(String(format: "%.1f", waitTime))s before next request")
+
+            // Show notification if not already shown for this wait period
+            if !notificationShown {
+                notificationShown = true
+                await MainActor.run {
+                    NotificationCenter.default.post(
+                        name: .rateLimitWaiting,
+                        object: nil,
+                        userInfo: ["waitTime": waitTime]
+                    )
+                }
+            }
+
+            try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+
+            // Dismiss notification after wait (only once)
+            if notificationShown {
+                notificationShown = false
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .rateLimitResolved, object: nil)
+                }
+            }
+        }
+    }
+
+    /// Report a rate limit error with optional retry delay from API
+    func reportRateLimit(retryAfter: TimeInterval?) {
+        consecutiveRateLimits += 1
+
+        // Use API-provided delay, or calculate exponential backoff
+        let delay: TimeInterval
+        if let retryAfter = retryAfter {
+            // Add small buffer to API-provided delay
+            delay = retryAfter + 2.0
+            DebugLogger.log("TTS-RATE-LIMIT-COORDINATOR: API requested \(retryAfter)s delay, using \(delay)s")
+        } else {
+            // Exponential backoff: 30s, 60s, 120s, capped at 120s
+            delay = min(30.0 * pow(2.0, Double(consecutiveRateLimits - 1)), 120.0)
+            DebugLogger.log("TTS-RATE-LIMIT-COORDINATOR: No API delay, using exponential backoff: \(delay)s")
+        }
+
+        let newPauseUntil = Date().addingTimeInterval(delay)
+        if newPauseUntil > pauseUntil {
+            pauseUntil = newPauseUntil
+            notificationShown = false  // Reset so next waitIfNeeded shows notification
+            DebugLogger.log("TTS-RATE-LIMIT-COORDINATOR: All chunks paused until \(pauseUntil)")
+        }
+    }
+
+    /// Report a successful request (resets consecutive counter)
+    func reportSuccess() {
+        if consecutiveRateLimits > 0 {
+            DebugLogger.log("TTS-RATE-LIMIT-COORDINATOR: Request succeeded, resetting rate limit counter")
+            consecutiveRateLimits = 0
+        }
+    }
+}
+
 /// Errors specific to chunked TTS.
 enum ChunkedTTSError: Error, LocalizedError {
     case chunkingFailed(Error)
@@ -45,11 +121,14 @@ class ChunkTTSService {
     /// Gemini API client for making requests.
     private let geminiClient: GeminiAPIClient
 
+    /// Coordinator for global rate limiting across all chunks.
+    private let rateLimitCoordinator = TTSRateLimitCoordinator()
+
     // MARK: - Initialization
 
     init(
         maxConcurrency: Int = AppConstants.maxConcurrentChunks,
-        maxRetries: Int = 3,
+        maxRetries: Int = 5,  // Increased from 3 to handle rate limiting with proper delays
         retryDelay: TimeInterval = 1.5,
         geminiClient: GeminiAPIClient? = nil
     ) {
@@ -260,6 +339,12 @@ class ChunkTTSService {
 
         for attempt in 1...maxRetries {
             do {
+                // Wait if we're in a rate-limited period (global coordination)
+                await rateLimitCoordinator.waitIfNeeded()
+
+                // Check for cancellation after waiting
+                try Task.checkCancellation()
+
                 // Report retry status
                 if attempt > 1 {
                     DebugLogger.log("TTS-CHUNK-SERVICE: Chunk \(chunk.index) attempt \(attempt)/\(maxRetries)")
@@ -340,6 +425,9 @@ class ChunkTTSService {
                             throw TranscriptionError.networkError("Failed to decode base64 audio data")
                         }
 
+                        // Report success to coordinator (resets rate limit counter)
+                        await rateLimitCoordinator.reportSuccess()
+
                         DebugLogger.logSuccess("TTS-CHUNK-SERVICE: Chunk \(chunk.index) synthesized successfully (\(audioData.count) bytes, \(String(format: "%.2f", Double(audioData.count) / 24000.0 / 2.0))s estimated duration)")
 
                         return AudioChunkData(
@@ -355,16 +443,40 @@ class ChunkTTSService {
             } catch {
                 lastError = error
 
-                // Check if error is retryable
-                if let transcriptionError = error as? TranscriptionError,
-                   !transcriptionError.isRetryable {
-                    throw error
+                // Check if this is a rate limit or quota error with retry info
+                if let transcriptionError = error as? TranscriptionError {
+                    switch transcriptionError {
+                    case .rateLimited(let retryAfter), .quotaExceeded(let retryAfter):
+                        // Report to coordinator so all chunks pause
+                        await rateLimitCoordinator.reportRateLimit(retryAfter: retryAfter)
+
+                        // If we have a retry delay, this error is retryable
+                        if retryAfter != nil && attempt < maxRetries {
+                            DebugLogger.log("TTS-CHUNK-SERVICE: Chunk \(chunk.index) hit rate limit, will retry after coordinator wait")
+                            continue
+                        }
+
+                    default:
+                        break
+                    }
+
+                    // Non-retryable errors should fail immediately
+                    if !transcriptionError.isRetryable {
+                        throw error
+                    }
                 }
 
                 // Don't retry on last attempt
                 if attempt < maxRetries {
-                    let delay = retryDelay * pow(2.0, Double(attempt - 1))
-                    DebugLogger.log("TTS-CHUNK-SERVICE: Chunk \(chunk.index) failed, retrying in \(delay)s")
+                    // Use API-provided delay if available, otherwise exponential backoff
+                    let delay: TimeInterval
+                    if let transcriptionError = error as? TranscriptionError,
+                       let retryAfter = transcriptionError.retryAfter {
+                        delay = retryAfter
+                    } else {
+                        delay = retryDelay * pow(2.0, Double(attempt - 1))
+                    }
+                    DebugLogger.log("TTS-CHUNK-SERVICE: Chunk \(chunk.index) failed, retrying in \(String(format: "%.1f", delay))s")
                     try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 }
             }
