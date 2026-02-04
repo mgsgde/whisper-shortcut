@@ -230,6 +230,20 @@ class MenuBarController: NSObject {
       name: .modelChanged,
       object: nil
     )
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(rateLimitWaiting(_:)),
+      name: .rateLimitWaiting,
+      object: nil
+    )
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(rateLimitResolved),
+      name: .rateLimitResolved,
+      object: nil
+    )
   }
 
   private func loadModelConfiguration() {
@@ -1074,6 +1088,21 @@ class MenuBarController: NSObject {
     if let newModel = notification.object as? TranscriptionModel {
       speechService.setModel(newModel)
     }
+  }
+
+  @objc private func rateLimitWaiting(_ notification: Notification) {
+    guard let waitTime = notification.userInfo?["waitTime"] as? TimeInterval else { return }
+    let waitSeconds = Int(ceil(waitTime))
+    DebugLogger.log("MENU-BAR: Rate limit detected, showing wait notification for \(waitSeconds)s")
+    PopupNotificationWindow.showProcessing(
+      "Rate limited by API. Automatically retrying in \(waitSeconds) seconds...",
+      title: "⏳ Waiting for API"
+    )
+  }
+
+  @objc private func rateLimitResolved() {
+    DebugLogger.log("MENU-BAR: Rate limit wait complete, dismissing notification")
+    PopupNotificationWindow.dismissProcessing()
   }
 
   // MARK: - Utility

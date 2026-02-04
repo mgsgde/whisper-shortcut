@@ -35,13 +35,37 @@ actor RateLimitCoordinator {
     /// Number of consecutive rate limit errors (for adaptive backoff)
     private var consecutiveRateLimits: Int = 0
 
+    /// Whether we've already shown a notification for the current wait period
+    private var notificationShown: Bool = false
+
     /// Wait if we're currently in a rate-limited period
     func waitIfNeeded() async {
         let now = Date()
         if pauseUntil > now {
             let waitTime = pauseUntil.timeIntervalSince(now)
             DebugLogger.log("RATE-LIMIT-COORDINATOR: Waiting \(String(format: "%.1f", waitTime))s before next request")
+
+            // Show notification if not already shown for this wait period
+            if !notificationShown {
+                notificationShown = true
+                await MainActor.run {
+                    NotificationCenter.default.post(
+                        name: .rateLimitWaiting,
+                        object: nil,
+                        userInfo: ["waitTime": waitTime]
+                    )
+                }
+            }
+
             try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+
+            // Dismiss notification after wait (only once)
+            if notificationShown {
+                notificationShown = false
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .rateLimitResolved, object: nil)
+                }
+            }
         }
     }
 
@@ -64,6 +88,7 @@ actor RateLimitCoordinator {
         let newPauseUntil = Date().addingTimeInterval(delay)
         if newPauseUntil > pauseUntil {
             pauseUntil = newPauseUntil
+            notificationShown = false  // Reset so next waitIfNeeded shows notification
             DebugLogger.log("RATE-LIMIT-COORDINATOR: All chunks paused until \(pauseUntil)")
         }
     }

@@ -440,4 +440,8 @@ enum ShortcutValidationResult {
 extension Notification.Name {
   static let shortcutsChanged = Notification.Name("shortcutsChanged")
   static let modelChanged = Notification.Name("modelChanged")
+  /// Posted when API is rate limited and waiting. userInfo contains "waitTime" (TimeInterval)
+  static let rateLimitWaiting = Notification.Name("rateLimitWaiting")
+  /// Posted when rate limit wait is complete
+  static let rateLimitResolved = Notification.Name("rateLimitResolved")
 }

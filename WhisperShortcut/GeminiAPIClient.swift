@@ -276,7 +276,23 @@ class GeminiAPIClient {
           // Use the API-provided retry delay
           let waitTime = retryAfter + 2.0  // Add small buffer
           DebugLogger.log("\(mode)-RETRY: Rate limited, waiting \(String(format: "%.1f", waitTime))s as requested by API...")
+
+          // Notify UI about rate limit waiting
+          await MainActor.run {
+            NotificationCenter.default.post(
+              name: .rateLimitWaiting,
+              object: nil,
+              userInfo: ["waitTime": waitTime]
+            )
+          }
+
           try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+
+          // Notify UI that wait is complete
+          await MainActor.run {
+            NotificationCenter.default.post(name: .rateLimitResolved, object: nil)
+          }
+
           continue  // Always retry after API-requested wait
         }
 
