@@ -270,30 +270,34 @@ class GeminiAPIClient {
       } catch {
         lastError = error
 
-        // Check if this is a rate limit error with a retry delay
-        if let transcriptionError = error as? TranscriptionError,
-           let retryAfter = transcriptionError.retryAfter {
-          // Use the API-provided retry delay
-          let waitTime = retryAfter + 2.0  // Add small buffer
-          DebugLogger.log("\(mode)-RETRY: Rate limited, waiting \(String(format: "%.1f", waitTime))s as requested by API...")
+        // Only handle rate limit retries when withRetry is enabled
+        // When withRetry: false, the caller (e.g., chunk services) handles retries with their own coordinator
+        if withRetry {
+          // Check if this is a rate limit error with a retry delay
+          if let transcriptionError = error as? TranscriptionError,
+             let retryAfter = transcriptionError.retryAfter {
+            // Use the API-provided retry delay
+            let waitTime = retryAfter + 2.0  // Add small buffer
+            DebugLogger.log("\(mode)-RETRY: Rate limited, waiting \(String(format: "%.1f", waitTime))s as requested by API...")
 
-          // Notify UI about rate limit waiting
-          await MainActor.run {
-            NotificationCenter.default.post(
-              name: .rateLimitWaiting,
-              object: nil,
-              userInfo: ["waitTime": waitTime]
-            )
+            // Notify UI about rate limit waiting
+            await MainActor.run {
+              NotificationCenter.default.post(
+                name: .rateLimitWaiting,
+                object: nil,
+                userInfo: ["waitTime": waitTime]
+              )
+            }
+
+            try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+
+            // Notify UI that wait is complete
+            await MainActor.run {
+              NotificationCenter.default.post(name: .rateLimitResolved, object: nil)
+            }
+
+            continue  // Always retry after API-requested wait
           }
-
-          try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
-
-          // Notify UI that wait is complete
-          await MainActor.run {
-            NotificationCenter.default.post(name: .rateLimitResolved, object: nil)
-          }
-
-          continue  // Always retry after API-requested wait
         }
 
         if attempt < maxAttempts {
