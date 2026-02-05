@@ -6,7 +6,7 @@
   <img src="screenshots/output/speech-to-text.png" width="50%" alt="Speech-to-Text Feature">
 </div>
 
-📺 **[Watch Demo Video](https://youtu.be/yz8cbaI6NYQ)**
+📺 **[Watch Demo Video](https://youtu.be/ZaD2iSZ0Y2M)**
 
 ## Download & Support
 
