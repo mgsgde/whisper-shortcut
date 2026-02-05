@@ -429,7 +429,6 @@ struct SettingsDefaults {
   // MARK: - Live Meeting Settings
   static let liveMeetingChunkInterval = LiveMeetingChunkInterval.fifteenSeconds
   static let liveMeetingShowTimestamps = true
-  static let liveMeetingSkipSilentChunks = true
 
   // MARK: - UI State
   static let errorMessage = ""
@@ -490,7 +489,6 @@ struct SettingsData {
   // MARK: - Live Meeting Settings
   var liveMeetingChunkInterval: LiveMeetingChunkInterval = SettingsDefaults.liveMeetingChunkInterval
   var liveMeetingShowTimestamps: Bool = SettingsDefaults.liveMeetingShowTimestamps
-  var liveMeetingSkipSilentChunks: Bool = SettingsDefaults.liveMeetingSkipSilentChunks
 
   // MARK: - UI State
   var errorMessage: String = SettingsDefaults.errorMessage

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Live Meeting Settings Tab - Chunk interval, timestamps, and silent chunk handling
+/// Live Meeting Settings Tab - Chunk interval and timestamps
 struct LiveMeetingSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
@@ -21,18 +21,6 @@ struct LiveMeetingSettingsTab: View {
 
       // Timestamps Section
       timestampsSection
-
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
-
-      // Silent Chunks Section
-      silentChunksSection
 
       // Section Divider with spacing
       VStack(spacing: 0) {
@@ -123,30 +111,6 @@ struct LiveMeetingSettingsTab: View {
       .padding(8)
       .background(Color.secondary.opacity(0.1))
       .cornerRadius(6)
-    }
-  }
-
-  // MARK: - Silent Chunks Section
-  @ViewBuilder
-  private var silentChunksSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Silent Chunks",
-        subtitle: "How to handle chunks with no detected speech"
-      )
-
-      Toggle("Skip silent chunks", isOn: $viewModel.data.liveMeetingSkipSilentChunks)
-        .toggleStyle(.checkbox)
-        .onChange(of: viewModel.data.liveMeetingSkipSilentChunks) { _, _ in
-          Task {
-            await viewModel.saveSettings()
-          }
-        }
-
-      Text("When enabled, chunks with no detected speech will not be added to the transcript file.")
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
     }
   }
 

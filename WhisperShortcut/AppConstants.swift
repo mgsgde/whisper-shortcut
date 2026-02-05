@@ -78,9 +78,6 @@ Key rules:
   /// Whether to show timestamps by default in live meeting transcripts.
   static let liveMeetingShowTimestampsDefault: Bool = true
 
-  /// Whether to skip silent chunks by default in live meeting transcription.
-  static let liveMeetingSkipSilentChunksDefault: Bool = true
-
   /// Directory name for storing live meeting transcripts.
   static let liveMeetingTranscriptDirectory: String = "WhisperShortcut"
 }

@@ -1666,16 +1666,11 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
         // Transcribe the chunk
         let text = try await speechService.transcribe(audioURL: audioURL)
 
-        // Check if we should skip silent chunks
-        let skipSilent = UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingSkipSilentChunks) != nil
-          ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.liveMeetingSkipSilentChunks)
-          : AppConstants.liveMeetingSkipSilentChunksDefault
-
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if skipSilent && trimmedText.isEmpty {
+        if trimmedText.isEmpty {
           DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (silent)")
-        } else if !trimmedText.isEmpty {
+        } else {
           // Append to transcript on main thread
           await MainActor.run {
             self.appendToTranscript(trimmedText, chunkStartTime: startTime)
