@@ -1,10 +1,10 @@
 # Privacy Policy for WhisperShortcut
 
-**Last updated:** August 2025
+**Last updated:** February 2025
 
 ## Overview
 
-WhisperShortcut is a macOS menu bar application that provides real-time audio transcription using Google's Gemini API. This privacy policy explains how we handle your data and what information is collected, stored, or transmitted.
+WhisperShortcut is a macOS menu bar application with four main features: **Speech-to-Text** (transcription), **Speech-to-Prompt** (AI text modification via voice), **Read Aloud** (text-to-speech), and **Prompt & Read** (combined AI + TTS). This privacy policy explains how we handle your data and what information is collected, stored, or transmitted.
 
 ## Data Collection Summary
 
@@ -15,32 +15,41 @@ WhisperShortcut is a macOS menu bar application that provides real-time audio tr
 - ✅ **No crash reporting**
 - ✅ **No data sold to third parties**
 - ✅ **All data stored locally on your device**
+- ✅ **Offline option**: Speech-to-Text can use local Whisper models without sending data to any server
 
 ## What Data We Collect
 
-### 1. API Key (Required for Functionality)
+### 1. API Key (Required for Cloud Features)
 
 - **What**: Your Google API key
 - **Where**: Stored securely in macOS Keychain
-- **Purpose**: Required to use Google's Gemini transcription service
+- **Purpose**: Required for Google Gemini (transcription, AI prompting, TTS). Not needed when using offline Whisper for Speech-to-Text
 - **Retention**: Stored locally until you delete it
 - **Access**: Only accessible by the app on your device
 
-### 2. Keyboard Shortcut Preferences
+### 2. App Preferences
 
-- **What**: Your custom keyboard shortcut settings
+- **What**: Keyboard shortcuts, model selections, auto-paste toggle, TTS voice, and other settings
 - **Where**: Stored locally in macOS UserDefaults
-- **Purpose**: To remember your preferred shortcuts for starting/stopping recording
+- **Purpose**: To remember your preferred configuration
 - **Retention**: Stored locally until you reset to defaults
 - **Access**: Only accessible by the app on your device
 
 ### 3. Temporary Audio Files
 
-- **What**: Audio recordings during transcription
+- **What**: Audio recordings during transcription or prompting
 - **Where**: Stored temporarily in app's document directory
-- **Purpose**: Required for transcription processing
-- **Retention**: Automatically deleted after transcription
+- **Purpose**: Required for transcription and AI processing
+- **Retention**: Automatically deleted after processing
 - **Access**: Only accessible by the app on your device
+
+### 4. Live Meeting Transcripts (Optional)
+
+- **What**: Transcript files from Live Meeting mode
+- **Where**: Saved in `~/Documents/WhisperShortcut/Meeting-<timestamp>.txt`
+- **Purpose**: Persistent record of live meeting transcription
+- **Retention**: Stored until you delete the files manually
+- **Access**: Only you can access these files on your device
 
 ## What Data We Do NOT Collect
 
@@ -48,20 +57,27 @@ WhisperShortcut is a macOS menu bar application that provides real-time audio tr
 - ❌ Usage analytics or tracking data
 - ❌ Crash reports or diagnostic information
 - ❌ Audio recordings (beyond temporary processing)
-- ❌ Transcription text content
-- ❌ Clipboard content (beyond temporary copying)
+- ❌ Transcription text content (we do not store or transmit it beyond what's needed for the feature)
+- ❌ Clipboard content (beyond temporary use during Speech-to-Prompt / Prompt & Read)
 
 ## Third-Party Services
 
 ### Google Gemini API
 
-- **Service**: Audio transcription and processing
-- **Data Sent**: Temporary audio files for transcription
-- **Data Received**: Transcribed text
-- **Privacy**: Subject to Google's privacy policy
+WhisperShortcut uses Google's Gemini API for:
+
+- **Speech-to-Text (cloud mode)**: Audio → transcribed text
+- **Speech-to-Prompt**: Audio + clipboard text → modified text (clipboard content is sent to apply your voice instruction)
+- **Read Aloud / TTS**: Text → synthesized speech
+- **Prompt & Read**: Same as Speech-to-Prompt, plus TTS for the result
+- **Live Meeting**: Continuous audio chunks → transcribed text
+
+- **Data Sent**: Audio files and/or text (depending on feature)
+- **Data Received**: Transcribed text, AI-modified text, or audio
+- **Privacy**: Subject to [Google's Privacy Policy](https://policies.google.com/privacy)
 - **Retention**: Google may retain data according to their policy
 
-**Note**: When you use WhisperShortcut, your audio is sent to Google's servers for transcription. Please review [Google's Privacy Policy](https://policies.google.com/privacy) for details on how they handle your data.
+**Note**: When you use cloud features, your audio and/or text may be sent to Google's servers. For offline Speech-to-Text with Whisper, no data leaves your device.
 
 ## Data Storage and Security
 
@@ -73,35 +89,35 @@ WhisperShortcut is a macOS menu bar application that provides real-time audio tr
 
 ### Audio Processing
 
-- Audio is recorded locally in WAV format (16kHz, mono)
-- Files are automatically deleted after transcription
+- Audio is recorded locally in WAV format (24kHz, mono)
+- Files are automatically deleted after processing
 - No audio files are permanently stored
 
 ### Clipboard Management
 
-- Transcribed text is copied to your system clipboard
-- The app does not read or store clipboard content
-- Clipboard data remains under your control
+- **Copy**: Transcriptions and AI responses are copied to your system clipboard
+- **Read**: Speech-to-Prompt and Prompt & Read read clipboard/selected text only when you use those features; it is sent to Gemini to apply your voice instruction
+- Clipboard data is not stored by the app; it remains under your control
 
 ## Your Rights and Controls
 
 ### Data Access
 
 - All data is stored locally on your device
-- You can access and modify shortcut preferences through the app
+- You can access and modify preferences through the app settings
 - You can delete your API key through the app settings
 
 ### Data Deletion
 
 - Delete API key: Use the app's settings to remove your API key
 - Reset preferences: Use the app's reset to defaults feature
-- Uninstall: Remove the app to delete all local data
+- Delete Live Meeting transcripts: Remove files from `~/Documents/WhisperShortcut/`
+- Uninstall: Remove the app to delete all local data (except Live Meeting files in Documents, which you can delete manually)
 
-### Microphone Access
+### Permissions
 
-- The app requests microphone permission when needed
-- You can revoke microphone access in macOS System Preferences
-- Without microphone access, the app cannot function
+- **Microphone**: Required for recording. You can revoke access in macOS System Settings → Privacy & Security → Microphone.
+- **Accessibility**: Required for Speech-to-Prompt, Prompt & Read, Read Aloud (selected text capture), and auto-paste. You can revoke in System Settings → Privacy & Security → Accessibility.
 
 ## Children's Privacy
 
