@@ -48,5 +48,10 @@ enum UserDefaultsKeys {
   
   // MARK: - Debug (commented out in code, kept for reference)
   static let enableDebugTestMenu = "enableDebugTestMenu"
+
+  // MARK: - Live Meeting Settings
+  static let liveMeetingChunkInterval = "liveMeetingChunkInterval"
+  static let liveMeetingShowTimestamps = "liveMeetingShowTimestamps"
+  static let liveMeetingSkipSilentChunks = "liveMeetingSkipSilentChunks"
 }
 

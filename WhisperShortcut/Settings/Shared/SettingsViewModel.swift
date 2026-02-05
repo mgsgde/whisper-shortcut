@@ -168,6 +168,26 @@ class SettingsViewModel: ObservableObject {
       data.autoPasteAfterDictation = SettingsDefaults.autoPasteAfterDictation
     }
 
+    // Load Live Meeting settings
+    if let savedIntervalValue = UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingChunkInterval) as? Double,
+       let savedInterval = LiveMeetingChunkInterval(rawValue: savedIntervalValue) {
+      data.liveMeetingChunkInterval = savedInterval
+    } else {
+      data.liveMeetingChunkInterval = SettingsDefaults.liveMeetingChunkInterval
+    }
+    
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingShowTimestamps) != nil {
+      data.liveMeetingShowTimestamps = UserDefaults.standard.bool(forKey: UserDefaultsKeys.liveMeetingShowTimestamps)
+    } else {
+      data.liveMeetingShowTimestamps = SettingsDefaults.liveMeetingShowTimestamps
+    }
+    
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingSkipSilentChunks) != nil {
+      data.liveMeetingSkipSilentChunks = UserDefaults.standard.bool(forKey: UserDefaultsKeys.liveMeetingSkipSilentChunks)
+    } else {
+      data.liveMeetingSkipSilentChunks = SettingsDefaults.liveMeetingSkipSilentChunks
+    }
+
     // Load Google API key
     data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
     
@@ -370,6 +390,11 @@ class SettingsViewModel: ObservableObject {
 
     // Save auto-paste setting
     UserDefaults.standard.set(data.autoPasteAfterDictation, forKey: UserDefaultsKeys.autoPasteAfterDictation)
+
+    // Save Live Meeting settings
+    UserDefaults.standard.set(data.liveMeetingChunkInterval.rawValue, forKey: UserDefaultsKeys.liveMeetingChunkInterval)
+    UserDefaults.standard.set(data.liveMeetingShowTimestamps, forKey: UserDefaultsKeys.liveMeetingShowTimestamps)
+    UserDefaults.standard.set(data.liveMeetingSkipSilentChunks, forKey: UserDefaultsKeys.liveMeetingSkipSilentChunks)
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()

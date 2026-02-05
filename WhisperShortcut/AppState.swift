@@ -21,12 +21,14 @@ enum AppState: Equatable {
     case transcription
     case prompt
     case tts
+    case liveMeeting
 
     var icon: String {
       switch self {
       case .transcription: return "🔴"
       case .prompt: return "🤖"
       case .tts: return "🔊"
+      case .liveMeeting: return "📝"
       }
     }
 
@@ -35,6 +37,7 @@ enum AppState: Equatable {
       case .transcription: return "🔴 Recording for transcription..."
       case .prompt: return "🔴 Recording for AI prompt..."
       case .tts: return "🔊 Recording voice command..."
+      case .liveMeeting: return "📝 Live transcription..."
       }
     }
 
@@ -43,6 +46,7 @@ enum AppState: Equatable {
       case .transcription: return "Recording for transcription... Click to stop"
       case .prompt: return "Recording for AI prompt... Click to stop"
       case .tts: return "Recording voice command... Click to stop or wait"
+      case .liveMeeting: return "Live meeting transcription... Click menu to stop"
       }
     }
   }
@@ -238,6 +242,7 @@ extension AppState {
     case .transcription: processingMode = .transcribing
     case .prompt: processingMode = .prompting
     case .tts: processingMode = .ttsProcessing
+    case .liveMeeting: processingMode = .transcribing  // Live meeting uses transcribing for chunk processing
     }
 
     return .processing(processingMode)
@@ -302,6 +307,7 @@ extension AppState.RecordingMode: CustomStringConvertible {
     case .transcription: return "transcription"
     case .prompt: return "prompt"
     case .tts: return "tts"
+    case .liveMeeting: return "liveMeeting"
     }
   }
 }

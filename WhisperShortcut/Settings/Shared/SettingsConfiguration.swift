@@ -354,6 +354,24 @@ enum SettingsTab: String, CaseIterable {
   case speechToPrompt = "Dictate Prompt"
   case promptAndRead = "Dictate Prompt & Read"
   case readAloud = "Read Aloud"
+  case liveMeeting = "Live Meeting"
+}
+
+// MARK: - Live Meeting Chunk Interval Options
+enum LiveMeetingChunkInterval: Double, CaseIterable {
+  case fifteenSeconds = 15.0
+  case thirtySeconds = 30.0
+  case fortyFiveSeconds = 45.0
+  case sixtySeconds = 60.0
+  
+  var displayName: String {
+    switch self {
+    case .fifteenSeconds: return "15 seconds"
+    case .thirtySeconds: return "30 seconds"
+    case .fortyFiveSeconds: return "45 seconds"
+    case .sixtySeconds: return "60 seconds"
+    }
+  }
 }
 
 // MARK: - Default Settings Configuration
@@ -407,6 +425,11 @@ struct SettingsDefaults {
 
   // MARK: - Auto-Paste Settings
   static let autoPasteAfterDictation = false
+
+  // MARK: - Live Meeting Settings
+  static let liveMeetingChunkInterval = LiveMeetingChunkInterval.fifteenSeconds
+  static let liveMeetingShowTimestamps = true
+  static let liveMeetingSkipSilentChunks = true
 
   // MARK: - UI State
   static let errorMessage = ""
@@ -463,6 +486,11 @@ struct SettingsData {
 
   // MARK: - Auto-Paste Settings
   var autoPasteAfterDictation: Bool = SettingsDefaults.autoPasteAfterDictation
+
+  // MARK: - Live Meeting Settings
+  var liveMeetingChunkInterval: LiveMeetingChunkInterval = SettingsDefaults.liveMeetingChunkInterval
+  var liveMeetingShowTimestamps: Bool = SettingsDefaults.liveMeetingShowTimestamps
+  var liveMeetingSkipSilentChunks: Bool = SettingsDefaults.liveMeetingSkipSilentChunks
 
   // MARK: - UI State
   var errorMessage: String = SettingsDefaults.errorMessage

@@ -55,6 +55,14 @@ class MenuBarController: NSObject {
   private var chunkStatuses: [ChunkStatus] = []
   private var isProcessingTTS: Bool = false
 
+  // MARK: - Live Meeting State
+  private var liveMeetingRecorder: LiveMeetingRecorder?
+  private var isLiveMeetingActive: Bool = false
+  private var liveMeetingStopping: Bool = false
+  private var liveMeetingTranscriptURL: URL?
+  private var liveMeetingPendingChunks: Int = 0
+  private var liveMeetingSessionStartTime: Date?
+
   /// True when TTS is running in any phase: .ttsProcessing, or chunked phases (.splitting, .processingChunks, .merging) while isProcessingTTS is set.
   private var isTTSRunning: Bool {
     if case .processing(.ttsProcessing) = appState { return true }
@@ -132,6 +140,12 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Read Aloud", action: #selector(readAloud),
         shortcut: currentConfig.readAloud, tag: 105))
+
+    menu.addItem(NSMenuItem.separator())
+
+    // Live Meeting Transcription (no shortcut, menu-only)
+    menu.addItem(
+      createMenuItem("Transcribe Meeting", action: #selector(toggleLiveMeeting), tag: 107))
 
     menu.addItem(NSMenuItem.separator())
 
@@ -334,6 +348,11 @@ class MenuBarController: NSObject {
       : "New Conversation"
     updateMenuItem(menu, tag: 106, title: historyTitle, enabled: historyCount > 0)
 
+    // Update Live Meeting item
+    let liveMeetingTitle = isLiveMeetingActive ? "Stop Transcribe Meeting" : "Transcribe Meeting"
+    let liveMeetingEnabled = isLiveMeetingActive || (!appState.isBusy && hasAPIKey)
+    updateMenuItem(menu, tag: 107, title: liveMeetingTitle, enabled: liveMeetingEnabled)
+
     // Handle special case when no API key and no offline model is configured
     if !hasAPIKey && !hasOfflineTranscriptionModel && !hasOfflinePromptModel, let button = statusItem?.button {
       button.title = "⚠️"
@@ -453,6 +472,151 @@ class MenuBarController: NSObject {
     PromptConversationHistory.shared.clearAll()
     DebugLogger.log("UI: Conversation history cleared by user")
     updateUI()
+  }
+
+  // MARK: - Live Meeting Transcription
+  @objc func toggleLiveMeeting() {
+    if isLiveMeetingActive {
+      stopLiveMeeting()
+    } else {
+      startLiveMeeting()
+    }
+  }
+
+  private func startLiveMeeting() {
+    // Check API key
+    guard KeychainManager.shared.hasGoogleAPIKey() else {
+      PopupNotificationWindow.showError("API key required for live meeting transcription", title: "Missing API Key")
+      return
+    }
+
+    // Check if busy with other operations
+    guard !appState.isBusy else {
+      DebugLogger.logWarning("LIVE-MEETING: Cannot start - app is busy")
+      return
+    }
+
+    DebugLogger.log("LIVE-MEETING: Starting session")
+
+    // Create transcript file
+    do {
+      liveMeetingTranscriptURL = try createTranscriptFile()
+    } catch {
+      DebugLogger.logError("LIVE-MEETING: Failed to create transcript file: \(error)")
+      PopupNotificationWindow.showError("Failed to create transcript file", title: "Live Meeting Error")
+      return
+    }
+
+    // Open transcript file with default app
+    if let url = liveMeetingTranscriptURL {
+      NSWorkspace.shared.open(url)
+    }
+
+    // Load chunk interval from settings
+    let savedInterval = UserDefaults.standard.double(forKey: UserDefaultsKeys.liveMeetingChunkInterval)
+    let chunkInterval: TimeInterval = savedInterval > 0 ? savedInterval : AppConstants.liveMeetingChunkIntervalDefault
+
+    // Create and start recorder
+    liveMeetingRecorder = LiveMeetingRecorder(chunkDuration: chunkInterval)
+    liveMeetingRecorder?.delegate = self
+    liveMeetingRecorder?.startSession()
+
+    // Update state
+    isLiveMeetingActive = true
+    liveMeetingStopping = false
+    liveMeetingPendingChunks = 0
+    liveMeetingSessionStartTime = Date()
+    appState = .recording(.liveMeeting)
+
+    DebugLogger.logSuccess("LIVE-MEETING: Session started")
+  }
+
+  private func stopLiveMeeting() {
+    DebugLogger.log("LIVE-MEETING: User requested stop")
+
+    liveMeetingStopping = true
+    liveMeetingRecorder?.stopSession()
+
+    // If no pending chunks, finish immediately
+    if liveMeetingPendingChunks == 0 {
+      finishLiveMeetingSession()
+    }
+    // Otherwise, wait for pending chunks to complete (handled in delegate)
+  }
+
+  private func finishLiveMeetingSession() {
+    DebugLogger.log("LIVE-MEETING: Session finished")
+
+    isLiveMeetingActive = false
+    liveMeetingStopping = false
+    liveMeetingRecorder = nil
+    liveMeetingPendingChunks = 0
+    appState = .idle
+
+    DebugLogger.logSuccess("LIVE-MEETING: Transcription saved")
+  }
+
+  private func createTranscriptFile() throws -> URL {
+    // Use the real home directory Documents folder (not the sandbox container)
+    // This ensures the file is accessible to external editors like Cursor
+    let homeDir = FileManager.default.homeDirectoryForCurrentUser
+    let documentsURL = homeDir.appendingPathComponent("Documents")
+    let whisperShortcutDir = documentsURL.appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+
+    // Create directory if it doesn't exist
+    if !FileManager.default.fileExists(atPath: whisperShortcutDir.path) {
+      try FileManager.default.createDirectory(at: whisperShortcutDir, withIntermediateDirectories: true)
+    }
+
+    // Create filename with timestamp
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+    let timestamp = formatter.string(from: Date())
+    let filename = "Meeting-\(timestamp).txt"
+
+    let fileURL = whisperShortcutDir.appendingPathComponent(filename)
+
+    // Create empty file
+    FileManager.default.createFile(atPath: fileURL.path, contents: nil)
+
+    DebugLogger.log("LIVE-MEETING: Created transcript file at \(fileURL.path)")
+    return fileURL
+  }
+
+  private func appendToTranscript(_ text: String, chunkStartTime: TimeInterval) {
+    guard let url = liveMeetingTranscriptURL else { return }
+
+    let showTimestamps = UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingShowTimestamps) != nil
+      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.liveMeetingShowTimestamps)
+      : AppConstants.liveMeetingShowTimestampsDefault
+
+    var finalText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    if showTimestamps {
+      let timestamp = formatTimestamp(elapsedSeconds: chunkStartTime)
+      finalText = "\(timestamp) \(finalText)"
+    }
+
+    // Add newlines for readability
+    finalText = "\(finalText)\n\n"
+
+    do {
+      let handle = try FileHandle(forWritingTo: url)
+      handle.seekToEndOfFile()
+      if let data = finalText.data(using: .utf8) {
+        handle.write(data)
+      }
+      try handle.close()
+      DebugLogger.log("LIVE-MEETING: Appended chunk to transcript")
+    } catch {
+      DebugLogger.logError("LIVE-MEETING: Failed to append to transcript: \(error)")
+    }
+  }
+
+  private func formatTimestamp(elapsedSeconds: TimeInterval) -> String {
+    let minutes = Int(elapsedSeconds) / 60
+    let seconds = Int(elapsedSeconds) % 60
+    return String(format: "[%02d:%02d]", minutes, seconds)
   }
   
   @objc private func handleReadSelectedText() {
@@ -938,6 +1102,9 @@ class MenuBarController: NSObject {
             await self.performPrompting(audioURL: audioURL)
           case .tts:
             await self.performTTSWithCommand(audioURL: audioURL)
+          case .liveMeeting:
+            // Live meeting chunks are handled separately, no retry needed here
+            break
           }
         }
       } : nil
@@ -1251,6 +1418,11 @@ extension MenuBarController: AudioRecorderDelegate {
           await self.performPrompting(audioURL: audioURL)
         case .tts:
           await self.performTTSWithCommand(audioURL: audioURL)
+        case .liveMeeting:
+          // Live meeting uses its own recorder (LiveMeetingRecorder), not the standard AudioRecorder
+          // This case should not be reached, but handle gracefully
+          DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")
+          self.cleanupAudioFile(at: audioURL)
         }
       }
     }
@@ -1457,5 +1629,71 @@ extension MenuBarController: ChunkProgressDelegate {
     }
 
     DebugLogger.log("CHUNK-PROGRESS: Merging \(isTTS ? "audio chunks" : "transcripts")...")
+  }
+}
+
+// MARK: - LiveMeetingRecorderDelegate
+extension MenuBarController: LiveMeetingRecorderDelegate {
+  func liveMeetingRecorder(didFinishChunk audioURL: URL, chunkIndex: Int, startTime: TimeInterval) {
+    DebugLogger.log("LIVE-MEETING: Received chunk \(chunkIndex) at \(formatTimestamp(elapsedSeconds: startTime))")
+
+    liveMeetingPendingChunks += 1
+
+    Task {
+      do {
+        // Transcribe the chunk
+        let text = try await speechService.transcribe(audioURL: audioURL)
+
+        // Check if we should skip silent chunks
+        let skipSilent = UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingSkipSilentChunks) != nil
+          ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.liveMeetingSkipSilentChunks)
+          : AppConstants.liveMeetingSkipSilentChunksDefault
+
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if skipSilent && trimmedText.isEmpty {
+          DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (silent)")
+        } else if !trimmedText.isEmpty {
+          // Append to transcript on main thread
+          await MainActor.run {
+            self.appendToTranscript(trimmedText, chunkStartTime: startTime)
+          }
+        }
+
+        // Cleanup audio file
+        cleanupAudioFile(at: audioURL)
+
+      } catch {
+        DebugLogger.logError("LIVE-MEETING: Chunk \(chunkIndex) transcription failed: \(error)")
+        // Don't abort the session - just log the error and continue
+        cleanupAudioFile(at: audioURL)
+      }
+
+      await MainActor.run {
+        self.liveMeetingPendingChunks -= 1
+
+        // Check if session should end
+        if self.liveMeetingStopping && self.liveMeetingPendingChunks == 0 {
+          self.finishLiveMeetingSession()
+        }
+      }
+    }
+  }
+
+  func liveMeetingRecorder(didFailWithError error: Error) {
+    DebugLogger.logError("LIVE-MEETING: Recorder error: \(error)")
+
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self else { return }
+
+      // Don't abort immediately - just log the error
+      // If it's a critical error, the recorder will stop on its own
+      if !self.isLiveMeetingActive {
+        return
+      }
+
+      // Show error but don't stop the session
+      PopupNotificationWindow.showError("Recording error: \(error.localizedDescription)", title: "Live Meeting")
+    }
   }
 }

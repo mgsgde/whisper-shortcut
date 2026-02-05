@@ -69,4 +69,18 @@ Key rules:
   /// Prevents splitting too early when natural boundaries are found near the start.
   /// 0.7 = 70% of chunk size = minimum 700 chars per chunk (when chunk size is 1000).
   static let ttsChunkMinSizeRatio: Double = 0.7
+
+  // MARK: - Live Meeting Transcription
+  /// Default chunk interval for live meeting transcription in seconds.
+  /// Shorter intervals = more responsive but more API calls.
+  static let liveMeetingChunkIntervalDefault: TimeInterval = 15.0
+
+  /// Whether to show timestamps by default in live meeting transcripts.
+  static let liveMeetingShowTimestampsDefault: Bool = true
+
+  /// Whether to skip silent chunks by default in live meeting transcription.
+  static let liveMeetingSkipSilentChunksDefault: Bool = true
+
+  /// Directory name for storing live meeting transcripts.
+  static let liveMeetingTranscriptDirectory: String = "WhisperShortcut"
 }
