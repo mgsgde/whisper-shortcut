@@ -146,6 +146,8 @@ class MenuBarController: NSObject {
     // Live Meeting Transcription (no shortcut, menu-only)
     menu.addItem(
       createMenuItem("Transcribe Meeting", action: #selector(toggleLiveMeeting), tag: 107))
+    menu.addItem(
+      createMenuItem("Open Transcripts Folder", action: #selector(openTranscriptsFolder), tag: 108))
 
     menu.addItem(NSMenuItem.separator())
 
@@ -554,6 +556,26 @@ class MenuBarController: NSObject {
     appState = .idle
 
     DebugLogger.logSuccess("LIVE-MEETING: Transcription saved")
+  }
+
+  @objc func openTranscriptsFolder() {
+    let homeDir = FileManager.default.homeDirectoryForCurrentUser
+    let transcriptsDir = homeDir
+      .appendingPathComponent("Documents")
+      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+    
+    // Create directory if it doesn't exist
+    if !FileManager.default.fileExists(atPath: transcriptsDir.path) {
+      do {
+        try FileManager.default.createDirectory(at: transcriptsDir, withIntermediateDirectories: true)
+      } catch {
+        DebugLogger.logError("LIVE-MEETING: Failed to create transcripts folder: \(error)")
+        return
+      }
+    }
+    
+    NSWorkspace.shared.open(transcriptsDir)
+    DebugLogger.log("LIVE-MEETING: Opened transcripts folder")
   }
 
   private func createTranscriptFile() throws -> URL {
