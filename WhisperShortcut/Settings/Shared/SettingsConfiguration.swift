@@ -424,7 +424,7 @@ struct SettingsDefaults {
   static let confirmAboveDuration = ConfirmAboveDuration.twoMinutes
 
   // MARK: - Auto-Paste Settings
-  static let autoPasteAfterDictation = false
+  static let autoPasteAfterDictation = true
 
   // MARK: - Live Meeting Settings
   static let liveMeetingChunkInterval = LiveMeetingChunkInterval.fifteenSeconds

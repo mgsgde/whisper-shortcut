@@ -59,6 +59,18 @@ Combine AI prompting with text-to-speech in one workflow:
 2. **Press Shortcut** - Start recording your voice instruction
 3. **Process & Read** - Gemini processes your voice instruction and selected text, then reads the result aloud automatically
 
+### Live Meeting Transcription
+
+Real-time transcription that streams into a text file as you speak (e.g. for meetings or calls):
+
+1. **Start** - Click "Transcribe Meeting" in the menu bar (requires Gemini API key)
+2. **File Opens** - A transcript file is created at `~/Documents/WhisperShortcut/Meeting-<timestamp>.txt` and opens in your default editor
+3. **Streaming** - Audio is recorded in chunks (e.g. every 15 seconds), transcribed with Gemini, and appended to the file
+4. **Optional Timestamps** - Enable `[MM:SS]` markers in Settings → Live Meeting
+5. **Stop** - Click "Stop Transcribe Meeting" when done
+
+Use the live transcript with AI assistants in your editor (e.g. Cursor) while the meeting runs.
+
 ## Installation
 
 ### Recommended: Download App
@@ -88,8 +100,9 @@ bash install.sh
 - **Offline Support (Privacy Mode)**: Use local Whisper models for completely offline transcription
 - **Smart Clipboard Integration**: Automatic copy to clipboard for transcription and prompt modes
 - **Customizable Shortcuts**: Configurable keyboard shortcuts for each mode
-- **Multiple TTS Models**: Choose from various text-to-speech models and voices
-  
+- **Multiple TTS Models & Voices**: Choose from Gemini 2.5 Flash/Pro TTS models and 10 AI voices (e.g. Charon, Puck, Kore)
+- **Live Meeting Transcription**: Real-time transcription streamed to a text file; configurable chunk interval and timestamps; file opens in your default editor
+
 ## Development
 
 ### Prerequisites
