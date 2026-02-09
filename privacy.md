@@ -51,6 +51,17 @@ WhisperShortcut is a macOS menu bar application with four main features: **Speec
 - **Retention**: Stored until you delete the files manually
 - **Access**: Only you can access these files on your device
 
+### 5. User Context / Interaction Logs (Optional)
+
+- **What**: Logs of transcriptions, prompt interactions, and read-aloud actions
+- **Where**: Stored locally in `~/Library/Application Support/WhisperShortcut/UserContext/` as JSONL files
+- **Purpose**: When enabled, builds a personalized user profile to improve prompt mode responses
+- **Opt-in**: Disabled by default; must be explicitly enabled in Settings > User Context
+- **Retention**: Log files older than 90 days are automatically deleted
+- **Gemini Analysis**: When you click "Update Context", aggregated interaction data is sent to Google Gemini to derive a user profile, suggested system prompt, and difficult words list. This is a one-time action you initiate manually.
+- **Deletion**: You can delete all logged data at any time via the "Delete All Context Data" button in Settings > User Context
+- **Access**: Only accessible by the app on your device (except during "Update Context", which sends data to Gemini)
+
 ## What Data We Do NOT Collect
 
 - ❌ Personal information (name, email, address)

@@ -738,6 +738,7 @@ class MenuBarController: NSObject {
     Task {
       do {
         let audioData = try await speechService.readTextAloud(selectedText)
+        UserContextLogger.shared.logReadAloud(text: selectedText, voice: nil)
         await MainActor.run {
           self.isProcessingTTS = false
           PopupNotificationWindow.dismissProcessing()
@@ -766,7 +767,7 @@ class MenuBarController: NSObject {
       }
     }
   }
-  
+
   private func performTTSWithCommand(audioURL: URL) async {
     do {
       let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64) ?? 0
@@ -796,6 +797,7 @@ class MenuBarController: NSObject {
         }
         
         let audioData = try await speechService.readTextAloud(selectedText)
+        UserContextLogger.shared.logReadAloud(text: selectedText, voice: nil)
         await MainActor.run {
           self.isProcessingTTS = false
           PopupNotificationWindow.dismissProcessing()
@@ -803,7 +805,7 @@ class MenuBarController: NSObject {
         }
         return
       }
-      
+
       // First, transcribe the audio to get the voice command
       let voiceCommand = try await speechService.transcribe(audioURL: audioURL)
       let trimmedCommand = voiceCommand.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -836,6 +838,7 @@ class MenuBarController: NSObject {
         }
 
         let audioData = try await speechService.readTextAloud(text)
+        UserContextLogger.shared.logReadAloud(text: text, voice: nil)
         await MainActor.run {
           self.isProcessingTTS = false
           PopupNotificationWindow.dismissProcessing()
@@ -1161,6 +1164,7 @@ class MenuBarController: NSObject {
     do {
       let result = try await speechService.transcribe(audioURL: audioURL)
       clipboardManager.copyToClipboard(text: result)
+      UserContextLogger.shared.logTranscription(result: result, model: await speechService.getTranscriptionModelInfo())
 
       // Auto-paste if enabled
       await MainActor.run {

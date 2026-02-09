@@ -310,13 +310,19 @@ class SpeechService {
     let promptKey = mode == .togglePrompting ? UserDefaultsKeys.promptModeSystemPrompt : UserDefaultsKeys.promptAndReadSystemPrompt
     let customSystemPrompt = UserDefaults.standard.string(forKey: promptKey)
 
-    let systemPrompt: String
+    var systemPrompt: String
     if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
       systemPrompt = customPrompt
       DebugLogger.log("PROMPT-MODE-GEMINI: Using custom system prompt")
     } else {
       systemPrompt = baseSystemPrompt
       DebugLogger.log("PROMPT-MODE-GEMINI: Using base system prompt")
+    }
+
+    // Append user context if available
+    if let userContext = UserContextLogger.shared.loadUserContext() {
+      systemPrompt += "\n\n---\nUser context:\n" + userContext
+      DebugLogger.log("PROMPT-MODE-GEMINI: Appended user context to system prompt")
     }
 
     // Build request
@@ -441,6 +447,7 @@ class SpeechService {
       userInstruction: userInstruction,
       modelResponse: normalizedText
     )
+    UserContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText)
 
     DebugLogger.logSuccess("PROMPT-MODE-GEMINI: Completed successfully")
 
@@ -526,11 +533,17 @@ class SpeechService {
     let promptKey = mode == .togglePrompting ? UserDefaultsKeys.promptModeSystemPrompt : UserDefaultsKeys.promptAndReadSystemPrompt
     let customSystemPrompt = UserDefaults.standard.string(forKey: promptKey)
 
-    let systemPrompt: String
+    var systemPrompt: String
     if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
       systemPrompt = customPrompt
     } else {
       systemPrompt = baseSystemPrompt
+    }
+
+    // Append user context if available
+    if let userContext = UserContextLogger.shared.loadUserContext() {
+      systemPrompt += "\n\n---\nUser context:\n" + userContext
+      DebugLogger.log("PROMPT-MODE-TEXT: Appended user context to system prompt")
     }
 
     // Build request
@@ -620,6 +633,7 @@ class SpeechService {
       userInstruction: textCommand,
       modelResponse: normalizedText
     )
+    UserContextLogger.shared.logPrompt(mode: mode, selectedText: selectedText, userInstruction: textCommand, modelResponse: normalizedText)
 
     DebugLogger.logSuccess("PROMPT-MODE-TEXT: Completed successfully")
 
