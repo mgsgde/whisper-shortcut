@@ -241,6 +241,10 @@ struct UserContextSettingsTab: View {
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
+
+      Button("Open User Context Folder in Finder") {
+        openUserContextFolder()
+      }
     }
   }
 
@@ -267,6 +271,14 @@ struct UserContextSettingsTab: View {
         }
       }
     }
+  }
+
+  private func openUserContextFolder() {
+    let url = UserContextLogger.shared.directoryURL
+    if !FileManager.default.fileExists(atPath: url.path) {
+      try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+    NSWorkspace.shared.open(url)
   }
 
   private func loadSuggestions() {

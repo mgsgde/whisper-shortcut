@@ -38,13 +38,35 @@ class UserContextDerivation {
 
     DebugLogger.log("USER-CONTEXT-DERIVATION: Aggregated \(aggregatedText.count) chars of interaction data")
 
-    // 2. Call Gemini to analyze
-    let analysisResult = try await callGeminiForAnalysis(aggregatedText: aggregatedText, apiKey: apiKey)
+    // 2. Load current system prompt and existing user context so Gemini can refine them
+    let currentPromptModeSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentPromptAndReadSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let existingUserContext = loadExistingUserContextFile()
 
-    // 3. Parse and write output files
+    // 3. Call Gemini to analyze (with existing context so it can refine, not replace)
+    let analysisResult = try await callGeminiForAnalysis(
+      aggregatedText: aggregatedText,
+      currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
+      currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
+      existingUserContext: existingUserContext,
+      apiKey: apiKey
+    )
+
+    // 4. Parse and write output files
     try writeOutputFiles(analysisResult: analysisResult)
 
     DebugLogger.logSuccess("USER-CONTEXT-DERIVATION: Context update completed")
+  }
+
+  // MARK: - Load Existing Context (for refinement)
+
+  /// Reads existing user-context.md so Gemini can refine it. Ignores the "include in prompt" toggle.
+  private func loadExistingUserContextFile() -> String? {
+    let url = UserContextLogger.shared.directoryURL.appendingPathComponent("user-context.md")
+    guard FileManager.default.fileExists(atPath: url.path),
+          let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
   }
 
   // MARK: - Log Loading & Sampling
@@ -120,7 +142,13 @@ class UserContextDerivation {
 
   // MARK: - Gemini Analysis
 
-  private func callGeminiForAnalysis(aggregatedText: String, apiKey: String) async throws -> String {
+  private func callGeminiForAnalysis(
+    aggregatedText: String,
+    currentPromptModeSystemPrompt: String?,
+    currentPromptAndReadSystemPrompt: String?,
+    existingUserContext: String?,
+    apiKey: String
+  ) async throws -> String {
     let geminiClient = GeminiAPIClient()
 
     var request = try geminiClient.createRequest(endpoint: analysisEndpoint, apiKey: apiKey)
@@ -130,8 +158,11 @@ class UserContextDerivation {
     The app has these modes: transcription (speech-to-text), prompt (voice instructions that modify clipboard text), \
     promptAndRead (same as prompt but reads result aloud), and readAloud (text-to-speech).
 
-    Based on the interaction data below, produce three sections separated by markers. \
-    Be concise and practical.
+    CRITICAL – How to treat transcription/dictation text:
+    Entries with mode "transcription" (and the "result" field) are raw speech-to-text output. They often contain recognition errors: wrong words (e.g. "Jason" instead of "das Dateiende"), homophones, misspelled names or technical terms. Do NOT take these transcriptions literally. Use the surrounding context (topic, other interactions, language, typical usage) to infer what the user likely meant. When you derive user context, difficult words, or system prompt suggestions, reason about the most probable intended words and base your output on that interpretation, not on the literal transcription.
+
+    Based on the interaction data below (and any existing user context / system prompt provided), produce three sections separated by markers. \
+    Refine and build on existing context when it is provided; do not ignore it. Be concise and practical.
 
     Section 1: User Context (between \(userContextMarker) and \(userContextEndMarker))
     Write a brief user profile (max 500 words) covering:
@@ -140,17 +171,31 @@ class UserContextDerivation {
     - Writing style preferences (formal/casual, etc.)
     - Frequent types of requests
     - Any domain-specific terminology patterns
+    If existing user context was provided, extend and update it with new insights from the interactions; do not start from scratch.
 
     Section 2: Suggested System Prompt (between \(systemPromptMarker) and \(systemPromptEndMarker))
     Write a suggested system prompt for the prompt mode that would work well for this user. \
-    Keep it under 300 words.
+    If a current system prompt was provided, refine it based on the new interaction data (e.g. add instructions that match how the user actually uses the app); keep what still works and improve the rest. Keep the result under 300 words.
 
     Section 3: Suggested Difficult Words (between \(difficultWordsMarker) and \(difficultWordsEndMarker))
     List domain-specific words, names, or technical terms that appear frequently and might be \
-    difficult for speech recognition. One word/phrase per line. Max 50 entries.
+    difficult for speech recognition. Infer the correct spelling/form from context when transcriptions are wrong (e.g. if you see "Jason" but context suggests "das Dateiende" or a name, list the intended form). One word/phrase per line. Max 50 entries.
     """
 
-    let userMessage = "Here are the user's recent interactions:\n\n\(aggregatedText)"
+    var userMessageParts: [String] = []
+
+    if let existing = existingUserContext, !existing.isEmpty {
+      userMessageParts.append("Existing user context (refine and extend this):\n\(existing)")
+    }
+    if let prompt = currentPromptModeSystemPrompt, !prompt.isEmpty {
+      userMessageParts.append("Current Prompt Mode system prompt (refine based on new data):\n\(prompt)")
+    }
+    if let promptRead = currentPromptAndReadSystemPrompt, !promptRead.isEmpty, promptRead != currentPromptModeSystemPrompt {
+      userMessageParts.append("Current Prompt & Read system prompt (refine based on new data):\n\(promptRead)")
+    }
+
+    userMessageParts.append("User's recent interactions:\n\n\(aggregatedText)")
+    let userMessage = userMessageParts.joined(separator: "\n\n---\n\n")
 
     let systemInstruction = GeminiChatRequest.GeminiSystemInstruction(
       parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
