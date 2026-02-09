@@ -22,7 +22,6 @@ class UserContextLogger {
 
   private let queue = DispatchQueue(label: "com.whisper-shortcut.usercontextlogger", qos: .utility)
   private let contextDirectoryName = "UserContext"
-  private let maxContextChars = 3000
   private let rotationDays = 90
 
   private lazy var contextDirectoryURL: URL = {
@@ -159,7 +158,8 @@ class UserContextLogger {
 
   // MARK: - User Context Loading
 
-  /// Reads user-context.md and returns its content (truncated to 3000 chars).
+  /// Reads user-context.md and returns its content (truncated to AppConstants.userContextMaxChars).
+  /// Truncation happens at sentence or word boundary so the model always sees complete text.
   /// Returns nil if the file is missing or userContextInPromptEnabled is false.
   func loadUserContext() -> String? {
     let enabled = UserDefaults.standard.object(forKey: UserDefaultsKeys.userContextInPromptEnabled) == nil
@@ -174,14 +174,28 @@ class UserContextLogger {
       let content = try String(contentsOf: fileURL, encoding: .utf8)
       let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
       guard !trimmed.isEmpty else { return nil }
-      if trimmed.count > maxContextChars {
-        return String(trimmed.prefix(maxContextChars))
+      let maxChars = AppConstants.userContextMaxChars
+      if trimmed.count <= maxChars {
+        return trimmed
       }
-      return trimmed
+      return Self.truncateAtBoundary(trimmed, maxChars: maxChars)
     } catch {
       DebugLogger.logError("USER-CONTEXT: Failed to load user-context.md: \(error.localizedDescription)")
       return nil
     }
+  }
+
+  /// Truncates at the last sentence or word boundary before maxChars so text is never cut mid-phrase.
+  private static func truncateAtBoundary(_ text: String, maxChars: Int) -> String {
+    let prefix = String(text.prefix(maxChars))
+    let sentenceEnds: Set<Character> = [".", "!", "?", "\n"]
+    if let i = prefix.lastIndex(where: { sentenceEnds.contains($0) }) {
+      return String(prefix[...i]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    if let i = prefix.lastIndex(of: " ") {
+      return String(prefix[..<i]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return prefix.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   // MARK: - File Listing (for derivation)

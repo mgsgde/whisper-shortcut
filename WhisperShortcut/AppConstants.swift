@@ -84,4 +84,9 @@ Key rules:
   // MARK: - User Context Derivation
   /// Gemini API endpoint for analyzing interaction logs (Update Context). Uses Pro model for best quality.
   static let userContextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent"
+
+  /// Maximum character length for user context when appended to the system prompt.
+  /// Truncation is applied at sentence or word boundary so the model always sees complete text.
+  /// ~3000 chars ≈ ~750 tokens; keeps system instruction small and leaves room for conversation.
+  static let userContextMaxChars: Int = 3000
 }
