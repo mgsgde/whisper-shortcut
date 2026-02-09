@@ -87,7 +87,7 @@ struct SettingsView: View {
         case .liveMeeting:
           LiveMeetingSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .userContext:
-          UserContextSettingsTab()
+          UserContextSettingsTab(viewModel: viewModel)
         }
       }
       .padding(.horizontal, 24)

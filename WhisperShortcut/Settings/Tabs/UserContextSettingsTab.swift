@@ -2,6 +2,7 @@ import SwiftUI
 
 /// User Context Settings Tab - Interaction logging, context derivation, and suggestions
 struct UserContextSettingsTab: View {
+  @ObservedObject var viewModel: SettingsViewModel
   @AppStorage(UserDefaultsKeys.userContextLoggingEnabled) private var loggingEnabled = false
   @AppStorage(UserDefaultsKeys.userContextInPromptEnabled) private var contextInPromptEnabled = true
 
@@ -171,7 +172,11 @@ struct UserContextSettingsTab: View {
 
           Button("Apply Suggested System Prompt") {
             UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
-            statusMessage = "Applied suggested system prompt"
+            var data = viewModel.data
+            data.promptModeSystemPrompt = prompt
+            viewModel.data = data
+            suggestedSystemPrompt = nil
+            statusMessage = "Applied suggested system prompt. See Dictate Prompt settings."
           }
         }
       }
@@ -193,7 +198,11 @@ struct UserContextSettingsTab: View {
 
           Button("Apply Suggested Difficult Words") {
             UserDefaults.standard.set(words, forKey: UserDefaultsKeys.dictationDifficultWords)
-            statusMessage = "Applied suggested difficult words"
+            var data = viewModel.data
+            data.dictationDifficultWords = words
+            viewModel.data = data
+            suggestedDifficultWords = nil
+            statusMessage = "Applied suggested difficult words. See Dictate settings."
           }
         }
       }
