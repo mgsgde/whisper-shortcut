@@ -178,7 +178,7 @@ class UserContextDerivation {
     If a current system prompt was provided, refine it based on the new interaction data (e.g. add instructions that match how the user actually uses the app); keep what still works and improve the rest. Keep the result under 300 words.
 
     Section 3: Suggested Difficult Words (between \(difficultWordsMarker) and \(difficultWordsEndMarker))
-    List ONLY words that are genuinely difficult for speech recognition. INCLUDE: proper nouns (person names, brand names, place names), technical/jargon terms specific to the user's domain, non-standard or rare spellings, and terms that were clearly misrecognized in the transcriptions (infer correct form from context). EXCLUDE: common everyday words, standard vocabulary, words that typical speech-to-text handles well. When in doubt, omit the word. One word/phrase per line. Max 50 entries. Prefer fewer, high-value entries over a long list of easy words.
+    List ONLY words where dictation likely went wrong. Rule: Look at "transcription" (dictation) results. If a word in the transcription makes NO or little sense in context, but a different (e.g. similar-sounding or homophone) word would make MUCH more sense, then the user probably said that other word – list that intended word (correct spelling). These are the words to add so future dictation gets them right. Do NOT list: words that already fit the context; common words; domain terms that were transcribed correctly; anything where you are not confident there was a recognition error. Only clear cases: wrong word in transcript + obvious intended word from context. One word/phrase per line. Max 30 entries. When in doubt, omit. Prefer a short, precise list over many guesses.
     """
 
     var userMessageParts: [String] = []

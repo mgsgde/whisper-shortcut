@@ -161,14 +161,22 @@ struct UserContextSettingsTab: View {
             .font(.callout)
             .fontWeight(.semibold)
 
-          Text(prompt)
-            .font(.system(.callout, design: .monospaced))
-            .foregroundColor(.secondary)
-            .lineLimit(6)
-            .padding(8)
-            .background(Color.secondary.opacity(0.1))
-            .cornerRadius(6)
-            .fixedSize(horizontal: false, vertical: true)
+          ScrollView {
+            Text(prompt)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .textSelection(.enabled)
+              .font(.system(.callout, design: .monospaced))
+              .foregroundColor(.secondary)
+              .padding(8)
+          }
+          .scrollIndicators(.visible)
+          .frame(height: SettingsConstants.textEditorHeight)
+          .background(Color(.controlBackgroundColor))
+          .cornerRadius(SettingsConstants.cornerRadius)
+          .overlay(
+            RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
+              .stroke(Color(.separatorColor), lineWidth: 1)
+          )
 
           Button("Apply Suggested System Prompt") {
             UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
@@ -187,14 +195,22 @@ struct UserContextSettingsTab: View {
             .font(.callout)
             .fontWeight(.semibold)
 
-          Text(words)
-            .font(.system(.callout, design: .monospaced))
-            .foregroundColor(.secondary)
-            .lineLimit(6)
-            .padding(8)
-            .background(Color.secondary.opacity(0.1))
-            .cornerRadius(6)
-            .fixedSize(horizontal: false, vertical: true)
+          ScrollView {
+            Text(words)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .textSelection(.enabled)
+              .font(.system(.callout, design: .monospaced))
+              .foregroundColor(.secondary)
+              .padding(8)
+          }
+          .scrollIndicators(.visible)
+          .frame(height: SettingsConstants.textEditorHeight)
+          .background(Color(.controlBackgroundColor))
+          .cornerRadius(SettingsConstants.cornerRadius)
+          .overlay(
+            RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
+              .stroke(Color(.separatorColor), lineWidth: 1)
+          )
 
           Button("Apply Suggested Difficult Words") {
             UserDefaults.standard.set(words, forKey: UserDefaultsKeys.dictationDifficultWords)
