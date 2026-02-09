@@ -8,7 +8,7 @@ class UserContextDerivation {
   private let maxEntriesPerMode = 50
   private let maxFieldChars = 2000
   private let maxTotalChars = 100_000
-  private let analysisEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+  private var analysisEndpoint: String { AppConstants.userContextDerivationEndpoint }
 
   // MARK: - Markers for parsing
   private let userContextMarker = "===USER_CONTEXT_START==="

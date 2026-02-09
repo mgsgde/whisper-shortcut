@@ -80,4 +80,8 @@ Key rules:
 
   /// Directory name for storing live meeting transcripts.
   static let liveMeetingTranscriptDirectory: String = "WhisperShortcut"
+
+  // MARK: - User Context Derivation
+  /// Gemini API endpoint for analyzing interaction logs (Update Context). Uses Pro model for best quality.
+  static let userContextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent"
 }
