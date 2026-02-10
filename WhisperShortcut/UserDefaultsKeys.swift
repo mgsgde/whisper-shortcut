@@ -63,5 +63,8 @@ enum UserDefaultsKeys {
   /// Stored value before applying suggested difficult words; used for Restore Previous.
   static let previousDictationDifficultWords = "previousDictationDifficultWords"
   static let hasPreviousDictationDifficultWords = "hasPreviousDictationDifficultWords"
+  /// Stored value before applying suggested user context; used for Restore Previous.
+  static let previousUserContext = "previousUserContext"
+  static let hasPreviousUserContext = "hasPreviousUserContext"
 }
 

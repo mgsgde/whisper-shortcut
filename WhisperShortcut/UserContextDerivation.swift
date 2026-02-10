@@ -247,9 +247,9 @@ class UserContextDerivation {
 
     // Parse user context
     if let userContext = extractSection(from: analysisResult, startMarker: userContextMarker, endMarker: userContextEndMarker) {
-      let fileURL = contextDir.appendingPathComponent("user-context.md")
+      let fileURL = contextDir.appendingPathComponent("suggested-user-context.md")
       try userContext.write(to: fileURL, atomically: true, encoding: .utf8)
-      DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote user-context.md (\(userContext.count) chars)")
+      DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested-user-context.md (\(userContext.count) chars)")
     }
 
     // Parse suggested system prompt

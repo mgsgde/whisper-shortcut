@@ -245,6 +245,12 @@ class UserContextLogger {
     try? FileManager.default.removeItem(at: url)
   }
 
+  /// Removes the suggested user context file so it does not reappear after Apply.
+  func deleteSuggestedUserContextFile() {
+    let url = contextDirectoryURL.appendingPathComponent("suggested-user-context.md")
+    try? FileManager.default.removeItem(at: url)
+  }
+
   // MARK: - Private Helpers
 
   private func iso8601Now() -> String {
