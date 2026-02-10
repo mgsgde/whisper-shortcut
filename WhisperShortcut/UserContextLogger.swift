@@ -233,6 +233,18 @@ class UserContextLogger {
     contextDirectoryURL
   }
 
+  /// Removes the suggested system prompt file so it does not reappear after Apply.
+  func deleteSuggestedSystemPromptFile() {
+    let url = contextDirectoryURL.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
+    try? FileManager.default.removeItem(at: url)
+  }
+
+  /// Removes the suggested difficult words file so it does not reappear after Apply.
+  func deleteSuggestedDifficultWordsFile() {
+    let url = contextDirectoryURL.appendingPathComponent("suggested-difficult-words.txt")
+    try? FileManager.default.removeItem(at: url)
+  }
+
   // MARK: - Private Helpers
 
   private func iso8601Now() -> String {

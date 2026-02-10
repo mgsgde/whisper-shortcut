@@ -325,6 +325,9 @@ class SpeechService {
       DebugLogger.log("PROMPT-MODE-GEMINI: Appended user context to system prompt")
     }
 
+    // Always require raw output only (no meta), regardless of custom prompt
+    systemPrompt += AppConstants.promptModeOutputRule
+
     // Build request
     var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)
 
@@ -545,6 +548,9 @@ class SpeechService {
       systemPrompt += "\n\n---\nUser context:\n" + userContext
       DebugLogger.log("PROMPT-MODE-TEXT: Appended user context to system prompt")
     }
+
+    // Always require raw output only (no meta), regardless of custom prompt
+    systemPrompt += AppConstants.promptModeOutputRule
 
     // Build request
     var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)

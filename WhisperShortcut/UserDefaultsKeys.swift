@@ -56,5 +56,12 @@ enum UserDefaultsKeys {
   // MARK: - User Context Settings
   static let userContextLoggingEnabled = "userContextLoggingEnabled"
   static let userContextInPromptEnabled = "userContextInPromptEnabled"
+
+  /// Stored value before applying a suggested system prompt; used for Restore Previous.
+  static let previousPromptModeSystemPrompt = "previousPromptModeSystemPrompt"
+  static let hasPreviousPromptModeSystemPrompt = "hasPreviousPromptModeSystemPrompt"
+  /// Stored value before applying suggested difficult words; used for Restore Previous.
+  static let previousDictationDifficultWords = "previousDictationDifficultWords"
+  static let hasPreviousDictationDifficultWords = "hasPreviousDictationDifficultWords"
 }
 

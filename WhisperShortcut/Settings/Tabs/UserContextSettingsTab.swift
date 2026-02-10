@@ -5,6 +5,8 @@ struct UserContextSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @AppStorage(UserDefaultsKeys.userContextLoggingEnabled) private var loggingEnabled = false
   @AppStorage(UserDefaultsKeys.userContextInPromptEnabled) private var contextInPromptEnabled = true
+  @AppStorage(UserDefaultsKeys.hasPreviousPromptModeSystemPrompt) private var hasPreviousPrompt = false
+  @AppStorage(UserDefaultsKeys.hasPreviousDictationDifficultWords) private var hasPreviousDifficultWords = false
 
   @State private var isUpdatingContext = false
   @State private var showDeleteConfirmation = false
@@ -178,13 +180,20 @@ struct UserContextSettingsTab: View {
               .stroke(Color(.separatorColor), lineWidth: 1)
           )
 
-          Button("Apply Suggested System Prompt") {
-            UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
-            var data = viewModel.data
-            data.promptModeSystemPrompt = prompt
-            viewModel.data = data
-            suggestedSystemPrompt = nil
-            statusMessage = "Applied suggested system prompt. See Dictate Prompt settings."
+          HStack(spacing: 12) {
+            Button("Apply") {
+              applySuggestedSystemPrompt(prompt)
+            }
+            Button("Restore Previous") {
+              restorePreviousSystemPrompt()
+            }
+            .disabled(!hasPreviousPrompt)
+          }
+
+          if hasPreviousPrompt {
+            Text("Applied. Use Restore Previous to undo.")
+              .font(.callout)
+              .foregroundColor(.green)
           }
         }
       }
@@ -212,13 +221,20 @@ struct UserContextSettingsTab: View {
               .stroke(Color(.separatorColor), lineWidth: 1)
           )
 
-          Button("Apply Suggested Difficult Words") {
-            UserDefaults.standard.set(words, forKey: UserDefaultsKeys.dictationDifficultWords)
-            var data = viewModel.data
-            data.dictationDifficultWords = words
-            viewModel.data = data
-            suggestedDifficultWords = nil
-            statusMessage = "Applied suggested difficult words. See Dictate settings."
+          HStack(spacing: 12) {
+            Button("Apply") {
+              applySuggestedDifficultWords(words)
+            }
+            Button("Restore Previous") {
+              restorePreviousDifficultWords()
+            }
+            .disabled(!hasPreviousDifficultWords)
+          }
+
+          if hasPreviousDifficultWords {
+            Text("Applied. Use Restore Previous to undo.")
+              .font(.callout)
+              .foregroundColor(.green)
           }
         }
       }
@@ -244,6 +260,10 @@ struct UserContextSettingsTab: View {
           UserContextLogger.shared.deleteAllData()
           suggestedSystemPrompt = nil
           suggestedDifficultWords = nil
+          UserDefaults.standard.set(false, forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt)
+          UserDefaults.standard.set(false, forKey: UserDefaultsKeys.hasPreviousDictationDifficultWords)
+          UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.previousPromptModeSystemPrompt)
+          UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.previousDictationDifficultWords)
           statusMessage = "All context data deleted"
         }
       } message: {
@@ -304,6 +324,46 @@ struct UserContextSettingsTab: View {
       try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     }
     NSWorkspace.shared.open(url)
+  }
+
+  private func applySuggestedSystemPrompt(_ prompt: String) {
+    let current = viewModel.data.promptModeSystemPrompt
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptModeSystemPrompt)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt)
+    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
+    var data = viewModel.data
+    data.promptModeSystemPrompt = prompt
+    viewModel.data = data
+  }
+
+  private func restorePreviousSystemPrompt() {
+    guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousPromptModeSystemPrompt) else { return }
+    UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.promptModeSystemPrompt)
+    var data = viewModel.data
+    data.promptModeSystemPrompt = previous
+    viewModel.data = data
+    UserDefaults.standard.set(false, forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt)
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.previousPromptModeSystemPrompt)
+  }
+
+  private func applySuggestedDifficultWords(_ words: String) {
+    let current = viewModel.data.dictationDifficultWords
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousDictationDifficultWords)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousDictationDifficultWords)
+    UserDefaults.standard.set(words, forKey: UserDefaultsKeys.dictationDifficultWords)
+    var data = viewModel.data
+    data.dictationDifficultWords = words
+    viewModel.data = data
+  }
+
+  private func restorePreviousDifficultWords() {
+    guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousDictationDifficultWords) else { return }
+    UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.dictationDifficultWords)
+    var data = viewModel.data
+    data.dictationDifficultWords = previous
+    viewModel.data = data
+    UserDefaults.standard.set(false, forKey: UserDefaultsKeys.hasPreviousDictationDifficultWords)
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.previousDictationDifficultWords)
   }
 
   private func loadSuggestions() {

@@ -26,6 +26,10 @@ Key rules:
   static let defaultPromptAndReadSystemPrompt =
     "You are a text editing assistant. The user will provide SELECTED TEXT (from clipboard) as text input, followed by a VOICE INSTRUCTION (audio). IMPORTANT: The AUDIO contains the instruction/prompt that tells you what to do with the selected text. The SELECTED TEXT is what the instruction applies to. Your task is to apply the voice instruction from the audio to the selected text. Examples of short voice commands: 'summarize', 'translate to German' etc. Return ONLY the modified text without any explanations, meta-comments, or markdown formatting. Do not add intros like 'Here is...' or outros like 'Let me know if...'. Just return the clean, modified text directly."
 
+  /// Appended to every prompt-mode system prompt so the model always returns only raw result, never meta.
+  static let promptModeOutputRule =
+    "\n\nCRITICAL – Output format: Return ONLY the raw result text. No meta-information, no explanations, no preamble (e.g. \"Here is...\"), no closing phrases, no markdown. Just the plain result that the user can paste directly."
+
   // MARK: - Support Contact
   static let whatsappSupportNumber = "+4917641952181"
   
