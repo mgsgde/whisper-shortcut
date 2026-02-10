@@ -15,6 +15,10 @@ class UserContextDerivation {
   private let userContextEndMarker = "===USER_CONTEXT_END==="
   private let systemPromptMarker = "===SUGGESTED_SYSTEM_PROMPT_START==="
   private let systemPromptEndMarker = "===SUGGESTED_SYSTEM_PROMPT_END==="
+  private let promptAndReadSystemPromptMarker = "===SUGGESTED_PROMPT_AND_READ_SYSTEM_PROMPT_START==="
+  private let promptAndReadSystemPromptEndMarker = "===SUGGESTED_PROMPT_AND_READ_SYSTEM_PROMPT_END==="
+  private let dictationPromptMarker = "===SUGGESTED_DICTATION_PROMPT_START==="
+  private let dictationPromptEndMarker = "===SUGGESTED_DICTATION_PROMPT_END==="
   private let difficultWordsMarker = "===SUGGESTED_DIFFICULT_WORDS_START==="
   private let difficultWordsEndMarker = "===SUGGESTED_DIFFICULT_WORDS_END==="
 
@@ -41,6 +45,7 @@ class UserContextDerivation {
     // 2. Load current system prompt and existing user context so Gemini can refine them
     let currentPromptModeSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)?.trimmingCharacters(in: .whitespacesAndNewlines)
     let currentPromptAndReadSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentDictationPrompt = (UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) ?? AppConstants.defaultTranscriptionSystemPrompt).trimmingCharacters(in: .whitespacesAndNewlines)
     let existingUserContext = loadExistingUserContextFile()
 
     // 3. Call Gemini to analyze (with existing context so it can refine, not replace)
@@ -48,6 +53,7 @@ class UserContextDerivation {
       aggregatedText: aggregatedText,
       currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
       currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
+      currentDictationPrompt: currentDictationPrompt,
       existingUserContext: existingUserContext,
       apiKey: apiKey
     )
@@ -146,6 +152,7 @@ class UserContextDerivation {
     aggregatedText: String,
     currentPromptModeSystemPrompt: String?,
     currentPromptAndReadSystemPrompt: String?,
+    currentDictationPrompt: String?,
     existingUserContext: String?,
     apiKey: String
   ) async throws -> String {
@@ -161,7 +168,7 @@ class UserContextDerivation {
     CRITICAL – How to treat transcription/dictation text:
     Entries with mode "transcription" (and the "result" field) are raw speech-to-text output. They often contain recognition errors: wrong words (e.g. "Jason" instead of "das Dateiende"), homophones, misspelled names or technical terms. Do NOT take these transcriptions literally. Use the surrounding context (topic, other interactions, language, typical usage) to infer what the user likely meant. When you derive user context, difficult words, or system prompt suggestions, reason about the most probable intended words and base your output on that interpretation, not on the literal transcription.
 
-    Based on the interaction data below (and any existing user context / system prompt provided), produce three sections separated by markers. \
+    Based on the interaction data below (and any existing user context / system prompt provided), produce five sections separated by markers. \
     Refine and build on existing context when it is provided; do not ignore it. Be concise and practical.
 
     Section 1: User Context (between \(userContextMarker) and \(userContextEndMarker))
@@ -173,11 +180,21 @@ class UserContextDerivation {
     - Any domain-specific terminology patterns
     If existing user context was provided, extend and update it with new insights from the interactions; do not start from scratch.
 
-    Section 2: Suggested System Prompt (between \(systemPromptMarker) and \(systemPromptEndMarker))
-    Write a suggested system prompt for the prompt mode that would work well for this user. \
+    Section 2: Suggested Dictate Prompt System Prompt (between \(systemPromptMarker) and \(systemPromptEndMarker))
+    Write a suggested system prompt for the "Dictate Prompt" mode (voice instructions that modify clipboard text) that would work well for this user. \
     If a current system prompt was provided, refine it based on the new interaction data (e.g. add instructions that match how the user actually uses the app); keep what still works and improve the rest. Keep the result under 300 words.
 
-    Section 3: Suggested Difficult Words (between \(difficultWordsMarker) and \(difficultWordsEndMarker))
+    Section 3: Suggested Prompt & Read System Prompt (between \(promptAndReadSystemPromptMarker) and \(promptAndReadSystemPromptEndMarker))
+    Write a suggested system prompt for the "Dictate Prompt & Read" mode (same as Dictate Prompt but reads the result aloud). \
+    This may differ from the Dictate Prompt system prompt because the output is spoken, so it should favour concise, natural-sounding text. \
+    If a current Prompt & Read system prompt was provided, refine it. Keep the result under 300 words.
+
+    Section 4: Suggested Dictation Prompt (between \(dictationPromptMarker) and \(dictationPromptEndMarker))
+    Write a suggested prompt for the speech-to-text transcription mode. This prompt instructs the AI how to transcribe spoken audio. \
+    It should be tailored to this user's language(s), topics, and style. \
+    If a current dictation prompt was provided, refine it based on the interaction data; keep what works and improve the rest. Keep the result under 300 words.
+
+    Section 5: Suggested Difficult Words (between \(difficultWordsMarker) and \(difficultWordsEndMarker))
     List ONLY words where dictation likely went wrong. Rule: Look at "transcription" (dictation) results. If a word in the transcription makes NO or little sense in context, but a different (e.g. similar-sounding or homophone) word would make MUCH more sense, then the user probably said that other word – list that intended word (correct spelling). These are the words to add so future dictation gets them right. Do NOT list: words that already fit the context; common words; domain terms that were transcribed correctly; anything where you are not confident there was a recognition error. Only clear cases: wrong word in transcript + obvious intended word from context. One word/phrase per line. Max 30 entries. When in doubt, omit. Prefer a short, precise list over many guesses.
     """
 
@@ -189,8 +206,11 @@ class UserContextDerivation {
     if let prompt = currentPromptModeSystemPrompt, !prompt.isEmpty {
       userMessageParts.append("Current Prompt Mode system prompt (refine based on new data):\n\(prompt)")
     }
-    if let promptRead = currentPromptAndReadSystemPrompt, !promptRead.isEmpty, promptRead != currentPromptModeSystemPrompt {
+    if let promptRead = currentPromptAndReadSystemPrompt, !promptRead.isEmpty {
       userMessageParts.append("Current Prompt & Read system prompt (refine based on new data):\n\(promptRead)")
+    }
+    if let dictation = currentDictationPrompt, !dictation.isEmpty {
+      userMessageParts.append("Current dictation/transcription prompt (refine based on new data):\n\(dictation)")
     }
 
     userMessageParts.append("User's recent interactions:\n\n\(aggregatedText)")
@@ -252,11 +272,25 @@ class UserContextDerivation {
       DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested-user-context.md (\(userContext.count) chars)")
     }
 
-    // Parse suggested system prompt
+    // Parse suggested system prompt (Dictate Prompt)
     if let suggestedPrompt = extractSection(from: analysisResult, startMarker: systemPromptMarker, endMarker: systemPromptEndMarker) {
       let fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
       try suggestedPrompt.write(to: fileURL, atomically: true, encoding: .utf8)
-      DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested system prompt (\(suggestedPrompt.count) chars)")
+      DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Dictate Prompt system prompt (\(suggestedPrompt.count) chars)")
+    }
+
+    // Parse suggested system prompt (Prompt & Read)
+    if let suggestedPromptAndRead = extractSection(from: analysisResult, startMarker: promptAndReadSystemPromptMarker, endMarker: promptAndReadSystemPromptEndMarker) {
+      let fileURL = contextDir.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
+      try suggestedPromptAndRead.write(to: fileURL, atomically: true, encoding: .utf8)
+      DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Prompt & Read system prompt (\(suggestedPromptAndRead.count) chars)")
+    }
+
+    // Parse suggested dictation prompt
+    if let suggestedDictation = extractSection(from: analysisResult, startMarker: dictationPromptMarker, endMarker: dictationPromptEndMarker) {
+      let fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
+      try suggestedDictation.write(to: fileURL, atomically: true, encoding: .utf8)
+      DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested dictation prompt (\(suggestedDictation.count) chars)")
     }
 
     // Parse suggested difficult words

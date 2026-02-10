@@ -6,15 +6,24 @@ struct UserContextSettingsTab: View {
   @AppStorage(UserDefaultsKeys.userContextLoggingEnabled) private var loggingEnabled = false
   @AppStorage(UserDefaultsKeys.userContextInPromptEnabled) private var contextInPromptEnabled = true
   @AppStorage(UserDefaultsKeys.hasPreviousPromptModeSystemPrompt) private var hasPreviousPrompt = false
+  @AppStorage(UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt) private var hasPreviousPromptAndRead = false
+  @AppStorage(UserDefaultsKeys.hasPreviousCustomPromptText) private var hasPreviousDictationPrompt = false
   @AppStorage(UserDefaultsKeys.hasPreviousDictationDifficultWords) private var hasPreviousDifficultWords = false
   @AppStorage(UserDefaultsKeys.hasPreviousUserContext) private var hasPreviousUserContext = false
 
   @State private var isUpdatingContext = false
   @State private var showDeleteConfirmation = false
   @State private var suggestedSystemPrompt: String?
+  @State private var suggestedPromptAndReadSystemPrompt: String?
+  @State private var suggestedDictationPrompt: String?
   @State private var suggestedDifficultWords: String?
   @State private var suggestedUserContext: String?
   @State private var statusMessage: String?
+  @State private var userContextFeedback: String?
+  @State private var systemPromptFeedback: String?
+  @State private var promptAndReadFeedback: String?
+  @State private var dictationPromptFeedback: String?
+  @State private var difficultWordsFeedback: String?
 
   private var hasAPIKey: Bool {
     KeychainManager.shared.hasGoogleAPIKey()
@@ -38,8 +47,8 @@ struct UserContextSettingsTab: View {
       sectionDivider
 
       // Suggestions Section (visible when suggestions or previous values exist)
-      if suggestedUserContext != nil || suggestedSystemPrompt != nil || suggestedDifficultWords != nil
-          || hasPreviousUserContext || hasPreviousPrompt || hasPreviousDifficultWords {
+      if suggestedUserContext != nil || suggestedSystemPrompt != nil || suggestedPromptAndReadSystemPrompt != nil || suggestedDictationPrompt != nil || suggestedDifficultWords != nil
+          || hasPreviousUserContext || hasPreviousPrompt || hasPreviousPromptAndRead || hasPreviousDictationPrompt || hasPreviousDifficultWords {
         suggestionsSection
         sectionDivider
       }
@@ -161,129 +170,88 @@ struct UserContextSettingsTab: View {
       )
 
       if suggestedUserContext != nil || hasPreviousUserContext {
-        VStack(alignment: .leading, spacing: 8) {
-          Text("User Context:")
-            .font(.callout)
-            .fontWeight(.semibold)
-
-          if let context = suggestedUserContext {
-            ScrollView {
-              Text(context)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-                .font(.system(.callout, design: .monospaced))
-                .foregroundColor(.secondary)
-                .padding(8)
-            }
-            .scrollIndicators(.visible)
-            .frame(height: SettingsConstants.textEditorHeight)
-            .background(Color(.controlBackgroundColor))
-            .cornerRadius(SettingsConstants.cornerRadius)
-            .overlay(
-              RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
-                .stroke(Color(.separatorColor), lineWidth: 1)
-            )
-
-            Button("Apply") {
-              applySuggestedUserContext(context)
-            }
+        suggestionBlock(
+          title: "User Context",
+          suggestion: suggestedUserContext,
+          hasPrevious: hasPreviousUserContext,
+          feedback: userContextFeedback,
+          onApply: { context in
+            applySuggestedUserContext(context)
+            userContextFeedback = "Applied."
+          },
+          onRestore: {
+            restorePreviousUserContext()
+            userContextFeedback = "Previous version restored."
           }
-
-          if hasPreviousUserContext {
-            HStack(spacing: 12) {
-              Button("Restore Previous") {
-                restorePreviousUserContext()
-              }
-              Text("Use Restore Previous to swap back.")
-                .font(.callout)
-                .foregroundColor(.green)
-            }
-          }
-        }
+        )
       }
 
       if suggestedSystemPrompt != nil || hasPreviousPrompt {
-        VStack(alignment: .leading, spacing: 8) {
-          Text("System Prompt:")
-            .font(.callout)
-            .fontWeight(.semibold)
-
-          if let prompt = suggestedSystemPrompt {
-            ScrollView {
-              Text(prompt)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-                .font(.system(.callout, design: .monospaced))
-                .foregroundColor(.secondary)
-                .padding(8)
-            }
-            .scrollIndicators(.visible)
-            .frame(height: SettingsConstants.textEditorHeight)
-            .background(Color(.controlBackgroundColor))
-            .cornerRadius(SettingsConstants.cornerRadius)
-            .overlay(
-              RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
-                .stroke(Color(.separatorColor), lineWidth: 1)
-            )
-
-            Button("Apply") {
-              applySuggestedSystemPrompt(prompt)
-            }
+        suggestionBlock(
+          title: "Dictate Prompt System Prompt",
+          suggestion: suggestedSystemPrompt,
+          hasPrevious: hasPreviousPrompt,
+          feedback: systemPromptFeedback,
+          onApply: { prompt in
+            applySuggestedSystemPrompt(prompt)
+            systemPromptFeedback = "Applied."
+          },
+          onRestore: {
+            restorePreviousSystemPrompt()
+            systemPromptFeedback = "Previous version restored."
           }
+        )
+      }
 
-          if hasPreviousPrompt {
-            HStack(spacing: 12) {
-              Button("Restore Previous") {
-                restorePreviousSystemPrompt()
-              }
-              Text("Use Restore Previous to swap back.")
-                .font(.callout)
-                .foregroundColor(.green)
-            }
+      if suggestedPromptAndReadSystemPrompt != nil || hasPreviousPromptAndRead {
+        suggestionBlock(
+          title: "Prompt & Read System Prompt",
+          suggestion: suggestedPromptAndReadSystemPrompt,
+          hasPrevious: hasPreviousPromptAndRead,
+          feedback: promptAndReadFeedback,
+          onApply: { prompt in
+            applySuggestedPromptAndReadSystemPrompt(prompt)
+            promptAndReadFeedback = "Applied."
+          },
+          onRestore: {
+            restorePreviousPromptAndReadSystemPrompt()
+            promptAndReadFeedback = "Previous version restored."
           }
-        }
+        )
+      }
+
+      if suggestedDictationPrompt != nil || hasPreviousDictationPrompt {
+        suggestionBlock(
+          title: "Dictation Prompt",
+          suggestion: suggestedDictationPrompt,
+          hasPrevious: hasPreviousDictationPrompt,
+          feedback: dictationPromptFeedback,
+          onApply: { prompt in
+            applySuggestedDictationPrompt(prompt)
+            dictationPromptFeedback = "Applied."
+          },
+          onRestore: {
+            restorePreviousDictationPrompt()
+            dictationPromptFeedback = "Previous version restored."
+          }
+        )
       }
 
       if suggestedDifficultWords != nil || hasPreviousDifficultWords {
-        VStack(alignment: .leading, spacing: 8) {
-          Text("Difficult Words:")
-            .font(.callout)
-            .fontWeight(.semibold)
-
-          if let words = suggestedDifficultWords {
-            ScrollView {
-              Text(words)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-                .font(.system(.callout, design: .monospaced))
-                .foregroundColor(.secondary)
-                .padding(8)
-            }
-            .scrollIndicators(.visible)
-            .frame(height: SettingsConstants.textEditorHeight)
-            .background(Color(.controlBackgroundColor))
-            .cornerRadius(SettingsConstants.cornerRadius)
-            .overlay(
-              RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
-                .stroke(Color(.separatorColor), lineWidth: 1)
-            )
-
-            Button("Apply") {
-              applySuggestedDifficultWords(words)
-            }
+        suggestionBlock(
+          title: "Difficult Words",
+          suggestion: suggestedDifficultWords,
+          hasPrevious: hasPreviousDifficultWords,
+          feedback: difficultWordsFeedback,
+          onApply: { words in
+            applySuggestedDifficultWords(words)
+            difficultWordsFeedback = "Applied."
+          },
+          onRestore: {
+            restorePreviousDifficultWords()
+            difficultWordsFeedback = "Previous version restored."
           }
-
-          if hasPreviousDifficultWords {
-            HStack(spacing: 12) {
-              Button("Restore Previous") {
-                restorePreviousDifficultWords()
-              }
-              Text("Use Restore Previous to swap back.")
-                .font(.callout)
-                .foregroundColor(.green)
-            }
-          }
-        }
+        )
       }
     }
   }
@@ -306,12 +274,18 @@ struct UserContextSettingsTab: View {
         Button("Delete", role: .destructive) {
           UserContextLogger.shared.deleteAllData()
           suggestedSystemPrompt = nil
+          suggestedPromptAndReadSystemPrompt = nil
+          suggestedDictationPrompt = nil
           suggestedDifficultWords = nil
           suggestedUserContext = nil
           UserDefaults.standard.set(false, forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt)
+          UserDefaults.standard.set(false, forKey: UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt)
+          UserDefaults.standard.set(false, forKey: UserDefaultsKeys.hasPreviousCustomPromptText)
           UserDefaults.standard.set(false, forKey: UserDefaultsKeys.hasPreviousDictationDifficultWords)
           UserDefaults.standard.set(false, forKey: UserDefaultsKeys.hasPreviousUserContext)
           UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.previousPromptModeSystemPrompt)
+          UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt)
+          UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.previousCustomPromptText)
           UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.previousDictationDifficultWords)
           UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.previousUserContext)
           statusMessage = "All context data deleted"
@@ -339,6 +313,63 @@ struct UserContextSettingsTab: View {
 
       Button("Open User Context Folder in Finder") {
         openUserContextFolder()
+      }
+    }
+  }
+
+  // MARK: - Suggestion Block Helper
+
+  @ViewBuilder
+  private func suggestionBlock(
+    title: String,
+    suggestion: String?,
+    hasPrevious: Bool,
+    feedback: String?,
+    onApply: @escaping (String) -> Void,
+    onRestore: @escaping () -> Void
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("\(title):")
+        .font(.callout)
+        .fontWeight(.semibold)
+
+      if let text = suggestion {
+        ScrollView {
+          Text(text)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
+            .font(.system(.callout, design: .monospaced))
+            .foregroundColor(.secondary)
+            .padding(8)
+        }
+        .scrollIndicators(.visible)
+        .frame(height: SettingsConstants.textEditorHeight)
+        .background(Color(.controlBackgroundColor))
+        .cornerRadius(SettingsConstants.cornerRadius)
+        .overlay(
+          RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
+            .stroke(Color(.separatorColor), lineWidth: 1)
+        )
+      }
+
+      HStack(spacing: 12) {
+        if let text = suggestion {
+          Button("Apply") {
+            onApply(text)
+          }
+        }
+
+        if hasPrevious {
+          Button("Restore Previous") {
+            onRestore()
+          }
+        }
+
+        if let feedback {
+          Text(feedback)
+            .font(.callout)
+            .foregroundColor(.green)
+        }
       }
     }
   }
@@ -396,6 +427,46 @@ struct UserContextSettingsTab: View {
     viewModel.data = data
   }
 
+  private func applySuggestedPromptAndReadSystemPrompt(_ prompt: String) {
+    let current = viewModel.data.promptAndReadSystemPrompt
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt)
+    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
+    var data = viewModel.data
+    data.promptAndReadSystemPrompt = prompt
+    viewModel.data = data
+  }
+
+  private func restorePreviousPromptAndReadSystemPrompt() {
+    guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt) else { return }
+    let current = viewModel.data.promptAndReadSystemPrompt
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt)
+    UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
+    var data = viewModel.data
+    data.promptAndReadSystemPrompt = previous
+    viewModel.data = data
+  }
+
+  private func applySuggestedDictationPrompt(_ prompt: String) {
+    let current = viewModel.data.customPromptText
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousCustomPromptText)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousCustomPromptText)
+    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.customPromptText)
+    var data = viewModel.data
+    data.customPromptText = prompt
+    viewModel.data = data
+  }
+
+  private func restorePreviousDictationPrompt() {
+    guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousCustomPromptText) else { return }
+    let current = viewModel.data.customPromptText
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousCustomPromptText)
+    UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.customPromptText)
+    var data = viewModel.data
+    data.customPromptText = previous
+    viewModel.data = data
+  }
+
   private func applySuggestedDifficultWords(_ words: String) {
     let current = viewModel.data.dictationDifficultWords
     UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousDictationDifficultWords)
@@ -423,8 +494,6 @@ struct UserContextSettingsTab: View {
     UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousUserContext)
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousUserContext)
     try? context.write(to: fileURL, atomically: true, encoding: .utf8)
-    UserContextLogger.shared.deleteSuggestedUserContextFile()
-    suggestedUserContext = nil
   }
 
   private func restorePreviousUserContext() {
@@ -441,6 +510,12 @@ struct UserContextSettingsTab: View {
   }
 
   private func loadSuggestions() {
+    userContextFeedback = nil
+    systemPromptFeedback = nil
+    promptAndReadFeedback = nil
+    dictationPromptFeedback = nil
+    difficultWordsFeedback = nil
+
     let contextDir = UserContextLogger.shared.directoryURL
 
     let userContextURL = contextDir.appendingPathComponent("suggested-user-context.md")
@@ -459,6 +534,24 @@ struct UserContextSettingsTab: View {
       suggestedSystemPrompt = content.trimmingCharacters(in: .whitespacesAndNewlines)
     } else {
       suggestedSystemPrompt = nil
+    }
+
+    let promptAndReadURL = contextDir.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
+    if FileManager.default.fileExists(atPath: promptAndReadURL.path),
+       let content = try? String(contentsOf: promptAndReadURL, encoding: .utf8),
+       !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      suggestedPromptAndReadSystemPrompt = content.trimmingCharacters(in: .whitespacesAndNewlines)
+    } else {
+      suggestedPromptAndReadSystemPrompt = nil
+    }
+
+    let dictationURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
+    if FileManager.default.fileExists(atPath: dictationURL.path),
+       let content = try? String(contentsOf: dictationURL, encoding: .utf8),
+       !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      suggestedDictationPrompt = content.trimmingCharacters(in: .whitespacesAndNewlines)
+    } else {
+      suggestedDictationPrompt = nil
     }
 
     let wordsURL = contextDir.appendingPathComponent("suggested-difficult-words.txt")

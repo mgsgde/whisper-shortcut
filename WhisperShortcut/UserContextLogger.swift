@@ -251,6 +251,18 @@ class UserContextLogger {
     try? FileManager.default.removeItem(at: url)
   }
 
+  /// Removes the suggested dictation prompt file so it does not reappear after Apply.
+  func deleteSuggestedDictationPromptFile() {
+    let url = contextDirectoryURL.appendingPathComponent("suggested-dictation-prompt.txt")
+    try? FileManager.default.removeItem(at: url)
+  }
+
+  /// Removes the suggested Prompt & Read system prompt file so it does not reappear after Apply.
+  func deleteSuggestedPromptAndReadSystemPromptFile() {
+    let url = contextDirectoryURL.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
+    try? FileManager.default.removeItem(at: url)
+  }
+
   // MARK: - Private Helpers
 
   private func iso8601Now() -> String {
