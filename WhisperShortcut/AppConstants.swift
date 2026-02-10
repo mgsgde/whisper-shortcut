@@ -93,4 +93,16 @@ Key rules:
   /// Truncation is applied at sentence or word boundary so the model always sees complete text.
   /// ~3000 chars ≈ ~750 tokens; keeps system instruction small and leaves room for conversation.
   static let userContextMaxChars: Int = 3000
+
+  // MARK: - User Context Derivation Limits
+  static let userContextDefaultMaxEntriesPerMode: Int = 30
+  static let userContextDefaultMaxTotalChars: Int = 60_000
+
+  /// Tiered sampling: 50% from last 7 days, 30% from days 8–14, 20% from days 15–30.
+  static let userContextTier1Days: Int = 7
+  static let userContextTier1Ratio: Double = 0.50
+  static let userContextTier2Days: Int = 14
+  static let userContextTier2Ratio: Double = 0.30
+  static let userContextTier3Days: Int = 30
+  static let userContextTier3Ratio: Double = 0.20
 }

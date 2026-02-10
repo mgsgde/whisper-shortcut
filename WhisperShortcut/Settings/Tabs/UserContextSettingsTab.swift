@@ -5,6 +5,8 @@ struct UserContextSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @AppStorage(UserDefaultsKeys.userContextLoggingEnabled) private var loggingEnabled = false
   @AppStorage(UserDefaultsKeys.userContextInPromptEnabled) private var contextInPromptEnabled = true
+  @AppStorage(UserDefaultsKeys.userContextMaxEntriesPerMode) private var maxEntriesPerMode: Int = AppConstants.userContextDefaultMaxEntriesPerMode
+  @AppStorage(UserDefaultsKeys.userContextMaxTotalChars) private var maxTotalChars: Int = AppConstants.userContextDefaultMaxTotalChars
   @AppStorage(UserDefaultsKeys.hasPreviousPromptModeSystemPrompt) private var hasPreviousPrompt = false
   @AppStorage(UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt) private var hasPreviousPromptAndRead = false
   @AppStorage(UserDefaultsKeys.hasPreviousCustomPromptText) private var hasPreviousDictationPrompt = false
@@ -43,6 +45,9 @@ struct UserContextSettingsTab: View {
 
       // Update Context Section
       updateContextSection
+
+      // Update Limits Section
+      limitsSection
 
       sectionDivider
 
@@ -156,6 +161,27 @@ struct UserContextSettingsTab: View {
           .foregroundColor(statusMessage.contains("Error") || statusMessage.contains("Failed") ? .red : .green)
           .fixedSize(horizontal: false, vertical: true)
       }
+    }
+  }
+
+  // MARK: - Update Limits Section
+
+  @ViewBuilder
+  private var limitsSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Update Limits",
+        subtitle: "Control how much data is analyzed"
+      )
+
+      Stepper("Max entries per mode: \(maxEntriesPerMode)", value: $maxEntriesPerMode, in: 10...100, step: 10)
+
+      Stepper("Max total characters: \(maxTotalChars / 1000)k", value: $maxTotalChars, in: 20_000...150_000, step: 10_000)
+
+      Text("Recent interactions are prioritized: 50% from last 7 days, 30% from days 8–14, 20% from older.")
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 
@@ -383,11 +409,11 @@ struct UserContextSettingsTab: View {
     Task {
       do {
         let derivation = UserContextDerivation()
-        try await derivation.updateContextFromLogs()
+        let loaded = try await derivation.updateContextFromLogs()
 
         await MainActor.run {
           isUpdatingContext = false
-          statusMessage = "Context updated successfully"
+          statusMessage = "Context updated (\(loaded.entryCount) entries, ~\(loaded.charCount / 1000)k chars)"
           loadSuggestions()
         }
       } catch {

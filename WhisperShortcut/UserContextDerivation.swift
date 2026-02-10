@@ -5,10 +5,15 @@ import Foundation
 /// suggested system prompts, and difficult words.
 class UserContextDerivation {
 
-  private let maxEntriesPerMode = 50
   private let maxFieldChars = 2000
-  private let maxTotalChars = 100_000
   private var analysisEndpoint: String { AppConstants.userContextDerivationEndpoint }
+
+  /// Result of loading and sampling logs: aggregated text plus stats for UI feedback.
+  struct LoadedLogs {
+    let text: String
+    let entryCount: Int
+    let charCount: Int
+  }
 
   // MARK: - Markers for parsing
   private let userContextMarker = "===USER_CONTEXT_START==="
@@ -25,22 +30,22 @@ class UserContextDerivation {
   // MARK: - Main Entry Point
 
   /// Analyzes interaction logs and derives user context files.
-  /// Throws if no API key or if the Gemini request fails.
-  func updateContextFromLogs() async throws {
+  /// Returns loaded log stats (entry count, char count) for UI feedback. Throws if no API key or if the Gemini request fails.
+  func updateContextFromLogs() async throws -> LoadedLogs {
     guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else {
       throw TranscriptionError.noGoogleAPIKey
     }
 
     DebugLogger.log("USER-CONTEXT-DERIVATION: Starting context update")
 
-    // 1. Load and sample interaction logs
-    let aggregatedText = try loadAndSampleLogs()
-    guard !aggregatedText.isEmpty else {
+    // 1. Load and sample interaction logs (tiered recency + char limit)
+    let loaded = try loadAndSampleLogs()
+    guard !loaded.text.isEmpty else {
       DebugLogger.logWarning("USER-CONTEXT-DERIVATION: No interaction logs found")
       throw TranscriptionError.networkError("No interaction logs found. Use the app for a while with logging enabled, then try again.")
     }
 
-    DebugLogger.log("USER-CONTEXT-DERIVATION: Aggregated \(aggregatedText.count) chars of interaction data")
+    DebugLogger.log("USER-CONTEXT-DERIVATION: Aggregated \(loaded.entryCount) entries, \(loaded.charCount) chars")
 
     // 2. Load current system prompt and existing user context so Gemini can refine them
     let currentPromptModeSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -50,7 +55,7 @@ class UserContextDerivation {
 
     // 3. Call Gemini to analyze (with existing context so it can refine, not replace)
     let analysisResult = try await callGeminiForAnalysis(
-      aggregatedText: aggregatedText,
+      aggregatedText: loaded.text,
       currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
       currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
       currentDictationPrompt: currentDictationPrompt,
@@ -62,6 +67,7 @@ class UserContextDerivation {
     try writeOutputFiles(analysisResult: analysisResult)
 
     DebugLogger.logSuccess("USER-CONTEXT-DERIVATION: Context update completed")
+    return loaded
   }
 
   // MARK: - Load Existing Context (for refinement)
@@ -77,11 +83,16 @@ class UserContextDerivation {
 
   // MARK: - Log Loading & Sampling
 
-  private func loadAndSampleLogs() throws -> String {
-    let logFiles = UserContextLogger.shared.interactionLogFiles(lastDays: 30)
-    guard !logFiles.isEmpty else { return "" }
+  private func loadAndSampleLogs() throws -> LoadedLogs {
+    let maxPerMode = UserDefaults.standard.object(forKey: UserDefaultsKeys.userContextMaxEntriesPerMode) as? Int
+      ?? AppConstants.userContextDefaultMaxEntriesPerMode
+    let maxChars = UserDefaults.standard.object(forKey: UserDefaultsKeys.userContextMaxTotalChars) as? Int
+      ?? AppConstants.userContextDefaultMaxTotalChars
 
-    // Parse all entries
+    let logFiles = UserContextLogger.shared.interactionLogFiles(lastDays: AppConstants.userContextTier3Days)
+    guard !logFiles.isEmpty else { return LoadedLogs(text: "", entryCount: 0, charCount: 0) }
+
+    // Parse all entries, grouped by mode
     var entriesByMode: [String: [InteractionLogEntry]] = [:]
     let decoder = JSONDecoder()
 
@@ -96,21 +107,34 @@ class UserContextDerivation {
       }
     }
 
-    // Sample max entries per mode (evenly spaced)
+    // Sort each mode's entries by timestamp (chronological) for tier split and even sampling
+    let now = Date()
+    let tier1Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.userContextTier1Days, to: now) ?? now
+    let tier2Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.userContextTier2Days, to: now) ?? now
+
     var sampledEntries: [InteractionLogEntry] = []
     for (_, entries) in entriesByMode {
-      if entries.count <= maxEntriesPerMode {
-        sampledEntries.append(contentsOf: entries)
-      } else {
-        let step = Double(entries.count) / Double(maxEntriesPerMode)
-        for i in 0..<maxEntriesPerMode {
-          let index = Int(Double(i) * step)
-          sampledEntries.append(entries[index])
-        }
+      let sortedEntries = entries.sorted { $0.ts < $1.ts }
+      let tier1 = sortedEntries.filter { parseDate($0.ts) >= tier1Cutoff }
+      let tier2 = sortedEntries.filter { entry in
+        let d = parseDate(entry.ts)
+        return d < tier1Cutoff && d >= tier2Cutoff
       }
+      let tier3 = sortedEntries.filter { parseDate($0.ts) < tier2Cutoff }
+
+      let budget1 = Int(Double(maxPerMode) * AppConstants.userContextTier1Ratio)
+      let budget2 = Int(Double(maxPerMode) * AppConstants.userContextTier2Ratio)
+      let budget3 = maxPerMode - budget1 - budget2
+
+      sampledEntries.append(contentsOf: evenSample(tier1, max: budget1))
+      sampledEntries.append(contentsOf: evenSample(tier2, max: budget2))
+      sampledEntries.append(contentsOf: evenSample(tier3, max: budget3))
     }
 
-    // Build aggregated text with truncated fields
+    // Sort by timestamp (oldest first) so when we hit char limit we drop oldest and keep newest
+    sampledEntries.sort { $0.ts < $1.ts }
+
+    // Build aggregated text with truncated fields; stop at maxChars (oldest dropped first)
     var parts: [String] = []
     var totalChars = 0
 
@@ -135,15 +159,30 @@ class UserContextDerivation {
 
       let entryText = entryParts.joined(separator: " | ")
 
-      if totalChars + entryText.count > maxTotalChars {
-        break  // Drop oldest-last (we process in chronological order)
+      if totalChars + entryText.count > maxChars {
+        break
       }
 
       parts.append(entryText)
       totalChars += entryText.count
     }
 
-    return parts.joined(separator: "\n---\n")
+    let text = parts.joined(separator: "\n---\n")
+    return LoadedLogs(text: text, entryCount: parts.count, charCount: totalChars)
+  }
+
+  private func evenSample(_ entries: [InteractionLogEntry], max count: Int) -> [InteractionLogEntry] {
+    guard entries.count > count else { return entries }
+    let step = Double(entries.count) / Double(count)
+    return (0..<count).map { entries[Int(Double($0) * step)] }
+  }
+
+  private func parseDate(_ iso: String) -> Date {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = formatter.date(from: iso) { return date }
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter.date(from: iso) ?? .distantPast
   }
 
   // MARK: - Gemini Analysis

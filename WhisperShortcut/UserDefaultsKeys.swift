@@ -56,6 +56,8 @@ enum UserDefaultsKeys {
   // MARK: - User Context Settings
   static let userContextLoggingEnabled = "userContextLoggingEnabled"
   static let userContextInPromptEnabled = "userContextInPromptEnabled"
+  static let userContextMaxEntriesPerMode = "userContextMaxEntriesPerMode"
+  static let userContextMaxTotalChars = "userContextMaxTotalChars"
 
   /// Stored value before applying a suggested system prompt (Dictate Prompt); used for Restore Previous.
   static let previousPromptModeSystemPrompt = "previousPromptModeSystemPrompt"
