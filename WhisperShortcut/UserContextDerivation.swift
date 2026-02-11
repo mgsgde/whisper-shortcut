@@ -5,7 +5,8 @@ import Foundation
 /// suggested system prompts, and difficult words.
 class UserContextDerivation {
 
-  private let maxFieldChars = 2000
+  /// Per-field character cap per log entry; smaller = less payload and faster derivation.
+  private let maxFieldChars = 1000
   private var analysisEndpoint: String { AppConstants.userContextDerivationEndpoint }
 
   /// Result of loading and sampling logs: aggregated text plus stats for UI feedback.
@@ -24,8 +25,6 @@ class UserContextDerivation {
   private let promptAndReadSystemPromptEndMarker = "===SUGGESTED_PROMPT_AND_READ_SYSTEM_PROMPT_END==="
   private let dictationPromptMarker = "===SUGGESTED_DICTATION_PROMPT_START==="
   private let dictationPromptEndMarker = "===SUGGESTED_DICTATION_PROMPT_END==="
-  private let difficultWordsMarker = "===SUGGESTED_DIFFICULT_WORDS_START==="
-  private let difficultWordsEndMarker = "===SUGGESTED_DIFFICULT_WORDS_END==="
 
   // MARK: - Main Entry Point
 
@@ -207,7 +206,7 @@ class UserContextDerivation {
     CRITICAL – How to treat transcription/dictation text:
     Entries with mode "transcription" (and the "result" field) are raw speech-to-text output. They often contain recognition errors: wrong words (e.g. "Jason" instead of "das Dateiende"), homophones, misspelled names or technical terms. Do NOT take these transcriptions literally. Use the surrounding context (topic, other interactions, language, typical usage) to infer what the user likely meant. When you derive user context, difficult words, or system prompt suggestions, reason about the most probable intended words and base your output on that interpretation, not on the literal transcription.
 
-    Based on the interaction data below (and any existing user context / system prompt provided), produce five sections separated by markers. \
+    Based on the interaction data below (and any existing user context / system prompt provided), produce four sections separated by markers. \
     Refine and build on existing context when it is provided; do not ignore it. Be concise and practical.
 
     Section 1: User Context (between \(userContextMarker) and \(userContextEndMarker))
@@ -229,12 +228,10 @@ class UserContextDerivation {
     If a current Prompt & Read system prompt was provided, refine it. Keep the result under 300 words.
 
     Section 4: Suggested Dictation Prompt (between \(dictationPromptMarker) and \(dictationPromptEndMarker))
-    Write a suggested prompt for the speech-to-text transcription mode. This prompt instructs the AI how to transcribe spoken audio. \
-    It should be tailored to this user's language(s), topics, and style. \
-    If a current dictation prompt was provided, refine it based on the interaction data; keep what works and improve the rest. Keep the result under 300 words.
-
-    Section 5: Suggested Difficult Words (between \(difficultWordsMarker) and \(difficultWordsEndMarker))
-    List ONLY words where dictation likely went wrong. Rule: Look at "transcription" (dictation) results. If a word in the transcription makes NO or little sense in context, but a different (e.g. similar-sounding or homophone) word would make MUCH more sense, then the user probably said that other word – list that intended word (correct spelling). These are the words to add so future dictation gets them right. Do NOT list: words that already fit the context; common words; domain terms that were transcribed correctly; anything where you are not confident there was a recognition error. Only clear cases: wrong word in transcript + obvious intended word from context. One word/phrase per line. Max 30 entries. When in doubt, omit. Prefer a short, precise list over many guesses.
+    Write a single combined system prompt for speech-to-text transcription. This prompt instructs the AI how to transcribe spoken audio. \
+    It must include: (1) domain context, language(s), topics, and style tailored to this user; (2) a spelling reference for words that dictation often gets wrong. \
+    CRITICAL – avoid redundancy: do NOT list the same term twice. Use EITHER a single "Spelling reference (use only if heard in audio): word1, word2, ..." line that contains all terms that need correct spelling, OR if you add explicit correction rules (e.g. "X → Y"), then the spelling reference must only list terms that are NOT already mentioned in those rules. Never duplicate a term in both a corrections list and the spelling reference. \
+    Infer difficult words from "transcription" results (recognition errors). If a current dictation prompt was provided, refine it and remove any duplicate entries. Keep the result under 400 words.
     """
 
     var userMessageParts: [String] = []
@@ -325,18 +322,11 @@ class UserContextDerivation {
       DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Prompt & Read system prompt (\(suggestedPromptAndRead.count) chars)")
     }
 
-    // Parse suggested dictation prompt
+    // Parse suggested dictation prompt (combined: domain context + spelling/difficult words)
     if let suggestedDictation = extractSection(from: analysisResult, startMarker: dictationPromptMarker, endMarker: dictationPromptEndMarker) {
       let fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
       try suggestedDictation.write(to: fileURL, atomically: true, encoding: .utf8)
       DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested dictation prompt (\(suggestedDictation.count) chars)")
-    }
-
-    // Parse suggested difficult words
-    if let suggestedWords = extractSection(from: analysisResult, startMarker: difficultWordsMarker, endMarker: difficultWordsEndMarker) {
-      let fileURL = contextDir.appendingPathComponent("suggested-difficult-words.txt")
-      try suggestedWords.write(to: fileURL, atomically: true, encoding: .utf8)
-      DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested difficult words (\(suggestedWords.count) chars)")
     }
   }
 

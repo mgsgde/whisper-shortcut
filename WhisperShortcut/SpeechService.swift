@@ -110,37 +110,11 @@ class SpeechService {
   }
 
   // MARK: - Prompt Building
-  /// Builds the combined dictation prompt from normal prompt and difficult words
-  /// - Returns: Combined prompt string with difficult words appended if present
+  /// Returns the dictation system prompt (single field: domain context, difficult words, etc.).
   private func buildDictationPrompt() -> String {
-    // Get normal prompt
     let customPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText)
       ?? AppConstants.defaultTranscriptionSystemPrompt
-    let normalPrompt = customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-    
-    // Get difficult words
-    let difficultWordsText = UserDefaults.standard.string(forKey: UserDefaultsKeys.dictationDifficultWords) ?? ""
-    let difficultWords = difficultWordsText
-      .components(separatedBy: .newlines)
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      .filter { !$0.isEmpty }
-    
-    // If no difficult words, return normal prompt
-    guard !difficultWords.isEmpty else {
-      return normalPrompt
-    }
-    
-    // Combine words into comma-separated list
-    let wordsList = difficultWords.joined(separator: ", ")
-    
-    // Combine prompts with Gemini-optimized formulation
-    // This formulation clearly indicates difficult words are reference only
-    // and should only be used if actually heard in the audio
-    if normalPrompt.isEmpty {
-      return "Spelling reference (use only if heard in audio): \(wordsList). CRITICAL: Transcribe ONLY what is spoken. Do NOT add words from this list if not heard. Do NOT include this instruction in your output."
-    } else {
-      return "\(normalPrompt)\n\nSpelling reference (use only if heard in audio): \(wordsList). CRITICAL: Transcribe ONLY what is spoken. Do NOT add words from this list if not heard. Do NOT include this instruction in your output."
-    }
+    return customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
 

@@ -86,8 +86,6 @@ struct SettingsView: View {
           ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .liveMeeting:
           LiveMeetingSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .userContext:
-          UserContextSettingsTab(viewModel: viewModel)
         }
       }
       .padding(.horizontal, 24)
@@ -111,9 +109,7 @@ struct SettingsView: View {
       return "speaker.wave.2"
     case .liveMeeting:
       return "text.badge.plus"
-    case .userContext:
-      return "brain"
-    }
+  }
   }
 
   private func description(for tab: SettingsTab) -> String {
@@ -130,9 +126,7 @@ struct SettingsView: View {
       return "Shortcut and Voice Selection"
     case .liveMeeting:
       return "Meeting Transcription Settings"
-    case .userContext:
-      return "Interaction Logging & Context"
-    }
+  }
   }
 
   // MARK: - Functions

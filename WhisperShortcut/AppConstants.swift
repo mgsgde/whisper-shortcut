@@ -86,17 +86,17 @@ Key rules:
   static let liveMeetingTranscriptDirectory: String = "WhisperShortcut"
 
   // MARK: - User Context Derivation
-  /// Gemini API endpoint for analyzing interaction logs (Update Context). Uses Pro model for best quality.
-  static let userContextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent"
+  /// Gemini API endpoint for analyzing interaction logs (Generate with AI). Uses Flash for low latency; switch to Pro if you prefer higher quality over speed.
+  static let userContextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
   /// Maximum character length for user context when appended to the system prompt.
   /// Truncation is applied at sentence or word boundary so the model always sees complete text.
   /// ~3000 chars ≈ ~750 tokens; keeps system instruction small and leaves room for conversation.
   static let userContextMaxChars: Int = 3000
 
-  // MARK: - User Context Derivation Limits
-  static let userContextDefaultMaxEntriesPerMode: Int = 30
-  static let userContextDefaultMaxTotalChars: Int = 60_000
+  // MARK: - User Context Derivation Limits (smaller = faster "Generate with AI", recent data still prioritized by tiered sampling)
+  static let userContextDefaultMaxEntriesPerMode: Int = 15
+  static let userContextDefaultMaxTotalChars: Int = 25_000
 
   /// Tiered sampling: 50% from last 7 days, 30% from days 8–14, 20% from days 15–30.
   static let userContextTier1Days: Int = 7

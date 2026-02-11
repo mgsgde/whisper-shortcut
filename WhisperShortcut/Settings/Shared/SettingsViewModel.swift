@@ -49,6 +49,25 @@ class SettingsViewModel: ObservableObject {
     // Load dictation difficult words (empty by default)
     data.dictationDifficultWords = UserDefaults.standard.string(forKey: UserDefaultsKeys.dictationDifficultWords) ?? ""
 
+    // Migration: merge difficult words into single prompt field (one-time)
+    if !data.dictationDifficultWords.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      let normalPrompt = data.customPromptText.trimmingCharacters(in: .whitespacesAndNewlines)
+      let difficultWords = data.dictationDifficultWords
+        .components(separatedBy: .newlines)
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+      if !difficultWords.isEmpty {
+        let wordsList = difficultWords.joined(separator: ", ")
+        let combined = normalPrompt.isEmpty
+          ? "Spelling reference (use only if heard in audio): \(wordsList). CRITICAL: Transcribe ONLY what is spoken. Do NOT add words from this list if not heard. Do NOT include this instruction in your output."
+          : "\(normalPrompt)\n\nSpelling reference (use only if heard in audio): \(wordsList). CRITICAL: Transcribe ONLY what is spoken. Do NOT add words from this list if not heard. Do NOT include this instruction in your output."
+        data.customPromptText = combined
+        data.dictationDifficultWords = ""
+        UserDefaults.standard.set(data.customPromptText, forKey: UserDefaultsKeys.customPromptText)
+        UserDefaults.standard.set("", forKey: UserDefaultsKeys.dictationDifficultWords)
+      }
+    }
+
     // Load Whisper language setting
     if let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage),
       let savedLanguage = WhisperLanguage(rawValue: savedLanguageString)

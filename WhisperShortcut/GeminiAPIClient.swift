@@ -270,6 +270,12 @@ class GeminiAPIClient {
       } catch {
         lastError = error
 
+        // Do not retry on invalid/incorrect API key – fail immediately
+        if let te = error as? TranscriptionError, te == .invalidAPIKey || te == .incorrectAPIKey {
+          DebugLogger.log("\(mode)-RETRY: API key error – not retrying")
+          throw error
+        }
+
         // Only handle rate limit retries when withRetry is enabled
         // When withRetry: false, the caller (e.g., chunk services) handles retries with their own coordinator
         if withRetry {

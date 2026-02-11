@@ -10,6 +10,9 @@ struct SpeechToTextSettingsTab: View {
   @State private var successMessage: String?
   @State private var showSuccess = false
   @State private var refreshTrigger = UUID() // Trigger to force view refresh
+  @State private var isUpdatingDictationContext = false
+  @State private var suggestedDictationPrompt: String = ""
+  @State private var showDictationCompareSheet = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -35,12 +38,6 @@ struct SpeechToTextSettingsTab: View {
       if viewModel.data.selectedTranscriptionModel.isGemini {
         // Prompt Section (only for Gemini)
         promptSection
-        
-        // Section Divider with spacing
-        sectionDivider
-        
-        // Difficult Words Section (only for Gemini)
-        difficultWordsSection
         
         // Section Divider with spacing
         sectionDivider
@@ -135,44 +132,103 @@ struct SpeechToTextSettingsTab: View {
     }
   }
 
-  // MARK: - Prompt Section
+  // MARK: - Prompt Section (Dictation)
   @ViewBuilder
   private var promptSection: some View {
-    PromptTextEditor(
-      title: "💬 Prompt",
-      subtitle:
-        "Describe domain terms for better transcription quality. Only used for Gemini models (not Whisper). Leave empty to use Gemini's default.",
-      helpText:
-        "Enter domain-specific terms, jargon, or context that will help improve transcription accuracy for your specific use case. Note: This prompt is only applied when using Gemini models. Whisper models (offline) do not support custom prompts.",
-      defaultValue: AppConstants.defaultTranscriptionSystemPrompt,
-      text: $viewModel.data.customPromptText,
-      focusedField: .customPrompt,
-      currentFocus: $focusedField,
-      onTextChanged: {
-        Task {
-          await viewModel.saveSettings()
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      PromptTextEditor(
+        title: "💬 System Prompt",
+        subtitle:
+          "Domain context, difficult words, formatting rules—everything in one prompt. Only used for Gemini models (not Whisper). Leave empty to use Gemini's default.",
+        helpText:
+          "Enter a single system prompt: domain terms, jargon, spelling reference for difficult words, or any instructions for transcription. This prompt is only applied when using Gemini models.",
+        defaultValue: AppConstants.defaultTranscriptionSystemPrompt,
+        text: $viewModel.data.customPromptText,
+        focusedField: .customPrompt,
+        currentFocus: $focusedField,
+        onTextChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
         }
+      )
+
+      HStack(spacing: 12) {
+        Button {
+          triggerGenerateDictationPrompt()
+        } label: {
+          if isUpdatingDictationContext {
+            HStack(spacing: 6) {
+              ProgressView()
+                .controlSize(.small)
+              Text("Updating...")
+            }
+          } else {
+            Text("Generate with AI")
+          }
+        }
+        .disabled(!KeychainManager.shared.hasGoogleAPIKey() || isUpdatingDictationContext)
       }
-    )
+    }
+    .sheet(isPresented: $showDictationCompareSheet) {
+      CompareAndEditSuggestionView(
+        title: "Dictation System Prompt",
+        currentText: viewModel.data.customPromptText,
+        suggestedText: $suggestedDictationPrompt,
+        onUseCurrent: { showDictationCompareSheet = false },
+        onUseSuggested: { newText in
+          applySuggestedDictationPrompt(newText)
+        },
+        hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousCustomPromptText),
+        onRestorePrevious: restorePreviousDictationPrompt
+      )
+    }
   }
 
-  // MARK: - Difficult Words Section
-  @ViewBuilder
-  private var difficultWordsSection: some View {
-    PromptTextEditor(
-      title: "🔤 Difficult Words",
-      subtitle: "One word per line. Words that are difficult to transcribe correctly. Only used for Gemini models (not Whisper).",
-      helpText: "Enter one word per line. Empty lines will be ignored.",
-      defaultValue: "",
-      text: $viewModel.data.dictationDifficultWords,
-      focusedField: .dictationDifficultWords,
-      currentFocus: $focusedField,
-      onTextChanged: {
-        Task {
-          await viewModel.saveSettings()
+  private func triggerGenerateDictationPrompt() {
+    isUpdatingDictationContext = true
+    Task {
+      do {
+        let derivation = UserContextDerivation()
+        _ = try await derivation.updateContextFromLogs()
+        let contextDir = UserContextLogger.shared.directoryURL
+        let fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
+        let suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        await MainActor.run {
+          suggestedDictationPrompt = suggested.isEmpty ? "(No suggestion generated)" : suggested
+          showDictationCompareSheet = true
+          isUpdatingDictationContext = false
+        }
+      } catch {
+        await MainActor.run {
+          isUpdatingDictationContext = false
+          errorMessage = error.localizedDescription
+          showError = true
         }
       }
-    )
+    }
+  }
+
+  private func applySuggestedDictationPrompt(_ prompt: String) {
+    let current = viewModel.data.customPromptText
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousCustomPromptText)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousCustomPromptText)
+    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.customPromptText)
+    var data = viewModel.data
+    data.customPromptText = prompt
+    viewModel.data = data
+    Task { await viewModel.saveSettings() }
+  }
+
+  private func restorePreviousDictationPrompt() {
+    guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousCustomPromptText) else { return }
+    let current = viewModel.data.customPromptText
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousCustomPromptText)
+    UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.customPromptText)
+    var data = viewModel.data
+    data.customPromptText = previous
+    viewModel.data = data
+    Task { await viewModel.saveSettings() }
   }
 
   // MARK: - Language Section

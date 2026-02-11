@@ -355,7 +355,6 @@ enum SettingsTab: String, CaseIterable {
   case promptAndRead = "Dictate Prompt & Read"
   case readAloud = "Read Aloud"
   case liveMeeting = "Live Meeting"
-  case userContext = "User Context"
 }
 
 // MARK: - Live Meeting Chunk Interval Options
@@ -511,4 +510,5 @@ enum SettingsFocusField: Hashable {
   case promptModeSystemPrompt
   case promptAndReadSystemPrompt
   case readAloudVoice
+  case userContext
 }

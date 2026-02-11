@@ -50,10 +50,10 @@ class UserContextLogger {
     }
   }
 
-  // MARK: - Logging Guard
+  // MARK: - Logging Guard (always on; no user toggle)
 
   private var isLoggingEnabled: Bool {
-    UserDefaults.standard.bool(forKey: UserDefaultsKeys.userContextLoggingEnabled)
+    true
   }
 
   // MARK: - Public Logging Methods
@@ -160,13 +160,8 @@ class UserContextLogger {
 
   /// Reads user-context.md and returns its content (truncated to AppConstants.userContextMaxChars).
   /// Truncation happens at sentence or word boundary so the model always sees complete text.
-  /// Returns nil if the file is missing or userContextInPromptEnabled is false.
+  /// Returns nil if the file is missing or empty. User context is always included when present.
   func loadUserContext() -> String? {
-    let enabled = UserDefaults.standard.object(forKey: UserDefaultsKeys.userContextInPromptEnabled) == nil
-      ? true  // Default to true when not explicitly set
-      : UserDefaults.standard.bool(forKey: UserDefaultsKeys.userContextInPromptEnabled)
-    guard enabled else { return nil }
-
     let fileURL = contextDirectoryURL.appendingPathComponent("user-context.md")
     guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
 
