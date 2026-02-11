@@ -729,8 +729,6 @@ class SettingsViewModel: ObservableObject {
 
   func restorePreviousDictationPrompt() {
     guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousCustomPromptText) else { return }
-    let current = data.customPromptText
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousCustomPromptText)
     UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.customPromptText)
     data.customPromptText = previous
     Task { _ = await saveSettings() }
@@ -739,8 +737,6 @@ class SettingsViewModel: ObservableObject {
 
   func restorePreviousPromptModePrompt() {
     guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousPromptModeSystemPrompt) else { return }
-    let current = data.promptModeSystemPrompt
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptModeSystemPrompt)
     UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.promptModeSystemPrompt)
     data.promptModeSystemPrompt = previous
     Task { _ = await saveSettings() }
@@ -749,8 +745,6 @@ class SettingsViewModel: ObservableObject {
 
   func restorePreviousPromptAndReadPrompt() {
     guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt) else { return }
-    let current = data.promptAndReadSystemPrompt
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt)
     UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
     data.promptAndReadSystemPrompt = previous
     Task { _ = await saveSettings() }
