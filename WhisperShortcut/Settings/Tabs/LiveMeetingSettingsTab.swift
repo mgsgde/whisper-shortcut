@@ -72,17 +72,26 @@ struct LiveMeetingSettingsTab: View {
         subtitle: "Ask after this duration to optionally stop the meeting or continue transcribing"
       )
 
-      Picker("Ask when meeting longer than:", selection: $viewModel.data.liveMeetingSafeguardDuration) {
-        ForEach(MeetingSafeguardDuration.allCases, id: \.rawValue) { duration in
-          Text(duration.displayName).tag(duration)
+      HStack(alignment: .center, spacing: 16) {
+        Text("Ask when meeting longer than:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        Picker("", selection: $viewModel.data.liveMeetingSafeguardDuration) {
+          ForEach(MeetingSafeguardDuration.allCases, id: \.rawValue) { duration in
+            Text(duration.displayName).tag(duration)
+          }
         }
-      }
-      .pickerStyle(MenuPickerStyle())
-      .frame(width: 200)
-      .onChange(of: viewModel.data.liveMeetingSafeguardDuration) { _, _ in
-        Task {
-          await viewModel.saveSettings()
+        .pickerStyle(MenuPickerStyle())
+        .frame(width: 200)
+        .onChange(of: viewModel.data.liveMeetingSafeguardDuration) { _, _ in
+          Task {
+            await viewModel.saveSettings()
+          }
         }
+
+        Spacer()
       }
 
       Text("Choose \"Never\" to disable.")
