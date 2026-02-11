@@ -79,9 +79,6 @@ Key rules:
   /// Shorter intervals = more responsive but more API calls.
   static let liveMeetingChunkIntervalDefault: TimeInterval = 15.0
 
-  /// Whether to show timestamps by default in live meeting transcripts.
-  static let liveMeetingShowTimestampsDefault: Bool = true
-
   /// Directory name for storing live meeting transcripts.
   static let liveMeetingTranscriptDirectory: String = "WhisperShortcut"
 

@@ -666,16 +666,9 @@ class MenuBarController: NSObject {
   private func appendToTranscript(_ text: String, chunkStartTime: TimeInterval) {
     guard let url = liveMeetingTranscriptURL else { return }
 
-    let showTimestamps = UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingShowTimestamps) != nil
-      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.liveMeetingShowTimestamps)
-      : AppConstants.liveMeetingShowTimestampsDefault
-
     var finalText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-
-    if showTimestamps {
-      let timestamp = formatTimestamp(elapsedSeconds: chunkStartTime)
-      finalText = "\(timestamp) \(finalText)"
-    }
+    let timestamp = formatTimestamp(elapsedSeconds: chunkStartTime)
+    finalText = "\(timestamp) \(finalText)"
 
     // Add newlines for readability
     finalText = "\(finalText)\n\n"

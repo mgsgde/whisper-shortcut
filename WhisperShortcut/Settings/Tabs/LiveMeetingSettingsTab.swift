@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Live Meeting Settings Tab - Chunk interval and timestamps
+/// Live Meeting Settings Tab - Chunk interval and options
 struct LiveMeetingSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
@@ -9,18 +9,6 @@ struct LiveMeetingSettingsTab: View {
     VStack(alignment: .leading, spacing: 0) {
       // Chunk Interval Section
       chunkIntervalSection
-
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
-
-      // Timestamps Section
-      timestampsSection
 
       // Section Divider with spacing
       VStack(spacing: 0) {
@@ -75,67 +63,16 @@ struct LiveMeetingSettingsTab: View {
     }
   }
 
-  // MARK: - Timestamps Section
-  @ViewBuilder
-  private var timestampsSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Timestamps",
-        subtitle: "Add time markers to each chunk in the transcript"
-      )
-
-      Toggle("Show timestamps [MM:SS]", isOn: $viewModel.data.liveMeetingShowTimestamps)
-        .toggleStyle(.checkbox)
-        .onChange(of: viewModel.data.liveMeetingShowTimestamps) { _, _ in
-          Task {
-            await viewModel.saveSettings()
-          }
-        }
-
-      Text("When enabled, each chunk will be prefixed with a timestamp showing the elapsed time since the meeting started.")
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      
-      // Preview
-      VStack(alignment: .leading, spacing: 4) {
-        Text("Preview:")
-          .font(.callout)
-          .fontWeight(.semibold)
-          .foregroundColor(.secondary)
-        
-        if viewModel.data.liveMeetingShowTimestamps {
-          Text("[00:00] Welcome to the meeting...")
-            .font(.system(.callout, design: .monospaced))
-            .foregroundColor(.secondary)
-          Text("[00:15] First item on the agenda...")
-            .font(.system(.callout, design: .monospaced))
-            .foregroundColor(.secondary)
-        } else {
-          Text("Welcome to the meeting...")
-            .font(.system(.callout, design: .monospaced))
-            .foregroundColor(.secondary)
-          Text("First item on the agenda...")
-            .font(.system(.callout, design: .monospaced))
-            .foregroundColor(.secondary)
-        }
-      }
-      .padding(8)
-      .background(Color.secondary.opacity(0.1))
-      .cornerRadius(6)
-    }
-  }
-
   // MARK: - Safeguard Section
   @ViewBuilder
   private var safeguardSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Duration reminder",
-        subtitle: "After this time, a prompt lets you optionally stop the meeting or continue transcribing"
+        title: "🛡️ Safeguard",
+        subtitle: "Ask after this duration to optionally stop the meeting or continue transcribing"
       )
 
-      Picker("Ask after:", selection: $viewModel.data.liveMeetingSafeguardDuration) {
+      Picker("Ask when meeting longer than:", selection: $viewModel.data.liveMeetingSafeguardDuration) {
         ForEach(MeetingSafeguardDuration.allCases, id: \.rawValue) { duration in
           Text(duration.displayName).tag(duration)
         }
@@ -148,7 +85,7 @@ struct LiveMeetingSettingsTab: View {
         }
       }
 
-      Text("Choose \"Never\" to disable the reminder.")
+      Text("Choose \"Never\" to disable.")
         .font(.callout)
         .foregroundColor(.secondary)
     }

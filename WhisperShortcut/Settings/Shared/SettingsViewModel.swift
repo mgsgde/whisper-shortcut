@@ -2,11 +2,26 @@ import Foundation
 import SwiftUI
 import ServiceManagement
 
+/// Which "Generate with AI" flow is running or whose result sheet is shown.
+enum GenerationKind: Equatable {
+  case dictation
+  case promptMode
+  case promptAndRead
+  case userContext
+}
+
 /// ViewModel für centralized Settings State Management
 @MainActor
 class SettingsViewModel: ObservableObject {
   // MARK: - Published State
   @Published var data = SettingsData()
+
+  // MARK: - AI Generation (runs across tab switches; sheet shown from SettingsView)
+  @Published var generatingKind: GenerationKind?
+  @Published var pendingSheetKind: GenerationKind?
+  @Published var suggestedTextForGeneration = ""
+  @Published var currentTextForGenerationSheet = ""
+  @Published var showGenerationCompareSheet = false
 
   // MARK: - Initialization
   init() {
@@ -195,12 +210,6 @@ class SettingsViewModel: ObservableObject {
       data.liveMeetingChunkInterval = SettingsDefaults.liveMeetingChunkInterval
     }
     
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingShowTimestamps) != nil {
-      data.liveMeetingShowTimestamps = UserDefaults.standard.bool(forKey: UserDefaultsKeys.liveMeetingShowTimestamps)
-    } else {
-      data.liveMeetingShowTimestamps = SettingsDefaults.liveMeetingShowTimestamps
-    }
-
     let savedSafeguardDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds) != nil,
        let parsed = MeetingSafeguardDuration(rawValue: savedSafeguardDuration) {
@@ -414,7 +423,6 @@ class SettingsViewModel: ObservableObject {
 
     // Save Live Meeting settings
     UserDefaults.standard.set(data.liveMeetingChunkInterval.rawValue, forKey: UserDefaultsKeys.liveMeetingChunkInterval)
-    UserDefaults.standard.set(data.liveMeetingShowTimestamps, forKey: UserDefaultsKeys.liveMeetingShowTimestamps)
     UserDefaults.standard.set(data.liveMeetingSafeguardDuration.rawValue, forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)
 
     // Save toggle shortcuts
@@ -542,5 +550,215 @@ class SettingsViewModel: ObservableObject {
     } else {
       DebugLogger.logError("REVIEW: Invalid review URL")
     }
+  }
+
+  // MARK: - AI Generation (runs in background; result sheet shown from SettingsView)
+  func startGenerateDictationPrompt() {
+    generatingKind = .dictation
+    Task {
+      await runDictationGeneration()
+    }
+  }
+
+  func startGeneratePromptModePrompt() {
+    generatingKind = .promptMode
+    Task {
+      await runPromptModeGeneration()
+    }
+  }
+
+  func startGeneratePromptAndReadPrompt() {
+    generatingKind = .promptAndRead
+    Task {
+      await runPromptAndReadGeneration()
+    }
+  }
+
+  func startGenerateUserContext() {
+    generatingKind = .userContext
+    Task {
+      await runUserContextGeneration()
+    }
+  }
+
+  private func runDictationGeneration() async {
+    do {
+      let derivation = UserContextDerivation()
+      _ = try await derivation.updateContextFromLogs()
+      let contextDir = UserContextLogger.shared.directoryURL
+      let fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
+      let suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      await MainActor.run {
+        generatingKind = nil
+        pendingSheetKind = .dictation
+        suggestedTextForGeneration = suggested.isEmpty ? "(No suggestion generated)" : suggested
+        currentTextForGenerationSheet = ""
+        showGenerationCompareSheet = true
+      }
+    } catch {
+      await MainActor.run {
+        generatingKind = nil
+        showError(error.localizedDescription)
+      }
+    }
+  }
+
+  private func runPromptModeGeneration() async {
+    do {
+      let derivation = UserContextDerivation()
+      _ = try await derivation.updateContextFromLogs()
+      let contextDir = UserContextLogger.shared.directoryURL
+      let fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
+      let suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      await MainActor.run {
+        generatingKind = nil
+        pendingSheetKind = .promptMode
+        suggestedTextForGeneration = suggested.isEmpty ? "(No suggestion generated)" : suggested
+        currentTextForGenerationSheet = ""
+        showGenerationCompareSheet = true
+      }
+    } catch {
+      await MainActor.run {
+        generatingKind = nil
+        showError(error.localizedDescription)
+      }
+    }
+  }
+
+  private func runPromptAndReadGeneration() async {
+    do {
+      let derivation = UserContextDerivation()
+      _ = try await derivation.updateContextFromLogs()
+      let contextDir = UserContextLogger.shared.directoryURL
+      let fileURL = contextDir.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
+      let suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      await MainActor.run {
+        generatingKind = nil
+        pendingSheetKind = .promptAndRead
+        suggestedTextForGeneration = suggested.isEmpty ? "(No suggestion generated)" : suggested
+        currentTextForGenerationSheet = ""
+        showGenerationCompareSheet = true
+      }
+    } catch {
+      await MainActor.run {
+        generatingKind = nil
+        showError(error.localizedDescription)
+      }
+    }
+  }
+
+  private func runUserContextGeneration() async {
+    do {
+      let derivation = UserContextDerivation()
+      _ = try await derivation.updateContextFromLogs()
+      let contextDir = UserContextLogger.shared.directoryURL
+      let currentURL = contextDir.appendingPathComponent("user-context.md")
+      let suggestedURL = contextDir.appendingPathComponent("suggested-user-context.md")
+      let current = (try? String(contentsOf: currentURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      let suggested = (try? String(contentsOf: suggestedURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      await MainActor.run {
+        generatingKind = nil
+        pendingSheetKind = .userContext
+        suggestedTextForGeneration = suggested.isEmpty ? "(No suggestion generated)" : suggested
+        currentTextForGenerationSheet = current
+        showGenerationCompareSheet = true
+      }
+    } catch {
+      await MainActor.run {
+        generatingKind = nil
+        showError(error.localizedDescription)
+      }
+    }
+  }
+
+  func dismissGenerationSheet() {
+    showGenerationCompareSheet = false
+    pendingSheetKind = nil
+    suggestedTextForGeneration = ""
+    currentTextForGenerationSheet = ""
+  }
+
+  func applySuggestedDictationPrompt(_ prompt: String) {
+    let current = data.customPromptText
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousCustomPromptText)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousCustomPromptText)
+    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.customPromptText)
+    data.customPromptText = prompt
+    Task { _ = await saveSettings() }
+    dismissGenerationSheet()
+  }
+
+  func applySuggestedPromptModePrompt(_ prompt: String) {
+    let current = data.promptModeSystemPrompt
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptModeSystemPrompt)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt)
+    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
+    data.promptModeSystemPrompt = prompt
+    Task { _ = await saveSettings() }
+    dismissGenerationSheet()
+  }
+
+  func applySuggestedPromptAndReadPrompt(_ prompt: String) {
+    let current = data.promptAndReadSystemPrompt
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt)
+    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
+    data.promptAndReadSystemPrompt = prompt
+    Task { _ = await saveSettings() }
+    dismissGenerationSheet()
+  }
+
+  func applySuggestedUserContext(_ context: String) {
+    let contextDir = UserContextLogger.shared.directoryURL
+    let fileURL = contextDir.appendingPathComponent("user-context.md")
+    let current = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousUserContext)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousUserContext)
+    try? context.write(to: fileURL, atomically: true, encoding: .utf8)
+    NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
+    dismissGenerationSheet()
+  }
+
+  func restorePreviousDictationPrompt() {
+    guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousCustomPromptText) else { return }
+    let current = data.customPromptText
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousCustomPromptText)
+    UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.customPromptText)
+    data.customPromptText = previous
+    Task { _ = await saveSettings() }
+    dismissGenerationSheet()
+  }
+
+  func restorePreviousPromptModePrompt() {
+    guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousPromptModeSystemPrompt) else { return }
+    let current = data.promptModeSystemPrompt
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptModeSystemPrompt)
+    UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.promptModeSystemPrompt)
+    data.promptModeSystemPrompt = previous
+    Task { _ = await saveSettings() }
+    dismissGenerationSheet()
+  }
+
+  func restorePreviousPromptAndReadPrompt() {
+    guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt) else { return }
+    let current = data.promptAndReadSystemPrompt
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt)
+    UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
+    data.promptAndReadSystemPrompt = previous
+    Task { _ = await saveSettings() }
+    dismissGenerationSheet()
+  }
+
+  func restorePreviousUserContext() {
+    guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousUserContext) else { return }
+    let contextDir = UserContextLogger.shared.directoryURL
+    let fileURL = contextDir.appendingPathComponent("user-context.md")
+    if previous.isEmpty {
+      try? FileManager.default.removeItem(at: fileURL)
+    } else {
+      try? previous.write(to: fileURL, atomically: true, encoding: .utf8)
+    }
+    NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
+    dismissGenerationSheet()
   }
 }

@@ -445,7 +445,6 @@ struct SettingsDefaults {
 
   // MARK: - Live Meeting Settings
   static let liveMeetingChunkInterval = LiveMeetingChunkInterval.fifteenSeconds
-  static let liveMeetingShowTimestamps = true
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
 
   // MARK: - UI State
@@ -506,7 +505,6 @@ struct SettingsData {
 
   // MARK: - Live Meeting Settings
   var liveMeetingChunkInterval: LiveMeetingChunkInterval = SettingsDefaults.liveMeetingChunkInterval
-  var liveMeetingShowTimestamps: Bool = SettingsDefaults.liveMeetingShowTimestamps
   var liveMeetingSafeguardDuration: MeetingSafeguardDuration = SettingsDefaults.liveMeetingSafeguardDuration
 
   // MARK: - UI State
