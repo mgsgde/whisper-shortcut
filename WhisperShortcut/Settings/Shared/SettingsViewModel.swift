@@ -584,7 +584,7 @@ class SettingsViewModel: ObservableObject {
   private func runDictationGeneration() async {
     do {
       let derivation = UserContextDerivation()
-      _ = try await derivation.updateContextFromLogs()
+      _ = try await derivation.updateFromLogs(focus: .dictation)
       let contextDir = UserContextLogger.shared.directoryURL
       let fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
       let suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -606,7 +606,7 @@ class SettingsViewModel: ObservableObject {
   private func runPromptModeGeneration() async {
     do {
       let derivation = UserContextDerivation()
-      _ = try await derivation.updateContextFromLogs()
+      _ = try await derivation.updateFromLogs(focus: .promptMode)
       let contextDir = UserContextLogger.shared.directoryURL
       let fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
       let suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -628,7 +628,7 @@ class SettingsViewModel: ObservableObject {
   private func runPromptAndReadGeneration() async {
     do {
       let derivation = UserContextDerivation()
-      _ = try await derivation.updateContextFromLogs()
+      _ = try await derivation.updateFromLogs(focus: .promptAndRead)
       let contextDir = UserContextLogger.shared.directoryURL
       let fileURL = contextDir.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
       let suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -650,7 +650,7 @@ class SettingsViewModel: ObservableObject {
   private func runUserContextGeneration() async {
     do {
       let derivation = UserContextDerivation()
-      _ = try await derivation.updateContextFromLogs()
+      _ = try await derivation.updateFromLogs(focus: .userContext)
       let contextDir = UserContextLogger.shared.directoryURL
       let currentURL = contextDir.appendingPathComponent("user-context.md")
       let suggestedURL = contextDir.appendingPathComponent("suggested-user-context.md")

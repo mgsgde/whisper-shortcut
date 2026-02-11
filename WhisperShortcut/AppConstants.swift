@@ -102,4 +102,7 @@ Key rules:
   static let userContextTier2Ratio: Double = 0.30
   static let userContextTier3Days: Int = 30
   static let userContextTier3Ratio: Double = 0.20
+
+  /// Max chars for "other modes" when building secondary payload in focused Generate with AI (per-tab).
+  static let userContextSecondaryOtherModesMaxChars: Int = 2000
 }
