@@ -258,6 +258,23 @@ enum ConfirmAboveDuration: Double, CaseIterable {
   }
 }
 
+// MARK: - Meeting Safeguard Duration (Live Meeting)
+enum MeetingSafeguardDuration: Double, CaseIterable {
+  case never = 0
+  case sixtyMinutes = 3600
+  case ninetyMinutes = 5400
+  case twoHours = 7200
+
+  var displayName: String {
+    switch self {
+    case .never: return "Never"
+    case .sixtyMinutes: return "60 minutes"
+    case .ninetyMinutes: return "90 minutes"
+    case .twoHours: return "2 hours"
+    }
+  }
+}
+
 // MARK: - Whisper Language Enum
 enum WhisperLanguage: String, CaseIterable {
   case auto = "auto"
@@ -429,6 +446,7 @@ struct SettingsDefaults {
   // MARK: - Live Meeting Settings
   static let liveMeetingChunkInterval = LiveMeetingChunkInterval.fifteenSeconds
   static let liveMeetingShowTimestamps = true
+  static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
 
   // MARK: - UI State
   static let errorMessage = ""
@@ -489,6 +507,7 @@ struct SettingsData {
   // MARK: - Live Meeting Settings
   var liveMeetingChunkInterval: LiveMeetingChunkInterval = SettingsDefaults.liveMeetingChunkInterval
   var liveMeetingShowTimestamps: Bool = SettingsDefaults.liveMeetingShowTimestamps
+  var liveMeetingSafeguardDuration: MeetingSafeguardDuration = SettingsDefaults.liveMeetingSafeguardDuration
 
   // MARK: - UI State
   var errorMessage: String = SettingsDefaults.errorMessage

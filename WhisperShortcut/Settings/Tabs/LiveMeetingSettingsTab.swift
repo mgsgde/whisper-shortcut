@@ -31,6 +31,18 @@ struct LiveMeetingSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
+      // Safeguard Section
+      safeguardSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Usage Instructions Section
       usageInstructionsSection
     }
@@ -111,6 +123,34 @@ struct LiveMeetingSettingsTab: View {
       .padding(8)
       .background(Color.secondary.opacity(0.1))
       .cornerRadius(6)
+    }
+  }
+
+  // MARK: - Safeguard Section
+  @ViewBuilder
+  private var safeguardSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Duration reminder",
+        subtitle: "After this time, a prompt lets you optionally stop the meeting or continue transcribing"
+      )
+
+      Picker("Ask after:", selection: $viewModel.data.liveMeetingSafeguardDuration) {
+        ForEach(MeetingSafeguardDuration.allCases, id: \.rawValue) { duration in
+          Text(duration.displayName).tag(duration)
+        }
+      }
+      .pickerStyle(MenuPickerStyle())
+      .frame(width: 200)
+      .onChange(of: viewModel.data.liveMeetingSafeguardDuration) { _, _ in
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+
+      Text("Choose \"Never\" to disable the reminder.")
+        .font(.callout)
+        .foregroundColor(.secondary)
     }
   }
 

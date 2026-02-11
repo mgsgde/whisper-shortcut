@@ -200,6 +200,14 @@ class SettingsViewModel: ObservableObject {
     } else {
       data.liveMeetingShowTimestamps = SettingsDefaults.liveMeetingShowTimestamps
     }
+
+    let savedSafeguardDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds) != nil,
+       let parsed = MeetingSafeguardDuration(rawValue: savedSafeguardDuration) {
+      data.liveMeetingSafeguardDuration = parsed
+    } else {
+      data.liveMeetingSafeguardDuration = SettingsDefaults.liveMeetingSafeguardDuration
+    }
     
     // Load Google API key
     data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
@@ -407,6 +415,7 @@ class SettingsViewModel: ObservableObject {
     // Save Live Meeting settings
     UserDefaults.standard.set(data.liveMeetingChunkInterval.rawValue, forKey: UserDefaultsKeys.liveMeetingChunkInterval)
     UserDefaults.standard.set(data.liveMeetingShowTimestamps, forKey: UserDefaultsKeys.liveMeetingShowTimestamps)
+    UserDefaults.standard.set(data.liveMeetingSafeguardDuration.rawValue, forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()

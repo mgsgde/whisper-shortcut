@@ -62,6 +62,7 @@ class MenuBarController: NSObject {
   private var liveMeetingTranscriptURL: URL?
   private var liveMeetingPendingChunks: Int = 0
   private var liveMeetingSessionStartTime: Date?
+  private var liveMeetingSafeguardTimer: Timer?
 
   /// True when TTS is running in any phase: .ttsProcessing, or chunked phases (.splitting, .processingChunks, .merging) while isProcessingTTS is set.
   private var isTTSRunning: Bool {
@@ -538,12 +539,59 @@ class MenuBarController: NSObject {
     liveMeetingSessionStartTime = Date()
     appState = .recording(.liveMeeting)
 
+    // Schedule duration safeguard if enabled
+    let safeguardThreshold: MeetingSafeguardDuration
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds) != nil,
+       let t = MeetingSafeguardDuration(rawValue: UserDefaults.standard.double(forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)) {
+      safeguardThreshold = t
+    } else {
+      safeguardThreshold = SettingsDefaults.liveMeetingSafeguardDuration
+    }
+    if safeguardThreshold != .never {
+      liveMeetingSafeguardTimer?.invalidate()
+      liveMeetingSafeguardTimer = Timer.scheduledTimer(withTimeInterval: safeguardThreshold.rawValue, repeats: false) { [weak self] _ in
+        self?.showLiveMeetingSafeguardAlert(thresholdMinutes: Int(safeguardThreshold.rawValue / 60))
+      }
+      if let timer = liveMeetingSafeguardTimer {
+        RunLoop.main.add(timer, forMode: .common)
+      }
+      DebugLogger.log("LIVE-MEETING-SAFEGUARD: Reminder scheduled after \(Int(safeguardThreshold.rawValue / 60)) minutes")
+    }
+
     DebugLogger.logSuccess("LIVE-MEETING: Session started")
+  }
+
+  private func showLiveMeetingSafeguardAlert(thresholdMinutes: Int) {
+    liveMeetingSafeguardTimer?.invalidate()
+    liveMeetingSafeguardTimer = nil
+
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self else { return }
+      if !self.isLiveMeetingActive {
+        return
+      }
+      DebugLogger.log("LIVE-MEETING-SAFEGUARD: Showing duration prompt after \(thresholdMinutes) minutes")
+      let alert = NSAlert()
+      alert.messageText = "Long meeting"
+      alert.informativeText = "This meeting has been transcribing for over \(thresholdMinutes) minutes. Stop or continue?"
+      alert.alertStyle = .informational
+      alert.addButton(withTitle: "Stop meeting")
+      alert.addButton(withTitle: "Continue")
+      let response = alert.runModal()
+      if response == .alertFirstButtonReturn {
+        DebugLogger.log("LIVE-MEETING-SAFEGUARD: User chose to stop meeting")
+        self.stopLiveMeeting()
+      } else {
+        DebugLogger.log("LIVE-MEETING-SAFEGUARD: User chose to continue")
+      }
+    }
   }
 
   private func stopLiveMeeting() {
     DebugLogger.log("LIVE-MEETING: User requested stop")
 
+    liveMeetingSafeguardTimer?.invalidate()
+    liveMeetingSafeguardTimer = nil
     liveMeetingStopping = true
     liveMeetingRecorder?.stopSession()
 
@@ -557,6 +605,8 @@ class MenuBarController: NSObject {
   private func finishLiveMeetingSession() {
     DebugLogger.log("LIVE-MEETING: Session finished")
 
+    liveMeetingSafeguardTimer?.invalidate()
+    liveMeetingSafeguardTimer = nil
     isLiveMeetingActive = false
     liveMeetingStopping = false
     liveMeetingRecorder = nil
