@@ -51,16 +51,16 @@ WhisperShortcut is a macOS menu bar application with four main features: **Speec
 - **Retention**: Stored until you delete the files manually
 - **Access**: Only you can access these files on your device
 
-### 5. User Context / Interaction Logs (Optional)
+### 5. User Context / Interaction Logs
 
-- **What**: Logs of transcriptions, prompt interactions, and read-aloud actions
-- **Where**: Stored locally in `~/Library/Application Support/WhisperShortcut/UserContext/` as JSONL files
-- **Purpose**: When enabled, builds a personalized user profile to improve prompt mode responses
-- **Opt-in**: Disabled by default; must be explicitly enabled in Settings > User Context
-- **Retention**: Log files older than 90 days are automatically deleted
-- **Gemini Analysis**: When you click "Update Context", aggregated interaction data is sent to Google Gemini to derive a user profile, suggested system prompt, and difficult words list. This is a one-time action you initiate manually.
-- **Deletion**: You can delete all logged data at any time via the "Delete All Context Data" button in Settings > User Context
-- **Access**: Only accessible by the app on your device (except during "Update Context", which sends data to Gemini)
+- **What**: Logs of transcriptions, prompt interactions, and read-aloud actions (mode, timestamps, and result snippets)
+- **Where**: Stored locally in `~/Library/Application Support/WhisperShortcut/UserContext/` as JSONL files (e.g. `interactions-2025-02-10.jsonl`)
+- **Purpose**: Used only when you click **"Generate with AI"** in Settings to derive suggested system prompts and user context; improves quality of those suggestions
+- **When it’s collected**: Interaction logging is always on (no toggle). Data stays on your device until you delete it or it is automatically removed (see retention)
+- **Retention**: Log files older than **90 days** are automatically deleted. For **"Generate with AI"**, only interactions from the **last 30 days** are read and (when you trigger the action) sent to Google Gemini.
+- **Gemini Analysis**: Only when you click **"Generate with AI"** (in Settings > General for User Context, or in the Dictate / Dictate Prompt / Dictate Prompt & Read tabs), aggregated interaction data from the last 30 days is sent to Google Gemini to generate suggested prompts. This is a one-time action per click; you initiate it manually.
+- **Deletion**: You can delete all interaction logs and derived files at any time by removing the folder `~/Library/Application Support/WhisperShortcut/UserContext/` (e.g. in Finder: Go → Go to Folder, paste the path, then delete the `UserContext` folder). The app does not currently offer an in-app "Delete All Context Data" button.
+- **Access**: Only accessible by the app on your device, except when you use "Generate with AI", at which point the aggregated text is sent to Gemini as described above.
 
 ## What Data We Do NOT Collect
 
@@ -123,7 +123,8 @@ WhisperShortcut uses Google's Gemini API for:
 - Delete API key: Use the app's settings to remove your API key
 - Reset preferences: Use the app's reset to defaults feature
 - Delete Live Meeting transcripts: Remove files from `~/Documents/WhisperShortcut/`
-- Uninstall: Remove the app to delete all local data (except Live Meeting files in Documents, which you can delete manually)
+- Delete User Context / interaction logs: Remove the folder `~/Library/Application Support/WhisperShortcut/UserContext/` (e.g. in Finder: Go → Go to Folder, paste the path, then delete the `UserContext` folder)
+- Uninstall: Remove the app to delete all local data (except Live Meeting files in Documents and the UserContext folder above, which you can delete manually)
 
 ### Permissions
 

@@ -127,6 +127,7 @@ struct PromptAndReadSettingsTab: View {
         lastAppliedValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAppliedPromptAndReadSystemPrompt),
         onResetToPrevious: { viewModel.restorePreviousPromptAndReadPrompt() },
         onResetToLatest: { viewModel.restoreToLastAppliedPromptAndReadPrompt() },
+        trailingContentExplanation: "Generate with AI analyzes your app interactions from the last 30 days and suggests a system prompt. You can review and edit the suggestion in the comparison sheet before applying.",
         trailingContent: AnyView(
           Button {
             viewModel.startGeneratePromptAndReadPrompt()

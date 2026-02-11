@@ -16,6 +16,8 @@ struct PromptTextEditor: View {
   let lastAppliedValue: String?
   let onResetToPrevious: (() -> Void)?
   let onResetToLatest: (() -> Void)?
+  /// Optional explanation shown above the buttons when "Generate with AI" is present (e.g. how 30-day interactions are used).
+  let trailingContentExplanation: String?
   let trailingContent: AnyView?
 
   init(
@@ -31,6 +33,7 @@ struct PromptTextEditor: View {
     lastAppliedValue: String? = nil,
     onResetToPrevious: (() -> Void)? = nil,
     onResetToLatest: (() -> Void)? = nil,
+    trailingContentExplanation: String? = nil,
     trailingContent: AnyView? = nil
   ) {
     self.title = title
@@ -45,6 +48,7 @@ struct PromptTextEditor: View {
     self.lastAppliedValue = lastAppliedValue
     self.onResetToPrevious = onResetToPrevious
     self.onResetToLatest = onResetToLatest
+    self.trailingContentExplanation = trailingContentExplanation
     self.trailingContent = trailingContent
   }
 
@@ -90,6 +94,13 @@ struct PromptTextEditor: View {
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)
+
+        if let explanation = trailingContentExplanation {
+          Text(explanation)
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
+        }
 
         HStack {
           Spacer()

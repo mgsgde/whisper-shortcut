@@ -443,6 +443,7 @@ struct GeneralSettingsTab: View {
         lastAppliedValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAppliedUserContext),
         onResetToPrevious: { viewModel.restorePreviousUserContext() },
         onResetToLatest: { viewModel.restoreToLastAppliedUserContext() },
+        trailingContentExplanation: "Generate with AI analyzes your app interactions from the last 30 days and suggests user context. You can review and edit the suggestion in the comparison sheet before applying.",
         trailingContent: AnyView(
           Button {
             viewModel.startGenerateUserContext()
