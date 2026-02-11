@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Modern Settings-View mit Sidebar-Navigation (macOS System Settings Style)
+/// Modern Settings view with sidebar navigation (macOS System Settings style).
 struct SettingsView: View {
   @StateObject private var viewModel = SettingsViewModel()
   @State private var selectedTab: SettingsTab = .general

@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// Gemeinsame Konstanten für alle Settings-Views
+/// Shared constants for all Settings views.
 enum SettingsConstants {
   // MARK: - Layout
   static let labelWidth: CGFloat = 160

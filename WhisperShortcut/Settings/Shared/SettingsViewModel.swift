@@ -10,7 +10,7 @@ enum GenerationKind: Equatable {
   case userContext
 }
 
-/// ViewModel für centralized Settings State Management
+/// ViewModel for centralized Settings state management.
 @MainActor
 class SettingsViewModel: ObservableObject {
   // MARK: - Published State

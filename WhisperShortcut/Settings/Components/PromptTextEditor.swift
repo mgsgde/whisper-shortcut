@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Wiederverwendbare Komponente für Prompt-Texteditoren
+/// Reusable component for prompt text editors.
 struct PromptTextEditor: View {
   let title: String
   let subtitle: String
