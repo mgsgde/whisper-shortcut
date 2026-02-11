@@ -4,11 +4,6 @@ import SwiftUI
 struct SpeechToPromptSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
-  @State private var isUpdatingPromptModeContext = false
-  @State private var suggestedPromptModePrompt: String = ""
-  @State private var showPromptModeCompareSheet = false
-  @State private var errorMessage: String?
-  @State private var showError = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -32,17 +27,6 @@ struct SpeechToPromptSettingsTab: View {
       
       // Usage Instructions Section
       usageInstructionsSection
-    }
-    .alert("Error", isPresented: $showError) {
-      Button("OK") {
-        showError = false
-        errorMessage = nil
-      }
-    } message: {
-      if let errorMessage {
-        Text(errorMessage)
-          .textSelection(.enabled)
-      }
     }
   }
 
@@ -134,81 +118,29 @@ struct SpeechToPromptSettingsTab: View {
           Task {
             await viewModel.saveSettings()
           }
-        }
-      )
-
-      Button {
-        triggerGeneratePromptModePrompt()
-      } label: {
-        if isUpdatingPromptModeContext {
-          HStack(spacing: 6) {
-            ProgressView()
-              .controlSize(.small)
-            Text("Updating...")
-          }
-        } else {
-          Text("Generate with AI")
-        }
-      }
-      .disabled(!KeychainManager.shared.hasGoogleAPIKey() || isUpdatingPromptModeContext)
-    }
-    .sheet(isPresented: $showPromptModeCompareSheet) {
-      CompareAndEditSuggestionView(
-        title: "Dictate Prompt System Prompt",
-        currentText: viewModel.data.promptModeSystemPrompt,
-        suggestedText: $suggestedPromptModePrompt,
-        onUseCurrent: { showPromptModeCompareSheet = false },
-        onUseSuggested: { applySuggestedPromptModeSystemPrompt($0) },
+        },
         hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt),
-        onRestorePrevious: restorePreviousPromptModeSystemPrompt
+        onResetToPrevious: { viewModel.restorePreviousPromptModePrompt() },
+        trailingContent: AnyView(
+          Button {
+            viewModel.startGeneratePromptModePrompt()
+          } label: {
+            if viewModel.generatingKind == .promptMode {
+              HStack(spacing: 6) {
+                ProgressView()
+                  .controlSize(.small)
+                Text("Updating...")
+              }
+            } else {
+              Text("Generate with AI")
+            }
+          }
+          .disabled(!KeychainManager.shared.hasGoogleAPIKey() || viewModel.generatingKind == .promptMode)
+          .buttonStyle(.bordered)
+          .font(.callout)
+        )
       )
     }
-  }
-
-  private func triggerGeneratePromptModePrompt() {
-    isUpdatingPromptModeContext = true
-    Task {
-      do {
-        let derivation = UserContextDerivation()
-        _ = try await derivation.updateContextFromLogs()
-        let contextDir = UserContextLogger.shared.directoryURL
-        let fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
-        let suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        await MainActor.run {
-          suggestedPromptModePrompt = suggested.isEmpty ? "(No suggestion generated)" : suggested
-          showPromptModeCompareSheet = true
-          isUpdatingPromptModeContext = false
-        }
-      } catch {
-        await MainActor.run {
-          isUpdatingPromptModeContext = false
-          errorMessage = error.localizedDescription
-          showError = true
-        }
-      }
-    }
-  }
-
-  private func applySuggestedPromptModeSystemPrompt(_ prompt: String) {
-    let current = viewModel.data.promptModeSystemPrompt
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptModeSystemPrompt)
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt)
-    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
-    var data = viewModel.data
-    data.promptModeSystemPrompt = prompt
-    viewModel.data = data
-    Task { await viewModel.saveSettings() }
-  }
-
-  private func restorePreviousPromptModeSystemPrompt() {
-    guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousPromptModeSystemPrompt) else { return }
-    let current = viewModel.data.promptModeSystemPrompt
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptModeSystemPrompt)
-    UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.promptModeSystemPrompt)
-    var data = viewModel.data
-    data.promptModeSystemPrompt = previous
-    viewModel.data = data
-    Task { await viewModel.saveSettings() }
   }
   
   // MARK: - Usage Instructions

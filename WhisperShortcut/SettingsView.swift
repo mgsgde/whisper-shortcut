@@ -24,6 +24,9 @@ struct SettingsView: View {
       Text(viewModel.data.errorMessage)
         .textSelection(.enabled)
     }
+    .sheet(isPresented: $viewModel.showGenerationCompareSheet) {
+      generationCompareSheetContent
+    }
     .onAppear {
       setupWindow()
     }
@@ -127,6 +130,55 @@ struct SettingsView: View {
     case .liveMeeting:
       return "Meeting Transcription Settings"
   }
+  }
+
+  // MARK: - Generation Compare Sheet (shown when AI generation completes, from any tab)
+  @ViewBuilder
+  private var generationCompareSheetContent: some View {
+    if let kind = viewModel.pendingSheetKind {
+      switch kind {
+      case .dictation:
+        CompareAndEditSuggestionView(
+          title: "Dictation System Prompt",
+          currentText: viewModel.data.customPromptText,
+          suggestedText: $viewModel.suggestedTextForGeneration,
+          onUseCurrent: { viewModel.dismissGenerationSheet() },
+          onUseSuggested: { viewModel.applySuggestedDictationPrompt($0) },
+          hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousCustomPromptText),
+          onRestorePrevious: { viewModel.restorePreviousDictationPrompt() }
+        )
+      case .promptMode:
+        CompareAndEditSuggestionView(
+          title: "Dictate Prompt System Prompt",
+          currentText: viewModel.data.promptModeSystemPrompt,
+          suggestedText: $viewModel.suggestedTextForGeneration,
+          onUseCurrent: { viewModel.dismissGenerationSheet() },
+          onUseSuggested: { viewModel.applySuggestedPromptModePrompt($0) },
+          hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt),
+          onRestorePrevious: { viewModel.restorePreviousPromptModePrompt() }
+        )
+      case .promptAndRead:
+        CompareAndEditSuggestionView(
+          title: "Dictate Prompt & Read System Prompt",
+          currentText: viewModel.data.promptAndReadSystemPrompt,
+          suggestedText: $viewModel.suggestedTextForGeneration,
+          onUseCurrent: { viewModel.dismissGenerationSheet() },
+          onUseSuggested: { viewModel.applySuggestedPromptAndReadPrompt($0) },
+          hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt),
+          onRestorePrevious: { viewModel.restorePreviousPromptAndReadPrompt() }
+        )
+      case .userContext:
+        CompareAndEditSuggestionView(
+          title: "User Context",
+          currentText: viewModel.currentTextForGenerationSheet,
+          suggestedText: $viewModel.suggestedTextForGeneration,
+          onUseCurrent: { viewModel.dismissGenerationSheet() },
+          onUseSuggested: { viewModel.applySuggestedUserContext($0) },
+          hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousUserContext),
+          onRestorePrevious: { viewModel.restorePreviousUserContext() }
+        )
+      }
+    }
   }
 
   // MARK: - Functions

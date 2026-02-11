@@ -5,14 +5,9 @@ struct SpeechToTextSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @ObservedObject var modelManager = ModelManager.shared
-  @State private var errorMessage: String?
-  @State private var showError = false
   @State private var successMessage: String?
   @State private var showSuccess = false
   @State private var refreshTrigger = UUID() // Trigger to force view refresh
-  @State private var isUpdatingDictationContext = false
-  @State private var suggestedDictationPrompt: String = ""
-  @State private var showDictationCompareSheet = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -51,17 +46,6 @@ struct SpeechToTextSettingsTab: View {
       
       // Usage Instructions Section
       usageInstructionsSection
-    }
-    .alert("Error", isPresented: $showError) {
-      Button("OK") {
-        showError = false
-        errorMessage = nil
-      }
-    } message: {
-      if let errorMessage = errorMessage {
-        Text(errorMessage)
-          .textSelection(.enabled)
-      }
     }
     .alert("Success", isPresented: $showSuccess) {
       Button("OK") {
@@ -150,85 +134,29 @@ struct SpeechToTextSettingsTab: View {
           Task {
             await viewModel.saveSettings()
           }
-        }
-      )
-
-      HStack(spacing: 12) {
-        Button {
-          triggerGenerateDictationPrompt()
-        } label: {
-          if isUpdatingDictationContext {
-            HStack(spacing: 6) {
-              ProgressView()
-                .controlSize(.small)
-              Text("Updating...")
-            }
-          } else {
-            Text("Generate with AI")
-          }
-        }
-        .disabled(!KeychainManager.shared.hasGoogleAPIKey() || isUpdatingDictationContext)
-      }
-    }
-    .sheet(isPresented: $showDictationCompareSheet) {
-      CompareAndEditSuggestionView(
-        title: "Dictation System Prompt",
-        currentText: viewModel.data.customPromptText,
-        suggestedText: $suggestedDictationPrompt,
-        onUseCurrent: { showDictationCompareSheet = false },
-        onUseSuggested: { newText in
-          applySuggestedDictationPrompt(newText)
         },
         hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousCustomPromptText),
-        onRestorePrevious: restorePreviousDictationPrompt
+        onResetToPrevious: { viewModel.restorePreviousDictationPrompt() },
+        trailingContent: AnyView(
+          Button {
+            viewModel.startGenerateDictationPrompt()
+          } label: {
+            if viewModel.generatingKind == .dictation {
+              HStack(spacing: 6) {
+                ProgressView()
+                  .controlSize(.small)
+                Text("Updating...")
+              }
+            } else {
+              Text("Generate with AI")
+            }
+          }
+          .disabled(!KeychainManager.shared.hasGoogleAPIKey() || viewModel.generatingKind == .dictation)
+          .buttonStyle(.bordered)
+          .font(.callout)
+        )
       )
     }
-  }
-
-  private func triggerGenerateDictationPrompt() {
-    isUpdatingDictationContext = true
-    Task {
-      do {
-        let derivation = UserContextDerivation()
-        _ = try await derivation.updateContextFromLogs()
-        let contextDir = UserContextLogger.shared.directoryURL
-        let fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
-        let suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        await MainActor.run {
-          suggestedDictationPrompt = suggested.isEmpty ? "(No suggestion generated)" : suggested
-          showDictationCompareSheet = true
-          isUpdatingDictationContext = false
-        }
-      } catch {
-        await MainActor.run {
-          isUpdatingDictationContext = false
-          errorMessage = error.localizedDescription
-          showError = true
-        }
-      }
-    }
-  }
-
-  private func applySuggestedDictationPrompt(_ prompt: String) {
-    let current = viewModel.data.customPromptText
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousCustomPromptText)
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousCustomPromptText)
-    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.customPromptText)
-    var data = viewModel.data
-    data.customPromptText = prompt
-    viewModel.data = data
-    Task { await viewModel.saveSettings() }
-  }
-
-  private func restorePreviousDictationPrompt() {
-    guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousCustomPromptText) else { return }
-    let current = viewModel.data.customPromptText
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousCustomPromptText)
-    UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.customPromptText)
-    var data = viewModel.data
-    data.customPromptText = previous
-    viewModel.data = data
-    Task { await viewModel.saveSettings() }
   }
 
   // MARK: - Language Section
@@ -435,8 +363,7 @@ struct SpeechToTextSettingsTab: View {
         }
       } catch {
         await MainActor.run {
-          errorMessage = "Failed to download \(modelType.displayName): \(error.localizedDescription)"
-          showError = true
+          viewModel.showError("Failed to download \(modelType.displayName): \(error.localizedDescription)")
           DebugLogger.logError("OFFLINE-UI: Failed to download \(modelType.displayName): \(error.localizedDescription)")
         }
       }
@@ -450,8 +377,7 @@ struct SpeechToTextSettingsTab: View {
       // Trigger view update to show new model status
       refreshTrigger = UUID()
     } catch {
-      errorMessage = "Failed to delete \(modelType.displayName): \(error.localizedDescription)"
-      showError = true
+      viewModel.showError("Failed to delete \(modelType.displayName): \(error.localizedDescription)")
       DebugLogger.logError("OFFLINE-UI: Failed to delete \(modelType.displayName): \(error.localizedDescription)")
     }
   }

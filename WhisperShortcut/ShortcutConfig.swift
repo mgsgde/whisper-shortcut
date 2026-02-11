@@ -444,4 +444,6 @@ extension Notification.Name {
   static let rateLimitWaiting = Notification.Name("rateLimitWaiting")
   /// Posted when rate limit wait is complete
   static let rateLimitResolved = Notification.Name("rateLimitResolved")
+  /// Posted when user-context.md was updated (e.g. from Compare sheet) so General tab can reload
+  static let userContextFileDidUpdate = Notification.Name("userContextFileDidUpdate")
 }

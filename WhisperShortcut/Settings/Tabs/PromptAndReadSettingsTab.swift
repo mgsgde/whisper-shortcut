@@ -4,11 +4,6 @@ import SwiftUI
 struct PromptAndReadSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
-  @State private var isUpdatingPromptAndReadContext = false
-  @State private var suggestedPromptAndReadPrompt: String = ""
-  @State private var showPromptAndReadCompareSheet = false
-  @State private var errorMessage: String?
-  @State private var showError = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -62,17 +57,6 @@ struct PromptAndReadSettingsTab: View {
 
       // Usage Instructions Section
       usageInstructionsSection
-    }
-    .alert("Error", isPresented: $showError) {
-      Button("OK") {
-        showError = false
-        errorMessage = nil
-      }
-    } message: {
-      if let errorMessage {
-        Text(errorMessage)
-          .textSelection(.enabled)
-      }
     }
   }
 
@@ -138,81 +122,29 @@ struct PromptAndReadSettingsTab: View {
           Task {
             await viewModel.saveSettings()
           }
-        }
-      )
-
-      Button {
-        triggerGeneratePromptAndReadPrompt()
-      } label: {
-        if isUpdatingPromptAndReadContext {
-          HStack(spacing: 6) {
-            ProgressView()
-              .controlSize(.small)
-            Text("Updating...")
-          }
-        } else {
-          Text("Generate with AI")
-        }
-      }
-      .disabled(!KeychainManager.shared.hasGoogleAPIKey() || isUpdatingPromptAndReadContext)
-    }
-    .sheet(isPresented: $showPromptAndReadCompareSheet) {
-      CompareAndEditSuggestionView(
-        title: "Dictate Prompt & Read System Prompt",
-        currentText: viewModel.data.promptAndReadSystemPrompt,
-        suggestedText: $suggestedPromptAndReadPrompt,
-        onUseCurrent: { showPromptAndReadCompareSheet = false },
-        onUseSuggested: { applySuggestedPromptAndReadSystemPrompt($0) },
+        },
         hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt),
-        onRestorePrevious: restorePreviousPromptAndReadSystemPrompt
+        onResetToPrevious: { viewModel.restorePreviousPromptAndReadPrompt() },
+        trailingContent: AnyView(
+          Button {
+            viewModel.startGeneratePromptAndReadPrompt()
+          } label: {
+            if viewModel.generatingKind == .promptAndRead {
+              HStack(spacing: 6) {
+                ProgressView()
+                  .controlSize(.small)
+                Text("Updating...")
+              }
+            } else {
+              Text("Generate with AI")
+            }
+          }
+          .disabled(!KeychainManager.shared.hasGoogleAPIKey() || viewModel.generatingKind == .promptAndRead)
+          .buttonStyle(.bordered)
+          .font(.callout)
+        )
       )
     }
-  }
-
-  private func triggerGeneratePromptAndReadPrompt() {
-    isUpdatingPromptAndReadContext = true
-    Task {
-      do {
-        let derivation = UserContextDerivation()
-        _ = try await derivation.updateContextFromLogs()
-        let contextDir = UserContextLogger.shared.directoryURL
-        let fileURL = contextDir.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
-        let suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        await MainActor.run {
-          suggestedPromptAndReadPrompt = suggested.isEmpty ? "(No suggestion generated)" : suggested
-          showPromptAndReadCompareSheet = true
-          isUpdatingPromptAndReadContext = false
-        }
-      } catch {
-        await MainActor.run {
-          isUpdatingPromptAndReadContext = false
-          errorMessage = error.localizedDescription
-          showError = true
-        }
-      }
-    }
-  }
-
-  private func applySuggestedPromptAndReadSystemPrompt(_ prompt: String) {
-    let current = viewModel.data.promptAndReadSystemPrompt
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt)
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt)
-    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
-    var data = viewModel.data
-    data.promptAndReadSystemPrompt = prompt
-    viewModel.data = data
-    Task { await viewModel.saveSettings() }
-  }
-
-  private func restorePreviousPromptAndReadSystemPrompt() {
-    guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt) else { return }
-    let current = viewModel.data.promptAndReadSystemPrompt
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt)
-    UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
-    var data = viewModel.data
-    data.promptAndReadSystemPrompt = previous
-    viewModel.data = data
-    Task { await viewModel.saveSettings() }
   }
 
   // MARK: - Model Section

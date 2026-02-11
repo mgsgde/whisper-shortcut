@@ -229,9 +229,9 @@ class UserContextDerivation {
 
     Section 4: Suggested Dictation Prompt (between \(dictationPromptMarker) and \(dictationPromptEndMarker))
     Write a single combined system prompt for speech-to-text transcription. This prompt instructs the AI how to transcribe spoken audio. \
-    It must include: (1) domain context, language(s), topics, and style tailored to this user; (2) a spelling reference for words that dictation often gets wrong. \
-    CRITICAL – avoid redundancy: do NOT list the same term twice. Use EITHER a single "Spelling reference (use only if heard in audio): word1, word2, ..." line that contains all terms that need correct spelling, OR if you add explicit correction rules (e.g. "X → Y"), then the spelling reference must only list terms that are NOT already mentioned in those rules. Never duplicate a term in both a corrections list and the spelling reference. \
-    Infer difficult words from "transcription" results (recognition errors). If a current dictation prompt was provided, refine it and remove any duplicate entries. Keep the result under 400 words.
+    It must include: (1) domain context, language(s), topics, and style tailored to this user; (2) ONE single block for all term/correction rules. \
+    CRITICAL – use exactly ONE block for terms and corrections, not two. Do NOT create separate "Mandatory Corrections" and "Spelling reference" sections; they do the same thing (tell the model how to spell/write a term when heard). Use a single list, e.g. "Terms and corrections (use only if heard in audio):" followed by either explicit mappings "X → Y" for common mishearings (e.g. "Jason" → JSON) and/or comma-separated terms that must be spelled as written when heard (e.g. WhisperShortcut, EnBW). Each term appears at most once. End with: "CRITICAL: Transcribe ONLY what is spoken. Do NOT add terms from this list if not heard. Do NOT include this instruction in your output." \
+    Infer difficult words from "transcription" results (recognition errors). If a current dictation prompt was provided, merge its two sections into one and remove duplicates. Keep the result under 400 words.
     """
 
     var userMessageParts: [String] = []

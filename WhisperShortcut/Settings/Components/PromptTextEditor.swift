@@ -10,7 +10,10 @@ struct PromptTextEditor: View {
   let focusedField: SettingsFocusField
   @FocusState.Binding var currentFocus: SettingsFocusField?
   let onTextChanged: (() -> Void)?
-  
+  let hasPrevious: Bool
+  let onResetToPrevious: (() -> Void)?
+  let trailingContent: AnyView?
+
   init(
     title: String,
     subtitle: String,
@@ -19,7 +22,10 @@ struct PromptTextEditor: View {
     text: Binding<String>,
     focusedField: SettingsFocusField,
     currentFocus: FocusState<SettingsFocusField?>.Binding,
-    onTextChanged: (() -> Void)? = nil
+    onTextChanged: (() -> Void)? = nil,
+    hasPrevious: Bool = false,
+    onResetToPrevious: (() -> Void)? = nil,
+    trailingContent: AnyView? = nil
   ) {
     self.title = title
     self.subtitle = subtitle
@@ -29,6 +35,9 @@ struct PromptTextEditor: View {
     self.focusedField = focusedField
     self._currentFocus = currentFocus
     self.onTextChanged = onTextChanged
+    self.hasPrevious = hasPrevious
+    self.onResetToPrevious = onResetToPrevious
+    self.trailingContent = trailingContent
   }
 
   var body: some View {
@@ -63,6 +72,16 @@ struct PromptTextEditor: View {
           }
           .buttonStyle(.bordered)
           .font(.callout)
+          if hasPrevious, let onResetToPrevious {
+            Button("Reset to Previous") {
+              onResetToPrevious()
+            }
+            .buttonStyle(.bordered)
+            .font(.callout)
+          }
+          if let trailingContent {
+            trailingContent
+          }
         }
       }
     }

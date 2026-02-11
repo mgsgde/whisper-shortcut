@@ -5,10 +5,6 @@ struct GeneralSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @State private var userContextText: String = ""
-  @State private var isUpdatingUserContext = false
-  @State private var showUserContextCompareSheet = false
-  @State private var currentUserContextForSheet: String = ""
-  @State private var suggestedUserContextForSheet: String = ""
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -98,17 +94,6 @@ struct GeneralSettingsTab: View {
 
       // Support & Feedback Section
       supportFeedbackSection
-    }
-    .sheet(isPresented: $showUserContextCompareSheet) {
-      CompareAndEditSuggestionView(
-        title: "User Context",
-        currentText: currentUserContextForSheet,
-        suggestedText: $suggestedUserContextForSheet,
-        onUseCurrent: { showUserContextCompareSheet = false },
-        onUseSuggested: { applySuggestedUserContext($0) },
-        hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousUserContext),
-        onRestorePrevious: restorePreviousUserContext
-      )
     }
   }
 
@@ -453,76 +438,34 @@ struct GeneralSettingsTab: View {
         currentFocus: $focusedField,
         onTextChanged: {
           saveUserContextToFile()
-        }
-      )
-
-      Button {
-        triggerUpdateUserContext()
-      } label: {
-        if isUpdatingUserContext {
-          HStack(spacing: 6) {
-            ProgressView()
-              .controlSize(.small)
-            Text("Updating...")
+        },
+        hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousUserContext),
+        onResetToPrevious: { viewModel.restorePreviousUserContext() },
+        trailingContent: AnyView(
+          Button {
+            viewModel.startGenerateUserContext()
+          } label: {
+            if viewModel.generatingKind == .userContext {
+              HStack(spacing: 6) {
+                ProgressView()
+                  .controlSize(.small)
+                Text("Updating...")
+              }
+            } else {
+              Text("Generate with AI")
+            }
           }
-        } else {
-          Text("Generate with AI")
-        }
-      }
-      .disabled(!KeychainManager.shared.hasGoogleAPIKey() || isUpdatingUserContext)
+          .disabled(!KeychainManager.shared.hasGoogleAPIKey() || viewModel.generatingKind == .userContext)
+          .buttonStyle(.bordered)
+          .font(.callout)
+        )
+      )
     }
     .onAppear {
       loadUserContextFromFile()
     }
-    .onChange(of: showUserContextCompareSheet) { _, isShowing in
-      if !isShowing {
-        loadUserContextFromFile()
-      }
-    }
-  }
-
-  private func triggerUpdateUserContext() {
-    isUpdatingUserContext = true
-    Task {
-      do {
-        let derivation = UserContextDerivation()
-        _ = try await derivation.updateContextFromLogs()
-        let contextDir = UserContextLogger.shared.directoryURL
-        let currentURL = contextDir.appendingPathComponent("user-context.md")
-        let suggestedURL = contextDir.appendingPathComponent("suggested-user-context.md")
-        let current = (try? String(contentsOf: currentURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let suggested = (try? String(contentsOf: suggestedURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        await MainActor.run {
-          isUpdatingUserContext = false
-          currentUserContextForSheet = current
-          suggestedUserContextForSheet = suggested.isEmpty ? "(No suggestion generated)" : suggested
-          showUserContextCompareSheet = true
-        }
-      } catch {
-        await MainActor.run {
-          isUpdatingUserContext = false
-        }
-      }
-    }
-  }
-
-  private func applySuggestedUserContext(_ context: String) {
-    let contextDir = UserContextLogger.shared.directoryURL
-    let fileURL = contextDir.appendingPathComponent("user-context.md")
-    let current = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousUserContext)
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousUserContext)
-    try? context.write(to: fileURL, atomically: true, encoding: .utf8)
-  }
-
-  private func restorePreviousUserContext() {
-    guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousUserContext) else { return }
-    let contextDir = UserContextLogger.shared.directoryURL
-    let fileURL = contextDir.appendingPathComponent("user-context.md")
-    if previous.isEmpty {
-      try? FileManager.default.removeItem(at: fileURL)
-    } else {
-      try? previous.write(to: fileURL, atomically: true, encoding: .utf8)
+    .onReceive(NotificationCenter.default.publisher(for: .userContextFileDidUpdate)) { _ in
+      loadUserContextFromFile()
     }
   }
 
