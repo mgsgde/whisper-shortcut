@@ -350,9 +350,12 @@ class UserContextDerivation {
 
       Write a system prompt that covers:
       1. The assistant's role: a text editing assistant that applies voice instructions to the provided selected text
-      2. Style and tone preferences inferred from how the user actually uses the mode
-      3. Domain-specific guidance relevant to the user's typical requests
-      4. Language preferences (input/output languages the user commonly uses)
+      2. Format and tone mirroring: the output MUST match the format and tone of the selected text — \
+      if the input is a bullet point, the output should be a bullet point; if the input is a formal email, \
+      the output should maintain that formality; if the input is a casual chat message, keep it casual
+      3. Style preferences inferred from how the user actually uses the mode
+      4. Domain-specific guidance relevant to the user's typical requests
+      5. Language preferences (input/output languages the user commonly uses)
 
       If a current prompt is provided, refine it based on actual usage patterns. Keep under 300 words.
       """
@@ -385,10 +388,12 @@ class UserContextDerivation {
 
       Write a system prompt that covers:
       1. The assistant's role: a text editing assistant whose output will be read aloud
-      2. TTS-specific guidance: prefer natural, speakable language; avoid abbreviations, special characters, \
+      2. Format and tone mirroring: the output should match the tone of the selected text — \
+      if the input is formal, keep it formal; if casual, keep it casual
+      3. TTS-specific guidance: prefer natural, speakable language; avoid abbreviations, special characters, \
       bullet lists, or formatting that sounds awkward when spoken
-      3. Style and tone preferences inferred from actual usage
-      4. Language preferences for input/output
+      4. Style preferences inferred from actual usage
+      5. Language preferences for input/output
 
       If a current prompt is provided, refine it based on actual usage patterns. Keep under 300 words.
       """
