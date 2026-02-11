@@ -439,9 +439,9 @@ struct GeneralSettingsTab: View {
         onTextChanged: {
           saveUserContextToFile()
         },
-        hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousUserContext),
+        previousValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.previousUserContext),
+        lastAppliedValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAppliedUserContext),
         onResetToPrevious: { viewModel.restorePreviousUserContext() },
-        hasLastApplied: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasLastAppliedUserContext),
         onResetToLatest: { viewModel.restoreToLastAppliedUserContext() },
         trailingContent: AnyView(
           Button {

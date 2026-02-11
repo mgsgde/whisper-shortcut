@@ -123,9 +123,9 @@ struct PromptAndReadSettingsTab: View {
             await viewModel.saveSettings()
           }
         },
-        hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt),
+        previousValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt),
+        lastAppliedValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAppliedPromptAndReadSystemPrompt),
         onResetToPrevious: { viewModel.restorePreviousPromptAndReadPrompt() },
-        hasLastApplied: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasLastAppliedPromptAndReadSystemPrompt),
         onResetToLatest: { viewModel.restoreToLastAppliedPromptAndReadPrompt() },
         trailingContent: AnyView(
           Button {
