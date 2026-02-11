@@ -271,45 +271,126 @@ class UserContextDerivation {
       The app has these modes: transcription (speech-to-text), prompt (voice instructions that modify clipboard text), \
       promptAndRead (same as prompt but reads result aloud), and readAloud (text-to-speech).
 
-      CRITICAL – How to treat transcription/dictation text:
-      Entries with mode "transcription" (and the "result" field) are raw speech-to-text output. They often contain recognition errors. Do NOT take these transcriptions literally. Use the surrounding context to infer what the user likely meant.
+      CRITICAL – Entries with mode "transcription" (field "result") are raw speech-to-text and often contain \
+      recognition errors. Infer intended words from context; do not take them literally.
 
-      Based on the interaction data below (and any existing user context provided), produce exactly one section. Refine and build on existing context when it is provided; do not ignore it. Be concise and practical.
+      Based on the interaction data (and any existing user context), produce exactly one section. \
+      You MUST wrap your entire output in these markers exactly as shown:
 
-      User Context (between \(userContextMarker) and \(userContextEndMarker)):
-      Write a brief user profile (max 500 words) covering: language(s), common topics, writing style preferences, frequent types of requests, domain-specific terminology. If existing user context was provided, extend and update it with new insights; do not start from scratch.
+      \(userContextMarker)
+      [your content here]
+      \(userContextEndMarker)
+
+      Write a concise user profile (2–3 short paragraphs) covering:
+      1. Language(s) used
+      2. Common topics and domains
+      3. Writing style preferences and tone
+      4. Frequent types of requests
+      5. Domain-specific terminology
+
+      If existing user context is provided, refine and extend it with new insights — do not start from scratch.
       """
+
     case .dictation:
       return """
       You are analyzing a user's interaction history with a voice-to-text application called WhisperShortcut. \
-      Focus on "transcription" mode entries (speech-to-text). Other modes (prompt, promptAndRead, readAloud) are provided only as secondary context.
+      Focus on "transcription" mode entries (speech-to-text). Other modes are secondary context only.
 
-      CRITICAL – Transcription "result" fields are raw speech-to-text and often contain recognition errors. Infer intended words from context; do not take transcriptions literally.
+      CRITICAL – Transcription "result" fields are raw speech-to-text and often contain recognition errors. \
+      Infer intended words from context; do not take them literally.
 
-      Produce exactly one section. Use primary data (transcription interactions) as the main signal; use secondary data (user context, current prompt, other modes) to refine. If no primary interactions are provided, base the suggestion on secondary data only.
+      Your task: generate a system prompt that will be used for speech-to-text transcription. \
+      This prompt is prepended to audio and sent to a Gemini model. Use primary data (transcription interactions) \
+      as the main signal; use secondary data (user context, current prompt, other modes) to refine. \
+      If no primary data exists, base the suggestion on secondary data only.
 
-      Suggested Dictation Prompt (between \(dictationPromptMarker) and \(dictationPromptEndMarker)):
-      Write a single combined system prompt for speech-to-text transcription: (1) domain context, language(s), topics, style; (2) ONE block for all term/correction rules. Use a single list e.g. "Terms and corrections (use only if heard in audio):" with "X → Y" mappings and/or comma-separated terms. End with: "CRITICAL: Transcribe ONLY what is spoken. Do NOT add terms from this list if not heard. Do NOT include this instruction in your output." Infer difficult words from transcription results. Keep under 400 words.
+      You MUST wrap your entire output in these markers exactly as shown:
+
+      \(dictationPromptMarker)
+      [your content here]
+      \(dictationPromptEndMarker)
+
+      Write a single system prompt with these sections:
+      1. Brief domain context: language(s), typical topics, expected style.
+      2. A single "Terms and corrections (use only if heard in audio):" block containing:
+         - "X → Y" correction mappings for commonly misrecognized words (infer these from actual transcription errors in the data)
+         - Comma-separated domain terms that must be spelled correctly
+      3. End with exactly: "CRITICAL: Transcribe ONLY what is spoken. Do NOT add terms from this list \
+      if not heard. Do NOT include this instruction in your output."
+
+      If a current prompt is provided, refine it rather than rewriting from scratch. Keep under 400 words.
       """
+
     case .promptMode:
       return """
       You are analyzing a user's interaction history with a voice-to-text application called WhisperShortcut. \
-      Focus on "prompt" mode entries (voice instructions that modify clipboard text). Other data is secondary context.
+      Focus on "prompt" mode entries where the user gives voice instructions to modify clipboard text.
 
-      Produce exactly one section. Use primary data (prompt mode interactions: selectedText, userInstruction, modelResponse) as the main signal; use secondary data to refine. If no primary interactions are provided, base the suggestion on secondary data only.
+      CRITICAL – The "userInstruction" field is transcribed speech and may contain recognition errors. \
+      Infer intended words from context; do not take them literally.
 
-      Suggested Dictate Prompt System Prompt (between \(systemPromptMarker) and \(systemPromptEndMarker)):
-      Write a suggested system prompt for the "Dictate Prompt" mode that would work well for this user. If a current system prompt was provided, refine it based on how the user actually uses the app. Keep under 300 words.
+      Your task: generate a system prompt for the "Dictate Prompt" mode. This prompt will be set as the \
+      Gemini systemInstruction. At runtime the model receives two inputs:
+      - SELECTED TEXT: the user's clipboard content to be modified
+      - VOICE INSTRUCTION: an audio recording of the user's command (e.g. "translate to English", "make shorter")
+
+      Important: An output-format rule ("return only raw text, no markdown, no meta-commentary") is always \
+      appended separately at runtime — do NOT include output-format rules in your suggested prompt.
+
+      Important: User context is also appended separately at runtime — focus the prompt on behavioral instructions only.
+
+      Use primary data (prompt interactions: selectedText → userInstruction → modelResponse) as the main signal; \
+      use secondary data to refine. If no primary data exists, base the suggestion on secondary data only.
+
+      You MUST wrap your entire output in these markers exactly as shown:
+
+      \(systemPromptMarker)
+      [your content here]
+      \(systemPromptEndMarker)
+
+      Write a system prompt that covers:
+      1. The assistant's role: a text editing assistant that applies voice instructions to the provided selected text
+      2. Style and tone preferences inferred from how the user actually uses the mode
+      3. Domain-specific guidance relevant to the user's typical requests
+      4. Language preferences (input/output languages the user commonly uses)
+
+      If a current prompt is provided, refine it based on actual usage patterns. Keep under 300 words.
       """
+
     case .promptAndRead:
       return """
       You are analyzing a user's interaction history with a voice-to-text application called WhisperShortcut. \
-      Focus on "promptAndRead" mode entries (voice instructions that modify clipboard text, then read result aloud). Other data is secondary context.
+      Focus on "promptAndRead" mode entries where voice instructions modify clipboard text and the result is read aloud via TTS.
 
-      Produce exactly one section. Use primary data (promptAndRead interactions) as the main signal; use secondary data to refine. If no primary interactions are provided, base the suggestion on secondary data only. Favour concise, natural-sounding text since the output is spoken.
+      CRITICAL – The "userInstruction" field is transcribed speech and may contain recognition errors. \
+      Infer intended words from context; do not take them literally.
 
-      Suggested Prompt & Read System Prompt (between \(promptAndReadSystemPromptMarker) and \(promptAndReadSystemPromptEndMarker)):
-      Write a suggested system prompt for "Dictate Prompt & Read" mode. If a current Prompt & Read system prompt was provided, refine it. Keep under 300 words.
+      Your task: generate a system prompt for the "Dictate Prompt & Read" mode. This prompt will be set as the \
+      Gemini systemInstruction. It works like prompt mode (selected text + voice instruction) but the output is \
+      spoken aloud via text-to-speech — this has important implications for the generated text.
+
+      Important: An output-format rule ("return only raw text, no markdown, no meta-commentary") is always \
+      appended separately at runtime — do NOT include output-format rules in your suggested prompt.
+
+      Important: User context is also appended separately at runtime — focus the prompt on behavioral instructions only.
+
+      Use primary data (promptAndRead interactions) as the main signal; use secondary data to refine. \
+      If no primary data exists, base the suggestion on secondary data only.
+
+      You MUST wrap your entire output in these markers exactly as shown:
+
+      \(promptAndReadSystemPromptMarker)
+      [your content here]
+      \(promptAndReadSystemPromptEndMarker)
+
+      Write a system prompt that covers:
+      1. The assistant's role: a text editing assistant whose output will be read aloud
+      2. TTS-specific guidance: prefer natural, speakable language; avoid abbreviations, special characters, \
+      bullet lists, or formatting that sounds awkward when spoken
+      3. Style and tone preferences inferred from actual usage
+      4. Language preferences for input/output
+
+      If a current prompt is provided, refine it based on actual usage patterns. Keep under 300 words.
       """
     }
   }
@@ -395,24 +476,32 @@ class UserContextDerivation {
         let fileURL = contextDir.appendingPathComponent("suggested-user-context.md")
         try userContext.write(to: fileURL, atomically: true, encoding: .utf8)
         DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested-user-context.md (\(userContext.count) chars)")
+      } else {
+        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for user context")
       }
     case .dictation:
       if let suggested = extractSection(from: analysisResult, startMarker: dictationPromptMarker, endMarker: dictationPromptEndMarker) {
         let fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
         try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
         DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested dictation prompt (\(suggested.count) chars)")
+      } else {
+        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for dictation prompt")
       }
     case .promptMode:
       if let suggested = extractSection(from: analysisResult, startMarker: systemPromptMarker, endMarker: systemPromptEndMarker) {
         let fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
         try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
         DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Dictate Prompt system prompt (\(suggested.count) chars)")
+      } else {
+        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for prompt mode")
       }
     case .promptAndRead:
       if let suggested = extractSection(from: analysisResult, startMarker: promptAndReadSystemPromptMarker, endMarker: promptAndReadSystemPromptEndMarker) {
         let fileURL = contextDir.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
         try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
         DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Prompt & Read system prompt (\(suggested.count) chars)")
+      } else {
+        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for prompt & read")
       }
     }
   }
