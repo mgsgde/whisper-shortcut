@@ -121,6 +121,8 @@ struct SpeechToPromptSettingsTab: View {
         },
         hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt),
         onResetToPrevious: { viewModel.restorePreviousPromptModePrompt() },
+        hasLastApplied: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasLastAppliedPromptModeSystemPrompt),
+        onResetToLatest: { viewModel.restoreToLastAppliedPromptModePrompt() },
         trailingContent: AnyView(
           Button {
             viewModel.startGeneratePromptModePrompt()

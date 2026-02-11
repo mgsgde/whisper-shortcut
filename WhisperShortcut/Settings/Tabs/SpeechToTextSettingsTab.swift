@@ -137,6 +137,8 @@ struct SpeechToTextSettingsTab: View {
         },
         hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousCustomPromptText),
         onResetToPrevious: { viewModel.restorePreviousDictationPrompt() },
+        hasLastApplied: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasLastAppliedCustomPromptText),
+        onResetToLatest: { viewModel.restoreToLastAppliedDictationPrompt() },
         trailingContent: AnyView(
           Button {
             viewModel.startGenerateDictationPrompt()

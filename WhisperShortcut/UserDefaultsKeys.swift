@@ -74,5 +74,15 @@ enum UserDefaultsKeys {
   /// Stored value before applying suggested user context; used for Restore Previous.
   static let previousUserContext = "previousUserContext"
   static let hasPreviousUserContext = "hasPreviousUserContext"
+
+  /// Last applied AI suggestion; used for Reset to Latest (Dictate, Dictate Prompt, Dictate Prompt & Read, User Context).
+  static let lastAppliedCustomPromptText = "lastAppliedCustomPromptText"
+  static let hasLastAppliedCustomPromptText = "hasLastAppliedCustomPromptText"
+  static let lastAppliedPromptModeSystemPrompt = "lastAppliedPromptModeSystemPrompt"
+  static let hasLastAppliedPromptModeSystemPrompt = "hasLastAppliedPromptModeSystemPrompt"
+  static let lastAppliedPromptAndReadSystemPrompt = "lastAppliedPromptAndReadSystemPrompt"
+  static let hasLastAppliedPromptAndReadSystemPrompt = "hasLastAppliedPromptAndReadSystemPrompt"
+  static let lastAppliedUserContext = "lastAppliedUserContext"
+  static let hasLastAppliedUserContext = "hasLastAppliedUserContext"
 }
 

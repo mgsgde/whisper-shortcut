@@ -441,6 +441,8 @@ struct GeneralSettingsTab: View {
         },
         hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousUserContext),
         onResetToPrevious: { viewModel.restorePreviousUserContext() },
+        hasLastApplied: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasLastAppliedUserContext),
+        onResetToLatest: { viewModel.restoreToLastAppliedUserContext() },
         trailingContent: AnyView(
           Button {
             viewModel.startGenerateUserContext()

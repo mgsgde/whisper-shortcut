@@ -12,6 +12,8 @@ struct PromptTextEditor: View {
   let onTextChanged: (() -> Void)?
   let hasPrevious: Bool
   let onResetToPrevious: (() -> Void)?
+  let hasLastApplied: Bool
+  let onResetToLatest: (() -> Void)?
   let trailingContent: AnyView?
 
   init(
@@ -25,6 +27,8 @@ struct PromptTextEditor: View {
     onTextChanged: (() -> Void)? = nil,
     hasPrevious: Bool = false,
     onResetToPrevious: (() -> Void)? = nil,
+    hasLastApplied: Bool = false,
+    onResetToLatest: (() -> Void)? = nil,
     trailingContent: AnyView? = nil
   ) {
     self.title = title
@@ -37,6 +41,8 @@ struct PromptTextEditor: View {
     self.onTextChanged = onTextChanged
     self.hasPrevious = hasPrevious
     self.onResetToPrevious = onResetToPrevious
+    self.hasLastApplied = hasLastApplied
+    self.onResetToLatest = onResetToLatest
     self.trailingContent = trailingContent
   }
 
@@ -75,6 +81,13 @@ struct PromptTextEditor: View {
           if hasPrevious, let onResetToPrevious {
             Button("Reset to Previous") {
               onResetToPrevious()
+            }
+            .buttonStyle(.bordered)
+            .font(.callout)
+          }
+          if hasLastApplied, let onResetToLatest {
+            Button("Reset to Latest") {
+              onResetToLatest()
             }
             .buttonStyle(.bordered)
             .font(.callout)

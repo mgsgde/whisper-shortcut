@@ -682,6 +682,8 @@ class SettingsViewModel: ObservableObject {
     let current = data.customPromptText
     UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousCustomPromptText)
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousCustomPromptText)
+    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.lastAppliedCustomPromptText)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedCustomPromptText)
     UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.customPromptText)
     data.customPromptText = prompt
     Task { _ = await saveSettings() }
@@ -692,6 +694,8 @@ class SettingsViewModel: ObservableObject {
     let current = data.promptModeSystemPrompt
     UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptModeSystemPrompt)
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt)
+    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.lastAppliedPromptModeSystemPrompt)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedPromptModeSystemPrompt)
     UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
     data.promptModeSystemPrompt = prompt
     Task { _ = await saveSettings() }
@@ -702,6 +706,8 @@ class SettingsViewModel: ObservableObject {
     let current = data.promptAndReadSystemPrompt
     UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt)
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt)
+    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.lastAppliedPromptAndReadSystemPrompt)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedPromptAndReadSystemPrompt)
     UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
     data.promptAndReadSystemPrompt = prompt
     Task { _ = await saveSettings() }
@@ -714,6 +720,8 @@ class SettingsViewModel: ObservableObject {
     let current = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousUserContext)
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousUserContext)
+    UserDefaults.standard.set(context, forKey: UserDefaultsKeys.lastAppliedUserContext)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedUserContext)
     try? context.write(to: fileURL, atomically: true, encoding: .utf8)
     NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
     dismissGenerationSheet()
@@ -760,5 +768,38 @@ class SettingsViewModel: ObservableObject {
     }
     NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
     dismissGenerationSheet()
+  }
+
+  func restoreToLastAppliedDictationPrompt() {
+    guard let latest = UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAppliedCustomPromptText) else { return }
+    UserDefaults.standard.set(latest, forKey: UserDefaultsKeys.customPromptText)
+    data.customPromptText = latest
+    Task { _ = await saveSettings() }
+  }
+
+  func restoreToLastAppliedPromptModePrompt() {
+    guard let latest = UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAppliedPromptModeSystemPrompt) else { return }
+    UserDefaults.standard.set(latest, forKey: UserDefaultsKeys.promptModeSystemPrompt)
+    data.promptModeSystemPrompt = latest
+    Task { _ = await saveSettings() }
+  }
+
+  func restoreToLastAppliedPromptAndReadPrompt() {
+    guard let latest = UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAppliedPromptAndReadSystemPrompt) else { return }
+    UserDefaults.standard.set(latest, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
+    data.promptAndReadSystemPrompt = latest
+    Task { _ = await saveSettings() }
+  }
+
+  func restoreToLastAppliedUserContext() {
+    guard let latest = UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAppliedUserContext) else { return }
+    let contextDir = UserContextLogger.shared.directoryURL
+    let fileURL = contextDir.appendingPathComponent("user-context.md")
+    if latest.isEmpty {
+      try? FileManager.default.removeItem(at: fileURL)
+    } else {
+      try? latest.write(to: fileURL, atomically: true, encoding: .utf8)
+    }
+    NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
   }
 }
