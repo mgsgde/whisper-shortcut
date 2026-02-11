@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Prompt and Read Settings Tab - Shortcut, System Prompt, Model Selection, Voice Selection
+/// Prompt and Read Settings Tab - Shortcut, Model Selection, System Prompt, Voice Selection
 struct PromptAndReadSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
@@ -19,8 +19,8 @@ struct PromptAndReadSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
-      // Prompt Section
-      promptSection
+      // Model Section
+      modelSection
 
       // Section Divider with spacing
       VStack(spacing: 0) {
@@ -31,8 +31,8 @@ struct PromptAndReadSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
-      // Model Section
-      modelSection
+      // Prompt Section
+      promptSection
 
       // Section Divider with spacing
       VStack(spacing: 0) {
