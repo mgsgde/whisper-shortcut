@@ -83,8 +83,8 @@ Key rules:
   static let liveMeetingTranscriptDirectory: String = "WhisperShortcut"
 
   // MARK: - User Context Derivation
-  /// Gemini API endpoint for analyzing interaction logs (Generate with AI). Uses Flash for low latency; switch to Pro if you prefer higher quality over speed.
-  static let userContextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+  /// Gemini API endpoint for analyzing interaction logs (Generate with AI). Uses Pro for best-quality system prompts; slower than Flash but more accurate.
+  static let userContextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent"
 
   /// Maximum character length for user context when appended to the system prompt.
   /// Truncation is applied at sentence or word boundary so the model always sees complete text.
