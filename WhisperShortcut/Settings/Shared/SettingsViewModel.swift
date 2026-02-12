@@ -552,6 +552,26 @@ class SettingsViewModel: ObservableObject {
     }
   }
 
+  // MARK: - Live Meeting Transcripts Folder
+  func openTranscriptsFolder() {
+    let homeDir = FileManager.default.homeDirectoryForCurrentUser
+    let transcriptsDir = homeDir
+      .appendingPathComponent("Documents")
+      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+
+    if !FileManager.default.fileExists(atPath: transcriptsDir.path) {
+      do {
+        try FileManager.default.createDirectory(at: transcriptsDir, withIntermediateDirectories: true)
+      } catch {
+        DebugLogger.logError("LIVE-MEETING: Failed to create transcripts folder: \(error)")
+        return
+      }
+    }
+
+    NSWorkspace.shared.open(transcriptsDir)
+    DebugLogger.log("LIVE-MEETING: Opened transcripts folder from Settings")
+  }
+
   // MARK: - AI Generation (runs in background; result sheet shown from SettingsView)
   func startGenerateDictationPrompt() {
     generatingKind = .dictation

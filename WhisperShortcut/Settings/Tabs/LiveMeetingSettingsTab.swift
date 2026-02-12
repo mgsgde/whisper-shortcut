@@ -134,6 +134,10 @@ struct LiveMeetingSettingsTab: View {
           .font(.system(.callout, design: .monospaced))
           .foregroundColor(.secondary)
           .textSelection(.enabled)
+        Button("Open Transcript Folder") {
+          viewModel.openTranscriptsFolder()
+        }
+        .buttonStyle(.bordered)
       }
       .padding(8)
       .background(Color.secondary.opacity(0.1))
