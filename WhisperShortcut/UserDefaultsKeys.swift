@@ -59,6 +59,11 @@ enum UserDefaultsKeys {
   static let userContextMaxEntriesPerMode = "userContextMaxEntriesPerMode"
   static let userContextMaxTotalChars = "userContextMaxTotalChars"
 
+  // MARK: - Auto-Improvement Settings
+  static let autoPromptImprovementIntervalDays = "autoPromptImprovementIntervalDays"
+  static let lastAutoImprovementRunDate = "lastAutoImprovementRunDate"
+  static let pendingAutoImprovementKinds = "pendingAutoImprovementKinds"
+
   /// Stored value before applying a suggested system prompt (Dictate Prompt); used for Restore Previous.
   static let previousPromptModeSystemPrompt = "previousPromptModeSystemPrompt"
   static let hasPreviousPromptModeSystemPrompt = "hasPreviousPromptModeSystemPrompt"

@@ -50,10 +50,13 @@ class UserContextLogger {
     }
   }
 
-  // MARK: - Logging Guard (always on; no user toggle)
+  // MARK: - Logging Guard
 
   private var isLoggingEnabled: Bool {
-    true
+    // Default to true if key doesn't exist (for backward compatibility)
+    UserDefaults.standard.object(forKey: UserDefaultsKeys.userContextLoggingEnabled) == nil
+      ? true
+      : UserDefaults.standard.bool(forKey: UserDefaultsKeys.userContextLoggingEnabled)
   }
 
   // MARK: - Public Logging Methods

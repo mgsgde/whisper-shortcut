@@ -55,12 +55,14 @@ WhisperShortcut is a macOS menu bar application with four main features: **Speec
 
 - **What**: Logs of transcriptions, prompt interactions, and read-aloud actions (mode, timestamps, and result snippets)
 - **Where**: Stored locally in `~/Library/Application Support/WhisperShortcut/UserContext/` as JSONL files (e.g. `interactions-2025-02-10.jsonl`)
-- **Purpose**: Used only when you click **"Generate with AI"** in Settings to derive suggested system prompts and user context; improves quality of those suggestions
+- **Purpose**: Used when you click **"Generate with AI"** in Settings to derive suggested system prompts and user context, or for **automatic system prompt improvement** (if enabled). Improves quality of those suggestions.
 - **When it’s collected**: Interaction logging is always on (no toggle). Data stays on your device until you delete it or it is automatically removed (see retention)
-- **Retention**: Log files older than **90 days** are automatically deleted. For **"Generate with AI"**, only interactions from the **last 30 days** are read and (when you trigger the action) sent to Google Gemini.
-- **Gemini Analysis**: Only when you click **"Generate with AI"** (in Settings > General for User Context, or in the Dictate / Dictate Prompt / Dictate Prompt & Read tabs), aggregated interaction data from the last 30 days is sent to Google Gemini to generate suggested prompts. This is a one-time action per click; you initiate it manually.
+- **Retention**: Log files older than **90 days** are automatically deleted. For **"Generate with AI"** and automatic improvement, only interactions from the **last 30 days** are read and sent to Google Gemini.
+- **Gemini Analysis**: 
+  - **Manual**: When you click **"Generate with AI"** (in Settings > General for User Context, or in the Dictate / Dictate Prompt / Dictate Prompt & Read tabs), aggregated interaction data from the last 30 days is sent to Google Gemini to generate suggested prompts. This is a one-time action per click; you initiate it manually.
+  - **Automatic**: If automatic improvement is enabled (Settings > General > Smarte Verbesserung), the app periodically (configurable: every 7, 14, or 30 days) analyzes your interaction logs in the background and generates suggested prompts. Aggregated interaction data from the last 30 days is sent to Google Gemini. A pop-up appears when suggestions are ready, allowing you to review and accept or reject them. You can disable automatic improvement at any time or set the interval to "Never".
 - **Deletion**: You can delete all interaction logs and derived files at any time by removing the folder `~/Library/Application Support/WhisperShortcut/UserContext/` (e.g. in Finder: Go → Go to Folder, paste the path, then delete the `UserContext` folder). The app does not currently offer an in-app "Delete All Context Data" button.
-- **Access**: Only accessible by the app on your device, except when you use "Generate with AI", at which point the aggregated text is sent to Gemini as described above.
+- **Access**: Only accessible by the app on your device, except when you use "Generate with AI" or when automatic improvement runs, at which point the aggregated text is sent to Gemini as described above.
 
 ## What Data We Do NOT Collect
 
@@ -124,6 +126,8 @@ WhisperShortcut uses Google's Gemini API for:
 - Reset preferences: Use the app's reset to defaults feature
 - Delete Live Meeting transcripts: Remove files from `~/Documents/WhisperShortcut/`
 - Delete User Context / interaction logs: Remove the folder `~/Library/Application Support/WhisperShortcut/UserContext/` (e.g. in Finder: Go → Go to Folder, paste the path, then delete the `UserContext` folder)
+- Disable automatic improvement: Settings > General > Smarte Verbesserung > set interval to "Nie" (Never)
+- Disable interaction logging: Settings > General > Smarte Verbesserung > toggle off "Interaktions-Logging für Vorschläge"
 - Uninstall: Remove the app to delete all local data (except Live Meeting files in Documents and the UserContext folder above, which you can delete manually)
 
 ### Permissions

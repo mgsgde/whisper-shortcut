@@ -3,7 +3,7 @@ import SwiftUI
 import ServiceManagement
 
 /// Which "Generate with AI" flow is running or whose result sheet is shown.
-enum GenerationKind: Equatable {
+enum GenerationKind: Equatable, Codable {
   case dictation
   case promptMode
   case promptAndRead
@@ -22,6 +22,10 @@ class SettingsViewModel: ObservableObject {
   @Published var suggestedTextForGeneration = ""
   @Published var currentTextForGenerationSheet = ""
   @Published var showGenerationCompareSheet = false
+  
+  // MARK: - Auto-Improvement Queue
+  private var pendingAutoImprovementQueue: [GenerationKind] = []
+  @Published var isAutoImprovementSheet = false
 
   // MARK: - Initialization
   init() {
@@ -692,10 +696,27 @@ class SettingsViewModel: ObservableObject {
   }
 
   func dismissGenerationSheet() {
-    showGenerationCompareSheet = false
-    pendingSheetKind = nil
-    suggestedTextForGeneration = ""
-    currentTextForGenerationSheet = ""
+    // If this was an auto-improvement sheet, move to next in queue
+    if isAutoImprovementSheet {
+      removeCurrentFromQueue()
+      if let nextKind = pendingAutoImprovementQueue.first {
+        showNextPendingSuggestion(kind: nextKind)
+      } else {
+        // Queue empty, close sheet
+        AutoPromptImprovementScheduler.shared.clearPendingKinds()
+        showGenerationCompareSheet = false
+        pendingSheetKind = nil
+        suggestedTextForGeneration = ""
+        currentTextForGenerationSheet = ""
+        isAutoImprovementSheet = false
+      }
+    } else {
+      // Regular manual generation sheet
+      showGenerationCompareSheet = false
+      pendingSheetKind = nil
+      suggestedTextForGeneration = ""
+      currentTextForGenerationSheet = ""
+    }
   }
 
   func applySuggestedDictationPrompt(_ prompt: String) {
@@ -707,6 +728,10 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.customPromptText)
     data.customPromptText = prompt
     Task { _ = await saveSettings() }
+    
+    // Clean up suggested file
+    UserContextLogger.shared.deleteSuggestedDictationPromptFile()
+    
     dismissGenerationSheet()
   }
 
@@ -719,6 +744,10 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
     data.promptModeSystemPrompt = prompt
     Task { _ = await saveSettings() }
+    
+    // Clean up suggested file
+    UserContextLogger.shared.deleteSuggestedSystemPromptFile()
+    
     dismissGenerationSheet()
   }
 
@@ -731,6 +760,10 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
     data.promptAndReadSystemPrompt = prompt
     Task { _ = await saveSettings() }
+    
+    // Clean up suggested file
+    UserContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
+    
     dismissGenerationSheet()
   }
 
@@ -744,6 +777,10 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedUserContext)
     try? context.write(to: fileURL, atomically: true, encoding: .utf8)
     NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
+    
+    // Clean up suggested file
+    UserContextLogger.shared.deleteSuggestedUserContextFile()
+    
     dismissGenerationSheet()
   }
 

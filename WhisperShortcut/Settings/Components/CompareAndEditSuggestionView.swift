@@ -9,6 +9,8 @@ struct CompareAndEditSuggestionView: View {
   let onUseSuggested: (String) -> Void
   let hasPrevious: Bool
   var onRestorePrevious: (() -> Void)? = nil
+  var isAutoImprovement: Bool = false
+  var onDisableAutoImprovement: (() -> Void)? = nil
 
   @Environment(\.dismiss) private var dismiss
 
@@ -18,6 +20,14 @@ struct CompareAndEditSuggestionView: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       Text(title)
         .font(.headline)
+      
+      // Auto-improvement header text
+      if isAutoImprovement {
+        Text("Wir haben auf Basis Ihrer Nutzung Vorschläge für Ihre System-Prompts erstellt. Bitte prüfen Sie die Änderungen und übernehmen Sie sie oder behalten Sie die aktuelle Version.")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .padding(.bottom, 4)
+      }
 
       // Current (read-only)
       VStack(alignment: .leading, spacing: 6) {
@@ -64,25 +74,41 @@ struct CompareAndEditSuggestionView: View {
       HStack(spacing: 12) {
         Button("Use current") {
           onUseCurrent()
-          dismiss()
+          if !isAutoImprovement {
+            dismiss()
+          }
         }
         .buttonStyle(.bordered)
 
         Button("Use suggested") {
           onUseSuggested(suggestedText)
-          dismiss()
+          if !isAutoImprovement {
+            dismiss()
+          }
         }
         .buttonStyle(.borderedProminent)
 
         if hasPrevious, let onRestorePrevious {
           Button("Restore previous") {
             onRestorePrevious()
-            dismiss()
+            if !isAutoImprovement {
+              dismiss()
+            }
           }
           .buttonStyle(.bordered)
         }
 
         Spacer()
+        
+        // Disable button for auto-improvement sheets
+        if isAutoImprovement, let onDisable = onDisableAutoImprovement {
+          Button("Smarte Verbesserung und Interaktions-Tracking deaktivieren") {
+            onDisable()
+            dismiss()
+          }
+          .buttonStyle(.bordered)
+          .foregroundColor(.red)
+        }
       }
     }
     .padding(SettingsConstants.internalSectionSpacing)

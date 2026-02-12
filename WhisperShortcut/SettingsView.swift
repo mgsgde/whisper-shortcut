@@ -29,9 +29,15 @@ struct SettingsView: View {
     }
     .onAppear {
       setupWindow()
+      // Check for pending auto-improvement suggestions
+      viewModel.checkAndShowPendingAutoImprovement()
     }
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
       setupFloatingWindow()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .autoImprovementSuggestionsReady)) { _ in
+      // When scheduler posts notification, check and show pending suggestions
+      viewModel.checkAndShowPendingAutoImprovement()
     }
   }
 
@@ -145,7 +151,9 @@ struct SettingsView: View {
           onUseCurrent: { viewModel.dismissGenerationSheet() },
           onUseSuggested: { viewModel.applySuggestedDictationPrompt($0) },
           hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousCustomPromptText),
-          onRestorePrevious: { viewModel.restorePreviousDictationPrompt() }
+          onRestorePrevious: { viewModel.restorePreviousDictationPrompt() },
+          isAutoImprovement: viewModel.isAutoImprovementSheet,
+          onDisableAutoImprovement: { viewModel.disableAutoImprovementAndLogging() }
         )
       case .promptMode:
         CompareAndEditSuggestionView(
@@ -155,7 +163,9 @@ struct SettingsView: View {
           onUseCurrent: { viewModel.dismissGenerationSheet() },
           onUseSuggested: { viewModel.applySuggestedPromptModePrompt($0) },
           hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt),
-          onRestorePrevious: { viewModel.restorePreviousPromptModePrompt() }
+          onRestorePrevious: { viewModel.restorePreviousPromptModePrompt() },
+          isAutoImprovement: viewModel.isAutoImprovementSheet,
+          onDisableAutoImprovement: { viewModel.disableAutoImprovementAndLogging() }
         )
       case .promptAndRead:
         CompareAndEditSuggestionView(
@@ -165,7 +175,9 @@ struct SettingsView: View {
           onUseCurrent: { viewModel.dismissGenerationSheet() },
           onUseSuggested: { viewModel.applySuggestedPromptAndReadPrompt($0) },
           hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt),
-          onRestorePrevious: { viewModel.restorePreviousPromptAndReadPrompt() }
+          onRestorePrevious: { viewModel.restorePreviousPromptAndReadPrompt() },
+          isAutoImprovement: viewModel.isAutoImprovementSheet,
+          onDisableAutoImprovement: { viewModel.disableAutoImprovementAndLogging() }
         )
       case .userContext:
         CompareAndEditSuggestionView(
@@ -175,7 +187,9 @@ struct SettingsView: View {
           onUseCurrent: { viewModel.dismissGenerationSheet() },
           onUseSuggested: { viewModel.applySuggestedUserContext($0) },
           hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousUserContext),
-          onRestorePrevious: { viewModel.restorePreviousUserContext() }
+          onRestorePrevious: { viewModel.restorePreviousUserContext() },
+          isAutoImprovement: viewModel.isAutoImprovementSheet,
+          onDisableAutoImprovement: { viewModel.disableAutoImprovementAndLogging() }
         )
       }
     }

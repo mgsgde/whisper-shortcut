@@ -34,6 +34,26 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
         SettingsManager.shared.showSettings()
       }
     }
+
+    // Initialize auto-improvement defaults if not set
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays) == nil {
+      UserDefaults.standard.set(AutoImprovementInterval.default.rawValue, forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
+    }
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.userContextLoggingEnabled) == nil {
+      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.userContextLoggingEnabled)
+    }
+
+    // Check for auto-improvement: pending suggestions and scheduled runs
+    Task { @MainActor in
+      // Check if there are pending suggestions from a previous run
+      if AutoPromptImprovementScheduler.shared.checkForPendingSuggestions() {
+        DebugLogger.log("AUTO-IMPROVEMENT: Found pending suggestions on app launch")
+        // Settings will be opened when user opens it, and will show pending suggestions
+      }
+
+      // Check if it's time to run auto-improvement
+      AutoPromptImprovementScheduler.shared.checkAndRunIfNeeded()
+    }
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
