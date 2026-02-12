@@ -5,6 +5,8 @@ struct GeneralSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @State private var userContextText: String = ""
+  @State private var selectedInterval: AutoImprovementInterval = .default
+  @State private var loggingEnabled: Bool = true
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -82,6 +84,18 @@ struct GeneralSettingsTab: View {
 
       // User Context Section
       userContextSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
+      // Auto-Improvement Section
+      autoImprovementSection
 
       // Section Divider with spacing
       VStack(spacing: 0) {
@@ -488,6 +502,72 @@ struct GeneralSettingsTab: View {
       try? FileManager.default.removeItem(at: fileURL)
     } else {
       try? userContextText.write(to: fileURL, atomically: true, encoding: .utf8)
+    }
+  }
+
+  // MARK: - Auto-Improvement Section
+  @ViewBuilder
+  private var autoImprovementSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "🤖 Smarte Verbesserung",
+        subtitle: "Automatische Verbesserung der System-Prompts auf Basis Ihrer Nutzung"
+      )
+
+      VStack(alignment: .leading, spacing: 16) {
+        // Interval Picker
+        VStack(alignment: .leading, spacing: 8) {
+          Text("Automatische Verbesserung der System-Prompts")
+            .font(.callout)
+            .fontWeight(.medium)
+
+          Picker("", selection: $selectedInterval) {
+            ForEach(AutoImprovementInterval.allCases, id: \.self) { interval in
+              Text(interval.displayName).tag(interval)
+            }
+          }
+          .pickerStyle(.menu)
+          .frame(maxWidth: 200)
+          .onChange(of: selectedInterval) { _, newValue in
+            UserDefaults.standard.set(newValue.rawValue, forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
+            DebugLogger.log("AUTO-IMPROVEMENT: Interval changed to \(newValue.displayName)")
+          }
+
+          Text("Im Hintergrund werden auf Basis Ihrer Nutzung Vorschläge für Ihre System-Prompts erstellt. Ein Pop-up erscheint zur Bestätigung, wenn Vorschläge verfügbar sind.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        // Logging Toggle
+        VStack(alignment: .leading, spacing: 8) {
+          Toggle("Interaktions-Logging für Vorschläge", isOn: $loggingEnabled)
+            .onChange(of: loggingEnabled) { _, newValue in
+              UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.userContextLoggingEnabled)
+              DebugLogger.log("AUTO-IMPROVEMENT: Logging \(newValue ? "enabled" : "disabled")")
+            }
+
+          Text("Nutzungsdaten werden lokal gespeichert und für \"Generate with AI\" sowie die automatischen Vorschläge verwendet. Bei Deaktivierung werden keine neuen Interaktionen geloggt.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .opacity(selectedInterval == .never ? 0.5 : 1.0)
+        }
+        .disabled(selectedInterval == .never)
+      }
+    }
+    .onAppear {
+      // Load current settings
+      let rawValue = UserDefaults.standard.integer(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
+      selectedInterval = AutoImprovementInterval(rawValue: rawValue) ?? .default
+      
+      // Load logging setting (default to true if not set)
+      if UserDefaults.standard.object(forKey: UserDefaultsKeys.userContextLoggingEnabled) == nil {
+        loggingEnabled = true
+        UserDefaults.standard.set(true, forKey: UserDefaultsKeys.userContextLoggingEnabled)
+      } else {
+        loggingEnabled = UserDefaults.standard.bool(forKey: UserDefaultsKeys.userContextLoggingEnabled)
+      }
     }
   }
 
