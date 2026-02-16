@@ -13,7 +13,7 @@
     "preview": "live-server ."
   },
   "dependencies": {
-    "puppeteer": "^21.11.0"
+    "puppeteer": "^24.37.3"
   },
   "devDependencies": {
     "live-server": "^1.2.2"
