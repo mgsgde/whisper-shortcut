@@ -83,6 +83,13 @@ class AutoPromptImprovementScheduler {
       return false
     }
 
+    // Only show suggestions after the user has at least N days of interaction data (e.g. 7 days)
+    let minDays = AppConstants.autoImprovementMinimumInteractionDays
+    guard UserContextLogger.shared.hasInteractionDataAtLeast(daysOld: minDays) else {
+      DebugLogger.log("AUTO-IMPROVEMENT: Skipping - need at least \(minDays) days of interaction data before showing suggestions")
+      return false
+    }
+
     return true
   }
 

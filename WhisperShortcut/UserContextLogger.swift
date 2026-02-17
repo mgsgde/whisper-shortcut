@@ -198,6 +198,30 @@ class UserContextLogger {
 
   // MARK: - File Listing (for derivation)
 
+  /// Returns true if there is interaction data at least `daysOld` days in the past (oldest log file is that old).
+  /// Used to avoid showing auto-improvement suggestions before the user has enough usage history (e.g. 7 days).
+  func hasInteractionDataAtLeast(daysOld: Int) -> Bool {
+    let logFiles = interactionLogFiles(lastDays: 90)
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = "yyyy-MM-dd"
+    var oldestDate: Date?
+    for url in logFiles {
+      let filename = url.lastPathComponent
+      guard filename.hasPrefix("interactions-"), filename.hasSuffix(".jsonl") else { continue }
+      let dateString = filename
+        .replacingOccurrences(of: "interactions-", with: "")
+        .replacingOccurrences(of: ".jsonl", with: "")
+      if let fileDate = dateFormatter.date(from: dateString) {
+        if oldestDate == nil || fileDate < oldestDate! {
+          oldestDate = fileDate
+        }
+      }
+    }
+    guard let oldest = oldestDate else { return false }
+    let daysSinceOldest = Calendar.current.dateComponents([.day], from: oldest, to: Date()).day ?? 0
+    return daysSinceOldest >= daysOld
+  }
+
   /// Returns URLs of all interaction log files from the last N days, sorted by date ascending.
   func interactionLogFiles(lastDays: Int = 30) -> [URL] {
     let fm = FileManager.default
