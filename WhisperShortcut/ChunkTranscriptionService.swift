@@ -29,6 +29,13 @@ enum ChunkedTranscriptionError: Error, LocalizedError {
 /// Service for transcribing long audio files by splitting into chunks
 /// and processing them in parallel with retry logic.
 class ChunkTranscriptionService {
+    // MARK: - Constants
+
+    /// Per-chunk request timeout. If a single chunk doesn't complete within this time,
+    /// the request is aborted and retried instead of blocking the whole transcription.
+    /// Prevents one slow API response (e.g. 2+ minutes) from delaying the entire result.
+    private static let chunkResourceTimeout: TimeInterval = 90.0
+
     // MARK: - Properties
 
     /// Delegate for receiving progress updates.
@@ -59,7 +66,15 @@ class ChunkTranscriptionService {
         self.maxRetries = maxRetries
         self.retryDelay = retryDelay
         self.chunker = AudioChunker()
-        self.geminiClient = geminiClient ?? GeminiAPIClient()
+        if let geminiClient = geminiClient {
+            self.geminiClient = geminiClient
+        } else {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 60.0
+            config.timeoutIntervalForResource = Self.chunkResourceTimeout
+            let session = URLSession(configuration: config)
+            self.geminiClient = GeminiAPIClient(session: session)
+        }
     }
 
     deinit {
@@ -280,6 +295,7 @@ class ChunkTranscriptionService {
                 // Build request
                 let endpoint = model.apiEndpoint
                 var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
+                request.timeoutInterval = Self.chunkResourceTimeout
 
                 let transcriptionRequest = GeminiTranscriptionRequest(
                     contents: [
