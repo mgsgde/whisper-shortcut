@@ -695,6 +695,72 @@ class SettingsViewModel: ObservableObject {
     }
   }
 
+  /// Called when Settings appears or when .autoImprovementSuggestionsReady is received.
+  /// Loads pending kinds from scheduler and shows the first suggestion sheet if any.
+  func checkAndShowPendingAutoImprovement() {
+    let pending = AutoPromptImprovementScheduler.shared.loadPendingKinds()
+    guard !pending.isEmpty else { return }
+    pendingAutoImprovementQueue = pending
+    isAutoImprovementSheet = true
+    showNextPendingSuggestion(kind: pending[0])
+  }
+
+  /// Disables auto-improvement (interval = never), turns off user context logging, clears pending, and dismisses the sheet.
+  func disableAutoImprovementAndLogging() {
+    UserDefaults.standard.set(AutoImprovementInterval.never.rawValue, forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
+    UserDefaults.standard.set(false, forKey: UserDefaultsKeys.userContextLoggingEnabled)
+    AutoPromptImprovementScheduler.shared.clearPendingKinds()
+    pendingAutoImprovementQueue = []
+    isAutoImprovementSheet = false
+    showGenerationCompareSheet = false
+    pendingSheetKind = nil
+    suggestedTextForGeneration = ""
+    currentTextForGenerationSheet = ""
+    DebugLogger.log("AUTO-IMPROVEMENT: Disabled auto-improvement and logging per user request")
+  }
+
+  private func removeCurrentFromQueue() {
+    guard !pendingAutoImprovementQueue.isEmpty else { return }
+    pendingAutoImprovementQueue.removeFirst()
+    if pendingAutoImprovementQueue.isEmpty {
+      AutoPromptImprovementScheduler.shared.clearPendingKinds()
+    } else if let data = try? JSONEncoder().encode(pendingAutoImprovementQueue) {
+      UserDefaults.standard.set(data, forKey: UserDefaultsKeys.pendingAutoImprovementKinds)
+    }
+  }
+
+  private func showNextPendingSuggestion(kind: GenerationKind) {
+    let contextDir = UserContextLogger.shared.directoryURL
+    let suggested: String
+    let current: String
+
+    switch kind {
+    case .dictation:
+      let fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
+      suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      current = data.customPromptText
+    case .promptMode:
+      let fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
+      suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      current = data.promptModeSystemPrompt
+    case .promptAndRead:
+      let fileURL = contextDir.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
+      suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      current = data.promptAndReadSystemPrompt
+    case .userContext:
+      let suggestedURL = contextDir.appendingPathComponent("suggested-user-context.md")
+      let currentURL = contextDir.appendingPathComponent("user-context.md")
+      suggested = (try? String(contentsOf: suggestedURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      current = (try? String(contentsOf: currentURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    pendingSheetKind = kind
+    suggestedTextForGeneration = suggested.isEmpty ? "(No suggestion generated)" : suggested
+    currentTextForGenerationSheet = current
+    showGenerationCompareSheet = true
+    isAutoImprovementSheet = true
+  }
+
   func dismissGenerationSheet() {
     // If this was an auto-improvement sheet, move to next in queue
     if isAutoImprovementSheet {
