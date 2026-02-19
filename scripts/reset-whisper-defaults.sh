@@ -1,9 +1,20 @@
 #!/bin/bash
 # reset-whisper-defaults.sh
-# Script to reset WhisperShortcut UserDefaults for testing
+# Resets WhisperShortcut to factory defaults.
+#
+# What gets reset:
+#   - UserDefaults (all settings: prompts, shortcuts, notifications, etc.)
+#   - Application Support: WhisperShortcut/UserContext/ (user-context.md,
+#     suggested prompts, interaction logs for "Generate with AI")
+#
+# What is NOT touched:
+#   - Keychain (Google API key is kept)
+#   - ~/Documents/WhisperShortcut/ (live meeting transcripts)
 
-echo "🎙️ WhisperShortcut UserDefaults Reset Script"
-echo "============================================="
+set -e
+
+echo "🎙️ WhisperShortcut Reset to Defaults"
+echo "====================================="
 
 # Check if we're on macOS
 if [[ "$OSTYPE" != "darwin"* ]]; then
@@ -11,39 +22,45 @@ if [[ "$OSTYPE" != "darwin"* ]]; then
     exit 1
 fi
 
-# Bundle identifier for WhisperShortcut
 BUNDLE_ID="com.magnusgoedde.whispershortcut"
+CONTEXT_DIR="$HOME/Library/Application Support/WhisperShortcut/UserContext"
+PLIST_PATH="$HOME/Library/Preferences/$BUNDLE_ID.plist"
 
+# --- UserDefaults ---
+echo ""
 echo "📋 Current UserDefaults for $BUNDLE_ID:"
 echo "----------------------------------------"
-
-# Show current UserDefaults
 if defaults read "$BUNDLE_ID" 2>/dev/null; then
     echo ""
-    echo "✅ Found UserDefaults for $BUNDLE_ID"
+    echo "✅ Found UserDefaults"
 else
-    echo "ℹ️  No UserDefaults found for $BUNDLE_ID"
+    echo "ℹ️  No UserDefaults found"
 fi
 
 echo ""
 echo "🗑️  Resetting UserDefaults..."
+defaults delete "$BUNDLE_ID" 2>/dev/null || true
 
-# Delete all UserDefaults for the app
-defaults delete "$BUNDLE_ID" 2>/dev/null
-
-# Also try to remove the plist file if it exists
-PLIST_PATH="$HOME/Library/Preferences/$BUNDLE_ID.plist"
-if [ -f "$PLIST_PATH" ]; then
-    echo "📄 Removing plist file: $PLIST_PATH"
+if [[ -f "$PLIST_PATH" ]]; then
+    echo "📄 Removing plist: $PLIST_PATH"
     rm "$PLIST_PATH"
 fi
 
+# --- Application Support (UserContext) ---
 echo ""
-echo "✅ Done! All UserDefaults cleared for $BUNDLE_ID"
+echo "🗑️  Resetting User Context / suggested prompts..."
+if [[ -d "$CONTEXT_DIR" ]]; then
+    rm -rf "$CONTEXT_DIR"
+    echo "✅ Removed: $CONTEXT_DIR"
+else
+    echo "ℹ️  No UserContext directory found"
+fi
+
+echo ""
+echo "✅ Done. Reset: UserDefaults + UserContext."
 echo ""
 echo "🔄 Next steps:"
 echo "   1. Restart WhisperShortcut to see the changes"
-echo "   2. The app will behave as if it's the first time running"
+echo "   2. System prompts and settings will use app defaults"
 echo ""
-echo "💡 Tip: You can also use this command manually:"
-echo "   defaults delete $BUNDLE_ID"
+echo "💡 Not reset: API key (Keychain), live meeting transcripts (Documents)."
