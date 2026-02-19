@@ -127,6 +127,23 @@ Settings tabs in `WhisperShortcut/Settings/Tabs/`:
 - `ReadAloudSettingsTab.swift` - TTS settings
 - `PromptAndReadSettingsTab.swift` - Combined mode settings
 
+## Cursor Skills (Project)
+
+| Skill | When to use | Action |
+|-------|-------------|--------|
+| **push-after-rebuild** | User says push, commit, deploy to git | 1. Run `bash scripts/rebuild-and-restart.sh` 2. Only if build succeeds → commit & push |
+| **rebuild-after-change** | After any code change (Swift, features, bugs) | Run `bash scripts/rebuild-and-restart.sh` once at end of edits |
+| **view-logs-via-bash** | Debugging, errors, user asks for logs | Use `bash scripts/logs.sh` (e.g. `-t 2m`, `-f 'PROMPT-MODE'`) — no direct log file access |
+
+## Cursor Rules (`.cursor/rules/index.mdc`, always applied)
+
+- **KISS**: Prefer simplest, most robust solution.
+- **Rebuild**: After every code change run `bash scripts/rebuild-and-restart.sh`.
+- **DebugLogger only**: Use `DebugLogger.log()`, `logError()`, etc.; never `print()`, `NSLog()`, `os_log()`.
+- **No automated tests**: Tests run manually in Xcode.
+- **Understand first**: Clarify requirements before implementing.
+- **Logs for debugging**: Check logs with `bash scripts/logs.sh -t 2m`; use DebugLogger categories (`logNetwork`, `logAudio`, `logSpeech`, …).
+
 ## Testing
 
 Tests are executed manually in Xcode - do not run automated tests from CLI.

@@ -1,0 +1,33 @@
+---
+alwaysApply: true
+---
+
+## 📋 Project Overview
+
+**WhisperShortcut** is a macOS menu bar app for real-time audio transcription and AI voice workflows (Speech-to-Text, Speech-to-Prompt, Read Aloud, Prompt & Read). Xcode project, not SPM.
+
+**Stack**: Swift 5.9+, Cocoa, AVFoundation, UserNotifications · **Target**: macOS 15.5+
+
+## 🏗️ Architecture (Summary)
+
+- **State machine**: Single source of truth is `AppState` in `AppState.swift` (`idle`, `recording`, `processing`, `playback`, `feedback`). Always transition via AppState; never manipulate UI or flags directly.
+- **Orchestration**: `MenuBarController` owns services and shortcuts; `SpeechService` holds the main logic (transcribe, executePrompt, executePromptWithVoiceResponse).
+- **Core services**: AudioRecorder, TTSService, AudioPlaybackService, ClipboardManager, KeychainManager, AudioChunkingService.
+- **Patterns**: Use `DebugLogger` only (no `print`/`NSLog`/`os_log`). UI updates on main thread (MainActor). Support cancellation in async work (`Task.checkCancellation()`, cancel methods). Typed errors + `SpeechErrorFormatter` for user messages.
+
+## ⚡ Critical Rules
+
+- **KISS**: Prefer the simplest, most robust solution.
+- **Rebuild after changes**: Run `bash scripts/rebuild-and-restart.sh` after every code change.
+- **Logging in code**: Use only `DebugLogger` methods; never `print()`, `NSLog()`, or `os_log()`. For **viewing** logs use skill **view-logs-via-bash**. For **debugging or adding instrumentation** (and full flow: repro plan → analyze logs) use skill **debugging-workflow**.
+- **Tests**: Do not run tests from the agent; user runs them manually in Xcode.
+
+## 🗣️ Communication
+
+- **Understand first**: Clarify requirements and confirm understanding before implementing.
+
+## 🚀 Run / Rebuild
+
+```bash
+bash ./scripts/rebuild-and-restart.sh
+```

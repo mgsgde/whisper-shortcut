@@ -135,7 +135,13 @@ developer-id-cert.p12
 .env
 .claude/
 
-# Cursor: Inhalte ignorieren, aber Plans tracken (Parent darf nicht ignoriert sein)
+# Cursor: Rules, Skills, Commands und Plans teilen; Rest ignorieren
 .cursor/*
+!.cursor/commands/
+!.cursor/commands/**
 !.cursor/plans/
 !.cursor/plans/**
+!.cursor/rules/
+!.cursor/rules/**
+!.cursor/skills/
+!.cursor/skills/**
