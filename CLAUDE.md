@@ -18,9 +18,6 @@ WhisperShortcut is a macOS menu bar application for real-time audio transcriptio
 # Build and restart app (MANDATORY after every code change)
 bash scripts/rebuild-and-restart.sh
 
-# Clean build (fixes cache issues)
-bash scripts/clean-build.sh
-
 # Install to /Applications
 bash install.sh
 

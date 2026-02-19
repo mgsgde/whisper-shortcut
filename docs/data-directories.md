@@ -14,7 +14,7 @@ When the app is not sandboxed (e.g. run from Xcode with sandbox disabled), it st
 | **Meetings/** | Live meeting transcript files (`Meeting-YYYY-MM-DD-HHmmss.txt`) |
 | **WhisperKit/** | Offline Whisper models (downloaded via the app) |
 
-**Scripts** that reset or inspect app data (e.g. `reset-whisper-defaults.sh`, `check-interaction-count.sh`) only need to consider this **one** path.
+**Scripts** that reset or inspect app data (e.g. `reset-whisper-defaults.sh`) only need to consider this **one** path.
 
 **UserDefaults** are separate: they live in `~/Library/Preferences/com.magnusgoedde.whispershortcut.plist` (or in the app’s container when sandboxed). The reset script `reset-whisper-defaults.sh` uses `defaults delete com.magnusgoedde.whispershortcut`, which applies to the active preference domain (sandbox vs normal depending on how the app was run).
 
