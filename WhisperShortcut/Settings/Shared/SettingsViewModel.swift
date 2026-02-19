@@ -92,12 +92,7 @@ class SettingsViewModel: ObservableObject {
     }
 
     // Load read aloud playback rate (clamp to valid range)
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.readAloudPlaybackRate) != nil {
-      let saved = UserDefaults.standard.float(forKey: UserDefaultsKeys.readAloudPlaybackRate)
-      data.readAloudPlaybackRate = min(max(saved, SettingsDefaults.readAloudPlaybackRateMin), SettingsDefaults.readAloudPlaybackRateMax)
-    } else {
-      data.readAloudPlaybackRate = SettingsDefaults.readAloudPlaybackRate
-    }
+    data.readAloudPlaybackRate = SettingsDefaults.clampedReadAloudPlaybackRate()
 
     // Load Prompt & Read specific settings (with migration from Toggle Prompting if not set)
     if let savedPromptAndReadModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadModel),
@@ -168,14 +163,7 @@ class SettingsViewModel: ObservableObject {
     }
 
     // Load recording safeguard: confirm above duration (0 = never)
-    let savedConfirmDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.confirmAboveDurationSeconds)
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.confirmAboveDurationSeconds) != nil,
-       let parsed = ConfirmAboveDuration(rawValue: savedConfirmDuration)
-    {
-      data.confirmAboveDuration = parsed
-    } else {
-      data.confirmAboveDuration = SettingsDefaults.confirmAboveDuration
-    }
+    data.confirmAboveDuration = ConfirmAboveDuration.loadFromUserDefaults()
 
     // Load auto-paste setting
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.autoPasteAfterDictation) != nil {
@@ -192,13 +180,7 @@ class SettingsViewModel: ObservableObject {
       data.liveMeetingChunkInterval = SettingsDefaults.liveMeetingChunkInterval
     }
     
-    let savedSafeguardDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds) != nil,
-       let parsed = MeetingSafeguardDuration(rawValue: savedSafeguardDuration) {
-      data.liveMeetingSafeguardDuration = parsed
-    } else {
-      data.liveMeetingSafeguardDuration = SettingsDefaults.liveMeetingSafeguardDuration
-    }
+    data.liveMeetingSafeguardDuration = MeetingSafeguardDuration.loadFromUserDefaults()
     
     // Load Google API key
     data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""

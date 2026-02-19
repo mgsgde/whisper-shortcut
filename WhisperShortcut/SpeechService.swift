@@ -76,10 +76,6 @@ class SpeechService {
     }
   }
 
-  func getCurrentModel() -> TranscriptionModel {
-    return selectedTranscriptionModel
-  }
-  
   // MARK: - Model Information for Notifications
   func getTranscriptionModelInfo() async -> String {
     if selectedTranscriptionModel.isOffline {
@@ -771,7 +767,8 @@ class SpeechService {
     let apiStartTime = CFAbsoluteTimeGetCurrent()
 
     // Only check API key for Gemini models (offline models bypass this)
-    guard let apiKey = self.googleAPIKey, !apiKey.isEmpty else {
+    guard keychainManager.hasValidGoogleAPIKey(),
+          let apiKey = self.googleAPIKey else {
       DebugLogger.log("GEMINI-TRANSCRIPTION: ERROR - No Google API key found in keychain")
       throw TranscriptionError.noGoogleAPIKey
     }

@@ -81,17 +81,5 @@ class ReviewPrompter {
     UserDefaults.standard.set(0, forKey: UserDefaultsKeys.successfulOperationsCount)
     DebugLogger.log("REVIEW: Counter reset to 0")
   }
-  
-  /// Get the current count (for debugging/testing purposes)
-  func getCurrentCount() -> Int {
-    return UserDefaults.standard.integer(forKey: UserDefaultsKeys.successfulOperationsCount)
-  }
-  
-  /// Manually reset the counter and last prompt date (for testing purposes)
-  func manualReset() {
-    resetCounter()
-    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.lastReviewPromptDate)
-    DebugLogger.log("REVIEW: Manual counter and date reset performed")
-  }
 }
 

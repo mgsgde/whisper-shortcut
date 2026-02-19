@@ -80,7 +80,7 @@ class AutoPromptImprovementScheduler {
     for focus in focuses {
       do {
         DebugLogger.log("AUTO-IMPROVEMENT: Running derivation for \(focus)")
-        _ = try await derivation.updateFromLogs(focus: focus)
+        try await derivation.updateFromLogs(focus: focus)
 
         // Check if a suggestion was generated
         if hasSuggestion(for: focus) {

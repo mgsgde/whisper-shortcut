@@ -11,6 +11,8 @@ protocol KeychainManaging {
   func getGoogleAPIKey() -> String?
   func deleteGoogleAPIKey() -> Bool
   func hasGoogleAPIKey() -> Bool
+  /// Returns true if a non-empty Google API key is stored.
+  func hasValidGoogleAPIKey() -> Bool
 }
 
 class KeychainManager: KeychainManaging {
@@ -140,5 +142,10 @@ class KeychainManager: KeychainManaging {
 
   func hasGoogleAPIKey() -> Bool {
     return hasKey(accountName: Constants.googleAccountName, cache: cachedGoogleAPIKey)
+  }
+
+  func hasValidGoogleAPIKey() -> Bool {
+    guard let key = getGoogleAPIKey() else { return false }
+    return !key.isEmpty
   }
 }

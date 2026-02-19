@@ -90,9 +90,4 @@ actor RateLimitCoordinator {
             consecutiveRateLimits = 0
         }
     }
-
-    /// Get current pause status for logging
-    func isPaused() -> Bool {
-        return pauseUntil > Date()
-    }
 }

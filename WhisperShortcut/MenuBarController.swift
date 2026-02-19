@@ -518,13 +518,7 @@ class MenuBarController: NSObject {
     appState = .recording(.liveMeeting)
 
     // Schedule duration safeguard if enabled
-    let safeguardThreshold: MeetingSafeguardDuration
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds) != nil,
-       let t = MeetingSafeguardDuration(rawValue: UserDefaults.standard.double(forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)) {
-      safeguardThreshold = t
-    } else {
-      safeguardThreshold = SettingsDefaults.liveMeetingSafeguardDuration
-    }
+    let safeguardThreshold = MeetingSafeguardDuration.loadFromUserDefaults()
     if safeguardThreshold != .never {
       liveMeetingSafeguardTimer?.invalidate()
       liveMeetingSafeguardTimer = Timer.scheduledTimer(withTimeInterval: safeguardThreshold.rawValue, repeats: false) { [weak self] _ in
@@ -983,13 +977,7 @@ class MenuBarController: NSObject {
       }
       
       // Read playback rate from settings (clamp to valid range)
-      let rate: Float
-      if UserDefaults.standard.object(forKey: UserDefaultsKeys.readAloudPlaybackRate) != nil {
-        let saved = UserDefaults.standard.float(forKey: UserDefaultsKeys.readAloudPlaybackRate)
-        rate = min(max(saved, SettingsDefaults.readAloudPlaybackRateMin), SettingsDefaults.readAloudPlaybackRateMax)
-      } else {
-        rate = SettingsDefaults.readAloudPlaybackRate
-      }
+      let rate = SettingsDefaults.clampedReadAloudPlaybackRate()
 
       // AVAudioUnitTimePitch does not accept Int16; use Float32 for rate != 1.0 to avoid crash on connect.
       let playbackBuffer: AVAudioPCMBuffer
@@ -1428,14 +1416,7 @@ extension MenuBarController: AudioRecorderDelegate {
       }
 
       // Recording safeguard: confirm above duration (same pattern as AccessibilityPermissionManager)
-      let threshold: ConfirmAboveDuration
-      if UserDefaults.standard.object(forKey: UserDefaultsKeys.confirmAboveDurationSeconds) != nil,
-         let t = ConfirmAboveDuration(rawValue: UserDefaults.standard.double(forKey: UserDefaultsKeys.confirmAboveDurationSeconds))
-      {
-        threshold = t
-      } else {
-        threshold = SettingsDefaults.confirmAboveDuration
-      }
+      let threshold = ConfirmAboveDuration.loadFromUserDefaults()
 
       if threshold != .never,
          let duration = self.speechService.getAudioDuration(url: audioURL),

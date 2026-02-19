@@ -120,11 +120,6 @@ final class PromptConversationHistory {
     }
   }
 
-  /// Returns the total number of turns across all modes.
-  func totalTurnCount() -> Int {
-    return promptModeHistory.count + promptAndReadHistory.count
-  }
-
   /// Returns true if the specified mode has an active (non-expired) conversation history.
   func hasActiveHistory(for mode: PromptMode) -> Bool {
     checkAndClearIfInactive(mode: mode)

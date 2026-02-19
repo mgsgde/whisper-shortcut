@@ -223,6 +223,15 @@ enum ConfirmAboveDuration: Double, CaseIterable {
   var isRecommended: Bool {
     return self == .twoMinutes
   }
+
+  /// Loads value from UserDefaults or returns SettingsDefaults.confirmAboveDuration.
+  static func loadFromUserDefaults() -> ConfirmAboveDuration {
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.confirmAboveDurationSeconds) != nil,
+       let t = ConfirmAboveDuration(rawValue: UserDefaults.standard.double(forKey: UserDefaultsKeys.confirmAboveDurationSeconds)) {
+      return t
+    }
+    return SettingsDefaults.confirmAboveDuration
+  }
 }
 
 // MARK: - Meeting Safeguard Duration (Live Meeting)
@@ -239,6 +248,15 @@ enum MeetingSafeguardDuration: Double, CaseIterable {
     case .ninetyMinutes: return "90 minutes"
     case .twoHours: return "2 hours"
     }
+  }
+
+  /// Loads value from UserDefaults or returns SettingsDefaults.liveMeetingSafeguardDuration.
+  static func loadFromUserDefaults() -> MeetingSafeguardDuration {
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds) != nil,
+       let t = MeetingSafeguardDuration(rawValue: UserDefaults.standard.double(forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)) {
+      return t
+    }
+    return SettingsDefaults.liveMeetingSafeguardDuration
   }
 }
 
@@ -396,6 +414,15 @@ struct SettingsDefaults {
   static let readAloudPlaybackRateMin: Float = 0.5
   static let readAloudPlaybackRateMax: Float = 2.0
   static let readAloudPlaybackRate: Float = 1.0
+
+  /// Returns the read-aloud playback rate from UserDefaults, clamped to valid range, or default if not set.
+  static func clampedReadAloudPlaybackRate() -> Float {
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.readAloudPlaybackRate) != nil {
+      let saved = UserDefaults.standard.float(forKey: UserDefaultsKeys.readAloudPlaybackRate)
+      return min(max(saved, readAloudPlaybackRateMin), readAloudPlaybackRateMax)
+    }
+    return readAloudPlaybackRate
+  }
 
   // MARK: - Whisper Language Settings
   static let whisperLanguage = WhisperLanguage.auto

@@ -72,11 +72,6 @@ class LiveMeetingRecorder: NSObject {
   
   // MARK: - Public Methods
   
-  /// Updates the chunk duration for future chunks
-  func updateChunkDuration(_ duration: TimeInterval) {
-    self.chunkDuration = duration
-  }
-  
   /// Starts a new live meeting recording session
   func startSession() {
     DebugLogger.log("LIVE-MEETING: Starting session with \(chunkDuration)s chunks")

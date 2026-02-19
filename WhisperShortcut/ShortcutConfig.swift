@@ -275,11 +275,6 @@ class ShortcutConfigManager {
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)
   }
 
-  func resetToDefaults() {
-    let defaultConfig = ShortcutConfig.default
-    saveConfiguration(defaultConfig)
-  }
-
   // MARK: - Private Helper Methods
   private func loadShortcut(for key: String) -> ShortcutDefinition? {
     guard let data = userDefaults.data(forKey: key),

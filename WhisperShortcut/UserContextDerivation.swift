@@ -17,13 +17,6 @@ class UserContextDerivation {
     return transcriptionModel.apiEndpoint
   }
 
-  /// Result of loading and sampling logs: aggregated text plus stats for UI feedback.
-  struct LoadedLogs {
-    let text: String
-    let entryCount: Int
-    let charCount: Int
-  }
-
   /// Result of focused load: primary (target mode) and secondary (user context + current prompt + other modes capped).
   private struct FocusedLoadResult {
     let primaryText: String
@@ -46,9 +39,10 @@ class UserContextDerivation {
   // MARK: - Main Entry Point
 
   /// Analyzes interaction logs and derives the output for the given focus (one section only).
-  /// Returns loaded log stats for UI feedback. Throws if no API key or if the Gemini request fails.
-  func updateFromLogs(focus: GenerationKind) async throws -> LoadedLogs {
-    guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else {
+  /// Throws if no API key or if the Gemini request fails.
+  func updateFromLogs(focus: GenerationKind) async throws {
+    guard KeychainManager.shared.hasValidGoogleAPIKey(),
+          let apiKey = KeychainManager.shared.getGoogleAPIKey() else {
       throw TranscriptionError.noGoogleAPIKey
     }
 
@@ -89,16 +83,6 @@ class UserContextDerivation {
     try writeOutputFile(analysisResult: analysisResult, focus: focus)
 
     DebugLogger.logSuccess("USER-CONTEXT-DERIVATION: Context update completed focus=\(focus)")
-    return LoadedLogs(
-      text: loaded.primaryText + (loaded.secondaryText.isEmpty ? "" : "\n\n" + loaded.secondaryText),
-      entryCount: loaded.primaryEntryCount,
-      charCount: loaded.primaryCharCount + loaded.secondaryCharCount
-    )
-  }
-
-  /// Legacy entry point: full user-context derivation (same as updateFromLogs(focus: .userContext)).
-  func updateContextFromLogs() async throws -> LoadedLogs {
-    try await updateFromLogs(focus: .userContext)
   }
 
   // MARK: - Load Existing Context (for refinement)
