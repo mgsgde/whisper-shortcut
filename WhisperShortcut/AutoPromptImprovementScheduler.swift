@@ -144,18 +144,15 @@ class AutoPromptImprovementScheduler {
         clearPendingKinds()
 
         if !appliedKinds.isEmpty {
-          await MainActor.run {
-            let kindNames = appliedKinds.map { kind -> String in
-              switch kind {
-              case .userContext: return "User Context"
-              case .dictation: return "Dictation Prompt"
-              case .promptMode: return "Dictate Prompt System Prompt"
-              case .promptAndRead: return "Prompt & Read System Prompt"
-              }
+          let kindNames = appliedKinds.map { kind -> String in
+            switch kind {
+            case .userContext: return "User Context"
+            case .dictation: return "Dictation Prompt"
+            case .promptMode: return "Dictate Prompt System Prompt"
+            case .promptAndRead: return "Prompt & Read System Prompt"
             }
-            let message = "Auto-improved: \(kindNames.joined(separator: ", ")). Check Settings to review or revert."
-            PopupNotificationWindow.showTranscriptionResponse(message)
           }
+          DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied: \(kindNames.joined(separator: ", "))")
         }
       } else {
         // Manual mode: save pending kinds and open Settings for review
@@ -165,17 +162,6 @@ class AutoPromptImprovementScheduler {
         await MainActor.run {
           SettingsManager.shared.showSettings()
           NotificationCenter.default.post(name: .autoImprovementSuggestionsReady, object: nil)
-
-          let kindNames = pendingKinds.map { kind -> String in
-            switch kind {
-            case .userContext: return "User Context"
-            case .dictation: return "Dictation Prompt"
-            case .promptMode: return "Dictate Prompt System Prompt"
-            case .promptAndRead: return "Prompt & Read System Prompt"
-            }
-          }
-          let message = "New suggestions for: \(kindNames.joined(separator: ", ")). Open Settings to review."
-          PopupNotificationWindow.showTranscriptionResponse(message)
         }
       }
     } else {
