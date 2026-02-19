@@ -357,7 +357,9 @@ class UserContextDerivation {
       4. Output: Return only the clean transcribed text. No commentary, no metadata.
 
       If a current prompt is provided, refine it — do not rewrite from scratch. Be concise: only include rules that \
-      the data supports.
+      the data supports. If the current prompt contains rules that the data suggests are wrong or harmful \
+      (e.g. recurring recognition errors, over-specific language rules), remove or correct those rules — do not \
+      reinforce them just because the model followed them.
 
       Example structure (do not copy content, only the format):
 
@@ -410,7 +412,10 @@ class UserContextDerivation {
          - Domain-specific guidance if the data shows recurring patterns.
 
       If a current prompt is provided, refine it based on actual usage patterns — do not rewrite from scratch. \
-      Be concise: only include rules clearly supported by the data.
+      Be concise: only include rules clearly supported by the data. If the current prompt contains rules that the \
+      data suggests are wrong or harmful (e.g. modelResponse consistently misses user intent, or a language/format \
+      rule leads to undesired outcomes), remove or correct those rules — do not reinforce them just because the \
+      model followed them.
 
       Example structure (do not copy content, only the format):
 
@@ -463,7 +468,9 @@ class UserContextDerivation {
          - Language preferences observed in the data.
 
       If a current prompt is provided, refine it based on actual usage patterns — do not rewrite from scratch. \
-      Be concise: only include rules clearly supported by the data.
+      Be concise: only include rules clearly supported by the data. If the current prompt contains rules that the \
+      data suggests are wrong or harmful (e.g. modelResponse misses user intent, or a rule leads to poor TTS \
+      outcomes), remove or correct those rules — do not reinforce them just because the model followed them.
 
       Example structure (do not copy content, only the format):
 
