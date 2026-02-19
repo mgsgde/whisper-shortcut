@@ -1,26 +1,34 @@
 import SwiftUI
 
-/// Unified model selection component for Prompt Mode (GPT-Audio and Gemini multimodal models)
+/// Unified model selection component for Prompt Mode (GPT-Audio and Gemini multimodal models) and Smart Improvement.
 struct PromptModelSelectionView: View {
   let title: String
+  /// When nil, uses the default Prompt Mode subtitle.
+  let subtitle: String?
   @Binding var selectedModel: PromptModel
   let onModelChanged: (() -> Void)?
 
   init(
     title: String,
+    subtitle: String? = nil,
     selectedModel: Binding<PromptModel>,
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
+    self.subtitle = subtitle
     self._selectedModel = selectedModel
     self.onModelChanged = onModelChanged
+  }
+
+  private var effectiveSubtitle: String {
+    subtitle ?? "Choose between GPT-Audio and Gemini multimodal models for direct audio input processing"
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: title,
-        subtitle: "Choose between GPT-Audio and Gemini multimodal models for direct audio input processing"
+        subtitle: effectiveSubtitle
       )
 
       // Model Selection Grid

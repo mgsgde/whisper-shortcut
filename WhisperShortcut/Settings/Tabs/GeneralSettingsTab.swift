@@ -579,6 +579,21 @@ struct GeneralSettingsTab: View {
             .fixedSize(horizontal: false, vertical: true)
         }
 
+        // Model selection for Smart Improvement and "Generate with AI"
+        PromptModelSelectionView(
+          title: "🧠 Model for Smart Improvement",
+          subtitle: "Used for automatic Smart Improvement and for \"Generate with AI\" in settings.",
+          selectedModel: Binding(
+            get: { viewModel.data.selectedImprovementModel },
+            set: { newValue in
+              var d = viewModel.data
+              d.selectedImprovementModel = newValue
+              viewModel.data = d
+            }
+          ),
+          onModelChanged: nil
+        )
+
         Button("Open interactions folder") {
           openInteractionsDirectoryInFinder()
         }

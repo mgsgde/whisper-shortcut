@@ -139,6 +139,14 @@ class SettingsViewModel: ObservableObject {
       data.selectedPromptAndReadModel = data.selectedPromptModel
     }
 
+    if let savedImprovementModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel),
+      let savedImprovementModel = PromptModel(rawValue: savedImprovementModelString)
+    {
+      data.selectedImprovementModel = savedImprovementModel
+    } else {
+      data.selectedImprovementModel = SettingsDefaults.selectedImprovementModel
+    }
+
     // Load Prompt & Read system prompt (with fallback to default)
     data.promptAndReadSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
       ?? AppConstants.defaultPromptAndReadSystemPrompt
@@ -395,6 +403,7 @@ class SettingsViewModel: ObservableObject {
       data.selectedTranscriptionModel.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
     UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
     UserDefaults.standard.set(data.selectedPromptAndReadModel.rawValue, forKey: UserDefaultsKeys.selectedPromptAndReadModel)
+    UserDefaults.standard.set(data.selectedImprovementModel.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
 
     // Save prompts
     UserDefaults.standard.set(data.customPromptText, forKey: UserDefaultsKeys.customPromptText)

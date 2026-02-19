@@ -60,6 +60,7 @@ enum UserDefaultsKeys {
   static let userContextMaxTotalChars = "userContextMaxTotalChars"
 
   // MARK: - Auto-Improvement Settings
+  static let selectedImprovementModel = "selectedImprovementModel"
   static let autoPromptImprovementIntervalDays = "autoPromptImprovementIntervalDays"
   static let lastAutoImprovementRunDate = "lastAutoImprovementRunDate"
   static let pendingAutoImprovementKinds = "pendingAutoImprovementKinds"

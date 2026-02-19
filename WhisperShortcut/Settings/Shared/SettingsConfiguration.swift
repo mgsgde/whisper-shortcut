@@ -415,6 +415,7 @@ struct SettingsDefaults {
   static let selectedTranscriptionModel = TranscriptionModel.gemini20Flash
   static let selectedPromptModel = PromptModel.gemini3Flash
   static let selectedPromptAndReadModel = PromptModel.gemini3Flash
+  static let selectedImprovementModel = PromptModel.gemini25Flash
   static let customPromptText = ""
   static let dictationDifficultWords = ""
   static let promptModeSystemPrompt = ""
@@ -477,6 +478,7 @@ struct SettingsData {
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
   var selectedPromptModel: PromptModel = SettingsDefaults.selectedPromptModel
   var selectedPromptAndReadModel: PromptModel = SettingsDefaults.selectedPromptAndReadModel
+  var selectedImprovementModel: PromptModel = SettingsDefaults.selectedImprovementModel
   var customPromptText: String = SettingsDefaults.customPromptText
   var dictationDifficultWords: String = SettingsDefaults.dictationDifficultWords
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
