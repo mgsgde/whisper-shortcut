@@ -840,7 +840,7 @@ struct GeneralSettingsTab: View {
             .foregroundColor(.red)
             .opacity(0.9)
 
-          Text("Reset all to defaults")
+          Text("Reset all to defaults (app will quit)")
             .font(.body)
             .fontWeight(.medium)
             .foregroundColor(.red)
