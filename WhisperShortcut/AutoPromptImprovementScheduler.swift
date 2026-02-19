@@ -1,38 +1,11 @@
 import Foundation
 
-/// Notification name for when auto-improvement suggestions are ready
-extension Notification.Name {
-  static let autoImprovementSuggestionsReady = Notification.Name("autoImprovementSuggestionsReady")
-}
-
 /// Service that automatically runs system prompt improvements at configured intervals.
 @MainActor
 class AutoPromptImprovementScheduler {
   static let shared = AutoPromptImprovementScheduler()
 
   private init() {}
-
-  /// Checks if there are pending suggestions from a previous run (e.g., app was closed during generation).
-  /// Should be called on app launch to show pending suggestions.
-  func checkForPendingSuggestions() -> Bool {
-    let pendingKinds = loadPendingKinds()
-    return !pendingKinds.isEmpty
-  }
-
-  /// Loads pending improvement kinds from persistent storage.
-  func loadPendingKinds() -> [GenerationKind] {
-    guard let data = UserDefaults.standard.data(forKey: UserDefaultsKeys.pendingAutoImprovementKinds),
-          let kinds = try? JSONDecoder().decode([GenerationKind].self, from: data) else {
-      return []
-    }
-    return kinds
-  }
-
-  /// Clears pending improvement kinds from storage.
-  func clearPendingKinds() {
-    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.pendingAutoImprovementKinds)
-    DebugLogger.log("AUTO-IMPROVEMENT: Cleared pending kinds")
-  }
 
   /// Increments the successful-dictation counter and triggers an improvement run
   /// when the threshold is reached AND the cooldown interval has passed.
@@ -122,47 +95,29 @@ class AutoPromptImprovementScheduler {
       }
     }
 
-    // Handle generated suggestions
+    // Apply generated suggestions directly (no compare sheet)
     if !pendingKinds.isEmpty {
-      let autoApply = UserDefaults.standard.object(forKey: UserDefaultsKeys.autoApplyImprovements) == nil
-        ? true  // default to true if not set
-        : UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoApplyImprovements)
+      DebugLogger.logSuccess("AUTO-IMPROVEMENT: Generated \(pendingKinds.count) suggestions — auto-applying")
 
-      if autoApply {
-        // Auto-apply mode: apply suggestions directly
-        DebugLogger.logSuccess("AUTO-IMPROVEMENT: Generated \(pendingKinds.count) suggestions — auto-applying")
+      var appliedKinds: [GenerationKind] = []
+      for kind in pendingKinds {
+        if let suggested = readSuggestion(for: kind), !suggested.isEmpty {
+          applySuggestion(suggested, for: kind)
+          appliedKinds.append(kind)
+          DebugLogger.logSuccess("AUTO-IMPROVEMENT: Auto-applied \(kind)")
+        }
+      }
 
-        var appliedKinds: [GenerationKind] = []
-        for kind in pendingKinds {
-          if let suggested = readSuggestion(for: kind), !suggested.isEmpty {
-            applySuggestion(suggested, for: kind)
-            appliedKinds.append(kind)
-            DebugLogger.logSuccess("AUTO-IMPROVEMENT: Auto-applied \(kind)")
+      if !appliedKinds.isEmpty {
+        let kindNames = appliedKinds.map { kind -> String in
+          switch kind {
+          case .userContext: return "User Context"
+          case .dictation: return "Dictation Prompt"
+          case .promptMode: return "Dictate Prompt System Prompt"
+          case .promptAndRead: return "Prompt & Read System Prompt"
           }
         }
-
-        clearPendingKinds()
-
-        if !appliedKinds.isEmpty {
-          let kindNames = appliedKinds.map { kind -> String in
-            switch kind {
-            case .userContext: return "User Context"
-            case .dictation: return "Dictation Prompt"
-            case .promptMode: return "Dictate Prompt System Prompt"
-            case .promptAndRead: return "Prompt & Read System Prompt"
-            }
-          }
-          DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied: \(kindNames.joined(separator: ", "))")
-        }
-      } else {
-        // Manual mode: save pending kinds and open Settings for review
-        savePendingKinds(pendingKinds)
-        DebugLogger.logSuccess("AUTO-IMPROVEMENT: Generated \(pendingKinds.count) suggestions — awaiting manual review")
-
-        await MainActor.run {
-          SettingsManager.shared.showSettings()
-          NotificationCenter.default.post(name: .autoImprovementSuggestionsReady, object: nil)
-        }
+        DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied: \(kindNames.joined(separator: ", "))")
       }
     } else {
       DebugLogger.log("AUTO-IMPROVEMENT: No suggestions generated")
@@ -198,13 +153,6 @@ class AutoPromptImprovementScheduler {
     }
 
     return !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-  }
-
-  private func savePendingKinds(_ kinds: [GenerationKind]) {
-    if let data = try? JSONEncoder().encode(kinds) {
-      UserDefaults.standard.set(data, forKey: UserDefaultsKeys.pendingAutoImprovementKinds)
-      DebugLogger.log("AUTO-IMPROVEMENT: Saved \(kinds.count) pending kinds")
-    }
   }
 
   private func readSuggestion(for kind: GenerationKind) -> String? {

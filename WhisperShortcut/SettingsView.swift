@@ -24,20 +24,11 @@ struct SettingsView: View {
       Text(viewModel.data.errorMessage)
         .textSelection(.enabled)
     }
-    .sheet(isPresented: $viewModel.showGenerationCompareSheet) {
-      generationCompareSheetContent
-    }
     .onAppear {
       setupWindow()
-      // Check for pending auto-improvement suggestions
-      viewModel.checkAndShowPendingAutoImprovement()
     }
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
       setupFloatingWindow()
-    }
-    .onReceive(NotificationCenter.default.publisher(for: .autoImprovementSuggestionsReady)) { _ in
-      // When scheduler posts notification, check and show pending suggestions
-      viewModel.checkAndShowPendingAutoImprovement()
     }
   }
 
@@ -136,63 +127,6 @@ struct SettingsView: View {
     case .liveMeeting:
       return "Meeting Transcription Settings"
   }
-  }
-
-  // MARK: - Generation Compare Sheet (shown when AI generation completes, from any tab)
-  @ViewBuilder
-  private var generationCompareSheetContent: some View {
-    if let kind = viewModel.pendingSheetKind {
-      switch kind {
-      case .dictation:
-        CompareAndEditSuggestionView(
-          title: "Dictation System Prompt",
-          currentText: viewModel.data.customPromptText,
-          suggestedText: $viewModel.suggestedTextForGeneration,
-          onUseCurrent: { viewModel.dismissGenerationSheet() },
-          onUseSuggested: { viewModel.applySuggestedDictationPrompt($0) },
-          hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousCustomPromptText),
-          onRestorePrevious: { viewModel.restorePreviousDictationPrompt() },
-          isAutoImprovement: viewModel.isAutoImprovementSheet,
-          onDisableAutoImprovement: { viewModel.disableAutoImprovementAndLogging() }
-        )
-      case .promptMode:
-        CompareAndEditSuggestionView(
-          title: "Dictate Prompt System Prompt",
-          currentText: viewModel.data.promptModeSystemPrompt,
-          suggestedText: $viewModel.suggestedTextForGeneration,
-          onUseCurrent: { viewModel.dismissGenerationSheet() },
-          onUseSuggested: { viewModel.applySuggestedPromptModePrompt($0) },
-          hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt),
-          onRestorePrevious: { viewModel.restorePreviousPromptModePrompt() },
-          isAutoImprovement: viewModel.isAutoImprovementSheet,
-          onDisableAutoImprovement: { viewModel.disableAutoImprovementAndLogging() }
-        )
-      case .promptAndRead:
-        CompareAndEditSuggestionView(
-          title: "Dictate Prompt & Read System Prompt",
-          currentText: viewModel.data.promptAndReadSystemPrompt,
-          suggestedText: $viewModel.suggestedTextForGeneration,
-          onUseCurrent: { viewModel.dismissGenerationSheet() },
-          onUseSuggested: { viewModel.applySuggestedPromptAndReadPrompt($0) },
-          hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt),
-          onRestorePrevious: { viewModel.restorePreviousPromptAndReadPrompt() },
-          isAutoImprovement: viewModel.isAutoImprovementSheet,
-          onDisableAutoImprovement: { viewModel.disableAutoImprovementAndLogging() }
-        )
-      case .userContext:
-        CompareAndEditSuggestionView(
-          title: "User Context",
-          currentText: viewModel.currentTextForGenerationSheet,
-          suggestedText: $viewModel.suggestedTextForGeneration,
-          onUseCurrent: { viewModel.dismissGenerationSheet() },
-          onUseSuggested: { viewModel.applySuggestedUserContext($0) },
-          hasPrevious: UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasPreviousUserContext),
-          onRestorePrevious: { viewModel.restorePreviousUserContext() },
-          isAutoImprovement: viewModel.isAutoImprovementSheet,
-          onDisableAutoImprovement: { viewModel.disableAutoImprovementAndLogging() }
-        )
-      }
-    }
   }
 
   // MARK: - Functions

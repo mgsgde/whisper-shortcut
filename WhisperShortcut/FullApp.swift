@@ -43,15 +43,6 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       UserDefaults.standard.set(true, forKey: UserDefaultsKeys.userContextLoggingEnabled)
     }
 
-    // Check for auto-improvement: pending suggestions and scheduled runs
-    Task { @MainActor in
-      // Check if there are pending suggestions from a previous run
-      if AutoPromptImprovementScheduler.shared.checkForPendingSuggestions() {
-        DebugLogger.log("AUTO-IMPROVEMENT: Found pending suggestions on app launch")
-        // Settings will be opened when user opens it, and will show pending suggestions
-      }
-
-    }
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

@@ -62,10 +62,9 @@ enum UserDefaultsKeys {
   // MARK: - Auto-Improvement Settings
   static let selectedImprovementModel = "selectedImprovementModel"
   static let autoPromptImprovementIntervalDays = "autoPromptImprovementIntervalDays"
-  static let lastAutoImprovementRunDate = "lastAutoImprovementRunDate"
-  static let pendingAutoImprovementKinds = "pendingAutoImprovementKinds"
-  static let promptImprovementDictationCount = "promptImprovementDictationCount"
   static let autoApplyImprovements = "autoApplyImprovements"
+  static let lastAutoImprovementRunDate = "lastAutoImprovementRunDate"
+  static let promptImprovementDictationCount = "promptImprovementDictationCount"
   static let promptImprovementDictationThreshold = "promptImprovementDictationThreshold"
 
   /// Stored value before applying a suggested system prompt (Dictate Prompt); used for Restore Previous.

@@ -539,12 +539,11 @@ struct GeneralSettingsTab: View {
           }
           .pickerStyle(.menu)
           .frame(maxWidth: 200)
-          .onChange(of: selectedInterval) { _, newValue in
+          .onChange(of: selectedInterval) { newValue in
             UserDefaults.standard.set(newValue.rawValue, forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
             let enabled = newValue != .never
             UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.userContextLoggingEnabled)
-            UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.autoApplyImprovements)
-            DebugLogger.log("AUTO-IMPROVEMENT: Interval changed to \(newValue.displayName), logging & auto-apply = \(enabled)")
+            DebugLogger.log("AUTO-IMPROVEMENT: Interval changed to \(newValue.displayName), logging = \(enabled)")
           }
 
           Text("Minimum cooldown between improvement runs. Set to \"Always\" for no cooldown.")
@@ -579,10 +578,10 @@ struct GeneralSettingsTab: View {
             .fixedSize(horizontal: false, vertical: true)
         }
 
-        // Model selection for Smart Improvement and "Generate with AI"
+        // Model selection for Smart Improvement
         PromptModelSelectionView(
           title: "🧠 Model for Smart Improvement",
-          subtitle: "Used for automatic Smart Improvement and for \"Generate with AI\" in settings.",
+          subtitle: "Used for automatic Smart Improvement (suggested prompts and user context).",
           selectedModel: Binding(
             get: { viewModel.data.selectedImprovementModel },
             set: { newValue in
@@ -606,10 +605,9 @@ struct GeneralSettingsTab: View {
       let rawValue = UserDefaults.standard.integer(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
       selectedInterval = AutoImprovementInterval(rawValue: rawValue) ?? .default
       
-      // Ensure logging and auto-apply match the interval setting
+      // Ensure logging matches the interval setting
       let enabled = selectedInterval != .never
       UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.userContextLoggingEnabled)
-      UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.autoApplyImprovements)
 
       // Load dictation threshold setting
       if UserDefaults.standard.object(forKey: UserDefaultsKeys.promptImprovementDictationThreshold) == nil {

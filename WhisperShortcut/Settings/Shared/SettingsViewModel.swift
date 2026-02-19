@@ -3,7 +3,7 @@ import Foundation
 import SwiftUI
 import ServiceManagement
 
-/// Which suggestion kind the compare sheet is showing (from Smart Improvement / pending suggestions).
+/// Suggestion focus for Smart Improvement (used by scheduler and UserContextDerivation).
 enum GenerationKind: Equatable, Codable {
   case dictation
   case promptMode
@@ -16,16 +16,6 @@ enum GenerationKind: Equatable, Codable {
 class SettingsViewModel: ObservableObject {
   // MARK: - Published State
   @Published var data = SettingsData()
-
-  // MARK: - Compare sheet (pending Smart Improvement suggestions)
-  @Published var pendingSheetKind: GenerationKind?
-  @Published var suggestedTextForGeneration = ""
-  @Published var currentTextForGenerationSheet = ""
-  @Published var showGenerationCompareSheet = false
-  
-  // MARK: - Auto-Improvement Queue
-  private var pendingAutoImprovementQueue: [GenerationKind] = []
-  @Published var isAutoImprovementSheet = false
 
   // MARK: - Initialization
   init() {
@@ -67,25 +57,6 @@ class SettingsViewModel: ObservableObject {
 
     // Load dictation difficult words (empty by default)
     data.dictationDifficultWords = UserDefaults.standard.string(forKey: UserDefaultsKeys.dictationDifficultWords) ?? ""
-
-    // Migration: merge difficult words into single prompt field (one-time)
-    if !data.dictationDifficultWords.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      let normalPrompt = data.customPromptText.trimmingCharacters(in: .whitespacesAndNewlines)
-      let difficultWords = data.dictationDifficultWords
-        .components(separatedBy: .newlines)
-        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty }
-      if !difficultWords.isEmpty {
-        let wordsList = difficultWords.joined(separator: ", ")
-        let combined = normalPrompt.isEmpty
-          ? "Spelling reference (use only if heard in audio): \(wordsList). CRITICAL: Transcribe ONLY what is spoken. Do NOT add words from this list if not heard. Do NOT include this instruction in your output."
-          : "\(normalPrompt)\n\nSpelling reference (use only if heard in audio): \(wordsList). CRITICAL: Transcribe ONLY what is spoken. Do NOT add words from this list if not heard. Do NOT include this instruction in your output."
-        data.customPromptText = combined
-        data.dictationDifficultWords = ""
-        UserDefaults.standard.set(data.customPromptText, forKey: UserDefaultsKeys.customPromptText)
-        UserDefaults.standard.set("", forKey: UserDefaultsKeys.dictationDifficultWords)
-      }
-    }
 
     // Load Whisper language setting
     if let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage),
@@ -602,157 +573,11 @@ class SettingsViewModel: ObservableObject {
     NSApplication.shared.terminate(nil)
   }
 
-  /// Called when Settings appears or when .autoImprovementSuggestionsReady is received.
-  /// Loads pending kinds from scheduler and shows the first suggestion sheet if any.
-  func checkAndShowPendingAutoImprovement() {
-    let pending = AutoPromptImprovementScheduler.shared.loadPendingKinds()
-    guard !pending.isEmpty else { return }
-    pendingAutoImprovementQueue = pending
-    isAutoImprovementSheet = true
-    showNextPendingSuggestion(kind: pending[0])
-  }
-
-  /// Disables auto-improvement (interval = never), turns off user context logging, clears pending, and dismisses the sheet.
-  func disableAutoImprovementAndLogging() {
-    UserDefaults.standard.set(AutoImprovementInterval.never.rawValue, forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
-    UserDefaults.standard.set(false, forKey: UserDefaultsKeys.userContextLoggingEnabled)
-    AutoPromptImprovementScheduler.shared.clearPendingKinds()
-    pendingAutoImprovementQueue = []
-    isAutoImprovementSheet = false
-    showGenerationCompareSheet = false
-    pendingSheetKind = nil
-    suggestedTextForGeneration = ""
-    currentTextForGenerationSheet = ""
-    DebugLogger.log("AUTO-IMPROVEMENT: Disabled auto-improvement and logging per user request")
-  }
-
-  private func removeCurrentFromQueue() {
-    guard !pendingAutoImprovementQueue.isEmpty else { return }
-    pendingAutoImprovementQueue.removeFirst()
-    if pendingAutoImprovementQueue.isEmpty {
-      AutoPromptImprovementScheduler.shared.clearPendingKinds()
-    } else if let data = try? JSONEncoder().encode(pendingAutoImprovementQueue) {
-      UserDefaults.standard.set(data, forKey: UserDefaultsKeys.pendingAutoImprovementKinds)
-    }
-  }
-
-  private func showNextPendingSuggestion(kind: GenerationKind) {
-    let contextDir = UserContextLogger.shared.directoryURL
-    let suggested: String
-    let current: String
-
-    switch kind {
-    case .dictation:
-      let fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
-      suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      current = data.customPromptText
-    case .promptMode:
-      let fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
-      suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      current = data.promptModeSystemPrompt
-    case .promptAndRead:
-      let fileURL = contextDir.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
-      suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      current = data.promptAndReadSystemPrompt
-    case .userContext:
-      let suggestedURL = contextDir.appendingPathComponent("suggested-user-context.md")
-      let currentURL = contextDir.appendingPathComponent("user-context.md")
-      suggested = (try? String(contentsOf: suggestedURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      current = (try? String(contentsOf: currentURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    }
-
-    pendingSheetKind = kind
-    suggestedTextForGeneration = suggested.isEmpty ? "(No suggestion generated)" : suggested
-    currentTextForGenerationSheet = current
-    showGenerationCompareSheet = true
-    isAutoImprovementSheet = true
-  }
-
-  func dismissGenerationSheet() {
-    removeCurrentFromQueue()
-    if let nextKind = pendingAutoImprovementQueue.first {
-      showNextPendingSuggestion(kind: nextKind)
-    } else {
-      AutoPromptImprovementScheduler.shared.clearPendingKinds()
-      showGenerationCompareSheet = false
-      pendingSheetKind = nil
-      suggestedTextForGeneration = ""
-      currentTextForGenerationSheet = ""
-      isAutoImprovementSheet = false
-    }
-  }
-
-  func applySuggestedDictationPrompt(_ prompt: String) {
-    let current = data.customPromptText
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousCustomPromptText)
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousCustomPromptText)
-    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.lastAppliedCustomPromptText)
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedCustomPromptText)
-    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.customPromptText)
-    data.customPromptText = prompt
-    Task { _ = await saveSettings() }
-    
-    // Clean up suggested file
-    UserContextLogger.shared.deleteSuggestedDictationPromptFile()
-    
-    dismissGenerationSheet()
-  }
-
-  func applySuggestedPromptModePrompt(_ prompt: String) {
-    let current = data.promptModeSystemPrompt
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptModeSystemPrompt)
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt)
-    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.lastAppliedPromptModeSystemPrompt)
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedPromptModeSystemPrompt)
-    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
-    data.promptModeSystemPrompt = prompt
-    Task { _ = await saveSettings() }
-    
-    // Clean up suggested file
-    UserContextLogger.shared.deleteSuggestedSystemPromptFile()
-    
-    dismissGenerationSheet()
-  }
-
-  func applySuggestedPromptAndReadPrompt(_ prompt: String) {
-    let current = data.promptAndReadSystemPrompt
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt)
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt)
-    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.lastAppliedPromptAndReadSystemPrompt)
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedPromptAndReadSystemPrompt)
-    UserDefaults.standard.set(prompt, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
-    data.promptAndReadSystemPrompt = prompt
-    Task { _ = await saveSettings() }
-    
-    // Clean up suggested file
-    UserContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
-    
-    dismissGenerationSheet()
-  }
-
-  func applySuggestedUserContext(_ context: String) {
-    let contextDir = UserContextLogger.shared.directoryURL
-    let fileURL = contextDir.appendingPathComponent("user-context.md")
-    let current = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousUserContext)
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousUserContext)
-    UserDefaults.standard.set(context, forKey: UserDefaultsKeys.lastAppliedUserContext)
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedUserContext)
-    try? context.write(to: fileURL, atomically: true, encoding: .utf8)
-    NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
-    
-    // Clean up suggested file
-    UserContextLogger.shared.deleteSuggestedUserContextFile()
-    
-    dismissGenerationSheet()
-  }
-
   func restorePreviousDictationPrompt() {
     guard let previous = UserDefaults.standard.string(forKey: UserDefaultsKeys.previousCustomPromptText) else { return }
     UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.customPromptText)
     data.customPromptText = previous
     Task { _ = await saveSettings() }
-    dismissGenerationSheet()
   }
 
   func restorePreviousPromptModePrompt() {
@@ -760,7 +585,6 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.promptModeSystemPrompt)
     data.promptModeSystemPrompt = previous
     Task { _ = await saveSettings() }
-    dismissGenerationSheet()
   }
 
   func restorePreviousPromptAndReadPrompt() {
@@ -768,7 +592,6 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(previous, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
     data.promptAndReadSystemPrompt = previous
     Task { _ = await saveSettings() }
-    dismissGenerationSheet()
   }
 
   func restorePreviousUserContext() {
@@ -781,7 +604,6 @@ class SettingsViewModel: ObservableObject {
       try? previous.write(to: fileURL, atomically: true, encoding: .utf8)
     }
     NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
-    dismissGenerationSheet()
   }
 
   func restoreToLastAppliedDictationPrompt() {

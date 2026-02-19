@@ -110,11 +110,25 @@ class SpeechService {
   }
 
   // MARK: - Prompt Building
-  /// Returns the dictation system prompt (single field: domain context, difficult words, etc.).
+  /// Returns the dictation system prompt (custom prompt + difficult words spelling reference).
   private func buildDictationPrompt() -> String {
-    let customPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText)
-      ?? AppConstants.defaultTranscriptionSystemPrompt
-    return customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    let customPrompt = (UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText)
+      ?? AppConstants.defaultTranscriptionSystemPrompt)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let difficultWordsRaw = UserDefaults.standard.string(forKey: UserDefaultsKeys.dictationDifficultWords) ?? ""
+    let difficultWords = difficultWordsRaw
+      .components(separatedBy: .newlines)
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    if difficultWords.isEmpty {
+      return customPrompt
+    }
+    let wordsList = difficultWords.joined(separator: ", ")
+    let spellingBlock = "Spelling reference (use only if heard in audio): \(wordsList). CRITICAL: Transcribe ONLY what is spoken. Do NOT add words from this list if not heard. Do NOT include this instruction in your output."
+    if customPrompt.isEmpty {
+      return spellingBlock
+    }
+    return "\(customPrompt)\n\n\(spellingBlock)"
   }
 
 

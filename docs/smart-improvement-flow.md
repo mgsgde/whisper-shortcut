@@ -22,8 +22,6 @@ In `MenuBarController.swift`, after each successful transcription `incrementDict
 
 If the threshold is reached but the cooldown is still active, the counter is not reset and is checked again on the next dictation.
 
-On **app launch** (`FullApp.swift`), only `checkForPendingSuggestions()` is called to display pending suggestions from an earlier aborted run.
-
 ---
 
 ## 3. Conditions for a run
@@ -119,4 +117,4 @@ The user can revert in the respective Settings tabs via "Restore Previous".
 - `SettingsViewModel.swift` – `GenerationKind`, Compare Sheet, Apply/Dismiss
 - `GeneralSettingsTab.swift` – Settings UI for improvement model, interval, and dictation threshold
 - `AppConstants.swift` – `autoImprovementMinimumInteractionDays`, `promptImprovementDictationThreshold`, sampling constants; `userContextDerivationEndpoint` used as fallback when no valid model is selected
-- `UserDefaultsKeys.swift` – All relevant keys (`selectedImprovementModel`, `autoPromptImprovementIntervalDays`, `promptImprovementDictationThreshold`, `autoApplyImprovements`, etc.)
+- `UserDefaultsKeys.swift` – All relevant keys (`selectedImprovementModel`, `autoPromptImprovementIntervalDays`, `promptImprovementDictationThreshold`, etc.)
