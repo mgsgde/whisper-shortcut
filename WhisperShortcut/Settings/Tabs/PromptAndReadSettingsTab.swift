@@ -122,11 +122,7 @@ struct PromptAndReadSettingsTab: View {
           Task {
             await viewModel.saveSettings()
           }
-        },
-        previousValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt),
-        lastAppliedValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAppliedPromptAndReadSystemPrompt),
-        onResetToPrevious: { viewModel.restorePreviousPromptAndReadPrompt() },
-        onResetToLatest: { viewModel.restoreToLastAppliedPromptAndReadPrompt() }
+        }
       )
     }
   }

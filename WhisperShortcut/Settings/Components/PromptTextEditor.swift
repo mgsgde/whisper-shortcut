@@ -10,12 +10,6 @@ struct PromptTextEditor: View {
   let focusedField: SettingsFocusField
   @FocusState.Binding var currentFocus: SettingsFocusField?
   let onTextChanged: (() -> Void)?
-  /// Stored "previous" value (before last Apply); used for toggle button label/action.
-  let previousValue: String?
-  /// Stored "last applied" value; used for toggle button label/action.
-  let lastAppliedValue: String?
-  let onResetToPrevious: (() -> Void)?
-  let onResetToLatest: (() -> Void)?
   /// Optional explanation shown above the buttons when "Generate with AI" is present (e.g. how 30-day interactions are used).
   let trailingContentExplanation: String?
   let trailingContent: AnyView?
@@ -29,10 +23,6 @@ struct PromptTextEditor: View {
     focusedField: SettingsFocusField,
     currentFocus: FocusState<SettingsFocusField?>.Binding,
     onTextChanged: (() -> Void)? = nil,
-    previousValue: String? = nil,
-    lastAppliedValue: String? = nil,
-    onResetToPrevious: (() -> Void)? = nil,
-    onResetToLatest: (() -> Void)? = nil,
     trailingContentExplanation: String? = nil,
     trailingContent: AnyView? = nil
   ) {
@@ -44,30 +34,8 @@ struct PromptTextEditor: View {
     self.focusedField = focusedField
     self._currentFocus = currentFocus
     self.onTextChanged = onTextChanged
-    self.previousValue = previousValue
-    self.lastAppliedValue = lastAppliedValue
-    self.onResetToPrevious = onResetToPrevious
-    self.onResetToLatest = onResetToLatest
     self.trailingContentExplanation = trailingContentExplanation
     self.trailingContent = trailingContent
-  }
-
-  /// One toggle button: "Reset to Previous" when current is latest, "Reset to Latest" when current is previous.
-  private var showToggleButton: Bool { previousValue != nil || lastAppliedValue != nil }
-  private var toggleButtonLabel: String {
-    if text == lastAppliedValue { return "Reset to Previous" }
-    if text == previousValue { return "Reset to Latest" }
-    return "Reset to Previous"
-  }
-  private var toggleButtonAction: (() -> Void)? {
-    if text == lastAppliedValue { return onResetToPrevious }
-    if text == previousValue { return onResetToLatest }
-    return onResetToPrevious
-  }
-  private var toggleButtonEnabled: Bool {
-    if text == lastAppliedValue { return onResetToPrevious != nil }
-    if text == previousValue { return onResetToLatest != nil }
-    return onResetToPrevious != nil
   }
 
   var body: some View {
@@ -109,14 +77,6 @@ struct PromptTextEditor: View {
           }
           .buttonStyle(.bordered)
           .font(.callout)
-          if showToggleButton, let action = toggleButtonAction {
-            Button(toggleButtonLabel) {
-              action()
-            }
-            .buttonStyle(.bordered)
-            .font(.callout)
-            .disabled(!toggleButtonEnabled)
-          }
           if let trailingContent {
             trailingContent
           }

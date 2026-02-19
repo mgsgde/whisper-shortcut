@@ -13,6 +13,15 @@ struct InteractionLogEntry: Codable {
   let voice: String?
 }
 
+// MARK: - System Prompt History Entry
+struct SystemPromptHistoryEntry: Codable {
+  let ts: String
+  let source: String
+  let previousLength: Int
+  let newLength: Int
+  let content: String
+}
+
 // MARK: - User Context Logger
 /// Singleton service for opt-in JSONL interaction logging.
 /// All public methods check the logging toggle and return early if disabled.
@@ -286,6 +295,45 @@ class UserContextLogger {
   func deleteSuggestedPromptAndReadSystemPromptFile() {
     let url = contextDirectoryURL.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
     try? FileManager.default.removeItem(at: url)
+  }
+
+  /// Appends one entry to the system prompt history JSONL (for Dictate Prompt or Prompt & Read).
+  /// File name: system-prompt-history-{suffix}.jsonl (e.g. prompt-mode, prompt-and-read).
+  /// Called when auto-improvement applies a new system prompt. History is removed when UserContext is deleted.
+  func appendSystemPromptHistory(historyFileSuffix: String, previousLength: Int, newLength: Int, content: String) {
+    queue.async { [weak self] in
+      guard let self else { return }
+      let entry = SystemPromptHistoryEntry(
+        ts: self.iso8601Now(),
+        source: "auto",
+        previousLength: previousLength,
+        newLength: newLength,
+        content: content
+      )
+      let filename = "system-prompt-history-\(historyFileSuffix).jsonl"
+      let fileURL = self.contextDirectoryURL.appendingPathComponent(filename)
+
+      do {
+        let data = try JSONEncoder().encode(entry)
+        guard var line = String(data: data, encoding: .utf8) else { return }
+        line += "\n"
+
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+          let handle = try FileHandle(forWritingTo: fileURL)
+          handle.seekToEndOfFile()
+          if let lineData = line.data(using: .utf8) {
+            handle.write(lineData)
+          }
+          try handle.close()
+        } else {
+          try line.write(to: fileURL, atomically: true, encoding: .utf8)
+        }
+
+        DebugLogger.log("USER-CONTEXT: Appended system prompt history (\(historyFileSuffix))")
+      } catch {
+        DebugLogger.logError("USER-CONTEXT: Failed to append system prompt history: \(error.localizedDescription)")
+      }
+    }
   }
 
   // MARK: - Private Helpers

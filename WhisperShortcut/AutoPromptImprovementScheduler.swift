@@ -181,44 +181,40 @@ class AutoPromptImprovementScheduler {
   private func applySuggestion(_ suggested: String, for kind: GenerationKind) {
     switch kind {
     case .dictation:
-      let current = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) ?? ""
-      UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousCustomPromptText)
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousCustomPromptText)
-      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.lastAppliedCustomPromptText)
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedCustomPromptText)
       UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.customPromptText)
       UserContextLogger.shared.deleteSuggestedDictationPromptFile()
 
     case .promptMode:
-      let current = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt) ?? ""
-      UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptModeSystemPrompt)
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt)
-      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.lastAppliedPromptModeSystemPrompt)
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedPromptModeSystemPrompt)
+      let currentPromptMode = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt) ?? ""
       UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.promptModeSystemPrompt)
       UserContextLogger.shared.deleteSuggestedSystemPromptFile()
+      logSystemPromptChange(kind: "Dictate Prompt", previous: currentPromptMode, applied: suggested)
+      UserContextLogger.shared.appendSystemPromptHistory(historyFileSuffix: "prompt-mode", previousLength: currentPromptMode.count, newLength: suggested.count, content: suggested)
 
     case .promptAndRead:
-      let current = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt) ?? ""
-      UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt)
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt)
-      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.lastAppliedPromptAndReadSystemPrompt)
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedPromptAndReadSystemPrompt)
+      let currentPromptAndRead = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt) ?? ""
       UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
       UserContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
+      logSystemPromptChange(kind: "Prompt & Read", previous: currentPromptAndRead, applied: suggested)
+      UserContextLogger.shared.appendSystemPromptHistory(historyFileSuffix: "prompt-and-read", previousLength: currentPromptAndRead.count, newLength: suggested.count, content: suggested)
 
     case .userContext:
       let contextDir = UserContextLogger.shared.directoryURL
       let fileURL = contextDir.appendingPathComponent("user-context.md")
-      let current = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousUserContext)
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousUserContext)
-      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.lastAppliedUserContext)
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedUserContext)
       try? suggested.write(to: fileURL, atomically: true, encoding: .utf8)
       NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
       UserContextLogger.shared.deleteSuggestedUserContextFile()
     }
+  }
+
+  private func logSystemPromptChange(kind: String, previous: String, applied: String) {
+    let prevLen = previous.count
+    let newLen = applied.count
+    let firstLineBefore = previous.split(separator: "\n").first.map(String.init) ?? ""
+    let firstLineAfter = applied.split(separator: "\n").first.map(String.init) ?? ""
+    let beforePreview = firstLineBefore.count > 80 ? String(firstLineBefore.prefix(80)) + "…" : firstLineBefore
+    let afterPreview = firstLineAfter.count > 80 ? String(firstLineAfter.prefix(80)) + "…" : firstLineAfter
+    DebugLogger.log("SYSTEM-PROMPT-CHANGE: \(kind) (source=auto) — previous \(prevLen) chars, new \(newLen) chars. First line before: \"\(beforePreview)\" first line after: \"\(afterPreview)\"")
   }
 }
 

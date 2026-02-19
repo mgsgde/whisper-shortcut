@@ -65,28 +65,5 @@ enum UserDefaultsKeys {
   static let lastAutoImprovementRunDate = "lastAutoImprovementRunDate"
   static let promptImprovementDictationCount = "promptImprovementDictationCount"
   static let promptImprovementDictationThreshold = "promptImprovementDictationThreshold"
-
-  /// Stored value before applying a suggested system prompt (Dictate Prompt); used for Restore Previous.
-  static let previousPromptModeSystemPrompt = "previousPromptModeSystemPrompt"
-  static let hasPreviousPromptModeSystemPrompt = "hasPreviousPromptModeSystemPrompt"
-  /// Stored value before applying a suggested system prompt (Prompt & Read); used for Restore Previous.
-  static let previousPromptAndReadSystemPrompt = "previousPromptAndReadSystemPrompt"
-  static let hasPreviousPromptAndReadSystemPrompt = "hasPreviousPromptAndReadSystemPrompt"
-  /// Stored value before applying a suggested dictation prompt; used for Restore Previous.
-  static let previousCustomPromptText = "previousCustomPromptText"
-  static let hasPreviousCustomPromptText = "hasPreviousCustomPromptText"
-  /// Stored value before applying suggested user context; used for Restore Previous.
-  static let previousUserContext = "previousUserContext"
-  static let hasPreviousUserContext = "hasPreviousUserContext"
-
-  /// Last applied AI suggestion; used for Reset to Latest (Dictate, Dictate Prompt, Dictate Prompt & Read, User Context).
-  static let lastAppliedCustomPromptText = "lastAppliedCustomPromptText"
-  static let hasLastAppliedCustomPromptText = "hasLastAppliedCustomPromptText"
-  static let lastAppliedPromptModeSystemPrompt = "lastAppliedPromptModeSystemPrompt"
-  static let hasLastAppliedPromptModeSystemPrompt = "hasLastAppliedPromptModeSystemPrompt"
-  static let lastAppliedPromptAndReadSystemPrompt = "lastAppliedPromptAndReadSystemPrompt"
-  static let hasLastAppliedPromptAndReadSystemPrompt = "hasLastAppliedPromptAndReadSystemPrompt"
-  static let lastAppliedUserContext = "lastAppliedUserContext"
-  static let hasLastAppliedUserContext = "hasLastAppliedUserContext"
 }
 

@@ -483,11 +483,7 @@ struct GeneralSettingsTab: View {
         currentFocus: $focusedField,
         onTextChanged: {
           saveUserContextToFile()
-        },
-        previousValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.previousUserContext),
-        lastAppliedValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAppliedUserContext),
-        onResetToPrevious: { viewModel.restorePreviousUserContext() },
-        onResetToLatest: { viewModel.restoreToLastAppliedUserContext() }
+        }
       )
     }
     .onAppear {
