@@ -125,7 +125,7 @@ struct SpeechToTextSettingsTab: View {
         subtitle:
           "Domain context, formatting rules, and other instructions. Only used for Gemini models (not Whisper). Leave empty to use Gemini's default.",
         helpText:
-          "Enter a single system prompt: domain terms, jargon, or any instructions for transcription. Use the field below for a spelling reference (difficult words). This prompt is only applied when using Gemini models.",
+          "Enter a single system prompt: domain terms, jargon, or any instructions for transcription. This prompt is only applied when using Gemini models.",
         defaultValue: AppConstants.defaultTranscriptionSystemPrompt,
         text: $viewModel.data.customPromptText,
         focusedField: .customPrompt,
@@ -140,34 +140,6 @@ struct SpeechToTextSettingsTab: View {
         onResetToPrevious: { viewModel.restorePreviousDictationPrompt() },
         onResetToLatest: { viewModel.restoreToLastAppliedDictationPrompt() }
       )
-
-      // Difficult Words (spelling reference)
-      SectionHeader(
-        title: "📝 Difficult Words",
-        subtitle: "Spelling reference for words that are often misheard. Only applied when heard in the audio."
-      )
-      VStack(alignment: .leading, spacing: 8) {
-        TextEditor(text: $viewModel.data.dictationDifficultWords)
-          .font(.system(.body, design: .default))
-          .frame(height: 100)
-          .padding(8)
-          .background(Color(.controlBackgroundColor))
-          .cornerRadius(SettingsConstants.cornerRadius)
-          .overlay(
-            RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
-              .stroke(Color(.separatorColor), lineWidth: 1)
-          )
-          .focused($focusedField, equals: .dictationDifficultWords)
-          .onChange(of: viewModel.data.dictationDifficultWords) { _, _ in
-            Task {
-              await viewModel.saveSettings()
-            }
-          }
-        Text("One word or phrase per line. These are only used when the model hears something that matches; words from this list are not added if not spoken.")
-          .font(.callout)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
-      }
     }
   }
 

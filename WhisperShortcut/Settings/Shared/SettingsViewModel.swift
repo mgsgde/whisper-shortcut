@@ -55,9 +55,6 @@ class SettingsViewModel: ObservableObject {
     data.customPromptText = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) 
       ?? AppConstants.defaultTranscriptionSystemPrompt
 
-    // Load dictation difficult words (empty by default)
-    data.dictationDifficultWords = UserDefaults.standard.string(forKey: UserDefaultsKeys.dictationDifficultWords) ?? ""
-
     // Load Whisper language setting
     if let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage),
       let savedLanguage = WhisperLanguage(rawValue: savedLanguageString)
@@ -378,7 +375,6 @@ class SettingsViewModel: ObservableObject {
 
     // Save prompts
     UserDefaults.standard.set(data.customPromptText, forKey: UserDefaultsKeys.customPromptText)
-    UserDefaults.standard.set(data.dictationDifficultWords, forKey: UserDefaultsKeys.dictationDifficultWords)
     UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
     UserDefaults.standard.set(data.promptAndReadSystemPrompt, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
     
@@ -557,6 +553,17 @@ class SettingsViewModel: ObservableObject {
   }
 
   // MARK: - Reset to Defaults
+  /// Deletes only UserContext data (interaction logs, user-context.md, suggested prompts). Settings and shortcuts are unchanged; app does not quit.
+  func deleteInteractionData() {
+    do {
+      try UserContextLogger.shared.deleteAllContextData()
+      NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
+      DebugLogger.log("RESET: Deleted interaction data (UserContext)")
+    } catch {
+      DebugLogger.logError("RESET: Failed to delete UserContext: \(error.localizedDescription)")
+    }
+  }
+
   /// Deletes all UserDefaults and UserContext data, then terminates the app so the user can relaunch with defaults.
   /// API key (Keychain) and Documents/WhisperShortcut transcripts are not touched.
   func resetAllDataAndRestart() {

@@ -10,7 +10,6 @@ enum UserDefaultsKeys {
   
   // MARK: - Prompt Settings
   static let customPromptText = "customPromptText"
-  static let dictationDifficultWords = "dictationDifficultWords"
   static let promptModeSystemPrompt = "promptModeSystemPrompt"
   static let promptAndReadSystemPrompt = "promptAndReadSystemPrompt"
   
@@ -76,9 +75,6 @@ enum UserDefaultsKeys {
   /// Stored value before applying a suggested dictation prompt; used for Restore Previous.
   static let previousCustomPromptText = "previousCustomPromptText"
   static let hasPreviousCustomPromptText = "hasPreviousCustomPromptText"
-  /// Stored value before applying suggested difficult words; used for Restore Previous.
-  static let previousDictationDifficultWords = "previousDictationDifficultWords"
-  static let hasPreviousDictationDifficultWords = "hasPreviousDictationDifficultWords"
   /// Stored value before applying suggested user context; used for Restore Previous.
   static let previousUserContext = "previousUserContext"
   static let hasPreviousUserContext = "hasPreviousUserContext"

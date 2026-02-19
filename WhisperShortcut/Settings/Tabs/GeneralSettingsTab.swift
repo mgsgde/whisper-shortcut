@@ -8,6 +8,7 @@ struct GeneralSettingsTab: View {
   @State private var userContextText: String = ""
   @State private var selectedInterval: AutoImprovementInterval = .default
   @State private var selectedDictationThreshold: Int = AppConstants.promptImprovementDictationThreshold
+  @State private var showDeleteInteractionConfirmation = false
   @State private var showResetToDefaultsConfirmation = false
 
   var body: some View {
@@ -108,8 +109,8 @@ struct GeneralSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
-      // Support & Feedback Section
-      supportFeedbackSection
+      // Daten & Zurücksetzen Section
+      resetSection
 
       // Section Divider with spacing
       VStack(spacing: 0) {
@@ -120,16 +121,24 @@ struct GeneralSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
-      // Reset to Defaults Section
-      resetToDefaultsSection
+      // Support & Feedback Section (always last)
+      supportFeedbackSection
     }
-    .confirmationDialog("Reset to Defaults", isPresented: $showResetToDefaultsConfirmation, titleVisibility: .visible) {
-      Button("Reset", role: .destructive) {
+    .confirmationDialog("Interaktionsdaten löschen", isPresented: $showDeleteInteractionConfirmation, titleVisibility: .visible) {
+      Button("Löschen", role: .destructive) {
+        viewModel.deleteInteractionData()
+      }
+      Button("Abbrechen", role: .cancel) {}
+    } message: {
+      Text("Interaktionsverlauf und abgeleiteter Kontext (user-context, Vorschläge) werden gelöscht. Einstellungen bleiben erhalten. Fortfahren?")
+    }
+    .confirmationDialog("Alles auf Default zurücksetzen", isPresented: $showResetToDefaultsConfirmation, titleVisibility: .visible) {
+      Button("Zurücksetzen", role: .destructive) {
         viewModel.resetAllDataAndRestart()
       }
-      Button("Cancel", role: .cancel) {}
+      Button("Abbrechen", role: .cancel) {}
     } message: {
-      Text("All settings, shortcuts, and interaction history will be deleted. Your API key will be kept. The app will quit so you can start fresh. Continue?")
+      Text("Alle Einstellungen, Shortcuts und Interaktionsdaten werden gelöscht. Der API-Schlüssel bleibt erhalten. Die App wird beendet. Fortfahren?")
     }
   }
 
@@ -757,15 +766,48 @@ struct GeneralSettingsTab: View {
     }
   }
 
-  // MARK: - Reset to Defaults Section
+  // MARK: - Daten & Zurücksetzen Section
   @ViewBuilder
-  private var resetToDefaultsSection: some View {
+  private var resetSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Reset to Defaults",
-        subtitle: "Delete all settings, shortcuts, and user context (suggested prompts, interaction history). Your API key is not affected. The app will quit so you can relaunch with factory defaults."
+        title: "Daten & Zurücksetzen",
+        subtitle: "Interaktionsdaten (Verlauf, Kontext, Vorschläge) einzeln löschen oder alles auf Standardwerte zurücksetzen. API-Schlüssel bleibt erhalten."
       )
 
+      // Interaktionsdaten löschen
+      Button(action: {
+        showDeleteInteractionConfirmation = true
+      }) {
+        HStack(alignment: .center, spacing: 12) {
+          Image(systemName: "trash")
+            .font(.system(size: 18))
+            .foregroundColor(.secondary)
+
+          Text("Interaktionsdaten löschen")
+            .font(.body)
+            .fontWeight(.medium)
+            .foregroundColor(.primary)
+            .textSelection(.enabled)
+
+          Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(12)
+      }
+      .buttonStyle(PlainButtonStyle())
+      .help("Nur Interaktionsverlauf und Kontext löschen; Einstellungen bleiben erhalten")
+      .onHover { isHovered in
+        if isHovered {
+          NSCursor.pointingHand.push()
+        } else {
+          NSCursor.pop()
+        }
+      }
+
+      // Alles auf Default zurücksetzen
       Button(action: {
         showResetToDefaultsConfirmation = true
       }) {
@@ -775,7 +817,7 @@ struct GeneralSettingsTab: View {
             .foregroundColor(.red)
             .opacity(0.9)
 
-          Text("Delete All Data and Reset")
+          Text("Alles auf Default zurücksetzen")
             .font(.body)
             .fontWeight(.medium)
             .foregroundColor(.red)
@@ -789,7 +831,7 @@ struct GeneralSettingsTab: View {
         .cornerRadius(12)
       }
       .buttonStyle(PlainButtonStyle())
-      .help("Reset all settings and data to defaults; app will quit")
+      .help("Alle Einstellungen und Daten zurücksetzen; App wird beendet")
       .onHover { isHovered in
         if isHovered {
           NSCursor.pointingHand.push()

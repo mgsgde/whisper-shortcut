@@ -417,7 +417,6 @@ struct SettingsDefaults {
   static let selectedPromptAndReadModel = PromptModel.gemini3Flash
   static let selectedImprovementModel = PromptModel.gemini25Flash
   static let customPromptText = ""
-  static let dictationDifficultWords = ""
   static let promptModeSystemPrompt = ""
   static let promptAndReadSystemPrompt = ""
   
@@ -480,7 +479,6 @@ struct SettingsData {
   var selectedPromptAndReadModel: PromptModel = SettingsDefaults.selectedPromptAndReadModel
   var selectedImprovementModel: PromptModel = SettingsDefaults.selectedImprovementModel
   var customPromptText: String = SettingsDefaults.customPromptText
-  var dictationDifficultWords: String = SettingsDefaults.dictationDifficultWords
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
   var promptAndReadSystemPrompt: String = SettingsDefaults.promptAndReadSystemPrompt
   
@@ -525,7 +523,6 @@ enum SettingsFocusField: Hashable {
   case toggleReadAloud
   case toggleSettings
   case customPrompt
-  case dictationDifficultWords
   case promptModeSystemPrompt
   case promptAndReadSystemPrompt
   case readAloudVoice

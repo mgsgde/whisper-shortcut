@@ -1,8 +1,8 @@
 import Foundation
 
 // MARK: - User Context Derivation
-/// Service that analyzes interaction logs via Gemini to derive user context,
-/// suggested system prompts, and difficult words.
+/// Service that analyzes interaction logs via Gemini to derive user context
+/// and suggested system prompts.
 class UserContextDerivation {
 
   /// Per-field character cap per log entry; smaller = less payload and faster derivation.

@@ -270,12 +270,6 @@ class UserContextLogger {
     try? FileManager.default.removeItem(at: url)
   }
 
-  /// Removes the suggested difficult words file so it does not reappear after Apply.
-  func deleteSuggestedDifficultWordsFile() {
-    let url = contextDirectoryURL.appendingPathComponent("suggested-difficult-words.txt")
-    try? FileManager.default.removeItem(at: url)
-  }
-
   /// Removes the suggested user context file so it does not reappear after Apply.
   func deleteSuggestedUserContextFile() {
     let url = contextDirectoryURL.appendingPathComponent("suggested-user-context.md")
