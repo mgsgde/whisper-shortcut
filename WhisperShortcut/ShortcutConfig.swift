@@ -405,52 +405,6 @@ class ShortcutConfigManager {
 
     return ShortcutDefinition(key: key, modifiers: modifiers)
   }
-
-  // MARK: - Validation
-  func validateShortcut(_ shortcut: ShortcutDefinition) -> ShortcutValidationResult {
-    // Check for conflicts with system shortcuts
-    if shortcut.isConflicting {
-      return .conflict("This shortcut conflicts with system shortcuts")
-    }
-
-    // Check for duplicate shortcuts
-    let currentConfig = loadConfiguration()
-    if shortcut == currentConfig.startRecording || shortcut == currentConfig.stopRecording
-      || shortcut == currentConfig.startPrompting || shortcut == currentConfig.stopPrompting
-      || shortcut == currentConfig.readSelectedText || shortcut == currentConfig.readAloud
-      || shortcut == currentConfig.toggleMeeting || shortcut == currentConfig.stopMeeting
-      || shortcut == currentConfig.openSettings
-    {
-      return .duplicate("This shortcut is already in use")
-    }
-
-    return .valid
-  }
-}
-
-// MARK: - Validation Result
-enum ShortcutValidationResult {
-  case valid
-  case conflict(String)
-  case duplicate(String)
-
-  var isValid: Bool {
-    switch self {
-    case .valid:
-      return true
-    case .conflict, .duplicate:
-      return false
-    }
-  }
-
-  var errorMessage: String? {
-    switch self {
-    case .valid:
-      return nil
-    case .conflict(let message), .duplicate(let message):
-      return message
-    }
-  }
 }
 
 // MARK: - Notification Extension

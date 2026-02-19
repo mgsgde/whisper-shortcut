@@ -1,38 +1,5 @@
 import Foundation
 
-// MARK: - Reasoning Effort Enum
-enum ReasoningEffort: String, CaseIterable {
-  case low = "low"
-  case medium = "medium"
-  case high = "high"
-  
-  var displayName: String {
-    switch self {
-    case .low:
-      return "Low"
-    case .medium:
-      return "Medium"
-    case .high:
-      return "High"
-    }
-  }
-  
-  var description: String {
-    switch self {
-    case .low:
-      return "Fast • Lower cost • Basic reasoning"
-    case .medium:
-      return "Balanced • Good quality • Recommended"
-    case .high:
-      return "Thorough • Higher cost • Deep reasoning"
-    }
-  }
-  
-  var isRecommended: Bool {
-    return self == .medium
-  }
-}
-
 // MARK: - Unified Prompt Model Enum (for Prompt Mode) - Gemini multimodal models only
 enum PromptModel: String, CaseIterable {
   // Gemini Models (multimodal, direct audio input)
