@@ -589,12 +589,9 @@ class MenuBarController: NSObject {
   }
 
   @objc func openTranscriptsFolder() {
-    let homeDir = FileManager.default.homeDirectoryForCurrentUser
-    let transcriptsDir = homeDir
-      .appendingPathComponent("Documents")
+    let transcriptsDir = AppSupportPaths.whisperShortcutApplicationSupportURL()
       .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
     
-    // Create directory if it doesn't exist
     if !FileManager.default.fileExists(atPath: transcriptsDir.path) {
       do {
         try FileManager.default.createDirectory(at: transcriptsDir, withIntermediateDirectories: true)
@@ -609,15 +606,11 @@ class MenuBarController: NSObject {
   }
 
   private func createTranscriptFile() throws -> URL {
-    // Use the real home directory Documents folder (not the sandbox container)
-    // This ensures the file is accessible to external editors like Cursor
-    let homeDir = FileManager.default.homeDirectoryForCurrentUser
-    let documentsURL = homeDir.appendingPathComponent("Documents")
-    let whisperShortcutDir = documentsURL.appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+    let meetingsDir = AppSupportPaths.whisperShortcutApplicationSupportURL()
+      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
 
-    // Create directory if it doesn't exist
-    if !FileManager.default.fileExists(atPath: whisperShortcutDir.path) {
-      try FileManager.default.createDirectory(at: whisperShortcutDir, withIntermediateDirectories: true)
+    if !FileManager.default.fileExists(atPath: meetingsDir.path) {
+      try FileManager.default.createDirectory(at: meetingsDir, withIntermediateDirectories: true)
     }
 
     // Create filename with timestamp
@@ -626,7 +619,7 @@ class MenuBarController: NSObject {
     let timestamp = formatter.string(from: Date())
     let filename = "Meeting-\(timestamp).txt"
 
-    let fileURL = whisperShortcutDir.appendingPathComponent(filename)
+    let fileURL = meetingsDir.appendingPathComponent(filename)
 
     // Create empty file
     FileManager.default.createFile(atPath: fileURL.path, contents: nil)

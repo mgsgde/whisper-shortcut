@@ -533,9 +533,7 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Live Meeting Transcripts Folder
   func openTranscriptsFolder() {
-    let homeDir = FileManager.default.homeDirectoryForCurrentUser
-    let transcriptsDir = homeDir
-      .appendingPathComponent("Documents")
+    let transcriptsDir = AppSupportPaths.whisperShortcutApplicationSupportURL()
       .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
 
     if !FileManager.default.fileExists(atPath: transcriptsDir.path) {
@@ -564,7 +562,7 @@ class SettingsViewModel: ObservableObject {
   }
 
   /// Deletes all UserDefaults and UserContext data, then terminates the app so the user can relaunch with defaults.
-  /// API key (Keychain) and Documents/WhisperShortcut transcripts are not touched.
+  /// API key (Keychain) and meeting transcripts (app data folder) are not touched.
   func resetAllDataAndRestart() {
     do {
       try UserContextLogger.shared.deleteAllContextData()

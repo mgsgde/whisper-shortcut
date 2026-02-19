@@ -168,7 +168,7 @@ struct LiveMeetingSettingsTab: View {
           .font(.callout)
           .fontWeight(.semibold)
           .foregroundColor(.secondary)
-        Text("~/Documents/WhisperShortcut/Meeting-<timestamp>.txt")
+        Text("App data folder / Meetings / Meeting-<timestamp>.txt")
           .font(.system(.callout, design: .monospaced))
           .foregroundColor(.secondary)
           .textSelection(.enabled)

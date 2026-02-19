@@ -34,9 +34,7 @@ class UserContextLogger {
   private let rotationDays = 90
 
   private lazy var contextDirectoryURL: URL = {
-    let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    return appSupport
-      .appendingPathComponent("WhisperShortcut")
+    AppSupportPaths.whisperShortcutApplicationSupportURL()
       .appendingPathComponent(contextDirectoryName)
   }()
 

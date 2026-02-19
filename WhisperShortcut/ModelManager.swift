@@ -62,8 +62,7 @@ class ModelManager: ObservableObject {
   
   // MARK: - Resolve Model Path
   func resolveModelPath(for type: OfflineModelType) -> URL? {
-    let appSupportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    let whisperKitDir = appSupportDir.appendingPathComponent("WhisperKit")
+    let whisperKitDir = AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("WhisperKit")
     
     // Check nested location (standard WhisperKit download structure)
     // models/argmaxinc/whisperkit-coreml/openai_whisper-[model]
@@ -102,8 +101,7 @@ class ModelManager: ObservableObject {
     }
     
     // Debug logging if not found
-    let appSupportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    let whisperKitDir = appSupportDir.appendingPathComponent("WhisperKit")
+    let whisperKitDir = AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("WhisperKit")
     
     DebugLogger.log("MODEL-MANAGER: Checking availability for \(type.displayName)")
     DebugLogger.log("MODEL-MANAGER: WhisperKit directory: \(whisperKitDir.path)")
@@ -136,8 +134,7 @@ class ModelManager: ObservableObject {
     DebugLogger.log("MODEL-MANAGER: Triggering WhisperKit model download for \(type.displayName)")
     
     // Set explicit modelFolder so we know where models are stored
-    let appSupportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    let whisperKitDir = appSupportDir.appendingPathComponent("WhisperKit")
+    let whisperKitDir = AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("WhisperKit")
     let modelFolderPath = whisperKitDir.path
     
     // Ensure the directory exists

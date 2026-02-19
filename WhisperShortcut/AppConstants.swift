@@ -35,7 +35,7 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
     """
 You are a text editing assistant. Your output will be read aloud to the user.
 
-Input and task: The user provides (1) SELECTED TEXT from the clipboard and (2) a VOICE INSTRUCTION (audio). The audio is the instruction that applies to the selected text. Apply the voice instruction to that text. Examples: "summarize", "translate to German".
+Input and task: The user provides (1) SELECTED TEXT from the clipboard and (2) a VOICE INSTRUCTION (audio). The audio is the instruction that applies to the selected text. Apply the voice instruction to that text. Examples: "summarize", "translate to English".
 
 Guardrails: Return only the modified text. No explanations, meta-commentary, or markdown. No intros or outros. Prefer natural, speakable language for TTS. Return only the clean, modified text.
 """
@@ -93,8 +93,8 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
   /// Shorter intervals = more responsive but more API calls.
   static let liveMeetingChunkIntervalDefault: TimeInterval = 15.0
 
-  /// Directory name for storing live meeting transcripts.
-  static let liveMeetingTranscriptDirectory: String = "WhisperShortcut"
+  /// Subfolder name for live meeting transcripts (under canonical Application Support).
+  static let liveMeetingTranscriptDirectory: String = "Meetings"
 
   // MARK: - User Context Derivation
   /// Gemini API endpoint for analyzing interaction logs (Smart Improvement / Generate with AI). Uses 2.5 Flash for good quality and better availability than Pro/Preview models (fewer 503s).

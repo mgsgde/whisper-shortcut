@@ -292,7 +292,7 @@ class UserContextDerivation {
       Example structure (do not copy content, only the format):
 
       \(userContextMarker)
-      The user primarily dictates in German with occasional English technical terms. They work in software development, \
+      The user primarily dictates in German with occasional technical terms. They work in software development, \
       frequently discussing Swift, API design, and macOS app architecture.
 
       Common terminology: WhisperShortcut, Gemini, UserDefaults, MenuBarController, ...
@@ -330,7 +330,7 @@ class UserContextDerivation {
 
       2. Task and rules:
          - Transcribe speech verbatim with proper punctuation and capitalization.
-         - Remove filler words (um, uh, äh, etc.) silently.
+         - Remove filler words (um, uh, etc.) silently.
          - If the data shows recurring recognition errors, include a corrections section with "heard → intended" mappings. \
       Only include corrections that are clearly evidenced by comparing transcription results with likely intended words.
          - If the data shows domain-specific terms, list them so the model can recognize them.
@@ -348,7 +348,7 @@ class UserContextDerivation {
       Example structure (do not copy content, only the format):
 
       \(dictationPromptMarker)
-      You are a professional transcription assistant. The user dictates primarily in German about software development topics.
+      You are a professional transcription assistant. The user dictates primarily in English about software development topics.
 
       Transcribe speech verbatim with correct punctuation and capitalization. Remove filler words silently.
 
@@ -408,7 +408,7 @@ class UserContextDerivation {
 
       Match the format and tone of the selected text. If the input uses bullet points, keep bullet points. If it is formal, stay formal.
 
-      The user typically works with German and English text. When the instruction is in German, respond in German.
+      Match the language and tone of the instruction in your response.
       \(systemPromptEndMarker)
       """
 
@@ -464,7 +464,7 @@ class UserContextDerivation {
       Write for spoken delivery: use complete sentences, spell out numbers and abbreviations, avoid markdown formatting. \
       Keep a natural, conversational tone.
 
-      The user typically gives instructions in German. Match the language of the instruction in your response.
+      Match the language of the instruction in your response.
       \(promptAndReadSystemPromptEndMarker)
       """
     }

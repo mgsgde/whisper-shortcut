@@ -110,6 +110,9 @@ isRecording = true  // ❌
 - Always support cancellation with `Task.checkCancellation()`
 - UI updates on main thread via `MainActor`
 
+### 5. English Only
+All text in the repository must be in English: UI strings, dialogs, labels, tooltips, code comments, default prompts, examples in prompts, and documentation. Do not introduce or retain German or other non-English text.
+
 ## Key Files
 
 - `FullApp.swift` - App entry point
@@ -143,6 +146,7 @@ Settings tabs in `WhisperShortcut/Settings/Tabs/`:
 - **No automated tests**: Tests run manually in Xcode.
 - **Understand first**: Clarify requirements before implementing.
 - **Logs for debugging**: Check logs with `bash scripts/logs.sh -t 2m`; use DebugLogger categories (`logNetwork`, `logAudio`, `logSpeech`, …).
+- **English only**: All text (UI, comments, prompts, docs) must be in English; no German or other non-English.
 
 ## Testing
 

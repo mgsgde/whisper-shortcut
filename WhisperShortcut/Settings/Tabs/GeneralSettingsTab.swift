@@ -109,7 +109,7 @@ struct GeneralSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
-      // Daten & Zurücksetzen Section
+      // Data & Reset Section
       resetSection
 
       // Section Divider with spacing
@@ -124,21 +124,21 @@ struct GeneralSettingsTab: View {
       // Support & Feedback Section (always last)
       supportFeedbackSection
     }
-    .confirmationDialog("Interaktionsdaten löschen", isPresented: $showDeleteInteractionConfirmation, titleVisibility: .visible) {
-      Button("Löschen", role: .destructive) {
+    .confirmationDialog("Delete interaction data", isPresented: $showDeleteInteractionConfirmation, titleVisibility: .visible) {
+      Button("Delete", role: .destructive) {
         viewModel.deleteInteractionData()
       }
-      Button("Abbrechen", role: .cancel) {}
+      Button("Cancel", role: .cancel) {}
     } message: {
-      Text("Interaktionsverlauf und abgeleiteter Kontext (user-context, Vorschläge) werden gelöscht. Einstellungen bleiben erhalten. Fortfahren?")
+      Text("Interaction history and derived context (user-context, suggestions) will be deleted. Settings are preserved. Continue?")
     }
-    .confirmationDialog("Alles auf Default zurücksetzen", isPresented: $showResetToDefaultsConfirmation, titleVisibility: .visible) {
-      Button("Zurücksetzen", role: .destructive) {
+    .confirmationDialog("Reset all to defaults", isPresented: $showResetToDefaultsConfirmation, titleVisibility: .visible) {
+      Button("Reset", role: .destructive) {
         viewModel.resetAllDataAndRestart()
       }
-      Button("Abbrechen", role: .cancel) {}
+      Button("Cancel", role: .cancel) {}
     } message: {
-      Text("Alle Einstellungen, Shortcuts und Interaktionsdaten werden gelöscht. Der API-Schlüssel bleibt erhalten. Die App wird beendet. Fortfahren?")
+      Text("All settings, shortcuts, and interaction data will be deleted. The API key is preserved. The app will quit. Continue?")
     }
   }
 
@@ -513,16 +513,16 @@ struct GeneralSettingsTab: View {
     }
   }
 
-  private func openInteractionsDirectoryInFinder() {
-    let url = UserContextLogger.shared.directoryURL
+  private func openDataFolderInFinder() {
+    let url = AppSupportPaths.whisperShortcutApplicationSupportURL()
     if !FileManager.default.fileExists(atPath: url.path) {
       try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     }
     NSWorkspace.shared.open(url)
   }
 
-  private var interactionsFolderDisplayPath: String {
-    let path = UserContextLogger.shared.directoryURL.path
+  private var dataFolderDisplayPath: String {
+    let path = AppSupportPaths.whisperShortcutApplicationSupportURL().path
     let home = FileManager.default.homeDirectoryForCurrentUser.path
     if path.hasPrefix(home) {
       return "~" + String(path.dropFirst(home.count))
@@ -608,18 +608,21 @@ struct GeneralSettingsTab: View {
           onModelChanged: nil
         )
 
-        // Interactions folder location (consistent with Live Meeting transcript location)
+        // Data folder (UserContext, Meetings, WhisperKit)
         VStack(alignment: .leading, spacing: 4) {
-          Text("Interactions location:")
+          Text("Data folder:")
             .font(.callout)
             .fontWeight(.semibold)
             .foregroundColor(.secondary)
-          Text(interactionsFolderDisplayPath)
+          Text("Interaction logs, meeting transcripts, WhisperKit models")
+            .font(.caption)
+            .foregroundColor(.secondary)
+          Text(dataFolderDisplayPath)
             .font(.system(.callout, design: .monospaced))
             .foregroundColor(.secondary)
             .textSelection(.enabled)
-          Button("Open Interactions Folder") {
-            openInteractionsDirectoryInFinder()
+          Button("Open data folder") {
+            openDataFolderInFinder()
           }
           .buttonStyle(.bordered)
           .font(.callout)
@@ -786,16 +789,16 @@ struct GeneralSettingsTab: View {
     }
   }
 
-  // MARK: - Daten & Zurücksetzen Section
+  // MARK: - Data & Reset Section
   @ViewBuilder
   private var resetSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Daten & Zurücksetzen",
-        subtitle: "Interaktionsdaten (Verlauf, Kontext, Vorschläge) einzeln löschen oder alles auf Standardwerte zurücksetzen. API-Schlüssel bleibt erhalten."
+        title: "Data & Reset",
+        subtitle: "Delete interaction data (history, context, suggestions) only, or reset everything to defaults. API key is preserved."
       )
 
-      // Interaktionsdaten löschen
+      // Delete interaction data
       Button(action: {
         showDeleteInteractionConfirmation = true
       }) {
@@ -804,7 +807,7 @@ struct GeneralSettingsTab: View {
             .font(.system(size: 18))
             .foregroundColor(.secondary)
 
-          Text("Interaktionsdaten löschen")
+          Text("Delete interaction data")
             .font(.body)
             .fontWeight(.medium)
             .foregroundColor(.primary)
@@ -818,7 +821,7 @@ struct GeneralSettingsTab: View {
         .cornerRadius(12)
       }
       .buttonStyle(PlainButtonStyle())
-      .help("Nur Interaktionsverlauf und Kontext löschen; Einstellungen bleiben erhalten")
+      .help("Only delete interaction history and context; settings are preserved")
       .onHover { isHovered in
         if isHovered {
           NSCursor.pointingHand.push()
@@ -827,7 +830,7 @@ struct GeneralSettingsTab: View {
         }
       }
 
-      // Alles auf Default zurücksetzen
+      // Reset all to defaults
       Button(action: {
         showResetToDefaultsConfirmation = true
       }) {
@@ -837,7 +840,7 @@ struct GeneralSettingsTab: View {
             .foregroundColor(.red)
             .opacity(0.9)
 
-          Text("Alles auf Default zurücksetzen")
+          Text("Reset all to defaults")
             .font(.body)
             .fontWeight(.medium)
             .foregroundColor(.red)
@@ -851,7 +854,7 @@ struct GeneralSettingsTab: View {
         .cornerRadius(12)
       }
       .buttonStyle(PlainButtonStyle())
-      .help("Alle Einstellungen und Daten zurücksetzen; App wird beendet")
+      .help("Reset all settings and data; app will quit")
       .onHover { isHovered in
         if isHovered {
           NSCursor.pointingHand.push()
