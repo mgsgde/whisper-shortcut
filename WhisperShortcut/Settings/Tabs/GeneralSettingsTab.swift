@@ -525,6 +525,15 @@ struct GeneralSettingsTab: View {
     NSWorkspace.shared.open(url)
   }
 
+  private var interactionsFolderDisplayPath: String {
+    let path = UserContextLogger.shared.directoryURL.path
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    if path.hasPrefix(home) {
+      return "~" + String(path.dropFirst(home.count))
+    }
+    return path
+  }
+
   // MARK: - Auto-Improvement Section
   @ViewBuilder
   private var autoImprovementSection: some View {
@@ -602,11 +611,25 @@ struct GeneralSettingsTab: View {
           onModelChanged: nil
         )
 
-        Button("Open interactions folder") {
-          openInteractionsDirectoryInFinder()
+        // Interactions folder location (consistent with Live Meeting transcript location)
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Interactions location:")
+            .font(.callout)
+            .fontWeight(.semibold)
+            .foregroundColor(.secondary)
+          Text(interactionsFolderDisplayPath)
+            .font(.system(.callout, design: .monospaced))
+            .foregroundColor(.secondary)
+            .textSelection(.enabled)
+          Button("Open Interactions Folder") {
+            openInteractionsDirectoryInFinder()
+          }
+          .buttonStyle(.bordered)
+          .font(.callout)
         }
-        .buttonStyle(.bordered)
-        .font(.callout)
+        .padding(8)
+        .background(Color.secondary.opacity(0.1))
+        .cornerRadius(6)
       }
     }
     .onAppear {

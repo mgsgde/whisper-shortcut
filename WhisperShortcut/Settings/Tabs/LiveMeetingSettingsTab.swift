@@ -138,6 +138,7 @@ struct LiveMeetingSettingsTab: View {
           viewModel.openTranscriptsFolder()
         }
         .buttonStyle(.bordered)
+        .font(.callout)
       }
       .padding(8)
       .background(Color.secondary.opacity(0.1))
