@@ -1067,21 +1067,13 @@ class SpeechService {
   }
 
   func isAudioLikelyEmpty(at url: URL) -> Bool {
-    guard let duration = getAudioDuration(url: url) else {
-      DebugLogger.logDebug("isAudioLikelyEmpty: no duration, allowing transcription")
-      return false
-    }
-    DebugLogger.log("AUDIO-CHECK: Audio duration: \(String(format: "%.2f", duration)) seconds")
-    let minimumDuration: Double = 0.5
-    let isEmpty = duration < minimumDuration
-    DebugLogger.logDebug("isAudioLikelyEmpty - duration: \(duration), minimum: \(minimumDuration), isEmpty: \(isEmpty)")
+    guard let duration = getAudioDuration(url: url) else { return false }
+    let isEmpty = duration < 0.5
     if isEmpty {
-      DebugLogger.log("AUDIO-CHECK: Audio too short (< \(minimumDuration)s), treating as empty")
+      DebugLogger.log("AUDIO-CHECK: Audio too short (\(String(format: "%.2f", duration))s < 0.5s), treating as empty")
     }
     return isEmpty
   }
-
-
 
   // Status code error parsing is now handled by GeminiAPIClient
 }

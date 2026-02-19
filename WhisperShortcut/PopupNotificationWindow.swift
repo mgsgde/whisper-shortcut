@@ -67,13 +67,15 @@ class PopupNotificationWindow: NSWindow {
   private var whatsappButton: NSButton?
   private var autoHideTimer: Timer?
   private var isError: Bool = false
+  private var isInfo: Bool = false
   private var errorText: String = ""
   private var retryAction: (() -> Void)?
   private var dismissAction: (() -> Void)?
   private var wasRetried: Bool = false
+  private var customDisplayDuration: TimeInterval?
 
   // MARK: - Initialization
-  init(title: String, text: String, isError: Bool = false, isCancelled: Bool = false, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil) {
+  init(title: String, text: String, isError: Bool = false, isInfo: Bool = false, isCancelled: Bool = false, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil) {
     // Create window with specific style for notifications
     super.init(
       contentRect: NSRect(x: 0, y: 0, width: Constants.defaultWindowWidth, height: 100),
@@ -82,16 +84,18 @@ class PopupNotificationWindow: NSWindow {
       defer: false
     )
 
-    // Store error state and text for WhatsApp feedback
+    // Store state: success, info (auto-dismiss), or error (persistent unless custom duration)
     self.isError = isError
+    self.isInfo = isInfo
     self.errorText = text
     self.retryAction = retryAction
     self.dismissAction = dismissAction
+    self.customDisplayDuration = customDisplayDuration
 
     setupWindow()
     setupContentView()
     setupCloseButton()
-    setupIcon(isError: isError, isCancelled: isCancelled)
+    setupIcon(isError: isError, isInfo: isInfo, isCancelled: isCancelled)
     setupLabels(title: title, text: text, modelInfo: modelInfo)
     setupScrollView()
     if isError {
@@ -102,15 +106,14 @@ class PopupNotificationWindow: NSWindow {
     }
     layoutContent()
 
-    // Only success notifications are clickable (to close)
-    if !isError {
+    // Success and info: click to close. Error: only close on button or click outside text.
+    if !isError || isInfo {
       setupSuccessClickHandler()
     }
 
-    // Start auto-hide timer with appropriate duration
-    // Don't auto-hide error notifications with retry button - let user decide when to dismiss
-    if !isError || retryAction == nil {
-      startAutoHideTimer(isError: isError)
+    // Success and info: auto-dismiss. Error: auto-dismiss only if no retry button.
+    if !isError || isInfo || retryAction == nil {
+      startAutoHideTimer(isError: isError, isInfo: isInfo)
     }
   }
 
@@ -248,11 +251,13 @@ class PopupNotificationWindow: NSWindow {
     hide()
   }
 
-  private func setupIcon(isError: Bool, isCancelled: Bool = false) {
+  private func setupIcon(isError: Bool, isInfo: Bool = false, isCancelled: Bool = false) {
     // Icon selection based on notification type
     let iconText: String
     if isCancelled {
       iconText = "⏸️"  // Pause icon for cancelled operations
+    } else if isInfo {
+      iconText = "ℹ️"  // Info icon for informational messages
     } else if isError {
       iconText = ""  // No icon for errors (WhatsApp icon is shown instead)
     } else {
@@ -285,7 +290,7 @@ class PopupNotificationWindow: NSWindow {
     titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
 
     // Model info label (only shown for success notifications with model info)
-    if let modelInfo = modelInfo, !isError {
+    if let modelInfo = modelInfo, !isError, !isInfo {
       modelInfoLabel = NSTextField(labelWithString: "🤖 \(modelInfo)")
       modelInfoLabel.font = NSFont.systemFont(ofSize: 11, weight: .regular)
       modelInfoLabel.textColor = NSColor.secondaryLabelColor
@@ -855,10 +860,19 @@ class PopupNotificationWindow: NSWindow {
   }
 
   // MARK: - Timer Methods
-  private func startAutoHideTimer(isError: Bool) {
-    // Get duration from settings
+  private func startAutoHideTimer(isError: Bool, isInfo: Bool = false) {
+    // Success and info: short auto-dismiss. Error: long or user setting.
     let duration: TimeInterval
-    if isError {
+    if let custom = customDisplayDuration, custom > 0 {
+      duration = custom
+    } else if isInfo || !isError {
+      let savedDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.notificationDuration)
+      if savedDuration > 0, let notificationDuration = NotificationDuration(rawValue: savedDuration) {
+        duration = notificationDuration.rawValue
+      } else {
+        duration = Constants.displayDuration
+      }
+    } else if isError {
       let savedErrorDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.errorNotificationDuration)
       if savedErrorDuration > 0, let errorDuration = NotificationDuration(rawValue: savedErrorDuration) {
         duration = errorDuration.rawValue
@@ -866,14 +880,9 @@ class PopupNotificationWindow: NSWindow {
         duration = Constants.errorDisplayDuration
       }
     } else {
-      let savedDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.notificationDuration)
-      if savedDuration > 0, let notificationDuration = NotificationDuration(rawValue: savedDuration) {
-        duration = notificationDuration.rawValue
-      } else {
-        duration = Constants.displayDuration
-      }
+      duration = Constants.displayDuration
     }
-    
+
     autoHideTimer = Timer.scheduledTimer(
       withTimeInterval: duration, repeats: false
     ) { [weak self] _ in
@@ -899,6 +908,15 @@ class PopupNotificationWindow: NSWindow {
     if let whatsappButton = whatsappButton, whatsappButton.frame.contains(location) {
       return  // Let the WhatsApp button handle the click
     }
+    // For error popups, don't hide when clicking the text area so the user can select and copy
+    if isError {
+      let ptInScroll = scrollView.convert(location, from: nil)
+      if scrollView.bounds.contains(ptInScroll) {
+        makeKey()  // So the text field can become first responder and accept selection
+        super.mouseDown(with: event)  // Forward to text field for selection
+        return
+      }
+    }
     // Hide popup when clicked elsewhere
     hide()
   }
@@ -909,8 +927,9 @@ class PopupNotificationWindow: NSWindow {
     return false
   }
 
+  /// Allow error popups to become key so the user can select and copy the error text.
   override var canBecomeKey: Bool {
-    return false
+    return isError
   }
 
   // MARK: - Cleanup
@@ -966,7 +985,7 @@ extension PopupNotificationWindow {
     showSuccessNotification(text: transcription, modelInfo: modelInfo)
   }
 
-  static func showError(_ error: String, title: String = "Error", retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil) {
+  static func showError(_ error: String, title: String = "Error", retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil) {
     guard arePopupNotificationsEnabled else {
       return
     }
@@ -976,7 +995,8 @@ extension PopupNotificationWindow {
       text: error,
       isError: true,
       retryAction: retryAction,
-      dismissAction: dismissAction
+      dismissAction: dismissAction,
+      customDisplayDuration: customDisplayDuration
     )
 
     // Keep strong reference until window closes
