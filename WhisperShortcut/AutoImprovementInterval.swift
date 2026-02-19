@@ -3,6 +3,7 @@ import Foundation
 /// Configurable interval for automatic system prompt improvement.
 enum AutoImprovementInterval: Int, CaseIterable, Codable {
   case never = 0
+  case always = 1
   case days7 = 7
   case days14 = 14
   case days30 = 30
@@ -10,13 +11,15 @@ enum AutoImprovementInterval: Int, CaseIterable, Codable {
   var displayName: String {
     switch self {
     case .never:
-      return "Nie"
+      return "Never"
+    case .always:
+      return "Always"
     case .days7:
-      return "Alle 7 Tage"
+      return "Every 7 days"
     case .days14:
-      return "Alle 14 Tage"
+      return "Every 14 days"
     case .days30:
-      return "Alle 30 Tage"
+      return "Every 30 days"
     }
   }
 

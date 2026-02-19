@@ -12,20 +12,6 @@ class AutoPromptImprovementScheduler {
 
   private init() {}
 
-  /// Checks if it's time to run auto-improvement and triggers it if needed.
-  /// Should be called on app launch and periodically during app usage.
-  func checkAndRunIfNeeded() {
-    guard shouldRun() else {
-      DebugLogger.log("AUTO-IMPROVEMENT: Skipping - conditions not met")
-      return
-    }
-
-    DebugLogger.log("AUTO-IMPROVEMENT: Starting automatic improvement run")
-    Task {
-      await runImprovement()
-    }
-  }
-
   /// Checks if there are pending suggestions from a previous run (e.g., app was closed during generation).
   /// Should be called on app launch to show pending suggestions.
   func checkForPendingSuggestions() -> Bool {
@@ -48,50 +34,51 @@ class AutoPromptImprovementScheduler {
     DebugLogger.log("AUTO-IMPROVEMENT: Cleared pending kinds")
   }
 
-  // MARK: - Private
-
-  private func shouldRun() -> Bool {
-    // Check if auto-improvement is enabled (not "Never")
+  /// Increments the successful-dictation counter and triggers an improvement run
+  /// when the threshold is reached AND the cooldown interval has passed.
+  /// Called after every successful transcription.
+  func incrementDictationCountAndRunIfNeeded() {
     let interval = getCurrentInterval()
     guard interval != .never else {
-      DebugLogger.log("AUTO-IMPROVEMENT: Disabled (interval is Never)")
-      return false
+      DebugLogger.log("AUTO-IMPROVEMENT: Skip - disabled (Never)")
+      return
     }
-
-    // Check if logging is enabled
-    guard UserDefaults.standard.bool(forKey: UserDefaultsKeys.userContextLoggingEnabled) else {
-      DebugLogger.log("AUTO-IMPROVEMENT: Skipping - logging disabled")
-      return false
-    }
-
-    // Check if API key exists
     guard KeychainManager.shared.hasGoogleAPIKey() else {
-      DebugLogger.log("AUTO-IMPROVEMENT: Skipping - no API key")
-      return false
+      DebugLogger.log("AUTO-IMPROVEMENT: Skip - no API key")
+      return
     }
-
-    // Check if enough time has passed since last run
-    guard hasEnoughTimePassed(interval: interval) else {
-      DebugLogger.log("AUTO-IMPROVEMENT: Skipping - not enough time passed")
-      return false
-    }
-
-    // Check if there are interaction logs (at least some data to analyze)
-    let logFiles = UserContextLogger.shared.interactionLogFiles(lastDays: 30)
-    guard !logFiles.isEmpty else {
-      DebugLogger.log("AUTO-IMPROVEMENT: Skipping - no interaction logs found")
-      return false
-    }
-
-    // Only show suggestions after the user has at least N days of interaction data (e.g. 7 days)
     let minDays = AppConstants.autoImprovementMinimumInteractionDays
     guard UserContextLogger.shared.hasInteractionDataAtLeast(daysOld: minDays) else {
-      DebugLogger.log("AUTO-IMPROVEMENT: Skipping - need at least \(minDays) days of interaction data before showing suggestions")
-      return false
+      DebugLogger.log("AUTO-IMPROVEMENT: Skip - need at least \(minDays) days of data")
+      return
     }
 
-    return true
+    // Increment counter
+    let current = UserDefaults.standard.integer(forKey: UserDefaultsKeys.promptImprovementDictationCount) + 1
+    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.promptImprovementDictationCount)
+    let threshold: Int = {
+      let stored = UserDefaults.standard.integer(forKey: UserDefaultsKeys.promptImprovementDictationThreshold)
+      return stored > 0 ? stored : AppConstants.promptImprovementDictationThreshold
+    }()
+    DebugLogger.log("AUTO-IMPROVEMENT: Dictation count = \(current)/\(threshold)")
+
+    guard current >= threshold else { return }
+
+    // Threshold reached — check cooldown
+    guard hasEnoughTimePassed(interval: interval) else {
+      DebugLogger.log("AUTO-IMPROVEMENT: Threshold reached but cooldown not passed yet — keeping count at \(current)")
+      return
+    }
+
+    // Reset counter and run improvement
+    UserDefaults.standard.set(0, forKey: UserDefaultsKeys.promptImprovementDictationCount)
+    DebugLogger.log("AUTO-IMPROVEMENT: Threshold reached & cooldown passed — starting improvement run")
+    Task {
+      await runImprovement()
+    }
   }
+
+  // MARK: - Private
 
   private func getCurrentInterval() -> AutoImprovementInterval {
     let rawValue = UserDefaults.standard.integer(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
@@ -99,9 +86,9 @@ class AutoPromptImprovementScheduler {
   }
 
   private func hasEnoughTimePassed(interval: AutoImprovementInterval) -> Bool {
+    if interval == .always { return true }
+
     guard let lastRunDate = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastAutoImprovementRunDate) as? Date else {
-      // No previous run - allow first run immediately (or wait for first interval period)
-      // For first run, we'll allow it after the interval period has passed from app install/first use
       return true
     }
 
@@ -134,15 +121,61 @@ class AutoPromptImprovementScheduler {
       }
     }
 
-    // Save pending kinds and update last run date
+    // Handle generated suggestions
     if !pendingKinds.isEmpty {
-      savePendingKinds(pendingKinds)
-      DebugLogger.logSuccess("AUTO-IMPROVEMENT: Generated \(pendingKinds.count) suggestions")
-      
-      // Open Settings and notify
-      await MainActor.run {
-        SettingsManager.shared.showSettings()
-        NotificationCenter.default.post(name: .autoImprovementSuggestionsReady, object: nil)
+      let autoApply = UserDefaults.standard.object(forKey: UserDefaultsKeys.autoApplyImprovements) == nil
+        ? true  // default to true if not set
+        : UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoApplyImprovements)
+
+      if autoApply {
+        // Auto-apply mode: apply suggestions directly
+        DebugLogger.logSuccess("AUTO-IMPROVEMENT: Generated \(pendingKinds.count) suggestions — auto-applying")
+
+        var appliedKinds: [GenerationKind] = []
+        for kind in pendingKinds {
+          if let suggested = readSuggestion(for: kind), !suggested.isEmpty {
+            applySuggestion(suggested, for: kind)
+            appliedKinds.append(kind)
+            DebugLogger.logSuccess("AUTO-IMPROVEMENT: Auto-applied \(kind)")
+          }
+        }
+
+        clearPendingKinds()
+
+        if !appliedKinds.isEmpty {
+          await MainActor.run {
+            let kindNames = appliedKinds.map { kind -> String in
+              switch kind {
+              case .userContext: return "User Context"
+              case .dictation: return "Dictation Prompt"
+              case .promptMode: return "Dictate Prompt System Prompt"
+              case .promptAndRead: return "Prompt & Read System Prompt"
+              }
+            }
+            let message = "Auto-improved: \(kindNames.joined(separator: ", ")). Check Settings to review or revert."
+            PopupNotificationWindow.showTranscriptionResponse(message)
+          }
+        }
+      } else {
+        // Manual mode: save pending kinds and open Settings for review
+        savePendingKinds(pendingKinds)
+        DebugLogger.logSuccess("AUTO-IMPROVEMENT: Generated \(pendingKinds.count) suggestions — awaiting manual review")
+
+        await MainActor.run {
+          SettingsManager.shared.showSettings()
+          NotificationCenter.default.post(name: .autoImprovementSuggestionsReady, object: nil)
+
+          let kindNames = pendingKinds.map { kind -> String in
+            switch kind {
+            case .userContext: return "User Context"
+            case .dictation: return "Dictation Prompt"
+            case .promptMode: return "Dictate Prompt System Prompt"
+            case .promptAndRead: return "Prompt & Read System Prompt"
+            }
+          }
+          let message = "New suggestions for: \(kindNames.joined(separator: ", ")). Open Settings to review."
+          PopupNotificationWindow.showTranscriptionResponse(message)
+        }
       }
     } else {
       DebugLogger.log("AUTO-IMPROVEMENT: No suggestions generated")
@@ -178,6 +211,72 @@ class AutoPromptImprovementScheduler {
     if let data = try? JSONEncoder().encode(kinds) {
       UserDefaults.standard.set(data, forKey: UserDefaultsKeys.pendingAutoImprovementKinds)
       DebugLogger.log("AUTO-IMPROVEMENT: Saved \(kinds.count) pending kinds")
+    }
+  }
+
+  private func readSuggestion(for kind: GenerationKind) -> String? {
+    let contextDir = UserContextLogger.shared.directoryURL
+    let fileURL: URL
+
+    switch kind {
+    case .userContext:
+      fileURL = contextDir.appendingPathComponent("suggested-user-context.md")
+    case .dictation:
+      fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
+    case .promptMode:
+      fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
+    case .promptAndRead:
+      fileURL = contextDir.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
+    }
+
+    guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else {
+      return nil
+    }
+
+    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+  }
+
+  private func applySuggestion(_ suggested: String, for kind: GenerationKind) {
+    switch kind {
+    case .dictation:
+      let current = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) ?? ""
+      UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousCustomPromptText)
+      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousCustomPromptText)
+      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.lastAppliedCustomPromptText)
+      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedCustomPromptText)
+      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.customPromptText)
+      UserContextLogger.shared.deleteSuggestedDictationPromptFile()
+
+    case .promptMode:
+      let current = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt) ?? ""
+      UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptModeSystemPrompt)
+      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptModeSystemPrompt)
+      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.lastAppliedPromptModeSystemPrompt)
+      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedPromptModeSystemPrompt)
+      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.promptModeSystemPrompt)
+      UserContextLogger.shared.deleteSuggestedSystemPromptFile()
+
+    case .promptAndRead:
+      let current = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt) ?? ""
+      UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt)
+      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousPromptAndReadSystemPrompt)
+      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.lastAppliedPromptAndReadSystemPrompt)
+      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedPromptAndReadSystemPrompt)
+      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
+      UserContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
+
+    case .userContext:
+      let contextDir = UserContextLogger.shared.directoryURL
+      let fileURL = contextDir.appendingPathComponent("user-context.md")
+      let current = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      UserDefaults.standard.set(current, forKey: UserDefaultsKeys.previousUserContext)
+      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasPreviousUserContext)
+      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.lastAppliedUserContext)
+      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasLastAppliedUserContext)
+      try? suggested.write(to: fileURL, atomically: true, encoding: .utf8)
+      NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
+      UserContextLogger.shared.deleteSuggestedUserContextFile()
     }
   }
 }

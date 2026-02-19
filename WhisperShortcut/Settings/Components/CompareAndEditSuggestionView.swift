@@ -23,7 +23,7 @@ struct CompareAndEditSuggestionView: View {
       
       // Auto-improvement header text
       if isAutoImprovement {
-        Text("Wir haben auf Basis Ihrer Nutzung Vorschläge für Ihre System-Prompts erstellt. Bitte prüfen Sie die Änderungen und übernehmen Sie sie oder behalten Sie die aktuelle Version.")
+        Text("We've created suggestions for your system prompts based on your usage. Please review the changes and apply them or keep the current version.")
           .font(.callout)
           .foregroundColor(.secondary)
           .padding(.bottom, 4)
@@ -102,7 +102,7 @@ struct CompareAndEditSuggestionView: View {
         
         // Disable button for auto-improvement sheets
         if isAutoImprovement, let onDisable = onDisableAutoImprovement {
-          Button("Smarte Verbesserung und Interaktions-Tracking deaktivieren") {
+          Button("Disable Smart Improvement and interaction tracking") {
             onDisable()
             dismiss()
           }

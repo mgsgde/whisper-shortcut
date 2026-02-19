@@ -51,8 +51,6 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
         // Settings will be opened when user opens it, and will show pending suggestions
       }
 
-      // Check if it's time to run auto-improvement
-      AutoPromptImprovementScheduler.shared.checkAndRunIfNeeded()
     }
   }
 

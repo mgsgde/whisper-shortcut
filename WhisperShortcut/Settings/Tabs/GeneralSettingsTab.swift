@@ -1,12 +1,12 @@
 import SwiftUI
 
-/// General Settings Tab - API Key und Support & Feedback
+/// General Settings Tab - API Key and Support & Feedback
 struct GeneralSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @State private var userContextText: String = ""
   @State private var selectedInterval: AutoImprovementInterval = .default
-  @State private var loggingEnabled: Bool = true
+  @State private var selectedDictationThreshold: Int = AppConstants.promptImprovementDictationThreshold
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -510,14 +510,14 @@ struct GeneralSettingsTab: View {
   private var autoImprovementSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "🤖 Smarte Verbesserung",
-        subtitle: "Automatische Verbesserung der System-Prompts auf Basis Ihrer Nutzung"
+        title: "🤖 Smart Improvement",
+        subtitle: "Automatically improve system prompts based on your usage"
       )
 
       VStack(alignment: .leading, spacing: 16) {
         // Interval Picker
         VStack(alignment: .leading, spacing: 8) {
-          Text("Automatische Verbesserung der System-Prompts")
+          Text("Automatic system prompt improvement")
             .font(.callout)
             .fontWeight(.medium)
 
@@ -530,30 +530,44 @@ struct GeneralSettingsTab: View {
           .frame(maxWidth: 200)
           .onChange(of: selectedInterval) { _, newValue in
             UserDefaults.standard.set(newValue.rawValue, forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
-            DebugLogger.log("AUTO-IMPROVEMENT: Interval changed to \(newValue.displayName)")
+            let enabled = newValue != .never
+            UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.userContextLoggingEnabled)
+            UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.autoApplyImprovements)
+            DebugLogger.log("AUTO-IMPROVEMENT: Interval changed to \(newValue.displayName), logging & auto-apply = \(enabled)")
           }
 
-          Text("Im Hintergrund werden auf Basis Ihrer Nutzung Vorschläge für Ihre System-Prompts erstellt. Ein Pop-up erscheint zur Bestätigung, wenn Vorschläge verfügbar sind.")
+          Text("Minimum cooldown between improvement runs. Set to \"Always\" for no cooldown.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
 
-        // Logging Toggle
+        // Dictation Threshold Picker
         VStack(alignment: .leading, spacing: 8) {
-          Toggle("Interaktions-Logging für Vorschläge", isOn: $loggingEnabled)
-            .onChange(of: loggingEnabled) { _, newValue in
-              UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.userContextLoggingEnabled)
-              DebugLogger.log("AUTO-IMPROVEMENT: Logging \(newValue ? "enabled" : "disabled")")
-            }
+          Text("Improvement after N dictations")
+            .font(.callout)
+            .fontWeight(.medium)
 
-          Text("Nutzungsdaten werden lokal gespeichert und für \"Generate with AI\" sowie die automatischen Vorschläge verwendet. Bei Deaktivierung werden keine neuen Interaktionen geloggt.")
+          Picker("", selection: $selectedDictationThreshold) {
+            Text("2 dictations").tag(2)
+            Text("5 dictations").tag(5)
+            Text("10 dictations").tag(10)
+            Text("20 dictations").tag(20)
+            Text("50 dictations").tag(50)
+          }
+          .pickerStyle(.menu)
+          .frame(maxWidth: 200)
+          .onChange(of: selectedDictationThreshold) { _, newValue in
+            UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.promptImprovementDictationThreshold)
+            DebugLogger.log("AUTO-IMPROVEMENT: Dictation threshold changed to \(newValue)")
+          }
+
+          Text("An improvement run is triggered after this many successful dictations, provided the cooldown has passed.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-            .opacity(selectedInterval == .never ? 0.5 : 1.0)
         }
-        .disabled(selectedInterval == .never)
+
       }
     }
     .onAppear {
@@ -561,13 +575,18 @@ struct GeneralSettingsTab: View {
       let rawValue = UserDefaults.standard.integer(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
       selectedInterval = AutoImprovementInterval(rawValue: rawValue) ?? .default
       
-      // Load logging setting (default to true if not set)
-      if UserDefaults.standard.object(forKey: UserDefaultsKeys.userContextLoggingEnabled) == nil {
-        loggingEnabled = true
-        UserDefaults.standard.set(true, forKey: UserDefaultsKeys.userContextLoggingEnabled)
+      // Ensure logging and auto-apply match the interval setting
+      let enabled = selectedInterval != .never
+      UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.userContextLoggingEnabled)
+      UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.autoApplyImprovements)
+
+      // Load dictation threshold setting
+      if UserDefaults.standard.object(forKey: UserDefaultsKeys.promptImprovementDictationThreshold) == nil {
+        selectedDictationThreshold = AppConstants.promptImprovementDictationThreshold
       } else {
-        loggingEnabled = UserDefaults.standard.bool(forKey: UserDefaultsKeys.userContextLoggingEnabled)
+        selectedDictationThreshold = UserDefaults.standard.integer(forKey: UserDefaultsKeys.promptImprovementDictationThreshold)
       }
+
     }
   }
 
@@ -578,7 +597,7 @@ struct GeneralSettingsTab: View {
       SectionHeader(
         title: "💬 Support & Feedback",
         subtitle:
-          "If you have feedback, if sth doesn't work, or if you have suggestions for improvement, feel free to contact me via WhatsApp."
+          "If you have feedback, if something doesn't work, or if you have suggestions for improvement, feel free to contact me via WhatsApp."
       )
 
       VStack(alignment: .leading, spacing: 20) {

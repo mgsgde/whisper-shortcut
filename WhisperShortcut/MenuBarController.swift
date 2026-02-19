@@ -1217,6 +1217,9 @@ class MenuBarController: NSObject {
       // Record successful operation for review prompt
       reviewPrompter.recordSuccessfulOperation(window: statusItem?.button?.window)
 
+      // Count dictation for auto-improvement trigger
+      await AutoPromptImprovementScheduler.shared.incrementDictationCountAndRunIfNeeded()
+
       // Get model info asynchronously before UI update
       let modelInfo = await self.speechService.getTranscriptionModelInfo()
       
