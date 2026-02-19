@@ -392,10 +392,18 @@ class MenuBarController: NSObject {
     statusItem?.button?.title = appState.icon
   }
 
+
   // MARK: - Actions (Simplified Logic)
   @objc private func toggleTranscription() {
-    // Check if currently processing transcription - if so, cancel it
-    if case .processing(.transcribing) = appState {
+    // Check if currently processing transcription (incl. chunk phases for long audio) - if so, cancel it
+    let isTranscriptionProcessing: Bool = {
+      guard case .processing(let mode) = appState, !isProcessingTTS else { return false }
+      switch mode {
+      case .transcribing, .splitting, .processingChunks, .merging: return true
+      case .prompting, .ttsProcessing: return false
+      }
+    }()
+    if isTranscriptionProcessing {
       speechService.cancelTranscription()
       // Clean up the audio file immediately to prevent race conditions
       if let audioURL = currentTranscriptionAudioURL {
