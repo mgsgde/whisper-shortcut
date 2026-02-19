@@ -42,10 +42,11 @@ Logging and auto-apply are **implicitly** enabled when the interval is set to a 
 
 ## 4. Settings
 
-Under "Smart Improvement" in General Settings there are two options:
+Under "Smart Improvement" in General Settings there are three options:
 
 | Setting | Options | Meaning |
 |---------|---------|---------|
+| **Model for Smart Improvement** | Gemini 2.0 Flash, 2.5 Flash, 2.5 Flash-Lite, 3 Flash, etc. | Gemini model used for automatic Smart Improvement and for "Generate with AI" in settings. Default: Gemini 2.5 Flash. |
 | **Automatic system prompt improvement** | Never, Always, Every 7/14/30 days | Enables/disables Smart Improvement. The value is the minimum cooldown between runs. "Always" = no cooldown. |
 | **Improvement after N dictations** | 2, 5, 10, 20, 50 | Number of successful dictations after which an improvement run is triggered (provided cooldown has expired). |
 
@@ -63,7 +64,7 @@ In `runImprovement()` the following happens:
 
 2. **For each focus**:
    - **Log collection**: `UserContextLogger` provides interaction logs (JSONL); **tiered sampling** is used (e.g. 50% last 7 days, 30% 8–14, 20% 15–30), limited by entries per mode and total characters.
-   - **Gemini call**: The collected text (plus optional existing user context / current prompts) is sent as a user message to **Gemini** (`userContextDerivationEndpoint`). The **system prompt** for Gemini is fixed per focus (in `UserContextDerivation.systemPromptForFocus(_:)`) and requires a response with exact markers (e.g. `===SUGGESTED_SYSTEM_PROMPT_START===` … `===END===`).
+   - **Gemini call**: The collected text (plus optional existing user context / current prompts) is sent as a user message to **Gemini** using the **selected improvement model** (see Settings; default: Gemini 2.5 Flash). The **system prompt** for Gemini is fixed per focus (in `UserContextDerivation.systemPromptForFocus(_:)`) and requires a response with exact markers (e.g. `===SUGGESTED_SYSTEM_PROMPT_START===` … `===END===`).
    - **Parsing**: The content between the markers is extracted from the Gemini response.
    - **Writing**: The extracted text is written to a **suggestion file** in the context directory:
      - `suggested-user-context.md`
@@ -102,7 +103,7 @@ The user can revert in the respective Settings tabs via "Restore Previous".
 | **Trigger** | After N successful dictations (configurable: 2–50), provided cooldown has expired **and** interaction data is at least 7 days old. |
 | **Cooldown** | Minimum interval between runs: Always (no cooldown), 7, 14, or 30 days. |
 | **Data basis** | Interaction logs (JSONL) from `UserContextLogger`, tiered sampling, character/entry limits. |
-| **AI** | One Gemini model with a fixed system prompt per focus; response with markers. |
+| **AI** | User-selectable Gemini model (Settings > General > Smart Improvement); fixed system prompt per focus; response with markers. |
 | **Output** | Suggestions are applied automatically (Previous saved, popup "review or revert"). |
 
 ---
@@ -116,6 +117,6 @@ The user can revert in the respective Settings tabs via "Restore Previous".
 - `FullApp.swift` – App launch: `checkForPendingSuggestions()`
 - `MenuBarController.swift` – `incrementDictationCountAndRunIfNeeded()` after successful transcription
 - `SettingsViewModel.swift` – `GenerationKind`, Compare Sheet, Apply/Dismiss
-- `GeneralSettingsTab.swift` – Settings UI for interval and dictation threshold
-- `AppConstants.swift` – `autoImprovementMinimumInteractionDays`, `promptImprovementDictationThreshold`, sampling constants
-- `UserDefaultsKeys.swift` – All relevant keys (`autoPromptImprovementIntervalDays`, `promptImprovementDictationThreshold`, `autoApplyImprovements`, etc.)
+- `GeneralSettingsTab.swift` – Settings UI for improvement model, interval, and dictation threshold
+- `AppConstants.swift` – `autoImprovementMinimumInteractionDays`, `promptImprovementDictationThreshold`, sampling constants; `userContextDerivationEndpoint` used as fallback when no valid model is selected
+- `UserDefaultsKeys.swift` – All relevant keys (`selectedImprovementModel`, `autoPromptImprovementIntervalDays`, `promptImprovementDictationThreshold`, `autoApplyImprovements`, etc.)
