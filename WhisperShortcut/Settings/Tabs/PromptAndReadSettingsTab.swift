@@ -126,26 +126,7 @@ struct PromptAndReadSettingsTab: View {
         previousValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.previousPromptAndReadSystemPrompt),
         lastAppliedValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAppliedPromptAndReadSystemPrompt),
         onResetToPrevious: { viewModel.restorePreviousPromptAndReadPrompt() },
-        onResetToLatest: { viewModel.restoreToLastAppliedPromptAndReadPrompt() },
-        trailingContentExplanation: "Generate with AI analyzes your app interactions from the last 30 days and suggests a system prompt. You can review and edit the suggestion in the comparison sheet before applying.",
-        trailingContent: AnyView(
-          Button {
-            viewModel.startGeneratePromptAndReadPrompt()
-          } label: {
-            if viewModel.generatingKind == .promptAndRead {
-              HStack(spacing: 6) {
-                ProgressView()
-                  .controlSize(.small)
-                Text("Updating...")
-              }
-            } else {
-              Text("Generate with AI")
-            }
-          }
-          .disabled(!KeychainManager.shared.hasGoogleAPIKey() || viewModel.generatingKind == .promptAndRead)
-          .buttonStyle(.bordered)
-          .font(.callout)
-        )
+        onResetToLatest: { viewModel.restoreToLastAppliedPromptAndReadPrompt() }
       )
     }
   }

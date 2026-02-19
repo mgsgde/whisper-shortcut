@@ -31,3 +31,11 @@ alwaysApply: true
 ```bash
 bash ./scripts/rebuild-and-restart.sh
 ```
+
+## 📁 Data Directories (Sandbox vs Normal)
+
+App data (UserContext, interaction logs) can live in **two** places:
+- **Sandbox:** `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/`
+- **Normal:** `~/Library/Application Support/WhisperShortcut/`
+
+Which one is used depends on whether the app runs sandboxed (e.g. App Store) or not. When debugging, resetting, or counting interaction logs, check **both** or the one that matches how the app is currently run. See `docs/data-directories.md` for details.

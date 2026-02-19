@@ -47,7 +47,8 @@ class AutoPromptImprovementScheduler {
       DebugLogger.log("AUTO-IMPROVEMENT: Skip - no API key")
       return
     }
-    let minDays = AppConstants.autoImprovementMinimumInteractionDays
+    // When "Always": no minimum calendar days — run as soon as threshold is reached. Otherwise require 7+ days of usage.
+    let minDays = interval == .always ? 0 : AppConstants.autoImprovementMinimumInteractionDays
     guard UserContextLogger.shared.hasInteractionDataAtLeast(daysOld: minDays) else {
       DebugLogger.log("AUTO-IMPROVEMENT: Skip - need at least \(minDays) days of data")
       return
@@ -179,6 +180,12 @@ class AutoPromptImprovementScheduler {
       }
     } else {
       DebugLogger.log("AUTO-IMPROVEMENT: No suggestions generated")
+      await MainActor.run {
+        PopupNotificationWindow.showInfo(
+          "Auto-improvement ran but no suggestions could be generated (e.g. API busy). It will run again after more dictations.",
+          title: "Smart Improvement"
+        )
+      }
     }
 
     // Update last run date regardless of whether suggestions were generated

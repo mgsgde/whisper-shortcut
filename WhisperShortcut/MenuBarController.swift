@@ -1407,7 +1407,9 @@ class MenuBarController: NSObject {
 
   /// Performs auto-paste if enabled in settings
   private func autoPasteIfEnabled() {
-    let autoPasteEnabled = UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoPasteAfterDictation)
+    let autoPasteEnabled = UserDefaults.standard.object(forKey: UserDefaultsKeys.autoPasteAfterDictation) != nil
+      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoPasteAfterDictation)
+      : SettingsDefaults.autoPasteAfterDictation
     if autoPasteEnabled {
       // Small delay to ensure clipboard is ready
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in

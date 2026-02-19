@@ -50,6 +50,15 @@ class UserContextLogger {
     }
   }
 
+  /// Removes the entire UserContext directory (user-context.md, suggested prompts, interaction logs).
+  /// The directory will be recreated on next use. Use for "Reset to Defaults".
+  func deleteAllContextData() throws {
+    let fm = FileManager.default
+    guard fm.fileExists(atPath: contextDirectoryURL.path) else { return }
+    try fm.removeItem(at: contextDirectoryURL)
+    DebugLogger.log("USER-CONTEXT: Deleted all context data at \(contextDirectoryURL.path)")
+  }
+
   // MARK: - Logging Guard
 
   private var isLoggingEnabled: Bool {

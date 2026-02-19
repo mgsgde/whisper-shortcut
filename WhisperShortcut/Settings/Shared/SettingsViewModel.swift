@@ -1,8 +1,9 @@
+import AppKit
 import Foundation
 import SwiftUI
 import ServiceManagement
 
-/// Which "Generate with AI" flow is running or whose result sheet is shown.
+/// Which suggestion kind the compare sheet is showing (from Smart Improvement / pending suggestions).
 enum GenerationKind: Equatable, Codable {
   case dictation
   case promptMode
@@ -16,8 +17,7 @@ class SettingsViewModel: ObservableObject {
   // MARK: - Published State
   @Published var data = SettingsData()
 
-  // MARK: - AI Generation (runs across tab switches; sheet shown from SettingsView)
-  @Published var generatingKind: GenerationKind?
+  // MARK: - Compare sheet (pending Smart Improvement suggestions)
   @Published var pendingSheetKind: GenerationKind?
   @Published var suggestedTextForGeneration = ""
   @Published var currentTextForGenerationSheet = ""
@@ -576,123 +576,21 @@ class SettingsViewModel: ObservableObject {
     DebugLogger.log("LIVE-MEETING: Opened transcripts folder from Settings")
   }
 
-  // MARK: - AI Generation (runs in background; result sheet shown from SettingsView)
-  func startGenerateDictationPrompt() {
-    generatingKind = .dictation
-    Task {
-      await runDictationGeneration()
-    }
-  }
-
-  func startGeneratePromptModePrompt() {
-    generatingKind = .promptMode
-    Task {
-      await runPromptModeGeneration()
-    }
-  }
-
-  func startGeneratePromptAndReadPrompt() {
-    generatingKind = .promptAndRead
-    Task {
-      await runPromptAndReadGeneration()
-    }
-  }
-
-  func startGenerateUserContext() {
-    generatingKind = .userContext
-    Task {
-      await runUserContextGeneration()
-    }
-  }
-
-  private func runDictationGeneration() async {
+  // MARK: - Reset to Defaults
+  /// Deletes all UserDefaults and UserContext data, then terminates the app so the user can relaunch with defaults.
+  /// API key (Keychain) and Documents/WhisperShortcut transcripts are not touched.
+  func resetAllDataAndRestart() {
     do {
-      let derivation = UserContextDerivation()
-      _ = try await derivation.updateFromLogs(focus: .dictation)
-      let contextDir = UserContextLogger.shared.directoryURL
-      let fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
-      let suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      await MainActor.run {
-        generatingKind = nil
-        pendingSheetKind = .dictation
-        suggestedTextForGeneration = suggested.isEmpty ? "(No suggestion generated)" : suggested
-        currentTextForGenerationSheet = ""
-        showGenerationCompareSheet = true
-      }
+      try UserContextLogger.shared.deleteAllContextData()
     } catch {
-      await MainActor.run {
-        generatingKind = nil
-        showError(error.localizedDescription)
-      }
+      DebugLogger.logError("RESET: Failed to delete UserContext: \(error.localizedDescription)")
     }
-  }
-
-  private func runPromptModeGeneration() async {
-    do {
-      let derivation = UserContextDerivation()
-      _ = try await derivation.updateFromLogs(focus: .promptMode)
-      let contextDir = UserContextLogger.shared.directoryURL
-      let fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
-      let suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      await MainActor.run {
-        generatingKind = nil
-        pendingSheetKind = .promptMode
-        suggestedTextForGeneration = suggested.isEmpty ? "(No suggestion generated)" : suggested
-        currentTextForGenerationSheet = ""
-        showGenerationCompareSheet = true
-      }
-    } catch {
-      await MainActor.run {
-        generatingKind = nil
-        showError(error.localizedDescription)
-      }
-    }
-  }
-
-  private func runPromptAndReadGeneration() async {
-    do {
-      let derivation = UserContextDerivation()
-      _ = try await derivation.updateFromLogs(focus: .promptAndRead)
-      let contextDir = UserContextLogger.shared.directoryURL
-      let fileURL = contextDir.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
-      let suggested = (try? String(contentsOf: fileURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      await MainActor.run {
-        generatingKind = nil
-        pendingSheetKind = .promptAndRead
-        suggestedTextForGeneration = suggested.isEmpty ? "(No suggestion generated)" : suggested
-        currentTextForGenerationSheet = ""
-        showGenerationCompareSheet = true
-      }
-    } catch {
-      await MainActor.run {
-        generatingKind = nil
-        showError(error.localizedDescription)
-      }
-    }
-  }
-
-  private func runUserContextGeneration() async {
-    do {
-      let derivation = UserContextDerivation()
-      _ = try await derivation.updateFromLogs(focus: .userContext)
-      let contextDir = UserContextLogger.shared.directoryURL
-      let currentURL = contextDir.appendingPathComponent("user-context.md")
-      let suggestedURL = contextDir.appendingPathComponent("suggested-user-context.md")
-      let current = (try? String(contentsOf: currentURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      let suggested = (try? String(contentsOf: suggestedURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      await MainActor.run {
-        generatingKind = nil
-        pendingSheetKind = .userContext
-        suggestedTextForGeneration = suggested.isEmpty ? "(No suggestion generated)" : suggested
-        currentTextForGenerationSheet = current
-        showGenerationCompareSheet = true
-      }
-    } catch {
-      await MainActor.run {
-        generatingKind = nil
-        showError(error.localizedDescription)
-      }
-    }
+    let bundleID = Bundle.main.bundleIdentifier ?? ""
+    UserDefaults.standard.removePersistentDomain(forName: bundleID)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.shouldTerminate)
+    UserDefaults.standard.synchronize()
+    DebugLogger.log("RESET: Cleared UserDefaults and UserContext; terminating app")
+    NSApplication.shared.terminate(nil)
   }
 
   /// Called when Settings appears or when .autoImprovementSuggestionsReady is received.
@@ -762,26 +660,16 @@ class SettingsViewModel: ObservableObject {
   }
 
   func dismissGenerationSheet() {
-    // If this was an auto-improvement sheet, move to next in queue
-    if isAutoImprovementSheet {
-      removeCurrentFromQueue()
-      if let nextKind = pendingAutoImprovementQueue.first {
-        showNextPendingSuggestion(kind: nextKind)
-      } else {
-        // Queue empty, close sheet
-        AutoPromptImprovementScheduler.shared.clearPendingKinds()
-        showGenerationCompareSheet = false
-        pendingSheetKind = nil
-        suggestedTextForGeneration = ""
-        currentTextForGenerationSheet = ""
-        isAutoImprovementSheet = false
-      }
+    removeCurrentFromQueue()
+    if let nextKind = pendingAutoImprovementQueue.first {
+      showNextPendingSuggestion(kind: nextKind)
     } else {
-      // Regular manual generation sheet
+      AutoPromptImprovementScheduler.shared.clearPendingKinds()
       showGenerationCompareSheet = false
       pendingSheetKind = nil
       suggestedTextForGeneration = ""
       currentTextForGenerationSheet = ""
+      isAutoImprovementSheet = false
     }
   }
 

@@ -197,7 +197,7 @@ enum NotificationPosition: String, CaseIterable {
   }
   
   var isRecommended: Bool {
-    return self == .leftBottom
+    return self == .leftTop
   }
 }
 
@@ -433,7 +433,7 @@ struct SettingsDefaults {
 
   // MARK: - Notification Settings
   static let showPopupNotifications = true
-  static let notificationPosition = NotificationPosition.leftBottom
+  static let notificationPosition = NotificationPosition.leftTop
   static let notificationDuration = NotificationDuration.threeSeconds
   static let errorNotificationDuration = NotificationDuration.thirtySeconds
 

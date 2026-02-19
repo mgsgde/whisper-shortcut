@@ -656,7 +656,7 @@ class PopupNotificationWindow: NSWindow {
     {
       return savedPosition
     }
-    return NotificationPosition.leftBottom  // Default
+    return SettingsDefaults.notificationPosition
   }
   
   private func calculatePosition(screenFrame: NSRect, windowWidth: CGFloat, windowHeight: CGFloat, position: NotificationPosition, menuBarHeight: CGFloat) -> (x: CGFloat, y: CGFloat) {
@@ -983,6 +983,23 @@ extension PopupNotificationWindow {
 
   static func showTranscriptionResponse(_ transcription: String, modelInfo: String? = nil) {
     showSuccessNotification(text: transcription, modelInfo: modelInfo)
+  }
+
+  /// Show an informational popup (ℹ️ icon, auto-dismiss). Use for system messages that are neither success nor error.
+  static func showInfo(_ text: String, title: String = "Info") {
+    guard arePopupNotificationsEnabled else {
+      return
+    }
+
+    let popup = PopupNotificationWindow(
+      title: title,
+      text: text,
+      isError: false,
+      isInfo: true
+    )
+
+    activePopups.insert(popup)
+    popup.show()
   }
 
   static func showError(_ error: String, title: String = "Error", retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil) {

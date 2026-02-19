@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// General Settings Tab - API Key and Support & Feedback
 struct GeneralSettingsTab: View {
@@ -7,6 +8,7 @@ struct GeneralSettingsTab: View {
   @State private var userContextText: String = ""
   @State private var selectedInterval: AutoImprovementInterval = .default
   @State private var selectedDictationThreshold: Int = AppConstants.promptImprovementDictationThreshold
+  @State private var showResetToDefaultsConfirmation = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -108,6 +110,26 @@ struct GeneralSettingsTab: View {
 
       // Support & Feedback Section
       supportFeedbackSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
+      // Reset to Defaults Section
+      resetToDefaultsSection
+    }
+    .confirmationDialog("Reset to Defaults", isPresented: $showResetToDefaultsConfirmation, titleVisibility: .visible) {
+      Button("Reset", role: .destructive) {
+        viewModel.resetAllDataAndRestart()
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("All settings, shortcuts, and interaction history will be deleted. Your API key will be kept. The app will quit so you can start fresh. Continue?")
     }
   }
 
@@ -456,26 +478,7 @@ struct GeneralSettingsTab: View {
         previousValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.previousUserContext),
         lastAppliedValue: UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAppliedUserContext),
         onResetToPrevious: { viewModel.restorePreviousUserContext() },
-        onResetToLatest: { viewModel.restoreToLastAppliedUserContext() },
-        trailingContentExplanation: "Generate with AI analyzes your app interactions from the last 30 days and suggests user context. You can review and edit the suggestion in the comparison sheet before applying.",
-        trailingContent: AnyView(
-          Button {
-            viewModel.startGenerateUserContext()
-          } label: {
-            if viewModel.generatingKind == .userContext {
-              HStack(spacing: 6) {
-                ProgressView()
-                  .controlSize(.small)
-                Text("Updating...")
-              }
-            } else {
-              Text("Generate with AI")
-            }
-          }
-          .disabled(!KeychainManager.shared.hasGoogleAPIKey() || viewModel.generatingKind == .userContext)
-          .buttonStyle(.bordered)
-          .font(.callout)
-        )
+        onResetToLatest: { viewModel.restoreToLastAppliedUserContext() }
       )
     }
     .onAppear {
@@ -503,6 +506,14 @@ struct GeneralSettingsTab: View {
     } else {
       try? userContextText.write(to: fileURL, atomically: true, encoding: .utf8)
     }
+  }
+
+  private func openInteractionsDirectoryInFinder() {
+    let url = UserContextLogger.shared.directoryURL
+    if !FileManager.default.fileExists(atPath: url.path) {
+      try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+    NSWorkspace.shared.open(url)
   }
 
   // MARK: - Auto-Improvement Section
@@ -568,6 +579,11 @@ struct GeneralSettingsTab: View {
             .fixedSize(horizontal: false, vertical: true)
         }
 
+        Button("Open interactions folder") {
+          openInteractionsDirectoryInFinder()
+        }
+        .buttonStyle(.bordered)
+        .font(.callout)
       }
     }
     .onAppear {
@@ -724,6 +740,49 @@ struct GeneralSettingsTab: View {
           Spacer()
         }
         .padding(.top, 12)
+      }
+    }
+  }
+
+  // MARK: - Reset to Defaults Section
+  @ViewBuilder
+  private var resetToDefaultsSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Reset to Defaults",
+        subtitle: "Delete all settings, shortcuts, and user context (suggested prompts, interaction history). Your API key is not affected. The app will quit so you can relaunch with factory defaults."
+      )
+
+      Button(action: {
+        showResetToDefaultsConfirmation = true
+      }) {
+        HStack(alignment: .center, spacing: 12) {
+          Image(systemName: "arrow.counterclockwise")
+            .font(.system(size: 18))
+            .foregroundColor(.red)
+            .opacity(0.9)
+
+          Text("Delete All Data and Reset")
+            .font(.body)
+            .fontWeight(.medium)
+            .foregroundColor(.red)
+            .textSelection(.enabled)
+
+          Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(12)
+      }
+      .buttonStyle(PlainButtonStyle())
+      .help("Reset all settings and data to defaults; app will quit")
+      .onHover { isHovered in
+        if isHovered {
+          NSCursor.pointingHand.push()
+        } else {
+          NSCursor.pop()
+        }
       }
     }
   }
