@@ -295,8 +295,8 @@ class UserContextLogger {
     try? FileManager.default.removeItem(at: url)
   }
 
-  /// Appends one entry to the system prompt history JSONL (for Dictate Prompt or Prompt & Read).
-  /// File name: system-prompt-history-{suffix}.jsonl (e.g. prompt-mode, prompt-and-read).
+  /// Appends one entry to the system prompt history JSONL (for Dictate (transcription), Dictate Prompt, or Prompt & Read).
+  /// File name: system-prompt-history-{suffix}.jsonl (e.g. dictation, prompt-mode, prompt-and-read).
   /// Called when auto-improvement applies a new system prompt. History is removed when UserContext is deleted.
   func appendSystemPromptHistory(historyFileSuffix: String, previousLength: Int, newLength: Int, content: String) {
     queue.async { [weak self] in
@@ -330,6 +330,44 @@ class UserContextLogger {
         DebugLogger.log("USER-CONTEXT: Appended system prompt history (\(historyFileSuffix))")
       } catch {
         DebugLogger.logError("USER-CONTEXT: Failed to append system prompt history: \(error.localizedDescription)")
+      }
+    }
+  }
+
+  /// Appends one entry to the user context history JSONL (user-context-history.jsonl).
+  /// Same entry shape as system prompt history (ts, source, previousLength, newLength, content). Called when auto-improvement applies suggested user context. History is removed when UserContext is deleted.
+  func appendUserContextHistory(previousLength: Int, newLength: Int, content: String) {
+    queue.async { [weak self] in
+      guard let self else { return }
+      let entry = SystemPromptHistoryEntry(
+        ts: self.iso8601Now(),
+        source: "auto",
+        previousLength: previousLength,
+        newLength: newLength,
+        content: content
+      )
+      let filename = "user-context-history.jsonl"
+      let fileURL = self.contextDirectoryURL.appendingPathComponent(filename)
+
+      do {
+        let data = try JSONEncoder().encode(entry)
+        guard var line = String(data: data, encoding: .utf8) else { return }
+        line += "\n"
+
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+          let handle = try FileHandle(forWritingTo: fileURL)
+          handle.seekToEndOfFile()
+          if let lineData = line.data(using: .utf8) {
+            handle.write(lineData)
+          }
+          try handle.close()
+        } else {
+          try line.write(to: fileURL, atomically: true, encoding: .utf8)
+        }
+
+        DebugLogger.log("USER-CONTEXT: Appended user context history")
+      } catch {
+        DebugLogger.logError("USER-CONTEXT: Failed to append user context history: \(error.localizedDescription)")
       }
     }
   }

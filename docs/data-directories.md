@@ -10,7 +10,7 @@ When the app is not sandboxed (e.g. run from Xcode with sandbox disabled), it st
 
 | Subfolder | Contents |
 |-----------|----------|
-| **UserContext/** | Interaction logs (`interactions-YYYY-MM-DD.jsonl`), `user-context.md`, suggested prompts, and (when auto-improvement applies) system prompt history (`system-prompt-history-*.jsonl`) |
+| **UserContext/** | Interaction logs (`interactions-YYYY-MM-DD.jsonl`), `user-context.md`, suggested prompts, and (when auto-improvement applies) system prompt history (`system-prompt-history-dictation.jsonl`, `system-prompt-history-prompt-mode.jsonl`, `system-prompt-history-prompt-and-read.jsonl`) and user context history (`user-context-history.jsonl`) |
 | **Meetings/** | Live meeting transcript files (`Meeting-YYYY-MM-DD-HHmmss.txt`) |
 | **WhisperKit/** | Offline Whisper models (downloaded via the app) |
 

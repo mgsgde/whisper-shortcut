@@ -181,8 +181,11 @@ class AutoPromptImprovementScheduler {
   private func applySuggestion(_ suggested: String, for kind: GenerationKind) {
     switch kind {
     case .dictation:
+      let currentDictation = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) ?? AppConstants.defaultTranscriptionSystemPrompt
       UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.customPromptText)
       UserContextLogger.shared.deleteSuggestedDictationPromptFile()
+      logSystemPromptChange(kind: "Dictation Prompt", previous: currentDictation, applied: suggested)
+      UserContextLogger.shared.appendSystemPromptHistory(historyFileSuffix: "dictation", previousLength: currentDictation.count, newLength: suggested.count, content: suggested)
 
     case .promptMode:
       let currentPromptMode = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt) ?? ""
@@ -201,9 +204,11 @@ class AutoPromptImprovementScheduler {
     case .userContext:
       let contextDir = UserContextLogger.shared.directoryURL
       let fileURL = contextDir.appendingPathComponent("user-context.md")
+      let currentUserContext = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
       try? suggested.write(to: fileURL, atomically: true, encoding: .utf8)
       NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
       UserContextLogger.shared.deleteSuggestedUserContextFile()
+      UserContextLogger.shared.appendUserContextHistory(previousLength: currentUserContext.count, newLength: suggested.count, content: suggested)
     }
   }
 
