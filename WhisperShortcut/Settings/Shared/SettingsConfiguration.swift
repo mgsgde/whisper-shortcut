@@ -402,6 +402,7 @@ struct SettingsDefaults {
   static let togglePrompting = ""
   static let readSelectedText = ""
   static let readAloud = ""
+  static let toggleMeeting = ""
   static let openSettings = ""
 
   // MARK: - Toggle Shortcut Enable States
@@ -409,6 +410,7 @@ struct SettingsDefaults {
   static let togglePromptingEnabled = true
   static let readSelectedTextEnabled = true
   static let readAloudEnabled = true
+  static let toggleMeetingEnabled = true
   static let openSettingsEnabled = true
 
   // MARK: - Model & Prompt Settings
@@ -464,6 +466,7 @@ struct SettingsData {
   var togglePrompting: String = SettingsDefaults.togglePrompting
   var readSelectedText: String = SettingsDefaults.readSelectedText
   var readAloud: String = SettingsDefaults.readAloud
+  var toggleMeeting: String = SettingsDefaults.toggleMeeting
   var openSettings: String = SettingsDefaults.openSettings
 
   // MARK: - Toggle Shortcut Enable States
@@ -471,6 +474,7 @@ struct SettingsData {
   var togglePromptingEnabled: Bool = SettingsDefaults.togglePromptingEnabled
   var readSelectedTextEnabled: Bool = SettingsDefaults.readSelectedTextEnabled
   var readAloudEnabled: Bool = SettingsDefaults.readAloudEnabled
+  var toggleMeetingEnabled: Bool = SettingsDefaults.toggleMeetingEnabled
   var openSettingsEnabled: Bool = SettingsDefaults.openSettingsEnabled
 
   // MARK: - Model & Prompt Settings
@@ -521,6 +525,7 @@ enum SettingsFocusField: Hashable {
   case togglePrompting
   case toggleReadSelectedText
   case toggleReadAloud
+  case toggleMeeting
   case toggleSettings
   case customPrompt
   case promptModeSystemPrompt

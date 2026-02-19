@@ -6,6 +6,7 @@ protocol ShortcutDelegate: AnyObject {
   func togglePrompting()
   func readSelectedText()
   func readAloud()
+  func toggleMeeting()
   func openSettings()
 }
 
@@ -17,6 +18,7 @@ class Shortcuts {
   private var togglePromptingKey: HotKey?
   private var readSelectedTextKey: HotKey?
   private var readAloudKey: HotKey?
+  private var toggleMeetingKey: HotKey?
   private var openSettingsKey: HotKey?
   private var currentConfig: ShortcutConfig
 
@@ -78,6 +80,15 @@ class Shortcuts {
       }
     }
 
+    // Create toggle meeting shortcut (only if enabled)
+    if config.toggleMeeting.isEnabled {
+      toggleMeetingKey = HotKey(
+        key: config.toggleMeeting.key, modifiers: config.toggleMeeting.modifiers)
+      toggleMeetingKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.toggleMeeting()
+      }
+    }
+
     // Create settings shortcut (only if enabled)
     if config.openSettings.isEnabled {
       openSettingsKey = HotKey(
@@ -102,6 +113,7 @@ class Shortcuts {
     togglePromptingKey = nil
     readSelectedTextKey = nil
     readAloudKey = nil
+    toggleMeetingKey = nil
     openSettingsKey = nil
   }
 

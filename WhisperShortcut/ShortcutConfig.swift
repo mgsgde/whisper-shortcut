@@ -102,6 +102,8 @@ struct ShortcutConfig: Codable {
   var stopPrompting: ShortcutDefinition
   var readSelectedText: ShortcutDefinition
   var readAloud: ShortcutDefinition
+  var toggleMeeting: ShortcutDefinition
+  var stopMeeting: ShortcutDefinition
   var openSettings: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
@@ -111,7 +113,9 @@ struct ShortcutConfig: Codable {
     stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
     readSelectedText: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
     readAloud: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true),
-    openSettings: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true)
+    toggleMeeting: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
+    stopMeeting: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
+    openSettings: ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: true)
   )
 }
 
@@ -212,6 +216,8 @@ class ShortcutConfigManager {
     static let stopPromptingKey = "shortcut_stop_prompting"
     static let readSelectedTextKey = "shortcut_read_selected_text"
     static let readAloudKey = "shortcut_read_aloud"
+    static let toggleMeetingKey = "shortcut_toggle_meeting"
+    static let stopMeetingKey = "shortcut_stop_meeting"
     static let openSettingsKey = "shortcut_open_settings"
   }
 
@@ -233,8 +239,14 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.readSelectedTextKey) ?? ShortcutConfig.default.readSelectedText
     let readAloud =
       loadShortcut(for: Constants.readAloudKey) ?? ShortcutConfig.default.readAloud
-    let openSettings =
-      loadShortcut(for: Constants.openSettingsKey) ?? ShortcutConfig.default.openSettings
+    let toggleMeeting =
+      loadShortcut(for: Constants.toggleMeetingKey) ?? ShortcutConfig.default.toggleMeeting
+    let stopMeeting =
+      loadShortcut(for: Constants.stopMeetingKey) ?? ShortcutConfig.default.stopMeeting
+    // Migration: if Meeting shortcut was never saved, use default Settings (⌘6) to avoid conflict with Meeting (⌘5)
+    let openSettings = userDefaults.data(forKey: Constants.toggleMeetingKey) != nil
+      ? (loadShortcut(for: Constants.openSettingsKey) ?? ShortcutConfig.default.openSettings)
+      : ShortcutConfig.default.openSettings
     return ShortcutConfig(
       startRecording: startRecording,
       stopRecording: stopRecording,
@@ -242,6 +254,8 @@ class ShortcutConfigManager {
       stopPrompting: stopPrompting,
       readSelectedText: readSelectedText,
       readAloud: readAloud,
+      toggleMeeting: toggleMeeting,
+      stopMeeting: stopMeeting,
       openSettings: openSettings
     )
   }
@@ -253,6 +267,8 @@ class ShortcutConfigManager {
     saveShortcut(config.stopPrompting, for: Constants.stopPromptingKey)
     saveShortcut(config.readSelectedText, for: Constants.readSelectedTextKey)
     saveShortcut(config.readAloud, for: Constants.readAloudKey)
+    saveShortcut(config.toggleMeeting, for: Constants.toggleMeetingKey)
+    saveShortcut(config.stopMeeting, for: Constants.stopMeetingKey)
     saveShortcut(config.openSettings, for: Constants.openSettingsKey)
 
     // Post notification for shortcut updates
@@ -402,6 +418,7 @@ class ShortcutConfigManager {
     if shortcut == currentConfig.startRecording || shortcut == currentConfig.stopRecording
       || shortcut == currentConfig.startPrompting || shortcut == currentConfig.stopPrompting
       || shortcut == currentConfig.readSelectedText || shortcut == currentConfig.readAloud
+      || shortcut == currentConfig.toggleMeeting || shortcut == currentConfig.stopMeeting
       || shortcut == currentConfig.openSettings
     {
       return .duplicate("This shortcut is already in use")

@@ -144,22 +144,13 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
-    // Live Meeting Transcription (no shortcut, menu-only)
+    // Live Meeting Transcription
     menu.addItem(
-      createMenuItem("Transcribe Meeting", action: #selector(toggleLiveMeeting), tag: 107))
+      createMenuItemWithShortcut(
+        "Transcribe Meeting", action: #selector(toggleLiveMeeting),
+        shortcut: currentConfig.toggleMeeting, tag: 107))
     menu.addItem(
       createMenuItem("Open Transcripts Folder", action: #selector(openTranscriptsFolder), tag: 108))
-
-    menu.addItem(NSMenuItem.separator())
-
-    // Conversation history management
-    let historyCount = PromptConversationHistory.shared.totalTurnCount()
-    let historyTitle = historyCount > 0
-      ? "New Conversation (\(historyCount) messages)"
-      : "New Conversation"
-    let historyItem = createMenuItem(historyTitle, action: #selector(clearConversationHistory), tag: 106)
-    historyItem.isEnabled = historyCount > 0
-    menu.addItem(historyItem)
 
     menu.addItem(NSMenuItem.separator())
 
@@ -344,13 +335,6 @@ class MenuBarController: NSObject {
       enabled: (hasAPIKey && !appState.isBusy) || appState.recordingMode == .tts
     )
 
-    // Update conversation history item (title and enabled state reflect current count)
-    let historyCount = PromptConversationHistory.shared.totalTurnCount()
-    let historyTitle = historyCount > 0
-      ? "New Conversation (\(historyCount) messages)"
-      : "New Conversation"
-    updateMenuItem(menu, tag: 106, title: historyTitle, enabled: historyCount > 0)
-
     // Update Live Meeting item
     let liveMeetingTitle = isLiveMeetingActive ? "Stop Transcribe Meeting" : "Transcribe Meeting"
     let liveMeetingEnabled = isLiveMeetingActive || (!appState.isBusy && hasAPIKey)
@@ -477,12 +461,6 @@ class MenuBarController: NSObject {
 
   @objc func openSettings() {
     SettingsManager.shared.toggleSettings()
-  }
-
-  @objc func clearConversationHistory() {
-    PromptConversationHistory.shared.clearAll()
-    DebugLogger.log("UI: Conversation history cleared by user")
-    updateUI()
   }
 
   // MARK: - Live Meeting Transcription
@@ -1553,6 +1531,7 @@ extension MenuBarController: ShortcutDelegate {
       }
     }
   }
+  func toggleMeeting() { toggleLiveMeeting() }
   // openSettings is already implemented above
 }
 

@@ -25,6 +25,30 @@ struct GeneralSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
+      // User Context Section
+      userContextSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
+      // Auto-Improvement Section
+      autoImprovementSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Launch at Login Section
       launchAtLoginSection
 
@@ -75,30 +99,6 @@ struct GeneralSettingsTab: View {
 
       // Keyboard Shortcuts Section
       keyboardShortcutsSection
-
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
-
-      // User Context Section
-      userContextSection
-
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
-
-      // Auto-Improvement Section
-      autoImprovementSection
 
       // Section Divider with spacing
       VStack(spacing: 0) {
@@ -181,7 +181,7 @@ struct GeneralSettingsTab: View {
 
       ShortcutInputRow(
         label: "Toggle Settings:",
-        placeholder: "e.g., command+5",
+        placeholder: "e.g., command+6",
         text: $viewModel.data.openSettings,
         isEnabled: $viewModel.data.openSettingsEnabled,
         focusedField: .toggleSettings,
@@ -598,8 +598,9 @@ struct GeneralSettingsTab: View {
 
         // Model selection for Smart Improvement
         PromptModelSelectionView(
-          title: "🧠 Model for Smart Improvement",
+          title: "Model for Smart Improvement",
           subtitle: "Used for automatic Smart Improvement (suggested prompts and user context).",
+          showSectionHeader: false,
           selectedModel: Binding(
             get: { viewModel.data.selectedImprovementModel },
             set: { newValue in

@@ -31,12 +31,14 @@ class SettingsViewModel: ObservableObject {
     data.togglePrompting = currentConfig.startPrompting.textDisplayString
     data.readSelectedText = currentConfig.readSelectedText.textDisplayString
     data.readAloud = currentConfig.readAloud.textDisplayString
+    data.toggleMeeting = currentConfig.toggleMeeting.textDisplayString
     data.openSettings = currentConfig.openSettings.textDisplayString
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
     data.readSelectedTextEnabled = currentConfig.readSelectedText.isEnabled
     data.readAloudEnabled = currentConfig.readAloud.isEnabled
+    data.toggleMeetingEnabled = currentConfig.toggleMeeting.isEnabled
     data.openSettingsEnabled = currentConfig.openSettings.isEnabled
 
     // Load transcription model preference
@@ -249,6 +251,12 @@ class SettingsViewModel: ObservableObject {
       }
     }
 
+    if data.toggleMeetingEnabled {
+      guard !data.toggleMeeting.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return "Please enter a transcribe meeting shortcut"
+      }
+    }
+
     if data.openSettingsEnabled {
       guard !data.openSettings.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         return "Please enter an open settings shortcut"
@@ -323,6 +331,8 @@ class SettingsViewModel: ObservableObject {
       return name == "read selected text"
     case .toggleReadAloud:
       return name == "read aloud"
+    case .toggleMeeting:
+      return name == "toggle meeting"
     case .toggleSettings:
       return name == "open settings"
     default:
@@ -345,9 +355,12 @@ class SettingsViewModel: ObservableObject {
       "read aloud": data.readAloudEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.readAloud)
         : ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false),
+      "toggle meeting": data.toggleMeetingEnabled
+        ? ShortcutConfigManager.parseShortcut(from: data.toggleMeeting)
+        : ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false),
       "open settings": data.openSettingsEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.openSettings)
-        : ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false),
+        : ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: false),
     ]
   }
 
@@ -420,8 +433,12 @@ class SettingsViewModel: ObservableObject {
         ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
       readAloud: shortcuts["read aloud"]!
         ?? ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false),
+      toggleMeeting: shortcuts["toggle meeting"]!
+        ?? ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false),
+      stopMeeting: shortcuts["toggle meeting"]!
+        ?? ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false),
       openSettings: shortcuts["open settings"]!
-        ?? ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false)
+        ?? ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 

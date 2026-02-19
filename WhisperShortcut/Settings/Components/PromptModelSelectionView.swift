@@ -5,17 +5,21 @@ struct PromptModelSelectionView: View {
   let title: String
   /// When nil, uses the default Prompt Mode subtitle.
   let subtitle: String?
+  /// When false, renders a small label instead of SectionHeader (e.g. when embedded in another section).
+  let showSectionHeader: Bool
   @Binding var selectedModel: PromptModel
   let onModelChanged: (() -> Void)?
 
   init(
     title: String,
     subtitle: String? = nil,
+    showSectionHeader: Bool = true,
     selectedModel: Binding<PromptModel>,
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
     self.subtitle = subtitle
+    self.showSectionHeader = showSectionHeader
     self._selectedModel = selectedModel
     self.onModelChanged = onModelChanged
   }
@@ -26,10 +30,22 @@ struct PromptModelSelectionView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: title,
-        subtitle: effectiveSubtitle
-      )
+      if showSectionHeader {
+        SectionHeader(
+          title: title,
+          subtitle: effectiveSubtitle
+        )
+      } else {
+        VStack(alignment: .leading, spacing: 8) {
+          Text(title)
+            .font(.callout)
+            .fontWeight(.medium)
+          Text(effectiveSubtitle)
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
 
       // Model Selection Grid
       LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {

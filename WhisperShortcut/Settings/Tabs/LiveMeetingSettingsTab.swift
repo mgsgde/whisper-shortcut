@@ -7,6 +7,18 @@ struct LiveMeetingSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
+      // Keyboard Shortcut Section
+      keyboardShortcutSection
+
+      // Section Divider with spacing
+      VStack(spacing: 0) {
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+        SectionDivider()
+        Spacer()
+          .frame(height: SettingsConstants.sectionSpacing)
+      }
+
       // Chunk Interval Section
       chunkIntervalSection
 
@@ -33,6 +45,32 @@ struct LiveMeetingSettingsTab: View {
 
       // Usage Instructions Section
       usageInstructionsSection
+    }
+  }
+
+  // MARK: - Keyboard Shortcut Section
+  @ViewBuilder
+  private var keyboardShortcutSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "⌨️ Keyboard Shortcut",
+        subtitle: "Start and stop meeting transcription with the same shortcut"
+      )
+
+      ShortcutInputRow(
+        label: "Transcribe Meeting:",
+        placeholder: "e.g., command+5",
+        text: $viewModel.data.toggleMeeting,
+        isEnabled: $viewModel.data.toggleMeetingEnabled,
+        focusedField: .toggleMeeting,
+        currentFocus: $focusedField,
+        onShortcutChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
+        },
+        validateShortcut: viewModel.validateShortcut
+      )
     }
   }
 
@@ -110,7 +148,7 @@ struct LiveMeetingSettingsTab: View {
       )
 
       VStack(alignment: .leading, spacing: 8) {
-        Text("1. Click \"Transcribe Meeting\" in the menu bar")
+        Text("1. Press your shortcut or click \"Transcribe Meeting\" in the menu bar")
           .textSelection(.enabled)
         Text("2. A transcript file opens automatically in your default editor")
           .textSelection(.enabled)
@@ -118,7 +156,7 @@ struct LiveMeetingSettingsTab: View {
           .textSelection(.enabled)
         Text("4. Use the transcript with AI assistants in your editor (e.g., Cursor)")
           .textSelection(.enabled)
-        Text("5. Click \"Stop Transcribe Meeting\" to end the session")
+        Text("5. Press the shortcut again or click \"Stop Transcribe Meeting\" to end the session")
           .textSelection(.enabled)
       }
       .font(.callout)
