@@ -20,8 +20,13 @@ class AutoPromptImprovementScheduler {
       DebugLogger.log("AUTO-IMPROVEMENT: Skip - no API key")
       return
     }
-    // When "Always": no minimum calendar days — run as soon as threshold is reached. Otherwise require 7+ days of usage.
-    let minDays = interval == .always ? 0 : AppConstants.autoImprovementMinimumInteractionDays
+    // First run ever: only require N dictations and any interaction data (no 7-day minimum, cooldown N/A).
+    // Subsequent runs: when interval != .always, require 7+ days of usage and cooldown.
+    let isFirstRun = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastAutoImprovementRunDate) as? Date == nil
+    let minDays: Int = {
+      if isFirstRun { return 0 }
+      return interval == .always ? 0 : AppConstants.autoImprovementMinimumInteractionDays
+    }()
     guard UserContextLogger.shared.hasInteractionDataAtLeast(daysOld: minDays) else {
       DebugLogger.log("AUTO-IMPROVEMENT: Skip - need at least \(minDays) days of data")
       return

@@ -14,7 +14,11 @@ The "Smart Improvement" runs automatically in the background and generates sugge
 
 There is a single trigger: **after successful dictations**.
 
-In `MenuBarController.swift`, after each successful transcription `incrementDictationCountAndRunIfNeeded()` is called. An improvement run is started when **all** of the following are met:
+In `MenuBarController.swift`, after each successful transcription `incrementDictationCountAndRunIfNeeded()` is called.
+
+**First run ever** (no previous improvement run): an improvement run is started when the dictation counter reaches the threshold (N) and there is at least some interaction data (any age). No 7-day minimum and no cooldown apply, so new users get their first improvement quickly after N dictations.
+
+**Subsequent runs**: an improvement run is started when **all** of the following are met:
 
 1. **Dictation threshold reached** – The counter of successful dictations has reached the configurable threshold (default: 2, configurable to 2/5/10/20/50 in Settings).
 2. **Cooldown expired** – At least as many days have passed since the last run as the selected interval. With "Always" there is no cooldown.
@@ -30,9 +34,11 @@ The following checks must be satisfied in `incrementDictationCountAndRunIfNeeded
 
 - **Interval** ≠ "Never" (i.e. Smart Improvement is enabled).
 - **Google API key** is set.
-- **Minimum usage**: At least **7 days** of interaction data (`autoImprovementMinimumInteractionDays`). This is based on the **oldest** interaction log file date: if all your dictations are from the last few days, this check fails and no run is started (see "Skip - need at least 7 days of data" in logs).
-- **Dictation threshold** reached (configurable: 2/5/10/20/50).
-- **Cooldown** expired (interval: Always/7/14/30 days).
+- **First run ever**: Only the **dictation threshold** (N) and the presence of some interaction data (any age) are required. No 7-day minimum and no cooldown.
+- **Subsequent runs**:
+  - **Minimum usage**: At least **7 days** of interaction data (`autoImprovementMinimumInteractionDays`) when interval is 7/14/30 days. This is based on the **oldest** interaction log file date (see "Skip - need at least 7 days of data" in logs). With interval "Always", no minimum days are required.
+  - **Dictation threshold** reached (configurable: 2/5/10/20/50).
+  - **Cooldown** expired (interval: Always/7/14/30 days).
 
 Logging and auto-apply are **implicitly** enabled when the interval is set to a value ≠ "Never". There are no separate checkboxes for them.
 

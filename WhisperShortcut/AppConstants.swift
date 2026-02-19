@@ -113,7 +113,7 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
   static let autoImprovementMinimumInteractionDays: Int = 7
 
   /// Number of successful dictations after which a count-based auto-improvement run is triggered.
-  static let promptImprovementDictationThreshold: Int = 20
+  static let promptImprovementDictationThreshold: Int = 10
 
   /// Tiered sampling: 50% from last 7 days, 30% from days 8–14, 20% from days 15–30.
   static let userContextTier1Days: Int = 7

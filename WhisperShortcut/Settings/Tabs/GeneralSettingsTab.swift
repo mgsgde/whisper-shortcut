@@ -560,7 +560,7 @@ struct GeneralSettingsTab: View {
             DebugLogger.log("AUTO-IMPROVEMENT: Interval changed to \(newValue.displayName), logging = \(enabled)")
           }
 
-          Text("Minimum cooldown between improvement runs. Set to \"Always\" for no cooldown.")
+          Text("Minimum cooldown between improvement runs (from the second run onwards). Set to \"Always\" for no cooldown.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -586,7 +586,7 @@ struct GeneralSettingsTab: View {
             DebugLogger.log("AUTO-IMPROVEMENT: Dictation threshold changed to \(newValue)")
           }
 
-          Text("An improvement run is triggered after this many successful dictations, provided the cooldown has passed.")
+          Text("The first improvement runs after this many dictations; from the second run onwards, cooldown and minimum usage history also apply.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
