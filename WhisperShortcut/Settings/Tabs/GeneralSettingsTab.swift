@@ -133,12 +133,12 @@ struct GeneralSettingsTab: View {
       Text("Interaction history and derived context (user-context, suggestions) will be deleted. Settings are preserved. Continue?")
     }
     .confirmationDialog("Reset all to defaults", isPresented: $showResetToDefaultsConfirmation, titleVisibility: .visible) {
-      Button("Reset", role: .destructive) {
+      Button("Reset and quit app", role: .destructive) {
         viewModel.resetAllDataAndRestart()
       }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("All settings, shortcuts, and interaction data will be deleted. The API key is preserved. The app will quit. Continue?")
+      Text("All settings, shortcuts, and interaction data will be deleted. The API key is preserved.\n\nThe app will close automatically after the reset. You can start it again from the menu bar or Applications. Continue?")
     }
   }
 
