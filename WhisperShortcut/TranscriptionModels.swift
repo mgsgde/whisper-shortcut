@@ -15,6 +15,8 @@ enum TranscriptionModel: String, CaseIterable {
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
   case gemini3Flash = "gemini-3-flash-preview"
+  case gemini3Pro = "gemini-3-pro-preview"
+  case gemini31Pro = "gemini-3.1-pro-preview"
   
   // Offline Whisper models
   case whisperTiny = "whisper-tiny"
@@ -34,6 +36,10 @@ enum TranscriptionModel: String, CaseIterable {
       return "Gemini 2.5 Flash-Lite"
     case .gemini3Flash:
       return "Gemini 3 Flash"
+    case .gemini3Pro:
+      return "Gemini 3 Pro"
+    case .gemini31Pro:
+      return "Gemini 3.1 Pro"
     case .whisperTiny:
       return "Whisper Tiny (Offline)"
     case .whisperBase:
@@ -57,6 +63,10 @@ enum TranscriptionModel: String, CaseIterable {
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
     case .gemini3Flash:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent"
+    case .gemini3Pro:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent"
+    case .gemini31Pro:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium:
       return "" // Offline models don't use API endpoints
     }
@@ -66,7 +76,7 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini20Flash, .whisperBase:
       return true
-    case .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .whisperTiny, .whisperSmall, .whisperMedium:
+    case .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium:
       return false
     }
   }
@@ -75,6 +85,8 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini3Flash:
       return "Low"
+    case .gemini3Pro, .gemini31Pro:
+      return "Medium"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium:
       return "Free (Offline)"
     }
@@ -92,6 +104,10 @@ enum TranscriptionModel: String, CaseIterable {
       return "Google's Gemini 2.5 Flash-Lite model • Fastest latency • Cost-efficient"
     case .gemini3Flash:
       return "Google's Gemini 3 Flash model • Latest 3-series • Pro-level intelligence at Flash speed"
+    case .gemini3Pro:
+      return "Google's Gemini 3 Pro model • Best quality and reasoning • Multimodal"
+    case .gemini31Pro:
+      return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
     case .whisperTiny:
       return "OpenAI Whisper Tiny • Fastest • ~75MB • Offline"
     case .whisperBase:
@@ -105,7 +121,7 @@ enum TranscriptionModel: String, CaseIterable {
   
   var isGemini: Bool {
     switch self {
-    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini3Flash:
+    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro:
       return true
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium:
       return false
