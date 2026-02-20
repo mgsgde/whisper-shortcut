@@ -511,5 +511,13 @@ enum TranscriptionError: Error, Equatable {
       return false
     }
   }
+
+  /// True for server-side errors (500, 503) where exponential backoff is beneficial.
+  var isServerOrUnavailable: Bool {
+    switch self {
+    case .serverError, .serviceUnavailable: return true
+    default: return false
+    }
+  }
 }
 

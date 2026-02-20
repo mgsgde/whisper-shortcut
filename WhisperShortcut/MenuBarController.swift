@@ -764,12 +764,26 @@ class MenuBarController: NSObject {
         if let transcriptionError = error as? TranscriptionError {
           DebugLogger.logError("TTS-ERROR: TranscriptionError type: \(transcriptionError)")
         }
+        let userMessage: String
+        let shortTitle: String
+        if let chunkedError = error as? ChunkedTTSError,
+           case .allChunksFailed(let errors) = chunkedError,
+           let firstError = errors.first?.error as? TranscriptionError {
+          userMessage = SpeechErrorFormatter.format(firstError)
+          shortTitle = SpeechErrorFormatter.shortStatus(firstError)
+        } else if let transcriptionError = error as? TranscriptionError {
+          userMessage = SpeechErrorFormatter.format(transcriptionError)
+          shortTitle = SpeechErrorFormatter.shortStatus(transcriptionError)
+        } else {
+          userMessage = error.localizedDescription
+          shortTitle = "TTS Error"
+        }
         await MainActor.run {
           self.isProcessingTTS = false
           PopupNotificationWindow.dismissProcessing()
           if self.appState != .idle {
-            self.appState = self.appState.showError("TTS failed: \(error.localizedDescription)")
-            PopupNotificationWindow.showError("Failed to generate speech: \(error.localizedDescription)", title: "TTS Error")
+            self.appState = self.appState.showError(shortTitle)
+            PopupNotificationWindow.showError(userMessage, title: "TTS Error")
           }
         }
       }

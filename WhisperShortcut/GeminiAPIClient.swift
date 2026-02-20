@@ -307,8 +307,14 @@ class GeminiAPIClient {
         }
 
         if attempt < maxAttempts {
-          DebugLogger.log("\(mode)-RETRY: Attempt \(attempt) failed, retrying in \(Constants.retryDelaySeconds)s: \(error.localizedDescription)")
-          try? await Task.sleep(nanoseconds: UInt64(Constants.retryDelaySeconds * 1_000_000_000))
+          let delay: TimeInterval
+          if let te = error as? TranscriptionError, te.isServerOrUnavailable {
+            delay = 2.0 * pow(2.0, Double(attempt - 1))
+          } else {
+            delay = Constants.retryDelaySeconds
+          }
+          DebugLogger.log("\(mode)-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delay))s: \(error.localizedDescription)")
+          try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
         }
       }
     }
