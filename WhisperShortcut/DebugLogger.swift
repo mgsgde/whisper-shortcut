@@ -69,6 +69,7 @@ struct DebugLogger {
   
   // MARK: - File Logging
   private static let fileLogger = FileLogger.shared
+  private static let errorFileWriter = ErrorFileWriter.shared
   
   // MARK: - Modern os_log Methods
   
@@ -108,6 +109,7 @@ struct DebugLogger {
     
     // Also log to file
     fileLogger.log(message: logMessage, level: .error)
+    errorFileWriter.write(message: logMessage)
   }
   
   /// Logs an error with context information (replaces CrashLogger.logError)
@@ -141,6 +143,8 @@ struct DebugLogger {
     Full Error: \(String(describing: error))
     """
     fileLogger.log(message: fileMessage, level: .error, context: context, state: stateDescription)
+    let oneLine = "\(error.localizedDescription) | Context: \(context) | State: \(stateDescription)"
+    errorFileWriter.write(message: oneLine)
   }
   
   /// Logs a crash-level error with additional info (replaces CrashLogger.logCrash)
@@ -186,6 +190,8 @@ struct DebugLogger {
     }
     
     fileLogger.log(message: fileMessage, level: .error, context: context, state: "crash")
+    let oneLine = "CRASH \(context) - \(error.localizedDescription)"
+    errorFileWriter.write(message: oneLine)
   }
   
   /// Logs UI-related messages
@@ -533,5 +539,95 @@ private class FileLogger {
     fileQueue.sync {
       closeAllHandles()
     }
+  }
+}
+
+// MARK: - Error File Writer (UserContext)
+/// Writes error and crash entries to UserContext/errors-YYYY-MM-DD.log for diagnostics.
+/// Uses the same Application Support path as UserContext so all app data stays in one place.
+private class ErrorFileWriter {
+  static let shared = ErrorFileWriter()
+
+  private let logDirectory: URL
+  private let dateFormatter: DateFormatter
+  private let timeFormatter: DateFormatter
+  private var fileHandles: [String: FileHandle] = [:]
+  private let fileQueue = DispatchQueue(label: "com.whispershortcut.errorfilewriter", qos: .utility)
+  private static let logRetentionDays = 30
+  private var currentDate: String?
+
+  init() {
+    logDirectory = AppSupportPaths.whisperShortcutApplicationSupportURL()
+      .appendingPathComponent("UserContext")
+    try? FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
+
+    dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = "yyyy-MM-dd"
+    timeFormatter = DateFormatter()
+    timeFormatter.dateFormat = "HH:mm:ss.SSS"
+
+    cleanupOldLogs()
+  }
+
+  fileprivate func write(message: String) {
+    fileQueue.async { [weak self] in
+      guard let self = self else { return }
+      let today = self.dateFormatter.string(from: Date())
+      let timestamp = self.timeFormatter.string(from: Date())
+      if let currentDate = self.currentDate, currentDate != today {
+        self.closeAllHandles()
+        self.currentDate = today
+      } else if self.currentDate == nil {
+        self.currentDate = today
+      }
+      guard let fileHandle = self.getFileHandle(for: today) else { return }
+      let line = message.replacingOccurrences(of: "\n", with: " ")
+      let logLine = "[\(timestamp)] ERROR \(line)\n"
+      if let data = logLine.data(using: .utf8) {
+        fileHandle.write(data)
+        fileHandle.synchronizeFile()
+      }
+    }
+  }
+
+  private func getFileHandle(for date: String) -> FileHandle? {
+    if let existingHandle = fileHandles[date] { return existingHandle }
+    let logFile = logDirectory.appendingPathComponent("errors-\(date).log")
+    if !FileManager.default.fileExists(atPath: logFile.path) {
+      FileManager.default.createFile(atPath: logFile.path, contents: nil, attributes: nil)
+    }
+    guard let fileHandle = try? FileHandle(forWritingTo: logFile) else { return nil }
+    fileHandle.seekToEndOfFile()
+    fileHandles[date] = fileHandle
+    return fileHandle
+  }
+
+  private func closeAllHandles() {
+    for (_, handle) in fileHandles { handle.closeFile() }
+    fileHandles.removeAll()
+  }
+
+  private func cleanupOldLogs() {
+    fileQueue.async { [weak self] in
+      guard let self = self else { return }
+      guard let files = try? FileManager.default.contentsOfDirectory(
+        at: self.logDirectory,
+        includingPropertiesForKeys: [.nameKey],
+        options: .skipsHiddenFiles
+      ) else { return }
+      let cutoff = Calendar.current.date(byAdding: .day, value: -ErrorFileWriter.logRetentionDays, to: Date()) ?? Date()
+      for file in files {
+        let name = file.lastPathComponent
+        guard name.hasPrefix("errors-"), name.hasSuffix(".log") else { continue }
+        let dateString = String(name.dropFirst(7).dropLast(4))
+        if let fileDate = self.dateFormatter.date(from: dateString), fileDate < cutoff {
+          try? FileManager.default.removeItem(at: file)
+        }
+      }
+    }
+  }
+
+  deinit {
+    fileQueue.sync { closeAllHandles() }
   }
 }
