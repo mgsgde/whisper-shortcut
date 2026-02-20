@@ -185,6 +185,7 @@ enum NotificationPosition: String, CaseIterable {
 // MARK: - Notification Duration Enum
 enum NotificationDuration: Double, CaseIterable {
   case oneSecond = 1.0
+  case twoSeconds = 2.0
   case threeSeconds = 3.0
   case fiveSeconds = 5.0
   case sevenSeconds = 7.0
@@ -196,6 +197,8 @@ enum NotificationDuration: Double, CaseIterable {
     switch self {
     case .oneSecond:
       return "1 second"
+    case .twoSeconds:
+      return "2 seconds"
     case .threeSeconds:
       return "3 seconds"
     case .fiveSeconds:
