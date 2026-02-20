@@ -531,6 +531,19 @@ class SettingsViewModel: ObservableObject {
     }
   }
 
+  // MARK: - GitHub
+  func openGitHub() {
+    if let url = URL(string: AppConstants.githubRepositoryURL) {
+      if NSWorkspace.shared.open(url) {
+        DebugLogger.logInfo("GITHUB: Opened GitHub repository")
+      } else {
+        DebugLogger.logError("GITHUB: Failed to open GitHub repository")
+      }
+    } else {
+      DebugLogger.logError("GITHUB: Invalid GitHub URL")
+    }
+  }
+
   // MARK: - Live Meeting Transcripts Folder
   func openTranscriptsFolder() {
     let transcriptsDir = AppSupportPaths.whisperShortcutApplicationSupportURL()

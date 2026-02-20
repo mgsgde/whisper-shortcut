@@ -46,7 +46,8 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
 
   // MARK: - Support Contact
   static let whatsappSupportNumber = "+4917641952181"
-  
+  static let githubRepositoryURL = "https://github.com/mgsgde/whisper-shortcut"
+
   // MARK: - File Size Limits
   static let maxFileSizeBytes = 20 * 1024 * 1024  // 20MB - optimal for Gemini's file size limits
   static let maxFileSizeDisplay = "25MB"  // Display string for error messages

@@ -760,6 +760,38 @@ struct GeneralSettingsTab: View {
               NSCursor.pop()
             }
           }
+
+          // GitHub Button
+          Button(action: {
+            viewModel.openGitHub()
+          }) {
+            HStack(alignment: .center, spacing: 12) {
+              Image(systemName: "chevron.left.forwardslash.chevron.right")
+                .font(.system(size: 18))
+                .foregroundColor(.secondary)
+                .opacity(0.85)
+
+              Text("Open on GitHub")
+                .font(.body)
+                .fontWeight(.medium)
+                .textSelection(.enabled)
+
+              Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(12)
+          }
+          .buttonStyle(PlainButtonStyle())
+          .help("Open the WhisperShortcut repository on GitHub")
+          .onHover { isHovered in
+            if isHovered {
+              NSCursor.pointingHand.push()
+            } else {
+              NSCursor.pop()
+            }
+          }
         }
         
         // Developer Footer (no divider)
