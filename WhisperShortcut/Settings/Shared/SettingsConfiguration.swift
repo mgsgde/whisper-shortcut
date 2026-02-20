@@ -8,6 +8,8 @@ enum PromptModel: String, CaseIterable {
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
   case gemini3Flash = "gemini-3-flash-preview"
+  case gemini3Pro = "gemini-3-pro-preview"
+  case gemini31Pro = "gemini-3.1-pro-preview"
   
   var displayName: String {
     switch self {
@@ -21,6 +23,10 @@ enum PromptModel: String, CaseIterable {
       return "Gemini 2.5 Flash-Lite"
     case .gemini3Flash:
       return "Gemini 3 Flash"
+    case .gemini3Pro:
+      return "Gemini 3 Pro"
+    case .gemini31Pro:
+      return "Gemini 3.1 Pro"
     }
   }
   
@@ -36,22 +42,24 @@ enum PromptModel: String, CaseIterable {
       return "Google's Gemini 2.5 Flash-Lite • Fastest latency • Cost-efficient • Multimodal"
     case .gemini3Flash:
       return "Google's Gemini 3 Flash model • Latest 3-series • Pro-level intelligence at Flash speed • Multimodal"
+    case .gemini3Pro:
+      return "Google's Gemini 3 Pro model • Best quality and reasoning • Multimodal"
+    case .gemini31Pro:
+      return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
     }
   }
   
+  /// Recommended is aligned with default; single source of truth in SettingsDefaults.
   var isRecommended: Bool {
-    switch self {
-    case .gemini20Flash:
-      return true
-    case .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini3Flash:
-      return false
-    }
+    return self == SettingsDefaults.selectedPromptModel
   }
   
   var costLevel: String {
     switch self {
     case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini3Flash:
       return "Low"
+    case .gemini3Pro, .gemini31Pro:
+      return "Medium"
     }
   }
   
@@ -88,6 +96,10 @@ enum PromptModel: String, CaseIterable {
       return .gemini25FlashLite
     case .gemini3Flash:
       return .gemini3Flash
+    case .gemini3Pro:
+      return .gemini3Pro
+    case .gemini31Pro:
+      return .gemini31Pro
     }
   }
 }
@@ -128,8 +140,9 @@ enum TTSModel: String, CaseIterable {
     return self.rawValue
   }
   
+  /// Recommended is aligned with default; single source of truth in SettingsDefaults.
   var isRecommended: Bool {
-    return self == .gemini25FlashTTS
+    return self == SettingsDefaults.selectedTTSModel
   }
   
   var costLevel: String {
@@ -163,8 +176,9 @@ enum NotificationPosition: String, CaseIterable {
     }
   }
   
+  /// Recommended is aligned with default; single source of truth in SettingsDefaults.
   var isRecommended: Bool {
-    return self == .leftTop
+    return self == SettingsDefaults.notificationPosition
   }
 }
 
@@ -197,8 +211,9 @@ enum NotificationDuration: Double, CaseIterable {
     }
   }
   
+  /// Recommended is aligned with default; single source of truth in SettingsDefaults.
   var isRecommended: Bool {
-    return self == .threeSeconds
+    return self == SettingsDefaults.notificationDuration
   }
 }
 
@@ -220,8 +235,9 @@ enum ConfirmAboveDuration: Double, CaseIterable {
     }
   }
 
+  /// Recommended is aligned with default; single source of truth in SettingsDefaults.
   var isRecommended: Bool {
-    return self == .twoMinutes
+    return self == SettingsDefaults.confirmAboveDuration
   }
 
   /// Loads value from UserDefaults or returns SettingsDefaults.confirmAboveDuration.
@@ -340,8 +356,9 @@ enum WhisperLanguage: String, CaseIterable {
     }
   }
   
+  /// Recommended is aligned with default; single source of truth in SettingsDefaults.
   var isRecommended: Bool {
-    return self == .auto
+    return self == SettingsDefaults.whisperLanguage
   }
   
   var languageCode: String? {
@@ -400,9 +417,9 @@ struct SettingsDefaults {
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini20Flash
-  static let selectedPromptModel = PromptModel.gemini3Flash
-  static let selectedPromptAndReadModel = PromptModel.gemini3Flash
-  static let selectedImprovementModel = PromptModel.gemini25Flash
+  static let selectedPromptModel = PromptModel.gemini20Flash
+  static let selectedPromptAndReadModel = PromptModel.gemini20Flash
+  static let selectedImprovementModel = PromptModel.gemini31Pro
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
   static let promptAndReadSystemPrompt = ""
