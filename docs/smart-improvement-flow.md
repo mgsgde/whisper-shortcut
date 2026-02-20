@@ -36,9 +36,9 @@ The following checks must be satisfied in `incrementDictationCountAndRunIfNeeded
 - **Google API key** is set.
 - **First run ever**: Only the **dictation threshold** (N) and the presence of some interaction data (any age) are required. No 7-day minimum and no cooldown.
 - **Subsequent runs**:
-  - **Minimum usage**: At least **7 days** of interaction data (`autoImprovementMinimumInteractionDays`) when interval is 7/14/30 days. This is based on the **oldest** interaction log file date (see "Skip - need at least 7 days of data" in logs). With interval "Always", no minimum days are required.
+  - **Minimum usage**: At least **7 days** of interaction data (`autoImprovementMinimumInteractionDays`) when interval is 3/7/14/30 days. This is based on the **oldest** interaction log file date (see "Skip - need at least 7 days of data" in logs). With interval "Always", no minimum days are required.
   - **Dictation threshold** reached (configurable: 2/5/10/20/50).
-  - **Cooldown** expired (interval: Always/7/14/30 days).
+  - **Cooldown** expired (interval: Always/3/7/14/30 days).
 
 Logging and auto-apply are **implicitly** enabled when the interval is set to a value ≠ "Never". There are no separate checkboxes for them.
 
@@ -51,7 +51,7 @@ Under "Smart Improvement" in General Settings there are three options:
 | Setting | Options | Meaning |
 |---------|---------|---------|
 | **Model for Smart Improvement** | Gemini 2.0 Flash, 2.5 Flash, 2.5 Flash-Lite, 3 Flash, etc. | Gemini model used for automatic Smart Improvement and for "Generate with AI" in settings. Default: Gemini 2.5 Flash. |
-| **Automatic system prompt improvement** | Never, Always, Every 7/14/30 days | Enables/disables Smart Improvement. The value is the minimum cooldown between runs. "Always" = no cooldown. |
+| **Automatic system prompt improvement** | Never, Always, Every 3/7/14/30 days | Enables/disables Smart Improvement. The value is the minimum cooldown between runs. "Always" = no cooldown. |
 | **Improvement after N dictations** | 2, 5, 10, 20, 50 | Number of successful dictations after which an improvement run is triggered (provided cooldown has expired). |
 
 ---
@@ -105,7 +105,7 @@ The user can revert in the respective Settings tabs via "Restore Previous".
 | Aspect | Implementation |
 |--------|-----------------|
 | **Trigger** | After N successful dictations (configurable: 2–50), provided cooldown has expired **and** interaction data is at least 7 days old. |
-| **Cooldown** | Minimum interval between runs: Always (no cooldown), 7, 14, or 30 days. |
+| **Cooldown** | Minimum interval between runs: Always (no cooldown), 3, 7, 14, or 30 days. |
 | **Data basis** | Interaction logs (JSONL) from `UserContextLogger`, tiered sampling, character/entry limits. |
 | **AI** | User-selectable Gemini model (Settings > General > Smart Improvement); fixed system prompt per focus; response with markers. |
 | **Output** | Suggestions are applied automatically (Previous saved, popup "review or revert"). |
@@ -115,7 +115,7 @@ The user can revert in the respective Settings tabs via "Restore Previous".
 ## Reference: relevant files
 
 - `AutoPromptImprovementScheduler.swift` – Scheduler, cooldown, counter, `runImprovement()`, `applySuggestion()`
-- `AutoImprovementInterval.swift` – Enum: Never, Always, 7/14/30 days
+- `AutoImprovementInterval.swift` – Enum: Never, Always, 3/7/14/30 days
 - `UserContextDerivation.swift` – Log sampling, `systemPromptForFocus`, Gemini call, writing suggestion files
 - `UserContextLogger.swift` – Interaction logs (JSONL)
 - `FullApp.swift` – App launch: `checkForPendingSuggestions()`

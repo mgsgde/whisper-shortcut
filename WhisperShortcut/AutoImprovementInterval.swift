@@ -4,6 +4,7 @@ import Foundation
 enum AutoImprovementInterval: Int, CaseIterable, Codable {
   case never = 0
   case always = 1
+  case days3 = 3
   case days7 = 7
   case days14 = 14
   case days30 = 30
@@ -14,6 +15,8 @@ enum AutoImprovementInterval: Int, CaseIterable, Codable {
       return "Never"
     case .always:
       return "Always"
+    case .days3:
+      return "Every 3 days"
     case .days7:
       return "Every 7 days"
     case .days14:

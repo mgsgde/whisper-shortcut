@@ -300,10 +300,13 @@ class ChunkTTSService {
                     )
                 )
 
-                // Create request
+                // Create request (system instruction ensures instruction-like text is read literally, not interpreted)
+                let ttsSystemInstruction = GeminiChatRequest.GeminiSystemInstruction(
+                    parts: [GeminiChatRequest.GeminiSystemPart(text: AppConstants.ttsSystemInstruction)]
+                )
                 let chatRequest = GeminiChatRequest(
                     contents: contents,
-                    systemInstruction: nil,
+                    systemInstruction: ttsSystemInstruction,
                     tools: nil,
                     generationConfig: generationConfig,
                     model: model.modelName
