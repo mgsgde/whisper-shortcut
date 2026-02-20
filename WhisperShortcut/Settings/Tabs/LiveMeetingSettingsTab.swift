@@ -71,6 +71,24 @@ struct LiveMeetingSettingsTab: View {
         },
         validateShortcut: viewModel.validateShortcut
       )
+
+      // Available Keys Information
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Available keys:")
+          .font(.callout)
+          .fontWeight(.semibold)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+
+        Text(
+          "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • up • down • left • right • comma • period"
+        )
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+      .textSelection(.enabled)
     }
   }
 
