@@ -470,6 +470,7 @@ enum TranscriptionError: Error, Equatable {
   case invalidRequest
   case permissionDenied
   case notFound
+  case modelDeprecated
   case rateLimited(retryAfter: TimeInterval?)
   case quotaExceeded(retryAfter: TimeInterval?)
   case serverError(Int)
@@ -495,6 +496,7 @@ enum TranscriptionError: Error, Equatable {
     case .invalidRequest: return "Invalid Request"
     case .permissionDenied: return "Permission Denied"
     case .notFound: return "Not Found"
+    case .modelDeprecated: return "Model No Longer Available"
     case .rateLimited: return "Rate Limited"
     case .quotaExceeded: return "Quota Exceeded"
     case .serverError: return "Server Error"
@@ -535,7 +537,7 @@ enum TranscriptionError: Error, Equatable {
     case .quotaExceeded(let retryAfter):
       return retryAfter != nil
     // Non-retryable errors (configuration/permanent issues)
-    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest:
+    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest:
       return false
     }
   }

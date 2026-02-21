@@ -509,6 +509,9 @@ class GeminiAPIClient {
       if lowerMessage.contains("rate limit") {
         return .rateLimited(retryAfter: retryAfter)
       }
+      if statusCode == 404 && (lowerMessage.contains("no longer available") || lowerMessage.contains("deprecated")) {
+        return .modelDeprecated
+      }
     } else if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let error = json["error"] as? [String: Any],
               let message = error["message"] as? String {
@@ -531,6 +534,9 @@ class GeminiAPIClient {
       }
       if lowerMessage.contains("rate limit") {
         return .rateLimited(retryAfter: retryAfter)
+      }
+      if statusCode == 404 && (lowerMessage.contains("no longer available") || lowerMessage.contains("deprecated")) {
+        return .modelDeprecated
       }
     }
 

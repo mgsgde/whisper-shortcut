@@ -68,6 +68,15 @@ struct SpeechErrorFormatter {
         Please try again.
         """
 
+    case .modelDeprecated:
+      return """
+        ❌ Model No Longer Available
+
+        The requested resource was not found. This can happen if the selected model is deprecated and no longer available for your account (e.g. Gemini 2.0 Flash).
+
+        Choose a newer model in Settings → Speech-to-Text (e.g. Gemini 2.5 Flash).
+        """
+
     case .rateLimited(let retryAfter):
       let waitMessage = retryAfter.map { "Please wait \(Int($0)) seconds and try again." } ?? "Please wait a moment and try again after setting up billing."
       return """
@@ -329,6 +338,8 @@ struct SpeechErrorFormatter {
       return "⚠️ API Issue"
     case .modelNotAvailable:
       return "📥 Model Not Downloaded"
+    case .modelDeprecated:
+      return "❌ Model no longer available"
     default:
       return "❌ Error"
     }
