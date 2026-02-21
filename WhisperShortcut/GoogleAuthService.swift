@@ -16,6 +16,8 @@ protocol GoogleAuthService: AnyObject {
   func signOut()
   /// Email or display string for the signed-in user, if available; nil when not signed in.
   func signedInUserEmail() -> String?
+  /// Restores a previous sign-in from Keychain if configured and credentials exist. Call at app launch.
+  func restorePreviousSignInIfNeeded() async
 }
 
 #if canImport(GoogleSignIn)
@@ -106,6 +108,23 @@ final class DefaultGoogleAuthService: GoogleAuthService {
     DebugLogger.log("GoogleAuth: Signed out")
   }
 
+  func restorePreviousSignInIfNeeded() async {
+    guard isConfigured else { return }
+    guard let clientID = clientID else { return }
+    let config = GIDConfiguration(clientID: clientID)
+    GIDSignIn.sharedInstance.configuration = config
+    guard GIDSignIn.sharedInstance.hasPreviousSignIn() else {
+      DebugLogger.log("GoogleAuth: No previous session to restore")
+      return
+    }
+    do {
+      _ = try await GIDSignIn.sharedInstance.restorePreviousSignIn()
+      DebugLogger.log("GoogleAuth: Restored previous session")
+    } catch {
+      DebugLogger.logError("GoogleAuth: Restore failed: \(error.localizedDescription)")
+    }
+  }
+
   /// Call from NSApplicationDelegate.application(_:open:...) to handle OAuth redirect.
   static func handle(url: URL) -> Bool {
     GIDSignIn.sharedInstance.handle(url)
@@ -123,6 +142,7 @@ final class DefaultGoogleAuthService: GoogleAuthService {
   }
   func signOut() { }
   func signedInUserEmail() -> String? { nil }
+  func restorePreviousSignInIfNeeded() async { }
   static func handle(url: URL) -> Bool { false }
 }
 #endif
@@ -137,4 +157,5 @@ final class StubGoogleAuthService: GoogleAuthService {
   func signIn() async throws { }
   func signOut() { }
   func signedInUserEmail() -> String? { nil }
+  func restorePreviousSignInIfNeeded() async { }
 }
