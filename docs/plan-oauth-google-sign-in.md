@@ -122,7 +122,7 @@ All Gemini requests use **query parameter** auth: `?key=<api_key>`.
 |-------|----------------|
 | Application home page | `https://www.whispershortcut.com/` |
 | Application privacy policy link | `https://www.whispershortcut.com/privacy.html` |
-| Application Terms of Service link | (optional) same domain, e.g. `https://www.whispershortcut.com/terms.html` |
+| Application Terms of Service link | `https://www.whispershortcut.com/terms.html` |
 | Authorised domains | Your verified domain (e.g. `whispershortcut.com`) |
 
 **4.2.3** New `GoogleAuthService` (or `GeminiAuthService`):
