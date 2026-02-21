@@ -14,6 +14,7 @@ struct GeneralSettingsTab: View {
   @State private var googleSignInRefresh: Int = 0
   @State private var googleSignInError: String? = nil
   @State private var isSigningIn = false
+  @State private var isImprovementRunning = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -683,6 +684,35 @@ struct GeneralSettingsTab: View {
             .fixedSize(horizontal: false, vertical: true)
         }
 
+        // Manual trigger: Run improvement now
+        VStack(alignment: .leading, spacing: 8) {
+          HStack(spacing: 8) {
+            Button("Run improvement now") {
+              isImprovementRunning = true
+              Task {
+                await AutoPromptImprovementScheduler.shared.runImprovementNow()
+                await MainActor.run {
+                  isImprovementRunning = false
+                }
+              }
+            }
+            .buttonStyle(.bordered)
+            .font(.callout)
+            .disabled(isImprovementRunning)
+            if isImprovementRunning {
+              ProgressView()
+                .scaleEffect(0.8)
+              Text("Running…")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            }
+          }
+          Text("Runs in the background. You can switch to another tab; you'll be notified when it's done. Ignores cooldown and dictation count.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
         // Model selection for Smart Improvement
         PromptModelSelectionView(
           title: "Model for Smart Improvement",
@@ -724,10 +754,13 @@ struct GeneralSettingsTab: View {
       }
     }
     .onAppear {
+      // Sync running state so "Running…" is correct when user returns to this tab
+      isImprovementRunning = AutoPromptImprovementScheduler.shared.isRunning
+
       // Load current settings
       let rawValue = UserDefaults.standard.integer(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
       selectedInterval = AutoImprovementInterval(rawValue: rawValue) ?? .default
-      
+
       // Ensure logging matches the interval setting
       let enabled = selectedInterval != .never
       UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.userContextLoggingEnabled)

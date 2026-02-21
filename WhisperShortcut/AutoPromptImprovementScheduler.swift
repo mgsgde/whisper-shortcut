@@ -57,7 +57,47 @@ class AutoPromptImprovementScheduler {
     }
   }
 
+  /// Runs the improvement pipeline immediately (manual trigger from Settings).
+  /// Ignores cooldown, interval, and dictation count. Requires API key and at least some interaction data.
+  func runImprovementNow() async {
+    guard !isImprovementRunning else {
+      PopupNotificationWindow.showInfo(
+        "An improvement run is already in progress.",
+        title: "Smart Improvement"
+      )
+      return
+    }
+    guard KeychainManager.shared.hasGoogleAPIKey() else {
+      PopupNotificationWindow.showError(
+        "API key required for Smart Improvement.",
+        title: "Smart Improvement"
+      )
+      return
+    }
+    guard UserContextLogger.shared.hasInteractionDataAtLeast(daysOld: 0) else {
+      PopupNotificationWindow.showInfo(
+        "No interaction data yet. Use dictation or prompt mode first.",
+        title: "Smart Improvement"
+      )
+      return
+    }
+    isImprovementRunning = true
+    defer { isImprovementRunning = false }
+    DebugLogger.log("AUTO-IMPROVEMENT: Manual run started")
+    PopupNotificationWindow.showInfo(
+      "Smart Improvement started. You can switch tabs; we'll notify you when it's done.",
+      title: "Smart Improvement"
+    )
+    await runImprovement()
+    DebugLogger.log("AUTO-IMPROVEMENT: Manual run finished")
+  }
+
+  /// True while an improvement run (manual or automatic) is in progress. Use to show "Running…" when the user returns to the Smart Improvement section.
+  var isRunning: Bool { isImprovementRunning }
+
   // MARK: - Private
+
+  private var isImprovementRunning = false
 
   private func getCurrentInterval() -> AutoImprovementInterval {
     let rawValue = UserDefaults.standard.integer(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
@@ -131,6 +171,10 @@ class AutoPromptImprovementScheduler {
           }
         }
         DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied: \(kindNames.joined(separator: ", "))")
+        let message = "Auto-improved: \(kindNames.joined(separator: ", ")). Check Settings to review or revert."
+        await MainActor.run {
+          PopupNotificationWindow.showInfo(message, title: "Smart Improvement")
+        }
       }
     } else {
       DebugLogger.log("AUTO-IMPROVEMENT: No suggestions generated")
