@@ -1,0 +1,50 @@
+# Deploy website/ to GitHub Pages (e.g. for OAuth consent screen / custom domain).
+# In repo Settings → Pages → Build and deployment → Source: GitHub Actions.
+
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['website/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Pages
+    runs-on: ubuntu-latest
+    environment: github-pages
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare site
+        run: |
+          mkdir -p _site
+          cp -r website/* _site/
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy-step:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: deploy
+    environment: github-pages
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
