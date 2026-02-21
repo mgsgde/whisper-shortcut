@@ -80,7 +80,7 @@ The app can **automatically improve** your system prompts and user context based
 3. **AI** – Gemini (model selectable in Settings → General → Smart Improvement) suggests updates for: **User Context** (language, topics, style), **Dictation** (Speech-to-Text system prompt), **Dictate Prompt** system prompt, and **Prompt & Read** system prompt.
 4. **Apply** – Suggestions are applied automatically. The previous version is saved as "Previous"; a popup tells you what was improved. You can revert anytime in Settings via "Restore Previous".
 
-**Settings** (Settings → General → Smart Improvement): choose the **model** (e.g. Gemini 2.5 Flash), **interval** (Never, Always, or every 3/7/14/30 days), and **improvement after N dictations** (2, 5, 10, 20, or 50). The same model is used for "Generate with AI" in the prompt and user-context settings.
+**Settings** (Settings → General → Smart Improvement): choose the **model** (default: Gemini 3.1 Pro), **interval** (Never, Always, or every 3/7/14/30 days), and **improvement after N dictations** (2, 5, 10, 20, or 50). The same model is used for "Generate with AI" in the prompt and user-context settings.
 
 ## Installation
 

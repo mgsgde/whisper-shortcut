@@ -102,8 +102,8 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
   static let liveMeetingTranscriptDirectory: String = "Meetings"
 
   // MARK: - User Context Derivation
-  /// Gemini API endpoint for analyzing interaction logs (Smart Improvement / Generate with AI). Uses 2.5 Flash for good quality and better availability than Pro/Preview models (fewer 503s).
-  static let userContextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+  /// Fallback Gemini API endpoint when the selected Smart Improvement model is invalid. Default model is Gemini 3.1 Pro.
+  static let userContextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent"
 
   /// Maximum character length for user context when appended to the system prompt.
   /// Truncation is applied at sentence or word boundary so the model always sees complete text.

@@ -7,7 +7,7 @@ class UserContextDerivation {
 
   /// Per-field character cap per log entry; smaller = less payload and faster derivation.
   private let maxFieldChars = 1000
-  /// API endpoint from the selected Smart Improvement / Generate with AI model; falls back to default (gemini-2.5-flash) if unset or invalid.
+  /// API endpoint from the selected Smart Improvement / Generate with AI model; falls back to default (Gemini 3.1 Pro) if unset or invalid.
   private var analysisEndpoint: String {
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
       ?? SettingsDefaults.selectedImprovementModel.rawValue

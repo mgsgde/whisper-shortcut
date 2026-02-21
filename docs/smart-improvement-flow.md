@@ -26,6 +26,8 @@ In `MenuBarController.swift`, after each successful transcription `incrementDict
 
 If the threshold is reached but the cooldown is still active, the counter is not reset and is checked again on the next dictation.
 
+**Manual trigger:** A **"Run improvement now"** button is available in Settings → General → Smart Improvement. It runs the same pipeline (all four foci, apply suggestions, update last run date) but ignores cooldown, interval, and dictation count. Preconditions: API key and at least some interaction data (any age).
+
 ---
 
 ## 3. Conditions for a run
@@ -50,9 +52,10 @@ Under "Smart Improvement" in General Settings there are three options:
 
 | Setting | Options | Meaning |
 |---------|---------|---------|
-| **Model for Smart Improvement** | Gemini 2.0 Flash, 2.5 Flash, 2.5 Flash-Lite, 3 Flash, etc. | Gemini model used for automatic Smart Improvement and for "Generate with AI" in settings. Default: Gemini 2.5 Flash. |
+| **Model for Smart Improvement** | Gemini 2.0 Flash, 2.5 Flash, 2.5 Flash-Lite, 3 Flash, 3.1 Pro, etc. | Gemini model used for automatic Smart Improvement and for "Generate with AI" in settings. Default: Gemini 3.1 Pro. |
 | **Automatic system prompt improvement** | Never, Always, Every 3/7/14/30 days | Enables/disables Smart Improvement. The value is the minimum cooldown between runs. "Always" = no cooldown. |
 | **Improvement after N dictations** | 2, 5, 10, 20, 50 | Number of successful dictations after which an improvement run is triggered (provided cooldown has expired). |
+| **Run improvement now** | Button | Manual trigger: runs the improvement pipeline immediately; ignores cooldown and dictation count. Requires API key and some interaction data. |
 
 ---
 
@@ -68,7 +71,7 @@ In `runImprovement()` the following happens:
 
 2. **For each focus**:
    - **Log collection**: `UserContextLogger` provides interaction logs (JSONL); **tiered sampling** is used (e.g. 50% last 7 days, 30% 8–14, 20% 15–30), limited by entries per mode and total characters.
-   - **Gemini call**: The collected text (plus optional existing user context / current prompts) is sent as a user message to **Gemini** using the **selected improvement model** (see Settings; default: Gemini 2.5 Flash). The **system prompt** for Gemini is fixed per focus (in `UserContextDerivation.systemPromptForFocus(_:)`) and requires a response with exact markers (e.g. `===SUGGESTED_SYSTEM_PROMPT_START===` … `===END===`).
+   - **Gemini call**: The collected text (plus optional existing user context / current prompts) is sent as a user message to **Gemini** using the **selected improvement model** (see Settings; default: Gemini 3.1 Pro). The **system prompt** for Gemini is fixed per focus (in `UserContextDerivation.systemPromptForFocus(_:)`) and requires a response with exact markers (e.g. `===SUGGESTED_SYSTEM_PROMPT_START===` … `===END===`).
    - **Parsing**: The content between the markers is extracted from the Gemini response.
    - **Writing**: The extracted text is written to a **suggestion file** in the context directory:
      - `suggested-user-context.md`

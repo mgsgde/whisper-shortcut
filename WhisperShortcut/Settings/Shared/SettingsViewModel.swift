@@ -107,7 +107,13 @@ class SettingsViewModel: ObservableObject {
     if let savedImprovementModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel),
       let savedImprovementModel = PromptModel(rawValue: savedImprovementModelString)
     {
-      data.selectedImprovementModel = savedImprovementModel
+      // Migration: Smart Improvement default is Gemini 3.1 Pro; treat Gemini 3 Flash as default so it doesn’t keep reverting.
+      if savedImprovementModel == .gemini3Flash {
+        data.selectedImprovementModel = SettingsDefaults.selectedImprovementModel
+        UserDefaults.standard.set(data.selectedImprovementModel.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
+      } else {
+        data.selectedImprovementModel = savedImprovementModel
+      }
     } else {
       data.selectedImprovementModel = SettingsDefaults.selectedImprovementModel
     }
