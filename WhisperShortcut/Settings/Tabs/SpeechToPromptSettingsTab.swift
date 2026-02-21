@@ -35,7 +35,7 @@ struct SpeechToPromptSettingsTab: View {
   private var shortcutsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "⌨️ Keyboard Shortcuts",
+        title: "⌨️ Keyboard Shortcut",
         subtitle: "Configure shortcut for toggle prompting mode"
       )
 

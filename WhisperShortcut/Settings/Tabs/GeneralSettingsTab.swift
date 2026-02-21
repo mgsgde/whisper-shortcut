@@ -97,7 +97,7 @@ struct GeneralSettingsTab: View {
           .frame(height: SettingsConstants.sectionSpacing)
       }
 
-      // Keyboard Shortcuts Section
+      // Keyboard Shortcut Section
       keyboardShortcutsSection
 
       // Section Divider with spacing
@@ -170,12 +170,12 @@ struct GeneralSettingsTab: View {
     }
   }
 
-  // MARK: - Keyboard Shortcuts Section
+  // MARK: - Keyboard Shortcut Section
   @ViewBuilder
   private var keyboardShortcutsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "⌨️ Keyboard Shortcuts",
+        title: "⌨️ Keyboard Shortcut",
         subtitle: "Configure keyboard shortcuts for various features"
       )
 

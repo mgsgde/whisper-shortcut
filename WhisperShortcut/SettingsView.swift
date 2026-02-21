@@ -115,7 +115,7 @@ struct SettingsView: View {
   private func description(for tab: SettingsTab) -> String {
     switch tab {
     case .general:
-      return "API Key, Keyboard Shortcuts and Feedback"
+      return "API Key, Keyboard Shortcut and Feedback"
     case .speechToText:
       return "Model, Prompt and Shortcut"
     case .speechToPrompt:
