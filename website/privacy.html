@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy – WhisperShortcut</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; max-width: 720px; margin: 0 auto; padding: 2rem; color: #1a1a1a; }
+    h1 { font-size: 1.5rem; margin-top: 0; }
+    h2 { font-size: 1.15rem; margin-top: 1.5rem; }
+    h3 { font-size: 1rem; margin-top: 1rem; }
+    a { color: #0969da; }
+    p { margin: 0.5rem 0; }
+    ul { margin: 0.5rem 0; padding-left: 1.5rem; }
+    .back { margin-bottom: 1.5rem; }
+  </style>
+</head>
+<body>
+  <p class="back"><a href="index.html">← WhisperShortcut</a></p>
+
+  <h1>Privacy Policy for WhisperShortcut</h1>
+  <p><strong>Last updated:</strong> February 21, 2025</p>
+
+  <h2>Overview</h2>
+  <p>WhisperShortcut is a macOS menu bar application with four main features: <strong>Speech-to-Text</strong> (transcription), <strong>Speech-to-Prompt</strong> (AI text modification via voice), <strong>Read Aloud</strong> (text-to-speech), and <strong>Prompt &amp; Read</strong> (combined AI + TTS). This privacy policy explains how we handle your data and what information is collected, stored, or transmitted.</p>
+
+  <h2>Data Collection Summary</h2>
+  <p><strong>WhisperShortcut collects minimal data and prioritizes your privacy:</strong></p>
+  <ul>
+    <li>No personal information collected</li>
+    <li>No analytics or tracking</li>
+    <li>No crash reporting</li>
+    <li>No data sold to third parties</li>
+    <li>All data stored locally on your device</li>
+    <li>Offline option: Speech-to-Text can use local Whisper models without sending data to any server</li>
+  </ul>
+
+  <h2>What Data We Collect</h2>
+
+  <h3>1. API Key (Required for Cloud Features)</h3>
+  <ul>
+    <li><strong>What:</strong> Your Google API key</li>
+    <li><strong>Where:</strong> Stored securely in macOS Keychain</li>
+    <li><strong>Purpose:</strong> Required for Google Gemini (transcription, AI prompting, TTS). Not needed when using offline Whisper for Speech-to-Text</li>
+    <li><strong>Retention:</strong> Stored locally until you delete it</li>
+    <li><strong>Access:</strong> Only accessible by the app on your device</li>
+  </ul>
+
+  <h3>2. App Preferences</h3>
+  <ul>
+    <li><strong>What:</strong> Keyboard shortcuts, model selections, auto-paste toggle, TTS voice, and other settings</li>
+    <li><strong>Where:</strong> Stored locally in macOS UserDefaults</li>
+    <li><strong>Purpose:</strong> To remember your preferred configuration</li>
+    <li><strong>Retention:</strong> Stored locally until you reset to defaults</li>
+    <li><strong>Access:</strong> Only accessible by the app on your device</li>
+  </ul>
+
+  <h3>3. Temporary Audio Files</h3>
+  <ul>
+    <li><strong>What:</strong> Audio recordings during transcription or prompting</li>
+    <li><strong>Where:</strong> Stored temporarily in app's document directory</li>
+    <li><strong>Purpose:</strong> Required for transcription and AI processing</li>
+    <li><strong>Retention:</strong> Automatically deleted after processing</li>
+    <li><strong>Access:</strong> Only accessible by the app on your device</li>
+  </ul>
+
+  <h3>4. Live Meeting Transcripts (Optional)</h3>
+  <ul>
+    <li><strong>What:</strong> Transcript files from Live Meeting mode</li>
+    <li><strong>Where:</strong> Saved in the app data folder under <code>Meetings/</code></li>
+    <li><strong>Purpose:</strong> Persistent record of live meeting transcription</li>
+    <li><strong>Retention:</strong> Stored until you delete the files manually</li>
+    <li><strong>Access:</strong> Only you can access these files on your device</li>
+  </ul>
+
+  <h3>5. User Context / Interaction Logs</h3>
+  <ul>
+    <li><strong>What:</strong> Logs of transcriptions, prompt interactions, and read-aloud actions (mode, timestamps, result snippets). When automatic system prompt improvement applies a new prompt, a history entry is appended to JSONL files. When you apply suggested user context, a similar history entry is appended.</li>
+    <li><strong>Where:</strong> Stored locally in the app data folder under <code>UserContext/</code></li>
+    <li><strong>Purpose:</strong> Used when you click "Generate with AI" in Settings to derive suggested system prompts and user context, or for automatic system prompt improvement (if enabled).</li>
+    <li><strong>When it's collected:</strong> Interaction logging is always on. Data stays on your device until you delete it or it is automatically removed.</li>
+    <li><strong>Retention:</strong> Log files older than 90 days are automatically deleted. For "Generate with AI" and automatic improvement, only interactions from the last 30 days are read and sent to Google Gemini.</li>
+    <li><strong>Gemini Analysis:</strong> Manual (when you click "Generate with AI") or automatic (if Smart Improvement is enabled). Aggregated interaction data from the last 30 days may be sent to Google Gemini. You can disable automatic improvement at any time.</li>
+    <li><strong>Deletion:</strong> Settings &gt; General &gt; Data &amp; Reset &gt; Delete interaction data, or remove the <code>UserContext</code> folder manually.</li>
+  </ul>
+
+  <h2>What Data We Do NOT Collect</h2>
+  <ul>
+    <li>Personal information (name, email, address)</li>
+    <li>Usage analytics or tracking data</li>
+    <li>Crash reports or diagnostic information</li>
+    <li>Audio recordings (beyond temporary processing)</li>
+    <li>Transcription text content (we do not store or transmit it beyond what's needed for the feature)</li>
+    <li>Clipboard content (beyond temporary use during Speech-to-Prompt / Prompt &amp; Read)</li>
+  </ul>
+
+  <h2>Third-Party Services</h2>
+  <h3>Google Gemini API</h3>
+  <p>WhisperShortcut uses Google's Gemini API for Speech-to-Text (cloud), Speech-to-Prompt, Read Aloud / TTS, Prompt &amp; Read, and Live Meeting. Data sent: audio files and/or text. Data received: transcribed text, AI-modified text, or audio. Subject to <a href="https://policies.google.com/privacy">Google's Privacy Policy</a>. When you use cloud features, your audio and/or text may be sent to Google's servers. For offline Speech-to-Text with Whisper, no data leaves your device.</p>
+
+  <h2>Data Storage and Security</h2>
+  <p>All app data is stored locally on your macOS device. API keys are encrypted in macOS Keychain. No data is transmitted to our servers. Audio is recorded locally and files are automatically deleted after processing. Clipboard data is not stored by the app.</p>
+
+  <h2>Your Rights and Controls</h2>
+  <p>You can access and modify preferences through the app settings, delete your API key, reset preferences, delete meeting transcripts and interaction data, and disable automatic improvement. Microphone and Accessibility permissions can be revoked in macOS System Settings.</p>
+
+  <h2>Children's Privacy</h2>
+  <p>WhisperShortcut does not knowingly collect personal information from children under 13.</p>
+
+  <h2>Changes to This Policy</h2>
+  <p>We may update this privacy policy from time to time. We will notify users of material changes by updating the "Last updated" date and posting the new policy in the app repository.</p>
+
+  <h2>Contact Information</h2>
+  <p>If you have questions about this privacy policy or our data practices, please contact us through the GitHub repository: <a href="https://github.com/mgsgde/whisper-shortcut">https://github.com/mgsgde/whisper-shortcut</a></p>
+
+  <p>This privacy policy is provided to comply with Apple App Store requirements, GDPR principles, CCPA requirements, and other applicable privacy laws.</p>
+
+  <p><strong>WhisperShortcut is committed to protecting your privacy and ensuring transparency about our data practices.</strong></p>
+
+  <p class="back"><a href="index.html">← Back to WhisperShortcut</a></p>
+</body>
+</html>

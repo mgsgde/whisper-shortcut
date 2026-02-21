@@ -124,7 +124,8 @@ TestResults.xcresult/
 
 release/
 
-screenshots/node_modules/
+node_modules/
+website/node_modules/
 
 test-config
 

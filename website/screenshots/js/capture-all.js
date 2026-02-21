@@ -93,8 +93,8 @@ async function captureScreenshot(config) {
     // Wait for content
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // Take screenshot
-    const outputPath = path.join(__dirname, '..', 'output', config.output);
+    // Take screenshot (write to website/images/ so the site uses the same files)
+    const outputPath = path.join(__dirname, '..', '..', 'images', config.output);
     await page.screenshot({ 
       path: outputPath,
       fullPage: false,

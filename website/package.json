@@ -1,0 +1,30 @@
+{
+  "name": "whispershortcut-website",
+  "private": true,
+  "description": "WhisperShortcut app website and App Store screenshot generation",
+  "scripts": {
+    "preview": "serve . -p 8000",
+    "capture": "node screenshots/js/capture-all.js",
+    "capture-speech-to-text": "node screenshots/js/capture-all.js speech-to-text",
+    "capture-speech-to-prompt": "node screenshots/js/capture-all.js speech-to-prompt",
+    "capture-powered-by-gemini": "node screenshots/js/capture-all.js powered-by-gemini",
+    "capture-powered-by-whisper": "node screenshots/js/capture-all.js powered-by-whisper",
+    "capture-open-source": "node screenshots/js/capture-all.js open-source",
+    "capture-star-history": "node screenshots/js/capture-all.js star-history",
+    "preview:screenshots": "live-server screenshots -p 8080"
+  },
+  "dependencies": {
+    "puppeteer": "^24.37.3"
+  },
+  "devDependencies": {
+    "serve": "^14.2.4",
+    "live-server": "^1.2.2"
+  },
+  "overrides": {
+    "ws": "^8.17.1",
+    "tar-fs": "^3.0.9",
+    "braces": "^3.0.3",
+    "js-yaml": "^4.1.1",
+    "micromatch": "^4.0.8"
+  }
+}

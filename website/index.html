@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WhisperShortcut – macOS menu bar transcription &amp; AI voice</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 2rem;
+      color: #1a1a1a;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .header img {
+      width: 64px;
+      height: 64px;
+      border-radius: 14px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin: 0;
+    }
+
+    a {
+      color: #0969da;
+    }
+
+    p {
+      margin: 0.75rem 0;
+    }
+
+    ul {
+      margin: 0.5rem 0;
+      padding-left: 1.5rem;
+    }
+
+    .screenshots {
+      margin: 2rem 0;
+    }
+
+    .screenshots h2 {
+      font-size: 1.15rem;
+      margin-bottom: 1rem;
+    }
+
+    .screenshots-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .screenshots-grid figure {
+      margin: 0;
+    }
+
+    .screenshots-grid img {
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid #eaeaea;
+    }
+
+    .screenshots-grid figcaption {
+      font-size: 0.875rem;
+      color: #656d76;
+      margin-top: 0.35rem;
+    }
+
+    .meta {
+      font-size: 0.9rem;
+      color: #656d76;
+      margin-top: 2rem;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="header">
+    <img src="images/logo.png" width="64" height="64" alt="WhisperShortcut app icon">
+    <h1>WhisperShortcut</h1>
+  </header>
+
+  <p>WhisperShortcut is a macOS menu bar application for real-time audio transcription and AI voice workflows.</p>
+
+  <h2>Features</h2>
+  <ul>
+    <li><strong>Speech-to-Text</strong> – Transcribe with Google Gemini (cloud) or local Whisper (offline)</li>
+    <li><strong>Speech-to-Prompt</strong> – Modify clipboard text via voice and AI</li>
+    <li><strong>Read Aloud</strong> – Text-to-speech with AI voices</li>
+    <li><strong>Prompt &amp; Read</strong> – Combined AI processing and TTS</li>
+  </ul>
+
+  <section class="screenshots">
+    <h2>Screenshots</h2>
+    <div class="screenshots-grid">
+      <figure>
+        <img src="images/speech-to-text.png" loading="lazy" alt="Speech-to-Text: transcribe with Gemini or Whisper">
+        <figcaption>Speech-to-Text</figcaption>
+      </figure>
+      <figure>
+        <img src="images/speech-to-prompt.png" loading="lazy" alt="Speech-to-Prompt: modify clipboard via voice and AI">
+        <figcaption>Speech-to-Prompt</figcaption>
+      </figure>
+      <figure>
+        <img src="images/powered-by-gemini.png" loading="lazy" alt="Powered by Gemini: cloud transcription and settings">
+        <figcaption>Powered by Gemini</figcaption>
+      </figure>
+      <figure>
+        <img src="images/powered-by-whisper.png" loading="lazy" alt="Powered by Whisper: offline models and privacy">
+        <figcaption>Powered by Whisper</figcaption>
+      </figure>
+      <figure>
+        <img src="images/open-source.png" loading="lazy" alt="Open source on GitHub">
+        <figcaption>Open source</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <h2>Why we use Google</h2>
+  <p>Cloud features (transcription, AI prompting, text-to-speech) use Google’s Gemini API. You can either enter your own
+    API key or sign in with your Google account so the app can request access to Gemini on your behalf. We use your data
+    only to provide these features and do not sell or share it with third parties.</p>
+
+  <p><a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Service</a></p>
+
+  <p class="meta">Source and support: <a
+      href="https://github.com/mgsgde/whisper-shortcut">github.com/mgsgde/whisper-shortcut</a></p>
+</body>
+
+</html>
