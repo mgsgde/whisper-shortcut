@@ -90,6 +90,17 @@ struct ModelSelectionView: View {
               .foregroundColor(.secondary)
           }
         }
+
+        if selectedTranscriptionModel.isDeprecated {
+          HStack {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .foregroundColor(.orange)
+              .font(.caption)
+            Text("Deprecated – no longer available to new users. Consider switching to Gemini 2.5 Flash.")
+              .font(.callout)
+              .foregroundColor(.secondary)
+          }
+        }
       }
     }
   }

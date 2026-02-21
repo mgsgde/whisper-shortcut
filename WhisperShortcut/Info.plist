@@ -38,13 +38,13 @@
         <key>ITSAppUsesNonExemptEncryption</key>
         <false />
         <key>GIDClientID</key>
-        <string>883017804044-pssohie2bd5nap539i9sbuc2guv8qaqf.apps.googleusercontent.com</string>
+        <string>65381910633-vg7kjrul189uesbmankg3atosc3iggah.apps.googleusercontent.com</string>
         <key>CFBundleURLTypes</key>
         <array>
             <dict>
                 <key>CFBundleURLSchemes</key>
                 <array>
-                    <string>com.googleusercontent.apps.883017804044-pssohie2bd5nap539i9sbuc2guv8qaqf</string>
+                    <string>com.googleusercontent.apps.65381910633-vg7kjrul189uesbmankg3atosc3iggah</string>
                 </array>
                 <key>CFBundleURLName</key>
                 <string>com.magnusgoedde.whispershortcut.oauth</string>

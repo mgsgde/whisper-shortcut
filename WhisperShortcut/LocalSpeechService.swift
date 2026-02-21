@@ -132,7 +132,7 @@ actor LocalSpeechService {
         return true // Continue processing
       }
       let whisperKitTime = CFAbsoluteTimeGetCurrent() - whisperKitStartTime
-      DebugLogger.log("SPEED: WhisperKit transcribe call took \(String(format: "%.3f", whisperKitTime))s (\(String(format: "%.0f", whisperKitTime * 1000))ms)")
+      DebugLogger.logSpeech("SPEED: WhisperKit transcribe call took \(String(format: "%.3f", whisperKitTime))s (\(String(format: "%.0f", whisperKitTime * 1000))ms)")
     } catch {
       // Check if error is related to missing or incomplete model files
       let errorMessage = error.localizedDescription
@@ -169,7 +169,7 @@ actor LocalSpeechService {
     
     let totalElapsedTime = CFAbsoluteTimeGetCurrent() - transcribeStartTime
     DebugLogger.logSuccess("LOCAL-SPEECH: Transcription completed")
-    DebugLogger.log("SPEED: Whisper transcription total time: \(String(format: "%.3f", totalElapsedTime))s (\(String(format: "%.0f", totalElapsedTime * 1000))ms)")
+    DebugLogger.logSpeech("SPEED: Whisper transcription total time: \(String(format: "%.3f", totalElapsedTime))s (\(String(format: "%.0f", totalElapsedTime * 1000))ms)")
     
     return normalizedText
   }

@@ -137,6 +137,7 @@ echo -e "  • Use -f '✅' to see success logs"
 echo -e "  • Use -f '⚠️' to see warning logs"
 echo -e "  • Use -f '🔍' to see debug logs"
 echo -e "  • Use -f 'ℹ️' to see info logs"
+echo -e "  • Use -f 'SPEED:' to see latency/timing (transcription, API calls)"
 echo ""
 
 # Execute the log command
