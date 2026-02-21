@@ -23,13 +23,18 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     // Microphone permission will be requested automatically when recording starts
 
-    // Show settings if no Gemini credential (no sign-in and no API key)
-    if !GeminiCredentialProvider.shared.hasCredential() {
-      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
-        SettingsManager.shared.showSettings()
+    // Restore Google Sign-In from Keychain, then decide whether to show settings
+    Task {
+      await DefaultGoogleAuthService.shared.restorePreviousSignInIfNeeded()
+      await MainActor.run {
+        if !GeminiCredentialProvider.shared.hasCredential() {
+          DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
+            SettingsManager.shared.showSettings()
+          }
+        } else if KeychainManager.shared.hasGoogleAPIKey() {
+          _ = KeychainManager.shared.getGoogleAPIKey()
+        }
       }
-    } else if KeychainManager.shared.hasGoogleAPIKey() {
-      _ = KeychainManager.shared.getGoogleAPIKey()
     }
 
     // Initialize auto-improvement defaults if not set
