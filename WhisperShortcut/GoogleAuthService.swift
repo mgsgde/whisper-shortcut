@@ -5,8 +5,9 @@ import GoogleSignIn
 
 /// OAuth sign-in and token supply for Gemini API. When signed in, use Bearer token instead of API key.
 protocol GoogleAuthService: AnyObject {
-  /// Returns a valid access token for Gemini API, or nil if not signed in or token expired and refresh failed.
-  func currentAccessToken() -> String?
+  /// Returns a valid access token for Gemini API, refreshing if expired.
+  /// Returns nil if not signed in or refresh failed.
+  func currentAccessToken() async -> String?
   /// True if the user is currently signed in (may still need token refresh).
   func isSignedIn() -> Bool
   /// Start the sign-in flow (opens browser or system UI). Completion on main thread.
@@ -35,9 +36,26 @@ final class DefaultGoogleAuthService: GoogleAuthService {
 
   private init() {}
 
-  func currentAccessToken() -> String? {
+  func currentAccessToken() async -> String? {
     guard isConfigured, let user = GIDSignIn.sharedInstance.currentUser else { return nil }
-    return user.accessToken.tokenString
+
+    do {
+      let refreshedUser = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GIDGoogleUser, Error>) in
+        user.refreshTokensIfNeeded { user, error in
+          if let error = error {
+            continuation.resume(throwing: error)
+          } else if let user = user {
+            continuation.resume(returning: user)
+          } else {
+            continuation.resume(throwing: NSError(domain: "GoogleAuth", code: -1, userInfo: [NSLocalizedDescriptionKey: "Token refresh returned nil"]))
+          }
+        }
+      }
+      return refreshedUser.accessToken.tokenString
+    } catch {
+      DebugLogger.logError("GoogleAuth: Token refresh failed: \(error.localizedDescription)")
+      return nil
+    }
   }
 
   func isSignedIn() -> Bool {
@@ -98,7 +116,7 @@ final class DefaultGoogleAuthService: GoogleAuthService {
 final class DefaultGoogleAuthService: GoogleAuthService {
   static let shared = DefaultGoogleAuthService()
   private init() {}
-  func currentAccessToken() -> String? { nil }
+  func currentAccessToken() async -> String? { nil }
   func isSignedIn() -> Bool { false }
   func signIn() async throws {
     throw NSError(domain: "GoogleAuth", code: -3, userInfo: [NSLocalizedDescriptionKey: "Google Sign-In is not available in this build."])
@@ -114,7 +132,7 @@ final class StubGoogleAuthService: GoogleAuthService {
   static let shared = StubGoogleAuthService()
   private init() {}
 
-  func currentAccessToken() -> String? { nil }
+  func currentAccessToken() async -> String? { nil }
   func isSignedIn() -> Bool { false }
   func signIn() async throws { }
   func signOut() { }
