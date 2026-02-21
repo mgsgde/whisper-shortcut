@@ -23,7 +23,7 @@ All Gemini requests use **query parameter** auth: `?key=<api_key>`.
 ## 2. Target Behavior
 
 - **Two credential types:** API Key **or** OAuth (Bearer token).
-- **Priority:** If user is signed in with Google (valid token available), use Bearer token; else use API key if set.
+- **Priority:** If an API key is set, use it; else if the user is signed in with Google, use Bearer token.
 - **UI:** “Sign in with Google” (and “Sign out”) plus existing API key field. Clear copy that API key is optional when signed in.
 - **Billing:** With OAuth, usage is charged to **your** Google Cloud project (the one that owns the OAuth client). Document this and optionally add in-app note.
 
@@ -150,9 +150,9 @@ All Gemini requests use **query parameter** auth: `?key=<api_key>`.
 **4.3.1** Single place that decides “which credential to use for Gemini”:
 
 - Option A: Extend `KeychainManager` with something like `getGeminiCredential() -> GeminiCredential?` that:
-  - Asks `GoogleAuthService.currentCredential()` first;
-  - If `nil`, uses `getGoogleAPIKey()` and returns `.apiKey(key)` if non-empty.
-- Option B: New small type `GeminiCredentialProvider` that holds references to `KeychainManager` and `GoogleAuthService` and implements the same logic.
+  - Uses `getGoogleAPIKey()` first; if non-empty, returns `.apiKey(key)`;
+  - Else asks `GoogleAuthService.currentCredential()` and returns `.oauth(accessToken)` if available.
+- Option B: New small type `GeminiCredentialProvider` that holds references to `KeychainManager` and `GoogleAuthService` and implements the same logic (API key first, then OAuth).
 
 **4.3.2** Replace “get API key and pass everywhere” with “get credential and pass everywhere”:
 
@@ -161,7 +161,7 @@ All Gemini requests use **query parameter** auth: `?key=<api_key>`.
 - **UserContextDerivation:** Same: accept `GeminiCredential` (or get it from a shared provider) and pass to `GeminiAPIClient`.
 - **MenuBarController** `apiKeyUpdated`: extend to “credential updated” (OAuth sign-in/out or API key change) and refresh any UI or state that depends on it.
 
-**Deliverable:** All Gemini calls use `GeminiCredential`; source of truth is “OAuth if signed in, else API key”.
+**Deliverable:** All Gemini calls use `GeminiCredential`; source of truth is “API key if set, else OAuth when signed in”.
 
 ---
 
@@ -195,7 +195,7 @@ All Gemini requests use **query parameter** auth: `?key=<api_key>`.
 
 - **Sign in → use transcription / prompt / TTS** → all use Bearer token.
 - **Sign out** → next request uses API key if set; otherwise error.
-- **API key set, then sign in** → OAuth takes precedence; requests use Bearer.
+- **API key set, then sign in** → API key takes precedence; requests use API key.
 - **Sign in, then remove API key** → still works (OAuth only).
 - **Token refresh** → after expiry, refresh token used; if refresh fails, fall back to API key or show “session expired”.
 - **No network during sign-in** → clear error.

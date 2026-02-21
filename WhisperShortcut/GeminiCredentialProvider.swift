@@ -1,6 +1,6 @@
 import Foundation
 
-/// Provides the current credential for Gemini API (OAuth if signed in, else API key).
+/// Provides the current credential for Gemini API (API key if set, else OAuth when signed in).
 /// Single source of truth for "which credential to use" so all Gemini callers stay in sync.
 protocol GeminiCredentialProviding {
   /// Returns a valid credential if the user can call Gemini; nil otherwise.
@@ -10,7 +10,7 @@ protocol GeminiCredentialProviding {
   func hasCredential() -> Bool
 }
 
-/// Default implementation: OAuth takes precedence over API key when available.
+/// Default implementation: API key takes precedence over OAuth when both are available.
 final class GeminiCredentialProvider: GeminiCredentialProviding {
   static let shared = GeminiCredentialProvider(googleAuthService: DefaultGoogleAuthService.shared)
 
@@ -26,11 +26,11 @@ final class GeminiCredentialProvider: GeminiCredentialProviding {
   }
 
   func getCredential() async -> GeminiCredential? {
-    if let auth = googleAuthService, let token = await auth.currentAccessToken() {
-      return .oauth(accessToken: token)
-    }
     if let key = keychainManager.getGoogleAPIKey(), !key.isEmpty {
       return .apiKey(key)
+    }
+    if let auth = googleAuthService, let token = await auth.currentAccessToken() {
+      return .oauth(accessToken: token)
     }
     return nil
   }
