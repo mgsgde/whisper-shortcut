@@ -1,6 +1,6 @@
 # Privacy Policy for WhisperShortcut
 
-**Last updated:** February 2025
+**Last updated:** February 21, 2025
 
 ## Overview
 
@@ -46,7 +46,7 @@ WhisperShortcut is a macOS menu bar application with four main features: **Speec
 ### 4. Live Meeting Transcripts (Optional)
 
 - **What**: Transcript files from Live Meeting mode
-- **Where**: Saved in `~/Documents/WhisperShortcut/Meeting-<timestamp>.txt`
+- **Where**: Saved in the app data folder under `Meetings/` (e.g. `Meeting-YYYY-MM-DD-HHmmss.txt`). The app uses the path `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/Meetings/`. Older versions may have saved to `~/Documents/WhisperShortcut/`.
 - **Purpose**: Persistent record of live meeting transcription
 - **Retention**: Stored until you delete the files manually
 - **Access**: Only you can access these files on your device
@@ -54,14 +54,14 @@ WhisperShortcut is a macOS menu bar application with four main features: **Speec
 ### 5. User Context / Interaction Logs
 
 - **What**: Logs of transcriptions, prompt interactions, and read-aloud actions (mode, timestamps, and result snippets). When automatic system prompt improvement applies a new prompt, a history entry (timestamp, source, lengths, and the applied prompt text) is appended to `system-prompt-history-dictation.jsonl`, `system-prompt-history-prompt-mode.jsonl`, or `system-prompt-history-prompt-and-read.jsonl` in the same folder so you can review how prompts changed over time. When you apply suggested user context, a similar history entry is appended to `user-context-history.jsonl` so you can review how your user context (user-context.md) evolved.
-- **Where**: Stored locally in `~/Library/Application Support/WhisperShortcut/UserContext/` as JSONL files (e.g. `interactions-2025-02-10.jsonl`, and optionally `system-prompt-history-*.jsonl`, `user-context-history.jsonl`)
+- **Where**: Stored locally in the app data folder under `UserContext/` as JSONL files (e.g. `interactions-YYYY-MM-DD.jsonl`, and optionally `system-prompt-history-*.jsonl`, `user-context-history.jsonl`). The app uses the path `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/UserContext/`. See `docs/data-directories.md` in the repository for details.
 - **Purpose**: Used when you click **"Generate with AI"** in Settings to derive suggested system prompts and user context, or for **automatic system prompt improvement** (if enabled). Improves quality of those suggestions. System prompt history files let you manually review how your Dictation, Dictate Prompt, and Prompt & Read prompts evolved; user context history records how user-context.md changed when you applied suggestions.
 - **When it’s collected**: Interaction logging is always on (no toggle). Data stays on your device until you delete it or it is automatically removed (see retention)
 - **Retention**: Log files older than **90 days** are automatically deleted. For **"Generate with AI"** and automatic improvement, only interactions from the **last 30 days** are read and sent to Google Gemini.
 - **Gemini Analysis**: 
   - **Manual**: When you click **"Generate with AI"** (in Settings > General for User Context, or in the Dictate / Dictate Prompt / Dictate Prompt & Read tabs), aggregated interaction data from the last 30 days is sent to Google Gemini to generate suggested prompts. This is a one-time action per click; you initiate it manually.
-  - **Automatic**: If automatic improvement is enabled (Settings > General > Smarte Verbesserung), the app periodically (configurable: every 3, 7, 14, or 30 days) analyzes your interaction logs in the background and generates suggested prompts. Aggregated interaction data from the last 30 days is sent to Google Gemini. A pop-up appears when suggestions are ready, allowing you to review and accept or reject them. You can disable automatic improvement at any time or set the interval to "Never".
-- **Deletion**: You can delete all interaction logs and derived files at any time by removing the folder `~/Library/Application Support/WhisperShortcut/UserContext/` (e.g. in Finder: Go → Go to Folder, paste the path, then delete the `UserContext` folder). The app does not currently offer an in-app "Delete All Context Data" button.
+  - **Automatic**: If automatic improvement is enabled (Settings > General > Smart Improvement), the app periodically (configurable: every 3, 7, 14, or 30 days, or "Always"/"Never") analyzes your interaction logs in the background and generates suggested prompts. Aggregated interaction data from the last 30 days is sent to Google Gemini. A pop-up appears when suggestions are ready, allowing you to review and accept or reject them. You can disable automatic improvement at any time by setting the interval to "Never" (this also disables interaction logging).
+- **Deletion**: You can delete all interaction logs and derived files at any time via **Settings > General > Data & Reset > Delete interaction data**, or by removing the `UserContext` folder in the app data path (e.g. in Finder: Go → Go to Folder, paste the path from Settings or from `docs/data-directories.md`, then delete the `UserContext` folder).
 - **Access**: Only accessible by the app on your device, except when you use "Generate with AI" or when automatic improvement runs, at which point the aggregated text is sent to Gemini as described above.
 
 ## What Data We Do NOT Collect
@@ -124,11 +124,10 @@ WhisperShortcut uses Google's Gemini API for:
 
 - Delete API key: Use the app's settings to remove your API key
 - Reset preferences: Use the app's reset to defaults feature
-- Delete Live Meeting transcripts: Remove files from `~/Documents/WhisperShortcut/`
-- Delete User Context / interaction logs: Remove the folder `~/Library/Application Support/WhisperShortcut/UserContext/` (e.g. in Finder: Go → Go to Folder, paste the path, then delete the `UserContext` folder)
-- Disable automatic improvement: Settings > General > Smarte Verbesserung > set interval to "Nie" (Never)
-- Disable interaction logging: Settings > General > Smarte Verbesserung > toggle off "Interaktions-Logging für Vorschläge"
-- Uninstall: Remove the app to delete all local data (except Live Meeting files in Documents and the UserContext folder above, which you can delete manually)
+- Delete Live Meeting transcripts: Remove files from the app data folder under `Meetings/` (path shown in Settings > General, or see `docs/data-directories.md`). Legacy files may be in `~/Documents/WhisperShortcut/`.
+- Delete User Context / interaction logs: Use **Settings > General > Data & Reset > Delete interaction data**, or remove the `UserContext` folder in the app data path (see path in Settings or `docs/data-directories.md`).
+- Disable automatic improvement and interaction logging: Settings > General > Smart Improvement > set interval to "Never".
+- Uninstall: Remove the app to delete all local data (except the app data folder contents such as Meetings and UserContext, which you can delete manually or via Settings before uninstalling).
 
 ### Permissions
 
