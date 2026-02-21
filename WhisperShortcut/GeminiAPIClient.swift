@@ -1,5 +1,12 @@
 import Foundation
 
+// MARK: - Gemini Credential
+/// Authentication for Gemini API: API key (query param) or OAuth (Bearer token).
+enum GeminiCredential {
+  case apiKey(String)
+  case oauth(accessToken: String)
+}
+
 // MARK: - Gemini Error Response Models
 /// Structured error response from Gemini API
 struct GeminiErrorResponse: Codable {
@@ -64,26 +71,39 @@ class GeminiAPIClient {
   }
   
   // MARK: - Request Creation
-  /// Creates a URLRequest for Gemini API with proper headers
-  /// Uses URLComponents to properly encode the API key in query parameters
-  func createRequest(endpoint: String, apiKey: String) throws -> URLRequest {
-    // Endpoint is a constant, but use URLComponents for proper query parameter encoding
+  /// Creates a URLRequest for Gemini API with credential (API key or OAuth Bearer).
+  func createRequest(endpoint: String, credential: GeminiCredential) throws -> URLRequest {
     guard let baseURL = URL(string: endpoint),
           var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
       throw TranscriptionError.invalidRequest
     }
-    
-    components.queryItems = [URLQueryItem(name: "key", value: apiKey)]
-    
+
+    switch credential {
+    case .apiKey(let key):
+      components.queryItems = [URLQueryItem(name: "key", value: key)]
+    case .oauth:
+      break
+    }
+
     guard let url = components.url else {
       throw TranscriptionError.invalidRequest
     }
-    
+
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.timeoutInterval = Constants.resourceTimeout
+
+    if case .oauth(let accessToken) = credential {
+      request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+    }
+
     return request
+  }
+
+  /// Creates a URLRequest using API key (convenience for callers that only have a key).
+  func createRequest(endpoint: String, apiKey: String) throws -> URLRequest {
+    try createRequest(endpoint: endpoint, credential: .apiKey(apiKey))
   }
   
   // MARK: - Request Execution
@@ -324,36 +344,42 @@ class GeminiAPIClient {
   }
   
   // MARK: - File Upload
-  /// Uploads a file to Gemini using resumable upload protocol
-  func uploadFile(audioURL: URL, apiKey: String) async throws -> String {
+  /// Uploads a file to Gemini using resumable upload protocol.
+  func uploadFile(audioURL: URL, credential: GeminiCredential) async throws -> String {
     let audioData = try Data(contentsOf: audioURL)
-    
+
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = getMimeType(for: fileExtension)
     let numBytes = audioData.count
     DebugLogger.log("GEMINI-FILES-API: Uploading file (\(numBytes) bytes, \(mimeType))")
-    
-    // Step 1: Initialize resumable upload
-    // Use URLComponents for proper query parameter encoding
+
     guard let baseURL = URL(string: Constants.filesAPIBaseURL),
           var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
       throw TranscriptionError.invalidRequest
     }
-    
-    components.queryItems = [URLQueryItem(name: "key", value: apiKey)]
-    
+
+    switch credential {
+    case .apiKey(let key):
+      components.queryItems = [URLQueryItem(name: "key", value: key)]
+    case .oauth:
+      break
+    }
+
     guard let initURL = components.url else {
       throw TranscriptionError.invalidRequest
     }
-    
+
     var initRequest = URLRequest(url: initURL)
+    if case .oauth(let accessToken) = credential {
+      initRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+    }
     initRequest.httpMethod = "POST"
+    initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
     initRequest.setValue("resumable", forHTTPHeaderField: "X-Goog-Upload-Protocol")
     initRequest.setValue("start", forHTTPHeaderField: "X-Goog-Upload-Command")
     initRequest.setValue("\(numBytes)", forHTTPHeaderField: "X-Goog-Upload-Header-Content-Length")
     initRequest.setValue(mimeType, forHTTPHeaderField: "X-Goog-Upload-Header-Content-Type")
-    initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    
+
     let metadata: [String: Any] = [
       "file": [
         "display_name": "audio_\(Date().timeIntervalSince1970)"

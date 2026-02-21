@@ -48,6 +48,9 @@ class KeychainManager: KeychainManaging {
     ]
 
     let status = SecItemAdd(query as CFDictionary, nil)
+    if status != errSecSuccess {
+      DebugLogger.logError("KEYCHAIN: SecItemAdd failed for account \(accountName): status=\(status)")
+    }
     return status == errSecSuccess
   }
   
@@ -71,6 +74,9 @@ class KeychainManager: KeychainManaging {
       cache = apiKey
       return apiKey
     } else {
+      if status != errSecItemNotFound {
+        DebugLogger.logError("KEYCHAIN: SecItemCopyMatching failed for account \(accountName): status=\(status)")
+      }
       return nil
     }
   }

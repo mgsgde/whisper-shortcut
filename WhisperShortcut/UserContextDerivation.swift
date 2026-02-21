@@ -39,10 +39,9 @@ class UserContextDerivation {
   // MARK: - Main Entry Point
 
   /// Analyzes interaction logs and derives the output for the given focus (one section only).
-  /// Throws if no API key or if the Gemini request fails.
+  /// Throws if no Gemini credential (sign in or API key) or if the Gemini request fails.
   func updateFromLogs(focus: GenerationKind) async throws {
-    guard KeychainManager.shared.hasValidGoogleAPIKey(),
-          let apiKey = KeychainManager.shared.getGoogleAPIKey() else {
+    guard let credential = GeminiCredentialProvider.shared.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
     }
 
@@ -77,7 +76,7 @@ class UserContextDerivation {
       currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
       currentDictationPrompt: currentDictationPrompt,
       existingUserContext: existingUserContext,
-      apiKey: apiKey
+      credential: credential
     )
 
     try writeOutputFile(analysisResult: analysisResult, focus: focus)
@@ -478,10 +477,10 @@ class UserContextDerivation {
     currentPromptAndReadSystemPrompt: String?,
     currentDictationPrompt: String?,
     existingUserContext: String?,
-    apiKey: String
+    credential: GeminiCredential
   ) async throws -> String {
     let geminiClient = GeminiAPIClient()
-    var request = try geminiClient.createRequest(endpoint: analysisEndpoint, apiKey: apiKey)
+    var request = try geminiClient.createRequest(endpoint: analysisEndpoint, credential: credential)
 
     let systemPrompt = systemPromptForFocus(focus)
 

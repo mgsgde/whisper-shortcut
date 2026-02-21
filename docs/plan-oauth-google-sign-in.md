@@ -113,17 +113,17 @@ All Gemini requests use **query parameter** auth: `?key=<api_key>`.
 
 **Consent screen (App domain, links):** Google requires these for the OAuth consent screen. For **app verification**, the homepage and privacy policy must be on a **verified domain you own** (GitHub URLs are not accepted as "registered to you"). Use GitHub Pages with a **custom domain** you control:
 
-1. **Site:** This repo includes the app website in `website/` (homepage, privacy policy, terms). Enable GitHub Pages: Settings → Pages → Deploy from branch → branch `main`, folder `/website`.
-2. **Custom domain:** In repo Settings → Pages, set a custom domain you control (e.g. `whisper-shortcut.yourdomain.com`). Add the CNAME (or A records) in your DNS.
+1. **Site:** This repo includes the app website in `website/` (homepage, privacy policy, terms). Enable GitHub Pages: Settings → Pages → Source: GitHub Actions (workflow in `.github/workflows/pages.yml`).
+2. **Custom domain:** In repo Settings → Pages, set a custom domain you control (e.g. `www.whispershortcut.com`). Add the CNAME (or A records) in your DNS.
 3. **Verify domain:** In [Google Search Console](https://search.google.com/search-console), add the domain and verify ownership (TXT record). Use the same Google account that is Owner of the GCP project.
 4. **Consent screen URLs:** Use the verified domain, e.g.:
 
 | Field | URL (example) |
 |-------|----------------|
-| Application home page | `https://whisper-shortcut.yourdomain.com/` |
-| Application privacy policy link | `https://whisper-shortcut.yourdomain.com/privacy.html` |
-| Application Terms of Service link | (optional) same domain, e.g. `https://whisper-shortcut.yourdomain.com/terms.html` |
-| Authorised domains | Your verified domain (e.g. `yourdomain.com`) |
+| Application home page | `https://www.whispershortcut.com/` |
+| Application privacy policy link | `https://www.whispershortcut.com/privacy.html` |
+| Application Terms of Service link | (optional) same domain, e.g. `https://www.whispershortcut.com/terms.html` |
+| Authorised domains | Your verified domain (e.g. `whispershortcut.com`) |
 
 **4.2.3** New `GoogleAuthService` (or `GeminiAuthService`):
 

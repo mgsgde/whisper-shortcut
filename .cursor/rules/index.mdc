@@ -18,7 +18,7 @@ alwaysApply: true
 ## ⚡ Critical Rules
 
 - **KISS**: Prefer the simplest, most robust solution.
-- **Rebuild after changes**: Run `bash scripts/rebuild-and-restart.sh` after every code change.
+- **Rebuild after changes**: After making any code or project changes, the agent must run `bash scripts/rebuild-and-restart.sh` itself (do not only suggest it). Run it once at the end of the edits so the user can test immediately.
 - **Logging in code**: Use only `DebugLogger` methods; never `print()`, `NSLog()`, or `os_log()`. For **viewing** logs use skill **view-logs-via-bash**. For **debugging or adding instrumentation** (and full flow: repro plan → analyze logs) use skill **debugging-workflow**.
 - **Tests**: Do not run tests from the agent; user runs them manually in Xcode.
 - **Language**: All user-facing and in-repository text must be in **English**. This includes: UI strings, confirmation dialogs, button labels, tooltips, section titles, code comments, default prompts and examples in code, and documentation. Do not add or leave German (or other non-English) text in the codebase.
