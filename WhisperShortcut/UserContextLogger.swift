@@ -20,6 +20,8 @@ struct SystemPromptHistoryEntry: Codable {
   let previousLength: Int
   let newLength: Int
   let content: String
+  /// Gemini model used for this improvement (e.g. "Gemini 3.1 Pro"). Optional for backward compatibility with existing JSONL lines.
+  let model: String?
 }
 
 // MARK: - User Context Logger
@@ -298,7 +300,7 @@ class UserContextLogger {
   /// Appends one entry to the system prompt history JSONL (for Dictate (transcription), Dictate Prompt, or Prompt & Read).
   /// File name: system-prompt-history-{suffix}.jsonl (e.g. dictation, prompt-mode, prompt-and-read).
   /// Called when auto-improvement applies a new system prompt. History is removed when UserContext is deleted.
-  func appendSystemPromptHistory(historyFileSuffix: String, previousLength: Int, newLength: Int, content: String) {
+  func appendSystemPromptHistory(historyFileSuffix: String, previousLength: Int, newLength: Int, content: String, model: String? = nil) {
     queue.async { [weak self] in
       guard let self else { return }
       let entry = SystemPromptHistoryEntry(
@@ -306,7 +308,8 @@ class UserContextLogger {
         source: "auto",
         previousLength: previousLength,
         newLength: newLength,
-        content: content
+        content: content,
+        model: model
       )
       let filename = "system-prompt-history-\(historyFileSuffix).jsonl"
       let fileURL = self.contextDirectoryURL.appendingPathComponent(filename)
@@ -335,8 +338,8 @@ class UserContextLogger {
   }
 
   /// Appends one entry to the user context history JSONL (user-context-history.jsonl).
-  /// Same entry shape as system prompt history (ts, source, previousLength, newLength, content). Called when auto-improvement applies suggested user context. History is removed when UserContext is deleted.
-  func appendUserContextHistory(previousLength: Int, newLength: Int, content: String) {
+  /// Same entry shape as system prompt history (ts, source, previousLength, newLength, content, model). Called when auto-improvement applies suggested user context. History is removed when UserContext is deleted.
+  func appendUserContextHistory(previousLength: Int, newLength: Int, content: String, model: String? = nil) {
     queue.async { [weak self] in
       guard let self else { return }
       let entry = SystemPromptHistoryEntry(
@@ -344,7 +347,8 @@ class UserContextLogger {
         source: "auto",
         previousLength: previousLength,
         newLength: newLength,
-        content: content
+        content: content,
+        model: model
       )
       let filename = "user-context-history.jsonl"
       let fileURL = self.contextDirectoryURL.appendingPathComponent(filename)

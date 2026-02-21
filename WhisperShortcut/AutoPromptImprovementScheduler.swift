@@ -75,6 +75,14 @@ class AutoPromptImprovementScheduler {
     return daysSinceLastRun >= interval.days
   }
 
+  /// Current Smart Improvement model display name (e.g. "Gemini 3.1 Pro"). Same source as UserContextDerivation.
+  private func currentImprovementModelDisplayName() -> String? {
+    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
+      ?? SettingsDefaults.selectedImprovementModel.rawValue
+    guard let model = PromptModel(rawValue: raw) else { return nil }
+    return model.displayName
+  }
+
   private func runImprovement() async {
     let derivation = UserContextDerivation()
     var pendingKinds: [GenerationKind] = []
@@ -184,27 +192,28 @@ class AutoPromptImprovementScheduler {
   }
 
   private func applySuggestion(_ suggested: String, for kind: GenerationKind) {
+    let improvementModel = currentImprovementModelDisplayName()
     switch kind {
     case .dictation:
       let currentDictation = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) ?? AppConstants.defaultTranscriptionSystemPrompt
       UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.customPromptText)
       UserContextLogger.shared.deleteSuggestedDictationPromptFile()
       logSystemPromptChange(kind: "Dictation Prompt", previous: currentDictation, applied: suggested)
-      UserContextLogger.shared.appendSystemPromptHistory(historyFileSuffix: "dictation", previousLength: currentDictation.count, newLength: suggested.count, content: suggested)
+      UserContextLogger.shared.appendSystemPromptHistory(historyFileSuffix: "dictation", previousLength: currentDictation.count, newLength: suggested.count, content: suggested, model: improvementModel)
 
     case .promptMode:
       let currentPromptMode = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt) ?? ""
       UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.promptModeSystemPrompt)
       UserContextLogger.shared.deleteSuggestedSystemPromptFile()
       logSystemPromptChange(kind: "Dictate Prompt", previous: currentPromptMode, applied: suggested)
-      UserContextLogger.shared.appendSystemPromptHistory(historyFileSuffix: "prompt-mode", previousLength: currentPromptMode.count, newLength: suggested.count, content: suggested)
+      UserContextLogger.shared.appendSystemPromptHistory(historyFileSuffix: "prompt-mode", previousLength: currentPromptMode.count, newLength: suggested.count, content: suggested, model: improvementModel)
 
     case .promptAndRead:
       let currentPromptAndRead = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt) ?? ""
       UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
       UserContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
       logSystemPromptChange(kind: "Prompt & Read", previous: currentPromptAndRead, applied: suggested)
-      UserContextLogger.shared.appendSystemPromptHistory(historyFileSuffix: "prompt-and-read", previousLength: currentPromptAndRead.count, newLength: suggested.count, content: suggested)
+      UserContextLogger.shared.appendSystemPromptHistory(historyFileSuffix: "prompt-and-read", previousLength: currentPromptAndRead.count, newLength: suggested.count, content: suggested, model: improvementModel)
 
     case .userContext:
       let contextDir = UserContextLogger.shared.directoryURL
@@ -213,7 +222,7 @@ class AutoPromptImprovementScheduler {
       try? suggested.write(to: fileURL, atomically: true, encoding: .utf8)
       NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
       UserContextLogger.shared.deleteSuggestedUserContextFile()
-      UserContextLogger.shared.appendUserContextHistory(previousLength: currentUserContext.count, newLength: suggested.count, content: suggested)
+      UserContextLogger.shared.appendUserContextHistory(previousLength: currentUserContext.count, newLength: suggested.count, content: suggested, model: improvementModel)
     }
   }
 
