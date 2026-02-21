@@ -179,15 +179,24 @@ struct SpeechToTextSettingsTab: View {
   // MARK: - Model Section
   @ViewBuilder
   private var modelSection: some View {
-    ModelSelectionView(
-      title: "🎤 Transcription Model",
-      selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
-      onModelChanged: {
-        Task {
-          await viewModel.saveSettings()
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      ModelSelectionView(
+        title: "🎤 Transcription Model",
+        selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
+        geminiDisabled: !KeychainManager.shared.hasGoogleAPIKey(),
+        onModelChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
         }
+      )
+      if viewModel.data.selectedTranscriptionModel.isGemini && !KeychainManager.shared.hasGoogleAPIKey() {
+        Text("API key required for Gemini models. Add your key in the General tab, or select an offline Whisper model to dictate without a key.")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
       }
-    )
+    }
   }
 
   // MARK: - Offline Models Section

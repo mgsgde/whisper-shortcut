@@ -1,21 +1,25 @@
 import SwiftUI
 
-/// Wiederverwendbare Komponente für Model-Auswahl
+/// Reusable component for transcription model selection.
 struct ModelSelectionView: View {
   @Binding var selectedTranscriptionModel: TranscriptionModel
   let title: String
   let models: [TranscriptionModel]
   let onModelChanged: (() -> Void)?
+  /// When true, Gemini models are shown as disabled and cannot be selected (e.g. when no API key is set).
+  let geminiDisabled: Bool
 
   init(
     title: String = "Transcription Model",
     selectedTranscriptionModel: Binding<TranscriptionModel>,
     models: [TranscriptionModel] = TranscriptionModel.allCases,
+    geminiDisabled: Bool = false,
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
     self._selectedTranscriptionModel = selectedTranscriptionModel
     self.models = models
+    self.geminiDisabled = geminiDisabled
     self.onModelChanged = onModelChanged
   }
 
@@ -28,6 +32,7 @@ struct ModelSelectionView: View {
 
       LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
         ForEach(models, id: \.self) { model in
+          let isDisabled = geminiDisabled && model.isGemini
           ZStack {
             Rectangle()
               .fill(selectedTranscriptionModel == model ? Color.accentColor : Color.clear)
@@ -36,11 +41,13 @@ struct ModelSelectionView: View {
             Text(model.displayName)
               .font(.system(.body, design: .default))
               .fontWeight(.medium)
-              .foregroundColor(selectedTranscriptionModel == model ? .white : .primary)
+              .foregroundColor(selectedTranscriptionModel == model ? .white : (isDisabled ? .secondary : .primary))
           }
           .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
           .contentShape(Rectangle())
+          .opacity(isDisabled ? 0.6 : 1)
           .onTapGesture {
+            if isDisabled { return }
             selectedTranscriptionModel = model
             onModelChanged?()
           }

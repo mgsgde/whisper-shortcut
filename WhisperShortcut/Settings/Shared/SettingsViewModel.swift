@@ -191,22 +191,9 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Validation
   func validateSettings() -> String? {
-    // Note: Prompt Mode API key validation is handled at runtime in SpeechService
-    // This allows users to save settings and use offline Whisper models without a Gemini API key
-    
-    // Transcription: Only require API key if using Gemini and no offline model is available
-    let usesGeminiTranscription = data.selectedTranscriptionModel.isGemini
-    if usesGeminiTranscription {
-      // Check if offline model is available
-      let hasOfflineTranscription = data.selectedTranscriptionModel.isOffline && 
-        ModelManager.shared.isModelAvailable(data.selectedTranscriptionModel.offlineModelType ?? .whisperBase)
-      
-      if !hasOfflineTranscription {
-        guard !data.googleAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-          return "Please enter your Google API key (required for Transcription) or select an offline Whisper model"
-        }
-      }
-    }
+    // Note: Prompt Mode API key validation is handled at runtime in SpeechService.
+    // Transcription model is always allowed to be saved (including Gemini without API key)
+    // so state stays consistent; Dictate is disabled at runtime when Gemini is selected and no key is set.
 
     // Validate toggle shortcuts (only if enabled)
     if data.toggleDictationEnabled {

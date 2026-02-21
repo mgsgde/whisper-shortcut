@@ -149,47 +149,49 @@ class SpeechService {
   // MARK: - Transcription Mode (Private Implementation)
   private func performTranscription(audioURL: URL) async throws -> String {
     let startTime = CFAbsoluteTimeGetCurrent()
-    
+    // Use persisted selection as single source of truth so we never use Whisper when user selected Gemini
+    let model = TranscriptionModel.loadSelected()
+
     // Check if using offline model
-    if selectedTranscriptionModel.isOffline {
+    if model.isOffline {
       // For offline models, use LocalSpeechService
-      guard let offlineModelType = selectedTranscriptionModel.offlineModelType else {
+      guard let offlineModelType = model.offlineModelType else {
         throw TranscriptionError.networkError("Invalid offline model type")
       }
-      
+
       // Check if model is available before attempting to use it
       if !ModelManager.shared.isModelAvailable(offlineModelType) {
         throw TranscriptionError.modelNotAvailable(offlineModelType)
       }
-      
+
       // Initialize model if not already initialized
       if await !LocalSpeechService.shared.isReady() {
         try await LocalSpeechService.shared.initializeModel(offlineModelType)
       }
-      
+
       // Validate format
       try validateAudioFileFormat(at: audioURL)
-      
+
       // Get language setting for Whisper (defaults to auto-detect)
       let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage)
       let savedLanguage = WhisperLanguage(rawValue: savedLanguageString ?? WhisperLanguage.auto.rawValue) ?? WhisperLanguage.auto
       let languageString = savedLanguage.languageCode // Returns nil for .auto, which enables auto-detect
-      
+
       if savedLanguage == .auto {
         DebugLogger.log("LOCAL-SPEECH: Using auto-detect language (default)")
       } else {
         DebugLogger.log("LOCAL-SPEECH: Using language setting: \(savedLanguage.displayName) (\(savedLanguage.rawValue))")
       }
-      
+
       // Transcribe using local service
       let result = try await LocalSpeechService.shared.transcribe(audioURL: audioURL, language: languageString)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.log("SPEED: Whisper transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
     }
-    
+
     // Check if using Gemini model
-    if selectedTranscriptionModel.isGemini {
+    if model.isGemini {
       // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
       try validateAudioFileFormat(at: audioURL)
       let result = try await transcribeWithGemini(audioURL: audioURL)
@@ -197,7 +199,7 @@ class SpeechService {
       DebugLogger.log("SPEED: Gemini transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
     }
-    
+
     // Should never reach here
     throw TranscriptionError.networkError("Unsupported transcription model")
   }
