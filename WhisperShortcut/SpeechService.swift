@@ -184,7 +184,7 @@ class SpeechService {
       // Transcribe using local service
       let result = try await LocalSpeechService.shared.transcribe(audioURL: audioURL, language: languageString)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
-      DebugLogger.log("SPEED: Whisper transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
+      DebugLogger.logSpeech("SPEED: Whisper transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
     }
 
@@ -194,7 +194,7 @@ class SpeechService {
       try validateAudioFileFormat(at: audioURL)
       let result = try await transcribeWithGemini(audioURL: audioURL)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
-      DebugLogger.log("SPEED: Gemini transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
+      DebugLogger.logSpeech("SPEED: [\(model.displayName)] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
     }
 
@@ -811,7 +811,7 @@ class SpeechService {
     }
 
     let apiElapsedTime = CFAbsoluteTimeGetCurrent() - apiStartTime
-    DebugLogger.log("SPEED: Gemini API call completed in \(String(format: "%.3f", apiElapsedTime))s (\(String(format: "%.0f", apiElapsedTime * 1000))ms)")
+    DebugLogger.logSpeech("SPEED: [\(selectedTranscriptionModel.displayName)] API call completed in \(String(format: "%.3f", apiElapsedTime))s (\(String(format: "%.0f", apiElapsedTime * 1000))ms)")
 
     return result
   }
@@ -847,7 +847,7 @@ class SpeechService {
     let audioData = try Data(contentsOf: audioURL)
     let base64Audio = audioData.base64EncodedString()
     let encodeTime = CFAbsoluteTimeGetCurrent() - encodeStartTime
-    DebugLogger.log("SPEED: Base64 encoding took \(String(format: "%.3f", encodeTime))s (\(String(format: "%.0f", encodeTime * 1000))ms)")
+    DebugLogger.logSpeech("SPEED: Base64 encoding took \(String(format: "%.3f", encodeTime))s (\(String(format: "%.0f", encodeTime * 1000))ms)")
     
     // Determine MIME type from file extension
     let fileExtension = audioURL.pathExtension.lowercased()
@@ -895,14 +895,14 @@ class SpeechService {
       withRetry: true
     )
     let networkTime = CFAbsoluteTimeGetCurrent() - networkStartTime
-    DebugLogger.log("SPEED: Gemini API network request took \(String(format: "%.3f", networkTime))s (\(String(format: "%.0f", networkTime * 1000))ms)")
+    DebugLogger.logSpeech("SPEED: [\(selectedTranscriptionModel.displayName)] API network request took \(String(format: "%.3f", networkTime))s (\(String(format: "%.0f", networkTime * 1000))ms)")
 
     let transcript = geminiClient.extractText(from: geminiResponse)
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(transcript)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
 
     let inlineElapsedTime = CFAbsoluteTimeGetCurrent() - inlineStartTime
-    DebugLogger.log("SPEED: Gemini inline transcription total time: \(String(format: "%.3f", inlineElapsedTime))s (\(String(format: "%.0f", inlineElapsedTime * 1000))ms)")
+    DebugLogger.logSpeech("SPEED: [\(selectedTranscriptionModel.displayName)] inline transcription total: \(String(format: "%.3f", inlineElapsedTime))s (\(String(format: "%.0f", inlineElapsedTime * 1000))ms)")
 
     return normalizedText
   }
@@ -915,13 +915,13 @@ class SpeechService {
     let uploadStartTime = CFAbsoluteTimeGetCurrent()
     let fileURI = try await geminiClient.uploadFile(audioURL: audioURL, credential: credential)
     let uploadTime = CFAbsoluteTimeGetCurrent() - uploadStartTime
-    DebugLogger.log("SPEED: File upload took \(String(format: "%.3f", uploadTime))s (\(String(format: "%.0f", uploadTime * 1000))ms)")
+    DebugLogger.logSpeech("SPEED: File upload took \(String(format: "%.3f", uploadTime))s (\(String(format: "%.0f", uploadTime * 1000))ms)")
 
     // Step 2: Use file URI for transcription
     let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, credential: credential)
     
     let filesAPIElapsedTime = CFAbsoluteTimeGetCurrent() - filesAPIStartTime
-    DebugLogger.log("SPEED: Gemini Files API transcription total time: \(String(format: "%.3f", filesAPIElapsedTime))s (\(String(format: "%.0f", filesAPIElapsedTime * 1000))ms)")
+    DebugLogger.logSpeech("SPEED: Gemini Files API transcription total time: \(String(format: "%.3f", filesAPIElapsedTime))s (\(String(format: "%.0f", filesAPIElapsedTime * 1000))ms)")
     
     return result
   }
@@ -973,14 +973,14 @@ class SpeechService {
       withRetry: true
     )
     let networkTime = CFAbsoluteTimeGetCurrent() - networkStartTime
-    DebugLogger.log("SPEED: Gemini API network request (FileURI) took \(String(format: "%.3f", networkTime))s (\(String(format: "%.0f", networkTime * 1000))ms)")
+    DebugLogger.logSpeech("SPEED: Gemini API network request (FileURI) took \(String(format: "%.3f", networkTime))s (\(String(format: "%.0f", networkTime * 1000))ms)")
 
     let transcript = geminiClient.extractText(from: geminiResponse)
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(transcript)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
     
     let fileURIElapsedTime = CFAbsoluteTimeGetCurrent() - fileURIStartTime
-    DebugLogger.log("SPEED: Gemini FileURI transcription took \(String(format: "%.3f", fileURIElapsedTime))s (\(String(format: "%.0f", fileURIElapsedTime * 1000))ms)")
+    DebugLogger.logSpeech("SPEED: Gemini FileURI transcription took \(String(format: "%.3f", fileURIElapsedTime))s (\(String(format: "%.0f", fileURIElapsedTime * 1000))ms)")
     
     return normalizedText
   }

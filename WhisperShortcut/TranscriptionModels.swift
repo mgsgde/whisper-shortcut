@@ -27,9 +27,9 @@ enum TranscriptionModel: String, CaseIterable {
   var displayName: String {
     switch self {
     case .gemini20Flash:
-      return "Gemini 2.0 Flash"
+      return "Gemini 2.0 Flash (Deprecated)"
     case .gemini20FlashLite:
-      return "Gemini 2.0 Flash-Lite"
+      return "Gemini 2.0 Flash-Lite (Deprecated)"
     case .gemini25Flash:
       return "Gemini 2.5 Flash"
     case .gemini25FlashLite:
@@ -74,9 +74,19 @@ enum TranscriptionModel: String, CaseIterable {
 
   var isRecommended: Bool {
     switch self {
-    case .gemini20Flash, .whisperBase:
+    case .gemini25Flash, .whisperBase:
       return true
-    case .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium:
+    case .gemini20Flash, .gemini20FlashLite, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium:
+      return false
+    }
+  }
+
+  /// True for Gemini models no longer available to new users (e.g. gemini-2.0-flash). Used to migrate to current default.
+  var isDeprecated: Bool {
+    switch self {
+    case .gemini20Flash, .gemini20FlashLite:
+      return true
+    default:
       return false
     }
   }
@@ -143,11 +153,13 @@ enum TranscriptionModel: String, CaseIterable {
   }
   
   // MARK: - Model Loading
-  /// Loads the selected transcription model from UserDefaults, or returns the default model
-  /// - Returns: The selected TranscriptionModel, or the default if none is saved
+  /// Loads the selected transcription model from UserDefaults, or returns the default model.
+  /// Migrates deprecated models (e.g. gemini-2.0-flash no longer available to new users) to the current default.
+  /// - Returns: The selected TranscriptionModel, or the default if none is saved or saved model is deprecated
   static func loadSelected() -> TranscriptionModel {
     if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel),
-       let savedModel = TranscriptionModel(rawValue: savedModelString) {
+       let savedModel = TranscriptionModel(rawValue: savedModelString),
+       !savedModel.isDeprecated {
       return savedModel
     }
     return SettingsDefaults.selectedTranscriptionModel

@@ -96,22 +96,18 @@ class ModelManager: ObservableObject {
   // MARK: - Model Availability
   func isModelAvailable(_ type: OfflineModelType) -> Bool {
     if let modelPath = resolveModelPath(for: type) {
-      DebugLogger.log("MODEL-MANAGER: Found \(type.displayName) at: \(modelPath.path)")
+      DebugLogger.logDebug("MODEL-MANAGER: Found \(type.displayName) at: \(modelPath.path)")
       return true
     }
     
-    // Debug logging if not found
+    // Debug-only logging when not found (isModelAvailable is called often from UI)
     let whisperKitDir = AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("WhisperKit")
-    
-    DebugLogger.log("MODEL-MANAGER: Checking availability for \(type.displayName)")
-    DebugLogger.log("MODEL-MANAGER: WhisperKit directory: \(whisperKitDir.path)")
-    
-    if fileManager.fileExists(atPath: whisperKitDir.path) {
-      if let contents = try? fileManager.contentsOfDirectory(atPath: whisperKitDir.path) {
-        DebugLogger.log("MODEL-MANAGER: WhisperKit directory contents: \(contents.joined(separator: ", "))")
-      }
+    DebugLogger.logDebug("MODEL-MANAGER: Checking availability for \(type.displayName)")
+    DebugLogger.logDebug("MODEL-MANAGER: WhisperKit directory: \(whisperKitDir.path)")
+    if fileManager.fileExists(atPath: whisperKitDir.path),
+       let contents = try? fileManager.contentsOfDirectory(atPath: whisperKitDir.path) {
+      DebugLogger.logDebug("MODEL-MANAGER: WhisperKit directory contents: \(contents.joined(separator: ", "))")
     }
-    
     return false
   }
   
