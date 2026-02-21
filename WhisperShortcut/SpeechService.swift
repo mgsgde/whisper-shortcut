@@ -32,6 +32,7 @@ class SpeechService {
 
   // MARK: - Shared Infrastructure
   private let keychainManager: KeychainManaging
+  private let credentialProvider: GeminiCredentialProviding
   private var clipboardManager: ClipboardManager?
   private let geminiClient: GeminiAPIClient
 
@@ -50,17 +51,14 @@ class SpeechService {
 
   init(
     keychainManager: KeychainManaging = KeychainManager.shared,
+    credentialProvider: GeminiCredentialProviding = GeminiCredentialProvider.shared,
     clipboardManager: ClipboardManager? = nil,
     geminiClient: GeminiAPIClient? = nil
   ) {
     self.keychainManager = keychainManager
+    self.credentialProvider = credentialProvider
     self.clipboardManager = clipboardManager
     self.geminiClient = geminiClient ?? GeminiAPIClient()
-  }
-
-  // MARK: - Shared API Key Management
-  private var googleAPIKey: String? {
-    keychainManager.getGoogleAPIKey()
   }
 
   // MARK: - Transcription Mode Configuration
@@ -240,8 +238,7 @@ class SpeechService {
 
   // MARK: - Gemini Prompt Mode
   private func executePromptWithGemini(audioURL: URL, clipboardContext: String?, mode: PromptMode) async throws -> String {
-    // Only check API key for Gemini models (offline models bypass this)
-    guard let googleAPIKey = self.googleAPIKey, !googleAPIKey.isEmpty else {
+    guard let credential = credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
     }
 
@@ -250,7 +247,7 @@ class SpeechService {
     // Run transcription for history in parallel with main prompt (no extra latency)
     let transcriptionTask = Task<String, Never> {
       do {
-        let text = try await transcribeAudioForHistory(audioURL: audioURL, apiKey: googleAPIKey)
+        let text = try await transcribeAudioForHistory(audioURL: audioURL, credential: credential)
         DebugLogger.log("PROMPT-MODE-GEMINI: Transcribed voice instruction for history: \"\(text.prefix(50))...\"")
         return text
       } catch {
@@ -301,7 +298,7 @@ class SpeechService {
     systemPrompt += AppConstants.promptModeOutputRule
 
     // Build request
-    var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)
+    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
 
     // Build contents array - start with conversation history
     let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
@@ -335,7 +332,7 @@ class SpeechService {
 
     if audioSize > AppConstants.maxFileSizeBytes {
       // Use Files API for large files
-      let fileURI = try await geminiClient.uploadFile(audioURL: audioURL, apiKey: googleAPIKey)
+      let fileURI = try await geminiClient.uploadFile(audioURL: audioURL, credential: credential)
       userParts.append(GeminiChatRequest.GeminiChatPart(
         text: nil,
         inlineData: nil,
@@ -431,7 +428,7 @@ class SpeechService {
 
   /// Transcribes audio to text for use in conversation history.
   /// Uses a lightweight transcription call to get the user's voice instruction as text.
-  private func transcribeAudioForHistory(audioURL: URL, apiKey: String) async throws -> String {
+  private func transcribeAudioForHistory(audioURL: URL, credential: GeminiCredential) async throws -> String {
     // Use the existing transcription logic but with a simpler prompt
     let audioData = try Data(contentsOf: audioURL)
     let base64Audio = audioData.base64EncodedString()
@@ -440,7 +437,7 @@ class SpeechService {
 
     // Use Gemini Flash for fast, cheap transcription (full URL required by createRequest)
     let endpoint = TranscriptionModel.gemini20Flash.apiEndpoint
-    var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
+    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
 
     let userParts: [GeminiChatRequest.GeminiChatPart] = [
       GeminiChatRequest.GeminiChatPart(
@@ -482,8 +479,7 @@ class SpeechService {
   
   // MARK: - Text-based Prompt Mode (for TTS flow)
   func executePromptWithText(textCommand: String, selectedText: String?, mode: PromptMode = .togglePrompting) async throws -> String {
-    // Only check API key for Gemini models
-    guard let googleAPIKey = self.googleAPIKey, !googleAPIKey.isEmpty else {
+    guard let credential = credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
     }
 
@@ -525,7 +521,7 @@ class SpeechService {
     systemPrompt += AppConstants.promptModeOutputRule
 
     // Build request
-    var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)
+    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
 
     // Build contents array - start with conversation history
     let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
@@ -632,10 +628,10 @@ class SpeechService {
   }
   
   private func performTTS(text: String, voiceName: String? = nil) async throws -> Data {
-    guard let googleAPIKey = googleAPIKey else {
+    guard let credential = credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
     }
-    
+
     // Validate input text
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedText.isEmpty else {
@@ -665,18 +661,18 @@ class SpeechService {
       return try await chunkService.synthesize(
         text: trimmedText,
         voiceName: selectedVoice,
-        apiKey: googleAPIKey,
+        credential: credential,
         model: selectedTTSModel
       )
     } else {
       DebugLogger.log("TTS: Using single-request synthesis (text length <= \(AppConstants.ttsChunkSizeChars) chars)")
     }
-    
+
     // TTS-specific endpoint from selected model
     let endpoint = selectedTTSModel.apiEndpoint
-    
+
     // Build request
-    var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: googleAPIKey)
+    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
     
     // Build contents with text input
     let contents = [
@@ -771,17 +767,17 @@ class SpeechService {
   private func transcribeWithGemini(audioURL: URL) async throws -> String {
     let apiStartTime = CFAbsoluteTimeGetCurrent()
 
-    // Only check API key for Gemini models (offline models bypass this)
-    guard keychainManager.hasValidGoogleAPIKey(),
-          let apiKey = self.googleAPIKey else {
-      DebugLogger.log("GEMINI-TRANSCRIPTION: ERROR - No Google API key found in keychain")
+    guard let credential = credentialProvider.getCredential() else {
+      DebugLogger.log("GEMINI-TRANSCRIPTION: ERROR - No Gemini credential (sign in with Google or set API key)")
       throw TranscriptionError.noGoogleAPIKey
     }
 
-    // Log API key status (without exposing the key itself)
-    let keyPrefix = String(apiKey.prefix(8))
-    let keyLength = apiKey.count
-    DebugLogger.log("GEMINI-TRANSCRIPTION: Google API key found (prefix: \(keyPrefix)..., length: \(keyLength) chars)")
+    switch credential {
+    case .apiKey(let key):
+      DebugLogger.log("GEMINI-TRANSCRIPTION: Using API key (prefix: \(key.prefix(8))..., length: \(key.count) chars)")
+    case .oauth:
+      DebugLogger.log("GEMINI-TRANSCRIPTION: Using OAuth Bearer token")
+    }
 
     // Only validate format, not size - Gemini handles large files via:
     // 1. Chunking for long audio (>45s)
@@ -800,18 +796,18 @@ class SpeechService {
     // Use chunking for long audio (>45s by default)
     if audioDuration > AppConstants.chunkingThresholdSeconds {
       DebugLogger.log("GEMINI-TRANSCRIPTION: Using chunked transcription (duration > \(AppConstants.chunkingThresholdSeconds)s)")
-      result = try await transcribeWithChunking(audioURL: audioURL, apiKey: apiKey)
+      result = try await transcribeWithChunking(audioURL: audioURL, credential: credential)
     }
     // For files >20MB, use Files API (resumable upload)
     // For files ≤20MB, use inline base64
     // DEBUG: Can force Files API usage via Constants.debugForceFilesAPI
     else if Constants.debugForceFilesAPI {
       DebugLogger.log("GEMINI-TRANSCRIPTION: DEBUG - Forcing Files API usage (debugForceFilesAPI = true)")
-      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, apiKey: apiKey)
+      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential)
     } else if audioSize > AppConstants.maxFileSizeBytes {
-      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, apiKey: apiKey)
+      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential)
     } else {
-      result = try await transcribeWithGeminiInline(audioURL: audioURL, apiKey: apiKey)
+      result = try await transcribeWithGeminiInline(audioURL: audioURL, credential: credential)
     }
 
     let apiElapsedTime = CFAbsoluteTimeGetCurrent() - apiStartTime
@@ -821,7 +817,7 @@ class SpeechService {
   }
 
   // MARK: - Chunked Transcription
-  private func transcribeWithChunking(audioURL: URL, apiKey: String) async throws -> String {
+  private func transcribeWithChunking(audioURL: URL, credential: GeminiCredential) async throws -> String {
     let chunkService = ChunkTranscriptionService(geminiClient: geminiClient)
     chunkService.progressDelegate = chunkProgressDelegate
 
@@ -829,7 +825,7 @@ class SpeechService {
 
     return try await chunkService.transcribe(
       fileURL: audioURL,
-      apiKey: apiKey,
+      credential: credential,
       model: selectedTranscriptionModel,
       prompt: prompt
     )
@@ -842,7 +838,7 @@ class SpeechService {
     return CMTimeGetSeconds(duration)
   }
   
-  private func transcribeWithGeminiInline(audioURL: URL, apiKey: String) async throws -> String {
+  private func transcribeWithGeminiInline(audioURL: URL, credential: GeminiCredential) async throws -> String {
     let inlineStartTime = CFAbsoluteTimeGetCurrent()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using inline audio (file ≤20MB)")
     
@@ -887,9 +883,9 @@ class SpeechService {
       ]
     )
     
-    var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
+    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
     request.httpBody = try JSONEncoder().encode(transcriptionRequest)
-    
+
     // Make request with retry logic
     let networkStartTime = CFAbsoluteTimeGetCurrent()
     let geminiResponse = try await geminiClient.performRequest(
@@ -900,29 +896,29 @@ class SpeechService {
     )
     let networkTime = CFAbsoluteTimeGetCurrent() - networkStartTime
     DebugLogger.log("SPEED: Gemini API network request took \(String(format: "%.3f", networkTime))s (\(String(format: "%.0f", networkTime * 1000))ms)")
-    
+
     let transcript = geminiClient.extractText(from: geminiResponse)
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(transcript)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
-    
+
     let inlineElapsedTime = CFAbsoluteTimeGetCurrent() - inlineStartTime
     DebugLogger.log("SPEED: Gemini inline transcription total time: \(String(format: "%.3f", inlineElapsedTime))s (\(String(format: "%.0f", inlineElapsedTime * 1000))ms)")
-    
+
     return normalizedText
   }
-  
-  private func transcribeWithGeminiFilesAPI(audioURL: URL, apiKey: String) async throws -> String {
+
+  private func transcribeWithGeminiFilesAPI(audioURL: URL, credential: GeminiCredential) async throws -> String {
     let filesAPIStartTime = CFAbsoluteTimeGetCurrent()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using Files API (file >20MB)")
     
     // Step 1: Upload file using resumable upload
     let uploadStartTime = CFAbsoluteTimeGetCurrent()
-    let fileURI = try await geminiClient.uploadFile(audioURL: audioURL, apiKey: apiKey)
+    let fileURI = try await geminiClient.uploadFile(audioURL: audioURL, credential: credential)
     let uploadTime = CFAbsoluteTimeGetCurrent() - uploadStartTime
     DebugLogger.log("SPEED: File upload took \(String(format: "%.3f", uploadTime))s (\(String(format: "%.0f", uploadTime * 1000))ms)")
-    
+
     // Step 2: Use file URI for transcription
-    let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, apiKey: apiKey)
+    let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, credential: credential)
     
     let filesAPIElapsedTime = CFAbsoluteTimeGetCurrent() - filesAPIStartTime
     DebugLogger.log("SPEED: Gemini Files API transcription total time: \(String(format: "%.3f", filesAPIElapsedTime))s (\(String(format: "%.0f", filesAPIElapsedTime * 1000))ms)")
@@ -932,7 +928,7 @@ class SpeechService {
   
   // File upload is now handled by GeminiAPIClient
   
-  private func transcribeWithGeminiFileURI(fileURI: String, apiKey: String) async throws -> String {
+  private func transcribeWithGeminiFileURI(fileURI: String, credential: GeminiCredential) async throws -> String {
     let fileURIStartTime = CFAbsoluteTimeGetCurrent()
     
     // Get dictation system prompt
@@ -964,10 +960,10 @@ class SpeechService {
         )
       ]
     )
-    
-    var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
+
+    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
     request.httpBody = try JSONEncoder().encode(transcriptionRequest)
-    
+
     // Make request with retry logic
     let networkStartTime = CFAbsoluteTimeGetCurrent()
     let geminiResponse = try await geminiClient.performRequest(
@@ -978,7 +974,7 @@ class SpeechService {
     )
     let networkTime = CFAbsoluteTimeGetCurrent() - networkStartTime
     DebugLogger.log("SPEED: Gemini API network request (FileURI) took \(String(format: "%.3f", networkTime))s (\(String(format: "%.0f", networkTime * 1000))ms)")
-    
+
     let transcript = geminiClient.extractText(from: geminiResponse)
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(transcript)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")

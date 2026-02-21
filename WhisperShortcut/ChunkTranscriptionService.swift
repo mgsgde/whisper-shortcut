@@ -86,13 +86,13 @@ class ChunkTranscriptionService {
     /// Transcribe an audio file using chunking if needed.
     /// - Parameters:
     ///   - fileURL: URL of the audio file
-    ///   - apiKey: Gemini API key
+    ///   - credential: Gemini API credential (API key or OAuth)
     ///   - model: Transcription model to use
     ///   - prompt: Custom transcription prompt
     /// - Returns: Transcribed text
     func transcribe(
         fileURL: URL,
-        apiKey: String,
+        credential: GeminiCredential,
         model: TranscriptionModel,
         prompt: String
     ) async throws -> String {
@@ -117,7 +117,7 @@ class ChunkTranscriptionService {
         if chunks.count == 1 {
             let result = try await transcribeChunk(
                 chunk: chunks[0],
-                apiKey: apiKey,
+                credential: credential,
                 model: model,
                 prompt: prompt,
                 totalChunks: 1
@@ -128,7 +128,7 @@ class ChunkTranscriptionService {
         // Transcribe chunks in parallel
         let transcripts = try await transcribeParallel(
             chunks: chunks,
-            apiKey: apiKey,
+            credential: credential,
             model: model,
             prompt: prompt
         )
@@ -154,7 +154,7 @@ class ChunkTranscriptionService {
 
     private func transcribeParallel(
         chunks: [AudioChunk],
-        apiKey: String,
+        credential: GeminiCredential,
         model: TranscriptionModel,
         prompt: String
     ) async throws -> [ChunkTranscript] {
@@ -174,7 +174,7 @@ class ChunkTranscriptionService {
                     do {
                         let transcript = try await self.transcribeChunk(
                             chunk: chunk,
-                            apiKey: apiKey,
+                            credential: credential,
                             model: model,
                             prompt: prompt,
                             totalChunks: totalChunks
@@ -254,7 +254,7 @@ class ChunkTranscriptionService {
 
     private func transcribeChunk(
         chunk: AudioChunk,
-        apiKey: String,
+        credential: GeminiCredential,
         model: TranscriptionModel,
         prompt: String,
         totalChunks: Int
@@ -294,7 +294,7 @@ class ChunkTranscriptionService {
 
                 // Build request
                 let endpoint = model.apiEndpoint
-                var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
+                var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
                 request.timeoutInterval = Self.chunkResourceTimeout
 
                 let transcriptionRequest = GeminiTranscriptionRequest(

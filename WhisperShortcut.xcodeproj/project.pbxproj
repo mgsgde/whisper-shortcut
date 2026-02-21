@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		BF0A00032EEB3C0000C1DEA3 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = BF0A00022EEB3C0000C1DEA3 /* GoogleSignIn */; };
 		BF31AC7C2EEB2B8200C1DEA3 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */; };
 		BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BFBC35F42E3E129600BAC747 /* HotKey */; };
 /* End PBXBuildFile section */
@@ -41,6 +42,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BF0A00032EEB3C0000C1DEA3 /* GoogleSignIn in Frameworks */,
 				BF31AC7C2EEB2B8200C1DEA3 /* WhisperKit in Frameworks */,
 				BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */,
 			);
@@ -93,6 +95,7 @@
 			);
 			name = WhisperShortcut;
 			packageProductDependencies = (
+				BF0A00022EEB3C0000C1DEA3 /* GoogleSignIn */,
 				BFBC35F42E3E129600BAC747 /* HotKey */,
 				BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */,
 			);
@@ -126,6 +129,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */,
+				BF0A00012EEB3C0000C1DEA3 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -368,6 +372,14 @@
 				kind = branch;
 			};
 		};
+		BF0A00012EEB3C0000C1DEA3 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				minimumVersion = 9.0.0;
+				kind = upToNextMajorVersion;
+			};
+		};
 		BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/argmaxinc/WhisperKit";
@@ -379,6 +391,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		BF0A00022EEB3C0000C1DEA3 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BF0A00012EEB3C0000C1DEA3 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
 		BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */;

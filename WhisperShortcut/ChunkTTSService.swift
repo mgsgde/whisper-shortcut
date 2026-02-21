@@ -64,13 +64,13 @@ class ChunkTTSService {
     /// - Parameters:
     ///   - text: The text to synthesize
     ///   - voiceName: Voice name to use
-    ///   - apiKey: Gemini API key
+    ///   - credential: Gemini API credential (API key or OAuth)
     ///   - model: TTS model to use
     /// - Returns: Synthesized audio data
     func synthesize(
         text: String,
         voiceName: String,
-        apiKey: String,
+        credential: GeminiCredential,
         model: TTSModel
     ) async throws -> Data {
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -104,7 +104,7 @@ class ChunkTTSService {
             let result = try await synthesizeChunk(
                 chunk: chunks[0],
                 voiceName: voiceName,
-                apiKey: apiKey,
+                credential: credential,
                 model: model,
                 totalChunks: 1
             )
@@ -118,7 +118,7 @@ class ChunkTTSService {
         let audioChunks = try await synthesizeParallel(
             chunks: chunks,
             voiceName: voiceName,
-            apiKey: apiKey,
+            credential: credential,
             model: model
         )
 
@@ -142,7 +142,7 @@ class ChunkTTSService {
     private func synthesizeParallel(
         chunks: [TextChunk],
         voiceName: String,
-        apiKey: String,
+        credential: GeminiCredential,
         model: TTSModel
     ) async throws -> [AudioChunkData] {
         let totalChunks = chunks.count
@@ -166,7 +166,7 @@ class ChunkTTSService {
                         let audioData = try await self.synthesizeChunk(
                             chunk: chunk,
                             voiceName: voiceName,
-                            apiKey: apiKey,
+                            credential: credential,
                             model: model,
                             totalChunks: totalChunks
                         )
@@ -245,7 +245,7 @@ class ChunkTTSService {
     private func synthesizeChunk(
         chunk: TextChunk,
         voiceName: String,
-        apiKey: String,
+        credential: GeminiCredential,
         model: TTSModel,
         totalChunks: Int
     ) async throws -> AudioChunkData {
@@ -271,7 +271,7 @@ class ChunkTTSService {
 
                 // Build request
                 let endpoint = model.apiEndpoint
-                var request = try geminiClient.createRequest(endpoint: endpoint, apiKey: apiKey)
+                var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
 
                 // Build contents with text input
                 let contents = [

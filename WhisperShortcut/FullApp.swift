@@ -23,16 +23,13 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     // Microphone permission will be requested automatically when recording starts
 
-    // First check if API key exists without triggering a prompt
-    if KeychainManager.shared.hasGoogleAPIKey() {
-
-      // Now read the key (this will cache it and avoid future prompts)
-      _ = KeychainManager.shared.getGoogleAPIKey()
-    } else {
-
+    // Show settings if no Gemini credential (no sign-in and no API key)
+    if !GeminiCredentialProvider.shared.hasCredential() {
       DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
         SettingsManager.shared.showSettings()
       }
+    } else if KeychainManager.shared.hasGoogleAPIKey() {
+      _ = KeychainManager.shared.getGoogleAPIKey()
     }
 
     // Initialize auto-improvement defaults if not set
@@ -64,6 +61,12 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationWillTerminate(_ notification: Notification) {
     menuBarController?.cleanup()
+  }
+
+  func application(_ application: NSApplication, open urls: [URL]) {
+    for url in urls {
+      if DefaultGoogleAuthService.handle(url: url) { return }
+    }
   }
 
   private func setupEditMenu() {
