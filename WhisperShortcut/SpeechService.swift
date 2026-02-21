@@ -238,7 +238,7 @@ class SpeechService {
 
   // MARK: - Gemini Prompt Mode
   private func executePromptWithGemini(audioURL: URL, clipboardContext: String?, mode: PromptMode) async throws -> String {
-    guard let credential = credentialProvider.getCredential() else {
+    guard let credential = await credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
     }
 
@@ -479,7 +479,7 @@ class SpeechService {
   
   // MARK: - Text-based Prompt Mode (for TTS flow)
   func executePromptWithText(textCommand: String, selectedText: String?, mode: PromptMode = .togglePrompting) async throws -> String {
-    guard let credential = credentialProvider.getCredential() else {
+    guard let credential = await credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
     }
 
@@ -628,7 +628,7 @@ class SpeechService {
   }
   
   private func performTTS(text: String, voiceName: String? = nil) async throws -> Data {
-    guard let credential = credentialProvider.getCredential() else {
+    guard let credential = await credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
     }
 
@@ -767,7 +767,7 @@ class SpeechService {
   private func transcribeWithGemini(audioURL: URL) async throws -> String {
     let apiStartTime = CFAbsoluteTimeGetCurrent()
 
-    guard let credential = credentialProvider.getCredential() else {
+    guard let credential = await credentialProvider.getCredential() else {
       DebugLogger.log("GEMINI-TRANSCRIPTION: ERROR - No Gemini credential (sign in with Google or set API key)")
       throw TranscriptionError.noGoogleAPIKey
     }

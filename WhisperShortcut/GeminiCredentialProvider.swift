@@ -4,7 +4,8 @@ import Foundation
 /// Single source of truth for "which credential to use" so all Gemini callers stay in sync.
 protocol GeminiCredentialProviding {
   /// Returns a valid credential if the user can call Gemini; nil otherwise.
-  func getCredential() -> GeminiCredential?
+  /// Refreshes OAuth token if expired.
+  func getCredential() async -> GeminiCredential?
   /// Returns true if either OAuth is signed in or a non-empty API key is stored.
   func hasCredential() -> Bool
 }
@@ -24,8 +25,8 @@ final class GeminiCredentialProvider: GeminiCredentialProviding {
     self.googleAuthService = googleAuthService
   }
 
-  func getCredential() -> GeminiCredential? {
-    if let auth = googleAuthService, let token = auth.currentAccessToken() {
+  func getCredential() async -> GeminiCredential? {
+    if let auth = googleAuthService, let token = await auth.currentAccessToken() {
       return .oauth(accessToken: token)
     }
     if let key = keychainManager.getGoogleAPIKey(), !key.isEmpty {
