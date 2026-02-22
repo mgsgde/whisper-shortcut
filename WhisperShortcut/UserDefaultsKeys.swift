@@ -79,5 +79,8 @@ enum UserDefaultsKeys {
   // MARK: - Proxy API (Phase 1 – latency testing)
   static let proxyAPIBaseURL = "proxyAPIBaseURL"
   static let useGeminiViaProxy = "useGeminiViaProxy"
+
+  // MARK: - Backend / Dashboard (balance, usage, top-up)
+  static let dashboardBaseURL = "dashboardBaseURL"
 }
 
