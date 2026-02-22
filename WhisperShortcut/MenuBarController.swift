@@ -1461,6 +1461,15 @@ extension MenuBarController: AudioRecorderDelegate {
       Task {
         switch recordingMode {
         case .transcription:
+          let model = TranscriptionModel.loadSelected()
+          if model.isOffline, await !LocalSpeechService.shared.isReady() {
+            await MainActor.run {
+              PopupNotificationWindow.showProcessing(
+                "Initializing \(model.displayName)... The first time can take several minutes.",
+                title: "Loading Whisper Model"
+              )
+            }
+          }
           await self.performTranscription(audioURL: audioURL)
         case .prompt:
           await self.performPrompting(audioURL: audioURL)
