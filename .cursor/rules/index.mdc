@@ -33,9 +33,18 @@ alwaysApply: true
 bash ./scripts/rebuild-and-restart.sh
 ```
 
+## 🔗 Gemini API / models
+
+When working with **Gemini models** (transcription, prompt mode, TTS, model IDs, or API issues):  
+
+- Use the official Gemini API documentation: <https://ai.google.dev/gemini-api/docs>  
+- Always verify current model IDs using official docs and the **gemini-model-docs** skill.  
+- Regularly check the **Google AI Developers Forum** for outages, deprecations, and known issues: <https://discuss.ai.google.dev/c/gemini-api/4>
+
 ## 📁 Data Directories (Sandbox vs Normal)
 
 App data (UserContext, interaction logs) can live in **two** places:
+
 - **Sandbox:** `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/`
 - **Normal:** `~/Library/Application Support/WhisperShortcut/`
 
