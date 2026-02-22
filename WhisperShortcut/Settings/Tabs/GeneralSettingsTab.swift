@@ -6,15 +6,11 @@ struct GeneralSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @State private var userContextText: String = ""
-  @State private var selectedInterval: AutoImprovementInterval = .default
-  @State private var selectedDictationThreshold: Int = AppConstants.promptImprovementDictationThreshold
-  @State private var showDeleteInteractionConfirmation = false
   @State private var showResetToDefaultsConfirmation = false
   @State private var googleSignInEmail: String? = nil
   @State private var googleSignInRefresh: Int = 0
   @State private var googleSignInError: String? = nil
   @State private var isSigningIn = false
-  @State private var isImprovementRunning = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -44,18 +40,6 @@ struct GeneralSettingsTab: View {
 
       // User Context Section
       userContextSection
-
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
-
-      // Auto-Improvement Section
-      autoImprovementSection
 
       // Section Divider with spacing
       VStack(spacing: 0) {
@@ -141,21 +125,13 @@ struct GeneralSettingsTab: View {
       // Support & Feedback Section (always last)
       supportFeedbackSection
     }
-    .confirmationDialog("Delete interaction data", isPresented: $showDeleteInteractionConfirmation, titleVisibility: .visible) {
-      Button("Delete", role: .destructive) {
-        viewModel.deleteInteractionData()
-      }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text("Interaction history and derived context (user-context, suggestions) will be deleted. Settings are preserved. Continue?")
-    }
-    .confirmationDialog("Reset all to defaults", isPresented: $showResetToDefaultsConfirmation, titleVisibility: .visible) {
+    .confirmationDialog("Reset App to Default?", isPresented: $showResetToDefaultsConfirmation, titleVisibility: .visible) {
       Button("Reset and quit app", role: .destructive) {
         viewModel.resetAllDataAndRestart()
       }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("All settings, shortcuts, and interaction data will be deleted. The API key is preserved.\n\nThe app will close automatically after the reset. You can start it again from the menu bar or Applications. Continue?")
+      Text("This will set all system prompts to default, all settings to default, model selection to default, and delete all user interactions. The API key is preserved.\n\nThe app will close automatically after the reset. You can start it again from the menu bar or Applications. Continue?")
     }
   }
 
@@ -622,159 +598,6 @@ struct GeneralSettingsTab: View {
     return path
   }
 
-  // MARK: - Auto-Improvement Section
-  @ViewBuilder
-  private var autoImprovementSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "🤖 Smart Improvement",
-        subtitle: "Automatically improve system prompts based on your usage"
-      )
-
-      VStack(alignment: .leading, spacing: 16) {
-        // Interval Picker
-        VStack(alignment: .leading, spacing: 8) {
-          Text("Automatic system prompt improvement")
-            .font(.callout)
-            .fontWeight(.medium)
-
-          Picker("", selection: $selectedInterval) {
-            ForEach(AutoImprovementInterval.allCases, id: \.self) { interval in
-              Text(interval.displayName).tag(interval)
-            }
-          }
-          .pickerStyle(.menu)
-          .frame(maxWidth: 200)
-          .onChange(of: selectedInterval) { newValue in
-            UserDefaults.standard.set(newValue.rawValue, forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
-            let enabled = newValue != .never
-            UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.userContextLoggingEnabled)
-            DebugLogger.log("AUTO-IMPROVEMENT: Interval changed to \(newValue.displayName), logging = \(enabled)")
-          }
-
-          Text("Minimum cooldown between improvement runs (from the second run onwards). Set to \"Always\" for no cooldown.")
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
-        // Dictation Threshold Picker
-        VStack(alignment: .leading, spacing: 8) {
-          Text("Improvement after N dictations")
-            .font(.callout)
-            .fontWeight(.medium)
-
-          Picker("", selection: $selectedDictationThreshold) {
-            Text("2 dictations").tag(2)
-            Text("5 dictations").tag(5)
-            Text("10 dictations").tag(10)
-            Text("20 dictations").tag(20)
-            Text("50 dictations").tag(50)
-          }
-          .pickerStyle(.menu)
-          .frame(maxWidth: 200)
-          .onChange(of: selectedDictationThreshold) { _, newValue in
-            UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.promptImprovementDictationThreshold)
-            DebugLogger.log("AUTO-IMPROVEMENT: Dictation threshold changed to \(newValue)")
-          }
-
-          Text("The first improvement runs after this many dictations; from the second run onwards, cooldown and minimum usage history also apply.")
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
-        // Manual trigger: Run improvement now
-        VStack(alignment: .leading, spacing: 8) {
-          HStack(spacing: 8) {
-            Button("Run improvement now") {
-              isImprovementRunning = true
-              Task {
-                await AutoPromptImprovementScheduler.shared.runImprovementNow()
-                await MainActor.run {
-                  isImprovementRunning = false
-                }
-              }
-            }
-            .buttonStyle(.bordered)
-            .font(.callout)
-            .disabled(isImprovementRunning)
-            if isImprovementRunning {
-              ProgressView()
-                .scaleEffect(0.8)
-              Text("Running…")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            }
-          }
-          Text("Runs in the background. You can switch to another tab; you'll be notified when it's done. Ignores cooldown and dictation count.")
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
-        // Model selection for Smart Improvement
-        PromptModelSelectionView(
-          title: "Model for Smart Improvement",
-          subtitle: "Used for automatic Smart Improvement (suggested prompts and user context).",
-          showSectionHeader: false,
-          selectedModel: Binding(
-            get: { viewModel.data.selectedImprovementModel },
-            set: { newValue in
-              var d = viewModel.data
-              d.selectedImprovementModel = newValue
-              viewModel.data = d
-            }
-          ),
-          onModelChanged: nil
-        )
-
-        // Data folder (UserContext, Meetings, WhisperKit)
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Data folder:")
-            .font(.callout)
-            .fontWeight(.semibold)
-            .foregroundColor(.secondary)
-          Text("Interaction logs, meeting transcripts, WhisperKit models")
-            .font(.caption)
-            .foregroundColor(.secondary)
-          Text(dataFolderDisplayPath)
-            .font(.system(.callout, design: .monospaced))
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-          Button("Open data folder") {
-            openDataFolderInFinder()
-          }
-          .buttonStyle(.bordered)
-          .font(.callout)
-        }
-        .padding(8)
-        .background(Color.secondary.opacity(0.1))
-        .cornerRadius(6)
-      }
-    }
-    .onAppear {
-      // Sync running state so "Running…" is correct when user returns to this tab
-      isImprovementRunning = AutoPromptImprovementScheduler.shared.isRunning
-
-      // Load current settings
-      let rawValue = UserDefaults.standard.integer(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
-      selectedInterval = AutoImprovementInterval(rawValue: rawValue) ?? .default
-
-      // Ensure logging matches the interval setting
-      let enabled = selectedInterval != .never
-      UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.userContextLoggingEnabled)
-
-      // Load dictation threshold setting
-      if UserDefaults.standard.object(forKey: UserDefaultsKeys.promptImprovementDictationThreshold) == nil {
-        selectedDictationThreshold = AppConstants.promptImprovementDictationThreshold
-      } else {
-        selectedDictationThreshold = UserDefaults.standard.integer(forKey: UserDefaultsKeys.promptImprovementDictationThreshold)
-      }
-
-    }
-  }
-
   // MARK: - Support & Feedback Section
   @ViewBuilder
   private var supportFeedbackSection: some View {
@@ -951,73 +774,25 @@ struct GeneralSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Data & Reset",
-        subtitle: "Delete interaction data (history, context, suggestions) only, or reset everything to defaults. API key is preserved."
+        subtitle: "Resets the app to its original state: all system prompts to default, all settings to default, model selection to default, and all user interactions deleted. API key is preserved. To delete only interaction data, use the Smart Improvement tab."
       )
 
-      // Delete interaction data
-      Button(action: {
-        showDeleteInteractionConfirmation = true
-      }) {
-        HStack(alignment: .center, spacing: 12) {
-          Image(systemName: "trash")
-            .font(.system(size: 18))
-            .foregroundColor(.secondary)
-
-          Text("Delete interaction data")
-            .font(.body)
-            .fontWeight(.medium)
-            .foregroundColor(.primary)
-            .textSelection(.enabled)
-
-          Spacer()
+      HStack(alignment: .center, spacing: 12) {
+        Button(action: { openDataFolderInFinder() }) {
+          Label("Open data folder", systemImage: "folder")
+            .font(.callout)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(12)
-      }
-      .buttonStyle(PlainButtonStyle())
-      .help("Only delete interaction history and context; settings are preserved")
-      .onHover { isHovered in
-        if isHovered {
-          NSCursor.pointingHand.push()
-        } else {
-          NSCursor.pop()
-        }
-      }
+        .buttonStyle(.bordered)
+        .help("Open app data folder in Finder")
 
-      // Reset all to defaults
-      Button(action: {
-        showResetToDefaultsConfirmation = true
-      }) {
-        HStack(alignment: .center, spacing: 12) {
-          Image(systemName: "arrow.counterclockwise")
-            .font(.system(size: 18))
-            .foregroundColor(.red)
-            .opacity(0.9)
-
-          Text("Reset all to defaults")
-            .font(.body)
-            .fontWeight(.medium)
-            .foregroundColor(.red)
-            .textSelection(.enabled)
-
-          Spacer()
+        Button("Reset all to defaults", role: .destructive) {
+          showResetToDefaultsConfirmation = true
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(12)
+        .buttonStyle(.bordered)
+        .tint(.red)
+        .help("Reset app to original state; app will quit after reset")
       }
-      .buttonStyle(PlainButtonStyle())
-      .help("Reset all settings and data; app will quit")
-      .onHover { isHovered in
-        if isHovered {
-          NSCursor.pointingHand.push()
-        } else {
-          NSCursor.pop()
-        }
-      }
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 }

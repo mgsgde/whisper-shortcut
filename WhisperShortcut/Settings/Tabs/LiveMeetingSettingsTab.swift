@@ -180,25 +180,15 @@ struct LiveMeetingSettingsTab: View {
       .font(.callout)
       .foregroundColor(.secondary)
       
-      // Note about transcript location
-      VStack(alignment: .leading, spacing: 4) {
-        Text("Transcript location:")
-          .font(.callout)
-          .fontWeight(.semibold)
-          .foregroundColor(.secondary)
-        Text("App data folder / Meetings / Meeting-<timestamp>.txt")
-          .font(.system(.callout, design: .monospaced))
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
-        Button("Open Transcript Folder") {
-          viewModel.openTranscriptsFolder()
+      HStack(alignment: .center, spacing: 10) {
+        Button(action: { viewModel.openTranscriptsFolder() }) {
+          Label("Open transcript folder", systemImage: "folder")
+            .font(.callout)
         }
         .buttonStyle(.bordered)
-        .font(.callout)
+        .help("Open Meetings folder in Finder")
       }
-      .padding(8)
-      .background(Color.secondary.opacity(0.1))
-      .cornerRadius(6)
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 }

@@ -374,6 +374,7 @@ enum WhisperLanguage: String, CaseIterable {
 // MARK: - Settings Tab Definition
 enum SettingsTab: String, CaseIterable {
   case general = "General"
+  case smartImprovement = "Smart Improvement"
   case speechToText = "Dictate"
   case speechToPrompt = "Dictate Prompt"
   case promptAndRead = "Dictate Prompt & Read"

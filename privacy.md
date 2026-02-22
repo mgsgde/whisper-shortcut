@@ -60,8 +60,8 @@ WhisperShortcut is a macOS menu bar application with four main features: **Speec
 - **Retention**: Log files older than **90 days** are automatically deleted. For **"Generate with AI"** and automatic improvement, only interactions from the **last 30 days** are read and sent to Google Gemini.
 - **Gemini Analysis**: 
   - **Manual**: When you click **"Generate with AI"** (in Settings > General for User Context, or in the Dictate / Dictate Prompt / Dictate Prompt & Read tabs), aggregated interaction data from the last 30 days is sent to Google Gemini to generate suggested prompts. This is a one-time action per click; you initiate it manually.
-  - **Automatic**: If automatic improvement is enabled (Settings > General > Smart Improvement), the app periodically (configurable: every 3, 7, 14, or 30 days, or "Always"/"Never") analyzes your interaction logs in the background and generates suggested prompts. Aggregated interaction data from the last 30 days is sent to Google Gemini. A pop-up appears when suggestions are ready, allowing you to review and accept or reject them. You can disable automatic improvement at any time by setting the interval to "Never" (this also disables interaction logging).
-- **Deletion**: You can delete all interaction logs and derived files at any time via **Settings > General > Data & Reset > Delete interaction data**, or by removing the `UserContext` folder in the app data path (e.g. in Finder: Go → Go to Folder, paste the path from Settings or from `docs/data-directories.md`, then delete the `UserContext` folder).
+  - **Automatic**: If automatic improvement is enabled (Settings > Smart Improvement), the app periodically (configurable: every 3, 7, 14, or 30 days, or "Always"/"Never") analyzes your interaction logs in the background and generates suggested prompts. Aggregated interaction data from the last 30 days is sent to Google Gemini. A pop-up appears when suggestions are ready, allowing you to review and accept or reject them. You can disable automatic improvement at any time by setting the interval to "Never" (this also disables interaction logging).
+- **Deletion**: You can delete all interaction logs and derived files at any time via **Settings > Smart Improvement > Delete interaction data**, or by removing the `UserContext` folder in the app data path (e.g. in Finder: Go → Go to Folder, paste the path from Settings or from `docs/data-directories.md`, then delete the `UserContext` folder).
 - **Access**: Only accessible by the app on your device, except when you use "Generate with AI" or when automatic improvement runs, at which point the aggregated text is sent to Gemini as described above.
 
 ## What Data We Do NOT Collect
@@ -125,8 +125,8 @@ WhisperShortcut uses Google's Gemini API for:
 - Delete API key: Use the app's settings to remove your API key
 - Reset preferences: Use the app's reset to defaults feature
 - Delete Live Meeting transcripts: Remove files from the app data folder under `Meetings/` (path shown in Settings > General, or see `docs/data-directories.md`). Legacy files may be in `~/Documents/WhisperShortcut/`.
-- Delete User Context / interaction logs: Use **Settings > General > Data & Reset > Delete interaction data**, or remove the `UserContext` folder in the app data path (see path in Settings or `docs/data-directories.md`).
-- Disable automatic improvement and interaction logging: Settings > General > Smart Improvement > set interval to "Never".
+- Delete User Context / interaction logs: Use **Settings > Smart Improvement > Delete interaction data**, or remove the `UserContext` folder in the app data path (see path in Settings or `docs/data-directories.md`).
+- Disable automatic improvement and interaction logging: Settings > Smart Improvement > set interval to "Never".
 - Uninstall: Remove the app to delete all local data (except the app data folder contents such as Meetings and UserContext, which you can delete manually or via Settings before uninstalling).
 
 ### Permissions

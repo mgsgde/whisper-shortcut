@@ -568,6 +568,26 @@ class SettingsViewModel: ObservableObject {
     DebugLogger.log("LIVE-MEETING: Opened transcripts folder from Settings")
   }
 
+  /// Tilde-abbreviated path for the UserContext folder (interaction logs, user-context.md, suggestions).
+  var userContextFolderDisplayPath: String {
+    let path = UserContextLogger.shared.directoryURL.path
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    if path.hasPrefix(home) {
+      return "~" + String(path.dropFirst(home.count))
+    }
+    return path
+  }
+
+  /// Opens the UserContext folder in Finder; creates it if it does not exist.
+  func openUserContextFolder() {
+    let url = UserContextLogger.shared.directoryURL
+    if !FileManager.default.fileExists(atPath: url.path) {
+      try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+    NSWorkspace.shared.open(url)
+    DebugLogger.log("SETTINGS: Opened UserContext folder from Smart Improvement tab")
+  }
+
   // MARK: - Reset to Defaults
   /// Deletes only UserContext data (interaction logs, user-context.md, suggested prompts). Settings and shortcuts are unchanged; app does not quit.
   func deleteInteractionData() {

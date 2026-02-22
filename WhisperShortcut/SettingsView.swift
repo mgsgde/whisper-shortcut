@@ -76,6 +76,8 @@ struct SettingsView: View {
         switch selectedTab {
         case .general:
           GeneralSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+        case .smartImprovement:
+          SmartImprovementSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .speechToText:
           SpeechToTextSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .speechToPrompt:
@@ -99,6 +101,8 @@ struct SettingsView: View {
     switch tab {
     case .general:
       return "gear"
+    case .smartImprovement:
+      return "brain"
     case .speechToText:
       return "mic"
     case .speechToPrompt:
@@ -116,6 +120,8 @@ struct SettingsView: View {
     switch tab {
     case .general:
       return "API Key, Keyboard Shortcut and Feedback"
+    case .smartImprovement:
+      return "Improvement settings and interaction data"
     case .speechToText:
       return "Model, Prompt and Shortcut"
     case .speechToPrompt:

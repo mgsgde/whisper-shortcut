@@ -26,7 +26,7 @@ In `MenuBarController.swift`, after each successful transcription `incrementDict
 
 If the threshold is reached but the cooldown is still active, the counter is not reset and is checked again on the next dictation.
 
-**Manual trigger:** A **"Run improvement now"** button is available in Settings → General → Smart Improvement. It runs the same pipeline (all four foci, apply suggestions, update last run date) but ignores cooldown, interval, and dictation count. Preconditions: API key and at least some interaction data (any age).
+**Manual trigger:** A **"Run improvement now"** button is available in Settings → Smart Improvement. It runs the same pipeline (all four foci, apply suggestions, update last run date) but ignores cooldown, interval, and dictation count. Preconditions: API key and at least some interaction data (any age).
 
 ---
 
@@ -48,7 +48,7 @@ Logging and auto-apply are **implicitly** enabled when the interval is set to a 
 
 ## 4. Settings
 
-Under "Smart Improvement" in General Settings there are three options:
+In the Smart Improvement settings tab there are three options:
 
 | Setting | Options | Meaning |
 |---------|---------|---------|
@@ -110,7 +110,7 @@ The user can revert in the respective Settings tabs via "Restore Previous".
 | **Trigger** | After N successful dictations (configurable: 2–50), provided cooldown has expired **and** interaction data is at least 7 days old. |
 | **Cooldown** | Minimum interval between runs: Always (no cooldown), 3, 7, 14, or 30 days. |
 | **Data basis** | Interaction logs (JSONL) from `UserContextLogger`, tiered sampling, character/entry limits. |
-| **AI** | User-selectable Gemini model (Settings > General > Smart Improvement); fixed system prompt per focus; response with markers. |
+| **AI** | User-selectable Gemini model (Settings > Smart Improvement); fixed system prompt per focus; response with markers. |
 | **Output** | Suggestions are applied automatically (Previous saved, popup "review or revert"). |
 
 ---
