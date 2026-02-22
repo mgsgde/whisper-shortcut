@@ -226,13 +226,7 @@ class SettingsViewModel: ObservableObject {
     data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
 
     // Load Proxy API settings (Phase 1 – latency testing)
-    data.proxyAPIBaseURL = UserDefaults.standard.string(forKey: UserDefaultsKeys.proxyAPIBaseURL) ?? ""
-    data.useGeminiViaProxy = UserDefaults.standard.object(forKey: UserDefaultsKeys.useGeminiViaProxy) != nil
-      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.useGeminiViaProxy)
-      : SettingsDefaults.useGeminiViaProxy
 
-    // Load Dashboard URL (for "Top up balance" link)
-    data.dashboardBaseURL = UserDefaults.standard.string(forKey: UserDefaultsKeys.dashboardBaseURL) ?? ""
     
     // Load Launch at Login state
     data.launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -427,8 +421,6 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(data.liveMeetingSafeguardDuration.rawValue, forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)
 
     // Save Proxy API settings (Phase 1 – latency testing)
-    UserDefaults.standard.set(data.proxyAPIBaseURL, forKey: UserDefaultsKeys.proxyAPIBaseURL)
-    UserDefaults.standard.set(data.useGeminiViaProxy, forKey: UserDefaultsKeys.useGeminiViaProxy)
 
     // Save toggle shortcuts
     let shortcuts = parseShortcuts()
@@ -625,11 +617,11 @@ class SettingsViewModel: ObservableObject {
     }
   }
 
-  /// Opens the Dashboard URL in the default browser (for top-up). No-op if URL is empty.
+  /// Opens the Dashboard URL in the default browser (for top-up). URL is fixed by the app.
   func openDashboardForTopUp() {
-    let urlString = data.dashboardBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !urlString.isEmpty, let url = URL(string: urlString) else {
-      DebugLogger.logError("BALANCE: Dashboard URL empty or invalid")
+    let urlString = SettingsDefaults.dashboardBaseURL
+    guard let url = URL(string: urlString) else {
+      DebugLogger.logError("BALANCE: Dashboard URL invalid")
       return
     }
     if NSWorkspace.shared.open(url) {

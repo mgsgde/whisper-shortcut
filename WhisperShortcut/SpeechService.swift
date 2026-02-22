@@ -297,7 +297,8 @@ class SpeechService {
 
     // Build request (proxy-aware)
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
-    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
+    let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
 
     // Build contents array - start with conversation history
     let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
@@ -437,7 +438,8 @@ class SpeechService {
     // Use Gemini Flash for fast, cheap transcription (full URL required by createRequest)
     let endpoint = TranscriptionModel.gemini20Flash.apiEndpoint
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
-    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
+    let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
 
     let userParts: [GeminiChatRequest.GeminiChatPart] = [
       GeminiChatRequest.GeminiChatPart(
@@ -511,7 +513,8 @@ class SpeechService {
 
     // Build request (proxy-aware)
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
-    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
+    let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
 
     // Build contents array - start with conversation history
     let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
@@ -660,7 +663,8 @@ class SpeechService {
 
     let endpoint = selectedTTSModel.apiEndpoint
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
-    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
+    let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
 
     let ttsRequest = GeminiTTSRequest(
       contents: [GeminiTTSRequest.GeminiTTSContent(parts: [GeminiTTSRequest.GeminiTTSPart(text: "Say the following: \(trimmedText)")])],
@@ -706,8 +710,13 @@ class SpeechService {
       throw TranscriptionError.noGoogleAPIKey
     }
 
-    if case .apiKey(let key) = credential {
+    switch credential {
+    case .apiKey(let key):
       DebugLogger.log("GEMINI-TRANSCRIPTION: Using API key (prefix: \(key.prefix(8))..., length: \(key.count) chars)")
+    case .oauth:
+      DebugLogger.log("GEMINI-TRANSCRIPTION: Using OAuth (Google Sign-In)")
+    case .bearer:
+      DebugLogger.log("GEMINI-TRANSCRIPTION: Using Proxy (Bearer)")
     }
 
     // Only validate format, not size - Gemini handles large files via:
@@ -815,7 +824,8 @@ class SpeechService {
     )
     
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
-    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
+    let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
     request.httpBody = try JSONEncoder().encode(transcriptionRequest)
 
     // Make request with retry logic
@@ -894,7 +904,8 @@ class SpeechService {
     )
 
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
-    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
+    let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
     request.httpBody = try JSONEncoder().encode(transcriptionRequest)
 
     // Make request with retry logic

@@ -1,9 +1,17 @@
 import Foundation
 
 // MARK: - Gemini Credential
-/// Authentication for Gemini API: API key (query param).
+/// Authentication for Gemini API: API key (query param), OAuth access token (Bearer), or Bearer token for proxy (ID token).
 enum GeminiCredential {
   case apiKey(String)
+  case oauth(accessToken: String)
+  /// Bearer token (e.g. Google ID token for proxy). Used when sending to whisper-api; backend verifies JWT.
+  case bearer(String)
+
+  var isOAuth: Bool {
+    if case .oauth = self { return true }
+    return false
+  }
 }
 
 // MARK: - Gemini Error Response Models
@@ -81,6 +89,8 @@ class GeminiAPIClient {
       switch credential {
       case .apiKey(let key):
         components.queryItems = [URLQueryItem(name: "key", value: key)]
+      case .oauth, .bearer:
+        break
       }
     }
 
@@ -92,6 +102,14 @@ class GeminiAPIClient {
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.timeoutInterval = Constants.resourceTimeout
+    if let credential = credential {
+      switch credential {
+      case .oauth(let token), .bearer(let token):
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+      case .apiKey:
+        break
+      }
+    }
     return request
   }
 
@@ -101,15 +119,30 @@ class GeminiAPIClient {
   }
 
   // MARK: - Proxy Endpoint Resolution (Phase 1)
-  /// Resolves the effective generateContent endpoint and credential. When "Use Gemini via Proxy" is on and proxy base URL is set, returns proxy URL and nil credential; otherwise returns direct endpoint and given credential.
+  /// Resolves the effective generateContent endpoint and credential.
+  /// When user is signed in (OAuth) and proxy base URL is set, uses proxy. Otherwise direct Gemini.
+  /// When using proxy with OAuth, returns proxy URL and nil (caller must use resolveCredentialForRequest to get Bearer ID token).
   static func resolveGenerateContentEndpoint(directEndpoint: String, credential: GeminiCredential) -> (endpoint: String, credential: GeminiCredential?) {
-    let useProxy = UserDefaults.standard.bool(forKey: UserDefaultsKeys.useGeminiViaProxy)
-    let base = (UserDefaults.standard.string(forKey: UserDefaultsKeys.proxyAPIBaseURL) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-    if useProxy, !base.isEmpty {
+    let base = SettingsDefaults.proxyAPIBaseURL
+    if credential.isOAuth, !base.isEmpty {
       let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
       return (trimmed + "/v1/gemini/generateContent", nil)
     }
     return (directEndpoint, credential)
+  }
+
+  /// When resolved credential is nil (proxy path), returns .bearer(ID token) for request auth if signed in; otherwise nil.
+  /// Call before createRequest so proxy requests get Authorization: Bearer <Google ID token>.
+  static func resolveCredentialForRequest(endpoint: String, resolvedCredential: GeminiCredential?) async -> GeminiCredential? {
+    if let cred = resolvedCredential { return cred }
+    let base = SettingsDefaults.proxyAPIBaseURL
+    guard !base.isEmpty else { return nil }
+    let proxyPath = (base.hasSuffix("/") ? String(base.dropLast()) : base) + "/v1/gemini/generateContent"
+    guard endpoint == proxyPath, DefaultGoogleAuthService.shared.isSignedIn(),
+          let idToken = await DefaultGoogleAuthService.shared.getIDToken(), !idToken.isEmpty else {
+      return nil
+    }
+    return .bearer(idToken)
   }
   
   // MARK: - Request Execution
@@ -465,6 +498,8 @@ class GeminiAPIClient {
     switch credential {
     case .apiKey(let key):
       components.queryItems = [URLQueryItem(name: "key", value: key)]
+    case .oauth, .bearer:
+      break
     }
 
     guard let initURL = components.url else {
@@ -474,6 +509,8 @@ class GeminiAPIClient {
     var initRequest = URLRequest(url: initURL)
     initRequest.httpMethod = "POST"
     initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    if case .oauth(let token) = credential { initRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+    else if case .bearer(let token) = credential { initRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
     initRequest.setValue("resumable", forHTTPHeaderField: "X-Goog-Upload-Protocol")
     initRequest.setValue("start", forHTTPHeaderField: "X-Goog-Upload-Command")
     initRequest.setValue("\(numBytes)", forHTTPHeaderField: "X-Goog-Upload-Header-Content-Length")
