@@ -1,4 +1,4 @@
-# Release v6.0.0
+# Release v6.1.0
 
 ## Installation
 
@@ -8,22 +8,23 @@ Download the latest release from [GitHub Releases](https://github.com/mgsgde/whi
 
 ### New Features
 
-- **Smart Improvement**: System prompts (Dictation, Speech-to-Prompt, Prompt & Read) can now improve automatically based on your usage. Configure how often improvements run and which model is used. First run skips cooldown; default “improvement after N dictations” is 20.
-- **User context & history**: User context and system prompts are derived and stored with configurable limits. Dictation and User Context get system prompt and user context history; “Generate with AI” is available per tab with primary-mode history. Analysis uses Gemini 2.5 Pro for better accuracy.
-- **Prompt areas**: “Reset to Default” in all prompt areas; system prompt editor height increased for easier editing.
-- **Live Meeting**: Duration safeguard (pop-up after 60/90/120 min), always-on timestamps, and consistent naming. New option to open the transcripts folder from the app.
-- **Settings**: Open Interactions Folder and Open Transcript Folder aligned across tabs. Autopaste default, notification position (top-left), and clearer reset-to-defaults flow (app quits after reset). Removed “Difficult Words” and the Smart Improvement compare sheet for a simpler setup.
+- **Google Sign-In**: Sign in with your Google account to use Gemini for transcription and AI features. API key is still supported and takes precedence when set. OAuth tokens are stored securely and refreshed automatically; Terms of Service and OAuth consent info are in the docs.
+- **Website**: Project website (GitHub Pages) with OAuth homepage, privacy policy, terms, and screenshot tooling. SEO (favicon, meta, canonical, Open Graph, Twitter), robots.txt, and sitemap added. Screenshots updated to mention Google Sign-In and API key options.
 
 ### Improvements
 
-- **Data & paths**: Canonical Application Support path for both sandboxed and non-sandboxed runs. System prompt changes and JSONL history logged for transparency. Scripts for checking interaction count, resetting interaction data, and verifying reset behavior.
-- **Stability & UX**: Command-1 cancels transcription in all phases (including splitting/chunks/merging). Chunk request timeout for transcription. Popup notifications and notification handling improved.
-- **Codebase**: Removed AsyncSemaphore, shortcut validation logic, and transcript merging; consolidated user context handling and settings UI. Documentation for data directories, Smart Improvement flow, and Gemini system prompt best practices.
+- **Smart Improvement**: Default model is Gemini 3.1 Pro; Gemini 3 Flash migrated to 3.1 Pro. Runs in background with start popup; running state synced when returning to the tab. Defaults to “Never” when no Gemini credential. Smart Improvement tab in Settings with Data & Reset and consistent button layout. Gemini 3 Pro and 3.1 Pro available for Smart Improvement.
+- **Transcription & Dictation**: Default dictation model is Gemini 2.5 Flash-Lite (marked as recommended). Gemini 2.0 Flash deprecated. Whisper auto-detect fixed when language is unset (detectLanguage true). Loading notification when initializing offline transcription model. Clearer error message when a deprecated Gemini model returns 404.
+- **TTS**: Refactored to use GeminiTTSRequest structure; aligned with official Gemini docs. System instruction added so transcripts are read literally (fixes TTS 400). Removed unused ttsSystemInstruction; isRecommended fixed for gemini25Flash.
+- **Settings**: Terminology unified from “Keyboard Shortcuts” to “Keyboard Shortcut”. Refactored SettingsView and related components; consistent HStack spacing (12) for Open folder buttons. General settings reorganized (state transitions, error presentation). Two-second option for notification display duration. “Available keys” hint in Transcribe Meeting shortcut section. GitHub link in Support & Feedback.
+- **Error handling & logging**: ChunkError and typed errors; state transitions and error presentation refactored. Stronger error handling and retry logic in GeminiAPIClient and MenuBarController. Errors written to UserContext/errors-YYYY-MM-DD.log with 30-day retention. Gemini model logged in system prompt and user context history. Code consistency fixes (AppState-only state, low-priority cleanups).
+- **Docs & tooling**: Gemini model documentation and skill for model ID lookup. Script to test Gemini generateContent models. Privacy policy updated (paths, English UI, in-app deletion). Package.resolved removed from version control.
 
-### Other
+### Fixes
 
-- Privacy policy and in-app copy updated (e.g. 30-day interaction disclosure, “Generate with AI” explanation). README and live meeting settings updated.
+- **Gemini without API key**: When Gemini is selected but no API key (or Google sign-in) is set, the app no longer silently falls back to Whisper; behavior is explicit.
+- **PromptModelSelectionView**: Removed model-initialization note (not relevant for Gemini).
 
 ## Full Changelog
 
-For a complete list of changes, see the [full changelog](https://github.com/mgsgde/whisper-shortcut/compare/v5.3.6...v6.0.0).
+For a complete list of changes, see the [full changelog](https://github.com/mgsgde/whisper-shortcut/compare/v6.0.0...v6.1.0).
