@@ -9,7 +9,6 @@ Download the latest release from [GitHub Releases](https://github.com/mgsgde/whi
 ### New Features
 
 - **Google Sign-In**: Sign in with your Google account to use Gemini for transcription and AI features. API key is still supported and takes precedence when set. OAuth tokens are stored securely and refreshed automatically; Terms of Service and OAuth consent info are in the docs.
-- **Website**: Project website (GitHub Pages) with OAuth homepage, privacy policy, terms, and screenshot tooling. SEO (favicon, meta, canonical, Open Graph, Twitter), robots.txt, and sitemap added. Screenshots updated to mention Google Sign-In and API key options.
 
 ### Improvements
 

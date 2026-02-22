@@ -6,7 +6,7 @@ This document describes how the smart system prompt improvement currently works:
 
 ## 1. Overview
 
-The "Smart Improvement" runs automatically in the background and generates suggestions for system prompts and user context. Suggestions are **applied automatically**: the generated text is written directly into the active settings (UserDefaults or `user-context.md`), and the previous version is stored as "Previous". A popup briefly informs the user ("Auto-improved: … Check Settings to review or revert."). The user can revert at any time in Settings via "Restore Previous".
+The "Smart Improvement" runs automatically in the background and generates suggestions for system prompts and user context. Suggestions are **applied automatically**: the generated text is written directly into the active settings (UserDefaults or `user-context.md`). A popup briefly informs the user ("Auto-improved: … Check Settings to review or revert."). The user can review or edit the result in the relevant settings tabs.
 
 ---
 
@@ -99,7 +99,7 @@ Suggestions are applied immediately to the active settings:
 | Prompt Mode | `promptModeSystemPrompt` (UserDefaults) | `previousPromptModeSystemPrompt` |
 | Prompt & Read | `promptAndReadSystemPrompt` (UserDefaults) | `previousPromptAndReadSystemPrompt` |
 
-The user can revert in the respective Settings tabs via "Restore Previous".
+The user can review or edit the applied values in the respective Settings tabs.
 
 ---
 

@@ -1,6 +1,6 @@
 # Privacy Policy for WhisperShortcut
 
-**Last updated:** February 21, 2025
+**Last updated:** February 22, 2025
 
 ## Overview
 
@@ -19,13 +19,25 @@ WhisperShortcut is a macOS menu bar application with four main features: **Speec
 
 ## What Data We Collect
 
-### 1. API Key (Required for Cloud Features)
+### 1. Gemini Access: API Key or Sign in with Google
+
+To use cloud features (Gemini), you can either enter an API key or sign in with your Google account. You only need one of these.
+
+**API Key (optional when signed in with Google)**
 
 - **What**: Your Google API key
 - **Where**: Stored securely in macOS Keychain
-- **Purpose**: Required for Google Gemini (transcription, AI prompting, TTS). Not needed when using offline Whisper for Speech-to-Text
+- **Purpose**: Authenticates requests to Google Gemini (transcription, AI prompting, TTS). Not needed when using Sign in with Google or offline Whisper for Speech-to-Text
 - **Retention**: Stored locally until you delete it
 - **Access**: Only accessible by the app on your device
+
+**Sign in with Google (OAuth)**
+
+- **What**: OAuth access and refresh tokens from Google Sign-In; the app may display your Google account email when you are signed in
+- **Where**: Tokens are stored securely in macOS Keychain (via the Google Sign-In SDK). We do not store your Google password
+- **Purpose**: Lets you use Gemini (transcription, AI prompting, TTS) without entering an API key. Authentication is handled by Google; we only use the tokens to request access to Gemini on your behalf
+- **Retention**: Stored locally until you sign out or revoke access
+- **Access**: Only accessible by the app on your device. We do not collect or use your Google account data for any purpose other than authenticating API requests
 
 ### 2. App Preferences
 
@@ -66,7 +78,7 @@ WhisperShortcut is a macOS menu bar application with four main features: **Speec
 
 ## What Data We Do NOT Collect
 
-- ❌ Personal information (name, email, address)
+- ❌ Personal information (name, email, address). When you sign in with Google, we do not collect or use your Google account data beyond what is needed to display your signed-in state and to authenticate requests to Gemini
 - ❌ Usage analytics or tracking data
 - ❌ Crash reports or diagnostic information
 - ❌ Audio recordings (beyond temporary processing)
@@ -97,7 +109,7 @@ WhisperShortcut uses Google's Gemini API for:
 ### Local Storage
 
 - All app data is stored locally on your macOS device
-- API keys are encrypted in macOS Keychain
+- API keys and OAuth tokens (when you sign in with Google) are stored in macOS Keychain
 - No data is transmitted to our servers
 
 ### Audio Processing
@@ -123,6 +135,7 @@ WhisperShortcut uses Google's Gemini API for:
 ### Data Deletion
 
 - Delete API key: Use the app's settings to remove your API key
+- Sign out of Google: Use the app's settings to sign out; this removes stored OAuth tokens from the device
 - Reset preferences: Use the app's reset to defaults feature
 - Delete Live Meeting transcripts: Remove files from the app data folder under `Meetings/` (path shown in Settings > General, or see `docs/data-directories.md`). Legacy files may be in `~/Documents/WhisperShortcut/`.
 - Delete User Context / interaction logs: Use **Settings > Smart Improvement > Delete interaction data**, or remove the `UserContext` folder in the app data path (see path in Settings or `docs/data-directories.md`).

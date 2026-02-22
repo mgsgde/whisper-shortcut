@@ -1,6 +1,6 @@
 # Terms of Service for WhisperShortcut
 
-**Last updated:** February 2025
+**Last updated:** February 22, 2025
 
 ## Overview
 
@@ -9,8 +9,8 @@ WhisperShortcut is a macOS menu bar application that provides Speech-to-Text, Sp
 ## Use of the App
 
 - You may use WhisperShortcut in accordance with its documentation and in compliance with applicable laws.
-- When using cloud features (e.g. Google Gemini), you are also subject to the respective provider’s terms (e.g. [Google Terms of Service](https://policies.google.com/terms), [Google API Terms](https://developers.google.com/terms)).
-- You are responsible for securing your API key and account credentials; do not share them with others.
+- When using cloud features (e.g. Google Gemini), you are also subject to the respective provider’s terms (e.g. [Google Terms of Service](https://policies.google.com/terms), [Google API Terms](https://developers.google.com/terms)). If you use Sign in with Google to access Gemini, your use of that feature is subject to Google's terms and OAuth consent.
+- You are responsible for securing your API key and Google account credentials; do not share them with others.
 
 ## Limitations
 

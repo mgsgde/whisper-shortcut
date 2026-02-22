@@ -1,35 +1,31 @@
-# macOS App Description
+<!-- Do not format this text as Markdown. It is intended for copy-paste (e.g. Mac App Store or other listing fields) where Markdown is not supported—use it as plain text.
 
-Use this text for the Mac App Store (or similar) product description. All text in English.
+macOS App Description
 
----
+Use this text for the Mac App Store (or similar) product description. All text in English. -->
 
-## Key Features
+Key Features
 
-- Accurate speech-to-text and dictation powered by Google Gemini
-- AI assistant available system-wide via voice input or selected text
-- Custom keyboard shortcuts for faster writing, coding, and productivity
-- Seamless macOS integration for everyday workflows
+• Accurate speech-to-text and dictation powered by Google Gemini
+• AI assistant system-wide via voice or selected text
+• Custom keyboard shortcuts for writing, coding, and productivity
 
-## Privacy & Security
+Privacy & Security
 
-- Your Gemini API key is securely stored in the macOS Keychain
-- No account required
+• Sign in with Google or use your own API key (stored in macOS Keychain); no account or key needed for offline Whisper
 
-## Offline Speech Recognition
+Offline Speech Recognition
 
-- Offline transcription powered by local Whisper speech-to-text models
-- Dictate even without an internet connection
+• Offline transcription with local Whisper—dictate without an internet connection
 
-## Smart Improvement
+Smart Improvement
 
-- The app improves itself over time based on your usage: system prompts for dictation and AI modes are refined automatically so recognition and responses get better the more you use it.
+• System prompts for dictation and AI modes improve automatically based on your usage
 
-## Meeting Transcription
+Meeting Transcription
 
-- Transcribe whole meetings with live streaming: start “Transcribe Meeting” and get a continuously updated transcript file (e.g. for calls or long sessions).
+• Live streaming: start "Transcribe Meeting" for a continuously updated transcript (calls, long sessions)
 
-## Requirements
+Requirements
 
-- macOS 15.5 or later
-- Gemini API key (optional for offline Whisper-only use)
+• macOS 15.5 or later
