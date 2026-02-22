@@ -73,9 +73,9 @@ enum TranscriptionModel: String, CaseIterable {
 
   var isRecommended: Bool {
     switch self {
-    case .gemini25Flash, .whisperBase:
+    case .gemini25FlashLite, .gemini25Flash, .whisperBase:
       return true
-    case .gemini20Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium:
+    case .gemini20Flash, .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium:
       return false
     }
   }
