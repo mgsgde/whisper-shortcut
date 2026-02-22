@@ -230,6 +230,9 @@ class SettingsViewModel: ObservableObject {
     data.useGeminiViaProxy = UserDefaults.standard.object(forKey: UserDefaultsKeys.useGeminiViaProxy) != nil
       ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.useGeminiViaProxy)
       : SettingsDefaults.useGeminiViaProxy
+
+    // Load Dashboard URL (for "Top up balance" link)
+    data.dashboardBaseURL = UserDefaults.standard.string(forKey: UserDefaultsKeys.dashboardBaseURL) ?? ""
     
     // Load Launch at Login state
     data.launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -603,6 +606,37 @@ class SettingsViewModel: ObservableObject {
       return "~" + String(path.dropFirst(home.count))
     }
     return path
+  }
+
+  /// Fetches balance from backend API and updates data.balanceCent / data.balanceLoadErrorMessage.
+  func refreshBalance() async {
+    let tokenProvider: () async -> String? = {
+      await DefaultGoogleAuthService.shared.getIDToken()
+    }
+    let cent = await BackendAPIClient.fetchBalance(idTokenProvider: tokenProvider)
+    await MainActor.run {
+      if let cent = cent {
+        data.balanceCent = cent
+        data.balanceLoadErrorMessage = nil
+      } else {
+        data.balanceCent = nil
+        data.balanceLoadErrorMessage = "Could not load balance"
+      }
+    }
+  }
+
+  /// Opens the Dashboard URL in the default browser (for top-up). No-op if URL is empty.
+  func openDashboardForTopUp() {
+    let urlString = data.dashboardBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !urlString.isEmpty, let url = URL(string: urlString) else {
+      DebugLogger.logError("BALANCE: Dashboard URL empty or invalid")
+      return
+    }
+    if NSWorkspace.shared.open(url) {
+      DebugLogger.log("BALANCE: Opened Dashboard for top-up")
+    } else {
+      DebugLogger.logError("BALANCE: Failed to open Dashboard URL")
+    }
   }
 
   /// Opens the context folder in Finder; creates it if it does not exist.

@@ -502,6 +502,8 @@ struct SettingsDefaults {
   static let proxyAPIBaseURL = ""
   static let useGeminiViaProxy = false
 
+  static let dashboardBaseURL = ""
+
   // MARK: - UI State
   static let errorMessage = ""
   static let isLoading = false
@@ -572,11 +574,16 @@ struct SettingsData {
   var proxyAPIBaseURL: String = SettingsDefaults.proxyAPIBaseURL
   var useGeminiViaProxy: Bool = SettingsDefaults.useGeminiViaProxy
 
+  // MARK: - Dashboard (top-up link; same backend URL as proxy for API calls)
+  var dashboardBaseURL: String = SettingsDefaults.dashboardBaseURL
+
   // MARK: - UI State
   var errorMessage: String = SettingsDefaults.errorMessage
   var isLoading: Bool = SettingsDefaults.isLoading
   var showAlert: Bool = SettingsDefaults.showAlert
   var appStoreLinkCopied: Bool = false
+  var balanceCent: Int? = nil
+  var balanceLoadErrorMessage: String? = nil
 }
 
 // MARK: - Focus States Enum
