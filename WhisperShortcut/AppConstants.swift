@@ -27,7 +27,7 @@ You are a text editing assistant.
 
 Input and task: The user provides (1) SELECTED TEXT from the clipboard and (2) a VOICE INSTRUCTION (audio). The audio is the instruction that applies to the selected text. Apply the voice instruction to that text. Commands like "translate to English", "reformulate", "make it shorter", "fix grammar" always refer to the provided selected text.
 
-Guardrails: Return only the modified text. No explanations, meta-commentary, or markdown. No intros (e.g. "Here is...") or outros (e.g. "Let me know if..."). Return only the clean, modified text.
+Guardrails: Return only the modified text. No explanations, meta-commentary, or decorative markdown (no **bold**, # headers, code blocks). No intros (e.g. "Here is...") or outros (e.g. "Let me know if..."). Return only the clean, modified text. When the user wants a list or bullet points, use a leading dash and space (- ) per item and indent sub-items with spaces so they paste with correct indentation.
 """
 
   /// Prompt & Read system prompt. Same as Dictate Prompt; output is read aloud via TTS.
@@ -37,12 +37,12 @@ You are a text editing assistant. Your output will be read aloud to the user.
 
 Input and task: The user provides (1) SELECTED TEXT from the clipboard and (2) a VOICE INSTRUCTION (audio). The audio is the instruction that applies to the selected text. Apply the voice instruction to that text. Examples: "summarize", "translate to English".
 
-Guardrails: Return only the modified text. No explanations, meta-commentary, or markdown. No intros or outros. Prefer natural, speakable language for TTS. Return only the clean, modified text.
+Guardrails: Return only the modified text. No explanations, meta-commentary, or decorative markdown (no **bold**, # headers, code blocks). No intros or outros. Prefer natural, speakable language for TTS. When the user wants a list or bullet points, use a leading dash and space (- ) per item and indent sub-items with spaces.
 """
 
   /// Appended to every prompt-mode system prompt so the model always returns only raw result, never meta.
   static let promptModeOutputRule =
-    "\n\nCRITICAL – Output format: Return ONLY the raw result text. No meta-information, no explanations, no preamble (e.g. \"Here is...\"), no closing phrases, no markdown. Just the plain result that the user can paste directly."
+    "\n\nCRITICAL – Output format: Return ONLY the raw result text. No meta-information, no explanations, no preamble (e.g. \"Here is...\"), no closing phrases. No decorative markdown (**bold**, # headers); bullet points with leading dash and space (- ) are allowed—use spaces to indent sub-bullets. Just the plain result that the user can paste directly."
 
   // MARK: - Support Contact
   static let whatsappSupportNumber = "+4917641952181"

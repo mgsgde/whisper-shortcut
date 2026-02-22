@@ -19,13 +19,19 @@ enum TextProcessingUtility {
     // Step 1: Normalize multiple consecutive newlines to max 2
     let normalizedNewlines = trimmed.replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
     
-    // Step 2: Normalize spaces/tabs within each line (but preserve newlines)
-    // Split by newlines, normalize each line, then rejoin
+    // Step 2: Normalize spaces/tabs within each line while preserving indentation (leading whitespace)
+    // so bullet points and sub-bullets stay indented when pasted.
     let lines = normalizedNewlines.components(separatedBy: "\n")
     let normalizedLines = lines.map { line in
-      // Replace multiple consecutive spaces/tabs with single space
-      line.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
-        .trimmingCharacters(in: .whitespaces)
+      // Trim only trailing whitespace; preserve leading whitespace for indentation
+      let trimmedTrailing = line.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)
+      guard let firstNonWhitespace = trimmedTrailing.firstIndex(where: { !$0.isWhitespace }) else {
+        return trimmedTrailing
+      }
+      let leading = String(trimmedTrailing[..<firstNonWhitespace])
+      let rest = String(trimmedTrailing[firstNonWhitespace...])
+      let collapsedRest = rest.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
+      return leading + collapsedRest
     }
     let normalized = normalizedLines.joined(separator: "\n")
     

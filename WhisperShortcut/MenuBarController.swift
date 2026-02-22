@@ -1294,16 +1294,10 @@ class MenuBarController: NSObject {
         .trimmingCharacters(in: .whitespacesAndNewlines)
       let selectedOrNil: String? = (selectedText?.isEmpty == false) ? selectedText : nil
 
-      let didApply = await AutoPromptImprovementScheduler.shared.runImprovementFromVoice(
+      await AutoPromptImprovementScheduler.shared.runImprovementFromVoice(
         transcribedInstruction: transcribedInstruction,
         selectedText: selectedOrNil
       )
-
-      if didApply {
-        await MainActor.run {
-          self.autoPasteIfEnabled()
-        }
-      }
 
       await MainActor.run {
         self.appState = self.appState.finish()

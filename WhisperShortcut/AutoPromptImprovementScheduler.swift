@@ -95,8 +95,7 @@ class AutoPromptImprovementScheduler {
 
   /// Runs improvement for all foci (User Context, Dictation, Dictate Prompt, Prompt & Read) using a transcribed voice instruction as the primary signal.
   /// Used by the "Improve from voice" shortcut / flow. Does not require interaction logs.
-  /// - Returns: `true` if at least one focus was applied (clipboard was set with improved content).
-  func runImprovementFromVoice(transcribedInstruction: String, selectedText: String?) async -> Bool {
+  func runImprovementFromVoice(transcribedInstruction: String, selectedText: String?) async {
     guard !isImprovementRunning else {
       await MainActor.run {
         PopupNotificationWindow.showInfo(
@@ -104,7 +103,7 @@ class AutoPromptImprovementScheduler {
           title: "Smart Improvement"
         )
       }
-      return false
+      return
     }
     guard GeminiCredentialProvider.shared.hasCredential() else {
       await MainActor.run {
@@ -113,7 +112,7 @@ class AutoPromptImprovementScheduler {
           title: "Smart Improvement"
         )
       }
-      return false
+      return
     }
     let instruction = transcribedInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !instruction.isEmpty else {
@@ -123,7 +122,7 @@ class AutoPromptImprovementScheduler {
           title: "Smart Improvement"
         )
       }
-      return false
+      return
     }
 
     isImprovementRunning = true
@@ -188,8 +187,6 @@ class AutoPromptImprovementScheduler {
       await MainActor.run {
         PopupNotificationWindow.showInfo(message, title: "Smart Improvement")
       }
-      DebugLogger.log("AUTO-IMPROVEMENT: Improve-from-voice run finished")
-      return true
     } else {
       await MainActor.run {
         PopupNotificationWindow.showInfo(
@@ -197,9 +194,8 @@ class AutoPromptImprovementScheduler {
           title: "Smart Improvement"
         )
       }
-      DebugLogger.log("AUTO-IMPROVEMENT: Improve-from-voice run finished")
-      return false
     }
+    DebugLogger.log("AUTO-IMPROVEMENT: Improve-from-voice run finished")
   }
 
   /// True while an improvement run (manual or automatic) is in progress. Use to show "Running…" when the user returns to the Smart Improvement section.
