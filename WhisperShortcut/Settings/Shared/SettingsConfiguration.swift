@@ -528,11 +528,12 @@ struct SettingsDefaults {
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
   static let selectedMeetingSummaryModel = PromptModel.gemini3Flash
 
-  // MARK: - Proxy API (Phase 1 – latency testing)
-  static let proxyAPIBaseURL = ""
-  static let useGeminiViaProxy = false
+  // MARK: - Proxy API (when signed in, Gemini goes via proxy)
+  /// Production whisper-api (Cloud Run). Used when user is signed in and has not set a custom Proxy base URL.
+  static let proxyAPIBaseURL = "https://whisper-api-hrihd7rvtq-ew.a.run.app"
 
-  static let dashboardBaseURL = ""
+  /// Default Dashboard URL (balance, top-up). Production: whispershortcut.com/dashboard.
+  static let dashboardBaseURL = "https://whispershortcut.com/dashboard"
 
   // MARK: - UI State
   static let errorMessage = ""
@@ -605,13 +606,6 @@ struct SettingsData {
   var liveMeetingSafeguardDuration: MeetingSafeguardDuration = SettingsDefaults.liveMeetingSafeguardDuration
   var selectedTranscriptionModelForMeetings: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
   var selectedMeetingSummaryModel: PromptModel = SettingsDefaults.selectedMeetingSummaryModel
-
-  // MARK: - Proxy API (Phase 1 – latency testing)
-  var proxyAPIBaseURL: String = SettingsDefaults.proxyAPIBaseURL
-  var useGeminiViaProxy: Bool = SettingsDefaults.useGeminiViaProxy
-
-  // MARK: - Dashboard (top-up link; same backend URL as proxy for API calls)
-  var dashboardBaseURL: String = SettingsDefaults.dashboardBaseURL
 
   // MARK: - UI State
   var errorMessage: String = SettingsDefaults.errorMessage

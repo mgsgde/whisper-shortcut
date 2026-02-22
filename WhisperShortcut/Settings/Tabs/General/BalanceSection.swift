@@ -2,7 +2,7 @@
 //  BalanceSection.swift
 //  WhisperShortcut
 //
-//  Balance display (from backend API), Dashboard URL setting, and "Top up balance" link.
+//  Balance display (from backend API) and "Top up balance" link. Dashboard URL is fixed by the app.
 //
 
 import SwiftUI
@@ -16,29 +16,10 @@ struct BalanceSection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Balance & top-up",
-        subtitle: "Balance is stored on the backend (same URL as Proxy API). Top up opens the Dashboard in your browser."
+        subtitle: "Balance is stored on the WhisperShortcut backend. Top up opens the Dashboard in your browser."
       )
 
-      HStack(alignment: .center, spacing: 16) {
-        Text("Dashboard URL:")
-          .font(.body)
-          .fontWeight(.medium)
-          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
-          .textSelection(.enabled)
-
-        TextField("https://your-dashboard.run.app", text: $viewModel.data.dashboardBaseURL)
-          .textFieldStyle(.roundedBorder)
-          .font(.system(.body, design: .monospaced))
-          .frame(height: SettingsConstants.textFieldHeight)
-          .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
-          .onChange(of: viewModel.data.dashboardBaseURL) { _, newValue in
-            UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.dashboardBaseURL)
-          }
-
-        Spacer()
-      }
-
-      if DefaultGoogleAuthService.shared.isSignedIn(), !(viewModel.data.proxyAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+      if DefaultGoogleAuthService.shared.isSignedIn() {
         HStack(alignment: .center, spacing: 16) {
           Text("Balance:")
             .font(.body)
@@ -75,22 +56,19 @@ struct BalanceSection: View {
           Spacer()
         }
 
-        let dashboardURL = viewModel.data.dashboardBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !dashboardURL.isEmpty {
-          Button("Top up balance") {
-            viewModel.openDashboardForTopUp()
-          }
-          .buttonStyle(.borderedProminent)
+        Button("Top up balance") {
+          viewModel.openDashboardForTopUp()
         }
+        .buttonStyle(.borderedProminent)
       }
 
-      Text("Set the Proxy API base URL above to fetch balance. Sign in with Google and set Dashboard URL to open the top-up page in your browser.")
+      Text("Sign in with Google to see balance and top up.")
         .font(.caption)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
     }
     .onAppear {
-      if DefaultGoogleAuthService.shared.isSignedIn(), BackendAPIClient.baseURL() != nil {
+      if DefaultGoogleAuthService.shared.isSignedIn() {
         Task { await viewModel.refreshBalance() }
       }
     }

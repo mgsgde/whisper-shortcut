@@ -271,7 +271,8 @@ class ChunkTTSService {
 
                 let endpoint = model.apiEndpoint
                 let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
-                var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
+                let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
+                var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
 
                 let ttsRequest = GeminiTTSRequest(
                     contents: [GeminiTTSRequest.GeminiTTSContent(parts: [GeminiTTSRequest.GeminiTTSPart(text: "Say the following: \(chunk.text)")])],

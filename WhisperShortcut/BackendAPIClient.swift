@@ -27,17 +27,16 @@ enum BackendAPIClient {
     return URLSession(configuration: c)
   }()
 
-  /// Base URL for the backend (no trailing slash). From UserDefaults proxyAPIBaseURL.
-  static func baseURL() -> String? {
-    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.proxyAPIBaseURL) ?? ""
-    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? nil : trimmed
+  /// Base URL for the backend (no trailing slash). Set by the app (production whisper-api).
+  static func baseURL() -> String {
+    SettingsDefaults.proxyAPIBaseURL
   }
 
   /// Fetches current balance (cents). Calls completion on main thread with balance or nil on error.
   static func fetchBalance(idTokenProvider: @escaping () async -> String?) async -> Int? {
-    guard let base = baseURL(), let url = URL(string: base + "/v1/balance") else {
-      DebugLogger.logNetwork("BACKEND-API: No base URL configured; skip balance fetch")
+    let base = baseURL()
+    guard let url = URL(string: base + "/v1/balance") else {
+      DebugLogger.logNetwork("BACKEND-API: Invalid base URL; skip balance fetch")
       return nil
     }
     guard let token = await idTokenProvider() else {
@@ -65,8 +64,9 @@ enum BackendAPIClient {
   /// Reports usage (deducts balance). Fire-and-forget; logs errors. Use from background if needed.
   static func reportUsage(amountCent: Int, product: String?, idTokenProvider: @escaping () async -> String?) {
     Task {
-      guard let base = baseURL(), let url = URL(string: base + "/v1/usage") else {
-        DebugLogger.logNetwork("BACKEND-API: No base URL; skip usage report")
+      let base = baseURL()
+      guard let url = URL(string: base + "/v1/usage") else {
+        DebugLogger.logNetwork("BACKEND-API: Invalid base URL; skip usage report")
         return
       }
       guard let token = await idTokenProvider() else {

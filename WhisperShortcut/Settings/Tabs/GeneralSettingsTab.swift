@@ -21,7 +21,7 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
-      ProxyAPISection(viewModel: viewModel)
+      ProxyAPISection()
 
       SpacedSectionDivider()
 

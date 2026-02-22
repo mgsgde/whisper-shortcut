@@ -295,7 +295,8 @@ class ChunkTranscriptionService {
                 // Build request (proxy-aware)
                 let endpoint = model.apiEndpoint
                 let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
-                var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
+                let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
+                var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
                 request.timeoutInterval = Self.chunkResourceTimeout
 
                 let transcriptionRequest = GeminiTranscriptionRequest(
