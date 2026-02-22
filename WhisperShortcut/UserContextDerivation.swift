@@ -339,10 +339,17 @@ class UserContextDerivation {
 
       4. Output: Return only the clean transcribed text. No commentary, no metadata.
 
-      If a current prompt is provided, refine it — do not rewrite from scratch. Be concise: only include rules that \
-      the data supports. If the current prompt contains rules that the data suggests are wrong or harmful \
-      (e.g. recurring recognition errors, over-specific language rules), remove or correct those rules — do not \
-      reinforce them just because the model followed them.
+      If a current prompt is provided, refine it — do not rewrite from scratch. But "refine" does NOT mean "append": \
+      merge overlapping or redundant rules into single statements, remove corrections or terms that are no longer \
+      evidenced by recent data, and compress verbose sections. The result should be equal in length or shorter than \
+      the current prompt unless genuinely new rules are needed. If the current prompt contains rules that the data \
+      suggests are wrong or harmful (e.g. recurring recognition errors, over-specific language rules), remove or \
+      correct those rules — do not reinforce them just because the model followed them.
+
+      CONCISENESS: Aim for a prompt of 800–1200 characters. Include at most 8–10 correction mappings and 15–20 \
+      domain terms — prefer the most frequent or impactful ones. Do not repeat the same rule in different sections. \
+      Use the structure Persona → Task → Domain terms → Corrections → Guardrails → Output; do not duplicate \
+      information across sections.
 
       Example structure (do not copy content, only the format):
 
@@ -395,10 +402,15 @@ class UserContextDerivation {
          - Domain-specific guidance if the data shows recurring patterns.
 
       If a current prompt is provided, refine it based on actual usage patterns — do not rewrite from scratch. \
-      Be concise: only include rules clearly supported by the data. If the current prompt contains rules that the \
-      data suggests are wrong or harmful (e.g. modelResponse consistently misses user intent, or a language/format \
-      rule leads to undesired outcomes), remove or correct those rules — do not reinforce them just because the \
-      model followed them.
+      But "refine" does NOT mean "append": merge overlapping or redundant rules into single clear statements, \
+      remove rules that are no longer evidenced by recent data, and compress verbose sections. The result should \
+      be equal in length or shorter than the current prompt unless genuinely new rules are needed. If the current \
+      prompt contains rules that the data suggests are wrong or harmful (e.g. modelResponse consistently misses \
+      user intent, or a language/format rule leads to undesired outcomes), remove or correct those rules — do not \
+      reinforce them just because the model followed them.
+
+      CONCISENESS: Aim for a prompt of 800–1400 characters. Do not repeat the same rule in different sections. \
+      Use the structure Persona → Task → Behavioral rules; do not duplicate information across sections.
 
       Example structure (do not copy content, only the format):
 
@@ -451,9 +463,15 @@ class UserContextDerivation {
          - Language preferences observed in the data.
 
       If a current prompt is provided, refine it based on actual usage patterns — do not rewrite from scratch. \
-      Be concise: only include rules clearly supported by the data. If the current prompt contains rules that the \
-      data suggests are wrong or harmful (e.g. modelResponse misses user intent, or a rule leads to poor TTS \
-      outcomes), remove or correct those rules — do not reinforce them just because the model followed them.
+      But "refine" does NOT mean "append": merge overlapping or redundant rules into single clear statements, \
+      remove rules that are no longer evidenced by recent data, and compress verbose sections. The result should \
+      be equal in length or shorter than the current prompt unless genuinely new rules are needed. If the current \
+      prompt contains rules that the data suggests are wrong or harmful (e.g. modelResponse misses user intent, \
+      or a rule leads to poor TTS outcomes), remove or correct those rules — do not reinforce them just because \
+      the model followed them.
+
+      CONCISENESS: Aim for a prompt of 800–1400 characters. Do not repeat the same rule in different sections. \
+      Use the structure Persona → Task → Behavioral rules; do not duplicate information across sections.
 
       Example structure (do not copy content, only the format):
 
