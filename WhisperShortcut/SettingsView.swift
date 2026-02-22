@@ -124,7 +124,9 @@ struct SettingsView: View {
   private func description(for tab: SettingsTab) -> String {
     switch tab {
     case .general:
-      return "API key, shortcuts, and feedback"
+      return "Google sign-in (SSO), API key, balance, shortcuts"
+    case .smartImprovement:
+      return "Improvement settings and interaction data"
     case .speechToText:
       return "Model, prompt, and shortcut"
     case .speechToPrompt:
