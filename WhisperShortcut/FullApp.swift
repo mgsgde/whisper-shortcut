@@ -23,8 +23,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     // Microphone permission will be requested automatically when recording starts
 
-    // Check whether to show settings (API key required for Gemini)
+    // Restore Google Sign-In from Keychain, then decide whether to show settings
     Task {
+      await DefaultGoogleAuthService.shared.restorePreviousSignInIfNeeded()
       await MainActor.run {
         if !GeminiCredentialProvider.shared.hasCredential() {
           DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
@@ -51,6 +52,12 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     // CRITICAL: MenuBar apps should NEVER terminate when windows close
     return false
+  }
+
+  func application(_ application: NSApplication, open urls: [URL]) {
+    for url in urls {
+      if DefaultGoogleAuthService.handle(url: url) { return }
+    }
   }
 
   func applicationShouldTerminate(_ application: NSApplication) -> NSApplication.TerminateReply {

@@ -37,5 +37,22 @@
         </dict>
         <key>ITSAppUsesNonExemptEncryption</key>
         <false />
+        <!-- Google Sign-In (SSO): Set GIDClientID to your OAuth 2.0 Client ID (Desktop app) from Google Cloud Console. -->
+        <key>GIDClientID</key>
+        <string></string>
+        <!-- OAuth callback URL scheme: reversed client ID (e.g. com.googleusercontent.apps.123456789-xxx). Replace with your value when GIDClientID is set. -->
+        <key>CFBundleURLTypes</key>
+        <array>
+            <dict>
+                <key>CFBundleTypeRole</key>
+                <string>Editor</string>
+                <key>CFBundleURLSchemes</key>
+                <array>
+                    <string>com.googleusercontent.apps.REPLACE_WITH_CLIENT_ID_PREFIX</string>
+                </array>
+                <key>CFBundleURLName</key>
+                <string>Google Sign-In callback</string>
+            </dict>
+        </array>
     </dict>
 </plist>

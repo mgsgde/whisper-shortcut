@@ -70,16 +70,18 @@ class GeminiAPIClient {
   }
   
   // MARK: - Request Creation
-  /// Creates a URLRequest for Gemini API with credential (API key).
-  func createRequest(endpoint: String, credential: GeminiCredential) throws -> URLRequest {
+  /// Creates a URLRequest for Gemini API with optional credential (API key). When credential is nil (e.g. proxy mode), no key is added.
+  func createRequest(endpoint: String, credential: GeminiCredential?) throws -> URLRequest {
     guard let baseURL = URL(string: endpoint),
           var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
       throw TranscriptionError.invalidRequest
     }
 
-    switch credential {
-    case .apiKey(let key):
-      components.queryItems = [URLQueryItem(name: "key", value: key)]
+    if let credential = credential {
+      switch credential {
+      case .apiKey(let key):
+        components.queryItems = [URLQueryItem(name: "key", value: key)]
+      }
     }
 
     guard let url = components.url else {
@@ -96,6 +98,18 @@ class GeminiAPIClient {
   /// Creates a URLRequest using API key (convenience for callers that only have a key).
   func createRequest(endpoint: String, apiKey: String) throws -> URLRequest {
     try createRequest(endpoint: endpoint, credential: .apiKey(apiKey))
+  }
+
+  // MARK: - Proxy Endpoint Resolution (Phase 1)
+  /// Resolves the effective generateContent endpoint and credential. When "Use Gemini via Proxy" is on and proxy base URL is set, returns proxy URL and nil credential; otherwise returns direct endpoint and given credential.
+  static func resolveGenerateContentEndpoint(directEndpoint: String, credential: GeminiCredential) -> (endpoint: String, credential: GeminiCredential?) {
+    let useProxy = UserDefaults.standard.bool(forKey: UserDefaultsKeys.useGeminiViaProxy)
+    let base = (UserDefaults.standard.string(forKey: UserDefaultsKeys.proxyAPIBaseURL) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    if useProxy, !base.isEmpty {
+      let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
+      return (trimmed + "/v1/gemini/generateContent", nil)
+    }
+    return (directEndpoint, credential)
   }
   
   // MARK: - Request Execution

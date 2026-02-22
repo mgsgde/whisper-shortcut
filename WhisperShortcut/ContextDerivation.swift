@@ -517,7 +517,8 @@ class ContextDerivation {
     voiceInstructionPrimary: Bool = false
   ) async throws -> String {
     let geminiClient = GeminiAPIClient()
-    var request = try geminiClient.createRequest(endpoint: analysisEndpoint, credential: credential)
+    let (endpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: analysisEndpoint, credential: credential)
+    var request = try geminiClient.createRequest(endpoint: endpoint, credential: resolvedCredential)
 
     var systemPrompt = systemPromptForFocus(focus)
     if voiceInstructionPrimary {

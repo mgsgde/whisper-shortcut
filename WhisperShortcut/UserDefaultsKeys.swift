@@ -64,5 +64,11 @@ enum UserDefaultsKeys {
   static let autoApplyImprovements = "autoApplyImprovements"
   static let lastAutoImprovementRunDate = "lastAutoImprovementRunDate"
   static let improveFromUsageAutoRunInterval = "improveFromUsageAutoRunInterval"
+  static let promptImprovementDictationCount = "promptImprovementDictationCount"
+  static let promptImprovementDictationThreshold = "promptImprovementDictationThreshold"
+
+  // MARK: - Proxy API (Phase 1 – latency testing)
+  static let proxyAPIBaseURL = "proxyAPIBaseURL"
+  static let useGeminiViaProxy = "useGeminiViaProxy"
 }
 
