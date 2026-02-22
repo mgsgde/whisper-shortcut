@@ -425,8 +425,8 @@ struct SettingsDefaults {
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini25FlashLite
-  static let selectedPromptModel = PromptModel.gemini25Flash
-  static let selectedPromptAndReadModel = PromptModel.gemini25Flash
+  static let selectedPromptModel = PromptModel.gemini3Flash
+  static let selectedPromptAndReadModel = PromptModel.gemini3Flash
   static let selectedImprovementModel = PromptModel.gemini3Flash
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
