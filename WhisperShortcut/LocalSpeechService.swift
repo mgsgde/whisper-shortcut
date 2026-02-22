@@ -111,11 +111,17 @@ actor LocalSpeechService {
     }
     
     // Transcribe using WhisperKit with DecodingOptions
-    // Configure options to skip special tokens and use specified language
-    var decodeOptions = DecodingOptions(skipSpecialTokens: true)
-    
+    // When language is nil we want auto-detect: must set detectLanguage: true explicitly,
+    // because DecodingOptions defaults detectLanguage to !usePrefillPrompt (false when prefill is true).
+    let decodeOptions: DecodingOptions
     if let language = language {
       decodeOptions = DecodingOptions(language: language, skipSpecialTokens: true)
+    } else {
+      decodeOptions = DecodingOptions(
+        language: nil,
+        detectLanguage: true,
+        skipSpecialTokens: true
+      )
     }
     
     // Use the correct API signature: audioPath: String, decodeOptions: DecodingOptions?
