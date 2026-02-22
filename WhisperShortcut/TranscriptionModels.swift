@@ -73,9 +73,9 @@ enum TranscriptionModel: String, CaseIterable {
 
   var isRecommended: Bool {
     switch self {
-    case .gemini20Flash, .whisperBase:
+    case .gemini25Flash, .whisperBase:
       return true
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium:
+    case .gemini20Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium:
       return false
     }
   }
@@ -464,7 +464,8 @@ struct GeminiChatResponse: Codable {
 
 // MARK: - Gemini TTS (Generative Language API generateContent)
 // Request/response for TTS via generativelanguage.googleapis.com; see https://ai.google.dev/gemini-api/docs/speech-generation
-// API expects camelCase in JSON (responseModalities, speechConfig, voiceConfig, prebuiltVoiceConfig, voiceName).
+// API expects camelCase in JSON. Official docs use contents + generationConfig only (no systemInstruction).
+// Style and literal reading are controlled via the text in contents (e.g. "Say the following: ...").
 struct GeminiTTSRequest: Codable {
   let contents: [GeminiTTSContent]
   let generationConfig: GeminiTTSGenerationConfig
