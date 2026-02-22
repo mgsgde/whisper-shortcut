@@ -5,6 +5,24 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WhisperShortcut – macOS menu bar transcription &amp; AI voice</title>
+  <meta name="description" content="WhisperShortcut – macOS menu bar app for real-time transcription and AI voice: Speech-to-Text, Speech-to-Prompt, Read Aloud, Prompt &amp; Read. Gemini and Whisper.">
+  <meta name="theme-color" content="#1a1a1a">
+  <link rel="icon" href="images/logo.png" type="image/png">
+  <link rel="apple-touch-icon" href="images/logo.png">
+  <link rel="canonical" href="https://mgsgde.github.io/whisper-shortcut/">
+  <!-- Open Graph -->
+  <meta property="og:title" content="WhisperShortcut – macOS menu bar transcription &amp; AI voice">
+  <meta property="og:description" content="macOS menu bar app for real-time transcription and AI voice: Speech-to-Text, Speech-to-Prompt, Read Aloud, Prompt &amp; Read. Gemini and Whisper.">
+  <meta property="og:image" content="https://mgsgde.github.io/whisper-shortcut/images/logo.png">
+  <meta property="og:url" content="https://mgsgde.github.io/whisper-shortcut/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="WhisperShortcut">
+  <meta property="og:locale" content="en">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="WhisperShortcut – macOS menu bar transcription &amp; AI voice">
+  <meta name="twitter:description" content="macOS menu bar app for real-time transcription and AI voice: Speech-to-Text, Speech-to-Prompt, Read Aloud, Prompt &amp; Read. Gemini and Whisper.">
+  <meta name="twitter:image" content="https://mgsgde.github.io/whisper-shortcut/images/logo.png">
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -87,56 +105,58 @@
 </head>
 
 <body>
-  <header class="header">
-    <img src="images/logo.png" width="64" height="64" alt="WhisperShortcut app icon">
-    <h1>WhisperShortcut</h1>
-  </header>
+  <main>
+    <header class="header">
+      <img src="images/logo.png" width="64" height="64" alt="WhisperShortcut app icon">
+      <h1>WhisperShortcut</h1>
+    </header>
 
-  <p>WhisperShortcut is a macOS menu bar application for real-time audio transcription and AI voice workflows.</p>
+    <p>WhisperShortcut is a macOS menu bar application for real-time audio transcription and AI voice workflows.</p>
 
-  <h2>Features</h2>
-  <ul>
-    <li><strong>Speech-to-Text</strong> – Transcribe with Google Gemini (cloud) or local Whisper (offline)</li>
-    <li><strong>Speech-to-Prompt</strong> – Modify clipboard text via voice and AI</li>
-    <li><strong>Read Aloud</strong> – Text-to-speech with AI voices</li>
-    <li><strong>Prompt &amp; Read</strong> – Combined AI processing and TTS</li>
-  </ul>
+    <h2>Features</h2>
+    <ul>
+      <li><strong>Speech-to-Text</strong> – Transcribe with Google Gemini (cloud) or local Whisper (offline)</li>
+      <li><strong>Speech-to-Prompt</strong> – Modify clipboard text via voice and AI</li>
+      <li><strong>Read Aloud</strong> – Text-to-speech with AI voices</li>
+      <li><strong>Prompt &amp; Read</strong> – Combined AI processing and TTS</li>
+    </ul>
 
-  <section class="screenshots">
-    <h2>Screenshots</h2>
-    <div class="screenshots-grid">
-      <figure>
-        <img src="images/speech-to-text.png" loading="lazy" alt="Speech-to-Text: transcribe with Gemini or Whisper">
-        <figcaption>Speech-to-Text</figcaption>
-      </figure>
-      <figure>
-        <img src="images/speech-to-prompt.png" loading="lazy" alt="Speech-to-Prompt: modify clipboard via voice and AI">
-        <figcaption>Speech-to-Prompt</figcaption>
-      </figure>
-      <figure>
-        <img src="images/powered-by-gemini.png" loading="lazy" alt="Powered by Gemini: cloud transcription and settings">
-        <figcaption>Powered by Gemini</figcaption>
-      </figure>
-      <figure>
-        <img src="images/powered-by-whisper.png" loading="lazy" alt="Powered by Whisper: offline models and privacy">
-        <figcaption>Powered by Whisper</figcaption>
-      </figure>
-      <figure>
-        <img src="images/open-source.png" loading="lazy" alt="Open source on GitHub">
-        <figcaption>Open source</figcaption>
-      </figure>
-    </div>
-  </section>
+    <section class="screenshots">
+      <h2>Screenshots</h2>
+      <div class="screenshots-grid">
+        <figure>
+          <img src="images/speech-to-text.png" loading="lazy" alt="Speech-to-Text: transcribe with Gemini or Whisper">
+          <figcaption>Speech-to-Text</figcaption>
+        </figure>
+        <figure>
+          <img src="images/speech-to-prompt.png" loading="lazy" alt="Speech-to-Prompt: modify clipboard via voice and AI">
+          <figcaption>Speech-to-Prompt</figcaption>
+        </figure>
+        <figure>
+          <img src="images/powered-by-gemini.png" loading="lazy" alt="Powered by Gemini: cloud transcription and settings">
+          <figcaption>Powered by Gemini</figcaption>
+        </figure>
+        <figure>
+          <img src="images/powered-by-whisper.png" loading="lazy" alt="Powered by Whisper: offline models and privacy">
+          <figcaption>Powered by Whisper</figcaption>
+        </figure>
+        <figure>
+          <img src="images/open-source.png" loading="lazy" alt="Open source on GitHub">
+          <figcaption>Open source</figcaption>
+        </figure>
+      </div>
+    </section>
 
-  <h2>Why we use Google</h2>
-  <p>Cloud features (transcription, AI prompting, text-to-speech) use Google’s Gemini API. You can either enter your own
-    API key or sign in with your Google account so the app can request access to Gemini on your behalf. We use your data
-    only to provide these features and do not sell or share it with third parties.</p>
+    <h2>Why we use Google</h2>
+    <p>Cloud features (transcription, AI prompting, text-to-speech) use Google’s Gemini API. You can either enter your own
+      API key or sign in with your Google account so the app can request access to Gemini on your behalf. We use your data
+      only to provide these features and do not sell or share it with third parties.</p>
 
-  <p><a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Service</a></p>
+    <p><a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Service</a></p>
 
-  <p class="meta">Source and support: <a
-      href="https://github.com/mgsgde/whisper-shortcut">github.com/mgsgde/whisper-shortcut</a></p>
+    <p class="meta">Source and support: <a
+        href="https://github.com/mgsgde/whisper-shortcut">github.com/mgsgde/whisper-shortcut</a></p>
+  </main>
 </body>
 
 </html>
