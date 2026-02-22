@@ -40,10 +40,11 @@ enum AppState {
   case idle
   case recording(RecordingMode)
   case processing(ProcessingMode)
-  case playback(PlaybackMode)
   case feedback(FeedbackMode)
 }
 ```
+
+(TTS playback is not a separate state; the app remains in `processing` or transitions to `feedback`/`idle`.)
 
 **Critical**: Always transition through AppState - never manipulate UI or state directly.
 

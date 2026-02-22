@@ -367,4 +367,30 @@ struct SpeechErrorFormatter {
     return "Error"
   }
 
+  // MARK: - Popup title and body (avoids showing title twice)
+
+  /// Returns (shortTitle, body) for popup display. For TranscriptionError, body is the formatted message with the short title stripped from the start.
+  static func titleAndBodyForPopup(_ error: TranscriptionError) -> (shortTitle: String, body: String) {
+    let shortTitle = shortStatus(error)
+    let formattedMessage = format(error)
+    let trimmedFormatted = formattedMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+    let titleToRemove = shortTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmedFormatted.hasPrefix(titleToRemove) {
+      let titleLength = titleToRemove.count
+      let afterTitle = trimmedFormatted.dropFirst(titleLength)
+      var body = String(afterTitle).trimmingCharacters(in: .whitespacesAndNewlines)
+      if body.isEmpty { body = trimmedFormatted }
+      return (shortTitle, body)
+    }
+    return (shortTitle, trimmedFormatted)
+  }
+
+  /// Returns (shortTitle, body) for popup display for any error.
+  static func titleAndBodyForPopupForUser(_ error: Error) -> (shortTitle: String, body: String) {
+    if let te = error as? TranscriptionError {
+      return titleAndBodyForPopup(te)
+    }
+    return (shortStatusForUser(error), formatForUser(error))
+  }
+
 }

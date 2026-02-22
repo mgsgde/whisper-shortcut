@@ -10,7 +10,7 @@ alwaysApply: true
 
 ## 🏗️ Architecture (Summary)
 
-- **State machine**: Single source of truth is `AppState` in `AppState.swift` (`idle`, `recording`, `processing`, `playback`, `feedback`). Always transition via AppState; never manipulate UI or flags directly.
+- **State machine**: Single source of truth is `AppState` in `AppState.swift` (`idle`, `recording`, `processing`, `feedback`). Always transition via AppState; never manipulate UI or flags directly.
 - **Orchestration**: `MenuBarController` owns services and shortcuts; `SpeechService` holds the main logic (transcribe, executePrompt, executePromptWithVoiceResponse).
 - **Core services**: AudioRecorder, TTSService, AudioPlaybackService, ClipboardManager, KeychainManager, AudioChunkingService.
 - **Patterns**: Use `DebugLogger` only (no `print`/`NSLog`/`os_log`). UI updates on main thread (MainActor). Support cancellation in async work (`Task.checkCancellation()`, cancel methods). Typed errors + `SpeechErrorFormatter` for user messages.

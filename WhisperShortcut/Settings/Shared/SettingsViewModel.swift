@@ -24,6 +24,12 @@ class SettingsViewModel: ObservableObject {
   
 
   // MARK: - Data Loading
+
+  /// Loads a string from UserDefaults or returns the default.
+  private func loadString(key: String, default defaultValue: String) -> String {
+    UserDefaults.standard.string(forKey: key) ?? defaultValue
+  }
+
   private func loadCurrentSettings() {
     // Load toggle shortcuts configuration
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
@@ -63,8 +69,7 @@ class SettingsViewModel: ObservableObject {
     }
 
     // Load custom prompt (with fallback to default)
-    data.customPromptText = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) 
-      ?? AppConstants.defaultTranscriptionSystemPrompt
+    data.customPromptText = loadString(key: UserDefaultsKeys.customPromptText, default: AppConstants.defaultTranscriptionSystemPrompt)
 
     // Load Whisper language setting
     if let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage),
@@ -76,8 +81,7 @@ class SettingsViewModel: ObservableObject {
     }
 
     // Load prompt mode system prompt (with fallback to default)
-    data.promptModeSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)
-      ?? AppConstants.defaultPromptModeSystemPrompt
+    data.promptModeSystemPrompt = loadString(key: UserDefaultsKeys.promptModeSystemPrompt, default: AppConstants.defaultPromptModeSystemPrompt)
 
     // Load read aloud voice setting (with migration from legacy key)
     if let savedVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoice) {
@@ -132,8 +136,7 @@ class SettingsViewModel: ObservableObject {
     }
 
     // Load Prompt & Read system prompt (with fallback to default)
-    data.promptAndReadSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
-      ?? AppConstants.defaultPromptAndReadSystemPrompt
+    data.promptAndReadSystemPrompt = loadString(key: UserDefaultsKeys.promptAndReadSystemPrompt, default: AppConstants.defaultPromptAndReadSystemPrompt)
 
     // Load Prompt & Read voice (with migration from Read Aloud voice if not set)
     if let savedPromptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice),

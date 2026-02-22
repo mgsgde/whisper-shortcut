@@ -388,14 +388,7 @@ class MenuBarController: NSObject {
     }()
     if isTranscriptionProcessing {
       speechService.cancelTranscription()
-      // Clean up the audio file immediately to prevent race conditions
-      if let audioURL = currentTranscriptionAudioURL {
-        cleanupAudioFile(at: audioURL)
-        currentTranscriptionAudioURL = nil
-        processedAudioURLs.remove(audioURL)
-      }
-      PopupNotificationWindow.dismissProcessing()
-      appState = appState.finish()
+      transitionToIdleAndCleanup(cleanupAudioURL: currentTranscriptionAudioURL)
       // No notification shown - user initiated the cancellation
       return
     }
@@ -424,11 +417,7 @@ class MenuBarController: NSObject {
     // Check if currently processing prompt - if so, cancel it
     if case .processing(.prompting) = appState {
       speechService.cancelPrompt()
-      // Clean up the audio file immediately to prevent race conditions
-      // Note: For prompting, we don't track the URL separately, but we should still clean up
-      // The processedAudioURLs set will prevent duplicate processing
-      PopupNotificationWindow.dismissProcessing()
-      appState = appState.finish()
+      transitionToIdleAndCleanup()
       // No notification shown - user initiated the cancellation
       return
     }
@@ -660,8 +649,7 @@ class MenuBarController: NSObject {
     if isTTSRunning {
       speechService.cancelTTS()
       stopTTSPlayback()
-      PopupNotificationWindow.dismissProcessing()
-      appState = appState.finish()
+      transitionToIdleAndCleanup()
       // No notification shown - user initiated the cancellation
       return
     }
@@ -714,8 +702,7 @@ class MenuBarController: NSObject {
     if isTTSRunning {
       speechService.cancelTTS()
       stopTTSPlayback()
-      PopupNotificationWindow.dismissProcessing()
-      appState = appState.finish()
+      transitionToIdleAndCleanup()
       // No notification shown - user initiated the cancellation
       return
     }
@@ -747,8 +734,7 @@ class MenuBarController: NSObject {
       } catch is CancellationError {
         DebugLogger.log("CANCELLATION: TTS task was cancelled")
         await MainActor.run {
-          PopupNotificationWindow.dismissProcessing()
-          if self.appState != .idle { self.appState = self.appState.finish() }
+          self.transitionToIdleAndCleanup()
         }
       } catch {
         DebugLogger.logError("TTS-ERROR: Failed to generate speech: \(error.localizedDescription)")
@@ -770,11 +756,7 @@ class MenuBarController: NSObject {
           shortTitle = SpeechErrorFormatter.shortStatusForUser(error)
         }
         await MainActor.run {
-          PopupNotificationWindow.dismissProcessing()
-          if self.appState != .idle {
-            self.appState = self.appState.showError(shortTitle)
-            PopupNotificationWindow.showError(userMessage, title: "TTS Error")
-          }
+          self.presentError(shortTitle: shortTitle, message: userMessage, dismissProcessingFirst: true)
         }
       }
     }
@@ -887,21 +869,15 @@ class MenuBarController: NSObject {
     } catch is CancellationError {
       DebugLogger.log("CANCELLATION: TTS task was cancelled")
       await MainActor.run {
-        PopupNotificationWindow.dismissProcessing()
-        if self.appState != .idle { self.appState = self.appState.finish() }
+        self.transitionToIdleAndCleanup(cleanupAudioURL: audioURL)
       }
-      cleanupAudioFile(at: audioURL)
     } catch {
       DebugLogger.logError("TTS-ERROR: Failed to process TTS request: \(error.localizedDescription)")
       if let transcriptionError = error as? TranscriptionError {
         DebugLogger.logError("TTS-ERROR: TranscriptionError type: \(transcriptionError)")
       }
       await MainActor.run {
-        PopupNotificationWindow.dismissProcessing()
-        if self.appState != .idle {
-          self.appState = self.appState.showError(SpeechErrorFormatter.shortStatusForUser(error))
-          PopupNotificationWindow.showError(SpeechErrorFormatter.formatForUser(error), title: "TTS Error")
-        }
+        self.presentError(shortTitle: SpeechErrorFormatter.shortStatusForUser(error), message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: true)
       }
       cleanupAudioFile(at: audioURL)
     }
@@ -1047,8 +1023,7 @@ class MenuBarController: NSObject {
       
     } catch {
       DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.localizedDescription)")
-      appState = appState.showError(SpeechErrorFormatter.shortStatusForUser(error))
-      PopupNotificationWindow.showError(SpeechErrorFormatter.formatForUser(error), title: "Playback Error")
+      presentError(shortTitle: SpeechErrorFormatter.shortStatusForUser(error), message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
       currentTTSAudioURL = nil
       audioEngine = nil
       audioPlayerNode = nil
@@ -1092,41 +1067,19 @@ class MenuBarController: NSObject {
       // Log error to file (replaces CrashLogger)
       DebugLogger.logError(error, context: "Processing error for \(mode)", state: self.appState)
 
-      var errorMessage: String
-      let shortTitle: String
+      let (shortTitle, errorMessage): (String, String)
       let transcriptionError: TranscriptionError?
 
       if let error = error as? TranscriptionError {
         transcriptionError = error
-        let formattedMessage = SpeechErrorFormatter.format(error)
-        shortTitle = SpeechErrorFormatter.shortStatus(error)
-        
-        // Remove the title/header from the formatted message if it contains the shortTitle
-        // This prevents showing the title twice (once in titleLabel, once in text)
-        let trimmedFormatted = formattedMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-        let titleToRemove = shortTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Check if the formatted message starts with the title (after trimming whitespace)
-        if trimmedFormatted.hasPrefix(titleToRemove) {
-          // Find the position after the title
-          let titleLength = titleToRemove.count
-          let afterTitle = trimmedFormatted.dropFirst(titleLength)
-          
-          // Skip any whitespace and newlines after the title, then get the rest
-          errorMessage = String(afterTitle).trimmingCharacters(in: .whitespacesAndNewlines)
-          
-          // If we ended up with nothing, fall back to the original
-          if errorMessage.isEmpty {
-            errorMessage = formattedMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-          }
-        } else {
-          errorMessage = formattedMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
+        let pair = SpeechErrorFormatter.titleAndBodyForPopup(error)
+        shortTitle = pair.shortTitle
+        errorMessage = pair.body
       } else {
         transcriptionError = nil
         let operationName = mode == .transcription ? "Transcription" : "Prompt"
-        errorMessage = SpeechErrorFormatter.formatForUser(error)
         shortTitle = "\(operationName) Error"
+        errorMessage = SpeechErrorFormatter.formatForUser(error)
       }
 
       // Copy error message to clipboard
@@ -1158,11 +1111,8 @@ class MenuBarController: NSObject {
         self.cleanupAudioFile(at: audioURL)
       }
       
-      // Set error state
-      self.appState = self.appState.showError(errorMessage)
-      
-      // Show error popup notification with retry option if applicable
-      PopupNotificationWindow.showError(errorMessage, title: shortTitle, retryAction: retryAction, dismissAction: dismissAction)
+      // Present error (state + popup with optional retry/dismiss); processing already dismissed above
+      self.presentError(shortTitle: shortTitle, message: errorMessage, dismissProcessingFirst: false, retryAction: retryAction, dismissAction: dismissAction)
       
       // Clean up non-retryable errors immediately
       if !isRetryable {
@@ -1211,18 +1161,8 @@ class MenuBarController: NSObject {
       // Task was cancelled - just cleanup and return to idle
       DebugLogger.log("CANCELLATION: Transcription task was cancelled")
       await MainActor.run {
-        // Dismiss any processing popup
-        PopupNotificationWindow.dismissProcessing()
-        self.appState = self.appState.finish()
-        // Clear chunk statuses and tracking on cancellation
-        self.chunkStatuses = []
-        if self.currentTranscriptionAudioURL == audioURL {
-          self.currentTranscriptionAudioURL = nil
-        }
-        self.processedAudioURLs.remove(audioURL)
+        self.transitionToIdleAndCleanup(cleanupAudioURL: audioURL, clearChunkStatuses: true)
       }
-      // Cleanup on cancellation
-      cleanupAudioFile(at: audioURL)
     } catch {
       await handleProcessingError(error: error, audioURL: audioURL, mode: .transcription)
       // Clear chunk statuses and tracking on error (file will be cleaned up in handleProcessingError if needed)
@@ -1321,6 +1261,23 @@ class MenuBarController: NSObject {
   }
 
   // MARK: - Utility
+
+  /// Dismisses processing popup, optionally cleans up one audio URL and chunk statuses, then transitions to idle.
+  private func transitionToIdleAndCleanup(cleanupAudioURL: URL? = nil, clearChunkStatuses: Bool = false) {
+    PopupNotificationWindow.dismissProcessing()
+    if clearChunkStatuses {
+      chunkStatuses = []
+    }
+    if let url = cleanupAudioURL {
+      if currentTranscriptionAudioURL == url {
+        currentTranscriptionAudioURL = nil
+      }
+      cleanupAudioFile(at: url)
+      processedAudioURLs.remove(url)
+    }
+    appState = appState.finish()
+  }
+
   /// Safely removes an audio file, logging any errors
   private func cleanupAudioFile(at url: URL?) {
     guard let url = url else { return }
@@ -1484,8 +1441,7 @@ extension MenuBarController: AudioRecorderDelegate {
     let errorCode = (error as NSError).code
     let errorDomain = (error as NSError).domain
     DebugLogger.logDebug("audioRecorderDidFailWithError called - errorCode: \(errorCode), errorDomain: \(errorDomain), errorDescription: \(error.localizedDescription), appState: \(appState), isEmptyFileError: \(errorCode == 1004)")
-    appState = appState.showError(SpeechErrorFormatter.shortStatusForUser(error))
-    PopupNotificationWindow.showError(SpeechErrorFormatter.formatForUser(error), title: "Recording Error")
+    presentError(shortTitle: "Recording Error", message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
   }
 }
 
@@ -1499,8 +1455,7 @@ extension MenuBarController: ShortcutDelegate {
     if isTTSRunning {
       speechService.cancelTTS()
       stopTTSPlayback()
-      PopupNotificationWindow.dismissProcessing()
-      appState = appState.finish()
+      transitionToIdleAndCleanup()
       // No notification shown - user initiated the cancellation
       return
     }
