@@ -69,7 +69,7 @@ class AutoPromptImprovementScheduler {
     }
     guard GeminiCredentialProvider.shared.hasCredential() else {
       PopupNotificationWindow.showError(
-        "Sign in with Google or add an API key in the General tab to use Smart Improvement.",
+        "Add an API key in the General tab to use Smart Improvement.",
         title: "Smart Improvement"
       )
       return

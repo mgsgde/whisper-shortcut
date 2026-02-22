@@ -86,7 +86,7 @@ class ChunkTranscriptionService {
     /// Transcribe an audio file using chunking if needed.
     /// - Parameters:
     ///   - fileURL: URL of the audio file
-    ///   - credential: Gemini API credential (API key or OAuth)
+    ///   - credential: Gemini API credential (API key)
     ///   - model: Transcription model to use
     ///   - prompt: Custom transcription prompt
     /// - Returns: Transcribed text

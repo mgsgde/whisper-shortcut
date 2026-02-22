@@ -1,10 +1,9 @@
 import Foundation
 
 // MARK: - Gemini Credential
-/// Authentication for Gemini API: API key (query param) or OAuth (Bearer token).
+/// Authentication for Gemini API: API key (query param).
 enum GeminiCredential {
   case apiKey(String)
-  case oauth(accessToken: String)
 }
 
 // MARK: - Gemini Error Response Models
@@ -71,7 +70,7 @@ class GeminiAPIClient {
   }
   
   // MARK: - Request Creation
-  /// Creates a URLRequest for Gemini API with credential (API key or OAuth Bearer).
+  /// Creates a URLRequest for Gemini API with credential (API key).
   func createRequest(endpoint: String, credential: GeminiCredential) throws -> URLRequest {
     guard let baseURL = URL(string: endpoint),
           var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
@@ -81,8 +80,6 @@ class GeminiAPIClient {
     switch credential {
     case .apiKey(let key):
       components.queryItems = [URLQueryItem(name: "key", value: key)]
-    case .oauth:
-      break
     }
 
     guard let url = components.url else {
@@ -93,11 +90,6 @@ class GeminiAPIClient {
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.timeoutInterval = Constants.resourceTimeout
-
-    if case .oauth(let accessToken) = credential {
-      request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-    }
-
     return request
   }
 
@@ -361,8 +353,6 @@ class GeminiAPIClient {
     switch credential {
     case .apiKey(let key):
       components.queryItems = [URLQueryItem(name: "key", value: key)]
-    case .oauth:
-      break
     }
 
     guard let initURL = components.url else {
@@ -370,9 +360,6 @@ class GeminiAPIClient {
     }
 
     var initRequest = URLRequest(url: initURL)
-    if case .oauth(let accessToken) = credential {
-      initRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-    }
     initRequest.httpMethod = "POST"
     initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
     initRequest.setValue("resumable", forHTTPHeaderField: "X-Goog-Upload-Protocol")

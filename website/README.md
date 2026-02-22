@@ -1,6 +1,6 @@
 # WhisperShortcut website
 
-This folder contains the **public app website** (homepage, privacy policy, terms of service, screenshots) and the **App Store screenshot generation** tooling. The site is intended for GitHub Pages or a custom domain (e.g. OAuth consent screen verification). Project documentation (Markdown) lives in the repo’s `docs/` folder.
+This folder contains the **public app website** (homepage, privacy policy, terms of service, screenshots) and the **App Store screenshot generation** tooling. The site is intended for GitHub Pages or a custom domain (e.g. app homepage). Project documentation (Markdown) lives in the repo’s `docs/` folder.
 
 ## Preview the website
 

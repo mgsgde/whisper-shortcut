@@ -711,15 +711,12 @@ class SpeechService {
     let apiStartTime = CFAbsoluteTimeGetCurrent()
 
     guard let credential = await credentialProvider.getCredential() else {
-      DebugLogger.log("GEMINI-TRANSCRIPTION: ERROR - No Gemini credential (sign in with Google or set API key)")
+      DebugLogger.log("GEMINI-TRANSCRIPTION: ERROR - No Gemini credential (set API key in Settings)")
       throw TranscriptionError.noGoogleAPIKey
     }
 
-    switch credential {
-    case .apiKey(let key):
+    if case .apiKey(let key) = credential {
       DebugLogger.log("GEMINI-TRANSCRIPTION: Using API key (prefix: \(key.prefix(8))..., length: \(key.count) chars)")
-    case .oauth:
-      DebugLogger.log("GEMINI-TRANSCRIPTION: Using OAuth Bearer token")
     }
 
     // Only validate format, not size - Gemini handles large files via:

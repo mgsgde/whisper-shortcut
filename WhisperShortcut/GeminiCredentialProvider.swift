@@ -1,42 +1,30 @@
 import Foundation
 
-/// Provides the current credential for Gemini API (API key if set, else OAuth when signed in).
-/// Single source of truth for "which credential to use" so all Gemini callers stay in sync.
+/// Provides the current credential for Gemini API (API key from Keychain).
+/// Single source of truth so all Gemini callers stay in sync.
 protocol GeminiCredentialProviding {
-  /// Returns a valid credential if the user can call Gemini; nil otherwise.
-  /// Refreshes OAuth token if expired.
+  /// Returns a valid credential if the user has set an API key; nil otherwise.
   func getCredential() async -> GeminiCredential?
-  /// Returns true if either OAuth is signed in or a non-empty API key is stored.
+  /// Returns true if a non-empty API key is stored.
   func hasCredential() -> Bool
 }
 
-/// Default implementation: API key takes precedence over OAuth when both are available.
+/// Default implementation: API key from Keychain only.
 final class GeminiCredentialProvider: GeminiCredentialProviding {
-  static let shared = GeminiCredentialProvider(googleAuthService: StubGoogleAuthService.shared)
+  static let shared = GeminiCredentialProvider(keychainManager: KeychainManager.shared)
 
   private let keychainManager: KeychainManaging
-  private weak var googleAuthService: GoogleAuthService?
 
-  init(
-    keychainManager: KeychainManaging = KeychainManager.shared,
-    googleAuthService: GoogleAuthService? = nil
-  ) {
+  init(keychainManager: KeychainManaging = KeychainManager.shared) {
     self.keychainManager = keychainManager
-    self.googleAuthService = googleAuthService
   }
 
   func getCredential() async -> GeminiCredential? {
-    if let key = keychainManager.getGoogleAPIKey(), !key.isEmpty {
-      return .apiKey(key)
-    }
-    if let auth = googleAuthService, let token = await auth.currentAccessToken() {
-      return .oauth(accessToken: token)
-    }
-    return nil
+    guard let key = keychainManager.getGoogleAPIKey(), !key.isEmpty else { return nil }
+    return .apiKey(key)
   }
 
   func hasCredential() -> Bool {
-    if googleAuthService?.isSignedIn() == true { return true }
-    return keychainManager.hasValidGoogleAPIKey()
+    keychainManager.hasValidGoogleAPIKey()
   }
 }

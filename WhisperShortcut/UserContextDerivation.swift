@@ -39,7 +39,7 @@ class UserContextDerivation {
   // MARK: - Main Entry Point
 
   /// Analyzes interaction logs and derives the output for the given focus (one section only).
-  /// Throws if no Gemini credential (sign in or API key) or if the Gemini request fails.
+  /// Throws if no Gemini credential (API key) or if the Gemini request fails.
   func updateFromLogs(focus: GenerationKind) async throws {
     guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey

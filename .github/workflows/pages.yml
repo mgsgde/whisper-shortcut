@@ -1,4 +1,4 @@
-# Deploy website/ to GitHub Pages (e.g. for OAuth consent screen / custom domain).
+# Deploy website/ to GitHub Pages (e.g. for custom domain).
 # In repo Settings → Pages → Build and deployment → Source: GitHub Actions.
 
 name: Deploy GitHub Pages

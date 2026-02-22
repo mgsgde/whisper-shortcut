@@ -1,5 +1,9 @@
 # Plan: OAuth2 / Google Sign-In as Alternative to API Key
 
+**Superseded:** OAuth / Sign in with Google was removed. The app now uses API key only for Gemini. This document is kept for historical reference.
+
+---
+
 **Goal:** Let non-technical users use WhisperShortcut without entering a Google API key by signing in with their Google account. API key remains supported for users who prefer it.
 
 **Scope:** Gemini API only (transcription, Speech-to-Prompt, Read Aloud, Prompt & Read). No changes to Whisper/local or other non-Gemini flows.

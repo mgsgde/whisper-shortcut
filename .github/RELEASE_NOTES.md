@@ -8,7 +8,7 @@ Download the latest release from [GitHub Releases](https://github.com/mgsgde/whi
 
 ### New Features
 
-- **Google Sign-In**: Sign in with your Google account to use Gemini for transcription and AI features. API key is still supported and takes precedence when set. OAuth tokens are stored securely and refreshed automatically; Terms of Service and OAuth consent info are in the docs.
+_(None in this release.)_
 
 ### Improvements
 
@@ -21,7 +21,7 @@ Download the latest release from [GitHub Releases](https://github.com/mgsgde/whi
 
 ### Fixes
 
-- **Gemini without API key**: When Gemini is selected but no API key (or Google sign-in) is set, the app no longer silently falls back to Whisper; behavior is explicit.
+- **Gemini without API key**: When Gemini is selected but no API key is set, the app no longer silently falls back to Whisper; behavior is explicit.
 - **PromptModelSelectionView**: Removed model-initialization note (not relevant for Gemini).
 
 ## Full Changelog

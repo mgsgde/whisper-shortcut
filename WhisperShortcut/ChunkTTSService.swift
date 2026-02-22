@@ -64,7 +64,7 @@ class ChunkTTSService {
     /// - Parameters:
     ///   - text: The text to synthesize
     ///   - voiceName: Voice name to use
-    ///   - credential: Gemini API credential (API key or OAuth)
+    ///   - credential: Gemini API credential (API key)
     ///   - model: TTS model to use
     /// - Returns: Synthesized audio data
     func synthesize(
