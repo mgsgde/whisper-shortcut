@@ -53,14 +53,20 @@ enum AppState: Equatable {
 
   // MARK: - Processing States
   enum ProcessingMode: Equatable {
+    /// Context for chunked processing (splitting/processingChunks/merging) so UI can tell TTS from transcription.
+    enum ChunkContext: Equatable {
+      case transcription
+      case tts
+    }
+
     case transcribing
     case prompting
     case ttsProcessing
 
-    // Chunking-specific states for long audio
-    case splitting                                        // Splitting audio into chunks
-    case processingChunks(statuses: [ChunkStatus])        // Per-chunk status tracking
-    case merging                                          // Merging transcription results
+    // Chunking-specific states for long audio (optional context: TTS vs transcription)
+    case splitting(context: ChunkContext = .transcription)
+    case processingChunks(statuses: [ChunkStatus], context: ChunkContext = .transcription)
+    case merging(context: ChunkContext = .transcription)
 
     var icon: String {
       switch self {
@@ -70,25 +76,43 @@ enum AppState: Equatable {
       }
     }
 
+    /// True when this processing mode is part of TTS flow (ttsProcessing or chunk phase with TTS context).
+    var isTTSContext: Bool {
+      switch self {
+      case .ttsProcessing: return true
+      case .splitting(let ctx), .processingChunks(_, let ctx), .merging(let ctx): return ctx == .tts
+      default: return false
+      }
+    }
+
+    /// Current chunk context when in splitting/processingChunks/merging (or .tts when in ttsProcessing). Used to preserve context when updating state.
+    var chunkContext: ChunkContext {
+      switch self {
+      case .ttsProcessing: return .tts
+      case .splitting(let ctx), .processingChunks(_, let ctx), .merging(let ctx): return ctx
+      default: return .transcription
+      }
+    }
+
     var shouldBlink: Bool { return true }
 
     // Computed properties for chunk status
     var completedCount: Int {
-      if case .processingChunks(let statuses) = self {
+      if case .processingChunks(let statuses, _) = self {
         return statuses.filter { $0 == .completed }.count
       }
       return 0
     }
 
     var activeCount: Int {
-      if case .processingChunks(let statuses) = self {
+      if case .processingChunks(let statuses, _) = self {
         return statuses.filter { $0 == .active }.count
       }
       return 0
     }
 
     var totalCount: Int {
-      if case .processingChunks(let statuses) = self {
+      if case .processingChunks(let statuses, _) = self {
         return statuses.count
       }
       return 0
@@ -100,7 +124,7 @@ enum AppState: Equatable {
       case .prompting: return "⏳ Processing AI prompt..."
       case .ttsProcessing: return "⏳ Processing text-to-speech..."
       case .splitting: return "✂️ Splitting audio into chunks..."
-      case .processingChunks(let statuses):
+      case .processingChunks(let statuses, _):
         let active = statuses.filter { $0 == .active }.count
         let done = statuses.filter { $0 == .completed }.count
         return "⏳ \(active) processing, \(done)/\(statuses.count) done"
@@ -114,7 +138,7 @@ enum AppState: Equatable {
       case .prompting: return "Processing AI prompt... Please wait"
       case .ttsProcessing: return "Processing text-to-speech... Please wait"
       case .splitting: return "Audio is long - splitting into chunks for processing..."
-      case .processingChunks(let statuses):
+      case .processingChunks(let statuses, _):
         let active = statuses.filter { $0 == .active }.count
         let done = statuses.filter { $0 == .completed }.count
         return "Transcribing [\(done)/\(statuses.count)] - \(active) active"
@@ -260,13 +284,8 @@ extension AppState {
     return .feedback(.error(message))
   }
 
-  /// Return to idle state
+  /// Return to idle state (use for completion, cancel, or error recovery).
   func finish() -> AppState {
-    return .idle
-  }
-
-  /// Force return to idle (for error recovery)
-  func reset() -> AppState {
     return .idle
   }
 }
@@ -319,7 +338,7 @@ extension AppState.ProcessingMode: CustomStringConvertible {
     case .prompting: return "prompting"
     case .ttsProcessing: return "ttsProcessing"
     case .splitting: return "splitting"
-    case .processingChunks(let statuses):
+    case .processingChunks(let statuses, _):
       let active = statuses.filter { $0 == .active }.count
       let done = statuses.filter { $0 == .completed }.count
       return "processingChunks(\(done)/\(statuses.count), \(active) active)"

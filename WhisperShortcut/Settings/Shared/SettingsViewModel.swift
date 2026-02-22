@@ -467,7 +467,7 @@ class SettingsViewModel: ObservableObject {
       DebugLogger.logError("LAUNCH: Failed to toggle launch at login: \(error.localizedDescription)")
       // Revert state on error
       data.launchAtLogin = SMAppService.mainApp.status == .enabled
-      showError("Failed to update Launch at Login setting: \(error.localizedDescription)")
+      showError("Failed to update Launch at Login setting: \(SpeechErrorFormatter.formatForUser(error))")
     }
   }
 

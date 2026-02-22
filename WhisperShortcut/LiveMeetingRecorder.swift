@@ -26,7 +26,6 @@ class LiveMeetingRecorder: NSObject {
     static let bitDepth = 16
     static let errorDomain = "LiveMeetingRecorder"
     static let permissionDeniedCode = 2001
-    static let recordingFailedCode = 2002
   }
   
   // MARK: - Properties
@@ -167,11 +166,7 @@ class LiveMeetingRecorder: NSObject {
     
     let success = recorder.record()
     if !success {
-      throw NSError(
-        domain: Constants.errorDomain,
-        code: Constants.recordingFailedCode,
-        userInfo: [NSLocalizedDescriptionKey: "Failed to start recording"]
-      )
+      throw LiveMeetingRecorderError.recordingFailed(reason: "Failed to start recording")
     }
     
     DebugLogger.logAudio("LIVE-MEETING: Started recording chunk \(chunkIndex) with recorder \(isRecorderA ? "A" : "B")")

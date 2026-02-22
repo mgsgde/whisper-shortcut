@@ -345,4 +345,26 @@ struct SpeechErrorFormatter {
     }
   }
 
+  // MARK: - Generic Error (any Error)
+
+  /// Format any error for user display. Uses TranscriptionError formatting when available; otherwise returns a sanitized message.
+  static func formatForUser(_ error: Error) -> String {
+    if let transcriptionError = error as? TranscriptionError {
+      return format(transcriptionError)
+    }
+    let message = error.localizedDescription
+    if message.isEmpty {
+      return "An error occurred. Please try again."
+    }
+    return message
+  }
+
+  /// Short status for any error (menu bar / popup title). Uses TranscriptionError when available; otherwise returns a generic title.
+  static func shortStatusForUser(_ error: Error) -> String {
+    if let transcriptionError = error as? TranscriptionError {
+      return shortStatus(transcriptionError)
+    }
+    return "Error"
+  }
+
 }

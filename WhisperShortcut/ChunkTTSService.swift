@@ -15,7 +15,7 @@ enum ChunkedTTSError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .chunkingFailed(let error):
-            return "Failed to chunk text: \(error.localizedDescription)"
+            return ChunkFailureMessage.message(context: "text", error: error)
         case .allChunksFailed(let errors):
             return "All \(errors.count) chunks failed to synthesize"
         }
@@ -357,12 +357,6 @@ class ChunkTTSService {
 }
 
 // MARK: - Helper Types
-
-/// Wrapper error to track which chunk failed.
-private struct ChunkError: Error {
-    let index: Int
-    let error: Error
-}
 
 /// Actor for thread-safe accumulation of TTS results.
 private actor ResultAccumulator {

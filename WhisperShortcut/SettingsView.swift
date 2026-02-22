@@ -144,14 +144,13 @@ struct SettingsView: View {
     }
   }
 
+  @MainActor
   private func setupWindow() {
-    DispatchQueue.main.async {
-      NSApp.activate(ignoringOtherApps: true)
-      if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
-        window.makeKeyAndOrderFront(nil)
-      }
-      focusedField = .googleAPIKey
+    NSApp.activate(ignoringOtherApps: true)
+    if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
+      window.makeKeyAndOrderFront(nil)
     }
+    focusedField = .googleAPIKey
   }
 
   private func setupFloatingWindow() {

@@ -335,7 +335,7 @@ struct SpeechToTextSettingsTab: View {
         }
       } catch {
         await MainActor.run {
-          viewModel.showError("Failed to download \(modelType.displayName): \(error.localizedDescription)")
+          viewModel.showError("Failed to download \(modelType.displayName): \(SpeechErrorFormatter.formatForUser(error))")
           DebugLogger.logError("OFFLINE-UI: Failed to download \(modelType.displayName): \(error.localizedDescription)")
         }
       }
@@ -349,7 +349,7 @@ struct SpeechToTextSettingsTab: View {
       // Trigger view update to show new model status
       refreshTrigger = UUID()
     } catch {
-      viewModel.showError("Failed to delete \(modelType.displayName): \(error.localizedDescription)")
+      viewModel.showError("Failed to delete \(modelType.displayName): \(SpeechErrorFormatter.formatForUser(error))")
       DebugLogger.logError("OFFLINE-UI: Failed to delete \(modelType.displayName): \(error.localizedDescription)")
     }
   }

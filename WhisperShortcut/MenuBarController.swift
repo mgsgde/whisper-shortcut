@@ -21,7 +21,7 @@ class MenuBarController: NSObject {
       if case .feedback(let feedbackMode) = appState {
         DispatchQueue.main.asyncAfter(deadline: .now() + feedbackMode.duration) {
           if case .feedback = self.appState {  // Only reset if still in feedback state
-            self.appState = .idle
+            self.appState = self.appState.finish()
           }
         }
       }
@@ -53,26 +53,24 @@ class MenuBarController: NSObject {
 
   // MARK: - Chunk Progress Tracking
   private var chunkStatuses: [ChunkStatus] = []
-  private var isProcessingTTS: Bool = false
 
   // MARK: - Live Meeting State
   private var liveMeetingRecorder: LiveMeetingRecorder?
-  private var isLiveMeetingActive: Bool = false
   private var liveMeetingStopping: Bool = false
   private var liveMeetingTranscriptURL: URL?
   private var liveMeetingPendingChunks: Int = 0
   private var liveMeetingSessionStartTime: Date?
   private var liveMeetingSafeguardTimer: Timer?
 
-  /// True when TTS is running in any phase: .ttsProcessing, or chunked phases (.splitting, .processingChunks, .merging) while isProcessingTTS is set.
+  /// True when live meeting is active (recording or stopping with pending chunks).
+  private var isLiveMeetingActive: Bool {
+    appState.recordingMode == .liveMeeting || liveMeetingRecorder != nil
+  }
+
+  /// True when TTS is running in any phase: .ttsProcessing or chunked phases with TTS context. Derived from AppState only.
   private var isTTSRunning: Bool {
-    if case .processing(.ttsProcessing) = appState { return true }
-    guard isProcessingTTS else { return false }
-    switch appState {
-    case .processing(.splitting), .processing(.merging): return true
-    case .processing(.processingChunks): return true
-    default: return false
-    }
+    if case .processing(let mode) = appState { return mode.isTTSContext }
+    return false
   }
 
   init(
@@ -290,7 +288,7 @@ class MenuBarController: NSObject {
     button.title = appState.icon
 
     // Show detailed chunk progress in tooltip during processing
-    if case .processing(.processingChunks(let statuses)) = appState {
+    if case .processing(.processingChunks(let statuses, _)) = appState {
       let active = statuses.filter { $0 == .active }.count
       let done = statuses.filter { $0 == .completed }.count
       button.toolTip = "Transcribing [\(done)/\(statuses.count)] - \(active) active"
@@ -382,7 +380,7 @@ class MenuBarController: NSObject {
   @objc private func toggleTranscription() {
     // Check if currently processing transcription (incl. chunk phases for long audio) - if so, cancel it
     let isTranscriptionProcessing: Bool = {
-      guard case .processing(let mode) = appState, !isProcessingTTS else { return false }
+      guard case .processing(let mode) = appState, !mode.isTTSContext else { return false }
       switch mode {
       case .transcribing, .splitting, .processingChunks, .merging: return true
       case .prompting, .ttsProcessing: return false
@@ -397,7 +395,7 @@ class MenuBarController: NSObject {
         processedAudioURLs.remove(audioURL)
       }
       PopupNotificationWindow.dismissProcessing()
-      appState = .idle
+      appState = appState.finish()
       // No notification shown - user initiated the cancellation
       return
     }
@@ -430,7 +428,7 @@ class MenuBarController: NSObject {
       // Note: For prompting, we don't track the URL separately, but we should still clean up
       // The processedAudioURLs set will prevent duplicate processing
       PopupNotificationWindow.dismissProcessing()
-      appState = .idle
+      appState = appState.finish()
       // No notification shown - user initiated the cancellation
       return
     }
@@ -511,7 +509,6 @@ class MenuBarController: NSObject {
     liveMeetingRecorder?.startSession()
 
     // Update state
-    isLiveMeetingActive = true
     liveMeetingStopping = false
     liveMeetingPendingChunks = 0
     liveMeetingSessionStartTime = Date()
@@ -579,11 +576,10 @@ class MenuBarController: NSObject {
 
     liveMeetingSafeguardTimer?.invalidate()
     liveMeetingSafeguardTimer = nil
-    isLiveMeetingActive = false
     liveMeetingStopping = false
     liveMeetingRecorder = nil
     liveMeetingPendingChunks = 0
-    appState = .idle
+    appState = appState.finish()
 
     DebugLogger.logSuccess("LIVE-MEETING: Transcription saved")
   }
@@ -664,9 +660,8 @@ class MenuBarController: NSObject {
     if isTTSRunning {
       speechService.cancelTTS()
       stopTTSPlayback()
-      isProcessingTTS = false
       PopupNotificationWindow.dismissProcessing()
-      appState = .idle
+      appState = appState.finish()
       // No notification shown - user initiated the cancellation
       return
     }
@@ -681,7 +676,7 @@ class MenuBarController: NSObject {
       audioPlayerNode = nil
       cleanupAudioFile(at: currentTTSAudioURL)
       currentTTSAudioURL = nil
-      appState = .idle
+      appState = appState.finish()
       return
     }
     
@@ -719,9 +714,8 @@ class MenuBarController: NSObject {
     if isTTSRunning {
       speechService.cancelTTS()
       stopTTSPlayback()
-      isProcessingTTS = false
       PopupNotificationWindow.dismissProcessing()
-      appState = .idle
+      appState = appState.finish()
       // No notification shown - user initiated the cancellation
       return
     }
@@ -729,35 +723,32 @@ class MenuBarController: NSObject {
     // Check if currently playing audio - if so, stop it
     if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
       stopTTSPlayback()
-      appState = .idle
+      appState = appState.finish()
       return
     }
     
     // Get selected text from clipboard
     guard let selectedText = clipboardManager.getCleanedClipboardText(),
           !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      PopupNotificationWindow.showError("No text selected", title: "TTS Error")
+      presentError(shortTitle: "TTS Error", message: "No text selected", dismissProcessingFirst: false)
       return
     }
     
     appState = .processing(.ttsProcessing)
-    isProcessingTTS = true
     
     Task {
       do {
         let audioData = try await speechService.readTextAloud(selectedText)
         UserContextLogger.shared.logReadAloud(text: selectedText, voice: nil)
         await MainActor.run {
-          self.isProcessingTTS = false
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
         }
       } catch is CancellationError {
         DebugLogger.log("CANCELLATION: TTS task was cancelled")
         await MainActor.run {
-          self.isProcessingTTS = false
           PopupNotificationWindow.dismissProcessing()
-          if self.appState != .idle { self.appState = .idle }
+          if self.appState != .idle { self.appState = self.appState.finish() }
         }
       } catch {
         DebugLogger.logError("TTS-ERROR: Failed to generate speech: \(error.localizedDescription)")
@@ -775,11 +766,10 @@ class MenuBarController: NSObject {
           userMessage = SpeechErrorFormatter.format(transcriptionError)
           shortTitle = SpeechErrorFormatter.shortStatus(transcriptionError)
         } else {
-          userMessage = error.localizedDescription
-          shortTitle = "TTS Error"
+          userMessage = SpeechErrorFormatter.formatForUser(error)
+          shortTitle = SpeechErrorFormatter.shortStatusForUser(error)
         }
         await MainActor.run {
-          self.isProcessingTTS = false
           PopupNotificationWindow.dismissProcessing()
           if self.appState != .idle {
             self.appState = self.appState.showError(shortTitle)
@@ -807,21 +797,18 @@ class MenuBarController: NSObject {
         guard let selectedText = clipboardManager.getCleanedClipboardText(),
               !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
           await MainActor.run {
-            self.appState = self.appState.showError("No text selected")
-            PopupNotificationWindow.showError("No text selected", title: "TTS Error")
+            self.presentError(shortTitle: "TTS Error", message: "No text selected", dismissProcessingFirst: true)
           }
           return
         }
         
         await MainActor.run {
           self.appState = .processing(.ttsProcessing)
-          self.isProcessingTTS = true
         }
         
         let audioData = try await speechService.readTextAloud(selectedText)
         UserContextLogger.shared.logReadAloud(text: selectedText, voice: nil)
         await MainActor.run {
-          self.isProcessingTTS = false
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
         }
@@ -847,8 +834,7 @@ class MenuBarController: NSObject {
         // No command - direct TTS requires selected text
         guard let text = selectedText else {
           await MainActor.run {
-            self.appState = self.appState.showError("No text selected")
-            PopupNotificationWindow.showError("No text selected. Select text to read aloud, or speak a question for follow-up.", title: "Read Aloud")
+            self.presentError(shortTitle: "Read Aloud", message: "No text selected. Select text to read aloud, or speak a question for follow-up.", dismissProcessingFirst: true)
           }
           return
         }
@@ -856,13 +842,11 @@ class MenuBarController: NSObject {
         DebugLogger.log("TTS: No voice command detected, using direct TTS")
         await MainActor.run {
           self.appState = .processing(.ttsProcessing)
-          self.isProcessingTTS = true
         }
 
         let audioData = try await speechService.readTextAloud(text)
         UserContextLogger.shared.logReadAloud(text: text, voice: nil)
         await MainActor.run {
-          self.isProcessingTTS = false
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
         }
@@ -870,8 +854,7 @@ class MenuBarController: NSObject {
         // Command exists - need either selected text OR active history for follow-up
         if selectedText == nil && !hasActiveHistory {
           await MainActor.run {
-            self.appState = self.appState.showError("No text selected")
-            PopupNotificationWindow.showError("No text selected and no conversation history. Select text first, then ask questions.", title: "Read Aloud")
+            self.presentError(shortTitle: "Read Aloud", message: "No text selected and no conversation history. Select text first, then ask questions.", dismissProcessingFirst: true)
           }
           return
         }
@@ -891,14 +874,12 @@ class MenuBarController: NSObject {
         // Now TTS the result using Prompt & Read voice
         await MainActor.run {
           self.appState = .processing(.ttsProcessing)
-          self.isProcessingTTS = true
         }
 
         // Get Prompt & Read voice from UserDefaults
         let promptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice) ?? SettingsDefaults.selectedPromptAndReadVoice
         let audioData = try await speechService.readTextAloud(promptResult, voiceName: promptAndReadVoice)
         await MainActor.run {
-          self.isProcessingTTS = false
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
         }
@@ -906,9 +887,8 @@ class MenuBarController: NSObject {
     } catch is CancellationError {
       DebugLogger.log("CANCELLATION: TTS task was cancelled")
       await MainActor.run {
-        self.isProcessingTTS = false
         PopupNotificationWindow.dismissProcessing()
-        if self.appState != .idle { self.appState = .idle }
+        if self.appState != .idle { self.appState = self.appState.finish() }
       }
       cleanupAudioFile(at: audioURL)
     } catch {
@@ -917,11 +897,10 @@ class MenuBarController: NSObject {
         DebugLogger.logError("TTS-ERROR: TranscriptionError type: \(transcriptionError)")
       }
       await MainActor.run {
-        self.isProcessingTTS = false
         PopupNotificationWindow.dismissProcessing()
         if self.appState != .idle {
-          self.appState = self.appState.showError("TTS failed: \(error.localizedDescription)")
-          PopupNotificationWindow.showError("Failed to process: \(error.localizedDescription)", title: "TTS Error")
+          self.appState = self.appState.showError(SpeechErrorFormatter.shortStatusForUser(error))
+          PopupNotificationWindow.showError(SpeechErrorFormatter.formatForUser(error), title: "TTS Error")
         }
       }
       cleanupAudioFile(at: audioURL)
@@ -945,7 +924,7 @@ class MenuBarController: NSObject {
         interleaved: false
       ) else {
         DebugLogger.logError("TTS-PLAYBACK: Failed to create audio format")
-        throw NSError(domain: "TTS", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create audio format"])
+        throw TTSPlaybackError.failedToCreateAudioFormat
       }
       
       // Calculate frame count
@@ -955,7 +934,7 @@ class MenuBarController: NSObject {
       // Create PCM buffer
       guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: AVAudioFrameCount(frameCount)) else {
         DebugLogger.logError("TTS-PLAYBACK: Failed to create audio buffer")
-        throw NSError(domain: "TTS", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to create audio buffer"])
+        throw TTSPlaybackError.failedToCreateBuffer
       }
       
       buffer.frameLength = AVAudioFrameCount(frameCount)
@@ -997,11 +976,11 @@ class MenuBarController: NSObject {
           interleaved: false
         ) else {
           DebugLogger.logError("TTS-PLAYBACK: Failed to create Float32 format")
-          throw NSError(domain: "TTS", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to create Float32 format"])
+          throw TTSPlaybackError.failedToCreateFloatFormat
         }
         guard let floatBuffer = AVAudioPCMBuffer(pcmFormat: floatFormat, frameCapacity: AVAudioFrameCount(frameCount)) else {
           DebugLogger.logError("TTS-PLAYBACK: Failed to create Float32 buffer")
-          throw NSError(domain: "TTS", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to create Float32 buffer"])
+          throw TTSPlaybackError.failedToCreateFloatBuffer
         }
         floatBuffer.frameLength = AVAudioFrameCount(frameCount)
         audioData.withUnsafeBytes { bytes in
@@ -1058,7 +1037,7 @@ class MenuBarController: NSObject {
           self.appState = self.appState.showSuccess("Audio playback completed")
           try? await Task.sleep(nanoseconds: 2_000_000_000) // 2.0 seconds
           if case .feedback = self.appState {
-            self.appState = .idle
+            self.appState = self.appState.finish()
           }
         }
       }
@@ -1068,7 +1047,8 @@ class MenuBarController: NSObject {
       
     } catch {
       DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.localizedDescription)")
-      appState = appState.showError("Failed to play audio: \(error.localizedDescription)")
+      appState = appState.showError(SpeechErrorFormatter.shortStatusForUser(error))
+      PopupNotificationWindow.showError(SpeechErrorFormatter.formatForUser(error), title: "Playback Error")
       currentTTSAudioURL = nil
       audioEngine = nil
       audioPlayerNode = nil
@@ -1083,7 +1063,22 @@ class MenuBarController: NSObject {
   }
 
   // MARK: - Async Operations (Clean & Simple)
-  
+
+  /// Presents an error in app state and popup (and optionally dismisses processing popup first).
+  private func presentError(
+    shortTitle: String,
+    message: String? = nil,
+    dismissProcessingFirst: Bool = true,
+    retryAction: (() -> Void)? = nil,
+    dismissAction: (() -> Void)? = nil
+  ) {
+    if dismissProcessingFirst {
+      PopupNotificationWindow.dismissProcessing()
+    }
+    appState = appState.showError(shortTitle)
+    PopupNotificationWindow.showError(message ?? shortTitle, title: shortTitle, retryAction: retryAction, dismissAction: dismissAction)
+  }
+
   /// Unified error handler for processing errors (transcription/prompting)
   /// - Parameters:
   ///   - error: The error that occurred
@@ -1130,7 +1125,7 @@ class MenuBarController: NSObject {
       } else {
         transcriptionError = nil
         let operationName = mode == .transcription ? "Transcription" : "Prompt"
-        errorMessage = "\(operationName) failed: \(error.localizedDescription)"
+        errorMessage = SpeechErrorFormatter.formatForUser(error)
         shortTitle = "\(operationName) Error"
       }
 
@@ -1218,7 +1213,7 @@ class MenuBarController: NSObject {
       await MainActor.run {
         // Dismiss any processing popup
         PopupNotificationWindow.dismissProcessing()
-        self.appState = .idle
+        self.appState = self.appState.finish()
         // Clear chunk statuses and tracking on cancellation
         self.chunkStatuses = []
         if self.currentTranscriptionAudioURL == audioURL {
@@ -1269,7 +1264,7 @@ class MenuBarController: NSObject {
       // Task was cancelled - just cleanup and return to idle
       DebugLogger.log("CANCELLATION: Prompt task was cancelled")
       await MainActor.run {
-        self.appState = .idle
+        self.appState = self.appState.finish()
         // Clear tracking on cancellation
         self.processedAudioURLs.remove(audioURL)
       }
@@ -1442,7 +1437,7 @@ extension MenuBarController: AudioRecorderDelegate {
         if response != .alertFirstButtonReturn {
           DebugLogger.log("RECORDING-SAFEGUARD: User cancelled processing for long recording (\(timeStr))")
           self.cleanupAudioFile(at: audioURL)
-          self.appState = .idle
+          self.appState = self.appState.finish()
           return
         }
       }
@@ -1489,7 +1484,8 @@ extension MenuBarController: AudioRecorderDelegate {
     let errorCode = (error as NSError).code
     let errorDomain = (error as NSError).domain
     DebugLogger.logDebug("audioRecorderDidFailWithError called - errorCode: \(errorCode), errorDomain: \(errorDomain), errorDescription: \(error.localizedDescription), appState: \(appState), isEmptyFileError: \(errorCode == 1004)")
-    appState = appState.showError("Recording failed: \(error.localizedDescription)")
+    appState = appState.showError(SpeechErrorFormatter.shortStatusForUser(error))
+    PopupNotificationWindow.showError(SpeechErrorFormatter.formatForUser(error), title: "Recording Error")
   }
 }
 
@@ -1503,16 +1499,15 @@ extension MenuBarController: ShortcutDelegate {
     if isTTSRunning {
       speechService.cancelTTS()
       stopTTSPlayback()
-      isProcessingTTS = false
       PopupNotificationWindow.dismissProcessing()
-      appState = .idle
+      appState = appState.finish()
       // No notification shown - user initiated the cancellation
       return
     }
     // If audio is playing, stop it
     if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
       stopTTSPlayback()
-      appState = .idle
+      appState = appState.finish()
       return
     }
     // Check accessibility permission first (required for simulateCopyPaste)
@@ -1547,17 +1542,11 @@ extension MenuBarController: ChunkProgressDelegate {
     // Initialize all chunks as pending
     chunkStatuses = Array(repeating: .pending, count: totalChunks)
 
-    // Check if this is TTS or transcription
-    let isTTS = isProcessingTTS
+    // Derive TTS vs transcription from current appState (we're still in .ttsProcessing or .transcribing)
+    let isTTS: Bool = { if case .processing(let mode) = appState { return mode.isTTSContext } else { return false } }()
+    let context: AppState.ProcessingMode.ChunkContext = isTTS ? .tts : .transcription
 
-    // Update app state to show splitting phase (but preserve TTS context)
-    if isTTS {
-      // For TTS, we'll use a custom approach - keep ttsProcessing but show splitting
-      // Actually, let's use splitting but remember it's TTS via a different mechanism
-      appState = .processing(.splitting)
-    } else {
-      appState = .processing(.splitting)
-    }
+    appState = .processing(.splitting(context: context))
     updateMenuBarIcon()
 
     // Show persistent processing popup with appropriate message
@@ -1582,12 +1571,11 @@ extension MenuBarController: ChunkProgressDelegate {
     // Mark chunk as active
     chunkStatuses[index] = .active
 
-    // Update app state with new statuses
-    appState = .processing(.processingChunks(statuses: chunkStatuses))
+    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
+    appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
     updateMenuBarIcon()
 
-    // Check if this is TTS or transcription
-    let isTTS = isProcessingTTS
+    let isTTS = context == .tts
 
     // Update processing popup with status grid
     let statusGrid = generateStatusGrid()
@@ -1611,12 +1599,11 @@ extension MenuBarController: ChunkProgressDelegate {
     // Mark chunk as completed
     chunkStatuses[index] = .completed
 
-    // Update app state
-    appState = .processing(.processingChunks(statuses: chunkStatuses))
+    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
+    appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
     updateMenuBarIcon()
 
-    // Check if this is TTS or transcription
-    let isTTS = isProcessingTTS
+    let isTTS = context == .tts
 
     // Update processing popup with status grid
     let statusGrid = generateStatusGrid()
@@ -1645,8 +1632,8 @@ extension MenuBarController: ChunkProgressDelegate {
       // Mark as permanently failed
       chunkStatuses[index] = .failed
 
-      // Update app state
-      appState = .processing(.processingChunks(statuses: chunkStatuses))
+      let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
+      appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
       updateMenuBarIcon()
 
       // Update processing popup
@@ -1666,12 +1653,11 @@ extension MenuBarController: ChunkProgressDelegate {
     // Clear chunk statuses (no longer needed for display)
     chunkStatuses = []
 
-    // Check if this is TTS or transcription
-    let isTTS = isProcessingTTS
-
-    // Update app state to show merging phase
-    appState = .processing(.merging)
+    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
+    appState = .processing(.merging(context: context))
     updateMenuBarIcon()
+
+    let isTTS = context == .tts
 
     // Update processing popup with appropriate message
     if isTTS {
@@ -1746,7 +1732,7 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
       }
 
       // Show error but don't stop the session
-      PopupNotificationWindow.showError("Recording error: \(error.localizedDescription)", title: "Live Meeting")
+      PopupNotificationWindow.showError(SpeechErrorFormatter.formatForUser(error), title: "Live Meeting")
     }
   }
 }

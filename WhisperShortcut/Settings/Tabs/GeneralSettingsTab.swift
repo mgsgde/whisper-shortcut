@@ -188,7 +188,7 @@ struct GeneralSettingsTab: View {
                 }
               } catch {
                 await MainActor.run {
-                  googleSignInError = error.localizedDescription
+                  googleSignInError = SpeechErrorFormatter.formatForUser(error)
                   isSigningIn = false
                   googleSignInRefresh += 1
                 }
