@@ -180,7 +180,7 @@ struct LiveMeetingSettingsTab: View {
       .font(.callout)
       .foregroundColor(.secondary)
       
-      HStack(alignment: .center, spacing: 10) {
+      HStack(alignment: .center, spacing: 12) {
         Button(action: { viewModel.openTranscriptsFolder() }) {
           Label("Open transcript folder", systemImage: "folder")
             .font(.callout)
