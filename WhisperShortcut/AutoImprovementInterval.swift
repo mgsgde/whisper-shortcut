@@ -31,6 +31,6 @@ enum AutoImprovementInterval: Int, CaseIterable, Codable {
   }
 
   static var `default`: AutoImprovementInterval {
-    .days7
+    .never
   }
 }

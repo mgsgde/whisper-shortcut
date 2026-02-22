@@ -16,8 +16,8 @@ class AutoPromptImprovementScheduler {
       DebugLogger.log("AUTO-IMPROVEMENT: Skip - disabled (Never)")
       return
     }
-    guard KeychainManager.shared.hasGoogleAPIKey() else {
-      DebugLogger.log("AUTO-IMPROVEMENT: Skip - no API key")
+    guard GeminiCredentialProvider.shared.hasCredential() else {
+      DebugLogger.log("AUTO-IMPROVEMENT: Skip - no Gemini credential")
       return
     }
     // First run ever: only require N dictations and any interaction data (no 7-day minimum, cooldown N/A).
@@ -67,9 +67,9 @@ class AutoPromptImprovementScheduler {
       )
       return
     }
-    guard KeychainManager.shared.hasGoogleAPIKey() else {
+    guard GeminiCredentialProvider.shared.hasCredential() else {
       PopupNotificationWindow.showError(
-        "API key required for Smart Improvement.",
+        "Sign in with Google or add an API key in the General tab to use Smart Improvement.",
         title: "Smart Improvement"
       )
       return
