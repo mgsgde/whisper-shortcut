@@ -122,7 +122,19 @@ final class DefaultGoogleAuthService: GoogleAuthService {
       GIDSignIn.sharedInstance.signIn(withPresenting: window, hint: nil, additionalScopes: scopes) { result, error in
         if let error = error {
           DebugLogger.logError("GOOGLE-AUTH: Sign-in failed: \(error.localizedDescription)")
-          continuation.resume(throwing: error)
+          let userError: Error
+          if error.localizedDescription.lowercased().contains("keychain") {
+            userError = NSError(
+              domain: "GoogleAuth",
+              code: -4,
+              userInfo: [
+                NSLocalizedDescriptionKey: "Keychain access required. In Xcode add the Keychain Sharing capability and the group com.google.GIDSignIn (see docs/google-sign-in-keychain.md)."
+              ]
+            )
+          } else {
+            userError = error
+          }
+          continuation.resume(throwing: userError)
           return
         }
         guard result != nil else {
