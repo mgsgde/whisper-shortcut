@@ -10,50 +10,22 @@ struct PromptAndReadSettingsTab: View {
       // Shortcuts Section
       shortcutsSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Model Section
       modelSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Prompt Section
       promptSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Read Aloud Voice Selection Section
       readAloudVoiceSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Usage Instructions Section
       usageInstructionsSection

@@ -10,51 +10,23 @@ struct ReadAloudSettingsTab: View {
       // Shortcuts Section
       shortcutsSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // TTS Model Selection Section
       ttsModelSelectionSection
       
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Read Aloud Voice Selection Section
       readAloudVoiceSection
       
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Speech Speed Section
       speechSpeedSection
       
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
-      
+      SpacedSectionDivider()
+
       // Usage Instructions Section
       usageInstructionsSection
     }

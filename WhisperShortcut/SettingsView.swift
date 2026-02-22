@@ -119,20 +119,20 @@ struct SettingsView: View {
   private func description(for tab: SettingsTab) -> String {
     switch tab {
     case .general:
-      return "API Key, Keyboard Shortcut and Feedback"
+      return "API key, shortcuts, and feedback"
     case .smartImprovement:
       return "Improvement settings and interaction data"
     case .speechToText:
-      return "Model, Prompt and Shortcut"
+      return "Model, prompt, and shortcut"
     case .speechToPrompt:
-      return "Toggle Prompting Shortcut"
+      return "Shortcut for dictate prompt"
     case .promptAndRead:
-      return "Shortcut, Prompt, Model and Voice"
+      return "Shortcut, prompt, model, and voice"
     case .readAloud:
-      return "Shortcut and Voice Selection"
+      return "Shortcut and voice selection"
     case .liveMeeting:
-      return "Meeting Transcription Settings"
-  }
+      return "Meeting transcription settings"
+    }
   }
 
   // MARK: - Functions

@@ -14,36 +14,31 @@ struct SpeechToTextSettingsTab: View {
       // Shortcuts Section
       shortcutsSection
 
-      // Section Divider with spacing
-      sectionDivider
+      SpacedSectionDivider()
 
       // Transcription Model Section
       modelSection
 
-      // Section Divider with spacing
-      sectionDivider
+      SpacedSectionDivider()
 
       // Available Models Section
       offlineModelsSection
 
-      // Section Divider with spacing
-      sectionDivider
+      SpacedSectionDivider()
 
       // Conditional sections based on model type
       if viewModel.data.selectedTranscriptionModel.isGemini {
         // Prompt Section (only for Gemini)
         promptSection
         
-        // Section Divider with spacing
-        sectionDivider
+        SpacedSectionDivider()
       } else {
         // Language Section (only for Whisper)
         languageSection
         
-        // Section Divider with spacing
-        sectionDivider
+        SpacedSectionDivider()
       }
-      
+
       // Usage Instructions Section
       usageInstructionsSection
     }
@@ -60,18 +55,6 @@ struct SpeechToTextSettingsTab: View {
     }
   }
   
-  // MARK: - Section Divider Helper
-  @ViewBuilder
-  private var sectionDivider: some View {
-    VStack(spacing: 0) {
-      Spacer()
-        .frame(height: SettingsConstants.sectionSpacing)
-      SectionDivider()
-      Spacer()
-        .frame(height: SettingsConstants.sectionSpacing)
-    }
-  }
-
   // MARK: - Shortcuts Section
   @ViewBuilder
   private var shortcutsSection: some View {

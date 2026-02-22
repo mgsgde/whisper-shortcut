@@ -10,21 +10,18 @@ struct SpeechToPromptSettingsTab: View {
       // Shortcuts Section
       shortcutsSection
       
-      // Section Divider with spacing
-      sectionDivider
-      
+      SpacedSectionDivider()
+
       // Model Selection Section
       modelSection
       
-      // Section Divider with spacing
-      sectionDivider
-      
+      SpacedSectionDivider()
+
       // System Prompt Section
       promptSection
       
-      // Section Divider with spacing
-      sectionDivider
-      
+      SpacedSectionDivider()
+
       // Usage Instructions Section
       usageInstructionsSection
     }
@@ -74,18 +71,6 @@ struct SpeechToPromptSettingsTab: View {
     }
   }
   
-  // MARK: - Section Divider Helper
-  @ViewBuilder
-  private var sectionDivider: some View {
-    VStack(spacing: 0) {
-      Spacer()
-        .frame(height: SettingsConstants.sectionSpacing)
-      SectionDivider()
-      Spacer()
-        .frame(height: SettingsConstants.sectionSpacing)
-    }
-  }
-
   // MARK: - Model Selection Section
   @ViewBuilder
   private var modelSection: some View {

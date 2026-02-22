@@ -10,38 +10,17 @@ struct LiveMeetingSettingsTab: View {
       // Keyboard Shortcut Section
       keyboardShortcutSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Chunk Interval Section
       chunkIntervalSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Safeguard Section
       safeguardSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Usage Instructions Section
       usageInstructionsSection
@@ -161,7 +140,7 @@ struct LiveMeetingSettingsTab: View {
   private var usageInstructionsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "How to Use",
+        title: "📋 How to Use",
         subtitle: "Step-by-step instructions for live meeting transcription"
       )
 
@@ -182,11 +161,11 @@ struct LiveMeetingSettingsTab: View {
       
       HStack(alignment: .center, spacing: 12) {
         Button(action: { viewModel.openTranscriptsFolder() }) {
-          Label("Open transcript folder", systemImage: "folder")
+          Label("Open transcripts folder", systemImage: "folder")
             .font(.callout)
         }
         .buttonStyle(.bordered)
-        .help("Open Meetings folder in Finder")
+        .help("Open transcripts folder in Finder")
       }
       .frame(maxWidth: .infinity, alignment: .leading)
     }

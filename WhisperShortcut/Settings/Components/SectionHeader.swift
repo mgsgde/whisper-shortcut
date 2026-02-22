@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Wiederverwendbare Komponente für Section-Headers
+/// Reusable component for section headers.
 struct SectionHeader: View {
   let title: String
   let subtitle: String?

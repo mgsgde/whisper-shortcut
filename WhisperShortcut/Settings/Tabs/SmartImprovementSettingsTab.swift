@@ -13,23 +13,15 @@ struct SmartImprovementSettingsTab: View {
     VStack(alignment: .leading, spacing: 0) {
       howItWorksSection
 
-      VStack(spacing: 0) {
-        Spacer().frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer().frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       settingsSection
 
-      VStack(spacing: 0) {
-        Spacer().frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer().frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       interactionDataSection
     }
-    .confirmationDialog("Delete interaction data", isPresented: $showDeleteInteractionConfirmation, titleVisibility: .visible) {
+    .confirmationDialog("Delete interaction data?", isPresented: $showDeleteInteractionConfirmation, titleVisibility: .visible) {
       Button("Delete", role: .destructive) {
         viewModel.deleteInteractionData()
       }
@@ -187,7 +179,7 @@ struct SmartImprovementSettingsTab: View {
             .font(.callout)
         }
         .buttonStyle(.bordered)
-        .help("Open UserContext folder in Finder")
+        .help("Open interaction data folder in Finder")
 
         Button("Delete interaction data", role: .destructive) {
           showDeleteInteractionConfirmation = true

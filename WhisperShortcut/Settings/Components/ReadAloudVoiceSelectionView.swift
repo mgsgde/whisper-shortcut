@@ -52,7 +52,7 @@ struct ReadAloudVoiceSelectionView: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "🔊 Read Aloud Voice",
-        subtitle: "Select the voice for reading text aloud after prompt processing"
+        subtitle: "Select the voice for reading text aloud"
       )
 
       // Voice Selection Picker

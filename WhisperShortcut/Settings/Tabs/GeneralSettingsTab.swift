@@ -17,115 +17,52 @@ struct GeneralSettingsTab: View {
       // Google account (Sign in with Google)
       googleAccountSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Google API Key Section
       googleAPIKeySection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // User Context Section
       userContextSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Launch at Login Section
       launchAtLoginSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Popup Notifications Section
       popupNotificationsSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Recording Safeguards Section
       recordingSafeguardsSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Clipboard Behavior Section
       clipboardBehaviorSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Keyboard Shortcut Section
       keyboardShortcutsSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Data & Reset Section
       resetSection
 
-      // Section Divider with spacing
-      VStack(spacing: 0) {
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-        SectionDivider()
-        Spacer()
-          .frame(height: SettingsConstants.sectionSpacing)
-      }
+      SpacedSectionDivider()
 
       // Support & Feedback Section (always last)
       supportFeedbackSection
     }
-    .confirmationDialog("Reset App to Default?", isPresented: $showResetToDefaultsConfirmation, titleVisibility: .visible) {
+    .confirmationDialog("Reset app to default?", isPresented: $showResetToDefaultsConfirmation, titleVisibility: .visible) {
       Button("Reset and quit app", role: .destructive) {
         viewModel.resetAllDataAndRestart()
       }
@@ -779,7 +716,7 @@ struct GeneralSettingsTab: View {
 
       HStack(alignment: .center, spacing: 12) {
         Button(action: { openDataFolderInFinder() }) {
-          Label("Open data folder", systemImage: "folder")
+          Label("Open app data folder", systemImage: "folder")
             .font(.callout)
         }
         .buttonStyle(.bordered)
