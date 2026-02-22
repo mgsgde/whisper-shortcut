@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Service that automatically runs system prompt improvements at configured intervals.
@@ -94,7 +95,8 @@ class AutoPromptImprovementScheduler {
 
   /// Runs improvement for all foci (User Context, Dictation, Dictate Prompt, Prompt & Read) using a transcribed voice instruction as the primary signal.
   /// Used by the "Improve from voice" shortcut / flow. Does not require interaction logs.
-  func runImprovementFromVoice(transcribedInstruction: String, selectedText: String?) async {
+  /// - Returns: `true` if at least one focus was applied (clipboard was set with improved content).
+  func runImprovementFromVoice(transcribedInstruction: String, selectedText: String?) async -> Bool {
     guard !isImprovementRunning else {
       await MainActor.run {
         PopupNotificationWindow.showInfo(
@@ -102,7 +104,7 @@ class AutoPromptImprovementScheduler {
           title: "Smart Improvement"
         )
       }
-      return
+      return false
     }
     guard GeminiCredentialProvider.shared.hasCredential() else {
       await MainActor.run {
@@ -111,7 +113,7 @@ class AutoPromptImprovementScheduler {
           title: "Smart Improvement"
         )
       }
-      return
+      return false
     }
     let instruction = transcribedInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !instruction.isEmpty else {
@@ -121,7 +123,7 @@ class AutoPromptImprovementScheduler {
           title: "Smart Improvement"
         )
       }
-      return
+      return false
     }
 
     isImprovementRunning = true
@@ -129,7 +131,7 @@ class AutoPromptImprovementScheduler {
     DebugLogger.log("AUTO-IMPROVEMENT: Voice-triggered run started")
     await MainActor.run {
       PopupNotificationWindow.showProcessing(
-        "Improving system prompt from your voice instruction...",
+        "Improving system prompts from your voice instruction...",
         title: "Smart Improvement"
       )
     }
@@ -166,10 +168,28 @@ class AutoPromptImprovementScheduler {
         case .promptAndRead: return "Prompt & Read System Prompt"
         }
       }
-      let message = "Auto-improved: \(kindNames.joined(separator: ", ")). Check Settings to review or revert."
+      let sections = appliedKinds.map { kind in
+        let title: String
+        switch kind {
+        case .userContext: title = "User Context"
+        case .dictation: title = "Dictation Prompt"
+        case .promptMode: title = "Dictate Prompt"
+        case .promptAndRead: title = "Prompt & Read"
+        }
+        let content = currentContent(for: kind)
+        return "=== \(title) ===\n\n\(content)"
+      }
+      let clipboardText = sections.joined(separator: "\n\n")
+      await MainActor.run {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(clipboardText, forType: .string)
+      }
+      let message = "Auto-improved: \(kindNames.joined(separator: ", ")). Updated content copied to clipboard. Paste to view."
       await MainActor.run {
         PopupNotificationWindow.showInfo(message, title: "Smart Improvement")
       }
+      DebugLogger.log("AUTO-IMPROVEMENT: Improve-from-voice run finished")
+      return true
     } else {
       await MainActor.run {
         PopupNotificationWindow.showInfo(
@@ -177,8 +197,9 @@ class AutoPromptImprovementScheduler {
           title: "Smart Improvement"
         )
       }
+      DebugLogger.log("AUTO-IMPROVEMENT: Improve-from-voice run finished")
+      return false
     }
-    DebugLogger.log("AUTO-IMPROVEMENT: Improve-from-voice run finished")
   }
 
   /// True while an improvement run (manual or automatic) is in progress. Use to show "Running…" when the user returns to the Smart Improvement section.
@@ -299,6 +320,20 @@ class AutoPromptImprovementScheduler {
     }
 
     return !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
+  /// Returns the current stored content for the given focus (after apply). Used to build clipboard output for improved sections only.
+  private func currentContent(for kind: GenerationKind) -> String {
+    switch kind {
+    case .userContext:
+      return UserContextLogger.shared.loadUserContext() ?? ""
+    case .dictation:
+      return UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) ?? AppConstants.defaultTranscriptionSystemPrompt
+    case .promptMode:
+      return UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt) ?? ""
+    case .promptAndRead:
+      return UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt) ?? ""
+    }
   }
 
   private func readSuggestion(for kind: GenerationKind) -> String? {
