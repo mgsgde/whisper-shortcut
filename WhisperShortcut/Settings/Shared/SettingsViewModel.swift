@@ -44,11 +44,20 @@ class SettingsViewModel: ObservableObject {
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
-    // Load Prompt model preference (for Prompt Mode) - simplified to GPT-Audio only
-    if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel),
-      let savedModel = PromptModel(rawValue: savedModelString)
-    {
-      data.selectedPromptModel = savedModel
+    // Load Prompt model preference (for Prompt Mode); migrate deprecated or removed models (e.g. gemini-2.0-flash-lite → 2.5 Flash-Lite)
+    if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) {
+      if savedModelString == "gemini-2.0-flash-lite" {
+        data.selectedPromptModel = .gemini25FlashLite
+        UserDefaults.standard.set(PromptModel.gemini25FlashLite.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
+      } else if let savedModel = PromptModel(rawValue: savedModelString) {
+        let migrated = PromptModel.migrateIfDeprecated(savedModel)
+        data.selectedPromptModel = migrated
+        if migrated != savedModel {
+          UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
+        }
+      } else {
+        data.selectedPromptModel = SettingsDefaults.selectedPromptModel
+      }
     } else {
       data.selectedPromptModel = SettingsDefaults.selectedPromptModel
     }
@@ -94,11 +103,15 @@ class SettingsViewModel: ObservableObject {
     // Load read aloud playback rate (clamp to valid range)
     data.readAloudPlaybackRate = SettingsDefaults.clampedReadAloudPlaybackRate()
 
-    // Load Prompt & Read specific settings (with migration from Toggle Prompting if not set)
+    // Load Prompt & Read specific settings (with migration from deprecated 2.0 and from Toggle Prompting if not set)
     if let savedPromptAndReadModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadModel),
       let savedPromptAndReadModel = PromptModel(rawValue: savedPromptAndReadModelString)
     {
-      data.selectedPromptAndReadModel = savedPromptAndReadModel
+      let migrated = PromptModel.migrateIfDeprecated(savedPromptAndReadModel)
+      data.selectedPromptAndReadModel = migrated
+      if migrated != savedPromptAndReadModel {
+        UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedPromptAndReadModel)
+      }
     } else {
       // Migration: Use Toggle Prompting model if Prompt & Read model not set
       data.selectedPromptAndReadModel = data.selectedPromptModel

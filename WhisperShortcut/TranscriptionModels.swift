@@ -8,10 +8,12 @@
 import Foundation
 
 // MARK: - Transcription Model Enum
+// Current Gemini model IDs: https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash (and sibling docs)
+// GA (stable IDs, no -preview): gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.0-flash (2.0 deprecated). gemini-2.0-flash-lite removed (API 404).
+// Preview (keep -preview): gemini-3-flash-preview, gemini-3-pro-preview, gemini-3.1-pro-preview.
 enum TranscriptionModel: String, CaseIterable {
   // Gemini models (online)
   case gemini20Flash = "gemini-2.0-flash"
-  case gemini20FlashLite = "gemini-2.0-flash-lite"
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
   case gemini3Flash = "gemini-3-flash-preview"
@@ -28,8 +30,6 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini20Flash:
       return "Gemini 2.0 Flash (Deprecated)"
-    case .gemini20FlashLite:
-      return "Gemini 2.0 Flash-Lite (Deprecated)"
     case .gemini25Flash:
       return "Gemini 2.5 Flash"
     case .gemini25FlashLite:
@@ -51,12 +51,11 @@ enum TranscriptionModel: String, CaseIterable {
     }
   }
 
+  /// Uses v1beta so Gemini 3 preview models are available (v1 returns 404 for them).
   var apiEndpoint: String {
     switch self {
     case .gemini20Flash:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
-    case .gemini20FlashLite:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent"
     case .gemini25Flash:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     case .gemini25FlashLite:
@@ -74,9 +73,9 @@ enum TranscriptionModel: String, CaseIterable {
 
   var isRecommended: Bool {
     switch self {
-    case .gemini25Flash, .whisperBase:
+    case .gemini20Flash, .whisperBase:
       return true
-    case .gemini20Flash, .gemini20FlashLite, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium:
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium:
       return false
     }
   }
@@ -84,7 +83,7 @@ enum TranscriptionModel: String, CaseIterable {
   /// True for Gemini models no longer available to new users (e.g. gemini-2.0-flash). Used to migrate to current default.
   var isDeprecated: Bool {
     switch self {
-    case .gemini20Flash, .gemini20FlashLite:
+    case .gemini20Flash:
       return true
     default:
       return false
@@ -93,7 +92,7 @@ enum TranscriptionModel: String, CaseIterable {
 
   var costLevel: String {
     switch self {
-    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini3Flash:
+    case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash:
       return "Low"
     case .gemini3Pro, .gemini31Pro:
       return "Medium"
@@ -106,8 +105,6 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini20Flash:
       return "Google's Gemini 2.0 Flash model • Fast and efficient"
-    case .gemini20FlashLite:
-      return "Google's Gemini 2.0 Flash-Lite model • Fastest latency • Cost-efficient"
     case .gemini25Flash:
       return "Google's Gemini 2.5 Flash model • Fast and efficient"
     case .gemini25FlashLite:
@@ -131,7 +128,7 @@ enum TranscriptionModel: String, CaseIterable {
   
   var isGemini: Bool {
     switch self {
-    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro:
+    case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro:
       return true
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium:
       return false
@@ -154,12 +151,16 @@ enum TranscriptionModel: String, CaseIterable {
   
   // MARK: - Model Loading
   /// Loads the selected transcription model from UserDefaults, or returns the default model.
-  /// Migrates deprecated models (e.g. gemini-2.0-flash no longer available to new users) to the current default.
-  /// - Returns: The selected TranscriptionModel, or the default if none is saved or saved model is deprecated
+  /// Migrates deprecated or removed models (e.g. gemini-2.0-flash-lite → gemini-2.5-flash-lite).
   static func loadSelected() -> TranscriptionModel {
-    if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel),
-       let savedModel = TranscriptionModel(rawValue: savedModelString),
-       !savedModel.isDeprecated {
+    guard let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) else {
+      return SettingsDefaults.selectedTranscriptionModel
+    }
+    if savedModelString == "gemini-2.0-flash-lite" {
+      UserDefaults.standard.set(TranscriptionModel.gemini25FlashLite.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
+      return .gemini25FlashLite
+    }
+    if let savedModel = TranscriptionModel(rawValue: savedModelString), !savedModel.isDeprecated {
       return savedModel
     }
     return SettingsDefaults.selectedTranscriptionModel
@@ -458,6 +459,39 @@ struct GeminiChatResponse: Codable {
       case mimeType  // API returns "mimeType" (camelCase), not "mime_type"
       case data
     }
+  }
+}
+
+// MARK: - Gemini TTS (Generative Language API generateContent)
+// Request/response for TTS via generativelanguage.googleapis.com; see https://ai.google.dev/gemini-api/docs/speech-generation
+// API expects camelCase in JSON (responseModalities, speechConfig, voiceConfig, prebuiltVoiceConfig, voiceName).
+struct GeminiTTSRequest: Codable {
+  let contents: [GeminiTTSContent]
+  let generationConfig: GeminiTTSGenerationConfig
+
+  struct GeminiTTSContent: Codable {
+    let parts: [GeminiTTSPart]
+  }
+
+  struct GeminiTTSPart: Codable {
+    let text: String
+  }
+
+  struct GeminiTTSGenerationConfig: Codable {
+    let responseModalities: [String]
+    let speechConfig: GeminiTTSSpeechConfig
+  }
+
+  struct GeminiTTSSpeechConfig: Codable {
+    let voiceConfig: GeminiTTSVoiceConfig
+  }
+
+  struct GeminiTTSVoiceConfig: Codable {
+    let prebuiltVoiceConfig: GeminiTTSPrebuiltVoiceConfig
+  }
+
+  struct GeminiTTSPrebuiltVoiceConfig: Codable {
+    let voiceName: String
   }
 }
 

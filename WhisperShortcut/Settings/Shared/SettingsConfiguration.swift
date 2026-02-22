@@ -1,10 +1,11 @@
 import Foundation
 
 // MARK: - Unified Prompt Model Enum (for Prompt Mode) - Gemini multimodal models only
+// Current Gemini model IDs: https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash (and sibling docs)
+// GA (stable IDs): gemini-2.5-flash, gemini-2.5-flash-lite; 2.0 deprecated. gemini-2.0-flash-lite removed (API 404). Preview: gemini-3-*.
 enum PromptModel: String, CaseIterable {
   // Gemini Models (multimodal, direct audio input)
   case gemini20Flash = "gemini-2.0-flash"
-  case gemini20FlashLite = "gemini-2.0-flash-lite"
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
   case gemini3Flash = "gemini-3-flash-preview"
@@ -15,8 +16,6 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gemini20Flash:
       return "Gemini 2.0 Flash"
-    case .gemini20FlashLite:
-      return "Gemini 2.0 Flash-Lite"
     case .gemini25Flash:
       return "Gemini 2.5 Flash"
     case .gemini25FlashLite:
@@ -34,8 +33,6 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gemini20Flash:
       return "Google's Gemini 2.0 Flash model • Fast and efficient • Multimodal audio processing"
-    case .gemini20FlashLite:
-      return "Google's Gemini 2.0 Flash-Lite • Fastest latency • Cost-efficient • Multimodal"
     case .gemini25Flash:
       return "Google's Gemini 2.5 Flash model • Fast and efficient • Multimodal audio processing"
     case .gemini25FlashLite:
@@ -56,7 +53,7 @@ enum PromptModel: String, CaseIterable {
   
   var costLevel: String {
     switch self {
-    case .gemini20Flash, .gemini20FlashLite, .gemini25Flash, .gemini25FlashLite, .gemini3Flash:
+    case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash:
       return "Low"
     case .gemini3Pro, .gemini31Pro:
       return "Medium"
@@ -88,8 +85,6 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gemini20Flash:
       return .gemini20Flash
-    case .gemini20FlashLite:
-      return .gemini20FlashLite
     case .gemini25Flash:
       return .gemini25Flash
     case .gemini25FlashLite:
@@ -102,9 +97,19 @@ enum PromptModel: String, CaseIterable {
       return .gemini31Pro
     }
   }
+
+  /// Migrates deprecated 2.0 Flash models to 2.5; returns the model unchanged otherwise.
+  static func migrateIfDeprecated(_ model: PromptModel) -> PromptModel {
+    switch model {
+    case .gemini20Flash: return .gemini25Flash
+    default: return model
+    }
+  }
 }
 
 // MARK: - TTS Model Enum (for Text-to-Speech)
+// Gemini TTS via Generative Language API (generateContent), not Cloud TTS.
+// Docs: https://ai.google.dev/gemini-api/docs/speech-generation
 enum TTSModel: String, CaseIterable {
   case gemini25FlashTTS = "gemini-2.5-flash-preview-tts"
   case gemini25ProTTS = "gemini-2.5-pro-preview-tts"
@@ -127,15 +132,12 @@ enum TTSModel: String, CaseIterable {
     }
   }
   
+  /// Generative Language API endpoint (same API key as transcription). Model in path.
+  /// https://ai.google.dev/gemini-api/docs/speech-generation
   var apiEndpoint: String {
-    switch self {
-    case .gemini25FlashTTS:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent"
-    case .gemini25ProTTS:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-tts:generateContent"
-    }
+    return "https://generativelanguage.googleapis.com/v1beta/models/\(rawValue):generateContent"
   }
-  
+
   var modelName: String {
     return self.rawValue
   }
@@ -419,9 +421,9 @@ struct SettingsDefaults {
   static let openSettingsEnabled = true
 
   // MARK: - Model & Prompt Settings
-  static let selectedTranscriptionModel = TranscriptionModel.gemini25Flash
-  static let selectedPromptModel = PromptModel.gemini20Flash
-  static let selectedPromptAndReadModel = PromptModel.gemini20Flash
+  static let selectedTranscriptionModel = TranscriptionModel.gemini20Flash
+  static let selectedPromptModel = PromptModel.gemini25Flash
+  static let selectedPromptAndReadModel = PromptModel.gemini25Flash
   static let selectedImprovementModel = PromptModel.gemini31Pro
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""

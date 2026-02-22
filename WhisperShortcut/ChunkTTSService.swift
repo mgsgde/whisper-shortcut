@@ -269,54 +269,23 @@ class ChunkTTSService {
                     }
                 }
 
-                // Build request
                 let endpoint = model.apiEndpoint
                 var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
 
-                // Build contents with text input
-                let contents = [
-                    GeminiChatRequest.GeminiChatContent(
-                        role: "user",
-                        parts: [
-                            GeminiChatRequest.GeminiChatPart(
-                                text: chunk.text,
-                                inlineData: nil,
-                                fileData: nil,
-                                url: nil
-                            )
-                        ]
-                    )
-                ]
-
-                // Build generation config with audio output
-                let generationConfig = GeminiChatRequest.GeminiGenerationConfig(
-                    responseModalities: ["AUDIO"],
-                    speechConfig: GeminiChatRequest.GeminiSpeechConfig(
-                        voiceConfig: GeminiChatRequest.GeminiVoiceConfig(
-                            prebuiltVoiceConfig: GeminiChatRequest.GeminiPrebuiltVoiceConfig(
-                                voiceName: voiceName
+                let ttsRequest = GeminiTTSRequest(
+                    contents: [GeminiTTSRequest.GeminiTTSContent(parts: [GeminiTTSRequest.GeminiTTSPart(text: "Say the following: \(chunk.text)")])],
+                    generationConfig: GeminiTTSRequest.GeminiTTSGenerationConfig(
+                        responseModalities: ["AUDIO"],
+                        speechConfig: GeminiTTSRequest.GeminiTTSSpeechConfig(
+                            voiceConfig: GeminiTTSRequest.GeminiTTSVoiceConfig(
+                                prebuiltVoiceConfig: GeminiTTSRequest.GeminiTTSPrebuiltVoiceConfig(voiceName: voiceName)
                             )
                         )
                     )
                 )
-
-                // Create request (system instruction ensures instruction-like text is read literally, not interpreted)
-                let ttsSystemInstruction = GeminiChatRequest.GeminiSystemInstruction(
-                    parts: [GeminiChatRequest.GeminiSystemPart(text: AppConstants.ttsSystemInstruction)]
-                )
-                let chatRequest = GeminiChatRequest(
-                    contents: contents,
-                    systemInstruction: ttsSystemInstruction,
-                    tools: nil,
-                    generationConfig: generationConfig,
-                    model: model.modelName
-                )
-
-                request.httpBody = try JSONEncoder().encode(chatRequest)
+                request.httpBody = try JSONEncoder().encode(ttsRequest)
 
                 DebugLogger.logDebug("TTS-CHUNK-SERVICE: Making API request for chunk \(chunk.index) (text length: \(chunk.text.count) chars)")
-                
-                // Make request (without GeminiAPIClient's internal retry - we handle it here)
                 let result = try await geminiClient.performRequest(
                     request,
                     responseType: GeminiChatResponse.self,
@@ -324,38 +293,22 @@ class ChunkTTSService {
                     withRetry: false
                 )
 
-                DebugLogger.logDebug("TTS-CHUNK-SERVICE: Received response for chunk \(chunk.index) (candidates: \(result.candidates.count))")
-
-                guard let firstCandidate = result.candidates.first else {
-                    throw TranscriptionError.networkError("No candidates in Gemini TTS response")
+                DebugLogger.logDebug("TTS-CHUNK-SERVICE: Received response for chunk \(chunk.index)")
+                guard let base64Audio = result.candidates.first?.content.parts.first(where: { $0.inlineData != nil })?.inlineData?.data,
+                      let decoded = Data(base64Encoded: base64Audio) else {
+                    DebugLogger.logError("TTS-CHUNK-SERVICE: Failed to decode base64 audio data for chunk \(chunk.index)")
+                    throw TranscriptionError.networkError("Failed to decode base64 audio data")
                 }
+                // Gemini TTS returns raw PCM (s16le 24kHz mono); no WAV header to strip
+                let audioData = decoded
 
-                // Extract audio data from response
-                DebugLogger.logDebug("TTS-CHUNK-SERVICE: Extracting audio from chunk \(chunk.index) response (\(firstCandidate.content.parts.count) parts)")
-                for (partIndex, part) in firstCandidate.content.parts.enumerated() {
-                    if let inlineData = part.inlineData {
-                        DebugLogger.logDebug("TTS-CHUNK-SERVICE: Found inlineData in part \(partIndex) (mimeType: \(inlineData.mimeType), base64 length: \(inlineData.data.count))")
-                        
-                        // Decode base64 audio data
-                        guard let audioData = Data(base64Encoded: inlineData.data) else {
-                            DebugLogger.logError("TTS-CHUNK-SERVICE: Failed to decode base64 audio data for chunk \(chunk.index)")
-                            throw TranscriptionError.networkError("Failed to decode base64 audio data")
-                        }
+                await rateLimitCoordinator.reportSuccess()
+                DebugLogger.logSuccess("TTS-CHUNK-SERVICE: Chunk \(chunk.index) synthesized successfully (\(audioData.count) bytes, \(String(format: "%.2f", Double(audioData.count) / 24000.0 / 2.0))s estimated duration)")
 
-                        // Report success to coordinator (resets rate limit counter)
-                        await rateLimitCoordinator.reportSuccess()
-
-                        DebugLogger.logSuccess("TTS-CHUNK-SERVICE: Chunk \(chunk.index) synthesized successfully (\(audioData.count) bytes, \(String(format: "%.2f", Double(audioData.count) / 24000.0 / 2.0))s estimated duration)")
-
-                        return AudioChunkData(
-                            data: audioData,
-                            index: chunk.index
-                        )
-                    }
-                }
-
-                DebugLogger.logError("TTS-CHUNK-SERVICE: No audio data found in TTS response for chunk \(chunk.index)")
-                throw TranscriptionError.networkError("No audio data found in TTS response")
+                return AudioChunkData(
+                    data: audioData,
+                    index: chunk.index
+                )
 
             } catch {
                 lastError = error

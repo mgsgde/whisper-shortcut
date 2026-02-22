@@ -668,97 +668,40 @@ class SpeechService {
       DebugLogger.log("TTS: Using single-request synthesis (text length <= \(AppConstants.ttsChunkSizeChars) chars)")
     }
 
-    // TTS-specific endpoint from selected model
     let endpoint = selectedTTSModel.apiEndpoint
-
-    // Build request
     var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
-    
-    // Build contents with text input
-    let contents = [
-      GeminiChatRequest.GeminiChatContent(
-        role: "user",
-        parts: [
-          GeminiChatRequest.GeminiChatPart(
-            text: trimmedText,
-            inlineData: nil,
-            fileData: nil,
-            url: nil
-          )
-        ]
-      )
-    ]
-    
-    // Build generation config with audio output
-    let generationConfig = GeminiChatRequest.GeminiGenerationConfig(
-      responseModalities: ["AUDIO"],
-      speechConfig: GeminiChatRequest.GeminiSpeechConfig(
-        voiceConfig: GeminiChatRequest.GeminiVoiceConfig(
-          prebuiltVoiceConfig: GeminiChatRequest.GeminiPrebuiltVoiceConfig(
-            voiceName: selectedVoice
+
+    let ttsRequest = GeminiTTSRequest(
+      contents: [GeminiTTSRequest.GeminiTTSContent(parts: [GeminiTTSRequest.GeminiTTSPart(text: "Say the following: \(trimmedText)")])],
+      generationConfig: GeminiTTSRequest.GeminiTTSGenerationConfig(
+        responseModalities: ["AUDIO"],
+        speechConfig: GeminiTTSRequest.GeminiTTSSpeechConfig(
+          voiceConfig: GeminiTTSRequest.GeminiTTSVoiceConfig(
+            prebuiltVoiceConfig: GeminiTTSRequest.GeminiTTSPrebuiltVoiceConfig(voiceName: selectedVoice)
           )
         )
       )
     )
-    
-    // Create request (system instruction ensures instruction-like text is read literally, not interpreted)
-    let ttsSystemInstruction = GeminiChatRequest.GeminiSystemInstruction(
-      parts: [GeminiChatRequest.GeminiSystemPart(text: AppConstants.ttsSystemInstruction)]
-    )
-    let chatRequest = GeminiChatRequest(
-      contents: contents,
-      systemInstruction: ttsSystemInstruction,
-      tools: nil,
-      generationConfig: generationConfig,
-      model: selectedTTSModel.modelName  // Required for TTS models
-    )
-    
-    request.httpBody = try JSONEncoder().encode(chatRequest)
-    
+    request.httpBody = try JSONEncoder().encode(ttsRequest)
+
     DebugLogger.log("TTS: Making request to Gemini TTS API (text length: \(trimmedText.count) chars)")
-    
-    // Make request with retry logic (helps with network issues)
     let result = try await geminiClient.performRequest(
       request,
       responseType: GeminiChatResponse.self,
       mode: "TTS",
       withRetry: true
     )
-    
-    DebugLogger.log("TTS: Received response from Gemini API")
-    
-    guard let firstCandidate = result.candidates.first else {
-      DebugLogger.logError("TTS: No candidates in response")
-      throw TranscriptionError.networkError("No candidates in Gemini TTS response")
+
+    DebugLogger.log("TTS: Received response from Gemini TTS API")
+    guard let base64Audio = result.candidates.first?.content.parts.first(where: { $0.inlineData != nil })?.inlineData?.data,
+          let decoded = Data(base64Encoded: base64Audio) else {
+      DebugLogger.logError("TTS: Failed to decode base64 audio from response")
+      throw TranscriptionError.networkError("Failed to decode base64 audio data")
     }
-    
-    DebugLogger.log("TTS: Found \(result.candidates.count) candidate(s)")
-    DebugLogger.log("TTS: Candidate has \(firstCandidate.content.parts.count) part(s)")
-    
-    // Extract audio data from response
-    for (index, part) in firstCandidate.content.parts.enumerated() {
-      DebugLogger.log("TTS: Checking part \(index): has text=\(part.text != nil), has inlineData=\(part.inlineData != nil)")
-      
-      if let inlineData = part.inlineData {
-        DebugLogger.log("TTS: Found inlineData with mimeType=\(inlineData.mimeType), data length=\(inlineData.data.count) chars")
-        
-        // Decode base64 audio data
-        guard let audioData = Data(base64Encoded: inlineData.data) else {
-          DebugLogger.logError("TTS: Failed to decode base64 audio data (data length: \(inlineData.data.count) chars)")
-          throw TranscriptionError.networkError("Failed to decode base64 audio data")
-        }
-        
-        DebugLogger.logSuccess("TTS: Successfully generated audio (size: \(audioData.count) bytes)")
-        return audioData
-      }
-      
-      if let text = part.text {
-        DebugLogger.log("TTS: Part \(index) contains text instead of audio: \(text.prefix(100))")
-      }
-    }
-    
-    DebugLogger.logError("TTS: No audio data found in any part of the response")
-    throw TranscriptionError.networkError("No audio data found in TTS response")
+    // Gemini TTS returns raw PCM (s16le 24kHz mono); no WAV header to strip
+    let audioData = decoded
+    DebugLogger.logSuccess("TTS: Successfully generated audio (size: \(audioData.count) bytes)")
+    return audioData
   }
 
   // MARK: - Gemini API Helpers (delegated to GeminiAPIClient)
