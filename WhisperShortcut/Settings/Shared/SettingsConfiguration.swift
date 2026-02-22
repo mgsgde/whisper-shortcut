@@ -528,6 +528,10 @@ struct SettingsDefaults {
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
   static let selectedMeetingSummaryModel = PromptModel.gemini3Flash
 
+  // MARK: - Proxy API (Phase 1 – latency testing)
+  static let proxyAPIBaseURL = ""
+  static let useGeminiViaProxy = false
+
   // MARK: - UI State
   static let errorMessage = ""
   static let isLoading = false
@@ -599,6 +603,10 @@ struct SettingsData {
   var liveMeetingSafeguardDuration: MeetingSafeguardDuration = SettingsDefaults.liveMeetingSafeguardDuration
   var selectedTranscriptionModelForMeetings: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
   var selectedMeetingSummaryModel: PromptModel = SettingsDefaults.selectedMeetingSummaryModel
+
+  // MARK: - Proxy API (Phase 1 – latency testing)
+  var proxyAPIBaseURL: String = SettingsDefaults.proxyAPIBaseURL
+  var useGeminiViaProxy: Bool = SettingsDefaults.useGeminiViaProxy
 
   // MARK: - UI State
   var errorMessage: String = SettingsDefaults.errorMessage

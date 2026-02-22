@@ -13,6 +13,18 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
+      GoogleAccountSection()
+
+      SpacedSectionDivider()
+
+      BalanceSection(viewModel: viewModel)
+
+      SpacedSectionDivider()
+
+      ProxyAPISection(viewModel: viewModel)
+
+      SpacedSectionDivider()
+
       KeyboardShortcutsSection(viewModel: viewModel, focusedField: $focusedField)
 
       SpacedSectionDivider()

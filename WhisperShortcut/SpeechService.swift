@@ -301,8 +301,9 @@ class SpeechService {
     // Always require raw output only (no meta), regardless of custom prompt
     systemPrompt += AppConstants.promptModeOutputRule
 
-    // Build request
-    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
+    // Build request (proxy-aware)
+    let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
 
     // Build contents array - start with conversation history
     let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
@@ -441,7 +442,8 @@ class SpeechService {
 
     // Use Gemini Flash for fast, cheap transcription (full URL required by createRequest)
     let endpoint = TranscriptionModel.gemini20Flash.apiEndpoint
-    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
+    let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
 
     let userParts: [GeminiChatRequest.GeminiChatPart] = [
       GeminiChatRequest.GeminiChatPart(
@@ -513,8 +515,9 @@ class SpeechService {
     // Always require raw output only (no meta), regardless of custom prompt
     systemPrompt += AppConstants.promptModeOutputRule
 
-    // Build request
-    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
+    // Build request (proxy-aware)
+    let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
 
     // Build contents array - start with conversation history
     let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
@@ -662,7 +665,8 @@ class SpeechService {
     }
 
     let endpoint = selectedTTSModel.apiEndpoint
-    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
+    let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
 
     let ttsRequest = GeminiTTSRequest(
       contents: [GeminiTTSRequest.GeminiTTSContent(parts: [GeminiTTSRequest.GeminiTTSPart(text: "Say the following: \(trimmedText)")])],
@@ -791,7 +795,7 @@ class SpeechService {
     
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
     
-    // Create request with dynamic endpoint based on selected model
+    // Create request with dynamic endpoint based on selected model (proxy-aware)
     let endpoint = model.apiEndpoint
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(model.displayName) (\(model.rawValue))")
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
@@ -816,7 +820,8 @@ class SpeechService {
       ]
     )
     
-    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
+    let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
     request.httpBody = try JSONEncoder().encode(transcriptionRequest)
 
     // Make request with retry logic
@@ -869,7 +874,7 @@ class SpeechService {
     
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
     
-    // Create request with dynamic endpoint based on selected model
+    // Create request with dynamic endpoint based on selected model (proxy-aware)
     let endpoint = model.apiEndpoint
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(model.displayName) (\(model.rawValue))")
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
@@ -894,7 +899,8 @@ class SpeechService {
       ]
     )
 
-    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
+    let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: resolvedCredential)
     request.httpBody = try JSONEncoder().encode(transcriptionRequest)
 
     // Make request with retry logic
