@@ -12,7 +12,7 @@ protocol GeminiCredentialProviding {
 
 /// Default implementation: API key takes precedence over OAuth when both are available.
 final class GeminiCredentialProvider: GeminiCredentialProviding {
-  static let shared = GeminiCredentialProvider(googleAuthService: DefaultGoogleAuthService.shared)
+  static let shared = GeminiCredentialProvider(googleAuthService: StubGoogleAuthService.shared)
 
   private let keychainManager: KeychainManaging
   private weak var googleAuthService: GoogleAuthService?

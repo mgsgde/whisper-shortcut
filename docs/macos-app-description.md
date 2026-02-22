@@ -12,7 +12,7 @@ Key Features
 
 Privacy & Security
 
-• Sign in with Google or use your own API key (stored in macOS Keychain); no account or key needed for offline Whisper
+• Use your own Google API key (stored in macOS Keychain); no key needed for offline Whisper
 
 Offline Speech Recognition
 

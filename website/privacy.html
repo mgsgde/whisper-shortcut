@@ -55,25 +55,16 @@
 
   <h2>What Data We Collect</h2>
 
-  <h3>1. Gemini Access: API Key or Sign in with Google</h3>
-  <p>To use cloud features (Gemini), you can either enter an API key or sign in with your Google account. You only need one of these.</p>
+  <h3>1. Gemini Access: API Key</h3>
+  <p>To use cloud features (Gemini), you enter your own Google API key. Usage is billed to your Google account.</p>
 
-  <h4>API Key (optional when signed in with Google)</h4>
+  <h4>API Key</h4>
   <ul>
     <li><strong>What:</strong> Your Google API key</li>
     <li><strong>Where:</strong> Stored securely in macOS Keychain</li>
-    <li><strong>Purpose:</strong> Authenticates requests to Google Gemini (transcription, AI prompting, TTS). Not needed when using Sign in with Google or offline Whisper for Speech-to-Text</li>
+    <li><strong>Purpose:</strong> Authenticates requests to Google Gemini (transcription, AI prompting, TTS). Not needed for offline Whisper (Speech-to-Text)</li>
     <li><strong>Retention:</strong> Stored locally until you delete it</li>
     <li><strong>Access:</strong> Only accessible by the app on your device</li>
-  </ul>
-
-  <h4>Sign in with Google (OAuth)</h4>
-  <ul>
-    <li><strong>What:</strong> OAuth access and refresh tokens from Google Sign-In; the app may display your Google account email when you are signed in</li>
-    <li><strong>Where:</strong> Tokens are stored securely in macOS Keychain (via the Google Sign-In SDK). We do not store your Google password</li>
-    <li><strong>Purpose:</strong> Lets you use Gemini (transcription, AI prompting, TTS) without entering an API key. Authentication is handled by Google; we only use the tokens to request access to Gemini on your behalf</li>
-    <li><strong>Retention:</strong> Stored locally until you sign out or revoke access</li>
-    <li><strong>Access:</strong> Only accessible by the app on your device. We do not collect or use your Google account data for any purpose other than authenticating API requests</li>
   </ul>
 
   <h3>2. App Preferences</h3>
@@ -116,7 +107,7 @@
 
   <h2>What Data We Do NOT Collect</h2>
   <ul>
-    <li>Personal information (name, email, address). When you sign in with Google, we do not collect or use your Google account data beyond what is needed to display your signed-in state and to authenticate requests to Gemini</li>
+    <li>Personal information (name, email, address)</li>
     <li>Usage analytics or tracking data</li>
     <li>Crash reports or diagnostic information</li>
     <li>Audio recordings (beyond temporary processing)</li>
@@ -129,10 +120,10 @@
   <p>WhisperShortcut uses Google's Gemini API for Speech-to-Text (cloud), Speech-to-Prompt, Read Aloud / TTS, Prompt &amp; Read, and Live Meeting. Data sent: audio files and/or text. Data received: transcribed text, AI-modified text, or audio. Subject to <a href="https://policies.google.com/privacy">Google's Privacy Policy</a>. When you use cloud features, your audio and/or text may be sent to Google's servers. For offline Speech-to-Text with Whisper, no data leaves your device.</p>
 
   <h2>Data Storage and Security</h2>
-  <p>All app data is stored locally on your macOS device. API keys and OAuth tokens (when you sign in with Google) are stored in macOS Keychain. No data is transmitted to our servers. Audio is recorded locally and files are automatically deleted after processing. Clipboard data is not stored by the app.</p>
+  <p>All app data is stored locally on your macOS device. API keys are stored in macOS Keychain. No data is transmitted to our servers. Audio is recorded locally and files are automatically deleted after processing. Clipboard data is not stored by the app.</p>
 
   <h2>Your Rights and Controls</h2>
-  <p>You can access and modify preferences through the app settings, delete your API key, sign out of Google (which removes stored OAuth tokens), reset preferences, delete meeting transcripts and interaction data, and disable automatic improvement. Microphone and Accessibility permissions can be revoked in macOS System Settings.</p>
+  <p>You can access and modify preferences through the app settings, delete your API key, reset preferences, delete meeting transcripts and interaction data, and disable automatic improvement. Microphone and Accessibility permissions can be revoked in macOS System Settings.</p>
 
   <h2>Children's Privacy</h2>
   <p>WhisperShortcut does not knowingly collect personal information from children under 13.</p>

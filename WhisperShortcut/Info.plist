@@ -37,20 +37,5 @@
         </dict>
         <key>ITSAppUsesNonExemptEncryption</key>
         <false />
-        <key>GIDClientID</key>
-        <string>65381910633-vg7kjrul189uesbmankg3atosc3iggah.apps.googleusercontent.com</string>
-        <key>CFBundleURLTypes</key>
-        <array>
-            <dict>
-                <key>CFBundleURLSchemes</key>
-                <array>
-                    <string>com.googleusercontent.apps.65381910633-vg7kjrul189uesbmankg3atosc3iggah</string>
-                </array>
-                <key>CFBundleURLName</key>
-                <string>com.magnusgoedde.whispershortcut.oauth</string>
-                <key>CFBundleTypeRole</key>
-                <string>Editor</string>
-            </dict>
-        </array>
     </dict>
 </plist>

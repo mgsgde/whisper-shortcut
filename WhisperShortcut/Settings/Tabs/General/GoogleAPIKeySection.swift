@@ -14,7 +14,7 @@ struct GoogleAPIKeySection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "🔑 Google API Key",
-        subtitle: "Optional when signed in with Google. Required for Gemini if you don't sign in."
+        subtitle: "Required for Gemini. Usage is billed to your Google account. Get a key from Google AI Studio (link below)."
       )
 
       HStack(alignment: .center, spacing: 16) {

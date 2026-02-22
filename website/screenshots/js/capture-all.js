@@ -89,9 +89,28 @@ async function captureScreenshot(config) {
       waitUntil: 'domcontentloaded',
       timeout: 10000 
     });
-    
+
+    // Star-history loads an external image from api.star-history.com; wait for it to load
+    if (config.name === 'star-history') {
+      try {
+        await page.waitForSelector('img[src*="api.star-history.com"]', { timeout: 15000 });
+        await page.evaluate(() => {
+          return new Promise((resolve, reject) => {
+            const img = document.querySelector('img[src*="api.star-history.com"]');
+            if (!img) return reject(new Error('Chart image not found'));
+            if (img.complete && img.naturalWidth > 0) return resolve();
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error('Chart image failed to load'));
+            setTimeout(() => (img.naturalWidth > 0 ? resolve() : reject(new Error('Chart image load timeout'))), 12000);
+          });
+        });
+      } catch (e) {
+        console.warn(`⚠️  star-history: chart image may not have loaded (${e.message}), capturing anyway`);
+      }
+    }
+
     // Wait for content
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, config.name === 'star-history' ? 1000 : 2000));
     
     // Take screenshot (write to website/images/ so the site uses the same files)
     const outputPath = path.join(__dirname, '..', '..', 'images', config.output);

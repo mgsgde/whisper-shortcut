@@ -23,9 +23,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     // Microphone permission will be requested automatically when recording starts
 
-    // Restore Google Sign-In from Keychain, then decide whether to show settings
+    // Check whether to show settings (API key required for Gemini)
     Task {
-      await DefaultGoogleAuthService.shared.restorePreviousSignInIfNeeded()
       await MainActor.run {
         if !GeminiCredentialProvider.shared.hasCredential() {
           DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
@@ -70,11 +69,6 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     menuBarController?.cleanup()
   }
 
-  func application(_ application: NSApplication, open urls: [URL]) {
-    for url in urls {
-      if DefaultGoogleAuthService.handle(url: url) { return }
-    }
-  }
 
   private func setupEditMenu() {
     // Create Edit menu with standard text editing commands

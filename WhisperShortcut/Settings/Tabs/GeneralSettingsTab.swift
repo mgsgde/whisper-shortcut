@@ -9,10 +9,6 @@ struct GeneralSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      GoogleAccountSection(viewModel: viewModel)
-
-      SpacedSectionDivider()
-
       GoogleAPIKeySection(viewModel: viewModel, focusedField: $focusedField)
 
       SpacedSectionDivider()
