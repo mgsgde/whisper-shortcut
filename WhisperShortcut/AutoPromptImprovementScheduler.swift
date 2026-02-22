@@ -92,6 +92,95 @@ class AutoPromptImprovementScheduler {
     DebugLogger.log("AUTO-IMPROVEMENT: Manual run finished")
   }
 
+  /// Runs improvement for all foci (User Context, Dictation, Dictate Prompt, Prompt & Read) using a transcribed voice instruction as the primary signal.
+  /// Used by the "Improve from voice" shortcut / flow. Does not require interaction logs.
+  func runImprovementFromVoice(transcribedInstruction: String, selectedText: String?) async {
+    guard !isImprovementRunning else {
+      await MainActor.run {
+        PopupNotificationWindow.showInfo(
+          "An improvement run is already in progress.",
+          title: "Smart Improvement"
+        )
+      }
+      return
+    }
+    guard GeminiCredentialProvider.shared.hasCredential() else {
+      await MainActor.run {
+        PopupNotificationWindow.showError(
+          "Add an API key in the General tab to use this feature.",
+          title: "Smart Improvement"
+        )
+      }
+      return
+    }
+    let instruction = transcribedInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !instruction.isEmpty else {
+      await MainActor.run {
+        PopupNotificationWindow.showError(
+          "No voice instruction received. Try again.",
+          title: "Smart Improvement"
+        )
+      }
+      return
+    }
+
+    isImprovementRunning = true
+    defer { isImprovementRunning = false }
+    DebugLogger.log("AUTO-IMPROVEMENT: Voice-triggered run started")
+    await MainActor.run {
+      PopupNotificationWindow.showProcessing(
+        "Improving system prompt from your voice instruction...",
+        title: "Smart Improvement"
+      )
+    }
+
+    let derivation = UserContextDerivation()
+    var appliedKinds: [GenerationKind] = []
+
+    for focus in [GenerationKind.userContext, GenerationKind.dictation, GenerationKind.promptMode, GenerationKind.promptAndRead] {
+      do {
+        try await derivation.updateFromVoiceInstruction(
+          voiceInstruction: instruction,
+          selectedText: selectedText,
+          focus: focus
+        )
+        if hasSuggestion(for: focus), let suggested = readSuggestion(for: focus), !suggested.isEmpty {
+          applySuggestion(suggested, for: focus)
+          appliedKinds.append(focus)
+          DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied \(focus) from voice")
+        }
+      } catch {
+        DebugLogger.logError("AUTO-IMPROVEMENT: Voice derivation failed for \(focus): \(error.localizedDescription)")
+      }
+    }
+
+    await MainActor.run {
+      PopupNotificationWindow.dismissProcessing()
+    }
+    if !appliedKinds.isEmpty {
+      let kindNames = appliedKinds.map { kind -> String in
+        switch kind {
+        case .userContext: return "User Context"
+        case .dictation: return "Dictation Prompt"
+        case .promptMode: return "Dictate Prompt System Prompt"
+        case .promptAndRead: return "Prompt & Read System Prompt"
+        }
+      }
+      let message = "Auto-improved: \(kindNames.joined(separator: ", ")). Check Settings to review or revert."
+      await MainActor.run {
+        PopupNotificationWindow.showInfo(message, title: "Smart Improvement")
+      }
+    } else {
+      await MainActor.run {
+        PopupNotificationWindow.showInfo(
+          "No suggestion could be generated from your instruction. Try rephrasing or check Settings.",
+          title: "Smart Improvement"
+        )
+      }
+    }
+    DebugLogger.log("AUTO-IMPROVEMENT: Improve-from-voice run finished")
+  }
+
   /// True while an improvement run (manual or automatic) is in progress. Use to show "Running…" when the user returns to the Smart Improvement section.
   var isRunning: Bool { isImprovementRunning }
 

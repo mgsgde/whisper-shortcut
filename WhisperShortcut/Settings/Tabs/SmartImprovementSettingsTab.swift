@@ -11,15 +11,15 @@ struct SmartImprovementSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      howItWorksSection
-
-      SpacedSectionDivider()
-
       settingsSection
 
       SpacedSectionDivider()
 
       interactionDataSection
+
+      SpacedSectionDivider()
+
+      usageInstructionsSection
     }
     .confirmationDialog("Delete interaction data?", isPresented: $showDeleteInteractionConfirmation, titleVisibility: .visible) {
       Button("Delete", role: .destructive) {
@@ -31,27 +31,37 @@ struct SmartImprovementSettingsTab: View {
     }
   }
 
-  // MARK: - How it works
-  @ViewBuilder
-  private var howItWorksSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "How it works",
-        subtitle: "Smart Improvement runs automatically after successful dictations. When the dictation count reaches your threshold and the cooldown has passed, the app analyzes your usage and suggests updates for User Context, Dictation prompt, Dictate Prompt prompt, and Prompt & Read prompt. Suggestions are applied automatically; check the relevant settings tabs to review or edit."
-      )
-    }
-  }
-
   // MARK: - Settings
   @ViewBuilder
   private var settingsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Smart Improvement",
-        subtitle: "Automatically improve system prompts based on your usage"
+        subtitle: "Improve from voice shortcut and automatic improvement based on your usage"
       )
 
       VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 8) {
+          ShortcutInputRow(
+            label: "Improve from voice:",
+            placeholder: "e.g., command+6",
+            text: $viewModel.data.togglePromptImprovement,
+            isEnabled: $viewModel.data.togglePromptImprovementEnabled,
+            focusedField: .togglePromptImprovement,
+            currentFocus: $focusedField,
+            onShortcutChanged: {
+              Task {
+                await viewModel.saveSettings()
+              }
+            },
+            validateShortcut: viewModel.validateShortcut
+          )
+          Text("Give feedback by voice to improve user context and all system prompts (dictation, Dictate Prompt, Prompt & Read). Same as the menu bar item \"Improve from voice\".")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
         VStack(alignment: .leading, spacing: 8) {
           HStack(alignment: .center, spacing: 12) {
             Text("Automatic system prompt improvement")
@@ -134,6 +144,28 @@ struct SmartImprovementSettingsTab: View {
             .fixedSize(horizontal: false, vertical: true)
         }
 
+        VStack(alignment: .leading, spacing: 8) {
+          HStack(alignment: .center, spacing: 12) {
+            Text("Improve from my voice")
+              .font(.callout)
+              .fontWeight(.medium)
+            Spacer(minLength: 16)
+            Button(action: {
+              NotificationCenter.default.post(name: .startPromptImprovementRecording, object: nil)
+            }) {
+              Label("Start recording", systemImage: "mic.fill")
+                .font(.callout)
+            }
+            .buttonStyle(.bordered)
+            .help("Start recording to improve prompts and user context by voice (same as the Improve from voice shortcut)")
+          }
+
+          Text("Copies the current selection to the clipboard, then records your voice. Say how you want dictation, prompts, or your profile to change (e.g. \"always add bullet points\", \"I work in legal\"). Uses the same shortcut as in the menu bar.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
         PromptModelSelectionView(
           title: "Model for Smart Improvement",
           subtitle: "Used for automatic Smart Improvement (suggested prompts and user context).",
@@ -146,7 +178,11 @@ struct SmartImprovementSettingsTab: View {
               viewModel.data = d
             }
           ),
-          onModelChanged: nil
+          onModelChanged: {
+            Task {
+              await viewModel.saveSettings()
+            }
+          }
         )
       }
     }
@@ -189,6 +225,52 @@ struct SmartImprovementSettingsTab: View {
         .help("Only delete interaction history and context; settings are preserved")
       }
       .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  // MARK: - Usage Instructions
+  @ViewBuilder
+  private var usageInstructionsSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "📋 How to Use",
+        subtitle: "Improve from voice and automatic improvement"
+      )
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text("How it works")
+          .font(.callout)
+          .fontWeight(.semibold)
+          .foregroundColor(.secondary)
+        Text("Smart Improvement runs automatically after successful dictations. When the dictation count reaches your threshold and the cooldown has passed, the app analyzes your usage and suggests updates for User Context, Dictation prompt, Dictate Prompt prompt, and Prompt & Read prompt. Suggestions are applied automatically; check the relevant settings tabs to review or edit.")
+          .textSelection(.enabled)
+
+        Text("Improve from voice (shortcut):")
+          .font(.callout)
+          .fontWeight(.semibold)
+          .foregroundColor(.secondary)
+          .padding(.top, 4)
+        Text("1. Optionally select text (e.g. a sample you want the assistant to learn from)")
+          .textSelection(.enabled)
+        Text("2. Press your configured Improve from voice shortcut")
+          .textSelection(.enabled)
+        Text("3. Say how you want dictation, prompts, or your profile to change (e.g. \"always add bullet points\", \"I work in legal\")")
+          .textSelection(.enabled)
+        Text("4. Press the shortcut again to stop")
+          .textSelection(.enabled)
+        Text("5. The app updates User Context and system prompts; check Settings to review or revert")
+          .textSelection(.enabled)
+
+        Text("Automatic improvement:")
+          .font(.callout)
+          .fontWeight(.semibold)
+          .foregroundColor(.secondary)
+          .padding(.top, 4)
+        Text("Runs in the background after the set number of dictations (and cooldown). Use \"Run improvement now\" to trigger once immediately.")
+          .textSelection(.enabled)
+      }
+      .font(.callout)
+      .foregroundColor(.secondary)
     }
   }
 }

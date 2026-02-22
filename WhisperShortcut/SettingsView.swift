@@ -76,8 +76,6 @@ struct SettingsView: View {
         switch selectedTab {
         case .general:
           GeneralSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .smartImprovement:
-          SmartImprovementSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .speechToText:
           SpeechToTextSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .speechToPrompt:
@@ -88,6 +86,8 @@ struct SettingsView: View {
           ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .liveMeeting:
           LiveMeetingSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+        case .smartImprovement:
+          SmartImprovementSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         }
       }
       .padding(.horizontal, 24)
@@ -101,8 +101,6 @@ struct SettingsView: View {
     switch tab {
     case .general:
       return "gear"
-    case .smartImprovement:
-      return "brain"
     case .speechToText:
       return "mic"
     case .speechToPrompt:
@@ -113,15 +111,15 @@ struct SettingsView: View {
       return "speaker.wave.2"
     case .liveMeeting:
       return "text.badge.plus"
-  }
+    case .smartImprovement:
+      return "brain"
+    }
   }
 
   private func description(for tab: SettingsTab) -> String {
     switch tab {
     case .general:
       return "API key, shortcuts, and feedback"
-    case .smartImprovement:
-      return "Improvement settings and interaction data"
     case .speechToText:
       return "Model, prompt, and shortcut"
     case .speechToPrompt:
@@ -132,6 +130,8 @@ struct SettingsView: View {
       return "Shortcut and voice selection"
     case .liveMeeting:
       return "Meeting transcription settings"
+    case .smartImprovement:
+      return "Improve from voice shortcut and improvement settings"
     }
   }
 

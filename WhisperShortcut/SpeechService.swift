@@ -131,6 +131,15 @@ class SpeechService {
     currentTTSTask = nil
   }
 
+  /// Transcribes audio to text for use as a voice instruction (e.g. "Improve from voice" flow).
+  /// Uses the same lightweight Gemini transcription as prompt-mode history.
+  func transcribeVoiceInstruction(audioURL: URL) async throws -> String {
+    guard let credential = await credentialProvider.getCredential() else {
+      throw TranscriptionError.noGoogleAPIKey
+    }
+    return try await transcribeAudioForHistory(audioURL: audioURL, credential: credential)
+  }
+
   // MARK: - Transcription Mode (Public API with Task Tracking)
   func transcribe(audioURL: URL) async throws -> String {
     // Create and store task for cancellation support

@@ -84,6 +84,68 @@ class UserContextDerivation {
     DebugLogger.logSuccess("USER-CONTEXT-DERIVATION: Context update completed focus=\(focus)")
   }
 
+  /// Derives a suggested prompt or user context using a direct voice instruction as the primary signal (instead of log sampling).
+  /// Supports all foci: userContext, dictation, promptMode, promptAndRead. Use this for the "Improve from voice" flow.
+  func updateFromVoiceInstruction(voiceInstruction: String, selectedText: String?, focus: GenerationKind) async throws {
+    guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
+      throw TranscriptionError.noGoogleAPIKey
+    }
+
+    DebugLogger.log("USER-CONTEXT-DERIVATION: Starting voice-instruction update focus=\(focus)")
+
+    let existingUserContext = loadExistingUserContextFile()
+    let currentPromptModeSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentPromptAndReadSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentDictationPrompt = (UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) ?? AppConstants.defaultTranscriptionSystemPrompt).trimmingCharacters(in: .whitespacesAndNewlines)
+
+    var primaryParts: [String] = ["User request to change behavior:\n\n\(voiceInstruction)"]
+    if let sel = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines), !sel.isEmpty {
+      primaryParts.append("Selected text (for context):\n\n\(sel)")
+    }
+    let primaryText = primaryParts.joined(separator: "\n\n---\n\n")
+
+    var secondaryParts: [String] = []
+    switch focus {
+    case .userContext:
+      if let ctx = existingUserContext, !ctx.isEmpty {
+        secondaryParts.append("Current user context (refine based on the user request above):\n\(ctx)")
+      }
+    case .dictation:
+      if !currentDictationPrompt.isEmpty {
+        secondaryParts.append("Current dictation prompt (refine based on the user request above):\n\(currentDictationPrompt)")
+      }
+      if let ctx = existingUserContext, !ctx.isEmpty {
+        secondaryParts.append("Existing user context:\n\(ctx)")
+      }
+    case .promptMode:
+      if let ctx = existingUserContext, !ctx.isEmpty { secondaryParts.append("Existing user context:\n\(ctx)") }
+      if let p = currentPromptModeSystemPrompt, !p.isEmpty {
+        secondaryParts.append("Current Dictate Prompt system prompt (refine based on the user request above):\n\(p)")
+      }
+    case .promptAndRead:
+      if let ctx = existingUserContext, !ctx.isEmpty { secondaryParts.append("Existing user context:\n\(ctx)") }
+      if let p = currentPromptAndReadSystemPrompt, !p.isEmpty {
+        secondaryParts.append("Current Prompt & Read system prompt (refine based on the user request above):\n\(p)")
+      }
+    }
+    let secondaryText = secondaryParts.joined(separator: "\n\n---\n\n")
+
+    let analysisResult = try await callGeminiForAnalysis(
+      focus: focus,
+      primaryText: primaryText,
+      secondaryText: secondaryText,
+      currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
+      currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
+      currentDictationPrompt: currentDictationPrompt,
+      existingUserContext: existingUserContext,
+      credential: credential,
+      voiceInstructionPrimary: true
+    )
+
+    try writeOutputFile(analysisResult: analysisResult, focus: focus)
+    DebugLogger.logSuccess("USER-CONTEXT-DERIVATION: Voice-instruction update completed focus=\(focus)")
+  }
+
   // MARK: - Load Existing Context (for refinement)
 
   /// Reads existing user-context.md so Gemini can refine it. Ignores the "include in prompt" toggle.
@@ -495,23 +557,27 @@ class UserContextDerivation {
     currentPromptAndReadSystemPrompt: String?,
     currentDictationPrompt: String?,
     existingUserContext: String?,
-    credential: GeminiCredential
+    credential: GeminiCredential,
+    voiceInstructionPrimary: Bool = false
   ) async throws -> String {
     let geminiClient = GeminiAPIClient()
     var request = try geminiClient.createRequest(endpoint: analysisEndpoint, credential: credential)
 
-    let systemPrompt = systemPromptForFocus(focus)
+    var systemPrompt = systemPromptForFocus(focus)
+    if voiceInstructionPrimary {
+      systemPrompt += "\n\nThe user may provide a direct voice instruction to change future behavior; treat that as the primary signal."
+    }
 
     var userMessageParts: [String] = []
-    if focus == .userContext {
+    if focus == .userContext && !voiceInstructionPrimary {
       if let existing = existingUserContext, !existing.isEmpty {
         userMessageParts.append("Existing user context (refine and extend this):\n\(existing)")
       }
       userMessageParts.append("User's recent interactions:\n\n\(primaryText)")
     } else {
       if !primaryText.isEmpty {
-        let modeLabel = Self.primaryMode(for: focus) ?? "primary"
-        userMessageParts.append("Primary – \(modeLabel) interactions:\n\n\(primaryText)")
+        let modeLabel = voiceInstructionPrimary ? "user request to change behavior" : (Self.primaryMode(for: focus) ?? "primary")
+        userMessageParts.append("Primary – \(modeLabel):\n\n\(primaryText)")
       } else {
         userMessageParts.append("No primary (\(Self.primaryMode(for: focus) ?? "target") mode) interactions found. Base the suggestion on secondary context below.")
       }

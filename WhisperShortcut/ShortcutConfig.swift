@@ -100,6 +100,8 @@ struct ShortcutConfig: Codable {
   var stopRecording: ShortcutDefinition
   var startPrompting: ShortcutDefinition
   var stopPrompting: ShortcutDefinition
+  var startPromptImprovement: ShortcutDefinition
+  var stopPromptImprovement: ShortcutDefinition
   var readSelectedText: ShortcutDefinition
   var readAloud: ShortcutDefinition
   var toggleMeeting: ShortcutDefinition
@@ -111,11 +113,13 @@ struct ShortcutConfig: Codable {
     stopRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
     startPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
     stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
+    startPromptImprovement: ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: true),
+    stopPromptImprovement: ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: true),
     readSelectedText: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
     readAloud: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true),
     toggleMeeting: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
     stopMeeting: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
-    openSettings: ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: true)
+    openSettings: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true)
   )
 }
 
@@ -214,6 +218,8 @@ class ShortcutConfigManager {
     static let stopRecordingKey = "shortcut_stop_recording"
     static let startPromptingKey = "shortcut_start_prompting"
     static let stopPromptingKey = "shortcut_stop_prompting"
+    static let startPromptImprovementKey = "shortcut_start_prompt_improvement"
+    static let stopPromptImprovementKey = "shortcut_stop_prompt_improvement"
     static let readSelectedTextKey = "shortcut_read_selected_text"
     static let readAloudKey = "shortcut_read_aloud"
     static let toggleMeetingKey = "shortcut_toggle_meeting"
@@ -235,6 +241,10 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.startPromptingKey) ?? ShortcutConfig.default.startPrompting
     let stopPrompting =
       loadShortcut(for: Constants.stopPromptingKey) ?? ShortcutConfig.default.stopPrompting
+    let startPromptImprovement =
+      loadShortcut(for: Constants.startPromptImprovementKey) ?? ShortcutConfig.default.startPromptImprovement
+    let stopPromptImprovement =
+      loadShortcut(for: Constants.stopPromptImprovementKey) ?? ShortcutConfig.default.stopPromptImprovement
     let readSelectedText =
       loadShortcut(for: Constants.readSelectedTextKey) ?? ShortcutConfig.default.readSelectedText
     let readAloud =
@@ -243,7 +253,7 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.toggleMeetingKey) ?? ShortcutConfig.default.toggleMeeting
     let stopMeeting =
       loadShortcut(for: Constants.stopMeetingKey) ?? ShortcutConfig.default.stopMeeting
-    // Migration: if Meeting shortcut was never saved, use default Settings (⌘6) to avoid conflict with Meeting (⌘5)
+    // Migration: if Meeting shortcut was never saved, use default Settings (⌘7) to avoid conflict with Meeting (⌘5)
     let openSettings = userDefaults.data(forKey: Constants.toggleMeetingKey) != nil
       ? (loadShortcut(for: Constants.openSettingsKey) ?? ShortcutConfig.default.openSettings)
       : ShortcutConfig.default.openSettings
@@ -252,6 +262,8 @@ class ShortcutConfigManager {
       stopRecording: stopRecording,
       startPrompting: startPrompting,
       stopPrompting: stopPrompting,
+      startPromptImprovement: startPromptImprovement,
+      stopPromptImprovement: stopPromptImprovement,
       readSelectedText: readSelectedText,
       readAloud: readAloud,
       toggleMeeting: toggleMeeting,
@@ -265,6 +277,8 @@ class ShortcutConfigManager {
     saveShortcut(config.stopRecording, for: Constants.stopRecordingKey)
     saveShortcut(config.startPrompting, for: Constants.startPromptingKey)
     saveShortcut(config.stopPrompting, for: Constants.stopPromptingKey)
+    saveShortcut(config.startPromptImprovement, for: Constants.startPromptImprovementKey)
+    saveShortcut(config.stopPromptImprovement, for: Constants.stopPromptImprovementKey)
     saveShortcut(config.readSelectedText, for: Constants.readSelectedTextKey)
     saveShortcut(config.readAloud, for: Constants.readAloudKey)
     saveShortcut(config.toggleMeeting, for: Constants.toggleMeetingKey)
@@ -412,4 +426,6 @@ extension Notification.Name {
   static let rateLimitResolved = Notification.Name("rateLimitResolved")
   /// Posted when user-context.md was updated (e.g. from Compare sheet) so General tab can reload
   static let userContextFileDidUpdate = Notification.Name("userContextFileDidUpdate")
+  /// Posted from Smart Improvement settings to start "Improve from voice" recording (same flow as shortcut).
+  static let startPromptImprovementRecording = Notification.Name("startPromptImprovementRecording")
 }

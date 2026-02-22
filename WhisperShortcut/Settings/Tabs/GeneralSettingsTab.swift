@@ -13,6 +13,10 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
+      KeyboardShortcutsSection(viewModel: viewModel, focusedField: $focusedField)
+
+      SpacedSectionDivider()
+
       UserContextSection(viewModel: viewModel, focusedField: $focusedField)
 
       SpacedSectionDivider()
@@ -30,10 +34,6 @@ struct GeneralSettingsTab: View {
       SpacedSectionDivider()
 
       ClipboardBehaviorSection(viewModel: viewModel)
-
-      SpacedSectionDivider()
-
-      KeyboardShortcutsSection(viewModel: viewModel, focusedField: $focusedField)
 
       SpacedSectionDivider()
 

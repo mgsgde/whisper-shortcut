@@ -374,12 +374,12 @@ enum WhisperLanguage: String, CaseIterable {
 // MARK: - Settings Tab Definition
 enum SettingsTab: String, CaseIterable {
   case general = "General"
-  case smartImprovement = "Smart Improvement"
   case speechToText = "Dictate"
   case speechToPrompt = "Dictate Prompt"
   case promptAndRead = "Dictate Prompt & Read"
   case readAloud = "Read Aloud"
   case liveMeeting = "Live Meeting"
+  case smartImprovement = "Smart Improvement"
 }
 
 // MARK: - Live Meeting Chunk Interval Options
@@ -408,6 +408,7 @@ struct SettingsDefaults {
   // MARK: - Toggle Shortcut Settings
   static let toggleDictation = ""
   static let togglePrompting = ""
+  static let togglePromptImprovement = ""
   static let readSelectedText = ""
   static let readAloud = ""
   static let toggleMeeting = ""
@@ -416,6 +417,7 @@ struct SettingsDefaults {
   // MARK: - Toggle Shortcut Enable States
   static let toggleDictationEnabled = true
   static let togglePromptingEnabled = true
+  static let togglePromptImprovementEnabled = true
   static let readSelectedTextEnabled = true
   static let readAloudEnabled = true
   static let toggleMeetingEnabled = true
@@ -481,6 +483,7 @@ struct SettingsData {
   // MARK: - Toggle Shortcut Settings
   var toggleDictation: String = SettingsDefaults.toggleDictation
   var togglePrompting: String = SettingsDefaults.togglePrompting
+  var togglePromptImprovement: String = SettingsDefaults.togglePromptImprovement
   var readSelectedText: String = SettingsDefaults.readSelectedText
   var readAloud: String = SettingsDefaults.readAloud
   var toggleMeeting: String = SettingsDefaults.toggleMeeting
@@ -489,6 +492,7 @@ struct SettingsData {
   // MARK: - Toggle Shortcut Enable States
   var toggleDictationEnabled: Bool = SettingsDefaults.toggleDictationEnabled
   var togglePromptingEnabled: Bool = SettingsDefaults.togglePromptingEnabled
+  var togglePromptImprovementEnabled: Bool = SettingsDefaults.togglePromptImprovementEnabled
   var readSelectedTextEnabled: Bool = SettingsDefaults.readSelectedTextEnabled
   var readAloudEnabled: Bool = SettingsDefaults.readAloudEnabled
   var toggleMeetingEnabled: Bool = SettingsDefaults.toggleMeetingEnabled
@@ -540,6 +544,7 @@ enum SettingsFocusField: Hashable {
   case googleAPIKey
   case toggleDictation
   case togglePrompting
+  case togglePromptImprovement
   case toggleReadSelectedText
   case toggleReadAloud
   case toggleMeeting

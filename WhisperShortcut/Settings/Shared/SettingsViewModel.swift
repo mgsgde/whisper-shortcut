@@ -35,6 +35,7 @@ class SettingsViewModel: ObservableObject {
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     data.toggleDictation = currentConfig.startRecording.textDisplayString
     data.togglePrompting = currentConfig.startPrompting.textDisplayString
+    data.togglePromptImprovement = currentConfig.startPromptImprovement.textDisplayString
     data.readSelectedText = currentConfig.readSelectedText.textDisplayString
     data.readAloud = currentConfig.readAloud.textDisplayString
     data.toggleMeeting = currentConfig.toggleMeeting.textDisplayString
@@ -42,6 +43,7 @@ class SettingsViewModel: ObservableObject {
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
+    data.togglePromptImprovementEnabled = currentConfig.startPromptImprovement.isEnabled
     data.readSelectedTextEnabled = currentConfig.readSelectedText.isEnabled
     data.readAloudEnabled = currentConfig.readAloud.isEnabled
     data.toggleMeetingEnabled = currentConfig.toggleMeeting.isEnabled
@@ -124,12 +126,10 @@ class SettingsViewModel: ObservableObject {
     if let savedImprovementModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel),
       let savedImprovementModel = PromptModel(rawValue: savedImprovementModelString)
     {
-      // Migration: Smart Improvement default is Gemini 3.1 Pro; treat Gemini 3 Flash as default so it doesn’t keep reverting.
-      if savedImprovementModel == .gemini3Flash {
-        data.selectedImprovementModel = SettingsDefaults.selectedImprovementModel
-        UserDefaults.standard.set(data.selectedImprovementModel.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
-      } else {
-        data.selectedImprovementModel = savedImprovementModel
+      let migrated = PromptModel.migrateIfDeprecated(savedImprovementModel)
+      data.selectedImprovementModel = migrated
+      if migrated != savedImprovementModel {
+        UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
       }
     } else {
       data.selectedImprovementModel = SettingsDefaults.selectedImprovementModel
@@ -230,6 +230,12 @@ class SettingsViewModel: ObservableObject {
       }
     }
 
+    if data.togglePromptImprovementEnabled {
+      guard !data.togglePromptImprovement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return "Please enter an Improve from voice shortcut"
+      }
+    }
+
     if data.readSelectedTextEnabled {
       guard !data.readSelectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         return "Please enter a prompt & read shortcut"
@@ -318,6 +324,8 @@ class SettingsViewModel: ObservableObject {
       return name == "toggle dictation"
     case .togglePrompting:
       return name == "toggle prompting"
+    case .togglePromptImprovement:
+      return name == "adjust system prompt"
     case .toggleReadSelectedText:
       return name == "read selected text"
     case .toggleReadAloud:
@@ -340,6 +348,9 @@ class SettingsViewModel: ObservableObject {
       "toggle prompting": data.togglePromptingEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.togglePrompting)
         : ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
+      "adjust system prompt": data.togglePromptImprovementEnabled
+        ? ShortcutConfigManager.parseShortcut(from: data.togglePromptImprovement)
+        : ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: false),
       "read selected text": data.readSelectedTextEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.readSelectedText)
         : ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
@@ -351,7 +362,7 @@ class SettingsViewModel: ObservableObject {
         : ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false),
       "open settings": data.openSettingsEnabled
         ? ShortcutConfigManager.parseShortcut(from: data.openSettings)
-        : ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: false),
+        : ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: false),
     ]
   }
 
@@ -420,6 +431,10 @@ class SettingsViewModel: ObservableObject {
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
       stopPrompting: shortcuts["toggle prompting"]!
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
+      startPromptImprovement: shortcuts["adjust system prompt"]!
+        ?? ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: false),
+      stopPromptImprovement: shortcuts["adjust system prompt"]!
+        ?? ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: false),
       readSelectedText: shortcuts["read selected text"]!
         ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
       readAloud: shortcuts["read aloud"]!
@@ -429,7 +444,7 @@ class SettingsViewModel: ObservableObject {
       stopMeeting: shortcuts["toggle meeting"]!
         ?? ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false),
       openSettings: shortcuts["open settings"]!
-        ?? ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: false)
+        ?? ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 
