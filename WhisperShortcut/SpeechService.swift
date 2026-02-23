@@ -681,7 +681,8 @@ class SpeechService {
             prebuiltVoiceConfig: GeminiTTSRequest.GeminiTTSPrebuiltVoiceConfig(voiceName: selectedVoice)
           )
         )
-      )
+      ),
+      model: credential.isOAuth ? selectedTTSModel.rawValue : nil
     )
     request.httpBody = try JSONEncoder().encode(ttsRequest)
 

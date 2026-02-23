@@ -512,6 +512,8 @@ struct GeminiChatResponse: Codable {
 struct GeminiTTSRequest: Codable {
   let contents: [GeminiTTSContent]
   let generationConfig: GeminiTTSGenerationConfig
+  /// When using proxy (OAuth), send so the backend uses the selected TTS model.
+  let model: String?
 
   struct GeminiTTSContent: Codable {
     let parts: [GeminiTTSPart]
