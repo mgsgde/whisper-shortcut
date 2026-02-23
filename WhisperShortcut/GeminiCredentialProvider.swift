@@ -1,7 +1,7 @@
 import Foundation
 
-/// Provides the current credential for Gemini API (API key from Keychain or OAuth when signed in with Google).
-/// Single source of truth so all Gemini callers stay in sync. Priority: API key if set, else OAuth access token if signed in.
+/// Provides the current credential for Gemini: API key (direct) or Bearer ID token (proxy only when signed in).
+/// Single source of truth. Priority: API key if set, else Bearer ID token when signed in with Google.
 protocol GeminiCredentialProviding {
   /// Returns a valid credential if the user has set an API key or is signed in with Google; nil otherwise.
   func getCredential() async -> GeminiCredential?
@@ -9,7 +9,7 @@ protocol GeminiCredentialProviding {
   func hasCredential() -> Bool
 }
 
-/// Default implementation: API key from Keychain first; if none, OAuth access token when signed in with Google.
+/// Default implementation: API key from Keychain first; if none, Bearer ID token when signed in (proxy only).
 final class GeminiCredentialProvider: GeminiCredentialProviding {
   static let shared = GeminiCredentialProvider(keychainManager: KeychainManager.shared)
 
@@ -20,14 +20,14 @@ final class GeminiCredentialProvider: GeminiCredentialProviding {
   }
 
   func getCredential() async -> GeminiCredential? {
-    // API key always has precedence; OAuth (Google Sign-In) is used only when no API key is set.
+    // API key always has precedence; when signed in (no key), use Bearer ID token for backend proxy only.
     if let key = keychainManager.getGoogleAPIKey(), !key.isEmpty {
       return .apiKey(key)
     }
     if DefaultGoogleAuthService.shared.isSignedIn(),
-       let accessToken = await DefaultGoogleAuthService.shared.currentAccessToken(),
-       !accessToken.isEmpty {
-      return .oauth(accessToken: accessToken)
+       let idToken = await DefaultGoogleAuthService.shared.getIDToken(),
+       !idToken.isEmpty {
+      return .bearer(idToken)
     }
     return nil
   }

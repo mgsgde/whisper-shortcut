@@ -513,7 +513,7 @@ struct SettingsDefaults {
     #if DEBUG
     return "http://localhost:3000/dashboard"
     #else
-    return "https://www.whispershortcut.com/dashboard"
+    return "https://whispershortcut.com/dashboard"
     #endif
   }()
 

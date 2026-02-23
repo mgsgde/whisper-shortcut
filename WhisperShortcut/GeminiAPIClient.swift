@@ -1,15 +1,16 @@
 import Foundation
 
 // MARK: - Gemini Credential
-/// Authentication for Gemini API: API key (query param), OAuth access token (Bearer), or Bearer token for proxy (ID token).
+/// Authentication for Gemini: API key (direct to Gemini API) or Bearer ID token (proxy only; SSO).
+/// When using SSO, the app only talks to the backend proxy; direct Gemini API is not used.
 enum GeminiCredential {
   case apiKey(String)
-  case oauth(accessToken: String)
-  /// Bearer token (e.g. Google ID token for proxy). Used when sending to whisper-api; backend verifies JWT.
+  /// Bearer ID token for backend proxy (whisper-api). Used when signed in with Google; backend verifies JWT.
   case bearer(String)
 
+  /// True when credential is for proxy (SSO path). Requests must go to backend, not direct Gemini API.
   var isOAuth: Bool {
-    if case .oauth = self { return true }
+    if case .bearer = self { return true }
     return false
   }
 }
@@ -89,7 +90,7 @@ class GeminiAPIClient {
       switch credential {
       case .apiKey(let key):
         components.queryItems = [URLQueryItem(name: "key", value: key)]
-      case .oauth, .bearer:
+      case .bearer:
         break
       }
     }
@@ -104,7 +105,7 @@ class GeminiAPIClient {
     request.timeoutInterval = Constants.resourceTimeout
     if let credential = credential {
       switch credential {
-      case .oauth(let token), .bearer(let token):
+      case .bearer(let token):
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
       case .apiKey:
         break
@@ -121,7 +122,7 @@ class GeminiAPIClient {
   // MARK: - Proxy Endpoint Resolution (Phase 1)
   /// Resolves the effective generateContent endpoint and credential.
   /// When user is signed in (OAuth) and proxy base URL is set, uses proxy. Otherwise direct Gemini.
-  /// When using proxy with OAuth, returns proxy URL and nil (caller must use resolveCredentialForRequest to get Bearer ID token).
+  /// When using SSO (bearer), returns proxy URL and nil (caller must use resolveCredentialForRequest to get Bearer ID token).
   static func resolveGenerateContentEndpoint(directEndpoint: String, credential: GeminiCredential) -> (endpoint: String, credential: GeminiCredential?) {
     let base = SettingsDefaults.proxyAPIBaseURL
     if credential.isOAuth, !base.isEmpty {
@@ -498,7 +499,7 @@ class GeminiAPIClient {
     switch credential {
     case .apiKey(let key):
       components.queryItems = [URLQueryItem(name: "key", value: key)]
-    case .oauth, .bearer:
+    case .bearer:
       break
     }
 
@@ -509,8 +510,7 @@ class GeminiAPIClient {
     var initRequest = URLRequest(url: initURL)
     initRequest.httpMethod = "POST"
     initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    if case .oauth(let token) = credential { initRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-    else if case .bearer(let token) = credential { initRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+    if case .bearer(let token) = credential { initRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
     initRequest.setValue("resumable", forHTTPHeaderField: "X-Goog-Upload-Protocol")
     initRequest.setValue("start", forHTTPHeaderField: "X-Goog-Upload-Command")
     initRequest.setValue("\(numBytes)", forHTTPHeaderField: "X-Goog-Upload-Header-Content-Length")

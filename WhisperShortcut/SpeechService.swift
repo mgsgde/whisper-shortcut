@@ -713,8 +713,6 @@ class SpeechService {
     switch credential {
     case .apiKey(let key):
       DebugLogger.log("GEMINI-TRANSCRIPTION: Using API key (prefix: \(key.prefix(8))..., length: \(key.count) chars)")
-    case .oauth:
-      DebugLogger.log("GEMINI-TRANSCRIPTION: Using OAuth (Google Sign-In)")
     case .bearer:
       DebugLogger.log("GEMINI-TRANSCRIPTION: Using Proxy (Bearer)")
     }
