@@ -78,24 +78,39 @@ struct SpeechErrorFormatter {
         """
 
     case .rateLimited(let retryAfter):
-      let waitMessage = retryAfter.map { "Please wait \(Int($0)) seconds and try again." } ?? "Please wait a moment and try again after setting up billing."
+      let waitMessage = retryAfter.map { "Please wait \(Int($0)) seconds and try again." } ?? "Wait a moment and try again, or set up billing (see below)."
       return """
         ⏳ Rate Limit Exceeded
 
         You have exceeded the rate limit for this API.
 
-        Common causes for new users:
-        • No billing method configured - Google requires payment setup
-        • Account has no credits or usage quota reached
-        • Too many requests in a short time period
+        Common causes when using an API key:
+        • No billing method – Google often requires payment setup for higher limits and for preview models (e.g. Gemini 3 Flash)
+        • Free tier quota or daily limit reached
+        • Too many requests in a short time
 
-        To resolve:
-        1. Visit Google Cloud Console
-        2. Go to Billing settings
-        3. Add a payment method
-        4. Enable the Gemini API
+        To resolve (API key / Google AI Studio):
+        1. Open Google AI Studio: https://aistudio.google.com/app/apikey
+        2. Select your project and enable billing for the Gemini API there (or create a paid plan)
+        3. Preview models (Gemini 3 Flash, 3 Pro) often need billing enabled even if other models work
+
+        If you use a backend (Sign in with Google) instead, check your GCP project’s billing in Google Cloud Console.
 
         \(waitMessage)
+        """
+
+    case .billingRequired:
+      return """
+        💳 Billing Required
+
+        This model or your region requires billing to be enabled for the Gemini API.
+
+        When using an API key:
+        1. Open Google AI Studio: https://aistudio.google.com/app/apikey
+        2. Select the project that owns your API key
+        3. Enable billing (paid plan) for the Gemini API
+
+        Preview models (e.g. Gemini 3 Flash) often require billing even when stable models work on the free tier.
         """
 
     case .quotaExceeded(let retryAfter):
@@ -323,6 +338,8 @@ struct SpeechErrorFormatter {
       return "⏳ Rate Limited"
     case .quotaExceeded:
       return "⏳ Quota Exceeded"
+    case .billingRequired:
+      return "💳 Billing Required"
     case .networkError:
       return "⏰ Network Error"
     case .requestTimeout:

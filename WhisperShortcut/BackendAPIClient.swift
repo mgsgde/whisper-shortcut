@@ -8,9 +8,9 @@
 
 import Foundation
 
-/// Response for GET /v1/balance
+/// Response for GET /v1/balance (API returns balance in millicents).
 struct BalanceResponse: Codable {
-  let balance_cent: Int
+  let balance_mcent: Int
 }
 
 /// Request body for POST /v1/usage
@@ -32,7 +32,7 @@ enum BackendAPIClient {
     SettingsDefaults.proxyAPIBaseURL
   }
 
-  /// Fetches current balance (cents). Calls completion on main thread with balance or nil on error.
+  /// Fetches current balance from API (balance_mcent), returns cents for display, or nil on error.
   static func fetchBalance(idTokenProvider: @escaping () async -> String?) async -> Int? {
     let base = baseURL()
     guard let url = URL(string: base + "/v1/balance") else {
@@ -54,7 +54,7 @@ enum BackendAPIClient {
         return nil
       }
       let decoded = try JSONDecoder().decode(BalanceResponse.self, from: data)
-      return decoded.balance_cent
+      return decoded.balance_mcent / 1000  // millicents → cents
     } catch {
       DebugLogger.logNetwork("BACKEND-API: Balance fetch failed: \(error.localizedDescription)")
       return nil

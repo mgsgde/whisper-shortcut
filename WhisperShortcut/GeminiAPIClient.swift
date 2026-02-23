@@ -647,12 +647,17 @@ class GeminiAPIClient {
       }
 
       let message = errorResponse.error.message
-      DebugLogger.log("GEMINI-ERROR: \(message)")
+      let status = errorResponse.error.status ?? ""
+      DebugLogger.log("GEMINI-ERROR: status=\(status) message=\(message)")
 
       // Map common Gemini errors to TranscriptionError
       let lowerMessage = message.lowercased()
       if lowerMessage.contains("api key") || lowerMessage.contains("authentication") {
         return statusCode == 401 ? .invalidAPIKey : .incorrectAPIKey
+      }
+      // 400 FAILED_PRECONDITION often means "enable billing" (e.g. free tier not available in region or for preview models)
+      if statusCode == 400 && (status == "FAILED_PRECONDITION" || lowerMessage.contains("billing") || lowerMessage.contains("free tier") || lowerMessage.contains("payment")) {
+        return .billingRequired
       }
       if lowerMessage.contains("quota") || lowerMessage.contains("exceeded") {
         return .quotaExceeded(retryAfter: retryAfter)
@@ -670,7 +675,8 @@ class GeminiAPIClient {
               let error = json["error"] as? [String: Any],
               let message = error["message"] as? String {
       // Fallback to manual JSON parsing
-      DebugLogger.log("GEMINI-ERROR: \(message)")
+      let status = error["status"] as? String ?? ""
+      DebugLogger.log("GEMINI-ERROR: status=\(status) message=\(message)")
 
       // Try to extract retry delay from the message text
       let fallbackRetryAfter = GeminiErrorResponse.parseRetryDelayFromMessage(message)
@@ -682,6 +688,9 @@ class GeminiAPIClient {
       let lowerMessage = message.lowercased()
       if lowerMessage.contains("api key") || lowerMessage.contains("authentication") {
         return statusCode == 401 ? .invalidAPIKey : .incorrectAPIKey
+      }
+      if statusCode == 400 && (status == "FAILED_PRECONDITION" || lowerMessage.contains("billing") || lowerMessage.contains("free tier") || lowerMessage.contains("payment")) {
+        return .billingRequired
       }
       if lowerMessage.contains("quota") || lowerMessage.contains("exceeded") {
         return .quotaExceeded(retryAfter: retryAfter)

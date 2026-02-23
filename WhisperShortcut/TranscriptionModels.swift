@@ -553,6 +553,8 @@ enum TranscriptionError: Error, Equatable {
   case modelDeprecated
   case rateLimited(retryAfter: TimeInterval?)
   case quotaExceeded(retryAfter: TimeInterval?)
+  /// Billing must be enabled (e.g. 400 FAILED_PRECONDITION "enable billing" from Gemini API).
+  case billingRequired
   case serverError(Int)
   case serviceUnavailable
   case slowDown
@@ -581,6 +583,7 @@ enum TranscriptionError: Error, Equatable {
     case .modelDeprecated: return "Model No Longer Available"
     case .rateLimited: return "Rate Limited"
     case .quotaExceeded: return "Quota Exceeded"
+    case .billingRequired: return "Billing Required"
     case .serverError: return "Server Error"
     case .serviceUnavailable: return "Service Unavailable"
     case .slowDown: return "Slow Down"
@@ -620,7 +623,7 @@ enum TranscriptionError: Error, Equatable {
     case .quotaExceeded(let retryAfter):
       return retryAfter != nil
     // Non-retryable errors (configuration/permanent issues)
-    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest, .voiceRequiresAPIKey:
+    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .billingRequired, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest, .voiceRequiresAPIKey:
       return false
     }
   }

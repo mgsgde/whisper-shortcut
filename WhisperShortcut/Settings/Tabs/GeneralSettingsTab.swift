@@ -21,10 +21,6 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
-      ProxyAPISection()
-
-      SpacedSectionDivider()
-
       KeyboardShortcutsSection(viewModel: viewModel, focusedField: $focusedField)
 
       SpacedSectionDivider()
