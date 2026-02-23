@@ -112,8 +112,8 @@ async function captureScreenshot(config) {
     // Wait for content
     await new Promise(resolve => setTimeout(resolve, config.name === 'star-history' ? 1000 : 2000));
     
-    // Take screenshot (write to website/images/ so the site uses the same files)
-    const outputPath = path.join(__dirname, '..', '..', 'images', config.output);
+    // Take screenshot (write to screenshots/images/)
+    const outputPath = path.join(__dirname, '..', 'images', config.output);
     await page.screenshot({ 
       path: outputPath,
       fullPage: false,

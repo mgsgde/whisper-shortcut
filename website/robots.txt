@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://mgsgde.github.io/whisper-shortcut/sitemap.xml
