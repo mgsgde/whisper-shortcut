@@ -164,7 +164,10 @@ class GeminiAPIClient {
         }
         
         DebugLogger.log("\(mode): Sending request (attempt \(attempt)/\(maxAttempts))")
+        let requestStart = CFAbsoluteTimeGetCurrent()
         let (data, response) = try await session.data(for: request)
+        let roundTripMs = Int(round((CFAbsoluteTimeGetCurrent() - requestStart) * 1000))
+        DebugLogger.logNetwork("\(mode): Round-trip \(roundTripMs) ms")
         DebugLogger.log("\(mode): Received response")
         
         guard let httpResponse = response as? HTTPURLResponse else {
