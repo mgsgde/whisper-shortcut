@@ -660,6 +660,9 @@ class GeminiAPIClient {
       if statusCode == 404 && (lowerMessage.contains("no longer available") || lowerMessage.contains("deprecated")) {
         return .modelDeprecated
       }
+      if statusCode == 400 && (lowerMessage.contains("allowlist") || lowerMessage.contains("audio output") || lowerMessage.contains("voice output") || lowerMessage.contains("requires an api key")) {
+        return .voiceRequiresAPIKey
+      }
     } else if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let error = json["error"] as? [String: Any],
               let message = error["message"] as? String {
@@ -685,6 +688,9 @@ class GeminiAPIClient {
       }
       if statusCode == 404 && (lowerMessage.contains("no longer available") || lowerMessage.contains("deprecated")) {
         return .modelDeprecated
+      }
+      if statusCode == 400 && (lowerMessage.contains("allowlist") || lowerMessage.contains("audio output") || lowerMessage.contains("voice output") || lowerMessage.contains("requires an api key")) {
+        return .voiceRequiresAPIKey
       }
     }
 

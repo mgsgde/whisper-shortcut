@@ -296,6 +296,15 @@ struct SpeechErrorFormatter {
 
         Note: Models are downloaded from HuggingFace and stored locally on your Mac. Once downloaded, they work completely offline.
         """
+
+    case .voiceRequiresAPIKey:
+      return """
+        🎤 Voice Output Requires API Key
+
+        Voice output (Read Aloud, Prompt & Read) is not available when using Sign in with Google and balance.
+
+        To use voice output, add a Google API key in Settings → Google API Key. Voice output will then use the Generative Language API directly and does not require allowlist access.
+        """
     }
   }
 
@@ -340,6 +349,8 @@ struct SpeechErrorFormatter {
       return "📥 Model Not Downloaded"
     case .modelDeprecated:
       return "❌ Model no longer available"
+    case .voiceRequiresAPIKey:
+      return "🎤 Voice Requires API Key"
     default:
       return "❌ Error"
     }

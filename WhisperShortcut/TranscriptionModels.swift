@@ -564,6 +564,8 @@ enum TranscriptionError: Error, Equatable {
   case textTooShort
   case promptLeakDetected
   case modelNotAvailable(OfflineModelType)
+  /// Voice/output (TTS) is not available via Sign in with Google and balance; API key is required.
+  case voiceRequiresAPIKey
 
   var title: String {
     switch self {
@@ -590,6 +592,7 @@ enum TranscriptionError: Error, Equatable {
     case .textTooShort: return "Text Too Short"
     case .promptLeakDetected: return "API Response Issue"
     case .modelNotAvailable: return "Model Not Downloaded"
+    case .voiceRequiresAPIKey: return "Voice Requires API Key"
     }
   }
 
@@ -615,7 +618,7 @@ enum TranscriptionError: Error, Equatable {
     case .quotaExceeded(let retryAfter):
       return retryAfter != nil
     // Non-retryable errors (configuration/permanent issues)
-    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest:
+    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest, .voiceRequiresAPIKey:
       return false
     }
   }
