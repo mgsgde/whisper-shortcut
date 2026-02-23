@@ -3,6 +3,10 @@
 # WhisperShortcut Rebuild and Restart Script
 # Builds the project, kills any running instances, and starts the app that was just built.
 # Uses a fixed derivedData path so we always launch the build we just produced (not an old one).
+#
+# Usage:
+#   bash scripts/rebuild-and-restart.sh           # Use local API (localhost:8080), dev balance
+#   bash scripts/rebuild-and-restart.sh --production   # Use production API, production balance
 
 set -e  # Exit on any error
 
@@ -10,6 +14,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DERIVED_DATA="$PROJECT_DIR/build/DerivedData"
 APP_PATH="$DERIVED_DATA/Build/Products/Debug/WhisperShortcut.app"
+
+# Optional: --production to use production API (and production balance)
+if [[ "${1:-}" == "--production" ]] || [[ "${1:-}" == "production" ]]; then
+  defaults write com.magnusgoedde.whispershortcut WSUseProductionAPI -bool true
+  echo "📡 Using production API (whispershortcut.com balance)."
+else
+  defaults delete com.magnusgoedde.whispershortcut WSUseProductionAPI 2>/dev/null || true
+  echo "📡 Using local API (localhost:8080)."
+fi
 
 cd "$PROJECT_DIR"
 
