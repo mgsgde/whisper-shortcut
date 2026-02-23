@@ -283,7 +283,8 @@ class ChunkTTSService {
                                 prebuiltVoiceConfig: GeminiTTSRequest.GeminiTTSPrebuiltVoiceConfig(voiceName: voiceName)
                             )
                         )
-                    )
+                    ),
+                    model: credential.isOAuth ? model.rawValue : nil
                 )
                 request.httpBody = try JSONEncoder().encode(ttsRequest)
 
