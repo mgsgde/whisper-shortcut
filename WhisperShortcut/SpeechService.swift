@@ -359,13 +359,16 @@ class SpeechService {
       parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
     )
 
+    // When using proxy (OAuth), send model in body so backend uses the selected prompt model.
+    let modelForRequest: String? = credential.isOAuth ? selectedPromptModel.rawValue : nil
+
     // Create request (no tools for prompt mode, no audio output needed)
     let chatRequest = GeminiChatRequest(
       contents: contents,
       systemInstruction: systemInstruction,
       tools: nil,
       generationConfig: nil,
-      model: nil
+      model: modelForRequest
     )
 
     request.httpBody = try JSONEncoder().encode(chatRequest)
@@ -559,13 +562,16 @@ class SpeechService {
       parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
     )
 
+    // When using proxy (OAuth), send model in body so backend uses the selected prompt model.
+    let modelForRequest: String? = credential.isOAuth ? selectedPromptModel.rawValue : nil
+
     // Create request
     let chatRequest = GeminiChatRequest(
       contents: contents,
       systemInstruction: systemInstruction,
       tools: nil,
       generationConfig: nil,
-      model: nil
+      model: modelForRequest
     )
 
     request.httpBody = try JSONEncoder().encode(chatRequest)

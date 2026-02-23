@@ -499,23 +499,29 @@ struct SettingsDefaults {
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
 
   // MARK: - Backend API (when signed in, Gemini + balance use this)
-  /// Debug: local API (npm run dev). Release: production whisper-api (Cloud Run).
-  static let proxyAPIBaseURL: String = {
+  /// Debug: local API (npm run dev) unless WSUseProductionAPI UserDefaults is set. Release: production.
+  static var proxyAPIBaseURL: String {
     #if DEBUG
+    if UserDefaults.standard.bool(forKey: "WSUseProductionAPI") {
+      return "https://api.whispershortcut.com"
+    }
     return "http://localhost:8080"
     #else
-    return "https://whisper-api-hrihd7rvtq-ew.a.run.app"
+    return "https://api.whispershortcut.com"
     #endif
-  }()
+  }
 
-  /// Dashboard URL (balance top-up). Debug: local account app. Release: production.
-  static let dashboardBaseURL: String = {
+  /// Dashboard URL (balance top-up). Debug: local unless WSUseProductionAPI. Release: production.
+  static var dashboardBaseURL: String {
     #if DEBUG
+    if UserDefaults.standard.bool(forKey: "WSUseProductionAPI") {
+      return "https://whispershortcut.com/dashboard"
+    }
     return "http://localhost:3000/dashboard"
     #else
     return "https://whispershortcut.com/dashboard"
     #endif
-  }()
+  }
 
   // MARK: - UI State
   static let errorMessage = ""
