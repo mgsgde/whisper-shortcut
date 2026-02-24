@@ -86,7 +86,7 @@ struct SettingsView: View {
           ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .liveMeeting:
           LiveMeetingSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .smartImprovement:
+        case .context:
           SmartImprovementSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         }
       }
@@ -111,7 +111,7 @@ struct SettingsView: View {
       return "speaker.wave.2"
     case .liveMeeting:
       return "text.badge.plus"
-    case .smartImprovement:
+    case .context:
       return "brain"
     }
   }
@@ -130,8 +130,8 @@ struct SettingsView: View {
       return "Shortcut and voice selection"
     case .liveMeeting:
       return "Meeting transcription settings"
-    case .smartImprovement:
-      return "Improve from voice shortcut and improvement settings"
+    case .context:
+      return "Context data, system prompts, and improvement settings"
     }
   }
 

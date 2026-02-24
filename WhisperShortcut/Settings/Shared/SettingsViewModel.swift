@@ -593,7 +593,7 @@ class SettingsViewModel: ObservableObject {
       try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     }
     NSWorkspace.shared.open(url)
-    DebugLogger.log("SETTINGS: Opened UserContext folder from Smart Improvement tab")
+    DebugLogger.log("SETTINGS: Opened UserContext folder from Context tab")
   }
 
   // MARK: - Reset to Defaults

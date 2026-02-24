@@ -14,7 +14,7 @@ struct ResetSection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Data & Reset",
-        subtitle: "Resets the app to its original state: all system prompts to default, all settings to default, model selection to default, and all user interactions deleted. API key is preserved. To delete only interaction data, use the Smart Improvement tab."
+        subtitle: "Resets the app to its original state: all system prompts to default, all settings to default, model selection to default, and all user interactions deleted. API key is preserved. To delete only context data, use the Context tab."
       )
 
       HStack(alignment: .center, spacing: 12) {

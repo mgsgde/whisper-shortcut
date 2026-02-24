@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Dedicated tab for Smart Improvement: settings, interaction data path, open folder, and delete.
+/// Context tab: context data, system prompts, and Smart Improvement settings.
 struct SmartImprovementSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
@@ -14,7 +14,7 @@ struct SmartImprovementSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      settingsSection
+      contextDataSection
 
       SpacedSectionDivider()
 
@@ -22,13 +22,13 @@ struct SmartImprovementSettingsTab: View {
 
       SpacedSectionDivider()
 
-      interactionDataSection
+      smartImprovementSection
 
       SpacedSectionDivider()
 
       usageInstructionsSection
     }
-    .confirmationDialog("Delete interaction data?", isPresented: $showDeleteInteractionConfirmation, titleVisibility: .visible) {
+    .confirmationDialog("Delete context data?", isPresented: $showDeleteInteractionConfirmation, titleVisibility: .visible) {
       Button("Delete", role: .destructive) {
         viewModel.deleteInteractionData()
       }
@@ -38,9 +38,91 @@ struct SmartImprovementSettingsTab: View {
     }
   }
 
-  // MARK: - Settings
+  // MARK: - Context data (top)
   @ViewBuilder
-  private var settingsSection: some View {
+  private var contextDataSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Context data",
+        subtitle: "Interaction logs, user context, and suggested prompts are stored here. You can open the folder or delete all of this data; settings are preserved."
+      )
+
+      HStack(alignment: .center, spacing: 12) {
+        Button(action: { viewModel.openUserContextFolder() }) {
+          Label("Open context data folder", systemImage: "folder")
+            .font(.callout)
+        }
+        .buttonStyle(.bordered)
+        .help("Open context data folder in Finder")
+
+        Button("Delete context data", role: .destructive) {
+          showDeleteInteractionConfirmation = true
+        }
+        .buttonStyle(.bordered)
+        .tint(.red)
+        .help("Only delete interaction history and context; settings are preserved")
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  // MARK: - System prompts (single file editor)
+  @ViewBuilder
+  private var systemPromptsOverviewSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "System prompts",
+        subtitle: "All system prompts in one file. Edit the sections between the === headers. Save to apply."
+      )
+
+      Text("Edit sections: User Context, Dictation (Speech-to-Text), Dictate Prompt, Prompt & Read.")
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      TextEditor(text: $systemPromptsText)
+        .font(.system(.body, design: .monospaced))
+        .frame(minHeight: 320, maxHeight: 500)
+        .padding(8)
+        .background(Color(nsColor: .textBackgroundColor))
+        .cornerRadius(SettingsConstants.cornerRadius)
+
+      HStack(alignment: .center, spacing: 12) {
+        Button(action: saveSystemPrompts) {
+          Label("Save", systemImage: "square.and.arrow.down")
+            .font(.callout)
+        }
+        .buttonStyle(.bordered)
+        .help("Save changes to the system prompts file")
+
+        Button(action: openSystemPromptsFile) {
+          Label("Open file", systemImage: "doc.badge.arrow.up")
+            .font(.callout)
+        }
+        .buttonStyle(.bordered)
+        .help("Open system-prompts.md in the default app")
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  private func openSystemPromptsFile() {
+    let url = SystemPromptsStore.shared.systemPromptsFileURL
+    if FileManager.default.fileExists(atPath: url.path) {
+      NSWorkspace.shared.open(url)
+    } else {
+      NSWorkspace.shared.open(SystemPromptsStore.shared.systemPromptsFileURL.deletingLastPathComponent())
+    }
+  }
+
+  private func saveSystemPrompts() {
+    SystemPromptsStore.shared.saveFullContent(systemPromptsText)
+    NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
+  }
+
+  // MARK: - Smart Improvement
+  @ViewBuilder
+  private var smartImprovementSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Smart Improvement",
@@ -211,88 +293,6 @@ struct SmartImprovementSettingsTab: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .userContextFileDidUpdate)) { _ in
       systemPromptsText = SystemPromptsStore.shared.loadFullContent()
-    }
-  }
-
-  // MARK: - System prompts (single file editor)
-  @ViewBuilder
-  private var systemPromptsOverviewSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "System prompts",
-        subtitle: "All system prompts in one file. Edit the sections between the === headers. Save to apply."
-      )
-
-      Text("Edit sections: User Context, Dictation (Speech-to-Text), Dictate Prompt, Prompt & Read.")
-        .font(.caption)
-        .foregroundColor(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
-      TextEditor(text: $systemPromptsText)
-        .font(.system(.body, design: .monospaced))
-        .frame(minHeight: 320, maxHeight: 500)
-        .padding(8)
-        .background(Color(nsColor: .textBackgroundColor))
-        .cornerRadius(SettingsConstants.cornerRadius)
-
-      HStack(alignment: .center, spacing: 12) {
-        Button(action: saveSystemPrompts) {
-          Label("Save system prompts", systemImage: "square.and.arrow.down")
-            .font(.callout)
-        }
-        .buttonStyle(.bordered)
-        .help("Save changes to the system prompts file")
-
-        Button(action: openSystemPromptsFile) {
-          Label("Open file in Finder", systemImage: "doc.badge.arrow.up")
-            .font(.callout)
-        }
-        .buttonStyle(.bordered)
-        .help("Open system-prompts.md in the default app (e.g. TextEdit)")
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-    }
-  }
-
-  private func openSystemPromptsFile() {
-    let url = SystemPromptsStore.shared.systemPromptsFileURL
-    if FileManager.default.fileExists(atPath: url.path) {
-      NSWorkspace.shared.open(url)
-    } else {
-      NSWorkspace.shared.open(SystemPromptsStore.shared.systemPromptsFileURL.deletingLastPathComponent())
-    }
-  }
-
-  private func saveSystemPrompts() {
-    SystemPromptsStore.shared.saveFullContent(systemPromptsText)
-    NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
-  }
-
-  // MARK: - Interaction data
-  @ViewBuilder
-  private var interactionDataSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Interaction data",
-        subtitle: "Interaction logs, user context, and suggested prompts are stored here. You can open the folder or delete all of this data; settings are preserved."
-      )
-
-      HStack(alignment: .center, spacing: 12) {
-        Button(action: { viewModel.openUserContextFolder() }) {
-          Label("Open interaction data folder", systemImage: "folder")
-            .font(.callout)
-        }
-        .buttonStyle(.bordered)
-        .help("Open interaction data folder in Finder")
-
-        Button("Delete interaction data", role: .destructive) {
-          showDeleteInteractionConfirmation = true
-        }
-        .buttonStyle(.bordered)
-        .tint(.red)
-        .help("Only delete interaction history and context; settings are preserved")
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 
