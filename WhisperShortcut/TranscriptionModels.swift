@@ -151,7 +151,7 @@ enum TranscriptionModel: String, CaseIterable {
   
   // MARK: - Model Loading
   /// Loads the selected transcription model from UserDefaults, or returns the default model.
-  /// Migrates deprecated or removed models (e.g. gemini-2.0-flash-lite → gemini-2.5-flash-lite).
+  /// Migrates removed models (e.g. gemini-2.0-flash-lite → gemini-2.5-flash-lite). Deprecated but still available models (e.g. gemini-2.0-flash) are returned so the user's choice persists.
   static func loadSelected() -> TranscriptionModel {
     guard let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) else {
       return SettingsDefaults.selectedTranscriptionModel
@@ -160,9 +160,12 @@ enum TranscriptionModel: String, CaseIterable {
       UserDefaults.standard.set(TranscriptionModel.gemini25FlashLite.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
       return .gemini25FlashLite
     }
-    if let savedModel = TranscriptionModel(rawValue: savedModelString), !savedModel.isDeprecated {
+    if let savedModel = TranscriptionModel(rawValue: savedModelString) {
       return savedModel
     }
+    UserDefaults.standard.set(
+      SettingsDefaults.selectedTranscriptionModel.rawValue,
+      forKey: UserDefaultsKeys.selectedTranscriptionModel)
     return SettingsDefaults.selectedTranscriptionModel
   }
   

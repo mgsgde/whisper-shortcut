@@ -82,6 +82,9 @@ struct ReadAloudSettingsTab: View {
     TTSModelSelectionView(
       selectedTTSModel: $viewModel.data.selectedTTSModel,
       onModelChanged: {
+        UserDefaults.standard.set(
+          viewModel.data.selectedTTSModel.rawValue,
+          forKey: UserDefaultsKeys.selectedTTSModel)
         Task {
           await viewModel.saveSettings()
         }

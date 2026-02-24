@@ -1,21 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-	<dict>
-		<!-- App Sandbox temporarily disabled for testing keyboard shortcuts -->
-		<!-- <key>com.apple.security.app-sandbox</key> -->
-		<!-- <true /> -->
-
-		<!-- Microphone access for audio recording -->
-		<key>com.apple.security.device.audio-input</key>
-		<true />
-
-		<!-- Network access for Google Gemini API -->
-		<key>com.apple.security.network.client</key>
-		<true />
-
-		<!-- User selected file access (for potential file operations) -->
-		<key>com.apple.security.files.user-selected.read-only</key>
-		<true />
-	</dict>
+<dict/>
 </plist>

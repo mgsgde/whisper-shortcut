@@ -179,6 +179,9 @@ struct SmartImprovementSettingsTab: View {
             }
           ),
           onModelChanged: {
+            UserDefaults.standard.set(
+              viewModel.data.selectedImprovementModel.rawValue,
+              forKey: UserDefaultsKeys.selectedImprovementModel)
             Task {
               await viewModel.saveSettings()
             }

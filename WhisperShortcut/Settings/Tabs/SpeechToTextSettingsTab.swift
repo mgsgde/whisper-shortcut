@@ -168,6 +168,12 @@ struct SpeechToTextSettingsTab: View {
         selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
         geminiDisabled: !KeychainManager.shared.hasGoogleAPIKey(),
         onModelChanged: {
+          UserDefaults.standard.set(
+            viewModel.data.selectedTranscriptionModel.rawValue,
+            forKey: UserDefaultsKeys.selectedTranscriptionModel)
+          NotificationCenter.default.post(
+            name: .modelChanged,
+            object: viewModel.data.selectedTranscriptionModel)
           Task {
             await viewModel.saveSettings()
           }

@@ -108,6 +108,9 @@ struct PromptAndReadSettingsTab: View {
         title: "🧠 Model Selection",
         selectedModel: $viewModel.data.selectedPromptAndReadModel,
         onModelChanged: {
+          UserDefaults.standard.set(
+            viewModel.data.selectedPromptAndReadModel.rawValue,
+            forKey: UserDefaultsKeys.selectedPromptAndReadModel)
           Task {
             await viewModel.saveSettings()
           }

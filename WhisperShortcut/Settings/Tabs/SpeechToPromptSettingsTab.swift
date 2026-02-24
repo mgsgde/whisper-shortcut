@@ -78,6 +78,9 @@ struct SpeechToPromptSettingsTab: View {
       title: "🧠 Model Selection",
       selectedModel: $viewModel.data.selectedPromptModel,
       onModelChanged: {
+        UserDefaults.standard.set(
+          viewModel.data.selectedPromptModel.rawValue,
+          forKey: UserDefaultsKeys.selectedPromptModel)
         Task {
           await viewModel.saveSettings()
         }
