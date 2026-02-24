@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Context tab: context data, system prompts, and Smart Improvement settings.
-struct SmartImprovementSettingsTab: View {
+struct ContextSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @State private var selectedInterval: AutoImprovementInterval = .default
@@ -11,6 +11,7 @@ struct SmartImprovementSettingsTab: View {
   @State private var isImprovementRunning = false
 
   @State private var systemPromptsText: String = ""
+  @State private var lastSavedSystemPromptsText: String = ""
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -34,7 +35,7 @@ struct SmartImprovementSettingsTab: View {
       }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("Interaction history and derived context (user-context, suggestions) will be deleted. Settings are preserved. Continue?")
+      Text("All interaction data and everything in context files will be deleted. System prompts will be recreated with defaults. Settings are preserved. Continue?")
     }
   }
 
@@ -93,7 +94,16 @@ struct SmartImprovementSettingsTab: View {
             .font(.callout)
         }
         .buttonStyle(.bordered)
+        .disabled(systemPromptsText == lastSavedSystemPromptsText)
         .help("Save changes to the system prompts file")
+
+        Button(action: revertSystemPrompts) {
+          Label("Revert", systemImage: "arrow.uturn.backward")
+            .font(.callout)
+        }
+        .buttonStyle(.bordered)
+        .disabled(systemPromptsText == lastSavedSystemPromptsText)
+        .help("Discard unsaved changes and reload from file")
 
         Button(action: openSystemPromptsFile) {
           Label("Open file", systemImage: "doc.badge.arrow.up")
@@ -104,6 +114,10 @@ struct SmartImprovementSettingsTab: View {
       }
       .frame(maxWidth: .infinity, alignment: .leading)
     }
+  }
+
+  private func revertSystemPrompts() {
+    systemPromptsText = lastSavedSystemPromptsText
   }
 
   private func openSystemPromptsFile() {
@@ -117,6 +131,7 @@ struct SmartImprovementSettingsTab: View {
 
   private func saveSystemPrompts() {
     SystemPromptsStore.shared.saveFullContent(systemPromptsText)
+    lastSavedSystemPromptsText = systemPromptsText
     NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
   }
 
@@ -207,7 +222,7 @@ struct SmartImprovementSettingsTab: View {
 
         VStack(alignment: .leading, spacing: 8) {
           HStack(alignment: .center, spacing: 12) {
-            Text("Run improvement now")
+            Text("Improve from interaction history")
               .font(.callout)
               .fontWeight(.medium)
             Spacer(minLength: 16)
@@ -219,15 +234,15 @@ struct SmartImprovementSettingsTab: View {
                 await MainActor.run { isImprovementRunning = false }
               }
             }) {
-              Label(isImprovementRunning ? "Running…" : "Run improvement now", systemImage: "sparkles")
+              Label(isImprovementRunning ? "Running…" : "Improve from interaction history", systemImage: "sparkles")
                 .font(.callout)
             }
             .buttonStyle(.bordered)
             .disabled(isImprovementRunning)
-            .help("Run improvement pipeline now; ignores cooldown and dictation count")
+            .help("Improve prompts and context from your interaction history; ignores cooldown and dictation count")
           }
 
-          Text("Runs in the background. You can switch to another tab; you'll be notified when it's done. Ignores cooldown and dictation count.")
+          Text("Runs in the background using your interaction logs. You can switch to another tab; you'll be notified when it's done. Ignores cooldown and dictation count.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -289,10 +304,14 @@ struct SmartImprovementSettingsTab: View {
       } else {
         selectedDictationThreshold = UserDefaults.standard.integer(forKey: UserDefaultsKeys.promptImprovementDictationThreshold)
       }
-      systemPromptsText = SystemPromptsStore.shared.loadFullContent()
+      let content = SystemPromptsStore.shared.loadFullContent()
+      systemPromptsText = content
+      lastSavedSystemPromptsText = content
     }
     .onReceive(NotificationCenter.default.publisher(for: .userContextFileDidUpdate)) { _ in
-      systemPromptsText = SystemPromptsStore.shared.loadFullContent()
+      let content = SystemPromptsStore.shared.loadFullContent()
+      systemPromptsText = content
+      lastSavedSystemPromptsText = content
     }
   }
 
@@ -334,7 +353,7 @@ struct SmartImprovementSettingsTab: View {
           .fontWeight(.semibold)
           .foregroundColor(.secondary)
           .padding(.top, 4)
-        Text("Runs in the background after the set number of dictations (and cooldown). Use \"Run improvement now\" to trigger once immediately.")
+        Text("Runs in the background after the set number of dictations (and cooldown). Use \"Improve from interaction history\" to trigger once immediately.")
           .textSelection(.enabled)
       }
       .font(.callout)

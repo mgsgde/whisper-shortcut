@@ -597,12 +597,12 @@ class SettingsViewModel: ObservableObject {
   }
 
   // MARK: - Reset to Defaults
-  /// Deletes only UserContext data (interaction logs, user-context.md, suggested prompts). Settings and shortcuts are unchanged; app does not quit.
+  /// Deletes all context data (UserContext folder) and recreates system prompts with app defaults. Settings and shortcuts are unchanged; app does not quit.
   func deleteInteractionData() {
     do {
       try UserContextLogger.shared.deleteAllContextData()
-      NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
-      DebugLogger.log("RESET: Deleted interaction data (UserContext)")
+      SystemPromptsStore.shared.resetSystemPromptsToDefaults()
+      DebugLogger.log("RESET: Deleted context data and reset system prompts to defaults")
     } catch {
       DebugLogger.logError("RESET: Failed to delete UserContext: \(error.localizedDescription)")
     }

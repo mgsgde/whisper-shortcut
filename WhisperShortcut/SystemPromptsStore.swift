@@ -93,6 +93,19 @@ final class SystemPromptsStore {
     return content
   }
 
+  /// Recreate the system-prompts file with app defaults (empty user context, default prompts). Used after "Delete context data".
+  func resetSystemPromptsToDefaults() {
+    ensureDirectoryExists()
+    let content = defaultFormattedContent()
+    do {
+      try content.write(to: fileURL, atomically: true, encoding: .utf8)
+      DebugLogger.log("SYSTEM-PROMPTS: Reset \(Self.fileName) to defaults")
+      NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
+    } catch {
+      DebugLogger.logError("SYSTEM-PROMPTS: Failed to reset to defaults: \(error.localizedDescription)")
+    }
+  }
+
   /// Save full file content from the editor. Parses sections and rewrites so format is canonical.
   func saveFullContent(_ rawContent: String) {
     ensureDirectoryExists()
