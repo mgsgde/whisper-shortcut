@@ -49,11 +49,11 @@ struct ContextSettingsTab: View {
 
       HStack(alignment: .center, spacing: 12) {
         Button(action: { viewModel.openUserContextFolder() }) {
-          Label("Open context data folder", systemImage: "folder")
+          Label("Open context data", systemImage: "folder")
             .font(.callout)
         }
         .buttonStyle(.bordered)
-        .help("Open context data folder in Finder")
+        .help("Open context data in Finder")
 
         Button("Delete context data", role: .destructive) {
           showDeleteInteractionConfirmation = true
