@@ -553,5 +553,4 @@ enum SettingsFocusField: Hashable {
   case promptModeSystemPrompt
   case promptAndReadSystemPrompt
   case readAloudVoice
-  case userContext
 }

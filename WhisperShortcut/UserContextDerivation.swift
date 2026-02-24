@@ -1,8 +1,7 @@
 import Foundation
 
 // MARK: - User Context Derivation
-/// Service that analyzes interaction logs via Gemini to derive user context
-/// and suggested system prompts.
+/// Service that analyzes interaction logs via Gemini to derive suggested system prompts.
 class UserContextDerivation {
 
   /// Per-field character cap per log entry; smaller = less payload and faster derivation.
@@ -17,7 +16,7 @@ class UserContextDerivation {
     return transcriptionModel.apiEndpoint
   }
 
-  /// Result of focused load: primary (target mode) and secondary (user context + current prompt + other modes capped).
+  /// Result of focused load: primary (target mode) and secondary (current prompt + other modes capped).
   private struct FocusedLoadResult {
     let primaryText: String
     let secondaryText: String
@@ -27,8 +26,6 @@ class UserContextDerivation {
   }
 
   // MARK: - Markers for parsing
-  private let userContextMarker = "===USER_CONTEXT_START==="
-  private let userContextEndMarker = "===USER_CONTEXT_END==="
   private let systemPromptMarker = "===SUGGESTED_SYSTEM_PROMPT_START==="
   private let systemPromptEndMarker = "===SUGGESTED_SYSTEM_PROMPT_END==="
   private let promptAndReadSystemPromptMarker = "===SUGGESTED_PROMPT_AND_READ_SYSTEM_PROMPT_START==="
@@ -48,21 +45,16 @@ class UserContextDerivation {
     DebugLogger.log("USER-CONTEXT-DERIVATION: Starting context update focus=\(focus)")
 
     let store = SystemPromptsStore.shared
-    let existingUserContext = store.loadUserContext()
     let currentPromptModeSystemPrompt = store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentPromptAndReadSystemPrompt = store.loadPromptAndReadSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentDictationPrompt = store.loadDictationPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
 
-    let loaded = try loadAndSampleLogs(focus: focus, existingUserContext: existingUserContext,
+    let loaded = try loadAndSampleLogs(focus: focus,
                                        currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
                                        currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
                                        currentDictationPrompt: currentDictationPrompt)
 
     let hasPrimary = !loaded.primaryText.isEmpty
-    if focus == .userContext && !hasPrimary {
-      DebugLogger.logWarning("USER-CONTEXT-DERIVATION: No interaction logs found")
-      throw TranscriptionError.networkError("No interaction logs found. Use the app for a while with logging enabled, then try again.")
-    }
     if hasPrimary {
       DebugLogger.log("USER-CONTEXT-DERIVATION: Primary \(loaded.primaryEntryCount) entries, \(loaded.primaryCharCount) chars; secondary \(loaded.secondaryCharCount) chars")
     } else {
@@ -76,7 +68,6 @@ class UserContextDerivation {
       currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
       currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
       currentDictationPrompt: currentDictationPrompt,
-      existingUserContext: existingUserContext,
       credential: credential
     )
 
@@ -85,8 +76,8 @@ class UserContextDerivation {
     DebugLogger.logSuccess("USER-CONTEXT-DERIVATION: Context update completed focus=\(focus)")
   }
 
-  /// Derives a suggested prompt or user context using a direct voice instruction as the primary signal (instead of log sampling).
-  /// Supports all foci: userContext, dictation, promptMode, promptAndRead. Use this for the "Improve from voice" flow.
+  /// Derives a suggested prompt using a direct voice instruction as the primary signal (instead of log sampling).
+  /// Supports foci: dictation, promptMode, promptAndRead. Use this for the "Improve from voice" flow.
   func updateFromVoiceInstruction(voiceInstruction: String, selectedText: String?, focus: GenerationKind) async throws {
     guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
@@ -95,7 +86,6 @@ class UserContextDerivation {
     DebugLogger.log("USER-CONTEXT-DERIVATION: Starting voice-instruction update focus=\(focus)")
 
     let store = SystemPromptsStore.shared
-    let existingUserContext = store.loadUserContext()
     let currentPromptModeSystemPrompt = store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentPromptAndReadSystemPrompt = store.loadPromptAndReadSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentDictationPrompt = store.loadDictationPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
@@ -108,24 +98,15 @@ class UserContextDerivation {
 
     var secondaryParts: [String] = []
     switch focus {
-    case .userContext:
-      if let ctx = existingUserContext, !ctx.isEmpty {
-        secondaryParts.append("Current user context (refine based on the user request above):\n\(ctx)")
-      }
     case .dictation:
       if !currentDictationPrompt.isEmpty {
         secondaryParts.append("Current dictation prompt (refine based on the user request above):\n\(currentDictationPrompt)")
       }
-      if let ctx = existingUserContext, !ctx.isEmpty {
-        secondaryParts.append("Existing user context:\n\(ctx)")
-      }
     case .promptMode:
-      if let ctx = existingUserContext, !ctx.isEmpty { secondaryParts.append("Existing user context:\n\(ctx)") }
       if !currentPromptModeSystemPrompt.isEmpty {
         secondaryParts.append("Current Dictate Prompt system prompt (refine based on the user request above):\n\(currentPromptModeSystemPrompt)")
       }
     case .promptAndRead:
-      if let ctx = existingUserContext, !ctx.isEmpty { secondaryParts.append("Existing user context:\n\(ctx)") }
       if !currentPromptAndReadSystemPrompt.isEmpty {
         secondaryParts.append("Current Prompt & Read system prompt (refine based on the user request above):\n\(currentPromptAndReadSystemPrompt)")
       }
@@ -139,7 +120,6 @@ class UserContextDerivation {
       currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
       currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
       currentDictationPrompt: currentDictationPrompt,
-      existingUserContext: existingUserContext,
       credential: credential,
       voiceInstructionPrimary: true
     )
@@ -155,13 +135,11 @@ class UserContextDerivation {
     case .dictation: return "transcription"
     case .promptMode: return "prompt"
     case .promptAndRead: return "promptAndRead"
-    case .userContext: return nil
     }
   }
 
   private func loadAndSampleLogs(
     focus: GenerationKind,
-    existingUserContext: String?,
     currentPromptModeSystemPrompt: String?,
     currentPromptAndReadSystemPrompt: String?,
     currentDictationPrompt: String?
@@ -192,28 +170,6 @@ class UserContextDerivation {
     let tier1Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.userContextTier1Days, to: now) ?? now
     let tier2Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.userContextTier2Days, to: now) ?? now
 
-    if focus == .userContext {
-      var sampledEntries: [InteractionLogEntry] = []
-      for (_, entries) in entriesByMode {
-        let sortedEntries = entries.sorted { $0.ts < $1.ts }
-        let tier1 = sortedEntries.filter { parseDate($0.ts) >= tier1Cutoff }
-        let tier2 = sortedEntries.filter { entry in
-          let d = parseDate(entry.ts)
-          return d < tier1Cutoff && d >= tier2Cutoff
-        }
-        let tier3 = sortedEntries.filter { parseDate($0.ts) < tier2Cutoff }
-        let budget1 = Int(Double(maxPerMode) * AppConstants.userContextTier1Ratio)
-        let budget2 = Int(Double(maxPerMode) * AppConstants.userContextTier2Ratio)
-        let budget3 = maxPerMode - budget1 - budget2
-        sampledEntries.append(contentsOf: evenSample(tier1, max: budget1))
-        sampledEntries.append(contentsOf: evenSample(tier2, max: budget2))
-        sampledEntries.append(contentsOf: evenSample(tier3, max: budget3))
-      }
-      sampledEntries.sort { $0.ts < $1.ts }
-      let (text, entryCount, charCount) = buildAggregatedText(from: sampledEntries, maxChars: maxChars)
-      return FocusedLoadResult(primaryText: text, secondaryText: "", primaryEntryCount: entryCount, primaryCharCount: charCount, secondaryCharCount: 0)
-    }
-
     guard let primaryMode = Self.primaryMode(for: focus) else {
       return FocusedLoadResult(primaryText: "", secondaryText: "", primaryEntryCount: 0, primaryCharCount: 0, secondaryCharCount: 0)
     }
@@ -237,9 +193,6 @@ class UserContextDerivation {
     let (primaryText, primaryEntryCount, primaryCharCount) = buildAggregatedText(from: sampledPrimary, maxChars: maxChars)
 
     var secondaryParts: [String] = []
-    if let ctx = existingUserContext, !ctx.isEmpty {
-      secondaryParts.append("Existing user context:\n\(ctx)")
-    }
     switch focus {
     case .dictation:
       if let p = currentDictationPrompt, !p.isEmpty { secondaryParts.append("Current dictation prompt (refine based on new data):\n\(p)") }
@@ -247,8 +200,6 @@ class UserContextDerivation {
       if let p = currentPromptModeSystemPrompt, !p.isEmpty { secondaryParts.append("Current Dictate Prompt system prompt (refine based on new data):\n\(p)") }
     case .promptAndRead:
       if let p = currentPromptAndReadSystemPrompt, !p.isEmpty { secondaryParts.append("Current Prompt & Read system prompt (refine based on new data):\n\(p)") }
-    case .userContext:
-      break
     }
 
     let otherModes = entriesByMode.filter { $0.key != primaryMode }
@@ -309,50 +260,6 @@ class UserContextDerivation {
 
   private func systemPromptForFocus(_ focus: GenerationKind) -> String {
     switch focus {
-    case .userContext:
-      return """
-      You are analyzing a user's interaction history with a voice-to-text application called WhisperShortcut. \
-      The app has these modes: transcription (speech-to-text), prompt (voice instructions that modify clipboard text), \
-      promptAndRead (same as prompt but reads result aloud), and readAloud (text-to-speech).
-
-      CRITICAL – Entries with mode "transcription" (field "result") are raw speech-to-text and often contain \
-      recognition errors. Infer intended words from context; do not take them literally.
-
-      IMPORTANT – Only include information that is clearly evidenced in the interaction data. Do not invent or \
-      assume patterns that are not supported by the data.
-
-      Your task: produce a concise user profile that helps the app's AI perform better for this specific user. \
-      Focus on information that is actionable for transcription and text editing. Skip categories where the data \
-      provides no clear signal.
-
-      You MUST wrap your entire output in these markers exactly as shown:
-
-      \(userContextMarker)
-      [your content here]
-      \(userContextEndMarker)
-
-      Cover whichever of these are clearly evidenced (skip the rest):
-      - Primary language(s) and any code-switching patterns
-      - Domains and topics the user works with
-      - Recurring terminology, names, or jargon (list them so the transcription model can recognize them)
-      - Tone and formality level
-      - Common types of requests or workflows
-
-      If existing user context is provided, refine and extend it with new insights — do not start from scratch. \
-      Remove items that are no longer supported by recent data. Be concise: 2–3 short paragraphs.
-
-      Example structure (do not copy content, only the format):
-
-      \(userContextMarker)
-      The user primarily dictates in German with occasional technical terms. They work in software development, \
-      frequently discussing Swift, API design, and macOS app architecture.
-
-      Common terminology: WhisperShortcut, Gemini, UserDefaults, MenuBarController, ...
-
-      They prefer a direct, informal tone and often dictate short instructions or code-related notes.
-      \(userContextEndMarker)
-      """
-
     case .dictation:
       return """
       You are analyzing a user's interaction history with a voice-to-text application called WhisperShortcut. \
@@ -366,7 +273,7 @@ class UserContextDerivation {
 
       Your task: generate a system prompt for speech-to-text transcription. It will be sent to a Gemini model that \
       receives raw audio. Use primary data (transcription interactions) as the main signal; use secondary data \
-      (user context, current prompt, other modes) to refine. If no primary data exists, base the suggestion on \
+      (current prompt, other modes) to refine. If no primary data exists, base the suggestion on \
       secondary data only.
 
       You MUST wrap your entire output in these markers exactly as shown:
@@ -431,7 +338,7 @@ class UserContextDerivation {
 
       Your task: generate a system prompt for the "Dictate Prompt" mode. It will be set as the Gemini systemInstruction. \
       At runtime the model receives SELECTED TEXT (from clipboard) and VOICE INSTRUCTION (transcribed from audio). \
-      Output-format rules and user context are appended at runtime — do NOT include them in your suggested prompt. \
+      Output-format rules are appended at runtime — do NOT include them in your suggested prompt. \
       Focus on behavioral instructions only.
 
       Use primary data (prompt interactions: selectedText → userInstruction → modelResponse) as the main signal; \
@@ -489,7 +396,7 @@ class UserContextDerivation {
 
       Your task: generate a system prompt for the "Dictate Prompt & Read" mode. It will be set as the Gemini systemInstruction. \
       Same as Dictate Prompt (selected text + voice instruction) but the output is spoken aloud via TTS. \
-      Output-format rules and user context are appended at runtime — do NOT include them in your suggested prompt. \
+      Output-format rules are appended at runtime — do NOT include them in your suggested prompt. \
       Focus on behavioral instructions only.
 
       Use primary data (promptAndRead interactions) as the main signal; use secondary data to refine. \
@@ -547,7 +454,6 @@ class UserContextDerivation {
     currentPromptModeSystemPrompt: String?,
     currentPromptAndReadSystemPrompt: String?,
     currentDictationPrompt: String?,
-    existingUserContext: String?,
     credential: GeminiCredential,
     voiceInstructionPrimary: Bool = false
   ) async throws -> String {
@@ -560,21 +466,14 @@ class UserContextDerivation {
     }
 
     var userMessageParts: [String] = []
-    if focus == .userContext && !voiceInstructionPrimary {
-      if let existing = existingUserContext, !existing.isEmpty {
-        userMessageParts.append("Existing user context (refine and extend this):\n\(existing)")
-      }
-      userMessageParts.append("User's recent interactions:\n\n\(primaryText)")
+    if !primaryText.isEmpty {
+      let modeLabel = voiceInstructionPrimary ? "user request to change behavior" : (Self.primaryMode(for: focus) ?? "primary")
+      userMessageParts.append("Primary – \(modeLabel):\n\n\(primaryText)")
     } else {
-      if !primaryText.isEmpty {
-        let modeLabel = voiceInstructionPrimary ? "user request to change behavior" : (Self.primaryMode(for: focus) ?? "primary")
-        userMessageParts.append("Primary – \(modeLabel):\n\n\(primaryText)")
-      } else {
-        userMessageParts.append("No primary (\(Self.primaryMode(for: focus) ?? "target") mode) interactions found. Base the suggestion on secondary context below.")
-      }
-      if !secondaryText.isEmpty {
-        userMessageParts.append("Secondary – user context and other context:\n\n\(secondaryText)")
-      }
+      userMessageParts.append("No primary (\(Self.primaryMode(for: focus) ?? "target") mode) interactions found. Base the suggestion on secondary context below.")
+    }
+    if !secondaryText.isEmpty {
+      userMessageParts.append("Secondary – other context:\n\n\(secondaryText)")
     }
 
     let userMessage = userMessageParts.joined(separator: "\n\n---\n\n")
@@ -620,14 +519,6 @@ class UserContextDerivation {
     let contextDir = UserContextLogger.shared.directoryURL
 
     switch focus {
-    case .userContext:
-      if let userContext = extractSection(from: analysisResult, startMarker: userContextMarker, endMarker: userContextEndMarker) {
-        let fileURL = contextDir.appendingPathComponent("suggested-user-context.md")
-        try userContext.write(to: fileURL, atomically: true, encoding: .utf8)
-        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested-user-context.md (\(userContext.count) chars)")
-      } else {
-        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for user context")
-      }
     case .dictation:
       if let suggested = extractSection(from: analysisResult, startMarker: dictationPromptMarker, endMarker: dictationPromptEndMarker) {
         let fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")

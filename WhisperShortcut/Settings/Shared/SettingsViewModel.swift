@@ -8,7 +8,6 @@ enum GenerationKind: Equatable, Codable {
   case dictation
   case promptMode
   case promptAndRead
-  case userContext
 }
 
 /// ViewModel for centralized Settings state management.

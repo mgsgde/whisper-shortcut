@@ -8,9 +8,8 @@ class AutoPromptImprovementScheduler {
 
   private init() {}
 
-  /// Increments the successful-dictation counter and triggers an improvement run
-  /// when the threshold is reached AND the cooldown interval has passed.
-  /// Called after every successful transcription.
+  /// Triggers an improvement run when the cooldown interval has passed (and other guards are met).
+  /// Called after every successful transcription. No dictation counter; runs purely on interval cooldown.
   func incrementDictationCountAndRunIfNeeded() {
     let interval = getCurrentInterval()
     guard interval != .never else {
@@ -21,8 +20,7 @@ class AutoPromptImprovementScheduler {
       DebugLogger.log("AUTO-IMPROVEMENT: Skip - no Gemini credential")
       return
     }
-    // First run ever: only require N dictations and any interaction data (no 7-day minimum, cooldown N/A).
-    // Subsequent runs: when interval != .always, require 7+ days of usage and cooldown.
+    // First run ever: any interaction data (no 7-day minimum). Subsequent runs: when interval != .always, require 7+ days of usage.
     let isFirstRun = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastAutoImprovementRunDate) as? Date == nil
     let minDays: Int = {
       if isFirstRun { return 0 }
@@ -33,33 +31,19 @@ class AutoPromptImprovementScheduler {
       return
     }
 
-    // Increment counter
-    let current = UserDefaults.standard.integer(forKey: UserDefaultsKeys.promptImprovementDictationCount) + 1
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.promptImprovementDictationCount)
-    let threshold: Int = {
-      let stored = UserDefaults.standard.integer(forKey: UserDefaultsKeys.promptImprovementDictationThreshold)
-      return stored > 0 ? stored : AppConstants.promptImprovementDictationThreshold
-    }()
-    DebugLogger.log("AUTO-IMPROVEMENT: Dictation count = \(current)/\(threshold)")
-
-    guard current >= threshold else { return }
-
-    // Threshold reached — check cooldown
     guard hasEnoughTimePassed(interval: interval) else {
-      DebugLogger.log("AUTO-IMPROVEMENT: Threshold reached but cooldown not passed yet — keeping count at \(current)")
+      DebugLogger.log("AUTO-IMPROVEMENT: Cooldown not passed yet")
       return
     }
 
-    // Reset counter and run improvement
-    UserDefaults.standard.set(0, forKey: UserDefaultsKeys.promptImprovementDictationCount)
-    DebugLogger.log("AUTO-IMPROVEMENT: Threshold reached & cooldown passed — starting improvement run")
+    DebugLogger.log("AUTO-IMPROVEMENT: Cooldown passed — starting improvement run")
     Task {
       await runImprovement()
     }
   }
 
   /// Runs the improvement pipeline immediately (manual trigger from Settings).
-  /// Ignores cooldown, interval, and dictation count. Requires API key and at least some interaction data.
+  /// Ignores cooldown and interval. Requires API key and at least some interaction data.
   func runImprovementNow() async {
     guard !isImprovementRunning else {
       PopupNotificationWindow.showInfo(
@@ -93,7 +77,7 @@ class AutoPromptImprovementScheduler {
     DebugLogger.log("AUTO-IMPROVEMENT: Manual run finished")
   }
 
-  /// Runs improvement for all foci (User Context, Dictation, Dictate Prompt, Prompt & Read) using a transcribed voice instruction as the primary signal.
+  /// Runs improvement for all foci (Dictation, Dictate Prompt, Prompt & Read) using a transcribed voice instruction as the primary signal.
   /// Used by the "Improve from voice" shortcut / flow. Does not require interaction logs.
   /// When runInBackground is true, no persistent processing popup is shown; only auto-dismissing info notifications. No clipboard copy on success.
   func runImprovementFromVoice(transcribedInstruction: String, selectedText: String?, runInBackground: Bool = false) async {
@@ -148,7 +132,7 @@ class AutoPromptImprovementScheduler {
     let derivation = UserContextDerivation()
     var appliedKinds: [GenerationKind] = []
 
-    for focus in [GenerationKind.userContext, GenerationKind.dictation, GenerationKind.promptMode, GenerationKind.promptAndRead] {
+    for focus in [GenerationKind.dictation, GenerationKind.promptMode, GenerationKind.promptAndRead] {
       do {
         try await derivation.updateFromVoiceInstruction(
           voiceInstruction: instruction,
@@ -173,7 +157,6 @@ class AutoPromptImprovementScheduler {
     if !appliedKinds.isEmpty {
       let kindNames = appliedKinds.map { kind -> String in
         switch kind {
-        case .userContext: return "User Context"
         case .dictation: return "Dictation Prompt"
         case .promptMode: return "Dictate Prompt System Prompt"
         case .promptAndRead: return "Prompt & Read System Prompt"
@@ -230,7 +213,7 @@ class AutoPromptImprovementScheduler {
     var pendingKinds: [GenerationKind] = []
 
     // Run derivation for each focus
-    let focuses: [GenerationKind] = [.userContext, .dictation, .promptMode, .promptAndRead]
+    let focuses: [GenerationKind] = [.dictation, .promptMode, .promptAndRead]
 
     for focus in focuses {
       do {
@@ -266,7 +249,6 @@ class AutoPromptImprovementScheduler {
       if !appliedKinds.isEmpty {
         let kindNames = appliedKinds.map { kind -> String in
           switch kind {
-          case .userContext: return "User Context"
           case .dictation: return "Dictation Prompt"
           case .promptMode: return "Dictate Prompt System Prompt"
           case .promptAndRead: return "Prompt & Read System Prompt"
@@ -282,7 +264,7 @@ class AutoPromptImprovementScheduler {
       DebugLogger.log("AUTO-IMPROVEMENT: No suggestions generated")
       await MainActor.run {
         PopupNotificationWindow.showInfo(
-          "Auto-improvement ran but no suggestions could be generated (e.g. API busy). It will run again after more dictations.",
+          "Auto-improvement ran but no suggestions could be generated (e.g. API busy). It will run again when the cooldown has passed.",
           title: "Smart Improvement"
         )
       }
@@ -297,8 +279,6 @@ class AutoPromptImprovementScheduler {
     let fileURL: URL
 
     switch kind {
-    case .userContext:
-      fileURL = contextDir.appendingPathComponent("suggested-user-context.md")
     case .dictation:
       fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
     case .promptMode:
@@ -318,7 +298,6 @@ class AutoPromptImprovementScheduler {
   private func currentContent(for kind: GenerationKind) -> String {
     let store = SystemPromptsStore.shared
     switch kind {
-    case .userContext: return store.loadUserContext() ?? ""
     case .dictation: return store.loadDictationPrompt()
     case .promptMode: return store.loadDictatePromptSystemPrompt()
     case .promptAndRead: return store.loadPromptAndReadSystemPrompt()
@@ -330,8 +309,6 @@ class AutoPromptImprovementScheduler {
     let fileURL: URL
 
     switch kind {
-    case .userContext:
-      fileURL = contextDir.appendingPathComponent("suggested-user-context.md")
     case .dictation:
       fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
     case .promptMode:
@@ -359,9 +336,8 @@ class AutoPromptImprovementScheduler {
     case .dictation: UserContextLogger.shared.deleteSuggestedDictationPromptFile()
     case .promptMode: UserContextLogger.shared.deleteSuggestedSystemPromptFile()
     case .promptAndRead: UserContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
-    case .userContext: UserContextLogger.shared.deleteSuggestedUserContextFile()
     }
-    let kindName: String = { switch kind { case .userContext: return "User Context"; case .dictation: return "Dictation Prompt"; case .promptMode: return "Dictate Prompt"; case .promptAndRead: return "Prompt & Read" } }()
+    let kindName: String = { switch kind { case .dictation: return "Dictation Prompt"; case .promptMode: return "Dictate Prompt"; case .promptAndRead: return "Prompt & Read" } }()
     logSystemPromptChange(kind: kindName, previous: currentContent, applied: suggested)
   }
 
@@ -379,7 +355,6 @@ class AutoPromptImprovementScheduler {
 private extension GenerationKind {
   var systemPromptSection: SystemPromptSection {
     switch self {
-    case .userContext: return .userContext
     case .dictation: return .dictation
     case .promptMode: return .promptMode
     case .promptAndRead: return .promptAndRead

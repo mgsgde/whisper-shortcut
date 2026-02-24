@@ -63,7 +63,5 @@ enum UserDefaultsKeys {
   static let autoPromptImprovementIntervalDays = "autoPromptImprovementIntervalDays"
   static let autoApplyImprovements = "autoApplyImprovements"
   static let lastAutoImprovementRunDate = "lastAutoImprovementRunDate"
-  static let promptImprovementDictationCount = "promptImprovementDictationCount"
-  static let promptImprovementDictationThreshold = "promptImprovementDictationThreshold"
 }
 

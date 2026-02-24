@@ -6,7 +6,6 @@ struct ContextSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @State private var selectedInterval: AutoImprovementInterval = .default
-  @State private var selectedDictationThreshold: Int = AppConstants.promptImprovementDictationThreshold
   @State private var showDeleteInteractionConfirmation = false
   @State private var isImprovementRunning = false
 
@@ -76,7 +75,7 @@ struct ContextSettingsTab: View {
         subtitle: "All system prompts in one file. Edit the sections between the === headers. Save to apply."
       )
 
-      Text("Edit sections: User Context, Dictation (Speech-to-Text), Dictate Prompt, Prompt & Read.")
+      Text("Edit sections: Dictation (Speech-to-Text), Dictate Prompt, Prompt & Read.")
         .font(.caption)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -160,7 +159,7 @@ struct ContextSettingsTab: View {
             },
             validateShortcut: viewModel.validateShortcut
           )
-          Text("Give feedback by voice to improve user context and all system prompts (dictation, Dictate Prompt, Prompt & Read). Same as the menu bar item \"Improve from voice\".")
+          Text("Give feedback by voice to improve all system prompts (dictation, Dictate Prompt, Prompt & Read). Same as the menu bar item \"Improve from voice\".")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -195,34 +194,7 @@ struct ContextSettingsTab: View {
 
         VStack(alignment: .leading, spacing: 8) {
           HStack(alignment: .center, spacing: 12) {
-            Text("Improvement after N dictations")
-              .font(.callout)
-              .fontWeight(.medium)
-            Spacer(minLength: 16)
-            Picker("", selection: $selectedDictationThreshold) {
-              Text("2 dictations").tag(2)
-              Text("5 dictations").tag(5)
-              Text("10 dictations").tag(10)
-              Text("20 dictations").tag(20)
-              Text("50 dictations").tag(50)
-            }
-            .pickerStyle(.menu)
-            .frame(width: 160, alignment: .trailing)
-            .onChange(of: selectedDictationThreshold) { _, newValue in
-              UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.promptImprovementDictationThreshold)
-              DebugLogger.log("AUTO-IMPROVEMENT: Dictation threshold changed to \(newValue)")
-            }
-          }
-
-          Text("The first improvement runs after this many dictations; from the second run onwards, cooldown and minimum usage history also apply.")
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
-        VStack(alignment: .leading, spacing: 8) {
-          HStack(alignment: .center, spacing: 12) {
-            Text("Improve from interaction history")
+            Text("Improve from usage")
               .font(.callout)
               .fontWeight(.medium)
             Spacer(minLength: 16)
@@ -234,15 +206,15 @@ struct ContextSettingsTab: View {
                 await MainActor.run { isImprovementRunning = false }
               }
             }) {
-              Label(isImprovementRunning ? "Running…" : "Improve from interaction history", systemImage: "sparkles")
+              Label(isImprovementRunning ? "Running…" : "Improve from usage", systemImage: "sparkles")
                 .font(.callout)
             }
             .buttonStyle(.bordered)
             .disabled(isImprovementRunning)
-            .help("Improve prompts and context from your interaction history; ignores cooldown and dictation count")
+            .help("Improve prompts and context from your usage; ignores cooldown")
           }
 
-          Text("Runs in the background using your interaction logs. You can switch to another tab; you'll be notified when it's done. Ignores cooldown and dictation count.")
+          Text("Runs in the background using your interaction logs. You can switch to another tab; you'll be notified when it's done. Ignores cooldown.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -272,7 +244,7 @@ struct ContextSettingsTab: View {
 
         PromptModelSelectionView(
           title: "Model for Smart Improvement",
-          subtitle: "Used for automatic Smart Improvement (suggested prompts and user context).",
+          subtitle: "Used for automatic Smart Improvement (suggested prompts).",
           showSectionHeader: false,
           selectedModel: Binding(
             get: { viewModel.data.selectedImprovementModel },
@@ -299,11 +271,6 @@ struct ContextSettingsTab: View {
       selectedInterval = AutoImprovementInterval(rawValue: rawValue) ?? .default
       let enabled = selectedInterval != .never
       UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.userContextLoggingEnabled)
-      if UserDefaults.standard.object(forKey: UserDefaultsKeys.promptImprovementDictationThreshold) == nil {
-        selectedDictationThreshold = AppConstants.promptImprovementDictationThreshold
-      } else {
-        selectedDictationThreshold = UserDefaults.standard.integer(forKey: UserDefaultsKeys.promptImprovementDictationThreshold)
-      }
       let content = SystemPromptsStore.shared.loadFullContent()
       systemPromptsText = content
       lastSavedSystemPromptsText = content
@@ -325,13 +292,6 @@ struct ContextSettingsTab: View {
       )
 
       VStack(alignment: .leading, spacing: 8) {
-        Text("How it works")
-          .font(.callout)
-          .fontWeight(.semibold)
-          .foregroundColor(.secondary)
-        Text("Smart Improvement runs automatically after successful dictations. When the dictation count reaches your threshold and the cooldown has passed, the app analyzes your usage and suggests updates for User Context, Dictation prompt, Dictate Prompt prompt, and Prompt & Read prompt. Suggestions are applied automatically; edit and save the system prompts in this tab to review or revert.")
-          .textSelection(.enabled)
-
         Text("Improve from voice (shortcut):")
           .font(.callout)
           .fontWeight(.semibold)
@@ -345,7 +305,7 @@ struct ContextSettingsTab: View {
           .textSelection(.enabled)
         Text("4. Press the shortcut again to stop")
           .textSelection(.enabled)
-        Text("5. The app updates User Context and system prompts; edit the System prompts section above to review or revert")
+        Text("5. The app updates system prompts; edit the System prompts section above to review or revert")
           .textSelection(.enabled)
 
         Text("Automatic improvement:")
@@ -353,7 +313,7 @@ struct ContextSettingsTab: View {
           .fontWeight(.semibold)
           .foregroundColor(.secondary)
           .padding(.top, 4)
-        Text("Runs in the background after the set number of dictations (and cooldown). Use \"Improve from interaction history\" to trigger once immediately.")
+        Text("Runs in the background when the cooldown has passed (after a dictation). Use \"Improve from usage\" to trigger once immediately.")
           .textSelection(.enabled)
       }
       .font(.callout)

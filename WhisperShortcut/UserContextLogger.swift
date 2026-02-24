@@ -188,16 +188,11 @@ class UserContextLogger {
     }
   }
 
-  // MARK: - User Context Loading
+  // MARK: - User Context Loading (deprecated; User Context section removed)
 
-  /// Returns user context from the unified system-prompts file (truncated to AppConstants.userContextMaxChars).
-  /// Truncation happens at sentence or word boundary so the model always sees complete text.
-  /// Returns nil if missing or empty.
+  /// No longer used; User Context section was removed from system prompts. Returns nil.
   func loadUserContext() -> String? {
-    guard let content = SystemPromptsStore.shared.loadUserContext(), !content.isEmpty else { return nil }
-    let maxChars = AppConstants.userContextMaxChars
-    if content.count <= maxChars { return content }
-    return Self.truncateAtBoundary(content, maxChars: maxChars)
+    nil
   }
 
   /// Appends one entry to the unified system prompts history (system-prompts-history.jsonl).

@@ -292,12 +292,6 @@ class SpeechService {
       DebugLogger.log("PROMPT-MODE-GEMINI: Using custom system prompt")
     }
 
-    // Append user context if available
-    if let userContext = UserContextLogger.shared.loadUserContext() {
-      systemPrompt += "\n\n---\nUser context:\n" + userContext
-      DebugLogger.log("PROMPT-MODE-GEMINI: Appended user context to system prompt")
-    }
-
     // Always require raw output only (no meta), regardless of custom prompt
     systemPrompt += AppConstants.promptModeOutputRule
 
@@ -508,12 +502,6 @@ class SpeechService {
     var systemPrompt = systemPromptBase.trimmingCharacters(in: .whitespacesAndNewlines)
     if systemPrompt.isEmpty {
       systemPrompt = mode == .togglePrompting ? AppConstants.defaultPromptModeSystemPrompt : AppConstants.defaultPromptAndReadSystemPrompt
-    }
-
-    // Append user context if available
-    if let userContext = UserContextLogger.shared.loadUserContext() {
-      systemPrompt += "\n\n---\nUser context:\n" + userContext
-      DebugLogger.log("PROMPT-MODE-TEXT: Appended user context to system prompt")
     }
 
     // Always require raw output only (no meta), regardless of custom prompt

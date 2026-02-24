@@ -2,22 +2,20 @@
 //  SystemPromptsStore.swift
 //  WhisperShortcut
 //
-//  Single file storage for all system prompts (User Context, Dictation, Dictate Prompt, Prompt & Read).
-//  Reads/writes UserContext/system-prompts.md with section headers. Migrates from UserDefaults + user-context.md when missing.
+//  Single file storage for all system prompts (Dictation, Dictate Prompt, Prompt & Read).
+//  Reads/writes UserContext/system-prompts.md with section headers. Migrates from UserDefaults when missing.
 //
 
 import Foundation
 
 /// Section identifiers for the unified system-prompts file.
 enum SystemPromptSection: String, CaseIterable {
-  case userContext = "userContext"
   case dictation = "dictation"
   case promptMode = "promptMode"
   case promptAndRead = "promptAndRead"
 
   var fileHeader: String {
     switch self {
-    case .userContext: return "=== User Context ==="
     case .dictation: return "=== Dictation (Speech-to-Text) ==="
     case .promptMode: return "=== Dictate Prompt ==="
     case .promptAndRead: return "=== Prompt & Read ==="
@@ -54,14 +52,6 @@ final class SystemPromptsStore {
 
   // MARK: - Public read
 
-  /// User context text (can be empty). Truncated to userContextMaxChars when used in prompts; this returns full content.
-  func loadUserContext() -> String? {
-    let content = loadSection(.userContext) ?? ""
-    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty { return nil }
-    return trimmed
-  }
-
   /// Dictation system prompt. Returns default if section missing or empty.
   func loadDictationPrompt() -> String {
     (loadSection(.dictation)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
@@ -93,7 +83,7 @@ final class SystemPromptsStore {
     return content
   }
 
-  /// Recreate the system-prompts file with app defaults (empty user context, default prompts). Used after "Delete context data".
+  /// Recreate the system-prompts file with app defaults. Used after "Delete context data".
   func resetSystemPromptsToDefaults() {
     ensureDirectoryExists()
     let content = defaultFormattedContent()
@@ -130,9 +120,7 @@ final class SystemPromptsStore {
     let toWrite = formatContent(parsed)
     do {
       try toWrite.write(to: fileURL, atomically: true, encoding: .utf8)
-      if section == .userContext {
-        NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
-      }
+      NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
       DebugLogger.log("SYSTEM-PROMPTS: Updated section \(section.rawValue)")
     } catch {
       DebugLogger.logError("SYSTEM-PROMPTS: Failed to update section: \(error.localizedDescription)")
@@ -161,7 +149,6 @@ final class SystemPromptsStore {
 
   private func defaultFormattedContent() -> String {
     formatContent([
-      .userContext: "",
       .dictation: AppConstants.defaultTranscriptionSystemPrompt,
       .promptMode: AppConstants.defaultPromptModeSystemPrompt,
       .promptAndRead: AppConstants.defaultPromptAndReadSystemPrompt,
@@ -199,13 +186,6 @@ final class SystemPromptsStore {
   }
 
   private func performMigration() {
-    var userContext = ""
-    let legacyUserContextURL = contextDirectoryURL.appendingPathComponent("user-context.md")
-    if FileManager.default.fileExists(atPath: legacyUserContextURL.path),
-       let data = try? Data(contentsOf: legacyUserContextURL),
-       let s = String(data: data, encoding: .utf8) {
-      userContext = s.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
     let dictation = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText)
       ?? AppConstants.defaultTranscriptionSystemPrompt
     let promptMode = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)
@@ -213,14 +193,13 @@ final class SystemPromptsStore {
     let promptAndRead = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
       ?? AppConstants.defaultPromptAndReadSystemPrompt
     let content = formatContent([
-      .userContext: userContext,
       .dictation: dictation,
       .promptMode: promptMode,
       .promptAndRead: promptAndRead,
     ])
     do {
       try content.write(to: fileURL, atomically: true, encoding: .utf8)
-      DebugLogger.log("SYSTEM-PROMPTS: Migrated to \(Self.fileName) from UserDefaults and user-context.md")
+      DebugLogger.log("SYSTEM-PROMPTS: Migrated to \(Self.fileName) from UserDefaults")
     } catch {
       DebugLogger.logError("SYSTEM-PROMPTS: Migration failed: \(error.localizedDescription)")
     }
