@@ -459,7 +459,7 @@ struct SettingsDefaults {
   static let errorNotificationDuration = NotificationDuration.thirtySeconds
 
   // MARK: - Recording Safeguards
-  static let confirmAboveDuration = ConfirmAboveDuration.twoMinutes
+  static let confirmAboveDuration = ConfirmAboveDuration.fiveMinutes
 
   // MARK: - Auto-Paste Settings
   static let autoPasteAfterDictation = true
