@@ -97,30 +97,30 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
   /// Subfolder name for live meeting transcripts (under canonical Application Support).
   static let liveMeetingTranscriptDirectory: String = "Meetings"
 
-  // MARK: - User Context Derivation
+  // MARK: - Context Derivation
   /// Fallback Gemini API endpoint when the selected Smart Improvement model is invalid. Default model is Gemini 3.1 Pro.
-  static let userContextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent"
+  static let contextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent"
 
-  /// Maximum character length for user context when appended to the system prompt.
+  /// Maximum character length for context when appended to the system prompt.
   /// Truncation is applied at sentence or word boundary so the model always sees complete text.
   /// ~3000 chars ≈ ~750 tokens; keeps system instruction small and leaves room for conversation.
-  static let userContextMaxChars: Int = 3000
+  static let contextMaxChars: Int = 3000
 
-  // MARK: - User Context Derivation Limits (smaller = faster "Generate with AI", recent data still prioritized by tiered sampling)
-  static let userContextDefaultMaxEntriesPerMode: Int = 15
-  static let userContextDefaultMaxTotalChars: Int = 25_000
+  // MARK: - Context Derivation Limits (smaller = faster "Generate with AI", recent data still prioritized by tiered sampling)
+  static let contextDefaultMaxEntriesPerMode: Int = 15
+  static let contextDefaultMaxTotalChars: Int = 25_000
 
   /// Auto-improvement suggestions are only shown after at least this many days of user interactions (so we have meaningful data).
   static let autoImprovementMinimumInteractionDays: Int = 7
 
   /// Tiered sampling: 50% from last 7 days, 30% from days 8–14, 20% from days 15–30.
-  static let userContextTier1Days: Int = 7
-  static let userContextTier1Ratio: Double = 0.50
-  static let userContextTier2Days: Int = 14
-  static let userContextTier2Ratio: Double = 0.30
-  static let userContextTier3Days: Int = 30
-  static let userContextTier3Ratio: Double = 0.20
+  static let contextTier1Days: Int = 7
+  static let contextTier1Ratio: Double = 0.50
+  static let contextTier2Days: Int = 14
+  static let contextTier2Ratio: Double = 0.30
+  static let contextTier3Days: Int = 30
+  static let contextTier3Ratio: Double = 0.20
 
   /// Max chars for "other modes" when building secondary payload in focused Generate with AI (per-tab).
-  static let userContextSecondaryOtherModesMaxChars: Int = 2000
+  static let contextSecondaryOtherModesMaxChars: Int = 2000
 }

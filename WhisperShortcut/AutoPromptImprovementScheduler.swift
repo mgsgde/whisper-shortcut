@@ -26,7 +26,7 @@ class AutoPromptImprovementScheduler {
       if isFirstRun { return 0 }
       return interval == .always ? 0 : AppConstants.autoImprovementMinimumInteractionDays
     }()
-    guard UserContextLogger.shared.hasInteractionDataAtLeast(daysOld: minDays) else {
+    guard ContextLogger.shared.hasInteractionDataAtLeast(daysOld: minDays) else {
       DebugLogger.log("AUTO-IMPROVEMENT: Skip - need at least \(minDays) days of data")
       return
     }
@@ -63,7 +63,7 @@ class AutoPromptImprovementScheduler {
       )
       return
     }
-    guard UserContextLogger.shared.hasInteractionDataAtLeast(daysOld: 0) else {
+    guard ContextLogger.shared.hasInteractionDataAtLeast(daysOld: 0) else {
       PopupNotificationWindow.showInfo(
         "No interaction data yet. Use dictation or prompt mode first.",
         title: "Smart Improvement"
@@ -184,7 +184,7 @@ class AutoPromptImprovementScheduler {
         title: "Smart Improvement"
       )
     }
-    let derivation = UserContextDerivation()
+    let derivation = ContextDerivation()
     let foci: [GenerationKind] = [.dictation, .promptMode, .promptAndRead]
     typealias FocusResult = (focus: GenerationKind, error: Error?)
     let results: [FocusResult] = await withTaskGroup(of: FocusResult.self) { group in
@@ -263,7 +263,7 @@ class AutoPromptImprovementScheduler {
     return daysSinceLastRun >= interval.days
   }
 
-  /// Current Smart Improvement model display name (e.g. "Gemini 3.1 Pro"). Same source as UserContextDerivation.
+  /// Current Smart Improvement model display name (e.g. "Gemini 3.1 Pro"). Same source as ContextDerivation.
   private func currentImprovementModelDisplayName() -> String? {
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
       ?? SettingsDefaults.selectedImprovementModel.rawValue
@@ -272,7 +272,7 @@ class AutoPromptImprovementScheduler {
   }
 
   private func runImprovement() async {
-    let derivation = UserContextDerivation()
+    let derivation = ContextDerivation()
     var pendingKinds: [GenerationKind] = []
 
     // Run derivation for each focus
@@ -338,7 +338,7 @@ class AutoPromptImprovementScheduler {
   }
 
   private func hasSuggestion(for kind: GenerationKind) -> Bool {
-    let contextDir = UserContextLogger.shared.directoryURL
+    let contextDir = ContextLogger.shared.directoryURL
     let fileURL: URL
 
     switch kind {
@@ -368,7 +368,7 @@ class AutoPromptImprovementScheduler {
   }
 
   private func readSuggestion(for kind: GenerationKind) -> String? {
-    let contextDir = UserContextLogger.shared.directoryURL
+    let contextDir = ContextLogger.shared.directoryURL
     let fileURL: URL
 
     switch kind {
@@ -394,11 +394,11 @@ class AutoPromptImprovementScheduler {
     let currentContent = SystemPromptsStore.shared.loadSection(section) ?? ""
     let previousLength = currentContent.count
     SystemPromptsStore.shared.updateSection(section, content: suggested)
-    UserContextLogger.shared.appendSystemPromptsHistory(section: section, previousLength: previousLength, newLength: suggested.count, content: suggested, model: improvementModel)
+    ContextLogger.shared.appendSystemPromptsHistory(section: section, previousLength: previousLength, newLength: suggested.count, content: suggested, model: improvementModel)
     switch kind {
-    case .dictation: UserContextLogger.shared.deleteSuggestedDictationPromptFile()
-    case .promptMode: UserContextLogger.shared.deleteSuggestedSystemPromptFile()
-    case .promptAndRead: UserContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
+    case .dictation: ContextLogger.shared.deleteSuggestedDictationPromptFile()
+    case .promptMode: ContextLogger.shared.deleteSuggestedSystemPromptFile()
+    case .promptAndRead: ContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
     }
     let kindName: String = { switch kind { case .dictation: return "Dictation Prompt"; case .promptMode: return "Dictate Prompt"; case .promptAndRead: return "Prompt & Read" } }()
     logSystemPromptChange(kind: kindName, previous: currentContent, applied: suggested)

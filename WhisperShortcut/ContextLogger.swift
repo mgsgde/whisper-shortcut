@@ -35,14 +35,15 @@ struct UnifiedSystemPromptHistoryEntry: Codable {
   let model: String?
 }
 
-// MARK: - User Context Logger
+// MARK: - Context Logger
 /// Singleton service for opt-in JSONL interaction logging.
 /// All public methods check the logging toggle and return early if disabled.
-class UserContextLogger {
+class ContextLogger {
 
-  static let shared = UserContextLogger()
+  static let shared = ContextLogger()
 
-  private let queue = DispatchQueue(label: "com.whisper-shortcut.usercontextlogger", qos: .utility)
+  private let queue = DispatchQueue(label: "com.whisper-shortcut.contextlogger", qos: .utility)
+  /// Directory name on disk; kept as "UserContext" for compatibility with existing installs.
   private let contextDirectoryName = "UserContext"
   private let rotationDays = 90
 
@@ -83,9 +84,9 @@ class UserContextLogger {
 
   private var isLoggingEnabled: Bool {
     // Default to true if key doesn't exist (for backward compatibility)
-    UserDefaults.standard.object(forKey: UserDefaultsKeys.userContextLoggingEnabled) == nil
+    UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil
       ? true
-      : UserDefaults.standard.bool(forKey: UserDefaultsKeys.userContextLoggingEnabled)
+      : UserDefaults.standard.bool(forKey: UserDefaultsKeys.contextLoggingEnabled)
   }
 
   // MARK: - Public Logging Methods
@@ -326,7 +327,7 @@ class UserContextLogger {
 
   /// Appends one entry to the system prompt history JSONL (for Dictate (transcription), Dictate Prompt, or Prompt & Read).
   /// File name: system-prompt-history-{suffix}.jsonl (e.g. dictation, prompt-mode, prompt-and-read).
-  /// Called when auto-improvement applies a new system prompt. History is removed when UserContext is deleted.
+  /// Called when auto-improvement applies a new system prompt. History is removed when context data is deleted.
   func appendSystemPromptHistory(historyFileSuffix: String, previousLength: Int, newLength: Int, content: String, model: String? = nil) {
     queue.async { [weak self] in
       guard let self else { return }
@@ -365,7 +366,7 @@ class UserContextLogger {
   }
 
   /// Appends one entry to the user context history JSONL (user-context-history.jsonl).
-  /// Same entry shape as system prompt history (ts, source, previousLength, newLength, content, model). Called when auto-improvement applies suggested user context. History is removed when UserContext is deleted.
+  /// Same entry shape as system prompt history (ts, source, previousLength, newLength, content, model). Called when auto-improvement applies suggested user context. History is removed when context data is deleted.
   func appendUserContextHistory(previousLength: Int, newLength: Int, content: String, model: String? = nil) {
     queue.async { [weak self] in
       guard let self else { return }

@@ -424,8 +424,8 @@ extension Notification.Name {
   static let rateLimitWaiting = Notification.Name("rateLimitWaiting")
   /// Posted when rate limit wait is complete
   static let rateLimitResolved = Notification.Name("rateLimitResolved")
-  /// Posted when user-context.md was updated (e.g. from Compare sheet) so General tab can reload
-  static let userContextFileDidUpdate = Notification.Name("userContextFileDidUpdate")
+  /// Posted when context file was updated (e.g. from Compare sheet) so General tab can reload
+  static let contextFileDidUpdate = Notification.Name("contextFileDidUpdate")
   /// Posted from Smart Improvement settings to start "Improve from voice" recording (same flow as shortcut).
   static let startPromptImprovementRecording = Notification.Name("startPromptImprovementRecording")
 }

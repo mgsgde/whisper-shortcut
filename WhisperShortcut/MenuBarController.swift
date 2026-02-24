@@ -777,7 +777,7 @@ class MenuBarController: NSObject {
     Task {
       do {
         let audioData = try await speechService.readTextAloud(selectedText)
-        UserContextLogger.shared.logReadAloud(text: selectedText, voice: nil)
+        ContextLogger.shared.logReadAloud(text: selectedText, voice: nil)
         await MainActor.run {
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
@@ -840,7 +840,7 @@ class MenuBarController: NSObject {
         }
         
         let audioData = try await speechService.readTextAloud(selectedText)
-        UserContextLogger.shared.logReadAloud(text: selectedText, voice: nil)
+        ContextLogger.shared.logReadAloud(text: selectedText, voice: nil)
         await MainActor.run {
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
@@ -878,7 +878,7 @@ class MenuBarController: NSObject {
         }
 
         let audioData = try await speechService.readTextAloud(text)
-        UserContextLogger.shared.logReadAloud(text: text, voice: nil)
+        ContextLogger.shared.logReadAloud(text: text, voice: nil)
         await MainActor.run {
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
@@ -1185,7 +1185,7 @@ class MenuBarController: NSObject {
     do {
       let result = try await speechService.transcribe(audioURL: audioURL)
       clipboardManager.copyToClipboard(text: result)
-      UserContextLogger.shared.logTranscription(result: result, model: await speechService.getTranscriptionModelInfo())
+      ContextLogger.shared.logTranscription(result: result, model: await speechService.getTranscriptionModelInfo())
 
       // Auto-paste if enabled
       await MainActor.run {

@@ -42,8 +42,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // Initialize interaction logging default if not set
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.userContextLoggingEnabled) == nil {
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.userContextLoggingEnabled)
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil {
+      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.contextLoggingEnabled)
     }
 
   }

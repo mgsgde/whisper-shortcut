@@ -3,7 +3,7 @@ import Foundation
 import SwiftUI
 import ServiceManagement
 
-/// Suggestion focus for Smart Improvement (used by scheduler and UserContextDerivation).
+/// Suggestion focus for Smart Improvement (used by scheduler and ContextDerivation).
 enum GenerationKind: Equatable, Codable {
   case dictation
   case promptMode
@@ -575,9 +575,9 @@ class SettingsViewModel: ObservableObject {
     DebugLogger.log("LIVE-MEETING: Opened transcripts folder from Settings")
   }
 
-  /// Tilde-abbreviated path for the UserContext folder (interaction logs, user-context.md, suggestions).
-  var userContextFolderDisplayPath: String {
-    let path = UserContextLogger.shared.directoryURL.path
+  /// Tilde-abbreviated path for the context folder (interaction logs, suggestions).
+  var contextFolderDisplayPath: String {
+    let path = ContextLogger.shared.directoryURL.path
     let home = FileManager.default.homeDirectoryForCurrentUser.path
     if path.hasPrefix(home) {
       return "~" + String(path.dropFirst(home.count))
@@ -585,41 +585,41 @@ class SettingsViewModel: ObservableObject {
     return path
   }
 
-  /// Opens the UserContext folder in Finder; creates it if it does not exist.
-  func openUserContextFolder() {
-    let url = UserContextLogger.shared.directoryURL
+  /// Opens the context folder in Finder; creates it if it does not exist.
+  func openContextFolder() {
+    let url = ContextLogger.shared.directoryURL
     if !FileManager.default.fileExists(atPath: url.path) {
       try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     }
     NSWorkspace.shared.open(url)
-    DebugLogger.log("SETTINGS: Opened UserContext folder from Context tab")
+    DebugLogger.log("SETTINGS: Opened context folder from Context tab")
   }
 
   // MARK: - Reset to Defaults
-  /// Deletes all context data (UserContext folder) and recreates system prompts with app defaults. Settings and shortcuts are unchanged; app does not quit.
+  /// Deletes all context data (context folder) and recreates system prompts with app defaults. Settings and shortcuts are unchanged; app does not quit.
   func deleteInteractionData() {
     do {
-      try UserContextLogger.shared.deleteAllContextData()
+      try ContextLogger.shared.deleteAllContextData()
       SystemPromptsStore.shared.resetSystemPromptsToDefaults()
       DebugLogger.log("RESET: Deleted context data and reset system prompts to defaults")
     } catch {
-      DebugLogger.logError("RESET: Failed to delete UserContext: \(error.localizedDescription)")
+      DebugLogger.logError("RESET: Failed to delete context data: \(error.localizedDescription)")
     }
   }
 
-  /// Deletes all UserDefaults and UserContext data, then terminates the app so the user can relaunch with defaults.
+  /// Deletes all UserDefaults and context data, then terminates the app so the user can relaunch with defaults.
   /// API key (Keychain) and meeting transcripts (app data folder) are not touched.
   func resetAllDataAndRestart() {
     do {
-      try UserContextLogger.shared.deleteAllContextData()
+      try ContextLogger.shared.deleteAllContextData()
     } catch {
-      DebugLogger.logError("RESET: Failed to delete UserContext: \(error.localizedDescription)")
+      DebugLogger.logError("RESET: Failed to delete context data: \(error.localizedDescription)")
     }
     let bundleID = Bundle.main.bundleIdentifier ?? ""
     UserDefaults.standard.removePersistentDomain(forName: bundleID)
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.shouldTerminate)
     UserDefaults.standard.synchronize()
-    DebugLogger.log("RESET: Cleared UserDefaults and UserContext; terminating app")
+    DebugLogger.log("RESET: Cleared UserDefaults and context data; terminating app")
     NSApplication.shared.terminate(nil)
   }
 

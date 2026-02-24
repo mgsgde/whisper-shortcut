@@ -1,8 +1,8 @@
 import Foundation
 
-// MARK: - User Context Derivation
+// MARK: - Context Derivation
 /// Service that analyzes interaction logs via Gemini to derive suggested system prompts.
-class UserContextDerivation {
+class ContextDerivation {
 
   /// Per-field character cap per log entry; smaller = less payload and faster derivation.
   private let maxFieldChars = 1000
@@ -11,7 +11,7 @@ class UserContextDerivation {
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
       ?? SettingsDefaults.selectedImprovementModel.rawValue
     guard let model = PromptModel(rawValue: raw), let transcriptionModel = model.asTranscriptionModel else {
-      return AppConstants.userContextDerivationEndpoint
+      return AppConstants.contextDerivationEndpoint
     }
     return transcriptionModel.apiEndpoint
   }
@@ -144,12 +144,12 @@ class UserContextDerivation {
     currentPromptAndReadSystemPrompt: String?,
     currentDictationPrompt: String?
   ) throws -> FocusedLoadResult {
-    let maxPerMode = UserDefaults.standard.object(forKey: UserDefaultsKeys.userContextMaxEntriesPerMode) as? Int
-      ?? AppConstants.userContextDefaultMaxEntriesPerMode
-    let maxChars = UserDefaults.standard.object(forKey: UserDefaultsKeys.userContextMaxTotalChars) as? Int
-      ?? AppConstants.userContextDefaultMaxTotalChars
+    let maxPerMode = UserDefaults.standard.object(forKey: UserDefaultsKeys.contextMaxEntriesPerMode) as? Int
+      ?? AppConstants.contextDefaultMaxEntriesPerMode
+    let maxChars = UserDefaults.standard.object(forKey: UserDefaultsKeys.contextMaxTotalChars) as? Int
+      ?? AppConstants.contextDefaultMaxTotalChars
 
-    let logFiles = UserContextLogger.shared.interactionLogFiles(lastDays: AppConstants.userContextTier3Days)
+    let logFiles = ContextLogger.shared.interactionLogFiles(lastDays: AppConstants.contextTier3Days)
     guard !logFiles.isEmpty else {
       return FocusedLoadResult(primaryText: "", secondaryText: "", primaryEntryCount: 0, primaryCharCount: 0, secondaryCharCount: 0)
     }
@@ -167,8 +167,8 @@ class UserContextDerivation {
     }
 
     let now = Date()
-    let tier1Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.userContextTier1Days, to: now) ?? now
-    let tier2Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.userContextTier2Days, to: now) ?? now
+    let tier1Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.contextTier1Days, to: now) ?? now
+    let tier2Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.contextTier2Days, to: now) ?? now
 
     guard let primaryMode = Self.primaryMode(for: focus) else {
       return FocusedLoadResult(primaryText: "", secondaryText: "", primaryEntryCount: 0, primaryCharCount: 0, secondaryCharCount: 0)
@@ -182,8 +182,8 @@ class UserContextDerivation {
       return d < tier1Cutoff && d >= tier2Cutoff
     }
     let tier3 = sortedPrimary.filter { parseDate($0.ts) < tier2Cutoff }
-    let budget1 = Int(Double(maxPerMode) * AppConstants.userContextTier1Ratio)
-    let budget2 = Int(Double(maxPerMode) * AppConstants.userContextTier2Ratio)
+    let budget1 = Int(Double(maxPerMode) * AppConstants.contextTier1Ratio)
+    let budget2 = Int(Double(maxPerMode) * AppConstants.contextTier2Ratio)
     let budget3 = maxPerMode - budget1 - budget2
     var sampledPrimary: [InteractionLogEntry] = []
     sampledPrimary.append(contentsOf: evenSample(tier1, max: budget1))
@@ -208,7 +208,7 @@ class UserContextDerivation {
       otherEntries.append(contentsOf: entries)
     }
     otherEntries.sort { $0.ts < $1.ts }
-    let (otherText, _, otherCharCount) = buildAggregatedText(from: otherEntries, maxChars: AppConstants.userContextSecondaryOtherModesMaxChars)
+    let (otherText, _, otherCharCount) = buildAggregatedText(from: otherEntries, maxChars: AppConstants.contextSecondaryOtherModesMaxChars)
     if !otherText.isEmpty {
       secondaryParts.append("Other modes (for context only):\n\(otherText)")
     }
@@ -543,7 +543,7 @@ class UserContextDerivation {
   // MARK: - Output File Writing
 
   private func writeOutputFile(analysisResult: String, focus: GenerationKind) throws {
-    let contextDir = UserContextLogger.shared.directoryURL
+    let contextDir = ContextLogger.shared.directoryURL
 
     switch focus {
     case .dictation:

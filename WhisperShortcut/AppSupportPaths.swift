@@ -12,7 +12,7 @@ enum AppSupportPaths {
   private static let appSupportSubfolderName = "WhisperShortcut"
   private static let defaultBundleID = "com.magnusgoedde.whispershortcut"
 
-  /// Returns the WhisperShortcut Application Support base URL (directory containing UserContext/, Meetings/, WhisperKit/).
+  /// Returns the WhisperShortcut Application Support base URL (directory containing context data (UserContext/), Meetings/, WhisperKit/).
   /// When sandboxed, uses the container path from FileManager. When not sandboxed, explicitly uses the container path
   /// so both run contexts use the same physical directory.
   static func whisperShortcutApplicationSupportURL() -> URL {

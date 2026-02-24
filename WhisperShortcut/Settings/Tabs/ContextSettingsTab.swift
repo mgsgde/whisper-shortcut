@@ -45,11 +45,11 @@ struct ContextSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Context data",
-        subtitle: "Interaction logs, user context, and suggested prompts are stored here. You can open the folder or delete all of this data; settings are preserved."
+        subtitle: "Interaction logs, context data, and suggested prompts are stored here. You can open the folder or delete all of this data; settings are preserved."
       )
 
       HStack(alignment: .center, spacing: 12) {
-        Button(action: { viewModel.openUserContextFolder() }) {
+        Button(action: { viewModel.openContextFolder() }) {
           Label("Open context data", systemImage: "folder")
             .font(.callout)
         }
@@ -132,7 +132,7 @@ struct ContextSettingsTab: View {
   private func saveSystemPrompts() {
     SystemPromptsStore.shared.saveFullContent(systemPromptsText)
     lastSavedSystemPromptsText = systemPromptsText
-    NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
+    NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
   }
 
   private func refreshImprovementState() {
@@ -194,7 +194,7 @@ struct ContextSettingsTab: View {
             .onChange(of: selectedInterval) { newValue in
               UserDefaults.standard.set(newValue.rawValue, forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
               let enabled = newValue != .never
-              UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.userContextLoggingEnabled)
+              UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.contextLoggingEnabled)
               DebugLogger.log("AUTO-IMPROVEMENT: Interval changed to \(newValue.displayName), logging = \(enabled)")
             }
           }
@@ -284,12 +284,12 @@ struct ContextSettingsTab: View {
       let rawValue = UserDefaults.standard.integer(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
       selectedInterval = AutoImprovementInterval(rawValue: rawValue) ?? .default
       let enabled = selectedInterval != .never
-      UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.userContextLoggingEnabled)
+      UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.contextLoggingEnabled)
       let content = SystemPromptsStore.shared.loadFullContent()
       systemPromptsText = content
       lastSavedSystemPromptsText = content
     }
-    .onReceive(NotificationCenter.default.publisher(for: .userContextFileDidUpdate)) { _ in
+    .onReceive(NotificationCenter.default.publisher(for: .contextFileDidUpdate)) { _ in
       let content = SystemPromptsStore.shared.loadFullContent()
       systemPromptsText = content
       lastSavedSystemPromptsText = content

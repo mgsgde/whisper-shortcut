@@ -52,11 +52,11 @@ enum UserDefaultsKeys {
   static let liveMeetingChunkInterval = "liveMeetingChunkInterval"
   static let liveMeetingSafeguardDurationSeconds = "liveMeetingSafeguardDurationSeconds"
 
-  // MARK: - User Context Settings
-  static let userContextLoggingEnabled = "userContextLoggingEnabled"
-  static let userContextInPromptEnabled = "userContextInPromptEnabled"
-  static let userContextMaxEntriesPerMode = "userContextMaxEntriesPerMode"
-  static let userContextMaxTotalChars = "userContextMaxTotalChars"
+  // MARK: - Context Settings
+  static let contextLoggingEnabled = "userContextLoggingEnabled"
+  static let contextInPromptEnabled = "userContextInPromptEnabled"
+  static let contextMaxEntriesPerMode = "userContextMaxEntriesPerMode"
+  static let contextMaxTotalChars = "userContextMaxTotalChars"
 
   // MARK: - Auto-Improvement Settings
   static let selectedImprovementModel = "selectedImprovementModel"

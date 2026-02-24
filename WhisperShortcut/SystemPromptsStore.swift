@@ -90,7 +90,7 @@ final class SystemPromptsStore {
     do {
       try content.write(to: fileURL, atomically: true, encoding: .utf8)
       DebugLogger.log("SYSTEM-PROMPTS: Reset \(Self.fileName) to defaults")
-      NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
+      NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
     } catch {
       DebugLogger.logError("SYSTEM-PROMPTS: Failed to reset to defaults: \(error.localizedDescription)")
     }
@@ -120,7 +120,7 @@ final class SystemPromptsStore {
     let toWrite = formatContent(parsed)
     do {
       try toWrite.write(to: fileURL, atomically: true, encoding: .utf8)
-      NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
+      NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
       DebugLogger.log("SYSTEM-PROMPTS: Updated section \(section.rawValue)")
     } catch {
       DebugLogger.logError("SYSTEM-PROMPTS: Failed to update section: \(error.localizedDescription)")

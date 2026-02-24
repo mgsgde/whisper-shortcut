@@ -542,9 +542,9 @@ private class FileLogger {
   }
 }
 
-// MARK: - Error File Writer (UserContext)
+// MARK: - Error File Writer (context directory)
 /// Writes error and crash entries to UserContext/errors-YYYY-MM-DD.log for diagnostics.
-/// Uses the same Application Support path as UserContext so all app data stays in one place.
+/// Uses the same Application Support path as the context directory so all app data stays in one place.
 private class ErrorFileWriter {
   static let shared = ErrorFileWriter()
 

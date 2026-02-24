@@ -417,7 +417,7 @@ class SpeechService {
       userInstruction: userInstruction,
       modelResponse: normalizedText
     )
-    UserContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText)
+    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText)
 
     DebugLogger.logSuccess("PROMPT-MODE-GEMINI: Completed successfully")
 
@@ -594,7 +594,7 @@ class SpeechService {
       userInstruction: textCommand,
       modelResponse: normalizedText
     )
-    UserContextLogger.shared.logPrompt(mode: mode, selectedText: selectedText, userInstruction: textCommand, modelResponse: normalizedText)
+    ContextLogger.shared.logPrompt(mode: mode, selectedText: selectedText, userInstruction: textCommand, modelResponse: normalizedText)
 
     DebugLogger.logSuccess("PROMPT-MODE-TEXT: Completed successfully")
 
