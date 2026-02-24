@@ -24,6 +24,17 @@ struct SystemPromptHistoryEntry: Codable {
   let model: String?
 }
 
+/// Single history file entry for any system prompt section (system-prompts-history.jsonl).
+struct UnifiedSystemPromptHistoryEntry: Codable {
+  let ts: String
+  let section: String
+  let source: String
+  let previousLength: Int
+  let newLength: Int
+  let content: String
+  let model: String?
+}
+
 // MARK: - User Context Logger
 /// Singleton service for opt-in JSONL interaction logging.
 /// All public methods check the logging toggle and return early if disabled.
@@ -179,25 +190,46 @@ class UserContextLogger {
 
   // MARK: - User Context Loading
 
-  /// Reads user-context.md and returns its content (truncated to AppConstants.userContextMaxChars).
+  /// Returns user context from the unified system-prompts file (truncated to AppConstants.userContextMaxChars).
   /// Truncation happens at sentence or word boundary so the model always sees complete text.
-  /// Returns nil if the file is missing or empty. User context is always included when present.
+  /// Returns nil if missing or empty.
   func loadUserContext() -> String? {
-    let fileURL = contextDirectoryURL.appendingPathComponent("user-context.md")
-    guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+    guard let content = SystemPromptsStore.shared.loadUserContext(), !content.isEmpty else { return nil }
+    let maxChars = AppConstants.userContextMaxChars
+    if content.count <= maxChars { return content }
+    return Self.truncateAtBoundary(content, maxChars: maxChars)
+  }
 
-    do {
-      let content = try String(contentsOf: fileURL, encoding: .utf8)
-      let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !trimmed.isEmpty else { return nil }
-      let maxChars = AppConstants.userContextMaxChars
-      if trimmed.count <= maxChars {
-        return trimmed
+  /// Appends one entry to the unified system prompts history (system-prompts-history.jsonl).
+  func appendSystemPromptsHistory(section: SystemPromptSection, previousLength: Int, newLength: Int, content: String, model: String? = nil) {
+    queue.async { [weak self] in
+      guard let self else { return }
+      let entry = UnifiedSystemPromptHistoryEntry(
+        ts: self.iso8601Now(),
+        section: section.rawValue,
+        source: "auto",
+        previousLength: previousLength,
+        newLength: newLength,
+        content: content,
+        model: model
+      )
+      let fileURL = self.contextDirectoryURL.appendingPathComponent("system-prompts-history.jsonl")
+      do {
+        let data = try JSONEncoder().encode(entry)
+        guard var line = String(data: data, encoding: .utf8) else { return }
+        line += "\n"
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+          let handle = try FileHandle(forWritingTo: fileURL)
+          handle.seekToEndOfFile()
+          if let lineData = line.data(using: .utf8) { handle.write(lineData) }
+          try handle.close()
+        } else {
+          try line.write(to: fileURL, atomically: true, encoding: .utf8)
+        }
+        DebugLogger.log("USER-CONTEXT: Appended system prompts history (\(section.rawValue))")
+      } catch {
+        DebugLogger.logError("USER-CONTEXT: Failed to append system prompts history: \(error.localizedDescription)")
       }
-      return Self.truncateAtBoundary(trimmed, maxChars: maxChars)
-    } catch {
-      DebugLogger.logError("USER-CONTEXT: Failed to load user-context.md: \(error.localizedDescription)")
-      return nil
     }
   }
 

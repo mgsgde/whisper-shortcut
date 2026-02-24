@@ -1296,7 +1296,8 @@ class MenuBarController: NSObject {
 
       await AutoPromptImprovementScheduler.shared.runImprovementFromVoice(
         transcribedInstruction: transcribedInstruction,
-        selectedText: selectedOrNil
+        selectedText: selectedOrNil,
+        runInBackground: false
       )
 
       await MainActor.run {
@@ -1315,6 +1316,43 @@ class MenuBarController: NSObject {
       await handleProcessingError(error: error, audioURL: audioURL, mode: .promptImprovement)
       await MainActor.run {
         self.processedAudioURLs.remove(audioURL)
+      }
+    }
+  }
+
+  /// Runs improve-from-voice in the background. App is already idle; does not touch appState. Caller must not await.
+  private func performPromptImprovementInBackground(audioURL: URL) async {
+    await MainActor.run {
+      currentPromptImprovementAudioURL = nil
+    }
+    defer {
+      Task { @MainActor in
+        self.processedAudioURLs.remove(audioURL)
+      }
+      cleanupAudioFile(at: audioURL)
+    }
+    do {
+      try Task.checkCancellation()
+      let transcribedInstruction = try await speechService.transcribeVoiceInstruction(audioURL: audioURL)
+      try Task.checkCancellation()
+      let selectedText = clipboardManager.getCleanedClipboardText()?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      let selectedOrNil: String? = (selectedText?.isEmpty == false) ? selectedText : nil
+
+      await AutoPromptImprovementScheduler.shared.runImprovementFromVoice(
+        transcribedInstruction: transcribedInstruction,
+        selectedText: selectedOrNil,
+        runInBackground: true
+      )
+    } catch is CancellationError {
+      DebugLogger.log("CANCELLATION: Improve from voice background task was cancelled")
+    } catch {
+      DebugLogger.logError(error, context: "Improve from voice (background)")
+      await MainActor.run {
+        PopupNotificationWindow.showError(
+          SpeechErrorFormatter.formatForUser(error),
+          title: "Smart Improvement"
+        )
       }
     }
   }
@@ -1528,8 +1566,8 @@ extension MenuBarController: AudioRecorderDelegate {
           await self.performPrompting(audioURL: audioURL)
         case .promptImprovement:
           self.currentPromptImprovementAudioURL = audioURL
-          self.promptImprovementTask = Task { await self.performPromptImprovement(audioURL: audioURL) }
-          await self.promptImprovementTask?.value
+          self.transitionToIdleAndCleanup(cleanupAudioURL: nil)
+          Task { await self.performPromptImprovementInBackground(audioURL: audioURL) }
         case .tts:
           await self.performTTSWithCommand(audioURL: audioURL)
         case .liveMeeting:

@@ -95,7 +95,8 @@ class AutoPromptImprovementScheduler {
 
   /// Runs improvement for all foci (User Context, Dictation, Dictate Prompt, Prompt & Read) using a transcribed voice instruction as the primary signal.
   /// Used by the "Improve from voice" shortcut / flow. Does not require interaction logs.
-  func runImprovementFromVoice(transcribedInstruction: String, selectedText: String?) async {
+  /// When runInBackground is true, no persistent processing popup is shown; only auto-dismissing info notifications. No clipboard copy on success.
+  func runImprovementFromVoice(transcribedInstruction: String, selectedText: String?, runInBackground: Bool = false) async {
     guard !isImprovementRunning else {
       await MainActor.run {
         PopupNotificationWindow.showInfo(
@@ -127,12 +128,21 @@ class AutoPromptImprovementScheduler {
 
     isImprovementRunning = true
     defer { isImprovementRunning = false }
-    DebugLogger.log("AUTO-IMPROVEMENT: Voice-triggered run started")
-    await MainActor.run {
-      PopupNotificationWindow.showProcessing(
-        "Improving system prompts from your voice instruction...",
-        title: "Smart Improvement"
-      )
+    DebugLogger.log("AUTO-IMPROVEMENT: Voice-triggered run started (runInBackground: \(runInBackground))")
+    if runInBackground {
+      await MainActor.run {
+        PopupNotificationWindow.showInfo(
+          "Smart Improvement started. You'll be notified when done.",
+          title: "Smart Improvement"
+        )
+      }
+    } else {
+      await MainActor.run {
+        PopupNotificationWindow.showProcessing(
+          "Improving system prompts from your voice instruction...",
+          title: "Smart Improvement"
+        )
+      }
     }
 
     let derivation = UserContextDerivation()
@@ -155,8 +165,10 @@ class AutoPromptImprovementScheduler {
       }
     }
 
-    await MainActor.run {
-      PopupNotificationWindow.dismissProcessing()
+    if !runInBackground {
+      await MainActor.run {
+        PopupNotificationWindow.dismissProcessing()
+      }
     }
     if !appliedKinds.isEmpty {
       let kindNames = appliedKinds.map { kind -> String in
@@ -167,23 +179,7 @@ class AutoPromptImprovementScheduler {
         case .promptAndRead: return "Prompt & Read System Prompt"
         }
       }
-      let sections = appliedKinds.map { kind in
-        let title: String
-        switch kind {
-        case .userContext: title = "User Context"
-        case .dictation: title = "Dictation Prompt"
-        case .promptMode: title = "Dictate Prompt"
-        case .promptAndRead: title = "Prompt & Read"
-        }
-        let content = currentContent(for: kind)
-        return "=== \(title) ===\n\n\(content)"
-      }
-      let clipboardText = sections.joined(separator: "\n\n")
-      await MainActor.run {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(clipboardText, forType: .string)
-      }
-      let message = "Auto-improved: \(kindNames.joined(separator: ", ")). Updated content copied to clipboard. Paste to view."
+      let message = "System prompts updated: \(kindNames.joined(separator: ", ")). Check Settings to review or revert."
       await MainActor.run {
         PopupNotificationWindow.showInfo(message, title: "Smart Improvement")
       }
@@ -320,15 +316,12 @@ class AutoPromptImprovementScheduler {
 
   /// Returns the current stored content for the given focus (after apply). Used to build clipboard output for improved sections only.
   private func currentContent(for kind: GenerationKind) -> String {
+    let store = SystemPromptsStore.shared
     switch kind {
-    case .userContext:
-      return UserContextLogger.shared.loadUserContext() ?? ""
-    case .dictation:
-      return UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) ?? AppConstants.defaultTranscriptionSystemPrompt
-    case .promptMode:
-      return UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt) ?? ""
-    case .promptAndRead:
-      return UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt) ?? ""
+    case .userContext: return store.loadUserContext() ?? ""
+    case .dictation: return store.loadDictationPrompt()
+    case .promptMode: return store.loadDictatePromptSystemPrompt()
+    case .promptAndRead: return store.loadPromptAndReadSystemPrompt()
     }
   }
 
@@ -357,37 +350,19 @@ class AutoPromptImprovementScheduler {
 
   private func applySuggestion(_ suggested: String, for kind: GenerationKind) {
     let improvementModel = currentImprovementModelDisplayName()
+    let section = kind.systemPromptSection
+    let currentContent = SystemPromptsStore.shared.loadSection(section) ?? ""
+    let previousLength = currentContent.count
+    SystemPromptsStore.shared.updateSection(section, content: suggested)
+    UserContextLogger.shared.appendSystemPromptsHistory(section: section, previousLength: previousLength, newLength: suggested.count, content: suggested, model: improvementModel)
     switch kind {
-    case .dictation:
-      let currentDictation = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) ?? AppConstants.defaultTranscriptionSystemPrompt
-      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.customPromptText)
-      UserContextLogger.shared.deleteSuggestedDictationPromptFile()
-      logSystemPromptChange(kind: "Dictation Prompt", previous: currentDictation, applied: suggested)
-      UserContextLogger.shared.appendSystemPromptHistory(historyFileSuffix: "dictation", previousLength: currentDictation.count, newLength: suggested.count, content: suggested, model: improvementModel)
-
-    case .promptMode:
-      let currentPromptMode = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt) ?? ""
-      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.promptModeSystemPrompt)
-      UserContextLogger.shared.deleteSuggestedSystemPromptFile()
-      logSystemPromptChange(kind: "Dictate Prompt", previous: currentPromptMode, applied: suggested)
-      UserContextLogger.shared.appendSystemPromptHistory(historyFileSuffix: "prompt-mode", previousLength: currentPromptMode.count, newLength: suggested.count, content: suggested, model: improvementModel)
-
-    case .promptAndRead:
-      let currentPromptAndRead = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt) ?? ""
-      UserDefaults.standard.set(suggested, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
-      UserContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
-      logSystemPromptChange(kind: "Prompt & Read", previous: currentPromptAndRead, applied: suggested)
-      UserContextLogger.shared.appendSystemPromptHistory(historyFileSuffix: "prompt-and-read", previousLength: currentPromptAndRead.count, newLength: suggested.count, content: suggested, model: improvementModel)
-
-    case .userContext:
-      let contextDir = UserContextLogger.shared.directoryURL
-      let fileURL = contextDir.appendingPathComponent("user-context.md")
-      let currentUserContext = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-      try? suggested.write(to: fileURL, atomically: true, encoding: .utf8)
-      NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
-      UserContextLogger.shared.deleteSuggestedUserContextFile()
-      UserContextLogger.shared.appendUserContextHistory(previousLength: currentUserContext.count, newLength: suggested.count, content: suggested, model: improvementModel)
+    case .dictation: UserContextLogger.shared.deleteSuggestedDictationPromptFile()
+    case .promptMode: UserContextLogger.shared.deleteSuggestedSystemPromptFile()
+    case .promptAndRead: UserContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
+    case .userContext: UserContextLogger.shared.deleteSuggestedUserContextFile()
     }
+    let kindName: String = { switch kind { case .userContext: return "User Context"; case .dictation: return "Dictation Prompt"; case .promptMode: return "Dictate Prompt"; case .promptAndRead: return "Prompt & Read" } }()
+    logSystemPromptChange(kind: kindName, previous: currentContent, applied: suggested)
   }
 
   private func logSystemPromptChange(kind: String, previous: String, applied: String) {
@@ -398,6 +373,17 @@ class AutoPromptImprovementScheduler {
     let beforePreview = firstLineBefore.count > 80 ? String(firstLineBefore.prefix(80)) + "…" : firstLineBefore
     let afterPreview = firstLineAfter.count > 80 ? String(firstLineAfter.prefix(80)) + "…" : firstLineAfter
     DebugLogger.log("SYSTEM-PROMPT-CHANGE: \(kind) (source=auto) — previous \(prevLen) chars, new \(newLen) chars. First line before: \"\(beforePreview)\" first line after: \"\(afterPreview)\"")
+  }
+}
+
+private extension GenerationKind {
+  var systemPromptSection: SystemPromptSection {
+    switch self {
+    case .userContext: return .userContext
+    case .dictation: return .dictation
+    case .promptMode: return .promptMode
+    case .promptAndRead: return .promptAndRead
+    }
   }
 }
 

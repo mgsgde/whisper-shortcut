@@ -106,8 +106,7 @@ class SpeechService {
   // MARK: - Prompt Building
   /// Returns the dictation system prompt (custom prompt only).
   private func buildDictationPrompt() -> String {
-    (UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText)
-      ?? AppConstants.defaultTranscriptionSystemPrompt)
+    SystemPromptsStore.shared.loadDictationPrompt()
       .trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
@@ -282,19 +281,15 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE-GEMINI: Clipboard context: \(hasContext ? "present" : "none")")
 
     // Build system prompt based on mode
-    let baseSystemPrompt = mode == .togglePrompting
-      ? AppConstants.defaultPromptModeSystemPrompt
-      : AppConstants.defaultPromptAndReadSystemPrompt
-    let promptKey = mode == .togglePrompting ? UserDefaultsKeys.promptModeSystemPrompt : UserDefaultsKeys.promptAndReadSystemPrompt
-    let customSystemPrompt = UserDefaults.standard.string(forKey: promptKey)
-
-    var systemPrompt: String
-    if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
-      systemPrompt = customPrompt
-      DebugLogger.log("PROMPT-MODE-GEMINI: Using custom system prompt")
-    } else {
-      systemPrompt = baseSystemPrompt
+    let systemPromptBase = mode == .togglePrompting
+      ? SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
+      : SystemPromptsStore.shared.loadPromptAndReadSystemPrompt()
+    var systemPrompt = systemPromptBase.trimmingCharacters(in: .whitespacesAndNewlines)
+    if systemPrompt.isEmpty {
+      systemPrompt = (mode == .togglePrompting ? AppConstants.defaultPromptModeSystemPrompt : AppConstants.defaultPromptAndReadSystemPrompt)
       DebugLogger.log("PROMPT-MODE-GEMINI: Using base system prompt")
+    } else {
+      DebugLogger.log("PROMPT-MODE-GEMINI: Using custom system prompt")
     }
 
     // Append user context if available
@@ -507,17 +502,12 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE-TEXT: Using model: \(selectedPromptModel.displayName)")
 
     // Build system prompt based on mode
-    let baseSystemPrompt = mode == .togglePrompting
-      ? AppConstants.defaultPromptModeSystemPrompt
-      : AppConstants.defaultPromptAndReadSystemPrompt
-    let promptKey = mode == .togglePrompting ? UserDefaultsKeys.promptModeSystemPrompt : UserDefaultsKeys.promptAndReadSystemPrompt
-    let customSystemPrompt = UserDefaults.standard.string(forKey: promptKey)
-
-    var systemPrompt: String
-    if let customPrompt = customSystemPrompt, !customPrompt.isEmpty {
-      systemPrompt = customPrompt
-    } else {
-      systemPrompt = baseSystemPrompt
+    let systemPromptBase = mode == .togglePrompting
+      ? SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
+      : SystemPromptsStore.shared.loadPromptAndReadSystemPrompt()
+    var systemPrompt = systemPromptBase.trimmingCharacters(in: .whitespacesAndNewlines)
+    if systemPrompt.isEmpty {
+      systemPrompt = mode == .togglePrompting ? AppConstants.defaultPromptModeSystemPrompt : AppConstants.defaultPromptAndReadSystemPrompt
     }
 
     // Append user context if available

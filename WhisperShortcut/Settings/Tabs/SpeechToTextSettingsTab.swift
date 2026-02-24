@@ -26,16 +26,9 @@ struct SpeechToTextSettingsTab: View {
 
       SpacedSectionDivider()
 
-      // Conditional sections based on model type
-      if viewModel.data.selectedTranscriptionModel.isGemini {
-        // Prompt Section (only for Gemini)
-        promptSection
-        
-        SpacedSectionDivider()
-      } else {
-        // Language Section (only for Whisper)
+      // Language Section (only for Whisper)
+      if !viewModel.data.selectedTranscriptionModel.isGemini {
         languageSection
-        
         SpacedSectionDivider()
       }
 
@@ -96,29 +89,6 @@ struct SpeechToTextSettingsTab: View {
         .fixedSize(horizontal: false, vertical: true)
       }
       .textSelection(.enabled)
-    }
-  }
-
-  // MARK: - Prompt Section (Dictation)
-  @ViewBuilder
-  private var promptSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      PromptTextEditor(
-        title: "💬 System Prompt",
-        subtitle:
-          "Domain context, formatting rules, and other instructions. Only used for Gemini models (not Whisper). Leave empty to use Gemini's default.",
-        helpText:
-          "Enter a single system prompt: domain terms, jargon, or any instructions for transcription. This prompt is only applied when using Gemini models.",
-        defaultValue: AppConstants.defaultTranscriptionSystemPrompt,
-        text: $viewModel.data.customPromptText,
-        focusedField: .customPrompt,
-        currentFocus: $focusedField,
-        onTextChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        }
-      )
     }
   }
 

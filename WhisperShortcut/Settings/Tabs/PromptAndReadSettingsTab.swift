@@ -17,11 +17,6 @@ struct PromptAndReadSettingsTab: View {
 
       SpacedSectionDivider()
 
-      // Prompt Section
-      promptSection
-
-      SpacedSectionDivider()
-
       // Read Aloud Voice Selection Section
       readAloudVoiceSection
 
@@ -73,29 +68,6 @@ struct PromptAndReadSettingsTab: View {
         .fixedSize(horizontal: false, vertical: true)
       }
       .textSelection(.enabled)
-    }
-  }
-
-  // MARK: - Prompt Section
-  @ViewBuilder
-  private var promptSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      PromptTextEditor(
-        title: "🤖 System Prompt",
-        subtitle:
-          "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
-        helpText:
-          "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
-        defaultValue: AppConstants.defaultPromptAndReadSystemPrompt,
-        text: $viewModel.data.promptAndReadSystemPrompt,
-        focusedField: .promptAndReadSystemPrompt,
-        currentFocus: $focusedField,
-        onTextChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        }
-      )
     }
   }
 

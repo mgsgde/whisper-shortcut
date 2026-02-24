@@ -47,10 +47,11 @@ class UserContextDerivation {
 
     DebugLogger.log("USER-CONTEXT-DERIVATION: Starting context update focus=\(focus)")
 
-    let existingUserContext = loadExistingUserContextFile()
-    let currentPromptModeSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)?.trimmingCharacters(in: .whitespacesAndNewlines)
-    let currentPromptAndReadSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt)?.trimmingCharacters(in: .whitespacesAndNewlines)
-    let currentDictationPrompt = (UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) ?? AppConstants.defaultTranscriptionSystemPrompt).trimmingCharacters(in: .whitespacesAndNewlines)
+    let store = SystemPromptsStore.shared
+    let existingUserContext = store.loadUserContext()
+    let currentPromptModeSystemPrompt = store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentPromptAndReadSystemPrompt = store.loadPromptAndReadSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentDictationPrompt = store.loadDictationPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
 
     let loaded = try loadAndSampleLogs(focus: focus, existingUserContext: existingUserContext,
                                        currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
@@ -93,10 +94,11 @@ class UserContextDerivation {
 
     DebugLogger.log("USER-CONTEXT-DERIVATION: Starting voice-instruction update focus=\(focus)")
 
-    let existingUserContext = loadExistingUserContextFile()
-    let currentPromptModeSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)?.trimmingCharacters(in: .whitespacesAndNewlines)
-    let currentPromptAndReadSystemPrompt = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt)?.trimmingCharacters(in: .whitespacesAndNewlines)
-    let currentDictationPrompt = (UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) ?? AppConstants.defaultTranscriptionSystemPrompt).trimmingCharacters(in: .whitespacesAndNewlines)
+    let store = SystemPromptsStore.shared
+    let existingUserContext = store.loadUserContext()
+    let currentPromptModeSystemPrompt = store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentPromptAndReadSystemPrompt = store.loadPromptAndReadSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentDictationPrompt = store.loadDictationPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
 
     var primaryParts: [String] = ["User request to change behavior:\n\n\(voiceInstruction)"]
     if let sel = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines), !sel.isEmpty {
@@ -119,13 +121,13 @@ class UserContextDerivation {
       }
     case .promptMode:
       if let ctx = existingUserContext, !ctx.isEmpty { secondaryParts.append("Existing user context:\n\(ctx)") }
-      if let p = currentPromptModeSystemPrompt, !p.isEmpty {
-        secondaryParts.append("Current Dictate Prompt system prompt (refine based on the user request above):\n\(p)")
+      if !currentPromptModeSystemPrompt.isEmpty {
+        secondaryParts.append("Current Dictate Prompt system prompt (refine based on the user request above):\n\(currentPromptModeSystemPrompt)")
       }
     case .promptAndRead:
       if let ctx = existingUserContext, !ctx.isEmpty { secondaryParts.append("Existing user context:\n\(ctx)") }
-      if let p = currentPromptAndReadSystemPrompt, !p.isEmpty {
-        secondaryParts.append("Current Prompt & Read system prompt (refine based on the user request above):\n\(p)")
+      if !currentPromptAndReadSystemPrompt.isEmpty {
+        secondaryParts.append("Current Prompt & Read system prompt (refine based on the user request above):\n\(currentPromptAndReadSystemPrompt)")
       }
     }
     let secondaryText = secondaryParts.joined(separator: "\n\n---\n\n")
@@ -144,17 +146,6 @@ class UserContextDerivation {
 
     try writeOutputFile(analysisResult: analysisResult, focus: focus)
     DebugLogger.logSuccess("USER-CONTEXT-DERIVATION: Voice-instruction update completed focus=\(focus)")
-  }
-
-  // MARK: - Load Existing Context (for refinement)
-
-  /// Reads existing user-context.md so Gemini can refine it. Ignores the "include in prompt" toggle.
-  private func loadExistingUserContextFile() -> String? {
-    let url = UserContextLogger.shared.directoryURL.appendingPathComponent("user-context.md")
-    guard FileManager.default.fileExists(atPath: url.path),
-          let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? nil : trimmed
   }
 
   // MARK: - Log Loading & Sampling

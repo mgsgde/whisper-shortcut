@@ -17,11 +17,6 @@ struct SpeechToPromptSettingsTab: View {
       
       SpacedSectionDivider()
 
-      // System Prompt Section
-      promptSection
-      
-      SpacedSectionDivider()
-
       // Usage Instructions Section
       usageInstructionsSection
     }
@@ -88,29 +83,6 @@ struct SpeechToPromptSettingsTab: View {
     )
   }
 
-  // MARK: - System Prompt Section
-  @ViewBuilder
-  private var promptSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      PromptTextEditor(
-        title: "🤖 System Prompt",
-        subtitle:
-          "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
-        helpText:
-          "Additional instructions that will be combined with the base system prompt. The base prompt ensures concise responses without intros or meta text.",
-        defaultValue: AppConstants.defaultPromptModeSystemPrompt,
-        text: $viewModel.data.promptModeSystemPrompt,
-        focusedField: .promptModeSystemPrompt,
-        currentFocus: $focusedField,
-        onTextChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        }
-      )
-    }
-  }
-  
   // MARK: - Usage Instructions
   @ViewBuilder
   private var usageInstructionsSection: some View {

@@ -17,10 +17,6 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
-      UserContextSection(viewModel: viewModel, focusedField: $focusedField)
-
-      SpacedSectionDivider()
-
       LaunchAtLoginSection(viewModel: viewModel)
 
       SpacedSectionDivider()

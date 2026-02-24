@@ -70,8 +70,7 @@ class SettingsViewModel: ObservableObject {
       data.selectedPromptModel = SettingsDefaults.selectedPromptModel
     }
 
-    // Load custom prompt (with fallback to default)
-    data.customPromptText = loadString(key: UserDefaultsKeys.customPromptText, default: AppConstants.defaultTranscriptionSystemPrompt)
+    // System prompts are stored in UserContext/system-prompts.md (see SystemPromptsStore); not loaded from UserDefaults.
 
     // Load Whisper language setting
     if let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage),
@@ -81,9 +80,6 @@ class SettingsViewModel: ObservableObject {
     } else {
       data.whisperLanguage = SettingsDefaults.whisperLanguage
     }
-
-    // Load prompt mode system prompt (with fallback to default)
-    data.promptModeSystemPrompt = loadString(key: UserDefaultsKeys.promptModeSystemPrompt, default: AppConstants.defaultPromptModeSystemPrompt)
 
     // Load read aloud voice setting (with migration from legacy key)
     if let savedVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoice) {
@@ -134,9 +130,6 @@ class SettingsViewModel: ObservableObject {
     } else {
       data.selectedImprovementModel = SettingsDefaults.selectedImprovementModel
     }
-
-    // Load Prompt & Read system prompt (with fallback to default)
-    data.promptAndReadSystemPrompt = loadString(key: UserDefaultsKeys.promptAndReadSystemPrompt, default: AppConstants.defaultPromptAndReadSystemPrompt)
 
     // Load Prompt & Read voice (with migration from Read Aloud voice if not set)
     if let savedPromptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice),
@@ -388,11 +381,8 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(data.selectedPromptAndReadModel.rawValue, forKey: UserDefaultsKeys.selectedPromptAndReadModel)
     UserDefaults.standard.set(data.selectedImprovementModel.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
 
-    // Save prompts
-    UserDefaults.standard.set(data.customPromptText, forKey: UserDefaultsKeys.customPromptText)
-    UserDefaults.standard.set(data.promptModeSystemPrompt, forKey: UserDefaultsKeys.promptModeSystemPrompt)
-    UserDefaults.standard.set(data.promptAndReadSystemPrompt, forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
-    
+    // System prompts are stored in UserContext/system-prompts.md (see SystemPromptsStore); not saved to UserDefaults.
+
     // Save read aloud voice settings
     UserDefaults.standard.set(data.selectedReadAloudVoice, forKey: UserDefaultsKeys.selectedReadAloudVoice)
     UserDefaults.standard.set(data.selectedPromptAndReadVoice, forKey: UserDefaultsKeys.selectedPromptAndReadVoice)

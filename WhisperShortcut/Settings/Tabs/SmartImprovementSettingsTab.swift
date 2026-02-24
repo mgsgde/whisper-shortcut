@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Dedicated tab for Smart Improvement: settings, interaction data path, open folder, and delete.
@@ -9,9 +10,15 @@ struct SmartImprovementSettingsTab: View {
   @State private var showDeleteInteractionConfirmation = false
   @State private var isImprovementRunning = false
 
+  @State private var systemPromptsText: String = ""
+
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       settingsSection
+
+      SpacedSectionDivider()
+
+      systemPromptsOverviewSection
 
       SpacedSectionDivider()
 
@@ -200,7 +207,65 @@ struct SmartImprovementSettingsTab: View {
       } else {
         selectedDictationThreshold = UserDefaults.standard.integer(forKey: UserDefaultsKeys.promptImprovementDictationThreshold)
       }
+      systemPromptsText = SystemPromptsStore.shared.loadFullContent()
     }
+    .onReceive(NotificationCenter.default.publisher(for: .userContextFileDidUpdate)) { _ in
+      systemPromptsText = SystemPromptsStore.shared.loadFullContent()
+    }
+  }
+
+  // MARK: - System prompts (single file editor)
+  @ViewBuilder
+  private var systemPromptsOverviewSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "System prompts",
+        subtitle: "All system prompts in one file. Edit the sections between the === headers. Save to apply."
+      )
+
+      Text("Edit sections: User Context, Dictation (Speech-to-Text), Dictate Prompt, Prompt & Read.")
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      TextEditor(text: $systemPromptsText)
+        .font(.system(.body, design: .monospaced))
+        .frame(minHeight: 320, maxHeight: 500)
+        .padding(8)
+        .background(Color(nsColor: .textBackgroundColor))
+        .cornerRadius(SettingsConstants.cornerRadius)
+
+      HStack(alignment: .center, spacing: 12) {
+        Button(action: saveSystemPrompts) {
+          Label("Save system prompts", systemImage: "square.and.arrow.down")
+            .font(.callout)
+        }
+        .buttonStyle(.bordered)
+        .help("Save changes to the system prompts file")
+
+        Button(action: openSystemPromptsFile) {
+          Label("Open file in Finder", systemImage: "doc.badge.arrow.up")
+            .font(.callout)
+        }
+        .buttonStyle(.bordered)
+        .help("Open system-prompts.md in the default app (e.g. TextEdit)")
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  private func openSystemPromptsFile() {
+    let url = SystemPromptsStore.shared.systemPromptsFileURL
+    if FileManager.default.fileExists(atPath: url.path) {
+      NSWorkspace.shared.open(url)
+    } else {
+      NSWorkspace.shared.open(SystemPromptsStore.shared.systemPromptsFileURL.deletingLastPathComponent())
+    }
+  }
+
+  private func saveSystemPrompts() {
+    SystemPromptsStore.shared.saveFullContent(systemPromptsText)
+    NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
   }
 
   // MARK: - Interaction data
@@ -245,7 +310,7 @@ struct SmartImprovementSettingsTab: View {
           .font(.callout)
           .fontWeight(.semibold)
           .foregroundColor(.secondary)
-        Text("Smart Improvement runs automatically after successful dictations. When the dictation count reaches your threshold and the cooldown has passed, the app analyzes your usage and suggests updates for User Context, Dictation prompt, Dictate Prompt prompt, and Prompt & Read prompt. Suggestions are applied automatically; check the relevant settings tabs to review or edit.")
+        Text("Smart Improvement runs automatically after successful dictations. When the dictation count reaches your threshold and the cooldown has passed, the app analyzes your usage and suggests updates for User Context, Dictation prompt, Dictate Prompt prompt, and Prompt & Read prompt. Suggestions are applied automatically; edit and save the system prompts in this tab to review or revert.")
           .textSelection(.enabled)
 
         Text("Improve from voice (shortcut):")
@@ -261,7 +326,7 @@ struct SmartImprovementSettingsTab: View {
           .textSelection(.enabled)
         Text("4. Press the shortcut again to stop")
           .textSelection(.enabled)
-        Text("5. The app updates User Context and system prompts; check Settings to review or revert")
+        Text("5. The app updates User Context and system prompts; edit the System prompts section above to review or revert")
           .textSelection(.enabled)
 
         Text("Automatic improvement:")
