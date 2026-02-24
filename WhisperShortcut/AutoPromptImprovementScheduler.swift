@@ -165,16 +165,14 @@ class AutoPromptImprovementScheduler {
       for await result in group { collected.append(result) }
       return collected
     }
-    var appliedKinds: [GenerationKind] = []
+    var pendingFromVoice: [GenerationKind] = []
     for (focus, error) in results {
       if let error = error {
         DebugLogger.logError("AUTO-IMPROVEMENT: Voice derivation failed for \(focus): \(error.localizedDescription)")
         continue
       }
-      if hasSuggestion(for: focus), let suggested = readSuggestion(for: focus), !suggested.isEmpty {
-        applySuggestion(suggested, for: focus)
-        appliedKinds.append(focus)
-        DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied \(focus) from voice")
+      if hasSuggestion(for: focus), readSuggestion(for: focus) != nil {
+        pendingFromVoice.append(focus)
       } else {
         DebugLogger.log("AUTO-IMPROVEMENT: Skipped \(focus) — voice instruction not relevant to this mode")
       }
@@ -184,22 +182,45 @@ class AutoPromptImprovementScheduler {
         PopupNotificationWindow.dismissProcessing()
       }
     }
-    if !appliedKinds.isEmpty {
-      let kindNames = appliedKinds.map { kind -> String in
-        switch kind {
-        case .dictation: return "Dictation Prompt"
-        case .promptMode: return "Dictate Prompt System Prompt"
-        case .promptAndRead: return "Prompt & Read System Prompt"
-        }
+    var appliedKinds: [GenerationKind] = []
+    let total = pendingFromVoice.count
+    for (index, focus) in pendingFromVoice.enumerated() {
+      guard let suggested = readSuggestion(for: focus), !suggested.isEmpty else { continue }
+      let original = currentContent(for: focus)
+      let oneBased = index + 1
+      let result = await SmartImprovementReviewPanel.present(
+        focusDisplayName: focus.improvementDisplayName,
+        index: total > 1 ? oneBased : nil,
+        total: total > 1 ? total : nil,
+        originalText: original,
+        suggestedText: suggested
+      )
+      if let accepted = result, !accepted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        applySuggestion(accepted, for: focus)
+        appliedKinds.append(focus)
+        DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied \(focus) from voice review")
+      } else {
+        discardSuggestion(for: focus)
+        DebugLogger.log("AUTO-IMPROVEMENT: User cancelled or empty for \(focus)")
       }
+    }
+    if !appliedKinds.isEmpty {
+      let kindNames = appliedKinds.map(\.improvementDisplayName)
       let message = "System prompts updated: \(kindNames.joined(separator: ", ")). Check Settings to review or revert."
       await MainActor.run {
         PopupNotificationWindow.showInfo(message, title: "Smart Improvement")
       }
-    } else {
+    } else if pendingFromVoice.isEmpty {
       await MainActor.run {
         PopupNotificationWindow.showInfo(
           "No suggestion could be generated from your instruction. Try rephrasing or check Settings.",
+          title: "Smart Improvement"
+        )
+      }
+    } else {
+      await MainActor.run {
+        PopupNotificationWindow.showInfo(
+          "No changes applied. You cancelled all suggestions or left them empty.",
           title: "Smart Improvement"
         )
       }
@@ -239,31 +260,44 @@ class AutoPromptImprovementScheduler {
       }
     }
 
-    // Apply generated suggestions directly (no compare sheet)
+    // Present review UI for each suggestion; apply only on Accept, discard on Cancel
     if !pendingKinds.isEmpty {
-      DebugLogger.logSuccess("AUTO-IMPROVEMENT: Generated \(pendingKinds.count) suggestions — auto-applying")
-
+      DebugLogger.logSuccess("AUTO-IMPROVEMENT: Generated \(pendingKinds.count) suggestions — showing review")
+      let total = pendingKinds.count
       var appliedKinds: [GenerationKind] = []
-      for kind in pendingKinds {
-        if let suggested = readSuggestion(for: kind), !suggested.isEmpty {
-          applySuggestion(suggested, for: kind)
+      for (index, kind) in pendingKinds.enumerated() {
+        guard let suggested = readSuggestion(for: kind), !suggested.isEmpty else { continue }
+        let original = currentContent(for: kind)
+        let oneBased = index + 1
+        let result = await SmartImprovementReviewPanel.present(
+          focusDisplayName: kind.improvementDisplayName,
+          index: total > 1 ? oneBased : nil,
+          total: total > 1 ? total : nil,
+          originalText: original,
+          suggestedText: suggested
+        )
+        if let accepted = result, !accepted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          applySuggestion(accepted, for: kind)
           appliedKinds.append(kind)
-          DebugLogger.logSuccess("AUTO-IMPROVEMENT: Auto-applied \(kind)")
+          DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied \(kind) from review")
+        } else {
+          discardSuggestion(for: kind)
+          DebugLogger.log("AUTO-IMPROVEMENT: User cancelled or empty for \(kind)")
         }
       }
-
       if !appliedKinds.isEmpty {
-        let kindNames = appliedKinds.map { kind -> String in
-          switch kind {
-          case .dictation: return "Dictation Prompt"
-          case .promptMode: return "Dictate Prompt System Prompt"
-          case .promptAndRead: return "Prompt & Read System Prompt"
-          }
-        }
+        let kindNames = appliedKinds.map(\.improvementDisplayName)
         DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied: \(kindNames.joined(separator: ", "))")
-        let message = "Auto-improved: \(kindNames.joined(separator: ", ")). Check Settings to review or revert."
+        let message = "System prompts updated: \(kindNames.joined(separator: ", ")). Check Settings to review or revert."
         await MainActor.run {
           PopupNotificationWindow.showInfo(message, title: "Smart Improvement")
+        }
+      } else {
+        await MainActor.run {
+          PopupNotificationWindow.showInfo(
+            "No changes applied. You cancelled all suggestions or left them empty.",
+            title: "Smart Improvement"
+          )
         }
       }
     } else {
@@ -331,6 +365,15 @@ class AutoPromptImprovementScheduler {
     return trimmed.isEmpty ? nil : trimmed
   }
 
+  /// Deletes the suggestion file for the given focus without applying. Use when the user cancels the review.
+  private func discardSuggestion(for kind: GenerationKind) {
+    switch kind {
+    case .dictation: ContextLogger.shared.deleteSuggestedDictationPromptFile()
+    case .promptMode: ContextLogger.shared.deleteSuggestedSystemPromptFile()
+    case .promptAndRead: ContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
+    }
+  }
+
   private func applySuggestion(_ suggested: String, for kind: GenerationKind) {
     let improvementModel = currentImprovementModelDisplayName()
     let section = kind.systemPromptSection
@@ -338,12 +381,8 @@ class AutoPromptImprovementScheduler {
     let previousLength = currentContent.count
     SystemPromptsStore.shared.updateSection(section, content: suggested)
     ContextLogger.shared.appendSystemPromptsHistory(section: section, previousLength: previousLength, newLength: suggested.count, content: suggested, model: improvementModel)
-    switch kind {
-    case .dictation: ContextLogger.shared.deleteSuggestedDictationPromptFile()
-    case .promptMode: ContextLogger.shared.deleteSuggestedSystemPromptFile()
-    case .promptAndRead: ContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
-    }
-    let kindName: String = { switch kind { case .dictation: return "Dictation Prompt"; case .promptMode: return "Dictate Prompt"; case .promptAndRead: return "Prompt & Read" } }()
+    discardSuggestion(for: kind)
+    let kindName = kind.improvementDisplayName
     logSystemPromptChange(kind: kindName, previous: currentContent, applied: suggested)
   }
 

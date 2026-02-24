@@ -8,6 +8,15 @@ enum GenerationKind: Equatable, Codable {
   case dictation
   case promptMode
   case promptAndRead
+
+  /// Display name for the review window title and summary messages.
+  var improvementDisplayName: String {
+    switch self {
+    case .dictation: return "Dictation Prompt"
+    case .promptMode: return "Dictate Prompt System Prompt"
+    case .promptAndRead: return "Prompt & Read System Prompt"
+    }
+  }
 }
 
 /// ViewModel for centralized Settings state management.
