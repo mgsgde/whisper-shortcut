@@ -129,6 +129,9 @@ website/node_modules/
 
 test-config
 
+# Documentation (local/generated)
+docs/
+
 # Todo files
 todo*.md
 
