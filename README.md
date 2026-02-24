@@ -73,14 +73,12 @@ Use the live transcript with AI assistants in your editor (e.g. Cursor) while th
 
 ### Smart Improvement
 
-The app can **automatically improve** your system prompts and user context based on how you use it:
+You can improve your system prompts and user context in two ways:
 
-1. **Trigger** – After each successful Speech-to-Text dictation, a counter increments. When it reaches your chosen threshold (e.g. every 20 dictations) and the cooldown has passed, an improvement run starts. First run ever only needs the threshold and some interaction data; later runs also require at least 7 days of usage history.
-2. **Data** – Interaction logs (what you dictated, which mode you used) are sampled with a tiered strategy (recent vs. older) and sent to Gemini.
-3. **AI** – Gemini (model selectable in Settings → Smart Improvement) suggests updates for: **User Context** (language, topics, style), **Dictation** (Speech-to-Text system prompt), **Dictate Prompt** system prompt, and **Prompt & Read** system prompt.
-4. **Apply** – Suggestions are applied automatically. A popup tells you what was improved. Check the relevant settings tabs to review or edit.
+1. **Improve from usage** – In Settings → Smart Improvement, enable **"Save usage data"** so the app stores interaction logs (what you dictated, which mode you used). When you have enough data, click **"Improve from usage"**. Gemini (model selectable in Settings) analyzes your logs and suggests updates for: **User Context** (language, topics, style), **Dictation** (Speech-to-Text system prompt), **Dictate Prompt** system prompt, and **Prompt & Read** system prompt. Suggestions are applied automatically; a popup tells you what was improved. Check the relevant settings tabs to review or edit.
+2. **Improve from voice** – Use the **Improve from voice** shortcut (e.g. Cmd+6). Record a voice instruction (e.g. "always add bullet points", "I work in legal"); the app transcribes it and updates system prompts accordingly. No interaction logs required.
 
-**Settings** (Settings → Smart Improvement): choose the **model** (default: Gemini 3.1 Pro), **interval** (Never, Always, or every 3/7/14/30 days), and **improvement after N dictations** (2, 5, 10, 20, or 50). The same model is used for "Generate with AI" in the prompt and user-context settings.
+**Settings** (Settings → Smart Improvement): **Save usage data** (off by default), **model** (default: Gemini 3.1 Pro), and the **Improve from voice** shortcut. The same model is used for "Generate with AI" in the prompt and user-context settings.
 
 ## Installation
 
@@ -113,7 +111,7 @@ bash install.sh
 - **Customizable Shortcuts**: Configurable keyboard shortcuts for each mode
 - **Multiple TTS Models & Voices**: Choose from Gemini 2.5 Flash/Pro TTS models and 10 AI voices (e.g. Charon, Puck, Kore)
 - **Live Meeting Transcription**: Real-time transcription streamed to a text file; configurable chunk interval and timestamps; file opens in your default editor
-- **Smart Improvement**: Automatic system prompt and user context improvements based on your usage; triggered after N dictations with configurable interval and model; suggestions applied automatically; review or edit in the relevant settings tabs
+- **Smart Improvement**: Manual system prompt and user context improvements via "Improve from usage" (requires enabling "Save usage data") or "Improve from voice" shortcut; suggestions applied automatically; review or edit in the relevant settings tabs
 
 ## Development
 

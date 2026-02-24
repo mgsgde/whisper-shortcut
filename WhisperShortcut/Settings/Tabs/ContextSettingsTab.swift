@@ -5,7 +5,7 @@ import SwiftUI
 struct ContextSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
-  @State private var selectedInterval: AutoImprovementInterval = .default
+  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
   @State private var showDeleteInteractionConfirmation = false
   @State private var isImprovementRunning = false
   @State private var queuedJobCount = 0
@@ -153,7 +153,7 @@ struct ContextSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Smart Improvement",
-        subtitle: "Improve from voice shortcut and automatic improvement based on your usage"
+        subtitle: "Improve from voice shortcut and manual improvement from your usage"
       )
 
       VStack(alignment: .leading, spacing: 16) {
@@ -179,33 +179,10 @@ struct ContextSettingsTab: View {
         }
 
         VStack(alignment: .leading, spacing: 8) {
-          HStack(alignment: .center, spacing: 12) {
-            Text("Automatic system prompt improvement")
-              .font(.callout)
-              .fontWeight(.medium)
-            Spacer(minLength: 16)
-            Picker("", selection: $selectedInterval) {
-              ForEach(AutoImprovementInterval.allCases, id: \.self) { interval in
-                Text(interval.displayName).tag(interval)
-              }
-            }
-            .pickerStyle(.menu)
-            .frame(width: 160, alignment: .trailing)
-            .onChange(of: selectedInterval) { newValue in
-              UserDefaults.standard.set(newValue.rawValue, forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
-              let enabled = newValue != .never
-              UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.contextLoggingEnabled)
-              DebugLogger.log("AUTO-IMPROVEMENT: Interval changed to \(newValue.displayName), logging = \(enabled)")
-            }
-          }
+          Toggle("Save usage data", isOn: $saveUsageData)
+            .toggleStyle(.checkbox)
+            .help("When enabled, interaction logs (dictation, prompt mode) are stored so \"Improve from usage\" can suggest better prompts. Disabled by default.")
 
-          Text("Minimum cooldown between improvement runs (from the second run onwards). Set to \"Always\" for no cooldown.")
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
-        VStack(alignment: .leading, spacing: 8) {
           HStack(alignment: .center, spacing: 12) {
             Text("Improve from usage")
               .font(.callout)
@@ -225,10 +202,10 @@ struct ContextSettingsTab: View {
             }
             .buttonStyle(.bordered)
             .disabled(isImprovementRunning)
-            .help("Improve prompts and context from your usage; ignores cooldown")
+            .help("Improve prompts and context from your usage")
           }
 
-          Text("Runs in the background using your interaction logs. You can switch to another tab; you'll be notified when it's done. Ignores cooldown.")
+          Text("Runs in the background using your interaction logs. Enable \"Save usage data\" to collect logs. You can switch to another tab; you'll be notified when it's done.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -258,7 +235,7 @@ struct ContextSettingsTab: View {
 
         PromptModelSelectionView(
           title: "Model for Smart Improvement",
-          subtitle: "Used for automatic Smart Improvement (suggested prompts).",
+          subtitle: "Used for Smart Improvement (Improve from usage).",
           showSectionHeader: false,
           selectedModel: Binding(
             get: { viewModel.data.selectedImprovementModel },
@@ -281,10 +258,6 @@ struct ContextSettingsTab: View {
     }
     .onAppear {
       refreshImprovementState()
-      let rawValue = UserDefaults.standard.integer(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
-      selectedInterval = AutoImprovementInterval(rawValue: rawValue) ?? .default
-      let enabled = selectedInterval != .never
-      UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.contextLoggingEnabled)
       let content = SystemPromptsStore.shared.loadFullContent()
       systemPromptsText = content
       lastSavedSystemPromptsText = content
@@ -302,7 +275,7 @@ struct ContextSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "📋 How to Use",
-        subtitle: "Improve from voice and automatic improvement"
+        subtitle: "Improve from voice and manual improvement from usage"
       )
 
       VStack(alignment: .leading, spacing: 8) {
@@ -322,12 +295,12 @@ struct ContextSettingsTab: View {
         Text("5. The app updates system prompts; edit the System prompts section above to review or revert")
           .textSelection(.enabled)
 
-        Text("Automatic improvement:")
+        Text("Improve from usage:")
           .font(.callout)
           .fontWeight(.semibold)
           .foregroundColor(.secondary)
           .padding(.top, 4)
-        Text("Runs in the background when the cooldown has passed (after a dictation). Use \"Improve from usage\" to trigger once immediately.")
+        Text("Enable \"Save usage data\" above, then use dictation or prompt mode. When you have enough data, click \"Improve from usage\" in Settings to generate suggested prompts from your interaction logs.")
           .textSelection(.enabled)
       }
       .font(.callout)

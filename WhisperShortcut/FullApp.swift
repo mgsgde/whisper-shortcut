@@ -34,16 +34,11 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
           _ = KeychainManager.shared.getGoogleAPIKey()
         }
       }
-      // Set Smart Improvement interval default only after credential is known: Never without Gemini, Every 7 days with.
-      if UserDefaults.standard.object(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays) == nil {
-        let interval: AutoImprovementInterval = GeminiCredentialProvider.shared.hasCredential() ? .days7 : .never
-        UserDefaults.standard.set(interval.rawValue, forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
-      }
     }
 
-    // Initialize interaction logging default if not set
+    // Initialize interaction logging default if not set (default: do not save usage; user can enable "Save usage data" in Settings)
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil {
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.contextLoggingEnabled)
+      UserDefaults.standard.set(false, forKey: UserDefaultsKeys.contextLoggingEnabled)
     }
 
   }

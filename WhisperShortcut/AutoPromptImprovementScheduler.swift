@@ -8,49 +8,8 @@ class AutoPromptImprovementScheduler {
 
   private init() {}
 
-  /// Triggers an improvement run when the cooldown interval has passed (and other guards are met).
-  /// Called after every successful transcription. No dictation counter; runs purely on interval cooldown.
-  func incrementDictationCountAndRunIfNeeded() {
-    let interval = getCurrentInterval()
-    guard interval != .never else {
-      DebugLogger.log("AUTO-IMPROVEMENT: Skip - disabled (Never)")
-      return
-    }
-    guard GeminiCredentialProvider.shared.hasCredential() else {
-      DebugLogger.log("AUTO-IMPROVEMENT: Skip - no Gemini credential")
-      return
-    }
-    // First run ever: any interaction data (no 7-day minimum). Subsequent runs: when interval != .always, require 7+ days of usage.
-    let isFirstRun = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastAutoImprovementRunDate) as? Date == nil
-    let minDays: Int = {
-      if isFirstRun { return 0 }
-      return interval == .always ? 0 : AppConstants.autoImprovementMinimumInteractionDays
-    }()
-    guard ContextLogger.shared.hasInteractionDataAtLeast(daysOld: minDays) else {
-      DebugLogger.log("AUTO-IMPROVEMENT: Skip - need at least \(minDays) days of data")
-      return
-    }
-
-    guard hasEnoughTimePassed(interval: interval) else {
-      DebugLogger.log("AUTO-IMPROVEMENT: Cooldown not passed yet")
-      return
-    }
-
-    if isImprovementRunning {
-      improvementQueue.append(.fromUsage)
-      showQueuedMessage()
-      DebugLogger.log("AUTO-IMPROVEMENT: Enqueued from-usage job (automatic trigger)")
-      return
-    }
-
-    DebugLogger.log("AUTO-IMPROVEMENT: Cooldown passed — starting improvement run")
-    Task {
-      isImprovementRunning = true
-      defer { isImprovementRunning = false }
-      await runImprovement()
-      await processNextInQueue()
-    }
-  }
+  /// No-op: automatic improvement was removed; improvement runs only when the user triggers "Improve from usage" or "Improve from voice".
+  func incrementDictationCountAndRunIfNeeded() {}
 
   /// Runs the improvement pipeline immediately (manual trigger from Settings).
   /// Ignores cooldown and interval. Requires API key and at least some interaction data.
@@ -247,22 +206,6 @@ class AutoPromptImprovementScheduler {
     }
   }
 
-  private func getCurrentInterval() -> AutoImprovementInterval {
-    let rawValue = UserDefaults.standard.integer(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
-    return AutoImprovementInterval(rawValue: rawValue) ?? .default
-  }
-
-  private func hasEnoughTimePassed(interval: AutoImprovementInterval) -> Bool {
-    if interval == .always { return true }
-
-    guard let lastRunDate = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastAutoImprovementRunDate) as? Date else {
-      return true
-    }
-
-    let daysSinceLastRun = Calendar.current.dateComponents([.day], from: lastRunDate, to: Date()).day ?? 0
-    return daysSinceLastRun >= interval.days
-  }
-
   /// Current Smart Improvement model display name (e.g. "Gemini 3.1 Pro"). Same source as ContextDerivation.
   private func currentImprovementModelDisplayName() -> String? {
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
@@ -327,7 +270,7 @@ class AutoPromptImprovementScheduler {
       DebugLogger.log("AUTO-IMPROVEMENT: No suggestions generated")
       await MainActor.run {
         PopupNotificationWindow.showInfo(
-          "Auto-improvement ran but no suggestions could be generated (e.g. API busy). It will run again when the cooldown has passed.",
+          "No suggestions could be generated (e.g. API busy). Try again later or check that you have interaction data.",
           title: "Smart Improvement"
         )
       }
