@@ -36,22 +36,26 @@ class AutoPromptImprovementScheduler {
       return
     }
 
+    if isImprovementRunning {
+      improvementQueue.append(.fromUsage)
+      showQueuedMessage()
+      DebugLogger.log("AUTO-IMPROVEMENT: Enqueued from-usage job (automatic trigger)")
+      return
+    }
+
     DebugLogger.log("AUTO-IMPROVEMENT: Cooldown passed — starting improvement run")
     Task {
+      isImprovementRunning = true
+      defer { isImprovementRunning = false }
       await runImprovement()
+      await processNextInQueue()
     }
   }
 
   /// Runs the improvement pipeline immediately (manual trigger from Settings).
   /// Ignores cooldown and interval. Requires API key and at least some interaction data.
+  /// If a run is already in progress, enqueues this job and notifies the user.
   func runImprovementNow() async {
-    guard !isImprovementRunning else {
-      PopupNotificationWindow.showInfo(
-        "An improvement run is already in progress.",
-        title: "Smart Improvement"
-      )
-      return
-    }
     guard GeminiCredentialProvider.shared.hasCredential() else {
       PopupNotificationWindow.showError(
         "Add an API key in the General tab to use Smart Improvement.",
@@ -66,6 +70,11 @@ class AutoPromptImprovementScheduler {
       )
       return
     }
+    if isImprovementRunning {
+      improvementQueue.append(.fromUsage)
+      showQueuedMessage()
+      return
+    }
     isImprovementRunning = true
     defer { isImprovementRunning = false }
     DebugLogger.log("AUTO-IMPROVEMENT: Manual run started")
@@ -75,21 +84,14 @@ class AutoPromptImprovementScheduler {
     )
     await runImprovement()
     DebugLogger.log("AUTO-IMPROVEMENT: Manual run finished")
+    await processNextInQueue()
   }
 
   /// Runs improvement for all foci (Dictation, Dictate Prompt, Prompt & Read) using a transcribed voice instruction as the primary signal.
   /// Used by the "Improve from voice" shortcut / flow. Does not require interaction logs.
   /// When runInBackground is true, no persistent processing popup is shown; only auto-dismissing info notifications. No clipboard copy on success.
+  /// If a run is already in progress, enqueues this job and notifies the user.
   func runImprovementFromVoice(transcribedInstruction: String, selectedText: String?, runInBackground: Bool = false) async {
-    guard !isImprovementRunning else {
-      await MainActor.run {
-        PopupNotificationWindow.showInfo(
-          "An improvement run is already in progress.",
-          title: "Smart Improvement"
-        )
-      }
-      return
-    }
     guard GeminiCredentialProvider.shared.hasCredential() else {
       await MainActor.run {
         PopupNotificationWindow.showError(
@@ -109,29 +111,81 @@ class AutoPromptImprovementScheduler {
       }
       return
     }
-
+    if isImprovementRunning {
+      improvementQueue.append(.fromVoice(instruction: instruction, selectedText: selectedText))
+      showQueuedMessage()
+      return
+    }
     isImprovementRunning = true
     defer { isImprovementRunning = false }
     DebugLogger.log("AUTO-IMPROVEMENT: Voice-triggered run started (runInBackground: \(runInBackground))")
-    if runInBackground {
-      await MainActor.run {
-        PopupNotificationWindow.showInfo(
-          "Smart Improvement started. You'll be notified when done.",
-          title: "Smart Improvement"
-        )
-      }
-    } else {
-      await MainActor.run {
-        PopupNotificationWindow.showProcessing(
-          "Improving system prompts from your voice instruction...",
-          title: "Smart Improvement"
-        )
-      }
-    }
+    await executeVoiceImprovement(instruction: instruction, selectedText: selectedText, runInBackground: runInBackground)
+    DebugLogger.log("AUTO-IMPROVEMENT: Improve-from-voice run finished")
+    await processNextInQueue()
+  }
 
+  /// True while an improvement run (manual or automatic) is in progress. Use to show "Running…" when the user returns to the Smart Improvement section.
+  var isRunning: Bool { isImprovementRunning }
+
+  /// Number of improvement jobs waiting in the queue (0 when none).
+  var queuedJobCount: Int { improvementQueue.count }
+
+  // MARK: - Private
+
+  private enum ImprovementJob {
+    case fromUsage
+    case fromVoice(instruction: String, selectedText: String?)
+  }
+
+  private var isImprovementRunning = false
+  private var improvementQueue: [ImprovementJob] = []
+
+  private func showQueuedMessage() {
+    let n = improvementQueue.count
+    let message = n == 1
+      ? "Added to queue. 1 improvement queued."
+      : "Added to queue. \(n) improvements queued."
+    PopupNotificationWindow.showInfo(message, title: "Smart Improvement")
+  }
+
+  /// Runs the next job in the queue if any. Call after the current run finishes. Does not set isImprovementRunning; caller must set/clear it for the job being run.
+  private func processNextInQueue() async {
+    guard let job = improvementQueue.first else { return }
+    improvementQueue.removeFirst()
+    isImprovementRunning = true
+    defer { isImprovementRunning = false }
+    switch job {
+    case .fromUsage:
+      DebugLogger.log("AUTO-IMPROVEMENT: Processing queued from-usage job")
+      PopupNotificationWindow.showInfo(
+        "Smart Improvement started. You can switch tabs; we'll notify you when it's done.",
+        title: "Smart Improvement"
+      )
+      await runImprovement()
+      DebugLogger.log("AUTO-IMPROVEMENT: Queued from-usage job finished")
+    case .fromVoice(let instruction, let selectedText):
+      DebugLogger.log("AUTO-IMPROVEMENT: Processing queued from-voice job")
+      await executeVoiceImprovement(instruction: instruction, selectedText: selectedText, runInBackground: true)
+      DebugLogger.log("AUTO-IMPROVEMENT: Queued from-voice job finished")
+    }
+    await processNextInQueue()
+  }
+
+  /// Core voice-improvement logic. Does not manage isImprovementRunning or the queue.
+  private func executeVoiceImprovement(instruction: String, selectedText: String?, runInBackground: Bool) async {
+    if runInBackground {
+      PopupNotificationWindow.showInfo(
+        "Smart Improvement started. You'll be notified when done.",
+        title: "Smart Improvement"
+      )
+    } else {
+      PopupNotificationWindow.showProcessing(
+        "Improving system prompts from your voice instruction...",
+        title: "Smart Improvement"
+      )
+    }
     let derivation = UserContextDerivation()
     var appliedKinds: [GenerationKind] = []
-
     for focus in [GenerationKind.dictation, GenerationKind.promptMode, GenerationKind.promptAndRead] {
       do {
         try await derivation.updateFromVoiceInstruction(
@@ -148,7 +202,6 @@ class AutoPromptImprovementScheduler {
         DebugLogger.logError("AUTO-IMPROVEMENT: Voice derivation failed for \(focus): \(error.localizedDescription)")
       }
     }
-
     if !runInBackground {
       await MainActor.run {
         PopupNotificationWindow.dismissProcessing()
@@ -174,15 +227,7 @@ class AutoPromptImprovementScheduler {
         )
       }
     }
-    DebugLogger.log("AUTO-IMPROVEMENT: Improve-from-voice run finished")
   }
-
-  /// True while an improvement run (manual or automatic) is in progress. Use to show "Running…" when the user returns to the Smart Improvement section.
-  var isRunning: Bool { isImprovementRunning }
-
-  // MARK: - Private
-
-  private var isImprovementRunning = false
 
   private func getCurrentInterval() -> AutoImprovementInterval {
     let rawValue = UserDefaults.standard.integer(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)

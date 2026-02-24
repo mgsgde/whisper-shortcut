@@ -8,6 +8,7 @@ struct ContextSettingsTab: View {
   @State private var selectedInterval: AutoImprovementInterval = .default
   @State private var showDeleteInteractionConfirmation = false
   @State private var isImprovementRunning = false
+  @State private var queuedJobCount = 0
 
   @State private var systemPromptsText: String = ""
   @State private var lastSavedSystemPromptsText: String = ""
@@ -134,6 +135,18 @@ struct ContextSettingsTab: View {
     NotificationCenter.default.post(name: .userContextFileDidUpdate, object: nil)
   }
 
+  private func refreshImprovementState() {
+    isImprovementRunning = AutoPromptImprovementScheduler.shared.isRunning
+    queuedJobCount = AutoPromptImprovementScheduler.shared.queuedJobCount
+  }
+
+  private var improveFromUsageButtonLabel: String {
+    if isImprovementRunning {
+      return queuedJobCount > 0 ? "Running… (\(queuedJobCount) in queue)" : "Running…"
+    }
+    return "Improve from usage"
+  }
+
   // MARK: - Smart Improvement
   @ViewBuilder
   private var smartImprovementSection: some View {
@@ -201,12 +214,13 @@ struct ContextSettingsTab: View {
             Button(action: {
               guard !isImprovementRunning else { return }
               isImprovementRunning = true
+              queuedJobCount = 0
               Task {
                 await AutoPromptImprovementScheduler.shared.runImprovementNow()
-                await MainActor.run { isImprovementRunning = false }
+                await MainActor.run { refreshImprovementState() }
               }
             }) {
-              Label(isImprovementRunning ? "Running…" : "Improve from usage", systemImage: "sparkles")
+              Label(improveFromUsageButtonLabel, systemImage: "sparkles")
                 .font(.callout)
             }
             .buttonStyle(.bordered)
@@ -266,7 +280,7 @@ struct ContextSettingsTab: View {
       }
     }
     .onAppear {
-      isImprovementRunning = AutoPromptImprovementScheduler.shared.isRunning
+      refreshImprovementState()
       let rawValue = UserDefaults.standard.integer(forKey: UserDefaultsKeys.autoPromptImprovementIntervalDays)
       selectedInterval = AutoImprovementInterval(rawValue: rawValue) ?? .default
       let enabled = selectedInterval != .never
