@@ -462,7 +462,34 @@ class UserContextDerivation {
 
     var systemPrompt = systemPromptForFocus(focus)
     if voiceInstructionPrimary {
-      systemPrompt += "\n\nThe user may provide a direct voice instruction to change future behavior; treat that as the primary signal."
+      let modeName: String
+      let modeDescription: String
+      switch focus {
+      case .dictation:
+        modeName = "Dictation (Speech-to-Text)"
+        modeDescription = "transcribing spoken audio into text verbatim"
+      case .promptMode:
+        modeName = "Dictate Prompt"
+        modeDescription = "applying a voice instruction to modify selected/clipboard text"
+      case .promptAndRead:
+        modeName = "Prompt & Read"
+        modeDescription = "applying a voice instruction to modify selected/clipboard text, with the result read aloud via TTS"
+      }
+      systemPrompt += """
+
+      \nThe user provides a direct voice instruction to change future behavior; treat it as the primary signal.
+
+      RELEVANCE CHECK – This prompt is for the "\(modeName)" mode (\(modeDescription)). \
+      The app has three separate modes with independent system prompts: \
+      (1) Dictation – transcribes speech to text, \
+      (2) Dictate Prompt – applies voice instructions to selected text, \
+      (3) Prompt & Read – same as Dictate Prompt but output is read aloud via TTS. \
+      If the user's voice instruction clearly targets a DIFFERENT mode and does NOT apply to \(modeName), \
+      return ONLY the start and end markers with nothing between them (empty suggestion). \
+      For example, if the instruction says "when transcribing, don't add emojis" and this is the Dictate Prompt mode, \
+      return empty markers because the instruction targets Dictation, not Dictate Prompt. \
+      When in doubt or when the instruction is generic enough to apply to this mode, proceed normally and generate a refined prompt.
+      """
     }
 
     var userMessageParts: [String] = []

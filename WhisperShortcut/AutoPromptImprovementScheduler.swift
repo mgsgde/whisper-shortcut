@@ -185,21 +185,39 @@ class AutoPromptImprovementScheduler {
       )
     }
     let derivation = UserContextDerivation()
-    var appliedKinds: [GenerationKind] = []
-    for focus in [GenerationKind.dictation, GenerationKind.promptMode, GenerationKind.promptAndRead] {
-      do {
-        try await derivation.updateFromVoiceInstruction(
-          voiceInstruction: instruction,
-          selectedText: selectedText,
-          focus: focus
-        )
-        if hasSuggestion(for: focus), let suggested = readSuggestion(for: focus), !suggested.isEmpty {
-          applySuggestion(suggested, for: focus)
-          appliedKinds.append(focus)
-          DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied \(focus) from voice")
+    let foci: [GenerationKind] = [.dictation, .promptMode, .promptAndRead]
+    typealias FocusResult = (focus: GenerationKind, error: Error?)
+    let results: [FocusResult] = await withTaskGroup(of: FocusResult.self) { group in
+      for focus in foci {
+        group.addTask {
+          do {
+            try await derivation.updateFromVoiceInstruction(
+              voiceInstruction: instruction,
+              selectedText: selectedText,
+              focus: focus
+            )
+            return (focus, nil as Error?)
+          } catch {
+            return (focus, error)
+          }
         }
-      } catch {
+      }
+      var collected: [FocusResult] = []
+      for await result in group { collected.append(result) }
+      return collected
+    }
+    var appliedKinds: [GenerationKind] = []
+    for (focus, error) in results {
+      if let error = error {
         DebugLogger.logError("AUTO-IMPROVEMENT: Voice derivation failed for \(focus): \(error.localizedDescription)")
+        continue
+      }
+      if hasSuggestion(for: focus), let suggested = readSuggestion(for: focus), !suggested.isEmpty {
+        applySuggestion(suggested, for: focus)
+        appliedKinds.append(focus)
+        DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied \(focus) from voice")
+      } else {
+        DebugLogger.log("AUTO-IMPROVEMENT: Skipped \(focus) — voice instruction not relevant to this mode")
       }
     }
     if !runInBackground {
