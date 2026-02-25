@@ -8,7 +8,6 @@ enum UserDefaultsKeys {
   static let selectedPromptModel = "selectedPromptModel"
   static let selectedPromptAndReadModel = "selectedPromptAndReadModel"
   static let selectedOpenGeminiModel = "selectedOpenGeminiModel"
-  static let geminiWindowFloating = "geminiWindowFloating"
 
   // MARK: - Prompt Settings
   static let customPromptText = "customPromptText"

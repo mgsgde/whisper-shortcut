@@ -15,10 +15,6 @@ struct OpenGeminiSettingsTab: View {
 
       SpacedSectionDivider()
 
-      windowBehaviorSection
-
-      SpacedSectionDivider()
-
       usageSection
     }
   }
@@ -82,31 +78,6 @@ struct OpenGeminiSettingsTab: View {
         }
       }
     )
-  }
-
-  // MARK: - Window Behavior Section
-  @ViewBuilder
-  private var windowBehaviorSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Window Behavior",
-        subtitle: "Control how the Gemini chat window appears"
-      )
-
-      Toggle(isOn: $viewModel.data.geminiWindowFloating) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Keep Gemini window on top of other windows")
-            .font(.callout)
-        }
-      }
-      .toggleStyle(SwitchToggleStyle())
-      .onChange(of: viewModel.data.geminiWindowFloating) { _, _ in
-        Task {
-          await viewModel.saveSettings()
-          GeminiWindowManager.shared.applyWindowPreferences()
-        }
-      }
-    }
   }
 
   // MARK: - Usage Section

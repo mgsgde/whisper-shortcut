@@ -56,22 +56,10 @@ class GeminiWindowController: NSWindowController {
     window?.makeKeyAndOrderFront(nil)
   }
 
-  /// Applies floating and fullscreen preferences to the window (at init or when user changes settings).
-  func applyWindowPreferences() {
-    guard let window = window else { return }
-    Self.applyLevelAndCollectionBehavior(to: window)
-  }
-
   // MARK: - Private
 
-  private static func geminiWindowFloating() -> Bool {
-    UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiWindowFloating) != nil
-      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.geminiWindowFloating)
-      : SettingsDefaults.geminiWindowFloating
-  }
-
   private static func applyLevelAndCollectionBehavior(to window: NSWindow) {
-    window.level = geminiWindowFloating() ? .floating : .normal
+    window.level = .floating
     // Always show in current space (including fullscreen) so opening from fullscreen does not switch spaces.
     window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .participatesInCycle]
   }

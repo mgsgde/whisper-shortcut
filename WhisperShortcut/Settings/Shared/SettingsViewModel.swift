@@ -154,12 +154,6 @@ class SettingsViewModel: ObservableObject {
       data.selectedOpenGeminiModel = SettingsDefaults.selectedOpenGeminiModel
     }
 
-    // Load Gemini window behavior (floating, show in fullscreen)
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiWindowFloating) != nil {
-      data.geminiWindowFloating = UserDefaults.standard.bool(forKey: UserDefaultsKeys.geminiWindowFloating)
-    } else {
-      data.geminiWindowFloating = SettingsDefaults.geminiWindowFloating
-    }
     // Load Prompt & Read voice (with migration from Read Aloud voice if not set)
     if let savedPromptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice),
       !savedPromptAndReadVoice.isEmpty
@@ -435,9 +429,6 @@ class SettingsViewModel: ObservableObject {
 
     // Save popup notifications setting
     UserDefaults.standard.set(data.showPopupNotifications, forKey: UserDefaultsKeys.showPopupNotifications)
-
-    // Save Gemini window behavior (floating, show in fullscreen)
-    UserDefaults.standard.set(data.geminiWindowFloating, forKey: UserDefaultsKeys.geminiWindowFloating)
 
     // Save notification position and duration
     UserDefaults.standard.set(data.notificationPosition.rawValue, forKey: UserDefaultsKeys.notificationPosition)

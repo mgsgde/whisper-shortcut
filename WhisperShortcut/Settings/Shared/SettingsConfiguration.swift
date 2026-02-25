@@ -425,14 +425,12 @@ struct SettingsDefaults {
   static let toggleMeetingEnabled = true
   static let openSettingsEnabled = true
   static let openGeminiEnabled = true
-  static let geminiWindowFloating = true
-
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini25FlashLite
   static let selectedPromptModel = PromptModel.gemini3Flash
   static let selectedPromptAndReadModel = PromptModel.gemini3Flash
   static let selectedImprovementModel = PromptModel.gemini3Flash
-  static let selectedOpenGeminiModel = PromptModel.gemini25Flash
+  static let selectedOpenGeminiModel = PromptModel.gemini3Flash
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
   static let promptAndReadSystemPrompt = ""
@@ -504,8 +502,6 @@ struct SettingsData {
   var toggleMeetingEnabled: Bool = SettingsDefaults.toggleMeetingEnabled
   var openSettingsEnabled: Bool = SettingsDefaults.openSettingsEnabled
   var openGeminiEnabled: Bool = SettingsDefaults.openGeminiEnabled
-  var geminiWindowFloating: Bool = SettingsDefaults.geminiWindowFloating
-
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
   var selectedPromptModel: PromptModel = SettingsDefaults.selectedPromptModel
