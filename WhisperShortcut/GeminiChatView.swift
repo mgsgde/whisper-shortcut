@@ -24,6 +24,24 @@ class GeminiChatViewModel: ObservableObject {
   private static let clearChatCommands = ["/clear", "/delete"]
   private static let screenshotCommand = "/screenshot"
 
+  /// All slash commands with descriptions for autocomplete.
+  static let commandSuggestions: [(command: String, description: String)] = [
+    ("/new", "Start a new chat (previous chat stays in history)"),
+    ("/back", "Switch to the previous chat"),
+    ("/clear", "Clear current chat messages"),
+    ("/delete", "Clear current chat messages"),
+    ("/screenshot", "Capture screen (attached to your next message)")
+  ]
+
+  /// Returns commands whose command string matches the given prefix (e.g. "/" or "/sc").
+  func suggestedCommands(for input: String) -> [String] {
+    let prefix = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard prefix.hasPrefix("/") else { return [] }
+    return Self.commandSuggestions
+      .map(\.command)
+      .filter { $0.lowercased().hasPrefix(prefix) || prefix.isEmpty }
+  }
+
   var canGoBack: Bool {
     store.idForBack() != nil || store.previousSessionId(current: session.id) != nil
   }
@@ -160,11 +178,20 @@ class GeminiChatViewModel: ObservableObject {
 
   /// Resolves the model ID for the Open Gemini chat window from UserDefaults (Settings > Open Gemini).
   private static func resolveOpenGeminiModel() -> String {
+    openGeminiModel.rawValue
+  }
+
+  /// Resolves the selected Open Gemini model for display (e.g. "Gemini 3 Flash").
+  static var openGeminiModel: PromptModel {
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel)
       ?? SettingsDefaults.selectedOpenGeminiModel.rawValue
-    let model = PromptModel(rawValue: raw).map { PromptModel.migrateIfDeprecated($0) }
+    return PromptModel(rawValue: raw).map { PromptModel.migrateIfDeprecated($0) }
       ?? SettingsDefaults.selectedOpenGeminiModel
-    return model.rawValue
+  }
+
+  /// Display name for the current Open Gemini model (e.g. "Gemini 3 Flash") for the nav bar.
+  var openGeminiModelDisplayName: String {
+    Self.openGeminiModel.displayName
   }
 
   private func appendMessage(_ message: ChatMessage) {
@@ -231,6 +258,7 @@ struct GeminiChatView: View {
         errorBanner(error)
       }
       Divider()
+      commandSuggestionsOverlay
       inputBar
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -258,7 +286,7 @@ struct GeminiChatView: View {
       HStack(spacing: 6) {
         Image(systemName: "sparkles")
           .foregroundColor(.accentColor)
-        Text("Gemini")
+        Text(viewModel.openGeminiModelDisplayName)
           .font(.headline)
       }
       Spacer()
@@ -415,6 +443,51 @@ struct GeminiChatView: View {
     .background(Color.red.opacity(0.85))
   }
 
+  // MARK: - Command autocomplete
+
+  private var commandSuggestionsOverlay: some View {
+    Group {
+      if viewModel.inputText.hasPrefix("/") {
+        let suggestions = GeminiChatViewModel.commandSuggestions
+          .filter { $0.command.lowercased().hasPrefix(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) }
+        if !suggestions.isEmpty {
+          VStack(alignment: .leading, spacing: 0) {
+            ForEach(suggestions, id: \.command) { item in
+              Button(action: {
+                viewModel.inputText = item.command
+              }) {
+                HStack(alignment: .top, spacing: 8) {
+                  Text(item.command)
+                    .font(.system(.body, design: .monospaced))
+                    .fontWeight(.medium)
+                  Text(item.description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+              }
+              .buttonStyle(.plain)
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.vertical, 6)
+          .background(Color(NSColor.controlBackgroundColor))
+          .overlay(
+            RoundedRectangle(cornerRadius: 8)
+              .strokeBorder(Color.primary.opacity(0.15), lineWidth: 1)
+          )
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+          .padding(.horizontal, 20)
+          .padding(.bottom, 4)
+        }
+      }
+    }
+  }
+
   // MARK: - Input Bar
 
   private var inputBar: some View {
@@ -428,6 +501,14 @@ struct GeminiChatView: View {
           .lineLimit(1...6)
           .focused($inputFocused)
           .onSubmit {
+            let text = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.hasPrefix("/"), !text.isEmpty {
+              let matches = viewModel.suggestedCommands(for: text)
+              if let first = matches.first {
+                viewModel.inputText = first
+                return
+              }
+            }
             Task { await viewModel.sendMessage() }
           }
           .onAppear { inputFocused = true }
