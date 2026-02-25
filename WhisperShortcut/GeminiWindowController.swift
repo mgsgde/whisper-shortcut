@@ -96,6 +96,4 @@ class GeminiWindowController: NSWindowController {
 }
 
 // MARK: - NSWindowDelegate
-extension GeminiWindowController: NSWindowDelegate {
-  func windowWillClose(_ notification: Notification) {}
-}
+extension GeminiWindowController: NSWindowDelegate {}

@@ -99,24 +99,13 @@ class GeminiChatViewModel: ObservableObject {
 
     // Slash commands: do not send to API
     let lower = text.lowercased()
-    if lower == Self.newChatCommand {
+    if lower == Self.newChatCommand || lower == Self.backChatCommand
+        || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand {
       inputText = ""
-      createNewSession()
-      return
-    }
-    if lower == Self.backChatCommand {
-      inputText = ""
-      goBack()
-      return
-    }
-    if Self.clearChatCommands.contains(lower) {
-      inputText = ""
-      clearMessages()
-      return
-    }
-    if lower == Self.screenshotCommand {
-      inputText = ""
-      await captureScreenshot()
+      if lower == Self.newChatCommand { createNewSession() }
+      else if lower == Self.backChatCommand { goBack() }
+      else if Self.clearChatCommands.contains(lower) { clearMessages() }
+      else { await captureScreenshot() }
       return
     }
 
@@ -161,7 +150,7 @@ class GeminiChatViewModel: ObservableObject {
   // MARK: - Private
 
   /// System instruction for the Open Gemini chat: structure, emojis in headings, bold for key terms.
-  private static var openGeminiSystemInstruction: [String: Any] {
+  private static let openGeminiSystemInstruction: [String: Any] = {
     let text = """
     Answer in a natural way:
 
@@ -174,7 +163,7 @@ class GeminiChatViewModel: ObservableObject {
     Use **bold** for key terms when helpful.
     """
     return ["parts": [["text": text]]]
-  }
+  }()
 
   /// Resolves the model ID for the Open Gemini chat window from UserDefaults (Settings > Open Gemini).
   private static func resolveOpenGeminiModel() -> String {
@@ -409,13 +398,9 @@ struct GeminiChatView: View {
     .padding(.vertical, 16)
   }
 
-  private func scrollToBottom(proxy: ScrollViewProxy, target: AnyHashable? = nil) {
+  private func scrollToBottom(proxy: ScrollViewProxy) {
     withAnimation(.easeOut(duration: 0.2)) {
-      if let t = target {
-        proxy.scrollTo(t, anchor: .bottom)
-      } else {
-        proxy.scrollTo("listBottom", anchor: .bottom)
-      }
+      proxy.scrollTo("listBottom", anchor: .bottom)
     }
   }
 
@@ -500,6 +485,17 @@ struct GeminiChatView: View {
           .textFieldStyle(.plain)
           .lineLimit(1...6)
           .focused($inputFocused)
+          .onKeyPress(.tab) {
+            let text = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.hasPrefix("/"), !text.isEmpty {
+              let matches = viewModel.suggestedCommands(for: text)
+              if let first = matches.first {
+                viewModel.inputText = first
+                return .handled
+              }
+            }
+            return .ignored
+          }
           .onSubmit {
             let text = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
             if text.hasPrefix("/"), !text.isEmpty {
@@ -586,7 +582,7 @@ struct GeminiChatView: View {
         Button("Done") {
           showingScreenshotPreview = false
         }
-        .keyboardShortcut(.cancelAction)
+        .keyboardShortcut(.defaultAction)
         .padding()
       }
       Image(nsImage: image)
@@ -602,43 +598,13 @@ struct GeminiChatView: View {
 
 // MARK: - Model Reply View
 
-private func buildAttributedReply(content: String) -> AttributedString {
-  let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-  let paragraphs = content.components(separatedBy: "\n\n")
-  var result = AttributedString()
-  /// One blank line between paragraphs; use \n\n (not \n\n\n) for tighter spacing.
-  let separator = AttributedString("\n\n")
-  for (index, para) in paragraphs.enumerated() {
-    let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty { continue }
-    if index > 0 { result.append(separator) }
-    var attr: AttributedString
-    if trimmed.hasPrefix("## ") {
-      let title = String(trimmed.dropFirst(3))
-      attr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
-      attr.font = .title2.weight(.bold)
-    } else if trimmed.hasPrefix("### ") {
-      let title = String(trimmed.dropFirst(4))
-      attr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
-      attr.font = .title3.weight(.semibold)
-    } else {
-      attr = (try? AttributedString(markdown: trimmed, options: options)) ?? AttributedString(trimmed)
-    }
-    result.append(attr)
-  }
-  if result.description.isEmpty {
-    return (try? AttributedString(markdown: content)) ?? AttributedString(content)
-  }
-  return result
-}
-
 private struct ModelReplyView: View {
   let content: String
 
   /// Single Text view so the user can select across the entire reply (all paragraphs) in one go.
   /// Builds one AttributedString from paragraphs with "\n\n" between them for visible but compact spacing.
   var body: some View {
-    Text(buildAttributedReply(content: content))
+    Text(Self.buildAttributedReply(content: content))
       .font(.system(size: 15))
       .lineSpacing(4)
       .padding(.horizontal, 14)
@@ -649,6 +615,35 @@ private struct ModelReplyView: View {
           .fill(Color(NSColor.controlBackgroundColor))
       )
       .textSelection(.enabled)
+  }
+
+  private static func buildAttributedReply(content: String) -> AttributedString {
+    let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+    let paragraphs = content.components(separatedBy: "\n\n")
+    var result = AttributedString()
+    let separator = AttributedString("\n\n")
+    for (index, para) in paragraphs.enumerated() {
+      let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
+      if trimmed.isEmpty { continue }
+      if index > 0 { result.append(separator) }
+      var attr: AttributedString
+      if trimmed.hasPrefix("## ") {
+        let title = String(trimmed.dropFirst(3))
+        attr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
+        attr.font = .system(size: 15, weight: .bold)
+      } else if trimmed.hasPrefix("### ") {
+        let title = String(trimmed.dropFirst(4))
+        attr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
+        attr.font = .system(size: 14, weight: .semibold)
+      } else {
+        attr = (try? AttributedString(markdown: trimmed, options: options)) ?? AttributedString(trimmed)
+      }
+      result.append(attr)
+    }
+    if result.description.isEmpty {
+      return (try? AttributedString(markdown: content)) ?? AttributedString(content)
+    }
+    return result
   }
 }
 
@@ -666,6 +661,7 @@ private struct MessageBubbleView: View {
         sourcesView
       }
     }
+    // Inner frame constrains bubble width; outer fills the row so alignment spans full width.
     .frame(maxWidth: isUser ? 560 : .infinity, alignment: isUser ? .trailing : .leading)
     .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
   }
