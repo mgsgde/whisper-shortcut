@@ -52,6 +52,7 @@ class GeminiWindowController: NSWindowController {
   }
 
   func showWindow() {
+    ensureWindowOnCurrentScreen()
     NSApp.activate(ignoringOtherApps: true)
     window?.makeKeyAndOrderFront(nil)
   }
@@ -69,12 +70,26 @@ class GeminiWindowController: NSWindowController {
   }
 
   private func positionBottomRight() {
-    guard let screen = NSScreen.main,
-          let window = window else { return }
+    guard let screen = NSScreen.main, let window = window else { return }
+    positionBottomRight(on: screen, window: window)
+  }
+
+  private func positionBottomRight(on screen: NSScreen, window: NSWindow) {
     let usable = screen.visibleFrame
-    let x = usable.maxX - Constants.preferredWidth - Constants.screenMargin
+    let x = usable.maxX - window.frame.width - Constants.screenMargin
     let y = usable.minY + Constants.screenMargin
     window.setFrameOrigin(NSPoint(x: x, y: y))
+  }
+
+  /// If the window would appear on a different screen than the one the user is on, move it to the current screen (bottom-right).
+  private func ensureWindowOnCurrentScreen() {
+    guard let window = window,
+          let currentScreen = NSScreen.main else { return }
+    let windowFrame = window.frame
+    let onCurrentScreen = currentScreen.visibleFrame.intersects(windowFrame)
+    if !onCurrentScreen {
+      positionBottomRight(on: currentScreen, window: window)
+    }
   }
 }
 
