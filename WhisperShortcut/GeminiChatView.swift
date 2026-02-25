@@ -21,6 +21,8 @@ class GeminiChatViewModel: ObservableObject {
   private static let maxSessionTitleLength = 50
   private static let newChatCommand = "/new"
   private static let backChatCommand = "/back"
+  private static let clearChatCommands = ["/clear", "/delete"]
+  private static let screenshotCommand = "/screenshot"
 
   var canGoBack: Bool {
     store.idForBack() != nil || store.previousSessionId(current: session.id) != nil
@@ -87,6 +89,16 @@ class GeminiChatViewModel: ObservableObject {
     if lower == Self.backChatCommand {
       inputText = ""
       goBack()
+      return
+    }
+    if Self.clearChatCommands.contains(lower) {
+      inputText = ""
+      clearMessages()
+      return
+    }
+    if lower == Self.screenshotCommand {
+      inputText = ""
+      await captureScreenshot()
       return
     }
 
@@ -257,8 +269,10 @@ struct GeminiChatView: View {
           Text("New chat")
             .font(.subheadline)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(minHeight: 36)
+        .contentShape(Rectangle())
         .foregroundColor(.secondary)
       }
       .buttonStyle(.plain)
@@ -271,8 +285,10 @@ struct GeminiChatView: View {
           Text("Back")
             .font(.subheadline)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(minHeight: 36)
+        .contentShape(Rectangle())
         .foregroundColor(viewModel.canGoBack ? .secondary : .secondary.opacity(0.5))
       }
       .buttonStyle(.plain)
@@ -292,15 +308,17 @@ struct GeminiChatView: View {
           Text("Screenshot")
             .font(.subheadline)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(minHeight: 36)
+        .contentShape(Rectangle())
         .foregroundColor(viewModel.screenshotCaptureInProgress ? .secondary.opacity(0.6) : .secondary)
       }
       .buttonStyle(.plain)
       .disabled(viewModel.screenshotCaptureInProgress || viewModel.isSending)
       .help("Capture screen without this window; image will be attached to your next message.")
     }
-    .padding(.horizontal, 14)
+    .padding(.horizontal, 20)
     .padding(.vertical, 10)
   }
 
@@ -322,7 +340,7 @@ struct GeminiChatView: View {
               .id("typing")
           }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 20)
         .padding(.top, 10)
         .padding(.bottom, 28)
       }
@@ -362,6 +380,12 @@ struct GeminiChatView: View {
           .font(.callout)
           .foregroundColor(.secondary)
         Text("/back — Switch to the previous chat")
+          .font(.callout)
+          .foregroundColor(.secondary)
+        Text("/screenshot — Capture screen (attached to your next message)")
+          .font(.callout)
+          .foregroundColor(.secondary)
+        Text("/clear or /delete — Clear current chat messages")
           .font(.callout)
           .foregroundColor(.secondary)
       }
@@ -448,7 +472,7 @@ struct GeminiChatView: View {
         .frame(width: 28, height: 28)
       }
     }
-    .padding(.horizontal, 12)
+    .padding(.horizontal, 20)
     .padding(.vertical, 10)
   }
 
@@ -504,187 +528,43 @@ struct GeminiChatView: View {
   }
 }
 
-// MARK: - Markdown Blocks
-
-private enum MarkdownBlock {
-  case heading2(String)
-  case heading3(String)
-  case codeBlock(String)
-  case bulletList([String])
-  case numberedList([String])
-  case paragraph(String)
-}
-
-private func parseMarkdownBlocks(_ content: String) -> [MarkdownBlock] {
-  var blocks: [MarkdownBlock] = []
-  let lines = content.components(separatedBy: "\n")
-  var i = 0
-  let numberedPrefix = #"^\d+\.\s+"#
-
-  while i < lines.count {
-    let trimmed = lines[i].trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty { i += 1; continue }
-
-    // Code block
-    if trimmed.hasPrefix("```") {
-      var codeLines: [String] = []
-      i += 1
-      while i < lines.count {
-        if lines[i].trimmingCharacters(in: .whitespacesAndNewlines) == "```" { i += 1; break }
-        codeLines.append(lines[i])
-        i += 1
-      }
-      blocks.append(.codeBlock(codeLines.joined(separator: "\n")))
-      continue
-    }
-
-    // ### before ## to avoid mismatching
-    if trimmed.hasPrefix("### ") {
-      blocks.append(.heading3(String(trimmed.dropFirst(4))))
-      i += 1; continue
-    }
-    if trimmed.hasPrefix("## ") {
-      blocks.append(.heading2(String(trimmed.dropFirst(3))))
-      i += 1; continue
-    }
-
-    // Bullet list
-    if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
-      var items: [String] = []
-      while i < lines.count {
-        let t = lines[i].trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.hasPrefix("- ") { items.append(String(t.dropFirst(2))); i += 1 }
-        else if t.hasPrefix("* ") { items.append(String(t.dropFirst(2))); i += 1 }
-        else { break }
-      }
-      if !items.isEmpty { blocks.append(.bulletList(items)) }
-      continue
-    }
-
-    // Numbered list
-    if trimmed.range(of: numberedPrefix, options: .regularExpression) != nil {
-      var items: [String] = []
-      while i < lines.count {
-        let t = lines[i].trimmingCharacters(in: .whitespacesAndNewlines)
-        if let r = t.range(of: numberedPrefix, options: .regularExpression) {
-          items.append(String(t[r.upperBound...])); i += 1
-        } else { break }
-      }
-      if !items.isEmpty { blocks.append(.numberedList(items)) }
-      continue
-    }
-
-    // Paragraph — collect consecutive non-special lines
-    var paraLines: [String] = []
-    while i < lines.count {
-      let t = lines[i].trimmingCharacters(in: .whitespacesAndNewlines)
-      if t.isEmpty { i += 1; break }
-      if t.hasPrefix("## ") || t.hasPrefix("### ") || t.hasPrefix("```") { break }
-      if t.hasPrefix("- ") || t.hasPrefix("* ") { break }
-      if t.range(of: numberedPrefix, options: .regularExpression) != nil { break }
-      paraLines.append(lines[i])
-      i += 1
-    }
-    if !paraLines.isEmpty {
-      blocks.append(.paragraph(paraLines.joined(separator: "\n")))
-    }
-  }
-
-  return blocks
-}
-
 // MARK: - Model Reply View
+
+private func buildAttributedReply(content: String) -> AttributedString {
+  let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+  let paragraphs = content.components(separatedBy: "\n\n")
+  var result = AttributedString()
+  let separator = AttributedString("\n\n\n")
+  for (index, para) in paragraphs.enumerated() {
+    let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { continue }
+    if index > 0 { result.append(separator) }
+    let attr = (try? AttributedString(markdown: trimmed, options: options)) ?? AttributedString(trimmed)
+    result.append(attr)
+  }
+  if result.description.isEmpty {
+    return (try? AttributedString(markdown: content)) ?? AttributedString(content)
+  }
+  return result
+}
 
 private struct ModelReplyView: View {
   let content: String
 
+  /// Single Text view so the user can select across the entire reply (all paragraphs) in one go.
+  /// Builds one AttributedString from paragraphs with explicit "\n\n\n" between them so spacing is visible.
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      ForEach(Array(parseMarkdownBlocks(content).enumerated()), id: \.offset) { _, block in
-        blockView(for: block)
-      }
-    }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 12)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      RoundedRectangle(cornerRadius: 12)
-        .fill(Color(NSColor.controlBackgroundColor))
-    )
-    .textSelection(.enabled)
-  }
-
-  @ViewBuilder
-  private func blockView(for block: MarkdownBlock) -> some View {
-    switch block {
-    case .heading2(let text):
-      inlineMarkdown(text)
-        .font(.system(size: 15, weight: .bold))
-        .padding(.top, 4)
-
-    case .heading3(let text):
-      inlineMarkdown(text)
-        .font(.system(size: 14, weight: .semibold))
-        .padding(.top, 2)
-
-    case .codeBlock(let code):
-      Text(code.isEmpty ? " " : code)
-        .font(.system(size: 12.5, design: .monospaced))
-        .foregroundColor(.primary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-          RoundedRectangle(cornerRadius: 6)
-            .fill(Color(NSColor.textBackgroundColor))
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: 6)
-            .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
-        )
-
-    case .bulletList(let items):
-      VStack(alignment: .leading, spacing: 7) {
-        ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-          HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("•")
-              .font(.system(size: 15))
-              .foregroundColor(.secondary)
-            inlineMarkdown(item)
-              .font(.system(size: 15))
-              .fixedSize(horizontal: false, vertical: true)
-          }
-        }
-      }
-
-    case .numberedList(let items):
-      VStack(alignment: .leading, spacing: 7) {
-        ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-          HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("\(index + 1).")
-              .font(.system(size: 15))
-              .foregroundColor(.secondary)
-              .frame(minWidth: 20, alignment: .trailing)
-            inlineMarkdown(item)
-              .font(.system(size: 15))
-              .fixedSize(horizontal: false, vertical: true)
-          }
-        }
-      }
-
-    case .paragraph(let text):
-      inlineMarkdown(text)
-        .font(.system(size: 15))
-        .lineSpacing(4)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-  }
-
-  private func inlineMarkdown(_ text: String) -> Text {
-    let options = AttributedString.MarkdownParsingOptions(
-      interpretedSyntax: .inlineOnlyPreservingWhitespace)
-    let attr = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
-    return Text(attr)
+    Text(buildAttributedReply(content: content))
+      .font(.system(size: 15))
+      .lineSpacing(6)
+      .padding(.horizontal, 14)
+      .padding(.vertical, 12)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        RoundedRectangle(cornerRadius: 12)
+          .fill(Color(NSColor.controlBackgroundColor))
+      )
+      .textSelection(.enabled)
   }
 }
 
@@ -696,19 +576,13 @@ private struct MessageBubbleView: View {
   var isUser: Bool { message.role == .user }
 
   var body: some View {
-    HStack(alignment: .top, spacing: 0) {
-      if isUser { Spacer(minLength: 40) }
-
-      VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {
-        bubbleContent
-        if !message.sources.isEmpty {
-          sourcesView
-        }
+    VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {
+      bubbleContent
+      if !message.sources.isEmpty {
+        sourcesView
       }
-      .frame(maxWidth: isUser ? 560 : .infinity)
-
-      if !isUser { Spacer(minLength: 0) }
     }
+    .frame(maxWidth: isUser ? 560 : .infinity, alignment: isUser ? .trailing : .leading)
     .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
   }
 
@@ -718,9 +592,10 @@ private struct MessageBubbleView: View {
       Text(message.content)
         .font(.body)
         .foregroundColor(.white)
+        .textSelection(.enabled)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .textSelection(.enabled)
+        .contentShape(Rectangle())
         .background(
           RoundedRectangle(cornerRadius: 14)
             .fill(Color.accentColor)
@@ -731,7 +606,7 @@ private struct MessageBubbleView: View {
   }
 
   private var sourcesView: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 4) {
         Image(systemName: "globe")
           .font(.caption2)
@@ -740,7 +615,7 @@ private struct MessageBubbleView: View {
           .font(.caption2)
           .foregroundColor(.secondary)
       }
-      LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 16) {
+      LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 6) {
         ForEach(message.sources) { source in
           if let url = URL(string: source.uri) {
             Link(destination: url) {
