@@ -106,23 +106,6 @@ struct OpenGeminiSettingsTab: View {
           GeminiWindowManager.shared.applyWindowPreferences()
         }
       }
-
-      Toggle(isOn: $viewModel.data.geminiWindowShowInFullscreen) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Show Gemini window in fullscreen")
-            .font(.callout)
-          Text("Open in current space (including when an app is fullscreen)")
-            .font(.caption)
-            .foregroundColor(.secondary)
-        }
-      }
-      .toggleStyle(SwitchToggleStyle())
-      .onChange(of: viewModel.data.geminiWindowShowInFullscreen) { _, _ in
-        Task {
-          await viewModel.saveSettings()
-          GeminiWindowManager.shared.applyWindowPreferences()
-        }
-      }
     }
   }
 

@@ -70,19 +70,10 @@ class GeminiWindowController: NSWindowController {
       : SettingsDefaults.geminiWindowFloating
   }
 
-  private static func geminiWindowShowInFullscreen() -> Bool {
-    UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiWindowShowInFullscreen) != nil
-      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.geminiWindowShowInFullscreen)
-      : SettingsDefaults.geminiWindowShowInFullscreen
-  }
-
   private static func applyLevelAndCollectionBehavior(to window: NSWindow) {
     window.level = geminiWindowFloating() ? .floating : .normal
-    if geminiWindowShowInFullscreen() {
-      window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .participatesInCycle]
-    } else {
-      window.collectionBehavior = [.managed, .fullScreenNone, .participatesInCycle]
-    }
+    // Always show in current space (including fullscreen) so opening from fullscreen does not switch spaces.
+    window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .participatesInCycle]
   }
 
   private func hasStoredFrame() -> Bool {

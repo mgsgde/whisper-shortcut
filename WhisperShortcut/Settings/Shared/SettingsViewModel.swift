@@ -160,12 +160,6 @@ class SettingsViewModel: ObservableObject {
     } else {
       data.geminiWindowFloating = SettingsDefaults.geminiWindowFloating
     }
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiWindowShowInFullscreen) != nil {
-      data.geminiWindowShowInFullscreen = UserDefaults.standard.bool(forKey: UserDefaultsKeys.geminiWindowShowInFullscreen)
-    } else {
-      data.geminiWindowShowInFullscreen = SettingsDefaults.geminiWindowShowInFullscreen
-    }
-
     // Load Prompt & Read voice (with migration from Read Aloud voice if not set)
     if let savedPromptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice),
       !savedPromptAndReadVoice.isEmpty
@@ -444,7 +438,6 @@ class SettingsViewModel: ObservableObject {
 
     // Save Gemini window behavior (floating, show in fullscreen)
     UserDefaults.standard.set(data.geminiWindowFloating, forKey: UserDefaultsKeys.geminiWindowFloating)
-    UserDefaults.standard.set(data.geminiWindowShowInFullscreen, forKey: UserDefaultsKeys.geminiWindowShowInFullscreen)
 
     // Save notification position and duration
     UserDefaults.standard.set(data.notificationPosition.rawValue, forKey: UserDefaultsKeys.notificationPosition)

@@ -9,7 +9,6 @@ enum UserDefaultsKeys {
   static let selectedPromptAndReadModel = "selectedPromptAndReadModel"
   static let selectedOpenGeminiModel = "selectedOpenGeminiModel"
   static let geminiWindowFloating = "geminiWindowFloating"
-  static let geminiWindowShowInFullscreen = "geminiWindowShowInFullscreen"
 
   // MARK: - Prompt Settings
   static let customPromptText = "customPromptText"
