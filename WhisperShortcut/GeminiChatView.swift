@@ -8,6 +8,8 @@ class GeminiChatViewModel: ObservableObject {
   @Published var inputText: String = ""
   @Published var isSending: Bool = false
   @Published var errorMessage: String? = nil
+  @Published var pendingScreenshot: Data? = nil
+  @Published var screenshotCaptureInProgress: Bool = false
 
   private var session: ChatSession
   private let store = GeminiChatSessionStore.shared
@@ -35,6 +37,7 @@ class GeminiChatViewModel: ObservableObject {
     messages = []
     errorMessage = nil
     inputText = ""
+    pendingScreenshot = nil
     DebugLogger.log("GEMINI-CHAT: Switched to new chat")
   }
 
@@ -45,12 +48,34 @@ class GeminiChatViewModel: ObservableObject {
     session = store.load()
     messages = session.messages
     errorMessage = nil
+    pendingScreenshot = nil
     DebugLogger.log("GEMINI-CHAT: Switched back to previous chat \(prevId)")
+  }
+
+  func captureScreenshot() async {
+    guard !screenshotCaptureInProgress else { return }
+    screenshotCaptureInProgress = true
+    errorMessage = nil
+    DebugLogger.log("GEMINI-CHAT: Starting screen capture (window will hide briefly)")
+    let data = await GeminiWindowManager.shared.captureScreenExcludingGeminiWindow()
+    screenshotCaptureInProgress = false
+    if let data = data {
+      pendingScreenshot = data
+      DebugLogger.log("GEMINI-CHAT: Screenshot attached to next message")
+    } else {
+      errorMessage = "Screen capture failed. Check Screen Recording permission for this app in System Preferences > Privacy & Security."
+      DebugLogger.log("GEMINI-CHAT: Screen capture returned nil")
+    }
+  }
+
+  func clearPendingScreenshot() {
+    pendingScreenshot = nil
   }
 
   func sendMessage() async {
     let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !text.isEmpty, !isSending else { return }
+    let hasContent = !text.isEmpty || pendingScreenshot != nil
+    guard hasContent, !isSending else { return }
 
     // Slash commands: do not send to API
     let lower = text.lowercased()
@@ -77,7 +102,8 @@ class GeminiChatViewModel: ObservableObject {
     let userMsg = ChatMessage(role: .user, content: text)
     appendMessage(userMsg)
 
-    let contents = buildContents()
+    let contents = buildContents(pendingImage: pendingScreenshot)
+    pendingScreenshot = nil
 
     do {
       let model = Self.resolveOpenGeminiModel()
@@ -125,10 +151,19 @@ class GeminiChatViewModel: ObservableObject {
     store.save(session)
   }
 
-  private func buildContents() -> [[String: Any]] {
-    let toSend = messages.suffix(Self.maxMessagesInContext)
-    return toSend.map { msg in
-      ["role": msg.role.rawValue, "parts": [["text": msg.content]]]
+  private func buildContents(pendingImage: Data? = nil) -> [[String: Any]] {
+    let toSend = Array(messages.suffix(Self.maxMessagesInContext))
+    return toSend.enumerated().map { index, msg in
+      let isLastUserWithImage = index == toSend.count - 1 && msg.role == .user && pendingImage != nil
+      if isLastUserWithImage, let imageData = pendingImage {
+        let base64 = imageData.base64EncodedString()
+        var parts: [[String: Any]] = [["inline_data": ["mime_type": "image/png", "data": base64]]]
+        if !msg.content.isEmpty {
+          parts.append(["text": msg.content])
+        }
+        return ["role": msg.role.rawValue, "parts": parts]
+      }
+      return ["role": msg.role.rawValue, "parts": [["text": msg.content]]]
     }
   }
 
@@ -156,6 +191,7 @@ class GeminiChatViewModel: ObservableObject {
 struct GeminiChatView: View {
   @StateObject private var viewModel = GeminiChatViewModel()
   @FocusState private var inputFocused: Bool
+  @State private var showingScreenshotPreview = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -170,6 +206,11 @@ struct GeminiChatView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color(NSColor.windowBackgroundColor))
+    .sheet(isPresented: $showingScreenshotPreview) {
+      if let data = viewModel.pendingScreenshot, let nsImage = NSImage(data: data) {
+        screenshotPreviewSheet(image: nsImage)
+      }
+    }
   }
 
   // MARK: - Header
@@ -211,6 +252,27 @@ struct GeminiChatView: View {
       .buttonStyle(.plain)
       .disabled(!viewModel.canGoBack)
       .help("Switch to the previous chat")
+
+      Button(action: { Task { await viewModel.captureScreenshot() } }) {
+        HStack(spacing: 6) {
+          if viewModel.screenshotCaptureInProgress {
+            ProgressView()
+              .controlSize(.small)
+              .frame(width: 15, height: 15)
+          } else {
+            Image(systemName: "camera.viewfinder")
+              .font(.system(size: 15))
+          }
+          Text("Screenshot")
+            .font(.subheadline)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .foregroundColor(viewModel.screenshotCaptureInProgress ? .secondary.opacity(0.6) : .secondary)
+      }
+      .buttonStyle(.plain)
+      .disabled(viewModel.screenshotCaptureInProgress || viewModel.isSending)
+      .help("Capture screen without this window; image will be attached to your next message.")
 
       if !viewModel.messages.isEmpty {
         Button(action: { viewModel.clearMessages() }) {
@@ -258,6 +320,13 @@ struct GeminiChatView: View {
       }
       .onChange(of: viewModel.isSending) { sending in
         if sending { scrollToBottom(proxy: proxy, target: "typing") }
+      }
+      .onAppear {
+        if !viewModel.messages.isEmpty {
+          DispatchQueue.main.async {
+            scrollToBottom(proxy: proxy)
+          }
+        }
       }
     }
   }
@@ -318,43 +387,99 @@ struct GeminiChatView: View {
   // MARK: - Input Bar
 
   private var inputBar: some View {
-    HStack(alignment: .bottom, spacing: 8) {
-      TextField("Message Gemini…", text: $viewModel.inputText, axis: .vertical)
-        .textFieldStyle(.plain)
-        .lineLimit(1...6)
-        .focused($inputFocused)
-        .onSubmit {
-          Task { await viewModel.sendMessage() }
-        }
-        .onAppear { inputFocused = true }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(Color(NSColor.controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-
-      Button(action: {
-        Task { await viewModel.sendMessage() }
-      }) {
-        if viewModel.isSending {
-          ProgressView()
-            .controlSize(.small)
-            .frame(width: 28, height: 28)
-        } else {
-          Image(systemName: "arrow.up.circle.fill")
-            .font(.system(size: 24))
-            .foregroundColor(
-              viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? .secondary : .accentColor)
-        }
+    VStack(alignment: .leading, spacing: 8) {
+      if viewModel.pendingScreenshot != nil {
+        pendingScreenshotThumbnail(onTapThumbnail: { showingScreenshotPreview = true })
       }
-      .buttonStyle(.plain)
-      .disabled(
-        viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-          || viewModel.isSending)
-      .frame(width: 28, height: 28)
+      HStack(alignment: .bottom, spacing: 8) {
+        TextField("Message Gemini…", text: $viewModel.inputText, axis: .vertical)
+          .textFieldStyle(.plain)
+          .lineLimit(1...6)
+          .focused($inputFocused)
+          .onSubmit {
+            Task { await viewModel.sendMessage() }
+          }
+          .onAppear { inputFocused = true }
+          .padding(.horizontal, 10)
+          .padding(.vertical, 7)
+          .background(Color(NSColor.controlBackgroundColor))
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+
+        Button(action: {
+          Task { await viewModel.sendMessage() }
+        }) {
+          if viewModel.isSending {
+            ProgressView()
+              .controlSize(.small)
+              .frame(width: 28, height: 28)
+          } else {
+            Image(systemName: "arrow.up.circle.fill")
+              .font(.system(size: 24))
+              .foregroundColor(
+                (viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.pendingScreenshot == nil)
+                  ? .secondary : .accentColor)
+          }
+        }
+        .buttonStyle(.plain)
+        .disabled(
+          (viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.pendingScreenshot == nil)
+            || viewModel.isSending)
+        .frame(width: 28, height: 28)
+      }
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 10)
+  }
+
+  private func pendingScreenshotThumbnail(onTapThumbnail: @escaping () -> Void) -> some View {
+    HStack(spacing: 8) {
+      if let data = viewModel.pendingScreenshot,
+         let nsImage = NSImage(data: data) {
+        Image(nsImage: nsImage)
+          .resizable()
+          .aspectRatio(contentMode: .fill)
+          .frame(width: 48, height: 32)
+          .clipped()
+          .clipShape(RoundedRectangle(cornerRadius: 6))
+          .contentShape(Rectangle())
+          .onTapGesture(perform: onTapThumbnail)
+          .help("Click to view full size")
+      }
+      Text("Screenshot will be attached to your next message")
+        .font(.caption)
+        .foregroundColor(.secondary)
+      Spacer()
+      Button(action: { viewModel.clearPendingScreenshot() }) {
+        Image(systemName: "xmark.circle.fill")
+          .font(.system(size: 18))
+          .foregroundColor(.secondary)
+      }
+      .buttonStyle(.plain)
+      .help("Remove screenshot")
+    }
+    .padding(8)
+    .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+  }
+
+  private func screenshotPreviewSheet(image: NSImage) -> some View {
+    VStack(spacing: 0) {
+      HStack {
+        Spacer()
+        Button("Done") {
+          showingScreenshotPreview = false
+        }
+        .keyboardShortcut(.cancelAction)
+        .padding()
+      }
+      Image(nsImage: image)
+        .resizable()
+        .scaledToFit()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+    .frame(minWidth: 800, minHeight: 600)
+    .frame(idealWidth: 1000, idealHeight: 700)
   }
 }
 

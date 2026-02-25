@@ -13,7 +13,7 @@ class GeminiWindowController: NSWindowController {
     static let maxWidth: CGFloat = 900
     static let maxHeight: CGFloat = 1200
 
-    static let windowTitle = "Gemini"
+    static let windowTitle = "Whisper Shortcut"
     static let frameAutosaveName = "GeminiWindow"
 
     // Bottom-right margin from screen edge
