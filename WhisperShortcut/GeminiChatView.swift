@@ -438,26 +438,21 @@ struct GeminiChatView: View {
         if !suggestions.isEmpty {
           VStack(alignment: .leading, spacing: 0) {
             ForEach(suggestions, id: \.command) { item in
-              Button(action: {
-                viewModel.inputText = item.command
-              }) {
-                HStack(alignment: .top, spacing: 8) {
-                  Text(item.command)
-                    .font(.system(.body, design: .monospaced))
-                    .fontWeight(.medium)
-                  Text(item.description)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .contentShape(Rectangle())
+              HStack(alignment: .top, spacing: 8) {
+                Text(item.command)
+                  .font(.system(.body, design: .monospaced))
+                  .fontWeight(.medium)
+                Text(item.description)
+                  .font(.caption)
+                  .foregroundColor(.secondary)
+                  .lineLimit(2)
               }
-              .buttonStyle(.plain)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.horizontal, 12)
+              .padding(.vertical, 8)
             }
           }
+          .allowsHitTesting(false)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.vertical, 6)
           .background(Color(NSColor.controlBackgroundColor))
@@ -501,6 +496,10 @@ struct GeminiChatView: View {
             if text.hasPrefix("/"), !text.isEmpty {
               let matches = viewModel.suggestedCommands(for: text)
               if let first = matches.first {
+                if text.lowercased() == first.lowercased() {
+                  Task { await viewModel.sendMessage() }
+                  return
+                }
                 viewModel.inputText = first
                 return
               }
