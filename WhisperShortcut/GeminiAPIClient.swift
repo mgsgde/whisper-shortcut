@@ -337,23 +337,55 @@ class GeminiAPIClient {
   
   // MARK: - Chat
 
-  /// Sends a multi-turn chat request to Gemini and returns the model's text reply.
+  /// Sends a multi-turn chat request to Gemini and returns the model's text reply plus optional grounding sources.
   /// - Parameters:
   ///   - model: Gemini model ID, e.g. "gemini-2.5-flash"
   ///   - contents: Array of turn dicts in Gemini format: [["role": "user", "parts": [["text": "..."]]]]
   ///   - apiKey: Google API key
-  func sendChatMessage(model: String, contents: [[String: Any]], apiKey: String) async throws -> String {
+  ///   - useGrounding: When true, adds the `google_search` tool so Gemini can ground answers in live search results
+  func sendChatMessage(
+    model: String,
+    contents: [[String: Any]],
+    apiKey: String,
+    useGrounding: Bool = false
+  ) async throws -> (text: String, sources: [GroundingSource]) {
     let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
     var request = try createRequest(endpoint: endpoint, apiKey: apiKey)
-    let body: [String: Any] = ["contents": contents]
+
+    var body: [String: Any] = ["contents": contents]
+    if useGrounding {
+      body["tools"] = [["google_search": [:]]]
+      DebugLogger.logNetwork("GEMINI-CHAT: Google Search grounding enabled")
+    }
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
     let response: GeminiResponse = try await performRequest(
       request, responseType: GeminiResponse.self, mode: "GEMINI-CHAT", withRetry: true)
+
     let text = extractText(from: response)
     guard !text.isEmpty else {
       throw TranscriptionError.networkError("Empty response from Gemini")
     }
-    return text
+
+    let sources = extractGroundingSources(from: response)
+    if !sources.isEmpty {
+      DebugLogger.logNetwork("GEMINI-CHAT: \(sources.count) grounding source(s) returned")
+    }
+    return (text: text, sources: sources)
+  }
+
+  /// Extracts grounding sources (web URIs + titles) from a Gemini response.
+  private func extractGroundingSources(from response: GeminiResponse) -> [GroundingSource] {
+    guard let candidate = response.candidates.first,
+      let metadata = candidate.groundingMetadata,
+      let chunks = metadata.groundingChunks
+    else { return [] }
+
+    return chunks.compactMap { chunk -> GroundingSource? in
+      guard let uri = chunk.web?.uri, !uri.isEmpty else { return nil }
+      let title = chunk.web?.title ?? uri
+      return GroundingSource(uri: uri, title: title)
+    }
   }
 
   // MARK: - File Upload

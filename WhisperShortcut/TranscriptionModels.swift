@@ -228,6 +228,21 @@ struct GeminiResponse: Codable {
   
   struct GeminiCandidate: Codable {
     let content: GeminiContent?
+    let groundingMetadata: GeminiGroundingMetadata?
+  }
+
+  struct GeminiGroundingMetadata: Codable {
+    let groundingChunks: [GeminiGroundingChunk]?
+    let webSearchQueries: [String]?
+
+    struct GeminiGroundingChunk: Codable {
+      let web: WebSource?
+
+      struct WebSource: Codable {
+        let uri: String?
+        let title: String?
+      }
+    }
   }
   
   struct GeminiContent: Codable {

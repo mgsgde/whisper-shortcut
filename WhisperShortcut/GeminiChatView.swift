@@ -8,6 +8,9 @@ class GeminiChatViewModel: ObservableObject {
   @Published var inputText: String = ""
   @Published var isSending: Bool = false
   @Published var errorMessage: String? = nil
+  @Published var useGrounding: Bool {
+    didSet { UserDefaults.standard.set(useGrounding, forKey: "geminiSearchGroundingEnabled") }
+  }
 
   private var session: ChatSession
   private let store = GeminiChatSessionStore.shared
@@ -15,6 +18,8 @@ class GeminiChatViewModel: ObservableObject {
   private let chatModel = "gemini-2.5-flash"
 
   init() {
+    let storedGrounding = UserDefaults.standard.object(forKey: "geminiSearchGroundingEnabled")
+    useGrounding = (storedGrounding as? Bool) ?? false
     session = store.load()
     messages = session.messages
   }
@@ -38,9 +43,9 @@ class GeminiChatViewModel: ObservableObject {
     let contents = buildContents()
 
     do {
-      let reply = try await apiClient.sendChatMessage(
-        model: chatModel, contents: contents, apiKey: apiKey)
-      let modelMsg = ChatMessage(role: .model, content: reply)
+      let result = try await apiClient.sendChatMessage(
+        model: chatModel, contents: contents, apiKey: apiKey, useGrounding: useGrounding)
+      let modelMsg = ChatMessage(role: .model, content: result.text, sources: result.sources)
       appendMessage(modelMsg)
     } catch {
       errorMessage = friendlyError(error)
@@ -123,6 +128,29 @@ struct GeminiChatView: View {
           .font(.headline)
       }
       Spacer()
+      // Google Search grounding toggle
+      Button(action: { viewModel.useGrounding.toggle() }) {
+        HStack(spacing: 4) {
+          Image(systemName: "globe")
+            .font(.system(size: 12))
+          Text("Search")
+            .font(.caption)
+        }
+        .foregroundColor(viewModel.useGrounding ? .white : .secondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+          RoundedRectangle(cornerRadius: 6)
+            .fill(viewModel.useGrounding ? Color.accentColor : Color(NSColor.controlBackgroundColor))
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 6)
+            .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
+        )
+      }
+      .buttonStyle(.plain)
+      .help(viewModel.useGrounding ? "Google Search grounding is on — disable" : "Enable Google Search grounding")
+
       if !viewModel.messages.isEmpty {
         Button(action: { viewModel.clearMessages() }) {
           Image(systemName: "trash")
@@ -205,7 +233,9 @@ struct GeminiChatView: View {
         .textFieldStyle(.plain)
         .lineLimit(1...6)
         .focused($inputFocused)
-        .onSubmit { submitIfShiftNotHeld() }
+        .onSubmit {
+          Task { await viewModel.sendMessage() }
+        }
         .onAppear { inputFocused = true }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -222,22 +252,19 @@ struct GeminiChatView: View {
         } else {
           Image(systemName: "arrow.up.circle.fill")
             .font(.system(size: 24))
-            .foregroundColor(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-              ? .secondary : .accentColor)
+            .foregroundColor(
+              viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? .secondary : .accentColor)
         }
       }
       .buttonStyle(.plain)
-      .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isSending)
+      .disabled(
+        viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          || viewModel.isSending)
       .frame(width: 28, height: 28)
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 10)
-  }
-
-  private func submitIfShiftNotHeld() {
-    // NSEvent.modifierFlags is not available on MainActor in SwiftUI onSubmit,
-    // so we treat Return as "send" (user can use Shift+Return for newline via axis: .vertical)
-    Task { await viewModel.sendMessage() }
   }
 }
 
@@ -252,8 +279,11 @@ private struct MessageBubbleView: View {
     HStack(alignment: .top, spacing: 0) {
       if isUser { Spacer(minLength: 40) }
 
-      VStack(alignment: isUser ? .trailing : .leading, spacing: 3) {
+      VStack(alignment: isUser ? .trailing : .leading, spacing: 5) {
         bubbleContent
+        if !message.sources.isEmpty {
+          sourcesView
+        }
       }
 
       if !isUser { Spacer(minLength: 40) }
@@ -276,6 +306,34 @@ private struct MessageBubbleView: View {
         RoundedRectangle(cornerRadius: 14)
           .stroke(isUser ? Color.clear : Color(NSColor.separatorColor), lineWidth: 0.5)
       )
+  }
+
+  private var sourcesView: some View {
+    VStack(alignment: .leading, spacing: 3) {
+      HStack(spacing: 4) {
+        Image(systemName: "globe")
+          .font(.caption2)
+          .foregroundColor(.secondary)
+        Text("Sources")
+          .font(.caption2)
+          .foregroundColor(.secondary)
+      }
+      ForEach(message.sources) { source in
+        if let url = URL(string: source.uri) {
+          Link(destination: url) {
+            HStack(spacing: 4) {
+              Image(systemName: "link")
+                .font(.caption2)
+              Text(source.title)
+                .font(.caption)
+                .lineLimit(1)
+            }
+            .foregroundColor(.accentColor)
+          }
+        }
+      }
+    }
+    .padding(.horizontal, 4)
   }
 }
 

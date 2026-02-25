@@ -7,17 +7,31 @@ enum ChatRole: String, Codable {
   case model
 }
 
+struct GroundingSource: Codable, Equatable, Identifiable {
+  var id: String { uri }
+  let uri: String
+  let title: String
+}
+
 struct ChatMessage: Identifiable, Codable, Equatable {
   let id: UUID
   let role: ChatRole
   let content: String
   let timestamp: Date
+  var sources: [GroundingSource]
 
-  init(id: UUID = UUID(), role: ChatRole, content: String, timestamp: Date = Date()) {
+  init(
+    id: UUID = UUID(),
+    role: ChatRole,
+    content: String,
+    timestamp: Date = Date(),
+    sources: [GroundingSource] = []
+  ) {
     self.id = id
     self.role = role
     self.content = content
     self.timestamp = timestamp
+    self.sources = sources
   }
 }
 
