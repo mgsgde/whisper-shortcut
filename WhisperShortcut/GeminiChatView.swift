@@ -133,28 +133,15 @@ class GeminiChatViewModel: ObservableObject {
   /// System instruction for the Open Gemini chat: structure, emojis in headings, bold for key terms.
   private static var openGeminiSystemInstruction: [String: Any] {
     let text = """
-    You must follow this structure in every reply:
+    Answer in a natural way:
 
-    1) First paragraph: Start with "In short:" (or the equivalent in the user's language, e.g. "Kurz gesagt:") followed by one or two sentences that directly answer the question.
+    - For simple questions that need only a brief answer (e.g. "What's the weather?", "What time is it?"), reply directly with that answer. Do not add "In short:" or similar.
 
-    2) Then add a blank line and the detailed answer. Use markdown headings for each section:
-    - Put each section title on its own line.
-    - Use ## for main sections and ### for subsections.
-    - Start every heading with a relevant emoji (e.g. "## 🌍 Europa", "### 📋 Stricter regulations").
-    - Leave a blank line before each heading and after it.
+    - For complex questions or when your answer has multiple sections, use this structure:
+      1) First paragraph: Start with "In short:" (or the equivalent in the user's language, e.g. "Kurz gesagt:") followed by one or two sentences that directly answer the question.
+      2) Then a blank line and the detailed answer. Use markdown headings for each section: ## for main sections, ### for subsections. Start every heading with a relevant emoji (e.g. "## 🌍 Europa"). Leave a blank line before and after each heading.
 
-    Use **bold** for key terms. Example format:
-
-    In short: [Your one-sentence answer.]
-
-    ## 📌 First topic
-    [Paragraph.]
-
-    ### 📋 Subsection
-    [Paragraph.]
-
-    ## 🔗 Second topic
-    [Paragraph.]
+    Use **bold** for key terms when helpful.
     """
     return ["parts": [["text": text]]]
   }
@@ -322,7 +309,7 @@ struct GeminiChatView: View {
   private var messageList: some View {
     ScrollViewReader { proxy in
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: 10) {
+        LazyVStack(alignment: .leading, spacing: 14) {
           if viewModel.messages.isEmpty && !viewModel.isSending {
             emptyStateCommandHints
           }
@@ -625,7 +612,7 @@ private struct MessageBubbleView: View {
           .font(.caption2)
           .foregroundColor(.secondary)
       }
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: 160))], alignment: .leading, spacing: 4) {
+      LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 8) {
         ForEach(message.sources) { source in
           if let url = URL(string: source.uri) {
             Link(destination: url) {
