@@ -151,7 +151,7 @@ class GeminiChatViewModel: ObservableObject {
 
     - For complex questions or when your answer has multiple sections, use this structure:
       1) First paragraph: Start with "In short:" (or the equivalent in the user's language, e.g. "Kurz gesagt:") followed by one or two sentences that directly answer the question.
-      2) Then a blank line and the detailed answer. Use markdown headings for each section: ## for main sections, ### for subsections. Start every heading with a relevant emoji (e.g. "## 🌍 Europa"). Leave a blank line before and after each heading.
+      2) Then a blank line and the detailed answer. You must use markdown headings for each section: write "## " for main sections and "### " for subsections. Every heading must start with a relevant emoji on the same line (e.g. "## 🌍 Europa", "### 📋 Details"). Leave a blank line before and after each heading.
 
     Use **bold** for key terms when helpful.
     """
@@ -474,6 +474,10 @@ struct GeminiChatView: View {
     }
     .padding(.horizontal, 20)
     .padding(.vertical, 10)
+    .contentShape(Rectangle())
+    .onTapGesture {
+      inputFocused = true
+    }
   }
 
   private func pendingScreenshotThumbnail(onTapThumbnail: @escaping () -> Void) -> some View {
@@ -534,12 +538,24 @@ private func buildAttributedReply(content: String) -> AttributedString {
   let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
   let paragraphs = content.components(separatedBy: "\n\n")
   var result = AttributedString()
-  let separator = AttributedString("\n\n\n")
+  /// One blank line between paragraphs; use \n\n (not \n\n\n) for tighter spacing.
+  let separator = AttributedString("\n\n")
   for (index, para) in paragraphs.enumerated() {
     let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
     if trimmed.isEmpty { continue }
     if index > 0 { result.append(separator) }
-    let attr = (try? AttributedString(markdown: trimmed, options: options)) ?? AttributedString(trimmed)
+    var attr: AttributedString
+    if trimmed.hasPrefix("## ") {
+      let title = String(trimmed.dropFirst(3))
+      attr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
+      attr.font = .title2.weight(.bold)
+    } else if trimmed.hasPrefix("### ") {
+      let title = String(trimmed.dropFirst(4))
+      attr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
+      attr.font = .title3.weight(.semibold)
+    } else {
+      attr = (try? AttributedString(markdown: trimmed, options: options)) ?? AttributedString(trimmed)
+    }
     result.append(attr)
   }
   if result.description.isEmpty {
@@ -552,11 +568,11 @@ private struct ModelReplyView: View {
   let content: String
 
   /// Single Text view so the user can select across the entire reply (all paragraphs) in one go.
-  /// Builds one AttributedString from paragraphs with explicit "\n\n\n" between them so spacing is visible.
+  /// Builds one AttributedString from paragraphs with "\n\n" between them for visible but compact spacing.
   var body: some View {
     Text(buildAttributedReply(content: content))
       .font(.system(size: 15))
-      .lineSpacing(6)
+      .lineSpacing(4)
       .padding(.horizontal, 14)
       .padding(.vertical, 12)
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -576,7 +592,7 @@ private struct MessageBubbleView: View {
   var isUser: Bool { message.role == .user }
 
   var body: some View {
-    VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {
+    VStack(alignment: isUser ? .trailing : .leading, spacing: 2) {
       bubbleContent
       if !message.sources.isEmpty {
         sourcesView
@@ -641,7 +657,7 @@ private struct MessageBubbleView: View {
       }
     }
     .padding(.horizontal, 12)
-    .padding(.top, 14)
+    .padding(.top, 6)
   }
 }
 
