@@ -17,9 +17,12 @@ class GeminiChatViewModel: ObservableObject {
   private let apiClient = GeminiAPIClient()
   private let chatModel = "gemini-2.5-flash"
 
+  /// Maximum number of messages to send as context (older messages are kept in UI but not sent to the API).
+  private static let maxMessagesInContext = 30
+
   init() {
     let storedGrounding = UserDefaults.standard.object(forKey: "geminiSearchGroundingEnabled")
-    useGrounding = (storedGrounding as? Bool) ?? false
+    useGrounding = (storedGrounding as? Bool) ?? true
     session = store.load()
     messages = session.messages
   }
@@ -72,7 +75,8 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   private func buildContents() -> [[String: Any]] {
-    messages.map { msg in
+    let toSend = messages.suffix(Self.maxMessagesInContext)
+    return toSend.map { msg in
       ["role": msg.role.rawValue, "parts": [["text": msg.content]]]
     }
   }
@@ -292,20 +296,46 @@ private struct MessageBubbleView: View {
   }
 
   private var bubbleContent: some View {
-    Text(message.content)
-      .font(.body)
-      .textSelection(.enabled)
-      .foregroundColor(isUser ? .white : .primary)
-      .padding(.horizontal, 12)
-      .padding(.vertical, 8)
-      .background(
-        RoundedRectangle(cornerRadius: 14)
-          .fill(isUser ? Color.accentColor : Color(NSColor.controlBackgroundColor))
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 14)
-          .stroke(isUser ? Color.clear : Color(NSColor.separatorColor), lineWidth: 0.5)
-      )
+    Group {
+      if isUser {
+        Text(message.content)
+      } else {
+        // Paragraph-aware Markdown: split by double newline so line breaks are preserved
+        paragraphMarkdownView(message.content)
+      }
+    }
+    .font(.body)
+    .textSelection(.enabled)
+    .foregroundColor(isUser ? .white : .primary)
+    .padding(.horizontal, 12)
+    .padding(.vertical, 8)
+    .background(
+      RoundedRectangle(cornerRadius: 14)
+        .fill(isUser ? Color.accentColor : Color(NSColor.controlBackgroundColor))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 14)
+        .stroke(isUser ? Color.clear : Color(NSColor.separatorColor), lineWidth: 0.5)
+    )
+  }
+
+  /// Renders model reply with paragraph breaks preserved. Splits on "\n\n", renders each block as Markdown.
+  @ViewBuilder
+  private func paragraphMarkdownView(_ content: String) -> some View {
+    let paragraphs = content.components(separatedBy: "\n\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    if paragraphs.isEmpty {
+      Text(content)
+    } else {
+      VStack(alignment: .leading, spacing: 8) {
+        ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, block in
+          if let attr = try? AttributedString(markdown: block) {
+            Text(attr)
+          } else {
+            Text(block)
+          }
+        }
+      }
+    }
   }
 
   private var sourcesView: some View {
