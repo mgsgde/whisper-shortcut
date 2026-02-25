@@ -141,6 +141,19 @@ class SettingsViewModel: ObservableObject {
       data.selectedImprovementModel = SettingsDefaults.selectedImprovementModel
     }
 
+    // Load Open Gemini window model
+    if let savedOpenGeminiModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel),
+      let savedOpenGeminiModel = PromptModel(rawValue: savedOpenGeminiModelString)
+    {
+      let migrated = PromptModel.migrateIfDeprecated(savedOpenGeminiModel)
+      data.selectedOpenGeminiModel = migrated
+      if migrated != savedOpenGeminiModel {
+        UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+      }
+    } else {
+      data.selectedOpenGeminiModel = SettingsDefaults.selectedOpenGeminiModel
+    }
+
     // Load Prompt & Read voice (with migration from Read Aloud voice if not set)
     if let savedPromptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice),
       !savedPromptAndReadVoice.isEmpty
@@ -401,6 +414,7 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
     UserDefaults.standard.set(data.selectedPromptAndReadModel.rawValue, forKey: UserDefaultsKeys.selectedPromptAndReadModel)
     UserDefaults.standard.set(data.selectedImprovementModel.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
+    UserDefaults.standard.set(data.selectedOpenGeminiModel.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
 
     // System prompts are stored in UserContext/system-prompts.md (see SystemPromptsStore); not saved to UserDefaults.
 

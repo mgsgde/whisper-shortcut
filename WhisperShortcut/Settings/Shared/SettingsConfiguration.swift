@@ -379,6 +379,7 @@ enum SettingsTab: String, CaseIterable {
   case promptAndRead = "Dictate Prompt & Read"
   case readAloud = "Read Aloud"
   case liveMeeting = "Live Meeting"
+  case openGemini = "Open Gemini"
   case context = "Context"
 }
 
@@ -430,6 +431,7 @@ struct SettingsDefaults {
   static let selectedPromptModel = PromptModel.gemini3Flash
   static let selectedPromptAndReadModel = PromptModel.gemini3Flash
   static let selectedImprovementModel = PromptModel.gemini3Flash
+  static let selectedOpenGeminiModel = PromptModel.gemini25Flash
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
   static let promptAndReadSystemPrompt = ""
@@ -507,6 +509,7 @@ struct SettingsData {
   var selectedPromptModel: PromptModel = SettingsDefaults.selectedPromptModel
   var selectedPromptAndReadModel: PromptModel = SettingsDefaults.selectedPromptAndReadModel
   var selectedImprovementModel: PromptModel = SettingsDefaults.selectedImprovementModel
+  var selectedOpenGeminiModel: PromptModel = SettingsDefaults.selectedOpenGeminiModel
   var customPromptText: String = SettingsDefaults.customPromptText
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
   var promptAndReadSystemPrompt: String = SettingsDefaults.promptAndReadSystemPrompt

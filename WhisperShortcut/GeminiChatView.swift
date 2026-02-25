@@ -8,14 +8,10 @@ class GeminiChatViewModel: ObservableObject {
   @Published var inputText: String = ""
   @Published var isSending: Bool = false
   @Published var errorMessage: String? = nil
-  @Published var useGrounding: Bool {
-    didSet { UserDefaults.standard.set(useGrounding, forKey: "geminiSearchGroundingEnabled") }
-  }
 
   private var session: ChatSession
   private let store = GeminiChatSessionStore.shared
   private let apiClient = GeminiAPIClient()
-  private let chatModel = "gemini-2.5-flash"
 
   /// Maximum number of messages to send as context (older messages are kept in UI but not sent to the API).
   private static let maxMessagesInContext = 30
@@ -24,11 +20,11 @@ class GeminiChatViewModel: ObservableObject {
   private static let newChatCommand = "/new"
   private static let backChatCommand = "/back"
 
-  var canGoBack: Bool { store.previousSessionId(current: session.id) != nil }
+  var canGoBack: Bool {
+    store.idForBack() != nil || store.previousSessionId(current: session.id) != nil
+  }
 
   init() {
-    let storedGrounding = UserDefaults.standard.object(forKey: "geminiSearchGroundingEnabled")
-    useGrounding = (storedGrounding as? Bool) ?? true
     session = store.load()
     messages = session.messages
   }
@@ -43,12 +39,13 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   func goBack() {
-    guard let prevId = store.previousSessionId(current: session.id) else { return }
-    store.setCurrentSession(id: prevId)
+    let prevId = store.idForBack() ?? store.previousSessionId(current: session.id)
+    guard let prevId = prevId else { return }
+    store.setCurrentSession(id: prevId, clearBack: true)
     session = store.load()
     messages = session.messages
     errorMessage = nil
-    DebugLogger.log("GEMINI-CHAT: Switched back to previous chat")
+    DebugLogger.log("GEMINI-CHAT: Switched back to previous chat \(prevId)")
   }
 
   func sendMessage() async {
@@ -83,8 +80,9 @@ class GeminiChatViewModel: ObservableObject {
     let contents = buildContents()
 
     do {
+      let model = Self.resolveOpenGeminiModel()
       let result = try await apiClient.sendChatMessage(
-        model: chatModel, contents: contents, apiKey: apiKey, useGrounding: useGrounding)
+        model: model, contents: contents, apiKey: apiKey, useGrounding: true)
       let modelMsg = ChatMessage(role: .model, content: result.text, sources: result.sources)
       appendMessage(modelMsg)
     } catch {
@@ -104,6 +102,15 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   // MARK: - Private
+
+  /// Resolves the model ID for the Open Gemini chat window from UserDefaults (Settings > Open Gemini).
+  private static func resolveOpenGeminiModel() -> String {
+    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+      ?? SettingsDefaults.selectedOpenGeminiModel.rawValue
+    let model = PromptModel(rawValue: raw).map { PromptModel.migrateIfDeprecated($0) }
+      ?? SettingsDefaults.selectedOpenGeminiModel
+    return model.rawValue
+  }
 
   private func appendMessage(_ message: ChatMessage) {
     let isFirstUserMessage = message.role == .user && messages.isEmpty
@@ -200,28 +207,6 @@ struct GeminiChatView: View {
       .buttonStyle(.plain)
       .disabled(!viewModel.canGoBack)
       .help("Switch to the previous chat")
-
-      Button(action: { viewModel.useGrounding.toggle() }) {
-        HStack(spacing: 4) {
-          Image(systemName: "globe")
-            .font(.system(size: 12))
-          Text("Search")
-            .font(.caption)
-        }
-        .foregroundColor(viewModel.useGrounding ? .white : .secondary)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-          RoundedRectangle(cornerRadius: 6)
-            .fill(viewModel.useGrounding ? Color.accentColor : Color(NSColor.controlBackgroundColor))
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: 6)
-            .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
-        )
-      }
-      .buttonStyle(.plain)
-      .help(viewModel.useGrounding ? "Google Search grounding is on — disable" : "Enable Google Search grounding")
 
       if !viewModel.messages.isEmpty {
         Button(action: { viewModel.clearMessages() }) {
@@ -395,10 +380,11 @@ private struct MessageBubbleView: View {
       }
     }
     .font(.body)
+    .lineSpacing(5)
     .textSelection(.enabled)
     .foregroundColor(isUser ? .white : .primary)
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
     .background(
       RoundedRectangle(cornerRadius: 14)
         .fill(isUser ? Color.accentColor : Color(NSColor.controlBackgroundColor))

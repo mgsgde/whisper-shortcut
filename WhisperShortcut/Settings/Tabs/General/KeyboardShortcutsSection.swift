@@ -31,21 +31,6 @@ struct KeyboardShortcutsSection: View {
         validateShortcut: viewModel.validateShortcut
       )
 
-      ShortcutInputRow(
-        label: "Open Gemini:",
-        placeholder: "e.g., command+8",
-        text: $viewModel.data.openGemini,
-        isEnabled: $viewModel.data.openGeminiEnabled,
-        focusedField: .toggleGemini,
-        currentFocus: $focusedField,
-        onShortcutChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        },
-        validateShortcut: viewModel.validateShortcut
-      )
-
       VStack(alignment: .leading, spacing: 8) {
         Text("Available keys:")
           .font(.callout)
