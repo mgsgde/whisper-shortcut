@@ -133,8 +133,28 @@ class GeminiChatViewModel: ObservableObject {
   /// System instruction for the Open Gemini chat: structure, emojis in headings, bold for key terms.
   private static var openGeminiSystemInstruction: [String: Any] {
     let text = """
-    Always structure your reply in two parts: (1) First paragraph: a very short direct answer, starting with "In short:" (or the equivalent in the user's language, e.g. "Kurz gesagt:"). (2) Then the rest of your reply with the detailed explanation, sections, and sources.
-    Use markdown headings for sections: put each section title on its own line with ## or ### (e.g. "## Europa" or "### Stricter regulations"), and put a relevant emoji at the start of the heading. Leave a blank line before each heading and after it so sections are clearly separated from paragraphs. Use **bold** for key terms and important phrases so they stand out.
+    You must follow this structure in every reply:
+
+    1) First paragraph: Start with "In short:" (or the equivalent in the user's language, e.g. "Kurz gesagt:") followed by one or two sentences that directly answer the question.
+
+    2) Then add a blank line and the detailed answer. Use markdown headings for each section:
+    - Put each section title on its own line.
+    - Use ## for main sections and ### for subsections.
+    - Start every heading with a relevant emoji (e.g. "## 🌍 Europa", "### 📋 Stricter regulations").
+    - Leave a blank line before each heading and after it.
+
+    Use **bold** for key terms. Example format:
+
+    In short: [Your one-sentence answer.]
+
+    ## 📌 First topic
+    [Paragraph.]
+
+    ### 📋 Subsection
+    [Paragraph.]
+
+    ## 🔗 Second topic
+    [Paragraph.]
     """
     return ["parts": [["text": text]]]
   }
@@ -553,19 +573,46 @@ private struct MessageBubbleView: View {
   }
 
   /// Renders the full model reply as a single Text view so the user can select the entire post in one go.
-  /// Inserts extra newlines so paragraphs and headings are visually separated.
+  /// Parses blocks (by double newlines), styles ## / ### as headings, and keeps paragraph spacing.
   @ViewBuilder
   private func modelReplyTextView(_ content: String) -> some View {
-    let spaced = content
-      .replacingOccurrences(of: "\n\n", with: "\n\n\n\n")
-      .replacingOccurrences(of: "\n## ", with: "\n\n\n## ")
-      .replacingOccurrences(of: "\n### ", with: "\n\n\n### ")
-      .replacingOccurrences(of: "\n**", with: "\n\n\n**")
-    if let attr = try? AttributedString(markdown: spaced) {
-      Text(attr)
-    } else {
-      Text(spaced)
+    let attr = buildFormattedModelReply(content)
+    Text(attr)
+  }
+
+  /// Builds an AttributedString with heading styles (## → title2, ### → title3) and body at 15pt.
+  private func buildFormattedModelReply(_ content: String) -> AttributedString {
+    let bodyFont = Font.system(size: 15)
+    let blocks = content.components(separatedBy: "\n\n")
+    var output = AttributedString()
+    for (index, block) in blocks.enumerated() {
+      let trimmed = block.trimmingCharacters(in: .whitespacesAndNewlines)
+      if trimmed.isEmpty { continue }
+      if trimmed.hasPrefix("## ") {
+        let title = String(trimmed.dropFirst(3))
+        var head = (try? AttributedString(markdown: title)) ?? AttributedString(title)
+        head.font = .title2.weight(.bold)
+        output.append(head)
+      } else if trimmed.hasPrefix("### ") {
+        let title = String(trimmed.dropFirst(4))
+        var head = (try? AttributedString(markdown: title)) ?? AttributedString(title)
+        head.font = .title3.weight(.bold)
+        output.append(head)
+      } else {
+        var body = (try? AttributedString(markdown: trimmed)) ?? AttributedString(trimmed)
+        body.font = bodyFont
+        output.append(body)
+      }
+      if index < blocks.count - 1 {
+        output.append(AttributedString("\n\n"))
+      }
     }
+    if output.description.isEmpty {
+      var fallback = (try? AttributedString(markdown: content)) ?? AttributedString(content)
+      fallback.font = bodyFont
+      return fallback
+    }
+    return output
   }
 
   private var sourcesView: some View {

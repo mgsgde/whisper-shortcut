@@ -5,8 +5,8 @@ class GeminiWindowController: NSWindowController {
 
   // MARK: - Constants
   private enum Constants {
-    static let preferredWidth: CGFloat = 580
-    static let preferredHeight: CGFloat = 760
+    static let preferredWidth: CGFloat = 720
+    static let preferredHeight: CGFloat = 900
 
     static let minWidth: CGFloat = 440
     static let minHeight: CGFloat = 540
