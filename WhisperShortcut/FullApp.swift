@@ -114,12 +114,55 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     selectAllItem.target = nil  // Will be handled by first responder
     editMenu.addItem(selectAllItem)
 
-    // Add Edit menu to main menu
+    // Add Edit and Gemini menus to main menu
     let mainMenu = NSApp.mainMenu ?? NSMenu()
     mainMenu.addItem(NSMenuItem(title: "Edit", action: nil, keyEquivalent: ""))
     mainMenu.item(withTitle: "Edit")?.submenu = editMenu
 
+    let geminiMenu = NSMenu(title: "Gemini")
+    let newChatItem = NSMenuItem(
+      title: "New Chat",
+      action: #selector(FullAppDelegate.geminiNewChat(_:)),
+      keyEquivalent: "n"
+    )
+    newChatItem.keyEquivalentModifierMask = [.command, .shift]
+    newChatItem.target = self
+    geminiMenu.addItem(newChatItem)
+
+    let screenshotItem = NSMenuItem(
+      title: "Capture Screenshot",
+      action: #selector(FullAppDelegate.geminiCaptureScreenshot(_:)),
+      keyEquivalent: "s"
+    )
+    screenshotItem.keyEquivalentModifierMask = [.command, .shift]
+    screenshotItem.target = self
+    geminiMenu.addItem(screenshotItem)
+
+    let clearChatItem = NSMenuItem(
+      title: "Clear Chat",
+      action: #selector(FullAppDelegate.geminiClearChat(_:)),
+      keyEquivalent: "k"
+    )
+    clearChatItem.keyEquivalentModifierMask = [.command, .shift]
+    clearChatItem.target = self
+    geminiMenu.addItem(clearChatItem)
+
+    mainMenu.addItem(NSMenuItem(title: "Gemini", action: nil, keyEquivalent: ""))
+    mainMenu.item(withTitle: "Gemini")?.submenu = geminiMenu
+
     NSApp.mainMenu = mainMenu
+  }
+
+  @objc func geminiNewChat(_ sender: Any?) {
+    NotificationCenter.default.post(name: .geminiNewChat, object: nil)
+  }
+
+  @objc func geminiCaptureScreenshot(_ sender: Any?) {
+    NotificationCenter.default.post(name: .geminiCaptureScreenshot, object: nil)
+  }
+
+  @objc func geminiClearChat(_ sender: Any?) {
+    NotificationCenter.default.post(name: .geminiClearChat, object: nil)
   }
 }
 

@@ -435,4 +435,10 @@ extension Notification.Name {
   static let contextFileDidUpdate = Notification.Name("contextFileDidUpdate")
   /// Posted from Smart Improvement settings to start "Improve from voice" recording (same flow as shortcut).
   static let startPromptImprovementRecording = Notification.Name("startPromptImprovementRecording")
+  /// Posted when user chooses Gemini → New Chat (menu or shortcut).
+  static let geminiNewChat = Notification.Name("geminiNewChat")
+  /// Posted when user chooses Gemini → Capture Screenshot (menu or shortcut).
+  static let geminiCaptureScreenshot = Notification.Name("geminiCaptureScreenshot")
+  /// Posted when user chooses Gemini → Clear Chat (menu or shortcut).
+  static let geminiClearChat = Notification.Name("geminiClearChat")
 }

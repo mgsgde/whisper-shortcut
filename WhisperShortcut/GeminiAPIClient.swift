@@ -343,11 +343,13 @@ class GeminiAPIClient {
   ///   - contents: Array of turn dicts in Gemini format: [["role": "user", "parts": [["text": "..."]]]]
   ///   - apiKey: Google API key
   ///   - useGrounding: When true, adds the `google_search` tool so Gemini can ground answers in live search results
+  ///   - systemInstruction: Optional system instruction (e.g. style guidance). API format: ["parts": [["text": "..."]]]
   func sendChatMessage(
     model: String,
     contents: [[String: Any]],
     apiKey: String,
-    useGrounding: Bool = false
+    useGrounding: Bool = false,
+    systemInstruction: [String: Any]? = nil
   ) async throws -> (text: String, sources: [GroundingSource]) {
     let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
     var request = try createRequest(endpoint: endpoint, apiKey: apiKey)
@@ -356,6 +358,9 @@ class GeminiAPIClient {
     if useGrounding {
       body["tools"] = [["google_search": [:]]]
       DebugLogger.logNetwork("GEMINI-CHAT: Google Search grounding enabled")
+    }
+    if let sys = systemInstruction {
+      body["system_instruction"] = sys
     }
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

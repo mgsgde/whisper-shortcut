@@ -108,7 +108,8 @@ class GeminiChatViewModel: ObservableObject {
     do {
       let model = Self.resolveOpenGeminiModel()
       let result = try await apiClient.sendChatMessage(
-        model: model, contents: contents, apiKey: apiKey, useGrounding: true)
+        model: model, contents: contents, apiKey: apiKey, useGrounding: true,
+        systemInstruction: Self.openGeminiSystemInstruction)
       let modelMsg = ChatMessage(role: .model, content: result.text, sources: result.sources)
       appendMessage(modelMsg)
     } catch {
@@ -128,6 +129,15 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   // MARK: - Private
+
+  /// System instruction for the Open Gemini chat: structure, emojis in headings, bold for key terms.
+  private static var openGeminiSystemInstruction: [String: Any] {
+    let text = """
+    Always structure your reply in two parts: (1) First paragraph: a very short direct answer, starting with "In short:" (or the equivalent in the user's language, e.g. "Kurz gesagt:"). (2) Then the rest of your reply with the detailed explanation, sections, and sources.
+    Use markdown headings for sections: put each section title on its own line with ## or ### (e.g. "## Europa" or "### Stricter regulations"), and put a relevant emoji at the start of the heading. Leave a blank line before each heading and after it so sections are clearly separated from paragraphs. Use **bold** for key terms and important phrases so they stand out.
+    """
+    return ["parts": [["text": text]]]
+  }
 
   /// Resolves the model ID for the Open Gemini chat window from UserDefaults (Settings > Open Gemini).
   private static func resolveOpenGeminiModel() -> String {
@@ -211,6 +221,15 @@ struct GeminiChatView: View {
         screenshotPreviewSheet(image: nsImage)
       }
     }
+    .onReceive(NotificationCenter.default.publisher(for: .geminiNewChat)) { _ in
+      viewModel.createNewSession()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .geminiCaptureScreenshot)) { _ in
+      Task { await viewModel.captureScreenshot() }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .geminiClearChat)) { _ in
+      viewModel.clearMessages()
+    }
   }
 
   // MARK: - Header
@@ -273,22 +292,6 @@ struct GeminiChatView: View {
       .buttonStyle(.plain)
       .disabled(viewModel.screenshotCaptureInProgress || viewModel.isSending)
       .help("Capture screen without this window; image will be attached to your next message.")
-
-      if !viewModel.messages.isEmpty {
-        Button(action: { viewModel.clearMessages() }) {
-          HStack(spacing: 6) {
-            Image(systemName: "trash")
-              .font(.system(size: 15))
-            Text("Clear")
-              .font(.subheadline)
-          }
-          .padding(.horizontal, 8)
-          .padding(.vertical, 6)
-          .foregroundColor(.secondary)
-        }
-        .buttonStyle(.plain)
-        .help("Clear messages in this chat")
-      }
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
@@ -483,6 +486,28 @@ struct GeminiChatView: View {
   }
 }
 
+// MARK: - Conditional Bubble (user only)
+
+private struct ConditionalBubbleModifier: ViewModifier {
+  let isUser: Bool
+
+  func body(content: Content) -> some View {
+    if isUser {
+      content
+        .background(
+          RoundedRectangle(cornerRadius: 14)
+            .fill(Color.accentColor)
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 14)
+            .stroke(Color.clear, lineWidth: 0.5)
+        )
+    } else {
+      content
+    }
+  }
+}
+
 // MARK: - Message Bubble
 
 private struct MessageBubbleView: View {
@@ -500,6 +525,7 @@ private struct MessageBubbleView: View {
           sourcesView
         }
       }
+      .frame(maxWidth: isUser ? 560 : .infinity)
 
       if !isUser { Spacer(minLength: 40) }
     }
@@ -510,48 +536,40 @@ private struct MessageBubbleView: View {
     Group {
       if isUser {
         Text(message.content)
+          .font(.body)
+          .padding(.horizontal, 14)
+          .padding(.vertical, 10)
       } else {
-        // Paragraph-aware Markdown: split by double newline so line breaks are preserved
-        paragraphMarkdownView(message.content)
+        modelReplyTextView(message.content)
+          .font(.system(size: 15))
+          .padding(.horizontal, 20)
+          .padding(.vertical, 16)
       }
     }
-    .font(.body)
-    .lineSpacing(5)
+    .lineSpacing(12)
     .textSelection(.enabled)
     .foregroundColor(isUser ? .white : .primary)
-    .padding(.horizontal, 14)
-    .padding(.vertical, 10)
-    .background(
-      RoundedRectangle(cornerRadius: 14)
-        .fill(isUser ? Color.accentColor : Color(NSColor.controlBackgroundColor))
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: 14)
-        .stroke(isUser ? Color.clear : Color(NSColor.separatorColor), lineWidth: 0.5)
-    )
+    .modifier(ConditionalBubbleModifier(isUser: isUser))
   }
 
-  /// Renders model reply with paragraph breaks preserved. Splits on "\n\n", renders each block as Markdown.
+  /// Renders the full model reply as a single Text view so the user can select the entire post in one go.
+  /// Inserts extra newlines so paragraphs and headings are visually separated.
   @ViewBuilder
-  private func paragraphMarkdownView(_ content: String) -> some View {
-    let paragraphs = content.components(separatedBy: "\n\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-    if paragraphs.isEmpty {
-      Text(content)
+  private func modelReplyTextView(_ content: String) -> some View {
+    let spaced = content
+      .replacingOccurrences(of: "\n\n", with: "\n\n\n\n")
+      .replacingOccurrences(of: "\n## ", with: "\n\n\n## ")
+      .replacingOccurrences(of: "\n### ", with: "\n\n\n### ")
+      .replacingOccurrences(of: "\n**", with: "\n\n\n**")
+    if let attr = try? AttributedString(markdown: spaced) {
+      Text(attr)
     } else {
-      VStack(alignment: .leading, spacing: 8) {
-        ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, block in
-          if let attr = try? AttributedString(markdown: block) {
-            Text(attr)
-          } else {
-            Text(block)
-          }
-        }
-      }
+      Text(spaced)
     }
   }
 
   private var sourcesView: some View {
-    VStack(alignment: .leading, spacing: 3) {
+    VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 4) {
         Image(systemName: "globe")
           .font(.caption2)
@@ -560,17 +578,27 @@ private struct MessageBubbleView: View {
           .font(.caption2)
           .foregroundColor(.secondary)
       }
-      ForEach(message.sources) { source in
-        if let url = URL(string: source.uri) {
-          Link(destination: url) {
-            HStack(spacing: 4) {
-              Image(systemName: "link")
-                .font(.caption2)
-              Text(source.title)
-                .font(.caption)
-                .lineLimit(1)
+      LazyVGrid(columns: [GridItem(.adaptive(minimum: 160))], alignment: .leading, spacing: 4) {
+        ForEach(message.sources) { source in
+          if let url = URL(string: source.uri) {
+            Link(destination: url) {
+              HStack(spacing: 4) {
+                Image(systemName: "link")
+                  .font(.caption2)
+                Text(source.title)
+                  .font(.caption)
+                  .lineLimit(1)
+                  .truncationMode(.tail)
+              }
+              .foregroundColor(.accentColor)
             }
-            .foregroundColor(.accentColor)
+            .onHover { inside in
+              if inside {
+                NSCursor.pointingHand.push()
+              } else {
+                NSCursor.pop()
+              }
+            }
           }
         }
       }
