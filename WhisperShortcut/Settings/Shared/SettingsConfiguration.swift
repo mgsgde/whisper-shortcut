@@ -425,6 +425,8 @@ struct SettingsDefaults {
   static let toggleMeetingEnabled = true
   static let openSettingsEnabled = true
   static let openGeminiEnabled = true
+  static let geminiWindowFloating = true
+  static let geminiWindowShowInFullscreen = true
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini25FlashLite
@@ -503,6 +505,8 @@ struct SettingsData {
   var toggleMeetingEnabled: Bool = SettingsDefaults.toggleMeetingEnabled
   var openSettingsEnabled: Bool = SettingsDefaults.openSettingsEnabled
   var openGeminiEnabled: Bool = SettingsDefaults.openGeminiEnabled
+  var geminiWindowFloating: Bool = SettingsDefaults.geminiWindowFloating
+  var geminiWindowShowInFullscreen: Bool = SettingsDefaults.geminiWindowShowInFullscreen
 
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel

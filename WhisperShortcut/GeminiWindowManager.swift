@@ -29,4 +29,9 @@ class GeminiWindowManager {
     guard let window = windowController?.window else { return false }
     return window.isVisible
   }
+
+  /// Applies current window preferences (floating, show in fullscreen) to the Gemini window if open.
+  func applyWindowPreferences() {
+    windowController?.applyWindowPreferences()
+  }
 }

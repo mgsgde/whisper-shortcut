@@ -184,24 +184,28 @@ struct GeminiChatView: View {
       }
       Spacer()
       Button(action: { viewModel.createNewSession() }) {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
           Image(systemName: "square.and.pencil")
-            .font(.system(size: 12))
+            .font(.system(size: 15))
           Text("New chat")
-            .font(.caption)
+            .font(.subheadline)
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
         .foregroundColor(.secondary)
       }
       .buttonStyle(.plain)
       .help("Start a new chat (previous chat stays in history)")
 
       Button(action: { viewModel.goBack() }) {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
           Image(systemName: "chevron.left")
-            .font(.system(size: 12))
+            .font(.system(size: 15))
           Text("Back")
-            .font(.caption)
+            .font(.subheadline)
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
         .foregroundColor(viewModel.canGoBack ? .secondary : .secondary.opacity(0.5))
       }
       .buttonStyle(.plain)
@@ -210,11 +214,18 @@ struct GeminiChatView: View {
 
       if !viewModel.messages.isEmpty {
         Button(action: { viewModel.clearMessages() }) {
-          Image(systemName: "trash")
-            .foregroundColor(.secondary)
+          HStack(spacing: 6) {
+            Image(systemName: "trash")
+              .font(.system(size: 15))
+            Text("Clear")
+              .font(.subheadline)
+          }
+          .padding(.horizontal, 8)
+          .padding(.vertical, 6)
+          .foregroundColor(.secondary)
         }
         .buttonStyle(.plain)
-        .help("Clear conversation")
+        .help("Clear messages in this chat")
       }
     }
     .padding(.horizontal, 14)

@@ -15,6 +15,10 @@ struct OpenGeminiSettingsTab: View {
 
       SpacedSectionDivider()
 
+      windowBehaviorSection
+
+      SpacedSectionDivider()
+
       usageSection
     }
   }
@@ -80,6 +84,48 @@ struct OpenGeminiSettingsTab: View {
     )
   }
 
+  // MARK: - Window Behavior Section
+  @ViewBuilder
+  private var windowBehaviorSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Window Behavior",
+        subtitle: "Control how the Gemini chat window appears"
+      )
+
+      Toggle(isOn: $viewModel.data.geminiWindowFloating) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Keep Gemini window on top of other windows")
+            .font(.callout)
+        }
+      }
+      .toggleStyle(SwitchToggleStyle())
+      .onChange(of: viewModel.data.geminiWindowFloating) { _, _ in
+        Task {
+          await viewModel.saveSettings()
+          GeminiWindowManager.shared.applyWindowPreferences()
+        }
+      }
+
+      Toggle(isOn: $viewModel.data.geminiWindowShowInFullscreen) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Show Gemini window in fullscreen")
+            .font(.callout)
+          Text("Open in current space (including when an app is fullscreen)")
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+      }
+      .toggleStyle(SwitchToggleStyle())
+      .onChange(of: viewModel.data.geminiWindowShowInFullscreen) { _, _ in
+        Task {
+          await viewModel.saveSettings()
+          GeminiWindowManager.shared.applyWindowPreferences()
+        }
+      }
+    }
+  }
+
   // MARK: - Usage Section
   @ViewBuilder
   private var usageSection: some View {
@@ -89,7 +135,7 @@ struct OpenGeminiSettingsTab: View {
         subtitle: "Open the Gemini chat window from the menu bar or with your shortcut"
       )
 
-      Text("Use the shortcut or the menu bar item \"Open Gemini\" to open the floating Gemini chat window.")
+      Text("Use the shortcut or the menu bar item \"Open Gemini\" to open the Gemini chat window.")
         .font(.callout)
         .foregroundColor(.secondary)
         .textSelection(.enabled)

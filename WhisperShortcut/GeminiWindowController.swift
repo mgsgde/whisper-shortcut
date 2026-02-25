@@ -32,8 +32,7 @@ class GeminiWindowController: NSWindowController {
     )
 
     window.title = Constants.windowTitle
-    window.level = .floating
-    window.collectionBehavior = [.managed, .fullScreenNone, .participatesInCycle]
+    Self.applyLevelAndCollectionBehavior(to: window)
     window.contentMinSize = NSSize(width: Constants.minWidth, height: Constants.minHeight)
     window.contentMaxSize = NSSize(width: Constants.maxWidth, height: Constants.maxHeight)
     window.setFrameAutosaveName(Constants.frameAutosaveName)
@@ -57,7 +56,34 @@ class GeminiWindowController: NSWindowController {
     window?.makeKeyAndOrderFront(nil)
   }
 
+  /// Applies floating and fullscreen preferences to the window (at init or when user changes settings).
+  func applyWindowPreferences() {
+    guard let window = window else { return }
+    Self.applyLevelAndCollectionBehavior(to: window)
+  }
+
   // MARK: - Private
+
+  private static func geminiWindowFloating() -> Bool {
+    UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiWindowFloating) != nil
+      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.geminiWindowFloating)
+      : SettingsDefaults.geminiWindowFloating
+  }
+
+  private static func geminiWindowShowInFullscreen() -> Bool {
+    UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiWindowShowInFullscreen) != nil
+      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.geminiWindowShowInFullscreen)
+      : SettingsDefaults.geminiWindowShowInFullscreen
+  }
+
+  private static func applyLevelAndCollectionBehavior(to window: NSWindow) {
+    window.level = geminiWindowFloating() ? .floating : .normal
+    if geminiWindowShowInFullscreen() {
+      window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .participatesInCycle]
+    } else {
+      window.collectionBehavior = [.managed, .fullScreenNone, .participatesInCycle]
+    }
+  }
 
   private func hasStoredFrame() -> Bool {
     UserDefaults.standard.object(forKey: "NSWindow Frame \(Constants.frameAutosaveName)") != nil
