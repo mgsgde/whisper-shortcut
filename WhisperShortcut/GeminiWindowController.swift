@@ -14,7 +14,7 @@ class GeminiWindowController: NSWindowController {
     static let maxHeight: CGFloat = 1400
 
     static let windowTitle = "Whisper Shortcut"
-    static let frameAutosaveName = "GeminiWindowV2"
+    static let frameAutosaveName = "GeminiWindowV3"
 
     // Bottom-right margin from screen edge
     static let screenMargin: CGFloat = 24
@@ -41,8 +41,10 @@ class GeminiWindowController: NSWindowController {
     super.init(window: window)
     window.delegate = self
 
-    // Position bottom-right on first launch (autosave overrides on subsequent opens)
+    // When no frame was saved yet, use preferred size and position bottom-right.
+    // Without this, the window can end up with a wrong size (e.g. from content or defaults).
     if !hasStoredFrame() {
+      window.setContentSize(NSSize(width: Constants.preferredWidth, height: Constants.preferredHeight))
       positionBottomRight()
     }
   }

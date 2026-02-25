@@ -699,7 +699,7 @@ private struct MessageBubbleView: View {
     HStack(alignment: .top, spacing: 0) {
       if isUser { Spacer(minLength: 40) }
 
-      VStack(alignment: isUser ? .trailing : .leading, spacing: 12) {
+      VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {
         bubbleContent
         if !message.sources.isEmpty {
           sourcesView
