@@ -339,33 +339,20 @@ struct GeminiChatView: View {
             TypingIndicatorView()
               .id("typing")
           }
+          Color.clear.frame(height: 1).id("listBottom")
         }
         .padding(.horizontal, 20)
         .padding(.top, 10)
         .padding(.bottom, 28)
       }
-      .onChange(of: viewModel.messages.count) { _ in
-        scrollToBottom(proxy: proxy)
-      }
-      .onChange(of: viewModel.isSending) { sending in
-        if sending { scrollToBottom(proxy: proxy, target: "typing") }
-      }
       .onAppear {
-        if !viewModel.messages.isEmpty {
-          DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            scrollToBottom(proxy: proxy)
-          }
+        // Only scroll when the chat view first appears (open window), so the user sees the latest messages.
+        // Do not scroll when new messages arrive — the user stays where they are and scrolls down when ready to read.
+        scrollToBottom(proxy: proxy)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+          scrollToBottom(proxy: proxy)
         }
       }
-      .background(
-        GeometryReader { geo in
-          Color.clear.onChange(of: geo.size) { _ in
-            DispatchQueue.main.async {
-              scrollToBottom(proxy: proxy)
-            }
-          }
-        }
-      )
     }
   }
 
@@ -398,8 +385,8 @@ struct GeminiChatView: View {
     withAnimation(.easeOut(duration: 0.2)) {
       if let t = target {
         proxy.scrollTo(t, anchor: .bottom)
-      } else if let last = viewModel.messages.last {
-        proxy.scrollTo(last.id, anchor: .bottom)
+      } else {
+        proxy.scrollTo("listBottom", anchor: .bottom)
       }
     }
   }
