@@ -413,6 +413,7 @@ struct SettingsDefaults {
   static let readAloud = ""
   static let toggleMeeting = ""
   static let openSettings = ""
+  static let openGemini = ""
 
   // MARK: - Toggle Shortcut Enable States
   static let toggleDictationEnabled = true
@@ -422,6 +423,7 @@ struct SettingsDefaults {
   static let readAloudEnabled = true
   static let toggleMeetingEnabled = true
   static let openSettingsEnabled = true
+  static let openGeminiEnabled = true
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini25FlashLite
@@ -488,6 +490,7 @@ struct SettingsData {
   var readAloud: String = SettingsDefaults.readAloud
   var toggleMeeting: String = SettingsDefaults.toggleMeeting
   var openSettings: String = SettingsDefaults.openSettings
+  var openGemini: String = SettingsDefaults.openGemini
 
   // MARK: - Toggle Shortcut Enable States
   var toggleDictationEnabled: Bool = SettingsDefaults.toggleDictationEnabled
@@ -497,6 +500,7 @@ struct SettingsData {
   var readAloudEnabled: Bool = SettingsDefaults.readAloudEnabled
   var toggleMeetingEnabled: Bool = SettingsDefaults.toggleMeetingEnabled
   var openSettingsEnabled: Bool = SettingsDefaults.openSettingsEnabled
+  var openGeminiEnabled: Bool = SettingsDefaults.openGeminiEnabled
 
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
@@ -549,6 +553,7 @@ enum SettingsFocusField: Hashable {
   case toggleReadAloud
   case toggleMeeting
   case toggleSettings
+  case toggleGemini
   case customPrompt
   case promptModeSystemPrompt
   case promptAndReadSystemPrompt

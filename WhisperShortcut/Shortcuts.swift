@@ -9,6 +9,7 @@ protocol ShortcutDelegate: AnyObject {
   func readAloud()
   func toggleMeeting()
   func openSettings()
+  func openGemini()
 }
 
 // Configurable shortcuts using ShortcutConfigManager
@@ -22,6 +23,7 @@ class Shortcuts {
   private var readAloudKey: HotKey?
   private var toggleMeetingKey: HotKey?
   private var openSettingsKey: HotKey?
+  private var openGeminiKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -108,6 +110,15 @@ class Shortcuts {
       }
     }
 
+    // Create Gemini window shortcut (only if enabled)
+    if config.openGemini.isEnabled {
+      openGeminiKey = HotKey(
+        key: config.openGemini.key, modifiers: config.openGemini.modifiers)
+      openGeminiKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.openGemini()
+      }
+    }
+
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -126,6 +137,7 @@ class Shortcuts {
     readAloudKey = nil
     toggleMeetingKey = nil
     openSettingsKey = nil
+    openGeminiKey = nil
   }
 
   deinit {

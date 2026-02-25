@@ -107,6 +107,7 @@ struct ShortcutConfig: Codable {
   var toggleMeeting: ShortcutDefinition
   var stopMeeting: ShortcutDefinition
   var openSettings: ShortcutDefinition
+  var openGemini: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
@@ -119,7 +120,8 @@ struct ShortcutConfig: Codable {
     readAloud: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true),
     toggleMeeting: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
     stopMeeting: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
-    openSettings: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true)
+    openSettings: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true),
+    openGemini: ShortcutDefinition(key: .eight, modifiers: [.command], isEnabled: true)
   )
 }
 
@@ -225,6 +227,7 @@ class ShortcutConfigManager {
     static let toggleMeetingKey = "shortcut_toggle_meeting"
     static let stopMeetingKey = "shortcut_stop_meeting"
     static let openSettingsKey = "shortcut_open_settings"
+    static let openGeminiKey = "shortcut_open_gemini"
   }
 
   private let userDefaults = UserDefaults.standard
@@ -257,6 +260,8 @@ class ShortcutConfigManager {
     let openSettings = userDefaults.data(forKey: Constants.toggleMeetingKey) != nil
       ? (loadShortcut(for: Constants.openSettingsKey) ?? ShortcutConfig.default.openSettings)
       : ShortcutConfig.default.openSettings
+    let openGemini =
+      loadShortcut(for: Constants.openGeminiKey) ?? ShortcutConfig.default.openGemini
     return ShortcutConfig(
       startRecording: startRecording,
       stopRecording: stopRecording,
@@ -268,7 +273,8 @@ class ShortcutConfigManager {
       readAloud: readAloud,
       toggleMeeting: toggleMeeting,
       stopMeeting: stopMeeting,
-      openSettings: openSettings
+      openSettings: openSettings,
+      openGemini: openGemini
     )
   }
 
@@ -284,6 +290,7 @@ class ShortcutConfigManager {
     saveShortcut(config.toggleMeeting, for: Constants.toggleMeetingKey)
     saveShortcut(config.stopMeeting, for: Constants.stopMeetingKey)
     saveShortcut(config.openSettings, for: Constants.openSettingsKey)
+    saveShortcut(config.openGemini, for: Constants.openGeminiKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)

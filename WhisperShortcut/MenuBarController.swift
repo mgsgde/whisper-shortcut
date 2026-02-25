@@ -162,6 +162,14 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
+    // Gemini chat window
+    menu.addItem(
+      createMenuItemWithShortcut(
+        "Open Gemini", action: #selector(openGeminiWindow),
+        shortcut: currentConfig.openGemini, tag: 110))
+
+    menu.addItem(NSMenuItem.separator())
+
     // Settings and quit
     menu.addItem(
       createMenuItemWithShortcut(
@@ -499,6 +507,10 @@ class MenuBarController: NSObject {
 
   @objc func openSettings() {
     SettingsManager.shared.toggleSettings()
+  }
+
+  @objc func openGeminiWindow() {
+    GeminiWindowManager.shared.toggle()
   }
 
   // MARK: - Live Meeting Transcription
@@ -1620,6 +1632,7 @@ extension MenuBarController: ShortcutDelegate {
   }
   func toggleMeeting() { toggleLiveMeeting() }
   // openSettings is already implemented above
+  func openGemini() { openGeminiWindow() }
 }
 
 // MARK: - ChunkProgressDelegate (Chunked Transcription Progress)

@@ -335,6 +335,27 @@ class GeminiAPIClient {
     throw lastError ?? TranscriptionError.networkError("Gemini request failed after retries")
   }
   
+  // MARK: - Chat
+
+  /// Sends a multi-turn chat request to Gemini and returns the model's text reply.
+  /// - Parameters:
+  ///   - model: Gemini model ID, e.g. "gemini-2.5-flash"
+  ///   - contents: Array of turn dicts in Gemini format: [["role": "user", "parts": [["text": "..."]]]]
+  ///   - apiKey: Google API key
+  func sendChatMessage(model: String, contents: [[String: Any]], apiKey: String) async throws -> String {
+    let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
+    var request = try createRequest(endpoint: endpoint, apiKey: apiKey)
+    let body: [String: Any] = ["contents": contents]
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    let response: GeminiResponse = try await performRequest(
+      request, responseType: GeminiResponse.self, mode: "GEMINI-CHAT", withRetry: true)
+    let text = extractText(from: response)
+    guard !text.isEmpty else {
+      throw TranscriptionError.networkError("Empty response from Gemini")
+    }
+    return text
+  }
+
   // MARK: - File Upload
   /// Uploads a file to Gemini using resumable upload protocol.
   func uploadFile(audioURL: URL, credential: GeminiCredential) async throws -> String {

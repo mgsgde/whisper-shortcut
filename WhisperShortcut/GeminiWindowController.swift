@@ -1,0 +1,78 @@
+import Cocoa
+import SwiftUI
+
+class GeminiWindowController: NSWindowController {
+
+  // MARK: - Constants
+  private enum Constants {
+    static let preferredWidth: CGFloat = 520
+    static let preferredHeight: CGFloat = 680
+
+    static let minWidth: CGFloat = 420
+    static let minHeight: CGFloat = 500
+    static let maxWidth: CGFloat = 900
+    static let maxHeight: CGFloat = 1200
+
+    static let windowTitle = "Gemini"
+    static let frameAutosaveName = "GeminiWindow"
+
+    // Bottom-right margin from screen edge
+    static let screenMargin: CGFloat = 24
+  }
+
+  init() {
+    let chatView = GeminiChatView()
+    let hostingController = NSHostingController(rootView: chatView)
+
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: Constants.preferredWidth, height: Constants.preferredHeight),
+      styleMask: [.titled, .closable, .resizable],
+      backing: .buffered,
+      defer: false
+    )
+
+    window.title = Constants.windowTitle
+    window.collectionBehavior = [.managed, .fullScreenNone, .participatesInCycle]
+    window.contentMinSize = NSSize(width: Constants.minWidth, height: Constants.minHeight)
+    window.contentMaxSize = NSSize(width: Constants.maxWidth, height: Constants.maxHeight)
+    window.setFrameAutosaveName(Constants.frameAutosaveName)
+    window.contentViewController = hostingController
+
+    super.init(window: window)
+    window.delegate = self
+
+    // Position bottom-right on first launch (autosave overrides on subsequent opens)
+    if !hasStoredFrame() {
+      positionBottomRight()
+    }
+  }
+
+  required init?(coder: NSCoder) {
+    super.init(coder: coder)
+  }
+
+  func showWindow() {
+    NSApp.activate(ignoringOtherApps: true)
+    window?.makeKeyAndOrderFront(nil)
+  }
+
+  // MARK: - Private
+
+  private func hasStoredFrame() -> Bool {
+    UserDefaults.standard.object(forKey: "NSWindow Frame \(Constants.frameAutosaveName)") != nil
+  }
+
+  private func positionBottomRight() {
+    guard let screen = NSScreen.main,
+          let window = window else { return }
+    let usable = screen.visibleFrame
+    let x = usable.maxX - Constants.preferredWidth - Constants.screenMargin
+    let y = usable.minY + Constants.screenMargin
+    window.setFrameOrigin(NSPoint(x: x, y: y))
+  }
+}
+
+// MARK: - NSWindowDelegate
+extension GeminiWindowController: NSWindowDelegate {
+  func windowWillClose(_ notification: Notification) {}
+}
