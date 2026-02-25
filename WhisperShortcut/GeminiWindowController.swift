@@ -5,16 +5,16 @@ class GeminiWindowController: NSWindowController {
 
   // MARK: - Constants
   private enum Constants {
-    static let preferredWidth: CGFloat = 720
-    static let preferredHeight: CGFloat = 900
+    static let preferredWidth: CGFloat = 860
+    static let preferredHeight: CGFloat = 1000
 
     static let minWidth: CGFloat = 440
     static let minHeight: CGFloat = 540
-    static let maxWidth: CGFloat = 900
-    static let maxHeight: CGFloat = 1200
+    static let maxWidth: CGFloat = 1100
+    static let maxHeight: CGFloat = 1400
 
     static let windowTitle = "Whisper Shortcut"
-    static let frameAutosaveName = "GeminiWindow"
+    static let frameAutosaveName = "GeminiWindowV2"
 
     // Bottom-right margin from screen edge
     static let screenMargin: CGFloat = 24
