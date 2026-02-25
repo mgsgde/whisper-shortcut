@@ -32,6 +32,7 @@ class GeminiWindowController: NSWindowController {
     )
 
     window.title = Constants.windowTitle
+    window.level = .floating
     window.collectionBehavior = [.managed, .fullScreenNone, .participatesInCycle]
     window.contentMinSize = NSSize(width: Constants.minWidth, height: Constants.minHeight)
     window.contentMaxSize = NSSize(width: Constants.maxWidth, height: Constants.maxHeight)

@@ -19,6 +19,12 @@ class GeminiChatViewModel: ObservableObject {
 
   /// Maximum number of messages to send as context (older messages are kept in UI but not sent to the API).
   private static let maxMessagesInContext = 30
+  /// Maximum length for auto-generated session title from first user message.
+  private static let maxSessionTitleLength = 50
+  private static let newChatCommand = "/new"
+  private static let backChatCommand = "/back"
+
+  var canGoBack: Bool { store.previousSessionId(current: session.id) != nil }
 
   init() {
     let storedGrounding = UserDefaults.standard.object(forKey: "geminiSearchGroundingEnabled")
@@ -27,9 +33,40 @@ class GeminiChatViewModel: ObservableObject {
     messages = session.messages
   }
 
+  func createNewSession() {
+    let newSession = store.createNewSession()
+    session = newSession
+    messages = []
+    errorMessage = nil
+    inputText = ""
+    DebugLogger.log("GEMINI-CHAT: Switched to new chat")
+  }
+
+  func goBack() {
+    guard let prevId = store.previousSessionId(current: session.id) else { return }
+    store.setCurrentSession(id: prevId)
+    session = store.load()
+    messages = session.messages
+    errorMessage = nil
+    DebugLogger.log("GEMINI-CHAT: Switched back to previous chat")
+  }
+
   func sendMessage() async {
     let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty, !isSending else { return }
+
+    // Slash commands: do not send to API
+    let lower = text.lowercased()
+    if lower == Self.newChatCommand {
+      inputText = ""
+      createNewSession()
+      return
+    }
+    if lower == Self.backChatCommand {
+      inputText = ""
+      goBack()
+      return
+    }
 
     guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else {
       errorMessage = "No API key configured. Please add your Google API key in Settings."
@@ -60,17 +97,24 @@ class GeminiChatViewModel: ObservableObject {
 
   func clearMessages() {
     messages = []
-    session = ChatSession()
+    session.messages = []
+    session.lastUpdated = Date()
     store.save(session)
-    DebugLogger.log("GEMINI-CHAT: Cleared chat session")
+    DebugLogger.log("GEMINI-CHAT: Cleared current chat messages")
   }
 
   // MARK: - Private
 
   private func appendMessage(_ message: ChatMessage) {
+    let isFirstUserMessage = message.role == .user && messages.isEmpty
     messages.append(message)
     session.messages = messages
     session.lastUpdated = Date()
+    if isFirstUserMessage {
+      let oneLine = message.content.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+      session.title = String(oneLine.prefix(Self.maxSessionTitleLength))
+      if oneLine.count > Self.maxSessionTitleLength { session.title? += "…" }
+    }
     store.save(session)
   }
 
@@ -132,7 +176,31 @@ struct GeminiChatView: View {
           .font(.headline)
       }
       Spacer()
-      // Google Search grounding toggle
+      Button(action: { viewModel.createNewSession() }) {
+        HStack(spacing: 4) {
+          Image(systemName: "square.and.pencil")
+            .font(.system(size: 12))
+          Text("New chat")
+            .font(.caption)
+        }
+        .foregroundColor(.secondary)
+      }
+      .buttonStyle(.plain)
+      .help("Start a new chat (previous chat stays in history)")
+
+      Button(action: { viewModel.goBack() }) {
+        HStack(spacing: 4) {
+          Image(systemName: "chevron.left")
+            .font(.system(size: 12))
+          Text("Back")
+            .font(.caption)
+        }
+        .foregroundColor(viewModel.canGoBack ? .secondary : .secondary.opacity(0.5))
+      }
+      .buttonStyle(.plain)
+      .disabled(!viewModel.canGoBack)
+      .help("Switch to the previous chat")
+
       Button(action: { viewModel.useGrounding.toggle() }) {
         HStack(spacing: 4) {
           Image(systemName: "globe")
@@ -174,6 +242,9 @@ struct GeminiChatView: View {
     ScrollViewReader { proxy in
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 10) {
+          if viewModel.messages.isEmpty && !viewModel.isSending {
+            emptyStateCommandHints
+          }
           ForEach(viewModel.messages) { message in
             MessageBubbleView(message: message)
               .id(message.id)
@@ -193,6 +264,25 @@ struct GeminiChatView: View {
         if sending { scrollToBottom(proxy: proxy, target: "typing") }
       }
     }
+  }
+
+  private var emptyStateCommandHints: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text("Commands")
+        .font(.subheadline)
+        .fontWeight(.semibold)
+        .foregroundColor(.secondary)
+      VStack(alignment: .leading, spacing: 6) {
+        Text("/new — Start a new chat (previous chat stays in history)")
+          .font(.callout)
+          .foregroundColor(.secondary)
+        Text("/back — Switch to the previous chat")
+          .font(.callout)
+          .foregroundColor(.secondary)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.vertical, 16)
   }
 
   private func scrollToBottom(proxy: ScrollViewProxy, target: AnyHashable? = nil) {
