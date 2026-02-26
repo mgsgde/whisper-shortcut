@@ -45,11 +45,10 @@ class GeminiWindowController: NSWindowController {
     window.contentViewController = hostingController
 
     super.init(window: window)
+    shouldCascadeWindows = false
     window.delegate = self
     setupCmdArrowScrollMonitor()
 
-    // When no frame was saved yet, use preferred size and position bottom-right.
-    // Without this, the window can end up with a wrong size (e.g. from content or defaults).
     if !hasStoredFrame() {
       window.setContentSize(NSSize(width: Constants.preferredWidth, height: Constants.preferredHeight))
       positionBottomRight()
