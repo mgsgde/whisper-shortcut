@@ -563,7 +563,8 @@ struct GeminiChatView: View {
             Text("Message Gemini…")
               .font(.body)
               .foregroundColor(Color(nsColor: .placeholderTextColor))
-              .padding(.horizontal, 10)
+              .padding(.leading, 15)
+              .padding(.trailing, 10)
               .padding(.vertical, 10)
               .allowsHitTesting(false)
           }
