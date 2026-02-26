@@ -2,7 +2,7 @@
 //  SystemPromptsStore.swift
 //  WhisperShortcut
 //
-//  Single file storage for all system prompts (Dictation, Prompt Mode, Prompt Voice Mode).
+//  Single file storage for all system prompts (Dictation, Prompt Mode, Prompt Read Mode).
 //  Reads/writes UserContext/system-prompts.md with section headers. Migrates from UserDefaults when missing.
 //
 
@@ -18,7 +18,7 @@ enum SystemPromptSection: String, CaseIterable {
     switch self {
     case .dictation: return "=== Dictation (Speech-to-Text) ==="
     case .promptMode: return "=== Prompt Mode ==="
-    case .promptAndRead: return "=== Prompt Voice Mode ==="
+    case .promptAndRead: return "=== Prompt Read Mode ==="
     }
   }
 
@@ -26,6 +26,7 @@ enum SystemPromptSection: String, CaseIterable {
   private static let legacyHeaders: [String: SystemPromptSection] = [
     "=== Dictate Prompt ===": .promptMode,
     "=== Prompt & Read ===": .promptAndRead,
+    "=== Prompt Voice Mode ===": .promptAndRead,
   ]
 
   static func section(forHeader line: String) -> SystemPromptSection? {
@@ -70,7 +71,7 @@ final class SystemPromptsStore {
       ?? AppConstants.defaultPromptModeSystemPrompt
   }
 
-  /// Prompt Voice Mode system prompt. Returns default if section missing or empty.
+  /// Prompt Read Mode system prompt. Returns default if section missing or empty.
   func loadPromptAndReadSystemPrompt() -> String {
     (loadSection(.promptAndRead)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
       ?? AppConstants.defaultPromptAndReadSystemPrompt

@@ -376,7 +376,7 @@ enum SettingsTab: String, CaseIterable {
   case general = "General"
   case speechToText = "Dictate"
   case speechToPrompt = "Prompt Mode"
-  case promptAndRead = "Prompt Voice Mode"
+  case promptAndRead = "Prompt Read Mode"
   case readAloud = "Read Aloud"
   case liveMeeting = "Live Meeting"
   case openGemini = "Open Gemini"

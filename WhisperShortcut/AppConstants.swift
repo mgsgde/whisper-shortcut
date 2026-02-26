@@ -30,7 +30,7 @@ Input and task: The user provides (1) SELECTED TEXT from the clipboard and (2) a
 Guardrails: Return only the modified text. No explanations, meta-commentary, or decorative markdown (no **bold**, # headers, code blocks). No intros (e.g. "Here is...") or outros (e.g. "Let me know if..."). Return only the clean, modified text. When the user wants a list or bullet points, use a leading dash and space (- ) per item and indent sub-items with spaces so they paste with correct indentation.
 """
 
-  /// Prompt Voice Mode system prompt. Same as Prompt Mode; output is read aloud via TTS.
+  /// Prompt Read Mode system prompt. Same as Prompt Mode; output is read aloud via TTS.
   static let defaultPromptAndReadSystemPrompt =
     """
 You are a text editing assistant. Your output will be read aloud to the user.

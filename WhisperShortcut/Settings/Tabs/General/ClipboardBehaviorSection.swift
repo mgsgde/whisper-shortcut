@@ -32,7 +32,7 @@ struct ClipboardBehaviorSection: View {
         Spacer()
       }
 
-      Text("When enabled, transcriptions and AI responses are automatically pasted at the cursor position (simulates ⌘V). Works for Dictate, Prompt Mode, and Prompt Voice Mode.")
+      Text("When enabled, transcriptions and AI responses are automatically pasted at the cursor position (simulates ⌘V). Works for Dictate, Prompt Mode, and Prompt Read Mode.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)

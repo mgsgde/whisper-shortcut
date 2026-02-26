@@ -108,7 +108,7 @@ class ContextDerivation {
       }
     case .promptAndRead:
       if !currentPromptAndReadSystemPrompt.isEmpty {
-        secondaryParts.append("Current Prompt Voice Mode system prompt (refine based on the user request above):\n\(currentPromptAndReadSystemPrompt)")
+        secondaryParts.append("Current Prompt Read Mode system prompt (refine based on the user request above):\n\(currentPromptAndReadSystemPrompt)")
       }
     }
     let secondaryText = secondaryParts.joined(separator: "\n\n---\n\n")
@@ -199,7 +199,7 @@ class ContextDerivation {
     case .promptMode:
       if let p = currentPromptModeSystemPrompt, !p.isEmpty { secondaryParts.append("Current Prompt Mode system prompt (refine based on new data):\n\(p)") }
     case .promptAndRead:
-      if let p = currentPromptAndReadSystemPrompt, !p.isEmpty { secondaryParts.append("Current Prompt Voice Mode system prompt (refine based on new data):\n\(p)") }
+      if let p = currentPromptAndReadSystemPrompt, !p.isEmpty { secondaryParts.append("Current Prompt Read Mode system prompt (refine based on new data):\n\(p)") }
     }
 
     let otherModes = entriesByMode.filter { $0.key != primaryMode }
@@ -394,7 +394,7 @@ class ContextDerivation {
       IMPORTANT – Only include behavioral rules that are clearly evidenced by the interaction data. \
       Do not invent style preferences or patterns not supported by actual usage.
 
-      Your task: generate a system prompt for the "Prompt Voice Mode". It will be set as the Gemini systemInstruction. \
+      Your task: generate a system prompt for the "Prompt Read Mode". It will be set as the Gemini systemInstruction. \
       Same as Prompt Mode (selected text + voice instruction) but the output is spoken aloud via TTS. \
       Output-format rules are appended at runtime — do NOT include them in your suggested prompt. \
       Focus on behavioral instructions only.
@@ -472,7 +472,7 @@ class ContextDerivation {
         modeName = "Prompt Mode"
         modeDescription = "applying a voice instruction to modify selected/clipboard text"
       case .promptAndRead:
-        modeName = "Prompt Voice Mode"
+        modeName = "Prompt Read Mode"
         modeDescription = "applying a voice instruction to modify selected/clipboard text, with the result read aloud via TTS"
       }
       systemPrompt += """
@@ -483,7 +483,7 @@ class ContextDerivation {
       The app has three separate modes with independent system prompts: \
       (1) Dictation – transcribes speech to text, \
       (2) Prompt Mode – applies voice instructions to selected text, \
-      (3) Prompt Voice Mode – same as Prompt Mode but output is read aloud via TTS. \
+      (3) Prompt Read Mode – same as Prompt Mode but output is read aloud via TTS. \
       If the user's voice instruction clearly targets a DIFFERENT mode and does NOT apply to \(modeName), \
       return ONLY the start and end markers with nothing between them (empty suggestion). \
       For example, if the instruction says "when transcribing, don't add emojis" and this is the Prompt Mode, \
@@ -564,11 +564,11 @@ class ContextDerivation {
       }
     case .promptAndRead:
       if let suggested = extractSection(from: analysisResult, startMarker: promptAndReadSystemPromptMarker, endMarker: promptAndReadSystemPromptEndMarker) {
-        let fileURL = contextDir.appendingPathComponent("suggested-prompt-voice-mode-system-prompt.txt")
+        let fileURL = contextDir.appendingPathComponent("suggested-prompt-read-mode-system-prompt.txt")
         try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
-        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Prompt Voice Mode system prompt (\(suggested.count) chars)")
+        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Prompt Read Mode system prompt (\(suggested.count) chars)")
       } else {
-        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for prompt voice mode")
+        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for prompt read mode")
       }
     }
   }

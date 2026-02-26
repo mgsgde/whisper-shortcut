@@ -135,7 +135,7 @@ class MenuBarController: NSObject {
         shortcut: currentConfig.startPrompting, tag: 102))
     menu.addItem(
       createMenuItemWithShortcut(
-        "Prompt Voice Mode", action: #selector(readSelectedText),
+        "Prompt Read Mode", action: #selector(readSelectedText),
         shortcut: currentConfig.readSelectedText, tag: 104))
     menu.addItem(
       createMenuItemWithShortcut(
@@ -361,7 +361,7 @@ class MenuBarController: NSObject {
     
     updateMenuItem(
       menu, tag: 104,
-      title: appState.recordingMode == .tts ? "Stop Prompt Voice Mode" : "Prompt Voice Mode",
+      title: appState.recordingMode == .tts ? "Stop Prompt Read Mode" : "Prompt Read Mode",
       enabled: (hasAPIKey && !appState.isBusy) || appState.recordingMode == .tts
     )
 
@@ -917,12 +917,12 @@ class MenuBarController: NSObject {
         // Apply prompt mode: selected text (may be nil) + command
         let promptResult = try await speechService.executePromptWithText(textCommand: trimmedCommand, selectedText: selectedText, mode: .promptAndRead)
 
-        // Now TTS the result using Prompt Voice Mode voice
+        // Now TTS the result using Prompt Read Mode voice
         await MainActor.run {
           self.appState = .processing(.ttsProcessing)
         }
 
-        // Get Prompt Voice Mode voice from UserDefaults
+        // Get Prompt Read Mode voice from UserDefaults
         let promptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice) ?? SettingsDefaults.selectedPromptAndReadVoice
         let audioData = try await speechService.readTextAloud(promptResult, voiceName: promptAndReadVoice)
         await MainActor.run {

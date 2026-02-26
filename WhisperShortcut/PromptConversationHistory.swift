@@ -8,7 +8,7 @@ struct PromptHistoryTurn {
   let timestamp: Date
 }
 
-/// Manages conversation history for Prompt Mode and Prompt Voice Mode.
+/// Manages conversation history for Prompt Mode and Prompt Read Mode.
 /// Separate histories are maintained for each mode to avoid context confusion.
 final class PromptConversationHistory {
   static let shared = PromptConversationHistory()
@@ -83,7 +83,7 @@ final class PromptConversationHistory {
       if promptAndReadHistory.count > AppConstants.promptHistoryMaxTurns {
         promptAndReadHistory.removeFirst(promptAndReadHistory.count - AppConstants.promptHistoryMaxTurns)
       }
-      DebugLogger.log("PROMPT-HISTORY: Added turn to Prompt Voice Mode history (total: \(promptAndReadHistory.count))")
+      DebugLogger.log("PROMPT-HISTORY: Added turn to Prompt Read Mode history (total: \(promptAndReadHistory.count))")
     }
   }
 
@@ -97,7 +97,7 @@ final class PromptConversationHistory {
     case .promptAndRead:
       promptAndReadHistory.removeAll()
       promptAndReadLastInteraction = nil
-      DebugLogger.log("PROMPT-HISTORY: Cleared Prompt Voice Mode history")
+      DebugLogger.log("PROMPT-HISTORY: Cleared Prompt Read Mode history")
     }
   }
 
@@ -153,7 +153,7 @@ final class PromptConversationHistory {
       if let lastInteraction = promptAndReadLastInteraction {
         let elapsed = Date().timeIntervalSince(lastInteraction)
         if elapsed > timeout {
-          DebugLogger.log("PROMPT-HISTORY: Prompt Voice Mode history expired (inactive for \(String(format: "%.0f", elapsed))s > \(String(format: "%.0f", timeout))s timeout)")
+          DebugLogger.log("PROMPT-HISTORY: Prompt Read Mode history expired (inactive for \(String(format: "%.0f", elapsed))s > \(String(format: "%.0f", timeout))s timeout)")
           clear(mode: mode)
         }
       }

@@ -33,11 +33,11 @@ struct PromptAndReadSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "⌨️ Keyboard Shortcut",
-        subtitle: "Configure shortcut for prompt voice mode"
+        subtitle: "Configure shortcut for prompt read mode"
       )
 
       ShortcutInputRow(
-        label: "Prompt Voice Mode:",
+        label: "Prompt Read Mode:",
         placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.readSelectedText),
         text: $viewModel.data.readSelectedText,
         isEnabled: $viewModel.data.readSelectedTextEnabled,
@@ -112,7 +112,7 @@ struct PromptAndReadSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "📋 How to Use",
-        subtitle: "Step-by-step instructions for using prompt voice mode"
+        subtitle: "Step-by-step instructions for using prompt read mode"
       )
 
       VStack(alignment: .leading, spacing: 8) {
