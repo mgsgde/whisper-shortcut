@@ -153,14 +153,9 @@ class GeminiAPIClient {
              let content = firstCandidate["content"] as? [String: Any],
              let parts = content["parts"] as? [[String: Any]] {
             let partTypes = parts.map { part -> String in
-              var keys = [String]()
-              if part["text"] != nil { keys.append("text") }
-              if part["executableCode"] != nil || part["executable_code"] != nil { keys.append("executable_code") }
-              if part["codeExecutionResult"] != nil || part["code_execution_result"] != nil { keys.append("code_execution_result") }
-              if keys.isEmpty { keys = Array(part.keys) }
-              return keys.joined(separator: "+")
+              return part.keys.sorted().joined(separator: "+")
             }
-            DebugLogger.logNetwork("GEMINI-CHAT: Response has \(parts.count) part(s): [\(partTypes.joined(separator: ", "))]")
+            DebugLogger.logNetwork("GEMINI-CHAT: Response has \(parts.count) part(s), raw keys: [\(partTypes.joined(separator: ", "))]")
           }
         }
 

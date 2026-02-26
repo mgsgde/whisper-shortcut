@@ -17,7 +17,7 @@ class GeminiWindowController: NSWindowController {
     static let maxWidth: CGFloat = 1200
     static let maxHeight: CGFloat = 1600
 
-    static let windowTitle = "Whisper Shortcut"
+    static let windowTitle = "WhisperShortcut"
     static let frameAutosaveName = "GeminiWindowV4"
   }
 

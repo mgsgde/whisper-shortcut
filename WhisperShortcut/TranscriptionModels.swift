@@ -267,12 +267,6 @@ struct GeminiResponse: Codable {
     /// Result of running the generated code (stdout on success).
     let codeExecutionResult: CodeExecutionResult?
 
-    enum CodingKeys: String, CodingKey {
-      case text
-      case executableCode = "executable_code"
-      case codeExecutionResult = "code_execution_result"
-    }
-
     struct ExecutableCode: Codable {
       let language: String?
       let code: String?
