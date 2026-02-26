@@ -56,6 +56,7 @@ extension Key: Codable {
     case .eight: return "8"
     case .nine: return "9"
     case .escape: return "⎋"
+    case .space: return "Space"
     case .comma: return ","
     case .period: return "."
     case .f1: return "F1"
@@ -121,7 +122,7 @@ struct ShortcutConfig: Codable {
     toggleMeeting: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
     stopMeeting: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
     openSettings: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true),
-    openGemini: ShortcutDefinition(key: .eight, modifiers: [.command], isEnabled: true)
+    openGemini: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true)
   )
 }
 
@@ -383,6 +384,7 @@ class ShortcutConfigManager {
 
       // Special keys
       case "escape", "esc", "⎋": key = .escape
+      case "space", " ": key = .space
       case "comma", ",": key = .comma
       case "period", ".": key = .period
 

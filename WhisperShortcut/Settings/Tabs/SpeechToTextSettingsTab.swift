@@ -81,7 +81,7 @@ struct SpeechToTextSettingsTab: View {
           .textSelection(.enabled)
 
         Text(
-          "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • up • down • left • right • comma • period"
+          "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • space • up • down • left • right • comma • period"
         )
         .font(.callout)
         .foregroundColor(.secondary)

@@ -458,7 +458,7 @@ struct SettingsDefaults {
   // MARK: - Notification Settings
   static let showPopupNotifications = true
   static let notificationPosition = NotificationPosition.leftTop
-  static let notificationDuration = NotificationDuration.threeSeconds
+  static let notificationDuration = NotificationDuration.twoSeconds
   static let errorNotificationDuration = NotificationDuration.thirtySeconds
 
   // MARK: - Recording Safeguards

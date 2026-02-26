@@ -22,7 +22,7 @@ class GeminiChatViewModel: ObservableObject {
   private static let newChatCommand = "/new"
   private static let backChatCommand = "/back"
   private static let clearChatCommands = ["/clear", "/delete"]
-  private static let screenshotCommand = "/screenshot"
+  static let screenshotCommand = "/screenshot"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -485,6 +485,13 @@ struct GeminiChatView: View {
             if text.hasPrefix("/"), !text.isEmpty {
               let matches = viewModel.suggestedCommands(for: text)
               if let first = matches.first {
+                if text.lowercased() == first.lowercased() {
+                  if first.lowercased() == GeminiChatViewModel.screenshotCommand {
+                    Task { await viewModel.sendMessage() }
+                    return .handled
+                  }
+                  return .handled
+                }
                 viewModel.inputText = first
                 return .handled
               }
