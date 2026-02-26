@@ -596,12 +596,12 @@ struct GeminiChatView: View {
             .padding(.horizontal, 15)
             .padding(.vertical, 10)
             .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, maxHeight: Self.inputMaxHeight, alignment: .leading)
-            .opacity(0)
-            .accessibilityHidden(true)
             .background(GeometryReader { geo in
               Color.clear.preference(key: InputTextHeightKey.self, value: geo.size.height)
             })
+            .frame(maxWidth: .infinity, maxHeight: Self.inputMaxHeight, alignment: .leading)
+            .opacity(0)
+            .accessibilityHidden(true)
 
           if viewModel.inputText.isEmpty {
             Text("Message Gemini…")
