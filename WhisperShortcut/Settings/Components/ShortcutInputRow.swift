@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Wiederverwendbare Komponente für Shortcut-Eingabefelder
+/// Reusable component for shortcut input fields in Settings.
 struct ShortcutInputRow: View {
   let label: String
   let placeholder: String

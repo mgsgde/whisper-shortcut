@@ -38,7 +38,7 @@ struct LiveMeetingSettingsTab: View {
 
       ShortcutInputRow(
         label: "Transcribe Meeting:",
-        placeholder: "e.g., command+5",
+        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.toggleMeeting),
         text: $viewModel.data.toggleMeeting,
         isEnabled: $viewModel.data.toggleMeetingEnabled,
         focusedField: .toggleMeeting,
@@ -60,7 +60,7 @@ struct LiveMeetingSettingsTab: View {
           .textSelection(.enabled)
 
         Text(
-          "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • space • up • down • left • right • comma • period"
+          ShortcutConfig.availableKeysHint
         )
         .font(.callout)
         .foregroundColor(.secondary)

@@ -33,7 +33,7 @@ struct SpeechToPromptSettingsTab: View {
 
       ShortcutInputRow(
         label: "Toggle Prompting:",
-        placeholder: "e.g., command+2",
+        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.startPrompting),
         text: $viewModel.data.togglePrompting,
         isEnabled: $viewModel.data.togglePromptingEnabled,
         focusedField: .togglePrompting,
@@ -55,7 +55,7 @@ struct SpeechToPromptSettingsTab: View {
           .textSelection(.enabled)
 
         Text(
-          "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • space • up • down • left • right • comma • period"
+          ShortcutConfig.availableKeysHint
         )
         .font(.callout)
         .foregroundColor(.secondary)

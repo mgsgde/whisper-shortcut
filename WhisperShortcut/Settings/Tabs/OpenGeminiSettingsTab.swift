@@ -30,7 +30,7 @@ struct OpenGeminiSettingsTab: View {
 
       ShortcutInputRow(
         label: "Open Gemini:",
-        placeholder: "e.g., command+7",
+        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.openGemini),
         text: $viewModel.data.openGemini,
         isEnabled: $viewModel.data.openGeminiEnabled,
         focusedField: .toggleGemini,
@@ -51,7 +51,7 @@ struct OpenGeminiSettingsTab: View {
           .textSelection(.enabled)
 
         Text(
-          "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • space • up • down • left • right • comma • period"
+          ShortcutConfig.availableKeysHint
         )
         .font(.callout)
         .foregroundColor(.secondary)

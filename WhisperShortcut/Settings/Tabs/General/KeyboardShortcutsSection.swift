@@ -18,7 +18,7 @@ struct KeyboardShortcutsSection: View {
 
       ShortcutInputRow(
         label: "Toggle Settings:",
-        placeholder: "e.g., command+6",
+        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.openSettings),
         text: $viewModel.data.openSettings,
         isEnabled: $viewModel.data.openSettingsEnabled,
         focusedField: .toggleSettings,
@@ -38,9 +38,7 @@ struct KeyboardShortcutsSection: View {
           .foregroundColor(.secondary)
           .textSelection(.enabled)
 
-        Text(
-          "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • space • up • down • left • right • comma • period"
-        )
+        Text(ShortcutConfig.availableKeysHint)
         .font(.callout)
         .foregroundColor(.secondary)
         .textSelection(.enabled)

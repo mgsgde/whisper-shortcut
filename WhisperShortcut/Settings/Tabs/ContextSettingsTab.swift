@@ -160,7 +160,7 @@ struct ContextSettingsTab: View {
         VStack(alignment: .leading, spacing: 8) {
           ShortcutInputRow(
             label: "Improve from voice:",
-            placeholder: "e.g., command+6",
+            placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.startPromptImprovement),
             text: $viewModel.data.togglePromptImprovement,
             isEnabled: $viewModel.data.togglePromptImprovementEnabled,
             focusedField: .togglePromptImprovement,

@@ -43,7 +43,7 @@ struct ReadAloudSettingsTab: View {
 
       ShortcutInputRow(
         label: "Read Aloud:",
-        placeholder: "e.g., command+4",
+        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.readAloud),
         text: $viewModel.data.readAloud,
         isEnabled: $viewModel.data.readAloudEnabled,
         focusedField: .toggleReadAloud,
@@ -65,7 +65,7 @@ struct ReadAloudSettingsTab: View {
           .textSelection(.enabled)
 
         Text(
-          "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • space • up • down • left • right • comma • period"
+          ShortcutConfig.availableKeysHint
         )
         .font(.callout)
         .foregroundColor(.secondary)

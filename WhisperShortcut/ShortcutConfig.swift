@@ -124,6 +124,15 @@ struct ShortcutConfig: Codable {
     openSettings: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true),
     openGemini: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true)
   )
+
+  /// Single source for the "Available keys" hint text used in all shortcut settings.
+  static let availableKeysHint =
+    "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • space • up • down • left • right • comma • period"
+
+  /// Placeholder for shortcut text fields (e.g. "e.g., command+7"). Use with default so changing defaults updates the UI.
+  static func examplePlaceholder(for definition: ShortcutDefinition) -> String {
+    "e.g., \(definition.textDisplayString)"
+  }
 }
 
 struct ShortcutDefinition: Codable, Equatable, Hashable {
