@@ -74,7 +74,7 @@ struct SpeechErrorFormatter {
 
         The requested resource was not found. This can happen if the selected model is deprecated and no longer available for your account (e.g. Gemini 2.0 Flash).
 
-        Choose a newer model in Settings → Speech-to-Text (e.g. Gemini 2.5 Flash).
+        Choose a newer model in Settings → Dictate (e.g. Gemini 2.5 Flash).
         """
 
     case .rateLimited(let retryAfter):

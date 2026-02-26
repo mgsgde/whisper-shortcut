@@ -13,8 +13,8 @@ enum GenerationKind: Equatable, Codable {
   var improvementDisplayName: String {
     switch self {
     case .dictation: return "Dictation Prompt"
-    case .promptMode: return "Dictate Prompt System Prompt"
-    case .promptAndRead: return "Prompt & Read System Prompt"
+    case .promptMode: return "Prompt Mode System Prompt"
+    case .promptAndRead: return "Prompt Voice Mode System Prompt"
     }
   }
 }
@@ -115,7 +115,7 @@ class SettingsViewModel: ObservableObject {
     // Load read aloud playback rate (clamp to valid range)
     data.readAloudPlaybackRate = SettingsDefaults.clampedReadAloudPlaybackRate()
 
-    // Load Prompt & Read specific settings (with migration from deprecated 2.0 and from Toggle Prompting if not set)
+    // Load Prompt Voice Mode specific settings (with migration from deprecated 2.0 and from Toggle Prompting if not set)
     if let savedPromptAndReadModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadModel),
       let savedPromptAndReadModel = PromptModel(rawValue: savedPromptAndReadModelString)
     {
@@ -125,7 +125,7 @@ class SettingsViewModel: ObservableObject {
         UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedPromptAndReadModel)
       }
     } else {
-      // Migration: Use Toggle Prompting model if Prompt & Read model not set
+      // Migration: Use Toggle Prompting model if Prompt Voice Mode model not set
       data.selectedPromptAndReadModel = data.selectedPromptModel
     }
 
@@ -154,13 +154,13 @@ class SettingsViewModel: ObservableObject {
       data.selectedOpenGeminiModel = SettingsDefaults.selectedOpenGeminiModel
     }
 
-    // Load Prompt & Read voice (with migration from Read Aloud voice if not set)
+    // Load Prompt Voice Mode voice (with migration from Read Aloud voice if not set)
     if let savedPromptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice),
       !savedPromptAndReadVoice.isEmpty
     {
       data.selectedPromptAndReadVoice = savedPromptAndReadVoice
     } else {
-      // Migration: Use Read Aloud voice if Prompt & Read voice not set
+      // Migration: Use Read Aloud voice if Prompt Voice Mode voice not set
       data.selectedPromptAndReadVoice = data.selectedReadAloudVoice
     }
 

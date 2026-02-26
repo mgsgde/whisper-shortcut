@@ -127,7 +127,7 @@ struct SettingsView: View {
     case .speechToText:
       return "Model, prompt, and shortcut"
     case .speechToPrompt:
-      return "Shortcut for dictate prompt"
+      return "Shortcut for prompt mode"
     case .promptAndRead:
       return "Shortcut, prompt, model, and voice"
     case .readAloud:

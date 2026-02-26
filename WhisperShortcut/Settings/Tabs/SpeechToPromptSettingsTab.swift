@@ -97,7 +97,7 @@ struct SpeechToPromptSettingsTab: View {
           .textSelection(.enabled)
         Text("2. Press your configured shortcut")
           .textSelection(.enabled)
-        Text("3. Dictate your prompt instruction")
+        Text("3. Speak your prompt instruction")
           .textSelection(.enabled)
         Text("4. Press the shortcut again to stop")
           .textSelection(.enabled)

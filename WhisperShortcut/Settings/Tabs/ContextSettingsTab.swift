@@ -76,7 +76,7 @@ struct ContextSettingsTab: View {
         subtitle: "All system prompts in one file. Edit the sections between the === headers. Save to apply."
       )
 
-      Text("Edit sections: Dictation (Speech-to-Text), Dictate Prompt, Prompt & Read.")
+      Text("Edit sections: Dictation (Speech-to-Text), Prompt Mode, Prompt Voice Mode.")
         .font(.caption)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -172,7 +172,7 @@ struct ContextSettingsTab: View {
             },
             validateShortcut: viewModel.validateShortcut
           )
-          Text("Give feedback by voice to improve all system prompts (dictation, Dictate Prompt, Prompt & Read). Same as the menu bar item \"Improve from voice\".")
+          Text("Give feedback by voice to improve all system prompts (dictation, Prompt Mode, Prompt Voice Mode). Same as the menu bar item \"Improve from voice\".")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)

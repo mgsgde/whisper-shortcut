@@ -20,7 +20,7 @@ Guardrails – this is a DICTATION/TRANSCRIPTION task only. The audio contains s
 Output: Return only the clean transcribed text. Do not repeat these instructions, include meta-commentary, the word "transcription", or any part of this prompt. Start directly with the transcribed words.
 """
 
-  /// Dictate Prompt system prompt. Structure: Persona → Input/task → Guardrails. Output rule is appended at runtime.
+  /// Prompt Mode system prompt. Structure: Persona → Input/task → Guardrails. Output rule is appended at runtime.
   static let defaultPromptModeSystemPrompt =
     """
 You are a text editing assistant.
@@ -30,7 +30,7 @@ Input and task: The user provides (1) SELECTED TEXT from the clipboard and (2) a
 Guardrails: Return only the modified text. No explanations, meta-commentary, or decorative markdown (no **bold**, # headers, code blocks). No intros (e.g. "Here is...") or outros (e.g. "Let me know if..."). Return only the clean, modified text. When the user wants a list or bullet points, use a leading dash and space (- ) per item and indent sub-items with spaces so they paste with correct indentation.
 """
 
-  /// Prompt & Read system prompt. Same as Dictate Prompt; output is read aloud via TTS.
+  /// Prompt Voice Mode system prompt. Same as Prompt Mode; output is read aloud via TTS.
   static let defaultPromptAndReadSystemPrompt =
     """
 You are a text editing assistant. Your output will be read aloud to the user.

@@ -250,7 +250,7 @@ class SpeechService {
       throw TranscriptionError.noGoogleAPIKey
     }
 
-    DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt & Read"))")
+    DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt Voice Mode"))")
 
     // Run transcription for history in parallel with main prompt (no extra latency)
     let transcriptionTask = Task<String, Never> {
@@ -482,7 +482,7 @@ class SpeechService {
     }
 
     let hasSelectedText = selectedText != nil && !selectedText!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt & Read"), hasSelectedText: \(hasSelectedText))")
+    DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt Voice Mode"), hasSelectedText: \(hasSelectedText))")
 
     // Get selected model from settings based on mode
     let selectedPromptModel = getPromptModel(for: mode)

@@ -3,6 +3,12 @@ import SwiftUI
 
 class GeminiWindowController: NSWindowController {
 
+  /// Key codes for arrow keys (NSEvent.keyCode).
+  private static let keyCodeUpArrow: UInt16 = 126
+  private static let keyCodeDownArrow: UInt16 = 125
+
+  private var keyDownMonitor: Any?
+
   // MARK: - Constants
   private enum Constants {
     static let preferredWidth: CGFloat = 960
@@ -40,6 +46,7 @@ class GeminiWindowController: NSWindowController {
 
     super.init(window: window)
     window.delegate = self
+    setupCmdArrowScrollMonitor()
 
     // When no frame was saved yet, use preferred size and position bottom-right.
     // Without this, the window can end up with a wrong size (e.g. from content or defaults).
@@ -93,7 +100,36 @@ class GeminiWindowController: NSWindowController {
       positionBottomRight(on: currentScreen, window: window)
     }
   }
+
+  /// Cmd+Up / Cmd+Down scroll the chat to top/bottom even when the text field is focused.
+  private func setupCmdArrowScrollMonitor() {
+    keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+      guard let self, let win = self.window, win.isKeyWindow else { return event }
+      guard event.modifierFlags.contains(.command) else { return event }
+      switch event.keyCode {
+      case Self.keyCodeUpArrow:
+        NotificationCenter.default.post(name: .geminiScrollToTop, object: nil)
+        return nil
+      case Self.keyCodeDownArrow:
+        NotificationCenter.default.post(name: .geminiScrollToBottom, object: nil)
+        return nil
+      default:
+        return event
+      }
+    }
+  }
+
+  private func removeCmdArrowScrollMonitor() {
+    if let monitor = keyDownMonitor {
+      NSEvent.removeMonitor(monitor)
+      keyDownMonitor = nil
+    }
+  }
 }
 
 // MARK: - NSWindowDelegate
-extension GeminiWindowController: NSWindowDelegate {}
+extension GeminiWindowController: NSWindowDelegate {
+  func windowWillClose(_ notification: Notification) {
+    removeCmdArrowScrollMonitor()
+  }
+}

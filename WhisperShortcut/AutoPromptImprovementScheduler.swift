@@ -46,7 +46,7 @@ class AutoPromptImprovementScheduler {
     await processNextInQueue()
   }
 
-  /// Runs improvement for all foci (Dictation, Dictate Prompt, Prompt & Read) using a transcribed voice instruction as the primary signal.
+  /// Runs improvement for all foci (Dictation, Prompt Mode, Prompt Voice Mode) using a transcribed voice instruction as the primary signal.
   /// Used by the "Improve from voice" shortcut / flow. Does not require interaction logs.
   /// When runInBackground is true, no persistent processing popup is shown; only auto-dismissing info notifications. No clipboard copy on success.
   /// If a run is already in progress, enqueues this job and notifies the user.
@@ -324,7 +324,7 @@ class AutoPromptImprovementScheduler {
     case .promptMode:
       fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
     case .promptAndRead:
-      fileURL = contextDir.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
+      fileURL = contextDir.appendingPathComponent("suggested-prompt-voice-mode-system-prompt.txt")
     }
 
     guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else {
@@ -354,7 +354,7 @@ class AutoPromptImprovementScheduler {
     case .promptMode:
       fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
     case .promptAndRead:
-      fileURL = contextDir.appendingPathComponent("suggested-prompt-and-read-system-prompt.txt")
+      fileURL = contextDir.appendingPathComponent("suggested-prompt-voice-mode-system-prompt.txt")
     }
 
     guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else {

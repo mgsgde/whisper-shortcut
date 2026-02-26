@@ -2,7 +2,7 @@
 //  SystemPromptsStore.swift
 //  WhisperShortcut
 //
-//  Single file storage for all system prompts (Dictation, Dictate Prompt, Prompt & Read).
+//  Single file storage for all system prompts (Dictation, Prompt Mode, Prompt Voice Mode).
 //  Reads/writes UserContext/system-prompts.md with section headers. Migrates from UserDefaults when missing.
 //
 
@@ -17,17 +17,23 @@ enum SystemPromptSection: String, CaseIterable {
   var fileHeader: String {
     switch self {
     case .dictation: return "=== Dictation (Speech-to-Text) ==="
-    case .promptMode: return "=== Dictate Prompt ==="
-    case .promptAndRead: return "=== Prompt & Read ==="
+    case .promptMode: return "=== Prompt Mode ==="
+    case .promptAndRead: return "=== Prompt Voice Mode ==="
     }
   }
+
+  /// Legacy headers supported for backward compatibility when reading existing files.
+  private static let legacyHeaders: [String: SystemPromptSection] = [
+    "=== Dictate Prompt ===": .promptMode,
+    "=== Prompt & Read ===": .promptAndRead,
+  ]
 
   static func section(forHeader line: String) -> SystemPromptSection? {
     let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
     for section in SystemPromptSection.allCases where trimmed == section.fileHeader {
       return section
     }
-    return nil
+    return legacyHeaders[trimmed]
   }
 }
 
@@ -58,13 +64,13 @@ final class SystemPromptsStore {
       ?? AppConstants.defaultTranscriptionSystemPrompt
   }
 
-  /// Dictate Prompt system prompt. Returns default if section missing or empty.
+  /// Prompt Mode system prompt. Returns default if section missing or empty.
   func loadDictatePromptSystemPrompt() -> String {
     (loadSection(.promptMode)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
       ?? AppConstants.defaultPromptModeSystemPrompt
   }
 
-  /// Prompt & Read system prompt. Returns default if section missing or empty.
+  /// Prompt Voice Mode system prompt. Returns default if section missing or empty.
   func loadPromptAndReadSystemPrompt() -> String {
     (loadSection(.promptAndRead)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
       ?? AppConstants.defaultPromptAndReadSystemPrompt

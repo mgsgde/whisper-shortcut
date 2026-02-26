@@ -233,16 +233,23 @@ class GeminiChatViewModel: ObservableObject {
 
 // MARK: - Main View
 
+/// Holds scroll callbacks so Cmd+Up/Down can scroll the message list from anywhere (e.g. when the text field is focused).
+private final class GeminiScrollActions {
+  var scrollToTop: (() -> Void)?
+  var scrollToBottom: (() -> Void)?
+}
+
 struct GeminiChatView: View {
   @StateObject private var viewModel = GeminiChatViewModel()
   @FocusState private var inputFocused: Bool
   @State private var showingScreenshotPreview = false
+  @State private var scrollActions = GeminiScrollActions()
 
   var body: some View {
     VStack(spacing: 0) {
       headerBar
       Divider()
-      messageList
+      messageList(scrollActions: scrollActions)
       if let error = viewModel.errorMessage {
         errorBanner(error)
       }
@@ -265,6 +272,12 @@ struct GeminiChatView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiClearChat)) { _ in
       viewModel.clearMessages()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .geminiScrollToTop)) { _ in
+      scrollActions.scrollToTop?()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .geminiScrollToBottom)) { _ in
+      scrollActions.scrollToBottom?()
     }
   }
 
@@ -341,10 +354,11 @@ struct GeminiChatView: View {
 
   // MARK: - Message List
 
-  private var messageList: some View {
+  private func messageList(scrollActions: GeminiScrollActions) -> some View {
     ScrollViewReader { proxy in
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 18) {
+          Color.clear.frame(height: 1).id("listTop")
           if viewModel.messages.isEmpty && !viewModel.isSending {
             emptyStateCommandHints
           }
@@ -363,11 +377,29 @@ struct GeminiChatView: View {
         .padding(.bottom, 28)
       }
       .onAppear {
+        scrollActions.scrollToTop = { scrollToTop(proxy: proxy) }
+        scrollActions.scrollToBottom = { scrollToBottom(proxy: proxy) }
+      }
+      .onAppear {
         // Only scroll when the chat view first appears (open window), so the user sees the latest messages.
         // Do not scroll when new messages arrive — the user stays where they are and scrolls down when ready to read.
         scrollToBottom(proxy: proxy)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
           scrollToBottom(proxy: proxy)
+        }
+      }
+      .focusable()
+      .onKeyPress { keyPress in
+        guard keyPress.modifiers.contains(.command) else { return .ignored }
+        switch keyPress.key {
+        case .upArrow:
+          scrollActions.scrollToTop?()
+          return .handled
+        case .downArrow:
+          scrollActions.scrollToBottom?()
+          return .handled
+        default:
+          return .ignored
         }
       }
     }
@@ -396,6 +428,12 @@ struct GeminiChatView: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.vertical, 16)
+  }
+
+  private func scrollToTop(proxy: ScrollViewProxy) {
+    withAnimation(.easeOut(duration: 0.2)) {
+      proxy.scrollTo("listTop", anchor: .top)
+    }
   }
 
   private func scrollToBottom(proxy: ScrollViewProxy) {
