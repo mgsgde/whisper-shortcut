@@ -26,7 +26,7 @@ class GeminiChatViewModel: ObservableObject {
   /// Commands are slash-only (e.g. /stop, /new); do not use hotkeys/shortcuts for command actions.
   private static let newChatCommand = "/new"
   private static let backChatCommand = "/back"
-  private static let clearChatCommands = ["/clear", "/delete"]
+  private static let clearChatCommands = ["/clear"]
   static let screenshotCommand = "/screenshot"
   private static let stopCommand = "/stop"
   private static let settingsCommand = "/settings"
@@ -36,7 +36,6 @@ class GeminiChatViewModel: ObservableObject {
     ("/new", "Start a new chat (previous chat stays in history)"),
     ("/back", "Switch to the previous chat"),
     ("/clear", "Clear current chat messages"),
-    ("/delete", "Clear current chat messages"),
     ("/screenshot", "Capture screen (attached to your next message)"),
     ("/settings", "Open Settings"),
     ("/stop", "Stop sending (while a message is being sent)")
@@ -452,27 +451,27 @@ struct GeminiChatView: View {
   private var emptyStateCommandHints: some View {
     VStack(alignment: .leading, spacing: 12) {
       Text("Commands")
-        .font(.subheadline)
+        .font(.headline)
         .fontWeight(.semibold)
         .foregroundColor(GeminiChatTheme.secondaryText)
-      VStack(alignment: .leading, spacing: 6) {
+      VStack(alignment: .leading, spacing: 8) {
         Text("/new — Start a new chat (previous chat stays in history)")
-          .font(.callout)
+          .font(.body)
           .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/back — Switch to the previous chat")
-          .font(.callout)
+          .font(.body)
           .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/screenshot — Capture screen (attached to your next message)")
-          .font(.callout)
+          .font(.body)
           .foregroundColor(GeminiChatTheme.secondaryText)
-        Text("/clear or /delete — Clear current chat messages")
-          .font(.callout)
+        Text("/clear — Clear current chat messages")
+          .font(.body)
           .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/settings — Open Settings")
-          .font(.callout)
+          .font(.body)
           .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/stop — Stop sending (while a message is being sent)")
-          .font(.callout)
+          .font(.body)
           .foregroundColor(GeminiChatTheme.secondaryText)
       }
     }
