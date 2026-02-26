@@ -13,12 +13,14 @@ enum SystemPromptSection: String, CaseIterable {
   case dictation = "dictation"
   case promptMode = "promptMode"
   case promptAndRead = "promptAndRead"
+  case geminiChat = "geminiChat"
 
   var fileHeader: String {
     switch self {
     case .dictation: return "=== Dictation (Speech-to-Text) ==="
     case .promptMode: return "=== Prompt Mode ==="
     case .promptAndRead: return "=== Prompt Read Mode ==="
+    case .geminiChat: return "=== Gemini Chat ==="
     }
   }
 
@@ -75,6 +77,12 @@ final class SystemPromptsStore {
   func loadPromptAndReadSystemPrompt() -> String {
     (loadSection(.promptAndRead)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
       ?? AppConstants.defaultPromptAndReadSystemPrompt
+  }
+
+  /// Gemini Chat system prompt. Returns default if section missing or empty.
+  func loadGeminiChatSystemPrompt() -> String {
+    (loadSection(.geminiChat)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+      ?? AppConstants.defaultGeminiChatSystemPrompt
   }
 
   /// Load full file content for the editor. Returns default formatted content if file missing (after migration attempt).
@@ -159,6 +167,7 @@ final class SystemPromptsStore {
       .dictation: AppConstants.defaultTranscriptionSystemPrompt,
       .promptMode: AppConstants.defaultPromptModeSystemPrompt,
       .promptAndRead: AppConstants.defaultPromptAndReadSystemPrompt,
+      .geminiChat: AppConstants.defaultGeminiChatSystemPrompt,
     ])
   }
 
@@ -203,6 +212,7 @@ final class SystemPromptsStore {
       .dictation: dictation,
       .promptMode: promptMode,
       .promptAndRead: promptAndRead,
+      .geminiChat: AppConstants.defaultGeminiChatSystemPrompt,
     ])
     do {
       try content.write(to: fileURL, atomically: true, encoding: .utf8)

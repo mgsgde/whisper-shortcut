@@ -223,7 +223,7 @@ struct ContextSettingsTab: View {
                 .font(.callout)
             }
             .buttonStyle(.bordered)
-            .help("Start recording to improve prompts and user context by voice (same as the Improve from voice shortcut)")
+            .help("Start recording to improve prompts by voice (same as the Improve from voice shortcut)")
           }
 
           Text("Copies the current selection to the clipboard, then records your voice. Say how you want dictation, prompts, or your profile to change (e.g. \"always add bullet points\", \"I work in legal\"). Uses the same shortcut as in the menu bar.")

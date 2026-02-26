@@ -29,6 +29,7 @@ class GeminiChatViewModel: ObservableObject {
   private static let clearChatCommands = ["/clear", "/delete"]
   static let screenshotCommand = "/screenshot"
   private static let stopCommand = "/stop"
+  private static let settingsCommand = "/settings"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -37,6 +38,7 @@ class GeminiChatViewModel: ObservableObject {
     ("/clear", "Clear current chat messages"),
     ("/delete", "Clear current chat messages"),
     ("/screenshot", "Capture screen (attached to your next message)"),
+    ("/settings", "Open Settings"),
     ("/stop", "Stop sending (while a message is being sent)")
   ]
 
@@ -117,11 +119,13 @@ class GeminiChatViewModel: ObservableObject {
 
     // Slash commands: do not send to API
     if lower == Self.newChatCommand || lower == Self.backChatCommand
-        || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand {
+        || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
+        || lower == Self.settingsCommand {
       inputText = ""
       if lower == Self.newChatCommand { createNewSession() }
       else if lower == Self.backChatCommand { goBack() }
       else if Self.clearChatCommands.contains(lower) { clearMessages() }
+      else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else { await captureScreenshot() }
       return
     }
@@ -148,7 +152,7 @@ class GeminiChatViewModel: ObservableObject {
         let model = Self.resolveOpenGeminiModel()
         let result = try await apiClient.sendChatMessage(
           model: model, contents: contents, apiKey: apiKey, useGrounding: true,
-          systemInstruction: Self.openGeminiSystemInstruction)
+          systemInstruction: Self.buildGeminiChatSystemInstruction())
         let modelMsg = ChatMessage(
           role: .model,
           content: result.text,
@@ -175,21 +179,11 @@ class GeminiChatViewModel: ObservableObject {
 
   // MARK: - Private
 
-  /// System instruction for the Open Gemini chat: structure, emojis in headings, bold for key terms.
-  private static let openGeminiSystemInstruction: [String: Any] = {
-    let text = """
-    Answer in a natural way:
-
-    - For simple questions that need only a brief answer (e.g. "What's the weather?", "What time is it?"), reply directly with that answer. Do not add "In short:" or similar.
-
-    - For complex questions or when your answer has multiple sections, use this structure:
-      1) First paragraph: Start with "In short:" (or the equivalent in the user's language, e.g. "Kurz gesagt:") followed by one or two sentences that directly answer the question.
-      2) Then a blank line and the detailed answer. You must use markdown headings for each section: write "## " for main sections and "### " for subsections. Every heading must start with a relevant emoji on the same line (e.g. "## 🌍 Europa", "### 📋 Details"). Leave a blank line before and after each heading.
-
-    Use **bold** for key terms when helpful.
-    """
+  /// Builds the system instruction for the Open Gemini chat from the stored Gemini Chat system prompt (Settings > Context > system-prompts.md).
+  private static func buildGeminiChatSystemInstruction() -> [String: Any] {
+    let text = SystemPromptsStore.shared.loadGeminiChatSystemPrompt()
     return ["parts": [["text": text]]]
-  }()
+  }
 
   /// Resolves the model ID for the Open Gemini chat window from UserDefaults (Settings > Open Gemini).
   private static func resolveOpenGeminiModel() -> String {
@@ -265,12 +259,21 @@ private final class GeminiScrollActions {
   var scrollToBottom: (() -> Void)?
 }
 
+/// PreferenceKey that propagates the measured height of the hidden Text used to size the input field.
+private struct InputTextHeightKey: PreferenceKey {
+  static var defaultValue: CGFloat = 0
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    value = max(value, nextValue())
+  }
+}
+
 struct GeminiChatView: View {
   @StateObject private var viewModel = GeminiChatViewModel()
   @FocusState private var inputFocused: Bool
   /// Image data to show in the full-size preview sheet (from pending screenshot or from a sent message thumbnail).
   @State private var previewImageData: Data? = nil
   @State private var scrollActions = GeminiScrollActions()
+  @State private var measuredInputHeight: CGFloat = 0
 
   var body: some View {
     GeometryReader { geometry in
@@ -460,6 +463,9 @@ struct GeminiChatView: View {
         Text("/clear or /delete — Clear current chat messages")
           .font(.callout)
           .foregroundColor(.secondary)
+        Text("/settings — Open Settings")
+          .font(.callout)
+          .foregroundColor(.secondary)
         Text("/stop — Stop sending (while a message is being sent)")
           .font(.callout)
           .foregroundColor(.secondary)
@@ -551,27 +557,34 @@ struct GeminiChatView: View {
 
   // MARK: - Input Bar
 
-  /// Line height matching .body so each line has enough space (padding is separate).
-  private static let inputLineHeight: CGFloat = 22
-  /// Extra top space so the first line is not clipped by the text view’s internal layout.
-  private static let inputTopBuffer: CGFloat = 6
   /// Minimum input area height (one line).
-  private static let inputMinHeight: CGFloat = 36
+  private static let inputMinHeight: CGFloat = 40
   /// Maximum input area height (many lines); content scrolls when taller.
-  private static let inputMaxHeight: CGFloat = 240
+  private static let inputMaxHeight: CGFloat = 180
+
+  private var inputHeight: CGFloat {
+    min(Self.inputMaxHeight, max(Self.inputMinHeight, measuredInputHeight))
+  }
 
   private var inputBar: some View {
-    let normalized = viewModel.inputText.replacingOccurrences(of: "\r\n", with: "\n")
-    let lineCount = max(1, normalized.components(separatedBy: .newlines).count)
-    let contentHeight = CGFloat(lineCount) * Self.inputLineHeight
-    let inputHeight = min(Self.inputMaxHeight, max(Self.inputMinHeight, 20 + Self.inputTopBuffer + contentHeight))
-
     return VStack(alignment: .leading, spacing: 8) {
       if viewModel.pendingScreenshot != nil {
         pendingScreenshotThumbnail(onTapThumbnail: { previewImageData = viewModel.pendingScreenshot })
       }
       HStack(alignment: .bottom, spacing: 8) {
         ZStack(alignment: .topLeading) {
+          Text(viewModel.inputText.isEmpty ? " " : viewModel.inputText)
+            .font(.body)
+            .padding(.horizontal, 15)
+            .padding(.vertical, 10)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(0)
+            .accessibilityHidden(true)
+            .background(GeometryReader { geo in
+              Color.clear.preference(key: InputTextHeightKey.self, value: geo.size.height)
+            })
+
           if viewModel.inputText.isEmpty {
             Text("Message Gemini…")
               .font(.body)
@@ -628,6 +641,7 @@ struct GeminiChatView: View {
             .background(GeminiInputScrollViewAutohideAnchor())
         }
         .frame(height: inputHeight)
+        .onPreferenceChange(InputTextHeightKey.self) { measuredInputHeight = $0 }
         .background(Color(NSColor.controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
 
@@ -956,6 +970,45 @@ private struct ModelReplyView: View {
   }
 }
 
+// MARK: - Read Aloud Button (under model replies)
+
+private struct ReadAloudButtonView: View {
+  let messageContent: String
+  @State private var isHovered = false
+
+  var body: some View {
+    Button {
+      NotificationCenter.default.post(
+        name: .geminiReadAloud,
+        object: nil,
+        userInfo: [Notification.Name.geminiReadAloudTextKey: messageContent]
+      )
+    } label: {
+      HStack(spacing: 5) {
+        Image(systemName: "speaker.wave.2")
+          .font(.system(size: 12))
+        Text("Read Aloud")
+          .font(.caption)
+      }
+      .foregroundColor(isHovered ? .primary : .secondary)
+      .padding(.horizontal, 10)
+      .padding(.vertical, 6)
+      .frame(minHeight: 28)
+      .contentShape(Rectangle())
+      .background(
+        RoundedRectangle(cornerRadius: 6)
+          .fill(isHovered ? Color(NSColor.controlBackgroundColor).opacity(0.9) : Color(NSColor.controlBackgroundColor).opacity(0.5))
+      )
+    }
+    .buttonStyle(.plain)
+    .onHover { inside in
+      isHovered = inside
+    }
+    .help("Read this reply aloud")
+    .accessibilityLabel("Read this reply aloud")
+  }
+}
+
 // MARK: - Message Bubble
 
 private struct MessageBubbleView: View {
@@ -967,6 +1020,9 @@ private struct MessageBubbleView: View {
   var body: some View {
     VStack(alignment: isUser ? .trailing : .leading, spacing: 2) {
       bubbleContent
+      if !isUser {
+        readAloudButtonRow
+      }
       if !message.sources.isEmpty {
         sourcesView
       }
@@ -1019,6 +1075,18 @@ private struct MessageBubbleView: View {
         content: message.content,
         sources: message.sources,
         groundingSupports: message.groundingSupports)
+    }
+  }
+
+  /// Read Aloud action row for assistant replies; hidden when content is empty.
+  private var readAloudButtonRow: some View {
+    let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+    return Group {
+      if !trimmed.isEmpty {
+        ReadAloudButtonView(messageContent: message.content)
+          .padding(.top, 8)
+          .padding(.bottom, 4)
+      }
     }
   }
 

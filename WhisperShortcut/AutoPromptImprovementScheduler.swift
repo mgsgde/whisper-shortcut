@@ -144,7 +144,7 @@ class AutoPromptImprovementScheduler {
       )
     }
     let derivation = ContextDerivation()
-    let foci: [GenerationKind] = [.dictation, .promptMode, .promptAndRead]
+    let foci: [GenerationKind] = [.dictation, .promptMode, .promptAndRead, .geminiChat]
     typealias FocusResult = (focus: GenerationKind, error: Error?)
     let results: [FocusResult] = await withTaskGroup(of: FocusResult.self) { group in
       for focus in foci {
@@ -240,7 +240,7 @@ class AutoPromptImprovementScheduler {
     var pendingKinds: [GenerationKind] = []
 
     // Run derivation for each focus
-    let focuses: [GenerationKind] = [.dictation, .promptMode, .promptAndRead]
+    let focuses: [GenerationKind] = [.dictation, .promptMode, .promptAndRead, .geminiChat]
 
     for focus in focuses {
       do {
@@ -325,6 +325,8 @@ class AutoPromptImprovementScheduler {
       fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
     case .promptAndRead:
       fileURL = contextDir.appendingPathComponent("suggested-prompt-read-mode-system-prompt.txt")
+    case .geminiChat:
+      fileURL = contextDir.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
     }
 
     guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else {
@@ -341,6 +343,7 @@ class AutoPromptImprovementScheduler {
     case .dictation: return store.loadDictationPrompt()
     case .promptMode: return store.loadDictatePromptSystemPrompt()
     case .promptAndRead: return store.loadPromptAndReadSystemPrompt()
+    case .geminiChat: return store.loadSection(.geminiChat) ?? ""
     }
   }
 
@@ -355,6 +358,8 @@ class AutoPromptImprovementScheduler {
       fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
     case .promptAndRead:
       fileURL = contextDir.appendingPathComponent("suggested-prompt-read-mode-system-prompt.txt")
+    case .geminiChat:
+      fileURL = contextDir.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
     }
 
     guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else {
@@ -371,6 +376,7 @@ class AutoPromptImprovementScheduler {
     case .dictation: ContextLogger.shared.deleteSuggestedDictationPromptFile()
     case .promptMode: ContextLogger.shared.deleteSuggestedSystemPromptFile()
     case .promptAndRead: ContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
+    case .geminiChat: ContextLogger.shared.deleteSuggestedGeminiChatSystemPromptFile()
     }
   }
 
@@ -403,6 +409,7 @@ private extension GenerationKind {
     case .dictation: return .dictation
     case .promptMode: return .promptMode
     case .promptAndRead: return .promptAndRead
+    case .geminiChat: return .geminiChat
     }
   }
 }

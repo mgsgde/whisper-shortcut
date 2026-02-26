@@ -44,6 +44,20 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
   static let promptModeOutputRule =
     "\n\nCRITICAL – Output format: Return ONLY the raw result text. No meta-information, no explanations, no preamble (e.g. \"Here is...\"), no closing phrases. No decorative markdown (**bold**, # headers); bullet points with leading dash and space (- ) are allowed—use spaces to indent sub-bullets. Just the plain result that the user can paste directly."
 
+  /// Default system prompt for the Open Gemini chat window. Structure: Persona → Task → Guardrails → Output.
+  static let defaultGeminiChatSystemPrompt =
+    """
+Answer in a natural way:
+
+- For simple questions that need only a brief answer (e.g. "What's the weather?", "What time is it?"), reply directly with that answer. Do not add "In short:" or similar.
+
+- For complex questions or when your answer has multiple sections, use this structure:
+  1) First paragraph: Start with "In short:" (or the equivalent in the user's language) followed by one or two sentences that directly answer the question.
+  2) Then a blank line and the detailed answer. You must use markdown headings for each section: write "## " for main sections and "### " for subsections. Every heading must start with a relevant emoji on the same line (e.g. "## 🌍 Europa", "### 📋 Details"). Leave a blank line before and after each heading.
+
+Use **bold** for key terms when helpful.
+"""
+
   // MARK: - Support Contact
   static let whatsappSupportNumber = "+4917641952181"
   static let githubRepositoryURL = "https://github.com/mgsgde/whisper-shortcut"

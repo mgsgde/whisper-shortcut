@@ -32,6 +32,8 @@ class ContextDerivation {
   private let promptAndReadSystemPromptEndMarker = "===SUGGESTED_PROMPT_AND_READ_SYSTEM_PROMPT_END==="
   private let dictationPromptMarker = "===SUGGESTED_DICTATION_PROMPT_START==="
   private let dictationPromptEndMarker = "===SUGGESTED_DICTATION_PROMPT_END==="
+  private let geminiChatPromptMarker = "===SUGGESTED_GEMINI_CHAT_SYSTEM_PROMPT_START==="
+  private let geminiChatPromptEndMarker = "===SUGGESTED_GEMINI_CHAT_SYSTEM_PROMPT_END==="
 
   // MARK: - Main Entry Point
 
@@ -48,11 +50,13 @@ class ContextDerivation {
     let currentPromptModeSystemPrompt = store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentPromptAndReadSystemPrompt = store.loadPromptAndReadSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentDictationPrompt = store.loadDictationPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentGeminiChatPrompt = store.loadSection(.geminiChat)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
     let loaded = try loadAndSampleLogs(focus: focus,
                                        currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
                                        currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
-                                       currentDictationPrompt: currentDictationPrompt)
+                                       currentDictationPrompt: currentDictationPrompt,
+                                       currentGeminiChatPrompt: currentGeminiChatPrompt)
 
     let hasPrimary = !loaded.primaryText.isEmpty
     if hasPrimary {
@@ -89,6 +93,7 @@ class ContextDerivation {
     let currentPromptModeSystemPrompt = store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentPromptAndReadSystemPrompt = store.loadPromptAndReadSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentDictationPrompt = store.loadDictationPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentGeminiChatPrompt = store.loadSection(.geminiChat)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
     var primaryParts: [String] = ["User request to change behavior:\n\n\(voiceInstruction)"]
     if let sel = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines), !sel.isEmpty {
@@ -109,6 +114,10 @@ class ContextDerivation {
     case .promptAndRead:
       if !currentPromptAndReadSystemPrompt.isEmpty {
         secondaryParts.append("Current Prompt Read Mode system prompt (refine based on the user request above):\n\(currentPromptAndReadSystemPrompt)")
+      }
+    case .geminiChat:
+      if !currentGeminiChatPrompt.isEmpty {
+        secondaryParts.append("Current Gemini Chat system prompt (refine based on the user request above):\n\(currentGeminiChatPrompt)")
       }
     }
     let secondaryText = secondaryParts.joined(separator: "\n\n---\n\n")
@@ -135,6 +144,7 @@ class ContextDerivation {
     case .dictation: return "transcription"
     case .promptMode: return "prompt"
     case .promptAndRead: return "promptAndRead"
+    case .geminiChat: return nil  // Use all modes combined in loadAndSampleLogs
     }
   }
 
@@ -142,7 +152,8 @@ class ContextDerivation {
     focus: GenerationKind,
     currentPromptModeSystemPrompt: String?,
     currentPromptAndReadSystemPrompt: String?,
-    currentDictationPrompt: String?
+    currentDictationPrompt: String?,
+    currentGeminiChatPrompt: String? = nil
   ) throws -> FocusedLoadResult {
     let maxPerMode = UserDefaults.standard.object(forKey: UserDefaultsKeys.contextMaxEntriesPerMode) as? Int
       ?? AppConstants.contextDefaultMaxEntriesPerMode
@@ -164,6 +175,28 @@ class ContextDerivation {
               let entry = try? decoder.decode(InteractionLogEntry.self, from: data) else { continue }
         entriesByMode[entry.mode, default: []].append(entry)
       }
+    }
+
+    // Gemini Chat: use all modes combined as primary; secondary is current Gemini Chat prompt.
+    if focus == .geminiChat {
+      var allEntries: [InteractionLogEntry] = []
+      for (_, entries) in entriesByMode {
+        allEntries.append(contentsOf: entries)
+      }
+      allEntries.sort { $0.ts < $1.ts }
+      let (primaryText, primaryEntryCount, primaryCharCount) = buildAggregatedText(from: allEntries, maxChars: maxChars)
+      var secondaryParts: [String] = []
+      if let p = currentGeminiChatPrompt, !p.isEmpty {
+        secondaryParts.append("Current Gemini Chat system prompt (refine based on new data):\n\(p)")
+      }
+      let secondaryText = secondaryParts.joined(separator: "\n\n---\n\n")
+      return FocusedLoadResult(
+        primaryText: primaryText,
+        secondaryText: secondaryText,
+        primaryEntryCount: primaryEntryCount,
+        primaryCharCount: primaryCharCount,
+        secondaryCharCount: secondaryText.count
+      )
     }
 
     let now = Date()
@@ -200,6 +233,8 @@ class ContextDerivation {
       if let p = currentPromptModeSystemPrompt, !p.isEmpty { secondaryParts.append("Current Prompt Mode system prompt (refine based on new data):\n\(p)") }
     case .promptAndRead:
       if let p = currentPromptAndReadSystemPrompt, !p.isEmpty { secondaryParts.append("Current Prompt Read Mode system prompt (refine based on new data):\n\(p)") }
+    case .geminiChat:
+      break  // Handled above
     }
 
     let otherModes = entriesByMode.filter { $0.key != primaryMode }
@@ -444,6 +479,30 @@ class ContextDerivation {
       Match the language of the instruction in your response.
       \(promptAndReadSystemPromptEndMarker)
       """
+
+    case .geminiChat:
+      return """
+      You are analyzing a user's interaction history with a voice-to-text application called WhisperShortcut. \
+      The interactions include dictation (transcription), prompt mode (voice instructions applied to selected text), and prompt-and-read (same with TTS output).
+
+      Your task: generate a system prompt for the "Gemini Chat" mode. This is the system instruction for the app's Open Gemini chat window — a general-purpose chat where the user can ask questions, get summaries, or request structured answers. \
+      Use the interaction data (all modes) to infer the user's preferences: language, tone, domains (e.g. software, projects), and any style rules (e.g. "In short:", headings with emojis, bold for key terms). \
+      If a current Gemini Chat prompt is provided, refine it based on the data; do not rewrite from scratch unless the data strongly suggests a different direction.
+
+      You MUST wrap your entire output in these markers exactly as shown:
+
+      \(geminiChatPromptMarker)
+      [your content here]
+      \(geminiChatPromptEndMarker)
+
+      Write a system prompt following this structure (Persona → Task → Guardrails → Output):
+      1. Persona: Helpful assistant for the user's Open Gemini chat (optionally include who the user is: name, location, role, projects — only if evident from the data or current prompt).
+      2. Task: Answer questions naturally; for complex answers use "In short:" then details; use markdown headings with emojis where appropriate; use **bold** for key terms.
+      3. Guardrails: Be helpful and accurate; match the user's language; do not invent information.
+      4. Output: Clear, well-structured responses; no unnecessary meta-commentary.
+
+      CONCISENESS: Aim for 600–1200 characters. Do not duplicate rules. If the current prompt is provided, merge and refine — do not simply append.
+      """
     }
   }
 
@@ -474,20 +533,22 @@ class ContextDerivation {
       case .promptAndRead:
         modeName = "Prompt Read Mode"
         modeDescription = "applying a voice instruction to modify selected/clipboard text, with the result read aloud via TTS"
+      case .geminiChat:
+        modeName = "Gemini Chat"
+        modeDescription = "the Open Gemini chat window — general-purpose chat with the user"
       }
       systemPrompt += """
 
       \nThe user provides a direct voice instruction to change future behavior; treat it as the primary signal.
 
       RELEVANCE CHECK – This prompt is for the "\(modeName)" mode (\(modeDescription)). \
-      The app has three separate modes with independent system prompts: \
+      The app has four separate system prompts: \
       (1) Dictation – transcribes speech to text, \
       (2) Prompt Mode – applies voice instructions to selected text, \
-      (3) Prompt Read Mode – same as Prompt Mode but output is read aloud via TTS. \
+      (3) Prompt Read Mode – same as Prompt Mode but output is read aloud via TTS, \
+      (4) Gemini Chat – system prompt for the Open Gemini chat window. \
       If the user's voice instruction clearly targets a DIFFERENT mode and does NOT apply to \(modeName), \
       return ONLY the start and end markers with nothing between them (empty suggestion). \
-      For example, if the instruction says "when transcribing, don't add emojis" and this is the Prompt Mode, \
-      return empty markers because the instruction targets Dictation, not Prompt Mode. \
       When in doubt or when the instruction is generic enough to apply to this mode, proceed normally and generate a refined prompt.
       """
     }
@@ -569,6 +630,14 @@ class ContextDerivation {
         DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Prompt Read Mode system prompt (\(suggested.count) chars)")
       } else {
         DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for prompt read mode")
+      }
+    case .geminiChat:
+      if let suggested = extractSection(from: analysisResult, startMarker: geminiChatPromptMarker, endMarker: geminiChatPromptEndMarker) {
+        let fileURL = contextDir.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
+        try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
+        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Gemini Chat system prompt (\(suggested.count) chars)")
+      } else {
+        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for Gemini Chat prompt")
       }
     }
   }

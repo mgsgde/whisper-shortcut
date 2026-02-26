@@ -276,6 +276,34 @@ class MenuBarController: NSObject {
       name: .startPromptImprovementRecording,
       object: nil
     )
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(geminiReadAloudWithNotification(_:)),
+      name: .geminiReadAloud,
+      object: nil
+    )
+  }
+
+  @objc private func geminiReadAloudWithNotification(_ notification: Notification) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      let text = (notification.userInfo?[Notification.Name.geminiReadAloudTextKey] as? String)?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      guard !text.isEmpty else { return }
+      if self.isTTSRunning {
+        self.speechService.cancelTTS()
+        self.stopTTSPlayback()
+        self.transitionToIdleAndCleanup()
+        return
+      }
+      if self.audioPlayer?.isPlaying == true || self.audioEngine?.isRunning == true {
+        self.stopTTSPlayback()
+        self.appState = self.appState.finish()
+        return
+      }
+      self.performTTSWithText(text)
+    }
   }
 
   @objc private func startPromptImprovementRecordingFromNotification() {
@@ -778,19 +806,36 @@ class MenuBarController: NSObject {
       return
     }
     
-    // Get selected text from clipboard
     guard let selectedText = clipboardManager.getCleanedClipboardText(),
           !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       presentError(shortTitle: "TTS Error", message: "No text selected", dismissProcessingFirst: false)
       return
     }
     
+    performTTSWithText(selectedText)
+  }
+
+  private func performTTSWithText(_ text: String) {
+    if isTTSRunning {
+      speechService.cancelTTS()
+      stopTTSPlayback()
+      transitionToIdleAndCleanup()
+      return
+    }
+    if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
+      stopTTSPlayback()
+      appState = appState.finish()
+      return
+    }
+    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedText.isEmpty else { return }
+
     appState = .processing(.ttsProcessing)
-    
+
     Task {
       do {
-        let audioData = try await speechService.readTextAloud(selectedText)
-        ContextLogger.shared.logReadAloud(text: selectedText, voice: nil)
+        let audioData = try await speechService.readTextAloud(trimmedText)
+        ContextLogger.shared.logReadAloud(text: trimmedText, voice: nil)
         await MainActor.run {
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)

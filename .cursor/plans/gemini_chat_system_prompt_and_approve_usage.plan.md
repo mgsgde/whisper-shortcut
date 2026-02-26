@@ -1,3 +1,10 @@
+---
+name: ""
+overview: ""
+todos: []
+isProject: false
+---
+
 # System prompt for Gemini Chat and Approve from Usage
 
 ## Naming (no "User Context")
@@ -27,9 +34,11 @@
 ## 1. Storage: Gemini Chat system prompt
 
 **Option A (recommended)**  
+
 - Add a fourth section to [SystemPromptsStore](WhisperShortcut/SystemPromptsStore.swift): e.g. `SystemPromptSection.geminiChat` with header `"=== Gemini Chat ==="`. Store in the same `system-prompts.md` file. No separate file; same load/save/editor as other prompts. "Open file" in Context tab already opens `system-prompts.md` – the new section is just another block there.
 
 **Option B**  
+
 - Keep a dedicated file (e.g. `gemini-chat-system-prompt.md` in UserContext). Requires separate load in [ContextLogger](WhisperShortcut/ContextLogger.swift) or a small dedicated store, and either a second editor or "Open file" for that file only.
 
 **Recommendation**: Option A – one file, one editor, one mental model: "all system prompts in one place (Dictation, Prompt Mode, Prompt & Read, Gemini Chat)."
@@ -65,13 +74,13 @@
 
 ## 5. Files to touch (summary)
 
-| Area | Files |
-|------|--------|
-| System prompt storage | [SystemPromptsStore.swift](WhisperShortcut/SystemPromptsStore.swift) (new section `geminiChat`, default content) |
-| Gemini Chat uses stored prompt | [GeminiChatView.swift](WhisperShortcut/GeminiChatView.swift) |
-| Context tab / UI string | [ContextSettingsTab.swift](WhisperShortcut/Settings/Tabs/ContextSettingsTab.swift) ("improve prompts by voice") |
-| Derivation + scheduler | [ContextDerivation.swift](WhisperShortcut/ContextDerivation.swift), [AutoPromptImprovementScheduler.swift](WhisperShortcut/AutoPromptImprovementScheduler.swift), [SettingsViewModel.swift](WhisperShortcut/Settings/Shared/SettingsViewModel.swift) (GenerationKind.geminiChat) |
-| Suggested file cleanup | [ContextLogger.swift](WhisperShortcut/ContextLogger.swift) (new delete for suggested Gemini Chat prompt file; optional comment cleanup) |
+| Area                           | Files                                                                                                                                                                                                                                                                            |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| System prompt storage          | [SystemPromptsStore.swift](WhisperShortcut/SystemPromptsStore.swift) (new section `geminiChat`, default content)                                                                                                                                                                 |
+| Gemini Chat uses stored prompt | [GeminiChatView.swift](WhisperShortcut/GeminiChatView.swift)                                                                                                                                                                                                                     |
+| Context tab / UI string        | [ContextSettingsTab.swift](WhisperShortcut/Settings/Tabs/ContextSettingsTab.swift) ("improve prompts by voice")                                                                                                                                                                  |
+| Derivation + scheduler         | [ContextDerivation.swift](WhisperShortcut/ContextDerivation.swift), [AutoPromptImprovementScheduler.swift](WhisperShortcut/AutoPromptImprovementScheduler.swift), [SettingsViewModel.swift](WhisperShortcut/Settings/Shared/SettingsViewModel.swift) (GenerationKind.geminiChat) |
+| Suggested file cleanup         | [ContextLogger.swift](WhisperShortcut/ContextLogger.swift) (new delete for suggested Gemini Chat prompt file; optional comment cleanup)                                                                                                                                          |
 
 ---
 

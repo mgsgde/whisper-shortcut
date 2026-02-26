@@ -456,4 +456,8 @@ extension Notification.Name {
   static let geminiScrollToTop = Notification.Name("geminiScrollToTop")
   /// Posted when user presses Cmd+Down in Gemini chat window (scroll to bottom).
   static let geminiScrollToBottom = Notification.Name("geminiScrollToBottom")
+  /// Posted when user taps Read Aloud under a Gemini reply. userInfo key: geminiReadAloudTextKey (String).
+  static let geminiReadAloud = Notification.Name("geminiReadAloud")
+  /// userInfo key for geminiReadAloud notification; value is the reply text (String).
+  static let geminiReadAloudTextKey = "text"
 }

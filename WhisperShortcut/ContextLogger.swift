@@ -325,6 +325,12 @@ class ContextLogger {
     try? FileManager.default.removeItem(at: url)
   }
 
+  /// Removes the suggested Gemini Chat system prompt file so it does not reappear after Apply.
+  func deleteSuggestedGeminiChatSystemPromptFile() {
+    let url = contextDirectoryURL.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
+    try? FileManager.default.removeItem(at: url)
+  }
+
   /// Appends one entry to the system prompt history JSONL (for Dictate (transcription), Prompt Mode, or Prompt Read Mode).
   /// File name: system-prompt-history-{suffix}.jsonl (e.g. dictation, prompt-mode, prompt-and-read).
   /// Called when auto-improvement applies a new system prompt. History is removed when context data is deleted.
