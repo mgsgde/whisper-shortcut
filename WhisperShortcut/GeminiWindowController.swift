@@ -8,30 +8,26 @@ class GeminiWindowController: NSWindowController {
   private static let keyCodeDownArrow: UInt16 = 125
 
   private var keyDownMonitor: Any?
+  private var needsDefaultFrame: Bool = false
 
   // MARK: - Constants
   private enum Constants {
-    static let preferredWidth: CGFloat = 960
-    static let preferredHeight: CGFloat = 1100
-
     static let minWidth: CGFloat = 440
     static let minHeight: CGFloat = 540
     static let maxWidth: CGFloat = 1200
     static let maxHeight: CGFloat = 1600
 
     static let windowTitle = "Whisper Shortcut"
-    static let frameAutosaveName = "GeminiWindowV3"
-
-    // Bottom-right margin from screen edge
-    static let screenMargin: CGFloat = 24
+    static let frameAutosaveName = "GeminiWindowV4"
   }
 
   init() {
     let chatView = GeminiChatView()
     let hostingController = NSHostingController(rootView: chatView)
+    hostingController.sizingOptions = []
 
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: Constants.preferredWidth, height: Constants.preferredHeight),
+      contentRect: NSRect(x: 0, y: 0, width: Constants.minWidth, height: Constants.minHeight),
       styleMask: [.titled, .closable, .resizable],
       backing: .buffered,
       defer: false
@@ -46,13 +42,9 @@ class GeminiWindowController: NSWindowController {
 
     super.init(window: window)
     shouldCascadeWindows = false
+    needsDefaultFrame = !hasStoredFrame()
     window.delegate = self
     setupCmdArrowScrollMonitor()
-
-    if !hasStoredFrame() {
-      window.setContentSize(NSSize(width: Constants.preferredWidth, height: Constants.preferredHeight))
-      positionBottomRight()
-    }
   }
 
   required init?(coder: NSCoder) {
@@ -60,6 +52,10 @@ class GeminiWindowController: NSWindowController {
   }
 
   func showWindow() {
+    if needsDefaultFrame, let window = window, let screen = NSScreen.main {
+      applyDefaultFrame(on: screen, window: window)
+      needsDefaultFrame = false
+    }
     ensureWindowOnCurrentScreen()
     NSApp.activate(ignoringOtherApps: true)
     window?.makeKeyAndOrderFront(nil)
@@ -69,7 +65,6 @@ class GeminiWindowController: NSWindowController {
 
   private static func applyLevelAndCollectionBehavior(to window: NSWindow) {
     window.level = .floating
-    // Always show in current space (including fullscreen) so opening from fullscreen does not switch spaces.
     window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .participatesInCycle]
   }
 
@@ -77,26 +72,21 @@ class GeminiWindowController: NSWindowController {
     UserDefaults.standard.object(forKey: "NSWindow Frame \(Constants.frameAutosaveName)") != nil
   }
 
-  private func positionBottomRight() {
-    guard let screen = NSScreen.main, let window = window else { return }
-    positionBottomRight(on: screen, window: window)
-  }
-
-  private func positionBottomRight(on screen: NSScreen, window: NSWindow) {
+  /// Positions the window to fill the left third of the given screen at full height.
+  private func applyDefaultFrame(on screen: NSScreen, window: NSWindow) {
     let usable = screen.visibleFrame
-    let x = usable.maxX - window.frame.width - Constants.screenMargin
-    let y = usable.minY + Constants.screenMargin
-    window.setFrameOrigin(NSPoint(x: x, y: y))
+    let w = min(max(usable.width / 3, Constants.minWidth), Constants.maxWidth)
+    let h = min(max(usable.height, Constants.minHeight), Constants.maxHeight)
+    let frame = NSRect(x: usable.minX, y: usable.minY, width: w, height: h)
+    window.setFrame(frame, display: true, animate: false)
   }
 
-  /// If the window would appear on a different screen than the one the user is on, move it to the current screen (bottom-right).
   private func ensureWindowOnCurrentScreen() {
     guard let window = window,
           let currentScreen = NSScreen.main else { return }
-    let windowFrame = window.frame
-    let onCurrentScreen = currentScreen.visibleFrame.intersects(windowFrame)
+    let onCurrentScreen = currentScreen.visibleFrame.intersects(window.frame)
     if !onCurrentScreen {
-      positionBottomRight(on: currentScreen, window: window)
+      applyDefaultFrame(on: currentScreen, window: window)
     }
   }
 
