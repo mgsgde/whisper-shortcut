@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - ViewModel
 
@@ -263,16 +264,18 @@ struct GeminiChatView: View {
   @State private var scrollActions = GeminiScrollActions()
 
   var body: some View {
-    VStack(spacing: 0) {
-      headerBar
-      Divider()
-      messageList(scrollActions: scrollActions)
-      if let error = viewModel.errorMessage {
-        errorBanner(error)
+    GeometryReader { geometry in
+      VStack(spacing: 0) {
+        headerBar
+        Divider()
+        messageList(scrollActions: scrollActions, containerWidth: geometry.size.width)
+        if let error = viewModel.errorMessage {
+          errorBanner(error)
+        }
+        Divider()
+        commandSuggestionsOverlay
+        inputBar
       }
-      Divider()
-      commandSuggestionsOverlay
-      inputBar
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color(NSColor.windowBackgroundColor))
@@ -371,8 +374,10 @@ struct GeminiChatView: View {
 
   // MARK: - Message List
 
-  private func messageList(scrollActions: GeminiScrollActions) -> some View {
-    ScrollViewReader { proxy in
+  private func messageList(scrollActions: GeminiScrollActions, containerWidth: CGFloat) -> some View {
+    /// Rounded to 50pt steps so resize doesn't constantly recreate the list (preserves scroll position for small moves).
+    let widthBucket = (containerWidth / 50).rounded(.down) * 50
+    return ScrollViewReader { proxy in
       ScrollView {
         VStack(alignment: .leading, spacing: 18) {
           Color.clear.frame(height: 1).id("listTop")
@@ -392,6 +397,7 @@ struct GeminiChatView: View {
         .padding(.horizontal, 20)
         .padding(.top, 10)
         .padding(.bottom, 28)
+        .id(widthBucket)
       }
       .onAppear {
         scrollActions.scrollToTop = { scrollToTop(proxy: proxy) }
@@ -536,73 +542,79 @@ struct GeminiChatView: View {
 
   // MARK: - Input Bar
 
+  /// Single-line height; each extra line adds this until max.
+  private static let inputLineHeight: CGFloat = 20
+  /// Maximum input area height (~3–4 lines).
+  private static let inputMaxHeight: CGFloat = 80
+  private static let inputMinHeight: CGFloat = 36
+
   private var inputBar: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    let lineCount = max(1, viewModel.inputText.components(separatedBy: .newlines).count)
+    let inputHeight = min(Self.inputMaxHeight, max(Self.inputMinHeight, Self.inputMinHeight + CGFloat(lineCount - 1) * Self.inputLineHeight))
+
+    return VStack(alignment: .leading, spacing: 8) {
       if viewModel.pendingScreenshot != nil {
         pendingScreenshotThumbnail(onTapThumbnail: { showingScreenshotPreview = true })
       }
       HStack(alignment: .bottom, spacing: 8) {
-        TextField("Message Gemini…", text: $viewModel.inputText, axis: .vertical)
-          .textFieldStyle(.plain)
-          .lineLimit(1...6)
-          .focused($inputFocused)
-          .onKeyPress(.tab) {
-            let text = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if text.hasPrefix("/"), !text.isEmpty {
-              let matches = viewModel.suggestedCommands(for: text)
-              if let first = matches.first {
-                if text.lowercased() == first.lowercased() {
+        ZStack(alignment: .topLeading) {
+          if viewModel.inputText.isEmpty {
+            Text("Message Gemini…")
+              .font(.body)
+              .foregroundColor(Color(nsColor: .placeholderTextColor))
+              .padding(.horizontal, 10)
+              .padding(.vertical, 10)
+              .allowsHitTesting(false)
+          }
+          TextEditor(text: $viewModel.inputText)
+            .scrollContentBackground(.hidden)
+            .font(.body)
+            .focused($inputFocused)
+            .onKeyPress(.tab) {
+              let text = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+              if text.hasPrefix("/"), !text.isEmpty {
+                let matches = viewModel.suggestedCommands(for: text)
+                if let first = matches.first {
+                  if text.lowercased() == first.lowercased() {
+                    Task { await viewModel.sendMessage() }
+                    return .handled
+                  }
+                  viewModel.inputText = first
+                  return .handled
+                }
+              }
+              return .ignored
+            }
+            .onKeyPress { keyPress in
+              if keyPress.modifiers.contains(.command), keyPress.characters == ".", viewModel.isSending {
+                viewModel.cancelSend()
+                return .handled
+              }
+              guard keyPress.key == .return else { return .ignored }
+              if keyPress.modifiers.contains(.shift) {
+                viewModel.inputText += "\n"
+                return .handled
+              }
+              let text = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+              if text.hasPrefix("/"), !text.isEmpty {
+                let matches = viewModel.suggestedCommands(for: text)
+                if let first = matches.first, text.lowercased() == first.lowercased() {
                   Task { await viewModel.sendMessage() }
                   return .handled
                 }
-                viewModel.inputText = first
-                return .handled
               }
-            }
-            return .ignored
-          }
-          .onKeyPress { keyPress in
-            if keyPress.modifiers.contains(.command), keyPress.characters == ".", viewModel.isSending {
-              viewModel.cancelSend()
+              Task { await viewModel.sendMessage() }
               return .handled
             }
-            guard keyPress.key == .return else { return .ignored }
-            if keyPress.modifiers.contains(.shift) {
-              viewModel.inputText += "\n"
-              return .handled
-            }
-            let text = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if text.hasPrefix("/"), !text.isEmpty {
-              let matches = viewModel.suggestedCommands(for: text)
-              if let first = matches.first, text.lowercased() == first.lowercased() {
-                Task { await viewModel.sendMessage() }
-                return .handled
-              }
-            }
-            Task { await viewModel.sendMessage() }
-            return .handled
-          }
-          .onSubmit {
-            let text = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if text.hasPrefix("/"), !text.isEmpty {
-              let matches = viewModel.suggestedCommands(for: text)
-              if let first = matches.first {
-                if text.lowercased() == first.lowercased() {
-                  Task { await viewModel.sendMessage() }
-                  return
-                }
-                viewModel.inputText = first
-                return
-              }
-            }
-            Task { await viewModel.sendMessage() }
-          }
-          .onAppear { inputFocused = true }
-          .padding(.horizontal, 10)
-          .padding(.vertical, 10)
-          .frame(minHeight: 36)
-          .background(Color(NSColor.controlBackgroundColor))
-          .clipShape(RoundedRectangle(cornerRadius: 8))
+            .onAppear { inputFocused = true }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .frame(height: inputHeight)
+            .background(GeminiInputScrollViewAutohideAnchor())
+        }
+        .frame(height: inputHeight)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
 
         if viewModel.isSending {
           Button(action: { viewModel.cancelSend() }) {
@@ -697,72 +709,85 @@ struct GeminiChatView: View {
   }
 }
 
-// MARK: - Reply Segments (for inline citations)
+// MARK: - Input scrollbar auto-hide (macOS)
 
-private struct ReplySegment {
+/// Finds the NSScrollView backing the TextEditor (sibling in the view hierarchy) and sets autohidesScrollers
+/// so the scrollbar only appears when content overflows.
+private struct GeminiInputScrollViewAutohideAnchor: NSViewRepresentable {
+  func makeNSView(context: Context) -> NSView {
+    let v = NSView()
+    v.frame = .zero
+    return v
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {
+    guard !context.coordinator.didConfigure else { return }
+    DispatchQueue.main.async {
+      guard !context.coordinator.didConfigure else { return }
+      if let scroll = Self.findSiblingScrollView(from: nsView) {
+        scroll.autohidesScrollers = true
+        context.coordinator.didConfigure = true
+      }
+    }
+  }
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator()
+  }
+
+  final class Coordinator {
+    var didConfigure = false
+  }
+
+  private static func findSiblingScrollView(from view: NSView) -> NSScrollView? {
+    guard let parent = view.superview else { return nil }
+    for subview in parent.subviews where subview !== view {
+      if let scroll = findScrollViewInTree(subview) { return scroll }
+    }
+    return nil
+  }
+
+  private static func findScrollViewInTree(_ view: NSView) -> NSScrollView? {
+    if let scroll = view as? NSScrollView { return scroll }
+    for sub in view.subviews {
+      if let scroll = findScrollViewInTree(sub) { return scroll }
+    }
+    return nil
+  }
+}
+
+// MARK: - Paragraphs with citations at end
+
+/// One paragraph with its character range and grounding chunk indices (for citations at end of paragraph).
+private struct ParagraphWithCitations {
   let text: String
   let chunkIndices: [Int]
 }
 
-private enum ReplySegmentBuilder {
-  /// Splits reply text into segments with optional grounding chunk indices. Merges overlapping supports.
-  static func buildSegments(text: String, supports: [GroundingSupport]) -> [ReplySegment] {
-    guard !supports.isEmpty, !text.isEmpty else {
-      return [ReplySegment(text: text, chunkIndices: [])]
+private enum ParagraphCitationBuilder {
+  /// Splits content by "\n\n" and assigns to each paragraph all chunk indices from supports whose segment overlaps that paragraph. Citations are then rendered at the end of each paragraph.
+  static func buildParagraphs(content: String, supports: [GroundingSupport], sourcesCount: Int) -> [ParagraphWithCitations] {
+    let parts = content.components(separatedBy: "\n\n")
+    var paragraphs: [ParagraphWithCitations] = []
+    var startOffset = 0
+    for part in parts {
+      let endOffset = startOffset + part.count
+      let indices = chunkIndicesForRange(start: startOffset, end: endOffset, supports: supports, sourcesCount: sourcesCount)
+      paragraphs.append(ParagraphWithCitations(text: part, chunkIndices: indices))
+      startOffset = endOffset + 2
     }
-    let count = text.count
-    guard count > 0 else { return [ReplySegment(text: text, chunkIndices: [])] }
-
-    // Sort by start, then merge overlapping/adjacent ranges and union chunk indices
-    let sorted = supports.sorted { $0.startIndex < $1.startIndex }
-    var merged: [(start: Int, end: Int, indices: Set<Int>)] = []
-    for s in sorted {
-      let start = min(max(0, s.startIndex), count)
-      var end = min(max(0, s.endIndex), count)
-      if end <= start { continue }
-      let indices = Set(s.groundingChunkIndices)
-      if let last = merged.last, start <= last.end {
-        let prev = merged.removeLast()
-        merged.append((
-          start: prev.start,
-          end: max(prev.end, end),
-          indices: prev.indices.union(indices)
-        ))
-      } else {
-        merged.append((start: start, end: end, indices: indices))
-      }
-    }
-
-    var segments: [ReplySegment] = []
-    var pos = 0
-    for m in merged {
-      if m.start > pos {
-        let unsupported = substring(of: text, from: pos, to: m.start)
-        if !unsupported.isEmpty {
-          segments.append(ReplySegment(text: unsupported, chunkIndices: []))
-        }
-      }
-      let supported = substring(of: text, from: m.start, to: m.end)
-      if !supported.isEmpty {
-        segments.append(ReplySegment(text: supported, chunkIndices: Array(m.indices).sorted()))
-      }
-      pos = m.end
-    }
-    if pos < count {
-      let unsupported = substring(of: text, from: pos, to: count)
-      if !unsupported.isEmpty {
-        segments.append(ReplySegment(text: unsupported, chunkIndices: []))
-      }
-    }
-    return segments.isEmpty ? [ReplySegment(text: text, chunkIndices: [])] : segments
+    return paragraphs
   }
 
-  private static func substring(of text: String, from start: Int, to end: Int) -> String {
-    guard start < end, start >= 0, end <= text.count else { return "" }
-    guard let startIdx = text.index(text.startIndex, offsetBy: start, limitedBy: text.endIndex),
-          let endIdx = text.index(text.startIndex, offsetBy: end, limitedBy: text.endIndex),
-          startIdx < endIdx else { return "" }
-    return String(text[startIdx..<endIdx])
+  private static func chunkIndicesForRange(start: Int, end: Int, supports: [GroundingSupport], sourcesCount: Int) -> [Int] {
+    var set: Set<Int> = []
+    for s in supports {
+      guard s.startIndex < end, s.endIndex > start else { continue }
+      for idx in s.groundingChunkIndices where idx >= 0 && idx < sourcesCount {
+        set.insert(idx)
+      }
+    }
+    return set.sorted()
   }
 }
 
@@ -773,7 +798,7 @@ private struct ModelReplyView: View {
   let sources: [GroundingSource]
   let groundingSupports: [GroundingSupport]
 
-  /// Single Text view so the user can select across the entire reply. With grounding, inline citation markers [1], [2] are clickable links.
+  /// Single Text view so the user can select across the entire reply. With grounding, citation markers [1], [2] appear at the end of each paragraph and are clickable links.
   var body: some View {
     Text(Self.buildAttributedReply(content: content, sources: sources, groundingSupports: groundingSupports))
       .font(.system(size: 15))
@@ -781,11 +806,20 @@ private struct ModelReplyView: View {
       .padding(.horizontal, 14)
       .padding(.vertical, 12)
       .frame(maxWidth: .infinity, alignment: .leading)
+      .fixedSize(horizontal: false, vertical: true)
+      .contentShape(Rectangle())
       .background(
         RoundedRectangle(cornerRadius: 12)
           .fill(Color(NSColor.controlBackgroundColor))
       )
       .textSelection(.enabled)
+      .onHover { inside in
+        if inside {
+          NSCursor.iBeam.push()
+        } else {
+          NSCursor.pop()
+        }
+      }
   }
 
   private static func buildAttributedReply(
@@ -797,13 +831,16 @@ private struct ModelReplyView: View {
     if groundingSupports.isEmpty || sources.isEmpty {
       return buildAttributedReplyContentOnly(content: content, options: options)
     }
-    let segments = ReplySegmentBuilder.buildSegments(text: content, supports: groundingSupports)
+    let paragraphs = ParagraphCitationBuilder.buildParagraphs(content: content, supports: groundingSupports, sourcesCount: sources.count)
     var result = AttributedString()
-    for seg in segments {
-      let attrText = buildAttributedReplyContentOnly(content: seg.text, options: options)
+    let paragraphSeparator = AttributedString("\n\n")
+    for para in paragraphs {
+      let trimmed = para.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      if trimmed.isEmpty { continue }
+      if !result.description.isEmpty { result.append(paragraphSeparator) }
+      let attrText = buildAttributedReplyContentOnly(content: para.text, options: options)
       result.append(attrText)
-      let validIndices = Set(seg.chunkIndices).filter { $0 >= 0 && $0 < sources.count }.sorted()
-      for idx in validIndices {
+      for idx in para.chunkIndices {
         let oneBased = idx + 1
         let marker = " [\(oneBased)]"
         var markerAttr = AttributedString(marker)
@@ -881,6 +918,13 @@ private struct MessageBubbleView: View {
           RoundedRectangle(cornerRadius: 14)
             .fill(Color.accentColor)
         )
+        .onHover { inside in
+          if inside {
+            NSCursor.iBeam.push()
+          } else {
+            NSCursor.pop()
+          }
+        }
     } else {
       ModelReplyView(
         content: message.content,
