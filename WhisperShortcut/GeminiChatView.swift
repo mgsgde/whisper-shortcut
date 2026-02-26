@@ -578,7 +578,7 @@ struct GeminiChatView: View {
       if viewModel.pendingScreenshot != nil {
         pendingScreenshotThumbnail(onTapThumbnail: { previewImageData = viewModel.pendingScreenshot })
       }
-      HStack(alignment: .bottom, spacing: 8) {
+      HStack(alignment: .center, spacing: 8) {
         ZStack(alignment: .topLeading) {
           Text(viewModel.inputText.isEmpty ? " " : viewModel.inputText)
             .font(.body)
