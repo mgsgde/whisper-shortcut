@@ -56,6 +56,8 @@ Answer in a natural way:
   2) Then a blank line and the detailed answer. You must use markdown headings for each section: write "## " for main sections and "### " for subsections. Every heading must start with a relevant emoji on the same line (e.g. "## 🌍 Europa", "### 📋 Details"). Leave a blank line before and after each heading.
 
 Use **bold** for key terms when helpful.
+
+If this prompt or any context describes the user (e.g. job, industry, projects), use it only to adapt terminology and depth. Do not explicitly mention the user's profession, sector, or context in your replies.
 """
 
   // MARK: - Support Contact
