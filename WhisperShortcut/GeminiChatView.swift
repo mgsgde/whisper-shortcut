@@ -15,6 +15,9 @@ class GeminiChatViewModel: ObservableObject {
   private let store = GeminiChatSessionStore.shared
   private let apiClient = GeminiAPIClient()
 
+  /// Current send task; cancelled by Stop button.
+  private var sendTask: Task<Void, Never>?
+
   /// Maximum number of messages to send as context (older messages are kept in UI but not sent to the API).
   private static let maxMessagesInContext = 30
   /// Maximum length for auto-generated session title from first user message.
@@ -92,6 +95,11 @@ class GeminiChatViewModel: ObservableObject {
     pendingScreenshot = nil
   }
 
+  /// Cancels the in-flight send request. Call from the Stop button.
+  func cancelSend() {
+    sendTask?.cancel()
+  }
+
   func sendMessage() async {
     let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
     let hasContent = !text.isEmpty || pendingScreenshot != nil
@@ -116,27 +124,36 @@ class GeminiChatViewModel: ObservableObject {
 
     inputText = ""
     errorMessage = nil
-    isSending = true
-
     let userMsg = ChatMessage(role: .user, content: text)
     appendMessage(userMsg)
-
     let contents = buildContents(pendingImage: pendingScreenshot)
     pendingScreenshot = nil
 
-    do {
-      let model = Self.resolveOpenGeminiModel()
-      let result = try await apiClient.sendChatMessage(
-        model: model, contents: contents, apiKey: apiKey, useGrounding: true,
-        systemInstruction: Self.openGeminiSystemInstruction)
-      let modelMsg = ChatMessage(role: .model, content: result.text, sources: result.sources)
-      appendMessage(modelMsg)
-    } catch {
-      errorMessage = friendlyError(error)
-      DebugLogger.logError("GEMINI-CHAT: \(error.localizedDescription)")
+    sendTask = Task {
+      isSending = true
+      defer {
+        isSending = false
+        sendTask = nil
+      }
+      do {
+        let model = Self.resolveOpenGeminiModel()
+        let result = try await apiClient.sendChatMessage(
+          model: model, contents: contents, apiKey: apiKey, useGrounding: true,
+          systemInstruction: Self.openGeminiSystemInstruction)
+        let modelMsg = ChatMessage(
+          role: .model,
+          content: result.text,
+          sources: result.sources,
+          groundingSupports: result.supports)
+        appendMessage(modelMsg)
+      } catch is CancellationError {
+        // User tapped Stop; do not append model message or set errorMessage
+        DebugLogger.log("GEMINI-CHAT: Send cancelled by user")
+      } catch {
+        errorMessage = friendlyError(error)
+        DebugLogger.logError("GEMINI-CHAT: \(error.localizedDescription)")
+      }
     }
-
-    isSending = false
   }
 
   func clearMessages() {
@@ -391,6 +408,10 @@ struct GeminiChatView: View {
       .focusable()
       .onKeyPress { keyPress in
         guard keyPress.modifiers.contains(.command) else { return .ignored }
+        if keyPress.characters == ".", viewModel.isSending {
+          viewModel.cancelSend()
+          return .handled
+        }
         switch keyPress.key {
         case .upArrow:
           scrollActions.scrollToTop?()
@@ -422,6 +443,9 @@ struct GeminiChatView: View {
           .font(.callout)
           .foregroundColor(.secondary)
         Text("/clear or /delete — Clear current chat messages")
+          .font(.callout)
+          .foregroundColor(.secondary)
+        Text("⌘. — Stop sending (while a message is being sent)")
           .font(.callout)
           .foregroundColor(.secondary)
       }
@@ -538,6 +562,10 @@ struct GeminiChatView: View {
             return .ignored
           }
           .onKeyPress { keyPress in
+            if keyPress.modifiers.contains(.command), keyPress.characters == ".", viewModel.isSending {
+              viewModel.cancelSend()
+              return .handled
+            }
             guard keyPress.key == .return else { return .ignored }
             if keyPress.modifiers.contains(.shift) {
               viewModel.inputText += "\n"
@@ -575,6 +603,17 @@ struct GeminiChatView: View {
           .frame(minHeight: 36)
           .background(Color(NSColor.controlBackgroundColor))
           .clipShape(RoundedRectangle(cornerRadius: 8))
+
+        if viewModel.isSending {
+          Button(action: { viewModel.cancelSend() }) {
+            Image(systemName: "stop.circle.fill")
+              .font(.system(size: 24))
+              .foregroundColor(.secondary)
+          }
+          .buttonStyle(.plain)
+          .help("Stop sending (⌘.)")
+          .frame(width: 28, height: 28)
+        }
 
         Button(action: {
           Task { await viewModel.sendMessage() }
@@ -658,15 +697,85 @@ struct GeminiChatView: View {
   }
 }
 
+// MARK: - Reply Segments (for inline citations)
+
+private struct ReplySegment {
+  let text: String
+  let chunkIndices: [Int]
+}
+
+private enum ReplySegmentBuilder {
+  /// Splits reply text into segments with optional grounding chunk indices. Merges overlapping supports.
+  static func buildSegments(text: String, supports: [GroundingSupport]) -> [ReplySegment] {
+    guard !supports.isEmpty, !text.isEmpty else {
+      return [ReplySegment(text: text, chunkIndices: [])]
+    }
+    let count = text.count
+    guard count > 0 else { return [ReplySegment(text: text, chunkIndices: [])] }
+
+    // Sort by start, then merge overlapping/adjacent ranges and union chunk indices
+    let sorted = supports.sorted { $0.startIndex < $1.startIndex }
+    var merged: [(start: Int, end: Int, indices: Set<Int>)] = []
+    for s in sorted {
+      let start = min(max(0, s.startIndex), count)
+      var end = min(max(0, s.endIndex), count)
+      if end <= start { continue }
+      let indices = Set(s.groundingChunkIndices)
+      if let last = merged.last, start <= last.end {
+        let prev = merged.removeLast()
+        merged.append((
+          start: prev.start,
+          end: max(prev.end, end),
+          indices: prev.indices.union(indices)
+        ))
+      } else {
+        merged.append((start: start, end: end, indices: indices))
+      }
+    }
+
+    var segments: [ReplySegment] = []
+    var pos = 0
+    for m in merged {
+      if m.start > pos {
+        let unsupported = substring(of: text, from: pos, to: m.start)
+        if !unsupported.isEmpty {
+          segments.append(ReplySegment(text: unsupported, chunkIndices: []))
+        }
+      }
+      let supported = substring(of: text, from: m.start, to: m.end)
+      if !supported.isEmpty {
+        segments.append(ReplySegment(text: supported, chunkIndices: Array(m.indices).sorted()))
+      }
+      pos = m.end
+    }
+    if pos < count {
+      let unsupported = substring(of: text, from: pos, to: count)
+      if !unsupported.isEmpty {
+        segments.append(ReplySegment(text: unsupported, chunkIndices: []))
+      }
+    }
+    return segments.isEmpty ? [ReplySegment(text: text, chunkIndices: [])] : segments
+  }
+
+  private static func substring(of text: String, from start: Int, to end: Int) -> String {
+    guard start < end, start >= 0, end <= text.count else { return "" }
+    guard let startIdx = text.index(text.startIndex, offsetBy: start, limitedBy: text.endIndex),
+          let endIdx = text.index(text.startIndex, offsetBy: end, limitedBy: text.endIndex),
+          startIdx < endIdx else { return "" }
+    return String(text[startIdx..<endIdx])
+  }
+}
+
 // MARK: - Model Reply View
 
 private struct ModelReplyView: View {
   let content: String
+  let sources: [GroundingSource]
+  let groundingSupports: [GroundingSupport]
 
-  /// Single Text view so the user can select across the entire reply (all paragraphs) in one go.
-  /// Builds one AttributedString from paragraphs with "\n\n" between them for visible but compact spacing.
+  /// Single Text view so the user can select across the entire reply. With grounding, inline citation markers [1], [2] are clickable links.
   var body: some View {
-    Text(Self.buildAttributedReply(content: content))
+    Text(Self.buildAttributedReply(content: content, sources: sources, groundingSupports: groundingSupports))
       .font(.system(size: 15))
       .lineSpacing(4)
       .padding(.horizontal, 14)
@@ -679,8 +788,38 @@ private struct ModelReplyView: View {
       .textSelection(.enabled)
   }
 
-  private static func buildAttributedReply(content: String) -> AttributedString {
+  private static func buildAttributedReply(
+    content: String,
+    sources: [GroundingSource],
+    groundingSupports: [GroundingSupport]
+  ) -> AttributedString {
     let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+    if groundingSupports.isEmpty || sources.isEmpty {
+      return buildAttributedReplyContentOnly(content: content, options: options)
+    }
+    let segments = ReplySegmentBuilder.buildSegments(text: content, supports: groundingSupports)
+    var result = AttributedString()
+    for seg in segments {
+      let attrText = buildAttributedReplyContentOnly(content: seg.text, options: options)
+      result.append(attrText)
+      let validIndices = Set(seg.chunkIndices).filter { $0 >= 0 && $0 < sources.count }.sorted()
+      for idx in validIndices {
+        let oneBased = idx + 1
+        let marker = " [\(oneBased)]"
+        var markerAttr = AttributedString(marker)
+        markerAttr.font = .system(size: 13)
+        if let url = URL(string: sources[idx].uri) {
+          markerAttr.link = url
+        }
+        result.append(markerAttr)
+      }
+    }
+    return result.description.isEmpty
+      ? buildAttributedReplyContentOnly(content: content, options: options)
+      : result
+  }
+
+  private static func buildAttributedReplyContentOnly(content: String, options: AttributedString.MarkdownParsingOptions) -> AttributedString {
     let paragraphs = content.components(separatedBy: "\n\n")
     var result = AttributedString()
     let separator = AttributedString("\n\n")
@@ -743,12 +882,16 @@ private struct MessageBubbleView: View {
             .fill(Color.accentColor)
         )
     } else {
-      ModelReplyView(content: message.content)
+      ModelReplyView(
+        content: message.content,
+        sources: message.sources,
+        groundingSupports: message.groundingSupports)
     }
   }
 
+  /// Compact single row: Sources: [1] Title1  [2] Title2  … for quick click access.
   private var sourcesView: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    HStack(alignment: .center, spacing: 12) {
       HStack(spacing: 4) {
         Image(systemName: "globe")
           .font(.caption2)
@@ -757,13 +900,14 @@ private struct MessageBubbleView: View {
           .font(.caption2)
           .foregroundColor(.secondary)
       }
-      LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 6) {
-        ForEach(message.sources) { source in
+      HStack(spacing: 10) {
+        ForEach(Array(message.sources.enumerated()), id: \.element.id) { index, source in
           if let url = URL(string: source.uri) {
             Link(destination: url) {
               HStack(spacing: 4) {
-                Image(systemName: "link")
-                  .font(.caption2)
+                Text("[\(index + 1)]")
+                  .font(.caption)
+                  .fontWeight(.medium)
                 Text(source.title)
                   .font(.caption)
                   .lineLimit(1)
