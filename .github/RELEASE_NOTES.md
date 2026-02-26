@@ -1,4 +1,4 @@
-# Release v6.4.0
+# Release v6.4.1
 
 ## Installation
 
@@ -6,24 +6,15 @@ Download the latest release from [GitHub Releases](https://github.com/mgsgde/whi
 
 ## Changes
 
-### New Features
-
-- **Gemini Chat window**: New dedicated chat window with a global shortcut (default: Cmd+7). Persistent session, multi-session support, and configurable window behavior (fullscreen, position, frame autosave).
-- **Slash commands**: Command suggestions and autocomplete. Use Tab to execute commands. Supported: `/new`, `/back`, `/screenshot`, `/stop`, and others. Shift+Enter inserts a newline; Enter sends the message.
-- **Grounding sources**: Inline display of grounding sources and citations in chat responses; FlowLayout for improved source display in message bubbles.
-- **Screenshot in chat**: Capture screenshot from within Gemini Chat for context.
-
 ### Improvements
 
-- **Gemini Chat**: Configurable system prompt for chat. Refined Markdown parsing and response formatting. Improved input height and scrolling; fixed text disappearing on resize or arrange. Window appears on current screen; cascading prevented.
-- **Settings**: Shortcut configuration and command handling for chat. Renamed "Prompt Voice Mode" to "Prompt Read Mode" across the app.
-- **API & privacy**: Enhanced Gemini API client and chat functionality; privacy documentation and logging improvements. Window title and GeminiAPIClient refactors.
+- **Gemini Chat**: Refactored message sending and input handling for improved performance. Enhanced context handling in system prompts for better user adaptation. Refined input text layout and height measurement; added input text truncation for height measurement. Streamlined command handling and improved alignment in input HStack.
+- **Auto-prompt improvement**: Refactored improvement scheduling for concurrent processing.
 
-### Fixes
+### Dependencies
 
-- Chat window text no longer disappears on resize or arrange.
-- Slash commands execute on Tab for all commands, not only `/screenshot`.
+- Bumped basic-ftp from 5.1.0 to 5.2.0 in website.
 
 ## Full Changelog
 
-For a complete list of changes, see the [full changelog](https://github.com/mgsgde/whisper-shortcut/compare/v6.3.0...v6.4.0).
+For a complete list of changes, see the [full changelog](https://github.com/mgsgde/whisper-shortcut/compare/v6.4.0...v6.4.1).
