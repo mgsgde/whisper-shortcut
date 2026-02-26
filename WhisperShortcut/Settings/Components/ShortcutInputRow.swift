@@ -1,11 +1,11 @@
 import SwiftUI
 
 /// Reusable component for shortcut input fields in Settings.
+/// Empty text means no shortcut; non-empty text must be a valid shortcut format.
 struct ShortcutInputRow: View {
   let label: String
   let placeholder: String
   @Binding var text: String
-  @Binding var isEnabled: Bool
   let focusedField: SettingsFocusField
   @FocusState.Binding var currentFocus: SettingsFocusField?
   let onShortcutChanged: (() -> Void)?
@@ -17,7 +17,6 @@ struct ShortcutInputRow: View {
     label: String,
     placeholder: String,
     text: Binding<String>,
-    isEnabled: Binding<Bool>,
     focusedField: SettingsFocusField,
     currentFocus: FocusState<SettingsFocusField?>.Binding,
     onShortcutChanged: (() -> Void)? = nil,
@@ -26,7 +25,6 @@ struct ShortcutInputRow: View {
     self.label = label
     self.placeholder = placeholder
     self._text = text
-    self._isEnabled = isEnabled
     self.focusedField = focusedField
     self._currentFocus = currentFocus
     self.onShortcutChanged = onShortcutChanged
@@ -48,33 +46,17 @@ struct ShortcutInputRow: View {
           .frame(height: SettingsConstants.textFieldHeight)
           .frame(maxWidth: SettingsConstants.shortcutMaxWidth)
           .focused($currentFocus, equals: focusedField)
-          .disabled(!isEnabled)
           .overlay(
             RoundedRectangle(cornerRadius: 6)
               .stroke(validationError != nil ? Color.red.opacity(0.7) : Color.clear, lineWidth: 1)
               .padding(0)
           )
           .onChange(of: text) { _, newValue in
-            // Validate in real-time
-            if isEnabled {
-              validationError = validateShortcut?(newValue, focusedField)
-            } else {
-              validationError = nil
-            }
-
-            // Only save if validation passes
+            validationError = validateShortcut?(newValue, focusedField)
             if validationError == nil {
               onShortcutChanged?()
             }
           }
-          .onChange(of: isEnabled) { _, _ in
-            validationError = nil
-            onShortcutChanged?()
-          }
-
-        Toggle("", isOn: $isEnabled)
-          .toggleStyle(.checkbox)
-          .help("Enable/disable this shortcut")
 
         Spacer()
       }

@@ -27,6 +27,12 @@ struct ChatMessage: Identifiable, Codable, Equatable {
   let timestamp: Date
   var sources: [GroundingSource]
   var groundingSupports: [GroundingSupport]
+  /// PNG (or other) image data attached to this user message (e.g. screenshot). Stored as Base64 in session file.
+  var attachedImageData: Data?
+
+  enum CodingKeys: String, CodingKey {
+    case id, role, content, timestamp, sources, groundingSupports, attachedImageData
+  }
 
   init(
     id: UUID = UUID(),
@@ -34,7 +40,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     content: String,
     timestamp: Date = Date(),
     sources: [GroundingSource] = [],
-    groundingSupports: [GroundingSupport] = []
+    groundingSupports: [GroundingSupport] = [],
+    attachedImageData: Data? = nil
   ) {
     self.id = id
     self.role = role
@@ -42,6 +49,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     self.timestamp = timestamp
     self.sources = sources
     self.groundingSupports = groundingSupports
+    self.attachedImageData = attachedImageData
   }
 
   init(from decoder: Decoder) throws {
@@ -52,6 +60,24 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     timestamp = try c.decode(Date.self, forKey: .timestamp)
     sources = try c.decode([GroundingSource].self, forKey: .sources)
     groundingSupports = try c.decodeIfPresent([GroundingSupport].self, forKey: .groundingSupports) ?? []
+    if let base64 = try c.decodeIfPresent(String.self, forKey: .attachedImageData), let data = Data(base64Encoded: base64) {
+      attachedImageData = data
+    } else {
+      attachedImageData = nil
+    }
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var c = encoder.container(keyedBy: CodingKeys.self)
+    try c.encode(id, forKey: .id)
+    try c.encode(role, forKey: .role)
+    try c.encode(content, forKey: .content)
+    try c.encode(timestamp, forKey: .timestamp)
+    try c.encode(sources, forKey: .sources)
+    try c.encode(groundingSupports, forKey: .groundingSupports)
+    if let data = attachedImageData {
+      try c.encode(data.base64EncodedString(), forKey: .attachedImageData)
+    }
   }
 }
 

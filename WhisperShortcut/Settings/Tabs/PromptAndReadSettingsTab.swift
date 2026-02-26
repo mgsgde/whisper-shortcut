@@ -40,7 +40,6 @@ struct PromptAndReadSettingsTab: View {
         label: "Prompt Read Mode:",
         placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.readSelectedText),
         text: $viewModel.data.readSelectedText,
-        isEnabled: $viewModel.data.readSelectedTextEnabled,
         focusedField: .toggleReadSelectedText,
         currentFocus: $focusedField,
         onShortcutChanged: {

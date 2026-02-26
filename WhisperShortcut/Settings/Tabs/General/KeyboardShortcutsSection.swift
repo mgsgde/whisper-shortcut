@@ -20,7 +20,6 @@ struct KeyboardShortcutsSection: View {
         label: "Toggle Settings:",
         placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.openSettings),
         text: $viewModel.data.openSettings,
-        isEnabled: $viewModel.data.openSettingsEnabled,
         focusedField: .toggleSettings,
         currentFocus: $focusedField,
         onShortcutChanged: {

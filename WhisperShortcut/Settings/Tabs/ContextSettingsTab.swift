@@ -162,7 +162,6 @@ struct ContextSettingsTab: View {
             label: "Improve from voice:",
             placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.startPromptImprovement),
             text: $viewModel.data.togglePromptImprovement,
-            isEnabled: $viewModel.data.togglePromptImprovementEnabled,
             focusedField: .togglePromptImprovement,
             currentFocus: $focusedField,
             onShortcutChanged: {

@@ -41,14 +41,14 @@ class SettingsViewModel: ObservableObject {
   private func loadCurrentSettings() {
     // Load toggle shortcuts configuration
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
-    data.toggleDictation = currentConfig.startRecording.textDisplayString
-    data.togglePrompting = currentConfig.startPrompting.textDisplayString
-    data.togglePromptImprovement = currentConfig.startPromptImprovement.textDisplayString
-    data.readSelectedText = currentConfig.readSelectedText.textDisplayString
-    data.readAloud = currentConfig.readAloud.textDisplayString
-    data.toggleMeeting = currentConfig.toggleMeeting.textDisplayString
-    data.openSettings = currentConfig.openSettings.textDisplayString
-    data.openGemini = currentConfig.openGemini.textDisplayString
+    data.toggleDictation = currentConfig.startRecording.isEnabled ? currentConfig.startRecording.textDisplayString : ""
+    data.togglePrompting = currentConfig.startPrompting.isEnabled ? currentConfig.startPrompting.textDisplayString : ""
+    data.togglePromptImprovement = currentConfig.startPromptImprovement.isEnabled ? currentConfig.startPromptImprovement.textDisplayString : ""
+    data.readSelectedText = currentConfig.readSelectedText.isEnabled ? currentConfig.readSelectedText.textDisplayString : ""
+    data.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud.textDisplayString : ""
+    data.toggleMeeting = currentConfig.toggleMeeting.isEnabled ? currentConfig.toggleMeeting.textDisplayString : ""
+    data.openSettings = currentConfig.openSettings.isEnabled ? currentConfig.openSettings.textDisplayString : ""
+    data.openGemini = currentConfig.openGemini.isEnabled ? currentConfig.openGemini.textDisplayString : ""
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
@@ -233,62 +233,42 @@ class SettingsViewModel: ObservableObject {
     // Transcription model is always allowed to be saved (including Gemini without API key)
     // so state stays consistent; Dictate is disabled at runtime when Gemini is selected and no key is set.
 
-    // Validate toggle shortcuts (only if enabled)
-    if data.toggleDictationEnabled {
-      guard !data.toggleDictation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a toggle dictation shortcut"
-      }
+    // Validate shortcut parsing: non-empty text must parse successfully
+    let trim = CharacterSet.whitespacesAndNewlines
+    if !data.toggleDictation.trimmingCharacters(in: trim).isEmpty,
+       ShortcutConfigManager.parseShortcut(from: data.toggleDictation) == nil {
+      return "Invalid toggle dictation shortcut format"
+    }
+    if !data.togglePrompting.trimmingCharacters(in: trim).isEmpty,
+       ShortcutConfigManager.parseShortcut(from: data.togglePrompting) == nil {
+      return "Invalid toggle prompting shortcut format"
+    }
+    if !data.togglePromptImprovement.trimmingCharacters(in: trim).isEmpty,
+       ShortcutConfigManager.parseShortcut(from: data.togglePromptImprovement) == nil {
+      return "Invalid Improve from voice shortcut format"
+    }
+    if !data.readSelectedText.trimmingCharacters(in: trim).isEmpty,
+       ShortcutConfigManager.parseShortcut(from: data.readSelectedText) == nil {
+      return "Invalid prompt & read shortcut format"
+    }
+    if !data.readAloud.trimmingCharacters(in: trim).isEmpty,
+       ShortcutConfigManager.parseShortcut(from: data.readAloud) == nil {
+      return "Invalid read aloud shortcut format"
+    }
+    if !data.toggleMeeting.trimmingCharacters(in: trim).isEmpty,
+       ShortcutConfigManager.parseShortcut(from: data.toggleMeeting) == nil {
+      return "Invalid transcribe meeting shortcut format"
+    }
+    if !data.openSettings.trimmingCharacters(in: trim).isEmpty,
+       ShortcutConfigManager.parseShortcut(from: data.openSettings) == nil {
+      return "Invalid open settings shortcut format"
+    }
+    if !data.openGemini.trimmingCharacters(in: trim).isEmpty,
+       ShortcutConfigManager.parseShortcut(from: data.openGemini) == nil {
+      return "Invalid open Gemini shortcut format"
     }
 
-    if data.togglePromptingEnabled {
-      guard !data.togglePrompting.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a toggle prompting shortcut"
-      }
-    }
-
-    if data.togglePromptImprovementEnabled {
-      guard !data.togglePromptImprovement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter an Improve from voice shortcut"
-      }
-    }
-
-    if data.readSelectedTextEnabled {
-      guard !data.readSelectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a prompt & read shortcut"
-      }
-    }
-
-    if data.readAloudEnabled {
-      guard !data.readAloud.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a read aloud shortcut"
-      }
-    }
-
-    if data.toggleMeetingEnabled {
-      guard !data.toggleMeeting.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter a transcribe meeting shortcut"
-      }
-    }
-
-    if data.openSettingsEnabled {
-      guard !data.openSettings.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter an open settings shortcut"
-      }
-    }
-
-    if data.openGeminiEnabled {
-      guard !data.openGemini.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return "Please enter an open Gemini shortcut"
-      }
-    }
-
-    // Validate shortcut parsing
     let shortcuts = parseShortcuts()
-    for (name, shortcut) in shortcuts {
-      guard shortcut != nil else {
-        return "Invalid \(name) shortcut format"
-      }
-    }
 
     // Check for duplicates
     let enabledShortcuts = shortcuts.values.compactMap { $0 }
@@ -365,31 +345,21 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Toggle Shortcut Parsing
   private func parseShortcuts() -> [String: ShortcutDefinition?] {
+    let trim = CharacterSet.whitespacesAndNewlines
+    func parsed(_ text: String) -> ShortcutDefinition? {
+      let t = text.trimmingCharacters(in: trim)
+      if t.isEmpty { return nil }
+      return ShortcutConfigManager.parseShortcut(from: t)
+    }
     return [
-      "toggle dictation": data.toggleDictationEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.toggleDictation)
-        : ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
-      "toggle prompting": data.togglePromptingEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.togglePrompting)
-        : ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
-      "adjust system prompt": data.togglePromptImprovementEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.togglePromptImprovement)
-        : ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: false),
-      "read selected text": data.readSelectedTextEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.readSelectedText)
-        : ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
-      "read aloud": data.readAloudEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.readAloud)
-        : ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false),
-      "toggle meeting": data.toggleMeetingEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.toggleMeeting)
-        : ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false),
-      "open settings": data.openSettingsEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.openSettings)
-        : ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: false),
-      "open gemini": data.openGeminiEnabled
-        ? ShortcutConfigManager.parseShortcut(from: data.openGemini)
-        : ShortcutDefinition(key: .eight, modifiers: [.command], isEnabled: false),
+      "toggle dictation": parsed(data.toggleDictation),
+      "toggle prompting": parsed(data.togglePrompting),
+      "adjust system prompt": parsed(data.togglePromptImprovement),
+      "read selected text": parsed(data.readSelectedText),
+      "read aloud": parsed(data.readAloud),
+      "toggle meeting": parsed(data.toggleMeeting),
+      "open settings": parsed(data.openSettings),
+      "open gemini": parsed(data.openGemini),
     ]
   }
 

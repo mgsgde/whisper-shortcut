@@ -40,7 +40,6 @@ struct LiveMeetingSettingsTab: View {
         label: "Transcribe Meeting:",
         placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.toggleMeeting),
         text: $viewModel.data.toggleMeeting,
-        isEnabled: $viewModel.data.toggleMeetingEnabled,
         focusedField: .toggleMeeting,
         currentFocus: $focusedField,
         onShortcutChanged: {

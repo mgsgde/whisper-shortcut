@@ -35,7 +35,6 @@ struct SpeechToPromptSettingsTab: View {
         label: "Toggle Prompting:",
         placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.startPrompting),
         text: $viewModel.data.togglePrompting,
-        isEnabled: $viewModel.data.togglePromptingEnabled,
         focusedField: .togglePrompting,
         currentFocus: $focusedField,
         onShortcutChanged: {

@@ -61,7 +61,6 @@ struct SpeechToTextSettingsTab: View {
         label: "Toggle Dictation:",
         placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.startRecording),
         text: $viewModel.data.toggleDictation,
-        isEnabled: $viewModel.data.toggleDictationEnabled,
         focusedField: .toggleDictation,
         currentFocus: $focusedField,
         onShortcutChanged: {

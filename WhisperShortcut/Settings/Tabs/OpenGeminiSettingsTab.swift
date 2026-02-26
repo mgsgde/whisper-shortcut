@@ -32,7 +32,6 @@ struct OpenGeminiSettingsTab: View {
         label: "Open Gemini:",
         placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.openGemini),
         text: $viewModel.data.openGemini,
-        isEnabled: $viewModel.data.openGeminiEnabled,
         focusedField: .toggleGemini,
         currentFocus: $focusedField,
         onShortcutChanged: {

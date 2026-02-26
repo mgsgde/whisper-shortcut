@@ -23,10 +23,12 @@ class GeminiChatViewModel: ObservableObject {
   private static let maxMessagesInContext = 30
   /// Maximum length for auto-generated session title from first user message.
   private static let maxSessionTitleLength = 50
+  /// Commands are slash-only (e.g. /stop, /new); do not use hotkeys/shortcuts for command actions.
   private static let newChatCommand = "/new"
   private static let backChatCommand = "/back"
   private static let clearChatCommands = ["/clear", "/delete"]
   static let screenshotCommand = "/screenshot"
+  private static let stopCommand = "/stop"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -34,7 +36,8 @@ class GeminiChatViewModel: ObservableObject {
     ("/back", "Switch to the previous chat"),
     ("/clear", "Clear current chat messages"),
     ("/delete", "Clear current chat messages"),
-    ("/screenshot", "Capture screen (attached to your next message)")
+    ("/screenshot", "Capture screen (attached to your next message)"),
+    ("/stop", "Stop sending (while a message is being sent)")
   ]
 
   /// Returns commands whose command string matches the given prefix (e.g. "/" or "/sc").
@@ -103,11 +106,16 @@ class GeminiChatViewModel: ObservableObject {
 
   func sendMessage() async {
     let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+    let lower = text.lowercased()
+    if lower == Self.stopCommand {
+      inputText = ""
+      cancelSend()
+      return
+    }
     let hasContent = !text.isEmpty || pendingScreenshot != nil
     guard hasContent, !isSending else { return }
 
     // Slash commands: do not send to API
-    let lower = text.lowercased()
     if lower == Self.newChatCommand || lower == Self.backChatCommand
         || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand {
       inputText = ""
@@ -125,9 +133,9 @@ class GeminiChatViewModel: ObservableObject {
 
     inputText = ""
     errorMessage = nil
-    let userMsg = ChatMessage(role: .user, content: text)
+    let userMsg = ChatMessage(role: .user, content: text, attachedImageData: pendingScreenshot)
     appendMessage(userMsg)
-    let contents = buildContents(pendingImage: pendingScreenshot)
+    let contents = buildContents()
     pendingScreenshot = nil
 
     sendTask = Task {
@@ -214,11 +222,11 @@ class GeminiChatViewModel: ObservableObject {
     store.save(session)
   }
 
-  private func buildContents(pendingImage: Data? = nil) -> [[String: Any]] {
+  private func buildContents() -> [[String: Any]] {
     let toSend = Array(messages.suffix(Self.maxMessagesInContext))
     return toSend.enumerated().map { index, msg in
-      let isLastUserWithImage = index == toSend.count - 1 && msg.role == .user && pendingImage != nil
-      if isLastUserWithImage, let imageData = pendingImage {
+      let isLastUserWithImage = index == toSend.count - 1 && msg.role == .user && msg.attachedImageData != nil
+      if isLastUserWithImage, let imageData = msg.attachedImageData {
         let base64 = imageData.base64EncodedString()
         var parts: [[String: Any]] = [["inline_data": ["mime_type": "image/png", "data": base64]]]
         if !msg.content.isEmpty {
@@ -260,7 +268,8 @@ private final class GeminiScrollActions {
 struct GeminiChatView: View {
   @StateObject private var viewModel = GeminiChatViewModel()
   @FocusState private var inputFocused: Bool
-  @State private var showingScreenshotPreview = false
+  /// Image data to show in the full-size preview sheet (from pending screenshot or from a sent message thumbnail).
+  @State private var previewImageData: Data? = nil
   @State private var scrollActions = GeminiScrollActions()
 
   var body: some View {
@@ -279,9 +288,12 @@ struct GeminiChatView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color(NSColor.windowBackgroundColor))
-    .sheet(isPresented: $showingScreenshotPreview) {
-      if let data = viewModel.pendingScreenshot, let nsImage = NSImage(data: data) {
-        screenshotPreviewSheet(image: nsImage)
+    .sheet(isPresented: Binding(
+      get: { previewImageData != nil },
+      set: { if !$0 { previewImageData = nil } }
+    )) {
+      if let data = previewImageData, let nsImage = NSImage(data: data) {
+        screenshotPreviewSheet(image: nsImage, onDone: { previewImageData = nil })
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiNewChat)) { _ in
@@ -385,7 +397,7 @@ struct GeminiChatView: View {
             emptyStateCommandHints
           }
           ForEach(viewModel.messages) { message in
-            MessageBubbleView(message: message)
+            MessageBubbleView(message: message, onTapAttachedImage: { previewImageData = $0 })
               .id(message.id)
           }
           if viewModel.isSending {
@@ -412,12 +424,9 @@ struct GeminiChatView: View {
         scrollToBottom(proxy: proxy)
       }
       .focusable()
+      .focusEffectDisabled()
       .onKeyPress { keyPress in
         guard keyPress.modifiers.contains(.command) else { return .ignored }
-        if keyPress.characters == ".", viewModel.isSending {
-          viewModel.cancelSend()
-          return .handled
-        }
         switch keyPress.key {
         case .upArrow:
           scrollActions.scrollToTop?()
@@ -451,7 +460,7 @@ struct GeminiChatView: View {
         Text("/clear or /delete — Clear current chat messages")
           .font(.callout)
           .foregroundColor(.secondary)
-        Text("⌘. — Stop sending (while a message is being sent)")
+        Text("/stop — Stop sending (while a message is being sent)")
           .font(.callout)
           .foregroundColor(.secondary)
       }
@@ -542,20 +551,24 @@ struct GeminiChatView: View {
 
   // MARK: - Input Bar
 
-  /// Single-line height; each extra line adds this until max.
-  private static let inputLineHeight: CGFloat = 20
+  /// Line height matching .body so each line has enough space (padding is separate).
+  private static let inputLineHeight: CGFloat = 22
+  /// Extra top space so the first line is not clipped by the text view’s internal layout.
+  private static let inputTopBuffer: CGFloat = 6
   /// Minimum input area height (one line).
   private static let inputMinHeight: CGFloat = 36
   /// Maximum input area height (many lines); content scrolls when taller.
   private static let inputMaxHeight: CGFloat = 240
 
   private var inputBar: some View {
-    let lineCount = max(1, viewModel.inputText.components(separatedBy: .newlines).count)
-    let inputHeight = min(Self.inputMaxHeight, max(Self.inputMinHeight, Self.inputMinHeight + CGFloat(lineCount - 1) * Self.inputLineHeight))
+    let normalized = viewModel.inputText.replacingOccurrences(of: "\r\n", with: "\n")
+    let lineCount = max(1, normalized.components(separatedBy: .newlines).count)
+    let contentHeight = CGFloat(lineCount) * Self.inputLineHeight
+    let inputHeight = min(Self.inputMaxHeight, max(Self.inputMinHeight, 20 + Self.inputTopBuffer + contentHeight))
 
     return VStack(alignment: .leading, spacing: 8) {
       if viewModel.pendingScreenshot != nil {
-        pendingScreenshotThumbnail(onTapThumbnail: { showingScreenshotPreview = true })
+        pendingScreenshotThumbnail(onTapThumbnail: { previewImageData = viewModel.pendingScreenshot })
       }
       HStack(alignment: .bottom, spacing: 8) {
         ZStack(alignment: .topLeading) {
@@ -625,7 +638,7 @@ struct GeminiChatView: View {
               .foregroundColor(.secondary)
           }
           .buttonStyle(.plain)
-          .help("Stop sending (⌘.)")
+          .help("Stop sending (/stop)")
           .frame(width: 28, height: 28)
         }
 
@@ -690,13 +703,11 @@ struct GeminiChatView: View {
     .clipShape(RoundedRectangle(cornerRadius: 8))
   }
 
-  private func screenshotPreviewSheet(image: NSImage) -> some View {
+  private func screenshotPreviewSheet(image: NSImage, onDone: @escaping () -> Void) -> some View {
     VStack(spacing: 0) {
       HStack {
         Spacer()
-        Button("Done") {
-          showingScreenshotPreview = false
-        }
+        Button("Done", action: onDone)
         .keyboardShortcut(.defaultAction)
         .padding()
       }
@@ -949,6 +960,7 @@ private struct ModelReplyView: View {
 
 private struct MessageBubbleView: View {
   let message: ChatMessage
+  var onTapAttachedImage: ((Data) -> Void)? = nil
 
   var isUser: Bool { message.role == .user }
 
@@ -967,24 +979,41 @@ private struct MessageBubbleView: View {
   @ViewBuilder
   private var bubbleContent: some View {
     if isUser {
-      Text(message.content)
-        .font(.body)
-        .foregroundColor(.white)
-        .textSelection(.enabled)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .contentShape(Rectangle())
-        .background(
-          RoundedRectangle(cornerRadius: 14)
-            .fill(Color.accentColor)
-        )
-        .onHover { inside in
-          if inside {
-            NSCursor.iBeam.push()
-          } else {
-            NSCursor.pop()
-          }
+      VStack(alignment: .trailing, spacing: 8) {
+        if let data = message.attachedImageData, let nsImage = NSImage(data: data) {
+          Image(nsImage: nsImage)
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: 48, height: 32)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+            .onTapGesture {
+              onTapAttachedImage?(data)
+            }
+            .help("Click to view full size")
         }
+        if !message.content.isEmpty {
+          Text(message.content)
+            .font(.body)
+            .foregroundColor(.white)
+            .textSelection(.enabled)
+        }
+      }
+      .padding(.horizontal, 14)
+      .padding(.vertical, 10)
+      .contentShape(Rectangle())
+      .background(
+        RoundedRectangle(cornerRadius: 14)
+          .fill(Color.accentColor)
+      )
+      .onHover { inside in
+        if inside {
+          NSCursor.iBeam.push()
+        } else {
+          NSCursor.pop()
+        }
+      }
     } else {
       ModelReplyView(
         content: message.content,

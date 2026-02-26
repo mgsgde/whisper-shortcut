@@ -159,7 +159,7 @@ struct SupportFeedbackSection: View {
               .foregroundColor(.secondary)
               .opacity(0.8)
 
-            Text("Karlsruhe, Germany")
+            Text("Karlsruhe, Germany 🇩🇪")
               .font(.subheadline)
               .foregroundColor(.secondary)
               .opacity(0.7)

@@ -45,7 +45,6 @@ struct ReadAloudSettingsTab: View {
         label: "Read Aloud:",
         placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.readAloud),
         text: $viewModel.data.readAloud,
-        isEnabled: $viewModel.data.readAloudEnabled,
         focusedField: .toggleReadAloud,
         currentFocus: $focusedField,
         onShortcutChanged: {
