@@ -212,7 +212,14 @@ enum TranscriptionModel: String, CaseIterable {
 // MARK: - Gemini Transcription Request Models
 struct GeminiTranscriptionRequest: Codable {
   let contents: [GeminiTranscriptionContent]
-  
+  /// When using proxy (subscription), backend uses this to apply fixed model (e.g. transcription → gemini-2.0-flash).
+  let requestType: String?
+
+  enum CodingKeys: String, CodingKey {
+    case contents
+    case requestType = "request_type"
+  }
+
   struct GeminiTranscriptionContent: Codable {
     let parts: [GeminiTranscriptionPart]
   }
@@ -322,13 +329,16 @@ struct GeminiChatRequest: Codable {
   let tools: [GeminiTool]?
   let generationConfig: GeminiGenerationConfig?
   let model: String?  // Optional model field (required for TTS models)
-  
+  /// When using proxy (subscription), backend uses this to apply fixed model (e.g. prompt_mode → gemini-2.5-flash).
+  let requestType: String?
+
   enum CodingKeys: String, CodingKey {
     case contents
     case systemInstruction = "system_instruction"
     case tools
     case generationConfig = "generationConfig"
     case model
+    case requestType = "request_type"
   }
   
   // MARK: - Generation Config
@@ -596,7 +606,7 @@ enum TranscriptionError: Error, Equatable {
   case textTooShort
   case promptLeakDetected
   case modelNotAvailable(OfflineModelType)
-  /// Voice/output (TTS) is not available via Sign in with Google and balance; API key is required.
+  /// Voice/output (TTS) is not available via Sign in with Google; API key is required.
   case voiceRequiresAPIKey
 
   var title: String {

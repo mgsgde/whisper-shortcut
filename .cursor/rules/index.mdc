@@ -31,8 +31,8 @@ alwaysApply: true
 ## 🚀 Run / Rebuild
 
 ```bash
-bash ./scripts/rebuild-and-restart.sh           # Local API (localhost), dev balance
-bash ./scripts/rebuild-and-restart.sh --production   # Production API, production balance
+bash ./scripts/rebuild-and-restart.sh           # Local API (localhost)
+bash ./scripts/rebuild-and-restart.sh --production   # Production API
 ```
 
 ## 🔗 Gemini API / models

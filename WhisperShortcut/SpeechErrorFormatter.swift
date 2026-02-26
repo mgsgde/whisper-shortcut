@@ -316,7 +316,7 @@ struct SpeechErrorFormatter {
       return """
         🎤 Voice Output Requires API Key
 
-        Voice output (Read Aloud, Prompt & Read) is not available when using Sign in with Google and balance.
+        Voice output (Read Aloud, Prompt & Read) is not available when using Sign in with Google.
 
         To use voice output, add a Google API key in Settings → Google API Key. Voice output will then use the Generative Language API directly and does not require allowlist access.
         """

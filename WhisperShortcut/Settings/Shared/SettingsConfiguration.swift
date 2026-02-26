@@ -483,6 +483,8 @@ struct SettingsDefaults {
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
   static let selectedPromptModel = PromptModel.gemini31FlashLite
   static let selectedPromptAndReadModel = PromptModel.gemini31FlashLite
+  /// Default for Prompt Mode and Prompt Read Mode when user is on subscription (proxy). Stable model only, no preview.
+  static let subscriptionPromptModel = PromptModel.gemini25Flash
   static let selectedImprovementModel = PromptModel.gemini3Flash
   static let selectedOpenGeminiModel = PromptModel.gemini3Flash
   static let geminiCloseOnFocusLoss = true
@@ -495,6 +497,8 @@ struct SettingsDefaults {
   static let selectedReadAloudVoice = "Charon"
   static let selectedPromptAndReadVoice = "Charon"
   static let selectedTTSModel = TTSModel.gemini25FlashTTS
+  /// TTS model when on subscription (proxy). Stable model only; selection is disabled in UI.
+  static let subscriptionTTSModel = TTSModel.gemini25FlashTTS
   static let readAloudPlaybackRateMin: Float = 0.5
   static let readAloudPlaybackRateMax: Float = 2.0
   static let readAloudPlaybackRate: Float = 1.0
@@ -528,7 +532,7 @@ struct SettingsDefaults {
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
   static let selectedMeetingSummaryModel = PromptModel.gemini3Flash
 
-  // MARK: - Backend API (when signed in, Gemini + balance use this)
+  // MARK: - Backend API (when signed in, Gemini + usage use this)
   /// Debug: local API (npm run dev) unless WSUseProductionAPI UserDefaults is set. Release: production.
   static var proxyAPIBaseURL: String {
     #if DEBUG
@@ -538,18 +542,6 @@ struct SettingsDefaults {
     return "http://localhost:8080"
     #else
     return "https://api.whispershortcut.com"
-    #endif
-  }
-
-  /// Dashboard URL (balance top-up). Debug: local unless WSUseProductionAPI. Release: production.
-  static var dashboardBaseURL: String {
-    #if DEBUG
-    if UserDefaults.standard.bool(forKey: "WSUseProductionAPI") {
-      return "https://whispershortcut.com/dashboard"
-    }
-    return "http://localhost:3000/dashboard"
-    #else
-    return "https://whispershortcut.com/dashboard"
     #endif
   }
 
@@ -630,8 +622,6 @@ struct SettingsData {
   var isLoading: Bool = SettingsDefaults.isLoading
   var showAlert: Bool = SettingsDefaults.showAlert
   var appStoreLinkCopied: Bool = false
-  var balanceCent: Int? = nil
-  var balanceLoadErrorMessage: String? = nil
 }
 
 // MARK: - Focus States Enum

@@ -17,10 +17,6 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
-      BalanceSection(viewModel: viewModel)
-
-      SpacedSectionDivider()
-
       KeyboardShortcutsSection(viewModel: viewModel, focusedField: $focusedField)
 
       SpacedSectionDivider()

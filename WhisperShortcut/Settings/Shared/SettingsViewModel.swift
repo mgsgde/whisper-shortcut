@@ -68,6 +68,9 @@ class SettingsViewModel: ObservableObject {
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
+    let subscriptionMode = !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
+    let promptModelDefault = subscriptionMode ? SettingsDefaults.subscriptionPromptModel : SettingsDefaults.selectedPromptModel
+
     // Load Prompt model preference (for Prompt Mode); migrate deprecated or removed models (e.g. gemini-2.0-flash-lite → 2.5 Flash-Lite)
     if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) {
       if savedModelString == "gemini-2.0-flash-lite" {
@@ -80,10 +83,10 @@ class SettingsViewModel: ObservableObject {
           UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
         }
       } else {
-        data.selectedPromptModel = SettingsDefaults.selectedPromptModel
+        data.selectedPromptModel = promptModelDefault
       }
     } else {
-      data.selectedPromptModel = SettingsDefaults.selectedPromptModel
+      data.selectedPromptModel = promptModelDefault
     }
 
     // System prompts are stored in UserContext/system-prompts.md (see SystemPromptsStore); not loaded from UserDefaults.
@@ -109,8 +112,10 @@ class SettingsViewModel: ObservableObject {
       data.selectedReadAloudVoice = SettingsDefaults.selectedReadAloudVoice
     }
 
-    // Load TTS model setting
-    if let savedTTSModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTTSModel),
+    // Load TTS model setting; subscription uses fixed stable model (display and runtime)
+    if subscriptionMode {
+      data.selectedTTSModel = SettingsDefaults.subscriptionTTSModel
+    } else if let savedTTSModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTTSModel),
       let savedTTSModel = TTSModel(rawValue: savedTTSModelString)
     {
       data.selectedTTSModel = savedTTSModel
@@ -122,6 +127,7 @@ class SettingsViewModel: ObservableObject {
     data.readAloudPlaybackRate = SettingsDefaults.clampedReadAloudPlaybackRate()
 
     // Load Prompt Read Mode specific settings (with migration from deprecated 2.0 and from Toggle Prompting if not set)
+    let promptAndReadDefault = subscriptionMode ? SettingsDefaults.subscriptionPromptModel : SettingsDefaults.selectedPromptAndReadModel
     if let savedPromptAndReadModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadModel),
       let savedPromptAndReadModel = PromptModel(rawValue: savedPromptAndReadModelString)
     {
@@ -131,10 +137,11 @@ class SettingsViewModel: ObservableObject {
         UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedPromptAndReadModel)
       }
     } else {
-      // Migration: Use Toggle Prompting model if Prompt Read Mode model not set
-      data.selectedPromptAndReadModel = data.selectedPromptModel
+      // Migration: Use Toggle Prompting model if Prompt Read Mode model not set; subscription uses stable default
+      data.selectedPromptAndReadModel = subscriptionMode ? promptAndReadDefault : data.selectedPromptModel
     }
 
+    let improvementModelDefault = subscriptionMode ? SettingsDefaults.subscriptionPromptModel : SettingsDefaults.selectedImprovementModel
     if let savedImprovementModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel),
       let savedImprovementModel = PromptModel(rawValue: savedImprovementModelString)
     {
@@ -144,7 +151,7 @@ class SettingsViewModel: ObservableObject {
         UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
       }
     } else {
-      data.selectedImprovementModel = SettingsDefaults.selectedImprovementModel
+      data.selectedImprovementModel = improvementModelDefault
     }
 
     // Load Open Gemini window model
@@ -643,37 +650,6 @@ class SettingsViewModel: ObservableObject {
       return "~" + String(path.dropFirst(home.count))
     }
     return path
-  }
-
-  /// Fetches balance from backend API and updates data.balanceCent / data.balanceLoadErrorMessage.
-  func refreshBalance() async {
-    let tokenProvider: () async -> String? = {
-      await DefaultGoogleAuthService.shared.getIDToken()
-    }
-    let cent = await BackendAPIClient.fetchBalance(idTokenProvider: tokenProvider)
-    await MainActor.run {
-      if let cent = cent {
-        data.balanceCent = cent
-        data.balanceLoadErrorMessage = nil
-      } else {
-        data.balanceCent = nil
-        data.balanceLoadErrorMessage = "Could not load balance"
-      }
-    }
-  }
-
-  /// Opens the Dashboard URL in the default browser (for top-up). URL is fixed by the app.
-  func openDashboardForTopUp() {
-    let urlString = SettingsDefaults.dashboardBaseURL
-    guard let url = URL(string: urlString) else {
-      DebugLogger.logError("BALANCE: Dashboard URL invalid")
-      return
-    }
-    if NSWorkspace.shared.open(url) {
-      DebugLogger.log("BALANCE: Opened Dashboard for top-up")
-    } else {
-      DebugLogger.logError("BALANCE: Failed to open Dashboard URL")
-    }
   }
 
   /// Opens the context folder in Finder; creates it if it does not exist.

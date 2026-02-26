@@ -5,8 +5,8 @@
 # Uses a fixed derivedData path so we always launch the build we just produced (not an old one).
 #
 # Usage:
-#   bash scripts/rebuild-and-restart.sh           # Use local API (localhost:8080), dev balance
-#   bash scripts/rebuild-and-restart.sh --production   # Use production API, production balance
+#   bash scripts/rebuild-and-restart.sh           # Use local API (localhost:8080)
+#   bash scripts/rebuild-and-restart.sh --production   # Use production API
 
 set -e  # Exit on any error
 
@@ -15,10 +15,10 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DERIVED_DATA="$PROJECT_DIR/build/DerivedData"
 APP_PATH="$DERIVED_DATA/Build/Products/Debug/WhisperShortcut.app"
 
-# Optional: --production to use production API (and production balance)
+# Optional: --production to use production API
 if [[ "${1:-}" == "--production" ]] || [[ "${1:-}" == "production" ]]; then
   defaults write com.magnusgoedde.whispershortcut WSUseProductionAPI -bool true
-  echo "📡 Using production API (whispershortcut.com balance)."
+  echo "📡 Using production API (whispershortcut.com)."
 else
   defaults delete com.magnusgoedde.whispershortcut WSUseProductionAPI 2>/dev/null || true
   echo "📡 Using local API (localhost:8080)."

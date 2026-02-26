@@ -18,7 +18,7 @@ struct GoogleAccountSection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Google Account (SSO)",
-        subtitle: "Sign in with Google to use the same account in the app and the Dashboard (balance, usage, top-up)."
+        subtitle: "Sign in with Google to use the same account in the app and the Dashboard (usage and billing)."
       )
       .id(googleSignInRefresh)
 
@@ -77,7 +77,7 @@ struct GoogleAccountSection: View {
         }
       }
 
-      Text("When signed in, you can use the backend API (balance, usage) and the Dashboard with the same account.")
+      Text("When signed in, you can use the backend API (usage) and the Dashboard with the same account.")
         .font(.caption)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
