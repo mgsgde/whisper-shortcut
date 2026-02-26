@@ -1,6 +1,19 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Theme environment
+
+private struct GeminiChatThemeKey: EnvironmentKey {
+  static let defaultValue: GeminiChatTheme = .dark
+}
+
+extension EnvironmentValues {
+  var geminiChatTheme: GeminiChatTheme {
+    get { self[GeminiChatThemeKey.self] }
+    set { self[GeminiChatThemeKey.self] = newValue }
+  }
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -30,6 +43,7 @@ class GeminiChatViewModel: ObservableObject {
   static let screenshotCommand = "/screenshot"
   private static let stopCommand = "/stop"
   private static let settingsCommand = "/settings"
+  private static let themeCommand = "/theme"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -39,6 +53,7 @@ class GeminiChatViewModel: ObservableObject {
     ("/delete", "Clear current chat messages"),
     ("/screenshot", "Capture screen (attached to your next message)"),
     ("/settings", "Open Settings"),
+    ("/theme", "Toggle light/dark theme"),
     ("/stop", "Stop sending (while a message is being sent)")
   ]
 
@@ -120,12 +135,17 @@ class GeminiChatViewModel: ObservableObject {
     // Slash commands: do not send to API
     if lower == Self.newChatCommand || lower == Self.backChatCommand
         || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
-        || lower == Self.settingsCommand {
+        || lower == Self.settingsCommand || lower == Self.themeCommand {
       inputText = ""
       if lower == Self.newChatCommand { createNewSession() }
       else if lower == Self.backChatCommand { goBack() }
       else if Self.clearChatCommands.contains(lower) { clearMessages() }
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
+      else if lower == Self.themeCommand {
+        let current = GeminiChatTheme.load()
+        GeminiChatTheme.save(current.opposite)
+        DebugLogger.log("GEMINI-CHAT: Theme toggled to \(current.opposite.rawValue)")
+      }
       else { await captureScreenshot() }
       return
     }
@@ -270,11 +290,16 @@ private struct InputTextHeightKey: PreferenceKey {
 
 struct GeminiChatView: View {
   @StateObject private var viewModel = GeminiChatViewModel()
+  @AppStorage(UserDefaultsKeys.geminiChatTheme) private var geminiChatThemeRaw: String = GeminiChatTheme.dark.rawValue
   @FocusState private var inputFocused: Bool
   /// Image data to show in the full-size preview sheet (from pending screenshot or from a sent message thumbnail).
   @State private var previewImageData: Data? = nil
   @State private var scrollActions = GeminiScrollActions()
   @State private var measuredInputHeight: CGFloat = 0
+
+  private var theme: GeminiChatTheme {
+    GeminiChatTheme(rawValue: geminiChatThemeRaw) ?? .dark
+  }
 
   var body: some View {
     GeometryReader { geometry in
@@ -291,7 +316,8 @@ struct GeminiChatView: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(Color(NSColor.windowBackgroundColor))
+    .background(theme.windowBackground)
+    .environment(\.geminiChatTheme, theme)
     .sheet(isPresented: Binding(
       get: { previewImageData != nil },
       set: { if !$0 { previewImageData = nil } }
@@ -326,6 +352,7 @@ struct GeminiChatView: View {
           .foregroundColor(.accentColor)
         Text(viewModel.openGeminiModelDisplayName)
           .font(.headline)
+          .foregroundColor(theme.primaryText)
       }
       Spacer()
       Button(action: { viewModel.createNewSession() }) {
@@ -339,7 +366,7 @@ struct GeminiChatView: View {
         .padding(.vertical, 10)
         .frame(minHeight: 36)
         .contentShape(Rectangle())
-        .foregroundColor(.secondary)
+        .foregroundColor(theme.secondaryText)
       }
       .buttonStyle(.plain)
       .help("Start a new chat (previous chat stays in history)")
@@ -356,7 +383,7 @@ struct GeminiChatView: View {
         .padding(.vertical, 10)
         .frame(minHeight: 36)
         .contentShape(Rectangle())
-        .foregroundColor(viewModel.canGoBack ? .secondary : .secondary.opacity(0.5))
+        .foregroundColor(viewModel.canGoBack ? theme.secondaryText : theme.secondaryText.opacity(0.5))
       }
       .buttonStyle(.plain)
       .disabled(!viewModel.canGoBack)
@@ -380,7 +407,7 @@ struct GeminiChatView: View {
         .padding(.vertical, 10)
         .frame(minHeight: 36)
         .contentShape(Rectangle())
-        .foregroundColor(viewModel.screenshotCaptureInProgress ? .secondary.opacity(0.6) : .secondary)
+        .foregroundColor(viewModel.screenshotCaptureInProgress ? theme.secondaryText.opacity(0.6) : theme.secondaryText)
       }
       .buttonStyle(.plain)
       .disabled(viewModel.screenshotCaptureInProgress || viewModel.isSending)
@@ -453,26 +480,29 @@ struct GeminiChatView: View {
       Text("Commands")
         .font(.subheadline)
         .fontWeight(.semibold)
-        .foregroundColor(.secondary)
+        .foregroundColor(theme.secondaryText)
       VStack(alignment: .leading, spacing: 6) {
         Text("/new — Start a new chat (previous chat stays in history)")
           .font(.callout)
-          .foregroundColor(.secondary)
+          .foregroundColor(theme.secondaryText)
         Text("/back — Switch to the previous chat")
           .font(.callout)
-          .foregroundColor(.secondary)
+          .foregroundColor(theme.secondaryText)
         Text("/screenshot — Capture screen (attached to your next message)")
           .font(.callout)
-          .foregroundColor(.secondary)
+          .foregroundColor(theme.secondaryText)
         Text("/clear or /delete — Clear current chat messages")
           .font(.callout)
-          .foregroundColor(.secondary)
+          .foregroundColor(theme.secondaryText)
         Text("/settings — Open Settings")
           .font(.callout)
-          .foregroundColor(.secondary)
+          .foregroundColor(theme.secondaryText)
+        Text("/theme — Toggle light/dark theme")
+          .font(.callout)
+          .foregroundColor(theme.secondaryText)
         Text("/stop — Stop sending (while a message is being sent)")
           .font(.callout)
-          .foregroundColor(.secondary)
+          .foregroundColor(theme.secondaryText)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -534,9 +564,10 @@ struct GeminiChatView: View {
                 Text(item.command)
                   .font(.system(.body, design: .monospaced))
                   .fontWeight(.medium)
+                  .foregroundColor(theme.primaryText)
                 Text(item.description)
                   .font(.caption)
-                  .foregroundColor(.secondary)
+                  .foregroundColor(theme.secondaryText)
                   .lineLimit(2)
               }
               .frame(maxWidth: .infinity, alignment: .leading)
@@ -547,10 +578,10 @@ struct GeminiChatView: View {
           .allowsHitTesting(false)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.vertical, 6)
-          .background(Color(NSColor.controlBackgroundColor))
+          .background(theme.controlBackground)
           .overlay(
             RoundedRectangle(cornerRadius: 8)
-              .strokeBorder(Color.primary.opacity(0.15), lineWidth: 1)
+              .strokeBorder(theme.primaryText.opacity(theme.borderOpacity), lineWidth: 1)
           )
           .clipShape(RoundedRectangle(cornerRadius: 8))
           .padding(.horizontal, 20)
@@ -593,7 +624,7 @@ struct GeminiChatView: View {
           if viewModel.inputText.isEmpty {
             Text("Message Gemini…")
               .font(.body)
-              .foregroundColor(Color(nsColor: .placeholderTextColor))
+              .foregroundColor(theme.secondaryText.opacity(0.5))
               .padding(.leading, 15)
               .padding(.trailing, 10)
               .padding(.vertical, 10)
@@ -602,6 +633,7 @@ struct GeminiChatView: View {
           TextEditor(text: $viewModel.inputText)
             .scrollContentBackground(.hidden)
             .font(.body)
+            .foregroundColor(theme.primaryText)
             .focused($inputFocused)
             .onKeyPress(.tab) {
               let text = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -647,14 +679,14 @@ struct GeminiChatView: View {
         }
         .frame(height: inputHeight)
         .onPreferenceChange(InputTextHeightKey.self) { measuredInputHeight = $0 }
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(theme.controlBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
 
         if viewModel.isSending {
           Button(action: { viewModel.cancelSend() }) {
             Image(systemName: "stop.circle.fill")
               .font(.system(size: 24))
-              .foregroundColor(.secondary)
+              .foregroundColor(theme.secondaryText)
           }
           .buttonStyle(.plain)
           .help("Stop sending (/stop)")
@@ -674,7 +706,7 @@ struct GeminiChatView: View {
               .font(.system(size: 24))
               .foregroundColor(
                 (viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.pendingScreenshot == nil)
-                  ? .secondary : .accentColor)
+                  ? theme.secondaryText : .accentColor)
           }
         }
         .buttonStyle(.plain)
@@ -710,19 +742,19 @@ struct GeminiChatView: View {
       }
       Text("Screenshot will be attached to your next message")
         .font(.caption)
-        .foregroundColor(.secondary)
+        .foregroundColor(theme.secondaryText)
       Spacer()
       Button(action: { viewModel.clearPendingScreenshot() }) {
         Image(systemName: "xmark.circle.fill")
           .font(.system(size: 18))
-          .foregroundColor(.secondary)
+          .foregroundColor(theme.secondaryText)
       }
       .buttonStyle(.plain)
       .help("Remove screenshot")
       .pointerCursorOnHover()
     }
     .padding(8)
-    .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
+    .background(theme.controlBackground.opacity(0.8))
     .clipShape(RoundedRectangle(cornerRadius: 8))
   }
 
@@ -739,7 +771,7 @@ struct GeminiChatView: View {
         .resizable()
         .scaledToFit()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(theme.windowBackground)
     }
     .frame(minWidth: 800, minHeight: 600)
     .frame(idealWidth: 1000, idealHeight: 700)
@@ -888,24 +920,22 @@ private struct FlowLayout: Layout {
 // MARK: - Model Reply View
 
 private struct ModelReplyView: View {
+  @Environment(\.geminiChatTheme) private var theme
   let content: String
   let sources: [GroundingSource]
   let groundingSupports: [GroundingSupport]
 
-  /// Single Text view so the user can select across the entire reply. With grounding, citation markers [1], [2] appear at the end of each paragraph and are clickable links.
+  /// Single Text view so the user can select across the entire reply. With grounding, citation markers [1], [2] appear at the end of each paragraph and are clickable links. No bubble background — answers use the window background only.
   var body: some View {
     Text(Self.buildAttributedReply(content: content, sources: sources, groundingSupports: groundingSupports))
       .font(.system(size: 15))
       .lineSpacing(4)
+      .foregroundColor(theme.primaryText)
       .padding(.horizontal, 14)
       .padding(.vertical, 12)
       .frame(maxWidth: .infinity, alignment: .leading)
       .fixedSize(horizontal: false, vertical: true)
       .contentShape(Rectangle())
-      .background(
-        RoundedRectangle(cornerRadius: 12)
-          .fill(Color(NSColor.controlBackgroundColor))
-      )
       .textSelection(.enabled)
       .onHover { inside in
         if inside {
@@ -988,6 +1018,7 @@ private struct ModelReplyView: View {
 // MARK: - Read Aloud Button (under model replies)
 
 private struct ReadAloudButtonView: View {
+  @Environment(\.geminiChatTheme) private var theme
   let messageContent: String
   @State private var isHovered = false
   @State private var isTTSActive = false
@@ -1010,14 +1041,14 @@ private struct ReadAloudButtonView: View {
         Text(isTTSActive ? "Reading…" : "Read Aloud")
           .font(.caption)
       }
-      .foregroundColor(isHovered ? .primary : .secondary)
+      .foregroundColor(isHovered ? theme.primaryText : theme.secondaryText)
       .padding(.horizontal, 10)
       .padding(.vertical, 6)
       .frame(minHeight: 28)
       .contentShape(Rectangle())
       .background(
         RoundedRectangle(cornerRadius: 6)
-          .fill(isHovered ? Color(NSColor.controlBackgroundColor).opacity(0.9) : Color(NSColor.controlBackgroundColor).opacity(0.5))
+          .fill(isHovered ? theme.controlBackground.opacity(0.9) : theme.controlBackground.opacity(0.5))
       )
     }
     .buttonStyle(.plain)
@@ -1039,6 +1070,7 @@ private struct ReadAloudButtonView: View {
 // MARK: - Copy Reply Button (under model replies)
 
 private struct CopyReplyButtonView: View {
+  @Environment(\.geminiChatTheme) private var theme
   let messageContent: String
   @State private var isHovered = false
 
@@ -1053,14 +1085,14 @@ private struct CopyReplyButtonView: View {
         Text("Copy")
           .font(.caption)
       }
-      .foregroundColor(isHovered ? .primary : .secondary)
+      .foregroundColor(isHovered ? theme.primaryText : theme.secondaryText)
       .padding(.horizontal, 10)
       .padding(.vertical, 6)
       .frame(minHeight: 28)
       .contentShape(Rectangle())
       .background(
         RoundedRectangle(cornerRadius: 6)
-          .fill(isHovered ? Color(NSColor.controlBackgroundColor).opacity(0.9) : Color(NSColor.controlBackgroundColor).opacity(0.5))
+          .fill(isHovered ? theme.controlBackground.opacity(0.9) : theme.controlBackground.opacity(0.5))
       )
     }
     .buttonStyle(.plain)
@@ -1076,6 +1108,7 @@ private struct CopyReplyButtonView: View {
 // MARK: - Message Bubble
 
 private struct MessageBubbleView: View {
+  @Environment(\.geminiChatTheme) private var theme
   let message: ChatMessage
   var onTapAttachedImage: ((Data) -> Void)? = nil
 
@@ -1162,10 +1195,10 @@ private struct MessageBubbleView: View {
       HStack(spacing: 4) {
         Image(systemName: "globe")
           .font(.caption2)
-          .foregroundColor(.secondary)
+          .foregroundColor(theme.secondaryText)
         Text("Sources")
           .font(.caption2)
-          .foregroundColor(.secondary)
+          .foregroundColor(theme.secondaryText)
       }
       FlowLayout(horizontalSpacing: 10, verticalSpacing: 6) {
         ForEach(Array(message.sources.enumerated()), id: \.element.id) { index, source in
@@ -1194,13 +1227,14 @@ private struct MessageBubbleView: View {
 // MARK: - Typing Indicator
 
 private struct TypingIndicatorView: View {
+  @Environment(\.geminiChatTheme) private var theme
   @State private var dotScale: [CGFloat] = [1, 1, 1]
 
   var body: some View {
     HStack(spacing: 4) {
       ForEach(0..<3, id: \.self) { i in
         Circle()
-          .fill(Color.secondary)
+          .fill(theme.secondaryText)
           .frame(width: 7, height: 7)
           .scaleEffect(dotScale[i])
           .animation(
@@ -1215,7 +1249,7 @@ private struct TypingIndicatorView: View {
     .padding(.vertical, 10)
     .background(
       RoundedRectangle(cornerRadius: 14)
-        .fill(Color(NSColor.controlBackgroundColor))
+        .fill(theme.controlBackground)
     )
     .onAppear {
       for i in 0..<3 {
