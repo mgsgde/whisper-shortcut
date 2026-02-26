@@ -237,27 +237,43 @@ class AutoPromptImprovementScheduler {
 
   private func runImprovement() async {
     let derivation = ContextDerivation()
-    var pendingKinds: [GenerationKind] = []
-
-    // Run derivation for each focus
     let focuses: [GenerationKind] = [.dictation, .promptMode, .promptAndRead, .geminiChat]
 
-    for focus in focuses {
-      do {
-        DebugLogger.log("AUTO-IMPROVEMENT: Running derivation for \(focus)")
-        try await derivation.updateFromLogs(focus: focus)
-
-        // Check if a suggestion was generated
-        if hasSuggestion(for: focus) {
-          pendingKinds.append(focus)
-          DebugLogger.log("AUTO-IMPROVEMENT: Found suggestion for \(focus)")
-        } else {
-          DebugLogger.log("AUTO-IMPROVEMENT: No suggestion generated for \(focus)")
+    typealias FocusResult = (focus: GenerationKind, error: Error?)
+    let results: [FocusResult] = await withTaskGroup(of: FocusResult.self) { group in
+      for focus in focuses {
+        group.addTask {
+          do {
+            DebugLogger.log("AUTO-IMPROVEMENT: Running derivation for \(focus)")
+            try await derivation.updateFromLogs(focus: focus)
+            return (focus, nil as Error?)
+          } catch {
+            return (focus, error)
+          }
         }
-      } catch {
-        DebugLogger.logError("AUTO-IMPROVEMENT: Failed to generate suggestion for \(focus): \(error.localizedDescription)")
-        // Continue with other focuses even if one fails
       }
+      var collected: [FocusResult] = []
+      for await result in group { collected.append(result) }
+      return collected
+    }
+
+    var pendingKinds: [GenerationKind] = []
+    for (focus, error) in results {
+      if let error = error {
+        DebugLogger.logError("AUTO-IMPROVEMENT: Failed to generate suggestion for \(focus): \(error.localizedDescription)")
+        continue
+      }
+      if hasSuggestion(for: focus) {
+        pendingKinds.append(focus)
+        DebugLogger.log("AUTO-IMPROVEMENT: Found suggestion for \(focus)")
+      } else {
+        DebugLogger.log("AUTO-IMPROVEMENT: No suggestion generated for \(focus)")
+      }
+    }
+
+    // Stable order for review UI (dictation, promptMode, promptAndRead, geminiChat)
+    pendingKinds.sort { a, b in
+      (focuses.firstIndex(of: a) ?? 0) < (focuses.firstIndex(of: b) ?? 0)
     }
 
     // Present review UI for each suggestion; apply only on Accept, discard on Cancel
