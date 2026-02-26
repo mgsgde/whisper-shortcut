@@ -80,6 +80,7 @@ struct ReadAloudSettingsTab: View {
   private var ttsModelSelectionSection: some View {
     TTSModelSelectionView(
       selectedTTSModel: $viewModel.data.selectedTTSModel,
+      subscriptionMode: !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn(),
       onModelChanged: {
         UserDefaults.standard.set(
           viewModel.data.selectedTTSModel.rawValue,

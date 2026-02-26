@@ -9,23 +9,30 @@ struct PromptModelSelectionView: View {
   let showSectionHeader: Bool
   @Binding var selectedModel: PromptModel
   let onModelChanged: (() -> Void)?
+  /// When true, user is on subscription (proxy); model selection is fixed by the backend. All options disabled.
+  let subscriptionMode: Bool
 
   init(
     title: String,
     subtitle: String? = nil,
     showSectionHeader: Bool = true,
     selectedModel: Binding<PromptModel>,
+    subscriptionMode: Bool = false,
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
     self.subtitle = subtitle
     self.showSectionHeader = showSectionHeader
     self._selectedModel = selectedModel
+    self.subscriptionMode = subscriptionMode
     self.onModelChanged = onModelChanged
   }
 
   private var effectiveSubtitle: String {
-    subtitle ?? "Choose between GPT-Audio and Gemini multimodal models for direct audio input processing"
+    if subscriptionMode {
+      return "In subscription mode, model selection is not available. Dictate Prompt uses Gemini 2.5 Flash; Smart Improvement uses Gemini 3.1 Pro (limited)."
+    }
+    return subtitle ?? "Choose between GPT-Audio and Gemini multimodal models for direct audio input processing"
   }
 
   var body: some View {
@@ -47,9 +54,18 @@ struct PromptModelSelectionView: View {
         }
       }
 
+      if subscriptionMode {
+        Text("Dictate Prompt: Gemini 2.5 Flash · Smart Improvement: Gemini 3.1 Pro (limited)")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+          .padding(.vertical, 4)
+      }
+
       // Model Selection Grid
       LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
         ForEach(PromptModel.allCases, id: \.self) { model in
+          let isDisabled = subscriptionMode
           ZStack {
             Rectangle()
               .fill(selectedModel == model ? Color.accentColor : Color.clear)
@@ -58,12 +74,13 @@ struct PromptModelSelectionView: View {
             Text(model.displayName)
               .font(.system(.body, design: .default))
               .fontWeight(.medium)
-              .foregroundColor(selectedModel == model ? .white : .primary)
+              .foregroundColor(selectedModel == model ? .white : (isDisabled ? .secondary : .primary))
           }
           .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
           .contentShape(Rectangle())
+          .opacity(isDisabled ? 0.6 : 1)
           .onTapGesture {
-            
+            if isDisabled { return }
             selectedModel = model
             onModelChanged?()
           }

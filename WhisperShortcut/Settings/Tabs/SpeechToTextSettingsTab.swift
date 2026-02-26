@@ -136,6 +136,7 @@ struct SpeechToTextSettingsTab: View {
         title: "🎤 Transcription Model",
         selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
         geminiDisabled: !KeychainManager.shared.hasGoogleAPIKey(),
+        subscriptionMode: !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn(),
         onModelChanged: {
           UserDefaults.standard.set(
             viewModel.data.selectedTranscriptionModel.rawValue,

@@ -71,6 +71,7 @@ struct SpeechToPromptSettingsTab: View {
     PromptModelSelectionView(
       title: "🧠 Model Selection",
       selectedModel: $viewModel.data.selectedPromptModel,
+      subscriptionMode: !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn(),
       onModelChanged: {
         UserDefaults.standard.set(
           viewModel.data.selectedPromptModel.rawValue,

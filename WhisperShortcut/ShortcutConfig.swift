@@ -3,7 +3,7 @@ import Foundation
 import HotKey
 
 // MARK: - Key Extensions
-extension Key: Codable {
+extension Key: @retroactive Codable {
   public init(from decoder: Decoder) throws {
     let container = try decoder.singleValueContainer()
     let rawValue = try container.decode(UInt16.self)
@@ -82,7 +82,7 @@ extension Key: Codable {
 }
 
 // MARK: - NSEvent.ModifierFlags Extensions
-extension NSEvent.ModifierFlags: Codable {
+extension NSEvent.ModifierFlags: @retroactive Codable {
   public init(from decoder: Decoder) throws {
     let container = try decoder.singleValueContainer()
     let rawValue = try container.decode(UInt.self)

@@ -6,10 +6,16 @@ class ContextDerivation {
 
   /// Per-field character cap per log entry; smaller = less payload and faster derivation.
   private let maxFieldChars = 1000
-  /// API endpoint from the selected Smart Improvement / Generate with AI model; falls back to default (Gemini 3 Flash) if unset or invalid.
+  /// API endpoint from the selected Smart Improvement / Generate with AI model; falls back to default (Gemini 3 Flash) if unset or invalid. Subscription uses stable Gemini 2.5 Flash.
   private var analysisEndpoint: String {
-    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
-      ?? SettingsDefaults.selectedImprovementModel.rawValue
+    let isSubscription = !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
+    let raw: String
+    if isSubscription {
+      raw = SettingsDefaults.subscriptionPromptModel.rawValue
+    } else {
+      raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
+        ?? SettingsDefaults.selectedImprovementModel.rawValue
+    }
     guard let model = PromptModel(rawValue: raw), let transcriptionModel = model.asTranscriptionModel else {
       return AppConstants.contextDerivationEndpoint
     }
@@ -616,12 +622,14 @@ class ContextDerivation {
         parts: [GeminiChatRequest.GeminiChatPart(text: userMessage, inlineData: nil, fileData: nil, url: nil)]
       )
     ]
+    let requestTypeForProxy: String? = credential.isOAuth ? "smart_improvement" : nil
     let chatRequest = GeminiChatRequest(
       contents: contents,
       systemInstruction: systemInstruction,
       tools: nil,
       generationConfig: nil,
-      model: nil
+      model: nil,
+      requestType: requestTypeForProxy
     )
     request.httpBody = try JSONEncoder().encode(chatRequest)
 

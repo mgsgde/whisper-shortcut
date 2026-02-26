@@ -277,6 +277,7 @@ struct ContextSettingsTab: View {
               viewModel.data = d
             }
           ),
+          subscriptionMode: !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn(),
           onModelChanged: {
             UserDefaults.standard.set(
               viewModel.data.selectedImprovementModel.rawValue,

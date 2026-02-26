@@ -78,6 +78,7 @@ struct PromptAndReadSettingsTab: View {
       PromptModelSelectionView(
         title: "🧠 Model Selection",
         selectedModel: $viewModel.data.selectedPromptAndReadModel,
+        subscriptionMode: !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn(),
         onModelChanged: {
           UserDefaults.standard.set(
             viewModel.data.selectedPromptAndReadModel.rawValue,

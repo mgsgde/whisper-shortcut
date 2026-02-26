@@ -299,6 +299,7 @@ class ChunkTranscriptionService {
                 var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
                 request.timeoutInterval = Self.chunkResourceTimeout
 
+                let requestTypeForProxy: String? = credential.isOAuth ? "transcription" : nil
                 let transcriptionRequest = GeminiTranscriptionRequest(
                     contents: [
                         GeminiTranscriptionRequest.GeminiTranscriptionContent(
@@ -320,7 +321,8 @@ class ChunkTranscriptionService {
                                 )
                             ]
                         )
-                    ]
+                    ],
+                    requestType: requestTypeForProxy
                 )
 
                 request.httpBody = try JSONEncoder().encode(transcriptionRequest)
