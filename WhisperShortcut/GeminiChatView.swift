@@ -793,6 +793,63 @@ private enum ParagraphCitationBuilder {
   }
 }
 
+// MARK: - Flow Layout (wrapping)
+
+/// Lays out subviews left-to-right and wraps to the next line when horizontal space is insufficient.
+/// Uses a bounded default width when proposal is unspecified so the layout never reports unbounded size.
+private struct FlowLayout: Layout {
+  var horizontalSpacing: CGFloat = 10
+  var verticalSpacing: CGFloat = 6
+  /// Fallback width when proposal has no finite width (avoids destabilizing parent layout).
+  private static let defaultMaxWidth: CGFloat = 500
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let maxWidth: CGFloat
+    if let w = proposal.width, w.isFinite, w > 0 {
+      maxWidth = w
+    } else {
+      maxWidth = Self.defaultMaxWidth
+    }
+    var x: CGFloat = 0
+    var y: CGFloat = 0
+    var rowHeight: CGFloat = 0
+    var totalWidth: CGFloat = 0
+    for subview in subviews {
+      let size = subview.sizeThatFits(.unspecified)
+      let itemWidth = min(size.width, maxWidth)
+      if x + itemWidth > maxWidth, x > 0 {
+        x = 0
+        y += rowHeight + verticalSpacing
+        rowHeight = 0
+      }
+      rowHeight = max(rowHeight, size.height)
+      x += itemWidth + horizontalSpacing
+      totalWidth = max(totalWidth, x - horizontalSpacing)
+    }
+    return CGSize(width: min(totalWidth, maxWidth), height: y + rowHeight)
+  }
+
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    let maxWidth = bounds.width
+    guard maxWidth > 0 else { return }
+    var x = bounds.minX
+    var y = bounds.minY
+    var rowHeight: CGFloat = 0
+    for subview in subviews {
+      let size = subview.sizeThatFits(.unspecified)
+      let itemWidth = min(size.width, maxWidth)
+      if x - bounds.minX + itemWidth > maxWidth, x > bounds.minX {
+        x = bounds.minX
+        y += rowHeight + verticalSpacing
+        rowHeight = 0
+      }
+      subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(width: itemWidth, height: size.height))
+      rowHeight = max(rowHeight, size.height)
+      x += itemWidth + horizontalSpacing
+    }
+  }
+}
+
 // MARK: - Model Reply View
 
 private struct ModelReplyView: View {
@@ -877,6 +934,7 @@ private struct ModelReplyView: View {
         attr.font = .system(size: 14, weight: .semibold)
       } else {
         attr = (try? AttributedString(markdown: trimmed, options: options)) ?? AttributedString(trimmed)
+        attr.font = .system(size: 15, weight: .regular)
       }
       result.append(attr)
     }
@@ -935,9 +993,9 @@ private struct MessageBubbleView: View {
     }
   }
 
-  /// Compact single row: Sources: [1] Title1  [2] Title2  … for quick click access.
+  /// Sources with wrapping: [1] Title1  [2] Title2  … flow onto multiple lines when horizontal space is limited.
   private var sourcesView: some View {
-    HStack(alignment: .center, spacing: 12) {
+    HStack(alignment: .top, spacing: 12) {
       HStack(spacing: 4) {
         Image(systemName: "globe")
           .font(.caption2)
@@ -946,7 +1004,7 @@ private struct MessageBubbleView: View {
           .font(.caption2)
           .foregroundColor(.secondary)
       }
-      HStack(spacing: 10) {
+      FlowLayout(horizontalSpacing: 10, verticalSpacing: 6) {
         ForEach(Array(message.sources.enumerated()), id: \.element.id) { index, source in
           if let url = URL(string: source.uri) {
             Link(destination: url) {
@@ -956,8 +1014,6 @@ private struct MessageBubbleView: View {
                   .fontWeight(.medium)
                 Text(source.title)
                   .font(.caption)
-                  .lineLimit(1)
-                  .truncationMode(.tail)
               }
               .foregroundColor(.accentColor)
             }
@@ -971,6 +1027,7 @@ private struct MessageBubbleView: View {
           }
         }
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
     .padding(.horizontal, 12)
     .padding(.top, 6)
