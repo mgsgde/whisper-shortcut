@@ -528,10 +528,7 @@ struct GeminiChatView: View {
               let matches = viewModel.suggestedCommands(for: text)
               if let first = matches.first {
                 if text.lowercased() == first.lowercased() {
-                  if first.lowercased() == GeminiChatViewModel.screenshotCommand {
-                    Task { await viewModel.sendMessage() }
-                    return .handled
-                  }
+                  Task { await viewModel.sendMessage() }
                   return .handled
                 }
                 viewModel.inputText = first
@@ -539,6 +536,23 @@ struct GeminiChatView: View {
               }
             }
             return .ignored
+          }
+          .onKeyPress { keyPress in
+            guard keyPress.key == .return else { return .ignored }
+            if keyPress.modifiers.contains(.shift) {
+              viewModel.inputText += "\n"
+              return .handled
+            }
+            let text = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.hasPrefix("/"), !text.isEmpty {
+              let matches = viewModel.suggestedCommands(for: text)
+              if let first = matches.first, text.lowercased() == first.lowercased() {
+                Task { await viewModel.sendMessage() }
+                return .handled
+              }
+            }
+            Task { await viewModel.sendMessage() }
+            return .handled
           }
           .onSubmit {
             let text = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
