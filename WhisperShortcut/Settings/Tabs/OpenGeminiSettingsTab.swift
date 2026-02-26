@@ -5,8 +5,6 @@ struct OpenGeminiSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
 
-  @AppStorage(UserDefaultsKeys.geminiChatTheme) private var geminiChatThemeRaw: String = GeminiChatTheme.dark.rawValue
-
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       keyboardShortcutSection
@@ -14,10 +12,6 @@ struct OpenGeminiSettingsTab: View {
       SpacedSectionDivider()
 
       modelSection
-
-      SpacedSectionDivider()
-
-      themeSection
 
       SpacedSectionDivider()
 
@@ -83,24 +77,6 @@ struct OpenGeminiSettingsTab: View {
         }
       }
     )
-  }
-
-  // MARK: - Theme Section
-  @ViewBuilder
-  private var themeSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Theme",
-        subtitle: "Light (black on white) or dark (white on black). You can also type /theme in the chat to toggle."
-      )
-
-      Picker("Appearance", selection: $geminiChatThemeRaw) {
-        Text("Light").tag(GeminiChatTheme.light.rawValue)
-        Text("Dark").tag(GeminiChatTheme.dark.rawValue)
-      }
-      .pickerStyle(.segmented)
-      .frame(maxWidth: 280)
-    }
   }
 
   // MARK: - Usage Section
