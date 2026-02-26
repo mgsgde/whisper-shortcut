@@ -257,19 +257,11 @@ private final class GeminiScrollActions {
   var scrollToBottom: (() -> Void)?
 }
 
-private struct GeminiInputHeightKey: PreferenceKey {
-  static var defaultValue: CGFloat { 36 }
-  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-    value = nextValue()
-  }
-}
-
 struct GeminiChatView: View {
   @StateObject private var viewModel = GeminiChatViewModel()
   @FocusState private var inputFocused: Bool
   @State private var showingScreenshotPreview = false
   @State private var scrollActions = GeminiScrollActions()
-  @State private var measuredInputHeight: CGFloat = 36
 
   var body: some View {
     GeometryReader { geometry in
@@ -550,14 +542,16 @@ struct GeminiChatView: View {
 
   // MARK: - Input Bar
 
+  /// Single-line height; each extra line adds this until max.
+  private static let inputLineHeight: CGFloat = 20
   /// Minimum input area height (one line).
   private static let inputMinHeight: CGFloat = 36
-  /// Maximum input area height (many lines).
+  /// Maximum input area height (many lines); content scrolls when taller.
   private static let inputMaxHeight: CGFloat = 240
 
   private var inputBar: some View {
-    let inputHeight = min(Self.inputMaxHeight, max(Self.inputMinHeight, measuredInputHeight))
-    let measurementText = viewModel.inputText.isEmpty ? " " : viewModel.inputText
+    let lineCount = max(1, viewModel.inputText.components(separatedBy: .newlines).count)
+    let inputHeight = min(Self.inputMaxHeight, max(Self.inputMinHeight, Self.inputMinHeight + CGFloat(lineCount - 1) * Self.inputLineHeight))
 
     return VStack(alignment: .leading, spacing: 8) {
       if viewModel.pendingScreenshot != nil {
@@ -565,18 +559,6 @@ struct GeminiChatView: View {
       }
       HStack(alignment: .bottom, spacing: 8) {
         ZStack(alignment: .topLeading) {
-          Text(measurementText)
-            .font(.body)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .fixedSize(horizontal: false, vertical: true)
-            .background(
-              GeometryReader { geo in
-                Color.clear.preference(key: GeminiInputHeightKey.self, value: geo.size.height)
-              }
-            )
-            .allowsHitTesting(false)
           if viewModel.inputText.isEmpty {
             Text("Message Gemini…")
               .font(.body)
@@ -634,9 +616,6 @@ struct GeminiChatView: View {
         .frame(height: inputHeight)
         .background(Color(NSColor.controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .onPreferenceChange(GeminiInputHeightKey.self) { height in
-          measuredInputHeight = min(Self.inputMaxHeight, max(Self.inputMinHeight, height))
-        }
 
         if viewModel.isSending {
           Button(action: { viewModel.cancelSend() }) {
