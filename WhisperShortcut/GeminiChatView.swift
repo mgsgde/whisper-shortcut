@@ -568,9 +568,21 @@ struct GeminiChatView: View {
   private static let inputMinHeight: CGFloat = 40
   /// Maximum input area height (many lines); content scrolls when taller.
   private static let inputMaxHeight: CGFloat = 180
+  /// Max lines used for input height measurement; avoids layout blow-up when pasting very long text.
+  private static let inputMeasurementMaxLines = 30
 
   private var inputHeight: CGFloat {
     min(Self.inputMaxHeight, max(Self.inputMinHeight, measuredInputHeight))
+  }
+
+  /// Truncated input text used only for measuring input area height.
+  /// Caps both line count and character count to prevent layout blow-up when pasting very long text.
+  private var inputTextForSizing: String {
+    var text = viewModel.inputText
+    if text.count > 500 { text = String(text.prefix(500)) }
+    let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+    let truncated = lines.prefix(Self.inputMeasurementMaxLines).joined(separator: "\n")
+    return truncated.isEmpty ? " " : truncated
   }
 
   private var inputBar: some View {
@@ -580,12 +592,12 @@ struct GeminiChatView: View {
       }
       HStack(alignment: .center, spacing: 8) {
         ZStack(alignment: .topLeading) {
-          Text(viewModel.inputText.isEmpty ? " " : viewModel.inputText)
+          Text(inputTextForSizing)
             .font(.body)
             .padding(.horizontal, 15)
             .padding(.vertical, 10)
             .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: Self.inputMaxHeight, alignment: .leading)
             .opacity(0)
             .accessibilityHidden(true)
             .background(GeometryReader { geo in
