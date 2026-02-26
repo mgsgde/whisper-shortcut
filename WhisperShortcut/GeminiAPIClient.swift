@@ -355,10 +355,14 @@ class GeminiAPIClient {
     var request = try createRequest(endpoint: endpoint, apiKey: apiKey)
 
     var body: [String: Any] = ["contents": contents]
+    var tools: [[String: Any]] = []
     if useGrounding {
-      body["tools"] = [["google_search": [:]]]
+      tools.append(["google_search": [:]])
       DebugLogger.logNetwork("GEMINI-CHAT: Google Search grounding enabled")
     }
+    tools.append(["code_execution": [:]])
+    body["tools"] = tools
+    DebugLogger.logNetwork("GEMINI-CHAT: Code Execution enabled")
     if let sys = systemInstruction {
       body["system_instruction"] = sys
     }
@@ -540,14 +544,20 @@ class GeminiAPIClient {
       return ""
     }
     
-    // Extract text from parts
+    // Extract text from parts, including code execution (executable_code, code_execution_result)
     var text = ""
     for part in parts {
       if let partText = part.text {
         text += partText
       }
+      if let code = part.executableCode?.code, !code.isEmpty {
+        text += "\n\n```\n\(code)\n```"
+      }
+      if let output = part.codeExecutionResult?.output,
+         !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        text += "\n\n\(output)"
+      }
     }
-    
     return text
   }
   

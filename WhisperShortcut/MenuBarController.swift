@@ -283,6 +283,27 @@ class MenuBarController: NSObject {
       name: .geminiReadAloud,
       object: nil
     )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(geminiReadAloudStopFromNotification),
+      name: .geminiReadAloudStop,
+      object: nil
+    )
+  }
+
+  @objc private func geminiReadAloudStopFromNotification() {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      if self.isTTSRunning {
+        self.speechService.cancelTTS()
+        self.stopTTSPlayback()
+        self.transitionToIdleAndCleanup()
+      } else if self.audioPlayer?.isPlaying == true || self.audioEngine?.isRunning == true {
+        self.stopTTSPlayback()
+        self.appState = self.appState.finish()
+        NotificationCenter.default.post(name: .ttsDidStop, object: nil)
+      }
+    }
   }
 
   @objc private func geminiReadAloudWithNotification(_ notification: Notification) {
@@ -831,6 +852,7 @@ class MenuBarController: NSObject {
     guard !trimmedText.isEmpty else { return }
 
     appState = .processing(.ttsProcessing)
+    NotificationCenter.default.post(name: .ttsDidStart, object: nil)
 
     Task {
       do {
@@ -1112,6 +1134,7 @@ class MenuBarController: NSObject {
       playerNode.scheduleBuffer(playbackBuffer) {
         DebugLogger.log("TTS-PLAYBACK: Playback completed")
         Task { @MainActor in
+          NotificationCenter.default.post(name: .ttsDidStop, object: nil)
           self.audioPlayerNode?.stop()
           self.audioEngine?.stop()
           self.audioEngine = nil
@@ -1470,6 +1493,7 @@ class MenuBarController: NSObject {
       processedAudioURLs.remove(url)
     }
     appState = appState.finish()
+    NotificationCenter.default.post(name: .ttsDidStop, object: nil)
   }
 
   /// Safely removes an audio file, logging any errors

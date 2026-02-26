@@ -458,6 +458,12 @@ extension Notification.Name {
   static let geminiScrollToBottom = Notification.Name("geminiScrollToBottom")
   /// Posted when user taps Read Aloud under a Gemini reply. userInfo key: geminiReadAloudTextKey (String).
   static let geminiReadAloud = Notification.Name("geminiReadAloud")
+  /// Posted when user taps Stop (Read Aloud button while TTS is active).
+  static let geminiReadAloudStop = Notification.Name("geminiReadAloudStop")
   /// userInfo key for geminiReadAloud notification; value is the reply text (String).
   static let geminiReadAloudTextKey = "text"
+  /// Posted when TTS synthesis or playback starts (so UI can show "Reading" / "Stop").
+  static let ttsDidStart = Notification.Name("ttsDidStart")
+  /// Posted when TTS stops (synthesis cancelled, playback stopped, or finished).
+  static let ttsDidStop = Notification.Name("ttsDidStop")
 }

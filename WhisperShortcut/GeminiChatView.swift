@@ -975,19 +975,24 @@ private struct ModelReplyView: View {
 private struct ReadAloudButtonView: View {
   let messageContent: String
   @State private var isHovered = false
+  @State private var isTTSActive = false
 
   var body: some View {
     Button {
-      NotificationCenter.default.post(
-        name: .geminiReadAloud,
-        object: nil,
-        userInfo: [Notification.Name.geminiReadAloudTextKey: messageContent]
-      )
+      if isTTSActive {
+        NotificationCenter.default.post(name: .geminiReadAloudStop, object: nil)
+      } else {
+        NotificationCenter.default.post(
+          name: .geminiReadAloud,
+          object: nil,
+          userInfo: [Notification.Name.geminiReadAloudTextKey: messageContent]
+        )
+      }
     } label: {
       HStack(spacing: 5) {
-        Image(systemName: "speaker.wave.2")
+        Image(systemName: isTTSActive ? "stop.fill" : "speaker.wave.2")
           .font(.system(size: 12))
-        Text("Read Aloud")
+        Text(isTTSActive ? "Reading…" : "Read Aloud")
           .font(.caption)
       }
       .foregroundColor(isHovered ? .primary : .secondary)
@@ -1004,8 +1009,14 @@ private struct ReadAloudButtonView: View {
     .onHover { inside in
       isHovered = inside
     }
-    .help("Read this reply aloud")
-    .accessibilityLabel("Read this reply aloud")
+    .onReceive(NotificationCenter.default.publisher(for: .ttsDidStart)) { _ in
+      isTTSActive = true
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .ttsDidStop)) { _ in
+      isTTSActive = false
+    }
+    .help(isTTSActive ? "Click to stop" : "Read this reply aloud")
+    .accessibilityLabel(isTTSActive ? "Reading aloud; click to stop" : "Read this reply aloud")
   }
 }
 
@@ -1020,11 +1031,11 @@ private struct MessageBubbleView: View {
   var body: some View {
     VStack(alignment: isUser ? .trailing : .leading, spacing: 2) {
       bubbleContent
-      if !isUser {
-        readAloudButtonRow
-      }
       if !message.sources.isEmpty {
         sourcesView
+      }
+      if !isUser {
+        readAloudButtonRow
       }
     }
     // Inner frame constrains bubble width; outer fills the row so alignment spans full width.
@@ -1084,8 +1095,7 @@ private struct MessageBubbleView: View {
     return Group {
       if !trimmed.isEmpty {
         ReadAloudButtonView(messageContent: message.content)
-          .padding(.top, 8)
-          .padding(.bottom, 4)
+          .padding(.top, 6)
       }
     }
   }
