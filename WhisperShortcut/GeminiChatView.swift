@@ -105,15 +105,16 @@ class GeminiChatViewModel: ObservableObject {
     sendTask?.cancel()
   }
 
-  func sendMessage() async {
-    let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-    let lower = text.lowercased()
+  /// Sends the current message. Pass `userInput` when the view holds the text in local state to avoid re-renders on every keystroke.
+  func sendMessage(userInput: String? = nil) async {
+    let raw = (userInput ?? inputText).trimmingCharacters(in: .whitespacesAndNewlines)
+    let lower = raw.lowercased()
     if lower == Self.stopCommand {
       inputText = ""
       cancelSend()
       return
     }
-    let hasContent = !text.isEmpty || pendingScreenshot != nil
+    let hasContent = !raw.isEmpty || pendingScreenshot != nil
     guard hasContent, !isSending else { return }
 
     // Slash commands: do not send to API
@@ -136,7 +137,7 @@ class GeminiChatViewModel: ObservableObject {
 
     inputText = ""
     errorMessage = nil
-    let userMsg = ChatMessage(role: .user, content: text, attachedImageData: pendingScreenshot)
+    let userMsg = ChatMessage(role: .user, content: raw, attachedImageData: pendingScreenshot)
     appendMessage(userMsg)
     let contents = buildContents()
     pendingScreenshot = nil
@@ -158,7 +159,7 @@ class GeminiChatViewModel: ObservableObject {
           sources: result.sources,
           groundingSupports: result.supports)
         appendMessage(modelMsg)
-        ContextLogger.shared.logGeminiChat(userMessage: text, modelResponse: result.text, model: model)
+        ContextLogger.shared.logGeminiChat(userMessage: raw, modelResponse: result.text, model: model)
       } catch is CancellationError {
         // User tapped Stop; do not append model message or set errorMessage
         DebugLogger.log("GEMINI-CHAT: Send cancelled by user")
@@ -269,11 +270,9 @@ private struct InputTextHeightKey: PreferenceKey {
 
 struct GeminiChatView: View {
   @StateObject private var viewModel = GeminiChatViewModel()
-  @FocusState private var inputFocused: Bool
   /// Image data to show in the full-size preview sheet (from pending screenshot or from a sent message thumbnail).
   @State private var previewImageData: Data? = nil
   @State private var scrollActions = GeminiScrollActions()
-  @State private var measuredInputHeight: CGFloat = 0
 
   var body: some View {
     GeometryReader { geometry in
@@ -285,8 +284,9 @@ struct GeminiChatView: View {
           errorBanner(error)
         }
         Divider()
-        commandSuggestionsOverlay
-        inputBar
+        GeminiInputAreaView(viewModel: viewModel, onTapScreenshotThumbnail: { data in
+          previewImageData = data
+        })
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -520,13 +520,77 @@ struct GeminiChatView: View {
     .background(Color.red.opacity(0.85))
   }
 
+  private func screenshotPreviewSheet(image: NSImage, onDone: @escaping () -> Void) -> some View {
+    VStack(spacing: 0) {
+      HStack {
+        Spacer()
+        Button("Done", action: onDone)
+        .keyboardShortcut(.defaultAction)
+        .pointerCursorOnHover()
+        .padding()
+      }
+      Image(nsImage: image)
+        .resizable()
+        .scaledToFit()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(GeminiChatTheme.windowBackground)
+    }
+    .frame(minWidth: 800, minHeight: 600)
+    .frame(idealWidth: 1000, idealHeight: 700)
+  }
+}
+
+// MARK: - Input Area (isolated to avoid full-view re-renders on each keystroke)
+
+/// Standalone view that owns the input text state. Typing only invalidates this subtree,
+/// not the parent's message list, header, or other heavy views.
+struct GeminiInputAreaView: View {
+  @ObservedObject var viewModel: GeminiChatViewModel
+  var onTapScreenshotThumbnail: (Data) -> Void
+
+  @State private var inputText: String = ""
+  @FocusState private var inputFocused: Bool
+  @State private var measuredInputHeight: CGFloat = 0
+
+  private static let inputMinHeight: CGFloat = 40
+  private static let inputMaxHeight: CGFloat = 180
+  private static let inputMeasurementMaxLines = 30
+
+  private var inputHeight: CGFloat {
+    min(Self.inputMaxHeight, max(Self.inputMinHeight, measuredInputHeight))
+  }
+
+  private var inputTextForSizing: String {
+    var text = inputText
+    if text.count > 500 { text = String(text.prefix(500)) }
+    let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+    let truncated = lines.prefix(Self.inputMeasurementMaxLines).joined(separator: "\n")
+    return truncated.isEmpty ? " " : truncated
+  }
+
+  var body: some View {
+    VStack(spacing: 0) {
+      commandSuggestionsOverlay
+      inputBar
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .geminiFocusInput)) { _ in
+      Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(50))
+        inputFocused = true
+      }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .geminiNewChat)) { _ in
+      inputText = ""
+    }
+  }
+
   // MARK: - Command autocomplete
 
   private var commandSuggestionsOverlay: some View {
     Group {
-      if viewModel.inputText.hasPrefix("/") {
+      if inputText.hasPrefix("/") {
         let suggestions = GeminiChatViewModel.commandSuggestions
-          .filter { $0.command.lowercased().hasPrefix(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) }
+          .filter { $0.command.lowercased().hasPrefix(inputText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) }
         if !suggestions.isEmpty {
           VStack(alignment: .leading, spacing: 0) {
             ForEach(suggestions, id: \.command) { item in
@@ -563,31 +627,10 @@ struct GeminiChatView: View {
 
   // MARK: - Input Bar
 
-  /// Minimum input area height (one line).
-  private static let inputMinHeight: CGFloat = 40
-  /// Maximum input area height (many lines); content scrolls when taller.
-  private static let inputMaxHeight: CGFloat = 180
-  /// Max lines used for input height measurement; avoids layout blow-up when pasting very long text.
-  private static let inputMeasurementMaxLines = 30
-
-  private var inputHeight: CGFloat {
-    min(Self.inputMaxHeight, max(Self.inputMinHeight, measuredInputHeight))
-  }
-
-  /// Truncated input text used only for measuring input area height.
-  /// Caps both line count and character count to prevent layout blow-up when pasting very long text.
-  private var inputTextForSizing: String {
-    var text = viewModel.inputText
-    if text.count > 500 { text = String(text.prefix(500)) }
-    let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-    let truncated = lines.prefix(Self.inputMeasurementMaxLines).joined(separator: "\n")
-    return truncated.isEmpty ? " " : truncated
-  }
-
   private var inputBar: some View {
-    return VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: 8) {
       if viewModel.pendingScreenshot != nil {
-        pendingScreenshotThumbnail(onTapThumbnail: { previewImageData = viewModel.pendingScreenshot })
+        pendingScreenshotThumbnail
       }
       HStack(alignment: .center, spacing: 8) {
         ZStack(alignment: .topLeading) {
@@ -603,7 +646,7 @@ struct GeminiChatView: View {
             .opacity(0)
             .accessibilityHidden(true)
 
-          if viewModel.inputText.isEmpty {
+          if inputText.isEmpty {
             Text("Message Gemini…")
               .font(.body)
               .foregroundColor(GeminiChatTheme.secondaryText.opacity(0.5))
@@ -612,21 +655,23 @@ struct GeminiChatView: View {
               .padding(.vertical, 10)
               .allowsHitTesting(false)
           }
-          TextEditor(text: $viewModel.inputText)
+          TextEditor(text: $inputText)
             .scrollContentBackground(.hidden)
             .font(.body)
             .foregroundColor(GeminiChatTheme.primaryText)
             .focused($inputFocused)
             .onKeyPress(.tab) {
-              let text = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+              let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
               if text.hasPrefix("/"), !text.isEmpty {
                 let matches = viewModel.suggestedCommands(for: text)
                 if let first = matches.first {
                   if text.lowercased() == first.lowercased() {
-                    Task { await viewModel.sendMessage() }
+                    let toSend = inputText
+                    inputText = ""
+                    Task { await viewModel.sendMessage(userInput: toSend) }
                     return .handled
                   }
-                  viewModel.inputText = first
+                  inputText = first
                   return .handled
                 }
               }
@@ -639,18 +684,22 @@ struct GeminiChatView: View {
               }
               guard keyPress.key == .return else { return .ignored }
               if keyPress.modifiers.contains(.shift) {
-                viewModel.inputText += "\n"
+                inputText += "\n"
                 return .handled
               }
-              let text = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+              let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
               if text.hasPrefix("/"), !text.isEmpty {
                 let matches = viewModel.suggestedCommands(for: text)
                 if let first = matches.first, text.lowercased() == first.lowercased() {
-                  Task { await viewModel.sendMessage() }
+                  let toSend = inputText
+                  inputText = ""
+                  Task { await viewModel.sendMessage(userInput: toSend) }
                   return .handled
                 }
               }
-              Task { await viewModel.sendMessage() }
+              let toSend = inputText
+              inputText = ""
+              Task { await viewModel.sendMessage(userInput: toSend) }
               return .handled
             }
             .onAppear { inputFocused = true }
@@ -677,7 +726,9 @@ struct GeminiChatView: View {
         }
 
         Button(action: {
-          Task { await viewModel.sendMessage() }
+          let toSend = inputText
+          inputText = ""
+          Task { await viewModel.sendMessage(userInput: toSend) }
         }) {
           if viewModel.isSending {
             ProgressView()
@@ -687,13 +738,13 @@ struct GeminiChatView: View {
             Image(systemName: "arrow.up.circle.fill")
               .font(.system(size: 24))
               .foregroundColor(
-                (viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.pendingScreenshot == nil)
+                (inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.pendingScreenshot == nil)
                   ? GeminiChatTheme.secondaryText : .accentColor)
           }
         }
         .buttonStyle(.plain)
         .disabled(
-          (viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.pendingScreenshot == nil)
+          (inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.pendingScreenshot == nil)
             || viewModel.isSending)
         .frame(width: 28, height: 28)
         .pointerCursorOnHover()
@@ -707,7 +758,7 @@ struct GeminiChatView: View {
     }
   }
 
-  private func pendingScreenshotThumbnail(onTapThumbnail: @escaping () -> Void) -> some View {
+  private var pendingScreenshotThumbnail: some View {
     HStack(spacing: 8) {
       if let data = viewModel.pendingScreenshot,
          let nsImage = NSImage(data: data) {
@@ -718,7 +769,7 @@ struct GeminiChatView: View {
           .clipped()
           .clipShape(RoundedRectangle(cornerRadius: 6))
           .contentShape(Rectangle())
-          .onTapGesture(perform: onTapThumbnail)
+          .onTapGesture { onTapScreenshotThumbnail(data) }
           .help("Click to view full size")
           .pointerCursorOnHover()
       }
@@ -738,25 +789,6 @@ struct GeminiChatView: View {
     .padding(8)
     .background(GeminiChatTheme.controlBackground.opacity(0.8))
     .clipShape(RoundedRectangle(cornerRadius: 8))
-  }
-
-  private func screenshotPreviewSheet(image: NSImage, onDone: @escaping () -> Void) -> some View {
-    VStack(spacing: 0) {
-      HStack {
-        Spacer()
-        Button("Done", action: onDone)
-        .keyboardShortcut(.defaultAction)
-        .pointerCursorOnHover()
-        .padding()
-      }
-      Image(nsImage: image)
-        .resizable()
-        .scaledToFit()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(GeminiChatTheme.windowBackground)
-    }
-    .frame(minWidth: 800, minHeight: 600)
-    .frame(idealWidth: 1000, idealHeight: 700)
   }
 }
 

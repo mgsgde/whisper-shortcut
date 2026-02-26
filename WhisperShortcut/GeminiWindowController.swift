@@ -59,6 +59,7 @@ class GeminiWindowController: NSWindowController {
     ensureWindowOnCurrentScreen()
     NSApp.activate(ignoringOtherApps: true)
     window?.makeKeyAndOrderFront(nil)
+    NotificationCenter.default.post(name: .geminiFocusInput, object: nil)
   }
 
   // MARK: - Private
