@@ -266,6 +266,7 @@ struct SpeechToTextSettingsTab: View {
           .buttonStyle(.bordered)
           .controlSize(.small)
           .foregroundColor(.red)
+          .pointerCursorOnHover()
         } else {
           // Download button
           Button("Download") {
@@ -273,6 +274,7 @@ struct SpeechToTextSettingsTab: View {
           }
           .buttonStyle(.borderedProminent)
           .controlSize(.small)
+          .pointerCursorOnHover()
         }
       }
     }

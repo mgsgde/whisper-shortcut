@@ -63,5 +63,6 @@ enum UserDefaultsKeys {
   static let selectedImprovementModel = "selectedImprovementModel"
   static let autoApplyImprovements = "autoApplyImprovements"
   static let lastAutoImprovementRunDate = "lastAutoImprovementRunDate"
+  static let improveFromUsageAutoRunInterval = "improveFromUsageAutoRunInterval"
 }
 

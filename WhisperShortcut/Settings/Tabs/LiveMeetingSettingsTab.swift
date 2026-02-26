@@ -165,6 +165,7 @@ struct LiveMeetingSettingsTab: View {
         }
         .buttonStyle(.bordered)
         .help("Open transcripts folder in Finder")
+        .pointerCursorOnHover()
       }
       .frame(maxWidth: .infinity, alignment: .leading)
     }

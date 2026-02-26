@@ -56,6 +56,7 @@ struct SettingsView: View {
         }
         .padding(.vertical, 4)
       }
+      .pointerCursorOnHover()
     }
     .listStyle(.sidebar)
     .frame(minWidth: 240, idealWidth: 280, maxWidth: 320)

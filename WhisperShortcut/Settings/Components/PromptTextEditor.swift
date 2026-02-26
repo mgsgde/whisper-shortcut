@@ -77,6 +77,7 @@ struct PromptTextEditor: View {
           }
           .buttonStyle(.bordered)
           .font(.callout)
+          .pointerCursorOnHover()
           if let trailingContent {
             trailingContent
           }

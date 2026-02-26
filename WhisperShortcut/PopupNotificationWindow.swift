@@ -24,6 +24,14 @@ class ClickableContentView: NSView {
   }
 }
 
+/// NSButton that shows the pointing-hand cursor on hover.
+private class PointerCursorButton: NSButton {
+  override func resetCursorRects() {
+    super.resetCursorRects()
+    addCursorRect(bounds, cursor: NSCursor.pointingHand)
+  }
+}
+
 class PopupNotificationWindow: NSWindow {
 
   // MARK: - Constants
@@ -191,7 +199,7 @@ class PopupNotificationWindow: NSWindow {
   }
 
   private func setupCloseButton() {
-    closeButton = NSButton()
+    closeButton = PointerCursorButton()
     closeButton.title = ""
     closeButton.bezelStyle = .circular
     closeButton.isBordered = false
@@ -224,7 +232,7 @@ class PopupNotificationWindow: NSWindow {
   }
 
   private func setupRetryButton() {
-    retryButton = NSButton()
+    retryButton = PointerCursorButton()
     guard let retryButton = retryButton else { return }
     
     retryButton.title = "Retry"
@@ -339,7 +347,7 @@ class PopupNotificationWindow: NSWindow {
   }
 
   private func setupWhatsAppButton() {
-    whatsappButton = NSButton()
+    whatsappButton = PointerCursorButton()
     guard let whatsappButton = whatsappButton else { return }
     
     whatsappButton.title = "Contact Support"

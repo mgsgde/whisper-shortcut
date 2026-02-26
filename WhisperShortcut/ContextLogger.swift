@@ -140,6 +140,23 @@ class ContextLogger {
     writeEntry(entry)
   }
 
+  /// Logs one Open Gemini chat turn (user message + model response) when "Save usage data" is enabled.
+  func logGeminiChat(userMessage: String, modelResponse: String, model: String?) {
+    guard isLoggingEnabled else { return }
+    let entry = InteractionLogEntry(
+      ts: iso8601Now(),
+      mode: "geminiChat",
+      model: model,
+      result: nil,
+      selectedText: nil,
+      userInstruction: userMessage,
+      modelResponse: modelResponse,
+      text: nil,
+      voice: nil
+    )
+    writeEntry(entry)
+  }
+
   // MARK: - Data Management
 
   func deleteAllData() {

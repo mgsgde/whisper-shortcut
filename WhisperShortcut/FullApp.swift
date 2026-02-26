@@ -41,6 +41,11 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       UserDefaults.standard.set(false, forKey: UserDefaultsKeys.contextLoggingEnabled)
     }
 
+    // Improve from usage auto-run: check if due and start daily timer
+    Task { @MainActor in
+      await ImproveFromUsageAutoRunCoordinator.shared.checkAndRunIfDue()
+      ImproveFromUsageAutoRunCoordinator.shared.startDailyTimer()
+    }
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

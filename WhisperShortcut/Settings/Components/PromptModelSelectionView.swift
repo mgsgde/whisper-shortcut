@@ -67,6 +67,7 @@ struct PromptModelSelectionView: View {
             selectedModel = model
             onModelChanged?()
           }
+          .pointerCursorOnHover()
         }
       }
       .background(Color(.controlBackgroundColor))

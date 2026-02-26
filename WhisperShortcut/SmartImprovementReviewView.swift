@@ -87,6 +87,7 @@ struct SmartImprovementReviewView: View {
           onCancel()
         }
         .keyboardShortcut(.cancelAction)
+        .pointerCursorOnHover()
 
         Spacer()
 
@@ -95,6 +96,7 @@ struct SmartImprovementReviewView: View {
         }
         .keyboardShortcut(.defaultAction)
         .buttonStyle(.borderedProminent)
+        .pointerCursorOnHover()
       }
       .padding(.top, 8)
     }

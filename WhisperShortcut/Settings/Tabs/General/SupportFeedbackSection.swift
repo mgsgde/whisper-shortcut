@@ -44,13 +44,7 @@ struct SupportFeedbackSection: View {
           }
           .buttonStyle(PlainButtonStyle())
           .help("Contact via WhatsApp")
-          .onHover { isHovered in
-            if isHovered {
-              NSCursor.pointingHand.push()
-            } else {
-              NSCursor.pop()
-            }
-          }
+          .pointerCursorOnHover()
 
           Button(action: {
             viewModel.openAppStoreReview()
@@ -75,13 +69,7 @@ struct SupportFeedbackSection: View {
           }
           .buttonStyle(PlainButtonStyle())
           .help("Leave a review on the App Store")
-          .onHover { isHovered in
-            if isHovered {
-              NSCursor.pointingHand.push()
-            } else {
-              NSCursor.pop()
-            }
-          }
+          .pointerCursorOnHover()
 
           Button(action: {
             viewModel.copyAppStoreLink()
@@ -106,13 +94,7 @@ struct SupportFeedbackSection: View {
           }
           .buttonStyle(PlainButtonStyle())
           .help(viewModel.data.appStoreLinkCopied ? "App Store link copied to clipboard" : "Copy App Store link to clipboard")
-          .onHover { isHovered in
-            if isHovered {
-              NSCursor.pointingHand.push()
-            } else {
-              NSCursor.pop()
-            }
-          }
+          .pointerCursorOnHover()
 
           Button(action: {
             viewModel.openGitHub()
@@ -137,13 +119,7 @@ struct SupportFeedbackSection: View {
           }
           .buttonStyle(PlainButtonStyle())
           .help("Open the WhisperShortcut repository on GitHub")
-          .onHover { isHovered in
-            if isHovered {
-              NSCursor.pointingHand.push()
-            } else {
-              NSCursor.pop()
-            }
-          }
+          .pointerCursorOnHover()
         }
 
         HStack(spacing: 16) {

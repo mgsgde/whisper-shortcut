@@ -57,13 +57,7 @@ struct GoogleAPIKeySection: View {
             .underline()
             .textSelection(.enabled)
         }
-        .onHover { isHovered in
-          if isHovered {
-            NSCursor.pointingHand.push()
-          } else {
-            NSCursor.pop()
-          }
-        }
+        .pointerCursorOnHover()
 
         Text(" 💡")
           .font(.callout)
@@ -86,13 +80,7 @@ struct GoogleAPIKeySection: View {
             .underline()
             .textSelection(.enabled)
         }
-        .onHover { isHovered in
-          if isHovered {
-            NSCursor.pointingHand.push()
-          } else {
-            NSCursor.pop()
-          }
-        }
+        .pointerCursorOnHover()
       }
       .fixedSize(horizontal: false, vertical: true)
     }

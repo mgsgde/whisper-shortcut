@@ -145,6 +145,25 @@ class GeminiAPIClient {
         // Parse response
         DebugLogger.log("\(mode): Parsing response (data size: \(data.count) bytes)")
         
+        // Log raw response parts for GEMINI-CHAT to verify code execution tool usage
+        if mode == "GEMINI-CHAT" {
+          if let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+             let candidates = jsonObject["candidates"] as? [[String: Any]],
+             let firstCandidate = candidates.first,
+             let content = firstCandidate["content"] as? [String: Any],
+             let parts = content["parts"] as? [[String: Any]] {
+            let partTypes = parts.map { part -> String in
+              var keys = [String]()
+              if part["text"] != nil { keys.append("text") }
+              if part["executableCode"] != nil || part["executable_code"] != nil { keys.append("executable_code") }
+              if part["codeExecutionResult"] != nil || part["code_execution_result"] != nil { keys.append("code_execution_result") }
+              if keys.isEmpty { keys = Array(part.keys) }
+              return keys.joined(separator: "+")
+            }
+            DebugLogger.logNetwork("GEMINI-CHAT: Response has \(parts.count) part(s): [\(partTypes.joined(separator: ", "))]")
+          }
+        }
+
         // Log raw response for debugging (especially for TTS) - BEFORE decoding
         if mode == "TTS" {
           DebugLogger.log("TTS: Starting response analysis...")
@@ -546,17 +565,23 @@ class GeminiAPIClient {
     
     // Extract text from parts, including code execution (executable_code, code_execution_result)
     var text = ""
+    var hadCodeParts = false
     for part in parts {
       if let partText = part.text {
         text += partText
       }
       if let code = part.executableCode?.code, !code.isEmpty {
         text += "\n\n```\n\(code)\n```"
+        hadCodeParts = true
       }
       if let output = part.codeExecutionResult?.output,
          !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        text += "\n\n\(output)"
+        text += "\n\n**Code output:**\n\(output)"
+        hadCodeParts = true
       }
+    }
+    if hadCodeParts {
+      DebugLogger.logNetwork("GEMINI-CHAT: Response contained code execution (code/result parts included in reply)")
     }
     return text
   }

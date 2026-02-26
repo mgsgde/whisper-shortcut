@@ -24,6 +24,7 @@ struct ResetSection: View {
         }
         .buttonStyle(.bordered)
         .help("Open app data folder in Finder")
+        .pointerCursorOnHover()
 
         Button("Reset all to defaults", role: .destructive) {
           showResetToDefaultsConfirmation = true
@@ -31,6 +32,7 @@ struct ResetSection: View {
         .buttonStyle(.bordered)
         .tint(.red)
         .help("Reset app to original state; app will quit after reset")
+        .pointerCursorOnHover()
       }
       .frame(maxWidth: .infinity, alignment: .leading)
     }

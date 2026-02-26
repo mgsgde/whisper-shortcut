@@ -38,6 +38,7 @@ struct TTSModelSelectionView: View {
             selectedTTSModel = model
             onModelChanged?()
           }
+          .pointerCursorOnHover()
         }
       }
       .background(Color(.controlBackgroundColor))

@@ -6,6 +6,7 @@ struct ContextSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
+  @AppStorage(UserDefaultsKeys.improveFromUsageAutoRunInterval) private var autoRunIntervalRaw: Int = ImproveFromUsageAutoRunInterval.every7Days.rawValue
   @State private var showDeleteInteractionConfirmation = false
   @State private var isImprovementRunning = false
   @State private var queuedJobCount = 0
@@ -55,6 +56,7 @@ struct ContextSettingsTab: View {
         }
         .buttonStyle(.bordered)
         .help("Open context data in Finder")
+        .pointerCursorOnHover()
 
         Button("Delete context data", role: .destructive) {
           showDeleteInteractionConfirmation = true
@@ -62,6 +64,7 @@ struct ContextSettingsTab: View {
         .buttonStyle(.bordered)
         .tint(.red)
         .help("Only delete interaction history and context; settings are preserved")
+        .pointerCursorOnHover()
       }
       .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -96,6 +99,7 @@ struct ContextSettingsTab: View {
         .buttonStyle(.bordered)
         .disabled(systemPromptsText == lastSavedSystemPromptsText)
         .help("Save changes to the system prompts file")
+        .pointerCursorOnHover()
 
         Button(action: revertSystemPrompts) {
           Label("Revert", systemImage: "arrow.uturn.backward")
@@ -104,6 +108,7 @@ struct ContextSettingsTab: View {
         .buttonStyle(.bordered)
         .disabled(systemPromptsText == lastSavedSystemPromptsText)
         .help("Discard unsaved changes and reload from file")
+        .pointerCursorOnHover()
 
         Button(action: openSystemPromptsFile) {
           Label("Open file", systemImage: "doc.badge.arrow.up")
@@ -111,6 +116,7 @@ struct ContextSettingsTab: View {
         }
         .buttonStyle(.bordered)
         .help("Open system-prompts.md in the default app")
+        .pointerCursorOnHover()
       }
       .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -180,7 +186,7 @@ struct ContextSettingsTab: View {
         VStack(alignment: .leading, spacing: 8) {
           Toggle("Save usage data", isOn: $saveUsageData)
             .toggleStyle(.checkbox)
-            .help("When enabled, interaction logs (dictation, prompt mode) are stored so \"Improve from usage\" can suggest better prompts. Disabled by default.")
+            .help("When enabled, interaction logs (dictation, prompt mode, read aloud, Open Gemini chat) are stored so \"Improve from usage\" can suggest better prompts. Disabled by default.")
 
           HStack(alignment: .center, spacing: 12) {
             Text("Improve from usage")
@@ -202,9 +208,34 @@ struct ContextSettingsTab: View {
             .buttonStyle(.bordered)
             .disabled(isImprovementRunning)
             .help("Improve prompts and context from your usage")
+            .pointerCursorOnHover()
           }
 
           Text("Runs in the background using your interaction logs. Enable \"Save usage data\" to collect logs. You can switch to another tab; you'll be notified when it's done.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        VStack(alignment: .leading, spacing: 8) {
+          HStack(alignment: .center, spacing: 12) {
+            Text("Run Improve from usage automatically")
+              .font(.callout)
+              .fontWeight(.medium)
+            Picker("", selection: $autoRunIntervalRaw) {
+              ForEach(ImproveFromUsageAutoRunInterval.allCases, id: \.rawValue) { interval in
+                Text(interval.displayName).tag(interval.rawValue)
+              }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .onChange(of: autoRunIntervalRaw) { _, _ in
+              Task { @MainActor in
+                await ImproveFromUsageAutoRunCoordinator.shared.checkAndRunIfDue()
+              }
+            }
+          }
+          Text("When not Off, Improve from usage runs in the background at the chosen interval (e.g. every 7 days). You will be notified when it finishes.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -224,6 +255,7 @@ struct ContextSettingsTab: View {
             }
             .buttonStyle(.bordered)
             .help("Start recording to improve prompts by voice (same as the Improve from voice shortcut)")
+            .pointerCursorOnHover()
           }
 
           Text("Copies the current selection to the clipboard, then records your voice. Say how you want dictation, prompts, or your profile to change (e.g. \"always add bullet points\", \"I work in legal\"). Uses the same shortcut as in the menu bar.")

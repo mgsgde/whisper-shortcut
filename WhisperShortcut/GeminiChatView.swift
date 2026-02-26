@@ -159,6 +159,7 @@ class GeminiChatViewModel: ObservableObject {
           sources: result.sources,
           groundingSupports: result.supports)
         appendMessage(modelMsg)
+        ContextLogger.shared.logGeminiChat(userMessage: text, modelResponse: result.text, model: model)
       } catch is CancellationError {
         // User tapped Stop; do not append model message or set errorMessage
         DebugLogger.log("GEMINI-CHAT: Send cancelled by user")
@@ -342,6 +343,7 @@ struct GeminiChatView: View {
       }
       .buttonStyle(.plain)
       .help("Start a new chat (previous chat stays in history)")
+      .pointerCursorOnHover()
 
       Button(action: { viewModel.goBack() }) {
         HStack(spacing: 6) {
@@ -359,6 +361,7 @@ struct GeminiChatView: View {
       .buttonStyle(.plain)
       .disabled(!viewModel.canGoBack)
       .help("Switch to the previous chat")
+      .pointerCursorOnHover()
 
       Button(action: { Task { await viewModel.captureScreenshot() } }) {
         HStack(spacing: 6) {
@@ -382,6 +385,7 @@ struct GeminiChatView: View {
       .buttonStyle(.plain)
       .disabled(viewModel.screenshotCaptureInProgress || viewModel.isSending)
       .help("Capture screen without this window; image will be attached to your next message.")
+      .pointerCursorOnHover()
     }
     .padding(.horizontal, 20)
     .padding(.vertical, 10)
@@ -509,6 +513,7 @@ struct GeminiChatView: View {
           .foregroundColor(.white.opacity(0.8))
       }
       .buttonStyle(.plain)
+      .pointerCursorOnHover()
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
@@ -654,6 +659,7 @@ struct GeminiChatView: View {
           .buttonStyle(.plain)
           .help("Stop sending (/stop)")
           .frame(width: 28, height: 28)
+          .pointerCursorOnHover()
         }
 
         Button(action: {
@@ -676,6 +682,7 @@ struct GeminiChatView: View {
           (viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.pendingScreenshot == nil)
             || viewModel.isSending)
         .frame(width: 28, height: 28)
+        .pointerCursorOnHover()
       }
     }
     .padding(.horizontal, 20)
@@ -699,6 +706,7 @@ struct GeminiChatView: View {
           .contentShape(Rectangle())
           .onTapGesture(perform: onTapThumbnail)
           .help("Click to view full size")
+          .pointerCursorOnHover()
       }
       Text("Screenshot will be attached to your next message")
         .font(.caption)
@@ -711,6 +719,7 @@ struct GeminiChatView: View {
       }
       .buttonStyle(.plain)
       .help("Remove screenshot")
+      .pointerCursorOnHover()
     }
     .padding(8)
     .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
@@ -723,6 +732,7 @@ struct GeminiChatView: View {
         Spacer()
         Button("Done", action: onDone)
         .keyboardShortcut(.defaultAction)
+        .pointerCursorOnHover()
         .padding()
       }
       Image(nsImage: image)
@@ -957,6 +967,11 @@ private struct ModelReplyView: View {
         let title = String(trimmed.dropFirst(4))
         attr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
         attr.font = .system(size: 14, weight: .semibold)
+      } else if trimmed.hasPrefix("```") && trimmed.hasSuffix("```") {
+        // Fenced code block (e.g. from code execution): show in monospace so it is visibly distinct
+        let codeContent = String(trimmed.dropFirst(3).dropLast(3).trimmingCharacters(in: .whitespacesAndNewlines))
+        attr = AttributedString(codeContent)
+        attr.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
       } else {
         attr = (try? AttributedString(markdown: trimmed, options: options)) ?? AttributedString(trimmed)
         attr.font = .system(size: 15, weight: .regular)
@@ -1009,6 +1024,7 @@ private struct ReadAloudButtonView: View {
     .onHover { inside in
       isHovered = inside
     }
+    .pointerCursorOnHover()
     .onReceive(NotificationCenter.default.publisher(for: .ttsDidStart)) { _ in
       isTTSActive = true
     }
@@ -1017,6 +1033,43 @@ private struct ReadAloudButtonView: View {
     }
     .help(isTTSActive ? "Click to stop" : "Read this reply aloud")
     .accessibilityLabel(isTTSActive ? "Reading aloud; click to stop" : "Read this reply aloud")
+  }
+}
+
+// MARK: - Copy Reply Button (under model replies)
+
+private struct CopyReplyButtonView: View {
+  let messageContent: String
+  @State private var isHovered = false
+
+  var body: some View {
+    Button {
+      NSPasteboard.general.clearContents()
+      NSPasteboard.general.setString(messageContent, forType: .string)
+    } label: {
+      HStack(spacing: 5) {
+        Image(systemName: "doc.on.doc")
+          .font(.system(size: 12))
+        Text("Copy")
+          .font(.caption)
+      }
+      .foregroundColor(isHovered ? .primary : .secondary)
+      .padding(.horizontal, 10)
+      .padding(.vertical, 6)
+      .frame(minHeight: 28)
+      .contentShape(Rectangle())
+      .background(
+        RoundedRectangle(cornerRadius: 6)
+          .fill(isHovered ? Color(NSColor.controlBackgroundColor).opacity(0.9) : Color(NSColor.controlBackgroundColor).opacity(0.5))
+      )
+    }
+    .buttonStyle(.plain)
+    .onHover { inside in
+      isHovered = inside
+    }
+    .pointerCursorOnHover()
+    .help("Copy this reply to the clipboard")
+    .accessibilityLabel("Copy this reply to the clipboard")
   }
 }
 
@@ -1089,13 +1142,16 @@ private struct MessageBubbleView: View {
     }
   }
 
-  /// Read Aloud action row for assistant replies; hidden when content is empty.
+  /// Read Aloud and Copy action row for assistant replies; hidden when content is empty.
   private var readAloudButtonRow: some View {
     let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
     return Group {
       if !trimmed.isEmpty {
-        ReadAloudButtonView(messageContent: message.content)
-          .padding(.top, 6)
+        HStack(spacing: 8) {
+          ReadAloudButtonView(messageContent: message.content)
+          CopyReplyButtonView(messageContent: message.content)
+        }
+        .padding(.top, 6)
       }
     }
   }
@@ -1124,13 +1180,7 @@ private struct MessageBubbleView: View {
               }
               .foregroundColor(.accentColor)
             }
-            .onHover { inside in
-              if inside {
-                NSCursor.pointingHand.push()
-              } else {
-                NSCursor.pop()
-              }
-            }
+            .pointerCursorOnHover()
           }
         }
       }

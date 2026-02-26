@@ -51,6 +51,7 @@ struct ModelSelectionView: View {
             selectedTranscriptionModel = model
             onModelChanged?()
           }
+          .pointerCursorOnHover()
         }
       }
       .background(Color(.controlBackgroundColor))
