@@ -122,7 +122,7 @@ struct ShortcutConfig: Codable {
     toggleMeeting: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
     stopMeeting: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
     openSettings: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true),
-    openGemini: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true)
+    openGemini: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true)
   )
 
   /// Single source for the "Available keys" hint text used in all shortcut settings.

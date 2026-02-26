@@ -357,7 +357,7 @@ struct GeminiChatView: View {
   private func messageList(scrollActions: GeminiScrollActions) -> some View {
     ScrollViewReader { proxy in
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 18) {
           Color.clear.frame(height: 1).id("listTop")
           if viewModel.messages.isEmpty && !viewModel.isSending {
             emptyStateCommandHints
@@ -379,14 +379,14 @@ struct GeminiChatView: View {
       .onAppear {
         scrollActions.scrollToTop = { scrollToTop(proxy: proxy) }
         scrollActions.scrollToBottom = { scrollToBottom(proxy: proxy) }
-      }
-      .onAppear {
-        // Only scroll when the chat view first appears (open window), so the user sees the latest messages.
-        // Do not scroll when new messages arrive — the user stays where they are and scrolls down when ready to read.
+        // Scroll to bottom when the chat view first appears so the user sees the latest messages.
+        // We do not scroll when new messages arrive — the user stays where they are.
         scrollToBottom(proxy: proxy)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-          scrollToBottom(proxy: proxy)
-        }
+      }
+      .task {
+        // Layout is not ready on first frame; repeat once so the scroll position sticks.
+        try? await Task.sleep(for: .milliseconds(400))
+        scrollToBottom(proxy: proxy)
       }
       .focusable()
       .onKeyPress { keyPress in
@@ -438,7 +438,11 @@ struct GeminiChatView: View {
 
   private func scrollToBottom(proxy: ScrollViewProxy) {
     withAnimation(.easeOut(duration: 0.2)) {
-      proxy.scrollTo("listBottom", anchor: .bottom)
+      if let lastId = viewModel.messages.last?.id {
+        proxy.scrollTo(lastId, anchor: .bottom)
+      } else {
+        proxy.scrollTo(viewModel.isSending ? "typing" : "listBottom", anchor: .bottom)
+      }
     }
   }
 
