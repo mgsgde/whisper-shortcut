@@ -233,6 +233,7 @@ struct GeminiResponse: Codable {
 
   struct GeminiGroundingMetadata: Codable {
     let groundingChunks: [GeminiGroundingChunk]?
+    let groundingSupports: [GeminiGroundingSupport]?
     let webSearchQueries: [String]?
 
     struct GeminiGroundingChunk: Codable {
@@ -241,6 +242,16 @@ struct GeminiResponse: Codable {
       struct WebSource: Codable {
         let uri: String?
         let title: String?
+      }
+    }
+
+    struct GeminiGroundingSupport: Codable {
+      let segment: GeminiGroundingSegment?
+      let groundingChunkIndices: [Int]?
+
+      struct GeminiGroundingSegment: Codable {
+        let startIndex: Int?
+        let endIndex: Int?
       }
     }
   }

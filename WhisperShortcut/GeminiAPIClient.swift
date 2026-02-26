@@ -350,7 +350,7 @@ class GeminiAPIClient {
     apiKey: String,
     useGrounding: Bool = false,
     systemInstruction: [String: Any]? = nil
-  ) async throws -> (text: String, sources: [GroundingSource]) {
+  ) async throws -> (text: String, sources: [GroundingSource], supports: [GroundingSupport]) {
     let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
     var request = try createRequest(endpoint: endpoint, apiKey: apiKey)
 
@@ -373,10 +373,14 @@ class GeminiAPIClient {
     }
 
     let sources = extractGroundingSources(from: response)
+    let supports = extractGroundingSupports(from: response)
     if !sources.isEmpty {
       DebugLogger.logNetwork("GEMINI-CHAT: \(sources.count) grounding source(s) returned")
     }
-    return (text: text, sources: sources)
+    if !supports.isEmpty {
+      DebugLogger.logNetwork("GEMINI-CHAT: \(supports.count) grounding support(s) for inline citations")
+    }
+    return (text: text, sources: sources, supports: supports)
   }
 
   /// Extracts grounding sources (web URIs + titles) from a Gemini response.
@@ -390,6 +394,24 @@ class GeminiAPIClient {
       guard let uri = chunk.web?.uri, !uri.isEmpty else { return nil }
       let title = chunk.web?.title ?? uri
       return GroundingSource(uri: uri, title: title)
+    }
+  }
+
+  /// Extracts grounding supports (text ranges → chunk indices) for inline citations.
+  private func extractGroundingSupports(from response: GeminiResponse) -> [GroundingSupport] {
+    guard let candidate = response.candidates.first,
+          let metadata = candidate.groundingMetadata,
+          let raw = metadata.groundingSupports
+    else { return [] }
+
+    return raw.compactMap { s -> GroundingSupport? in
+      guard let seg = s.segment,
+            let start = seg.startIndex,
+            let end = seg.endIndex,
+            start >= 0, end > start,
+            let indices = s.groundingChunkIndices, !indices.isEmpty
+      else { return nil }
+      return GroundingSupport(startIndex: start, endIndex: end, groundingChunkIndices: indices)
     }
   }
 

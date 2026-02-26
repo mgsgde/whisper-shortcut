@@ -13,25 +13,45 @@ struct GroundingSource: Codable, Equatable, Identifiable {
   let title: String
 }
 
+/// Maps a character range in the reply text to grounding chunk indices (1:1 with sources).
+struct GroundingSupport: Codable, Equatable {
+  let startIndex: Int
+  let endIndex: Int
+  let groundingChunkIndices: [Int]
+}
+
 struct ChatMessage: Identifiable, Codable, Equatable {
   let id: UUID
   let role: ChatRole
   let content: String
   let timestamp: Date
   var sources: [GroundingSource]
+  var groundingSupports: [GroundingSupport]
 
   init(
     id: UUID = UUID(),
     role: ChatRole,
     content: String,
     timestamp: Date = Date(),
-    sources: [GroundingSource] = []
+    sources: [GroundingSource] = [],
+    groundingSupports: [GroundingSupport] = []
   ) {
     self.id = id
     self.role = role
     self.content = content
     self.timestamp = timestamp
     self.sources = sources
+    self.groundingSupports = groundingSupports
+  }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(UUID.self, forKey: .id)
+    role = try c.decode(ChatRole.self, forKey: .role)
+    content = try c.decode(String.self, forKey: .content)
+    timestamp = try c.decode(Date.self, forKey: .timestamp)
+    sources = try c.decode([GroundingSource].self, forKey: .sources)
+    groundingSupports = try c.decodeIfPresent([GroundingSupport].self, forKey: .groundingSupports) ?? []
   }
 }
 
