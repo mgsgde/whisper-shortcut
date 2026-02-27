@@ -1,4 +1,4 @@
-# Release v6.4.1
+# Release v6.4.2
 
 ## Installation
 
@@ -6,15 +6,14 @@ Download the latest release from [GitHub Releases](https://github.com/mgsgde/whi
 
 ## Changes
 
-### Improvements
+### Gemini Chat
 
-- **Gemini Chat**: Refactored message sending and input handling for improved performance. Enhanced context handling in system prompts for better user adaptation. Refined input text layout and height measurement; added input text truncation for height measurement. Streamlined command handling and improved alignment in input HStack.
-- **Auto-prompt improvement**: Refactored improvement scheduling for concurrent processing.
-
-### Dependencies
-
-- Bumped basic-ftp from 5.1.0 to 5.2.0 in website.
+- **Session navigation**: Switch between chat sessions and use back/forward navigation. Recent sessions are shown for quick access.
+- **AI-generated titles**: Chats get automatic titles. Title generation prompt and tooltips were refined.
+- **Window behavior**: Option to close the chat window when it loses key focus (resigning key).
+- **Layout and UX**: Refactored action buttons layout and message sending logic for improved usability and session handling.
+- **Session management**: Enhanced session management and caching in GeminiChatSessionStore and GeminiWindowManager.
 
 ## Full Changelog
 
-For a complete list of changes, see the [full changelog](https://github.com/mgsgde/whisper-shortcut/compare/v6.4.0...v6.4.1).
+For a complete list of changes, see the [full changelog](https://github.com/mgsgde/whisper-shortcut/compare/v6.4.1...v6.4.2).
