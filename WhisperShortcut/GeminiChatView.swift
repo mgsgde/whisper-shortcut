@@ -7,7 +7,9 @@ import AppKit
 class GeminiChatViewModel: ObservableObject {
   @Published var messages: [ChatMessage] = []
   @Published var inputText: String = ""
-  @Published var isSending: Bool = false
+  @Published private(set) var sendingSessionIds: Set<UUID> = []
+  /// True when the currently visible session has an in-flight request.
+  var isSending: Bool { sendingSessionIds.contains(session.id) }
   @Published var errorMessage: String? = nil
   @Published var pendingScreenshot: Data? = nil
   @Published var screenshotCaptureInProgress: Bool = false
@@ -18,8 +20,11 @@ class GeminiChatViewModel: ObservableObject {
   private let store = GeminiChatSessionStore.shared
   private let apiClient = GeminiAPIClient()
 
-  /// Current send task; cancelled by Stop button.
-  private var sendTask: Task<Void, Never>?
+  /// In-flight send tasks keyed by session ID — multiple sessions can be sending simultaneously.
+  private var sendTasks: [UUID: Task<Void, Never>] = [:]
+
+  /// Returns true if the given session has an in-flight request (for tab spinner).
+  func isSendingSession(_ id: UUID) -> Bool { sendingSessionIds.contains(id) }
 
   /// Maximum number of messages to send as context (older messages are kept in UI but not sent to the API).
   private static let maxMessagesInContext = 30
@@ -117,9 +122,9 @@ class GeminiChatViewModel: ObservableObject {
     pendingScreenshot = nil
   }
 
-  /// Cancels the in-flight send request. Call from the Stop button.
+  /// Cancels the in-flight send request for the currently visible session.
   func cancelSend() {
-    sendTask?.cancel()
+    sendTasks[session.id]?.cancel()
   }
 
   /// Sends the current message. Pass `userInput` when the view holds the text in local state to avoid re-renders on every keystroke.
@@ -153,18 +158,19 @@ class GeminiChatViewModel: ObservableObject {
       return
     }
 
+    let sessionId = session.id
     inputText = ""
     errorMessage = nil
     let userMsg = ChatMessage(role: .user, content: raw, attachedImageData: pendingScreenshot)
-    appendMessage(userMsg)
+    appendMessage(userMsg, toSessionId: sessionId)
     let contents = buildContents()
     pendingScreenshot = nil
 
-    sendTask = Task {
-      isSending = true
+    let task = Task {
+      sendingSessionIds.insert(sessionId)
       defer {
-        isSending = false
-        sendTask = nil
+        sendingSessionIds.remove(sessionId)
+        sendTasks.removeValue(forKey: sessionId)
       }
       do {
         let model = Self.resolveOpenGeminiModel()
@@ -176,16 +182,20 @@ class GeminiChatViewModel: ObservableObject {
           content: result.text,
           sources: result.sources,
           groundingSupports: result.supports)
-        appendMessage(modelMsg)
+        appendMessage(modelMsg, toSessionId: sessionId)
         ContextLogger.shared.logGeminiChat(userMessage: raw, modelResponse: result.text, model: model)
+        // Trigger AI title generation after the first full exchange.
+        if let s = store.session(by: sessionId), s.messages.count == 2 {
+          Task { await generateAITitle(sessionId: sessionId) }
+        }
       } catch is CancellationError {
-        // User tapped Stop; do not append model message or set errorMessage
         DebugLogger.log("GEMINI-CHAT: Send cancelled by user")
       } catch {
-        errorMessage = friendlyError(error)
+        if sessionId == session.id { errorMessage = friendlyError(error) }
         DebugLogger.logError("GEMINI-CHAT: \(error.localizedDescription)")
       }
     }
+    sendTasks[sessionId] = task
   }
 
   func clearMessages() {
@@ -223,31 +233,44 @@ class GeminiChatViewModel: ObservableObject {
     Self.openGeminiModel.displayName
   }
 
-  private func appendMessage(_ message: ChatMessage) {
-    let isFirstUserMessage = message.role == .user && messages.isEmpty
-    messages.append(message)
-    session.messages = messages
-    session.lastUpdated = Date()
+  /// Appends a message to the session identified by `sessionId`.
+  /// If that session is currently visible, also updates the in-memory UI state.
+  private func appendMessage(_ message: ChatMessage, toSessionId sessionId: UUID) {
+    let isCurrentSession = sessionId == session.id
+
+    var target: ChatSession
+    if isCurrentSession {
+      target = session
+    } else {
+      guard let s = store.session(by: sessionId) else { return }
+      target = s
+    }
+
+    let isFirstUserMessage = message.role == .user && target.messages.isEmpty
+    target.messages.append(message)
+    target.lastUpdated = Date()
     if isFirstUserMessage {
       let oneLine = message.content.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-      session.title = String(oneLine.prefix(Self.maxSessionTitleLength))
-      if oneLine.count > Self.maxSessionTitleLength { session.title? += "…" }
+      target.title = String(oneLine.prefix(Self.maxSessionTitleLength))
+      if oneLine.count > Self.maxSessionTitleLength { target.title? += "…" }
     }
-    store.save(session)
+    store.save(target)
+
+    if isCurrentSession {
+      session = target
+      messages = target.messages
+    }
     refreshRecentSessions()
-    // After the first full exchange (user + model), refine the title with AI in the background.
-    if message.role == .model && messages.count == 2 {
-      Task { await generateAITitle() }
-    }
   }
 
-  private func generateAITitle() async {
+  private func generateAITitle(sessionId: UUID) async {
     guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else { return }
-    guard messages.count >= 2,
-          messages[0].role == .user,
-          messages[1].role == .model else { return }
-    let userText = String(messages[0].content.prefix(400))
-    let modelText = String(messages[1].content.prefix(400))
+    guard let target = store.session(by: sessionId),
+          target.messages.count >= 2,
+          target.messages[0].role == .user,
+          target.messages[1].role == .model else { return }
+    let userText = String(target.messages[0].content.prefix(400))
+    let modelText = String(target.messages[1].content.prefix(400))
     let prompt = """
       Give this conversation a single-word title that captures its core topic. \
       If one word is genuinely not enough, use two words at most. \
@@ -264,10 +287,12 @@ class GeminiChatViewModel: ObservableObject {
         .replacingOccurrences(of: "\"", with: "")
         .replacingOccurrences(of: "'", with: "")
       guard !title.isEmpty else { return }
-      session.title = String(title.prefix(Self.maxSessionTitleLength))
-      store.save(session)
+      guard var updated = store.session(by: sessionId) else { return }
+      updated.title = String(title.prefix(Self.maxSessionTitleLength))
+      store.save(updated)
+      if sessionId == session.id { session.title = updated.title }
       refreshRecentSessions()
-      DebugLogger.log("GEMINI-CHAT: AI title generated: \(session.title ?? "")")
+      DebugLogger.log("GEMINI-CHAT: AI title generated for \(sessionId): \(title)")
     } catch {
       DebugLogger.log("GEMINI-CHAT: AI title generation failed, keeping fallback: \(error.localizedDescription)")
     }
@@ -423,7 +448,7 @@ struct GeminiChatView: View {
 
   private func sessionTab(session: ChatSession, width: CGFloat) -> some View {
     let isActive = session.id == viewModel.currentSessionId
-    let isProcessing = isActive && viewModel.isSending
+    let isProcessing = viewModel.isSendingSession(session.id)
     let title = (session.title?.isEmpty == false ? session.title! : "New chat")
 
     return Button(action: { viewModel.switchToSession(id: session.id) }) {
