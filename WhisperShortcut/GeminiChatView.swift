@@ -319,74 +319,14 @@ struct GeminiChatView: View {
   // MARK: - Header
 
   private var headerBar: some View {
-    HStack {
-      HStack(spacing: 6) {
-        Image(systemName: "sparkles")
-          .foregroundColor(.accentColor)
-        Text(viewModel.openGeminiModelDisplayName)
-          .font(.headline)
-          .foregroundColor(GeminiChatTheme.primaryText)
-      }
-      Spacer()
-      Button(action: { viewModel.createNewSession() }) {
-        HStack(spacing: 6) {
-          Image(systemName: "square.and.pencil")
-            .font(.system(size: 15))
-          Text("New chat")
-            .font(.subheadline)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(minHeight: 36)
-        .contentShape(Rectangle())
-        .foregroundColor(GeminiChatTheme.secondaryText)
-      }
-      .buttonStyle(.plain)
-      .help("Start a new chat (previous chat stays in history)")
-      .pointerCursorOnHover()
-
-      Button(action: { viewModel.goBack() }) {
-        HStack(spacing: 6) {
-          Image(systemName: "chevron.left")
-            .font(.system(size: 15))
-          Text("Back")
-            .font(.subheadline)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(minHeight: 36)
-        .contentShape(Rectangle())
-        .foregroundColor(viewModel.canGoBack ? GeminiChatTheme.secondaryText : GeminiChatTheme.secondaryText.opacity(0.5))
-      }
-      .buttonStyle(.plain)
-      .disabled(!viewModel.canGoBack)
-      .help("Switch to the previous chat")
-      .pointerCursorOnHover()
-
-      Button(action: { Task { await viewModel.captureScreenshot() } }) {
-        HStack(spacing: 6) {
-          if viewModel.screenshotCaptureInProgress {
-            ProgressView()
-              .controlSize(.small)
-              .frame(width: 15, height: 15)
-          } else {
-            Image(systemName: "camera.viewfinder")
-              .font(.system(size: 15))
-          }
-          Text("Screenshot")
-            .font(.subheadline)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(minHeight: 36)
-        .contentShape(Rectangle())
-        .foregroundColor(viewModel.screenshotCaptureInProgress ? GeminiChatTheme.secondaryText.opacity(0.6) : GeminiChatTheme.secondaryText)
-      }
-      .buttonStyle(.plain)
-      .disabled(viewModel.screenshotCaptureInProgress || viewModel.isSending)
-      .help("Capture screen without this window; image will be attached to your next message.")
-      .pointerCursorOnHover()
+    HStack(spacing: 6) {
+      Image(systemName: "sparkles")
+        .foregroundColor(.accentColor)
+      Text(viewModel.openGeminiModelDisplayName)
+        .font(.headline)
+        .foregroundColor(GeminiChatTheme.primaryText)
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.horizontal, 20)
     .padding(.vertical, 10)
   }
@@ -625,10 +565,67 @@ struct GeminiInputAreaView: View {
     }
   }
 
+  // MARK: - Action Buttons Row
+
+  private var actionButtonsRow: some View {
+    HStack(spacing: 4) {
+      Button(action: { viewModel.createNewSession() }) {
+        HStack(spacing: 4) {
+          Image(systemName: "square.and.pencil").font(.caption)
+          Text("New chat").font(.caption)
+        }
+        .foregroundColor(GeminiChatTheme.secondaryText)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .help("Start a new chat (previous chat stays in history)")
+      .pointerCursorOnHover()
+
+      Button(action: { viewModel.goBack() }) {
+        HStack(spacing: 4) {
+          Image(systemName: "chevron.left").font(.caption)
+          Text("Back").font(.caption)
+        }
+        .foregroundColor(viewModel.canGoBack ? GeminiChatTheme.secondaryText : GeminiChatTheme.secondaryText.opacity(0.4))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .disabled(!viewModel.canGoBack)
+      .help("Switch to the previous chat")
+      .pointerCursorOnHover()
+
+      Button(action: { Task { await viewModel.captureScreenshot() } }) {
+        HStack(spacing: 4) {
+          if viewModel.screenshotCaptureInProgress {
+            ProgressView().controlSize(.mini).frame(width: 10, height: 10)
+          } else {
+            Image(systemName: "camera.viewfinder").font(.caption)
+          }
+          Text("Screenshot").font(.caption)
+        }
+        .foregroundColor(viewModel.screenshotCaptureInProgress ? GeminiChatTheme.secondaryText.opacity(0.6) : GeminiChatTheme.secondaryText)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .disabled(viewModel.screenshotCaptureInProgress || viewModel.isSending)
+      .help("Capture screen without this window; image will be attached to your next message.")
+      .pointerCursorOnHover()
+
+      Spacer()
+    }
+  }
+
   // MARK: - Input Bar
 
   private var inputBar: some View {
     VStack(alignment: .leading, spacing: 8) {
+      actionButtonsRow
       if viewModel.pendingScreenshot != nil {
         pendingScreenshotThumbnail
       }
