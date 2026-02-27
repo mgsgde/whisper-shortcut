@@ -10,9 +10,11 @@ private class GeminiWindow: NSWindow {
 
 class GeminiWindowController: NSWindowController {
 
-  /// Key codes for arrow keys (NSEvent.keyCode).
+  /// Key codes (layout-independent, NSEvent.keyCode).
   private static let keyCodeUpArrow: UInt16 = 126
   private static let keyCodeDownArrow: UInt16 = 125
+  private static let keyCodeN: UInt16 = 45
+  private static let keyCodeW: UInt16 = 13
 
   private var keyDownMonitor: Any?
   private var needsDefaultFrame: Bool = false
@@ -64,6 +66,7 @@ class GeminiWindowController: NSWindowController {
       needsDefaultFrame = false
     }
     ensureWindowOnCurrentScreen()
+    setupCmdArrowScrollMonitor()  // Re-add monitor if it was removed when window closed
     NSApp.activate(ignoringOtherApps: true)
     window?.makeKeyAndOrderFront(nil)
     NotificationCenter.default.post(name: .geminiFocusInput, object: nil)
@@ -98,20 +101,20 @@ class GeminiWindowController: NSWindowController {
     }
   }
 
-  /// Cmd+Up / Cmd+Down scroll the chat to top/bottom even when the text field is focused.
+  /// Cmd+Up/Down scroll the chat; Cmd+N/W create/close tabs.
+  /// Safe to call multiple times — skips if a monitor is already registered.
   private func setupCmdArrowScrollMonitor() {
+    guard keyDownMonitor == nil else { return }
     keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
       guard let self, let win = self.window, win.isKeyWindow else { return event }
       guard event.modifierFlags.contains(.command) else { return event }
-      if event.characters == "n" {
+      switch event.keyCode {
+      case Self.keyCodeN:
         NotificationCenter.default.post(name: .geminiNewChat, object: nil)
         return nil
-      }
-      if event.characters == "w" {
+      case Self.keyCodeW:
         NotificationCenter.default.post(name: .geminiCloseTab, object: nil)
         return nil
-      }
-      switch event.keyCode {
       case Self.keyCodeUpArrow:
         NotificationCenter.default.post(name: .geminiScrollToTop, object: nil)
         return nil
