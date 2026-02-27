@@ -222,6 +222,7 @@ struct ContextSettingsTab: View {
             Text("Run Improve from usage automatically")
               .font(.callout)
               .fontWeight(.medium)
+            Spacer(minLength: 16)
             Picker("", selection: $autoRunIntervalRaw) {
               ForEach(ImproveFromUsageAutoRunInterval.allCases, id: \.rawValue) { interval in
                 Text(interval.displayName).tag(interval.rawValue)

@@ -1,6 +1,13 @@
 import Cocoa
 import SwiftUI
 
+/// Custom NSWindow subclass that routes Cmd+W to tab-close instead of window-close.
+private class GeminiWindow: NSWindow {
+  override func performClose(_ sender: Any?) {
+    NotificationCenter.default.post(name: .geminiCloseTab, object: nil)
+  }
+}
+
 class GeminiWindowController: NSWindowController {
 
   /// Key codes for arrow keys (NSEvent.keyCode).
@@ -26,7 +33,7 @@ class GeminiWindowController: NSWindowController {
     let hostingController = NSHostingController(rootView: chatView)
     hostingController.sizingOptions = []
 
-    let window = NSWindow(
+    let window = GeminiWindow(
       contentRect: NSRect(x: 0, y: 0, width: Constants.minWidth, height: Constants.minHeight),
       styleMask: [.titled, .closable, .resizable],
       backing: .buffered,
