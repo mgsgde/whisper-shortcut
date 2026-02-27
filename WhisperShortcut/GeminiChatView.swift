@@ -26,6 +26,7 @@ class GeminiChatViewModel: ObservableObject {
   /// Commands are slash-only (e.g. /stop, /new); do not use hotkeys/shortcuts for command actions.
   private static let newChatCommand = "/new"
   private static let backChatCommand = "/back"
+  private static let nextChatCommand = "/next"
   private static let clearChatCommands = ["/clear"]
   static let screenshotCommand = "/screenshot"
   private static let stopCommand = "/stop"
@@ -34,7 +35,8 @@ class GeminiChatViewModel: ObservableObject {
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
     ("/new", "Start a new chat (previous chat stays in history)"),
-    ("/back", "Switch to the previous chat"),
+    ("/back", "Navigate to the previous chat"),
+    ("/next", "Navigate to the next chat"),
     ("/clear", "Clear current chat messages"),
     ("/screenshot", "Capture screen (attached to your next message)"),
     ("/settings", "Open Settings"),
@@ -50,9 +52,8 @@ class GeminiChatViewModel: ObservableObject {
       .filter { $0.lowercased().hasPrefix(prefix) || prefix.isEmpty }
   }
 
-  var canGoBack: Bool {
-    store.idForBack() != nil || store.previousSessionId(current: session.id) != nil
-  }
+  var canGoBack: Bool { store.canGoBack() }
+  var canGoForward: Bool { store.canGoForward() }
 
   init() {
     session = store.load()
@@ -70,14 +71,22 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   func goBack() {
-    let prevId = store.idForBack() ?? store.previousSessionId(current: session.id)
-    guard let prevId = prevId else { return }
-    store.setCurrentSession(id: prevId, clearBack: true)
+    guard store.navigateBack() != nil else { return }
+    switchToCurrentStoreSession()
+    DebugLogger.log("GEMINI-CHAT: Navigated back to \(session.id)")
+  }
+
+  func goForward() {
+    guard store.navigateForward() != nil else { return }
+    switchToCurrentStoreSession()
+    DebugLogger.log("GEMINI-CHAT: Navigated forward to \(session.id)")
+  }
+
+  private func switchToCurrentStoreSession() {
     session = store.load()
     messages = session.messages
     errorMessage = nil
     pendingScreenshot = nil
-    DebugLogger.log("GEMINI-CHAT: Switched back to previous chat \(prevId)")
   }
 
   func captureScreenshot() async {
@@ -118,12 +127,13 @@ class GeminiChatViewModel: ObservableObject {
     guard hasContent, !isSending else { return }
 
     // Slash commands: do not send to API
-    if lower == Self.newChatCommand || lower == Self.backChatCommand
+    if lower == Self.newChatCommand || lower == Self.backChatCommand || lower == Self.nextChatCommand
         || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
         || lower == Self.settingsCommand {
       inputText = ""
       if lower == Self.newChatCommand { createNewSession() }
       else if lower == Self.backChatCommand { goBack() }
+      else if lower == Self.nextChatCommand { goForward() }
       else if Self.clearChatCommands.contains(lower) { clearMessages() }
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else { await captureScreenshot() }
@@ -398,7 +408,10 @@ struct GeminiChatView: View {
         Text("/new — Start a new chat (previous chat stays in history)")
           .font(.body)
           .foregroundColor(GeminiChatTheme.secondaryText)
-        Text("/back — Switch to the previous chat")
+        Text("/back — Navigate to the previous chat")
+          .font(.body)
+          .foregroundColor(GeminiChatTheme.secondaryText)
+        Text("/next — Navigate to the next chat")
           .font(.body)
           .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/screenshot — Capture screen (attached to your next message)")
@@ -586,7 +599,7 @@ struct GeminiInputAreaView: View {
       Button(action: { viewModel.goBack() }) {
         HStack(spacing: 4) {
           Image(systemName: "chevron.left").font(.caption)
-          Text("Back").font(.caption)
+          Text("Previous").font(.caption)
         }
         .foregroundColor(viewModel.canGoBack ? GeminiChatTheme.secondaryText : GeminiChatTheme.secondaryText.opacity(0.4))
         .padding(.horizontal, 8)
@@ -595,7 +608,22 @@ struct GeminiInputAreaView: View {
       }
       .buttonStyle(.plain)
       .disabled(!viewModel.canGoBack)
-      .help("Switch to the previous chat")
+      .help("Navigate to the previous chat (/back)")
+      .pointerCursorOnHover()
+
+      Button(action: { viewModel.goForward() }) {
+        HStack(spacing: 4) {
+          Text("Next").font(.caption)
+          Image(systemName: "chevron.right").font(.caption)
+        }
+        .foregroundColor(viewModel.canGoForward ? GeminiChatTheme.secondaryText : GeminiChatTheme.secondaryText.opacity(0.4))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .disabled(!viewModel.canGoForward)
+      .help("Navigate to the next chat (/next)")
       .pointerCursorOnHover()
 
       Button(action: { Task { await viewModel.captureScreenshot() } }) {

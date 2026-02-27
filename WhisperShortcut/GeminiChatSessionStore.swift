@@ -100,8 +100,46 @@ struct ChatSession: Codable {
 private struct SessionsFile: Codable {
   var currentSessionId: UUID
   var sessions: [ChatSession]
-  /// Session to return to when user triggers /back (set when creating a new chat).
-  var previousSessionIdForBack: UUID?
+  /// Back/forward navigation stacks. Back: oldest→newest (pop last to go back).
+  /// Forward: oldest→newest (pop last to go forward).
+  var navBackStack: [UUID]
+  var navForwardStack: [UUID]
+
+  private enum CodingKeys: String, CodingKey {
+    case currentSessionId, sessions, navBackStack, navForwardStack
+    // Legacy key — only decoded, never encoded (migration).
+    case previousSessionIdForBack
+  }
+
+  init(currentSessionId: UUID, sessions: [ChatSession], navBackStack: [UUID] = [], navForwardStack: [UUID] = []) {
+    self.currentSessionId = currentSessionId
+    self.sessions = sessions
+    self.navBackStack = navBackStack
+    self.navForwardStack = navForwardStack
+  }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    currentSessionId = try c.decode(UUID.self, forKey: .currentSessionId)
+    sessions = try c.decode([ChatSession].self, forKey: .sessions)
+    if let stack = try c.decodeIfPresent([UUID].self, forKey: .navBackStack) {
+      navBackStack = stack
+    } else if let legacyId = try c.decodeIfPresent(UUID.self, forKey: .previousSessionIdForBack) {
+      navBackStack = [legacyId]
+    } else {
+      navBackStack = []
+    }
+    navForwardStack = try c.decodeIfPresent([UUID].self, forKey: .navForwardStack) ?? []
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var c = encoder.container(keyedBy: CodingKeys.self)
+    try c.encode(currentSessionId, forKey: .currentSessionId)
+    try c.encode(sessions, forKey: .sessions)
+    try c.encode(navBackStack, forKey: .navBackStack)
+    try c.encode(navForwardStack, forKey: .navForwardStack)
+    // previousSessionIdForBack intentionally omitted — legacy field replaced by stacks.
+  }
 }
 
 // MARK: - Store
@@ -111,6 +149,7 @@ class GeminiChatSessionStore {
 
   private let fileName = "gemini-sessions.json"
   private let legacyFileName = "gemini-chat-session.json"
+  private static let navStackLimit = 20
 
   private var cachedFile: SessionsFile?
   private let diskWriteQueue = DispatchQueue(label: "com.whispershortcut.session.io", qos: .utility)
@@ -118,79 +157,45 @@ class GeminiChatSessionStore {
   private init() {}
 
   private var fileURL: URL {
-    AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(fileName)
+    AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent(fileName)
   }
-
   private var legacyFileURL: URL {
-    AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(legacyFileName)
+    AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent(legacyFileName)
   }
-
   private var appSupportDir: URL {
     AppSupportPaths.whisperShortcutApplicationSupportURL()
   }
 
-  // MARK: - Load
+  // MARK: - Private file access
 
-  func load() -> ChatSession {
-    let (currentId, sessions, _) = loadSessionsFile()
-    guard let session = sessions.first(where: { $0.id == currentId }) else {
-      return sessions.first ?? ChatSession()
-    }
-    return session
-  }
+  private func loadFile() -> SessionsFile {
+    if let cached = cachedFile { return cached }
 
-  /// Returns (currentSessionId, sessions sorted by lastUpdated desc, previousSessionIdForBack).
-  private func loadSessionsFile() -> (currentSessionId: UUID, sessions: [ChatSession], previousSessionIdForBack: UUID?) {
-    // Return from in-memory cache if warm
-    if let cached = cachedFile {
-      let sorted = cached.sessions.sorted { $0.lastUpdated > $1.lastUpdated }
-      return (cached.currentSessionId, sorted, cached.previousSessionIdForBack)
-    }
-
-    // Migrate from legacy single-session file if present
-    if FileManager.default.fileExists(atPath: legacyFileURL.path) {
-      if let data = try? Data(contentsOf: legacyFileURL),
-         let legacy = try? JSONDecoder().decode(ChatSession.self, from: data) {
-        let file = SessionsFile(currentSessionId: legacy.id, sessions: [legacy], previousSessionIdForBack: nil)
-        saveSessionsFile(file)
-        try? FileManager.default.removeItem(at: legacyFileURL)
-        return (legacy.id, [legacy], nil)
-      }
-    }
-
-    guard let data = try? Data(contentsOf: fileURL),
-          let file = try? JSONDecoder().decode(SessionsFile.self, from: data),
-          !file.sessions.isEmpty
-    else {
-      let defaultSession = ChatSession()
-      let file = SessionsFile(currentSessionId: defaultSession.id, sessions: [defaultSession], previousSessionIdForBack: nil)
+    // Migrate from legacy single-session file
+    if FileManager.default.fileExists(atPath: legacyFileURL.path),
+       let data = try? Data(contentsOf: legacyFileURL),
+       let legacy = try? JSONDecoder().decode(ChatSession.self, from: data) {
+      let file = SessionsFile(currentSessionId: legacy.id, sessions: [legacy])
       saveSessionsFile(file)
-      return (defaultSession.id, [defaultSession], nil)
+      try? FileManager.default.removeItem(at: legacyFileURL)
+      return file
     }
 
-    cachedFile = file
-    let sorted = file.sessions.sorted { $0.lastUpdated > $1.lastUpdated }
-    return (file.currentSessionId, sorted, file.previousSessionIdForBack)
-  }
-
-  // MARK: - Save
-
-  func save(_ session: ChatSession) {
-    var (currentId, sessions, backId) = loadSessionsFile()
-    if let idx = sessions.firstIndex(where: { $0.id == session.id }) {
-      sessions[idx] = session
-    } else {
-      sessions.append(session)
-      sessions.sort { $0.lastUpdated > $1.lastUpdated }
+    if let data = try? Data(contentsOf: fileURL),
+       let file = try? JSONDecoder().decode(SessionsFile.self, from: data),
+       !file.sessions.isEmpty {
+      cachedFile = file
+      return file
     }
-    let file = SessionsFile(currentSessionId: currentId, sessions: sessions, previousSessionIdForBack: backId)
+
+    let defaultSession = ChatSession()
+    let file = SessionsFile(currentSessionId: defaultSession.id, sessions: [defaultSession])
     saveSessionsFile(file)
+    return file
   }
 
   private func saveSessionsFile(_ file: SessionsFile) {
-    cachedFile = file  // Immediate in-memory update
+    cachedFile = file
     let url = fileURL
     let dir = appSupportDir
     diskWriteQueue.async {
@@ -201,48 +206,75 @@ class GeminiChatSessionStore {
     }
   }
 
+  // MARK: - Load / Save
+
+  func load() -> ChatSession {
+    let file = loadFile()
+    return file.sessions.first(where: { $0.id == file.currentSessionId })
+      ?? file.sessions.first ?? ChatSession()
+  }
+
+  func save(_ session: ChatSession) {
+    var file = loadFile()
+    if let idx = file.sessions.firstIndex(where: { $0.id == session.id }) {
+      file.sessions[idx] = session
+    } else {
+      file.sessions.append(session)
+    }
+    saveSessionsFile(file)
+  }
+
+  // MARK: - Navigation
+
+  func canGoBack() -> Bool { !loadFile().navBackStack.isEmpty }
+  func canGoForward() -> Bool { !loadFile().navForwardStack.isEmpty }
+
+  /// Navigates back. Updates stacks and currentSessionId; returns the new current session ID, or nil if at the start.
+  func navigateBack() -> UUID? {
+    var file = loadFile()
+    guard !file.navBackStack.isEmpty else { return nil }
+    let targetId = file.navBackStack.removeLast()
+    file.navForwardStack.append(file.currentSessionId)
+    if file.navForwardStack.count > Self.navStackLimit { file.navForwardStack.removeFirst() }
+    file.currentSessionId = targetId
+    saveSessionsFile(file)
+    return targetId
+  }
+
+  /// Navigates forward. Updates stacks and currentSessionId; returns the new current session ID, or nil if at the end.
+  func navigateForward() -> UUID? {
+    var file = loadFile()
+    guard !file.navForwardStack.isEmpty else { return nil }
+    let targetId = file.navForwardStack.removeLast()
+    file.navBackStack.append(file.currentSessionId)
+    if file.navBackStack.count > Self.navStackLimit { file.navBackStack.removeFirst() }
+    file.currentSessionId = targetId
+    saveSessionsFile(file)
+    return targetId
+  }
+
   // MARK: - Multi-Session Helpers
 
   func session(by id: UUID) -> ChatSession? {
-    let (_, sessions, _) = loadSessionsFile()
-    return sessions.first { $0.id == id }
+    loadFile().sessions.first { $0.id == id }
   }
 
   /// Sessions ordered by lastUpdated descending (most recent first).
   func recentSessions(limit: Int = 50) -> [ChatSession] {
-    let (_, sessions, _) = loadSessionsFile()
-    return Array(sessions.prefix(limit))
+    Array(loadFile().sessions.sorted { $0.lastUpdated > $1.lastUpdated }.prefix(limit))
   }
 
-  /// Id stored when user created a new chat; use for /back to return to the chat they left.
-  func idForBack() -> UUID? {
-    let (_, _, backId) = loadSessionsFile()
-    return backId
-  }
-
-  /// Id of the session to switch to for "previous" (fallback: most recently updated, excluding current).
-  func previousSessionId(current: UUID) -> UUID? {
-    let sessions = recentSessions(limit: 10)
-    return sessions.first { $0.id != current }?.id
-  }
-
-  /// - Parameter clearBack: when true (e.g. after /back), clear the stored "back" target.
-  func setCurrentSession(id: UUID, clearBack: Bool = false) {
-    var (_, sessions, backId) = loadSessionsFile()
-    guard sessions.contains(where: { $0.id == id }) else { return }
-    if clearBack { backId = nil }
-    let file = SessionsFile(currentSessionId: id, sessions: sessions, previousSessionIdForBack: backId)
-    saveSessionsFile(file)
-  }
-
-  /// Creates a new empty session, adds it to the store, and sets it as current. Stores current session id as "back" target.
+  /// Creates a new empty session, pushes current to back stack, clears forward stack, sets as current.
   func createNewSession() -> ChatSession {
     let newSession = ChatSession()
-    var (currentId, sessions, _) = loadSessionsFile()
-    sessions.insert(newSession, at: 0)
-    let file = SessionsFile(currentSessionId: newSession.id, sessions: sessions, previousSessionIdForBack: currentId)
+    var file = loadFile()
+    file.navBackStack.append(file.currentSessionId)
+    if file.navBackStack.count > Self.navStackLimit { file.navBackStack.removeFirst() }
+    file.navForwardStack = []
+    file.sessions.insert(newSession, at: 0)
+    file.currentSessionId = newSession.id
     saveSessionsFile(file)
-    DebugLogger.log("GEMINI-CHAT: New session created \(newSession.id), back target \(currentId)")
+    DebugLogger.log("GEMINI-CHAT: New session created \(newSession.id)")
     return newSession
   }
 }
