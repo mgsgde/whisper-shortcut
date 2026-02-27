@@ -11,6 +11,8 @@ class GeminiChatViewModel: ObservableObject {
   @Published var errorMessage: String? = nil
   @Published var pendingScreenshot: Data? = nil
   @Published var screenshotCaptureInProgress: Bool = false
+  @Published private(set) var recentSessions: [ChatSession] = []
+  @Published private(set) var currentSessionId: UUID = UUID()
 
   private var session: ChatSession
   private let store = GeminiChatSessionStore.shared
@@ -57,16 +59,20 @@ class GeminiChatViewModel: ObservableObject {
 
   init() {
     session = store.load()
+    currentSessionId = session.id
     messages = session.messages
+    recentSessions = store.recentSessions(limit: 20)
   }
 
   func createNewSession() {
     let newSession = store.createNewSession()
     session = newSession
+    currentSessionId = newSession.id
     messages = []
     errorMessage = nil
     inputText = ""
     pendingScreenshot = nil
+    refreshRecentSessions()
     DebugLogger.log("GEMINI-CHAT: Switched to new chat")
   }
 
@@ -84,9 +90,11 @@ class GeminiChatViewModel: ObservableObject {
 
   private func switchToCurrentStoreSession() {
     session = store.load()
+    currentSessionId = session.id
     messages = session.messages
     errorMessage = nil
     pendingScreenshot = nil
+    refreshRecentSessions()
   }
 
   func captureScreenshot() async {
@@ -185,6 +193,7 @@ class GeminiChatViewModel: ObservableObject {
     session.messages = []
     session.lastUpdated = Date()
     store.save(session)
+    refreshRecentSessions()
     DebugLogger.log("GEMINI-CHAT: Cleared current chat messages")
   }
 
@@ -225,6 +234,30 @@ class GeminiChatViewModel: ObservableObject {
       if oneLine.count > Self.maxSessionTitleLength { session.title? += "…" }
     }
     store.save(session)
+    refreshRecentSessions()
+  }
+
+  // MARK: - Tab navigation
+
+  private func refreshRecentSessions() {
+    recentSessions = store.recentSessions(limit: 20)
+  }
+
+  /// Returns the sessions to display as tabs, ensuring the current session is always included.
+  func visibleTabs(maxCount: Int) -> [ChatSession] {
+    var tabs = Array(recentSessions.prefix(maxCount))
+    if !tabs.contains(where: { $0.id == currentSessionId }) {
+      let current = recentSessions.first { $0.id == currentSessionId } ?? session
+      if tabs.isEmpty { tabs = [current] } else { tabs[tabs.count - 1] = current }
+    }
+    return tabs
+  }
+
+  func switchToSession(id: UUID) {
+    guard id != session.id else { return }
+    store.switchToSession(id: id)
+    switchToCurrentStoreSession()
+    DebugLogger.log("GEMINI-CHAT: Switched to session \(id) via tab")
   }
 
   private func buildContents() -> [[String: Any]] {
@@ -287,7 +320,7 @@ struct GeminiChatView: View {
   var body: some View {
     GeometryReader { geometry in
       VStack(spacing: 0) {
-        headerBar
+        tabStripHeader(containerWidth: geometry.size.width)
         Divider()
         messageList(scrollActions: scrollActions, containerWidth: geometry.size.width)
         if let error = viewModel.errorMessage {
@@ -326,19 +359,60 @@ struct GeminiChatView: View {
     }
   }
 
-  // MARK: - Header
+  // MARK: - Tab Strip Header
 
-  private var headerBar: some View {
-    HStack(spacing: 6) {
+  private func tabStripHeader(containerWidth: CGFloat) -> some View {
+    let iconWidth: CGFloat = 40
+    let tabsWidth = containerWidth - iconWidth
+    let tabMinWidth: CGFloat = 90
+    let tabMaxWidth: CGFloat = 200
+    let maxTabsFromWidth = max(1, Int(tabsWidth / tabMinWidth))
+    let sessions = viewModel.visibleTabs(maxCount: maxTabsFromWidth)
+    let tabWidth = min(tabMaxWidth, sessions.isEmpty ? tabMaxWidth : tabsWidth / CGFloat(sessions.count))
+
+    return HStack(spacing: 0) {
       Image(systemName: "sparkles")
         .foregroundColor(.accentColor)
-      Text(viewModel.openGeminiModelDisplayName)
-        .font(.headline)
-        .foregroundColor(GeminiChatTheme.primaryText)
+        .font(.system(size: 13, weight: .medium))
+        .frame(width: iconWidth, height: 38)
+
+      ForEach(sessions, id: \.id) { session in
+        sessionTab(session: session, width: tabWidth)
+      }
+
+      Spacer()
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.horizontal, 20)
-    .padding(.vertical, 10)
+    .frame(height: 38)
+  }
+
+  private func sessionTab(session: ChatSession, width: CGFloat) -> some View {
+    let isActive = session.id == viewModel.currentSessionId
+    let isProcessing = isActive && viewModel.isSending
+    let title = (session.title?.isEmpty == false ? session.title! : "New chat")
+
+    return Button(action: { viewModel.switchToSession(id: session.id) }) {
+      HStack(spacing: 5) {
+        if isProcessing {
+          ProgressView().controlSize(.mini).frame(width: 12, height: 12)
+        }
+        Text(title)
+          .font(.caption)
+          .lineLimit(1)
+          .truncationMode(.middle)
+      }
+      .frame(width: width, height: 38)
+      .background(isActive ? GeminiChatTheme.controlBackground : Color.clear)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .foregroundColor(isActive ? GeminiChatTheme.primaryText : GeminiChatTheme.secondaryText)
+    .overlay(alignment: .bottom) {
+      if isActive {
+        Rectangle().fill(Color.accentColor).frame(height: 2)
+      }
+    }
+    .help(title)
+    .pointerCursorOnHover()
   }
 
   // MARK: - Message List
@@ -596,35 +670,6 @@ struct GeminiInputAreaView: View {
       .help("Start a new chat (previous chat stays in history)")
       .pointerCursorOnHover()
 
-      Button(action: { viewModel.goBack() }) {
-        HStack(spacing: 4) {
-          Image(systemName: "chevron.left").font(.caption)
-          Text("Previous").font(.caption)
-        }
-        .foregroundColor(viewModel.canGoBack ? GeminiChatTheme.secondaryText : GeminiChatTheme.secondaryText.opacity(0.4))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .disabled(!viewModel.canGoBack)
-      .help("Navigate to the previous chat (/back)")
-      .pointerCursorOnHover()
-
-      Button(action: { viewModel.goForward() }) {
-        HStack(spacing: 4) {
-          Text("Next").font(.caption)
-          Image(systemName: "chevron.right").font(.caption)
-        }
-        .foregroundColor(viewModel.canGoForward ? GeminiChatTheme.secondaryText : GeminiChatTheme.secondaryText.opacity(0.4))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .disabled(!viewModel.canGoForward)
-      .help("Navigate to the next chat (/next)")
-      .pointerCursorOnHover()
 
       Button(action: { Task { await viewModel.captureScreenshot() } }) {
         HStack(spacing: 4) {

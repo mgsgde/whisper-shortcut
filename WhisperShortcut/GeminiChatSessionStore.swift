@@ -264,6 +264,17 @@ class GeminiChatSessionStore {
     Array(loadFile().sessions.sorted { $0.lastUpdated > $1.lastUpdated }.prefix(limit))
   }
 
+  /// Switches to an existing session via tab click, pushing current to back stack and clearing forward stack.
+  func switchToSession(id: UUID) {
+    var file = loadFile()
+    guard file.sessions.contains(where: { $0.id == id }), id != file.currentSessionId else { return }
+    file.navBackStack.append(file.currentSessionId)
+    if file.navBackStack.count > Self.navStackLimit { file.navBackStack.removeFirst() }
+    file.navForwardStack = []
+    file.currentSessionId = id
+    saveSessionsFile(file)
+  }
+
   /// Creates a new empty session, pushes current to back stack, clears forward stack, sets as current.
   func createNewSession() -> ChatSession {
     let newSession = ChatSession()
