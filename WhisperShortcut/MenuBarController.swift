@@ -96,6 +96,10 @@ class MenuBarController: NSObject {
     setupDelegates()
     setupNotifications()
     loadModelConfiguration()
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+      GeminiWindowManager.shared.preWarm()
+    }
   }
 
   // MARK: - Setup

@@ -112,6 +112,9 @@ class GeminiChatSessionStore {
   private let fileName = "gemini-sessions.json"
   private let legacyFileName = "gemini-chat-session.json"
 
+  private var cachedFile: SessionsFile?
+  private let diskWriteQueue = DispatchQueue(label: "com.whispershortcut.session.io", qos: .utility)
+
   private init() {}
 
   private var fileURL: URL {
@@ -140,12 +143,18 @@ class GeminiChatSessionStore {
 
   /// Returns (currentSessionId, sessions sorted by lastUpdated desc, previousSessionIdForBack).
   private func loadSessionsFile() -> (currentSessionId: UUID, sessions: [ChatSession], previousSessionIdForBack: UUID?) {
+    // Return from in-memory cache if warm
+    if let cached = cachedFile {
+      let sorted = cached.sessions.sorted { $0.lastUpdated > $1.lastUpdated }
+      return (cached.currentSessionId, sorted, cached.previousSessionIdForBack)
+    }
+
     // Migrate from legacy single-session file if present
     if FileManager.default.fileExists(atPath: legacyFileURL.path) {
       if let data = try? Data(contentsOf: legacyFileURL),
          let legacy = try? JSONDecoder().decode(ChatSession.self, from: data) {
         let file = SessionsFile(currentSessionId: legacy.id, sessions: [legacy], previousSessionIdForBack: nil)
-        try? saveSessionsFile(file)
+        saveSessionsFile(file)
         try? FileManager.default.removeItem(at: legacyFileURL)
         return (legacy.id, [legacy], nil)
       }
@@ -157,10 +166,11 @@ class GeminiChatSessionStore {
     else {
       let defaultSession = ChatSession()
       let file = SessionsFile(currentSessionId: defaultSession.id, sessions: [defaultSession], previousSessionIdForBack: nil)
-      try? saveSessionsFile(file)
+      saveSessionsFile(file)
       return (defaultSession.id, [defaultSession], nil)
     }
 
+    cachedFile = file
     let sorted = file.sessions.sorted { $0.lastUpdated > $1.lastUpdated }
     return (file.currentSessionId, sorted, file.previousSessionIdForBack)
   }
@@ -176,13 +186,19 @@ class GeminiChatSessionStore {
       sessions.sort { $0.lastUpdated > $1.lastUpdated }
     }
     let file = SessionsFile(currentSessionId: currentId, sessions: sessions, previousSessionIdForBack: backId)
-    try? saveSessionsFile(file)
+    saveSessionsFile(file)
   }
 
-  private func saveSessionsFile(_ file: SessionsFile) throws {
-    try FileManager.default.createDirectory(at: appSupportDir, withIntermediateDirectories: true)
-    let data = try JSONEncoder().encode(file)
-    try data.write(to: fileURL, options: .atomic)
+  private func saveSessionsFile(_ file: SessionsFile) {
+    cachedFile = file  // Immediate in-memory update
+    let url = fileURL
+    let dir = appSupportDir
+    diskWriteQueue.async {
+      try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      if let data = try? JSONEncoder().encode(file) {
+        try? data.write(to: url, options: .atomic)
+      }
+    }
   }
 
   // MARK: - Multi-Session Helpers
@@ -216,7 +232,7 @@ class GeminiChatSessionStore {
     guard sessions.contains(where: { $0.id == id }) else { return }
     if clearBack { backId = nil }
     let file = SessionsFile(currentSessionId: id, sessions: sessions, previousSessionIdForBack: backId)
-    try? saveSessionsFile(file)
+    saveSessionsFile(file)
   }
 
   /// Creates a new empty session, adds it to the store, and sets it as current. Stores current session id as "back" target.
@@ -225,7 +241,7 @@ class GeminiChatSessionStore {
     var (currentId, sessions, _) = loadSessionsFile()
     sessions.insert(newSession, at: 0)
     let file = SessionsFile(currentSessionId: newSession.id, sessions: sessions, previousSessionIdForBack: currentId)
-    try? saveSessionsFile(file)
+    saveSessionsFile(file)
     DebugLogger.log("GEMINI-CHAT: New session created \(newSession.id), back target \(currentId)")
     return newSession
   }

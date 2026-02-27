@@ -5,6 +5,10 @@ class GeminiWindowManager {
   static let shared = GeminiWindowManager()
   private var windowController: GeminiWindowController?
 
+  private var cachedShareableContent: SCShareableContent?
+  private var cachedShareableContentDate: Date?
+  private let shareableContentCacheDuration: TimeInterval = 30
+
   private init() {}
 
   func toggle() {
@@ -20,6 +24,7 @@ class GeminiWindowManager {
       windowController = GeminiWindowController()
     }
     windowController?.showWindow()
+    prefetchShareableContent()
   }
 
   func close() {
@@ -29,6 +34,23 @@ class GeminiWindowManager {
   func isWindowOpen() -> Bool {
     guard let window = windowController?.window else { return false }
     return window.isVisible
+  }
+
+  /// Creates the window controller in the background so the first show() call is instant.
+  func preWarm() {
+    if windowController == nil {
+      windowController = GeminiWindowController()
+    }
+  }
+
+  /// Pre-fetches SCShareableContent in the background to warm the cache before the user takes a screenshot.
+  func prefetchShareableContent() {
+    Task { @MainActor in
+      guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) else { return }
+      cachedShareableContent = content
+      cachedShareableContentDate = Date()
+      DebugLogger.log("GEMINI-SCREENSHOT: SCShareableContent pre-fetched and cached")
+    }
   }
 
   /// Captures the display that contains the Gemini window, excluding this app's windows via ScreenCaptureKit.
@@ -41,11 +63,21 @@ class GeminiWindowManager {
     }
 
     let content: SCShareableContent
-    do {
-      content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-    } catch {
-      DebugLogger.log("GEMINI-SCREENSHOT: SCShareableContent failed: \(error.localizedDescription)")
-      return nil
+    let now = Date()
+    if let cached = cachedShareableContent,
+       let ts = cachedShareableContentDate,
+       now.timeIntervalSince(ts) < shareableContentCacheDuration {
+      content = cached
+      DebugLogger.log("GEMINI-SCREENSHOT: Using cached SCShareableContent")
+    } else {
+      do {
+        content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        cachedShareableContent = content
+        cachedShareableContentDate = now
+      } catch {
+        DebugLogger.log("GEMINI-SCREENSHOT: SCShareableContent failed: \(error.localizedDescription)")
+        return nil
+      }
     }
 
     guard !content.displays.isEmpty else {
