@@ -119,6 +119,10 @@ class GeminiWindowController: NSWindowController {
 
 // MARK: - NSWindowDelegate
 extension GeminiWindowController: NSWindowDelegate {
+  func windowDidResignKey(_ notification: Notification) {
+    window?.close()
+  }
+
   func windowWillClose(_ notification: Notification) {
     removeCmdArrowScrollMonitor()
   }
