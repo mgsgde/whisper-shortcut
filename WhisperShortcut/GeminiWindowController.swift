@@ -96,6 +96,14 @@ class GeminiWindowController: NSWindowController {
     keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
       guard let self, let win = self.window, win.isKeyWindow else { return event }
       guard event.modifierFlags.contains(.command) else { return event }
+      if event.characters == "n" {
+        NotificationCenter.default.post(name: .geminiNewChat, object: nil)
+        return nil
+      }
+      if event.characters == "w" {
+        NotificationCenter.default.post(name: .geminiCloseTab, object: nil)
+        return nil
+      }
       switch event.keyCode {
       case Self.keyCodeUpArrow:
         NotificationCenter.default.post(name: .geminiScrollToTop, object: nil)

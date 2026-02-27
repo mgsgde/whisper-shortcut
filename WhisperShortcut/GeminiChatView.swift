@@ -321,6 +321,16 @@ class GeminiChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: Switched to session \(id) via tab")
   }
 
+  func closeTab(id: UUID) {
+    store.deleteSession(id: id)
+    if id == session.id {
+      switchToCurrentStoreSession()
+    } else {
+      refreshRecentSessions()
+    }
+    DebugLogger.log("GEMINI-CHAT: Closed tab \(id)")
+  }
+
   private func buildContents() -> [[String: Any]] {
     let toSend = Array(messages.suffix(Self.maxMessagesInContext))
     return toSend.enumerated().map { index, msg in
@@ -377,6 +387,7 @@ struct GeminiChatView: View {
   /// Image data to show in the full-size preview sheet (from pending screenshot or from a sent message thumbnail).
   @State private var previewImageData: Data? = nil
   @State private var scrollActions = GeminiScrollActions()
+  @State private var hoveredTabId: UUID? = nil
 
   var body: some View {
     GeometryReader { geometry in
@@ -411,6 +422,9 @@ struct GeminiChatView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiClearChat)) { _ in
       viewModel.clearMessages()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .geminiCloseTab)) { _ in
+      viewModel.closeTab(id: viewModel.currentSessionId)
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiScrollToTop)) { _ in
       scrollActions.scrollToTop?()
@@ -478,6 +492,21 @@ struct GeminiChatView: View {
         .fill(GeminiChatTheme.primaryText.opacity(0.1))
         .frame(width: 1)
     }
+    .overlay(alignment: .topTrailing) {
+      if hoveredTabId == session.id {
+        Button(action: { viewModel.closeTab(id: session.id) }) {
+          Image(systemName: "xmark")
+            .font(.system(size: 7, weight: .bold))
+            .foregroundColor(GeminiChatTheme.secondaryText)
+            .frame(width: 13, height: 13)
+            .background(GeminiChatTheme.controlBackground)
+            .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(3)
+      }
+    }
+    .onHover { isHovered in hoveredTabId = isHovered ? session.id : nil }
     .background(NativeTooltip(text: title))
     .pointerCursorOnHover()
   }

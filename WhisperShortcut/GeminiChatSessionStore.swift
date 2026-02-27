@@ -264,6 +264,26 @@ class GeminiChatSessionStore {
     Array(loadFile().sessions.sorted { $0.lastUpdated > $1.lastUpdated }.prefix(limit))
   }
 
+  /// Deletes the session with the given ID. Removes it from nav stacks. If it was current, switches to
+  /// the most-recently-updated remaining session (or creates a new empty one if none remain).
+  func deleteSession(id: UUID) {
+    var file = loadFile()
+    file.sessions.removeAll { $0.id == id }
+    file.navBackStack.removeAll { $0 == id }
+    file.navForwardStack.removeAll { $0 == id }
+    if file.currentSessionId == id {
+      let next = file.sessions.sorted { $0.lastUpdated > $1.lastUpdated }.first
+      if let next = next {
+        file.currentSessionId = next.id
+      } else {
+        let newSession = ChatSession()
+        file.sessions = [newSession]
+        file.currentSessionId = newSession.id
+      }
+    }
+    saveSessionsFile(file)
+  }
+
   /// Switches to an existing session via tab click, pushing current to back stack and clearing forward stack.
   func switchToSession(id: UUID) {
     var file = loadFile()
