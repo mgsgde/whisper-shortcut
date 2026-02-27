@@ -15,6 +15,10 @@ struct OpenGeminiSettingsTab: View {
 
       SpacedSectionDivider()
 
+      windowBehaviorSection
+
+      SpacedSectionDivider()
+
       usageSection
     }
   }
@@ -77,6 +81,31 @@ struct OpenGeminiSettingsTab: View {
         }
       }
     )
+  }
+
+  // MARK: - Window Behavior Section
+  @ViewBuilder
+  private var windowBehaviorSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "🪟 Window Behavior",
+        subtitle: "Control how the Gemini chat window behaves"
+      )
+
+      Toggle(isOn: $viewModel.data.geminiCloseOnFocusLoss) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Close window when losing focus")
+            .font(.callout)
+          Text("Automatically closes the chat window when it loses focus.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+      }
+      .toggleStyle(.switch)
+      .onChange(of: viewModel.data.geminiCloseOnFocusLoss) { _ in
+        Task { await viewModel.saveSettings() }
+      }
+    }
   }
 
   // MARK: - Usage Section

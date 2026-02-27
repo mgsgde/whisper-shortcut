@@ -212,6 +212,13 @@ class SettingsViewModel: ObservableObject {
       data.autoPasteAfterDictation = SettingsDefaults.autoPasteAfterDictation
     }
 
+    // Load Gemini window: close on focus loss
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss) != nil {
+      data.geminiCloseOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
+    } else {
+      data.geminiCloseOnFocusLoss = SettingsDefaults.geminiCloseOnFocusLoss
+    }
+
     // Load Live Meeting settings
     if let savedIntervalValue = UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingChunkInterval) as? Double,
        let savedInterval = LiveMeetingChunkInterval(rawValue: savedIntervalValue) {
@@ -412,6 +419,9 @@ class SettingsViewModel: ObservableObject {
 
     // Save auto-paste setting
     UserDefaults.standard.set(data.autoPasteAfterDictation, forKey: UserDefaultsKeys.autoPasteAfterDictation)
+
+    // Save Gemini window: close on focus loss
+    UserDefaults.standard.set(data.geminiCloseOnFocusLoss, forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
 
     // Save Live Meeting settings
     UserDefaults.standard.set(data.liveMeetingChunkInterval.rawValue, forKey: UserDefaultsKeys.liveMeetingChunkInterval)

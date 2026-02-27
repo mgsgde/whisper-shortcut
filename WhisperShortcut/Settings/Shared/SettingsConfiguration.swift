@@ -458,6 +458,7 @@ struct SettingsDefaults {
   static let selectedPromptAndReadModel = PromptModel.gemini3Flash
   static let selectedImprovementModel = PromptModel.gemini31Pro
   static let selectedOpenGeminiModel = PromptModel.gemini3Flash
+  static let geminiCloseOnFocusLoss = true
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
   static let promptAndReadSystemPrompt = ""
@@ -535,6 +536,7 @@ struct SettingsData {
   var selectedPromptAndReadModel: PromptModel = SettingsDefaults.selectedPromptAndReadModel
   var selectedImprovementModel: PromptModel = SettingsDefaults.selectedImprovementModel
   var selectedOpenGeminiModel: PromptModel = SettingsDefaults.selectedOpenGeminiModel
+  var geminiCloseOnFocusLoss: Bool = SettingsDefaults.geminiCloseOnFocusLoss
   var customPromptText: String = SettingsDefaults.customPromptText
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
   var promptAndReadSystemPrompt: String = SettingsDefaults.promptAndReadSystemPrompt

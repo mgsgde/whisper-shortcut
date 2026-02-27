@@ -235,6 +235,41 @@ class GeminiChatViewModel: ObservableObject {
     }
     store.save(session)
     refreshRecentSessions()
+    // After the first full exchange (user + model), refine the title with AI in the background.
+    if message.role == .model && messages.count == 2 {
+      Task { await generateAITitle() }
+    }
+  }
+
+  private func generateAITitle() async {
+    guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else { return }
+    guard messages.count >= 2,
+          messages[0].role == .user,
+          messages[1].role == .model else { return }
+    let userText = String(messages[0].content.prefix(400))
+    let modelText = String(messages[1].content.prefix(400))
+    let prompt = """
+      Generate a short, descriptive title (2–5 words) for this conversation. \
+      Reply with only the title — no quotes, no punctuation at the end, no explanation.
+
+      User: \(userText)
+      Assistant: \(modelText)
+      """
+    do {
+      let raw = try await apiClient.generateText(
+        model: "gemini-2.5-flash-lite", prompt: prompt, apiKey: apiKey)
+      let title = raw
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .replacingOccurrences(of: "\"", with: "")
+        .replacingOccurrences(of: "'", with: "")
+      guard !title.isEmpty else { return }
+      session.title = String(title.prefix(Self.maxSessionTitleLength))
+      store.save(session)
+      refreshRecentSessions()
+      DebugLogger.log("GEMINI-CHAT: AI title generated: \(session.title ?? "")")
+    } catch {
+      DebugLogger.log("GEMINI-CHAT: AI title generation failed, keeping fallback: \(error.localizedDescription)")
+    }
   }
 
   // MARK: - Tab navigation

@@ -401,6 +401,20 @@ class GeminiAPIClient {
     return (text: text, sources: sources, supports: supports)
   }
 
+  /// Lightweight single-shot text generation — no tools, no retry, minimal tokens.
+  /// Used for background tasks like session title generation.
+  func generateText(model: String, prompt: String, apiKey: String) async throws -> String {
+    let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
+    var request = try createRequest(endpoint: endpoint, apiKey: apiKey)
+    let body: [String: Any] = [
+      "contents": [["role": "user", "parts": [["text": prompt]]]]
+    ]
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    let response: GeminiResponse = try await performRequest(
+      request, responseType: GeminiResponse.self, mode: "GEMINI-TITLE", withRetry: false)
+    return extractText(from: response)
+  }
+
   /// Extracts grounding sources (web URIs + titles) from a Gemini response.
   private func extractGroundingSources(from response: GeminiResponse) -> [GroundingSource] {
     guard let candidate = response.candidates.first,

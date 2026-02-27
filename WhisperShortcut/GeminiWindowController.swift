@@ -120,7 +120,15 @@ class GeminiWindowController: NSWindowController {
 // MARK: - NSWindowDelegate
 extension GeminiWindowController: NSWindowDelegate {
   func windowDidResignKey(_ notification: Notification) {
-    window?.close()
+    let closeOnFocusLoss: Bool
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss) != nil {
+      closeOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
+    } else {
+      closeOnFocusLoss = SettingsDefaults.geminiCloseOnFocusLoss
+    }
+    if closeOnFocusLoss {
+      window?.close()
+    }
   }
 
   func windowWillClose(_ notification: Notification) {
