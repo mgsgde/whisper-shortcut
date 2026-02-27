@@ -249,8 +249,9 @@ class GeminiChatViewModel: ObservableObject {
     let userText = String(messages[0].content.prefix(400))
     let modelText = String(messages[1].content.prefix(400))
     let prompt = """
-      Generate a short, descriptive title (2–5 words) for this conversation. \
-      Reply with only the title — no quotes, no punctuation at the end, no explanation.
+      Give this conversation a single-word title that captures its core topic. \
+      If one word is genuinely not enough, use two words at most. \
+      Reply with only the title — no quotes, no punctuation, no explanation.
 
       User: \(userText)
       Assistant: \(modelText)
@@ -435,6 +436,7 @@ struct GeminiChatView: View {
           .lineLimit(1)
           .truncationMode(.middle)
       }
+      .padding(.horizontal, 10)
       .frame(width: width, height: 38)
       .background(isActive ? GeminiChatTheme.controlBackground : Color.clear)
       .contentShape(Rectangle())
@@ -446,7 +448,12 @@ struct GeminiChatView: View {
         Rectangle().fill(Color.accentColor).frame(height: 2)
       }
     }
-    .help(title)
+    .overlay(alignment: .trailing) {
+      Rectangle()
+        .fill(GeminiChatTheme.primaryText.opacity(0.1))
+        .frame(width: 1)
+    }
+    .background(NativeTooltip(text: title))
     .pointerCursorOnHover()
   }
 
@@ -895,6 +902,15 @@ struct GeminiInputAreaView: View {
     .background(GeminiChatTheme.controlBackground.opacity(0.8))
     .clipShape(RoundedRectangle(cornerRadius: 8))
   }
+}
+
+// MARK: - Native macOS tooltip shim
+
+/// Sets toolTip directly on the underlying NSView — works reliably where SwiftUI's .help() does not.
+private struct NativeTooltip: NSViewRepresentable {
+  let text: String
+  func makeNSView(context: Context) -> NSView { NSView() }
+  func updateNSView(_ nsView: NSView, context: Context) { nsView.toolTip = text }
 }
 
 // MARK: - Input scrollbar auto-hide (macOS)
