@@ -128,6 +128,13 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
+    // Central stop button — visible only when any operation is active
+    let stopItem = createMenuItem("Stop", action: #selector(stopCurrentOperation), tag: 111)
+    menu.addItem(stopItem)
+    let stopSeparator = NSMenuItem.separator()
+    stopSeparator.tag = 112
+    menu.addItem(stopSeparator)
+
     // Recording actions with keyboard shortcuts
     menu.addItem(
       createMenuItemWithShortcut(
@@ -397,6 +404,12 @@ class MenuBarController: NSObject {
     // Update status
     menu.item(withTag: 100)?.title = appState.statusText
 
+    // Show central Stop button only when something is active
+    let isAnythingActive = appState.isBusy || isLiveMeetingActive
+      || audioPlayer?.isPlaying == true || audioEngine?.isRunning == true
+    menu.item(withTag: 111)?.isHidden = !isAnythingActive
+    menu.item(withTag: 112)?.isHidden = !isAnythingActive
+
     // Update action items based on current state
     updateMenuItem(
       menu, tag: 101,
@@ -556,6 +569,63 @@ class MenuBarController: NSObject {
       }
     default:
       break
+    }
+  }
+
+  @objc private func stopCurrentOperation() {
+    // Live meeting
+    if isLiveMeetingActive { stopLiveMeeting(); return }
+
+    // TTS processing
+    if isTTSRunning {
+      speechService.cancelTTS()
+      stopTTSPlayback()
+      transitionToIdleAndCleanup()
+      return
+    }
+
+    // TTS audio playback
+    if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
+      stopTTSPlayback()
+      appState = appState.finish()
+      return
+    }
+
+    // Transcription processing
+    let isTranscriptionProcessing: Bool = {
+      guard case .processing(let mode) = appState, !mode.isTTSContext else { return false }
+      switch mode {
+      case .transcribing, .splitting, .processingChunks, .merging: return true
+      default: return false
+      }
+    }()
+    if isTranscriptionProcessing {
+      speechService.cancelTranscription()
+      transitionToIdleAndCleanup(cleanupAudioURL: currentTranscriptionAudioURL)
+      return
+    }
+
+    // Prompt processing
+    if case .processing(.prompting) = appState {
+      speechService.cancelPrompt()
+      transitionToIdleAndCleanup()
+      return
+    }
+
+    // Prompt improvement processing
+    if case .processing(.promptImprovement) = appState {
+      promptImprovementTask?.cancel()
+      transitionToIdleAndCleanup(cleanupAudioURL: currentPromptImprovementAudioURL)
+      currentPromptImprovementAudioURL = nil
+      promptImprovementTask = nil
+      return
+    }
+
+    // Recording states — stop the recorder (audio tail delay like the individual toggles)
+    if appState.isRecording {
+      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
+        self?.audioRecorder.stopRecording()
+      }
     }
   }
 
