@@ -850,8 +850,9 @@ struct GeminiInputAreaView: View {
               }
               guard keyPress.key == .return else { return .ignored }
               if keyPress.modifiers.contains(.shift) {
-                inputText += "\n"
-                return .handled
+                // Let NSTextView handle Shift+Return natively: inserts "\n" at cursor position
+                // and automatically scrolls the cursor into view — no SwiftUI string reset.
+                return .ignored
               }
               let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
               if text.hasPrefix("/"), !text.isEmpty {
