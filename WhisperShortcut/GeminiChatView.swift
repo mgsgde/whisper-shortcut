@@ -920,13 +920,8 @@ struct GeminiInputAreaView: View {
               if text.hasPrefix("/"), !text.isEmpty {
                 let matches = viewModel.suggestedCommands(for: text)
                 if let first = matches.first {
-                  if text.lowercased() == first.lowercased() {
-                    let toSend = inputText
-                    inputText = ""
-                    Task { await viewModel.sendMessage(userInput: toSend) }
-                    return .handled
-                  }
-                  inputText = first
+                  inputText = ""
+                  Task { await viewModel.sendMessage(userInput: first) }
                   return .handled
                 }
               }
