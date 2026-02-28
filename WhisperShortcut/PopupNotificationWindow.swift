@@ -55,8 +55,8 @@ class PopupNotificationWindow: NSWindow {
     static let titleFontSize: CGFloat = 15  // Slightly larger for better readability
     static let textFontSize: CGFloat = 13  // Better readable text size
     static let maxPreviewLength = 180  // Even longer preview for better readability
-    static let horizontalMargin: CGFloat = 30  // Distance from left/right screen edges
-    static let verticalMarginTop: CGFloat = 15  // Distance from top screen edge
+    static let horizontalMargin: CGFloat = 18  // Distance from left/right screen edges
+    static let verticalMarginTop: CGFloat = 6   // Distance from top screen edge
     static let verticalMarginBottom: CGFloat = 30  // Distance from bottom screen edge
     static let iconAndSpacingWidth: CGFloat = 28  // Icon width + spacing for layout calculations
     static let optimalCharactersPerLine: CGFloat = 85  // Optimal number of characters per line for wider display
