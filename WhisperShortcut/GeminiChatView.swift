@@ -15,12 +15,31 @@ class GeminiChatViewModel: ObservableObject {
   @Published var pendingScreenshot: Data? = nil
   @Published var screenshotCaptureInProgress: Bool = false
   @Published var pendingFileAttachment: PendingFile? = nil
+  @Published var pastedBlocks: [PastedBlock] = []
 
   struct PendingFile {
     let data: Data
     let mimeType: String
     let filename: String
   }
+
+  struct PastedBlock: Identifiable {
+    let id = UUID()
+    let content: String
+    var lineCount: Int { content.components(separatedBy: .newlines).filter { !$0.isEmpty }.count }
+  }
+
+  static let pasteThresholdLines = 20
+  static let pasteThresholdChars = 1000
+
+  func addPastedBlock(_ text: String) {
+    pastedBlocks.append(PastedBlock(content: text))
+  }
+
+  func removePastedBlock(id: UUID) {
+    pastedBlocks.removeAll { $0.id == id }
+  }
+
   @Published private(set) var recentSessions: [ChatSession] = []
   @Published private(set) var currentSessionId: UUID = UUID()
 
@@ -183,7 +202,7 @@ class GeminiChatViewModel: ObservableObject {
       cancelSend()
       return
     }
-    let hasContent = !raw.isEmpty || pendingScreenshot != nil || pendingFileAttachment != nil
+    let hasContent = !raw.isEmpty || pendingScreenshot != nil || pendingFileAttachment != nil || !pastedBlocks.isEmpty
     guard hasContent, !isSending else { return }
 
     // Slash commands: do not send to API
@@ -217,8 +236,16 @@ class GeminiChatViewModel: ObservableObject {
     } else {
       attachment = nil
     }
+    var finalContent = raw
+    if !pastedBlocks.isEmpty {
+      let pastedSection = pastedBlocks
+        .map { "<pasted_content>\n\($0.content)\n</pasted_content>" }
+        .joined(separator: "\n\n")
+      finalContent = raw.isEmpty ? pastedSection : "\(pastedSection)\n\n\(raw)"
+    }
+    pastedBlocks = []
     let userMsg = ChatMessage(
-      role: .user, content: raw,
+      role: .user, content: finalContent,
       attachedImageData: attachment?.data,
       attachedFileMimeType: attachment?.mimeType,
       attachedFilename: attachment?.filename)
@@ -744,6 +771,7 @@ struct GeminiInputAreaView: View {
   @State private var inputText: String = ""
   @FocusState private var inputFocused: Bool
   @State private var measuredInputHeight: CGFloat = 0
+  @State private var pasteMonitor: Any? = nil
   @AppStorage(UserDefaultsKeys.geminiCloseOnFocusLoss) private var closeOnFocusLoss: Bool = SettingsDefaults.geminiCloseOnFocusLoss
 
   private static let inputMinHeight: CGFloat = 40
@@ -775,6 +803,21 @@ struct GeminiInputAreaView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiNewChat)) { _ in
       inputText = ""
+    }
+    .onAppear {
+      pasteMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        guard event.modifierFlags.contains(.command),
+              event.charactersIgnoringModifiers == "v",
+              let str = NSPasteboard.general.string(forType: .string) else { return event }
+        let lineCount = str.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
+        guard lineCount >= GeminiChatViewModel.pasteThresholdLines
+                || str.count >= GeminiChatViewModel.pasteThresholdChars else { return event }
+        Task { @MainActor in viewModel.addPastedBlock(str) }
+        return nil
+      }
+    }
+    .onDisappear {
+      if let monitor = pasteMonitor { NSEvent.removeMonitor(monitor) }
     }
   }
 
@@ -886,6 +929,9 @@ struct GeminiInputAreaView: View {
       }
       if viewModel.pendingFileAttachment != nil {
         pendingFileThumbnail
+      }
+      ForEach(viewModel.pastedBlocks) { block in
+        pastedBlockPill(block)
       }
       HStack(alignment: .center, spacing: 8) {
         ZStack(alignment: .topLeading) {
@@ -1043,6 +1089,35 @@ struct GeminiInputAreaView: View {
       }
       .buttonStyle(.plain)
       .help("Remove attachment")
+      .pointerCursorOnHover()
+    }
+    .padding(8)
+    .background(GeminiChatTheme.controlBackground.opacity(0.8))
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+  }
+
+  private func pastedBlockPill(_ block: GeminiChatViewModel.PastedBlock) -> some View {
+    HStack(spacing: 8) {
+      Image(systemName: "doc.plaintext")
+        .font(.system(size: 18))
+        .foregroundColor(GeminiChatTheme.secondaryText)
+        .frame(width: 32, height: 32)
+      VStack(alignment: .leading, spacing: 2) {
+        Text("Pasted text")
+          .font(.caption)
+          .foregroundColor(GeminiChatTheme.primaryText)
+        Text("\(block.lineCount) lines")
+          .font(.caption)
+          .foregroundColor(GeminiChatTheme.secondaryText)
+      }
+      Spacer()
+      Button(action: { viewModel.removePastedBlock(id: block.id) }) {
+        Image(systemName: "xmark.circle.fill")
+          .font(.system(size: 18))
+          .foregroundColor(GeminiChatTheme.secondaryText)
+      }
+      .buttonStyle(.plain)
+      .help("Remove pasted text")
       .pointerCursorOnHover()
     }
     .padding(8)
@@ -1425,6 +1500,18 @@ private struct MessageBubbleView: View {
 
   var isUser: Bool { message.role == .user }
 
+  static func parsePastedContent(_ content: String) -> (pastedSections: [String], userText: String) {
+    var remaining = content
+    var pasted: [String] = []
+    let open = "<pasted_content>"
+    let close = "</pasted_content>"
+    while let r1 = remaining.range(of: open), let r2 = remaining.range(of: close), r1.upperBound <= r2.lowerBound {
+      pasted.append(String(remaining[r1.upperBound..<r2.lowerBound]))
+      remaining = String(remaining[r2.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return (pasted, remaining)
+  }
+
   var body: some View {
     VStack(alignment: isUser ? .trailing : .leading, spacing: 2) {
       bubbleContent
@@ -1444,8 +1531,19 @@ private struct MessageBubbleView: View {
   private var bubbleContent: some View {
     if isUser {
       VStack(alignment: .trailing, spacing: 6) {
-        if !message.content.isEmpty {
-          Text(message.content)
+        let parsed = Self.parsePastedContent(message.content)
+        ForEach(Array(parsed.pastedSections.enumerated()), id: \.offset) { _, pasted in
+          let lines = pasted.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
+          Label("\(lines) lines pasted", systemImage: "doc.plaintext")
+            .font(.caption)
+            .foregroundColor(GeminiChatTheme.primaryText.opacity(0.7))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.white.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        if !parsed.userText.isEmpty {
+          Text(parsed.userText)
             .font(.system(size: 15))
             .foregroundColor(GeminiChatTheme.primaryText)
             .textSelection(.enabled)
