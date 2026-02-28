@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 // MARK: - ViewModel
 
@@ -13,6 +14,13 @@ class GeminiChatViewModel: ObservableObject {
   @Published var errorMessage: String? = nil
   @Published var pendingScreenshot: Data? = nil
   @Published var screenshotCaptureInProgress: Bool = false
+  @Published var pendingFileAttachment: PendingFile? = nil
+
+  struct PendingFile {
+    let data: Data
+    let mimeType: String
+    let filename: String
+  }
   @Published private(set) var recentSessions: [ChatSession] = []
   @Published private(set) var currentSessionId: UUID = UUID()
 
@@ -38,6 +46,7 @@ class GeminiChatViewModel: ObservableObject {
   static let screenshotCommand = "/screenshot"
   private static let stopCommand = "/stop"
   private static let settingsCommand = "/settings"
+  private static let pinCommand = "/pin"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -47,6 +56,7 @@ class GeminiChatViewModel: ObservableObject {
     ("/clear", "Clear current chat messages"),
     ("/screenshot", "Capture screen (attached to your next message)"),
     ("/settings", "Open Settings"),
+    ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/stop", "Stop sending (while a message is being sent)")
   ]
 
@@ -122,6 +132,43 @@ class GeminiChatViewModel: ObservableObject {
     pendingScreenshot = nil
   }
 
+  func clearPendingFile() {
+    pendingFileAttachment = nil
+  }
+
+  func attachFile() {
+    let panel = NSOpenPanel()
+    panel.allowsMultipleSelection = false
+    panel.canChooseDirectories = false
+    panel.allowedContentTypes = [.pdf, .png, .jpeg, .gif, .webP, .plainText]
+    panel.message = "Select a file to attach to your next message"
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    guard let data = try? Data(contentsOf: url) else { return }
+    let mimeType = Self.mimeType(for: url)
+    pendingFileAttachment = PendingFile(data: data, mimeType: mimeType, filename: url.lastPathComponent)
+    pendingScreenshot = nil
+    DebugLogger.log("GEMINI-CHAT: File attached: \(url.lastPathComponent) (\(mimeType), \(data.count) bytes)")
+  }
+
+  private static func mimeType(for url: URL) -> String {
+    switch url.pathExtension.lowercased() {
+    case "pdf": return "application/pdf"
+    case "jpg", "jpeg": return "image/jpeg"
+    case "gif": return "image/gif"
+    case "webp": return "image/webp"
+    default: return "image/png"
+    }
+  }
+
+  func togglePin() {
+    let closeOnFocusLoss = UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss) as? Bool
+      ?? SettingsDefaults.geminiCloseOnFocusLoss
+    let newValue = !closeOnFocusLoss
+    UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
+    let nowPinned = !newValue
+    DebugLogger.log("GEMINI-CHAT: /pin — window is now \(nowPinned ? "pinned (stays open)" : "unpinned (closes on focus loss)")")
+  }
+
   /// Cancels the in-flight send request for the currently visible session.
   func cancelSend() {
     sendTasks[session.id]?.cancel()
@@ -136,19 +183,20 @@ class GeminiChatViewModel: ObservableObject {
       cancelSend()
       return
     }
-    let hasContent = !raw.isEmpty || pendingScreenshot != nil
+    let hasContent = !raw.isEmpty || pendingScreenshot != nil || pendingFileAttachment != nil
     guard hasContent, !isSending else { return }
 
     // Slash commands: do not send to API
     if lower == Self.newChatCommand || lower == Self.backChatCommand || lower == Self.nextChatCommand
         || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
-        || lower == Self.settingsCommand {
+        || lower == Self.settingsCommand || lower == Self.pinCommand {
       inputText = ""
       if lower == Self.newChatCommand { createNewSession() }
       else if lower == Self.backChatCommand { goBack() }
       else if lower == Self.nextChatCommand { goForward() }
       else if Self.clearChatCommands.contains(lower) { clearMessages() }
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
+      else if lower == Self.pinCommand { togglePin() }
       else { await captureScreenshot() }
       return
     }
@@ -161,10 +209,22 @@ class GeminiChatViewModel: ObservableObject {
     let sessionId = session.id
     inputText = ""
     errorMessage = nil
-    let userMsg = ChatMessage(role: .user, content: raw, attachedImageData: pendingScreenshot)
+    let attachment: (data: Data, mimeType: String)?
+    if let file = pendingFileAttachment {
+      attachment = (file.data, file.mimeType)
+    } else if let screenshot = pendingScreenshot {
+      attachment = (screenshot, "image/png")
+    } else {
+      attachment = nil
+    }
+    let userMsg = ChatMessage(
+      role: .user, content: raw,
+      attachedImageData: attachment?.data,
+      attachedFileMimeType: attachment?.mimeType)
     appendMessage(userMsg, toSessionId: sessionId)
     let contents = buildContents()
     pendingScreenshot = nil
+    pendingFileAttachment = nil
 
     let task = Task {
       sendingSessionIds.insert(sessionId)
@@ -342,7 +402,8 @@ class GeminiChatViewModel: ObservableObject {
       let isLastUserWithImage = index == toSend.count - 1 && msg.role == .user && msg.attachedImageData != nil
       if isLastUserWithImage, let imageData = msg.attachedImageData {
         let base64 = imageData.base64EncodedString()
-        var parts: [[String: Any]] = [["inline_data": ["mime_type": "image/png", "data": base64]]]
+        let mimeType = msg.attachedFileMimeType ?? "image/png"
+        var parts: [[String: Any]] = [["inline_data": ["mime_type": mimeType, "data": base64]]]
         if !msg.content.isEmpty {
           parts.append(["text": msg.content])
         }
@@ -598,6 +659,9 @@ struct GeminiChatView: View {
         Text("/settings — Open Settings")
           .font(.body)
           .foregroundColor(GeminiChatTheme.secondaryText)
+        Text("/pin — Toggle whether the window stays open when losing focus")
+          .font(.body)
+          .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/stop — Stop sending (while a message is being sent)")
           .font(.body)
           .foregroundColor(GeminiChatTheme.secondaryText)
@@ -679,6 +743,7 @@ struct GeminiInputAreaView: View {
   @State private var inputText: String = ""
   @FocusState private var inputFocused: Bool
   @State private var measuredInputHeight: CGFloat = 0
+  @AppStorage(UserDefaultsKeys.geminiCloseOnFocusLoss) private var closeOnFocusLoss: Bool = SettingsDefaults.geminiCloseOnFocusLoss
 
   private static let inputMinHeight: CGFloat = 40
   private static let inputMaxHeight: CGFloat = 180
@@ -772,6 +837,21 @@ struct GeminiInputAreaView: View {
       .pointerCursorOnHover()
 
 
+      Button(action: { viewModel.attachFile() }) {
+        HStack(spacing: 4) {
+          Image(systemName: "paperclip").font(.caption)
+          Text("Attach").font(.caption)
+        }
+        .foregroundColor(GeminiChatTheme.secondaryText)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .disabled(viewModel.isSending)
+      .help("Attach a file (PDF, image, …) to your next message.")
+      .pointerCursorOnHover()
+
       Button(action: { Task { await viewModel.captureScreenshot() } }) {
         HStack(spacing: 4) {
           if viewModel.screenshotCaptureInProgress {
@@ -802,6 +882,9 @@ struct GeminiInputAreaView: View {
       actionButtonsRow
       if viewModel.pendingScreenshot != nil {
         pendingScreenshotThumbnail
+      }
+      if viewModel.pendingFileAttachment != nil {
+        pendingFileThumbnail
       }
       HStack(alignment: .center, spacing: 8) {
         ZStack(alignment: .topLeading) {
@@ -928,6 +1011,47 @@ struct GeminiInputAreaView: View {
     .onTapGesture {
       inputFocused = true
     }
+  }
+
+  private var pendingFileThumbnail: some View {
+    HStack(spacing: 8) {
+      if let file = viewModel.pendingFileAttachment {
+        if file.mimeType.hasPrefix("image/"), let img = NSImage(data: file.data) {
+          Image(nsImage: img)
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: 48, height: 32)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        } else {
+          Image(systemName: file.mimeType == "application/pdf" ? "doc.richtext" : "doc")
+            .font(.system(size: 22))
+            .foregroundColor(GeminiChatTheme.secondaryText)
+            .frame(width: 48, height: 32)
+        }
+        VStack(alignment: .leading, spacing: 2) {
+          Text(file.filename)
+            .font(.caption)
+            .foregroundColor(GeminiChatTheme.primaryText)
+            .lineLimit(1)
+          Text("Will be attached to your next message")
+            .font(.caption)
+            .foregroundColor(GeminiChatTheme.secondaryText)
+        }
+      }
+      Spacer()
+      Button(action: { viewModel.clearPendingFile() }) {
+        Image(systemName: "xmark.circle.fill")
+          .font(.system(size: 18))
+          .foregroundColor(GeminiChatTheme.secondaryText)
+      }
+      .buttonStyle(.plain)
+      .help("Remove attachment")
+      .pointerCursorOnHover()
+    }
+    .padding(8)
+    .background(GeminiChatTheme.controlBackground.opacity(0.8))
+    .clipShape(RoundedRectangle(cornerRadius: 8))
   }
 
   private var pendingScreenshotThumbnail: some View {

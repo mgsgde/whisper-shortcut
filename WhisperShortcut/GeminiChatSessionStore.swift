@@ -27,11 +27,13 @@ struct ChatMessage: Identifiable, Codable, Equatable {
   let timestamp: Date
   var sources: [GroundingSource]
   var groundingSupports: [GroundingSupport]
-  /// PNG (or other) image data attached to this user message (e.g. screenshot). Stored as Base64 in session file.
+  /// File data attached to this user message (screenshot or picked file). Stored as Base64 in session file.
   var attachedImageData: Data?
+  /// MIME type of the attached file. Nil means "image/png" (backward-compat for screenshots).
+  var attachedFileMimeType: String?
 
   enum CodingKeys: String, CodingKey {
-    case id, role, content, timestamp, sources, groundingSupports, attachedImageData
+    case id, role, content, timestamp, sources, groundingSupports, attachedImageData, attachedFileMimeType
   }
 
   init(
@@ -41,7 +43,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     timestamp: Date = Date(),
     sources: [GroundingSource] = [],
     groundingSupports: [GroundingSupport] = [],
-    attachedImageData: Data? = nil
+    attachedImageData: Data? = nil,
+    attachedFileMimeType: String? = nil
   ) {
     self.id = id
     self.role = role
@@ -50,6 +53,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     self.sources = sources
     self.groundingSupports = groundingSupports
     self.attachedImageData = attachedImageData
+    self.attachedFileMimeType = attachedFileMimeType
   }
 
   init(from decoder: Decoder) throws {
@@ -65,6 +69,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     } else {
       attachedImageData = nil
     }
+    attachedFileMimeType = try c.decodeIfPresent(String.self, forKey: .attachedFileMimeType)
   }
 
   func encode(to encoder: Encoder) throws {
@@ -77,6 +82,9 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     try c.encode(groundingSupports, forKey: .groundingSupports)
     if let data = attachedImageData {
       try c.encode(data.base64EncodedString(), forKey: .attachedImageData)
+    }
+    if let mime = attachedFileMimeType {
+      try c.encode(mime, forKey: .attachedFileMimeType)
     }
   }
 }
