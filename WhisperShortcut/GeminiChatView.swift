@@ -209,18 +209,19 @@ class GeminiChatViewModel: ObservableObject {
     let sessionId = session.id
     inputText = ""
     errorMessage = nil
-    let attachment: (data: Data, mimeType: String)?
+    let attachment: (data: Data, mimeType: String, filename: String)?
     if let file = pendingFileAttachment {
-      attachment = (file.data, file.mimeType)
+      attachment = (file.data, file.mimeType, file.filename)
     } else if let screenshot = pendingScreenshot {
-      attachment = (screenshot, "image/png")
+      attachment = (screenshot, "image/png", "screenshot.png")
     } else {
       attachment = nil
     }
     let userMsg = ChatMessage(
       role: .user, content: raw,
       attachedImageData: attachment?.data,
-      attachedFileMimeType: attachment?.mimeType)
+      attachedFileMimeType: attachment?.mimeType,
+      attachedFilename: attachment?.filename)
     appendMessage(userMsg, toSessionId: sessionId)
     let contents = buildContents()
     pendingScreenshot = nil
@@ -1447,25 +1448,17 @@ private struct MessageBubbleView: View {
   @ViewBuilder
   private var bubbleContent: some View {
     if isUser {
-      VStack(alignment: .trailing, spacing: 8) {
-        if let data = message.attachedImageData, let nsImage = NSImage(data: data) {
-          Image(nsImage: nsImage)
-            .resizable()
-            .aspectRatio(contentMode: .fill)
-            .frame(width: 48, height: 32)
-            .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .contentShape(Rectangle())
-            .onTapGesture {
-              onTapAttachedImage?(data)
-            }
-            .help("Click to view full size")
-        }
+      VStack(alignment: .trailing, spacing: 6) {
         if !message.content.isEmpty {
           Text(message.content)
             .font(.system(size: 15))
             .foregroundColor(GeminiChatTheme.primaryText)
             .textSelection(.enabled)
+        }
+        if let filename = message.attachedFilename {
+          Text(filename)
+            .font(.caption)
+            .foregroundColor(GeminiChatTheme.primaryText.opacity(0.6))
         }
       }
       .padding(.horizontal, 14)

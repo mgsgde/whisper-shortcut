@@ -31,9 +31,11 @@ struct ChatMessage: Identifiable, Codable, Equatable {
   var attachedImageData: Data?
   /// MIME type of the attached file. Nil means "image/png" (backward-compat for screenshots).
   var attachedFileMimeType: String?
+  /// Display name of the attached file shown below the message.
+  var attachedFilename: String?
 
   enum CodingKeys: String, CodingKey {
-    case id, role, content, timestamp, sources, groundingSupports, attachedImageData, attachedFileMimeType
+    case id, role, content, timestamp, sources, groundingSupports, attachedImageData, attachedFileMimeType, attachedFilename
   }
 
   init(
@@ -44,7 +46,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     sources: [GroundingSource] = [],
     groundingSupports: [GroundingSupport] = [],
     attachedImageData: Data? = nil,
-    attachedFileMimeType: String? = nil
+    attachedFileMimeType: String? = nil,
+    attachedFilename: String? = nil
   ) {
     self.id = id
     self.role = role
@@ -54,6 +57,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     self.groundingSupports = groundingSupports
     self.attachedImageData = attachedImageData
     self.attachedFileMimeType = attachedFileMimeType
+    self.attachedFilename = attachedFilename
   }
 
   init(from decoder: Decoder) throws {
@@ -70,6 +74,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
       attachedImageData = nil
     }
     attachedFileMimeType = try c.decodeIfPresent(String.self, forKey: .attachedFileMimeType)
+    attachedFilename = try c.decodeIfPresent(String.self, forKey: .attachedFilename)
   }
 
   func encode(to encoder: Encoder) throws {
@@ -85,6 +90,9 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     }
     if let mime = attachedFileMimeType {
       try c.encode(mime, forKey: .attachedFileMimeType)
+    }
+    if let name = attachedFilename {
+      try c.encode(name, forKey: .attachedFilename)
     }
   }
 }
