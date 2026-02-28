@@ -138,6 +138,8 @@ class GeminiWindowController: NSWindowController {
 // MARK: - NSWindowDelegate
 extension GeminiWindowController: NSWindowDelegate {
   func windowDidResignKey(_ notification: Notification) {
+    // Don't close while a modal sheet/panel (e.g. file picker) is active
+    if NSApp.modalWindow != nil { return }
     let closeOnFocusLoss: Bool
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss) != nil {
       closeOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
