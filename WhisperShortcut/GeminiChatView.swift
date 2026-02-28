@@ -272,9 +272,9 @@ class GeminiChatViewModel: ObservableObject {
     let userText = String(target.messages[0].content.prefix(400))
     let modelText = String(target.messages[1].content.prefix(400))
     let prompt = """
-      Give this conversation a single-word title that captures its core topic. \
-      If one word is genuinely not enough, use two words at most. \
-      Reply with only the title — no quotes, no punctuation, no explanation.
+      Give this conversation a two-word title that captures its core topic. \
+      Put each word on its own line. \
+      Reply with only the two words, one per line — no quotes, no punctuation, no explanation.
 
       User: \(userText)
       Assistant: \(modelText)
@@ -282,10 +282,15 @@ class GeminiChatViewModel: ObservableObject {
     do {
       let raw = try await apiClient.generateText(
         model: "gemini-2.5-flash-lite", prompt: prompt, apiKey: apiKey)
-      let title = raw
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        .replacingOccurrences(of: "\"", with: "")
-        .replacingOccurrences(of: "'", with: "")
+      let lines = raw
+        .components(separatedBy: .newlines)
+        .map {
+          $0.trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "\"", with: "")
+            .replacingOccurrences(of: "'", with: "")
+        }
+        .filter { !$0.isEmpty }
+      let title = lines.prefix(2).joined(separator: "\n")
       guard !title.isEmpty else { return }
       guard var updated = store.session(by: sessionId) else { return }
       updated.title = String(title.prefix(Self.maxSessionTitleLength))
@@ -449,7 +454,7 @@ struct GeminiChatView: View {
       Image(systemName: "sparkles")
         .foregroundColor(.accentColor)
         .font(.system(size: 13, weight: .medium))
-        .frame(width: iconWidth, height: 38)
+        .frame(width: iconWidth, height: 52)
 
       ForEach(sessions, id: \.id) { session in
         sessionTab(session: session, width: tabWidth)
@@ -457,7 +462,7 @@ struct GeminiChatView: View {
 
       Spacer()
     }
-    .frame(height: 38)
+    .frame(height: 52)
   }
 
   private func sessionTab(session: ChatSession, width: CGFloat) -> some View {
@@ -472,11 +477,11 @@ struct GeminiChatView: View {
         }
         Text(title)
           .font(.caption)
-          .lineLimit(1)
-          .truncationMode(.middle)
+          .lineLimit(2)
+          .multilineTextAlignment(.center)
       }
       .padding(.horizontal, 10)
-      .frame(width: width, height: 38)
+      .frame(width: width, height: 52)
       .background(isActive ? GeminiChatTheme.controlBackground : Color.clear)
       .contentShape(Rectangle())
     }
