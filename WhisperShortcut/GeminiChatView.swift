@@ -795,17 +795,20 @@ struct GeminiInputAreaView: View {
     return truncated.isEmpty ? " " : truncated
   }
 
-  // Last line of the text input (trimmed), for slash-command detection
-  private var lastLine: String {
-    let lines = inputText.split(separator: "\n", omittingEmptySubsequences: false)
-    return lines.last.map(String.init)?.trimmingCharacters(in: .whitespaces)
-      ?? inputText.trimmingCharacters(in: .whitespaces)
+  // Last whitespace-separated word at end of input — for slash-command detection.
+  // Works whether "/command" is on its own line OR after other text on the same line.
+  private var lastWord: String {
+    let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.components(separatedBy: .whitespacesAndNewlines).last(where: { !$0.isEmpty }) ?? ""
   }
 
-  // Everything before the last newline (kept when a last-line command is executed)
-  private var contentWithoutLastLine: String {
-    guard let range = inputText.range(of: "\n", options: .backwards) else { return "" }
-    return String(inputText[..<range.lowerBound])
+  // Input text with the last word removed (kept when a last-word command is executed).
+  private var contentWithoutLastWord: String {
+    let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+    let word = lastWord
+    guard !word.isEmpty, let range = trimmed.range(of: word, options: .backwards),
+          range.lowerBound > trimmed.startIndex else { return "" }
+    return trimmed[..<range.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   // True when the composer has anything to send
@@ -851,9 +854,9 @@ struct GeminiInputAreaView: View {
 
   private var commandSuggestionsOverlay: some View {
     Group {
-      if lastLine.hasPrefix("/") {
+      if lastWord.hasPrefix("/") {
         let suggestions = GeminiChatViewModel.commandSuggestions
-          .filter { $0.command.lowercased().hasPrefix(lastLine.lowercased()) }
+          .filter { $0.command.lowercased().hasPrefix(lastWord.lowercased()) }
         if !suggestions.isEmpty {
           VStack(alignment: .leading, spacing: 0) {
             ForEach(suggestions, id: \.command) { item in
@@ -950,89 +953,99 @@ struct GeminiInputAreaView: View {
   private var inputBar: some View {
     VStack(alignment: .leading, spacing: 8) {
       actionButtonsRow
-      if viewModel.pendingScreenshot != nil {
-        pendingScreenshotThumbnail
-      }
-      if viewModel.pendingFileAttachment != nil {
-        pendingFileThumbnail
-      }
-      ForEach(viewModel.pastedBlocks) { block in
-        pastedBlockPill(block)
-      }
       HStack(alignment: .center, spacing: 8) {
-        ZStack(alignment: .topLeading) {
-          Text(inputTextForSizing)
-            .font(.body)
-            .padding(.horizontal, 15)
-            .padding(.vertical, 10)
-            .fixedSize(horizontal: false, vertical: true)
-            .background(GeometryReader { geo in
-              Color.clear.preference(key: InputTextHeightKey.self, value: geo.size.height)
-            })
-            .frame(maxWidth: .infinity, maxHeight: Self.inputMaxHeight, alignment: .leading)
-            .opacity(0)
-            .accessibilityHidden(true)
-
-          if inputText.isEmpty {
-            Text("Message Gemini…")
-              .font(.body)
-              .foregroundColor(GeminiChatTheme.secondaryText.opacity(0.5))
-              .padding(.leading, 15)
-              .padding(.trailing, 10)
-              .padding(.vertical, 10)
-              .allowsHitTesting(false)
+        // Composer box: chips on top + editor below, all in one rounded rect
+        VStack(spacing: 0) {
+          if viewModel.pendingScreenshot != nil || viewModel.pendingFileAttachment != nil || !viewModel.pastedBlocks.isEmpty {
+            attachmentChipsRow
           }
-          TextEditor(text: $inputText)
-            .scrollContentBackground(.hidden)
-            .font(.body)
-            .foregroundColor(GeminiChatTheme.primaryText)
-            .focused($inputFocused)
-            .onKeyPress(.tab) {
-              let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-              if text.hasPrefix("/"), !text.isEmpty {
-                let matches = viewModel.suggestedCommands(for: text)
-                if let first = matches.first {
-                  inputText = ""
-                  Task { await viewModel.sendMessage(userInput: first) }
-                  return .handled
-                }
-              }
-              return .ignored
+          ZStack(alignment: .topLeading) {
+            Text(inputTextForSizing)
+              .font(.body)
+              .padding(.horizontal, 15)
+              .padding(.vertical, 10)
+              .fixedSize(horizontal: false, vertical: true)
+              .background(GeometryReader { geo in
+                Color.clear.preference(key: InputTextHeightKey.self, value: geo.size.height)
+              })
+              .frame(maxWidth: .infinity, maxHeight: Self.inputMaxHeight, alignment: .leading)
+              .opacity(0)
+              .accessibilityHidden(true)
+
+            if inputText.isEmpty {
+              Text("Message Gemini…")
+                .font(.body)
+                .foregroundColor(GeminiChatTheme.secondaryText.opacity(0.5))
+                .padding(.leading, 15)
+                .padding(.trailing, 10)
+                .padding(.vertical, 10)
+                .allowsHitTesting(false)
             }
-            .onKeyPress { keyPress in
-              if keyPress.modifiers.contains(.command), keyPress.characters == ".", viewModel.isSending {
-                viewModel.cancelSend()
-                return .handled
-              }
-              guard keyPress.key == .return else { return .ignored }
-              if keyPress.modifiers.contains(.shift) {
-                // Let NSTextView handle Shift+Return natively: inserts "\n" at cursor position
-                // and automatically scrolls the cursor into view — no SwiftUI string reset.
+            TextEditor(text: $inputText)
+              .scrollContentBackground(.hidden)
+              .font(.body)
+              .foregroundColor(GeminiChatTheme.primaryText)
+              .focused($inputFocused)
+              .onKeyPress(.tab) {
+                let word = lastWord
+                if word.hasPrefix("/"), !word.isEmpty {
+                  let matches = viewModel.suggestedCommands(for: word)
+                  if let first = matches.first {
+                    inputText = contentWithoutLastWord
+                    Task { await viewModel.sendMessage(userInput: first) }
+                    return .handled
+                  }
+                }
                 return .ignored
               }
-              let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-              if text.hasPrefix("/"), !text.isEmpty {
-                let matches = viewModel.suggestedCommands(for: text)
-                if let first = matches.first, text.lowercased() == first.lowercased() {
-                  let toSend = inputText
-                  inputText = ""
-                  Task { await viewModel.sendMessage(userInput: toSend) }
+              .onKeyPress { keyPress in
+                if keyPress.modifiers.contains(.command), keyPress.characters == ".", viewModel.isSending {
+                  viewModel.cancelSend()
                   return .handled
                 }
+                // Backspace when text is empty → remove last chip
+                if keyPress.key == .delete, inputText.isEmpty {
+                  if !viewModel.pastedBlocks.isEmpty {
+                    viewModel.removePastedBlock(id: viewModel.pastedBlocks.last!.id)
+                    return .handled
+                  } else if viewModel.pendingFileAttachment != nil {
+                    viewModel.clearPendingFile()
+                    return .handled
+                  } else if viewModel.pendingScreenshot != nil {
+                    viewModel.clearPendingScreenshot()
+                    return .handled
+                  }
+                }
+                guard keyPress.key == .return else { return .ignored }
+                if keyPress.modifiers.contains(.shift) {
+                  // Let NSTextView handle Shift+Return natively: inserts "\n" at cursor position
+                  // and automatically scrolls the cursor into view — no SwiftUI string reset.
+                  return .ignored
+                }
+                // Last-word slash command detection (works on same line or on a new line)
+                let word = lastWord
+                if word.hasPrefix("/"), !word.isEmpty {
+                  let matches = viewModel.suggestedCommands(for: word)
+                  if let first = matches.first, word.lowercased() == first.lowercased() {
+                    inputText = contentWithoutLastWord
+                    Task { await viewModel.sendMessage(userInput: word) }
+                    return .handled
+                  }
+                }
+                let toSend = inputText
+                inputText = ""
+                Task { await viewModel.sendMessage(userInput: toSend) }
+                return .handled
               }
-              let toSend = inputText
-              inputText = ""
-              Task { await viewModel.sendMessage(userInput: toSend) }
-              return .handled
-            }
-            .onAppear { inputFocused = true }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .frame(height: inputHeight)
-            .background(GeminiInputScrollViewAutohideAnchor())
+              .onAppear { inputFocused = true }
+              .padding(.horizontal, 10)
+              .padding(.vertical, 10)
+              .frame(height: inputHeight)
+              .background(GeminiInputScrollViewAutohideAnchor())
+          }
+          .frame(height: inputHeight)
+          .onPreferenceChange(InputTextHeightKey.self) { measuredInputHeight = $0 }
         }
-        .frame(height: inputHeight)
-        .onPreferenceChange(InputTextHeightKey.self) { measuredInputHeight = $0 }
         .background(GeminiChatTheme.controlBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
 
@@ -1060,15 +1073,11 @@ struct GeminiInputAreaView: View {
           } else {
             Image(systemName: "arrow.up.circle.fill")
               .font(.system(size: 24))
-              .foregroundColor(
-                (inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.pendingScreenshot == nil)
-                  ? GeminiChatTheme.secondaryText : .accentColor)
+              .foregroundColor(!hasContent ? GeminiChatTheme.secondaryText : .accentColor)
           }
         }
         .buttonStyle(.plain)
-        .disabled(
-          (inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.pendingScreenshot == nil)
-            || viewModel.isSending)
+        .disabled(!hasContent || viewModel.isSending)
         .frame(width: 28, height: 28)
         .pointerCursorOnHover()
       }
@@ -1081,108 +1090,152 @@ struct GeminiInputAreaView: View {
     }
   }
 
-  private var pendingFileThumbnail: some View {
-    HStack(spacing: 8) {
-      if let file = viewModel.pendingFileAttachment {
-        if file.mimeType.hasPrefix("image/"), let img = NSImage(data: file.data) {
-          Image(nsImage: img)
-            .resizable()
-            .aspectRatio(contentMode: .fill)
-            .frame(width: 48, height: 32)
-            .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-        } else {
-          Image(systemName: file.mimeType == "application/pdf" ? "doc.richtext" : "doc")
-            .font(.system(size: 22))
-            .foregroundColor(GeminiChatTheme.secondaryText)
-            .frame(width: 48, height: 32)
+  // MARK: - Attachment chips row (inside composer box)
+
+  private var attachmentChipsRow: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 6) {
+        if let data = viewModel.pendingScreenshot {
+          screenshotChip(data: data)
         }
-        VStack(alignment: .leading, spacing: 2) {
-          Text(file.filename)
-            .font(.caption)
-            .foregroundColor(GeminiChatTheme.primaryText)
-            .lineLimit(1)
-          Text("Will be attached to your next message")
-            .font(.caption)
-            .foregroundColor(GeminiChatTheme.secondaryText)
+        if viewModel.pendingFileAttachment != nil {
+          fileChip
+        }
+        ForEach(viewModel.pastedBlocks) { block in
+          pastedBlockChip(block)
         }
       }
-      Spacer()
-      Button(action: { viewModel.clearPendingFile() }) {
-        Image(systemName: "xmark.circle.fill")
-          .font(.system(size: 18))
-          .foregroundColor(GeminiChatTheme.secondaryText)
-      }
-      .buttonStyle(.plain)
-      .help("Remove attachment")
-      .pointerCursorOnHover()
+      .padding(.horizontal, 10)
+      .padding(.top, 8)
+      .padding(.bottom, 4)
     }
-    .padding(8)
-    .background(GeminiChatTheme.controlBackground.opacity(0.8))
-    .clipShape(RoundedRectangle(cornerRadius: 8))
   }
 
-  private func pastedBlockPill(_ block: GeminiChatViewModel.PastedBlock) -> some View {
-    HStack(spacing: 8) {
-      Image(systemName: "doc.plaintext")
-        .font(.system(size: 18))
-        .foregroundColor(GeminiChatTheme.secondaryText)
-        .frame(width: 32, height: 32)
-      VStack(alignment: .leading, spacing: 2) {
-        Text("Pasted text")
-          .font(.caption)
-          .foregroundColor(GeminiChatTheme.primaryText)
-        Text("\(block.lineCount) lines")
-          .font(.caption)
-          .foregroundColor(GeminiChatTheme.secondaryText)
-      }
-      Spacer()
-      Button(action: { viewModel.removePastedBlock(id: block.id) }) {
-        Image(systemName: "xmark.circle.fill")
-          .font(.system(size: 18))
-          .foregroundColor(GeminiChatTheme.secondaryText)
-      }
-      .buttonStyle(.plain)
-      .help("Remove pasted text")
-      .pointerCursorOnHover()
-    }
-    .padding(8)
-    .background(GeminiChatTheme.controlBackground.opacity(0.8))
-    .clipShape(RoundedRectangle(cornerRadius: 8))
-  }
-
-  private var pendingScreenshotThumbnail: some View {
-    HStack(spacing: 8) {
-      if let data = viewModel.pendingScreenshot,
-         let nsImage = NSImage(data: data) {
+  private func screenshotChip(data: Data) -> some View {
+    let isFocused = focusedAttachment == .screenshot
+    return HStack(spacing: 5) {
+      if let nsImage = NSImage(data: data) {
         Image(nsImage: nsImage)
           .resizable()
           .aspectRatio(contentMode: .fill)
-          .frame(width: 48, height: 32)
+          .frame(width: 22, height: 16)
           .clipped()
-          .clipShape(RoundedRectangle(cornerRadius: 6))
-          .contentShape(Rectangle())
+          .clipShape(RoundedRectangle(cornerRadius: 3))
           .onTapGesture { onTapScreenshotThumbnail(data) }
           .help("Click to view full size")
-          .pointerCursorOnHover()
+      } else {
+        Image(systemName: "camera.viewfinder")
+          .font(.caption)
+          .foregroundColor(GeminiChatTheme.secondaryText)
       }
-      Text("Screenshot will be attached to your next message")
+      Text("Screenshot")
         .font(.caption)
-        .foregroundColor(GeminiChatTheme.secondaryText)
-      Spacer()
-      Button(action: { viewModel.clearPendingScreenshot() }) {
-        Image(systemName: "xmark.circle.fill")
-          .font(.system(size: 18))
+        .foregroundColor(GeminiChatTheme.primaryText)
+      Button(action: { viewModel.clearPendingScreenshot(); inputFocused = true }) {
+        Image(systemName: "xmark")
+          .font(.system(size: 8, weight: .bold))
           .foregroundColor(GeminiChatTheme.secondaryText)
       }
       .buttonStyle(.plain)
       .help("Remove screenshot")
-      .pointerCursorOnHover()
     }
-    .padding(8)
-    .background(GeminiChatTheme.controlBackground.opacity(0.8))
+    .padding(.horizontal, 8)
+    .padding(.vertical, 5)
+    .background(GeminiChatTheme.windowBackground.opacity(0.6))
     .clipShape(RoundedRectangle(cornerRadius: 8))
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .strokeBorder(
+          isFocused ? Color.accentColor : GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity),
+          lineWidth: isFocused ? 1.5 : 1)
+    )
+    .focusable()
+    .focused($focusedAttachment, equals: .screenshot)
+    .onKeyPress(.deleteForward)  { viewModel.clearPendingScreenshot(); inputFocused = true; return .handled }
+    .onKeyPress(.delete)         { viewModel.clearPendingScreenshot(); inputFocused = true; return .handled }
+    .accessibilityLabel("Screenshot attachment. Press Delete to remove.")
   }
+
+  private var fileChip: some View {
+    let file = viewModel.pendingFileAttachment
+    let isFocused = focusedAttachment == .file
+    return HStack(spacing: 5) {
+      if let f = file, f.mimeType.hasPrefix("image/"), let img = NSImage(data: f.data) {
+        Image(nsImage: img)
+          .resizable()
+          .aspectRatio(contentMode: .fill)
+          .frame(width: 22, height: 16)
+          .clipped()
+          .clipShape(RoundedRectangle(cornerRadius: 3))
+      } else {
+        Image(systemName: file?.mimeType == "application/pdf" ? "doc.richtext" : "doc")
+          .font(.caption)
+          .foregroundColor(GeminiChatTheme.secondaryText)
+      }
+      Text(file?.filename ?? "File")
+        .font(.caption)
+        .foregroundColor(GeminiChatTheme.primaryText)
+        .lineLimit(1)
+        .frame(maxWidth: 120, alignment: .leading)
+      Button(action: { viewModel.clearPendingFile(); inputFocused = true }) {
+        Image(systemName: "xmark")
+          .font(.system(size: 8, weight: .bold))
+          .foregroundColor(GeminiChatTheme.secondaryText)
+      }
+      .buttonStyle(.plain)
+      .help("Remove attachment")
+    }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 5)
+    .background(GeminiChatTheme.windowBackground.opacity(0.6))
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .strokeBorder(
+          isFocused ? Color.accentColor : GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity),
+          lineWidth: isFocused ? 1.5 : 1)
+    )
+    .focusable()
+    .focused($focusedAttachment, equals: .file)
+    .onKeyPress(.deleteForward)  { viewModel.clearPendingFile(); inputFocused = true; return .handled }
+    .onKeyPress(.delete)         { viewModel.clearPendingFile(); inputFocused = true; return .handled }
+    .accessibilityLabel("File attachment \(file?.filename ?? ""). Press Delete to remove.")
+  }
+
+  private func pastedBlockChip(_ block: GeminiChatViewModel.PastedBlock) -> some View {
+    let isFocused = focusedAttachment == .pastedBlock(block.id)
+    return HStack(spacing: 5) {
+      Image(systemName: "doc.plaintext")
+        .font(.caption)
+        .foregroundColor(GeminiChatTheme.secondaryText)
+      Text("Pasted · \(block.lineCount) lines")
+        .font(.caption)
+        .foregroundColor(GeminiChatTheme.primaryText)
+      Button(action: { viewModel.removePastedBlock(id: block.id); inputFocused = true }) {
+        Image(systemName: "xmark")
+          .font(.system(size: 8, weight: .bold))
+          .foregroundColor(GeminiChatTheme.secondaryText)
+      }
+      .buttonStyle(.plain)
+      .help("Remove pasted text")
+    }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 5)
+    .background(GeminiChatTheme.windowBackground.opacity(0.6))
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .strokeBorder(
+          isFocused ? Color.accentColor : GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity),
+          lineWidth: isFocused ? 1.5 : 1)
+    )
+    .focusable()
+    .focused($focusedAttachment, equals: .pastedBlock(block.id))
+    .onKeyPress(.deleteForward)  { viewModel.removePastedBlock(id: block.id); inputFocused = true; return .handled }
+    .onKeyPress(.delete)         { viewModel.removePastedBlock(id: block.id); inputFocused = true; return .handled }
+    .accessibilityLabel("Pasted content, \(block.lineCount) lines. Press Delete to remove.")
+  }
+
 }
 
 // MARK: - Native macOS tooltip shim
