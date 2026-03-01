@@ -29,8 +29,8 @@ class GeminiChatViewModel: ObservableObject {
     var lineCount: Int { content.components(separatedBy: .newlines).filter { !$0.isEmpty }.count }
   }
 
-  static let pasteThresholdLines = 20
-  static let pasteThresholdChars = 1000
+  static let pasteThresholdLines = 30
+  static let pasteThresholdChars = 1500
 
   func addPastedBlock(_ text: String) {
     pastedBlocks.append(PastedBlock(content: text))
@@ -247,6 +247,7 @@ class GeminiChatViewModel: ObservableObject {
       parts.append("<typed_by_user>\n\(raw)\n</typed_by_user>")
     }
     let finalContent = parts.joined(separator: "\n\n")
+    DebugLogger.log("GEMINI-CHAT: finalContent (first 300 chars): \(String(finalContent.prefix(300)))")
     pastedBlocks = []
     let userMsg = ChatMessage(
       role: .user, content: finalContent,
