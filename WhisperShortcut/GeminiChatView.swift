@@ -774,6 +774,11 @@ struct GeminiInputAreaView: View {
   @State private var pasteMonitor: Any? = nil
   @AppStorage(UserDefaultsKeys.geminiCloseOnFocusLoss) private var closeOnFocusLoss: Bool = SettingsDefaults.geminiCloseOnFocusLoss
 
+  private enum AttachmentFocus: Hashable {
+    case screenshot, file, pastedBlock(UUID)
+  }
+  @FocusState private var focusedAttachment: AttachmentFocus?
+
   private static let inputMinHeight: CGFloat = 40
   private static let inputMaxHeight: CGFloat = 180
   private static let inputMeasurementMaxLines = 30
@@ -788,6 +793,27 @@ struct GeminiInputAreaView: View {
     let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
     let truncated = lines.prefix(Self.inputMeasurementMaxLines).joined(separator: "\n")
     return truncated.isEmpty ? " " : truncated
+  }
+
+  // Last line of the text input (trimmed), for slash-command detection
+  private var lastLine: String {
+    let lines = inputText.split(separator: "\n", omittingEmptySubsequences: false)
+    return lines.last.map(String.init)?.trimmingCharacters(in: .whitespaces)
+      ?? inputText.trimmingCharacters(in: .whitespaces)
+  }
+
+  // Everything before the last newline (kept when a last-line command is executed)
+  private var contentWithoutLastLine: String {
+    guard let range = inputText.range(of: "\n", options: .backwards) else { return "" }
+    return String(inputText[..<range.lowerBound])
+  }
+
+  // True when the composer has anything to send
+  private var hasContent: Bool {
+    !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      || viewModel.pendingScreenshot != nil
+      || viewModel.pendingFileAttachment != nil
+      || !viewModel.pastedBlocks.isEmpty
   }
 
   var body: some View {
@@ -825,9 +851,9 @@ struct GeminiInputAreaView: View {
 
   private var commandSuggestionsOverlay: some View {
     Group {
-      if inputText.hasPrefix("/") {
+      if lastLine.hasPrefix("/") {
         let suggestions = GeminiChatViewModel.commandSuggestions
-          .filter { $0.command.lowercased().hasPrefix(inputText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) }
+          .filter { $0.command.lowercased().hasPrefix(lastLine.lowercased()) }
         if !suggestions.isEmpty {
           VStack(alignment: .leading, spacing: 0) {
             ForEach(suggestions, id: \.command) { item in
@@ -1377,25 +1403,45 @@ private struct ModelReplyView: View {
       let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
       if index > 0 { result.append(separator) }
-      var attr: AttributedString
       if trimmed.hasPrefix("## ") {
-        let title = String(trimmed.dropFirst(3))
-        attr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
-        attr.font = .system(size: 15, weight: .bold)
+        let parts = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+        let headingLine = String(parts[0])
+        let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        let title = String(headingLine.dropFirst(3))
+        var headingAttr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
+        headingAttr.font = .system(size: 15, weight: .bold)
+        result.append(headingAttr)
+        if !bodyPart.isEmpty {
+          result.append(AttributedString("\n\n"))
+          var bodyAttr = (try? AttributedString(markdown: bodyPart, options: options)) ?? AttributedString(bodyPart)
+          bodyAttr.font = .system(size: 15, weight: .regular)
+          result.append(bodyAttr)
+        }
       } else if trimmed.hasPrefix("### ") {
-        let title = String(trimmed.dropFirst(4))
-        attr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
-        attr.font = .system(size: 14, weight: .semibold)
+        let parts = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+        let headingLine = String(parts[0])
+        let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        let title = String(headingLine.dropFirst(4))
+        var headingAttr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
+        headingAttr.font = .system(size: 14, weight: .semibold)
+        result.append(headingAttr)
+        if !bodyPart.isEmpty {
+          result.append(AttributedString("\n\n"))
+          var bodyAttr = (try? AttributedString(markdown: bodyPart, options: options)) ?? AttributedString(bodyPart)
+          bodyAttr.font = .system(size: 15, weight: .regular)
+          result.append(bodyAttr)
+        }
       } else if trimmed.hasPrefix("```") && trimmed.hasSuffix("```") {
         // Fenced code block (e.g. from code execution): show in monospace so it is visibly distinct
         let codeContent = String(trimmed.dropFirst(3).dropLast(3).trimmingCharacters(in: .whitespacesAndNewlines))
-        attr = AttributedString(codeContent)
+        var attr = AttributedString(codeContent)
         attr.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        result.append(attr)
       } else {
-        attr = (try? AttributedString(markdown: trimmed, options: options)) ?? AttributedString(trimmed)
+        var attr = (try? AttributedString(markdown: trimmed, options: options)) ?? AttributedString(trimmed)
         attr.font = .system(size: 15, weight: .regular)
+        result.append(attr)
       }
-      result.append(attr)
     }
     if result.description.isEmpty {
       return (try? AttributedString(markdown: content)) ?? AttributedString(content)
@@ -1559,7 +1605,7 @@ private struct MessageBubbleView: View {
       .contentShape(Rectangle())
       .background(
         RoundedRectangle(cornerRadius: 14)
-          .fill(Color.accentColor)
+          .fill(GeminiChatTheme.userBubbleBackground)
       )
       .onHover { inside in
         if inside {
