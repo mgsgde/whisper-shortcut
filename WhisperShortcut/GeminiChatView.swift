@@ -236,13 +236,17 @@ class GeminiChatViewModel: ObservableObject {
     } else {
       attachment = nil
     }
-    var finalContent = raw
+    var parts: [String] = []
     if !pastedBlocks.isEmpty {
       let pastedSection = pastedBlocks
         .map { "<pasted_content>\n\($0.content)\n</pasted_content>" }
         .joined(separator: "\n\n")
-      finalContent = raw.isEmpty ? pastedSection : "\(pastedSection)\n\n\(raw)"
+      parts.append(pastedSection)
     }
+    if !raw.isEmpty {
+      parts.append("<typed_by_user>\n\(raw)\n</typed_by_user>")
+    }
+    let finalContent = parts.joined(separator: "\n\n")
     pastedBlocks = []
     let userMsg = ChatMessage(
       role: .user, content: finalContent,
@@ -1608,7 +1612,18 @@ private struct MessageBubbleView: View {
       pasted.append(String(remaining[r1.upperBound..<r2.lowerBound]))
       remaining = String(remaining[r2.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    return (pasted, remaining)
+    let userText = Self.unwrapTypedByUser(remaining)
+    return (pasted, userText)
+  }
+
+  /// Extracts inner text from `<typed_by_user>...</typed_by_user>` for display; returns unchanged if no wrapper.
+  private static func unwrapTypedByUser(_ s: String) -> String {
+    let open = "<typed_by_user>"
+    let close = "</typed_by_user>"
+    guard let r1 = s.range(of: open), let r2 = s.range(of: close), r1.upperBound <= r2.lowerBound else {
+      return s
+    }
+    return String(s[r1.upperBound..<r2.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   var body: some View {
