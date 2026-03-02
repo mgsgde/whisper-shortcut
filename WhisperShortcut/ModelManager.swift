@@ -16,6 +16,7 @@ enum OfflineModelType: String, CaseIterable {
   case whisperBase = "whisper-base"
   case whisperSmall = "whisper-small"
   case whisperMedium = "whisper-medium"
+  case whisperLarge = "whisper-large"
   
   var displayName: String {
     switch self {
@@ -23,6 +24,7 @@ enum OfflineModelType: String, CaseIterable {
     case .whisperBase: return "Whisper Base"
     case .whisperSmall: return "Whisper Small"
     case .whisperMedium: return "Whisper Medium"
+    case .whisperLarge: return "Whisper Large"
     }
   }
   
@@ -32,6 +34,7 @@ enum OfflineModelType: String, CaseIterable {
     case .whisperBase: return 140
     case .whisperSmall: return 460
     case .whisperMedium: return 1500
+    case .whisperLarge: return 3000  // full large-v3 ~3 GB; compressed variant exists at ~947 MB
     }
   }
   
@@ -39,13 +42,14 @@ enum OfflineModelType: String, CaseIterable {
     return self == .whisperBase
   }
   
-  // Map to WhisperKit model name
+  // Map to WhisperKit model name (HuggingFace: openai_whisper-{name})
   var whisperKitModelName: String {
     switch self {
     case .whisperTiny: return "tiny"
     case .whisperBase: return "base"
     case .whisperSmall: return "small"
     case .whisperMedium: return "medium"
+    case .whisperLarge: return "large-v3"
     }
   }
 }
@@ -94,19 +98,40 @@ class ModelManager: ObservableObject {
   }
 
   // MARK: - Model Availability
+  /// Returns true only when the model folder exists and contains required WhisperKit files
+  /// (e.g. AudioEncoder.mlmodelc). Avoids showing incomplete downloads as "available".
   func isModelAvailable(_ type: OfflineModelType) -> Bool {
-    if let modelPath = resolveModelPath(for: type) {
-      DebugLogger.logDebug("MODEL-MANAGER: Found \(type.displayName) at: \(modelPath.path)")
-      return true
+    guard let modelPath = resolveModelPath(for: type) else {
+      let whisperKitDir = AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("WhisperKit")
+      DebugLogger.logDebug("MODEL-MANAGER: Checking availability for \(type.displayName)")
+      DebugLogger.logDebug("MODEL-MANAGER: WhisperKit directory: \(whisperKitDir.path)")
+      if fileManager.fileExists(atPath: whisperKitDir.path),
+         let contents = try? fileManager.contentsOfDirectory(atPath: whisperKitDir.path) {
+        DebugLogger.logDebug("MODEL-MANAGER: WhisperKit directory contents: \(contents.joined(separator: ", "))")
+      }
+      return false
     }
-    
-    // Debug-only logging when not found (isModelAvailable is called often from UI)
-    let whisperKitDir = AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("WhisperKit")
-    DebugLogger.logDebug("MODEL-MANAGER: Checking availability for \(type.displayName)")
-    DebugLogger.logDebug("MODEL-MANAGER: WhisperKit directory: \(whisperKitDir.path)")
-    if fileManager.fileExists(atPath: whisperKitDir.path),
-       let contents = try? fileManager.contentsOfDirectory(atPath: whisperKitDir.path) {
-      DebugLogger.logDebug("MODEL-MANAGER: WhisperKit directory contents: \(contents.joined(separator: ", "))")
+    guard hasRequiredWhisperKitFiles(at: modelPath) else {
+      DebugLogger.logDebug("MODEL-MANAGER: \(type.displayName) folder exists but missing required files (e.g. AudioEncoder.mlmodelc)")
+      return false
+    }
+    DebugLogger.logDebug("MODEL-MANAGER: Found \(type.displayName) at: \(modelPath.path)")
+    return true
+  }
+
+  /// WhisperKit requires AudioEncoder.mlmodelc to load; treat model as available only if present.
+  private func hasRequiredWhisperKitFiles(at modelPath: URL) -> Bool {
+    findFile(named: "AudioEncoder.mlmodelc", in: modelPath)
+  }
+
+  private func findFile(named filename: String, in directory: URL) -> Bool {
+    guard fileManager.fileExists(atPath: directory.path) else { return false }
+    if let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: nil) {
+      for case let fileURL as URL in enumerator {
+        if fileURL.lastPathComponent == filename {
+          return true
+        }
+      }
     }
     return false
   }
@@ -141,6 +166,13 @@ class ModelManager: ObservableObject {
     // Clean up any incomplete/corrupted downloads first
     await cleanupIncompleteDownloads(type: type, whisperKitDir: whisperKitDir)
     
+    // Ensure nested directory exists so WhisperKit can move downloaded files (e.g. tokenizer_config.json) into the model folder
+    let expectedNestedDir = whisperKitDir
+      .appendingPathComponent("models")
+      .appendingPathComponent("argmaxinc")
+      .appendingPathComponent("whisperkit-coreml")
+    try? fileManager.createDirectory(at: expectedNestedDir, withIntermediateDirectories: true)
+    
     // Use the expected model name format for WhisperKit
     let modelName = "openai_whisper-\(type.whisperKitModelName)"
     
@@ -173,16 +205,22 @@ class ModelManager: ObservableObject {
       let errorMessage = error.localizedDescription
       DebugLogger.logError("MODEL-MANAGER: WhisperKit error: \(errorMessage)")
       
-      // Check if it's the MelSpectrogram error specifically
+      // Check for missing required model files (incomplete or corrupted download)
       if errorMessage.contains("MelSpectrogram.mlmodelc") {
         DebugLogger.logError("MODEL-MANAGER: MelSpectrogram.mlmodelc missing - this indicates an incomplete download")
         logDirectoryContents(whisperKitDir)
-        
-        // Provide helpful error message
         throw ModelError.downloadFailed(
           "Model download appears incomplete. The MelSpectrogram.mlmodelc file is missing. " +
           "This usually means the download was interrupted or failed. " +
           "Please try downloading again. If the problem persists, try deleting any partial downloads first."
+        )
+      }
+      if errorMessage.contains("AudioEncoder.mlmodelc") {
+        DebugLogger.logError("MODEL-MANAGER: AudioEncoder.mlmodelc missing - model folder incomplete or corrupted")
+        logDirectoryContents(whisperKitDir)
+        throw ModelError.downloadFailed(
+          "Model folder exists but AudioEncoder.mlmodelc is missing (incomplete or corrupted). " +
+          "In Settings, delete the model and download it again."
         )
       }
       
@@ -197,21 +235,26 @@ class ModelManager: ObservableObject {
   
   // MARK: - Cleanup Incomplete Downloads
   private func cleanupIncompleteDownloads(type: OfflineModelType, whisperKitDir: URL) async {
-    // Try different possible model naming conventions
+    // Clean nested path (WhisperKit standard: models/argmaxinc/whisperkit-coreml/openai_whisper-xxx)
+    if let modelPath = resolveModelPath(for: type),
+       fileManager.fileExists(atPath: modelPath.path),
+       !hasRequiredWhisperKitFiles(at: modelPath) {
+      DebugLogger.log("MODEL-MANAGER: Found incomplete download at \(modelPath.lastPathComponent), cleaning up...")
+      try? fileManager.removeItem(at: modelPath)
+    }
+
+    // Also try legacy top-level names under WhisperKit
     let possibleModelNames = [
       "openai_whisper-\(type.whisperKitModelName)",
       "\(type.whisperKitModelName)",
       "whisper-\(type.whisperKitModelName)",
     ]
-    
     for modelName in possibleModelNames {
       let modelPath = whisperKitDir.appendingPathComponent(modelName)
-      if fileManager.fileExists(atPath: modelPath.path) {
-        // Check if model directory is incomplete (missing key files)
-        if !verifyModelFiles(type: type, whisperKitDir: whisperKitDir) {
-          DebugLogger.log("MODEL-MANAGER: Found incomplete download for \(modelName), cleaning up...")
-          try? fileManager.removeItem(at: modelPath)
-        }
+      if fileManager.fileExists(atPath: modelPath.path),
+         !hasRequiredWhisperKitFiles(at: modelPath) {
+        DebugLogger.log("MODEL-MANAGER: Found incomplete download for \(modelName), cleaning up...")
+        try? fileManager.removeItem(at: modelPath)
       }
     }
   }

@@ -32,6 +32,8 @@ class ContextDerivation {
   private let promptAndReadSystemPromptEndMarker = "===SUGGESTED_PROMPT_AND_READ_SYSTEM_PROMPT_END==="
   private let dictationPromptMarker = "===SUGGESTED_DICTATION_PROMPT_START==="
   private let dictationPromptEndMarker = "===SUGGESTED_DICTATION_PROMPT_END==="
+  private let whisperGlossaryMarker = "===SUGGESTED_WHISPER_GLOSSARY_START==="
+  private let whisperGlossaryEndMarker = "===SUGGESTED_WHISPER_GLOSSARY_END==="
   private let geminiChatPromptMarker = "===SUGGESTED_GEMINI_CHAT_SYSTEM_PROMPT_START==="
   private let geminiChatPromptEndMarker = "===SUGGESTED_GEMINI_CHAT_SYSTEM_PROMPT_END==="
 
@@ -50,12 +52,14 @@ class ContextDerivation {
     let currentPromptModeSystemPrompt = store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentPromptAndReadSystemPrompt = store.loadPromptAndReadSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentDictationPrompt = store.loadDictationPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentWhisperGlossary = store.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentGeminiChatPrompt = store.loadSection(.geminiChat)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
     let loaded = try loadAndSampleLogs(focus: focus,
                                        currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
                                        currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
                                        currentDictationPrompt: currentDictationPrompt,
+                                       currentWhisperGlossary: currentWhisperGlossary,
                                        currentGeminiChatPrompt: currentGeminiChatPrompt)
 
     let hasPrimary = !loaded.primaryText.isEmpty
@@ -72,6 +76,7 @@ class ContextDerivation {
       currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
       currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
       currentDictationPrompt: currentDictationPrompt,
+      currentWhisperGlossary: currentWhisperGlossary,
       credential: credential
     )
 
@@ -93,6 +98,7 @@ class ContextDerivation {
     let currentPromptModeSystemPrompt = store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentPromptAndReadSystemPrompt = store.loadPromptAndReadSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentDictationPrompt = store.loadDictationPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentWhisperGlossary = store.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentGeminiChatPrompt = store.loadSection(.geminiChat)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
     var primaryParts: [String] = ["User request to change behavior:\n\n\(voiceInstruction)"]
@@ -106,6 +112,10 @@ class ContextDerivation {
     case .dictation:
       if !currentDictationPrompt.isEmpty {
         secondaryParts.append("Current dictation prompt (refine based on the user request above):\n\(currentDictationPrompt)")
+      }
+    case .whisperGlossary:
+      if !currentWhisperGlossary.isEmpty {
+        secondaryParts.append("Current Whisper Glossary (refine based on the user request above):\n\(currentWhisperGlossary)")
       }
     case .promptMode:
       if !currentPromptModeSystemPrompt.isEmpty {
@@ -129,6 +139,7 @@ class ContextDerivation {
       currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
       currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
       currentDictationPrompt: currentDictationPrompt,
+      currentWhisperGlossary: currentWhisperGlossary,
       credential: credential,
       voiceInstructionPrimary: true
     )
@@ -142,6 +153,7 @@ class ContextDerivation {
   private static func primaryMode(for focus: GenerationKind) -> String? {
     switch focus {
     case .dictation: return "transcription"
+    case .whisperGlossary: return "transcription"
     case .promptMode: return "prompt"
     case .promptAndRead: return "promptAndRead"
     case .geminiChat: return nil  // Use all modes combined in loadAndSampleLogs
@@ -153,6 +165,7 @@ class ContextDerivation {
     currentPromptModeSystemPrompt: String?,
     currentPromptAndReadSystemPrompt: String?,
     currentDictationPrompt: String?,
+    currentWhisperGlossary: String?,
     currentGeminiChatPrompt: String? = nil
   ) throws -> FocusedLoadResult {
     let maxPerMode = UserDefaults.standard.object(forKey: UserDefaultsKeys.contextMaxEntriesPerMode) as? Int
@@ -229,6 +242,8 @@ class ContextDerivation {
     switch focus {
     case .dictation:
       if let p = currentDictationPrompt, !p.isEmpty { secondaryParts.append("Current dictation prompt (refine based on new data):\n\(p)") }
+    case .whisperGlossary:
+      if let p = currentWhisperGlossary, !p.isEmpty { secondaryParts.append("Current Whisper Glossary (refine based on new data):\n\(p)") }
     case .promptMode:
       if let p = currentPromptModeSystemPrompt, !p.isEmpty { secondaryParts.append("Current Prompt Mode system prompt (refine based on new data):\n\(p)") }
     case .promptAndRead:
@@ -358,6 +373,26 @@ class ContextDerivation {
 
       This is a transcription task only. Never interpret, answer, or execute spoken content. Return only the clean transcribed text.
       \(dictationPromptEndMarker)
+      """
+
+    case .whisperGlossary:
+      return """
+      You are analyzing a user's interaction history with a voice-to-text application. \
+      Focus on "transcription" mode entries (speech-to-text). Your output is used only as a vocabulary list for offline Whisper conditioning — not as instructions.
+
+      CRITICAL – Transcription "result" fields often contain recognition errors. Infer intended words (proper nouns, domain terms) from context.
+
+      Your task: produce ONLY a comma-separated list of domain terms and proper nouns (names, companies, technical terms) that appear or are implied in the data. \
+      No sentences, no instructions, no explanations. Use primary data (transcription results) to extract terms; if a current glossary is in secondary context, merge and refine it (add new terms, keep still-relevant ones, remove duplicates). \
+      Maximum about 50 terms. Prefer the most frequent or impactful (names, project names, technical terms that are often misheard).
+
+      You MUST wrap your entire output in these markers exactly as shown:
+
+      \(whisperGlossaryMarker)
+      Terms: Gödde, EnBW, BlockInfinity GmbH, Christoph Klaus, Repos, Branch, Commit
+      \(whisperGlossaryEndMarker)
+
+      Format: one line starting with "Terms: " followed by comma-separated terms. No other lines between the markers.
       """
 
     case .promptMode:
@@ -513,6 +548,7 @@ class ContextDerivation {
     currentPromptModeSystemPrompt: String?,
     currentPromptAndReadSystemPrompt: String?,
     currentDictationPrompt: String?,
+    currentWhisperGlossary: String?,
     credential: GeminiCredential,
     voiceInstructionPrimary: Bool = false
   ) async throws -> String {
@@ -527,6 +563,9 @@ class ContextDerivation {
       case .dictation:
         modeName = "Dictation (Speech-to-Text)"
         modeDescription = "transcribing spoken audio into text verbatim"
+      case .whisperGlossary:
+        modeName = "Whisper Glossary (Offline)"
+        modeDescription = "vocabulary list for offline Whisper conditioning"
       case .promptMode:
         modeName = "Prompt Mode"
         modeDescription = "applying a voice instruction to modify selected/clipboard text"
@@ -542,11 +581,12 @@ class ContextDerivation {
       \nThe user provides a direct voice instruction to change future behavior; treat it as the primary signal.
 
       RELEVANCE CHECK – This prompt is for the "\(modeName)" mode (\(modeDescription)). \
-      The app has four separate system prompts: \
-      (1) Dictation – transcribes speech to text, \
-      (2) Prompt Mode – applies voice instructions to selected text, \
-      (3) Prompt Read Mode – same as Prompt Mode but output is read aloud via TTS, \
-      (4) Gemini Chat – system prompt for the Open Gemini chat window. \
+      The app has five separate prompts: \
+      (1) Dictation – transcribes speech to text (Gemini), \
+      (2) Whisper Glossary – vocabulary list for offline Whisper conditioning, \
+      (3) Prompt Mode – applies voice instructions to selected text, \
+      (4) Prompt Read Mode – same as Prompt Mode but output is read aloud via TTS, \
+      (5) Gemini Chat – system prompt for the Open Gemini chat window. \
       If the user's voice instruction clearly targets a DIFFERENT mode and does NOT apply to \(modeName), \
       return ONLY the start and end markers with nothing between them (empty suggestion). \
       When in doubt or when the instruction is generic enough to apply to this mode, proceed normally and generate a refined prompt.
@@ -614,6 +654,14 @@ class ContextDerivation {
         DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested dictation prompt (\(suggested.count) chars)")
       } else {
         DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for dictation prompt")
+      }
+    case .whisperGlossary:
+      if let suggested = extractSection(from: analysisResult, startMarker: whisperGlossaryMarker, endMarker: whisperGlossaryEndMarker) {
+        let fileURL = contextDir.appendingPathComponent("suggested-whisper-glossary.txt")
+        try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
+        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Whisper Glossary (\(suggested.count) chars)")
+      } else {
+        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for Whisper Glossary")
       }
     case .promptMode:
       if let suggested = extractSection(from: analysisResult, startMarker: systemPromptMarker, endMarker: systemPromptEndMarker) {

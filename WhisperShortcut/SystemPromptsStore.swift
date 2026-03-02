@@ -11,6 +11,7 @@ import Foundation
 /// Section identifiers for the unified system-prompts file.
 enum SystemPromptSection: String, CaseIterable {
   case dictation = "dictation"
+  case whisperGlossary = "whisperGlossary"
   case promptMode = "promptMode"
   case promptAndRead = "promptAndRead"
   case geminiChat = "geminiChat"
@@ -18,6 +19,7 @@ enum SystemPromptSection: String, CaseIterable {
   var fileHeader: String {
     switch self {
     case .dictation: return "=== Dictation (Speech-to-Text) ==="
+    case .whisperGlossary: return "=== Whisper Glossary (Offline) ==="
     case .promptMode: return "=== Prompt Mode ==="
     case .promptAndRead: return "=== Prompt Read Mode ==="
     case .geminiChat: return "=== Gemini Chat ==="
@@ -83,6 +85,12 @@ final class SystemPromptsStore {
   func loadGeminiChatSystemPrompt() -> String {
     (loadSection(.geminiChat)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
       ?? AppConstants.defaultGeminiChatSystemPrompt
+  }
+
+  /// Whisper Glossary: short vocabulary list for offline Whisper conditioning. Returns empty string if missing or empty (no conditioning).
+  func loadWhisperGlossary() -> String {
+    (loadSection(.whisperGlossary)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+      ?? AppConstants.defaultWhisperGlossary
   }
 
   /// Load full file content for the editor. Returns default formatted content if file missing (after migration attempt).
@@ -165,6 +173,7 @@ final class SystemPromptsStore {
   private func defaultFormattedContent() -> String {
     formatContent([
       .dictation: AppConstants.defaultTranscriptionSystemPrompt,
+      .whisperGlossary: AppConstants.defaultWhisperGlossary,
       .promptMode: AppConstants.defaultPromptModeSystemPrompt,
       .promptAndRead: AppConstants.defaultPromptAndReadSystemPrompt,
       .geminiChat: AppConstants.defaultGeminiChatSystemPrompt,
@@ -210,6 +219,7 @@ final class SystemPromptsStore {
       ?? AppConstants.defaultPromptAndReadSystemPrompt
     let content = formatContent([
       .dictation: dictation,
+      .whisperGlossary: AppConstants.defaultWhisperGlossary,
       .promptMode: promptMode,
       .promptAndRead: promptAndRead,
       .geminiChat: AppConstants.defaultGeminiChatSystemPrompt,

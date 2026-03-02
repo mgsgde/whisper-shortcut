@@ -144,7 +144,7 @@ class AutoPromptImprovementScheduler {
       )
     }
     let derivation = ContextDerivation()
-    let foci: [GenerationKind] = [.dictation, .promptMode, .promptAndRead, .geminiChat]
+    let foci: [GenerationKind] = [.dictation, .whisperGlossary, .promptMode, .promptAndRead, .geminiChat]
     typealias FocusResult = (focus: GenerationKind, error: Error?)
     let results: [FocusResult] = await withTaskGroup(of: FocusResult.self) { group in
       for focus in foci {
@@ -237,7 +237,7 @@ class AutoPromptImprovementScheduler {
 
   private func runImprovement() async {
     let derivation = ContextDerivation()
-    let focuses: [GenerationKind] = [.dictation, .promptMode, .promptAndRead, .geminiChat]
+    let focuses: [GenerationKind] = [.dictation, .whisperGlossary, .promptMode, .promptAndRead, .geminiChat]
 
     typealias FocusResult = (focus: GenerationKind, error: Error?)
     let results: [FocusResult] = await withTaskGroup(of: FocusResult.self) { group in
@@ -337,6 +337,8 @@ class AutoPromptImprovementScheduler {
     switch kind {
     case .dictation:
       fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
+    case .whisperGlossary:
+      fileURL = contextDir.appendingPathComponent("suggested-whisper-glossary.txt")
     case .promptMode:
       fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
     case .promptAndRead:
@@ -357,6 +359,7 @@ class AutoPromptImprovementScheduler {
     let store = SystemPromptsStore.shared
     switch kind {
     case .dictation: return store.loadDictationPrompt()
+    case .whisperGlossary: return store.loadWhisperGlossary()
     case .promptMode: return store.loadDictatePromptSystemPrompt()
     case .promptAndRead: return store.loadPromptAndReadSystemPrompt()
     case .geminiChat: return store.loadSection(.geminiChat) ?? ""
@@ -370,6 +373,8 @@ class AutoPromptImprovementScheduler {
     switch kind {
     case .dictation:
       fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
+    case .whisperGlossary:
+      fileURL = contextDir.appendingPathComponent("suggested-whisper-glossary.txt")
     case .promptMode:
       fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
     case .promptAndRead:
@@ -390,6 +395,7 @@ class AutoPromptImprovementScheduler {
   private func discardSuggestion(for kind: GenerationKind) {
     switch kind {
     case .dictation: ContextLogger.shared.deleteSuggestedDictationPromptFile()
+    case .whisperGlossary: ContextLogger.shared.deleteSuggestedWhisperGlossaryFile()
     case .promptMode: ContextLogger.shared.deleteSuggestedSystemPromptFile()
     case .promptAndRead: ContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
     case .geminiChat: ContextLogger.shared.deleteSuggestedGeminiChatSystemPromptFile()
@@ -423,6 +429,7 @@ private extension GenerationKind {
   var systemPromptSection: SystemPromptSection {
     switch self {
     case .dictation: return .dictation
+    case .whisperGlossary: return .whisperGlossary
     case .promptMode: return .promptMode
     case .promptAndRead: return .promptAndRead
     case .geminiChat: return .geminiChat

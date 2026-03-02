@@ -356,6 +356,12 @@ class ContextLogger {
     try? FileManager.default.removeItem(at: url)
   }
 
+  /// Removes the suggested Whisper Glossary file so it does not reappear after Apply.
+  func deleteSuggestedWhisperGlossaryFile() {
+    let url = contextDirectoryURL.appendingPathComponent("suggested-whisper-glossary.txt")
+    try? FileManager.default.removeItem(at: url)
+  }
+
   /// Removes the suggested Prompt Read Mode system prompt file so it does not reappear after Apply.
   func deleteSuggestedPromptAndReadSystemPromptFile() {
     let url = contextDirectoryURL.appendingPathComponent("suggested-prompt-read-mode-system-prompt.txt")

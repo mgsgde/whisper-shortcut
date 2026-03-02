@@ -25,6 +25,7 @@ enum TranscriptionModel: String, CaseIterable {
   case whisperBase = "whisper-base"
   case whisperSmall = "whisper-small"
   case whisperMedium = "whisper-medium"
+  case whisperLarge = "whisper-large"
 
   var displayName: String {
     switch self {
@@ -48,6 +49,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Whisper Small (Offline)"
     case .whisperMedium:
       return "Whisper Medium (Offline)"
+    case .whisperLarge:
+      return "Whisper Large (Offline)"
     }
   }
 
@@ -66,7 +69,7 @@ enum TranscriptionModel: String, CaseIterable {
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent"
     case .gemini31Pro:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent"
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium:
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "" // Offline models don't use API endpoints
     }
   }
@@ -75,7 +78,7 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini25FlashLite, .gemini25Flash, .whisperBase:
       return true
-    case .gemini20Flash, .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium:
+    case .gemini20Flash, .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge:
       return false
     }
   }
@@ -96,7 +99,7 @@ enum TranscriptionModel: String, CaseIterable {
       return "Low"
     case .gemini3Pro, .gemini31Pro:
       return "Medium"
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium:
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "Free (Offline)"
     }
   }
@@ -123,6 +126,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "OpenAI Whisper Small • Better quality • ~460MB • Offline"
     case .whisperMedium:
       return "OpenAI Whisper Medium • Best quality • ~1.5GB • Offline"
+    case .whisperLarge:
+      return "OpenAI Whisper Large v3 • Highest quality • ~3GB • Offline"
     }
   }
   
@@ -130,7 +135,7 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro:
       return true
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium:
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return false
     }
   }
@@ -145,6 +150,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .whisperBase: return .whisperBase
     case .whisperSmall: return .whisperSmall
     case .whisperMedium: return .whisperMedium
+    case .whisperLarge: return .whisperLarge
     default: return nil
     }
   }

@@ -20,6 +20,9 @@ Guardrails – this is a DICTATION/TRANSCRIPTION task only. The audio contains s
 Output: Return only the clean transcribed text. Do not repeat these instructions, include meta-commentary, the word "transcription", or any part of this prompt. Start directly with the transcribed words.
 """
 
+  /// Default Whisper Glossary: empty. Used only for offline Whisper conditioning (vocabulary list). Smart Improvement can populate it.
+  static let defaultWhisperGlossary = ""
+
   /// Prompt Mode system prompt. Structure: Persona → Input/task → Guardrails. Output rule is appended at runtime.
   static let defaultPromptModeSystemPrompt =
     """
