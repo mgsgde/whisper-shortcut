@@ -244,8 +244,8 @@ class GeminiChatViewModel: ObservableObject {
       return
     }
 
-    guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else {
-      errorMessage = "No API key configured. Please add your Google API key in Settings."
+    guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
+      errorMessage = "Add your Google API key in Settings or sign in with Google to use Gemini Chat."
       return
     }
 
@@ -292,8 +292,8 @@ class GeminiChatViewModel: ObservableObject {
       do {
         let model = Self.resolveOpenGeminiModel()
         let result = try await apiClient.sendChatMessage(
-          model: model, contents: contents, apiKey: apiKey, useGrounding: true,
-          systemInstruction: self.buildSystemInstruction())
+          model: model, contents: contents, credential: credential, useGrounding: true,
+          systemInstruction: Self.buildGeminiChatSystemInstruction())
         let modelMsg = ChatMessage(
           role: .model,
           content: result.text,
@@ -395,7 +395,7 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   private func generateAITitle(sessionId: UUID) async {
-    guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else { return }
+    guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
     guard let target = store.session(by: sessionId),
           target.messages.count >= 2,
           target.messages[0].role == .user,
@@ -412,7 +412,7 @@ class GeminiChatViewModel: ObservableObject {
       """
     do {
       let raw = try await apiClient.generateText(
-        model: "gemini-3.1-flash-lite-preview", prompt: prompt, apiKey: apiKey)
+        model: "gemini-2.5-flash-lite", prompt: prompt, credential: credential)
       let lines = raw
         .components(separatedBy: .newlines)
         .map {

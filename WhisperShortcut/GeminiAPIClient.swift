@@ -403,12 +403,7 @@ class GeminiAPIClient {
   // MARK: - Chat
 
   /// Sends a multi-turn chat request to Gemini and returns the model's text reply plus optional grounding sources.
-  /// - Parameters:
-  ///   - model: Gemini model ID, e.g. "gemini-2.5-flash"
-  ///   - contents: Array of turn dicts in Gemini format: [["role": "user", "parts": [["text": "..."]]]]
-  ///   - apiKey: Google API key
-  ///   - useGrounding: When true, adds the `google_search` tool so Gemini can ground answers in live search results
-  ///   - systemInstruction: Optional system instruction (e.g. style guidance). API format: ["parts": [["text": "..."]]]
+  /// Uses API key only (convenience for callers that only have a key).
   func sendChatMessage(
     model: String,
     contents: [[String: Any]],
@@ -416,8 +411,27 @@ class GeminiAPIClient {
     useGrounding: Bool = false,
     systemInstruction: [String: Any]? = nil
   ) async throws -> (text: String, sources: [GroundingSource], supports: [GroundingSupport]) {
-    let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
-    var request = try createRequest(endpoint: endpoint, apiKey: apiKey)
+    try await sendChatMessage(
+      model: model,
+      contents: contents,
+      credential: .apiKey(apiKey),
+      useGrounding: useGrounding,
+      systemInstruction: systemInstruction
+    )
+  }
+
+  /// Sends a multi-turn chat request using credential (API key or Bearer for proxy). When using proxy, sends request_type and model so backend applies subscription model.
+  func sendChatMessage(
+    model: String,
+    contents: [[String: Any]],
+    credential: GeminiCredential,
+    useGrounding: Bool = false,
+    systemInstruction: [String: Any]? = nil
+  ) async throws -> (text: String, sources: [GroundingSource], supports: [GroundingSupport]) {
+    let directEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
+    let (endpoint, resolvedCredential) = Self.resolveGenerateContentEndpoint(directEndpoint: directEndpoint, credential: credential)
+    let credentialForRequest = await Self.resolveCredentialForRequest(endpoint: endpoint, resolvedCredential: resolvedCredential)
+    var request = try createRequest(endpoint: endpoint, credential: credentialForRequest)
 
     var body: [String: Any] = ["contents": contents]
     var tools: [[String: Any]] = []
@@ -430,6 +444,15 @@ class GeminiAPIClient {
     DebugLogger.logNetwork("GEMINI-CHAT: Code Execution enabled")
     if let sys = systemInstruction {
       body["system_instruction"] = sys
+    }
+    let proxyPath = {
+      let base = SettingsDefaults.proxyAPIBaseURL
+      let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
+      return trimmed + "/v1/gemini/generateContent"
+    }()
+    if endpoint == proxyPath {
+      body["request_type"] = "gemini_chat"
+      body["model"] = model
     }
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -453,13 +476,29 @@ class GeminiAPIClient {
   }
 
   /// Lightweight single-shot text generation — no tools, no retry, minimal tokens.
-  /// Used for background tasks like session title generation.
+  /// Used for background tasks like session title generation. API key only.
   func generateText(model: String, prompt: String, apiKey: String) async throws -> String {
-    let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
-    var request = try createRequest(endpoint: endpoint, apiKey: apiKey)
-    let body: [String: Any] = [
+    try await generateText(model: model, prompt: prompt, credential: .apiKey(apiKey))
+  }
+
+  /// Lightweight single-shot text generation using credential (API key or Bearer for proxy). When using proxy, sends request_type so backend applies subscription model.
+  func generateText(model: String, prompt: String, credential: GeminiCredential) async throws -> String {
+    let directEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
+    let (endpoint, resolvedCredential) = Self.resolveGenerateContentEndpoint(directEndpoint: directEndpoint, credential: credential)
+    let credentialForRequest = await Self.resolveCredentialForRequest(endpoint: endpoint, resolvedCredential: resolvedCredential)
+    var request = try createRequest(endpoint: endpoint, credential: credentialForRequest)
+    var body: [String: Any] = [
       "contents": [["role": "user", "parts": [["text": prompt]]]]
     ]
+    let proxyPath = {
+      let base = SettingsDefaults.proxyAPIBaseURL
+      let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
+      return trimmed + "/v1/gemini/generateContent"
+    }()
+    if endpoint == proxyPath {
+      body["request_type"] = "gemini_chat"
+      body["model"] = model
+    }
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
     let response: GeminiResponse = try await performRequest(
       request, responseType: GeminiResponse.self, mode: "GEMINI-TITLE", withRetry: false)
