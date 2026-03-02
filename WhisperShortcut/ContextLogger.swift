@@ -46,6 +46,9 @@ class ContextLogger {
   /// Directory name on disk; kept as "UserContext" for compatibility with existing installs.
   private let contextDirectoryName = "UserContext"
   private let rotationDays = 90
+  /// Maximum number of lines kept in history JSONL files that have no date-based rotation
+  /// (system-prompts-history.jsonl, user-context-history.jsonl). Oldest lines are trimmed.
+  private let historyFileMaxLines = 500
 
   private lazy var contextDirectoryURL: URL = {
     AppSupportPaths.whisperShortcutApplicationSupportURL()
@@ -187,22 +190,39 @@ class ContextLogger {
         let contents = try fm.contentsOfDirectory(at: self.contextDirectoryURL, includingPropertiesForKeys: nil)
         for fileURL in contents {
           let filename = fileURL.lastPathComponent
-          // Only rotate interaction log files
-          guard filename.hasPrefix("interactions-"), filename.hasSuffix(".jsonl") else { continue }
 
-          // Extract date from filename: interactions-YYYY-MM-DD.jsonl
-          let dateString = filename
-            .replacingOccurrences(of: "interactions-", with: "")
-            .replacingOccurrences(of: ".jsonl", with: "")
-
-          if let fileDate = dateFormatter.date(from: dateString), fileDate < cutoffDate {
-            try fm.removeItem(at: fileURL)
-            DebugLogger.log("USER-CONTEXT: Rotated old log file: \(filename)")
+          if filename.hasPrefix("interactions-"), filename.hasSuffix(".jsonl") {
+            // Date-based rotation for daily interaction logs
+            let dateString = filename
+              .replacingOccurrences(of: "interactions-", with: "")
+              .replacingOccurrences(of: ".jsonl", with: "")
+            if let fileDate = dateFormatter.date(from: dateString), fileDate < cutoffDate {
+              try fm.removeItem(at: fileURL)
+              DebugLogger.log("USER-CONTEXT: Rotated old log file: \(filename)")
+            }
+          } else if filename == "system-prompts-history.jsonl" || filename == "user-context-history.jsonl" {
+            // Line-count rotation for history files that have no date in their name
+            self.trimJSONLFile(at: fileURL, maxLines: self.historyFileMaxLines)
           }
         }
       } catch {
         DebugLogger.logError("USER-CONTEXT: Rotation error: \(error.localizedDescription)")
       }
+    }
+  }
+
+  /// Keeps only the last `maxLines` non-empty lines in a JSONL file, discarding the oldest entries.
+  /// Called on the serial queue already; no further synchronisation needed.
+  private func trimJSONLFile(at url: URL, maxLines: Int) {
+    guard let content = try? String(contentsOf: url, encoding: .utf8) else { return }
+    let lines = content.components(separatedBy: "\n").filter { !$0.isEmpty }
+    guard lines.count > maxLines else { return }
+    let trimmed = lines.suffix(maxLines).joined(separator: "\n") + "\n"
+    do {
+      try trimmed.write(to: url, atomically: true, encoding: .utf8)
+      DebugLogger.log("USER-CONTEXT: Trimmed \(url.lastPathComponent) to \(maxLines) lines (was \(lines.count))")
+    } catch {
+      DebugLogger.logError("USER-CONTEXT: Failed to trim \(url.lastPathComponent): \(error.localizedDescription)")
     }
   }
 

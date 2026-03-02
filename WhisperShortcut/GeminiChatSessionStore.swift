@@ -166,6 +166,11 @@ class GeminiChatSessionStore {
   private let fileName = "gemini-sessions.json"
   private let legacyFileName = "gemini-chat-session.json"
   private static let navStackLimit = 20
+  /// Maximum number of sessions kept on disk. Oldest sessions (by lastUpdated) are pruned when exceeded.
+  private static let maxSessionCount = 100
+  /// Sessions older than this many days have their attached image binaries stripped from the in-memory
+  /// cache to avoid holding screenshots for stale conversations indefinitely.
+  private static let imageRetentionDays: Double = 7
 
   private var cachedFile: SessionsFile?
   private let diskWriteQueue = DispatchQueue(label: "com.whispershortcut.session.io", qos: .utility)
@@ -211,6 +216,34 @@ class GeminiChatSessionStore {
   }
 
   private func saveSessionsFile(_ file: SessionsFile) {
+    var file = file
+
+    // Prune oldest sessions when the cap is exceeded, keeping the current session safe.
+    if file.sessions.count > Self.maxSessionCount {
+      let sorted = file.sessions.sorted { $0.lastUpdated > $1.lastUpdated }
+      let kept = Set(sorted.prefix(Self.maxSessionCount).map { $0.id })
+      let removed = file.sessions.filter { !kept.contains($0.id) }.map { $0.id }
+      file.sessions.removeAll { !kept.contains($0.id) }
+      file.navBackStack.removeAll { removed.contains($0) }
+      file.navForwardStack.removeAll { removed.contains($0) }
+      DebugLogger.log("GEMINI-CHAT: Pruned \(removed.count) old session(s) to stay within \(Self.maxSessionCount) limit")
+    }
+
+    // Strip image binaries from sessions older than imageRetentionDays before caching in memory.
+    // The current session always keeps its images for display.
+    let cutoff = Date().addingTimeInterval(-Self.imageRetentionDays * 86400)
+    file.sessions = file.sessions.map { session in
+      guard session.id != file.currentSessionId, session.lastUpdated < cutoff else { return session }
+      var stripped = session
+      stripped.messages = session.messages.map { msg in
+        guard msg.attachedImageData != nil else { return msg }
+        var m = msg
+        m.attachedImageData = nil
+        return m
+      }
+      return stripped
+    }
+
     cachedFile = file
     let url = fileURL
     let dir = appSupportDir
