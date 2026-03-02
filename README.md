@@ -127,4 +127,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-Made in Karlsruhe, Germany 🇩🇪 by [@mgsgde](https://github.com/mgsgde)
+Made in Karlsruhe, Germany 🇩🇪
