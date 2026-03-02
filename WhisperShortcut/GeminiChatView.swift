@@ -310,6 +310,16 @@ class GeminiChatViewModel: ObservableObject {
 
   // MARK: - Private
 
+  /// Returns user-visible content for the session tab title (unwraps `<typed_by_user>...</typed_by_user>` if present).
+  private static func contentForSessionTitle(_ rawContent: String) -> String {
+    let open = "<typed_by_user>"
+    let close = "</typed_by_user>"
+    guard let r1 = rawContent.range(of: open), let r2 = rawContent.range(of: close), r1.upperBound <= r2.lowerBound else {
+      return rawContent
+    }
+    return String(rawContent[r1.upperBound..<r2.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
   /// Builds the system instruction for the Open Gemini chat from the stored Gemini Chat system prompt (Settings > Context > system-prompts.md).
   private static func buildGeminiChatSystemInstruction() -> [String: Any] {
     let text = SystemPromptsStore.shared.loadGeminiChatSystemPrompt()
@@ -351,7 +361,8 @@ class GeminiChatViewModel: ObservableObject {
     target.messages.append(message)
     target.lastUpdated = Date()
     if isFirstUserMessage {
-      let oneLine = message.content.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+      let contentForTitle = Self.contentForSessionTitle(message.content)
+      let oneLine = contentForTitle.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
       target.title = String(oneLine.prefix(Self.maxSessionTitleLength))
       if oneLine.count > Self.maxSessionTitleLength { target.title? += "…" }
     }
@@ -1461,6 +1472,19 @@ private struct ModelReplyView: View {
       }
   }
 
+  /// True if the paragraph is only a horizontal-rule line, optionally with trailing citation markers (e.g. "--- [3] [4]").
+  /// Such lines are rendered as a clean visual separator without citation numbers.
+  private static func isSeparatorParagraph(_ trimmed: String) -> Bool {
+    let t = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard t.count >= 2, t.hasPrefix("--") else { return false }
+    let afterDashes = t.drop(while: { $0 == "-" })
+    let rest = String(afterDashes).trimmingCharacters(in: .whitespacesAndNewlines)
+    if rest.isEmpty { return true }
+    return rest.range(of: #"^(\s*\[\d+\])+\s*$"#, options: .regularExpression) != nil
+  }
+
+  private static let separatorLineContent = String(repeating: "─", count: 28)
+
   private static func buildAttributedReply(
     content: String,
     sources: [GroundingSource],
@@ -1477,6 +1501,12 @@ private struct ModelReplyView: View {
       let trimmed = para.text.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
       if !result.description.isEmpty { result.append(paragraphSeparator) }
+      if isSeparatorParagraph(trimmed) {
+        var lineAttr = AttributedString(separatorLineContent)
+        lineAttr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.4)
+        result.append(lineAttr)
+        continue
+      }
       let attrText = buildAttributedReplyContentOnly(content: para.text, options: options)
       result.append(attrText)
       for idx in para.chunkIndices {
@@ -1503,6 +1533,12 @@ private struct ModelReplyView: View {
       let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
       if index > 0 { result.append(separator) }
+      if Self.isSeparatorParagraph(trimmed) {
+        var lineAttr = AttributedString(Self.separatorLineContent)
+        lineAttr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.4)
+        result.append(lineAttr)
+        continue
+      }
       if trimmed.hasPrefix("## ") {
         let parts = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
         let headingLine = String(parts[0])
@@ -1749,34 +1785,24 @@ private struct MessageBubbleView: View {
 
   /// Sources with wrapping: [1] Title1  [2] Title2  … flow onto multiple lines when horizontal space is limited.
   private var sourcesView: some View {
-    HStack(alignment: .top, spacing: 12) {
-      HStack(spacing: 4) {
-        Image(systemName: "globe")
-          .font(.caption2)
-          .foregroundColor(GeminiChatTheme.secondaryText)
-        Text("Sources")
-          .font(.caption2)
-          .foregroundColor(GeminiChatTheme.secondaryText)
-      }
-      FlowLayout(horizontalSpacing: 10, verticalSpacing: 6) {
-        ForEach(Array(message.sources.enumerated()), id: \.element.id) { index, source in
-          if let url = URL(string: source.uri) {
-            Link(destination: url) {
-              HStack(spacing: 4) {
-                Text("[\(index + 1)]")
-                  .font(.caption)
-                  .fontWeight(.medium)
-                Text(source.title)
-                  .font(.caption)
-              }
-              .foregroundColor(.accentColor)
+    FlowLayout(horizontalSpacing: 10, verticalSpacing: 6) {
+      ForEach(Array(message.sources.enumerated()), id: \.element.id) { index, source in
+        if let url = URL(string: source.uri) {
+          Link(destination: url) {
+            HStack(spacing: 4) {
+              Text("[\(index + 1)]")
+                .font(.caption)
+                .fontWeight(.medium)
+              Text(source.title)
+                .font(.caption)
             }
-            .pointerCursorOnHover()
+            .foregroundColor(.accentColor)
           }
+          .pointerCursorOnHover()
         }
       }
-      .frame(maxWidth: .infinity, alignment: .leading)
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.horizontal, 12)
     .padding(.top, 6)
   }
