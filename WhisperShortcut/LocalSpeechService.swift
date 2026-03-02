@@ -254,7 +254,12 @@ actor LocalSpeechService {
   func isReady() -> Bool {
     return currentModelType != nil && whisperKit != nil
   }
-  
+
+  /// Returns true if the given model type is currently loaded (so we use the selected model, not a previously pre-loaded one).
+  func isLoaded(modelType: OfflineModelType) -> Bool {
+    return currentModelType == modelType
+  }
+
   // MARK: - Get Current Model Info
   func getCurrentModelInfo() -> String? {
     return currentModelType?.displayName

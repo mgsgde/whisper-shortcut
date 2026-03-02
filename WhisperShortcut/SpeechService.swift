@@ -170,8 +170,8 @@ class SpeechService {
         throw TranscriptionError.modelNotAvailable(offlineModelType)
       }
 
-      // Initialize model if not already initialized
-      if await !LocalSpeechService.shared.isReady() {
+      // Use the selected model: initialize if not ready, or re-initialize if a different model is loaded (e.g. pre-loaded Large but user selected Base)
+      if await !LocalSpeechService.shared.isLoaded(modelType: offlineModelType) {
         try await LocalSpeechService.shared.initializeModel(offlineModelType)
       }
 
