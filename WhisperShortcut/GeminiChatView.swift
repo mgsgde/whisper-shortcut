@@ -66,6 +66,7 @@ class GeminiChatViewModel: ObservableObject {
   private static let stopCommand = "/stop"
   private static let settingsCommand = "/settings"
   private static let pinCommand = "/pin"
+  private static let unpinCommand = "/unpin"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -76,6 +77,7 @@ class GeminiChatViewModel: ObservableObject {
     ("/screenshot", "Capture screen (attached to your next message)"),
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
+    ("/unpin", "Make the window close when losing focus"),
     ("/stop", "Stop sending (while a message is being sent)")
   ]
 
@@ -188,6 +190,11 @@ class GeminiChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: /pin — window is now \(nowPinned ? "pinned (stays open)" : "unpinned (closes on focus loss)")")
   }
 
+  func unpin() {
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
+    DebugLogger.log("GEMINI-CHAT: /unpin — window is now unpinned (closes on focus loss)")
+  }
+
   /// Cancels the in-flight send request for the currently visible session.
   func cancelSend() {
     sendTasks[session.id]?.cancel()
@@ -208,7 +215,7 @@ class GeminiChatViewModel: ObservableObject {
     // Slash commands: do not send to API
     if lower == Self.newChatCommand || lower == Self.backChatCommand || lower == Self.nextChatCommand
         || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
-        || lower == Self.settingsCommand || lower == Self.pinCommand {
+        || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand {
       inputText = ""
       if lower == Self.newChatCommand { createNewSession() }
       else if lower == Self.backChatCommand { goBack() }
@@ -216,6 +223,7 @@ class GeminiChatViewModel: ObservableObject {
       else if Self.clearChatCommands.contains(lower) { clearMessages() }
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else if lower == Self.pinCommand { togglePin() }
+      else if lower == Self.unpinCommand { unpin() }
       else { await captureScreenshot() }
       return
     }
@@ -697,6 +705,9 @@ struct GeminiChatView: View {
         Text("/pin — Toggle whether the window stays open when losing focus")
           .font(.system(size: 15))
           .foregroundColor(GeminiChatTheme.secondaryText)
+        Text("/unpin — Make the window close when losing focus")
+          .font(.system(size: 15))
+          .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/stop — Stop sending (while a message is being sent)")
           .font(.system(size: 15))
           .foregroundColor(GeminiChatTheme.secondaryText)
@@ -899,7 +910,9 @@ struct GeminiInputAreaView: View {
               .strokeBorder(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity), lineWidth: 1)
           )
           .clipShape(RoundedRectangle(cornerRadius: 8))
-          .padding(.horizontal, 16)
+          .frame(maxWidth: 760)
+          .frame(maxWidth: .infinity, alignment: .center)
+          .padding(.horizontal, 20)
           .padding(.bottom, 4)
         }
       }
@@ -1108,12 +1121,14 @@ struct GeminiInputAreaView: View {
       .padding(.horizontal, 8)
       .padding(.vertical, 8)
     }
+    .frame(maxWidth: 760)
     .background(GeminiChatTheme.controlBackground)
     .clipShape(RoundedRectangle(cornerRadius: 14))
     .overlay(
       RoundedRectangle(cornerRadius: 14)
         .strokeBorder(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity), lineWidth: 1)
     )
+    .frame(maxWidth: .infinity, alignment: .center)
     .padding(.horizontal, 20)
     .padding(.vertical, 12)
     .contentShape(Rectangle())
