@@ -632,6 +632,8 @@ struct GeminiChatView: View {
           }
           Color.clear.frame(height: 1).id("listBottom")
         }
+        .frame(maxWidth: 760)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 30)
         .padding(.top, 18)
         .padding(.bottom, 36)
@@ -778,6 +780,7 @@ struct GeminiInputAreaView: View {
   @State private var measuredInputHeight: CGFloat = 0
   @State private var pasteMonitor: Any? = nil
   @AppStorage(UserDefaultsKeys.geminiCloseOnFocusLoss) private var closeOnFocusLoss: Bool = SettingsDefaults.geminiCloseOnFocusLoss
+  @AppStorage(UserDefaultsKeys.selectedOpenGeminiModel) private var selectedOpenGeminiModelRaw: String = SettingsDefaults.selectedOpenGeminiModel.rawValue
 
   private enum AttachmentFocus: Hashable {
     case screenshot, file, pastedBlock(UUID)
@@ -822,6 +825,13 @@ struct GeminiInputAreaView: View {
       || viewModel.pendingScreenshot != nil
       || viewModel.pendingFileAttachment != nil
       || !viewModel.pastedBlocks.isEmpty
+  }
+
+  /// Current Open Gemini model for display (with migration); syncs with UserDefaults via @AppStorage.
+  private var resolvedOpenGeminiModel: PromptModel {
+    PromptModel(rawValue: selectedOpenGeminiModelRaw)
+      .map { PromptModel.migrateIfDeprecated($0) }
+      ?? SettingsDefaults.selectedOpenGeminiModel
   }
 
   var body: some View {
@@ -896,201 +906,214 @@ struct GeminiInputAreaView: View {
     }
   }
 
-  // MARK: - Action Buttons Row
-
-  private var actionButtonsRow: some View {
-    HStack(spacing: 4) {
-      Button(action: { viewModel.createNewSession() }) {
-        HStack(spacing: 4) {
-          Image(systemName: "square.and.pencil").font(.caption)
-          Text("New chat").font(.caption)
-        }
-        .foregroundColor(GeminiChatTheme.secondaryText)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .help("Start a new chat (previous chat stays in history)")
-      .pointerCursorOnHover()
-
-
-      Button(action: { viewModel.attachFile() }) {
-        HStack(spacing: 4) {
-          Image(systemName: "paperclip").font(.caption)
-          Text("Attach").font(.caption)
-        }
-        .foregroundColor(GeminiChatTheme.secondaryText)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .disabled(viewModel.isSending)
-      .help("Attach a file (PDF, image, …) to your next message.")
-      .pointerCursorOnHover()
-
-      Button(action: { Task { await viewModel.captureScreenshot() } }) {
-        HStack(spacing: 4) {
-          if viewModel.screenshotCaptureInProgress {
-            ProgressView().controlSize(.mini).frame(width: 10, height: 10)
-          } else {
-            Image(systemName: "camera.viewfinder").font(.caption)
-          }
-          Text("Screenshot").font(.caption)
-        }
-        .foregroundColor(viewModel.screenshotCaptureInProgress ? GeminiChatTheme.secondaryText.opacity(0.6) : GeminiChatTheme.secondaryText)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .disabled(viewModel.screenshotCaptureInProgress || viewModel.isSending)
-      .help("Capture screen without this window; image will be attached to your next message.")
-      .pointerCursorOnHover()
-
-      Spacer()
-    }
-  }
-
-  // MARK: - Input Bar
+  // MARK: - Input Bar (Claude-style: composer on top, toolbar below)
 
   private var inputBar: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      actionButtonsRow
-      HStack(alignment: .center, spacing: 8) {
-        // Composer box: chips on top + editor below, all in one rounded rect
-        VStack(spacing: 0) {
-          if viewModel.pendingScreenshot != nil || viewModel.pendingFileAttachment != nil || !viewModel.pastedBlocks.isEmpty {
-            attachmentChipsRow
-          }
-          ZStack(alignment: .topLeading) {
-            Text(inputTextForSizing)
-              .font(.system(size: 16))
-              .padding(.horizontal, 18)
-              .padding(.vertical, 13)
-              .fixedSize(horizontal: false, vertical: true)
-              .background(GeometryReader { geo in
-                Color.clear.preference(key: InputTextHeightKey.self, value: geo.size.height)
-              })
-              .frame(maxWidth: .infinity, maxHeight: Self.inputMaxHeight, alignment: .leading)
-              .opacity(0)
-              .accessibilityHidden(true)
+    VStack(spacing: 0) {
+      // Composer box: chips + text editor
+      VStack(spacing: 0) {
+        if viewModel.pendingScreenshot != nil || viewModel.pendingFileAttachment != nil || !viewModel.pastedBlocks.isEmpty {
+          attachmentChipsRow
+        }
+        ZStack(alignment: .topLeading) {
+          Text(inputTextForSizing)
+            .font(.system(size: 16))
+            .padding(.horizontal, 18)
+            .padding(.vertical, 13)
+            .fixedSize(horizontal: false, vertical: true)
+            .background(GeometryReader { geo in
+              Color.clear.preference(key: InputTextHeightKey.self, value: geo.size.height)
+            })
+            .frame(maxWidth: .infinity, maxHeight: Self.inputMaxHeight, alignment: .leading)
+            .opacity(0)
+            .accessibilityHidden(true)
 
-            if inputText.isEmpty {
-              Text("Message Gemini…")
-                .font(.system(size: 16))
-                .foregroundColor(GeminiChatTheme.secondaryText.opacity(0.5))
-                .padding(.leading, 18)
-                .padding(.trailing, 12)
-                .padding(.vertical, 13)
-                .allowsHitTesting(false)
-            }
-            TextEditor(text: $inputText)
-              .scrollContentBackground(.hidden)
+          if inputText.isEmpty {
+            Text("Message Gemini…")
               .font(.system(size: 16))
-              .foregroundColor(GeminiChatTheme.primaryText)
-              .focused($inputFocused)
-              .onKeyPress(.tab) {
-                let word = lastWord
-                if word.hasPrefix("/"), !word.isEmpty {
-                  let matches = viewModel.suggestedCommands(for: word)
-                  if let first = matches.first {
-                    inputText = contentWithoutLastWord
-                    Task { await viewModel.sendMessage(userInput: first) }
-                    return .handled
-                  }
-                }
-                return .ignored
-              }
-              .onKeyPress { keyPress in
-                if keyPress.modifiers.contains(.command), keyPress.characters == ".", viewModel.isSending {
-                  viewModel.cancelSend()
+              .foregroundColor(GeminiChatTheme.secondaryText.opacity(0.5))
+              .padding(.leading, 18)
+              .padding(.trailing, 12)
+              .padding(.vertical, 13)
+              .allowsHitTesting(false)
+          }
+          TextEditor(text: $inputText)
+            .scrollContentBackground(.hidden)
+            .font(.system(size: 16))
+            .foregroundColor(GeminiChatTheme.primaryText)
+            .focused($inputFocused)
+            .onKeyPress(.tab) {
+              let word = lastWord
+              if word.hasPrefix("/"), !word.isEmpty {
+                let matches = viewModel.suggestedCommands(for: word)
+                if let first = matches.first {
+                  inputText = contentWithoutLastWord
+                  Task { await viewModel.sendMessage(userInput: first) }
                   return .handled
                 }
-                // Backspace when text is empty → remove last chip
-                if keyPress.key == .delete, inputText.isEmpty {
-                  if !viewModel.pastedBlocks.isEmpty {
-                    viewModel.removePastedBlock(id: viewModel.pastedBlocks.last!.id)
-                    return .handled
-                  } else if viewModel.pendingFileAttachment != nil {
-                    viewModel.clearPendingFile()
-                    return .handled
-                  } else if viewModel.pendingScreenshot != nil {
-                    viewModel.clearPendingScreenshot()
-                    return .handled
-                  }
-                }
-                guard keyPress.key == .return else { return .ignored }
-                if keyPress.modifiers.contains(.shift) {
-                  // Let NSTextView handle Shift+Return natively: inserts "\n" at cursor position
-                  // and automatically scrolls the cursor into view — no SwiftUI string reset.
-                  return .ignored
-                }
-                // Last-word slash command detection (works on same line or on a new line)
-                let word = lastWord
-                if word.hasPrefix("/"), !word.isEmpty {
-                  let matches = viewModel.suggestedCommands(for: word)
-                  if let first = matches.first, word.lowercased() == first.lowercased() {
-                    inputText = contentWithoutLastWord
-                    Task { await viewModel.sendMessage(userInput: word) }
-                    return .handled
-                  }
-                }
-                let toSend = inputText
-                inputText = ""
-                Task { await viewModel.sendMessage(userInput: toSend) }
+              }
+              return .ignored
+            }
+            .onKeyPress { keyPress in
+              if keyPress.modifiers.contains(.command), keyPress.characters == ".", viewModel.isSending {
+                viewModel.cancelSend()
                 return .handled
               }
-              .onAppear { inputFocused = true }
-              .padding(.horizontal, 12)
-              .padding(.vertical, 12)
-              .frame(height: inputHeight)
-              .background(GeminiInputScrollViewAutohideAnchor())
-          }
-          .frame(height: inputHeight)
-          .onPreferenceChange(InputTextHeightKey.self) { measuredInputHeight = $0 }
+              if keyPress.key == .delete, inputText.isEmpty {
+                if !viewModel.pastedBlocks.isEmpty {
+                  viewModel.removePastedBlock(id: viewModel.pastedBlocks.last!.id)
+                  return .handled
+                } else if viewModel.pendingFileAttachment != nil {
+                  viewModel.clearPendingFile()
+                  return .handled
+                } else if viewModel.pendingScreenshot != nil {
+                  viewModel.clearPendingScreenshot()
+                  return .handled
+                }
+              }
+              guard keyPress.key == .return else { return .ignored }
+              if keyPress.modifiers.contains(.shift) {
+                return .ignored
+              }
+              let word = lastWord
+              if word.hasPrefix("/"), !word.isEmpty {
+                let matches = viewModel.suggestedCommands(for: word)
+                if let first = matches.first, word.lowercased() == first.lowercased() {
+                  inputText = contentWithoutLastWord
+                  Task { await viewModel.sendMessage(userInput: word) }
+                  return .handled
+                }
+              }
+              let toSend = inputText
+              inputText = ""
+              Task { await viewModel.sendMessage(userInput: toSend) }
+              return .handled
+            }
+            .onAppear { inputFocused = true }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+            .frame(height: inputHeight)
+            .background(GeminiInputScrollViewAutohideAnchor())
         }
-        .background(GeminiChatTheme.controlBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(
-          RoundedRectangle(cornerRadius: 10)
-            .strokeBorder(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity), lineWidth: 1)
-        )
+        .frame(height: inputHeight)
+        .onPreferenceChange(InputTextHeightKey.self) { measuredInputHeight = $0 }
+      }
 
-        if viewModel.isSending {
-          Button(action: { viewModel.cancelSend() }) {
-            Image(systemName: "stop.circle.fill")
-              .font(.system(size: 24))
-              .foregroundColor(GeminiChatTheme.secondaryText)
+      // Toolbar row below composer: action buttons left, model selector + send right
+      HStack(spacing: 4) {
+        Button(action: { viewModel.createNewSession() }) {
+          HStack(spacing: 4) {
+            Image(systemName: "square.and.pencil").font(.caption)
+            Text("New chat").font(.caption)
           }
-          .buttonStyle(.plain)
-          .help("Stop sending (/stop)")
-          .frame(width: 28, height: 28)
-          .pointerCursorOnHover()
-        }
-
-        Button(action: {
-          let toSend = inputText
-          inputText = ""
-          Task { await viewModel.sendMessage(userInput: toSend) }
-        }) {
-          if viewModel.isSending {
-            ProgressView()
-              .controlSize(.small)
-              .frame(width: 28, height: 28)
-          } else {
-            Image(systemName: "arrow.up.circle.fill")
-              .font(.system(size: 24))
-              .foregroundColor(!hasContent ? GeminiChatTheme.secondaryText : .accentColor)
-          }
+          .foregroundColor(GeminiChatTheme.secondaryText)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 5)
+          .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!hasContent || viewModel.isSending)
-        .frame(width: 28, height: 28)
+        .help("Start a new chat (previous chat stays in history)")
+        .pointerCursorOnHover()
+
+        Button(action: { viewModel.attachFile() }) {
+          HStack(spacing: 4) {
+            Image(systemName: "paperclip").font(.caption)
+            Text("Attach").font(.caption)
+          }
+          .foregroundColor(GeminiChatTheme.secondaryText)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 5)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isSending)
+        .help("Attach a file (PDF, image, …) to your next message.")
+        .pointerCursorOnHover()
+
+        Button(action: { Task { await viewModel.captureScreenshot() } }) {
+          HStack(spacing: 4) {
+            if viewModel.screenshotCaptureInProgress {
+              ProgressView().controlSize(.mini).frame(width: 10, height: 10)
+            } else {
+              Image(systemName: "camera.viewfinder").font(.caption)
+            }
+            Text("Screenshot").font(.caption)
+          }
+          .foregroundColor(viewModel.screenshotCaptureInProgress ? GeminiChatTheme.secondaryText.opacity(0.6) : GeminiChatTheme.secondaryText)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 5)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.screenshotCaptureInProgress || viewModel.isSending)
+        .help("Capture screen without this window; image will be attached to your next message.")
+        .pointerCursorOnHover()
+
+        Spacer()
+
+        Menu {
+          ForEach(PromptModel.allCases, id: \.self) { model in
+            Button(action: {
+              selectedOpenGeminiModelRaw = model.rawValue
+            }) {
+              Text(model.displayName)
+            }
+          }
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "cpu").font(.caption)
+            Text(resolvedOpenGeminiModel.displayName).font(.caption)
+          }
+          .foregroundColor(GeminiChatTheme.secondaryText)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 5)
+          .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Select model")
+
+        // Send / Stop button
+        Button(action: {
+          if viewModel.isSending {
+            viewModel.cancelSend()
+          } else {
+            let toSend = inputText
+            inputText = ""
+            Task { await viewModel.sendMessage(userInput: toSend) }
+          }
+        }) {
+          Group {
+            if viewModel.isSending {
+              Image(systemName: "stop.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(GeminiChatTheme.primaryText)
+            } else {
+              Image(systemName: "arrow.up")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(hasContent ? GeminiChatTheme.windowBackground : GeminiChatTheme.secondaryText.opacity(0.5))
+            }
+          }
+          .frame(width: 30, height: 30)
+          .background(
+            RoundedRectangle(cornerRadius: 8)
+              .fill(viewModel.isSending ? Color.red.opacity(0.8) : (hasContent ? GeminiChatTheme.primaryText : GeminiChatTheme.controlBackground))
+          )
+        }
+        .buttonStyle(.plain)
+        .disabled(!hasContent && !viewModel.isSending)
+        .help(viewModel.isSending ? "Stop sending (/stop)" : "Send message")
         .pointerCursorOnHover()
       }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 8)
     }
+    .background(GeminiChatTheme.controlBackground)
+    .clipShape(RoundedRectangle(cornerRadius: 14))
+    .overlay(
+      RoundedRectangle(cornerRadius: 14)
+        .strokeBorder(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity), lineWidth: 1)
+    )
     .padding(.horizontal, 27)
     .padding(.vertical, 17)
     .contentShape(Rectangle())
@@ -1406,7 +1429,7 @@ private struct ModelReplyView: View {
   var body: some View {
     Text(Self.buildAttributedReply(content: content, sources: sources, groundingSupports: groundingSupports))
       .font(.system(size: 16))
-      .lineSpacing(7)
+      .lineSpacing(8)
       .foregroundColor(GeminiChatTheme.primaryText)
       .padding(.horizontal, 16)
       .padding(.vertical, 14)
