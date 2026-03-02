@@ -121,14 +121,6 @@ bash install.sh
 - Xcode 16.0+
 - Gemini API key (required only for cloud transcription and prompt mode; optional for offline Whisper transcription)
 
-### App identifiers (signing, App Store)
-
-| Identifier      | Value            | Where used |
-|-----------------|------------------|------------|
-| **Bundle ID**   | `com.magnusgoedde.whispershortcut` | Info.plist, Xcode |
-| **Team ID**     | `Z59J7V26UT`     | Xcode signing |
-| **App Store ID**| `6749648401`     | App Store link (optional) |
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
