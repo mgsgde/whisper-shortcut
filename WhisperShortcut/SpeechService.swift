@@ -174,9 +174,11 @@ class SpeechService {
       if await !LocalSpeechService.shared.isLoaded(modelType: offlineModelType) {
         try await LocalSpeechService.shared.initializeModel(offlineModelType)
       }
+      try Task.checkCancellation()
 
       // Validate format
       try validateAudioFileFormat(at: audioURL)
+      try Task.checkCancellation()
 
       // Get language setting for Whisper (defaults to auto-detect)
       let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage)

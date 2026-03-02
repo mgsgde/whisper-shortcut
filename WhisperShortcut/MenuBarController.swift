@@ -1376,6 +1376,17 @@ class MenuBarController: NSObject {
         self.transitionToIdleAndCleanup(cleanupAudioURL: audioURL, clearChunkStatuses: true)
       }
     } catch {
+      // Ignore errors from stale tasks (e.g. cancelled recording whose task resumed after model init with deleted file)
+      let isStale: Bool = await MainActor.run {
+        if self.currentTranscriptionAudioURL != audioURL {
+          DebugLogger.log("CANCELLATION: Ignoring transcription error for stale audio URL \(audioURL.lastPathComponent)")
+          self.processedAudioURLs.remove(audioURL)
+          self.cleanupAudioFile(at: audioURL)
+          return true
+        }
+        return false
+      }
+      if isStale { return }
       await handleProcessingError(error: error, audioURL: audioURL, mode: .transcription)
       // Clear chunk statuses and tracking on error (file will be cleaned up in handleProcessingError if needed)
       await MainActor.run {
