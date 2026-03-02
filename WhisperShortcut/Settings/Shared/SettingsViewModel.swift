@@ -141,7 +141,7 @@ class SettingsViewModel: ObservableObject {
       data.selectedPromptAndReadModel = subscriptionMode ? promptAndReadDefault : data.selectedPromptModel
     }
 
-    let improvementModelDefault = subscriptionMode ? SettingsDefaults.subscriptionPromptModel : SettingsDefaults.selectedImprovementModel
+    let improvementModelDefault = subscriptionMode ? SettingsDefaults.subscriptionImprovementModel : SettingsDefaults.selectedImprovementModel
     if let savedImprovementModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel),
       let savedImprovementModel = PromptModel(rawValue: savedImprovementModelString)
     {

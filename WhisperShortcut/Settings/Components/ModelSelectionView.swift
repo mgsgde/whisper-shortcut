@@ -8,7 +8,7 @@ struct ModelSelectionView: View {
   let onModelChanged: (() -> Void)?
   /// When true, Gemini models are shown as disabled and cannot be selected (e.g. when no API key is set).
   let geminiDisabled: Bool
-  /// When true, user is on subscription (proxy); model selection is fixed by the backend. All options disabled, show fixed mapping.
+  /// When true, user is on subscription (proxy); only Gemini models are fixed; offline Whisper models remain selectable.
   let subscriptionMode: Bool
 
   init(
@@ -32,12 +32,12 @@ struct ModelSelectionView: View {
       SectionHeader(
         title: title,
         subtitle: subscriptionMode
-          ? "In subscription mode, model selection is not available. Transcription uses Gemini 2.0 Flash."
+          ? "With a subscription, cloud transcription uses Gemini 2.5 Flash. You can also choose an offline Whisper model for local transcription."
           : "Choose the transcription model for speech recognition"
       )
 
       if subscriptionMode {
-        Text("Transcription: Gemini 2.0 Flash (fixed for subscription)")
+        Text("Cloud: Gemini 2.5 Flash (fixed). Offline: select any Whisper model above.")
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)
@@ -46,7 +46,12 @@ struct ModelSelectionView: View {
 
       LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
         ForEach(models, id: \.self) { model in
-          let isDisabled = subscriptionMode || (geminiDisabled && model.isGemini)
+          let isDisabled: Bool = {
+            if subscriptionMode && model.isGemini {
+              return model != SettingsDefaults.subscriptionTranscriptionModel
+            }
+            return geminiDisabled && model.isGemini
+          }()
           ZStack {
             Rectangle()
               .fill(selectedTranscriptionModel == model ? Color.accentColor : Color.clear)
@@ -62,7 +67,6 @@ struct ModelSelectionView: View {
           .opacity(isDisabled ? 0.6 : 1)
           .onTapGesture {
             if isDisabled { return }
-            if subscriptionMode { return }
             selectedTranscriptionModel = model
             onModelChanged?()
           }

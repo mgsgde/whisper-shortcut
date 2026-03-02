@@ -164,8 +164,17 @@ enum TranscriptionModel: String, CaseIterable {
   
   // MARK: - Model Loading
   /// Loads the selected transcription model from UserDefaults, or returns the default model.
+  /// When in subscription mode (no API key, signed in with Google), returns the saved model if it is an offline Whisper model; otherwise returns the fixed subscription (Gemini) model.
   /// Migrates removed models (e.g. gemini-2.0-flash-lite → gemini-2.5-flash-lite). Deprecated but still available models (e.g. gemini-2.0-flash) are returned so the user's choice persists.
   static func loadSelected() -> TranscriptionModel {
+    if !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn() {
+      if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel),
+         let savedModel = TranscriptionModel(rawValue: savedModelString),
+         savedModel.isOffline {
+        return savedModel
+      }
+      return SettingsDefaults.subscriptionTranscriptionModel
+    }
     guard let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) else {
       return SettingsDefaults.selectedTranscriptionModel
     }
@@ -212,7 +221,7 @@ enum TranscriptionModel: String, CaseIterable {
 // MARK: - Gemini Transcription Request Models
 struct GeminiTranscriptionRequest: Codable {
   let contents: [GeminiTranscriptionContent]
-  /// When using proxy (subscription), backend uses this to apply fixed model (e.g. transcription → gemini-2.0-flash).
+  /// When using proxy (subscription), backend uses this to apply fixed model (e.g. transcription → gemini-2.5-flash).
   let requestType: String?
 
   enum CodingKeys: String, CodingKey {

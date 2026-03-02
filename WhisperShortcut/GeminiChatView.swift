@@ -345,13 +345,18 @@ class GeminiChatViewModel: ObservableObject {
     return ["parts": [["text": text]]]
   }
 
-  /// Resolves the model ID for the Open Gemini chat window from UserDefaults (Settings > Open Gemini).
+  /// Resolves the model ID for the Open Gemini chat window from UserDefaults (Settings > Open Gemini), or subscription fixed model when on subscription.
   private static func resolveOpenGeminiModel() -> String {
     openGeminiModel.rawValue
   }
 
-  /// Resolves the selected Open Gemini model for display (e.g. "Gemini 3 Flash").
+  private static var isSubscription: Bool {
+    !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
+  }
+
+  /// Resolves the selected Open Gemini model for display and API. In subscription mode returns the fixed model (e.g. Gemini 2.5 Flash).
   static var openGeminiModel: PromptModel {
+    if isSubscription { return SettingsDefaults.subscriptionOpenGeminiModel }
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel)
       ?? SettingsDefaults.selectedOpenGeminiModel.rawValue
     return PromptModel(rawValue: raw).map { PromptModel.migrateIfDeprecated($0) }
@@ -870,6 +875,10 @@ struct GeminiInputAreaView: View {
       ?? SettingsDefaults.selectedOpenGeminiModel
   }
 
+  private var isSubscription: Bool {
+    !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
+  }
+
   var body: some View {
     VStack(spacing: 0) {
       commandSuggestionsOverlay
@@ -1091,27 +1100,38 @@ struct GeminiInputAreaView: View {
 
         Spacer()
 
-        Menu {
-          ForEach(PromptModel.allCases, id: \.self) { model in
-            Button(action: {
-              selectedOpenGeminiModelRaw = model.rawValue
-            }) {
-              Text(model.displayName)
-            }
-          }
-        } label: {
+        if isSubscription {
           HStack(spacing: 4) {
             Image(systemName: "cpu").font(.caption)
-            Text(resolvedOpenGeminiModel.displayName).font(.caption)
+            Text(SettingsDefaults.subscriptionOpenGeminiModel.displayName).font(.caption)
           }
           .foregroundColor(GeminiChatTheme.secondaryText)
           .padding(.horizontal, 8)
           .padding(.vertical, 5)
-          .contentShape(Rectangle())
+          .help("Model is fixed in subscription mode")
+        } else {
+          Menu {
+            ForEach(PromptModel.allCases, id: \.self) { model in
+              Button(action: {
+                selectedOpenGeminiModelRaw = model.rawValue
+              }) {
+                Text(model.displayName)
+              }
+            }
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: "cpu").font(.caption)
+              Text(resolvedOpenGeminiModel.displayName).font(.caption)
+            }
+            .foregroundColor(GeminiChatTheme.secondaryText)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+          }
+          .menuStyle(.borderlessButton)
+          .fixedSize()
+          .help("Select model")
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help("Select model")
 
         // Send / Stop button
         Button(action: {

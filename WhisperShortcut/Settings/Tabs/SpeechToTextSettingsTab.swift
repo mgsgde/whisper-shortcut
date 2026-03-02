@@ -149,7 +149,7 @@ struct SpeechToTextSettingsTab: View {
           }
         }
       )
-      if viewModel.data.selectedTranscriptionModel.isGemini && !KeychainManager.shared.hasGoogleAPIKey() {
+      if viewModel.data.selectedTranscriptionModel.isGemini && !KeychainManager.shared.hasGoogleAPIKey() && !DefaultGoogleAuthService.shared.isSignedIn() {
         Text("API key required for Gemini models. Add your key in the General tab, or select an offline Whisper model to dictate without a key.")
           .font(.callout)
           .foregroundColor(.secondary)

@@ -8,6 +8,7 @@ enum PromptModel: String, CaseIterable {
   case gemini20Flash = "gemini-2.0-flash"
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
+  case gemini25Pro = "gemini-2.5-pro"
   case gemini3Flash = "gemini-3-flash-preview"
   case gemini3Pro = "gemini-3-pro-preview"
   case gemini31Pro = "gemini-3.1-pro-preview"
@@ -21,6 +22,8 @@ enum PromptModel: String, CaseIterable {
       return "Gemini 2.5 Flash"
     case .gemini25FlashLite:
       return "Gemini 2.5 Flash-Lite"
+    case .gemini25Pro:
+      return "Gemini 2.5 Pro"
     case .gemini3Flash:
       return "Gemini 3 Flash"
     case .gemini3Pro:
@@ -40,6 +43,8 @@ enum PromptModel: String, CaseIterable {
       return "Google's Gemini 2.5 Flash model • Fast and efficient • Multimodal audio processing"
     case .gemini25FlashLite:
       return "Google's Gemini 2.5 Flash-Lite • Fastest latency • Cost-efficient • Multimodal"
+    case .gemini25Pro:
+      return "Google's Gemini 2.5 Pro model • Strong reasoning and instruction following • Stable (GA)"
     case .gemini3Flash:
       return "Google's Gemini 3 Flash model • Latest 3-series • Pro-level intelligence at Flash speed • Multimodal"
     case .gemini3Pro:
@@ -60,7 +65,7 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite:
       return "Low"
-    case .gemini3Pro, .gemini31Pro:
+    case .gemini25Pro, .gemini3Pro, .gemini31Pro:
       return "Medium"
     }
   }
@@ -94,6 +99,8 @@ enum PromptModel: String, CaseIterable {
       return .gemini25Flash
     case .gemini25FlashLite:
       return .gemini25FlashLite
+    case .gemini25Pro:
+      return nil // 2.5 Pro not used for transcription in this app
     case .gemini3Flash:
       return .gemini3Flash
     case .gemini3Pro:
@@ -483,8 +490,18 @@ struct SettingsDefaults {
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
   static let selectedPromptModel = PromptModel.gemini31FlashLite
   static let selectedPromptAndReadModel = PromptModel.gemini31FlashLite
-  /// Default for Prompt Mode and Prompt Read Mode when user is on subscription (proxy). Stable model only, no preview.
+  // MARK: - Subscription fixed models (proxy)
+  // When the user is on subscription (no API key, signed in with Google), the backend forces these models per request_type.
+  // These constants MUST match apps/api/src/server.ts SUBSCRIPTION_MODEL_BY_REQUEST_TYPE. Use them for API requests and for
+  // Settings UI (effective model display) so the user always sees what is actually used.
+  /// prompt_mode, prompt_and_read; backend: prompt_mode → gemini-2.5-flash.
   static let subscriptionPromptModel = PromptModel.gemini25Flash
+  /// Transcription (Diktat); backend: transcription → gemini-2.5-flash.
+  static let subscriptionTranscriptionModel = TranscriptionModel.gemini25Flash
+  /// Open Gemini chat window; backend: gemini_chat → gemini-2.5-flash.
+  static let subscriptionOpenGeminiModel = PromptModel.gemini25Flash
+  /// Smart Improvement (Improve from usage / from voice); backend: smart_improvement → gemini-2.5-flash (europe-west3 has no gemini-2.5-pro).
+  static let subscriptionImprovementModel = PromptModel.gemini25Flash
   static let selectedImprovementModel = PromptModel.gemini3Flash
   static let selectedOpenGeminiModel = PromptModel.gemini3Flash
   static let geminiCloseOnFocusLoss = true
@@ -497,7 +514,7 @@ struct SettingsDefaults {
   static let selectedReadAloudVoice = "Charon"
   static let selectedPromptAndReadVoice = "Charon"
   static let selectedTTSModel = TTSModel.gemini25FlashTTS
-  /// TTS model when on subscription (proxy). Stable model only; selection is disabled in UI.
+  /// TTS when on subscription; backend uses fixed model. Must match server.ts for display.
   static let subscriptionTTSModel = TTSModel.gemini25FlashTTS
   static let readAloudPlaybackRateMin: Float = 0.5
   static let readAloudPlaybackRateMax: Float = 2.0
@@ -537,11 +554,11 @@ struct SettingsDefaults {
   static var proxyAPIBaseURL: String {
     #if DEBUG
     if UserDefaults.standard.bool(forKey: "WSUseProductionAPI") {
-      return "https://api.whispershortcut.com"
+      return "https://whisper-api-797100884157.europe-west3.run.app"
     }
     return "http://localhost:8080"
     #else
-    return "https://api.whispershortcut.com"
+    return "https://whisper-api-797100884157.europe-west3.run.app"
     #endif
   }
 

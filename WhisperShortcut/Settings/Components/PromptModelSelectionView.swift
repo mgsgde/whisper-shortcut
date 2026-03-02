@@ -11,6 +11,10 @@ struct PromptModelSelectionView: View {
   let onModelChanged: (() -> Void)?
   /// When true, user is on subscription (proxy); model selection is fixed by the backend. All options disabled.
   let subscriptionMode: Bool
+  /// When in subscription mode, optional custom text for the fixed model (e.g. "The Open Gemini window uses Gemini 2.5 Flash (fixed)."). If nil, shows Dictate Prompt / Smart Improvement text.
+  let subscriptionFixedModelDescription: String?
+  /// When in subscription mode, if set, this model is shown as selected in the grid and used for Model Details (so only this tile is highlighted, others grayed out).
+  let subscriptionEffectiveModel: PromptModel?
 
   init(
     title: String,
@@ -18,6 +22,8 @@ struct PromptModelSelectionView: View {
     showSectionHeader: Bool = true,
     selectedModel: Binding<PromptModel>,
     subscriptionMode: Bool = false,
+    subscriptionFixedModelDescription: String? = nil,
+    subscriptionEffectiveModel: PromptModel? = nil,
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
@@ -25,14 +31,30 @@ struct PromptModelSelectionView: View {
     self.showSectionHeader = showSectionHeader
     self._selectedModel = selectedModel
     self.subscriptionMode = subscriptionMode
+    self.subscriptionFixedModelDescription = subscriptionFixedModelDescription
+    self.subscriptionEffectiveModel = subscriptionEffectiveModel
     self.onModelChanged = onModelChanged
+  }
+
+  /// Model to show as selected and for details: when in subscription with a fixed model, use that; otherwise use the binding.
+  private var displayModel: PromptModel {
+    if subscriptionMode, let effective = subscriptionEffectiveModel { return effective }
+    return selectedModel
   }
 
   private var effectiveSubtitle: String {
     if subscriptionMode {
-      return "In subscription mode, model selection is not available. Dictate Prompt uses Gemini 2.5 Flash; Smart Improvement uses Gemini 3.1 Pro (limited)."
+      if let custom = subscriptionFixedModelDescription {
+        return "In subscription mode, model selection is not available. \(custom)"
+      }
+      return "In subscription mode, model selection is not available. Dictate Prompt uses Gemini 2.5 Flash; Smart Improvement uses \(subscriptionEffectiveModel?.displayName ?? "Gemini 2.5 Pro") (fixed)."
     }
     return subtitle ?? "Choose between GPT-Audio and Gemini multimodal models for direct audio input processing"
+  }
+
+  private var subscriptionModeFixedModelLine: String {
+    if let custom = subscriptionFixedModelDescription { return custom }
+    return "Dictate Prompt: Gemini 2.5 Flash · Smart Improvement: \(subscriptionEffectiveModel?.displayName ?? "Gemini 2.5 Pro") (fixed)"
   }
 
   var body: some View {
@@ -55,30 +77,31 @@ struct PromptModelSelectionView: View {
       }
 
       if subscriptionMode {
-        Text("Dictate Prompt: Gemini 2.5 Flash · Smart Improvement: Gemini 3.1 Pro (limited)")
+        Text(subscriptionModeFixedModelLine)
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)
           .padding(.vertical, 4)
       }
 
-      // Model Selection Grid
+      // Model Selection Grid (when subscription + effectiveModel set, only that model is highlighted; others grayed out)
       LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
         ForEach(PromptModel.allCases, id: \.self) { model in
           let isDisabled = subscriptionMode
+          let isSelected = displayModel == model
           ZStack {
             Rectangle()
-              .fill(selectedModel == model ? Color.accentColor : Color.clear)
+              .fill(isSelected ? Color.accentColor : Color.clear)
               .cornerRadius(SettingsConstants.cornerRadius)
 
             Text(model.displayName)
               .font(.system(.body, design: .default))
               .fontWeight(.medium)
-              .foregroundColor(selectedModel == model ? .white : (isDisabled ? .secondary : .primary))
+              .foregroundColor(isSelected ? .white : (isDisabled ? .secondary : .primary))
           }
           .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
           .contentShape(Rectangle())
-          .opacity(isDisabled ? 0.6 : 1)
+          .opacity(isDisabled && !isSelected ? 0.6 : 1)
           .onTapGesture {
             if isDisabled { return }
             selectedModel = model
@@ -94,9 +117,9 @@ struct PromptModelSelectionView: View {
           .stroke(Color(.separatorColor), lineWidth: 1)
       )
 
-      // Model Details
+      // Model Details (use displayModel so subscription shows the fixed model's description and cost)
       VStack(alignment: .leading, spacing: 8) {
-        Text(selectedModel.description)
+        Text(displayModel.description)
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)
@@ -107,13 +130,13 @@ struct PromptModelSelectionView: View {
             .fontWeight(.medium)
             .foregroundColor(.secondary)
 
-          Text(selectedModel.costLevel)
+          Text(displayModel.costLevel)
             .font(.callout)
             .fontWeight(.semibold)
-            .foregroundColor(costLevelColor(for: selectedModel.costLevel))
+            .foregroundColor(costLevelColor(for: displayModel.costLevel))
         }
 
-        if selectedModel.isRecommended {
+        if displayModel.isRecommended {
           HStack {
             Image(systemName: "star.fill")
               .foregroundColor(.yellow)
