@@ -13,6 +13,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
 
+    // Prevent macOS from automatically terminating this menu bar app when
+    // the system is under memory/storage pressure or cleaning container caches.
+    ProcessInfo.processInfo.disableAutomaticTermination("WhisperShortcut is a persistent menu bar utility")
+
     // Setup Edit menu for text editing commands
     setupEditMenu()
 

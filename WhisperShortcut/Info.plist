@@ -37,5 +37,9 @@
         </dict>
         <key>ITSAppUsesNonExemptEncryption</key>
         <false />
+        <key>NSSupportsAutomaticTermination</key>
+        <false />
+        <key>NSSupportsSuddenTermination</key>
+        <false />
     </dict>
 </plist>
