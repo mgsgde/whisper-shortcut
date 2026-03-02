@@ -634,9 +634,9 @@ struct GeminiChatView: View {
         }
         .frame(maxWidth: 760)
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 30)
-        .padding(.top, 18)
-        .padding(.bottom, 36)
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 28)
         .id(widthBucket)
       }
       .onAppear {
@@ -899,7 +899,7 @@ struct GeminiInputAreaView: View {
               .strokeBorder(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity), lineWidth: 1)
           )
           .clipShape(RoundedRectangle(cornerRadius: 8))
-          .padding(.horizontal, 20)
+          .padding(.horizontal, 16)
           .padding(.bottom, 4)
         }
       }
@@ -1114,8 +1114,8 @@ struct GeminiInputAreaView: View {
       RoundedRectangle(cornerRadius: 14)
         .strokeBorder(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity), lineWidth: 1)
     )
-    .padding(.horizontal, 27)
-    .padding(.vertical, 17)
+    .padding(.horizontal, 20)
+    .padding(.vertical, 12)
     .contentShape(Rectangle())
     .onTapGesture {
       inputFocused = true
