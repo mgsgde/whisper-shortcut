@@ -617,7 +617,7 @@ struct GeminiChatView: View {
     let widthBucket = (containerWidth / 50).rounded(.down) * 50
     return ScrollViewReader { proxy in
       ScrollView {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 24) {
           Color.clear.frame(height: 1).id("listTop")
           if viewModel.messages.isEmpty && !viewModel.isSending {
             emptyStateCommandHints
@@ -632,9 +632,9 @@ struct GeminiChatView: View {
           }
           Color.clear.frame(height: 1).id("listBottom")
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .padding(.bottom, 28)
+        .padding(.horizontal, 30)
+        .padding(.top, 18)
+        .padding(.bottom, 36)
         .id(widthBucket)
       }
       .onAppear {
@@ -675,28 +675,28 @@ struct GeminiChatView: View {
         .foregroundColor(GeminiChatTheme.secondaryText)
       VStack(alignment: .leading, spacing: 8) {
         Text("/new — Start a new chat (previous chat stays in history)")
-          .font(.body)
+          .font(.system(size: 15))
           .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/back — Navigate to the previous chat")
-          .font(.body)
+          .font(.system(size: 15))
           .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/next — Navigate to the next chat")
-          .font(.body)
+          .font(.system(size: 15))
           .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/screenshot — Capture screen (attached to your next message)")
-          .font(.body)
+          .font(.system(size: 15))
           .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/clear — Clear current chat messages")
-          .font(.body)
+          .font(.system(size: 15))
           .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/settings — Open Settings")
-          .font(.body)
+          .font(.system(size: 15))
           .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/pin — Toggle whether the window stays open when losing focus")
-          .font(.body)
+          .font(.system(size: 15))
           .foregroundColor(GeminiChatTheme.secondaryText)
         Text("/stop — Stop sending (while a message is being sent)")
-          .font(.body)
+          .font(.system(size: 15))
           .foregroundColor(GeminiChatTheme.secondaryText)
       }
     }
@@ -966,9 +966,9 @@ struct GeminiInputAreaView: View {
           }
           ZStack(alignment: .topLeading) {
             Text(inputTextForSizing)
-              .font(.body)
-              .padding(.horizontal, 15)
-              .padding(.vertical, 10)
+              .font(.system(size: 16))
+              .padding(.horizontal, 18)
+              .padding(.vertical, 13)
               .fixedSize(horizontal: false, vertical: true)
               .background(GeometryReader { geo in
                 Color.clear.preference(key: InputTextHeightKey.self, value: geo.size.height)
@@ -979,16 +979,16 @@ struct GeminiInputAreaView: View {
 
             if inputText.isEmpty {
               Text("Message Gemini…")
-                .font(.body)
+                .font(.system(size: 16))
                 .foregroundColor(GeminiChatTheme.secondaryText.opacity(0.5))
-                .padding(.leading, 15)
-                .padding(.trailing, 10)
-                .padding(.vertical, 10)
+                .padding(.leading, 18)
+                .padding(.trailing, 12)
+                .padding(.vertical, 13)
                 .allowsHitTesting(false)
             }
             TextEditor(text: $inputText)
               .scrollContentBackground(.hidden)
-              .font(.body)
+              .font(.system(size: 16))
               .foregroundColor(GeminiChatTheme.primaryText)
               .focused($inputFocused)
               .onKeyPress(.tab) {
@@ -1043,8 +1043,8 @@ struct GeminiInputAreaView: View {
                 return .handled
               }
               .onAppear { inputFocused = true }
-              .padding(.horizontal, 10)
-              .padding(.vertical, 10)
+              .padding(.horizontal, 12)
+              .padding(.vertical, 12)
               .frame(height: inputHeight)
               .background(GeminiInputScrollViewAutohideAnchor())
           }
@@ -1052,7 +1052,11 @@ struct GeminiInputAreaView: View {
           .onPreferenceChange(InputTextHeightKey.self) { measuredInputHeight = $0 }
         }
         .background(GeminiChatTheme.controlBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(
+          RoundedRectangle(cornerRadius: 10)
+            .strokeBorder(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity), lineWidth: 1)
+        )
 
         if viewModel.isSending {
           Button(action: { viewModel.cancelSend() }) {
@@ -1087,8 +1091,8 @@ struct GeminiInputAreaView: View {
         .pointerCursorOnHover()
       }
     }
-    .padding(.horizontal, 20)
-    .padding(.vertical, 10)
+    .padding(.horizontal, 27)
+    .padding(.vertical, 17)
     .contentShape(Rectangle())
     .onTapGesture {
       inputFocused = true
@@ -1401,11 +1405,11 @@ private struct ModelReplyView: View {
   /// Single Text view so the user can select across the entire reply. With grounding, citation markers [1], [2] appear at the end of each paragraph and are clickable links. No bubble background — answers use the window background only.
   var body: some View {
     Text(Self.buildAttributedReply(content: content, sources: sources, groundingSupports: groundingSupports))
-      .font(.system(size: 15))
-      .lineSpacing(4)
+      .font(.system(size: 16))
+      .lineSpacing(7)
       .foregroundColor(GeminiChatTheme.primaryText)
-      .padding(.horizontal, 14)
-      .padding(.vertical, 12)
+      .padding(.horizontal, 16)
+      .padding(.vertical, 14)
       .frame(maxWidth: .infinity, alignment: .leading)
       .fixedSize(horizontal: false, vertical: true)
       .contentShape(Rectangle())
@@ -1441,7 +1445,7 @@ private struct ModelReplyView: View {
         let oneBased = idx + 1
         let marker = " [\(oneBased)]"
         var markerAttr = AttributedString(marker)
-        markerAttr.font = .system(size: 13)
+        markerAttr.font = .system(size: 14)
         if let url = URL(string: sources[idx].uri) {
           markerAttr.link = url
         }
@@ -1467,12 +1471,12 @@ private struct ModelReplyView: View {
         let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
         let title = String(headingLine.dropFirst(3))
         var headingAttr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
-        headingAttr.font = .system(size: 15, weight: .bold)
+        headingAttr.font = .system(size: 16, weight: .bold)
         result.append(headingAttr)
         if !bodyPart.isEmpty {
           result.append(AttributedString("\n\n"))
           var bodyAttr = (try? AttributedString(markdown: bodyPart, options: options)) ?? AttributedString(bodyPart)
-          bodyAttr.font = .system(size: 15, weight: .regular)
+          bodyAttr.font = .system(size: 16, weight: .regular)
           result.append(bodyAttr)
         }
       } else if trimmed.hasPrefix("### ") {
@@ -1481,23 +1485,23 @@ private struct ModelReplyView: View {
         let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
         let title = String(headingLine.dropFirst(4))
         var headingAttr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
-        headingAttr.font = .system(size: 14, weight: .semibold)
+        headingAttr.font = .system(size: 15, weight: .semibold)
         result.append(headingAttr)
         if !bodyPart.isEmpty {
           result.append(AttributedString("\n\n"))
           var bodyAttr = (try? AttributedString(markdown: bodyPart, options: options)) ?? AttributedString(bodyPart)
-          bodyAttr.font = .system(size: 15, weight: .regular)
+          bodyAttr.font = .system(size: 16, weight: .regular)
           result.append(bodyAttr)
         }
       } else if trimmed.hasPrefix("```") && trimmed.hasSuffix("```") {
         // Fenced code block (e.g. from code execution): show in monospace so it is visibly distinct
         let codeContent = String(trimmed.dropFirst(3).dropLast(3).trimmingCharacters(in: .whitespacesAndNewlines))
         var attr = AttributedString(codeContent)
-        attr.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        attr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
         result.append(attr)
       } else {
         var attr = (try? AttributedString(markdown: trimmed, options: options)) ?? AttributedString(trimmed)
-        attr.font = .system(size: 15, weight: .regular)
+        attr.font = .system(size: 16, weight: .regular)
         result.append(attr)
       }
     }
@@ -1659,7 +1663,7 @@ private struct MessageBubbleView: View {
         }
         if !parsed.userText.isEmpty {
           Text(parsed.userText)
-            .font(.system(size: 15))
+            .font(.system(size: 16))
             .foregroundColor(GeminiChatTheme.primaryText)
             .textSelection(.enabled)
         }
@@ -1669,8 +1673,8 @@ private struct MessageBubbleView: View {
             .foregroundColor(GeminiChatTheme.primaryText.opacity(0.6))
         }
       }
-      .padding(.horizontal, 14)
-      .padding(.vertical, 10)
+      .padding(.horizontal, 16)
+      .padding(.vertical, 12)
       .contentShape(Rectangle())
       .background(
         RoundedRectangle(cornerRadius: 14)
