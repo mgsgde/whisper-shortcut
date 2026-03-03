@@ -165,6 +165,7 @@ class AutoPromptImprovementScheduler {
       for await result in group { collected.append(result) }
       return collected
     }
+    let derivationErrors = results.compactMap { $0.error }
     var pendingFromVoice: [GenerationKind] = []
     for (focus, error) in results {
       if let error = error {
@@ -212,10 +213,17 @@ class AutoPromptImprovementScheduler {
       }
     } else if pendingFromVoice.isEmpty {
       await MainActor.run {
-        PopupNotificationWindow.showInfo(
-          "No suggestion could be generated from your instruction. Try rephrasing or check Settings.",
-          title: "Smart Improvement"
-        )
+        if let firstError = derivationErrors.first {
+          PopupNotificationWindow.showError(
+            SpeechErrorFormatter.formatForUser(firstError),
+            title: "Smart Improvement"
+          )
+        } else {
+          PopupNotificationWindow.showInfo(
+            "No suggestion could be generated from your instruction. Try rephrasing or check Settings.",
+            title: "Smart Improvement"
+          )
+        }
       }
     } else {
       await MainActor.run {
@@ -257,6 +265,7 @@ class AutoPromptImprovementScheduler {
       return collected
     }
 
+    let failedErrors = results.compactMap { $0.error }
     var pendingKinds: [GenerationKind] = []
     for (focus, error) in results {
       if let error = error {
@@ -319,10 +328,17 @@ class AutoPromptImprovementScheduler {
     } else {
       DebugLogger.log("AUTO-IMPROVEMENT: No suggestions generated")
       await MainActor.run {
-        PopupNotificationWindow.showInfo(
-          "No suggestions could be generated (e.g. API busy). Try again later or check that you have interaction data.",
-          title: "Smart Improvement"
-        )
+        if let firstError = failedErrors.first {
+          PopupNotificationWindow.showError(
+            SpeechErrorFormatter.formatForUser(firstError),
+            title: "Smart Improvement"
+          )
+        } else {
+          PopupNotificationWindow.showInfo(
+            "No suggestions could be generated. Try again later or check that you have interaction data.",
+            title: "Smart Improvement"
+          )
+        }
       }
     }
 
