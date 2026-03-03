@@ -10,7 +10,7 @@ import Foundation
 // MARK: - Transcription Model Enum
 // Current Gemini model IDs: https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash (and sibling docs)
 // GA (stable IDs, no -preview): gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.0-flash (2.0 deprecated). gemini-2.0-flash-lite removed (API 404).
-// Preview (keep -preview): gemini-3-flash-preview, gemini-3-pro-preview, gemini-3.1-pro-preview.
+// Preview (keep -preview): gemini-3-flash-preview, gemini-3-pro-preview, gemini-3.1-pro-preview, gemini-3.1-flash-lite-preview.
 enum TranscriptionModel: String, CaseIterable {
   // Gemini models (online)
   case gemini20Flash = "gemini-2.0-flash"
@@ -19,6 +19,7 @@ enum TranscriptionModel: String, CaseIterable {
   case gemini3Flash = "gemini-3-flash-preview"
   case gemini3Pro = "gemini-3-pro-preview"
   case gemini31Pro = "gemini-3.1-pro-preview"
+  case gemini31FlashLite = "gemini-3.1-flash-lite-preview"
   
   // Offline Whisper models
   case whisperTiny = "whisper-tiny"
@@ -41,6 +42,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Gemini 3 Pro"
     case .gemini31Pro:
       return "Gemini 3.1 Pro"
+    case .gemini31FlashLite:
+      return "Gemini 3.1 Flash-Lite"
     case .whisperTiny:
       return "Whisper Tiny (Offline)"
     case .whisperBase:
@@ -69,6 +72,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent"
     case .gemini31Pro:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent"
+    case .gemini31FlashLite:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "" // Offline models don't use API endpoints
     }
@@ -76,7 +81,7 @@ enum TranscriptionModel: String, CaseIterable {
 
   var isRecommended: Bool {
     switch self {
-    case .gemini25FlashLite, .gemini25Flash, .whisperBase:
+    case .gemini31FlashLite, .gemini25FlashLite, .gemini25Flash, .whisperBase:
       return true
     case .gemini20Flash, .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge:
       return false
@@ -95,7 +100,7 @@ enum TranscriptionModel: String, CaseIterable {
 
   var costLevel: String {
     switch self {
-    case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash:
+    case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite:
       return "Low"
     case .gemini3Pro, .gemini31Pro:
       return "Medium"
@@ -118,6 +123,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Google's Gemini 3 Pro model • Best quality and reasoning • Multimodal"
     case .gemini31Pro:
       return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
+    case .gemini31FlashLite:
+      return "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Ideal for dictation"
     case .whisperTiny:
       return "OpenAI Whisper Tiny • Fastest • ~75MB • Offline"
     case .whisperBase:
@@ -133,7 +140,7 @@ enum TranscriptionModel: String, CaseIterable {
   
   var isGemini: Bool {
     switch self {
-    case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro:
+    case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .gemini31FlashLite:
       return true
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return false
