@@ -63,6 +63,8 @@ class MenuBarController: NSObject {
   private var liveMeetingPendingChunks: Int = 0
   private var liveMeetingSessionStartTime: Date?
   private var liveMeetingSafeguardTimer: Timer?
+  /// Number of transcript chunks already included in the rolling summary. Used to trigger summary every N chunks.
+  private var liveMeetingChunksSummarized: Int = 0
 
   /// True when live meeting is active (recording or stopping with pending chunks).
   private var isLiveMeetingActive: Bool {
@@ -160,8 +162,6 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Transcribe Meeting", action: #selector(toggleLiveMeeting),
         shortcut: currentConfig.toggleMeeting, tag: 107))
-    menu.addItem(
-      createMenuItem("Open Transcripts Folder", action: #selector(openTranscriptsFolder), tag: 108))
 
     menu.addItem(NSMenuItem.separator())
 
@@ -634,7 +634,11 @@ class MenuBarController: NSObject {
   }
 
   @objc func openGeminiWindow() {
-    GeminiWindowManager.shared.toggle()
+    if isLiveMeetingActive {
+      GeminiWindowManager.shared.showMeetingWindow()
+    } else {
+      GeminiWindowManager.shared.toggle()
+    }
   }
 
   // MARK: - Live Meeting Transcription
@@ -689,6 +693,8 @@ class MenuBarController: NSObject {
     liveMeetingPendingChunks = 0
     liveMeetingSessionStartTime = Date()
     appState = .recording(.liveMeeting)
+    LiveMeetingTranscriptStore.shared.startSession()
+    liveMeetingChunksSummarized = 0
 
     // Schedule duration safeguard if enabled
     let safeguardThreshold = MeetingSafeguardDuration.loadFromUserDefaults()
@@ -702,6 +708,8 @@ class MenuBarController: NSObject {
       }
       DebugLogger.log("LIVE-MEETING-SAFEGUARD: Reminder scheduled after \(Int(safeguardThreshold.rawValue / 60)) minutes")
     }
+
+    GeminiWindowManager.shared.showMeetingWindow()
 
     DebugLogger.logSuccess("LIVE-MEETING: Session started")
   }
@@ -756,6 +764,7 @@ class MenuBarController: NSObject {
     liveMeetingRecorder = nil
     liveMeetingPendingChunks = 0
     appState = appState.finish()
+    LiveMeetingTranscriptStore.shared.endSession()
 
     DebugLogger.logSuccess("LIVE-MEETING: Transcription saved")
   }
@@ -806,8 +815,6 @@ class MenuBarController: NSObject {
     var finalText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     let timestamp = formatTimestamp(elapsedSeconds: chunkStartTime)
     finalText = "\(timestamp) \(finalText)"
-
-    // Add newlines for readability
     finalText = "\(finalText)\n\n"
 
     do {
@@ -821,6 +828,11 @@ class MenuBarController: NSObject {
     } catch {
       DebugLogger.logError("LIVE-MEETING: Failed to append to transcript: \(error)")
     }
+
+    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmedText.isEmpty {
+      LiveMeetingTranscriptStore.shared.appendChunk(startTime: chunkStartTime, text: trimmedText)
+    }
   }
 
   private func formatTimestamp(elapsedSeconds: TimeInterval) -> String {
@@ -828,7 +840,49 @@ class MenuBarController: NSObject {
     let seconds = Int(elapsedSeconds) % 60
     return String(format: "[%02d:%02d]", minutes, seconds)
   }
-  
+
+  /// If at least 4 new chunks since last summary, kick off a rolling summary update (async).
+  private func triggerRollingSummaryUpdateIfNeeded() {
+    let store = LiveMeetingTranscriptStore.shared
+    let count = store.chunks.count
+    let threshold = 4
+    guard count - liveMeetingChunksSummarized >= threshold else { return }
+    guard KeychainManager.shared.getGoogleAPIKey() != nil else { return }
+
+    let fromIndex = liveMeetingChunksSummarized
+    liveMeetingChunksSummarized = count
+    let currentSummary = store.summary
+    let newText = store.chunkTexts(fromIndex: fromIndex)
+    guard !newText.isEmpty else { return }
+
+    Task {
+      await runRollingSummaryUpdate(currentSummary: currentSummary, newText: newText)
+    }
+  }
+
+  /// Calls Gemini to merge new transcript into the rolling summary and updates the store. Call from a Task.
+  private func runRollingSummaryUpdate(currentSummary: String, newText: String) async {
+    guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else { return }
+    let model = "gemini-2.5-flash-lite"
+    do {
+      let updated = try await GeminiAPIClient().updateRollingSummary(
+        model: model,
+        currentSummary: currentSummary,
+        newTranscriptText: newText,
+        apiKey: apiKey
+      )
+      await MainActor.run {
+        LiveMeetingTranscriptStore.shared.updateSummary(updated.trimmingCharacters(in: .whitespacesAndNewlines))
+        DebugLogger.log("LIVE-MEETING-SUMMARY: Rolling summary updated (\(updated.count) chars)")
+      }
+    } catch {
+      DebugLogger.logError("LIVE-MEETING-SUMMARY: Update failed: \(error.localizedDescription)")
+      await MainActor.run {
+        liveMeetingChunksSummarized = max(0, liveMeetingChunksSummarized - 4)
+      }
+    }
+  }
+
   @objc private func handleReadSelectedText() {
     let recordingModeStr = appState.recordingMode == .tts ? "tts" : String(describing: appState.recordingMode ?? .none)
     DebugLogger.logDebug("handleReadSelectedText called - appState: \(appState), recordingMode: \(recordingModeStr)")
@@ -1956,9 +2010,10 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
         if trimmedText.isEmpty {
           DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (silent)")
         } else {
-          // Append to transcript on main thread
+          // Append to transcript on main thread and maybe trigger rolling summary
           await MainActor.run {
             self.appendToTranscript(trimmedText, chunkStartTime: startTime)
+            self.triggerRollingSummaryUpdateIfNeeded()
           }
         }
 

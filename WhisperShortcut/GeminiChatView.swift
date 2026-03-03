@@ -93,7 +93,11 @@ class GeminiChatViewModel: ObservableObject {
   var canGoBack: Bool { store.canGoBack() }
   var canGoForward: Bool { store.canGoForward() }
 
-  init() {
+  /// When non-nil, this provider supplies extra context (e.g. meeting summary + recent transcript) appended to the system instruction. Used by the Meeting Chat window.
+  private let meetingContextProvider: (() -> String?)?
+
+  init(meetingContextProvider: (() -> String?)? = nil) {
+    self.meetingContextProvider = meetingContextProvider
     session = store.load()
     currentSessionId = session.id
     messages = session.messages
@@ -277,7 +281,7 @@ class GeminiChatViewModel: ObservableObject {
         let model = Self.resolveOpenGeminiModel()
         let result = try await apiClient.sendChatMessage(
           model: model, contents: contents, apiKey: apiKey, useGrounding: true,
-          systemInstruction: Self.buildGeminiChatSystemInstruction())
+          systemInstruction: self.buildSystemInstruction())
         let modelMsg = ChatMessage(
           role: .model,
           content: result.text,
@@ -320,9 +324,12 @@ class GeminiChatViewModel: ObservableObject {
     return String(rawContent[r1.upperBound..<r2.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  /// Builds the system instruction for the Open Gemini chat from the stored Gemini Chat system prompt (Settings > Context > system-prompts.md).
-  private static func buildGeminiChatSystemInstruction() -> [String: Any] {
-    let text = SystemPromptsStore.shared.loadGeminiChatSystemPrompt()
+  /// Builds the system instruction: base Gemini Chat prompt plus optional meeting context (summary + recent transcript).
+  private func buildSystemInstruction() -> [String: Any] {
+    var text = SystemPromptsStore.shared.loadGeminiChatSystemPrompt()
+    if let extra = meetingContextProvider?(), !extra.isEmpty {
+      text = "\(text)\n\n---\n\n\(extra)"
+    }
     return ["parts": [["text": text]]]
   }
 
@@ -501,11 +508,19 @@ private struct InputTextHeightKey: PreferenceKey {
 }
 
 struct GeminiChatView: View {
-  @StateObject private var viewModel = GeminiChatViewModel()
+  @StateObject private var viewModel: GeminiChatViewModel
   /// Image data to show in the full-size preview sheet (from pending screenshot or from a sent message thumbnail).
   @State private var previewImageData: Data? = nil
   @State private var scrollActions = GeminiScrollActions()
   @State private var hoveredTabId: UUID? = nil
+  /// When true, create a new chat session on first appear (e.g. for the meeting window so it opens with a fresh chat).
+  @State private var createNewSessionOnAppear: Bool
+  @State private var hasTriggeredNewSessionOnAppear: Bool = false
+
+  init(meetingContextProvider: (() -> String?)? = nil, createNewSessionOnAppear: Bool = false) {
+    _viewModel = StateObject(wrappedValue: GeminiChatViewModel(meetingContextProvider: meetingContextProvider))
+    _createNewSessionOnAppear = State(initialValue: createNewSessionOnAppear)
+  }
 
   var body: some View {
     GeometryReader { geometry in
@@ -549,6 +564,12 @@ struct GeminiChatView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiScrollToBottom)) { _ in
       scrollActions.scrollToBottom?()
+    }
+    .onAppear {
+      if createNewSessionOnAppear, !hasTriggeredNewSessionOnAppear {
+        viewModel.createNewSession()
+        hasTriggeredNewSessionOnAppear = true
+      }
     }
   }
 
@@ -1485,6 +1506,40 @@ private struct ModelReplyView: View {
 
   private static let separatorLineContent = String(repeating: "─", count: 28)
 
+  /// Returns (level 1...6, title without leading # and space) if the string is an ATX-style heading; otherwise nil.
+  private static func parseATXHeading(_ trimmed: String) -> (level: Int, title: String)? {
+    let prefixes = ["###### ", "##### ", "#### ", "### ", "## ", "# "]
+    for (idx, prefix) in prefixes.enumerated() {
+      if trimmed.hasPrefix(prefix) {
+        let level = 6 - idx
+        let firstLine = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)[0]
+        let title = String(firstLine.dropFirst(prefix.count))
+        return (level, title)
+      }
+    }
+    return nil
+  }
+
+  private static func fontForHeadingLevel(_ level: Int) -> Font {
+    switch level {
+    case 1: return .system(size: 18, weight: .bold)
+    case 2: return .system(size: 16, weight: .bold)
+    case 3: return .system(size: 15, weight: .semibold)
+    case 4: return .system(size: 14, weight: .semibold)
+    case 5: return .system(size: 13, weight: .semibold)
+    case 6: return .system(size: 12, weight: .semibold)
+    default: return .system(size: 16, weight: .bold)
+    }
+  }
+
+  /// True if the paragraph has multiple lines and at least two lines contain a pipe (Markdown table).
+  private static func looksLikeMarkdownTable(_ trimmed: String) -> Bool {
+    let lines = trimmed.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    guard lines.count >= 2 else { return false }
+    let withPipe = lines.filter { $0.contains("|") }
+    return withPipe.count >= 2
+  }
+
   private static func buildAttributedReply(
     content: String,
     sources: [GroundingSource],
@@ -1539,13 +1594,11 @@ private struct ModelReplyView: View {
         result.append(lineAttr)
         continue
       }
-      if trimmed.hasPrefix("## ") {
+      if let (level, title) = Self.parseATXHeading(trimmed) {
         let parts = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-        let headingLine = String(parts[0])
         let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
-        let title = String(headingLine.dropFirst(3))
         var headingAttr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
-        headingAttr.font = .system(size: 16, weight: .bold)
+        headingAttr.font = Self.fontForHeadingLevel(level)
         result.append(headingAttr)
         if !bodyPart.isEmpty {
           result.append(AttributedString("\n\n"))
@@ -1553,20 +1606,10 @@ private struct ModelReplyView: View {
           bodyAttr.font = .system(size: 16, weight: .regular)
           result.append(bodyAttr)
         }
-      } else if trimmed.hasPrefix("### ") {
-        let parts = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-        let headingLine = String(parts[0])
-        let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
-        let title = String(headingLine.dropFirst(4))
-        var headingAttr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
-        headingAttr.font = .system(size: 15, weight: .semibold)
-        result.append(headingAttr)
-        if !bodyPart.isEmpty {
-          result.append(AttributedString("\n\n"))
-          var bodyAttr = (try? AttributedString(markdown: bodyPart, options: options)) ?? AttributedString(bodyPart)
-          bodyAttr.font = .system(size: 16, weight: .regular)
-          result.append(bodyAttr)
-        }
+      } else if Self.looksLikeMarkdownTable(trimmed) {
+        var tableAttr = AttributedString(trimmed)
+        tableAttr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
+        result.append(tableAttr)
       } else if trimmed.hasPrefix("```") && trimmed.hasSuffix("```") {
         // Fenced code block (e.g. from code execution): show in monospace so it is visibly distinct
         let codeContent = String(trimmed.dropFirst(3).dropLast(3).trimmingCharacters(in: .whitespacesAndNewlines))
@@ -1574,7 +1617,8 @@ private struct ModelReplyView: View {
         attr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
         result.append(attr)
       } else {
-        var attr = (try? AttributedString(markdown: trimmed, options: options)) ?? AttributedString(trimmed)
+        let fullOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
+        var attr = (try? AttributedString(markdown: trimmed, options: fullOptions)) ?? AttributedString(trimmed)
         attr.font = .system(size: 16, weight: .regular)
         result.append(attr)
       }

@@ -415,6 +415,40 @@ class GeminiAPIClient {
     return extractText(from: response)
   }
 
+  /// Updates a rolling meeting summary by merging new transcript content into the existing summary.
+  /// Uses a single generateContent call with a structured prompt. Model should be fast (e.g. gemini-2.5-flash-lite).
+  func updateRollingSummary(
+    model: String,
+    currentSummary: String,
+    newTranscriptText: String,
+    apiKey: String
+  ) async throws -> String {
+    let prompt: String
+    if currentSummary.isEmpty {
+      prompt = """
+        You are summarizing a live meeting transcript. Below is a new segment of the transcript. \
+        Produce a concise, structured summary (bullet points or short paragraphs) covering the main points and decisions. \
+        Write in English. Output only the summary, no preamble.
+
+        Transcript segment:
+        \(newTranscriptText)
+        """
+    } else {
+      prompt = """
+        You are maintaining a rolling summary of a live meeting. Below are the current summary and new transcript content. \
+        Update the summary to incorporate the new content. Keep it concise and structured (bullet points or short paragraphs). \
+        Preserve important points from the current summary and add or refine with the new content. Write in English. Output only the updated summary, no preamble.
+
+        Current summary:
+        \(currentSummary)
+
+        New transcript content:
+        \(newTranscriptText)
+        """
+    }
+    return try await generateText(model: model, prompt: prompt, apiKey: apiKey)
+  }
+
   /// Extracts grounding sources (web URIs + titles) from a Gemini response.
   private func extractGroundingSources(from response: GeminiResponse) -> [GroundingSource] {
     guard let candidate = response.candidates.first,
