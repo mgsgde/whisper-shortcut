@@ -319,7 +319,7 @@ class ChunkTTSService {
                 // Check if this is a rate limit or quota error with retry info
                 if let transcriptionError = error as? TranscriptionError {
                     switch transcriptionError {
-                    case .rateLimited(let retryAfter), .quotaExceeded(let retryAfter):
+                    case .rateLimited(let retryAfter, _), .quotaExceeded(let retryAfter):
                         // Report to coordinator so all chunks pause
                         await rateLimitCoordinator.reportRateLimit(retryAfter: retryAfter)
 

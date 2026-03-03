@@ -77,7 +77,16 @@ struct SpeechErrorFormatter {
         Choose a newer model in Settings → Dictate (e.g. Gemini 2.5 Flash).
         """
 
-    case .rateLimited(let retryAfter):
+    case .rateLimited(let retryAfter, let topUpURL):
+      if topUpURL != nil {
+        return """
+          ⏳ Daily Limit Reached
+
+          Your included usage for this period is used up and your balance is insufficient for further requests.
+
+          Top up your balance in the Dashboard to continue. Use the "Top up" button below to open the website.
+          """
+      }
       let waitMessage = retryAfter.map { "Please wait \(Int($0)) seconds and try again." } ?? "Wait a moment and try again, or set up billing (see below)."
       return """
         ⏳ Rate Limit Exceeded

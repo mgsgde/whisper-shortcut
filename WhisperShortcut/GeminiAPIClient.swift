@@ -756,7 +756,16 @@ class GeminiAPIClient {
   
   /// Parses Gemini error responses into TranscriptionError
   func parseErrorResponse(data: Data, statusCode: Int) throws -> TranscriptionError {
-    // Try to parse structured Gemini error format with RetryInfo
+    // Backend proxy 429: { error: string, code: "rate_limit_exceeded", top_up_url: string }
+    if statusCode == 429,
+       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+       let code = json["code"] as? String,
+       code == "rate_limit_exceeded",
+       let topUpUrlString = json["top_up_url"] as? String,
+       let topUpURL = URL(string: topUpUrlString) {
+      return .rateLimited(retryAfter: nil, topUpURL: topUpURL)
+    }
+
     var retryAfter: TimeInterval? = nil
 
     if let errorResponse = try? JSONDecoder().decode(GeminiErrorResponse.self, from: data) {
@@ -782,7 +791,7 @@ class GeminiAPIClient {
         return .quotaExceeded(retryAfter: retryAfter)
       }
       if lowerMessage.contains("rate limit") {
-        return .rateLimited(retryAfter: retryAfter)
+        return .rateLimited(retryAfter: retryAfter, topUpURL: nil)
       }
       if statusCode == 404 && (lowerMessage.contains("no longer available") || lowerMessage.contains("deprecated")) {
         return .modelDeprecated
@@ -815,7 +824,7 @@ class GeminiAPIClient {
         return .quotaExceeded(retryAfter: retryAfter)
       }
       if lowerMessage.contains("rate limit") {
-        return .rateLimited(retryAfter: retryAfter)
+        return .rateLimited(retryAfter: retryAfter, topUpURL: nil)
       }
       if statusCode == 404 && (lowerMessage.contains("no longer available") || lowerMessage.contains("deprecated")) {
         return .modelDeprecated
@@ -836,7 +845,7 @@ class GeminiAPIClient {
     case 401: return .invalidAPIKey
     case 403: return .permissionDenied
     case 404: return .notFound
-    case 429: return .rateLimited(retryAfter: retryAfter)
+    case 429: return .rateLimited(retryAfter: retryAfter, topUpURL: nil)
     case 500: return .serverError(statusCode)
     case 503: return .serviceUnavailable
     default: return .serverError(statusCode)

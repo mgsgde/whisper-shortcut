@@ -598,7 +598,7 @@ enum TranscriptionError: Error, Equatable {
   case permissionDenied
   case notFound
   case modelDeprecated
-  case rateLimited(retryAfter: TimeInterval?)
+  case rateLimited(retryAfter: TimeInterval?, topUpURL: URL? = nil)
   case quotaExceeded(retryAfter: TimeInterval?)
   /// Billing must be enabled (e.g. 400 FAILED_PRECONDITION "enable billing" from Gemini API).
   case billingRequired
@@ -651,11 +651,17 @@ enum TranscriptionError: Error, Equatable {
   /// Returns the retry delay if this error has one
   var retryAfter: TimeInterval? {
     switch self {
-    case .rateLimited(let retryAfter), .quotaExceeded(let retryAfter):
+    case .rateLimited(let retryAfter, _), .quotaExceeded(let retryAfter):
       return retryAfter
     default:
       return nil
     }
+  }
+
+  /// URL to open for topping up balance (e.g. dashboard); only set for backend rate-limit 429.
+  var topUpURL: URL? {
+    if case .rateLimited(_, let url) = self { return url }
+    return nil
   }
   
   /// Determines if this error is retryable (temporary/transient errors)
@@ -665,7 +671,7 @@ enum TranscriptionError: Error, Equatable {
     case .networkError, .requestTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown:
       return true
     // Rate limited and quota exceeded are retryable if we have a retry delay
-    case .rateLimited(let retryAfter):
+    case .rateLimited(let retryAfter, _):
       return retryAfter != nil
     case .quotaExceeded(let retryAfter):
       return retryAfter != nil

@@ -72,6 +72,7 @@ class PopupNotificationWindow: NSWindow {
   private var whatsappIcon: NSImageView?
   private var closeButton: NSButton!
   private var retryButton: NSButton?
+  private var topUpButton: NSButton?
   private var whatsappButton: NSButton?
   private var autoHideTimer: Timer?
   private var isError: Bool = false
@@ -81,9 +82,10 @@ class PopupNotificationWindow: NSWindow {
   private var dismissAction: (() -> Void)?
   private var wasRetried: Bool = false
   private var customDisplayDuration: TimeInterval?
+  private var topUpURL: URL?
 
   // MARK: - Initialization
-  init(title: String, text: String, isError: Bool = false, isInfo: Bool = false, isCancelled: Bool = false, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil) {
+  init(title: String, text: String, isError: Bool = false, isInfo: Bool = false, isCancelled: Bool = false, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
     // Create window with specific style for notifications
     super.init(
       contentRect: NSRect(x: 0, y: 0, width: Constants.defaultWindowWidth, height: 100),
@@ -99,6 +101,7 @@ class PopupNotificationWindow: NSWindow {
     self.retryAction = retryAction
     self.dismissAction = dismissAction
     self.customDisplayDuration = customDisplayDuration
+    self.topUpURL = topUpURL
 
     setupWindow()
     setupContentView()
@@ -111,6 +114,9 @@ class PopupNotificationWindow: NSWindow {
       if retryAction != nil {
         setupRetryButton()
       }
+      if let url = topUpURL {
+        setupTopUpButton(url: url)
+      }
     }
     layoutContent()
 
@@ -119,8 +125,8 @@ class PopupNotificationWindow: NSWindow {
       setupSuccessClickHandler()
     }
 
-    // Success and info: auto-dismiss. Error: auto-dismiss only if no retry button.
-    if !isError || isInfo || retryAction == nil {
+    // Success and info: auto-dismiss. Error: auto-dismiss only if no retry and no Top up button.
+    if !isError || isInfo || (retryAction == nil && topUpURL == nil) {
       startAutoHideTimer(isError: isError, isInfo: isInfo)
     }
   }
@@ -256,6 +262,27 @@ class PopupNotificationWindow: NSWindow {
     // Execute retry action
     retryAction?()
     // Close the window (don't call dismissAction since we're retrying)
+    hide()
+  }
+
+  private func setupTopUpButton(url: URL) {
+    let button = PointerCursorButton()
+    button.title = "Top up"
+    button.bezelStyle = .rounded
+    button.isBordered = true
+    button.wantsLayer = true
+    button.translatesAutoresizingMaskIntoConstraints = false
+    button.target = self
+    button.action = #selector(topUpButtonClicked)
+    button.setContentHuggingPriority(.required, for: .horizontal)
+    button.setContentCompressionResistancePriority(.required, for: .horizontal)
+    topUpButton = button
+  }
+
+  @objc private func topUpButtonClicked() {
+    if let url = topUpURL {
+      NSWorkspace.shared.open(url)
+    }
     hide()
   }
 
@@ -457,6 +484,10 @@ class PopupNotificationWindow: NSWindow {
     if isError, let retryButton = retryButton {
       customContentView.addSubview(retryButton)
     }
+    // Add Top up button when backend returns rate_limit_exceeded with top_up_url
+    if isError, let topUpButton = topUpButton {
+      customContentView.addSubview(topUpButton)
+    }
 
     // Set up constraints with improved spacing
     NSLayoutConstraint.activate([
@@ -515,12 +546,12 @@ class PopupNotificationWindow: NSWindow {
           equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
       ])
       
-      // Add button constraints (WhatsApp and/or Retry) - position them below scroll view
+      // Add button constraints (Retry, Top up, WhatsApp) - position them below scroll view
       let hasRetryButton = retryButton != nil
+      let hasTopUpButton = topUpButton != nil
       let hasWhatsAppButton = whatsappButton != nil
       
-      if hasRetryButton || hasWhatsAppButton {
-        // Both buttons are positioned below scroll view
+      if hasRetryButton || hasTopUpButton || hasWhatsAppButton {
         let buttonSpacing: CGFloat = 8
         let topAnchor = scrollView.bottomAnchor
         
@@ -535,6 +566,22 @@ class PopupNotificationWindow: NSWindow {
           ])
         }
         
+        if let topUpButton = topUpButton {
+          NSLayoutConstraint.activate([
+            topUpButton.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            topUpButton.bottomAnchor.constraint(
+              equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
+            topUpButton.heightAnchor.constraint(equalToConstant: 28),
+          ])
+          if let retryButton = retryButton {
+            topUpButton.leadingAnchor.constraint(
+              equalTo: retryButton.trailingAnchor, constant: buttonSpacing).isActive = true
+          } else {
+            topUpButton.leadingAnchor.constraint(
+              equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding).isActive = true
+          }
+        }
+        
         if let whatsappButton = whatsappButton {
           NSLayoutConstraint.activate([
             whatsappButton.topAnchor.constraint(equalTo: topAnchor, constant: 12),
@@ -542,17 +589,14 @@ class PopupNotificationWindow: NSWindow {
               equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
             whatsappButton.heightAnchor.constraint(equalToConstant: 28),
           ])
-          
-          if let retryButton = retryButton {
-            // Position WhatsApp button next to retry button
+          let leftOfWhatsApp = topUpButton ?? retryButton
+          if let left = leftOfWhatsApp {
             whatsappButton.leadingAnchor.constraint(
-              equalTo: retryButton.trailingAnchor, constant: buttonSpacing).isActive = true
+              equalTo: left.trailingAnchor, constant: buttonSpacing).isActive = true
           } else {
-            // Only WhatsApp button, position it at the start
             whatsappButton.leadingAnchor.constraint(
               equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding).isActive = true
           }
-          // Don't constrain width - let button size to its intrinsic content size
         }
       } else {
         // No buttons, scroll view goes to bottom
@@ -619,7 +663,7 @@ class PopupNotificationWindow: NSWindow {
     let modelToTextSpacing = Constants.titleBottomSpacing  // Gap before text content
 
     // Calculate button height if present (retry and/or WhatsApp buttons)
-    let hasButtons = (retryButton != nil || whatsappButton != nil)
+    let hasButtons = (retryButton != nil || topUpButton != nil || whatsappButton != nil)
     let buttonHeight = hasButtons ? 28.0 + 12.0 : 0.0  // Button height + spacing
     
     // Calculate total required height
@@ -913,6 +957,9 @@ class PopupNotificationWindow: NSWindow {
     if let retryButton = retryButton, retryButton.frame.contains(location) {
       return  // Let the retry button handle the click
     }
+    if let topUpButton = topUpButton, topUpButton.frame.contains(location) {
+      return  // Let the Top up button handle the click
+    }
     if let whatsappButton = whatsappButton, whatsappButton.frame.contains(location) {
       return  // Let the WhatsApp button handle the click
     }
@@ -1010,7 +1057,7 @@ extension PopupNotificationWindow {
     popup.show()
   }
 
-  static func showError(_ error: String, title: String = "Error", retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil) {
+  static func showError(_ error: String, title: String = "Error", retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
     guard arePopupNotificationsEnabled else {
       return
     }
@@ -1021,7 +1068,8 @@ extension PopupNotificationWindow {
       isError: true,
       retryAction: retryAction,
       dismissAction: dismissAction,
-      customDisplayDuration: customDisplayDuration
+      customDisplayDuration: customDisplayDuration,
+      topUpURL: topUpURL
     )
 
     // Keep strong reference until window closes

@@ -67,6 +67,8 @@ class MenuBarController: NSObject {
   private var liveMeetingChunksSummarized: Int = 0
   /// When non-nil, finishLiveMeetingSession will rename the transcript file to this stem (or timestamp-suffix) before ending.
   private var liveMeetingPreferredName: String?
+  /// Set to true after showing rate-limit popup once this session so we don't spam.
+  private var liveMeetingDidShowRateLimitAlert: Bool = false
 
   /// True when live meeting is active (recording or stopping with pending chunks).
   private var isLiveMeetingActive: Bool {
@@ -785,6 +787,7 @@ class MenuBarController: NSObject {
     liveMeetingStopping = false
     liveMeetingPendingChunks = 0
     liveMeetingSessionStartTime = Date()
+    liveMeetingDidShowRateLimitAlert = false
     appState = .recording(.liveMeeting)
     LiveMeetingTranscriptStore.shared.startSession()
     liveMeetingChunksSummarized = 0
@@ -1500,13 +1503,14 @@ class MenuBarController: NSObject {
     message: String? = nil,
     dismissProcessingFirst: Bool = true,
     retryAction: (() -> Void)? = nil,
-    dismissAction: (() -> Void)? = nil
+    dismissAction: (() -> Void)? = nil,
+    topUpURL: URL? = nil
   ) {
     if dismissProcessingFirst {
       PopupNotificationWindow.dismissProcessing()
     }
     appState = appState.showError(shortTitle)
-    PopupNotificationWindow.showError(message ?? shortTitle, title: shortTitle, retryAction: retryAction, dismissAction: dismissAction)
+    PopupNotificationWindow.showError(message ?? shortTitle, title: shortTitle, retryAction: retryAction, dismissAction: dismissAction, topUpURL: topUpURL)
   }
 
   /// Unified error handler for processing errors (transcription/prompting)
@@ -1575,8 +1579,9 @@ class MenuBarController: NSObject {
         self.cleanupAudioFile(at: audioURL)
       }
       
-      // Present error (state + popup with optional retry/dismiss); processing already dismissed above
-      self.presentError(shortTitle: shortTitle, message: errorMessage, dismissProcessingFirst: false, retryAction: retryAction, dismissAction: dismissAction)
+      // Present error (state + popup with optional retry/dismiss/Top up); processing already dismissed above
+      let url = transcriptionError?.topUpURL
+      self.presentError(shortTitle: shortTitle, message: errorMessage, dismissProcessingFirst: false, retryAction: retryAction, dismissAction: dismissAction, topUpURL: url)
       
       // Clean up non-retryable errors immediately
       if !isRetryable {
@@ -2279,7 +2284,24 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
 
       } catch {
         DebugLogger.logError("LIVE-MEETING: Chunk \(chunkIndex) transcription failed: \(error)")
-        // Don't abort the session - just log the error and continue
+        // Show user once when quota/rate limit is hit so they know why chunks are missing
+        let isRateLimitOrQuota: Bool = {
+          if let te = error as? TranscriptionError {
+            switch te { case .rateLimited, .quotaExceeded: return true; default: return false }
+          }
+          return false
+        }()
+        if isRateLimitOrQuota {
+          await MainActor.run {
+            if !self.liveMeetingDidShowRateLimitAlert {
+              self.liveMeetingDidShowRateLimitAlert = true
+              PopupNotificationWindow.showError(
+                SpeechErrorFormatter.formatForUser(error),
+                title: "Live Meeting – Quota Reached"
+              )
+            }
+          }
+        }
         cleanupAudioFile(at: audioURL)
       }
 
