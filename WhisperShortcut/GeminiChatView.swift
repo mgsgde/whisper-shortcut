@@ -1540,6 +1540,55 @@ private struct ModelReplyView: View {
     return withPipe.count >= 2
   }
 
+  /// Parses a Markdown table (pipe-separated) and returns a formatted string with aligned columns for monospace display.
+  private static func formatMarkdownTableForDisplay(_ trimmed: String) -> String {
+    let lines = trimmed.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    guard !lines.isEmpty else { return trimmed }
+    var rows: [[String]] = []
+    for line in lines {
+      let cells = line
+        .split(separator: "|", omittingEmptySubsequences: false)
+        .map { $0.trimmingCharacters(in: .whitespaces) }
+      var row: [String]
+      if cells.first == "" && cells.last == "" && cells.count >= 2 {
+        row = Array(cells.dropFirst().dropLast())
+      } else {
+        row = cells
+      }
+      let isSeparator = row.allSatisfy { cell in
+        let t = cell.trimmingCharacters(in: .whitespaces)
+        return !t.isEmpty && t.allSatisfy { $0 == "-" || $0 == ":" }
+      }
+      if isSeparator { continue }
+      rows.append(row)
+    }
+    guard !rows.isEmpty else { return trimmed }
+    let colCount = rows.map(\.count).max() ?? 0
+    guard colCount > 0 else { return trimmed }
+    var widths = [Int](repeating: 0, count: colCount)
+    for row in rows {
+      for (c, cell) in row.enumerated() where c < colCount {
+        widths[c] = max(widths[c], cell.count)
+      }
+    }
+    var output: [String] = []
+    for (rowIndex, row) in rows.enumerated() {
+      let padded = (0..<colCount).map { c in
+        let cell = c < row.count ? row[c] : ""
+        let w = widths[c]
+        return cell + String(repeating: " ", count: max(0, w - cell.count))
+      }
+      output.append(padded.joined(separator: " │ "))
+      if rowIndex == 0 {
+        let separatorLine = (0..<colCount).map { c in
+          String(repeating: "-", count: widths[c])
+        }.joined(separator: "-+-")
+        output.append(separatorLine)
+      }
+    }
+    return output.joined(separator: "\n")
+  }
+
   private static func buildAttributedReply(
     content: String,
     sources: [GroundingSource],
@@ -1607,7 +1656,8 @@ private struct ModelReplyView: View {
           result.append(bodyAttr)
         }
       } else if Self.looksLikeMarkdownTable(trimmed) {
-        var tableAttr = AttributedString(trimmed)
+        let formattedTable = Self.formatMarkdownTableForDisplay(trimmed)
+        var tableAttr = AttributedString(formattedTable)
         tableAttr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
         result.append(tableAttr)
       } else if trimmed.hasPrefix("```") && trimmed.hasSuffix("```") {

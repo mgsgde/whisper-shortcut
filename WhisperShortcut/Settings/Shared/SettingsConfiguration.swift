@@ -460,9 +460,9 @@ struct SettingsDefaults {
   static let openSettingsEnabled = true
   static let openGeminiEnabled = true
   // MARK: - Model & Prompt Settings
-  static let selectedTranscriptionModel = TranscriptionModel.gemini25FlashLite
-  static let selectedPromptModel = PromptModel.gemini3Flash
-  static let selectedPromptAndReadModel = PromptModel.gemini3Flash
+  static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
+  static let selectedPromptModel = PromptModel.gemini31FlashLite
+  static let selectedPromptAndReadModel = PromptModel.gemini31FlashLite
   static let selectedImprovementModel = PromptModel.gemini31Pro
   static let selectedOpenGeminiModel = PromptModel.gemini3Flash
   static let geminiCloseOnFocusLoss = true
