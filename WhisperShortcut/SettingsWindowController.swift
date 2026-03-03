@@ -131,6 +131,19 @@ class SettingsWindowController: NSWindowController {
 
 // MARK: - NSWindowDelegate
 extension SettingsWindowController: NSWindowDelegate {
+  func windowDidResignKey(_ notification: Notification) {
+    if NSApp.modalWindow != nil { return }
+    let closeOnFocusLoss: Bool
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.settingsCloseOnFocusLoss) != nil {
+      closeOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)
+    } else {
+      closeOnFocusLoss = SettingsDefaults.settingsCloseOnFocusLoss
+    }
+    if closeOnFocusLoss {
+      window?.close()
+    }
+  }
+
   func windowWillClose(_ notification: Notification) {
     // For LSUIElement apps, no need to change activation policy
     // The app remains a menu bar app automatically

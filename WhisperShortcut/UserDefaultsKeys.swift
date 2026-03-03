@@ -6,6 +6,9 @@ enum UserDefaultsKeys {
   // MARK: - Gemini Window Settings
   static let geminiCloseOnFocusLoss = "geminiCloseOnFocusLoss"
 
+  // MARK: - Settings Window
+  static let settingsCloseOnFocusLoss = "settingsCloseOnFocusLoss"
+
   // MARK: - Model Settings
   static let selectedTranscriptionModel = "selectedTranscriptionModel"
   static let selectedPromptModel = "selectedPromptModel"

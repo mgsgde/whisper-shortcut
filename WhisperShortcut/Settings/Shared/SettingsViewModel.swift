@@ -221,6 +221,13 @@ class SettingsViewModel: ObservableObject {
       data.geminiCloseOnFocusLoss = SettingsDefaults.geminiCloseOnFocusLoss
     }
 
+    // Load Settings window: close on focus loss
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.settingsCloseOnFocusLoss) != nil {
+      data.settingsCloseOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)
+    } else {
+      data.settingsCloseOnFocusLoss = SettingsDefaults.settingsCloseOnFocusLoss
+    }
+
     // Load Live Meeting settings
     if let savedIntervalValue = UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingChunkInterval) as? Double,
        let savedInterval = LiveMeetingChunkInterval(rawValue: savedIntervalValue) {
@@ -424,6 +431,9 @@ class SettingsViewModel: ObservableObject {
 
     // Save Gemini window: close on focus loss
     UserDefaults.standard.set(data.geminiCloseOnFocusLoss, forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
+
+    // Save Settings window: close on focus loss
+    UserDefaults.standard.set(data.settingsCloseOnFocusLoss, forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)
 
     // Save Live Meeting settings
     UserDefaults.standard.set(data.liveMeetingChunkInterval.rawValue, forKey: UserDefaultsKeys.liveMeetingChunkInterval)

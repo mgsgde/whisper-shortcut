@@ -17,6 +17,10 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
+      windowBehaviorSection
+
+      SpacedSectionDivider()
+
       LaunchAtLoginSection(viewModel: viewModel)
 
       SpacedSectionDivider()
@@ -46,6 +50,31 @@ struct GeneralSettingsTab: View {
       Button("Cancel", role: .cancel) {}
     } message: {
       Text("This will set all system prompts to default, all settings to default, model selection to default, and delete all user interactions. The API key is preserved.\n\nThe app will close automatically after the reset. You can start it again from the menu bar or Applications. Continue?")
+    }
+  }
+
+  // MARK: - Window Behavior Section
+  @ViewBuilder
+  private var windowBehaviorSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Window Behavior",
+        subtitle: "Control how the Settings window behaves"
+      )
+
+      Toggle(isOn: $viewModel.data.settingsCloseOnFocusLoss) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Close window when losing focus")
+            .font(.callout)
+          Text("Automatically closes the Settings window when it loses focus.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+      }
+      .toggleStyle(.switch)
+      .onChange(of: viewModel.data.settingsCloseOnFocusLoss) { _ in
+        Task { await viewModel.saveSettings() }
+      }
     }
   }
 }
