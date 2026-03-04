@@ -1465,6 +1465,99 @@ private struct FlowLayout: Layout {
   }
 }
 
+// MARK: - Markdown Table Rendering
+
+private struct ParsedTable {
+  let headers: [String]
+  let rows: [[String]]
+}
+
+private enum ReplyContentBlock {
+  case text(AttributedString)
+  case table(ParsedTable)
+}
+
+private struct MarkdownTableView: View {
+  let headers: [String]
+  let rows: [[String]]
+
+  var body: some View {
+    let colCount = headers.count
+    Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 0) {
+      GridRow {
+        ForEach(0..<colCount, id: \.self) { col in
+          Text(Self.parseCellText(headers[col], isHeader: true))
+            .foregroundColor(GeminiChatTheme.primaryText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+      }
+      .background(GeminiChatTheme.controlBackground)
+
+      Rectangle()
+        .fill(GeminiChatTheme.primaryText.opacity(0.2))
+        .frame(height: 1)
+
+      ForEach(Array(rows.enumerated()), id: \.offset) { rowIdx, row in
+        GridRow {
+          ForEach(0..<colCount, id: \.self) { col in
+            Text(Self.parseCellText(col < row.count ? row[col] : "", isHeader: false))
+              .foregroundColor(GeminiChatTheme.primaryText)
+              .padding(.horizontal, 10)
+              .padding(.vertical, 8)
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
+        }
+        if rowIdx < rows.count - 1 {
+          Rectangle()
+            .fill(GeminiChatTheme.primaryText.opacity(0.08))
+            .frame(height: 1)
+        }
+      }
+    }
+    .textSelection(.enabled)
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .strokeBorder(GeminiChatTheme.primaryText.opacity(0.15), lineWidth: 1)
+    )
+  }
+
+  private static func parseCellText(_ text: String, isHeader: Bool) -> AttributedString {
+    let baseWeight: Font.Weight = isHeader ? .semibold : .regular
+    var result = AttributedString()
+    var remaining = text[text.startIndex...]
+    while let boldStart = remaining.range(of: "**") {
+      let before = String(remaining[remaining.startIndex..<boldStart.lowerBound])
+      if !before.isEmpty {
+        var attr = AttributedString(before)
+        attr.font = .system(size: 14, weight: baseWeight)
+        result.append(attr)
+      }
+      remaining = remaining[boldStart.upperBound...]
+      if let boldEnd = remaining.range(of: "**") {
+        let boldText = String(remaining[remaining.startIndex..<boldEnd.lowerBound])
+        var attr = AttributedString(boldText)
+        attr.font = .system(size: 14, weight: .bold)
+        result.append(attr)
+        remaining = remaining[boldEnd.upperBound...]
+      } else {
+        var attr = AttributedString("**" + String(remaining))
+        attr.font = .system(size: 14, weight: baseWeight)
+        result.append(attr)
+        remaining = remaining[remaining.endIndex...]
+      }
+    }
+    if !remaining.isEmpty {
+      var attr = AttributedString(String(remaining))
+      attr.font = .system(size: 14, weight: baseWeight)
+      result.append(attr)
+    }
+    return result.characters.isEmpty ? AttributedString(text) : result
+  }
+}
+
 // MARK: - Model Reply View
 
 private struct ModelReplyView: View {
@@ -1472,25 +1565,50 @@ private struct ModelReplyView: View {
   let sources: [GroundingSource]
   let groundingSupports: [GroundingSupport]
 
-  /// Single Text view so the user can select across the entire reply. With grounding, citation markers [1], [2] appear at the end of each paragraph and are clickable links. No bubble background — answers use the window background only.
   var body: some View {
-    Text(Self.buildAttributedReply(content: content, sources: sources, groundingSupports: groundingSupports))
-      .font(.system(size: 16))
-      .lineSpacing(8)
-      .foregroundColor(GeminiChatTheme.primaryText)
-      .padding(.horizontal, 16)
-      .padding(.vertical, 14)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .fixedSize(horizontal: false, vertical: true)
-      .contentShape(Rectangle())
-      .textSelection(.enabled)
-      .onHover { inside in
-        if inside {
-          NSCursor.iBeam.push()
-        } else {
-          NSCursor.pop()
+    if Self.contentHasTable(content) {
+      tableAwareBody
+    } else {
+      Text(Self.buildAttributedReply(content: content, sources: sources, groundingSupports: groundingSupports))
+        .font(.system(size: 16))
+        .lineSpacing(8)
+        .foregroundColor(GeminiChatTheme.primaryText)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .contentShape(Rectangle())
+        .textSelection(.enabled)
+        .onHover { inside in
+          if inside { NSCursor.iBeam.push() } else { NSCursor.pop() }
+        }
+    }
+  }
+
+  private var tableAwareBody: some View {
+    let blocks = Self.buildReplyBlocks(content: content, sources: sources, groundingSupports: groundingSupports)
+    return VStack(alignment: .leading, spacing: 16) {
+      ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+        switch block {
+        case .text(let attrStr):
+          Text(attrStr)
+            .font(.system(size: 16))
+            .lineSpacing(8)
+            .foregroundColor(GeminiChatTheme.primaryText)
+            .textSelection(.enabled)
+        case .table(let parsed):
+          MarkdownTableView(headers: parsed.headers, rows: parsed.rows)
         }
       }
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .fixedSize(horizontal: false, vertical: true)
+    .contentShape(Rectangle())
+    .onHover { inside in
+      if inside { NSCursor.iBeam.push() } else { NSCursor.pop() }
+    }
   }
 
   /// True if the paragraph is only a horizontal-rule line, optionally with trailing citation markers (e.g. "--- [3] [4]").
@@ -1540,11 +1658,11 @@ private struct ModelReplyView: View {
     return withPipe.count >= 2
   }
 
-  /// Parses a Markdown table (pipe-separated) and returns a formatted string with aligned columns for monospace display.
-  private static func formatMarkdownTableForDisplay(_ trimmed: String) -> String {
-    let lines = trimmed.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-    guard !lines.isEmpty else { return trimmed }
-    var rows: [[String]] = []
+  private static func parseMarkdownTable(_ trimmed: String) -> ParsedTable? {
+    let lines = trimmed.components(separatedBy: .newlines)
+      .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    guard lines.count >= 2 else { return nil }
+    var dataRows: [[String]] = []
     for line in lines {
       let cells = line
         .split(separator: "|", omittingEmptySubsequences: false)
@@ -1555,38 +1673,128 @@ private struct ModelReplyView: View {
       } else {
         row = cells
       }
-      let isSeparator = row.allSatisfy { cell in
+      let isSeparator = !row.isEmpty && row.allSatisfy { cell in
         let t = cell.trimmingCharacters(in: .whitespaces)
         return !t.isEmpty && t.allSatisfy { $0 == "-" || $0 == ":" }
       }
       if isSeparator { continue }
-      rows.append(row)
+      dataRows.append(row)
     }
-    guard !rows.isEmpty else { return trimmed }
-    let colCount = rows.map(\.count).max() ?? 0
-    guard colCount > 0 else { return trimmed }
-    var widths = [Int](repeating: 0, count: colCount)
-    for row in rows {
-      for (c, cell) in row.enumerated() where c < colCount {
-        widths[c] = max(widths[c], cell.count)
+    guard dataRows.count >= 2 else { return nil }
+    return ParsedTable(headers: dataRows[0], rows: Array(dataRows.dropFirst()))
+  }
+
+  private static func contentHasTable(_ content: String) -> Bool {
+    content.components(separatedBy: "\n\n").contains {
+      looksLikeMarkdownTable($0.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+  }
+
+  private static func buildReplyBlocks(
+    content: String,
+    sources: [GroundingSource],
+    groundingSupports: [GroundingSupport]
+  ) -> [ReplyContentBlock] {
+    let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+    if groundingSupports.isEmpty || sources.isEmpty {
+      return buildContentOnlyBlocks(content: content, options: options)
+    }
+    let paragraphs = ParagraphCitationBuilder.buildParagraphs(
+      content: content, supports: groundingSupports, sourcesCount: sources.count)
+    var blocks: [ReplyContentBlock] = []
+    var textBuffer = AttributedString()
+    let separator = AttributedString("\n\n")
+    var hasTextContent = false
+    for para in paragraphs {
+      let trimmed = para.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      if trimmed.isEmpty { continue }
+      if looksLikeMarkdownTable(trimmed), let parsed = parseMarkdownTable(trimmed) {
+        if hasTextContent {
+          blocks.append(.text(textBuffer))
+          textBuffer = AttributedString()
+          hasTextContent = false
+        }
+        blocks.append(.table(parsed))
+      } else {
+        if hasTextContent { textBuffer.append(separator) }
+        let attrText = buildSingleParagraphAttributed(trimmed, options: options)
+        textBuffer.append(attrText)
+        for idx in para.chunkIndices where idx < sources.count {
+          let oneBased = idx + 1
+          var markerAttr = AttributedString(" [\(oneBased)]")
+          markerAttr.font = .system(size: 14)
+          if let url = URL(string: sources[idx].uri) { markerAttr.link = url }
+          textBuffer.append(markerAttr)
+        }
+        hasTextContent = true
       }
     }
-    var output: [String] = []
-    for (rowIndex, row) in rows.enumerated() {
-      let padded = (0..<colCount).map { c in
-        let cell = c < row.count ? row[c] : ""
-        let w = widths[c]
-        return cell + String(repeating: " ", count: max(0, w - cell.count))
-      }
-      output.append(padded.joined(separator: " │ "))
-      if rowIndex == 0 {
-        let separatorLine = (0..<colCount).map { c in
-          String(repeating: "-", count: widths[c])
-        }.joined(separator: "-+-")
-        output.append(separatorLine)
+    if hasTextContent { blocks.append(.text(textBuffer)) }
+    return blocks.isEmpty ? [.text(AttributedString(content))] : blocks
+  }
+
+  private static func buildContentOnlyBlocks(
+    content: String,
+    options: AttributedString.MarkdownParsingOptions
+  ) -> [ReplyContentBlock] {
+    let paragraphs = content.components(separatedBy: "\n\n")
+    var blocks: [ReplyContentBlock] = []
+    var textBuffer = AttributedString()
+    let separator = AttributedString("\n\n")
+    var hasTextContent = false
+    for para in paragraphs {
+      let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
+      if trimmed.isEmpty { continue }
+      if looksLikeMarkdownTable(trimmed), let parsed = parseMarkdownTable(trimmed) {
+        if hasTextContent {
+          blocks.append(.text(textBuffer))
+          textBuffer = AttributedString()
+          hasTextContent = false
+        }
+        blocks.append(.table(parsed))
+      } else {
+        if hasTextContent { textBuffer.append(separator) }
+        let attrText = buildSingleParagraphAttributed(trimmed, options: options)
+        textBuffer.append(attrText)
+        hasTextContent = true
       }
     }
-    return output.joined(separator: "\n")
+    if hasTextContent { blocks.append(.text(textBuffer)) }
+    return blocks.isEmpty ? [.text(AttributedString(content))] : blocks
+  }
+
+  private static func buildSingleParagraphAttributed(
+    _ trimmed: String,
+    options: AttributedString.MarkdownParsingOptions
+  ) -> AttributedString {
+    if isSeparatorParagraph(trimmed) {
+      var lineAttr = AttributedString(separatorLineContent)
+      lineAttr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.4)
+      return lineAttr
+    }
+    if let (level, title) = parseATXHeading(trimmed) {
+      let parts = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+      let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+      var headingAttr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
+      headingAttr.font = fontForHeadingLevel(level)
+      if !bodyPart.isEmpty {
+        headingAttr.append(AttributedString("\n\n"))
+        var bodyAttr = (try? AttributedString(markdown: bodyPart, options: options)) ?? AttributedString(bodyPart)
+        bodyAttr.font = .system(size: 16, weight: .regular)
+        headingAttr.append(bodyAttr)
+      }
+      return headingAttr
+    }
+    if trimmed.hasPrefix("```") && trimmed.hasSuffix("```") {
+      let codeContent = String(trimmed.dropFirst(3).dropLast(3).trimmingCharacters(in: .whitespacesAndNewlines))
+      var attr = AttributedString(codeContent)
+      attr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
+      return attr
+    }
+    let fullOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
+    var attr = (try? AttributedString(markdown: trimmed, options: fullOptions)) ?? AttributedString(trimmed)
+    attr.font = .system(size: 16, weight: .regular)
+    return attr
   }
 
   private static func buildAttributedReply(
@@ -1656,8 +1864,7 @@ private struct ModelReplyView: View {
           result.append(bodyAttr)
         }
       } else if Self.looksLikeMarkdownTable(trimmed) {
-        let formattedTable = Self.formatMarkdownTableForDisplay(trimmed)
-        var tableAttr = AttributedString(formattedTable)
+        var tableAttr = AttributedString(trimmed)
         tableAttr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
         result.append(tableAttr)
       } else if trimmed.hasPrefix("```") && trimmed.hasSuffix("```") {
