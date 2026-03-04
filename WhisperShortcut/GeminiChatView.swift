@@ -1460,97 +1460,11 @@ private struct FlowLayout: Layout {
   }
 }
 
-// MARK: - Markdown Table Rendering
-
-private struct ParsedTable {
-  let headers: [String]
-  let rows: [[String]]
-}
+// MARK: - Markdown Table / Block types (shared via MarkdownBlockView.swift)
 
 private enum ReplyContentBlock {
   case text(AttributedString)
   case table(ParsedTable)
-}
-
-private struct MarkdownTableView: View {
-  let headers: [String]
-  let rows: [[String]]
-
-  var body: some View {
-    let colCount = headers.count
-    Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 0) {
-      GridRow {
-        ForEach(0..<colCount, id: \.self) { col in
-          Text(Self.parseCellText(headers[col], isHeader: true))
-            .foregroundColor(GeminiChatTheme.primaryText)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-      }
-      .background(GeminiChatTheme.controlBackground)
-
-      Rectangle()
-        .fill(GeminiChatTheme.primaryText.opacity(0.2))
-        .frame(height: 1)
-
-      ForEach(Array(rows.enumerated()), id: \.offset) { rowIdx, row in
-        GridRow {
-          ForEach(0..<colCount, id: \.self) { col in
-            Text(Self.parseCellText(col < row.count ? row[col] : "", isHeader: false))
-              .foregroundColor(GeminiChatTheme.primaryText)
-              .padding(.horizontal, 10)
-              .padding(.vertical, 8)
-              .frame(maxWidth: .infinity, alignment: .leading)
-          }
-        }
-        if rowIdx < rows.count - 1 {
-          Rectangle()
-            .fill(GeminiChatTheme.primaryText.opacity(0.08))
-            .frame(height: 1)
-        }
-      }
-    }
-    .textSelection(.enabled)
-    .clipShape(RoundedRectangle(cornerRadius: 8))
-    .overlay(
-      RoundedRectangle(cornerRadius: 8)
-        .strokeBorder(GeminiChatTheme.primaryText.opacity(0.15), lineWidth: 1)
-    )
-  }
-
-  private static func parseCellText(_ text: String, isHeader: Bool) -> AttributedString {
-    let baseWeight: Font.Weight = isHeader ? .semibold : .regular
-    var result = AttributedString()
-    var remaining = text[text.startIndex...]
-    while let boldStart = remaining.range(of: "**") {
-      let before = String(remaining[remaining.startIndex..<boldStart.lowerBound])
-      if !before.isEmpty {
-        var attr = AttributedString(before)
-        attr.font = .system(size: 14, weight: baseWeight)
-        result.append(attr)
-      }
-      remaining = remaining[boldStart.upperBound...]
-      if let boldEnd = remaining.range(of: "**") {
-        let boldText = String(remaining[remaining.startIndex..<boldEnd.lowerBound])
-        var attr = AttributedString(boldText)
-        attr.font = .system(size: 14, weight: .bold)
-        result.append(attr)
-        remaining = remaining[boldEnd.upperBound...]
-      } else {
-        var attr = AttributedString("**" + String(remaining))
-        attr.font = .system(size: 14, weight: baseWeight)
-        result.append(attr)
-        remaining = remaining[remaining.endIndex...]
-      }
-    }
-    if !remaining.isEmpty {
-      var attr = AttributedString(String(remaining))
-      attr.font = .system(size: 14, weight: baseWeight)
-      result.append(attr)
-    }
-    return result.characters.isEmpty ? AttributedString(text) : result
-  }
 }
 
 // MARK: - Model Reply View
@@ -1606,82 +1520,9 @@ private struct ModelReplyView: View {
     }
   }
 
-  /// True if the paragraph is only a horizontal-rule line, optionally with trailing citation markers (e.g. "--- [3] [4]").
-  /// Such lines are rendered as a clean visual separator without citation numbers.
-  private static func isSeparatorParagraph(_ trimmed: String) -> Bool {
-    let t = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard t.count >= 2, t.hasPrefix("--") else { return false }
-    let afterDashes = t.drop(while: { $0 == "-" })
-    let rest = String(afterDashes).trimmingCharacters(in: .whitespacesAndNewlines)
-    if rest.isEmpty { return true }
-    return rest.range(of: #"^(\s*\[\d+\])+\s*$"#, options: .regularExpression) != nil
-  }
-
-  private static let separatorLineContent = String(repeating: "─", count: 28)
-
-  /// Returns (level 1...6, title without leading # and space) if the string is an ATX-style heading; otherwise nil.
-  private static func parseATXHeading(_ trimmed: String) -> (level: Int, title: String)? {
-    let prefixes = ["###### ", "##### ", "#### ", "### ", "## ", "# "]
-    for (idx, prefix) in prefixes.enumerated() {
-      if trimmed.hasPrefix(prefix) {
-        let level = 6 - idx
-        let firstLine = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)[0]
-        let title = String(firstLine.dropFirst(prefix.count))
-        return (level, title)
-      }
-    }
-    return nil
-  }
-
-  private static func fontForHeadingLevel(_ level: Int) -> Font {
-    switch level {
-    case 1: return .system(size: 18, weight: .bold)
-    case 2: return .system(size: 16, weight: .bold)
-    case 3: return .system(size: 15, weight: .semibold)
-    case 4: return .system(size: 14, weight: .semibold)
-    case 5: return .system(size: 13, weight: .semibold)
-    case 6: return .system(size: 12, weight: .semibold)
-    default: return .system(size: 16, weight: .bold)
-    }
-  }
-
-  /// True if the paragraph has multiple lines and at least two lines contain a pipe (Markdown table).
-  private static func looksLikeMarkdownTable(_ trimmed: String) -> Bool {
-    let lines = trimmed.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-    guard lines.count >= 2 else { return false }
-    let withPipe = lines.filter { $0.contains("|") }
-    return withPipe.count >= 2
-  }
-
-  private static func parseMarkdownTable(_ trimmed: String) -> ParsedTable? {
-    let lines = trimmed.components(separatedBy: .newlines)
-      .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-    guard lines.count >= 2 else { return nil }
-    var dataRows: [[String]] = []
-    for line in lines {
-      let cells = line
-        .split(separator: "|", omittingEmptySubsequences: false)
-        .map { $0.trimmingCharacters(in: .whitespaces) }
-      var row: [String]
-      if cells.first == "" && cells.last == "" && cells.count >= 2 {
-        row = Array(cells.dropFirst().dropLast())
-      } else {
-        row = cells
-      }
-      let isSeparator = !row.isEmpty && row.allSatisfy { cell in
-        let t = cell.trimmingCharacters(in: .whitespaces)
-        return !t.isEmpty && t.allSatisfy { $0 == "-" || $0 == ":" }
-      }
-      if isSeparator { continue }
-      dataRows.append(row)
-    }
-    guard dataRows.count >= 2 else { return nil }
-    return ParsedTable(headers: dataRows[0], rows: Array(dataRows.dropFirst()))
-  }
-
   private static func contentHasTable(_ content: String) -> Bool {
     content.components(separatedBy: "\n\n").contains {
-      looksLikeMarkdownTable($0.trimmingCharacters(in: .whitespacesAndNewlines))
+      MarkdownParsing.looksLikeMarkdownTable($0.trimmingCharacters(in: .whitespacesAndNewlines))
     }
   }
 
@@ -1703,7 +1544,7 @@ private struct ModelReplyView: View {
     for para in paragraphs {
       let trimmed = para.text.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
-      if looksLikeMarkdownTable(trimmed), let parsed = parseMarkdownTable(trimmed) {
+      if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
         if hasTextContent {
           blocks.append(.text(textBuffer))
           textBuffer = AttributedString()
@@ -1740,7 +1581,7 @@ private struct ModelReplyView: View {
     for para in paragraphs {
       let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
-      if looksLikeMarkdownTable(trimmed), let parsed = parseMarkdownTable(trimmed) {
+      if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
         if hasTextContent {
           blocks.append(.text(textBuffer))
           textBuffer = AttributedString()
@@ -1762,19 +1603,19 @@ private struct ModelReplyView: View {
     _ trimmed: String,
     options: AttributedString.MarkdownParsingOptions
   ) -> AttributedString {
-    if isSeparatorParagraph(trimmed) {
-      var lineAttr = AttributedString(separatorLineContent)
+    if MarkdownParsing.isSeparatorParagraph(trimmed) {
+      var lineAttr = AttributedString(MarkdownParsing.separatorLineContent)
       lineAttr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.4)
       return lineAttr
     }
-    if let (level, title) = parseATXHeading(trimmed) {
+    if let (level, title) = MarkdownParsing.parseATXHeading(trimmed) {
       let parts = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
       let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
-      var headingAttr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
-      headingAttr.font = fontForHeadingLevel(level)
+      var headingAttr = MarkdownParsing.inlineAttributedString(title, options: options)
+      headingAttr.font = MarkdownParsing.fontForHeadingLevel(level, baseSize: 16)
       if !bodyPart.isEmpty {
         headingAttr.append(AttributedString("\n\n"))
-        var bodyAttr = (try? AttributedString(markdown: bodyPart, options: options)) ?? AttributedString(bodyPart)
+        var bodyAttr = MarkdownParsing.inlineAttributedString(bodyPart, options: options)
         bodyAttr.font = .system(size: 16, weight: .regular)
         headingAttr.append(bodyAttr)
       }
@@ -1808,8 +1649,8 @@ private struct ModelReplyView: View {
       let trimmed = para.text.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
       if !result.description.isEmpty { result.append(paragraphSeparator) }
-      if isSeparatorParagraph(trimmed) {
-        var lineAttr = AttributedString(separatorLineContent)
+      if MarkdownParsing.isSeparatorParagraph(trimmed) {
+        var lineAttr = AttributedString(MarkdownParsing.separatorLineContent)
         lineAttr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.4)
         result.append(lineAttr)
         continue
@@ -1840,30 +1681,29 @@ private struct ModelReplyView: View {
       let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
       if index > 0 { result.append(separator) }
-      if Self.isSeparatorParagraph(trimmed) {
-        var lineAttr = AttributedString(Self.separatorLineContent)
+      if MarkdownParsing.isSeparatorParagraph(trimmed) {
+        var lineAttr = AttributedString(MarkdownParsing.separatorLineContent)
         lineAttr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.4)
         result.append(lineAttr)
         continue
       }
-      if let (level, title) = Self.parseATXHeading(trimmed) {
+      if let (level, title) = MarkdownParsing.parseATXHeading(trimmed) {
         let parts = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
         let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
-        var headingAttr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
-        headingAttr.font = Self.fontForHeadingLevel(level)
+        var headingAttr = MarkdownParsing.inlineAttributedString(title, options: options)
+        headingAttr.font = MarkdownParsing.fontForHeadingLevel(level, baseSize: 16)
         result.append(headingAttr)
         if !bodyPart.isEmpty {
           result.append(AttributedString("\n\n"))
-          var bodyAttr = (try? AttributedString(markdown: bodyPart, options: options)) ?? AttributedString(bodyPart)
+          var bodyAttr = MarkdownParsing.inlineAttributedString(bodyPart, options: options)
           bodyAttr.font = .system(size: 16, weight: .regular)
           result.append(bodyAttr)
         }
-      } else if Self.looksLikeMarkdownTable(trimmed) {
+      } else if MarkdownParsing.looksLikeMarkdownTable(trimmed) {
         var tableAttr = AttributedString(trimmed)
         tableAttr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
         result.append(tableAttr)
       } else if trimmed.hasPrefix("```") && trimmed.hasSuffix("```") {
-        // Fenced code block (e.g. from code execution): show in monospace so it is visibly distinct
         let codeContent = String(trimmed.dropFirst(3).dropLast(3).trimmingCharacters(in: .whitespacesAndNewlines))
         var attr = AttributedString(codeContent)
         attr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)

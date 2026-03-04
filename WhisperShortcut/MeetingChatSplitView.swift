@@ -121,21 +121,7 @@ struct MeetingChatSplitView: View {
   }
 
   private var markdownSummaryView: some View {
-    Group {
-      if let attributed = try? AttributedString(markdown: summary, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)) {
-        Text(attributed)
-          .font(.system(size: 14))
-          .lineSpacing(6)
-          .foregroundColor(GeminiChatTheme.primaryText)
-          .textSelection(.enabled)
-      } else {
-        Text(summary)
-          .font(.system(size: 14))
-          .lineSpacing(6)
-          .foregroundColor(GeminiChatTheme.primaryText)
-          .textSelection(.enabled)
-      }
-    }
+    MarkdownBlockView(text: summary)
   }
 
   /// Header for Summary in the live meeting right column (top section).
@@ -218,9 +204,26 @@ struct MeetingChatSplitView: View {
   }
 
   /// Full transcript as a single string so the user can select and copy everything at once.
-  /// Single newline between chunks keeps segments visually distinct without excessive spacing.
+  /// Single newline between chunks keeps spacing compact.
   private var fullTranscriptText: String {
     chunks.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n")
+  }
+
+  /// Transcript with timestamps in accent (blue) for the live transcript display.
+  private var attributedTranscriptText: AttributedString {
+    var result = AttributedString()
+    for (index, chunk) in chunks.enumerated() {
+      var ts = AttributedString(chunk.timestampString)
+      ts.foregroundColor = Color.accentColor
+      result.append(ts)
+      var rest = AttributedString(" " + chunk.text)
+      rest.foregroundColor = GeminiChatTheme.primaryText
+      result.append(rest)
+      if index < chunks.count - 1 {
+        result.append(AttributedString("\n"))
+      }
+    }
+    return result
   }
 
   private var transcriptHeader: some View {
@@ -270,10 +273,9 @@ struct MeetingChatSplitView: View {
       } else {
         ScrollViewReader { proxy in
           ScrollView {
-            Text(fullTranscriptText)
+            Text(attributedTranscriptText)
               .font(.system(size: 12))
               .lineSpacing(4)
-              .foregroundColor(GeminiChatTheme.primaryText)
               .textSelection(.enabled)
               .frame(maxWidth: .infinity, alignment: .leading)
               .padding(.horizontal, 12)
