@@ -203,12 +203,11 @@ struct MeetingRootView: View {
       Button("New Meeting") {
         currentMeetingStore.setSelectedMeeting(.live)
         LiveMeetingTranscriptStore.shared.clearForNewMeeting()
-        if !liveStore.isSessionActive {
-          NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
-        }
+        NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
       }
       .buttonStyle(.bordered)
-      .help("Start a new meeting (recording starts automatically)")
+      .disabled(liveStore.isSessionActive)
+      .help("Start a new meeting (recording starts automatically). End the current meeting first.")
 
       Button("End Meeting") {
         endMeetingNameInput = liveStore.preferredMeetingName ?? liveStore.currentMeetingFilenameStem ?? "Meeting"
@@ -219,14 +218,11 @@ struct MeetingRootView: View {
       .help("Stop recording and end the current meeting")
 
       Button("Open Meeting") {
-        if liveStore.isSessionActive {
-          showRecordingActiveAlert = true
-        } else {
-          showMeetingLibrary = true
-        }
+        showMeetingLibrary = true
       }
       .buttonStyle(.bordered)
-      .help("Open a meeting from the library")
+      .disabled(liveStore.isSessionActive)
+      .help("Open a meeting from the library. End the current meeting first.")
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
