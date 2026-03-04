@@ -12,6 +12,7 @@ struct MeetingChatSplitView: View {
   let meetingContextProvider: (() -> String?)?
 
   private let chatFraction: CGFloat = 0.55
+  @AppStorage(UserDefaultsKeys.meetingTranscriptSectionExpanded) private var isTranscriptSectionExpanded: Bool = true
 
   var body: some View {
     GeometryReader { geometry in
@@ -48,9 +49,11 @@ struct MeetingChatSplitView: View {
           Divider()
             .background(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity))
           transcriptHeader
-          Divider()
-            .background(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity))
-          transcriptList
+          if isTranscriptSectionExpanded {
+            Divider()
+              .background(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity))
+            transcriptList
+          }
         }
       } else {
         VStack(alignment: .leading, spacing: 0) {
@@ -228,18 +231,39 @@ struct MeetingChatSplitView: View {
 
   private var transcriptHeader: some View {
     HStack {
-      Image(systemName: "waveform")
-        .foregroundColor(.accentColor)
-        .font(.system(size: 12, weight: .medium))
-      Text(isSessionActive ? "Live transcript" : "Transcript")
-        .font(.system(size: 13, weight: .semibold))
-        .foregroundColor(GeminiChatTheme.primaryText)
       if isSessionActive {
-        // No extra label while live
-      } else if !chunks.isEmpty {
-        Text("(\(chunks.count) chunks)")
-          .font(.system(size: 11))
-          .foregroundColor(GeminiChatTheme.secondaryText)
+        Button {
+          withAnimation(.easeInOut(duration: 0.2)) {
+            isTranscriptSectionExpanded.toggle()
+          }
+        } label: {
+          HStack(spacing: 6) {
+            Image(systemName: isTranscriptSectionExpanded ? "chevron.down" : "chevron.right")
+              .font(.system(size: 10, weight: .semibold))
+              .foregroundColor(GeminiChatTheme.secondaryText)
+            Image(systemName: "waveform")
+              .foregroundColor(.accentColor)
+              .font(.system(size: 12, weight: .medium))
+            Text("Live transcript")
+              .font(.system(size: 13, weight: .semibold))
+              .foregroundColor(GeminiChatTheme.primaryText)
+          }
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(isTranscriptSectionExpanded ? "Collapse live transcript" : "Expand live transcript")
+      } else {
+        Image(systemName: "waveform")
+          .foregroundColor(.accentColor)
+          .font(.system(size: 12, weight: .medium))
+        Text("Transcript")
+          .font(.system(size: 13, weight: .semibold))
+          .foregroundColor(GeminiChatTheme.primaryText)
+        if !chunks.isEmpty {
+          Text("(\(chunks.count) chunks)")
+            .font(.system(size: 11))
+            .foregroundColor(GeminiChatTheme.secondaryText)
+        }
       }
       Spacer()
       if !chunks.isEmpty {
