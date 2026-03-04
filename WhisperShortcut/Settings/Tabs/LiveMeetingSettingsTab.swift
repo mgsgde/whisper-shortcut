@@ -22,6 +22,11 @@ struct LiveMeetingSettingsTab: View {
 
       SpacedSectionDivider()
 
+      // Summary Model Section
+      summaryModelSection
+
+      SpacedSectionDivider()
+
       // Safeguard Section
       safeguardSection
 
@@ -123,6 +128,21 @@ struct LiveMeetingSettingsTab: View {
           .textSelection(.enabled)
       }
     }
+  }
+
+  // MARK: - Summary Model Section
+  @ViewBuilder
+  private var summaryModelSection: some View {
+    PromptModelSelectionView(
+      title: "Summary Model",
+      subtitle: "Gemini model used for rolling summary during the meeting and for the final summary when the meeting ends",
+      selectedModel: $viewModel.data.selectedMeetingSummaryModel,
+      onModelChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+    )
   }
 
   // MARK: - Safeguard Section

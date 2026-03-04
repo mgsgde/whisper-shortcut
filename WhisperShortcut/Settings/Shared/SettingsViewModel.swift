@@ -247,6 +247,17 @@ class SettingsViewModel: ObservableObject {
       data.selectedTranscriptionModelForMeetings = TranscriptionModel.loadSelected()
     }
 
+    if let savedSummaryModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedMeetingSummaryModel),
+       let savedSummaryModel = PromptModel(rawValue: savedSummaryModelString) {
+      let migrated = PromptModel.migrateIfDeprecated(savedSummaryModel)
+      data.selectedMeetingSummaryModel = migrated
+      if migrated != savedSummaryModel {
+        UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedMeetingSummaryModel)
+      }
+    } else {
+      data.selectedMeetingSummaryModel = SettingsDefaults.selectedMeetingSummaryModel
+    }
+
     // Load Google API key
     data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
     
@@ -448,6 +459,7 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(data.liveMeetingChunkInterval.rawValue, forKey: UserDefaultsKeys.liveMeetingChunkInterval)
     UserDefaults.standard.set(data.liveMeetingSafeguardDuration.rawValue, forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)
     UserDefaults.standard.set(data.selectedTranscriptionModelForMeetings.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
+    UserDefaults.standard.set(data.selectedMeetingSummaryModel.rawValue, forKey: UserDefaultsKeys.selectedMeetingSummaryModel)
 
     // Save toggle shortcuts (keep existing toggleMeeting/stopMeeting from config — no longer configurable in UI)
     let shortcuts = parseShortcuts()

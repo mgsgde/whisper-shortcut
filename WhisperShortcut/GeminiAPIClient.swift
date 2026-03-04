@@ -416,7 +416,7 @@ class GeminiAPIClient {
   }
 
   /// Updates a rolling meeting summary by merging new transcript content into the existing summary.
-  /// Uses a single generateContent call with a structured prompt. Model should be fast (e.g. gemini-2.5-flash-lite).
+  /// Uses a single generateContent call with a structured prompt. Model: gemini-3.1-flash-lite.
   func updateRollingSummary(
     model: String,
     currentSummary: String,
@@ -426,20 +426,30 @@ class GeminiAPIClient {
     let prompt: String
     if currentSummary.isEmpty {
       prompt = """
-        You are summarizing a live meeting transcript. Below is a new segment of the transcript. \
-        Produce a concise summary in valid Markdown: use \"- \" for every bullet point; you may use \"## Section\" for section headings. \
-        Cover main points and decisions. Write in English. Output only the Markdown summary, no preamble. \
-        Do not output plain paragraphs only; use Markdown bullet lists (and headings if useful).
+        You are summarizing a live meeting transcript. Below is a new segment of the transcript.
+
+        STRICT FORMAT RULES:
+        1. Use ## headings for sections (e.g. ## Key Points, ## Decisions).
+        2. Use - for every bullet point. Each bullet on its own line.
+        3. Leave a blank line before each heading and between sections.
+        4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
+        5. Write in English. Output only the Markdown, no preamble.
 
         Transcript segment:
         \(newTranscriptText)
         """
     } else {
       prompt = """
-        You are maintaining a rolling summary of a live meeting. Below are the current summary and new transcript content. \
-        Update the summary to incorporate the new content. Output valid Markdown: use \"- \" for bullet points; use \"## Section\" for headings when structuring. \
-        Preserve important points from the current summary and add or refine with the new content. Write in English. Output only the updated Markdown, no preamble. \
-        Do not output plain paragraphs only; use Markdown bullet lists (and headings if useful).
+        You are maintaining a rolling summary of a live meeting. Below are the current Markdown summary and new transcript content. \
+        Update the summary to incorporate the new content.
+
+        STRICT FORMAT RULES:
+        1. Use ## headings for sections (e.g. ## Key Points, ## Decisions).
+        2. Use - for every bullet point. Each bullet on its own line.
+        3. Leave a blank line before each heading and between sections.
+        4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
+        5. Preserve important points from the current summary and add or refine with the new content.
+        6. Write in English. Output only the updated Markdown, no preamble.
 
         Current summary:
         \(currentSummary)
@@ -452,13 +462,18 @@ class GeminiAPIClient {
   }
 
   /// Generates a final Markdown summary of a full meeting transcript (main points, decisions, action items).
-  func generateMeetingSummary(transcript: String, apiKey: String) async throws -> String {
-    let model = "gemini-2.5-flash-lite"
+  /// - Parameter model: Gemini model ID (e.g. from TranscriptionModel.loadSelectedForMeeting().rawValue).
+  func generateMeetingSummary(transcript: String, model: String, apiKey: String) async throws -> String {
     let prompt = """
-      You are summarizing a completed meeting transcript. Produce a summary in valid Markdown only. \
-      Use \"## Section name\" for sections (e.g. ## Main points, ## Key takeaways, ## Action items). \
-      Use \"- \" or \"* \" at the start of each list item; do not use a single block of plain paragraphs. \
-      Include: main points and decisions, key takeaways, action items (if any). Write in English. Output only the Markdown, no preamble.
+      You are summarizing a completed meeting transcript.
+
+      STRICT FORMAT RULES:
+      1. Use ## headings for sections (e.g. ## Main Points, ## Key Takeaways, ## Decisions, ## Action Items).
+      2. Use - for every bullet point. Each bullet on its own line.
+      3. Leave a blank line before each heading and between sections.
+      4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
+      5. Include: main points, key takeaways, decisions, action items (if any).
+      6. Write in English. Output only the Markdown, no preamble.
 
       Transcript:
       \(transcript)

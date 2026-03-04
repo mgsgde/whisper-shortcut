@@ -412,7 +412,7 @@ class GeminiChatViewModel: ObservableObject {
       """
     do {
       let raw = try await apiClient.generateText(
-        model: "gemini-2.5-flash-lite", prompt: prompt, apiKey: apiKey)
+        model: "gemini-3.1-flash-lite-preview", prompt: prompt, apiKey: apiKey)
       let lines = raw
         .components(separatedBy: .newlines)
         .map {

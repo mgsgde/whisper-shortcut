@@ -207,7 +207,7 @@ final class MeetingListService: ObservableObject {
     }
     guard !transcriptText.isEmpty else { return "" }
     do {
-      let summaryText = try await GeminiAPIClient().generateMeetingSummary(transcript: transcriptText, apiKey: apiKey)
+      let summaryText = try await GeminiAPIClient().generateMeetingSummary(transcript: transcriptText, model: PromptModel.loadSelectedMeetingSummary().rawValue, apiKey: apiKey)
       let trimmed = summaryText.trimmingCharacters(in: .whitespacesAndNewlines)
       if !trimmed.isEmpty {
         saveSummary(trimmed, for: meeting)

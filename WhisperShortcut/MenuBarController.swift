@@ -885,7 +885,7 @@ class MenuBarController: NSObject {
           text = String(text.suffix(MeetingListService.contextMaxChars))
         }
         do {
-          let summary = try await GeminiAPIClient().generateMeetingSummary(transcript: text, apiKey: apiKey)
+          let summary = try await GeminiAPIClient().generateMeetingSummary(transcript: text, model: PromptModel.loadSelectedMeetingSummary().rawValue, apiKey: apiKey)
           let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
           if !trimmed.isEmpty {
             MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
@@ -1024,7 +1024,7 @@ class MenuBarController: NSObject {
   /// Calls Gemini to merge new transcript into the rolling summary and updates the store. Call from a Task.
   private func runRollingSummaryUpdate(currentSummary: String, newText: String) async {
     guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else { return }
-    let model = "gemini-2.5-flash-lite"
+    let model = PromptModel.loadSelectedMeetingSummary().rawValue
     do {
       let updated = try await GeminiAPIClient().updateRollingSummary(
         model: model,

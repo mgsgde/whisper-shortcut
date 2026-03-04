@@ -218,9 +218,9 @@ struct MeetingChatSplitView: View {
   }
 
   /// Full transcript as a single string so the user can select and copy everything at once.
-  /// Double newlines add visual spacing between chunks while keeping one selectable block.
+  /// Single newline between chunks keeps segments visually distinct without excessive spacing.
   private var fullTranscriptText: String {
-    chunks.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n\n")
+    chunks.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n")
   }
 
   private var transcriptHeader: some View {
@@ -272,7 +272,7 @@ struct MeetingChatSplitView: View {
           ScrollView {
             Text(fullTranscriptText)
               .font(.system(size: 12))
-              .lineSpacing(6)
+              .lineSpacing(4)
               .foregroundColor(GeminiChatTheme.primaryText)
               .textSelection(.enabled)
               .frame(maxWidth: .infinity, alignment: .leading)

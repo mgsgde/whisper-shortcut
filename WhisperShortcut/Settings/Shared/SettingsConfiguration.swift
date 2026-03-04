@@ -112,6 +112,24 @@ enum PromptModel: String, CaseIterable {
     default: return model
     }
   }
+
+  /// Loads the model selected for the Open Gemini window (Settings → Open Gemini).
+  static func loadSelectedOpenGemini() -> PromptModel {
+    guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel),
+          let parsed = PromptModel(rawValue: raw) else {
+      return SettingsDefaults.selectedOpenGeminiModel
+    }
+    return migrateIfDeprecated(parsed)
+  }
+
+  /// Loads the model selected for meeting summary (rolling and final). Settings → Live Meeting → Summary Model.
+  static func loadSelectedMeetingSummary() -> PromptModel {
+    guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedMeetingSummaryModel),
+          let parsed = PromptModel(rawValue: raw) else {
+      return SettingsDefaults.selectedMeetingSummaryModel
+    }
+    return migrateIfDeprecated(parsed)
+  }
 }
 
 // MARK: - TTS Model Enum (for Text-to-Speech)
@@ -508,6 +526,7 @@ struct SettingsDefaults {
   // MARK: - Live Meeting Settings
   static let liveMeetingChunkInterval = LiveMeetingChunkInterval.fifteenSeconds
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
+  static let selectedMeetingSummaryModel = PromptModel.gemini3Flash
 
   // MARK: - UI State
   static let errorMessage = ""
@@ -579,6 +598,7 @@ struct SettingsData {
   var liveMeetingChunkInterval: LiveMeetingChunkInterval = SettingsDefaults.liveMeetingChunkInterval
   var liveMeetingSafeguardDuration: MeetingSafeguardDuration = SettingsDefaults.liveMeetingSafeguardDuration
   var selectedTranscriptionModelForMeetings: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
+  var selectedMeetingSummaryModel: PromptModel = SettingsDefaults.selectedMeetingSummaryModel
 
   // MARK: - UI State
   var errorMessage: String = SettingsDefaults.errorMessage
