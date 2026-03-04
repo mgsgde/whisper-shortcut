@@ -17,6 +17,11 @@ struct LiveMeetingSettingsTab: View {
 
       SpacedSectionDivider()
 
+      // Transcription Model Section
+      transcriptionModelSection
+
+      SpacedSectionDivider()
+
       // Safeguard Section
       safeguardSection
 
@@ -94,6 +99,29 @@ struct LiveMeetingSettingsTab: View {
       Text("Shorter intervals provide more responsive updates but use more API calls.")
         .font(.callout)
         .foregroundColor(.secondary)
+    }
+  }
+
+  // MARK: - Transcription Model Section
+  @ViewBuilder
+  private var transcriptionModelSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      ModelSelectionView(
+        title: "Transcription Model",
+        selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModelForMeetings,
+        geminiDisabled: !KeychainManager.shared.hasGoogleAPIKey(),
+        onModelChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
+        }
+      )
+      if viewModel.data.selectedTranscriptionModelForMeetings.isGemini && !KeychainManager.shared.hasGoogleAPIKey() {
+        Text("API key required for Gemini models. Add your key in the General tab, or select an offline Whisper model.")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+      }
     }
   }
 

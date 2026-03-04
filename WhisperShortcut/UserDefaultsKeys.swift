@@ -58,6 +58,7 @@ enum UserDefaultsKeys {
   // MARK: - Live Meeting Settings
   static let liveMeetingChunkInterval = "liveMeetingChunkInterval"
   static let liveMeetingSafeguardDurationSeconds = "liveMeetingSafeguardDurationSeconds"
+  static let selectedTranscriptionModelForMeetings = "selectedTranscriptionModelForMeetings"
 
   // MARK: - Context Settings
   static let contextLoggingEnabled = "userContextLoggingEnabled"

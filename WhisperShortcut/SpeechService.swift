@@ -140,10 +140,11 @@ class SpeechService {
   }
 
   // MARK: - Transcription Mode (Public API with Task Tracking)
-  func transcribe(audioURL: URL) async throws -> String {
+  /// - Parameter preferredModel: If set (e.g. for live meeting), use this model; otherwise use the global Dictate selection.
+  func transcribe(audioURL: URL, preferredModel: TranscriptionModel? = nil) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
-      try await self.performTranscription(audioURL: audioURL)
+      try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel)
     }
     
     currentTranscriptionTask = task
@@ -153,10 +154,9 @@ class SpeechService {
   }
 
   // MARK: - Transcription Mode (Private Implementation)
-  private func performTranscription(audioURL: URL) async throws -> String {
+  private func performTranscription(audioURL: URL, preferredModel: TranscriptionModel? = nil) async throws -> String {
     let startTime = CFAbsoluteTimeGetCurrent()
-    // Use persisted selection as single source of truth so we never use Whisper when user selected Gemini
-    let model = TranscriptionModel.loadSelected()
+    let model = preferredModel ?? TranscriptionModel.loadSelected()
 
     // Check if using offline model
     if model.isOffline {
@@ -206,7 +206,7 @@ class SpeechService {
     if model.isGemini {
       // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
       try validateAudioFileFormat(at: audioURL)
-      let result = try await transcribeWithGemini(audioURL: audioURL)
+      let result = try await transcribeWithGemini(audioURL: audioURL, model: model)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: [\(model.displayName)] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -700,7 +700,7 @@ class SpeechService {
   // MARK: - Gemini API Helpers (delegated to GeminiAPIClient)
 
   // MARK: - Gemini Transcription
-  private func transcribeWithGemini(audioURL: URL) async throws -> String {
+  private func transcribeWithGemini(audioURL: URL, model: TranscriptionModel) async throws -> String {
     let apiStartTime = CFAbsoluteTimeGetCurrent()
 
     guard let credential = await credentialProvider.getCredential() else {
@@ -729,28 +729,28 @@ class SpeechService {
     // Use chunking for long audio (>45s by default)
     if audioDuration > AppConstants.chunkingThresholdSeconds {
       DebugLogger.log("GEMINI-TRANSCRIPTION: Using chunked transcription (duration > \(AppConstants.chunkingThresholdSeconds)s)")
-      result = try await transcribeWithChunking(audioURL: audioURL, credential: credential)
+      result = try await transcribeWithChunking(audioURL: audioURL, credential: credential, model: model)
     }
     // For files >20MB, use Files API (resumable upload)
     // For files ≤20MB, use inline base64
     // DEBUG: Can force Files API usage via Constants.debugForceFilesAPI
     else if Constants.debugForceFilesAPI {
       DebugLogger.log("GEMINI-TRANSCRIPTION: DEBUG - Forcing Files API usage (debugForceFilesAPI = true)")
-      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential)
+      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential, model: model)
     } else if audioSize > AppConstants.maxFileSizeBytes {
-      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential)
+      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential, model: model)
     } else {
-      result = try await transcribeWithGeminiInline(audioURL: audioURL, credential: credential)
+      result = try await transcribeWithGeminiInline(audioURL: audioURL, credential: credential, model: model)
     }
 
     let apiElapsedTime = CFAbsoluteTimeGetCurrent() - apiStartTime
-    DebugLogger.logSpeech("SPEED: [\(selectedTranscriptionModel.displayName)] API call completed in \(String(format: "%.3f", apiElapsedTime))s (\(String(format: "%.0f", apiElapsedTime * 1000))ms)")
+    DebugLogger.logSpeech("SPEED: [\(model.displayName)] API call completed in \(String(format: "%.3f", apiElapsedTime))s (\(String(format: "%.0f", apiElapsedTime * 1000))ms)")
 
     return result
   }
 
   // MARK: - Chunked Transcription
-  private func transcribeWithChunking(audioURL: URL, credential: GeminiCredential) async throws -> String {
+  private func transcribeWithChunking(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel) async throws -> String {
     let chunkService = ChunkTranscriptionService(geminiClient: geminiClient)
     chunkService.progressDelegate = chunkProgressDelegate
 
@@ -759,7 +759,7 @@ class SpeechService {
     return try await chunkService.transcribe(
       fileURL: audioURL,
       credential: credential,
-      model: selectedTranscriptionModel,
+      model: model,
       prompt: prompt
     )
   }
@@ -771,7 +771,7 @@ class SpeechService {
     return CMTimeGetSeconds(duration)
   }
   
-  private func transcribeWithGeminiInline(audioURL: URL, credential: GeminiCredential) async throws -> String {
+  private func transcribeWithGeminiInline(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel) async throws -> String {
     let inlineStartTime = CFAbsoluteTimeGetCurrent()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using inline audio (file ≤20MB)")
     
@@ -792,8 +792,8 @@ class SpeechService {
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
     
     // Create request with dynamic endpoint based on selected model
-    let endpoint = selectedTranscriptionModel.apiEndpoint
-    DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(selectedTranscriptionModel.displayName) (\(selectedTranscriptionModel.rawValue))")
+    let endpoint = model.apiEndpoint
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(model.displayName) (\(model.rawValue))")
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
     
     // Build request using Codable struct
@@ -828,19 +828,19 @@ class SpeechService {
       withRetry: true
     )
     let networkTime = CFAbsoluteTimeGetCurrent() - networkStartTime
-    DebugLogger.logSpeech("SPEED: [\(selectedTranscriptionModel.displayName)] API network request took \(String(format: "%.3f", networkTime))s (\(String(format: "%.0f", networkTime * 1000))ms)")
+    DebugLogger.logSpeech("SPEED: [\(model.displayName)] API network request took \(String(format: "%.3f", networkTime))s (\(String(format: "%.0f", networkTime * 1000))ms)")
 
     let transcript = geminiClient.extractText(from: geminiResponse)
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(transcript)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
 
     let inlineElapsedTime = CFAbsoluteTimeGetCurrent() - inlineStartTime
-    DebugLogger.logSpeech("SPEED: [\(selectedTranscriptionModel.displayName)] inline transcription total: \(String(format: "%.3f", inlineElapsedTime))s (\(String(format: "%.0f", inlineElapsedTime * 1000))ms)")
+    DebugLogger.logSpeech("SPEED: [\(model.displayName)] inline transcription total: \(String(format: "%.3f", inlineElapsedTime))s (\(String(format: "%.0f", inlineElapsedTime * 1000))ms)")
 
     return normalizedText
   }
 
-  private func transcribeWithGeminiFilesAPI(audioURL: URL, credential: GeminiCredential) async throws -> String {
+  private func transcribeWithGeminiFilesAPI(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel) async throws -> String {
     let filesAPIStartTime = CFAbsoluteTimeGetCurrent()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using Files API (file >20MB)")
     
@@ -851,7 +851,7 @@ class SpeechService {
     DebugLogger.logSpeech("SPEED: File upload took \(String(format: "%.3f", uploadTime))s (\(String(format: "%.0f", uploadTime * 1000))ms)")
 
     // Step 2: Use file URI for transcription
-    let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, credential: credential)
+    let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, credential: credential, model: model)
     
     let filesAPIElapsedTime = CFAbsoluteTimeGetCurrent() - filesAPIStartTime
     DebugLogger.logSpeech("SPEED: Gemini Files API transcription total time: \(String(format: "%.3f", filesAPIElapsedTime))s (\(String(format: "%.0f", filesAPIElapsedTime * 1000))ms)")
@@ -861,7 +861,7 @@ class SpeechService {
   
   // File upload is now handled by GeminiAPIClient
   
-  private func transcribeWithGeminiFileURI(fileURI: String, credential: GeminiCredential) async throws -> String {
+  private func transcribeWithGeminiFileURI(fileURI: String, credential: GeminiCredential, model: TranscriptionModel) async throws -> String {
     let fileURIStartTime = CFAbsoluteTimeGetCurrent()
     
     // Get dictation system prompt
@@ -870,8 +870,8 @@ class SpeechService {
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
     
     // Create request with dynamic endpoint based on selected model
-    let endpoint = selectedTranscriptionModel.apiEndpoint
-    DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(selectedTranscriptionModel.displayName) (\(selectedTranscriptionModel.rawValue))")
+    let endpoint = model.apiEndpoint
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(model.displayName) (\(model.rawValue))")
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
     
     // Build request using Codable struct

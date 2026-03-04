@@ -181,7 +181,22 @@ enum TranscriptionModel: String, CaseIterable {
       forKey: UserDefaultsKeys.selectedTranscriptionModel)
     return SettingsDefaults.selectedTranscriptionModel
   }
-  
+
+  /// Loads the transcription model for live meetings. If not set, returns the Dictate model (loadSelected()).
+  static func loadSelectedForMeeting() -> TranscriptionModel {
+    guard let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) else {
+      return loadSelected()
+    }
+    if savedModelString == "gemini-2.0-flash-lite" {
+      UserDefaults.standard.set(TranscriptionModel.gemini25FlashLite.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
+      return .gemini25FlashLite
+    }
+    if let savedModel = TranscriptionModel(rawValue: savedModelString) {
+      return savedModel
+    }
+    return loadSelected()
+  }
+
   // MARK: - Model Availability
   /// Checks if this model is an offline model and if it's available
   /// - Returns: True if the model is offline and available, false otherwise

@@ -239,7 +239,14 @@ class SettingsViewModel: ObservableObject {
     }
     
     data.liveMeetingSafeguardDuration = MeetingSafeguardDuration.loadFromUserDefaults()
-    
+
+    if let savedMeetingModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings),
+       let savedMeetingModel = TranscriptionModel(rawValue: savedMeetingModelString) {
+      data.selectedTranscriptionModelForMeetings = savedMeetingModel
+    } else {
+      data.selectedTranscriptionModelForMeetings = TranscriptionModel.loadSelected()
+    }
+
     // Load Google API key
     data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
     
@@ -440,6 +447,7 @@ class SettingsViewModel: ObservableObject {
     // Save Live Meeting settings
     UserDefaults.standard.set(data.liveMeetingChunkInterval.rawValue, forKey: UserDefaultsKeys.liveMeetingChunkInterval)
     UserDefaults.standard.set(data.liveMeetingSafeguardDuration.rawValue, forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)
+    UserDefaults.standard.set(data.selectedTranscriptionModelForMeetings.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
 
     // Save toggle shortcuts (keep existing toggleMeeting/stopMeeting from config — no longer configurable in UI)
     let shortcuts = parseShortcuts()

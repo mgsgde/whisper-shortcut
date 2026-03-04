@@ -2268,8 +2268,8 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
 
     Task {
       do {
-        // Transcribe the chunk
-        let text = try await speechService.transcribe(audioURL: audioURL)
+        // Transcribe the chunk using the meeting-specific model (or Dictate model if not set)
+        let text = try await speechService.transcribe(audioURL: audioURL, preferredModel: TranscriptionModel.loadSelectedForMeeting())
 
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
