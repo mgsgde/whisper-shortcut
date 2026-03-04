@@ -482,7 +482,8 @@ class GeminiAPIClient {
   }
 
   /// Lightweight single-shot text generation using credential (API key or Bearer for proxy). When using proxy, sends request_type so backend applies subscription model.
-  func generateText(model: String, prompt: String, credential: GeminiCredential) async throws -> String {
+  /// - Parameter requestTypeForProxy: When using proxy (OAuth), request_type sent to backend (e.g. "gemini_chat", "meeting_summary"). Ignored for API key.
+  func generateText(model: String, prompt: String, credential: GeminiCredential, requestTypeForProxy: String = "gemini_chat") async throws -> String {
     let directEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
     let (endpoint, resolvedCredential) = Self.resolveGenerateContentEndpoint(directEndpoint: directEndpoint, credential: credential)
     let credentialForRequest = await Self.resolveCredentialForRequest(endpoint: endpoint, resolvedCredential: resolvedCredential)
@@ -496,7 +497,7 @@ class GeminiAPIClient {
       return trimmed + "/v1/gemini/generateContent"
     }()
     if endpoint == proxyPath {
-      body["request_type"] = "gemini_chat"
+      body["request_type"] = requestTypeForProxy
       body["model"] = model
     }
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -506,12 +507,12 @@ class GeminiAPIClient {
   }
 
   /// Updates a rolling meeting summary by merging new transcript content into the existing summary.
-  /// Uses a single generateContent call with a structured prompt. Model: gemini-3.1-flash-lite.
+  /// Uses credential (API key or Bearer); when OAuth, sends request_type "meeting_summary" so backend uses subscription model.
   func updateRollingSummary(
     model: String,
     currentSummary: String,
     newTranscriptText: String,
-    apiKey: String
+    credential: GeminiCredential
   ) async throws -> String {
     let prompt: String
     if currentSummary.isEmpty {
@@ -548,12 +549,22 @@ class GeminiAPIClient {
         \(newTranscriptText)
         """
     }
-    return try await generateText(model: model, prompt: prompt, apiKey: apiKey)
+    return try await generateText(model: model, prompt: prompt, credential: credential, requestTypeForProxy: "meeting_summary")
+  }
+
+  /// Legacy API-key-only overload.
+  func updateRollingSummary(
+    model: String,
+    currentSummary: String,
+    newTranscriptText: String,
+    apiKey: String
+  ) async throws -> String {
+    try await updateRollingSummary(model: model, currentSummary: currentSummary, newTranscriptText: newTranscriptText, credential: .apiKey(apiKey))
   }
 
   /// Generates a final Markdown summary of a full meeting transcript (main points, decisions, action items).
-  /// - Parameter model: Gemini model ID (e.g. from TranscriptionModel.loadSelectedForMeeting().rawValue).
-  func generateMeetingSummary(transcript: String, model: String, apiKey: String) async throws -> String {
+  /// Uses credential (API key or Bearer); when OAuth, sends request_type "meeting_summary" so backend uses subscription model.
+  func generateMeetingSummary(transcript: String, model: String, credential: GeminiCredential) async throws -> String {
     let prompt = """
       You are summarizing a completed meeting transcript.
 
@@ -568,7 +579,12 @@ class GeminiAPIClient {
       Transcript:
       \(transcript)
       """
-    return try await generateText(model: model, prompt: prompt, apiKey: apiKey)
+    return try await generateText(model: model, prompt: prompt, credential: credential, requestTypeForProxy: "meeting_summary")
+  }
+
+  /// Legacy API-key-only overload. Prefer generateMeetingSummary(transcript:model:credential:) for subscription support.
+  func generateMeetingSummary(transcript: String, model: String, apiKey: String) async throws -> String {
+    try await generateMeetingSummary(transcript: transcript, model: model, credential: .apiKey(apiKey))
   }
 
   /// Extracts grounding sources (web URIs + titles) from a Gemini response.

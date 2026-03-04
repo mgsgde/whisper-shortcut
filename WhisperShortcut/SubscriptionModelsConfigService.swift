@@ -57,4 +57,10 @@ enum SubscriptionModelsConfigService {
     if let id = cached?.tts, let model = TTSModel(rawValue: id) { return model }
     return SettingsDefaults.subscriptionTTSModel
   }
+
+  /// Effective model for meeting summary (live and past) when on subscription.
+  static func effectiveMeetingSummaryModel() -> PromptModel {
+    if let id = cached?.meeting_summary, let model = PromptModel(rawValue: id) { return model }
+    return SettingsDefaults.selectedMeetingSummaryModel
+  }
 }

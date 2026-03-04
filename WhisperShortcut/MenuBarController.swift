@@ -876,13 +876,16 @@ class MenuBarController: NSObject {
       Task {
         let transcriptText = chunksSnapshot.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n\n")
         guard !transcriptText.isEmpty else { return }
-        guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else { return }
+        guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
         var text = transcriptText
         if text.count > MeetingListService.contextMaxChars {
           text = String(text.suffix(MeetingListService.contextMaxChars))
         }
+        let model = credential.isOAuth
+          ? SubscriptionModelsConfigService.effectiveMeetingSummaryModel().rawValue
+          : PromptModel.loadSelectedMeetingSummary().rawValue
         do {
-          let summary = try await GeminiAPIClient().generateMeetingSummary(transcript: text, model: PromptModel.loadSelectedMeetingSummary().rawValue, apiKey: apiKey)
+          let summary = try await GeminiAPIClient().generateMeetingSummary(transcript: text, model: model, credential: credential)
           let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
           if !trimmed.isEmpty {
             MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
@@ -1002,7 +1005,6 @@ class MenuBarController: NSObject {
     let count = store.chunks.count
     let threshold = 4
     guard count - liveMeetingChunksSummarized >= threshold else { return }
-    guard KeychainManager.shared.getGoogleAPIKey() != nil else { return }
 
     let fromIndex = liveMeetingChunksSummarized
     liveMeetingChunksSummarized = count
@@ -1017,14 +1019,16 @@ class MenuBarController: NSObject {
 
   /// Calls Gemini to merge new transcript into the rolling summary and updates the store. Call from a Task.
   private func runRollingSummaryUpdate(currentSummary: String, newText: String) async {
-    guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else { return }
-    let model = PromptModel.loadSelectedMeetingSummary().rawValue
+    guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
+    let model = credential.isOAuth
+      ? SubscriptionModelsConfigService.effectiveMeetingSummaryModel().rawValue
+      : PromptModel.loadSelectedMeetingSummary().rawValue
     do {
       let updated = try await GeminiAPIClient().updateRollingSummary(
         model: model,
         currentSummary: currentSummary,
         newTranscriptText: newText,
-        apiKey: apiKey
+        credential: credential
       )
       await MainActor.run {
         let trimmed = updated.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -197,7 +197,7 @@ final class MeetingListService: ObservableObject {
 
   /// Generates a Markdown summary from the meeting transcript via Gemini and saves it. Returns placeholder on error.
   func generateAndSaveSummary(for meeting: MeetingFileInfo) async -> String {
-    guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else {
+    guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
       return ""
     }
     let meetingChunks = chunks(for: meeting)
@@ -206,8 +206,11 @@ final class MeetingListService: ObservableObject {
       transcriptText = String(transcriptText.suffix(Self.contextMaxChars))
     }
     guard !transcriptText.isEmpty else { return "" }
+    let model = credential.isOAuth
+      ? SubscriptionModelsConfigService.effectiveMeetingSummaryModel().rawValue
+      : PromptModel.loadSelectedMeetingSummary().rawValue
     do {
-      let summaryText = try await GeminiAPIClient().generateMeetingSummary(transcript: transcriptText, model: PromptModel.loadSelectedMeetingSummary().rawValue, apiKey: apiKey)
+      let summaryText = try await GeminiAPIClient().generateMeetingSummary(transcript: transcriptText, model: model, credential: credential)
       let trimmed = summaryText.trimmingCharacters(in: .whitespacesAndNewlines)
       if !trimmed.isEmpty {
         saveSummary(trimmed, for: meeting)

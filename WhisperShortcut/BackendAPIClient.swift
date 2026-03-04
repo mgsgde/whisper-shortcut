@@ -14,6 +14,7 @@ struct SubscriptionModelsConfig: Codable {
   var prompt_mode: String?
   var smart_improvement: String?
   var gemini_chat: String?
+  var meeting_summary: String?
   var tts: String?
   var default_gemini: String?
 }
