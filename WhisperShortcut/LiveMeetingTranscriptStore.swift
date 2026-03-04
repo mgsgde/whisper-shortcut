@@ -48,15 +48,27 @@ final class LiveMeetingTranscriptStore: ObservableObject {
 
   private init() {}
 
+  /// Generates a timestamp-based filename stem (e.g. "Meeting-2026-03-04-201119").
+  /// Used as the meeting's unique ID for both transcript files and chat store scope.
+  static func generateStem() -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+    return "Meeting-\(formatter.string(from: Date()))"
+  }
+
   /// Call when a new meeting session starts. Clears previous data.
+  /// Generates a stem if one was not already set (e.g. when starting via global shortcut without "New Meeting").
   func startSession() {
     queue.async { [weak self] in
       guard let self else { return }
       DispatchQueue.main.async {
+        if self.currentMeetingFilenameStem == nil {
+          self.currentMeetingFilenameStem = Self.generateStem()
+        }
         self.chunks = []
         self.summary = ""
         self.isSessionActive = true
-        DebugLogger.log("LIVE-MEETING-STORE: Session started, store cleared")
+        DebugLogger.log("LIVE-MEETING-STORE: Session started, store cleared (stem: \(self.currentMeetingFilenameStem ?? "nil"))")
       }
     }
   }
@@ -85,15 +97,17 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   }
 
   /// Clears store for a new meeting without starting recording. Used when user taps "New Meeting".
+  /// Generates a fresh stem so the meeting has a unique ID from the start (used as chat scope).
   func clearForNewMeeting() {
+    let stem = Self.generateStem()
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       self.chunks = []
       self.summary = ""
       self.isSessionActive = false
-      self.currentMeetingFilenameStem = nil
+      self.currentMeetingFilenameStem = stem
       self.preferredMeetingName = nil
-      DebugLogger.log("LIVE-MEETING-STORE: Cleared for new meeting")
+      DebugLogger.log("LIVE-MEETING-STORE: Cleared for new meeting (stem: \(stem))")
     }
   }
 

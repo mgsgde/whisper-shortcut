@@ -261,16 +261,17 @@ struct MeetingRootView: View {
   private var meetingSplitForCurrent: some View {
     switch currentMeetingStore.selectedMeeting {
     case .live:
+      let liveScope = liveStore.currentMeetingFilenameStem ?? "live"
       MeetingChatSplitView(
         chunks: liveStore.chunks,
         summary: liveStore.summary,
         isSessionActive: liveStore.isSessionActive,
-        store: GeminiChatSessionStore(scope: "live"),
+        store: GeminiChatSessionStore(scope: liveScope),
         meetingContextProvider: {
           LiveMeetingTranscriptStore.shared.meetingContextForChat(lastMinutes: 5)
         }
       )
-      .id("live")
+      .id(liveScope)
     case .pastMeeting(let info):
       let chunks = meetingListService.chunks(for: info)
       MeetingChatSplitView(
