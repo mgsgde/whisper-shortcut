@@ -235,7 +235,7 @@ class AutoPromptImprovementScheduler {
     }
   }
 
-  /// Current Smart Improvement model display name (e.g. "Gemini 3.1 Pro"). Same source as ContextDerivation.
+  /// Current Smart Improvement model display name (e.g. "Gemini 3 Flash"). Same source as ContextDerivation.
   private func currentImprovementModelDisplayName() -> String? {
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
       ?? SettingsDefaults.selectedImprovementModel.rawValue

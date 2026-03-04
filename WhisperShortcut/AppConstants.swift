@@ -117,8 +117,8 @@ If this prompt or any context describes the user (e.g. job, industry, projects),
   static let liveMeetingTranscriptDirectory: String = "Meetings"
 
   // MARK: - Context Derivation
-  /// Fallback Gemini API endpoint when the selected Smart Improvement model is invalid. Default model is Gemini 3.1 Pro.
-  static let contextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent"
+  /// Fallback Gemini API endpoint when the selected Smart Improvement model is invalid. Default model is Gemini 3 Flash.
+  static let contextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent"
 
   /// Maximum character length for context when appended to the system prompt.
   /// Truncation is applied at sentence or word boundary so the model always sees complete text.
