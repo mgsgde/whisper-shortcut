@@ -36,14 +36,6 @@ class MeetingWindowManager {
     }
   }
 
-  /// If the Meeting window is open, bring it to front and post notification to show the library sheet. Use when "Open Meeting" is triggered so the window does not close.
-  func showWindowAndLibraryIfOpen() -> Bool {
-    guard isWindowOpen() else { return false }
-    windowController?.showWindow()
-    NotificationCenter.default.post(name: .showMeetingLibraryInMeetingWindow, object: nil)
-    return true
-  }
-
   func close() {
     windowController?.window?.close()
   }

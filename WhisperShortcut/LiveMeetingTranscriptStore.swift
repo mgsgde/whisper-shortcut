@@ -76,12 +76,10 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     }
   }
 
-  /// Call when the meeting session ends. Keeps chunks and summary so the meeting window can keep showing them.
+  /// Call when the meeting session ends. Keeps chunks, summary, and name so the meeting window can keep showing them.
   func endSession() {
     DispatchQueue.main.async { [weak self] in
       self?.isSessionActive = false
-      self?.currentMeetingFilenameStem = nil
-      self?.preferredMeetingName = nil
       DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
     }
   }
@@ -93,6 +91,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
       self.chunks = []
       self.summary = ""
       self.isSessionActive = false
+      self.currentMeetingFilenameStem = nil
       self.preferredMeetingName = nil
       DebugLogger.log("LIVE-MEETING-STORE: Cleared for new meeting")
     }
