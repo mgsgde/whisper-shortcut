@@ -1,11 +1,16 @@
 import SwiftUI
 
-/// Split view for the Meeting Chat window: left = Gemini chat with meeting context, right = live transcript + optional summary.
+/// Split view for the Meeting Chat window: left = Gemini chat with meeting context, right = scrollable transcript + optional summary.
+/// Accepts all data as parameters so the same view works for both live meetings and loaded past meetings.
 struct MeetingChatSplitView: View {
-  @ObservedObject private var transcriptStore = LiveMeetingTranscriptStore.shared
+  let chunks: [LiveMeetingChunk]
+  let summary: String
+  let isSessionActive: Bool
+  let store: GeminiChatSessionStore
+  let meetingContextProvider: (() -> String?)?
+
   @State private var summaryExpanded: Bool = true
 
-  /// Fraction of width for the chat (left) side. Right side gets 1 - chatFraction.
   private let chatFraction: CGFloat = 0.55
 
   var body: some View {
@@ -23,10 +28,9 @@ struct MeetingChatSplitView: View {
 
   private func chatColumn(width: CGFloat) -> some View {
     GeminiChatView(
-      meetingContextProvider: {
-        LiveMeetingTranscriptStore.shared.meetingContextForChat(lastMinutes: 5)
-      },
-      createNewSessionOnAppear: true
+      meetingContextProvider: meetingContextProvider,
+      createNewSessionOnAppear: false,
+      store: store
     )
     .frame(width: width, alignment: .leading)
   }
@@ -36,8 +40,10 @@ struct MeetingChatSplitView: View {
       transcriptHeader
       Divider()
         .background(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity))
-      if !transcriptStore.summary.isEmpty {
+      if !summary.isEmpty {
         summarySection
+        Divider()
+          .background(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity))
       }
       transcriptList
     }
@@ -48,26 +54,34 @@ struct MeetingChatSplitView: View {
   private var summarySection: some View {
     DisclosureGroup(isExpanded: $summaryExpanded) {
       ScrollView {
-        Text(transcriptStore.summary)
-          .font(.system(size: 12))
+        Text(summary)
+          .font(.system(size: 14))
+          .lineSpacing(6)
           .foregroundColor(GeminiChatTheme.primaryText)
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
       }
-      .frame(maxHeight: 160)
-      .padding(.vertical, 4)
+      .frame(maxHeight: 220)
+      .padding(.vertical, 8)
     } label: {
       HStack(spacing: 6) {
         Image(systemName: "text.alignleft")
-          .font(.system(size: 11))
+          .font(.system(size: 12))
           .foregroundColor(GeminiChatTheme.secondaryText)
         Text("Summary")
-          .font(.system(size: 12, weight: .medium))
+          .font(.system(size: 13, weight: .semibold))
           .foregroundColor(GeminiChatTheme.primaryText)
       }
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 6)
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(GeminiChatTheme.windowBackground.opacity(0.6))
+  }
+
+  /// Full transcript as a single string so the user can select and copy everything at once.
+  /// Double newlines add visual spacing between chunks while keeping one selectable block.
+  private var fullTranscriptText: String {
+    chunks.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n\n")
   }
 
   private var transcriptHeader: some View {
@@ -75,15 +89,36 @@ struct MeetingChatSplitView: View {
       Image(systemName: "waveform")
         .foregroundColor(.accentColor)
         .font(.system(size: 12, weight: .medium))
-      Text("Live transcript")
+      Text(isSessionActive ? "Live transcript" : "Transcript")
         .font(.system(size: 13, weight: .semibold))
         .foregroundColor(GeminiChatTheme.primaryText)
-      if !transcriptStore.isSessionActive {
-        Text("(ended)")
+      if isSessionActive {
+        // No extra label while live
+      } else if !chunks.isEmpty {
+        Text("(\(chunks.count) chunks)")
           .font(.system(size: 11))
           .foregroundColor(GeminiChatTheme.secondaryText)
       }
       Spacer()
+      if !chunks.isEmpty {
+        Button {
+          NSPasteboard.general.clearContents()
+          NSPasteboard.general.setString(fullTranscriptText, forType: .string)
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "doc.on.doc")
+              .font(.system(size: 11))
+            Text("Copy")
+              .font(.system(size: 11, weight: .medium))
+          }
+          .foregroundColor(GeminiChatTheme.secondaryText)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 4)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Copy full transcript to clipboard")
+      }
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
@@ -92,37 +127,24 @@ struct MeetingChatSplitView: View {
   private var transcriptList: some View {
     ScrollViewReader { proxy in
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: 6) {
-          ForEach(transcriptStore.chunks) { chunk in
-            transcriptRow(chunk: chunk)
-          }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        Text(fullTranscriptText)
+          .font(.system(size: 12))
+          .lineSpacing(6)
+          .foregroundColor(GeminiChatTheme.primaryText)
+          .textSelection(.enabled)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 12)
+          .padding(.vertical, 8)
+          .id("transcriptBottom")
       }
-      .onChange(of: transcriptStore.chunks.count) { _, _ in
-        if let last = transcriptStore.chunks.last {
+      .onChange(of: chunks.count) { _, _ in
+        if isSessionActive {
           withAnimation(.easeOut(duration: 0.15)) {
-            proxy.scrollTo(last.id, anchor: .bottom)
+            proxy.scrollTo("transcriptBottom", anchor: .bottom)
           }
         }
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-  }
-
-  private func transcriptRow(chunk: LiveMeetingChunk) -> some View {
-    HStack(alignment: .top, spacing: 8) {
-      Text(chunk.timestampString)
-        .font(.system(size: 11, weight: .medium))
-        .foregroundColor(GeminiChatTheme.secondaryText)
-        .frame(width: 44, alignment: .leading)
-      Text(chunk.text)
-        .font(.system(size: 12))
-        .foregroundColor(GeminiChatTheme.primaryText)
-        .textSelection(.enabled)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .padding(.vertical, 2)
   }
 }

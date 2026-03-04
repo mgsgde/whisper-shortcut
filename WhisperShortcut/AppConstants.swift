@@ -66,6 +66,8 @@ If this prompt or any context describes the user (e.g. job, industry, projects),
   // MARK: - Support Contact
   static let whatsappSupportNumber = "+4917641952181"
   static let githubRepositoryURL = "https://github.com/mgsgde/whisper-shortcut"
+  /// Tip link: compare Gemini models (speed, intelligence, pricing).
+  static let geminiModelsComparisonURL = "https://mgsgde.github.io/gemini-models/"
 
   // MARK: - File Size Limits
   static let maxFileSizeBytes = 20 * 1024 * 1024  // 20MB - optimal for Gemini's file size limits

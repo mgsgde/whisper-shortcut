@@ -4,7 +4,6 @@ import ScreenCaptureKit
 class GeminiWindowManager {
   static let shared = GeminiWindowManager()
   private var windowController: GeminiWindowController?
-  private var meetingWindowController: MeetingGeminiWindowController?
 
   private var cachedShareableContent: SCShareableContent?
   private var cachedShareableContentDate: Date?
@@ -28,12 +27,10 @@ class GeminiWindowManager {
     prefetchShareableContent()
   }
 
-  /// Shows the Meeting Chat split window (chat + live transcript). Used when Open Gemini is invoked while a live meeting is active.
-  func showMeetingWindow() {
-    if meetingWindowController == nil {
-      meetingWindowController = MeetingGeminiWindowController()
-    }
-    meetingWindowController?.showWindow()
+  /// Shows the Gemini window and switches to the Meeting view (for live meeting).
+  func showAndSwitchToMeeting() {
+    show()
+    NotificationCenter.default.post(name: .geminiSwitchToMeeting, object: nil)
   }
 
   func close() {

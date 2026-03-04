@@ -163,8 +163,9 @@ private struct SessionsFile: Codable {
 class GeminiChatSessionStore {
   static let shared = GeminiChatSessionStore()
 
-  private let fileName = "gemini-sessions.json"
+  private let fileName: String
   private let legacyFileName = "gemini-chat-session.json"
+  private let scope: String?
   private static let navStackLimit = 20
   /// Maximum number of sessions kept on disk. Oldest sessions (by lastUpdated) are pruned when exceeded.
   private static let maxSessionCount = 100
@@ -175,7 +176,14 @@ class GeminiChatSessionStore {
   private var cachedFile: SessionsFile?
   private let diskWriteQueue = DispatchQueue(label: "com.whispershortcut.session.io", qos: .utility)
 
-  private init() {}
+  init(scope: String? = nil) {
+    self.scope = scope
+    if let scope = scope {
+      self.fileName = "gemini-sessions-\(scope).json"
+    } else {
+      self.fileName = "gemini-sessions.json"
+    }
+  }
 
   private var fileURL: URL {
     AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent(fileName)
@@ -192,8 +200,9 @@ class GeminiChatSessionStore {
   private func loadFile() -> SessionsFile {
     if let cached = cachedFile { return cached }
 
-    // Migrate from legacy single-session file
-    if FileManager.default.fileExists(atPath: legacyFileURL.path),
+    // Migrate from legacy single-session file (only for default/unscoped store)
+    if scope == nil,
+       FileManager.default.fileExists(atPath: legacyFileURL.path),
        let data = try? Data(contentsOf: legacyFileURL),
        let legacy = try? JSONDecoder().decode(ChatSession.self, from: data) {
       let file = SessionsFile(currentSessionId: legacy.id, sessions: [legacy])

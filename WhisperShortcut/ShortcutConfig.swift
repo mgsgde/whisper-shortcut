@@ -470,4 +470,10 @@ extension Notification.Name {
   static let ttsDidStart = Notification.Name("ttsDidStart")
   /// Posted when TTS stops (synthesis cancelled, playback stopped, or finished).
   static let ttsDidStop = Notification.Name("ttsDidStop")
+  /// Posted to switch the Gemini window to Meeting view (e.g. when a live meeting starts).
+  static let geminiSwitchToMeeting = Notification.Name("geminiSwitchToMeeting")
+  /// Posted to switch the Gemini window to Chat view and resize to one third of the screen.
+  static let geminiSwitchToChat = Notification.Name("geminiSwitchToChat")
+  /// Posted from the Gemini window to start or stop live meeting (same as menu "Transcribe Meeting").
+  static let geminiToggleLiveMeeting = Notification.Name("geminiToggleLiveMeeting")
 }

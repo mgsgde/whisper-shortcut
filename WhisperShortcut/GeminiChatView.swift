@@ -44,7 +44,7 @@ class GeminiChatViewModel: ObservableObject {
   @Published private(set) var currentSessionId: UUID = UUID()
 
   private var session: ChatSession
-  private let store = GeminiChatSessionStore.shared
+  private let store: GeminiChatSessionStore
   private let apiClient = GeminiAPIClient()
 
   /// In-flight send tasks keyed by session ID — multiple sessions can be sending simultaneously.
@@ -96,8 +96,9 @@ class GeminiChatViewModel: ObservableObject {
   /// When non-nil, this provider supplies extra context (e.g. meeting summary + recent transcript) appended to the system instruction. Used by the Meeting Chat window.
   private let meetingContextProvider: (() -> String?)?
 
-  init(meetingContextProvider: (() -> String?)? = nil) {
+  init(meetingContextProvider: (() -> String?)? = nil, store: GeminiChatSessionStore = .shared) {
     self.meetingContextProvider = meetingContextProvider
+    self.store = store
     session = store.load()
     currentSessionId = session.id
     messages = session.messages
@@ -517,8 +518,8 @@ struct GeminiChatView: View {
   @State private var createNewSessionOnAppear: Bool
   @State private var hasTriggeredNewSessionOnAppear: Bool = false
 
-  init(meetingContextProvider: (() -> String?)? = nil, createNewSessionOnAppear: Bool = false) {
-    _viewModel = StateObject(wrappedValue: GeminiChatViewModel(meetingContextProvider: meetingContextProvider))
+  init(meetingContextProvider: (() -> String?)? = nil, createNewSessionOnAppear: Bool = false, store: GeminiChatSessionStore = .shared) {
+    _viewModel = StateObject(wrappedValue: GeminiChatViewModel(meetingContextProvider: meetingContextProvider, store: store))
     _createNewSessionOnAppear = State(initialValue: createNewSessionOnAppear)
   }
 

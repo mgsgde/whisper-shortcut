@@ -300,6 +300,12 @@ class MenuBarController: NSObject {
       name: .geminiReadAloudStop,
       object: nil
     )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(toggleLiveMeeting),
+      name: .geminiToggleLiveMeeting,
+      object: nil
+    )
   }
 
   @objc private func geminiReadAloudStopFromNotification() {
@@ -635,7 +641,7 @@ class MenuBarController: NSObject {
 
   @objc func openGeminiWindow() {
     if isLiveMeetingActive {
-      GeminiWindowManager.shared.showMeetingWindow()
+      GeminiWindowManager.shared.showAndSwitchToMeeting()
     } else {
       GeminiWindowManager.shared.toggle()
     }
@@ -674,10 +680,7 @@ class MenuBarController: NSObject {
       return
     }
 
-    // Open transcript file with default app
-    if let url = liveMeetingTranscriptURL {
-      NSWorkspace.shared.open(url)
-    }
+    // Transcript is shown in the app's Meeting view; do not open the .txt file in an external app.
 
     // Load chunk interval from settings
     let savedInterval = UserDefaults.standard.double(forKey: UserDefaultsKeys.liveMeetingChunkInterval)
@@ -709,7 +712,7 @@ class MenuBarController: NSObject {
       DebugLogger.log("LIVE-MEETING-SAFEGUARD: Reminder scheduled after \(Int(safeguardThreshold.rawValue / 60)) minutes")
     }
 
-    GeminiWindowManager.shared.showMeetingWindow()
+    GeminiWindowManager.shared.showAndSwitchToMeeting()
 
     DebugLogger.logSuccess("LIVE-MEETING: Session started")
   }

@@ -102,6 +102,18 @@ struct ModelSelectionView: View {
               .foregroundColor(.secondary)
           }
         }
+
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+          Text("Tip: Compare Gemini models (speed, intelligence, pricing):")
+            .font(.caption)
+            .foregroundColor(.secondary)
+          if let url = URL(string: AppConstants.geminiModelsComparisonURL) {
+            Link("gemini-models", destination: url)
+              .font(.caption)
+              .lineLimit(1)
+              .pointerCursorOnHover()
+          }
+        }
       }
     }
   }
