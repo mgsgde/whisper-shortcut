@@ -494,16 +494,16 @@ struct SettingsDefaults {
   // When the user is on subscription (no API key, signed in with Google), the backend forces these models per request_type.
   // These constants MUST match apps/api/src/server.ts SUBSCRIPTION_MODEL_BY_REQUEST_TYPE. Use them for API requests and for
   // Settings UI (effective model display) so the user always sees what is actually used.
-  /// prompt_mode, prompt_and_read; backend: prompt_mode → gemini-2.5-flash.
-  static let subscriptionPromptModel = PromptModel.gemini25Flash
-  /// Transcription (Diktat); backend: transcription → gemini-2.5-flash.
-  static let subscriptionTranscriptionModel = TranscriptionModel.gemini25Flash
-  /// Open Gemini chat window; backend: gemini_chat → gemini-2.5-flash.
-  static let subscriptionOpenGeminiModel = PromptModel.gemini25Flash
-  /// Smart Improvement (Improve from usage / from voice); backend: smart_improvement → gemini-2.5-flash (europe-west3 has no gemini-2.5-pro).
-  static let subscriptionImprovementModel = PromptModel.gemini25Flash
+  /// prompt_mode, prompt_and_read; backend: prompt_mode → gemini-3.1-flash-lite-preview.
+  static let subscriptionPromptModel = PromptModel.gemini31FlashLite
+  /// Transcription (Dictate); backend: transcription → gemini-3.1-flash-lite-preview.
+  static let subscriptionTranscriptionModel = TranscriptionModel.gemini31FlashLite
+  /// Open Gemini chat window; backend: gemini_chat → gemini-3.1-flash-lite-preview.
+  static let subscriptionOpenGeminiModel = PromptModel.gemini31FlashLite
+  /// Smart Improvement (Improve from usage / from voice); backend: smart_improvement → gemini-3-flash-preview.
+  static let subscriptionImprovementModel = PromptModel.gemini3Flash
   static let selectedImprovementModel = PromptModel.gemini3Flash
-  static let selectedOpenGeminiModel = PromptModel.gemini3Flash
+  static let selectedOpenGeminiModel = PromptModel.gemini31FlashLite
   static let geminiCloseOnFocusLoss = true
   static let settingsCloseOnFocusLoss = true
   static let customPromptText = ""

@@ -43,6 +43,8 @@ echo "  $0 -f 'Error'                         # Only error logs"
 echo "  $0 -t 1h                              # Show logs from last hour"
 echo "  $0 -s detailed                        # Detailed log format"
 echo "  $0 -f 'PROMPT-MODE' -s json           # JSON format for prompt mode"
+echo "  $0 -f 'LIVE-MEETING'                   # Live meeting transcription only"
+echo "  $0 -f 'LIVE-MEETING' -t 1h             # Meeting logs from last hour"
 echo ""
 echo "Log Categories:"
 echo "  🤖 Speech-to-Prompt-Mode:        Speech to prompt execution and processing"
@@ -50,6 +52,10 @@ echo "  🎙️ Speech-to-Text-Mode:         Speech to text transcription proces
 echo "  🔊 Speech-to-Prompt-with-Voice-Response-Mode: Speech to prompt with voice response"
 echo "  ⚠️ Errors:                       Error handling and recovery"
 echo "  🎹 Shortcuts:                    Keyboard shortcut registration"
+echo "  LIVE-MEETING:                   Live meeting transcription (chunks, append, errors)"
+echo ""
+echo "Log file (daily): ~/Library/Logs/WhisperShortcut/ (retention 7 days)"
+echo "Errors (daily):   ~/Library/Application Support/WhisperShortcut/UserContext/ (retention 30 days)"
 }
 
 # Parse command line arguments
@@ -98,15 +104,19 @@ case $LOG_STYLE in
         ;;
 esac
 
+# Use macOS unified logging (full path so shell builtin 'log' is not used)
+LOG_CMD_BIN="/usr/bin/log"
 # Build the log command - Filter for ONLY our app's logs using subsystem
 if [[ -n "$FILTER" ]]; then
-    LOG_CMD="log stream --predicate 'subsystem == \"com.magnusgoedde.whispershortcut\" AND eventMessage CONTAINS \"$FILTER\"' --style $LOG_STYLE"
+    LOG_CMD="$LOG_CMD_BIN stream --predicate 'subsystem == \"com.magnusgoedde.whispershortcut\" AND eventMessage CONTAINS \"$FILTER\"' --style $LOG_STYLE"
 else
-    LOG_CMD="log stream --predicate 'subsystem == \"com.magnusgoedde.whispershortcut\"' --style $LOG_STYLE"
+    LOG_CMD="$LOG_CMD_BIN stream --predicate 'subsystem == \"com.magnusgoedde.whispershortcut\"' --style $LOG_STYLE"
 fi
 
-# Clear console
-clear
+# Clear console only when interactive (avoid failure when piped or no TTY)
+if [[ -t 1 ]]; then
+  clear
+fi
 
 # Show configuration
 echo -e "${GREEN}🔍 Starting WhisperShortcut Log Stream${NC}"
@@ -147,9 +157,9 @@ echo ""
 if [[ -n "$TIME_RANGE" ]]; then
     # Show historical logs - Filter for ONLY our app's logs using subsystem
     if [[ -n "$FILTER" ]]; then
-        log show --predicate "subsystem == \"com.magnusgoedde.whispershortcut\" AND eventMessage CONTAINS \"$FILTER\"" --last "$TIME_RANGE" --style "$LOG_STYLE"
+        "$LOG_CMD_BIN" show --predicate "subsystem == \"com.magnusgoedde.whispershortcut\" AND eventMessage CONTAINS \"$FILTER\"" --last "$TIME_RANGE" --style "$LOG_STYLE"
     else
-        log show --predicate "subsystem == \"com.magnusgoedde.whispershortcut\"" --last "$TIME_RANGE" --style "$LOG_STYLE"
+        "$LOG_CMD_BIN" show --predicate "subsystem == \"com.magnusgoedde.whispershortcut\"" --last "$TIME_RANGE" --style "$LOG_STYLE"
     fi
 else
     # Stream real-time logs

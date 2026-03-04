@@ -11,7 +11,7 @@ struct PromptModelSelectionView: View {
   let onModelChanged: (() -> Void)?
   /// When true, user is on subscription (proxy); model selection is fixed by the backend. All options disabled.
   let subscriptionMode: Bool
-  /// When in subscription mode, optional custom text for the fixed model (e.g. "The Open Gemini window uses Gemini 2.5 Flash (fixed)."). If nil, shows Dictate Prompt / Smart Improvement text.
+  /// When in subscription mode, optional custom text for the fixed model (e.g. "The Open Gemini window uses Gemini 3.1 Flash-Lite (fixed)."). If nil, shows Dictate Prompt / Smart Improvement text.
   let subscriptionFixedModelDescription: String?
   /// When in subscription mode, if set, this model is shown as selected in the grid and used for Model Details (so only this tile is highlighted, others grayed out).
   let subscriptionEffectiveModel: PromptModel?
@@ -47,14 +47,14 @@ struct PromptModelSelectionView: View {
       if let custom = subscriptionFixedModelDescription {
         return "In subscription mode, model selection is not available. \(custom)"
       }
-      return "In subscription mode, model selection is not available. Dictate Prompt uses Gemini 2.5 Flash; Smart Improvement uses \(subscriptionEffectiveModel?.displayName ?? "Gemini 2.5 Pro") (fixed)."
+      return "In subscription mode, model selection is not available. Dictate Prompt uses Gemini 3.1 Flash-Lite; Smart Improvement uses \(subscriptionEffectiveModel?.displayName ?? "Gemini 3 Flash") (fixed)."
     }
     return subtitle ?? "Choose between GPT-Audio and Gemini multimodal models for direct audio input processing"
   }
 
   private var subscriptionModeFixedModelLine: String {
     if let custom = subscriptionFixedModelDescription { return custom }
-    return "Dictate Prompt: Gemini 2.5 Flash · Smart Improvement: \(subscriptionEffectiveModel?.displayName ?? "Gemini 2.5 Pro") (fixed)"
+    return "Dictate Prompt: Gemini 3.1 Flash-Lite · Smart Improvement: \(subscriptionEffectiveModel?.displayName ?? "Gemini 3 Flash") (fixed)"
   }
 
   var body: some View {
