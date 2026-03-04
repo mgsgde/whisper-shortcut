@@ -427,8 +427,9 @@ class GeminiAPIClient {
     if currentSummary.isEmpty {
       prompt = """
         You are summarizing a live meeting transcript. Below is a new segment of the transcript. \
-        Produce a concise, structured summary (bullet points or short paragraphs) covering the main points and decisions. \
-        Write in English. Output only the summary, no preamble.
+        Produce a concise summary in valid Markdown: use \"- \" for every bullet point; you may use \"## Section\" for section headings. \
+        Cover main points and decisions. Write in English. Output only the Markdown summary, no preamble. \
+        Do not output plain paragraphs only; use Markdown bullet lists (and headings if useful).
 
         Transcript segment:
         \(newTranscriptText)
@@ -436,8 +437,9 @@ class GeminiAPIClient {
     } else {
       prompt = """
         You are maintaining a rolling summary of a live meeting. Below are the current summary and new transcript content. \
-        Update the summary to incorporate the new content. Keep it concise and structured (bullet points or short paragraphs). \
-        Preserve important points from the current summary and add or refine with the new content. Write in English. Output only the updated summary, no preamble.
+        Update the summary to incorporate the new content. Output valid Markdown: use \"- \" for bullet points; use \"## Section\" for headings when structuring. \
+        Preserve important points from the current summary and add or refine with the new content. Write in English. Output only the updated Markdown, no preamble. \
+        Do not output plain paragraphs only; use Markdown bullet lists (and headings if useful).
 
         Current summary:
         \(currentSummary)
@@ -453,11 +455,10 @@ class GeminiAPIClient {
   func generateMeetingSummary(transcript: String, apiKey: String) async throws -> String {
     let model = "gemini-2.5-flash-lite"
     let prompt = """
-      You are summarizing a completed meeting transcript. Produce a Markdown-formatted summary with:
-      - Main points and decisions
-      - Key takeaways
-      - Action items (if any)
-      Use clear headings and bullet points. Write in English. Output only the Markdown, no preamble.
+      You are summarizing a completed meeting transcript. Produce a summary in valid Markdown only. \
+      Use \"## Section name\" for sections (e.g. ## Main points, ## Key takeaways, ## Action items). \
+      Use \"- \" or \"* \" at the start of each list item; do not use a single block of plain paragraphs. \
+      Include: main points and decisions, key takeaways, action items (if any). Write in English. Output only the Markdown, no preamble.
 
       Transcript:
       \(transcript)
