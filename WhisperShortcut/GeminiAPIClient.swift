@@ -449,6 +449,22 @@ class GeminiAPIClient {
     return try await generateText(model: model, prompt: prompt, apiKey: apiKey)
   }
 
+  /// Generates a final Markdown summary of a full meeting transcript (main points, decisions, action items).
+  func generateMeetingSummary(transcript: String, apiKey: String) async throws -> String {
+    let model = "gemini-2.5-flash-lite"
+    let prompt = """
+      You are summarizing a completed meeting transcript. Produce a Markdown-formatted summary with:
+      - Main points and decisions
+      - Key takeaways
+      - Action items (if any)
+      Use clear headings and bullet points. Write in English. Output only the Markdown, no preamble.
+
+      Transcript:
+      \(transcript)
+      """
+    return try await generateText(model: model, prompt: prompt, apiKey: apiKey)
+  }
+
   /// Extracts grounding sources (web URIs + titles) from a Gemini response.
   private func extractGroundingSources(from response: GeminiResponse) -> [GroundingSource] {
     guard let candidate = response.candidates.first,

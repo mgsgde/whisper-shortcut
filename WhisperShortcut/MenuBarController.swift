@@ -873,6 +873,30 @@ class MenuBarController: NSObject {
     appState = appState.finish()
     LiveMeetingTranscriptStore.shared.endSession()
 
+    if let transcriptURL = liveMeetingTranscriptURL {
+      let store = LiveMeetingTranscriptStore.shared
+      let chunksSnapshot = store.chunks
+      Task {
+        let transcriptText = chunksSnapshot.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n\n")
+        guard !transcriptText.isEmpty else { return }
+        guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else { return }
+        var text = transcriptText
+        if text.count > MeetingListService.contextMaxChars {
+          text = String(text.suffix(MeetingListService.contextMaxChars))
+        }
+        do {
+          let summary = try await GeminiAPIClient().generateMeetingSummary(transcript: text, apiKey: apiKey)
+          let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+          if !trimmed.isEmpty {
+            MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
+            DebugLogger.log("LIVE-MEETING: Summary saved to .summary.md")
+          }
+        } catch {
+          DebugLogger.logError("LIVE-MEETING: Generate summary failed: \(error.localizedDescription)")
+        }
+      }
+    }
+
     DebugLogger.logSuccess("LIVE-MEETING: Transcription saved")
   }
 
@@ -1009,7 +1033,11 @@ class MenuBarController: NSObject {
         apiKey: apiKey
       )
       await MainActor.run {
-        LiveMeetingTranscriptStore.shared.updateSummary(updated.trimmingCharacters(in: .whitespacesAndNewlines))
+        let trimmed = updated.trimmingCharacters(in: .whitespacesAndNewlines)
+        LiveMeetingTranscriptStore.shared.updateSummary(trimmed)
+        if let url = self.liveMeetingTranscriptURL, !trimmed.isEmpty {
+          MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: url)
+        }
         DebugLogger.log("LIVE-MEETING-SUMMARY: Rolling summary updated (\(updated.count) chars)")
       }
     } catch {

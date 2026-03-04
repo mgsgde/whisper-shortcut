@@ -21,6 +21,8 @@ struct MeetingRootView: View {
   @State private var renameSheetIsLive = false
   @State private var renameInput = ""
   @State private var meetingToRename: MeetingFileInfo?
+  @State private var pastMeetingSummary: String = ""
+  @State private var pastMeetingSummaryLoading: Bool = false
 
   /// Title shown in toolbar: preferred/file name for live, displayLabel for past.
   private var currentMeetingTitle: String {
@@ -277,7 +279,8 @@ struct MeetingRootView: View {
       let chunks = meetingListService.chunks(for: info)
       MeetingChatSplitView(
         chunks: chunks,
-        summary: "",
+        summary: pastMeetingSummary,
+        summaryLoading: pastMeetingSummaryLoading,
         isSessionActive: false,
         store: GeminiChatSessionStore(scope: info.meetingId),
         meetingContextProvider: { [chunks] in
@@ -285,6 +288,11 @@ struct MeetingRootView: View {
         }
       )
       .id(info.meetingId)
+      .task(id: info.meetingId) {
+        pastMeetingSummaryLoading = true
+        pastMeetingSummary = await meetingListService.summary(for: info)
+        pastMeetingSummaryLoading = false
+      }
     }
   }
 }

@@ -115,6 +115,14 @@ final class MeetingListService: ObservableObject {
         try FileManager.default.removeItem(at: newURL)
       }
       try FileManager.default.moveItem(at: meeting.url, to: newURL)
+      let oldSummaryURL = Self.summaryURL(for: meeting)
+      let newSummaryURL = newURL.deletingPathExtension().appendingPathExtension("summary.md")
+      if FileManager.default.fileExists(atPath: oldSummaryURL.path) {
+        if FileManager.default.fileExists(atPath: newSummaryURL.path) {
+          try FileManager.default.removeItem(at: newSummaryURL)
+        }
+        try FileManager.default.moveItem(at: oldSummaryURL, to: newSummaryURL)
+      }
       invalidateCache(for: meeting.url)
       refresh()
       DebugLogger.log("MEETING-LIBRARY: Renamed to \(newStem).txt")
@@ -129,6 +137,8 @@ final class MeetingListService: ObservableObject {
   func deleteMeeting(_ meeting: MeetingFileInfo) -> Bool {
     do {
       try FileManager.default.removeItem(at: meeting.url)
+      let summaryURL = Self.summaryURL(for: meeting)
+      try? FileManager.default.removeItem(at: summaryURL)
       invalidateCache(for: meeting.url)
       refresh()
       DebugLogger.log("MEETING-LIBRARY: Deleted \(meeting.url.lastPathComponent)")
@@ -137,6 +147,76 @@ final class MeetingListService: ObservableObject {
       DebugLogger.logError("MEETING-LIBRARY: Delete failed: \(error.localizedDescription)")
       return false
     }
+  }
+
+  // MARK: - Summary
+
+  /// URL for the Markdown summary file (same stem as transcript, extension .summary.md).
+  static func summaryURL(for meeting: MeetingFileInfo) -> URL {
+    meeting.url.deletingPathExtension().appendingPathExtension("summary.md")
+  }
+
+  /// URL for summary file next to a transcript file (by path, e.g. when meeting just ended).
+  static func summaryURL(transcriptFileURL: URL) -> URL {
+    transcriptFileURL.deletingPathExtension().appendingPathExtension("summary.md")
+  }
+
+  /// Loads summary from disk if the .summary.md file exists.
+  func loadSummary(for meeting: MeetingFileInfo) -> String? {
+    let url = Self.summaryURL(for: meeting)
+    return try? String(contentsOf: url, encoding: .utf8)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// Saves summary to the meeting's .summary.md file.
+  func saveSummary(_ text: String, for meeting: MeetingFileInfo) {
+    let url = Self.summaryURL(for: meeting)
+    saveSummary(text, to: url)
+  }
+
+  /// Saves summary to the .summary.md file next to the given transcript URL (e.g. when meeting just ended).
+  func saveSummary(_ text: String, transcriptFileURL: URL) {
+    let url = Self.summaryURL(transcriptFileURL: transcriptFileURL)
+    saveSummary(text, to: url)
+  }
+
+  private func saveSummary(_ text: String, to url: URL) {
+    do {
+      try text.write(to: url, atomically: true, encoding: .utf8)
+      DebugLogger.log("MEETING-LIBRARY: Saved summary to \(url.lastPathComponent)")
+    } catch {
+      DebugLogger.logError("MEETING-LIBRARY: Save summary failed: \(error.localizedDescription)")
+    }
+  }
+
+  /// Loads summary from file, or generates via Gemini and saves. Returns placeholder on error or no API key.
+  func summary(for meeting: MeetingFileInfo) async -> String {
+    if let loaded = loadSummary(for: meeting), !loaded.isEmpty { return loaded }
+    return await generateAndSaveSummary(for: meeting)
+  }
+
+  /// Generates a Markdown summary from the meeting transcript via Gemini and saves it. Returns placeholder on error.
+  func generateAndSaveSummary(for meeting: MeetingFileInfo) async -> String {
+    guard let apiKey = KeychainManager.shared.getGoogleAPIKey(), !apiKey.isEmpty else {
+      return ""
+    }
+    let meetingChunks = chunks(for: meeting)
+    var transcriptText = meetingChunks.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n\n")
+    if transcriptText.count > Self.contextMaxChars {
+      transcriptText = String(transcriptText.suffix(Self.contextMaxChars))
+    }
+    guard !transcriptText.isEmpty else { return "" }
+    do {
+      let summaryText = try await GeminiAPIClient().generateMeetingSummary(transcript: transcriptText, apiKey: apiKey)
+      let trimmed = summaryText.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !trimmed.isEmpty {
+        saveSummary(trimmed, for: meeting)
+        return trimmed
+      }
+    } catch {
+      DebugLogger.logError("MEETING-LIBRARY: Generate summary failed: \(error.localizedDescription)")
+    }
+    return ""
   }
 
   // MARK: - Private
