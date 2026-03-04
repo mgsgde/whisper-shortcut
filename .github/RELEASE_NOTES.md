@@ -1,4 +1,4 @@
-# Release v6.4.6
+# Release v6.5
 
 ## Installation
 
@@ -6,24 +6,31 @@ Download the latest release from [GitHub Releases](https://github.com/mgsgde/whi
 
 ## Changes
 
+### Meeting Mode
+
+- **Split Gemini window**: Meeting Mode now uses a split view with a rolling summary and supports auto-open and full-screen for focused meeting transcription.
+
 ### Gemini Chat
 
-- **File attachments**: You can now attach files to messages in Gemini Chat.
-- **Theme and layout**: Refined chat theme colors and layout for better readability and usability.
-- **Session management**: History file management and session pruning keep chat storage under control.
-- **Window behavior**: Chat window no longer closes when a modal sheet (e.g. settings) is open.
-- **Input and commands**: Improved paste handling, command detection, and user message bubble styling.
-- **Title generation**: Refined AI-generated conversation titles and related UI.
+- **Markdown tables**: Chat responses render Markdown tables as SwiftUI grids with bold formatting.
+- **Layout**: Reduced margins, input bar limited to 760pt and centered with content; improved padding and content handling for session titles and separator paragraphs.
 
-### App behavior
+### Models & transcription
 
-- **Persistent app**: The app no longer quits automatically when idle (automatic termination disabled).
-- **Stop button**: Central stop button in the menu bar to stop recording or processing.
+- **Gemini 3.1 Flash-Lite**: New model option for dictation and prompt mode.
+- **Smart Improvement default**: Default model for Smart Improvement changed from Gemini 3.1 Pro to Gemini 3 Flash.
+- **Whisper Glossary**: Support for offline conditioning via glossary in local Whisper transcription.
+- **Reliability**: Better handling of transcription errors for stale audio URLs, cancellation checks in SpeechService, and model loading checks in LocalSpeechService and SpeechService.
+
+### Settings & behavior
+
+- **Settings window**: New option to close the Settings window when it loses focus.
+- **Auto-prompt improvement**: Improved error handling in AutoPromptImprovementScheduler.
 
 ### Other
 
-- **Popup notifications**: Adjusted margins for a cleaner layout.
+- README and plan file cleanup; Dependabot updates for the website (npm/minimatch).
 
 ## Full Changelog
 
-For a complete list of changes, see the [full changelog](https://github.com/mgsgde/whisper-shortcut/compare/v6.4.5...v6.4.6).
+For a complete list of changes, see the [full changelog](https://github.com/mgsgde/whisper-shortcut/compare/v6.4.6...v6.5).
