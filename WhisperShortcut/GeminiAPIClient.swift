@@ -433,7 +433,7 @@ class GeminiAPIClient {
         2. Use - for every bullet point. Each bullet on its own line.
         3. Leave a blank line before each heading and between sections.
         4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
-        5. Write in English. Output only the Markdown, no preamble.
+        5. Write the summary in the same language as the transcript. Output only the Markdown, no preamble.
 
         Transcript segment:
         \(newTranscriptText)
@@ -449,7 +449,7 @@ class GeminiAPIClient {
         3. Leave a blank line before each heading and between sections.
         4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
         5. Preserve important points from the current summary and add or refine with the new content.
-        6. Write in English. Output only the updated Markdown, no preamble.
+        6. Write the summary in the same language as the transcript. Output only the updated Markdown, no preamble.
 
         Current summary:
         \(currentSummary)
@@ -473,7 +473,7 @@ class GeminiAPIClient {
       3. Leave a blank line before each heading and between sections.
       4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
       5. Include: main points, key takeaways, decisions, action items (if any).
-      6. Write in English. Output only the Markdown, no preamble.
+      6. Write the summary in the same language as the transcript. Output only the Markdown, no preamble.
 
       Transcript:
       \(transcript)
