@@ -29,7 +29,7 @@ struct OpenGeminiSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "⌨️ Keyboard Shortcut",
-        subtitle: "Open the Gemini chat window with this shortcut"
+        subtitle: "Open the Gemini chat window"
       )
 
       ShortcutInputRow(

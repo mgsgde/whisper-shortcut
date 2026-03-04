@@ -85,7 +85,7 @@ struct SettingsView: View {
           PromptAndReadSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .readAloud:
           ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .liveMeeting:
+        case .openMeeting:
           LiveMeetingSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .openGemini:
           OpenGeminiSettingsTab(viewModel: viewModel, focusedField: $focusedField)
@@ -112,7 +112,7 @@ struct SettingsView: View {
       return "text.bubble.fill"
     case .readAloud:
       return "speaker.wave.2"
-    case .liveMeeting:
+    case .openMeeting:
       return "text.badge.plus"
     case .openGemini:
       return "sparkles"
@@ -133,8 +133,8 @@ struct SettingsView: View {
       return "Shortcut, prompt, model, and voice"
     case .readAloud:
       return "Shortcut and voice selection"
-    case .liveMeeting:
-      return "Meeting transcription settings"
+    case .openMeeting:
+      return "Shortcut for Meeting window, chunk interval, safeguard"
     case .openGemini:
       return "Shortcut and model for Gemini chat window"
     case .context:

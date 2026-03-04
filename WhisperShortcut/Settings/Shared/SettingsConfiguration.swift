@@ -412,7 +412,7 @@ enum SettingsTab: String, CaseIterable {
   case speechToPrompt = "Prompt Mode"
   case promptAndRead = "Prompt Read Mode"
   case readAloud = "Read Aloud"
-  case liveMeeting = "Live Meeting"
+  case openMeeting = "Open Meeting"
   case openGemini = "Open Gemini"
   case context = "Context"
 }
@@ -449,6 +449,7 @@ struct SettingsDefaults {
   static let toggleMeeting = ""
   static let openSettings = ""
   static let openGemini = ""
+  static let openMeeting = ""
 
   // MARK: - Toggle Shortcut Enable States
   static let toggleDictationEnabled = true
@@ -459,6 +460,7 @@ struct SettingsDefaults {
   static let toggleMeetingEnabled = true
   static let openSettingsEnabled = true
   static let openGeminiEnabled = true
+  static let openMeetingEnabled = true
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
   static let selectedPromptModel = PromptModel.gemini31FlashLite
@@ -528,6 +530,7 @@ struct SettingsData {
   var toggleMeeting: String = SettingsDefaults.toggleMeeting
   var openSettings: String = SettingsDefaults.openSettings
   var openGemini: String = SettingsDefaults.openGemini
+  var openMeeting: String = SettingsDefaults.openMeeting
 
   // MARK: - Toggle Shortcut Enable States
   var toggleDictationEnabled: Bool = SettingsDefaults.toggleDictationEnabled
@@ -538,6 +541,7 @@ struct SettingsData {
   var toggleMeetingEnabled: Bool = SettingsDefaults.toggleMeetingEnabled
   var openSettingsEnabled: Bool = SettingsDefaults.openSettingsEnabled
   var openGeminiEnabled: Bool = SettingsDefaults.openGeminiEnabled
+  var openMeetingEnabled: Bool = SettingsDefaults.openMeetingEnabled
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
   var selectedPromptModel: PromptModel = SettingsDefaults.selectedPromptModel
@@ -590,9 +594,9 @@ enum SettingsFocusField: Hashable {
   case togglePromptImprovement
   case toggleReadSelectedText
   case toggleReadAloud
-  case toggleMeeting
   case toggleSettings
   case toggleGemini
+  case openMeeting
   case customPrompt
   case promptModeSystemPrompt
   case promptAndReadSystemPrompt

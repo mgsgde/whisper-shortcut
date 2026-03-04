@@ -35,6 +35,12 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// True while a meeting is recording; false after session ends or before any meeting.
   @Published private(set) var isSessionActive: Bool = false
 
+  /// Current transcript filename without extension (e.g. "Meeting-2026-03-04-201119"). Set by MenuBarController when recording starts; cleared when session ends. Used as default in "End Meeting" name dialog.
+  @Published var currentMeetingFilenameStem: String?
+
+  /// User-entered name for the current live meeting; used as pre-fill when ending the meeting. Cleared on new meeting or end session.
+  @Published var preferredMeetingName: String?
+
   /// Max chunks to retain (oldest dropped). ~90 min at 15s chunks ≈ 360.
   private let maxChunks: Int = 500
 
@@ -74,7 +80,21 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   func endSession() {
     DispatchQueue.main.async { [weak self] in
       self?.isSessionActive = false
+      self?.currentMeetingFilenameStem = nil
+      self?.preferredMeetingName = nil
       DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
+    }
+  }
+
+  /// Clears store for a new meeting without starting recording. Used when user taps "New Meeting".
+  func clearForNewMeeting() {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.chunks = []
+      self.summary = ""
+      self.isSessionActive = false
+      self.preferredMeetingName = nil
+      DebugLogger.log("LIVE-MEETING-STORE: Cleared for new meeting")
     }
   }
 

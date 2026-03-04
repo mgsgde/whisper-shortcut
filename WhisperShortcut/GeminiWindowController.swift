@@ -18,8 +18,6 @@ class GeminiWindowController: NSWindowController {
 
   private var keyDownMonitor: Any?
   private var needsDefaultFrame: Bool = false
-  private var switchToMeetingObserver: NSObjectProtocol?
-  private var switchToChatObserver: NSObjectProtocol?
 
   // MARK: - Constants
   private enum Constants {
@@ -56,14 +54,6 @@ class GeminiWindowController: NSWindowController {
     needsDefaultFrame = !hasStoredFrame()
     window.delegate = self
     setupCmdArrowScrollMonitor()
-    switchToMeetingObserver = NotificationCenter.default.addObserver(
-      forName: .geminiSwitchToMeeting, object: nil, queue: .main) { [weak self] _ in
-        self?.expandToFullScreen()
-      }
-    switchToChatObserver = NotificationCenter.default.addObserver(
-      forName: .geminiSwitchToChat, object: nil, queue: .main) { [weak self] _ in
-        self?.shrinkToThird()
-      }
   }
 
   required init?(coder: NSCoder) {
@@ -100,23 +90,6 @@ class GeminiWindowController: NSWindowController {
     let h = min(max(usable.height, Constants.minHeight), Constants.maxHeight)
     let frame = NSRect(x: usable.minX, y: usable.minY, width: w, height: h)
     window.setFrame(frame, display: true, animate: false)
-  }
-
-  /// Expands the window to fill the main screen's visible frame. Called when switching to Meeting view (e.g. starting a meeting).
-  private func expandToFullScreen() {
-    guard let window = window, let screen = NSScreen.main else { return }
-    let frame = screen.visibleFrame
-    window.setFrame(frame, display: true, animate: true)
-  }
-
-  /// Shrinks the window to the left third of the screen. Called when switching to Chat view.
-  private func shrinkToThird() {
-    guard let window = window, let screen = NSScreen.main else { return }
-    let usable = screen.visibleFrame
-    let w = min(max(usable.width / 3, Constants.minWidth), Constants.maxWidth)
-    let h = min(max(usable.height, Constants.minHeight), Constants.maxHeight)
-    let frame = NSRect(x: usable.minX, y: usable.minY, width: w, height: h)
-    window.setFrame(frame, display: true, animate: true)
   }
 
   private func ensureWindowOnCurrentScreen() {
@@ -180,13 +153,5 @@ extension GeminiWindowController: NSWindowDelegate {
 
   func windowWillClose(_ notification: Notification) {
     removeCmdArrowScrollMonitor()
-    if let observer = switchToMeetingObserver {
-      NotificationCenter.default.removeObserver(observer)
-      switchToMeetingObserver = nil
-    }
-    if let observer = switchToChatObserver {
-      NotificationCenter.default.removeObserver(observer)
-      switchToChatObserver = nil
-    }
   }
 }

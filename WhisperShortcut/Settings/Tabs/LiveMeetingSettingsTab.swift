@@ -33,14 +33,14 @@ struct LiveMeetingSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "⌨️ Keyboard Shortcut",
-        subtitle: "Start and stop meeting transcription with the same shortcut"
+        subtitle: "Open the Meeting window (toggle show/hide)"
       )
 
       ShortcutInputRow(
-        label: "Transcribe Meeting:",
-        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.toggleMeeting),
-        text: $viewModel.data.toggleMeeting,
-        focusedField: .toggleMeeting,
+        label: "Open Meeting:",
+        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.openMeeting),
+        text: $viewModel.data.openMeeting,
+        focusedField: .openMeeting,
         currentFocus: $focusedField,
         onShortcutChanged: {
           Task {
@@ -140,19 +140,17 @@ struct LiveMeetingSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "📋 How to Use",
-        subtitle: "Step-by-step instructions for live meeting transcription"
+        subtitle: "Meeting window and live transcription"
       )
 
       VStack(alignment: .leading, spacing: 8) {
-        Text("1. Press your shortcut or click \"Transcribe Meeting\" in the menu bar")
+        Text("1. Press your shortcut or click \"Open Meeting\" in the menu bar to open the Meeting window")
           .textSelection(.enabled)
-        Text("2. A transcript file opens automatically in your default editor")
+        Text("2. Click \"New Meeting\" to start a meeting (recording begins automatically)")
           .textSelection(.enabled)
-        Text("3. Text appears in the file as the meeting progresses")
+        Text("3. Transcript and AI chat appear in the Meeting window as you speak")
           .textSelection(.enabled)
-        Text("4. Use the transcript with AI assistants in your editor (e.g., Cursor)")
-          .textSelection(.enabled)
-        Text("5. Press the shortcut again or click \"Stop Transcribe Meeting\" to end the session")
+        Text("4. Click \"End Meeting\" to stop recording, or \"Open Meeting\" to open another meeting from the library")
           .textSelection(.enabled)
       }
       .font(.callout)

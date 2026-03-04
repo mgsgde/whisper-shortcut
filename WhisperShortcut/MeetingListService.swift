@@ -20,14 +20,20 @@ final class MeetingListService: ObservableObject {
   private var chunkCache: [URL: [LiveMeetingChunk]] = [:]
 
   private static let filenameRegex = try! NSRegularExpression(
-    pattern: #"^Meeting-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})\.txt$"#)
+    pattern: #"^Meeting-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})(?:-(.+))?\.txt$"#)
 
   private static let chunkLineRegex = try! NSRegularExpression(
     pattern: #"^\[(\d{2}):(\d{2})\]\s*(.+)$"#)
 
   private static let displayDateFormatter: DateFormatter = {
     let f = DateFormatter()
-    f.dateFormat = "d MMM yyyy, HH:mm"
+    f.dateFormat = "EEEE, d MMM yyyy, HH:mm"
+    return f
+  }()
+
+  private static let timestampFilenameFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.dateFormat = "yyyy-MM-dd-HHmmss"
     return f
   }()
 
@@ -91,6 +97,48 @@ final class MeetingListService: ObservableObject {
     }
   }
 
+  /// Renames a meeting file to a new display name (suffix after timestamp). Returns the new MeetingFileInfo on success, nil on failure.
+  func renameMeeting(_ meeting: MeetingFileInfo, newDisplayName: String) -> MeetingFileInfo? {
+    let sanitized = newDisplayName
+      .replacingOccurrences(of: "/", with: "-")
+      .replacingOccurrences(of: "\\", with: "-")
+      .replacingOccurrences(of: ":", with: "-")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !sanitized.isEmpty else { return nil }
+    let timestampStem = "Meeting-\(Self.timestampFilenameFormatter.string(from: meeting.date))"
+    let newStem = "\(timestampStem)-\(sanitized)"
+    let dir = meeting.url.deletingLastPathComponent()
+    let newURL = dir.appendingPathComponent("\(newStem).txt")
+    guard newURL != meeting.url else { return meeting }
+    do {
+      if FileManager.default.fileExists(atPath: newURL.path) {
+        try FileManager.default.removeItem(at: newURL)
+      }
+      try FileManager.default.moveItem(at: meeting.url, to: newURL)
+      invalidateCache(for: meeting.url)
+      refresh()
+      DebugLogger.log("MEETING-LIBRARY: Renamed to \(newStem).txt")
+      return meetings.first { $0.url == newURL }
+    } catch {
+      DebugLogger.logError("MEETING-LIBRARY: Rename failed: \(error.localizedDescription)")
+      return nil
+    }
+  }
+
+  /// Deletes a meeting file from disk. Returns true on success.
+  func deleteMeeting(_ meeting: MeetingFileInfo) -> Bool {
+    do {
+      try FileManager.default.removeItem(at: meeting.url)
+      invalidateCache(for: meeting.url)
+      refresh()
+      DebugLogger.log("MEETING-LIBRARY: Deleted \(meeting.url.lastPathComponent)")
+      return true
+    } catch {
+      DebugLogger.logError("MEETING-LIBRARY: Delete failed: \(error.localizedDescription)")
+      return false
+    }
+  }
+
   // MARK: - Private
 
   private static func parseMeetingFilename(_ url: URL) -> MeetingFileInfo? {
@@ -116,8 +164,12 @@ final class MeetingListService: ObservableObject {
     guard let date = Calendar.current.date(from: components) else { return nil }
 
     let meetingId = String(filename.dropLast(4))
-    let displayLabel = displayDateFormatter.string(from: date)
-
+    let displayLabel: String
+    if match.numberOfRanges > 7, let suffixRange = Range(match.range(at: 7), in: filename), !suffixRange.isEmpty {
+      displayLabel = String(filename[suffixRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+    } else {
+      displayLabel = displayDateFormatter.string(from: date)
+    }
     return MeetingFileInfo(url: url, date: date, displayLabel: displayLabel, meetingId: meetingId)
   }
 

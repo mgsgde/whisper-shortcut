@@ -7,9 +7,9 @@ protocol ShortcutDelegate: AnyObject {
   func togglePromptImprovement()
   func readSelectedText()
   func readAloud()
-  func toggleMeeting()
   func openSettings()
   func openGemini()
+  func openMeeting()
 }
 
 // Configurable shortcuts using ShortcutConfigManager
@@ -21,9 +21,9 @@ class Shortcuts {
   private var togglePromptImprovementKey: HotKey?
   private var readSelectedTextKey: HotKey?
   private var readAloudKey: HotKey?
-  private var toggleMeetingKey: HotKey?
   private var openSettingsKey: HotKey?
   private var openGeminiKey: HotKey?
+  private var openMeetingKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -92,15 +92,6 @@ class Shortcuts {
       }
     }
 
-    // Create toggle meeting shortcut (only if enabled)
-    if config.toggleMeeting.isEnabled {
-      toggleMeetingKey = HotKey(
-        key: config.toggleMeeting.key, modifiers: config.toggleMeeting.modifiers)
-      toggleMeetingKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.toggleMeeting()
-      }
-    }
-
     // Create settings shortcut (only if enabled)
     if config.openSettings.isEnabled {
       openSettingsKey = HotKey(
@@ -119,6 +110,14 @@ class Shortcuts {
       }
     }
 
+    // Create Meeting window shortcut (only if enabled)
+    if config.openMeeting.isEnabled {
+      openMeetingKey = HotKey(
+        key: config.openMeeting.key, modifiers: config.openMeeting.modifiers)
+      openMeetingKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.openMeeting()
+      }
+    }
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -135,9 +134,9 @@ class Shortcuts {
     togglePromptImprovementKey = nil
     readSelectedTextKey = nil
     readAloudKey = nil
-    toggleMeetingKey = nil
     openSettingsKey = nil
     openGeminiKey = nil
+    openMeetingKey = nil
   }
 
   deinit {

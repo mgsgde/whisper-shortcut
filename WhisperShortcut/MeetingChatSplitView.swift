@@ -30,7 +30,8 @@ struct MeetingChatSplitView: View {
     GeminiChatView(
       meetingContextProvider: meetingContextProvider,
       createNewSessionOnAppear: false,
-      store: store
+      store: store,
+      singleChatOnly: true
     )
     .frame(width: width, alignment: .leading)
   }
@@ -40,11 +41,9 @@ struct MeetingChatSplitView: View {
       transcriptHeader
       Divider()
         .background(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity))
-      if !summary.isEmpty {
-        summarySection
-        Divider()
-          .background(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity))
-      }
+      summarySection
+      Divider()
+        .background(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity))
       transcriptList
     }
     .frame(width: width, alignment: .leading)
@@ -53,15 +52,24 @@ struct MeetingChatSplitView: View {
 
   private var summarySection: some View {
     DisclosureGroup(isExpanded: $summaryExpanded) {
-      ScrollView {
-        Text(summary)
-          .font(.system(size: 14))
-          .lineSpacing(6)
-          .foregroundColor(GeminiChatTheme.primaryText)
-          .textSelection(.enabled)
-          .frame(maxWidth: .infinity, alignment: .leading)
+      Group {
+        if !summary.isEmpty {
+          ScrollView {
+            Text(summary)
+              .font(.system(size: 14))
+              .lineSpacing(6)
+              .foregroundColor(GeminiChatTheme.primaryText)
+              .textSelection(.enabled)
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .frame(maxHeight: 220)
+        } else {
+          Text(summaryPlaceholder)
+            .font(.system(size: 13))
+            .foregroundColor(GeminiChatTheme.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
       }
-      .frame(maxHeight: 220)
       .padding(.vertical, 8)
     } label: {
       HStack(spacing: 6) {
@@ -76,6 +84,13 @@ struct MeetingChatSplitView: View {
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
     .background(GeminiChatTheme.windowBackground.opacity(0.6))
+  }
+
+  private var summaryPlaceholder: String {
+    if isSessionActive {
+      return "Summary will update here as the meeting continues (every few minutes)."
+    }
+    return "No summary for this meeting."
   }
 
   /// Full transcript as a single string so the user can select and copy everything at once.
@@ -125,25 +140,46 @@ struct MeetingChatSplitView: View {
   }
 
   private var transcriptList: some View {
-    ScrollViewReader { proxy in
-      ScrollView {
-        Text(fullTranscriptText)
-          .font(.system(size: 12))
-          .lineSpacing(6)
-          .foregroundColor(GeminiChatTheme.primaryText)
-          .textSelection(.enabled)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.horizontal, 12)
-          .padding(.vertical, 8)
-          .id("transcriptBottom")
-      }
-      .onChange(of: chunks.count) { _, _ in
-        if isSessionActive {
-          withAnimation(.easeOut(duration: 0.15)) {
-            proxy.scrollTo("transcriptBottom", anchor: .bottom)
+    Group {
+      if isSessionActive && chunks.isEmpty {
+        liveTranscriptPlaceholder
+      } else {
+        ScrollViewReader { proxy in
+          ScrollView {
+            Text(fullTranscriptText)
+              .font(.system(size: 12))
+              .lineSpacing(6)
+              .foregroundColor(GeminiChatTheme.primaryText)
+              .textSelection(.enabled)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.horizontal, 12)
+              .padding(.vertical, 8)
+              .id("transcriptBottom")
+          }
+          .onChange(of: chunks.count) { _, _ in
+            if isSessionActive {
+              withAnimation(.easeOut(duration: 0.15)) {
+                proxy.scrollTo("transcriptBottom", anchor: .bottom)
+              }
+            }
           }
         }
       }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  /// Shown while recording has started but no transcript chunks have arrived yet (chunks every ~15 s).
+  private var liveTranscriptPlaceholder: some View {
+    VStack(spacing: 16) {
+      ProgressView()
+        .scaleEffect(1.2)
+        .tint(GeminiChatTheme.secondaryText)
+      Text("Transcription appears here about every 15 seconds.")
+        .font(.system(size: 13))
+        .foregroundColor(GeminiChatTheme.secondaryText)
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }

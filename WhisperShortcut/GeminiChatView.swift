@@ -81,11 +81,19 @@ class GeminiChatViewModel: ObservableObject {
     ("/stop", "Stop sending (while a message is being sent)")
   ]
 
+  /// Commands to show in UI (excludes /new, /back, /next when single-chat mode).
+  var commandSuggestionsForDisplay: [(command: String, description: String)] {
+    if singleChatOnly {
+      return Self.commandSuggestions.filter { !["/new", "/back", "/next"].contains($0.command) }
+    }
+    return Self.commandSuggestions
+  }
+
   /// Returns commands whose command string matches the given prefix (e.g. "/" or "/sc").
   func suggestedCommands(for input: String) -> [String] {
     let prefix = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     guard prefix.hasPrefix("/") else { return [] }
-    return Self.commandSuggestions
+    return commandSuggestionsForDisplay
       .map(\.command)
       .filter { $0.lowercased().hasPrefix(prefix) || prefix.isEmpty }
   }
@@ -95,10 +103,13 @@ class GeminiChatViewModel: ObservableObject {
 
   /// When non-nil, this provider supplies extra context (e.g. meeting summary + recent transcript) appended to the system instruction. Used by the Meeting Chat window.
   private let meetingContextProvider: (() -> String?)?
+  /// When true, exactly one chat per meeting: no tabs, no /new /back /next, no "New chat" button.
+  let singleChatOnly: Bool
 
-  init(meetingContextProvider: (() -> String?)? = nil, store: GeminiChatSessionStore = .shared) {
+  init(meetingContextProvider: (() -> String?)? = nil, store: GeminiChatSessionStore = .shared, singleChatOnly: Bool = false) {
     self.meetingContextProvider = meetingContextProvider
     self.store = store
+    self.singleChatOnly = singleChatOnly
     session = store.load()
     currentSessionId = session.id
     messages = session.messages
@@ -222,9 +233,9 @@ class GeminiChatViewModel: ObservableObject {
         || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
         || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand {
       inputText = ""
-      if lower == Self.newChatCommand { createNewSession() }
-      else if lower == Self.backChatCommand { goBack() }
-      else if lower == Self.nextChatCommand { goForward() }
+      if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
+      else if lower == Self.backChatCommand { if !singleChatOnly { goBack() } }
+      else if lower == Self.nextChatCommand { if !singleChatOnly { goForward() } }
       else if Self.clearChatCommands.contains(lower) { clearMessages() }
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else if lower == Self.pinCommand { togglePin() }
@@ -518,16 +529,18 @@ struct GeminiChatView: View {
   @State private var createNewSessionOnAppear: Bool
   @State private var hasTriggeredNewSessionOnAppear: Bool = false
 
-  init(meetingContextProvider: (() -> String?)? = nil, createNewSessionOnAppear: Bool = false, store: GeminiChatSessionStore = .shared) {
-    _viewModel = StateObject(wrappedValue: GeminiChatViewModel(meetingContextProvider: meetingContextProvider, store: store))
+  init(meetingContextProvider: (() -> String?)? = nil, createNewSessionOnAppear: Bool = false, store: GeminiChatSessionStore = .shared, singleChatOnly: Bool = false) {
+    _viewModel = StateObject(wrappedValue: GeminiChatViewModel(meetingContextProvider: meetingContextProvider, store: store, singleChatOnly: singleChatOnly))
     _createNewSessionOnAppear = State(initialValue: createNewSessionOnAppear)
   }
 
   var body: some View {
     GeometryReader { geometry in
       VStack(spacing: 0) {
-        tabStripHeader(containerWidth: geometry.size.width)
-        Divider()
+        if !viewModel.singleChatOnly {
+          tabStripHeader(containerWidth: geometry.size.width)
+          Divider()
+        }
         messageList(scrollActions: scrollActions, containerWidth: geometry.size.width)
         if let error = viewModel.errorMessage {
           errorBanner(error)
@@ -549,7 +562,7 @@ struct GeminiChatView: View {
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiNewChat)) { _ in
-      viewModel.createNewSession()
+      if !viewModel.singleChatOnly { viewModel.createNewSession() }
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiCaptureScreenshot)) { _ in
       Task { await viewModel.captureScreenshot() }
@@ -711,39 +724,18 @@ struct GeminiChatView: View {
   }
 
   private var emptyStateCommandHints: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    let suggestions = viewModel.commandSuggestionsForDisplay
+    return VStack(alignment: .leading, spacing: 12) {
       Text("Commands")
         .font(.headline)
         .fontWeight(.semibold)
         .foregroundColor(GeminiChatTheme.secondaryText)
       VStack(alignment: .leading, spacing: 8) {
-        Text("/new — Start a new chat (previous chat stays in history)")
-          .font(.system(size: 15))
-          .foregroundColor(GeminiChatTheme.secondaryText)
-        Text("/back — Navigate to the previous chat")
-          .font(.system(size: 15))
-          .foregroundColor(GeminiChatTheme.secondaryText)
-        Text("/next — Navigate to the next chat")
-          .font(.system(size: 15))
-          .foregroundColor(GeminiChatTheme.secondaryText)
-        Text("/screenshot — Capture screen (attached to your next message)")
-          .font(.system(size: 15))
-          .foregroundColor(GeminiChatTheme.secondaryText)
-        Text("/clear — Clear current chat messages")
-          .font(.system(size: 15))
-          .foregroundColor(GeminiChatTheme.secondaryText)
-        Text("/settings — Open Settings")
-          .font(.system(size: 15))
-          .foregroundColor(GeminiChatTheme.secondaryText)
-        Text("/pin — Toggle whether the window stays open when losing focus")
-          .font(.system(size: 15))
-          .foregroundColor(GeminiChatTheme.secondaryText)
-        Text("/unpin — Make the window close when losing focus")
-          .font(.system(size: 15))
-          .foregroundColor(GeminiChatTheme.secondaryText)
-        Text("/stop — Stop sending (while a message is being sent)")
-          .font(.system(size: 15))
-          .foregroundColor(GeminiChatTheme.secondaryText)
+        ForEach(suggestions, id: \.command) { item in
+          Text("\(item.command) — \(item.description)")
+            .font(.system(size: 15))
+            .foregroundColor(GeminiChatTheme.secondaryText)
+        }
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -914,7 +906,7 @@ struct GeminiInputAreaView: View {
   private var commandSuggestionsOverlay: some View {
     Group {
       if lastWord.hasPrefix("/") {
-        let suggestions = GeminiChatViewModel.commandSuggestions
+        let suggestions = viewModel.commandSuggestionsForDisplay
           .filter { $0.command.lowercased().hasPrefix(lastWord.lowercased()) }
         if !suggestions.isEmpty {
           VStack(alignment: .leading, spacing: 0) {
@@ -1047,19 +1039,21 @@ struct GeminiInputAreaView: View {
 
       // Toolbar row below composer: action buttons left, model selector + send right
       HStack(spacing: 4) {
-        Button(action: { viewModel.createNewSession() }) {
-          HStack(spacing: 4) {
-            Image(systemName: "square.and.pencil").font(.caption)
-            Text("New chat").font(.caption)
+        if !viewModel.singleChatOnly {
+          Button(action: { viewModel.createNewSession() }) {
+            HStack(spacing: 4) {
+              Image(systemName: "square.and.pencil").font(.caption)
+              Text("New chat").font(.caption)
+            }
+            .foregroundColor(GeminiChatTheme.secondaryText)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
           }
-          .foregroundColor(GeminiChatTheme.secondaryText)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 5)
-          .contentShape(Rectangle())
+          .buttonStyle(.plain)
+          .help("Start a new chat (previous chat stays in history)")
+          .pointerCursorOnHover()
         }
-        .buttonStyle(.plain)
-        .help("Start a new chat (previous chat stays in history)")
-        .pointerCursorOnHover()
 
         Button(action: { viewModel.attachFile() }) {
           HStack(spacing: 4) {

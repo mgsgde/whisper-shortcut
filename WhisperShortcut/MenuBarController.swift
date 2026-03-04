@@ -65,6 +65,8 @@ class MenuBarController: NSObject {
   private var liveMeetingSafeguardTimer: Timer?
   /// Number of transcript chunks already included in the rolling summary. Used to trigger summary every N chunks.
   private var liveMeetingChunksSummarized: Int = 0
+  /// When non-nil, finishLiveMeetingSession will rename the transcript file to this stem (or timestamp-suffix) before ending.
+  private var liveMeetingPreferredName: String?
 
   /// True when live meeting is active (recording or stopping with pending chunks).
   private var isLiveMeetingActive: Bool {
@@ -157,14 +159,6 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
-    // Live Meeting Transcription
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Transcribe Meeting", action: #selector(toggleLiveMeeting),
-        shortcut: currentConfig.toggleMeeting, tag: 107))
-
-    menu.addItem(NSMenuItem.separator())
-
     // Improve from voice (own section before Settings)
     menu.addItem(
       createMenuItemWithShortcut(
@@ -173,11 +167,17 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
-    // Gemini chat window
+    // Meeting and Gemini windows
+    menu.addItem(
+      createMenuItemWithShortcut(
+        "Open Meeting", action: #selector(openMeetingWindow),
+        shortcut: currentConfig.openMeeting, tag: 111))
+
     menu.addItem(
       createMenuItemWithShortcut(
         "Open Gemini", action: #selector(openGeminiWindow),
         shortcut: currentConfig.openGemini, tag: 110))
+
 
     menu.addItem(NSMenuItem.separator())
 
@@ -306,6 +306,20 @@ class MenuBarController: NSObject {
       name: .geminiToggleLiveMeeting,
       object: nil
     )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(endMeetingWithName(_:)),
+      name: .geminiEndMeetingWithName,
+      object: nil
+    )
+  }
+
+  @objc private func endMeetingWithName(_ notification: Notification) {
+    let name = (notification.userInfo?["meetingName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    DispatchQueue.main.async { [weak self] in
+      self?.liveMeetingPreferredName = name
+      self?.stopLiveMeeting()
+    }
   }
 
   @objc private func geminiReadAloudStopFromNotification() {
@@ -437,10 +451,7 @@ class MenuBarController: NSObject {
       enabled: (hasAPIKey && !appState.isBusy) || appState.recordingMode == .tts
     )
 
-    // Update Live Meeting item
-    let liveMeetingTitle = isLiveMeetingActive ? "Stop Transcribe Meeting" : "Transcribe Meeting"
-    let liveMeetingEnabled = isLiveMeetingActive || (!appState.isBusy && hasAPIKey)
-    updateMenuItem(menu, tag: 107, title: liveMeetingTitle, enabled: liveMeetingEnabled)
+    updateMenuItem(menu, tag: 111, title: "Open Meeting", enabled: hasAPIKey)
 
     // Handle special case when no API key and no offline model is configured
     if !hasAPIKey && !hasOfflineTranscriptionModel && !hasOfflinePromptModel, let button = statusItem?.button {
@@ -640,11 +651,14 @@ class MenuBarController: NSObject {
   }
 
   @objc func openGeminiWindow() {
-    if isLiveMeetingActive {
-      GeminiWindowManager.shared.showAndSwitchToMeeting()
-    } else {
-      GeminiWindowManager.shared.toggle()
+    GeminiWindowManager.shared.toggle()
+  }
+
+  @objc func openMeetingWindow() {
+    if MeetingWindowManager.shared.showWindowAndLibraryIfOpen() {
+      return
     }
+    MeetingWindowManager.shared.toggle()
   }
 
   // MARK: - Live Meeting Transcription
@@ -674,6 +688,12 @@ class MenuBarController: NSObject {
     // Create transcript file
     do {
       liveMeetingTranscriptURL = try createTranscriptFile()
+      if let url = liveMeetingTranscriptURL {
+        let stem = url.deletingPathExtension().lastPathComponent
+        DispatchQueue.main.async {
+          LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem = stem
+        }
+      }
     } catch {
       DebugLogger.logError("LIVE-MEETING: Failed to create transcript file: \(error)")
       PopupNotificationWindow.showError("Failed to create transcript file", title: "Live Meeting Error")
@@ -712,7 +732,7 @@ class MenuBarController: NSObject {
       DebugLogger.log("LIVE-MEETING-SAFEGUARD: Reminder scheduled after \(Int(safeguardThreshold.rawValue / 60)) minutes")
     }
 
-    GeminiWindowManager.shared.showAndSwitchToMeeting()
+    MeetingWindowManager.shared.show()
 
     DebugLogger.logSuccess("LIVE-MEETING: Session started")
   }
@@ -761,6 +781,14 @@ class MenuBarController: NSObject {
   private func finishLiveMeetingSession() {
     DebugLogger.log("LIVE-MEETING: Session finished")
 
+    if let url = liveMeetingTranscriptURL, let preferred = liveMeetingPreferredName, !preferred.isEmpty {
+      let currentStem = url.deletingPathExtension().lastPathComponent
+      if preferred != currentStem {
+        renameTranscriptFile(from: url, preferredName: preferred, currentStem: currentStem)
+      }
+      liveMeetingPreferredName = nil
+    }
+
     liveMeetingSafeguardTimer?.invalidate()
     liveMeetingSafeguardTimer = nil
     liveMeetingStopping = false
@@ -770,6 +798,32 @@ class MenuBarController: NSObject {
     LiveMeetingTranscriptStore.shared.endSession()
 
     DebugLogger.logSuccess("LIVE-MEETING: Transcription saved")
+  }
+
+  /// Renames the transcript file to include the user's preferred name. Keeps timestamp prefix for parsing.
+  private func renameTranscriptFile(from url: URL, preferredName: String, currentStem: String) {
+    let timestampPrefix = "Meeting-"
+    guard currentStem.hasPrefix(timestampPrefix) else { return }
+    let sanitized = preferredName
+      .replacingOccurrences(of: "/", with: "-")
+      .replacingOccurrences(of: "\\", with: "-")
+      .replacingOccurrences(of: ":", with: "-")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !sanitized.isEmpty else { return }
+    let newStem = "\(currentStem)-\(sanitized)"
+    let dir = url.deletingLastPathComponent()
+    let newURL = dir.appendingPathComponent("\(newStem).txt")
+    do {
+      if FileManager.default.fileExists(atPath: newURL.path) {
+        try FileManager.default.removeItem(at: newURL)
+      }
+      try FileManager.default.moveItem(at: url, to: newURL)
+      liveMeetingTranscriptURL = newURL
+      MeetingListService.shared.invalidateCache(for: nil)
+      DebugLogger.log("LIVE-MEETING: Renamed transcript to \(newStem).txt")
+    } catch {
+      DebugLogger.logError("LIVE-MEETING: Failed to rename transcript: \(error.localizedDescription)")
+    }
   }
 
   @objc func openTranscriptsFolder() {
@@ -1842,9 +1896,9 @@ extension MenuBarController: ShortcutDelegate {
       }
     }
   }
-  func toggleMeeting() { toggleLiveMeeting() }
   // openSettings is already implemented above
   func openGemini() { openGeminiWindow() }
+  func openMeeting() { openMeetingWindow() }
 }
 
 // MARK: - ChunkProgressDelegate (Chunked Transcription Progress)

@@ -53,6 +53,7 @@ class SettingsViewModel: ObservableObject {
     data.toggleMeeting = currentConfig.toggleMeeting.isEnabled ? currentConfig.toggleMeeting.textDisplayString : ""
     data.openSettings = currentConfig.openSettings.isEnabled ? currentConfig.openSettings.textDisplayString : ""
     data.openGemini = currentConfig.openGemini.isEnabled ? currentConfig.openGemini.textDisplayString : ""
+    data.openMeeting = currentConfig.openMeeting.isEnabled ? currentConfig.openMeeting.textDisplayString : ""
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
@@ -62,6 +63,7 @@ class SettingsViewModel: ObservableObject {
     data.toggleMeetingEnabled = currentConfig.toggleMeeting.isEnabled
     data.openSettingsEnabled = currentConfig.openSettings.isEnabled
     data.openGeminiEnabled = currentConfig.openGemini.isEnabled
+    data.openMeetingEnabled = currentConfig.openMeeting.isEnabled
 
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
@@ -273,10 +275,6 @@ class SettingsViewModel: ObservableObject {
        ShortcutConfigManager.parseShortcut(from: data.readAloud) == nil {
       return "Invalid read aloud shortcut format"
     }
-    if !data.toggleMeeting.trimmingCharacters(in: trim).isEmpty,
-       ShortcutConfigManager.parseShortcut(from: data.toggleMeeting) == nil {
-      return "Invalid transcribe meeting shortcut format"
-    }
     if !data.openSettings.trimmingCharacters(in: trim).isEmpty,
        ShortcutConfigManager.parseShortcut(from: data.openSettings) == nil {
       return "Invalid open settings shortcut format"
@@ -284,6 +282,10 @@ class SettingsViewModel: ObservableObject {
     if !data.openGemini.trimmingCharacters(in: trim).isEmpty,
        ShortcutConfigManager.parseShortcut(from: data.openGemini) == nil {
       return "Invalid open Gemini shortcut format"
+    }
+    if !data.openMeeting.trimmingCharacters(in: trim).isEmpty,
+       ShortcutConfigManager.parseShortcut(from: data.openMeeting) == nil {
+      return "Invalid open Meeting shortcut format"
     }
 
     let shortcuts = parseShortcuts()
@@ -350,12 +352,12 @@ class SettingsViewModel: ObservableObject {
       return name == "read selected text"
     case .toggleReadAloud:
       return name == "read aloud"
-    case .toggleMeeting:
-      return name == "toggle meeting"
     case .toggleSettings:
       return name == "open settings"
     case .toggleGemini:
       return name == "open gemini"
+    case .openMeeting:
+      return name == "open meeting"
     default:
       return false
     }
@@ -375,9 +377,9 @@ class SettingsViewModel: ObservableObject {
       "adjust system prompt": parsed(data.togglePromptImprovement),
       "read selected text": parsed(data.readSelectedText),
       "read aloud": parsed(data.readAloud),
-      "toggle meeting": parsed(data.toggleMeeting),
       "open settings": parsed(data.openSettings),
       "open gemini": parsed(data.openGemini),
+      "open meeting": parsed(data.openMeeting),
     ]
   }
 
@@ -439,8 +441,9 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(data.liveMeetingChunkInterval.rawValue, forKey: UserDefaultsKeys.liveMeetingChunkInterval)
     UserDefaults.standard.set(data.liveMeetingSafeguardDuration.rawValue, forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)
 
-    // Save toggle shortcuts
+    // Save toggle shortcuts (keep existing toggleMeeting/stopMeeting from config — no longer configurable in UI)
     let shortcuts = parseShortcuts()
+    let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     let newConfig = ShortcutConfig(
       startRecording: shortcuts["toggle dictation"]!
         ?? ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
@@ -458,14 +461,14 @@ class SettingsViewModel: ObservableObject {
         ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
       readAloud: shortcuts["read aloud"]!
         ?? ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false),
-      toggleMeeting: shortcuts["toggle meeting"]!
-        ?? ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false),
-      stopMeeting: shortcuts["toggle meeting"]!
-        ?? ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false),
+      toggleMeeting: currentConfig.toggleMeeting,
+      stopMeeting: currentConfig.stopMeeting,
       openSettings: shortcuts["open settings"]!
         ?? ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: false),
       openGemini: shortcuts["open gemini"]!
-        ?? ShortcutDefinition(key: .eight, modifiers: [.command], isEnabled: false)
+        ?? ShortcutDefinition(key: .eight, modifiers: [.command], isEnabled: false),
+      openMeeting: shortcuts["open meeting"]!
+        ?? ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 
