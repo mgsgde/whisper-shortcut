@@ -2,11 +2,21 @@
 //  BackendAPIClient.swift
 //  WhisperShortcut
 //
-//  Client for backend API: usage reporting (POST /v1/usage).
-//  Uses the same base URL as the proxy (proxyAPIBaseURL). Auth: Bearer Google ID token.
+//  Client for backend API: usage reporting (POST /v1/usage), config (GET /v1/config/subscription-models).
+//  Uses the same base URL as the proxy (proxyAPIBaseURL). Auth: Bearer Google ID token for usage; config is unauthenticated.
 //
 
 import Foundation
+
+/// Response from GET /v1/config/subscription-models. Model IDs used by the proxy for subscription users.
+struct SubscriptionModelsConfig: Codable {
+  var transcription: String?
+  var prompt_mode: String?
+  var smart_improvement: String?
+  var gemini_chat: String?
+  var tts: String?
+  var default_gemini: String?
+}
 
 /// Request body for POST /v1/usage
 struct UsageRequest: Codable {
@@ -58,6 +68,33 @@ enum BackendAPIClient {
       } catch {
         DebugLogger.logNetwork("BACKEND-API: Usage report failed: \(error.localizedDescription)")
       }
+    }
+  }
+
+  /// Fetches subscription models from GET /v1/config/subscription-models. No auth. Returns nil on failure.
+  static func fetchSubscriptionModels() async -> SubscriptionModelsConfig? {
+    let base = baseURL()
+    guard let url = URL(string: base + "/v1/config/subscription-models") else {
+      DebugLogger.logNetwork("BACKEND-API: Invalid base URL; skip subscription-models fetch")
+      return nil
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "GET"
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    do {
+      let (data, response) = try await session.data(for: request)
+      guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+        let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+        DebugLogger.logNetwork("BACKEND-API: GET /v1/config/subscription-models returned \(code)")
+        return nil
+      }
+      let decoder = JSONDecoder()
+      let config = try decoder.decode(SubscriptionModelsConfig.self, from: data)
+      DebugLogger.logNetwork("BACKEND-API: Subscription models config loaded")
+      return config
+    } catch {
+      DebugLogger.logNetwork("BACKEND-API: Subscription models fetch failed: \(error.localizedDescription)")
+      return nil
     }
   }
 }

@@ -293,7 +293,7 @@ class GeminiChatViewModel: ObservableObject {
         let model = Self.resolveOpenGeminiModel()
         let result = try await apiClient.sendChatMessage(
           model: model, contents: contents, credential: credential, useGrounding: true,
-          systemInstruction: Self.buildGeminiChatSystemInstruction())
+          systemInstruction: buildSystemInstruction())
         let modelMsg = ChatMessage(
           role: .model,
           content: result.text,
@@ -354,9 +354,9 @@ class GeminiChatViewModel: ObservableObject {
     !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
   }
 
-  /// Resolves the selected Open Gemini model for display and API. In subscription mode returns the fixed model (e.g. Gemini 2.5 Flash).
+  /// Resolves the selected Open Gemini model for display and API. In subscription mode returns the fixed model (e.g. Gemini 3 Flash).
   static var openGeminiModel: PromptModel {
-    if isSubscription { return SettingsDefaults.subscriptionOpenGeminiModel }
+    if isSubscription { return SubscriptionModelsConfigService.effectiveOpenGeminiModel() }
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel)
       ?? SettingsDefaults.selectedOpenGeminiModel.rawValue
     return PromptModel(rawValue: raw).map { PromptModel.migrateIfDeprecated($0) }
@@ -1103,7 +1103,7 @@ struct GeminiInputAreaView: View {
         if isSubscription {
           HStack(spacing: 4) {
             Image(systemName: "cpu").font(.caption)
-            Text(SettingsDefaults.subscriptionOpenGeminiModel.displayName).font(.caption)
+            Text(SubscriptionModelsConfigService.effectiveOpenGeminiModel().displayName).font(.caption)
           }
           .foregroundColor(GeminiChatTheme.secondaryText)
           .padding(.horizontal, 8)

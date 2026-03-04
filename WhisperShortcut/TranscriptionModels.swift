@@ -173,7 +173,7 @@ enum TranscriptionModel: String, CaseIterable {
          savedModel.isOffline {
         return savedModel
       }
-      return SettingsDefaults.subscriptionTranscriptionModel
+      return SubscriptionModelsConfigService.effectiveTranscriptionModel()
     }
     guard let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) else {
       return SettingsDefaults.selectedTranscriptionModel

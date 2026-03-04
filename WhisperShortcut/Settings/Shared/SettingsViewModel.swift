@@ -69,7 +69,7 @@ class SettingsViewModel: ObservableObject {
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
     let subscriptionMode = !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
-    let promptModelDefault = subscriptionMode ? SettingsDefaults.subscriptionPromptModel : SettingsDefaults.selectedPromptModel
+    let promptModelDefault = subscriptionMode ? SubscriptionModelsConfigService.effectivePromptModel() : SettingsDefaults.selectedPromptModel
 
     // Load Prompt model preference (for Prompt Mode); migrate deprecated or removed models (e.g. gemini-2.0-flash-lite → 2.5 Flash-Lite)
     if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) {
@@ -114,7 +114,7 @@ class SettingsViewModel: ObservableObject {
 
     // Load TTS model setting; subscription uses fixed stable model (display and runtime)
     if subscriptionMode {
-      data.selectedTTSModel = SettingsDefaults.subscriptionTTSModel
+      data.selectedTTSModel = SubscriptionModelsConfigService.effectiveTTSModel()
     } else if let savedTTSModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTTSModel),
       let savedTTSModel = TTSModel(rawValue: savedTTSModelString)
     {
@@ -127,7 +127,7 @@ class SettingsViewModel: ObservableObject {
     data.readAloudPlaybackRate = SettingsDefaults.clampedReadAloudPlaybackRate()
 
     // Load Prompt Read Mode specific settings (with migration from deprecated 2.0 and from Toggle Prompting if not set)
-    let promptAndReadDefault = subscriptionMode ? SettingsDefaults.subscriptionPromptModel : SettingsDefaults.selectedPromptAndReadModel
+    let promptAndReadDefault = subscriptionMode ? SubscriptionModelsConfigService.effectivePromptModel() : SettingsDefaults.selectedPromptAndReadModel
     if let savedPromptAndReadModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadModel),
       let savedPromptAndReadModel = PromptModel(rawValue: savedPromptAndReadModelString)
     {
@@ -141,7 +141,7 @@ class SettingsViewModel: ObservableObject {
       data.selectedPromptAndReadModel = subscriptionMode ? promptAndReadDefault : data.selectedPromptModel
     }
 
-    let improvementModelDefault = subscriptionMode ? SettingsDefaults.subscriptionImprovementModel : SettingsDefaults.selectedImprovementModel
+    let improvementModelDefault = subscriptionMode ? SubscriptionModelsConfigService.effectiveImprovementModel() : SettingsDefaults.selectedImprovementModel
     if let savedImprovementModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel),
       let savedImprovementModel = PromptModel(rawValue: savedImprovementModelString)
     {

@@ -73,8 +73,8 @@ struct OpenGeminiSettingsTab: View {
       subtitle: "Choose which Gemini model powers the chat in the Open Gemini window",
       selectedModel: $viewModel.data.selectedOpenGeminiModel,
       subscriptionMode: !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn(),
-      subscriptionFixedModelDescription: "The Open Gemini window uses \(SettingsDefaults.subscriptionOpenGeminiModel.displayName) (fixed).",
-      subscriptionEffectiveModel: SettingsDefaults.subscriptionOpenGeminiModel,
+      subscriptionFixedModelDescription: "The Open Gemini window uses \(SubscriptionModelsConfigService.effectiveOpenGeminiModel().displayName) (fixed).",
+      subscriptionEffectiveModel: SubscriptionModelsConfigService.effectiveOpenGeminiModel(),
       onModelChanged: {
         UserDefaults.standard.set(
           viewModel.data.selectedOpenGeminiModel.rawValue,

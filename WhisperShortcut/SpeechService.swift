@@ -85,7 +85,7 @@ class SpeechService {
   func getPromptModelInfo() -> String {
     let isSubscription = !keychainManager.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
     if isSubscription {
-      return SettingsDefaults.subscriptionPromptModel.displayName
+      return SubscriptionModelsConfigService.effectivePromptModel().displayName
     }
     let selectedPromptModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? SettingsDefaults.selectedPromptModel.rawValue
     let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? SettingsDefaults.selectedPromptModel
@@ -99,7 +99,7 @@ class SpeechService {
   private func getPromptModel(for mode: PromptMode) -> PromptModel {
     let isSubscription = !keychainManager.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
     if isSubscription {
-      return SettingsDefaults.subscriptionPromptModel
+      return SubscriptionModelsConfigService.effectivePromptModel()
     }
     let modelKey = mode == .togglePrompting 
       ? UserDefaultsKeys.selectedPromptModel 
@@ -663,7 +663,7 @@ class SpeechService {
     let selectedTTSModel: TTSModel
     let isSubscription = !keychainManager.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
     if isSubscription {
-      selectedTTSModel = SettingsDefaults.subscriptionTTSModel
+      selectedTTSModel = SubscriptionModelsConfigService.effectiveTTSModel()
     } else if let savedTTSModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTTSModel),
        let savedTTSModel = TTSModel(rawValue: savedTTSModelString) {
       selectedTTSModel = savedTTSModel

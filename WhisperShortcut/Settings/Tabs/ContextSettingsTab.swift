@@ -278,8 +278,8 @@ struct ContextSettingsTab: View {
             }
           ),
           subscriptionMode: !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn(),
-          subscriptionFixedModelDescription: "Smart Improvement uses \(SettingsDefaults.subscriptionImprovementModel.displayName) (fixed).",
-          subscriptionEffectiveModel: SettingsDefaults.subscriptionImprovementModel,
+          subscriptionFixedModelDescription: "Smart Improvement uses \(SubscriptionModelsConfigService.effectiveImprovementModel().displayName) (fixed).",
+          subscriptionEffectiveModel: SubscriptionModelsConfigService.effectiveImprovementModel(),
           onModelChanged: {
             UserDefaults.standard.set(
               viewModel.data.selectedImprovementModel.rawValue,

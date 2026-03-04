@@ -11,7 +11,7 @@ class ContextDerivation {
     let isSubscription = !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
     let raw: String
     if isSubscription {
-      raw = SettingsDefaults.subscriptionPromptModel.rawValue
+      raw = SubscriptionModelsConfigService.effectivePromptModel().rawValue
     } else {
       raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
         ?? SettingsDefaults.selectedImprovementModel.rawValue

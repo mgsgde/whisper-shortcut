@@ -30,6 +30,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Restore Google Sign-In from Keychain, then decide whether to show settings
     Task {
       await DefaultGoogleAuthService.shared.restorePreviousSignInIfNeeded()
+      await SubscriptionModelsConfigService.refresh()
       await MainActor.run {
         if !GeminiCredentialProvider.shared.hasCredential() {
           DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {

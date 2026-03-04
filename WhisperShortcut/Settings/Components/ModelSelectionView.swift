@@ -48,7 +48,7 @@ struct ModelSelectionView: View {
         ForEach(models, id: \.self) { model in
           let isDisabled: Bool = {
             if subscriptionMode && model.isGemini {
-              return model != SettingsDefaults.subscriptionTranscriptionModel
+              return model != SubscriptionModelsConfigService.effectiveTranscriptionModel()
             }
             return geminiDisabled && model.isGemini
           }()
