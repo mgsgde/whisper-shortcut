@@ -551,7 +551,7 @@ class SpeechService {
     // Add clipboard context if present (so Gemini knows what to apply the instruction to)
     if let text = selectedText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       let contextText = """
-      SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):
+      SELECTED TEXT TO EDIT (your next message is an instruction that tells you how to edit this text — do not append that message to this text):
 
       \(text)
       """
@@ -560,7 +560,7 @@ class SpeechService {
 
     // Add voice instruction
     let commandText = """
-    VOICE INSTRUCTION\(hasSelectedText ? " (what to do with the selected text)" : ""):
+    VOICE INSTRUCTION\(hasSelectedText ? " (edit the selected text according to this command; do not transcribe and append)" : ""):
 
     \(textCommand)
     """
