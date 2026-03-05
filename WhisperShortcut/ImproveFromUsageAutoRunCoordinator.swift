@@ -42,8 +42,13 @@ final class ImproveFromUsageAutoRunCoordinator {
 
     guard due else { return }
 
+    guard GeminiCredentialProvider.shared.hasCredential() else {
+      DebugLogger.log("AUTO-RUN: No credential (no API key, not signed in), skipping Improve from usage")
+      return
+    }
+
     DebugLogger.log("AUTO-RUN: Starting Improve from usage")
-    await AutoPromptImprovementScheduler.shared.runImprovementNow()
+    await AutoPromptImprovementScheduler.shared.runImprovementNow(fromAutoRun: true)
   }
 
   /// Starts a repeating 24h timer so that auto-run is checked even when the app is not restarted.

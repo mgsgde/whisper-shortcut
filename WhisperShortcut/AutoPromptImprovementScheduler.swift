@@ -11,16 +11,19 @@ class AutoPromptImprovementScheduler {
   /// No-op: automatic improvement was removed; improvement runs only when the user triggers "Improve from usage" or "Improve from voice".
   func incrementDictationCountAndRunIfNeeded() {}
 
-  /// Runs the improvement pipeline immediately (manual trigger from Settings).
-  /// Ignores cooldown and interval. Requires API key and at least some interaction data.
+  /// Runs the improvement pipeline immediately (manual trigger from Settings or auto-run).
+  /// Ignores cooldown and interval. Requires credential and at least some interaction data.
   /// If a run is already in progress, enqueues this job and notifies the user.
-  func runImprovementNow() async {
+  /// - Parameter fromAutoRun: When true (e.g. launch/daily timer), no popup is shown when there is no interaction data; when false (user tapped "Improve from usage"), show info message.
+  func runImprovementNow(fromAutoRun: Bool = false) async {
     guard GeminiCredentialProvider.shared.hasCredential() else { return }
     guard ContextLogger.shared.hasInteractionDataAtLeast(daysOld: 0) else {
-      PopupNotificationWindow.showInfo(
-        "No interaction data yet. Use dictation or prompt mode first.",
-        title: "Smart Improvement"
-      )
+      if !fromAutoRun {
+        PopupNotificationWindow.showInfo(
+          "No interaction data yet. Use dictation or prompt mode first.",
+          title: "Smart Improvement"
+        )
+      }
       return
     }
     if isImprovementRunning {
