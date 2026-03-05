@@ -15,13 +15,7 @@ class AutoPromptImprovementScheduler {
   /// Ignores cooldown and interval. Requires API key and at least some interaction data.
   /// If a run is already in progress, enqueues this job and notifies the user.
   func runImprovementNow() async {
-    guard GeminiCredentialProvider.shared.hasCredential() else {
-      PopupNotificationWindow.showError(
-        "Add an API key in the General tab to use Smart Improvement.",
-        title: "Smart Improvement"
-      )
-      return
-    }
+    guard GeminiCredentialProvider.shared.hasCredential() else { return }
     guard ContextLogger.shared.hasInteractionDataAtLeast(daysOld: 0) else {
       PopupNotificationWindow.showInfo(
         "No interaction data yet. Use dictation or prompt mode first.",
@@ -51,15 +45,7 @@ class AutoPromptImprovementScheduler {
   /// When runInBackground is true, no persistent processing popup is shown; only auto-dismissing info notifications. No clipboard copy on success.
   /// If a run is already in progress, enqueues this job and notifies the user.
   func runImprovementFromVoice(transcribedInstruction: String, selectedText: String?, runInBackground: Bool = false) async {
-    guard GeminiCredentialProvider.shared.hasCredential() else {
-      await MainActor.run {
-        PopupNotificationWindow.showError(
-          "Add an API key in the General tab to use this feature.",
-          title: "Smart Improvement"
-        )
-      }
-      return
-    }
+    guard GeminiCredentialProvider.shared.hasCredential() else { return }
     let instruction = transcribedInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !instruction.isEmpty else {
       await MainActor.run {
