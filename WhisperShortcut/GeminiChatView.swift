@@ -336,9 +336,13 @@ class GeminiChatViewModel: ObservableObject {
     return String(rawContent[r1.upperBound..<r2.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  /// Builds the system instruction: base Gemini Chat prompt plus optional meeting context (summary + recent transcript).
+  /// Builds the system instruction: current date, base Gemini Chat prompt, plus optional meeting context (summary + recent transcript).
   private func buildSystemInstruction() -> [String: Any] {
     var text = SystemPromptsStore.shared.loadGeminiChatSystemPrompt()
+    let formatter = DateFormatter()
+    formatter.dateFormat = "EEEE, MMMM d, yyyy"
+    formatter.locale = Locale(identifier: "en_US")
+    text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
     if let extra = meetingContextProvider?(), !extra.isEmpty {
       text = "\(text)\n\n---\n\n\(extra)"
     }

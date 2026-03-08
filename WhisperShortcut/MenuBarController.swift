@@ -183,7 +183,7 @@ class MenuBarController: NSObject {
     menu.addItem(
       createMenuItemWithShortcut(
         "Open Meeting", action: #selector(openMeetingWindow),
-        shortcut: currentConfig.openMeeting, tag: 111))
+        shortcut: currentConfig.openMeeting, tag: 113))
 
     menu.addItem(
       createMenuItemWithShortcut(
@@ -474,7 +474,7 @@ class MenuBarController: NSObject {
         || activeMeetingSegment == .promptRead
     )
 
-    updateMenuItem(menu, tag: 111, title: "Open Meeting", enabled: hasAPIKey)
+    updateMenuItem(menu, tag: 113, title: "Open Meeting", enabled: hasAPIKey)
 
     // Handle special case when no API key and no offline model is configured
     if !hasAPIKey && !hasOfflineTranscriptionModel && !hasOfflinePromptModel, let button = statusItem?.button {

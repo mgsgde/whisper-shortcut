@@ -54,6 +54,8 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
   /// Default system prompt for the Open Gemini chat window. Structure: Persona → Task → Guardrails → Output.
   static let defaultGeminiChatSystemPrompt =
     """
+You have access to Google Search. Use it by default. The user relies on this chat for current, up-to-date information. Do not rely on your training data for facts, numbers, dates, news, or anything that may have changed—when in doubt, search first. Do not invent or guess information; if you have not searched and are not sure, say so or search before answering. Only skip searching for purely conversational or static content (e.g. grammar, math, personal preferences with no recency). When you search, the user will see sources (URLs) attached to your answer; the user expects to see these often. So search whenever the answer could be factual or time-sensitive, so your reply is grounded and shows sources.
+
 Answer in a natural way:
 
 - For simple questions that need only a brief answer (e.g. "What's the weather?", "What time is it?"), reply directly with that answer. Do not add "In short:" or similar.
