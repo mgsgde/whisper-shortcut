@@ -772,6 +772,10 @@ class GeminiAPIClient {
   
   /// Parses Gemini error responses into TranscriptionError
   func parseErrorResponse(data: Data, statusCode: Int) throws -> TranscriptionError {
+    // Backend proxy 402: no active subscription for signed-in user
+    if statusCode == 402 {
+      return .subscriptionRequired
+    }
     // Backend proxy 429: { error: string, code: "rate_limit_exceeded", top_up_url: string }
     if statusCode == 429,
        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -859,6 +863,7 @@ class GeminiAPIClient {
     switch statusCode {
     case 400: return .invalidRequest
     case 401: return .invalidAPIKey
+    case 402: return .subscriptionRequired
     case 403: return .permissionDenied
     case 404: return .notFound
     case 429: return .rateLimited(retryAfter: retryAfter, topUpURL: nil)

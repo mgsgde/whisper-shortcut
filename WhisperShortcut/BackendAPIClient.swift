@@ -25,6 +25,11 @@ struct UsageRequest: Codable {
   let product: String?
 }
 
+/// Response from GET /v1/subscription. Indicates whether the user has an active subscription.
+struct SubscriptionStatusResponse: Codable {
+  let active: Bool
+}
+
 /// Client for Whisper backend API (usage). Non-blocking; errors are logged, not thrown to caller.
 enum BackendAPIClient {
   private static let session: URLSession = {
@@ -95,6 +100,38 @@ enum BackendAPIClient {
       return config
     } catch {
       DebugLogger.logNetwork("BACKEND-API: Subscription models fetch failed: \(error.localizedDescription)")
+      return nil
+    }
+  }
+
+  /// Fetches subscription status from GET /v1/subscription. Requires Bearer token (signed-in user).
+  /// Returns true if the user has an active subscription, false if not, nil on network/auth failure.
+  static func fetchSubscriptionStatus(idTokenProvider: @escaping () async -> String?) async -> Bool? {
+    let base = baseURL()
+    guard let url = URL(string: base + "/v1/subscription") else {
+      DebugLogger.logNetwork("BACKEND-API: Invalid base URL; skip subscription status fetch")
+      return nil
+    }
+    guard let token = await idTokenProvider() else {
+      DebugLogger.logNetwork("BACKEND-API: No ID token; skip subscription status fetch")
+      return nil
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "GET"
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    do {
+      let (data, response) = try await session.data(for: request)
+      guard let http = response as? HTTPURLResponse else { return nil }
+      guard http.statusCode == 200 else {
+        DebugLogger.logNetwork("BACKEND-API: GET /v1/subscription returned \(http.statusCode)")
+        return nil
+      }
+      let decoder = JSONDecoder()
+      let status = try decoder.decode(SubscriptionStatusResponse.self, from: data)
+      return status.active
+    } catch {
+      DebugLogger.logNetwork("BACKEND-API: Subscription status fetch failed: \(error.localizedDescription)")
       return nil
     }
   }

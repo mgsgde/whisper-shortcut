@@ -6,16 +6,25 @@ struct GeneralSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @State private var showResetToDefaultsConfirmation = false
+  @State private var isSignedIn = DefaultGoogleAuthService.shared.isSignedIn()
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
+      Text("Choose one: sign in with Google (Whisper Shortcut API) or use an API key. You don't need both.")
+        .font(.subheadline)
+        .fontWeight(.medium)
+        .foregroundColor(.secondary)
+        .padding(.bottom, SettingsConstants.internalSectionSpacing)
+
       GoogleAccountSection()
 
       SpacedSectionDivider()
 
-      GoogleAPIKeySection(viewModel: viewModel, focusedField: $focusedField)
+      if !isSignedIn {
+        GoogleAPIKeySection(viewModel: viewModel, focusedField: $focusedField)
 
-      SpacedSectionDivider()
+        SpacedSectionDivider()
+      }
 
       KeyboardShortcutsSection(viewModel: viewModel, focusedField: $focusedField)
 
@@ -46,6 +55,9 @@ struct GeneralSettingsTab: View {
       SpacedSectionDivider()
 
       SupportFeedbackSection(viewModel: viewModel)
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .googleSignInDidChange)) { _ in
+      isSignedIn = DefaultGoogleAuthService.shared.isSignedIn()
     }
     .confirmationDialog("Reset app to default?", isPresented: $showResetToDefaultsConfirmation, titleVisibility: .visible) {
       Button("Reset and quit app", role: .destructive) {

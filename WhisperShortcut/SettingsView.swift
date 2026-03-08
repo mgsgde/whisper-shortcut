@@ -158,7 +158,9 @@ struct SettingsView: View {
     if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
       window.makeKeyAndOrderFront(nil)
     }
-    focusedField = .googleAPIKey
+    if !DefaultGoogleAuthService.shared.isSignedIn() {
+      focusedField = .googleAPIKey
+    }
   }
 
   private func setupFloatingWindow() {

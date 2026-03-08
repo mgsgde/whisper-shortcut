@@ -73,6 +73,7 @@ class PopupNotificationWindow: NSWindow {
   private var closeButton: NSButton!
   private var retryButton: NSButton?
   private var topUpButton: NSButton?
+  private var signInButton: NSButton?
   private var whatsappButton: NSButton?
   private var autoHideTimer: Timer?
   private var isError: Bool = false
@@ -80,12 +81,13 @@ class PopupNotificationWindow: NSWindow {
   private var errorText: String = ""
   private var retryAction: (() -> Void)?
   private var dismissAction: (() -> Void)?
+  private var signInAction: (() -> Void)?
   private var wasRetried: Bool = false
   private var customDisplayDuration: TimeInterval?
   private var topUpURL: URL?
 
   // MARK: - Initialization
-  init(title: String, text: String, isError: Bool = false, isInfo: Bool = false, isCancelled: Bool = false, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
+  init(title: String, text: String, isError: Bool = false, isInfo: Bool = false, isCancelled: Bool = false, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
     // Create window with specific style for notifications
     super.init(
       contentRect: NSRect(x: 0, y: 0, width: Constants.defaultWindowWidth, height: 100),
@@ -100,6 +102,7 @@ class PopupNotificationWindow: NSWindow {
     self.errorText = text
     self.retryAction = retryAction
     self.dismissAction = dismissAction
+    self.signInAction = signInAction
     self.customDisplayDuration = customDisplayDuration
     self.topUpURL = topUpURL
 
@@ -111,6 +114,9 @@ class PopupNotificationWindow: NSWindow {
     setupScrollView()
     if isError {
       setupWhatsAppButton()
+      if signInAction != nil {
+        setupSignInButton()
+      }
       if retryAction != nil {
         setupRetryButton()
       }
@@ -125,8 +131,8 @@ class PopupNotificationWindow: NSWindow {
       setupSuccessClickHandler()
     }
 
-    // Success and info: auto-dismiss. Error: auto-dismiss only if no retry and no Top up button.
-    if !isError || isInfo || (retryAction == nil && topUpURL == nil) {
+    // Success and info: auto-dismiss. Error: auto-dismiss only if no retry, no Top up, no Sign in button.
+    if !isError || isInfo || (retryAction == nil && topUpURL == nil && signInAction == nil) {
       startAutoHideTimer(isError: isError, isInfo: isInfo)
     }
   }
@@ -283,6 +289,25 @@ class PopupNotificationWindow: NSWindow {
     if let url = topUpURL {
       NSWorkspace.shared.open(url)
     }
+    hide()
+  }
+
+  private func setupSignInButton() {
+    let button = PointerCursorButton()
+    button.title = "Sign in with Google"
+    button.bezelStyle = .rounded
+    button.isBordered = true
+    button.wantsLayer = true
+    button.translatesAutoresizingMaskIntoConstraints = false
+    button.target = self
+    button.action = #selector(signInButtonClicked)
+    button.setContentHuggingPriority(.required, for: .horizontal)
+    button.setContentCompressionResistancePriority(.required, for: .horizontal)
+    signInButton = button
+  }
+
+  @objc private func signInButtonClicked() {
+    signInAction?()
     hide()
   }
 
@@ -488,6 +513,10 @@ class PopupNotificationWindow: NSWindow {
     if isError, let topUpButton = topUpButton {
       customContentView.addSubview(topUpButton)
     }
+    // Add Sign in with Google button for credential-required errors
+    if isError, let signInButton = signInButton {
+      customContentView.addSubview(signInButton)
+    }
 
     // Set up constraints with improved spacing
     NSLayoutConstraint.activate([
@@ -546,24 +575,41 @@ class PopupNotificationWindow: NSWindow {
           equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
       ])
       
-      // Add button constraints (Retry, Top up, WhatsApp) - position them below scroll view
+      // Add button constraints (Sign in with Google, Retry, Top up, WhatsApp) - position them below scroll view
+      let hasSignInButton = signInButton != nil
       let hasRetryButton = retryButton != nil
       let hasTopUpButton = topUpButton != nil
       let hasWhatsAppButton = whatsappButton != nil
       
-      if hasRetryButton || hasTopUpButton || hasWhatsAppButton {
+      if hasSignInButton || hasRetryButton || hasTopUpButton || hasWhatsAppButton {
         let buttonSpacing: CGFloat = 8
         let topAnchor = scrollView.bottomAnchor
+        
+        if let signInButton = signInButton {
+          NSLayoutConstraint.activate([
+            signInButton.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            signInButton.leadingAnchor.constraint(
+              equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding),
+            signInButton.bottomAnchor.constraint(
+              equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
+            signInButton.heightAnchor.constraint(equalToConstant: 28),
+          ])
+        }
         
         if let retryButton = retryButton {
           NSLayoutConstraint.activate([
             retryButton.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            retryButton.leadingAnchor.constraint(
-              equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding),
             retryButton.bottomAnchor.constraint(
               equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
             retryButton.heightAnchor.constraint(equalToConstant: 28),
           ])
+          if let signInButton = signInButton {
+            retryButton.leadingAnchor.constraint(
+              equalTo: signInButton.trailingAnchor, constant: buttonSpacing).isActive = true
+          } else {
+            retryButton.leadingAnchor.constraint(
+              equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding).isActive = true
+          }
         }
         
         if let topUpButton = topUpButton {
@@ -573,9 +619,10 @@ class PopupNotificationWindow: NSWindow {
               equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
             topUpButton.heightAnchor.constraint(equalToConstant: 28),
           ])
-          if let retryButton = retryButton {
+          let leftOfTopUp = retryButton ?? signInButton
+          if let left = leftOfTopUp {
             topUpButton.leadingAnchor.constraint(
-              equalTo: retryButton.trailingAnchor, constant: buttonSpacing).isActive = true
+              equalTo: left.trailingAnchor, constant: buttonSpacing).isActive = true
           } else {
             topUpButton.leadingAnchor.constraint(
               equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding).isActive = true
@@ -589,7 +636,7 @@ class PopupNotificationWindow: NSWindow {
               equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
             whatsappButton.heightAnchor.constraint(equalToConstant: 28),
           ])
-          let leftOfWhatsApp = topUpButton ?? retryButton
+          let leftOfWhatsApp = topUpButton ?? retryButton ?? signInButton
           if let left = leftOfWhatsApp {
             whatsappButton.leadingAnchor.constraint(
               equalTo: left.trailingAnchor, constant: buttonSpacing).isActive = true
@@ -662,8 +709,8 @@ class PopupNotificationWindow: NSWindow {
     let titleToModelSpacing = modelInfoLabel != nil ? 4.0 : 0.0  // Small gap between title and model info
     let modelToTextSpacing = Constants.titleBottomSpacing  // Gap before text content
 
-    // Calculate button height if present (retry and/or WhatsApp buttons)
-    let hasButtons = (retryButton != nil || topUpButton != nil || whatsappButton != nil)
+    // Calculate button height if present (Sign in, Retry, Top up, WhatsApp buttons)
+    let hasButtons = (signInButton != nil || retryButton != nil || topUpButton != nil || whatsappButton != nil)
     let buttonHeight = hasButtons ? 28.0 + 12.0 : 0.0  // Button height + spacing
     
     // Calculate total required height
@@ -954,6 +1001,9 @@ class PopupNotificationWindow: NSWindow {
     // Only hide on click if it's not the button areas
     // The buttons will handle their own clicks
     let location = event.locationInWindow
+    if let signInButton = signInButton, signInButton.frame.contains(location) {
+      return  // Let the Sign in button handle the click
+    }
     if let retryButton = retryButton, retryButton.frame.contains(location) {
       return  // Let the retry button handle the click
     }
@@ -1057,7 +1107,7 @@ extension PopupNotificationWindow {
     popup.show()
   }
 
-  static func showError(_ error: String, title: String = "Error", retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
+  static func showError(_ error: String, title: String = "Error", retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
     guard arePopupNotificationsEnabled else {
       return
     }
@@ -1068,6 +1118,7 @@ extension PopupNotificationWindow {
       isError: true,
       retryAction: retryAction,
       dismissAction: dismissAction,
+      signInAction: signInAction,
       customDisplayDuration: customDisplayDuration,
       topUpURL: topUpURL
     )

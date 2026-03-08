@@ -135,8 +135,8 @@ struct SpeechToTextSettingsTab: View {
       ModelSelectionView(
         title: "🎤 Transcription Model",
         selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
-        geminiDisabled: !KeychainManager.shared.hasGoogleAPIKey(),
-        subscriptionMode: !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn(),
+        geminiDisabled: !GeminiCredentialProvider.shared.hasCredential(),
+        subscriptionMode: DefaultGoogleAuthService.shared.isSignedIn(),
         onModelChanged: {
           UserDefaults.standard.set(
             viewModel.data.selectedTranscriptionModel.rawValue,
@@ -149,8 +149,8 @@ struct SpeechToTextSettingsTab: View {
           }
         }
       )
-      if viewModel.data.selectedTranscriptionModel.isGemini && !KeychainManager.shared.hasGoogleAPIKey() && !DefaultGoogleAuthService.shared.isSignedIn() {
-        Text("API key required for Gemini models. Add your key in the General tab, or select an offline Whisper model to dictate without a key.")
+      if viewModel.data.selectedTranscriptionModel.isGemini && !GeminiCredentialProvider.shared.hasCredential() {
+        Text("Sign in with Google or add your API key in the General tab for Gemini models. You can also select an offline Whisper model to dictate without a key.")
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)

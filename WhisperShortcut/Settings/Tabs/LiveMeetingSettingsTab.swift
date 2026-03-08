@@ -114,15 +114,15 @@ struct LiveMeetingSettingsTab: View {
       ModelSelectionView(
         title: "Transcription Model",
         selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModelForMeetings,
-        geminiDisabled: !KeychainManager.shared.hasGoogleAPIKey(),
+        geminiDisabled: !GeminiCredentialProvider.shared.hasCredential(),
         onModelChanged: {
           Task {
             await viewModel.saveSettings()
           }
         }
       )
-      if viewModel.data.selectedTranscriptionModelForMeetings.isGemini && !KeychainManager.shared.hasGoogleAPIKey() {
-        Text("API key required for Gemini models. Add your key in the General tab, or select an offline Whisper model.")
+      if viewModel.data.selectedTranscriptionModelForMeetings.isGemini && !GeminiCredentialProvider.shared.hasCredential() {
+        Text("Sign in with Google or add your API key in the General tab for Gemini models. You can also select an offline Whisper model.")
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)

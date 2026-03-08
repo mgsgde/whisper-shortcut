@@ -1,15 +1,15 @@
 import Foundation
 
-/// Provides the current credential for Gemini: API key (direct) or Bearer ID token (proxy only when signed in).
-/// Single source of truth. Priority: API key if set, else Bearer ID token when signed in with Google.
+/// Provides the current credential for Gemini: Bearer ID token (Whisper Shortcut App API when signed in) or API key (direct).
+/// Single source of truth. Priority: when signed in use Whisper Shortcut App API (Bearer); otherwise API key if set.
 protocol GeminiCredentialProviding {
-  /// Returns a valid credential if the user has set an API key or is signed in with Google; nil otherwise.
+  /// Returns a valid credential if the user is signed in (Bearer) or has set an API key; nil otherwise.
   func getCredential() async -> GeminiCredential?
-  /// Returns true if a non-empty API key is stored or the user is signed in with Google.
+  /// Returns true if the user is signed in with Google or has a non-empty API key stored.
   func hasCredential() -> Bool
 }
 
-/// Default implementation: API key from Keychain first; if none, Bearer ID token when signed in (proxy only).
+/// Default implementation: when signed in use Bearer (Whisper Shortcut App API); else API key from Keychain.
 final class GeminiCredentialProvider: GeminiCredentialProviding {
   static let shared = GeminiCredentialProvider(keychainManager: KeychainManager.shared)
 
@@ -20,21 +20,20 @@ final class GeminiCredentialProvider: GeminiCredentialProviding {
   }
 
   func getCredential() async -> GeminiCredential? {
-    // API key always has precedence; when signed in (no key), use Bearer ID token for backend proxy only.
-    if let key = keychainManager.getGoogleAPIKey(), !key.isEmpty {
-      return .apiKey(key)
-    }
+    // When signed in, use Whisper Shortcut App API (Bearer); otherwise use API key if set.
     if DefaultGoogleAuthService.shared.isSignedIn(),
        let idToken = await DefaultGoogleAuthService.shared.getIDToken(),
        !idToken.isEmpty {
       return .bearer(idToken)
     }
+    if let key = keychainManager.getGoogleAPIKey(), !key.isEmpty {
+      return .apiKey(key)
+    }
     return nil
   }
 
   func hasCredential() -> Bool {
-    // Same priority: API key first, then signed-in state.
-    if keychainManager.hasValidGoogleAPIKey() { return true }
-    return DefaultGoogleAuthService.shared.isSignedIn()
+    if DefaultGoogleAuthService.shared.isSignedIn() { return true }
+    return keychainManager.hasValidGoogleAPIKey()
   }
 }

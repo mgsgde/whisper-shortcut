@@ -36,7 +36,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
           DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
             SettingsManager.shared.showSettings()
           }
-        } else if KeychainManager.shared.hasGoogleAPIKey() {
+        } else if !DefaultGoogleAuthService.shared.isSignedIn() && KeychainManager.shared.hasGoogleAPIKey() {
           _ = KeychainManager.shared.getGoogleAPIKey()
         }
       }

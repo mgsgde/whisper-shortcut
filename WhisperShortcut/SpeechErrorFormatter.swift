@@ -329,6 +329,13 @@ struct SpeechErrorFormatter {
 
         To use voice output, add a Google API key in Settings → Google API Key. Voice output will then use the Generative Language API directly and does not require allowlist access.
         """
+
+    case .subscriptionRequired:
+      return """
+        Subscription Required
+
+        You need an active subscription to use this feature. Subscribe at whispershortcut.com or add a Google API key in Settings (General tab) to use the app without a subscription.
+        """
     }
   }
 
@@ -377,6 +384,8 @@ struct SpeechErrorFormatter {
       return "❌ Model no longer available"
     case .voiceRequiresAPIKey:
       return "🎤 Voice Requires API Key"
+    case .subscriptionRequired:
+      return "Subscription Required"
     default:
       return "❌ Error"
     }

@@ -617,6 +617,8 @@ enum TranscriptionError: Error, Equatable {
   case modelNotAvailable(OfflineModelType)
   /// Voice/output (TTS) is not available via Sign in with Google; API key is required.
   case voiceRequiresAPIKey
+  /// Backend returned 402: signed-in user has no active subscription.
+  case subscriptionRequired
 
   var title: String {
     switch self {
@@ -645,6 +647,7 @@ enum TranscriptionError: Error, Equatable {
     case .promptLeakDetected: return "API Response Issue"
     case .modelNotAvailable: return "Model Not Downloaded"
     case .voiceRequiresAPIKey: return "Voice Requires API Key"
+    case .subscriptionRequired: return "Subscription Required"
     }
   }
 
@@ -658,9 +661,10 @@ enum TranscriptionError: Error, Equatable {
     }
   }
 
-  /// URL to open for topping up balance (e.g. dashboard); only set for backend rate-limit 429.
+  /// URL to open for topping up balance or subscription (e.g. dashboard); set for rate-limit 429 and subscriptionRequired 402.
   var topUpURL: URL? {
     if case .rateLimited(_, let url) = self { return url }
+    if case .subscriptionRequired = self { return URL(string: "https://whispershortcut.com/dashboard") }
     return nil
   }
   
@@ -676,7 +680,7 @@ enum TranscriptionError: Error, Equatable {
     case .quotaExceeded(let retryAfter):
       return retryAfter != nil
     // Non-retryable errors (configuration/permanent issues)
-    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .billingRequired, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest, .voiceRequiresAPIKey:
+    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .billingRequired, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest, .voiceRequiresAPIKey, .subscriptionRequired:
       return false
     }
   }

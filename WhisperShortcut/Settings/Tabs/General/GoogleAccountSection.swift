@@ -18,7 +18,7 @@ struct GoogleAccountSection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Google Account (SSO)",
-        subtitle: "Sign in with Google to use the same account in the app and the Dashboard (usage and billing)."
+        subtitle: "Sign in with Google to use the Whisper Shortcut API (recommended)."
       )
       .id(googleSignInRefresh)
 
