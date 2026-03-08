@@ -123,7 +123,6 @@ class GeminiChatViewModel: ObservableObject {
     messages = []
     errorMessage = nil
     inputText = ""
-    pendingScreenshot = nil
     refreshRecentSessions()
     DebugLogger.log("GEMINI-CHAT: Switched to new chat")
   }
