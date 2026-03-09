@@ -499,11 +499,11 @@ struct SettingsDefaults {
   /// Transcription (Dictate); backend: transcription → gemini-3.1-flash-lite-preview.
   static let subscriptionTranscriptionModel = TranscriptionModel.gemini31FlashLite
   /// Open Gemini chat window; backend: gemini_chat → gemini-3.1-flash-lite-preview.
-  static let subscriptionOpenGeminiModel = PromptModel.gemini31FlashLite
+  static let subscriptionOpenGeminiModel = PromptModel.gemini3Flash
   /// Smart Improvement (Improve from usage / from voice); backend: smart_improvement → gemini-3-flash-preview.
   static let subscriptionImprovementModel = PromptModel.gemini3Flash
   static let selectedImprovementModel = PromptModel.gemini3Flash
-  static let selectedOpenGeminiModel = PromptModel.gemini31FlashLite
+  static let selectedOpenGeminiModel = PromptModel.gemini3Flash
   static let geminiCloseOnFocusLoss = true
   static let settingsCloseOnFocusLoss = true
   static let customPromptText = ""
