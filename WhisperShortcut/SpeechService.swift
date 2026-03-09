@@ -473,13 +473,15 @@ class SpeechService {
       parts: [GeminiChatRequest.GeminiSystemPart(text: "Transcribe this audio exactly. Return only the transcribed text, nothing else.")]
     )
 
+    // When using proxy (OAuth), send request_type so backend tracks feature (e.g. prompt_mode) instead of "unknown".
+    let requestTypeForProxy: String? = credential.isOAuth ? "prompt_mode" : nil
     let chatRequest = GeminiChatRequest(
       contents: [GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts)],
       systemInstruction: systemInstruction,
       tools: nil,
       generationConfig: nil,
       model: nil,
-      requestType: nil
+      requestType: requestTypeForProxy
     )
 
     request.httpBody = try JSONEncoder().encode(chatRequest)

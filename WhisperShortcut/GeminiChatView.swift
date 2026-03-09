@@ -12,7 +12,7 @@ class GeminiChatViewModel: ObservableObject {
   /// True when the currently visible session has an in-flight request.
   var isSending: Bool { sendingSessionIds.contains(session.id) }
   @Published var errorMessage: String? = nil
-  @Published var pendingScreenshot: Data? = nil
+  @Published var pendingScreenshots: [Data] = []
   @Published var screenshotCaptureInProgress: Bool = false
   @Published var pendingFileAttachment: PendingFile? = nil
   @Published var pastedBlocks: [PastedBlock] = []
@@ -74,7 +74,7 @@ class GeminiChatViewModel: ObservableObject {
     ("/back", "Navigate to the previous chat"),
     ("/next", "Navigate to the next chat"),
     ("/clear", "Clear current chat messages"),
-    ("/screenshot", "Capture screen (attached to your next message)"),
+    ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
@@ -123,6 +123,7 @@ class GeminiChatViewModel: ObservableObject {
     messages = []
     errorMessage = nil
     inputText = ""
+    pendingScreenshots = []
     refreshRecentSessions()
     DebugLogger.log("GEMINI-CHAT: Switched to new chat")
   }
@@ -144,28 +145,40 @@ class GeminiChatViewModel: ObservableObject {
     currentSessionId = session.id
     messages = session.messages
     errorMessage = nil
-    pendingScreenshot = nil
+    pendingScreenshots = []
     refreshRecentSessions()
   }
 
+  /// Maximum number of screenshots that can be attached to one message.
+  private static let maxPendingScreenshots = 5
+
   func captureScreenshot() async {
     guard !screenshotCaptureInProgress else { return }
+    if pendingScreenshots.count >= Self.maxPendingScreenshots {
+      errorMessage = "Maximum number of screenshots reached (\(Self.maxPendingScreenshots))."
+      return
+    }
     screenshotCaptureInProgress = true
     errorMessage = nil
     DebugLogger.log("GEMINI-CHAT: Starting screen capture (window will hide briefly)")
     let data = await GeminiWindowManager.shared.captureScreenExcludingGeminiWindow()
     screenshotCaptureInProgress = false
     if let data = data {
-      pendingScreenshot = data
-      DebugLogger.log("GEMINI-CHAT: Screenshot attached to next message")
+      pendingScreenshots.append(data)
+      DebugLogger.log("GEMINI-CHAT: Screenshot \(pendingScreenshots.count) attached to next message")
     } else {
       errorMessage = "Screen capture failed. Check Screen Recording permission for this app in System Preferences > Privacy & Security."
       DebugLogger.log("GEMINI-CHAT: Screen capture returned nil")
     }
   }
 
-  func clearPendingScreenshot() {
-    pendingScreenshot = nil
+  func removePendingScreenshot(at index: Int) {
+    guard index >= 0, index < pendingScreenshots.count else { return }
+    pendingScreenshots.remove(at: index)
+  }
+
+  func clearPendingScreenshots() {
+    pendingScreenshots = []
   }
 
   func clearPendingFile() {
@@ -182,7 +195,7 @@ class GeminiChatViewModel: ObservableObject {
     guard let data = try? Data(contentsOf: url) else { return }
     let mimeType = Self.mimeType(for: url)
     pendingFileAttachment = PendingFile(data: data, mimeType: mimeType, filename: url.lastPathComponent)
-    pendingScreenshot = nil
+    pendingScreenshots = []
     DebugLogger.log("GEMINI-CHAT: File attached: \(url.lastPathComponent) (\(mimeType), \(data.count) bytes)")
   }
 
@@ -224,7 +237,7 @@ class GeminiChatViewModel: ObservableObject {
       cancelSend()
       return
     }
-    let hasContent = !raw.isEmpty || pendingScreenshot != nil || pendingFileAttachment != nil || !pastedBlocks.isEmpty
+    let hasContent = !raw.isEmpty || !pendingScreenshots.isEmpty || pendingFileAttachment != nil || !pastedBlocks.isEmpty
     guard hasContent, !isSending else { return }
 
     // Slash commands: do not send to API
@@ -251,13 +264,16 @@ class GeminiChatViewModel: ObservableObject {
     let sessionId = session.id
     inputText = ""
     errorMessage = nil
-    let attachment: (data: Data, mimeType: String, filename: String)?
+    let attachedParts: [AttachedImagePart]
     if let file = pendingFileAttachment {
-      attachment = (file.data, file.mimeType, file.filename)
-    } else if let screenshot = pendingScreenshot {
-      attachment = (screenshot, "image/png", "screenshot.png")
+      attachedParts = [AttachedImagePart(data: file.data, mimeType: file.mimeType, filename: file.filename)]
+    } else if !pendingScreenshots.isEmpty {
+      attachedParts = pendingScreenshots.enumerated().map { index, data in
+        let filename = pendingScreenshots.count == 1 ? "screenshot.png" : "screenshot \(index + 1).png"
+        return AttachedImagePart(data: data, mimeType: "image/png", filename: filename)
+      }
     } else {
-      attachment = nil
+      attachedParts = []
     }
     var parts: [String] = []
     if !pastedBlocks.isEmpty {
@@ -272,14 +288,10 @@ class GeminiChatViewModel: ObservableObject {
     let finalContent = parts.joined(separator: "\n\n")
     DebugLogger.log("GEMINI-CHAT: finalContent (first 300 chars): \(String(finalContent.prefix(300)))")
     pastedBlocks = []
-    let userMsg = ChatMessage(
-      role: .user, content: finalContent,
-      attachedImageData: attachment?.data,
-      attachedFileMimeType: attachment?.mimeType,
-      attachedFilename: attachment?.filename)
+    let userMsg = ChatMessage(role: .user, content: finalContent, attachedImageParts: attachedParts)
     appendMessage(userMsg, toSessionId: sessionId)
     let contents = buildContents()
-    pendingScreenshot = nil
+    pendingScreenshots = []
     pendingFileAttachment = nil
 
     let task = Task {
@@ -478,11 +490,11 @@ class GeminiChatViewModel: ObservableObject {
   private func buildContents() -> [[String: Any]] {
     let toSend = Array(messages.suffix(Self.maxMessagesInContext))
     return toSend.enumerated().map { index, msg in
-      let isLastUserWithImage = index == toSend.count - 1 && msg.role == .user && msg.attachedImageData != nil
-      if isLastUserWithImage, let imageData = msg.attachedImageData {
-        let base64 = imageData.base64EncodedString()
-        let mimeType = msg.attachedFileMimeType ?? "image/png"
-        var parts: [[String: Any]] = [["inline_data": ["mime_type": mimeType, "data": base64]]]
+      let isLastUserWithImages = index == toSend.count - 1 && msg.role == .user && !msg.attachedImageParts.isEmpty
+      if isLastUserWithImages {
+        var parts: [[String: Any]] = msg.attachedImageParts.map { part in
+          ["inline_data": ["mime_type": part.mimeType ?? "image/png", "data": part.data.base64EncodedString()]]
+        }
         if !msg.content.isEmpty {
           parts.append(["text": msg.content])
         }
@@ -827,7 +839,7 @@ struct GeminiInputAreaView: View {
   @AppStorage(UserDefaultsKeys.selectedOpenGeminiModel) private var selectedOpenGeminiModelRaw: String = SettingsDefaults.selectedOpenGeminiModel.rawValue
 
   private enum AttachmentFocus: Hashable {
-    case screenshot, file, pastedBlock(UUID)
+    case screenshot(Int), file, pastedBlock(UUID)
   }
   @FocusState private var focusedAttachment: AttachmentFocus?
 
@@ -866,7 +878,7 @@ struct GeminiInputAreaView: View {
   // True when the composer has anything to send
   private var hasContent: Bool {
     !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      || viewModel.pendingScreenshot != nil
+      || !viewModel.pendingScreenshots.isEmpty
       || viewModel.pendingFileAttachment != nil
       || !viewModel.pastedBlocks.isEmpty
   }
@@ -962,7 +974,7 @@ struct GeminiInputAreaView: View {
     VStack(spacing: 0) {
       // Composer box: chips + text editor
       VStack(spacing: 0) {
-        if viewModel.pendingScreenshot != nil || viewModel.pendingFileAttachment != nil || !viewModel.pastedBlocks.isEmpty {
+        if !viewModel.pendingScreenshots.isEmpty || viewModel.pendingFileAttachment != nil || !viewModel.pastedBlocks.isEmpty {
           attachmentChipsRow
         }
         ZStack(alignment: .topLeading) {
@@ -1016,8 +1028,8 @@ struct GeminiInputAreaView: View {
                 } else if viewModel.pendingFileAttachment != nil {
                   viewModel.clearPendingFile()
                   return .handled
-                } else if viewModel.pendingScreenshot != nil {
-                  viewModel.clearPendingScreenshot()
+                } else if !viewModel.pendingScreenshots.isEmpty {
+                  viewModel.removePendingScreenshot(at: viewModel.pendingScreenshots.count - 1)
                   return .handled
                 }
               }
@@ -1192,8 +1204,8 @@ struct GeminiInputAreaView: View {
   private var attachmentChipsRow: some View {
     ScrollView(.horizontal, showsIndicators: false) {
       HStack(spacing: 6) {
-        if let data = viewModel.pendingScreenshot {
-          screenshotChip(data: data)
+        ForEach(Array(viewModel.pendingScreenshots.enumerated()), id: \.offset) { index, data in
+          screenshotChip(data: data, index: index)
         }
         if viewModel.pendingFileAttachment != nil {
           fileChip
@@ -1208,8 +1220,9 @@ struct GeminiInputAreaView: View {
     }
   }
 
-  private func screenshotChip(data: Data) -> some View {
-    let isFocused = focusedAttachment == .screenshot
+  private func screenshotChip(data: Data, index: Int) -> some View {
+    let isFocused = focusedAttachment == .screenshot(index)
+    let label = viewModel.pendingScreenshots.count == 1 ? "Screenshot" : "Screenshot \(index + 1)"
     return HStack(spacing: 5) {
       if let nsImage = NSImage(data: data) {
         Image(nsImage: nsImage)
@@ -1225,10 +1238,10 @@ struct GeminiInputAreaView: View {
           .font(.caption)
           .foregroundColor(GeminiChatTheme.secondaryText)
       }
-      Text("Screenshot")
+      Text(label)
         .font(.caption)
         .foregroundColor(GeminiChatTheme.primaryText)
-      Button(action: { viewModel.clearPendingScreenshot(); inputFocused = true }) {
+      Button(action: { viewModel.removePendingScreenshot(at: index); inputFocused = true }) {
         Image(systemName: "xmark")
           .font(.system(size: 8, weight: .bold))
           .foregroundColor(GeminiChatTheme.secondaryText)
@@ -1247,10 +1260,10 @@ struct GeminiInputAreaView: View {
           lineWidth: isFocused ? 1.5 : 1)
     )
     .focusable()
-    .focused($focusedAttachment, equals: .screenshot)
-    .onKeyPress(.deleteForward)  { viewModel.clearPendingScreenshot(); inputFocused = true; return .handled }
-    .onKeyPress(.delete)         { viewModel.clearPendingScreenshot(); inputFocused = true; return .handled }
-    .accessibilityLabel("Screenshot attachment. Press Delete to remove.")
+    .focused($focusedAttachment, equals: .screenshot(index))
+    .onKeyPress(.deleteForward)  { viewModel.removePendingScreenshot(at: index); inputFocused = true; return .handled }
+    .onKeyPress(.delete)         { viewModel.removePendingScreenshot(at: index); inputFocused = true; return .handled }
+    .accessibilityLabel("\(label) attachment. Press Delete to remove.")
   }
 
   private var fileChip: some View {
@@ -1900,8 +1913,11 @@ private struct MessageBubbleView: View {
             .foregroundColor(GeminiChatTheme.primaryText)
             .textSelection(.enabled)
         }
-        if let filename = message.attachedFilename {
-          Text(filename)
+        if !message.attachedImageParts.isEmpty {
+          let summary = message.attachedImageParts.count == 1
+            ? (message.attachedImageParts[0].filename ?? "1 image")
+            : "\(message.attachedImageParts.count) screenshots"
+          Text(summary)
             .font(.caption)
             .foregroundColor(GeminiChatTheme.primaryText.opacity(0.6))
         }

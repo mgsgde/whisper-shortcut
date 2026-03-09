@@ -447,7 +447,8 @@ class PopupNotificationWindow: NSWindow {
       : errorText
 
     let errorMessage = "\n\nError Details:\n\(truncatedError)"
-    let fullMessage = baseMessage + errorMessage
+    let versionLine = "\n\nApp version: \(AppConstants.appVersion)"
+    let fullMessage = baseMessage + errorMessage + versionLine
 
     guard
       let encodedMessage = fullMessage.addingPercentEncoding(

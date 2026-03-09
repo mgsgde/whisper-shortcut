@@ -561,7 +561,7 @@ class SettingsViewModel: ObservableObject {
   // MARK: - WhatsApp Feedback
   func openWhatsAppFeedback() {
     let whatsappNumber = AppConstants.whatsappSupportNumber
-    let feedbackMessage = "Hi! I have feedback about WhisperShortcut:"
+    let feedbackMessage = "Hi! I have feedback about WhisperShortcut (Version \(AppConstants.appVersion)):"
 
     if let webWhatsappURL = URL(
       string:

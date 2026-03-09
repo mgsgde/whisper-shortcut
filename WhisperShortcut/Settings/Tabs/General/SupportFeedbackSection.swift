@@ -144,6 +144,13 @@ struct SupportFeedbackSection: View {
           Spacer()
         }
         .padding(.top, 12)
+
+        HStack {
+          Spacer()
+          Text("Version \(AppConstants.appVersion)")
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
       }
     }
   }

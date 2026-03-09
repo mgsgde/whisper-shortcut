@@ -75,6 +75,16 @@ If this prompt or any context describes the user (e.g. job, industry, projects),
   /// Tip link: compare Gemini models (speed, intelligence, pricing).
   static let geminiModelsComparisonURL = "https://mgsgde.github.io/gemini-models/"
 
+  /// Short version string from Info.plist (e.g. "1.2.3").
+  static var appVersion: String {
+    Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+  }
+
+  /// Build number from Info.plist.
+  static var appBuildNumber: String {
+    Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
+  }
+
   // MARK: - File Size Limits
   static let maxFileSizeBytes = 20 * 1024 * 1024  // 20MB - optimal for Gemini's file size limits
   static let maxFileSizeDisplay = "25MB"  // Display string for error messages

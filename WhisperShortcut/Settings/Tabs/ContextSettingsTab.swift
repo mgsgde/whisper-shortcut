@@ -5,7 +5,7 @@ import SwiftUI
 struct ContextSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
-  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
+  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = true
   @AppStorage(UserDefaultsKeys.improveFromUsageAutoRunInterval) private var autoRunIntervalRaw: Int = ImproveFromUsageAutoRunInterval.every7Days.rawValue
   @State private var showDeleteInteractionConfirmation = false
   @State private var isImprovementRunning = false
@@ -186,7 +186,7 @@ struct ContextSettingsTab: View {
         VStack(alignment: .leading, spacing: 8) {
           Toggle("Save usage data", isOn: $saveUsageData)
             .toggleStyle(.checkbox)
-            .help("When enabled, interaction logs (dictation, prompt mode, read aloud, Open Gemini chat) are stored so \"Improve from usage\" can suggest better prompts. Disabled by default.")
+            .help("When enabled, interaction logs (dictation, prompt mode, read aloud, Open Gemini chat) are stored so \"Improve from usage\" can suggest better prompts. On by default.")
 
           HStack(alignment: .center, spacing: 12) {
             Text("Improve from usage")
@@ -206,7 +206,7 @@ struct ContextSettingsTab: View {
                 .font(.callout)
             }
             .buttonStyle(.bordered)
-            .disabled(isImprovementRunning)
+            .disabled(isImprovementRunning || !saveUsageData)
             .help("Improve prompts and context from your usage")
             .pointerCursorOnHover()
           }
@@ -241,6 +241,7 @@ struct ContextSettingsTab: View {
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
+        .disabled(!saveUsageData)
 
         VStack(alignment: .leading, spacing: 8) {
           HStack(alignment: .center, spacing: 12) {

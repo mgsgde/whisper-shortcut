@@ -75,10 +75,10 @@ Use the live transcript with AI assistants in your editor (e.g. Cursor) while th
 
 You can improve your system prompts and user context in two ways:
 
-1. **Improve from usage** – In Settings → Smart Improvement, enable **"Save usage data"** so the app stores interaction logs (what you dictated, which mode you used). When you have enough data, click **"Improve from usage"**. Gemini (model selectable in Settings) analyzes your logs and suggests updates for: **User Context** (language, topics, style), **Dictation** (Speech-to-Text system prompt), **Dictate Prompt** system prompt, and **Prompt & Read** system prompt. Suggestions are applied automatically; a popup tells you what was improved. Check the relevant settings tabs to review or edit.
+1. **Improve from usage** – **Save usage data** is on by default; the app stores interaction logs (what you dictated, which mode you used). When you have enough data, click **"Improve from usage"** in Settings → Smart Improvement. Gemini (model selectable in Settings) analyzes your logs and suggests updates for: **User Context** (language, topics, style), **Dictation** (Speech-to-Text system prompt), **Dictate Prompt** system prompt, and **Prompt & Read** system prompt. Suggestions are applied automatically; a popup tells you what was improved. Check the relevant settings tabs to review or edit.
 2. **Improve from voice** – Use the **Improve from voice** shortcut (e.g. Cmd+6). Record a voice instruction (e.g. "always add bullet points", "I work in legal"); the app transcribes it and updates system prompts accordingly. No interaction logs required.
 
-**Settings** (Settings → Smart Improvement): **Save usage data** (off by default), **model** (default: Gemini 3 Flash), and the **Improve from voice** shortcut. The same model is used for "Generate with AI" in the prompt and user-context settings.
+**Settings** (Settings → Smart Improvement): **Save usage data** (on by default), **model** (default: Gemini 3 Flash), and the **Improve from voice** shortcut. The same model is used for "Generate with AI" in the prompt and user-context settings.
 
 ## Installation
 

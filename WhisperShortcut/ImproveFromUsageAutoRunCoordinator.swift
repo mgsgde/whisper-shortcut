@@ -15,6 +15,10 @@ final class ImproveFromUsageAutoRunCoordinator {
   /// Call on app launch and when the user changes the interval in Settings.
   /// If the chosen interval has elapsed since the last run (or there was no run yet), starts improvement.
   func checkAndRunIfDue() async {
+    guard UserDefaults.standard.bool(forKey: UserDefaultsKeys.contextLoggingEnabled) else {
+      DebugLogger.log("AUTO-RUN: Save usage data is off, skipping Improve from usage")
+      return
+    }
     let raw: Int
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.improveFromUsageAutoRunInterval) == nil {
       raw = ImproveFromUsageAutoRunInterval.every7Days.rawValue  // default when never set
