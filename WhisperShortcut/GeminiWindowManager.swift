@@ -59,6 +59,81 @@ class GeminiWindowManager {
     }
   }
 
+  /// Captures the primary display for Prompt Mode — no Gemini window required.
+  /// Returns JPEG data (max 1920 px wide, 80 % quality) or nil on failure (missing permission, no display, etc.).
+  @MainActor
+  func captureScreenForPromptMode() async -> Data? {
+    let content: SCShareableContent
+    let now = Date()
+    if let cached = cachedShareableContent,
+       let ts = cachedShareableContentDate,
+       now.timeIntervalSince(ts) < shareableContentCacheDuration {
+      content = cached
+    } else {
+      do {
+        content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        cachedShareableContent = content
+        cachedShareableContentDate = now
+      } catch {
+        return nil
+      }
+    }
+
+    guard !content.displays.isEmpty else {
+      return nil
+    }
+
+    let display = content.displays[0]
+    let ourApp = content.applications.first { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
+    let filter = SCContentFilter(display: display, excludingApplications: ourApp.map { [$0] } ?? [], exceptingWindows: [])
+
+    var config = SCStreamConfiguration()
+    config.capturesAudio = false
+    config.width = Int(filter.contentRect.width) * Int(filter.pointPixelScale)
+    config.height = Int(filter.contentRect.height) * Int(filter.pointPixelScale)
+
+    let cgImage: CGImage? = await withCheckedContinuation { continuation in
+      SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) { image, _ in
+        continuation.resume(returning: image)
+      }
+    }
+
+    guard let cgImage else {
+      return nil
+    }
+
+    // Resize to max 1920 px wide to keep the Gemini payload small
+    let maxWidth = 1920
+    let finalImage: CGImage
+    if cgImage.width > maxWidth {
+      let scale = CGFloat(maxWidth) / CGFloat(cgImage.width)
+      let newWidth = maxWidth
+      let newHeight = Int(CGFloat(cgImage.height) * scale)
+      let colorSpace = cgImage.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+      if let ctx = CGContext(
+        data: nil, width: newWidth, height: newHeight,
+        bitsPerComponent: 8, bytesPerRow: 0,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+      ) {
+        ctx.interpolationQuality = .medium
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: newWidth, height: newHeight))
+        finalImage = ctx.makeImage() ?? cgImage
+      } else {
+        finalImage = cgImage
+      }
+    } else {
+      finalImage = cgImage
+    }
+
+    let rep = NSBitmapImageRep(cgImage: finalImage)
+    guard let jpegData = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
+      return nil
+    }
+
+    return jpegData
+  }
+
   /// Captures the display that contains the Gemini window, excluding this app's windows via ScreenCaptureKit.
   /// Returns PNG data or nil on failure (e.g. no Screen Recording permission).
   @MainActor

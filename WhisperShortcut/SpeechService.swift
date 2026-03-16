@@ -323,8 +323,23 @@ class SpeechService {
       DebugLogger.log("PROMPT-MODE-GEMINI: Including \(historyCount) previous turns from conversation history")
     }
 
+    // Capture screenshot for prompt context (best-effort; continues without image on failure)
+    let screenshotData = await GeminiWindowManager.shared.captureScreenForPromptMode()
+
     // Build current user message parts
     var userParts: [GeminiChatRequest.GeminiChatPart] = []
+
+    // Add screenshot as first part so Gemini has visual context
+    if let screenshotData {
+      let base64Screenshot = screenshotData.base64EncodedString()
+      userParts.append(GeminiChatRequest.GeminiChatPart(text: "Current screen:", inlineData: nil, fileData: nil, url: nil))
+      userParts.append(GeminiChatRequest.GeminiChatPart(
+        text: nil,
+        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: "image/jpeg", data: base64Screenshot),
+        fileData: nil,
+        url: nil
+      ))
+    }
 
     // Add clipboard context FIRST (so Gemini knows the context before processing audio)
     if let context = clipboardContext {
@@ -547,8 +562,23 @@ class SpeechService {
       DebugLogger.log("PROMPT-MODE-TEXT: Including \(historyCount) previous turns from conversation history")
     }
 
+    // Capture screenshot for prompt context (best-effort; continues without image on failure)
+    let screenshotData = await GeminiWindowManager.shared.captureScreenForPromptMode()
+
     // Build current user message parts
     var userParts: [GeminiChatRequest.GeminiChatPart] = []
+
+    // Add screenshot as first part so Gemini has visual context
+    if let screenshotData {
+      let base64Screenshot = screenshotData.base64EncodedString()
+      userParts.append(GeminiChatRequest.GeminiChatPart(text: "Current screen:", inlineData: nil, fileData: nil, url: nil))
+      userParts.append(GeminiChatRequest.GeminiChatPart(
+        text: nil,
+        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: "image/jpeg", data: base64Screenshot),
+        fileData: nil,
+        url: nil
+      ))
+    }
 
     // Add clipboard context if present (so Gemini knows what to apply the instruction to)
     if let text = selectedText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
