@@ -14,7 +14,7 @@
     "preview:screenshots": "live-server screenshots -p 8080"
   },
   "dependencies": {
-    "puppeteer": "^24.37.3"
+    "puppeteer": "^24.39.1"
   },
   "devDependencies": {
     "serve": "^14.2.4",
