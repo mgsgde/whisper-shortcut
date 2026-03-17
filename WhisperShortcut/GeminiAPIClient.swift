@@ -587,6 +587,51 @@ class GeminiAPIClient {
     try await generateMeetingSummary(transcript: transcript, model: model, credential: .apiKey(apiKey))
   }
 
+  /// Distils a list of pre-formatted chat message contents (role/parts dicts) plus the current memory
+  /// into an updated compact memory summary. Uses a lightweight model; does not use grounding.
+  /// - Parameter currentMemory: The existing memory text, or nil if no memory exists yet.
+  /// - Parameter newMessageContents: Pre-formatted `[[String: Any]]` contents in Gemini multi-turn format.
+  /// - Parameter credential: API key or Bearer token for proxy.
+  func updateSessionMemory(
+    currentMemory: String?,
+    newMessageContents: [[String: Any]],
+    credential: GeminiCredential
+  ) async throws -> String {
+    let model = AppConstants.geminiChatMemoryUpdateModel
+    let directEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
+    let (endpoint, resolvedCredential) = Self.resolveGenerateContentEndpoint(directEndpoint: directEndpoint, credential: credential)
+    let credentialForRequest = await Self.resolveCredentialForRequest(endpoint: endpoint, resolvedCredential: resolvedCredential)
+    var request = try createRequest(endpoint: endpoint, credential: credentialForRequest)
+
+    let memorySystemText = """
+      You maintain a running memory for a chat session.
+      Given the current memory and the new conversation turns below, produce an updated concise \
+      summary (max 4000 chars) of all important facts, decisions, and context. Preserve existing \
+      facts unless contradicted or superseded. Output only the updated memory text, no preamble.
+      """
+    let currentMemoryText = currentMemory.map { "Current memory:\n\($0)" } ?? "Current memory: (none)"
+    let systemText = "\(memorySystemText)\n\n\(currentMemoryText)"
+
+    var body: [String: Any] = [
+      "contents": newMessageContents,
+      "system_instruction": ["parts": [["text": systemText]]]
+    ]
+    let proxyPath = {
+      let base = SettingsDefaults.proxyAPIBaseURL
+      let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
+      return trimmed + "/v1/gemini/generateContent"
+    }()
+    if endpoint == proxyPath {
+      body["request_type"] = "gemini_chat"
+      body["model"] = model
+    }
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+    let response: GeminiResponse = try await performRequest(
+      request, responseType: GeminiResponse.self, mode: "GEMINI-MEMORY", withRetry: false)
+    return extractText(from: response)
+  }
+
   /// Extracts grounding sources (web URIs + titles) from a Gemini response.
   private func extractGroundingSources(from response: GeminiResponse) -> [GroundingSource] {
     guard let candidate = response.candidates.first,
