@@ -488,14 +488,14 @@ struct SettingsDefaults {
   static let openMeetingEnabled = true
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
-  static let selectedPromptModel = PromptModel.gemini31FlashLite
-  static let selectedPromptAndReadModel = PromptModel.gemini31FlashLite
+  static let selectedPromptModel = PromptModel.gemini3Flash
+  static let selectedPromptAndReadModel = PromptModel.gemini3Flash
   // MARK: - Subscription fixed models (proxy)
   // When the user is on subscription (no API key, signed in with Google), the backend forces these models per request_type.
   // These constants MUST match apps/api/src/server.ts SUBSCRIPTION_MODEL_BY_REQUEST_TYPE. Use them for API requests and for
   // Settings UI (effective model display) so the user always sees what is actually used.
-  /// prompt_mode, prompt_and_read; backend: prompt_mode → gemini-3.1-flash-lite-preview.
-  static let subscriptionPromptModel = PromptModel.gemini31FlashLite
+  /// prompt_mode, prompt_and_read; backend: prompt_mode → gemini-3-flash-preview.
+  static let subscriptionPromptModel = PromptModel.gemini3Flash
   /// Transcription (Dictate); backend: transcription → gemini-3.1-flash-lite-preview.
   static let subscriptionTranscriptionModel = TranscriptionModel.gemini31FlashLite
   /// Open Gemini chat window; backend: gemini_chat → gemini-3.1-flash-lite-preview.
