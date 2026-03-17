@@ -29,16 +29,21 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     // Restore Google Sign-In from Keychain, then decide whether to show settings
     Task {
+      #if SUBSCRIPTION_ENABLED
       await DefaultGoogleAuthService.shared.restorePreviousSignInIfNeeded()
       await SubscriptionModelsConfigService.refresh()
+      #endif
       await MainActor.run {
         if !GeminiCredentialProvider.shared.hasCredential() {
           DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
             SettingsManager.shared.showSettings()
           }
-        } else if !DefaultGoogleAuthService.shared.isSignedIn() && KeychainManager.shared.hasGoogleAPIKey() {
+        }
+        #if SUBSCRIPTION_ENABLED
+        if !DefaultGoogleAuthService.shared.isSignedIn() && KeychainManager.shared.hasGoogleAPIKey() {
           _ = KeychainManager.shared.getGoogleAPIKey()
         }
+        #endif
       }
     }
 
@@ -61,7 +66,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
   func application(_ application: NSApplication, open urls: [URL]) {
     for url in urls {
+      #if SUBSCRIPTION_ENABLED
       if DefaultGoogleAuthService.handle(url: url) { return }
+      #endif
     }
   }
 

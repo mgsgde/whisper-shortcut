@@ -266,6 +266,7 @@ struct ContextSettingsTab: View {
             .fixedSize(horizontal: false, vertical: true)
         }
 
+        let improvementSubscriptionMode = !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
         PromptModelSelectionView(
           title: "Model for Smart Improvement",
           subtitle: "Used for Smart Improvement (Improve from usage).",
@@ -278,7 +279,7 @@ struct ContextSettingsTab: View {
               viewModel.data = d
             }
           ),
-          subscriptionMode: !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn(),
+          subscriptionMode: improvementSubscriptionMode,
           subscriptionFixedModelDescription: "Smart Improvement uses \(SubscriptionModelsConfigService.effectiveImprovementModel().displayName) (fixed).",
           subscriptionEffectiveModel: SubscriptionModelsConfigService.effectiveImprovementModel(),
           onModelChanged: {

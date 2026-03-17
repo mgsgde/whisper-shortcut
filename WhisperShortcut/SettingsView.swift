@@ -26,7 +26,9 @@ struct SettingsView: View {
     }
     .onAppear {
       setupWindow()
+      #if SUBSCRIPTION_ENABLED
       Task { await SubscriptionModelsConfigService.refresh() }
+      #endif
     }
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
       setupFloatingWindow()

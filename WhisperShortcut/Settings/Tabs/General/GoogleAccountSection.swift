@@ -8,6 +8,7 @@
 import SwiftUI
 import AppKit
 
+#if SUBSCRIPTION_ENABLED
 struct GoogleAccountSection: View {
   @State private var googleSignInEmail: String? = nil
   @State private var googleSignInRefresh: Int = 0
@@ -91,3 +92,4 @@ struct GoogleAccountSection: View {
     }
   }
 }
+#endif

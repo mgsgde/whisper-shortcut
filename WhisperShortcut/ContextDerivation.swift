@@ -8,7 +8,11 @@ class ContextDerivation {
   private let maxFieldChars = 1000
   /// API endpoint from the selected Smart Improvement / Generate with AI model; falls back to default (Gemini 3 Flash) if unset or invalid. Subscription uses stable Gemini 2.5 Flash.
   private var analysisEndpoint: String {
+    #if SUBSCRIPTION_ENABLED
     let isSubscription = !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
+    #else
+    let isSubscription = false
+    #endif
     let raw: String
     if isSubscription {
       raw = SubscriptionModelsConfigService.effectivePromptModel().rawValue

@@ -774,7 +774,11 @@ class GeminiAPIClient {
   func parseErrorResponse(data: Data, statusCode: Int) throws -> TranscriptionError {
     // Backend proxy 402: no active subscription for signed-in user
     if statusCode == 402 {
+      #if SUBSCRIPTION_ENABLED
       return .subscriptionRequired
+      #else
+      return .serverError(402)
+      #endif
     }
     // Backend proxy 429: { error: string, code: "rate_limit_exceeded", top_up_url: string }
     if statusCode == 429,
@@ -863,7 +867,11 @@ class GeminiAPIClient {
     switch statusCode {
     case 400: return .invalidRequest
     case 401: return .invalidAPIKey
+    #if SUBSCRIPTION_ENABLED
     case 402: return .subscriptionRequired
+    #else
+    case 402: return .serverError(402)
+    #endif
     case 403: return .permissionDenied
     case 404: return .notFound
     case 429: return .rateLimited(retryAfter: retryAfter, topUpURL: nil)

@@ -97,6 +97,24 @@ enum MarkdownParsing {
     return ParsedTable(headers: dataRows[0], rows: Array(dataRows.dropFirst()))
   }
 
+  /// Inserts blank lines before lines that start with `**` so bold section headers
+  /// (a common Gemini output pattern) are never collapsed into the preceding paragraph.
+  static func normalizeMarkdownParagraphBreaks(_ content: String) -> String {
+    let lines = content.components(separatedBy: "\n")
+    var result: [String] = []
+    for (i, line) in lines.enumerated() {
+      let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+      if trimmedLine.hasPrefix("**"),
+         i > 0,
+         let last = result.last,
+         !last.trimmingCharacters(in: .whitespaces).isEmpty {
+        result.append("")  // blank line → paragraph break
+      }
+      result.append(line)
+    }
+    return result.joined(separator: "\n")
+  }
+
   /// Renders inline Markdown (bold, italic, code, links) within a single line as an `AttributedString`.
   static func inlineAttributedString(_ content: String, options: AttributedString.MarkdownParsingOptions? = nil) -> AttributedString {
     let opts = options ?? AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)

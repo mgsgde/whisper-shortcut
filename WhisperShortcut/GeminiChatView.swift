@@ -366,7 +366,11 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   private static var isSubscription: Bool {
-    !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
+    #if SUBSCRIPTION_ENABLED
+    return !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
+    #else
+    return false
+    #endif
   }
 
   /// Resolves the selected Open Gemini model for display and API. In subscription mode returns the fixed model (e.g. Gemini 3 Flash).
@@ -891,7 +895,11 @@ struct GeminiInputAreaView: View {
   }
 
   private var isSubscription: Bool {
-    !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
+    #if SUBSCRIPTION_ENABLED
+    return !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
+    #else
+    return false
+    #endif
   }
 
   var body: some View {
@@ -1609,7 +1617,7 @@ private struct ModelReplyView: View {
     content: String,
     options: AttributedString.MarkdownParsingOptions
   ) -> [ReplyContentBlock] {
-    let paragraphs = content.components(separatedBy: "\n\n")
+    let paragraphs = MarkdownParsing.normalizeMarkdownParagraphBreaks(content).components(separatedBy: "\n\n")
     var blocks: [ReplyContentBlock] = []
     var textBuffer = AttributedString()
     let separator = AttributedString("\n\n")
@@ -1633,6 +1641,28 @@ private struct ModelReplyView: View {
     }
     if hasTextContent { blocks.append(.text(textBuffer)) }
     return blocks.isEmpty ? [.text(AttributedString(content))] : blocks
+  }
+
+  /// Renders a paragraph block that consists entirely of bullet/numbered-list lines.
+  /// Returns nil if the block contains any non-bullet lines.
+  private static func buildBulletListAttributed(_ trimmed: String) -> AttributedString? {
+    let lines = trimmed.components(separatedBy: .newlines)
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .filter { !$0.isEmpty }
+    guard !lines.isEmpty, lines.allSatisfy({ MarkdownParsing.parseBullet($0) != nil }) else { return nil }
+    let opts = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+    var result = AttributedString()
+    for (i, line) in lines.enumerated() {
+      let content = MarkdownParsing.parseBullet(line)!.trimmingCharacters(in: .whitespaces)
+      if i > 0 { result.append(AttributedString("\n")) }
+      var bullet = AttributedString("• ")
+      bullet.font = .system(size: 16, weight: .regular)
+      result.append(bullet)
+      var contentAttr = MarkdownParsing.inlineAttributedString(content, options: opts)
+      contentAttr.font = .system(size: 16, weight: .regular)
+      result.append(contentAttr)
+    }
+    return result
   }
 
   private static func buildSingleParagraphAttributed(
@@ -1663,6 +1693,7 @@ private struct ModelReplyView: View {
       attr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
       return attr
     }
+    if let bulletAttr = buildBulletListAttributed(trimmed) { return bulletAttr }
     let fullOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
     var attr = (try? AttributedString(markdown: trimmed, options: fullOptions)) ?? AttributedString(trimmed)
     attr.font = .system(size: 16, weight: .regular)
@@ -1710,7 +1741,7 @@ private struct ModelReplyView: View {
   }
 
   private static func buildAttributedReplyContentOnly(content: String, options: AttributedString.MarkdownParsingOptions) -> AttributedString {
-    let paragraphs = content.components(separatedBy: "\n\n")
+    let paragraphs = MarkdownParsing.normalizeMarkdownParagraphBreaks(content).components(separatedBy: "\n\n")
     var result = AttributedString()
     let separator = AttributedString("\n\n")
     for (index, para) in paragraphs.enumerated() {
@@ -1744,6 +1775,8 @@ private struct ModelReplyView: View {
         var attr = AttributedString(codeContent)
         attr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
         result.append(attr)
+      } else if let bulletAttr = buildBulletListAttributed(trimmed) {
+        result.append(bulletAttr)
       } else {
         let fullOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
         var attr = (try? AttributedString(markdown: trimmed, options: fullOptions)) ?? AttributedString(trimmed)

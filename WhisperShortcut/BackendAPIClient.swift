@@ -8,6 +8,7 @@
 
 import Foundation
 
+#if SUBSCRIPTION_ENABLED
 /// Response from GET /v1/config/subscription-models. Model IDs used by the proxy for subscription users.
 struct SubscriptionModelsConfig: Codable {
   var transcription: String?
@@ -29,6 +30,7 @@ struct UsageRequest: Codable {
 struct SubscriptionStatusResponse: Codable {
   let active: Bool
 }
+#endif
 
 /// Client for Whisper backend API (usage). Non-blocking; errors are logged, not thrown to caller.
 enum BackendAPIClient {
@@ -43,6 +45,7 @@ enum BackendAPIClient {
     SettingsDefaults.proxyAPIBaseURL
   }
 
+  #if SUBSCRIPTION_ENABLED
   /// Reports usage (deducts balance). Fire-and-forget; logs errors. Use from background if needed.
   static func reportUsage(amountCent: Int, product: String?, idTokenProvider: @escaping () async -> String?) {
     Task {
@@ -135,4 +138,5 @@ enum BackendAPIClient {
       return nil
     }
   }
+  #endif
 }

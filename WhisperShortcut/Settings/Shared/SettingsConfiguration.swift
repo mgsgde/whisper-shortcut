@@ -490,6 +490,7 @@ struct SettingsDefaults {
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
   static let selectedPromptModel = PromptModel.gemini3Flash
   static let selectedPromptAndReadModel = PromptModel.gemini3Flash
+  #if SUBSCRIPTION_ENABLED
   // MARK: - Subscription fixed models (proxy)
   // When the user is on subscription (no API key, signed in with Google), the backend forces these models per request_type.
   // These constants MUST match apps/api/src/server.ts SUBSCRIPTION_MODEL_BY_REQUEST_TYPE. Use them for API requests and for
@@ -502,6 +503,9 @@ struct SettingsDefaults {
   static let subscriptionOpenGeminiModel = PromptModel.gemini3Flash
   /// Smart Improvement (Improve from usage / from voice); backend: smart_improvement → gemini-3-flash-preview.
   static let subscriptionImprovementModel = PromptModel.gemini3Flash
+  /// TTS when on subscription; backend uses fixed model. Must match server.ts for display.
+  static let subscriptionTTSModel = TTSModel.gemini25FlashTTS
+  #endif
   static let selectedImprovementModel = PromptModel.gemini3Flash
   static let selectedOpenGeminiModel = PromptModel.gemini3Flash
   static let geminiCloseOnFocusLoss = true
@@ -509,13 +513,11 @@ struct SettingsDefaults {
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
   static let promptAndReadSystemPrompt = ""
-  
+
   // MARK: - Read Aloud Settings
   static let selectedReadAloudVoice = "Charon"
   static let selectedPromptAndReadVoice = "Charon"
   static let selectedTTSModel = TTSModel.gemini25FlashTTS
-  /// TTS when on subscription; backend uses fixed model. Must match server.ts for display.
-  static let subscriptionTTSModel = TTSModel.gemini25FlashTTS
   static let readAloudPlaybackRateMin: Float = 0.5
   static let readAloudPlaybackRateMax: Float = 2.0
   static let readAloudPlaybackRate: Float = 1.0

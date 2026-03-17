@@ -9,6 +9,7 @@
 
 import Foundation
 
+#if SUBSCRIPTION_ENABLED
 enum SubscriptionModelsConfigService {
   private static let cacheLock = NSLock()
   private static var _cached: SubscriptionModelsConfig?
@@ -64,3 +65,14 @@ enum SubscriptionModelsConfigService {
     return SettingsDefaults.selectedMeetingSummaryModel
   }
 }
+#else
+enum SubscriptionModelsConfigService {
+  static func refresh() async { }
+  static func effectivePromptModel() -> PromptModel { SettingsDefaults.selectedPromptModel }
+  static func effectiveTranscriptionModel() -> TranscriptionModel { SettingsDefaults.selectedTranscriptionModel }
+  static func effectiveOpenGeminiModel() -> PromptModel { SettingsDefaults.selectedOpenGeminiModel }
+  static func effectiveImprovementModel() -> PromptModel { SettingsDefaults.selectedImprovementModel }
+  static func effectiveTTSModel() -> TTSModel { SettingsDefaults.selectedTTSModel }
+  static func effectiveMeetingSummaryModel() -> PromptModel { SettingsDefaults.selectedMeetingSummaryModel }
+}
+#endif

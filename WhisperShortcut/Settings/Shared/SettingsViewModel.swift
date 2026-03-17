@@ -68,7 +68,11 @@ class SettingsViewModel: ObservableObject {
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
+    #if SUBSCRIPTION_ENABLED
     let subscriptionMode = !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
+    #else
+    let subscriptionMode = false
+    #endif
     let promptModelDefault = subscriptionMode ? SubscriptionModelsConfigService.effectivePromptModel() : SettingsDefaults.selectedPromptModel
 
     // Load Prompt model preference (for Prompt Mode); migrate deprecated or removed models (e.g. gemini-2.0-flash-lite → 2.5 Flash-Lite)
