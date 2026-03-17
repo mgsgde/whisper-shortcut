@@ -17,7 +17,7 @@
 /* Begin PBXFileReference section */
 		BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhisperShortcut.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "WhisperShortcut-AppStore.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		BF99182D2F697163008AB3ED /* WhisperShortcut copy-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "WhisperShortcut copy-Info.plist"; path = "/Users/mgsgde/whisper-shortcut-backend/whisper-shortcut/WhisperShortcut copy-Info.plist"; sourceTree = "<absolute>"; };
+		BF99182D2F697163008AB3ED /* WhisperShortcut-AppStore-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "WhisperShortcut-AppStore-Info.plist"; path = "/Users/mgsgde/whisper-shortcut-backend/whisper-shortcut/WhisperShortcut-AppStore-Info.plist"; sourceTree = "<absolute>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -77,7 +77,7 @@
 			children = (
 				BF3C90C82E3E0CC0001D325B /* WhisperShortcut */,
 				BFBC35F32E3E129600BAC747 /* Frameworks */,
-				BF99182D2F697163008AB3ED /* WhisperShortcut copy-Info.plist */,
+				BF99182D2F697163008AB3ED /* WhisperShortcut-AppStore-Info.plist */,
 				BF3C90C72E3E0CC0001D325B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -438,7 +438,7 @@
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "WhisperShortcut copy-Info.plist";
+				INFOPLIST_FILE = "WhisperShortcut-AppStore-Info.plist";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -472,7 +472,7 @@
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "WhisperShortcut copy-Info.plist";
+				INFOPLIST_FILE = "WhisperShortcut-AppStore-Info.plist";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
