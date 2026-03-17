@@ -49,12 +49,13 @@ class GeminiChatViewModel: ObservableObject {
 
   /// In-flight send tasks keyed by session ID — multiple sessions can be sending simultaneously.
   private var sendTasks: [UUID: Task<Void, Never>] = [:]
+  /// True while a background memory update is in flight. Prevents concurrent updates.
+  private var isUpdatingMemory = false
+  /// Set when the last memory update failed. Blocks retries for 60 seconds.
+  private var memoryUpdateFailureTime: Date? = nil
 
   /// Returns true if the given session has an in-flight request (for tab spinner).
   func isSendingSession(_ id: UUID) -> Bool { sendingSessionIds.contains(id) }
-
-  /// Maximum number of messages to send as context (older messages are kept in UI but not sent to the API).
-  private static let maxMessagesInContext = 30
   /// Maximum length for auto-generated session title from first user message.
   private static let maxSessionTitleLength = 50
   /// Commands are slash-only (e.g. /stop, /new); do not use hotkeys/shortcuts for command actions.
@@ -67,6 +68,7 @@ class GeminiChatViewModel: ObservableObject {
   private static let settingsCommand = "/settings"
   private static let pinCommand = "/pin"
   private static let unpinCommand = "/unpin"
+  private static let rememberCommand = "/remember"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -75,6 +77,7 @@ class GeminiChatViewModel: ObservableObject {
     ("/next", "Navigate to the next chat"),
     ("/clear", "Clear current chat messages"),
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
+    ("/remember", "Trigger an immediate session memory update"),
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
@@ -243,7 +246,8 @@ class GeminiChatViewModel: ObservableObject {
     // Slash commands: do not send to API
     if lower == Self.newChatCommand || lower == Self.backChatCommand || lower == Self.nextChatCommand
         || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
-        || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand {
+        || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
+        || lower == Self.rememberCommand {
       inputText = ""
       if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
       else if lower == Self.backChatCommand { if !singleChatOnly { goBack() } }
@@ -252,6 +256,10 @@ class GeminiChatViewModel: ObservableObject {
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else if lower == Self.pinCommand { togglePin() }
       else if lower == Self.unpinCommand { unpin() }
+      else if lower == Self.rememberCommand {
+        guard !session.messages.isEmpty else { return }
+        Task { await updateSessionMemory() }
+      }
       else { await captureScreenshot() }
       return
     }
@@ -316,6 +324,17 @@ class GeminiChatViewModel: ObservableObject {
         if let s = store.session(by: sessionId), s.messages.count == 2 {
           Task { await generateAITitle(sessionId: sessionId) }
         }
+        // Screenshot trigger: fire immediately when the user message had attachments.
+        if !attachedParts.isEmpty {
+          Task { await updateSessionMemory() }
+        } else {
+          // Auto trigger: fire when >= geminiChatMemoryUpdateInterval undistilled messages sit outside the volatile window.
+          let outsideWindow = session.messages.dropLast(AppConstants.geminiChatVolatileWindowSize)
+          let undistilledCount = outsideWindow.filter { !$0.includedInMemory }.count
+          if undistilledCount >= AppConstants.geminiChatMemoryUpdateInterval {
+            Task { await updateSessionMemory() }
+          }
+        }
       } catch is CancellationError {
         DebugLogger.log("GEMINI-CHAT: Send cancelled by user")
       } catch {
@@ -329,6 +348,7 @@ class GeminiChatViewModel: ObservableObject {
   func clearMessages() {
     messages = []
     session.messages = []
+    session.sessionMemory = nil
     session.lastUpdated = Date()
     store.save(session)
     refreshRecentSessions()
@@ -356,6 +376,9 @@ class GeminiChatViewModel: ObservableObject {
     text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
     if let extra = meetingContextProvider?(), !extra.isEmpty {
       text = "\(text)\n\n---\n\n\(extra)"
+    }
+    if let memory = session.sessionMemory, !memory.isEmpty {
+      text = "\(text)\n\n--- Session Memory (use for all answers) ---\n\(memory)\n---"
     }
     return ["parts": [["text": text]]]
   }
@@ -458,6 +481,73 @@ class GeminiChatViewModel: ObservableObject {
     }
   }
 
+  /// Distils undistilled messages outside the volatile window into `session.sessionMemory`.
+  /// Guards: empty session, concurrency lock, 60-second failure backoff.
+  /// Called from actor-inheriting `Task { }` — no MainActor.run{} wrappers needed.
+  private func updateSessionMemory() async {
+    guard !session.messages.isEmpty else { return }
+    guard !isUpdatingMemory else {
+      DebugLogger.log("GEMINI-MEMORY: Skipped — update already in flight")
+      return
+    }
+    if let failTime = memoryUpdateFailureTime, Date().timeIntervalSince(failTime) < 60 {
+      DebugLogger.log("GEMINI-MEMORY: Skipped — within 60s backoff after last failure")
+      return
+    }
+    guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
+      DebugLogger.logError("GEMINI-MEMORY: No credential available")
+      return
+    }
+
+    let toDistill = Array(session.messages.dropLast(AppConstants.geminiChatVolatileWindowSize))
+      .filter { !$0.includedInMemory }
+    guard !toDistill.isEmpty else {
+      DebugLogger.log("GEMINI-MEMORY: Nothing new to distil")
+      return
+    }
+
+    isUpdatingMemory = true
+    DebugLogger.log("GEMINI-MEMORY: Distilling \(toDistill.count) message(s) into session memory")
+
+    // Build multi-turn contents for the memory call — include images for all messages (not just last).
+    let contents: [[String: Any]] = toDistill.map { msg in
+      if msg.role == .user && !msg.attachedImageParts.isEmpty {
+        var parts: [[String: Any]] = msg.attachedImageParts.map { part in
+          ["inline_data": ["mime_type": part.mimeType ?? "image/png", "data": part.data.base64EncodedString()]]
+        }
+        if !msg.content.isEmpty { parts.append(["text": msg.content]) }
+        return ["role": msg.role.rawValue, "parts": parts]
+      }
+      return ["role": msg.role.rawValue, "parts": [["text": msg.content]]]
+    }
+
+    do {
+      var updatedMemory = try await apiClient.updateSessionMemory(
+        currentMemory: session.sessionMemory,
+        newMessageContents: contents,
+        credential: credential)
+      // Safety clamp.
+      if updatedMemory.count > AppConstants.geminiChatSessionMemoryMaxChars {
+        updatedMemory = String(updatedMemory.prefix(AppConstants.geminiChatSessionMemoryMaxChars))
+      }
+      // Mark distilled messages and persist.
+      let distilledIds = Set(toDistill.map { $0.id })
+      session.messages = session.messages.map { msg in
+        guard distilledIds.contains(msg.id) else { return msg }
+        var m = msg; m.includedInMemory = true; return m
+      }
+      messages = session.messages
+      session.sessionMemory = updatedMemory
+      memoryUpdateFailureTime = nil
+      store.save(session)
+      DebugLogger.log("GEMINI-MEMORY: Memory updated (\(updatedMemory.count) chars)")
+    } catch {
+      memoryUpdateFailureTime = Date()
+      DebugLogger.logError("GEMINI-MEMORY: Update failed — \(error.localizedDescription)")
+    }
+    isUpdatingMemory = false
+  }
+
   // MARK: - Tab navigation
 
   private func refreshRecentSessions() {
@@ -492,7 +582,7 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   private func buildContents() -> [[String: Any]] {
-    let toSend = Array(messages.suffix(Self.maxMessagesInContext))
+    let toSend = Array(messages.suffix(AppConstants.geminiChatVolatileWindowSize))
     return toSend.enumerated().map { index, msg in
       let isLastUserWithImages = index == toSend.count - 1 && msg.role == .user && !msg.attachedImageParts.isEmpty
       if isLastUserWithImages {
