@@ -161,4 +161,14 @@ If this prompt or any context describes the user (e.g. job, industry, projects),
 
   /// Max chars for "other modes" when building secondary payload in focused Generate with AI (per-tab).
   static let contextSecondaryOtherModesMaxChars: Int = 2000
+
+  // MARK: - Gemini Chat Memory
+  /// Maximum character length for the per-session memory block injected into the system instruction.
+  static let geminiChatSessionMemoryMaxChars: Int = 4000
+  /// Number of undistilled messages outside the volatile window before an automatic memory update fires.
+  static let geminiChatMemoryUpdateInterval: Int = 5
+  /// Number of most-recent messages always sent verbatim to the API (not summarised).
+  static let geminiChatVolatileWindowSize: Int = 15
+  /// Lightweight Gemini model used for background memory summarisation. Do not use the user's selected chat model.
+  static let geminiChatMemoryUpdateModel: String = "gemini-3.1-flash-lite-preview"
 }
