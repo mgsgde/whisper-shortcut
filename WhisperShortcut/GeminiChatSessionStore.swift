@@ -64,10 +64,13 @@ struct ChatMessage: Identifiable, Codable, Equatable {
   var groundingSupports: [GroundingSupport]
   /// Image/file parts attached to this user message. Encoded as array; legacy single image decoded from attachedImageData/attachedFileMimeType/attachedFilename.
   var attachedImageParts: [AttachedImagePart]
+  /// True once this message has been distilled into `ChatSession.sessionMemory`.
+  var includedInMemory: Bool
 
   enum CodingKeys: String, CodingKey {
     case id, role, content, timestamp, sources, groundingSupports
     case attachedImageParts
+    case includedInMemory
     case attachedImageData, attachedFileMimeType, attachedFilename // legacy, decode only
   }
 
@@ -78,7 +81,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     timestamp: Date = Date(),
     sources: [GroundingSource] = [],
     groundingSupports: [GroundingSupport] = [],
-    attachedImageParts: [AttachedImagePart] = []
+    attachedImageParts: [AttachedImagePart] = [],
+    includedInMemory: Bool = false
   ) {
     self.id = id
     self.role = role
@@ -87,6 +91,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     self.sources = sources
     self.groundingSupports = groundingSupports
     self.attachedImageParts = attachedImageParts
+    self.includedInMemory = includedInMemory
   }
 
   init(from decoder: Decoder) throws {
@@ -106,6 +111,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     } else {
       attachedImageParts = []
     }
+    includedInMemory = try c.decodeIfPresent(Bool.self, forKey: .includedInMemory) ?? false
   }
 
   func encode(to encoder: Encoder) throws {
@@ -117,6 +123,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     try c.encode(sources, forKey: .sources)
     try c.encode(groundingSupports, forKey: .groundingSupports)
     try c.encode(attachedImageParts, forKey: .attachedImageParts)
+    try c.encode(includedInMemory, forKey: .includedInMemory)
   }
 }
 
@@ -125,12 +132,15 @@ struct ChatSession: Codable {
   var lastUpdated: Date
   var messages: [ChatMessage]
   var title: String?
+  /// Compact rolling summary of distilled facts from this session. Injected into every system instruction.
+  var sessionMemory: String?
 
-  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil) {
+  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, sessionMemory: String? = nil) {
     self.id = id
     self.lastUpdated = lastUpdated
     self.messages = messages
     self.title = title
+    self.sessionMemory = sessionMemory
   }
 }
 
