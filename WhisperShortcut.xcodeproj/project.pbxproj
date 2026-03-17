@@ -9,11 +9,15 @@
 /* Begin PBXBuildFile section */
 		BF00GSI22EEB2C0000C1DEA4 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = BF00GSI12EEB2C0000C1DEA4 /* GoogleSignIn */; };
 		BF31AC7C2EEB2B8200C1DEA3 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */; };
+		BF9918252F697163008AB3ED /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = BF99181E2F697163008AB3ED /* WhisperKit */; };
+		BF9918262F697163008AB3ED /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BF99181C2F697163008AB3ED /* HotKey */; };
 		BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BFBC35F42E3E129600BAC747 /* HotKey */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhisperShortcut.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "WhisperShortcut-AppStore.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		BF99182D2F697163008AB3ED /* WhisperShortcut copy-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "WhisperShortcut copy-Info.plist"; path = "/Users/mgsgde/whisper-shortcut-backend/whisper-shortcut/WhisperShortcut copy-Info.plist"; sourceTree = "<absolute>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -24,6 +28,13 @@
 			);
 			target = BF3C90C52E3E0CC0001D325B /* WhisperShortcut */;
 		};
+		BF99182C2F697163008AB3ED /* Exceptions for "WhisperShortcut" folder in "WhisperShortcut-AppStore" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = BF99181B2F697163008AB3ED /* WhisperShortcut-AppStore */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -31,6 +42,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				BF09EAAC2E43EE7A0049B8B1 /* Exceptions for "WhisperShortcut" folder in "WhisperShortcut" target */,
+				BF99182C2F697163008AB3ED /* Exceptions for "WhisperShortcut" folder in "WhisperShortcut-AppStore" target */,
 			);
 			path = WhisperShortcut;
 			sourceTree = "<group>";
@@ -48,6 +60,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BF9918232F697163008AB3ED /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BF9918252F697163008AB3ED /* WhisperKit in Frameworks */,
+				BF9918262F697163008AB3ED /* HotKey in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -56,6 +77,7 @@
 			children = (
 				BF3C90C82E3E0CC0001D325B /* WhisperShortcut */,
 				BFBC35F32E3E129600BAC747 /* Frameworks */,
+				BF99182D2F697163008AB3ED /* WhisperShortcut copy-Info.plist */,
 				BF3C90C72E3E0CC0001D325B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -64,6 +86,7 @@
 			isa = PBXGroup;
 			children = (
 				BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */,
+				BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -103,6 +126,30 @@
 			productReference = BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */;
 			productType = "com.apple.product-type.application";
 		};
+		BF99181B2F697163008AB3ED /* WhisperShortcut-AppStore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BF9918282F697163008AB3ED /* Build configuration list for PBXNativeTarget "WhisperShortcut-AppStore" */;
+			buildPhases = (
+				BF9918222F697163008AB3ED /* Sources */,
+				BF9918232F697163008AB3ED /* Frameworks */,
+				BF9918272F697163008AB3ED /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				BF3C90C82E3E0CC0001D325B /* WhisperShortcut */,
+			);
+			name = "WhisperShortcut-AppStore";
+			packageProductDependencies = (
+				BF99181C2F697163008AB3ED /* HotKey */,
+				BF99181E2F697163008AB3ED /* WhisperKit */,
+			);
+			productName = WhisperShortcut;
+			productReference = BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -115,6 +162,10 @@
 				TargetAttributes = {
 					BF3C90C52E3E0CC0001D325B = {
 						CreatedOnToolsVersion = 16.4;
+					};
+					BF99181B2F697163008AB3ED = {
+						CreatedOnToolsVersion = 16.4;
+						DevelopmentTeam = Z59J7V26UT;
 					};
 				};
 			};
@@ -138,6 +189,7 @@
 			projectRoot = "";
 			targets = (
 				BF3C90C52E3E0CC0001D325B /* WhisperShortcut */,
+				BF99181B2F697163008AB3ED /* WhisperShortcut-AppStore */,
 			);
 		};
 /* End PBXProject section */
@@ -150,10 +202,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BF9918272F697163008AB3ED /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		BF3C90C22E3E0CC0001D325B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BF9918222F697163008AB3ED /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -353,6 +419,74 @@
 			};
 			name = Release;
 		};
+		BF9918292F697163008AB3ED /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = WhisperShortcut/WhisperShortcut.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 53;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = Z59J7V26UT;
+				OTHER_CODE_SIGN_FLAGS = "--deep";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "WhisperShortcut copy-Info.plist";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 5.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcut;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		BF99182A2F697163008AB3ED /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = WhisperShortcut/WhisperShortcut.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 53;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = Z59J7V26UT;
+				OTHER_CODE_SIGN_FLAGS = "--deep";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = NO;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "WhisperShortcut copy-Info.plist";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 5.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcut;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -374,9 +508,26 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		BF9918282F697163008AB3ED /* Build configuration list for PBXNativeTarget "WhisperShortcut-AppStore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BF9918292F697163008AB3ED /* Debug */,
+				BF99182A2F697163008AB3ED /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		BF00GSI02EEB2C0000C1DEA4 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.0.0;
+			};
+		};
 		BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/soffes/HotKey";
@@ -393,31 +544,49 @@
 				kind = branch;
 			};
 		};
-		BF00GSI02EEB2C0000C1DEA4 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+		BF99181D2F697163008AB3ED /* XCRemoteSwiftPackageReference "HotKey" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			repositoryURL = "https://github.com/soffes/HotKey";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 9.0.0;
+				branch = main;
+				kind = branch;
+			};
+		};
+		BF99181F2F697163008AB3ED /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/WhisperKit";
+			requirement = {
+				branch = main;
+				kind = branch;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		BF00GSI12EEB2C0000C1DEA4 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BF00GSI02EEB2C0000C1DEA4 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
 		BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			productName = WhisperKit;
+		};
+		BF99181C2F697163008AB3ED /* HotKey */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BF99181D2F697163008AB3ED /* XCRemoteSwiftPackageReference "HotKey" */;
+			productName = HotKey;
+		};
+		BF99181E2F697163008AB3ED /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BF99181F2F697163008AB3ED /* XCRemoteSwiftPackageReference "WhisperKit" */;
 			productName = WhisperKit;
 		};
 		BFBC35F42E3E129600BAC747 /* HotKey */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */;
 			productName = HotKey;
-		};
-		BF00GSI12EEB2C0000C1DEA4 /* GoogleSignIn */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BF00GSI02EEB2C0000C1DEA4 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
-			productName = GoogleSignIn;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -61,6 +61,8 @@ jobs:
           echo "Found certificate identity: $IDENTITY"
 
       - name: Build and archive
+        # GitHub/website build: SUBSCRIPTION_ENABLED is set in the scheme's build settings,
+        # but also passed explicitly here as a safety net.
         run: |
           xcodebuild clean archive \
             -project WhisperShortcut.xcodeproj \
@@ -70,7 +72,8 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
             DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }} \
-            PROVISIONING_PROFILE_SPECIFIER=""
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS="SUBSCRIPTION_ENABLED \$(inherited)"
 
       - name: Export archive
         run: |

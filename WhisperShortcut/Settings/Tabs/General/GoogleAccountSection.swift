@@ -54,6 +54,12 @@ struct GoogleAccountSection: View {
                   googleSignInEmail = authService.signedInUserEmail()
                   googleSignInRefresh += 1
                   isSigningIn = false
+                  if let url = URL(string: "https://whispershortcut.com/dashboard") {
+                    NSWorkspace.shared.open(url)
+                  }
+                  if let url = URL(string: "https://whispershortcut.com/subscription") {
+                    NSWorkspace.shared.open(url)
+                  }
                 }
               } catch {
                 await MainActor.run {

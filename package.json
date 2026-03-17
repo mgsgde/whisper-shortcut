@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "build": "bash scripts/rebuild-and-restart.sh",
+    "build:dev": "bash scripts/rebuild-and-restart.sh --development",
+    "build:app-store": "bash scripts/rebuild-and-restart.sh --app-store",
+    "build:app-store:dev": "bash scripts/rebuild-and-restart.sh --app-store --development",
+    "logs": "bash scripts/logs.sh",
+    "release": "bash scripts/create-release.sh"
+  }
+}
