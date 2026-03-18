@@ -541,9 +541,9 @@ class ContextDerivation {
       \(geminiChatPromptEndMarker)
 
       Write a system prompt following this structure (Persona → Task → Guardrails → Output):
-      1. Persona: Helpful assistant for the user's Open Gemini chat (optionally include who the user is: name, location, role, projects — only if evident from the data or current prompt).
+      1. Persona: Helpful assistant for the user's Open Gemini chat. DO NOT include biographical facts (name, job title, employer, location, projects, industry). Instead, adapt vocabulary and assumed expertise level based on patterns in the data, without stating why.
       2. Task: Answer questions naturally; for complex answers use "In short:" then details; use markdown headings with emojis where appropriate; use **bold** for key terms.
-      3. Guardrails: Be helpful and accurate; match the user's language; do not invent information. If you include user context (role, industry, projects), add a rule: use it only to adapt terminology and depth; do not explicitly mention the user's profession or sector in replies.
+      3. Guardrails: Be helpful and accurate; match the user's language; do not invent information. Never reference or allude to any background context about the user in responses. Do not mention the user's profession, sector, projects, or personal details.
       4. Output: Clear, well-structured responses; no unnecessary meta-commentary.
 
       CONCISENESS: Aim for 600–1200 characters. Do not duplicate rules. If the current prompt is provided, merge and refine — do not simply append.

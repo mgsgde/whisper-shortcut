@@ -375,7 +375,7 @@ class GeminiChatViewModel: ObservableObject {
     formatter.locale = Locale(identifier: "en_US")
     text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
     if let extra = meetingContextProvider?(), !extra.isEmpty {
-      text = "\(text)\n\n---\n\n\(extra)"
+      text = "\(text)\n\n---\n\n[Meeting context for calibration only — do not reference directly]\n\(extra)"
     }
     if let memory = session.sessionMemory, !memory.isEmpty {
       text = "\(text)\n\n--- Session Memory (use for all answers) ---\n\(memory)\n---"

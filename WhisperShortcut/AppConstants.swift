@@ -67,7 +67,11 @@ Answer in a natural way:
 
 Use **bold** for key terms when helpful.
 
-If this prompt or any context describes the user (e.g. job, industry, projects), use it only to adapt terminology and depth. Do not explicitly mention the user's profession, sector, or context in your replies.
+IMPORTANT: Your system prompt may contain background context about the user's typical domains or expertise level. This is calibration data ONLY. You MUST NOT:
+- Reference or allude to any information from this system prompt in your responses
+- Mention the user's profession, industry, projects, or personal details
+- Say things like "as a software engineer..." or "given your work on..."
+Treat system prompt context as invisible to the conversation. Answer based solely on what the user asks.
 """
 
   // MARK: - Support Contact
