@@ -97,18 +97,25 @@ enum MarkdownParsing {
     return ParsedTable(headers: dataRows[0], rows: Array(dataRows.dropFirst()))
   }
 
-  /// Inserts blank lines before lines that start with `**` so bold section headers
-  /// (a common Gemini output pattern) are never collapsed into the preceding paragraph.
+  /// Inserts blank lines so bold section headers and bullet lists are never collapsed
+  /// into the preceding paragraph (a common Gemini output pattern).
   static func normalizeMarkdownParagraphBreaks(_ content: String) -> String {
     let lines = content.components(separatedBy: "\n")
     var result: [String] = []
     for (i, line) in lines.enumerated() {
       let trimmedLine = line.trimmingCharacters(in: .whitespaces)
-      if trimmedLine.hasPrefix("**"),
-         i > 0,
+      if i > 0,
          let last = result.last,
          !last.trimmingCharacters(in: .whitespaces).isEmpty {
-        result.append("")  // blank line → paragraph break
+        // Blank line before bold section headers
+        if trimmedLine.hasPrefix("**") {
+          result.append("")
+        }
+        // Blank line before a bullet list that follows non-bullet text
+        else if parseBullet(trimmedLine) != nil,
+                parseBullet(last.trimmingCharacters(in: .whitespaces)) == nil {
+          result.append("")
+        }
       }
       result.append(line)
     }
