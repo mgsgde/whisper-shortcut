@@ -522,12 +522,12 @@ class GeminiChatViewModel: ObservableObject {
         ("Gemini Chat", .geminiChat),
         ("Whisper Glossary", .whisperGlossary),
       ]
-      var lines = ["**Your current context:**\n"]
+      var lines = ["**Your current context:**"]
       for (label, section) in sections {
         let content = SystemPromptsStore.shared.loadSection(section)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        lines.append("**\(label):** \(content.isEmpty ? "_not set_" : content)")
+        lines.append("\n---\n**\(label)**\n\(content.isEmpty ? "_not set_" : content)")
       }
-      lines.append("\nUse `/context <instruction>` to update, e.g. `/context always format responses as bullet points`")
+      lines.append("\n_Use `/context <instruction>` to update, e.g. `/context always format responses as bullet points`_")
       appendModelMessage(lines.joined(separator: "\n"))
       return
     }
@@ -1747,6 +1747,7 @@ private struct FlowLayout: Layout {
 private enum ReplyContentBlock {
   case text(AttributedString)
   case table(ParsedTable)
+  case separator
 }
 
 // MARK: - Model Reply View
@@ -1758,7 +1759,7 @@ private struct ModelReplyView: View {
 
   var body: some View {
     let blocks = Self.buildReplyBlocks(content: content, sources: sources, groundingSupports: groundingSupports)
-    return VStack(alignment: .leading, spacing: 20) {
+    return VStack(alignment: .leading, spacing: 24) {
       ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
         switch block {
         case .text(let attrStr):
@@ -1769,6 +1770,11 @@ private struct ModelReplyView: View {
             .textSelection(.enabled)
         case .table(let parsed):
           MarkdownTableView(headers: parsed.headers, rows: parsed.rows)
+        case .separator:
+          Rectangle()
+            .fill(GeminiChatTheme.primaryText.opacity(0.15))
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
         }
       }
     }
@@ -1803,7 +1809,9 @@ private struct ModelReplyView: View {
     for para in paragraphs {
       let trimmed = para.text.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
-      if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
+      if MarkdownParsing.isSeparatorParagraph(trimmed) {
+        blocks.append(.separator)
+      } else if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
         blocks.append(.table(parsed))
       } else {
         var attrText = buildSingleParagraphAttributed(trimmed, options: options)
@@ -1829,7 +1837,9 @@ private struct ModelReplyView: View {
     for para in paragraphs {
       let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
-      if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
+      if MarkdownParsing.isSeparatorParagraph(trimmed) {
+        blocks.append(.separator)
+      } else if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
         blocks.append(.table(parsed))
       } else {
         blocks.append(.text(buildSingleParagraphAttributed(trimmed, options: options)))
