@@ -170,8 +170,11 @@ class GeminiChatViewModel: ObservableObject {
       pendingScreenshots.append(data)
       DebugLogger.log("GEMINI-CHAT: Screenshot \(pendingScreenshots.count) attached to next message")
     } else {
-      errorMessage = "Screen capture failed. Check Screen Recording permission for this app in System Preferences > Privacy & Security."
-      DebugLogger.log("GEMINI-CHAT: Screen capture returned nil")
+      errorMessage = "Screen capture failed. Opening Screen Recording settings..."
+      DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil, opening Screen Recording settings")
+      if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+        NSWorkspace.shared.open(url)
+      }
     }
   }
 
