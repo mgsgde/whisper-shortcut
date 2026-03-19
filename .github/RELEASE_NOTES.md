@@ -1,4 +1,4 @@
-# Release v6.5
+# Release v6.6
 
 ## Installation
 
@@ -6,31 +6,35 @@ Download the latest release from [GitHub Releases](https://github.com/mgsgde/whi
 
 ## Changes
 
-### Meeting Mode
+### New in this release
 
-- **Split Gemini window**: Meeting Mode now uses a split view with a rolling summary and supports auto-open and full-screen for focused meeting transcription.
+- Added persistent session memory support in Gemini Chat, including `/remember` command handling and memory-aware system instruction injection.
+- Added the new WhisperShortcut App Store target and updated project/rebuild scripts to support release workflows more reliably.
+- Added compile-time gating for subscription-specific code paths (`SUBSCRIPTION_ENABLED`) and aligned subscription model usage with backend-driven configuration.
 
-### Gemini Chat
+### Prompt and chat quality improvements
 
-- **Markdown tables**: Chat responses render Markdown tables as SwiftUI grids with bold formatting.
-- **Layout**: Reduced margins, input bar limited to 760pt and centered with content; improved padding and content handling for session titles and separator paragraphs.
+- Improved prompt-mode screenshot context handling and refined multiple system prompts for clearer and safer AI behavior.
+- Strengthened privacy guardrails and improved markdown paragraph break normalization in responses.
+- Improved AI text editing and prompt clarity for more predictable output.
 
-### Models & transcription
+### Authentication, backend, and subscription flow
 
-- **Gemini 3.1 Flash-Lite**: New model option for dictation and prompt mode.
-- **Smart Improvement default**: Default model for Smart Improvement changed from Gemini 3.1 Pro to Gemini 3 Flash.
-- **Whisper Glossary**: Support for offline conditioning via glossary in local Whisper transcription.
-- **Reliability**: Better handling of transcription errors for stale audio URLs, cancellation checks in SpeechService, and model loading checks in LocalSpeechService and SpeechService.
+- Expanded Google Sign-In and backend account integrations (credential checks, subscription status checks, API URL/account settings).
+- Improved Gemini credential handling across API key and signed-in flows, including clearer error messaging for voice output requirements.
+- Added clearer handling for daily backend limits and top-up flows in the app UI.
 
-### Settings & behavior
+### Reliability and logging
 
-- **Settings window**: New option to close the Settings window when it loses focus.
-- **Auto-prompt improvement**: Improved error handling in AutoPromptImprovementScheduler.
+- Improved request handling and error pathways across Gemini and TTS flows.
+- Added Gemini/TTS round-trip latency logging and other logging refinements.
+- Removed obsolete debug logs and cleaned up unused code paths.
 
-### Other
+### Meeting and transcription improvements
 
-- README and plan file cleanup; Dependabot updates for the website (npm/minimatch).
+- Added and refined meeting summary generation, transcript handling, and meeting window behavior (including rename/open flow improvements).
+- Added transcription model selection for Live Meeting and improved markdown rendering for meeting outputs.
 
 ## Full Changelog
 
-For a complete list of changes, see the [full changelog](https://github.com/mgsgde/whisper-shortcut/compare/v6.4.6...v6.5).
+For a complete list of changes, see the [full changelog](https://github.com/mgsgde/whisper-shortcut/compare/v6.5...v6.6).
