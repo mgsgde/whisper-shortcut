@@ -10,6 +10,11 @@
     <string>manual</string>
     <key>signingCertificate</key>
     <string>Developer ID Application</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.magnusgoedde.whispershortcut</key>
+        <string>WhisperShortcut_DeveloperID_CI</string>
+    </dict>
     <key>stripSwiftSymbols</key>
     <true/>
     <key>uploadSymbols</key>

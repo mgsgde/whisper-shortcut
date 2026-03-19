@@ -60,6 +60,26 @@ jobs:
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
           echo "Found certificate identity: $IDENTITY"
 
+      - name: Install provisioning profile
+        env:
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          PP_PATH=$RUNNER_TEMP/build_pp.provisionprofile
+
+          # Decode provisioning profile
+          echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > $PP_PATH
+
+          # Extract UUID from the profile
+          PP_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin <<< "$(security cms -D -i $PP_PATH)")
+          PP_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" /dev/stdin <<< "$(security cms -D -i $PP_PATH)")
+
+          # Install to the standard location
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PP_UUID.provisionprofile
+
+          echo "PP_NAME=$PP_NAME" >> $GITHUB_ENV
+          echo "Installed provisioning profile: $PP_NAME ($PP_UUID)"
+
       - name: Build and archive
         # GitHub/website build: SUBSCRIPTION_ENABLED is set in the scheme's build settings,
         # but also passed explicitly here as a safety net.
@@ -72,7 +92,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
             DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }} \
-            PROVISIONING_PROFILE_SPECIFIER="" \
+            PROVISIONING_PROFILE_SPECIFIER="$PP_NAME" \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS="SUBSCRIPTION_ENABLED \$(inherited)"
 
       - name: Export archive
@@ -196,7 +216,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cleanup keychain
+      - name: Cleanup keychain and provisioning profile
         if: always()
         run: |
           security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
+          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/*.provisionprofile || true
