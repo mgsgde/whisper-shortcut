@@ -77,7 +77,6 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PP_UUID.provisionprofile
 
-          echo "PP_NAME=$PP_NAME" >> $GITHUB_ENV
           echo "Installed provisioning profile: $PP_NAME ($PP_UUID)"
 
       - name: Build and archive
@@ -92,7 +91,6 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
             DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }} \
-            PROVISIONING_PROFILE_SPECIFIER="$PP_NAME" \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS="SUBSCRIPTION_ENABLED \$(inherited)"
 
       - name: Export archive
