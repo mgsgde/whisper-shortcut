@@ -41,9 +41,9 @@
         <false />
         <key>NSSupportsSuddenTermination</key>
         <false />
-        <!-- Google Sign-In (SSO): Set GIDClientID to your OAuth 2.0 Client ID (Desktop app) from Google Cloud Console. -->
+        <!-- Google Sign-In (SSO): Set GIDClientID to your OAuth 2.0 Client ID (macOS app) from Google Cloud Console. -->
         <key>GIDClientID</key>
-        <string>797100884157-foqc3lnq5tmb5iu9svimenser76br0r6.apps.googleusercontent.com</string>
+        <string>797100884157-9m6p166qmss4rj9psi4qbmipig9ljkn2.apps.googleusercontent.com</string>
         <!-- OAuth callback URL scheme: reversed client ID for Google Sign-In. -->
         <key>CFBundleURLTypes</key>
         <array>
@@ -52,7 +52,7 @@
                 <string>Editor</string>
                 <key>CFBundleURLSchemes</key>
                 <array>
-                    <string>com.googleusercontent.apps.797100884157-foqc3lnq5tmb5iu9svimenser76br0r6</string>
+                    <string>com.googleusercontent.apps.797100884157-9m6p166qmss4rj9psi4qbmipig9ljkn2</string>
                 </array>
                 <key>CFBundleURLName</key>
                 <string>Google Sign-In callback</string>
