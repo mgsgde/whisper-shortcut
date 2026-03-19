@@ -36,7 +36,8 @@ protocol GoogleAuthService: AnyObject {
 final class DefaultGoogleAuthService: GoogleAuthService {
   static let shared = DefaultGoogleAuthService()
 
-  private static let geminiScope = "https://www.googleapis.com/auth/generative-language.retriever"
+  // generative-language.retriever scope removed: the app uses the Google ID token
+  // for backend authentication, not an access token with Gemini scopes.
 
   private var clientID: String? {
     Bundle.main.object(forInfoDictionaryKey: "GIDClientID") as? String
@@ -117,9 +118,8 @@ final class DefaultGoogleAuthService: GoogleAuthService {
     }
     let config = GIDConfiguration(clientID: clientID!)
     GIDSignIn.sharedInstance.configuration = config
-    let scopes = [Self.geminiScope]
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-      GIDSignIn.sharedInstance.signIn(withPresenting: window, hint: nil, additionalScopes: scopes) { result, error in
+      GIDSignIn.sharedInstance.signIn(withPresenting: window, hint: nil, additionalScopes: nil) { result, error in
         if let error = error {
           DebugLogger.logError("GOOGLE-AUTH: Sign-in failed: \(error.localizedDescription)")
           let userError: Error
