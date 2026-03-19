@@ -47,7 +47,6 @@ class SettingsViewModel: ObservableObject {
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     data.toggleDictation = currentConfig.startRecording.isEnabled ? currentConfig.startRecording.textDisplayString : ""
     data.togglePrompting = currentConfig.startPrompting.isEnabled ? currentConfig.startPrompting.textDisplayString : ""
-    data.togglePromptImprovement = currentConfig.startPromptImprovement.isEnabled ? currentConfig.startPromptImprovement.textDisplayString : ""
     data.readSelectedText = currentConfig.readSelectedText.isEnabled ? currentConfig.readSelectedText.textDisplayString : ""
     data.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud.textDisplayString : ""
     data.toggleMeeting = currentConfig.toggleMeeting.isEnabled ? currentConfig.toggleMeeting.textDisplayString : ""
@@ -57,7 +56,6 @@ class SettingsViewModel: ObservableObject {
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
-    data.togglePromptImprovementEnabled = currentConfig.startPromptImprovement.isEnabled
     data.readSelectedTextEnabled = currentConfig.readSelectedText.isEnabled
     data.readAloudEnabled = currentConfig.readAloud.isEnabled
     data.toggleMeetingEnabled = currentConfig.toggleMeeting.isEnabled
@@ -295,10 +293,6 @@ class SettingsViewModel: ObservableObject {
        ShortcutConfigManager.parseShortcut(from: data.togglePrompting) == nil {
       return "Invalid toggle prompting shortcut format"
     }
-    if !data.togglePromptImprovement.trimmingCharacters(in: trim).isEmpty,
-       ShortcutConfigManager.parseShortcut(from: data.togglePromptImprovement) == nil {
-      return "Invalid Improve from voice shortcut format"
-    }
     if !data.readSelectedText.trimmingCharacters(in: trim).isEmpty,
        ShortcutConfigManager.parseShortcut(from: data.readSelectedText) == nil {
       return "Invalid prompt & read shortcut format"
@@ -378,8 +372,6 @@ class SettingsViewModel: ObservableObject {
       return name == "toggle dictation"
     case .togglePrompting:
       return name == "toggle prompting"
-    case .togglePromptImprovement:
-      return name == "adjust system prompt"
     case .toggleReadSelectedText:
       return name == "read selected text"
     case .toggleReadAloud:
@@ -406,7 +398,6 @@ class SettingsViewModel: ObservableObject {
     return [
       "toggle dictation": parsed(data.toggleDictation),
       "toggle prompting": parsed(data.togglePrompting),
-      "adjust system prompt": parsed(data.togglePromptImprovement),
       "read selected text": parsed(data.readSelectedText),
       "read aloud": parsed(data.readAloud),
       "open settings": parsed(data.openSettings),
@@ -489,10 +480,6 @@ class SettingsViewModel: ObservableObject {
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
       stopPrompting: shortcuts["toggle prompting"]!
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
-      startPromptImprovement: shortcuts["adjust system prompt"]!
-        ?? ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: false),
-      stopPromptImprovement: shortcuts["adjust system prompt"]!
-        ?? ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: false),
       readSelectedText: shortcuts["read selected text"]!
         ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
       readAloud: shortcuts["read aloud"]!

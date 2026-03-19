@@ -69,6 +69,7 @@ class GeminiChatViewModel: ObservableObject {
   private static let pinCommand = "/pin"
   private static let unpinCommand = "/unpin"
   private static let rememberCommand = "/remember"
+  private static let contextCommand = "/context"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -78,6 +79,7 @@ class GeminiChatViewModel: ObservableObject {
     ("/clear", "Clear current chat messages"),
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
     ("/remember", "Trigger an immediate session memory update"),
+    ("/context", "Show or edit your context (e.g. /context always use bullet points)"),
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
@@ -245,6 +247,20 @@ class GeminiChatViewModel: ObservableObject {
     }
     let hasContent = !raw.isEmpty || !pendingScreenshots.isEmpty || pendingFileAttachment != nil || !pastedBlocks.isEmpty
     guard hasContent, !isSending else { return }
+
+    // /context command (show or update system prompts)
+    if lower == Self.contextCommand {
+      inputText = ""
+      await handleContextCommand(instruction: nil)
+      return
+    } else if lower.hasPrefix(Self.contextCommand + " ") {
+      let instruction = String(raw.dropFirst(Self.contextCommand.count + 1)).trimmingCharacters(in: .whitespaces)
+      inputText = ""
+      if !instruction.isEmpty {
+        await handleContextCommand(instruction: instruction)
+        return
+      }
+    }
 
     // Slash commands: do not send to API
     if lower == Self.newChatCommand || lower == Self.backChatCommand || lower == Self.nextChatCommand
@@ -482,6 +498,135 @@ class GeminiChatViewModel: ObservableObject {
     } catch {
       DebugLogger.log("GEMINI-CHAT: AI title generation failed, keeping fallback: \(error.localizedDescription)")
     }
+  }
+
+  // MARK: - /context command
+
+  /// Appends a model message directly to the chat (used for local command responses).
+  @MainActor
+  private func appendModelMessage(_ content: String) {
+    let msg = ChatMessage(role: .model, content: content)
+    messages.append(msg)
+    session.messages = messages
+    store.save(session)
+  }
+
+  /// Handles the /context command. With no instruction: shows current context. With instruction: updates via Gemini.
+  private func handleContextCommand(instruction: String?) async {
+    guard let instruction = instruction else {
+      // Show current context
+      let sections: [(String, SystemPromptSection)] = [
+        ("Dictation", .dictation),
+        ("Prompt Mode", .promptMode),
+        ("Prompt & Read", .promptAndRead),
+        ("Gemini Chat", .geminiChat),
+        ("Whisper Glossary", .whisperGlossary),
+      ]
+      var lines = ["**Your current context:**\n"]
+      for (label, section) in sections {
+        let content = SystemPromptsStore.shared.loadSection(section)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        lines.append("**\(label):** \(content.isEmpty ? "_not set_" : content)")
+      }
+      lines.append("\nUse `/context <instruction>` to update, e.g. `/context always format responses as bullet points`")
+      appendModelMessage(lines.joined(separator: "\n"))
+      return
+    }
+
+    // Show user command in chat
+    let userMsg = ChatMessage(role: .user, content: "/context \(instruction)")
+    messages.append(userMsg)
+    session.messages = messages
+    store.save(session)
+
+    // Add placeholder while working
+    let placeholderMsg = ChatMessage(role: .model, content: "Updating your context…")
+    messages.append(placeholderMsg)
+    session.messages = messages
+    store.save(session)
+
+    guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
+      replaceLastModelMessage("Could not update context: no API credential available.")
+      return
+    }
+
+    let oldContent = SystemPromptsStore.shared.loadFullContent()
+    let prompt = """
+      You are updating the user's personal context for WhisperShortcut, a voice transcription app.
+
+      Current context file:
+      ---
+      \(oldContent)
+      ---
+
+      The user wants to: \(instruction)
+
+      Update the relevant section(s) based on this instruction. Return ONLY the complete updated file content in the exact same format, preserving all section headers (=== ... ===). Do not add any explanation — only the file content.
+      """
+
+    let model = Self.resolveOpenGeminiModel()
+    do {
+      let response = try await apiClient.generateText(model: model, prompt: prompt, credential: credential)
+      let newContent = response.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !newContent.isEmpty else {
+        replaceLastModelMessage("Context update failed: empty response from Gemini.")
+        return
+      }
+
+      // Compare sections to summarize what changed
+      let oldSections = extractSections(from: oldContent)
+      SystemPromptsStore.shared.saveFullContent(newContent)
+      NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
+      let newSections = extractSections(from: SystemPromptsStore.shared.loadFullContent())
+
+      var changed: [String] = []
+      for section in SystemPromptSection.allCases {
+        if oldSections[section] != newSections[section] {
+          changed.append(section.fileHeader.replacingOccurrences(of: "===", with: "").trimmingCharacters(in: .whitespaces))
+        }
+      }
+      let summary = changed.isEmpty
+        ? "Context saved (no section content changed)."
+        : "Context updated. Changed: \(changed.joined(separator: ", "))."
+      replaceLastModelMessage(summary)
+      DebugLogger.log("GEMINI-CHAT: /context updated: \(summary)")
+    } catch {
+      replaceLastModelMessage("Context update failed: \(error.localizedDescription)")
+      DebugLogger.logError("GEMINI-CHAT: /context error: \(error.localizedDescription)")
+    }
+  }
+
+  /// Replaces the last model message in the chat (used to swap placeholder with result).
+  @MainActor
+  private func replaceLastModelMessage(_ content: String) {
+    if let idx = messages.indices.last(where: { messages[$0].role == .model }) {
+      messages[idx] = ChatMessage(role: .model, content: content)
+      session.messages = messages
+      store.save(session)
+    }
+  }
+
+  /// Extracts section content map from a raw system-prompts file string.
+  private func extractSections(from content: String) -> [SystemPromptSection: String] {
+    var result: [SystemPromptSection: String] = [:]
+    let lines = content.components(separatedBy: "\n")
+    var currentSection: SystemPromptSection? = nil
+    var body: [String] = []
+    func flush() {
+      if let s = currentSection {
+        result[s] = body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+      }
+    }
+    for line in lines {
+      if let section = SystemPromptSection.section(forHeader: line) {
+        flush()
+        currentSection = section
+        body = []
+      } else {
+        body.append(line)
+      }
+    }
+    flush()
+    return result
   }
 
   /// Distils undistilled messages outside the volatile window into `session.sessionMemory`.
@@ -803,7 +948,7 @@ struct GeminiChatView: View {
           }
           Color.clear.frame(height: 1).id("listBottom")
         }
-        .frame(maxWidth: 760)
+        .frame(maxWidth: 680)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
         .padding(.top, 14)
@@ -1060,7 +1205,7 @@ struct GeminiInputAreaView: View {
               .strokeBorder(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity), lineWidth: 1)
           )
           .clipShape(RoundedRectangle(cornerRadius: 8))
-          .frame(maxWidth: 760)
+          .frame(maxWidth: 680)
           .frame(maxWidth: .infinity, alignment: .center)
           .padding(.horizontal, 20)
           .padding(.bottom, 4)
@@ -1284,7 +1429,7 @@ struct GeminiInputAreaView: View {
       .padding(.horizontal, 8)
       .padding(.vertical, 8)
     }
-    .frame(maxWidth: 760)
+    .frame(maxWidth: 680)
     .background(GeminiChatTheme.controlBackground)
     .clipShape(RoundedRectangle(cornerRadius: 14))
     .overlay(
@@ -1612,34 +1757,14 @@ private struct ModelReplyView: View {
   let groundingSupports: [GroundingSupport]
 
   var body: some View {
-    if Self.contentHasTable(content) {
-      tableAwareBody
-    } else {
-      Text(Self.buildAttributedReply(content: content, sources: sources, groundingSupports: groundingSupports))
-        .font(.system(size: 16))
-        .lineSpacing(8)
-        .foregroundColor(GeminiChatTheme.primaryText)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .fixedSize(horizontal: false, vertical: true)
-        .contentShape(Rectangle())
-        .textSelection(.enabled)
-        .onHover { inside in
-          if inside { NSCursor.iBeam.push() } else { NSCursor.pop() }
-        }
-    }
-  }
-
-  private var tableAwareBody: some View {
     let blocks = Self.buildReplyBlocks(content: content, sources: sources, groundingSupports: groundingSupports)
-    return VStack(alignment: .leading, spacing: 16) {
+    return VStack(alignment: .leading, spacing: 20) {
       ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
         switch block {
         case .text(let attrStr):
           Text(attrStr)
             .font(.system(size: 16))
-            .lineSpacing(8)
+            .lineSpacing(10)
             .foregroundColor(GeminiChatTheme.primaryText)
             .textSelection(.enabled)
         case .table(let parsed):
@@ -1675,34 +1800,23 @@ private struct ModelReplyView: View {
     let paragraphs = ParagraphCitationBuilder.buildParagraphs(
       content: content, supports: groundingSupports, sourcesCount: sources.count)
     var blocks: [ReplyContentBlock] = []
-    var textBuffer = AttributedString()
-    let separator = AttributedString("\n\n")
-    var hasTextContent = false
     for para in paragraphs {
       let trimmed = para.text.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
       if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
-        if hasTextContent {
-          blocks.append(.text(textBuffer))
-          textBuffer = AttributedString()
-          hasTextContent = false
-        }
         blocks.append(.table(parsed))
       } else {
-        if hasTextContent { textBuffer.append(separator) }
-        let attrText = buildSingleParagraphAttributed(trimmed, options: options)
-        textBuffer.append(attrText)
+        var attrText = buildSingleParagraphAttributed(trimmed, options: options)
         for idx in para.chunkIndices where idx < sources.count {
           let oneBased = idx + 1
           var markerAttr = AttributedString(" [\(oneBased)]")
           markerAttr.font = .system(size: 14)
           if let url = URL(string: sources[idx].uri) { markerAttr.link = url }
-          textBuffer.append(markerAttr)
+          attrText.append(markerAttr)
         }
-        hasTextContent = true
+        blocks.append(.text(attrText))
       }
     }
-    if hasTextContent { blocks.append(.text(textBuffer)) }
     return blocks.isEmpty ? [.text(AttributedString(content))] : blocks
   }
 
@@ -1712,27 +1826,15 @@ private struct ModelReplyView: View {
   ) -> [ReplyContentBlock] {
     let paragraphs = MarkdownParsing.normalizeMarkdownParagraphBreaks(content).components(separatedBy: "\n\n")
     var blocks: [ReplyContentBlock] = []
-    var textBuffer = AttributedString()
-    let separator = AttributedString("\n\n")
-    var hasTextContent = false
     for para in paragraphs {
       let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
       if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
-        if hasTextContent {
-          blocks.append(.text(textBuffer))
-          textBuffer = AttributedString()
-          hasTextContent = false
-        }
         blocks.append(.table(parsed))
       } else {
-        if hasTextContent { textBuffer.append(separator) }
-        let attrText = buildSingleParagraphAttributed(trimmed, options: options)
-        textBuffer.append(attrText)
-        hasTextContent = true
+        blocks.append(.text(buildSingleParagraphAttributed(trimmed, options: options)))
       }
     }
-    if hasTextContent { blocks.append(.text(textBuffer)) }
     return blocks.isEmpty ? [.text(AttributedString(content))] : blocks
   }
 
@@ -2014,7 +2116,7 @@ private struct MessageBubbleView: View {
       }
     }
     // Inner frame constrains bubble width; outer fills the row so alignment spans full width.
-    .frame(maxWidth: isUser ? 560 : .infinity, alignment: isUser ? .trailing : .leading)
+    .frame(maxWidth: isUser ? 520 : .infinity, alignment: isUser ? .trailing : .leading)
     .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
   }
 

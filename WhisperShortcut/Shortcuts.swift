@@ -4,7 +4,6 @@ import HotKey
 protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
-  func togglePromptImprovement()
   func readSelectedText()
   func readAloud()
   func openSettings()
@@ -18,7 +17,6 @@ class Shortcuts {
 
   private var toggleDictationKey: HotKey?
   private var togglePromptingKey: HotKey?
-  private var togglePromptImprovementKey: HotKey?
   private var readSelectedTextKey: HotKey?
   private var readAloudKey: HotKey?
   private var openSettingsKey: HotKey?
@@ -63,14 +61,6 @@ class Shortcuts {
         key: config.startPrompting.key, modifiers: config.startPrompting.modifiers)
       togglePromptingKey?.keyDownHandler = { [weak self] in
         self?.delegate?.togglePrompting()
-      }
-    }
-
-    if config.startPromptImprovement.isEnabled {
-      togglePromptImprovementKey = HotKey(
-        key: config.startPromptImprovement.key, modifiers: config.startPromptImprovement.modifiers)
-      togglePromptImprovementKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.togglePromptImprovement()
       }
     }
 
@@ -131,7 +121,6 @@ class Shortcuts {
   func cleanup() {
     toggleDictationKey = nil
     togglePromptingKey = nil
-    togglePromptImprovementKey = nil
     readSelectedTextKey = nil
     readAloudKey = nil
     openSettingsKey = nil

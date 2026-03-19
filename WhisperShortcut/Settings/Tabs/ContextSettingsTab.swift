@@ -164,26 +164,6 @@ struct ContextSettingsTab: View {
 
       VStack(alignment: .leading, spacing: 16) {
         VStack(alignment: .leading, spacing: 8) {
-          ShortcutInputRow(
-            label: "Improve from voice:",
-            placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.startPromptImprovement),
-            text: $viewModel.data.togglePromptImprovement,
-            focusedField: .togglePromptImprovement,
-            currentFocus: $focusedField,
-            onShortcutChanged: {
-              Task {
-                await viewModel.saveSettings()
-              }
-            },
-            validateShortcut: viewModel.validateShortcut
-          )
-          Text("Give feedback by voice to improve all system prompts (dictation, Prompt Mode, Prompt Read Mode). Same as the menu bar item \"Improve from voice\".")
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
-        VStack(alignment: .leading, spacing: 8) {
           Toggle("Save usage data", isOn: $saveUsageData)
             .toggleStyle(.checkbox)
             .help("When enabled, interaction logs (dictation, prompt mode, read aloud, Open Gemini chat) are stored so \"Improve from usage\" can suggest better prompts. On by default.")
@@ -243,29 +223,6 @@ struct ContextSettingsTab: View {
         }
         .disabled(!saveUsageData)
 
-        VStack(alignment: .leading, spacing: 8) {
-          HStack(alignment: .center, spacing: 12) {
-            Text("Improve from my voice")
-              .font(.callout)
-              .fontWeight(.medium)
-            Spacer(minLength: 16)
-            Button(action: {
-              NotificationCenter.default.post(name: .startPromptImprovementRecording, object: nil)
-            }) {
-              Label("Start recording", systemImage: "mic.fill")
-                .font(.callout)
-            }
-            .buttonStyle(.bordered)
-            .help("Start recording to improve prompts by voice (same as the Improve from voice shortcut)")
-            .pointerCursorOnHover()
-          }
-
-          Text("Copies the current selection to the clipboard, then records your voice. Say how you want dictation, prompts, or your profile to change (e.g. \"always add bullet points\", \"I work in legal\"). Uses the same shortcut as in the menu bar.")
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
         let improvementSubscriptionMode = !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
         PromptModelSelectionView(
           title: "Model for Smart Improvement",
@@ -312,26 +269,10 @@ struct ContextSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "📋 How to Use",
-        subtitle: "Improve from voice and manual improvement from usage"
+        subtitle: "Improve from usage"
       )
 
       VStack(alignment: .leading, spacing: 8) {
-        Text("Improve from voice (shortcut):")
-          .font(.callout)
-          .fontWeight(.semibold)
-          .foregroundColor(.secondary)
-          .padding(.top, 4)
-        Text("1. Optionally select text (e.g. a sample you want the assistant to learn from)")
-          .textSelection(.enabled)
-        Text("2. Press your configured Improve from voice shortcut")
-          .textSelection(.enabled)
-        Text("3. Say how you want dictation, prompts, or your profile to change (e.g. \"always add bullet points\", \"I work in legal\")")
-          .textSelection(.enabled)
-        Text("4. Press the shortcut again to stop")
-          .textSelection(.enabled)
-        Text("5. The app updates system prompts; edit the System prompts section above to review or revert")
-          .textSelection(.enabled)
-
         Text("Improve from usage:")
           .font(.callout)
           .fontWeight(.semibold)

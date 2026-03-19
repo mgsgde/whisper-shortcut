@@ -20,7 +20,6 @@ enum AppState: Equatable {
   enum RecordingMode: Equatable {
     case transcription
     case prompt
-    case promptImprovement
     case tts
     case liveMeeting
 
@@ -28,7 +27,6 @@ enum AppState: Equatable {
       switch self {
       case .transcription: return "🔴"
       case .prompt: return "🤖"
-      case .promptImprovement: return "📝"
       case .tts: return "🔊"
       case .liveMeeting: return "📝"
       }
@@ -38,7 +36,6 @@ enum AppState: Equatable {
       switch self {
       case .transcription: return "🔴 Recording for transcription..."
       case .prompt: return "🔴 Recording for AI prompt..."
-      case .promptImprovement: return "🔴 Recording to improve from voice..."
       case .tts: return "🔊 Recording voice command..."
       case .liveMeeting: return "📝 Live transcription..."
       }
@@ -48,7 +45,6 @@ enum AppState: Equatable {
       switch self {
       case .transcription: return "Recording for transcription... Click to stop"
       case .prompt: return "Recording for AI prompt... Click to stop"
-      case .promptImprovement: return "Recording to improve from voice... Click to stop"
       case .tts: return "Recording voice command... Click to stop or wait"
       case .liveMeeting: return "Live meeting transcription... Click menu to stop"
       }
@@ -65,7 +61,6 @@ enum AppState: Equatable {
 
     case transcribing
     case prompting
-    case promptImprovement
     case ttsProcessing
 
     // Chunking-specific states for long audio (optional context: TTS vs transcription)
@@ -127,7 +122,6 @@ enum AppState: Equatable {
       switch self {
       case .transcribing: return "⏳ Transcribing audio..."
       case .prompting: return "⏳ Processing AI prompt..."
-      case .promptImprovement: return "⏳ Improving from voice..."
       case .ttsProcessing: return "⏳ Processing text-to-speech..."
       case .splitting: return "✂️ Splitting audio into chunks..."
       case .processingChunks(let statuses, _):
@@ -142,7 +136,6 @@ enum AppState: Equatable {
       switch self {
       case .transcribing: return "Transcribing audio... Please wait"
       case .prompting: return "Processing AI prompt... Please wait"
-      case .promptImprovement: return "Improving from your voice... Please wait"
       case .ttsProcessing: return "Processing text-to-speech... Please wait"
       case .splitting: return "Audio is long - splitting into chunks for processing..."
       case .processingChunks(let statuses, _):
@@ -272,7 +265,6 @@ extension AppState {
     switch recordingMode {
     case .transcription: processingMode = .transcribing
     case .prompt: processingMode = .prompting
-    case .promptImprovement: processingMode = .promptImprovement
     case .tts: processingMode = .ttsProcessing
     case .liveMeeting: processingMode = .transcribing  // Live meeting uses transcribing for chunk processing
     }
@@ -333,7 +325,6 @@ extension AppState.RecordingMode: CustomStringConvertible {
     switch self {
     case .transcription: return "transcription"
     case .prompt: return "prompt"
-    case .promptImprovement: return "promptImprovement"
     case .tts: return "tts"
     case .liveMeeting: return "liveMeeting"
     }
@@ -345,7 +336,6 @@ extension AppState.ProcessingMode: CustomStringConvertible {
     switch self {
     case .transcribing: return "transcribing"
     case .prompting: return "prompting"
-    case .promptImprovement: return "promptImprovement"
     case .ttsProcessing: return "ttsProcessing"
     case .splitting: return "splitting"
     case .processingChunks(let statuses, _):

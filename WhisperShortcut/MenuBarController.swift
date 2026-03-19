@@ -41,8 +41,6 @@ class MenuBarController: NSObject {
   
   // MARK: - State Tracking (Prevent Race Conditions)
   private var currentTranscriptionAudioURL: URL?
-  private var currentPromptImprovementAudioURL: URL?
-  private var promptImprovementTask: Task<Void, Never>?
   private var processedAudioURLs: Set<URL> = []
   private var currentTTSAudioURL: URL?
   private var audioPlayer: AVAudioPlayer?
@@ -171,14 +169,6 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
-    // Improve from voice (own section before Settings)
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Improve from voice", action: #selector(togglePromptImprovement),
-        shortcut: currentConfig.startPromptImprovement, tag: 109))
-
-    menu.addItem(NSMenuItem.separator())
-
     // Meeting and Gemini windows
     menu.addItem(
       createMenuItemWithShortcut(
@@ -295,13 +285,6 @@ class MenuBarController: NSObject {
 
     NotificationCenter.default.addObserver(
       self,
-      selector: #selector(startPromptImprovementRecordingFromNotification),
-      name: .startPromptImprovementRecording,
-      object: nil
-    )
-
-    NotificationCenter.default.addObserver(
-      self,
       selector: #selector(geminiReadAloudWithNotification(_:)),
       name: .geminiReadAloud,
       object: nil
@@ -367,12 +350,6 @@ class MenuBarController: NSObject {
         return
       }
       self.performTTSWithText(text)
-    }
-  }
-
-  @objc private func startPromptImprovementRecordingFromNotification() {
-    DispatchQueue.main.async { [weak self] in
-      self?.togglePromptImprovement()
     }
   }
 
@@ -580,7 +557,7 @@ class MenuBarController: NSObject {
       guard case .processing(let mode) = appState, !mode.isTTSContext else { return false }
       switch mode {
       case .transcribing, .splitting, .processingChunks, .merging: return true
-      case .prompting, .promptImprovement, .ttsProcessing: return false
+      case .prompting, .ttsProcessing: return false
       }
     }()
     if isTranscriptionProcessing {
@@ -753,69 +730,6 @@ class MenuBarController: NSObject {
     }
   }
 
-  @objc internal func togglePromptImprovement() {
-    if case .processing(.promptImprovement) = appState {
-      promptImprovementTask?.cancel()
-      transitionToIdleAndCleanup(cleanupAudioURL: currentPromptImprovementAudioURL)
-      currentPromptImprovementAudioURL = nil
-      promptImprovementTask = nil
-      return
-    }
-    switch appState.recordingMode {
-    case .promptImprovement:
-      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-        self?.audioRecorder.stopRecording()
-      }
-    case .none:
-      let hasCredential = GeminiCredentialProvider.shared.hasCredential()
-      if appState.canStartPrompting(hasAPIKey: hasCredential, hasOfflineModel: false) {
-        if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-          return
-        }
-        #if SUBSCRIPTION_ENABLED
-        if DefaultGoogleAuthService.shared.isSignedIn() {
-          Task { [weak self] in
-            guard let self = self else { return }
-            let active = await BackendAPIClient.fetchSubscriptionStatus(idTokenProvider: { await DefaultGoogleAuthService.shared.getIDToken() })
-            await MainActor.run {
-              if active != true {
-                PopupNotificationWindow.showError(
-                  "You need an active subscription to use prompt improvement. Subscribe at whispershortcut.com or add an API key in Settings (General tab).",
-                  title: "Subscription Required",
-                  topUpURL: URL(string: "https://whispershortcut.com/dashboard")
-                )
-                return
-              }
-              self.simulateCopyPaste()
-              self.appState = self.appState.startRecording(.promptImprovement)
-              self.audioRecorder.startRecording()
-            }
-          }
-          return
-        }
-        #endif
-        simulateCopyPaste()
-        appState = appState.startRecording(.promptImprovement)
-        audioRecorder.startRecording()
-      } else {
-        #if SUBSCRIPTION_ENABLED
-        PopupNotificationWindow.showError(
-          "Sign in with Google or add an API key in Settings (General tab) to use prompt improvement.",
-          title: "Sign In or API Key Required",
-          signInAction: { Task { try? await DefaultGoogleAuthService.shared.signIn() } }
-        )
-        #else
-        PopupNotificationWindow.showError(
-          "Add your Gemini API key in Settings (General tab) to use prompt improvement.",
-          title: "API Key Required"
-        )
-        #endif
-      }
-    default:
-      break
-    }
-  }
-
   @objc private func stopCurrentOperation() {
     // Active meeting segment: stop the segment first, keep meeting running
     if let segment = activeMeetingSegment {
@@ -869,15 +783,6 @@ class MenuBarController: NSObject {
     if case .processing(.prompting) = appState {
       speechService.cancelPrompt()
       transitionToIdleAndCleanup()
-      return
-    }
-
-    // Prompt improvement processing
-    if case .processing(.promptImprovement) = appState {
-      promptImprovementTask?.cancel()
-      transitionToIdleAndCleanup(cleanupAudioURL: currentPromptImprovementAudioURL)
-      currentPromptImprovementAudioURL = nil
-      promptImprovementTask = nil
       return
     }
 
@@ -1716,7 +1621,6 @@ class MenuBarController: NSObject {
         switch mode {
         case .transcription: operationName = "Transcription"
         case .prompt: operationName = "Prompt"
-        case .promptImprovement: operationName = "Improve from voice"
         case .tts: operationName = "Text-to-speech"
         case .liveMeeting: operationName = "Live meeting"
         }
@@ -1739,8 +1643,6 @@ class MenuBarController: NSObject {
             await self.performTranscription(audioURL: audioURL)
           case .prompt:
             await self.performPrompting(audioURL: audioURL)
-          case .promptImprovement:
-            await self.performPromptImprovement(audioURL: audioURL)
           case .tts:
             await self.performTTSWithCommand(audioURL: audioURL)
           case .liveMeeting:
@@ -1891,84 +1793,6 @@ class MenuBarController: NSObject {
     }
   }
 
-  private func performPromptImprovement(audioURL: URL) async {
-    defer {
-      Task { @MainActor in
-        self.promptImprovementTask = nil
-        self.currentPromptImprovementAudioURL = nil
-      }
-    }
-    do {
-      try Task.checkCancellation()
-      let transcribedInstruction = try await speechService.transcribeVoiceInstruction(audioURL: audioURL)
-      try Task.checkCancellation()
-      let selectedText = clipboardManager.getCleanedClipboardText()?
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-      let selectedOrNil: String? = (selectedText?.isEmpty == false) ? selectedText : nil
-
-      await AutoPromptImprovementScheduler.shared.runImprovementFromVoice(
-        transcribedInstruction: transcribedInstruction,
-        selectedText: selectedOrNil,
-        runInBackground: false
-      )
-
-      await MainActor.run {
-        self.appState = self.appState.finish()
-        self.processedAudioURLs.remove(audioURL)
-      }
-      cleanupAudioFile(at: audioURL)
-    } catch is CancellationError {
-      DebugLogger.log("CANCELLATION: Improve from voice task was cancelled")
-      await MainActor.run {
-        self.appState = self.appState.finish()
-        self.processedAudioURLs.remove(audioURL)
-      }
-      cleanupAudioFile(at: audioURL)
-    } catch {
-      await handleProcessingError(error: error, audioURL: audioURL, mode: .promptImprovement)
-      await MainActor.run {
-        self.processedAudioURLs.remove(audioURL)
-      }
-    }
-  }
-
-  /// Runs improve-from-voice in the background. App is already idle; does not touch appState. Caller must not await.
-  private func performPromptImprovementInBackground(audioURL: URL) async {
-    await MainActor.run {
-      currentPromptImprovementAudioURL = nil
-    }
-    defer {
-      Task { @MainActor in
-        self.processedAudioURLs.remove(audioURL)
-      }
-      cleanupAudioFile(at: audioURL)
-    }
-    do {
-      try Task.checkCancellation()
-      let transcribedInstruction = try await speechService.transcribeVoiceInstruction(audioURL: audioURL)
-      try Task.checkCancellation()
-      let selectedText = clipboardManager.getCleanedClipboardText()?
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-      let selectedOrNil: String? = (selectedText?.isEmpty == false) ? selectedText : nil
-
-      await AutoPromptImprovementScheduler.shared.runImprovementFromVoice(
-        transcribedInstruction: transcribedInstruction,
-        selectedText: selectedOrNil,
-        runInBackground: true
-      )
-    } catch is CancellationError {
-      DebugLogger.log("CANCELLATION: Improve from voice background task was cancelled")
-    } catch {
-      DebugLogger.logError(error, context: "Improve from voice (background)")
-      await MainActor.run {
-        PopupNotificationWindow.showError(
-          SpeechErrorFormatter.formatForUser(error),
-          title: "Smart Improvement"
-        )
-      }
-    }
-  }
-
   @objc private func apiKeyUpdated() {
     // Update menu state when API key changes
     DispatchQueue.main.async {
@@ -2019,9 +1843,6 @@ class MenuBarController: NSObject {
     if let url = cleanupAudioURL {
       if currentTranscriptionAudioURL == url {
         currentTranscriptionAudioURL = nil
-      }
-      if currentPromptImprovementAudioURL == url {
-        currentPromptImprovementAudioURL = nil
       }
       cleanupAudioFile(at: url)
       processedAudioURLs.remove(url)
@@ -2201,10 +2022,6 @@ extension MenuBarController: AudioRecorderDelegate {
           await self.performTranscription(audioURL: audioURL)
         case .prompt:
           await self.performPrompting(audioURL: audioURL)
-        case .promptImprovement:
-          self.currentPromptImprovementAudioURL = audioURL
-          self.transitionToIdleAndCleanup(cleanupAudioURL: nil)
-          Task { await self.performPromptImprovementInBackground(audioURL: audioURL) }
         case .tts:
           await self.performTTSWithCommand(audioURL: audioURL)
         case .liveMeeting:
