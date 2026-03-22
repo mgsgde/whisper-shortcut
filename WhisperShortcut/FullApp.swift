@@ -85,6 +85,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    // Flush debounced session data before terminating
+    GeminiChatSessionStore.shared.flushToDisk()
     menuBarController?.cleanup()
   }
 

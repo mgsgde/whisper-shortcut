@@ -387,6 +387,7 @@ private class FileLogger {
   private let fileQueue = DispatchQueue(label: "com.whispershortcut.filelogger", qos: .utility)
   private static let logRetentionDays = 7
   private var currentDate: String?
+  private var flushTimer: DispatchSourceTimer?
   
   fileprivate enum LogLevel: String {
     case `default` = "INFO"
@@ -416,6 +417,21 @@ private class FileLogger {
     
     // Cleanup old logs on init (only once at app start)
     cleanupOldLogs()
+
+    // Periodic flush every 10 seconds instead of synchronizeFile() on every write
+    let timer = DispatchSource.makeTimerSource(queue: fileQueue)
+    timer.schedule(deadline: .now() + 10, repeating: 10)
+    timer.setEventHandler { [weak self] in
+      self?.flushAllHandles()
+    }
+    timer.resume()
+    flushTimer = timer
+  }
+
+  private func flushAllHandles() {
+    for (_, handle) in fileHandles {
+      handle.synchronizeFile()
+    }
   }
   
   fileprivate func log(message: String, level: LogLevel, context: String? = nil, state: String? = nil) {
@@ -452,9 +468,9 @@ private class FileLogger {
       logLine += "\n"
       
       // Write to file (thread-safe, already on fileQueue)
+      // Note: No synchronizeFile() here - flushed periodically by timer to avoid excessive disk writes
       if let data = logLine.data(using: .utf8) {
         fileHandle.write(data)
-        fileHandle.synchronizeFile()
       }
     }
   }
@@ -535,7 +551,8 @@ private class FileLogger {
   }
   
   deinit {
-    // Close all file handles on deinit
+    flushTimer?.cancel()
+    // Close all file handles on deinit (closeFile implicitly flushes)
     fileQueue.sync {
       closeAllHandles()
     }
@@ -583,9 +600,9 @@ private class ErrorFileWriter {
       guard let fileHandle = self.getFileHandle(for: today) else { return }
       let line = message.replacingOccurrences(of: "\n", with: " ")
       let logLine = "[\(timestamp)] ERROR \(line)\n"
+      // Note: No synchronizeFile() here - OS will flush on its own schedule to avoid excessive disk writes
       if let data = logLine.data(using: .utf8) {
         fileHandle.write(data)
-        fileHandle.synchronizeFile()
       }
     }
   }

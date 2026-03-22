@@ -201,13 +201,19 @@ class GeminiChatSessionStore {
   private let scope: String?
   private static let navStackLimit = 20
   /// Maximum number of sessions kept on disk. Oldest sessions (by lastUpdated) are pruned when exceeded.
-  private static let maxSessionCount = 100
+  private static let maxSessionCount = 10
   /// Sessions older than this many days have their attached image binaries stripped from the in-memory
   /// cache to avoid holding screenshots for stale conversations indefinitely.
   private static let imageRetentionDays: Double = 7
 
   private var cachedFile: SessionsFile?
   private let diskWriteQueue = DispatchQueue(label: "com.whispershortcut.session.io", qos: .utility)
+  /// Debounce disk writes: coalesce rapid saves into a single write after a short delay.
+  private var pendingSave: SessionsFile?
+  private var debounceWorkItem: DispatchWorkItem?
+  private static let saveDebounceSeconds: Double = 2.0
+  /// Maximum messages kept per session on disk. Older messages are trimmed (sessionMemory preserves context).
+  private static let maxMessagesPerSession = 50
 
   init(scope: String? = nil) {
     self.scope = scope
@@ -286,10 +292,42 @@ class GeminiChatSessionStore {
       return stripped
     }
 
+    // Trim old messages from non-current sessions to keep file size manageable.
+    // sessionMemory preserves context, so trimming is safe.
+    file.sessions = file.sessions.map { session in
+      guard session.messages.count > Self.maxMessagesPerSession else { return session }
+      var trimmed = session
+      trimmed.messages = Array(session.messages.suffix(Self.maxMessagesPerSession))
+      return trimmed
+    }
+
     cachedFile = file
+    scheduleDiskWrite(file)
+  }
+
+  /// Debounced disk write: coalesces rapid saves into a single write after a short delay.
+  private func scheduleDiskWrite(_ file: SessionsFile) {
+    debounceWorkItem?.cancel()
     let url = fileURL
     let dir = appSupportDir
-    diskWriteQueue.async {
+    let workItem = DispatchWorkItem { [weak self] in
+      guard self != nil else { return }
+      try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      if let data = try? JSONEncoder().encode(file) {
+        try? data.write(to: url, options: .atomic)
+      }
+    }
+    debounceWorkItem = workItem
+    diskWriteQueue.asyncAfter(deadline: .now() + Self.saveDebounceSeconds, execute: workItem)
+  }
+
+  /// Forces an immediate disk write of the current cached state (e.g. before app termination).
+  func flushToDisk() {
+    debounceWorkItem?.cancel()
+    guard let file = cachedFile else { return }
+    let url = fileURL
+    let dir = appSupportDir
+    diskWriteQueue.sync {
       try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
       if let data = try? JSONEncoder().encode(file) {
         try? data.write(to: url, options: .atomic)
