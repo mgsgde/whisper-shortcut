@@ -1,4 +1,4 @@
-# Release v6.6
+# Release v6.6.2
 
 ## Installation
 
@@ -6,23 +6,27 @@ Download the latest release from [GitHub Releases](https://github.com/mgsgde/whi
 
 ## Changes
 
-### Reliability & release
+### Stability
 
-- Provisioning profile support in the GitHub release workflow for more reliable signing and automation.
+- Fixed excessive disk writes that could lead macOS to terminate the app.
 
-### Google Sign-In & backend
+### Release & signing
 
-- Updated Google Sign-In configuration and OAuth scope handling so ID tokens work correctly with the Whisper Shortcut API.
+- Streamlined CI provisioning profile setup for more reliable release builds.
+
+### Google Sign-In
+
+- Updated Google Sign-In configuration in `Info.plist` and refactored `GoogleAuthService` to align OAuth scopes with the Whisper Shortcut API.
 
 ### Permissions & automation
 
-- Improved error handling and user messaging for screen capture and auto-paste.
+- Clearer error handling and messaging for screen capture and auto-paste.
 
 ### Gemini Chat
 
-- Added `/context` command support; removed improve-from-voice flow from chat.
-- Refined chat UI, theme, and Markdown block rendering for clearer reading.
+- Added `/context` command support; removed the improve-from-voice flow from chat.
+- Refined chat UI and Markdown block rendering for easier reading.
 
 ## Full Changelog
 
-For a complete list of changes since v6.5, see the [full changelog](https://github.com/mgsgde/whisper-shortcut/compare/v6.5...v6.6).
+For a complete list of changes since v6.6.1, see the [full changelog](https://github.com/mgsgde/whisper-shortcut/compare/v6.6.1...v6.6.2).
