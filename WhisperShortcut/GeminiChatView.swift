@@ -1748,6 +1748,54 @@ private enum ReplyContentBlock {
   case text(AttributedString)
   case table(ParsedTable)
   case separator
+  case codeBlock(String, String?) // code content, optional language
+}
+
+// MARK: - Code Block Extraction
+
+/// Extracts fenced code blocks from raw markdown BEFORE splitting by \n\n,
+/// replacing them with placeholder tokens so they survive paragraph splitting.
+private struct CodeBlockExtractor {
+  struct ExtractedCodeBlock {
+    let code: String
+    let language: String?
+  }
+
+  private static let placeholderPrefix = "⟦CODEBLOCK_"
+  private static let placeholderSuffix = "⟧"
+
+  /// Extracts all fenced code blocks, returns (processed text with placeholders, extracted blocks).
+  static func extract(from content: String) -> (String, [ExtractedCodeBlock]) {
+    var blocks: [ExtractedCodeBlock] = []
+    var result = content
+    // Match ```language\n...code...\n``` (multiline, non-greedy)
+    let pattern = "```(\\w*)\\n([\\s\\S]*?)\\n```"
+    guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+      return (content, [])
+    }
+    let nsContent = content as NSString
+    let matches = regex.matches(in: content, range: NSRange(location: 0, length: nsContent.length))
+    // Process matches in reverse order so replacement indices stay valid
+    for match in matches.reversed() {
+      let langRange = match.range(at: 1)
+      let codeRange = match.range(at: 2)
+      let language = langRange.location != NSNotFound ? nsContent.substring(with: langRange) : nil
+      let code = codeRange.location != NSNotFound ? nsContent.substring(with: codeRange) : ""
+      let lang = (language?.isEmpty ?? true) ? nil : language
+      let index = blocks.count
+      blocks.insert(ExtractedCodeBlock(code: code, language: lang), at: 0)
+      let placeholder = "\n\n\(placeholderPrefix)\(index)\(placeholderSuffix)\n\n"
+      result = (result as NSString).replacingCharacters(in: match.range, with: placeholder)
+    }
+    return (result, blocks)
+  }
+
+  /// Checks if a trimmed paragraph is a code block placeholder and returns the index.
+  static func placeholderIndex(_ trimmed: String) -> Int? {
+    guard trimmed.hasPrefix(placeholderPrefix), trimmed.hasSuffix(placeholderSuffix) else { return nil }
+    let inner = trimmed.dropFirst(placeholderPrefix.count).dropLast(placeholderSuffix.count)
+    return Int(inner)
+  }
 }
 
 // MARK: - Model Reply View
@@ -1775,6 +1823,8 @@ private struct ModelReplyView: View {
             .fill(GeminiChatTheme.primaryText.opacity(0.15))
             .frame(height: 1)
             .frame(maxWidth: .infinity)
+        case .codeBlock(let code, let language):
+          CodeBlockView(code: code, language: language)
         }
       }
     }
@@ -1832,12 +1882,17 @@ private struct ModelReplyView: View {
     content: String,
     options: AttributedString.MarkdownParsingOptions
   ) -> [ReplyContentBlock] {
-    let paragraphs = MarkdownParsing.normalizeMarkdownParagraphBreaks(content).components(separatedBy: "\n\n")
+    // Extract fenced code blocks BEFORE splitting by \n\n
+    let (processed, codeBlocks) = CodeBlockExtractor.extract(from: content)
+    let paragraphs = MarkdownParsing.normalizeMarkdownParagraphBreaks(processed).components(separatedBy: "\n\n")
     var blocks: [ReplyContentBlock] = []
     for para in paragraphs {
       let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
-      if MarkdownParsing.isSeparatorParagraph(trimmed) {
+      if let idx = CodeBlockExtractor.placeholderIndex(trimmed), idx < codeBlocks.count {
+        let cb = codeBlocks[idx]
+        blocks.append(.codeBlock(cb.code, cb.language))
+      } else if MarkdownParsing.isSeparatorParagraph(trimmed) {
         blocks.append(.separator)
       } else if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
         blocks.append(.table(parsed))
@@ -1858,7 +1913,8 @@ private struct ModelReplyView: View {
     let opts = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
     var result = AttributedString()
     for (i, line) in lines.enumerated() {
-      let content = MarkdownParsing.parseBullet(line)!.trimmingCharacters(in: .whitespaces)
+      let rawContent = MarkdownParsing.parseBullet(line)!.trimmingCharacters(in: .whitespaces)
+      let content = MarkdownParsing.renderLatexToUnicode(rawContent)
       if i > 0 { result.append(AttributedString("\n")) }
       var bullet = AttributedString("• ")
       bullet.font = .system(size: 16, weight: .regular)
@@ -1892,15 +1948,11 @@ private struct ModelReplyView: View {
       }
       return headingAttr
     }
-    if trimmed.hasPrefix("```") && trimmed.hasSuffix("```") {
-      let codeContent = String(trimmed.dropFirst(3).dropLast(3).trimmingCharacters(in: .whitespacesAndNewlines))
-      var attr = AttributedString(codeContent)
-      attr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
-      return attr
-    }
     if let bulletAttr = buildBulletListAttributed(trimmed) { return bulletAttr }
+    // Convert LaTeX formulas to Unicode before markdown parsing
+    let latexProcessed = MarkdownParsing.renderLatexToUnicode(trimmed)
     let fullOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
-    var attr = (try? AttributedString(markdown: trimmed, options: fullOptions)) ?? AttributedString(trimmed)
+    var attr = (try? AttributedString(markdown: latexProcessed, options: fullOptions)) ?? AttributedString(latexProcessed)
     attr.font = .system(size: 16, weight: .regular)
     return attr
   }
@@ -1946,20 +1998,26 @@ private struct ModelReplyView: View {
   }
 
   private static func buildAttributedReplyContentOnly(content: String, options: AttributedString.MarkdownParsingOptions) -> AttributedString {
-    let paragraphs = MarkdownParsing.normalizeMarkdownParagraphBreaks(content).components(separatedBy: "\n\n")
+    // Extract fenced code blocks before splitting
+    let (processed, codeBlocks) = CodeBlockExtractor.extract(from: content)
+    let paragraphs = MarkdownParsing.normalizeMarkdownParagraphBreaks(processed).components(separatedBy: "\n\n")
     var result = AttributedString()
     let separator = AttributedString("\n\n")
     for (index, para) in paragraphs.enumerated() {
       let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
       if index > 0 { result.append(separator) }
-      if MarkdownParsing.isSeparatorParagraph(trimmed) {
+      if let idx = CodeBlockExtractor.placeholderIndex(trimmed), idx < codeBlocks.count {
+        let cb = codeBlocks[idx]
+        let label = cb.language.map { "[\($0)] " } ?? ""
+        var attr = AttributedString("\(label)\(cb.code)")
+        attr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
+        result.append(attr)
+      } else if MarkdownParsing.isSeparatorParagraph(trimmed) {
         var lineAttr = AttributedString(MarkdownParsing.separatorLineContent)
         lineAttr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.4)
         result.append(lineAttr)
-        continue
-      }
-      if let (level, title) = MarkdownParsing.parseATXHeading(trimmed) {
+      } else if let (level, title) = MarkdownParsing.parseATXHeading(trimmed) {
         let parts = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
         let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
         var headingAttr = MarkdownParsing.inlineAttributedString(title, options: options)
@@ -1975,16 +2033,12 @@ private struct ModelReplyView: View {
         var tableAttr = AttributedString(trimmed)
         tableAttr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
         result.append(tableAttr)
-      } else if trimmed.hasPrefix("```") && trimmed.hasSuffix("```") {
-        let codeContent = String(trimmed.dropFirst(3).dropLast(3).trimmingCharacters(in: .whitespacesAndNewlines))
-        var attr = AttributedString(codeContent)
-        attr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
-        result.append(attr)
       } else if let bulletAttr = buildBulletListAttributed(trimmed) {
         result.append(bulletAttr)
       } else {
+        let latexProcessed = MarkdownParsing.renderLatexToUnicode(trimmed)
         let fullOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
-        var attr = (try? AttributedString(markdown: trimmed, options: fullOptions)) ?? AttributedString(trimmed)
+        var attr = (try? AttributedString(markdown: latexProcessed, options: fullOptions)) ?? AttributedString(latexProcessed)
         attr.font = .system(size: 16, weight: .regular)
         result.append(attr)
       }
@@ -1993,6 +2047,58 @@ private struct ModelReplyView: View {
       return (try? AttributedString(markdown: content)) ?? AttributedString(content)
     }
     return result
+  }
+}
+
+// MARK: - Code Block View
+
+private struct CodeBlockView: View {
+  let code: String
+  let language: String?
+  @State private var copied = false
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      // Header with language label and copy button
+      HStack {
+        Text(language ?? "code")
+          .font(.system(size: 12, weight: .medium))
+          .foregroundColor(GeminiChatTheme.primaryText.opacity(0.5))
+        Spacer()
+        Button(action: {
+          NSPasteboard.general.clearContents()
+          NSPasteboard.general.setString(code, forType: .string)
+          copied = true
+          DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+        }) {
+          HStack(spacing: 4) {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+              .font(.system(size: 11))
+            Text(copied ? "Copied" : "Copy")
+              .font(.system(size: 11))
+          }
+          .foregroundColor(GeminiChatTheme.primaryText.opacity(0.5))
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+          if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+      }
+      .padding(.horizontal, 14)
+      .padding(.vertical, 8)
+      .background(Color.black.opacity(0.15))
+
+      // Code content
+      ScrollView(.horizontal, showsIndicators: false) {
+        Text(code)
+          .font(.system(size: 13, design: .monospaced))
+          .foregroundColor(GeminiChatTheme.primaryText.opacity(0.9))
+          .textSelection(.enabled)
+          .padding(14)
+      }
+    }
+    .background(Color.black.opacity(0.25))
+    .clipShape(RoundedRectangle(cornerRadius: 8))
   }
 }
 

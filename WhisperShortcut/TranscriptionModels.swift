@@ -312,6 +312,8 @@ struct GeminiResponse: Codable {
     let executableCode: ExecutableCode?
     /// Result of running the generated code (stdout on success).
     let codeExecutionResult: CodeExecutionResult?
+    /// Inline binary data (e.g. generated images) returned by the model.
+    let inlineData: InlineData?
 
     struct ExecutableCode: Codable {
       let language: String?
@@ -321,6 +323,11 @@ struct GeminiResponse: Codable {
     struct CodeExecutionResult: Codable {
       let outcome: String?
       let output: String?
+    }
+
+    struct InlineData: Codable {
+      let mimeType: String
+      let data: String // Base64-encoded
     }
   }
 }

@@ -127,6 +127,131 @@ enum MarkdownParsing {
     let opts = options ?? AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
     return (try? AttributedString(markdown: content, options: opts)) ?? AttributedString(content)
   }
+
+  // MARK: - LaTeX to Unicode
+
+  /// Converts common LaTeX math notation to Unicode characters.
+  /// Handles both inline `$...$` and display `$$...$$` delimiters.
+  static func renderLatexToUnicode(_ text: String) -> String {
+    // Quick check: skip processing if no LaTeX markers present
+    guard text.contains("$") || text.contains("\\") else { return text }
+
+    var result = text
+
+    // Step 1: Strip display math delimiters $$...$$
+    result = regexReplace(result, pattern: "\\$\\$(.+?)\\$\\$", template: "$1", options: .dotMatchesLineSeparators)
+
+    // Step 2: Strip inline math delimiters $...$
+    result = regexReplace(result, pattern: "(?<!\\$)\\$(?!\\$)(.+?)(?<!\\$)\\$(?!\\$)", template: "$1")
+
+    // Step 3: Structural commands FIRST (before simple replacements, so nested braces are intact)
+    result = regexReplaceAll(result, pattern: "\\\\frac\\{([^}]+)\\}\\{([^}]+)\\}") { match, nsStr in
+      let num = nsStr.substring(with: match.range(at: 1))
+      let den = nsStr.substring(with: match.range(at: 2))
+      return "\(num)/\(den)"
+    }
+    result = regexReplaceAll(result, pattern: "\\\\sqrt\\{([^}]+)\\}") { match, nsStr in
+      "√\(nsStr.substring(with: match.range(at: 1)))"
+    }
+    result = regexReplaceAll(result, pattern: "\\\\mathbf\\{([^}]+)\\}") { match, nsStr in
+      "**\(nsStr.substring(with: match.range(at: 1)))**"
+    }
+    result = regexReplaceAll(result, pattern: "\\\\text\\{([^}]+)\\}") { match, nsStr in
+      nsStr.substring(with: match.range(at: 1))
+    }
+    result = regexReplaceAll(result, pattern: "\\\\mathrm\\{([^}]+)\\}") { match, nsStr in
+      nsStr.substring(with: match.range(at: 1))
+    }
+    result = regexReplaceAll(result, pattern: "\\\\lim_\\{([^}]+)\\}") { match, nsStr in
+      "lim_{\(nsStr.substring(with: match.range(at: 1)))}"
+    }
+
+    // Step 4: Simple command → Unicode replacements
+    let replacements: [(String, String)] = [
+      ("\\times", "×"), ("\\div", "÷"), ("\\pm", "±"), ("\\mp", "∓"),
+      ("\\cdot", "·"), ("\\ldots", "…"), ("\\dots", "…"),
+      ("\\leq", "≤"), ("\\geq", "≥"), ("\\neq", "≠"), ("\\approx", "≈"),
+      ("\\equiv", "≡"), ("\\sim", "∼"), ("\\propto", "∝"),
+      ("\\infty", "∞"), ("\\partial", "∂"), ("\\nabla", "∇"),
+      ("\\to", "→"), ("\\mapsto", "↦"),
+      ("\\sum", "∑"), ("\\prod", "∏"), ("\\int", "∫"),
+      ("\\lim", "lim"),
+      ("\\log", "log"), ("\\ln", "ln"), ("\\sin", "sin"), ("\\cos", "cos"), ("\\tan", "tan"),
+      ("\\min", "min"), ("\\max", "max"),
+      ("\\alpha", "α"), ("\\beta", "β"), ("\\gamma", "γ"), ("\\delta", "δ"),
+      ("\\epsilon", "ε"), ("\\varepsilon", "ε"), ("\\zeta", "ζ"), ("\\eta", "η"), ("\\theta", "θ"),
+      ("\\lambda", "λ"), ("\\mu", "μ"), ("\\nu", "ν"), ("\\xi", "ξ"),
+      ("\\pi", "π"), ("\\rho", "ρ"), ("\\sigma", "σ"), ("\\tau", "τ"),
+      ("\\phi", "φ"), ("\\varphi", "φ"), ("\\chi", "χ"), ("\\psi", "ψ"), ("\\omega", "ω"),
+      ("\\Alpha", "Α"), ("\\Beta", "Β"), ("\\Gamma", "Γ"), ("\\Delta", "Δ"),
+      ("\\Theta", "Θ"), ("\\Lambda", "Λ"), ("\\Pi", "Π"), ("\\Sigma", "Σ"),
+      ("\\Phi", "Φ"), ("\\Psi", "Ψ"), ("\\Omega", "Ω"),
+      ("\\leftarrow", "←"), ("\\rightarrow", "→"), ("\\leftrightarrow", "↔"),
+      ("\\Leftarrow", "⇐"), ("\\Rightarrow", "⇒"),
+      ("\\forall", "∀"), ("\\exists", "∃"), ("\\in", "∈"), ("\\notin", "∉"),
+      ("\\subset", "⊂"), ("\\supset", "⊃"), ("\\subseteq", "⊆"), ("\\supseteq", "⊇"),
+      ("\\cup", "∪"), ("\\cap", "∩"),
+      ("\\emptyset", "∅"), ("\\neg", "¬"), ("\\land", "∧"), ("\\lor", "∨"),
+      ("\\quad", "  "), ("\\qquad", "    "), ("\\,", " "),
+      ("\\left(", "("), ("\\right)", ")"),
+      ("\\left[", "["), ("\\right]", "]"),
+      ("\\left\\{", "{"), ("\\right\\}", "}"),
+      ("\\{", "{"), ("\\}", "}"),
+    ]
+    for (latex, unicode) in replacements {
+      result = result.replacingOccurrences(of: latex, with: unicode)
+    }
+
+    // Step 5: Superscripts ^{...} and ^x (AFTER structural commands)
+    let superscriptMap: [Character: Character] = [
+      "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+      "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+      "+": "⁺", "-": "⁻", "=": "⁼", "(": "⁽", ")": "⁾",
+      "n": "ⁿ", "i": "ⁱ", "x": "ˣ",
+    ]
+    result = regexReplaceAll(result, pattern: "\\^\\{([^}]+)\\}") { match, nsStr in
+      let content = nsStr.substring(with: match.range(at: 1))
+      return String(content.map { superscriptMap[$0] ?? $0 })
+    }
+    result = regexReplaceAll(result, pattern: "\\^([0-9nix])") { match, nsStr in
+      let ch = nsStr.substring(with: match.range(at: 1))
+      if let c = ch.first, let sup = superscriptMap[c] { return String(sup) }
+      return ch
+    }
+
+    // Step 6: Subscripts _{...} and _x
+    let subscriptMap: [Character: Character] = [
+      "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄",
+      "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉",
+      "+": "₊", "-": "₋", "=": "₌", "(": "₍", ")": "₎",
+      "a": "ₐ", "e": "ₑ", "i": "ᵢ", "o": "ₒ", "x": "ₓ",
+    ]
+    result = regexReplaceAll(result, pattern: "_\\{([^}]+)\\}") { match, nsStr in
+      let content = nsStr.substring(with: match.range(at: 1))
+      return String(content.map { subscriptMap[$0] ?? $0 })
+    }
+
+    return result
+  }
+
+  // MARK: - Regex Helpers
+
+  private static func regexReplace(_ text: String, pattern: String, template: String, options: NSRegularExpression.Options = []) -> String {
+    guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return text }
+    return regex.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: template)
+  }
+
+  private static func regexReplaceAll(_ text: String, pattern: String, replacer: (NSTextCheckingResult, NSString) -> String) -> String {
+    guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return text }
+    var result = text
+    let nsResult = result as NSString
+    let matches = regex.matches(in: result, range: NSRange(location: 0, length: nsResult.length))
+    for match in matches.reversed() {
+      let replacement = replacer(match, result as NSString)
+      result = (result as NSString).replacingCharacters(in: match.range, with: replacement)
+    }
+    return result
+  }
 }
 
 // MARK: - Shared Markdown Table View
