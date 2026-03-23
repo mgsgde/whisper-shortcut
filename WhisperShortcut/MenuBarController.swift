@@ -18,9 +18,12 @@ class MenuBarController: NSObject {
       updateUI()
 
       // Auto-reset feedback states after their duration
+      feedbackResetTask?.cancel()
       if case .feedback(let feedbackMode) = appState {
-        DispatchQueue.main.asyncAfter(deadline: .now() + feedbackMode.duration) {
-          if case .feedback = self.appState {  // Only reset if still in feedback state
+        feedbackResetTask = Task { [weak self] in
+          try? await Task.sleep(nanoseconds: UInt64(feedbackMode.duration * 1_000_000_000))
+          await MainActor.run {
+            guard let self, case .feedback = self.appState else { return }
             self.appState = self.appState.finish()
           }
         }
@@ -31,6 +34,7 @@ class MenuBarController: NSObject {
   // MARK: - UI Components
   private var statusItem: NSStatusItem?
   private var blinkTimer: Timer?
+  private var feedbackResetTask: Task<Void, Never>?
 
   // MARK: - Services (Injected Dependencies)
   private let audioRecorder: AudioRecorder

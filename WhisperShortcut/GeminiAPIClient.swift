@@ -785,16 +785,23 @@ class GeminiAPIClient {
   }
   
   /// Extracts text content from a Gemini transcription response
+  /// Marker prefix/suffix for inline images embedded in text content.
+  /// Format: ⟦GEMINI_IMG:base64data:mimetype⟧
+  static let imageMarkerPrefix = "⟦GEMINI_IMG:"
+  static let imageMarkerSuffix = "⟧"
+
   func extractText(from response: GeminiResponse) -> String {
     guard let candidate = response.candidates.first,
           let content = candidate.content,
           let parts = content.parts else {
       return ""
     }
-    
+
     // Extract text from parts, including code execution (executable_code, code_execution_result)
+    // and inline images (inlineData) embedded as markers in the text.
     var text = ""
     var hadCodeParts = false
+    var imageCount = 0
     for part in parts {
       if let partText = part.text {
         text += partText
@@ -808,9 +815,16 @@ class GeminiAPIClient {
         text += "\n\n**Code output:**\n\(output)"
         hadCodeParts = true
       }
+      if let inline = part.inlineData, inline.mimeType.hasPrefix("image/") {
+        text += "\n\n\(Self.imageMarkerPrefix)\(inline.data):\(inline.mimeType)\(Self.imageMarkerSuffix)\n\n"
+        imageCount += 1
+      }
     }
     if hadCodeParts {
       DebugLogger.logNetwork("GEMINI-CHAT: Response contained code execution (code/result parts included in reply)")
+    }
+    if imageCount > 0 {
+      DebugLogger.logNetwork("GEMINI-CHAT: Response contained \(imageCount) inline image(s)")
     }
     return text
   }

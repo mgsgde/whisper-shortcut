@@ -878,7 +878,7 @@ struct GeminiChatView: View {
   private func sessionTab(session: ChatSession, width: CGFloat) -> some View {
     let isActive = session.id == viewModel.currentSessionId
     let isProcessing = viewModel.isSendingSession(session.id)
-    let title = (session.title?.isEmpty == false ? session.title! : "New chat")
+    let title = session.title.flatMap { $0.isEmpty ? nil : $0 } ?? "New chat"
 
     return Button(action: { viewModel.switchToSession(id: session.id) }) {
       HStack(spacing: 5) {
@@ -1749,6 +1749,7 @@ private enum ReplyContentBlock {
   case table(ParsedTable)
   case separator
   case codeBlock(String, String?) // code content, optional language
+  case image(Data) // inline image data (e.g. from Gemini image generation)
 }
 
 // MARK: - Code Block Extraction
@@ -1825,6 +1826,14 @@ private struct ModelReplyView: View {
             .frame(maxWidth: .infinity)
         case .codeBlock(let code, let language):
           CodeBlockView(code: code, language: language)
+        case .image(let imageData):
+          if let nsImage = NSImage(data: imageData) {
+            Image(nsImage: nsImage)
+              .resizable()
+              .scaledToFit()
+              .frame(maxWidth: .infinity)
+              .clipShape(RoundedRectangle(cornerRadius: 8))
+          }
         }
       }
     }
@@ -1892,6 +1901,8 @@ private struct ModelReplyView: View {
       if let idx = CodeBlockExtractor.placeholderIndex(trimmed), idx < codeBlocks.count {
         let cb = codeBlocks[idx]
         blocks.append(.codeBlock(cb.code, cb.language))
+      } else if let imageData = Self.extractInlineImageData(trimmed) {
+        blocks.append(.image(imageData))
       } else if MarkdownParsing.isSeparatorParagraph(trimmed) {
         blocks.append(.separator)
       } else if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
@@ -1901,6 +1912,20 @@ private struct ModelReplyView: View {
       }
     }
     return blocks.isEmpty ? [.text(AttributedString(content))] : blocks
+  }
+
+  /// Checks if a paragraph is a Gemini inline image marker and returns the decoded image data.
+  private static func extractInlineImageData(_ trimmed: String) -> Data? {
+    let prefix = GeminiAPIClient.imageMarkerPrefix
+    let suffix = GeminiAPIClient.imageMarkerSuffix
+    guard trimmed.hasPrefix(prefix), trimmed.hasSuffix(suffix) else { return nil }
+    // Format: ⟦GEMINI_IMG:base64data:mimetype⟧
+    let inner = String(trimmed.dropFirst(prefix.count).dropLast(suffix.count))
+    // Split on last ":" to separate base64 from mimetype (base64 may contain "+" but not ":")
+    guard let lastColon = inner.lastIndex(of: ":") else { return nil }
+    let base64 = String(inner[inner.startIndex..<lastColon])
+    guard !base64.isEmpty else { return nil }
+    return Data(base64Encoded: base64)
   }
 
   /// Renders a paragraph block that consists entirely of bullet/numbered-list lines.
@@ -2012,6 +2037,12 @@ private struct ModelReplyView: View {
         let label = cb.language.map { "[\($0)] " } ?? ""
         var attr = AttributedString("\(label)\(cb.code)")
         attr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
+        result.append(attr)
+      } else if trimmed.hasPrefix(GeminiAPIClient.imageMarkerPrefix) && trimmed.hasSuffix(GeminiAPIClient.imageMarkerSuffix) {
+        // Inline image marker — skip in AttributedString fallback path (rendered in SwiftUI path)
+        var attr = AttributedString("[Image]")
+        attr.font = .system(size: 14, weight: .medium)
+        attr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.5)
         result.append(attr)
       } else if MarkdownParsing.isSeparatorParagraph(trimmed) {
         var lineAttr = AttributedString(MarkdownParsing.separatorLineContent)

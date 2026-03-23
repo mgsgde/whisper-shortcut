@@ -517,7 +517,7 @@ class SpeechService {
       throw TranscriptionError.noGoogleAPIKey
     }
 
-    let hasSelectedText = selectedText != nil && !selectedText!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    let hasSelectedText = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt Read Mode"), hasSelectedText: \(hasSelectedText))")
 
     // Get selected model from settings based on mode

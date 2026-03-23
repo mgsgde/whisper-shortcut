@@ -281,25 +281,27 @@ class ContextLogger {
 
   // MARK: - File Listing (for derivation)
 
+  private static let interactionLogDateFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.dateFormat = "yyyy-MM-dd"
+    return f
+  }()
+
+  private func interactionLogDate(for url: URL) -> Date? {
+    let filename = url.lastPathComponent
+    guard filename.hasPrefix("interactions-"), filename.hasSuffix(".jsonl") else { return nil }
+    let dateString = filename
+      .replacingOccurrences(of: "interactions-", with: "")
+      .replacingOccurrences(of: ".jsonl", with: "")
+    return Self.interactionLogDateFormatter.date(from: dateString)
+  }
+
   /// Returns true if there is interaction data at least `daysOld` days in the past (oldest log file is that old).
   /// Used to avoid showing auto-improvement suggestions before the user has enough usage history (e.g. 7 days).
   func hasInteractionDataAtLeast(daysOld: Int) -> Bool {
-    let logFiles = interactionLogFiles(lastDays: 90)
-    let dateFormatter = DateFormatter()
-    dateFormatter.dateFormat = "yyyy-MM-dd"
-    var oldestDate: Date?
-    for url in logFiles {
-      let filename = url.lastPathComponent
-      guard filename.hasPrefix("interactions-"), filename.hasSuffix(".jsonl") else { continue }
-      let dateString = filename
-        .replacingOccurrences(of: "interactions-", with: "")
-        .replacingOccurrences(of: ".jsonl", with: "")
-      if let fileDate = dateFormatter.date(from: dateString) {
-        if oldestDate == nil || fileDate < oldestDate! {
-          oldestDate = fileDate
-        }
-      }
-    }
+    let oldestDate = interactionLogFiles(lastDays: 90)
+      .compactMap { interactionLogDate(for: $0) }
+      .min()
     guard let oldest = oldestDate else { return false }
     let daysSinceOldest = Calendar.current.dateComponents([.day], from: oldest, to: Date()).day ?? 0
     return daysSinceOldest >= daysOld
@@ -309,22 +311,13 @@ class ContextLogger {
   func interactionLogFiles(lastDays: Int = 30) -> [URL] {
     let fm = FileManager.default
     let cutoffDate = Calendar.current.date(byAdding: .day, value: -lastDays, to: Date()) ?? Date()
-    let dateFormatter = DateFormatter()
-    dateFormatter.dateFormat = "yyyy-MM-dd"
 
     do {
       let contents = try fm.contentsOfDirectory(at: contextDirectoryURL, includingPropertiesForKeys: nil)
       return contents
         .filter { url in
-          let filename = url.lastPathComponent
-          guard filename.hasPrefix("interactions-"), filename.hasSuffix(".jsonl") else { return false }
-          let dateString = filename
-            .replacingOccurrences(of: "interactions-", with: "")
-            .replacingOccurrences(of: ".jsonl", with: "")
-          if let fileDate = dateFormatter.date(from: dateString) {
-            return fileDate >= cutoffDate
-          }
-          return false
+          guard let fileDate = interactionLogDate(for: url) else { return false }
+          return fileDate >= cutoffDate
         }
         .sorted { $0.lastPathComponent < $1.lastPathComponent }
     } catch {
