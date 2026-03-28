@@ -19,6 +19,10 @@ struct OpenGeminiSettingsTab: View {
 
       SpacedSectionDivider()
 
+      readAloudSection
+
+      SpacedSectionDivider()
+
       usageSection
     }
   }
@@ -107,6 +111,71 @@ struct OpenGeminiSettingsTab: View {
       .toggleStyle(.switch)
       .onChange(of: viewModel.data.geminiCloseOnFocusLoss) { _ in
         Task { await viewModel.saveSettings() }
+      }
+    }
+  }
+
+  // MARK: - Read Aloud Section
+  @ViewBuilder
+  private var readAloudSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Read Aloud",
+        subtitle: "Voice and model for the Read Aloud button in the Gemini chat window"
+      )
+
+      TTSModelSelectionView(
+        selectedTTSModel: Binding(
+          get: { viewModel.data.selectedTTSModel },
+          set: { newValue in
+            var d = viewModel.data
+            d.selectedTTSModel = newValue
+            viewModel.data = d
+          }
+        ),
+        onModelChanged: {
+          Task { await viewModel.saveSettings() }
+        }
+      )
+
+      ReadAloudVoiceSelectionView(
+        selectedVoice: Binding(
+          get: { viewModel.data.selectedReadAloudVoice },
+          set: { newValue in
+            var d = viewModel.data
+            d.selectedReadAloudVoice = newValue
+            viewModel.data = d
+          }
+        ),
+        onVoiceChanged: {
+          Task { await viewModel.saveSettings() }
+        }
+      )
+
+      VStack(alignment: .leading, spacing: 8) {
+        HStack {
+          Text("Playback speed: \(String(format: "%.1f", viewModel.data.readAloudPlaybackRate))x")
+            .font(.callout)
+          Spacer()
+        }
+        Slider(
+          value: Binding(
+            get: { viewModel.data.readAloudPlaybackRate },
+            set: { newValue in
+              var d = viewModel.data
+              d.readAloudPlaybackRate = newValue
+              viewModel.data = d
+            }
+          ),
+          in: SettingsDefaults.readAloudPlaybackRateMin...SettingsDefaults.readAloudPlaybackRateMax,
+          step: 0.1
+        )
+        .onChange(of: viewModel.data.readAloudPlaybackRate) { _, _ in
+          Task { await viewModel.saveSettings() }
+        }
+        Text("1.0x is normal speed. 1.5x–2.0x speeds up playback.")
+          .font(.caption)
+          .foregroundColor(.secondary)
       }
     }
   }

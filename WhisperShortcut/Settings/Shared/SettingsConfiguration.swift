@@ -313,33 +313,6 @@ enum MeetingSafeguardDuration: Double, CaseIterable {
   }
 }
 
-// MARK: - Improve from Usage auto-run interval
-enum ImproveFromUsageAutoRunInterval: Int, CaseIterable {
-  case off = 0
-  case every3Days = 3
-  case every7Days = 7
-  case every30Days = 30
-
-  /// Number of days between runs; nil when off.
-  var dayCount: Int? {
-    switch self {
-    case .off: return nil
-    case .every3Days: return 3
-    case .every7Days: return 7
-    case .every30Days: return 30
-    }
-  }
-
-  var displayName: String {
-    switch self {
-    case .off: return "Off"
-    case .every3Days: return "Every 3 days"
-    case .every7Days: return "Every 7 days"
-    case .every30Days: return "Every 30 days"
-    }
-  }
-}
-
 // MARK: - Whisper Language Enum
 enum WhisperLanguage: String, CaseIterable {
   case auto = "auto"
@@ -435,8 +408,6 @@ enum SettingsTab: String, CaseIterable {
   case general = "General"
   case speechToText = "Dictate"
   case speechToPrompt = "Prompt Mode"
-  case promptAndRead = "Prompt Read Mode"
-  case readAloud = "Read Aloud"
   case openMeeting = "Open Meeting"
   case openGemini = "Open Gemini"
   case context = "Context"
@@ -468,8 +439,6 @@ struct SettingsDefaults {
   // MARK: - Toggle Shortcut Settings
   static let toggleDictation = ""
   static let togglePrompting = ""
-  static let readSelectedText = ""
-  static let readAloud = ""
   static let toggleMeeting = ""
   static let openSettings = ""
   static let openGemini = ""
@@ -478,43 +447,22 @@ struct SettingsDefaults {
   // MARK: - Toggle Shortcut Enable States
   static let toggleDictationEnabled = true
   static let togglePromptingEnabled = true
-  static let readSelectedTextEnabled = true
-  static let readAloudEnabled = true
   static let toggleMeetingEnabled = true
   static let openSettingsEnabled = true
   static let openGeminiEnabled = true
   static let openMeetingEnabled = true
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
-  static let selectedPromptModel = PromptModel.gemini3Flash
-  static let selectedPromptAndReadModel = PromptModel.gemini3Flash
-  #if SUBSCRIPTION_ENABLED
-  // MARK: - Subscription fixed models (proxy)
-  // When the user is on subscription (no API key, signed in with Google), the backend forces these models per request_type.
-  // These constants MUST match apps/api/src/server.ts SUBSCRIPTION_MODEL_BY_REQUEST_TYPE. Use them for API requests and for
-  // Settings UI (effective model display) so the user always sees what is actually used.
-  /// prompt_mode, prompt_and_read; backend: prompt_mode → gemini-3-flash-preview.
-  static let subscriptionPromptModel = PromptModel.gemini3Flash
-  /// Transcription (Dictate); backend: transcription → gemini-3.1-flash-lite-preview.
-  static let subscriptionTranscriptionModel = TranscriptionModel.gemini31FlashLite
-  /// Open Gemini chat window; backend: gemini_chat → gemini-3.1-flash-lite-preview.
-  static let subscriptionOpenGeminiModel = PromptModel.gemini3Flash
-  /// Smart Improvement (Improve from usage / from voice); backend: smart_improvement → gemini-3-flash-preview.
-  static let subscriptionImprovementModel = PromptModel.gemini3Flash
-  /// TTS when on subscription; backend uses fixed model. Must match server.ts for display.
-  static let subscriptionTTSModel = TTSModel.gemini25FlashTTS
-  #endif
-  static let selectedImprovementModel = PromptModel.gemini3Flash
+  static let selectedPromptModel = PromptModel.gemini31FlashLite
   static let selectedOpenGeminiModel = PromptModel.gemini3Flash
   static let geminiCloseOnFocusLoss = true
   static let settingsCloseOnFocusLoss = true
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
   static let promptAndReadSystemPrompt = ""
-
-  // MARK: - Read Aloud Settings
+  
+  // MARK: - Read Aloud Settings (for Gemini Chat TTS)
   static let selectedReadAloudVoice = "Charon"
-  static let selectedPromptAndReadVoice = "Charon"
   static let selectedTTSModel = TTSModel.gemini25FlashTTS
   static let readAloudPlaybackRateMin: Float = 0.5
   static let readAloudPlaybackRateMax: Float = 2.0
@@ -577,8 +525,6 @@ struct SettingsData {
   // MARK: - Toggle Shortcut Settings
   var toggleDictation: String = SettingsDefaults.toggleDictation
   var togglePrompting: String = SettingsDefaults.togglePrompting
-  var readSelectedText: String = SettingsDefaults.readSelectedText
-  var readAloud: String = SettingsDefaults.readAloud
   var toggleMeeting: String = SettingsDefaults.toggleMeeting
   var openSettings: String = SettingsDefaults.openSettings
   var openGemini: String = SettingsDefaults.openGemini
@@ -587,8 +533,6 @@ struct SettingsData {
   // MARK: - Toggle Shortcut Enable States
   var toggleDictationEnabled: Bool = SettingsDefaults.toggleDictationEnabled
   var togglePromptingEnabled: Bool = SettingsDefaults.togglePromptingEnabled
-  var readSelectedTextEnabled: Bool = SettingsDefaults.readSelectedTextEnabled
-  var readAloudEnabled: Bool = SettingsDefaults.readAloudEnabled
   var toggleMeetingEnabled: Bool = SettingsDefaults.toggleMeetingEnabled
   var openSettingsEnabled: Bool = SettingsDefaults.openSettingsEnabled
   var openGeminiEnabled: Bool = SettingsDefaults.openGeminiEnabled
@@ -596,18 +540,14 @@ struct SettingsData {
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
   var selectedPromptModel: PromptModel = SettingsDefaults.selectedPromptModel
-  var selectedPromptAndReadModel: PromptModel = SettingsDefaults.selectedPromptAndReadModel
-  var selectedImprovementModel: PromptModel = SettingsDefaults.selectedImprovementModel
   var selectedOpenGeminiModel: PromptModel = SettingsDefaults.selectedOpenGeminiModel
   var geminiCloseOnFocusLoss: Bool = SettingsDefaults.geminiCloseOnFocusLoss
   var settingsCloseOnFocusLoss: Bool = SettingsDefaults.settingsCloseOnFocusLoss
   var customPromptText: String = SettingsDefaults.customPromptText
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
-  var promptAndReadSystemPrompt: String = SettingsDefaults.promptAndReadSystemPrompt
-  
-  // MARK: - Read Aloud Settings
+
+  // MARK: - Read Aloud Settings (for Gemini Chat TTS)
   var selectedReadAloudVoice: String = SettingsDefaults.selectedReadAloudVoice
-  var selectedPromptAndReadVoice: String = SettingsDefaults.selectedPromptAndReadVoice
   var selectedTTSModel: TTSModel = SettingsDefaults.selectedTTSModel
   var readAloudPlaybackRate: Float = SettingsDefaults.readAloudPlaybackRate
 
@@ -644,13 +584,9 @@ enum SettingsFocusField: Hashable {
   case googleAPIKey
   case toggleDictation
   case togglePrompting
-  case toggleReadSelectedText
-  case toggleReadAloud
   case toggleSettings
   case toggleGemini
   case openMeeting
   case customPrompt
   case promptModeSystemPrompt
-  case promptAndReadSystemPrompt
-  case readAloudVoice
 }

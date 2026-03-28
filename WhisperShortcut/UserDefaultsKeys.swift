@@ -20,11 +20,10 @@ enum UserDefaultsKeys {
   static let promptModeSystemPrompt = "promptModeSystemPrompt"
   static let promptAndReadSystemPrompt = "promptAndReadSystemPrompt"
   
-  // MARK: - Read Aloud Settings
+  // MARK: - Read Aloud Settings (for Gemini Chat TTS)
   static let selectedReadAloudVoice = "selectedReadAloudVoice"
-  static let selectedPromptAndReadVoice = "selectedPromptAndReadVoice"
   static let readAloudPlaybackRate = "readAloudPlaybackRate"
-  
+
   // MARK: - Legacy Keys (for migration)
   static let selectedReadAloudVoiceLegacy = "selected_read_aloud_voice"
   static let selectedTTSModel = "selectedTTSModel"
@@ -67,14 +66,6 @@ enum UserDefaultsKeys {
   static let contextInPromptEnabled = "userContextInPromptEnabled"
   static let contextMaxEntriesPerMode = "userContextMaxEntriesPerMode"
   static let contextMaxTotalChars = "userContextMaxTotalChars"
-
-  // MARK: - Auto-Improvement Settings
-  static let selectedImprovementModel = "selectedImprovementModel"
-  static let autoApplyImprovements = "autoApplyImprovements"
-  static let lastAutoImprovementRunDate = "lastAutoImprovementRunDate"
-  static let improveFromUsageAutoRunInterval = "improveFromUsageAutoRunInterval"
-  static let promptImprovementDictationCount = "promptImprovementDictationCount"
-  static let promptImprovementDictationThreshold = "promptImprovementDictationThreshold"
 
 }
 

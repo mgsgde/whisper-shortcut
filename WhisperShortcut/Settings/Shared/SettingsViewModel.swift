@@ -3,26 +3,6 @@ import Foundation
 import SwiftUI
 import ServiceManagement
 
-/// Suggestion focus for Smart Improvement (used by scheduler and ContextDerivation).
-enum GenerationKind: Equatable, Codable {
-  case dictation
-  case whisperGlossary
-  case promptMode
-  case promptAndRead
-  case geminiChat
-
-  /// Display name for the review window title and summary messages.
-  var improvementDisplayName: String {
-    switch self {
-    case .dictation: return "Dictation Prompt"
-    case .whisperGlossary: return "Whisper Glossary"
-    case .promptMode: return "Prompt Mode System Prompt"
-    case .promptAndRead: return "Prompt Read Mode System Prompt"
-    case .geminiChat: return "Gemini Chat System Prompt"
-    }
-  }
-}
-
 /// ViewModel for centralized Settings state management.
 @MainActor
 class SettingsViewModel: ObservableObject {
@@ -47,8 +27,6 @@ class SettingsViewModel: ObservableObject {
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     data.toggleDictation = currentConfig.startRecording.isEnabled ? currentConfig.startRecording.textDisplayString : ""
     data.togglePrompting = currentConfig.startPrompting.isEnabled ? currentConfig.startPrompting.textDisplayString : ""
-    data.readSelectedText = currentConfig.readSelectedText.isEnabled ? currentConfig.readSelectedText.textDisplayString : ""
-    data.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud.textDisplayString : ""
     data.toggleMeeting = currentConfig.toggleMeeting.isEnabled ? currentConfig.toggleMeeting.textDisplayString : ""
     data.openSettings = currentConfig.openSettings.isEnabled ? currentConfig.openSettings.textDisplayString : ""
     data.openGemini = currentConfig.openGemini.isEnabled ? currentConfig.openGemini.textDisplayString : ""
@@ -56,8 +34,6 @@ class SettingsViewModel: ObservableObject {
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
-    data.readSelectedTextEnabled = currentConfig.readSelectedText.isEnabled
-    data.readAloudEnabled = currentConfig.readAloud.isEnabled
     data.toggleMeetingEnabled = currentConfig.toggleMeeting.isEnabled
     data.openSettingsEnabled = currentConfig.openSettings.isEnabled
     data.openGeminiEnabled = currentConfig.openGemini.isEnabled
@@ -109,7 +85,6 @@ class SettingsViewModel: ObservableObject {
       // Migration: Copy from legacy key to new key
       data.selectedReadAloudVoice = legacyVoice
       UserDefaults.standard.set(legacyVoice, forKey: UserDefaultsKeys.selectedReadAloudVoice)
-      // Optionally remove legacy key (but keep it for now in case of rollback)
     } else {
       data.selectedReadAloudVoice = SettingsDefaults.selectedReadAloudVoice
     }
@@ -128,34 +103,6 @@ class SettingsViewModel: ObservableObject {
     // Load read aloud playback rate (clamp to valid range)
     data.readAloudPlaybackRate = SettingsDefaults.clampedReadAloudPlaybackRate()
 
-    // Load Prompt Read Mode specific settings (with migration from deprecated 2.0 and from Toggle Prompting if not set)
-    let promptAndReadDefault = subscriptionMode ? SubscriptionModelsConfigService.effectivePromptModel() : SettingsDefaults.selectedPromptAndReadModel
-    if let savedPromptAndReadModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadModel),
-      let savedPromptAndReadModel = PromptModel(rawValue: savedPromptAndReadModelString)
-    {
-      let migrated = PromptModel.migrateIfDeprecated(savedPromptAndReadModel)
-      data.selectedPromptAndReadModel = migrated
-      if migrated != savedPromptAndReadModel {
-        UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedPromptAndReadModel)
-      }
-    } else {
-      // Migration: Use Toggle Prompting model if Prompt Read Mode model not set; subscription uses stable default
-      data.selectedPromptAndReadModel = subscriptionMode ? promptAndReadDefault : data.selectedPromptModel
-    }
-
-    let improvementModelDefault = subscriptionMode ? SubscriptionModelsConfigService.effectiveImprovementModel() : SettingsDefaults.selectedImprovementModel
-    if let savedImprovementModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel),
-      let savedImprovementModel = PromptModel(rawValue: savedImprovementModelString)
-    {
-      let migrated = PromptModel.migrateIfDeprecated(savedImprovementModel)
-      data.selectedImprovementModel = migrated
-      if migrated != savedImprovementModel {
-        UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
-      }
-    } else {
-      data.selectedImprovementModel = improvementModelDefault
-    }
-
     // Load Open Gemini window model
     if let savedOpenGeminiModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel),
       let savedOpenGeminiModel = PromptModel(rawValue: savedOpenGeminiModelString)
@@ -167,16 +114,6 @@ class SettingsViewModel: ObservableObject {
       }
     } else {
       data.selectedOpenGeminiModel = SettingsDefaults.selectedOpenGeminiModel
-    }
-
-    // Load Prompt Read Mode voice (with migration from Read Aloud voice if not set)
-    if let savedPromptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice),
-      !savedPromptAndReadVoice.isEmpty
-    {
-      data.selectedPromptAndReadVoice = savedPromptAndReadVoice
-    } else {
-      // Migration: Use Read Aloud voice if Prompt Read Mode voice not set
-      data.selectedPromptAndReadVoice = data.selectedReadAloudVoice
     }
 
     // Load popup notifications setting
@@ -293,14 +230,6 @@ class SettingsViewModel: ObservableObject {
        ShortcutConfigManager.parseShortcut(from: data.togglePrompting) == nil {
       return "Invalid toggle prompting shortcut format"
     }
-    if !data.readSelectedText.trimmingCharacters(in: trim).isEmpty,
-       ShortcutConfigManager.parseShortcut(from: data.readSelectedText) == nil {
-      return "Invalid prompt & read shortcut format"
-    }
-    if !data.readAloud.trimmingCharacters(in: trim).isEmpty,
-       ShortcutConfigManager.parseShortcut(from: data.readAloud) == nil {
-      return "Invalid read aloud shortcut format"
-    }
     if !data.openSettings.trimmingCharacters(in: trim).isEmpty,
        ShortcutConfigManager.parseShortcut(from: data.openSettings) == nil {
       return "Invalid open settings shortcut format"
@@ -372,10 +301,6 @@ class SettingsViewModel: ObservableObject {
       return name == "toggle dictation"
     case .togglePrompting:
       return name == "toggle prompting"
-    case .toggleReadSelectedText:
-      return name == "read selected text"
-    case .toggleReadAloud:
-      return name == "read aloud"
     case .toggleSettings:
       return name == "open settings"
     case .toggleGemini:
@@ -398,8 +323,6 @@ class SettingsViewModel: ObservableObject {
     return [
       "toggle dictation": parsed(data.toggleDictation),
       "toggle prompting": parsed(data.togglePrompting),
-      "read selected text": parsed(data.readSelectedText),
-      "read aloud": parsed(data.readAloud),
       "open settings": parsed(data.openSettings),
       "open gemini": parsed(data.openGemini),
       "open meeting": parsed(data.openMeeting),
@@ -425,15 +348,12 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(
       data.selectedTranscriptionModel.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
     UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
-    UserDefaults.standard.set(data.selectedPromptAndReadModel.rawValue, forKey: UserDefaultsKeys.selectedPromptAndReadModel)
-    UserDefaults.standard.set(data.selectedImprovementModel.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
     UserDefaults.standard.set(data.selectedOpenGeminiModel.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
 
     // System prompts are stored in UserContext/system-prompts.md (see SystemPromptsStore); not saved to UserDefaults.
 
-    // Save read aloud voice settings
+    // Save read aloud voice settings (used by Gemini Chat TTS)
     UserDefaults.standard.set(data.selectedReadAloudVoice, forKey: UserDefaultsKeys.selectedReadAloudVoice)
-    UserDefaults.standard.set(data.selectedPromptAndReadVoice, forKey: UserDefaultsKeys.selectedPromptAndReadVoice)
     UserDefaults.standard.set(data.selectedTTSModel.rawValue, forKey: UserDefaultsKeys.selectedTTSModel)
     UserDefaults.standard.set(data.readAloudPlaybackRate, forKey: UserDefaultsKeys.readAloudPlaybackRate)
     
@@ -480,10 +400,6 @@ class SettingsViewModel: ObservableObject {
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
       stopPrompting: shortcuts["toggle prompting"]!
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
-      readSelectedText: shortcuts["read selected text"]!
-        ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
-      readAloud: shortcuts["read aloud"]!
-        ?? ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false),
       toggleMeeting: currentConfig.toggleMeeting,
       stopMeeting: currentConfig.stopMeeting,
       openSettings: shortcuts["open settings"]!

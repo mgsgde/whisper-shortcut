@@ -81,8 +81,6 @@ class MenuBarController: NSObject {
   private enum MeetingSegment {
     case dictation
     case prompt
-    case promptRead
-    case readAloud
   }
   /// When non-nil, an action is running in parallel with the live meeting.
   private var activeMeetingSegment: MeetingSegment?
@@ -162,15 +160,6 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Prompt Mode", action: #selector(togglePrompting),
         shortcut: currentConfig.startPrompting, tag: 102))
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Prompt Read Mode", action: #selector(readSelectedText),
-        shortcut: currentConfig.readSelectedText, tag: 104))
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Read Aloud", action: #selector(readAloud),
-        shortcut: currentConfig.readAloud, tag: 105))
-
     menu.addItem(NSMenuItem.separator())
 
     // Meeting and Gemini windows
@@ -446,16 +435,7 @@ class MenuBarController: NSObject {
         || activeMeetingSegment == .prompt
     )
     
-    updateMenuItem(
-      menu, tag: 104,
-      title: (appState.recordingMode == .tts || activeMeetingSegment == .promptRead)
-        ? "Stop Prompt Read Mode" : "Prompt Read Mode",
-      enabled: (hasCredential && !appState.isBusy) || appState.recordingMode == .tts
-        || meetingAllowsActions && hasCredential
-        || activeMeetingSegment == .promptRead
-    )
-
-    updateMenuItem(menu, tag: 113, title: "Open Meeting", enabled: hasCredential)
+    updateMenuItem(menu, tag: 111, title: "Open Meeting", enabled: hasAPIKey)
 
     // Handle special case when no credential and no offline model is configured
     if !hasCredential && !hasOfflineTranscriptionModel && !hasOfflinePromptModel, let button = statusItem?.button {
@@ -715,19 +695,6 @@ class MenuBarController: NSObject {
         simulateCopyPaste()
         appState = appState.startRecording(.prompt)
         audioRecorder.startRecording()
-      } else {
-        #if SUBSCRIPTION_ENABLED
-        PopupNotificationWindow.showError(
-          "Sign in with Google or add an API key in Settings (General tab) to use prompt mode.",
-          title: "Sign In or API Key Required",
-          signInAction: { Task { try? await DefaultGoogleAuthService.shared.signIn() } }
-        )
-        #else
-        PopupNotificationWindow.showError(
-          "Add your Gemini API key in Settings (General tab) to use prompt mode.",
-          title: "API Key Required"
-        )
-        #endif
       }
     default:
       break
@@ -736,18 +703,10 @@ class MenuBarController: NSObject {
 
   @objc private func stopCurrentOperation() {
     // Active meeting segment: stop the segment first, keep meeting running
-    if let segment = activeMeetingSegment {
-      DebugLogger.log("MEETING-SEGMENT: Stopping active segment \(segment) via Stop button")
-      switch segment {
-      case .dictation, .prompt, .promptRead:
-        audioRecorder.stopRecording()
-        activeMeetingSegment = nil
-      case .readAloud:
-        if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
-          stopTTSPlayback()
-        }
-        activeMeetingSegment = nil
-      }
+    if activeMeetingSegment != nil {
+      DebugLogger.log("MEETING-SEGMENT: Stopping active segment via Stop button")
+      audioRecorder.stopRecording()
+      activeMeetingSegment = nil
       return
     }
 
@@ -1127,114 +1086,6 @@ class MenuBarController: NSObject {
     }
   }
 
-  @objc private func handleReadSelectedText() {
-    let recordingModeStr = appState.recordingMode == .tts ? "tts" : String(describing: appState.recordingMode ?? .none)
-    DebugLogger.logDebug("handleReadSelectedText called - appState: \(appState), recordingMode: \(recordingModeStr)")
-
-    // During live meeting: run prompt & read as a parallel segment
-    if isLiveMeetingActive {
-      // If segment is actively recording, stop it
-      if activeMeetingSegment == .promptRead {
-        DebugLogger.log("MEETING-SEGMENT: Stopping prompt-read segment")
-        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-          self?.audioRecorder.stopRecording()
-        }
-        return
-      }
-      // Cancel TTS playback during meeting if running
-      if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
-        stopTTSPlayback()
-        activeMeetingSegment = nil
-        return
-      }
-      if activeMeetingSegment != nil {
-        DebugLogger.logWarning("MEETING-SEGMENT: Another segment already active, ignoring prompt-read")
-        return
-      }
-      let hasCredential = GeminiCredentialProvider.shared.hasCredential()
-      if hasCredential {
-        if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return }
-        DebugLogger.log("MEETING-SEGMENT: Starting prompt-read segment during meeting")
-        simulateCopyPaste()
-        activeMeetingSegment = .promptRead
-        audioRecorder.startRecording()
-      }
-      return
-    }
-
-    // Check if currently processing TTS (any phase: ttsProcessing, splitting, chunks, merging) - if so, cancel it
-    if isTTSRunning {
-      speechService.cancelTTS()
-      stopTTSPlayback()
-      transitionToIdleAndCleanup()
-      return
-    }
-    
-    // Check if currently playing audio - if so, stop it
-    if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
-      audioPlayer?.stop()
-      audioPlayer = nil
-      audioEngine?.stop()
-      audioPlayerNode?.stop()
-      audioEngine = nil
-      audioPlayerNode = nil
-      cleanupAudioFile(at: currentTTSAudioURL)
-      currentTTSAudioURL = nil
-      appState = appState.finish()
-      return
-    }
-    
-    switch appState.recordingMode {
-    case .tts:
-      DebugLogger.logDebug("Stopping TTS recording (second press) - delay: \(Constants.audioTailCaptureDelay)")
-      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-        self?.audioRecorder.stopRecording()
-      }
-    case .none:
-      if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-        return
-      }
-
-      let hasCredential = GeminiCredentialProvider.shared.hasCredential()
-      if hasCredential {
-        simulateCopyPaste()
-        appState = appState.startRecording(.tts)
-        DebugLogger.logDebug("Starting TTS recording - hasCredential: \(hasCredential)")
-        audioRecorder.startRecording()
-      } else {
-        performDirectTTS()
-      }
-    default:
-      break
-    }
-  }
-  
-  private func performDirectTTS(duringMeeting: Bool = false) {
-    if !duringMeeting {
-      if isTTSRunning {
-        speechService.cancelTTS()
-        stopTTSPlayback()
-        transitionToIdleAndCleanup()
-        return
-      }
-      
-      if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
-        stopTTSPlayback()
-        appState = appState.finish()
-        return
-      }
-    }
-    
-    guard let selectedText = clipboardManager.getCleanedClipboardText(),
-          !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      if duringMeeting { activeMeetingSegment = nil }
-      presentError(shortTitle: "TTS Error", message: "No text selected", dismissProcessingFirst: false)
-      return
-    }
-    
-    performTTSWithText(selectedText, duringMeeting: duringMeeting)
-  }
-
   private func performTTSWithText(_ text: String, duringMeeting: Bool = false) {
     if !duringMeeting {
       if isTTSRunning {
@@ -1305,126 +1156,6 @@ class MenuBarController: NSObject {
     }
   }
 
-  private func performTTSWithCommand(audioURL: URL, duringMeeting: Bool = false) async {
-    do {
-      let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64) ?? 0
-      DebugLogger.logDebug("performTTSWithCommand started - audioURL: \(audioURL.lastPathComponent), fileSize: \(fileSize)")
-      
-      let isEmpty = speechService.isAudioLikelyEmpty(at: audioURL)
-      DebugLogger.logDebug("isAudioLikelyEmpty result - isEmpty: \(isEmpty)")
-      if isEmpty {
-        DebugLogger.log("TTS: Audio too short, skipping transcription, using direct TTS")
-        cleanupAudioFile(at: audioURL)
-        
-        guard let selectedText = clipboardManager.getCleanedClipboardText(),
-              !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-          await MainActor.run {
-            if duringMeeting { self.activeMeetingSegment = nil }
-            self.presentError(shortTitle: "TTS Error", message: "No text selected", dismissProcessingFirst: !duringMeeting)
-          }
-          return
-        }
-        
-        if !duringMeeting {
-          await MainActor.run { self.appState = .processing(.ttsProcessing) }
-        }
-        
-        let audioData = try await speechService.readTextAloud(selectedText)
-        ContextLogger.shared.logReadAloud(text: selectedText, voice: nil)
-        await MainActor.run {
-          PopupNotificationWindow.dismissProcessing()
-          self.playTTSAudio(audioData: audioData)
-          if duringMeeting { self.activeMeetingSegment = nil }
-        }
-        return
-      }
-
-      let voiceCommand = try await speechService.transcribe(audioURL: audioURL)
-      let trimmedCommand = voiceCommand.trimmingCharacters(in: .whitespacesAndNewlines)
-      cleanupAudioFile(at: audioURL)
-
-      let clipboardText = clipboardManager.getCleanedClipboardText()
-      let selectedText = clipboardText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? clipboardText : nil
-      let hasActiveHistory = PromptConversationHistory.shared.hasActiveHistory(for: .promptAndRead)
-
-      DebugLogger.logDebug("TTS: selectedText=\(selectedText != nil ? "present (\(selectedText!.count) chars)" : "nil"), hasActiveHistory=\(hasActiveHistory), command=\(trimmedCommand.isEmpty ? "empty" : "present")")
-
-      if trimmedCommand.isEmpty {
-        guard let text = selectedText else {
-          await MainActor.run {
-            if duringMeeting { self.activeMeetingSegment = nil }
-            self.presentError(shortTitle: "Read Aloud", message: "No text selected. Select text to read aloud, or speak a question for follow-up.", dismissProcessingFirst: !duringMeeting)
-          }
-          return
-        }
-
-        DebugLogger.log("TTS: No voice command detected, using direct TTS")
-        if !duringMeeting {
-          await MainActor.run { self.appState = .processing(.ttsProcessing) }
-        }
-
-        let audioData = try await speechService.readTextAloud(text)
-        ContextLogger.shared.logReadAloud(text: text, voice: nil)
-        await MainActor.run {
-          PopupNotificationWindow.dismissProcessing()
-          self.playTTSAudio(audioData: audioData)
-          if duringMeeting { self.activeMeetingSegment = nil }
-        }
-      } else {
-        if selectedText == nil && !hasActiveHistory {
-          await MainActor.run {
-            if duringMeeting { self.activeMeetingSegment = nil }
-            self.presentError(shortTitle: "Read Aloud", message: "No text selected and no conversation history. Select text first, then ask questions.", dismissProcessingFirst: !duringMeeting)
-          }
-          return
-        }
-
-        if selectedText == nil {
-          DebugLogger.log("TTS: Follow-up question (no new text, using conversation history)")
-        }
-
-        DebugLogger.log("TTS: Voice command detected: \(trimmedCommand)")
-        if !duringMeeting {
-          await MainActor.run { self.appState = .processing(.prompting) }
-        }
-
-        let promptResult = try await speechService.executePromptWithText(textCommand: trimmedCommand, selectedText: selectedText, mode: .promptAndRead)
-
-        if !duringMeeting {
-          await MainActor.run { self.appState = .processing(.ttsProcessing) }
-        }
-
-        let promptAndReadVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptAndReadVoice) ?? SettingsDefaults.selectedPromptAndReadVoice
-        let audioData = try await speechService.readTextAloud(promptResult, voiceName: promptAndReadVoice)
-        await MainActor.run {
-          PopupNotificationWindow.dismissProcessing()
-          self.playTTSAudio(audioData: audioData)
-          if duringMeeting { self.activeMeetingSegment = nil }
-        }
-      }
-    } catch is CancellationError {
-      DebugLogger.log("CANCELLATION: TTS task was cancelled")
-      await MainActor.run {
-        if duringMeeting {
-          self.activeMeetingSegment = nil
-        } else {
-          self.transitionToIdleAndCleanup(cleanupAudioURL: audioURL)
-        }
-      }
-      if duringMeeting { cleanupAudioFile(at: audioURL) }
-    } catch {
-      DebugLogger.logError("TTS-ERROR: Failed to process TTS request: \(error.localizedDescription)")
-      if let transcriptionError = error as? TranscriptionError {
-        DebugLogger.logError("TTS-ERROR: TranscriptionError type: \(transcriptionError)")
-      }
-      await MainActor.run {
-        if duringMeeting { self.activeMeetingSegment = nil }
-        self.presentError(shortTitle: SpeechErrorFormatter.shortStatusForUser(error), message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: !duringMeeting)
-      }
-      cleanupAudioFile(at: audioURL)
-    }
-  }
-  
   private func playTTSAudio(audioData: Data) {
     DebugLogger.log("TTS-PLAYBACK: Starting audio playback (data size: \(audioData.count) bytes)")
 
@@ -1625,7 +1356,6 @@ class MenuBarController: NSObject {
         switch mode {
         case .transcription: operationName = "Transcription"
         case .prompt: operationName = "Prompt"
-        case .tts: operationName = "Text-to-speech"
         case .liveMeeting: operationName = "Live meeting"
         }
         shortTitle = "\(operationName) Error"
@@ -1647,8 +1377,6 @@ class MenuBarController: NSObject {
             await self.performTranscription(audioURL: audioURL)
           case .prompt:
             await self.performPrompting(audioURL: audioURL)
-          case .tts:
-            await self.performTTSWithCommand(audioURL: audioURL)
           case .liveMeeting:
             // Live meeting chunks are handled separately, no retry needed here
             break
@@ -1940,7 +1668,7 @@ class MenuBarController: NSObject {
 extension MenuBarController: AudioRecorderDelegate {
   func audioRecorderDidFinishRecording(audioURL: URL) {
     let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64) ?? 0
-    let recordingModeStr = appState.recordingMode == .tts ? "tts" : String(describing: appState.recordingMode ?? .none)
+    let recordingModeStr = String(describing: appState.recordingMode ?? .none)
     DebugLogger.logDebug("audioRecorderDidFinishRecording called - audioURL: \(audioURL.lastPathComponent), fileSize: \(fileSize), appState: \(appState), recordingMode: \(recordingModeStr)")
 
     DispatchQueue.main.async { [weak self] in
@@ -1952,7 +1680,7 @@ extension MenuBarController: AudioRecorderDelegate {
       }
 
       // Meeting segment path: recording finished for a parallel action during live meeting
-      if let segment = self.activeMeetingSegment, segment != .readAloud {
+      if let segment = self.activeMeetingSegment {
         DebugLogger.log("MEETING-SEGMENT: Recording finished for segment \(segment), dispatching pipeline")
         self.processedAudioURLs.insert(audioURL)
         Task {
@@ -1961,10 +1689,6 @@ extension MenuBarController: AudioRecorderDelegate {
             await self.performTranscription(audioURL: audioURL, duringMeeting: true)
           case .prompt:
             await self.performPrompting(audioURL: audioURL, duringMeeting: true)
-          case .promptRead:
-            await self.performTTSWithCommand(audioURL: audioURL, duringMeeting: true)
-          case .readAloud:
-            break
           }
         }
         return
@@ -2005,8 +1729,6 @@ extension MenuBarController: AudioRecorderDelegate {
 
       if recordingMode == .transcription {
         self.currentTranscriptionAudioURL = audioURL
-      } else if recordingMode == .tts {
-        self.currentTTSAudioURL = audioURL
       }
 
       self.appState = self.appState.stopRecording()
@@ -2026,8 +1748,6 @@ extension MenuBarController: AudioRecorderDelegate {
           await self.performTranscription(audioURL: audioURL)
         case .prompt:
           await self.performPrompting(audioURL: audioURL)
-        case .tts:
-          await self.performTTSWithCommand(audioURL: audioURL)
         case .liveMeeting:
           DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")
           self.cleanupAudioFile(at: audioURL)
@@ -2052,57 +1772,6 @@ extension MenuBarController: AudioRecorderDelegate {
 extension MenuBarController: ShortcutDelegate {
   func toggleDictation() { toggleTranscription() }
   // togglePrompting is already implemented above
-  @objc func readSelectedText() { handleReadSelectedText() }
-  @objc func readAloud() {
-    // During live meeting: run read-aloud as a parallel segment (no mic needed)
-    if isLiveMeetingActive {
-      // Cancel TTS playback during meeting
-      if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
-        stopTTSPlayback()
-        activeMeetingSegment = nil
-        return
-      }
-      if activeMeetingSegment != nil {
-        DebugLogger.logWarning("MEETING-SEGMENT: Another segment already active, ignoring read-aloud")
-        return
-      }
-      if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return }
-      DebugLogger.log("MEETING-SEGMENT: Starting read-aloud segment during meeting")
-      activeMeetingSegment = .readAloud
-      DispatchQueue.main.async { [weak self] in
-        guard let self else { return }
-        self.simulateCopyPaste()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-          self?.performDirectTTS(duringMeeting: true)
-        }
-      }
-      return
-    }
-
-    // If TTS is running (synthesizing or chunked phases), cancel immediately without Cmd+C or delay
-    if isTTSRunning {
-      speechService.cancelTTS()
-      stopTTSPlayback()
-      transitionToIdleAndCleanup()
-      return
-    }
-    // If audio is playing, stop it
-    if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
-      stopTTSPlayback()
-      appState = appState.finish()
-      return
-    }
-    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-      return
-    }
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      self.simulateCopyPaste()
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-        self?.performDirectTTS()
-      }
-    }
-  }
   // openSettings is already implemented above
   func openGemini() { openGeminiWindow() }
   func openMeeting() { openMeetingWindow() }

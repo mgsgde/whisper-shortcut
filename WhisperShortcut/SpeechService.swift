@@ -99,18 +99,10 @@ class SpeechService {
   /// - Parameter mode: The prompt mode (togglePrompting or promptAndRead)
   /// - Returns: The selected PromptModel based on UserDefaults or default; subscription uses stable model only
   private func getPromptModel(for mode: PromptMode) -> PromptModel {
-    #if SUBSCRIPTION_ENABLED
-    let isSubscription = DefaultGoogleAuthService.shared.isSignedIn()
-    if isSubscription {
-      return SubscriptionModelsConfigService.effectivePromptModel()
-    }
-    #endif
-    let modelKey = mode == .togglePrompting 
-      ? UserDefaultsKeys.selectedPromptModel 
+    let modelKey = mode == .togglePrompting
+      ? UserDefaultsKeys.selectedPromptModel
       : UserDefaultsKeys.selectedPromptAndReadModel
-    let defaultModel = mode == .togglePrompting 
-      ? SettingsDefaults.selectedPromptModel 
-      : SettingsDefaults.selectedPromptAndReadModel
+    let defaultModel = SettingsDefaults.selectedPromptModel
     let modelString = UserDefaults.standard.string(forKey: modelKey) ?? defaultModel.rawValue
     return PromptModel(rawValue: modelString) ?? defaultModel
   }
