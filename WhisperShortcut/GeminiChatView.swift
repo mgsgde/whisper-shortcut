@@ -16,6 +16,7 @@ class GeminiChatViewModel: ObservableObject {
   @Published var screenshotCaptureInProgress: Bool = false
   @Published var pendingFileAttachment: PendingFile? = nil
   @Published var pastedBlocks: [PastedBlock] = []
+  @Published var messageQueue: [QueuedChatMessage] = []
 
   struct PendingFile {
     let data: Data
@@ -27,6 +28,24 @@ class GeminiChatViewModel: ObservableObject {
     let id = UUID()
     let content: String
     var lineCount: Int { content.components(separatedBy: .newlines).filter { !$0.isEmpty }.count }
+  }
+
+  struct QueuedChatMessage: Identifiable {
+    let id: UUID = UUID()
+    let content: String
+    let attachedParts: [AttachedImagePart]
+
+    /// User-visible text, strips internal XML wrapper tags used for API context.
+    var displayContent: String {
+      let typedOpen = "<typed_by_user>", typedClose = "</typed_by_user>"
+      if let r1 = content.range(of: typedOpen),
+         let r2 = content.range(of: typedClose),
+         r1.upperBound <= r2.lowerBound {
+        return String(content[r1.upperBound..<r2.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+      }
+      if content.contains("<pasted_content>") { return "[Pasted content]" }
+      return content
+    }
   }
 
   static let pasteThresholdLines = 30
@@ -236,7 +255,75 @@ class GeminiChatViewModel: ObservableObject {
     sendTasks[session.id]?.cancel()
   }
 
+  // MARK: - Send helpers & Queue
+
+  /// Core send: appends the user message, calls the API, and drains the next queued message on completion.
+  private func performSend(content: String, attachedParts: [AttachedImagePart]) {
+    let sessionId = session.id
+    let task = Task {
+      sendingSessionIds.insert(sessionId)
+      defer {
+        sendingSessionIds.remove(sessionId)
+        sendTasks.removeValue(forKey: sessionId)
+        Task { @MainActor in self.processNextQueued() }
+      }
+      guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
+        errorMessage = "Add your Google API key in Settings or sign in with Google to use Gemini Chat."
+        return
+      }
+      let userMsg = ChatMessage(role: .user, content: content, attachedImageParts: attachedParts)
+      appendMessage(userMsg, toSessionId: sessionId)
+      let contents = buildContents()
+      do {
+        let model = Self.resolveOpenGeminiModel()
+        let result = try await apiClient.sendChatMessage(
+          model: model, contents: contents, credential: credential, useGrounding: true,
+          systemInstruction: self.buildSystemInstruction())
+        let modelMsg = ChatMessage(
+          role: .model,
+          content: result.text,
+          sources: result.sources,
+          groundingSupports: result.supports)
+        appendMessage(modelMsg, toSessionId: sessionId)
+        ContextLogger.shared.logGeminiChat(userMessage: content, modelResponse: result.text, model: model)
+        if let s = store.session(by: sessionId), s.messages.count == 2 {
+          Task { await generateAITitle(sessionId: sessionId) }
+        }
+        // Auto memory update
+        if !attachedParts.isEmpty {
+          Task { await updateSessionMemory() }
+        } else {
+          let outsideWindow = session.messages.dropLast(AppConstants.geminiChatVolatileWindowSize)
+          let undistilledCount = outsideWindow.filter { !$0.includedInMemory }.count
+          if undistilledCount >= AppConstants.geminiChatMemoryUpdateInterval {
+            Task { await updateSessionMemory() }
+          }
+        }
+      } catch is CancellationError {
+        DebugLogger.log("GEMINI-CHAT: Send cancelled by user")
+      } catch {
+        if sessionId == session.id { errorMessage = friendlyError(error) }
+        DebugLogger.logError("GEMINI-CHAT: \(error.localizedDescription)")
+      }
+    }
+    sendTasks[sessionId] = task
+  }
+
+  /// Auto-processes the next queued message once the current one finishes.
+  private func processNextQueued() {
+    guard !messageQueue.isEmpty, !isSending else { return }
+    let next = messageQueue.removeFirst()
+    DebugLogger.log("GEMINI-CHAT: Processing next queued message, \(messageQueue.count) remaining")
+    performSend(content: next.content, attachedParts: next.attachedParts)
+  }
+
+  /// Removes a queued message by ID (called from the pending bubble's delete button).
+  func removeQueuedMessage(id: UUID) {
+    messageQueue.removeAll { $0.id == id }
+  }
+
   /// Sends the current message. Pass `userInput` when the view holds the text in local state to avoid re-renders on every keystroke.
+  /// If a message is already in-flight, the new message is queued and auto-sent when the current one finishes.
   func sendMessage(userInput: String? = nil) async {
     let raw = (userInput ?? inputText).trimmingCharacters(in: .whitespacesAndNewlines)
     let lower = raw.lowercased()
@@ -246,7 +333,7 @@ class GeminiChatViewModel: ObservableObject {
       return
     }
     let hasContent = !raw.isEmpty || !pendingScreenshots.isEmpty || pendingFileAttachment != nil || !pastedBlocks.isEmpty
-    guard hasContent, !isSending else { return }
+    guard hasContent else { return }
 
     // /context command (show or update system prompts)
     if lower == Self.contextCommand {
@@ -262,7 +349,7 @@ class GeminiChatViewModel: ObservableObject {
       }
     }
 
-    // Slash commands: do not send to API
+    // Slash commands: always immediate, never queued
     if lower == Self.newChatCommand || lower == Self.backChatCommand || lower == Self.nextChatCommand
         || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
         || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
@@ -283,14 +370,7 @@ class GeminiChatViewModel: ObservableObject {
       return
     }
 
-    guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
-      errorMessage = "Add your Google API key in Settings or sign in with Google to use Gemini Chat."
-      return
-    }
-
-    let sessionId = session.id
-    inputText = ""
-    errorMessage = nil
+    // Build attachment parts before clearing input (needed for queue snapshot)
     let attachedParts: [AttachedImagePart]
     if let file = pendingFileAttachment {
       attachedParts = [AttachedImagePart(data: file.data, mimeType: file.mimeType, filename: file.filename)]
@@ -314,54 +394,22 @@ class GeminiChatViewModel: ObservableObject {
     }
     let finalContent = parts.joined(separator: "\n\n")
     DebugLogger.log("GEMINI-CHAT: finalContent (first 300 chars): \(String(finalContent.prefix(300)))")
+
+    // Clear input and attachments immediately for responsive UX
+    inputText = ""
+    errorMessage = nil
     pastedBlocks = []
-    let userMsg = ChatMessage(role: .user, content: finalContent, attachedImageParts: attachedParts)
-    appendMessage(userMsg, toSessionId: sessionId)
-    let contents = buildContents()
     pendingScreenshots = []
     pendingFileAttachment = nil
 
-    let task = Task {
-      sendingSessionIds.insert(sessionId)
-      defer {
-        sendingSessionIds.remove(sessionId)
-        sendTasks.removeValue(forKey: sessionId)
-      }
-      do {
-        let model = Self.resolveOpenGeminiModel()
-        let result = try await apiClient.sendChatMessage(
-          model: model, contents: contents, credential: credential, useGrounding: true,
-          systemInstruction: buildSystemInstruction())
-        let modelMsg = ChatMessage(
-          role: .model,
-          content: result.text,
-          sources: result.sources,
-          groundingSupports: result.supports)
-        appendMessage(modelMsg, toSessionId: sessionId)
-        ContextLogger.shared.logGeminiChat(userMessage: raw, modelResponse: result.text, model: model)
-        // Trigger AI title generation after the first full exchange.
-        if let s = store.session(by: sessionId), s.messages.count == 2 {
-          Task { await generateAITitle(sessionId: sessionId) }
-        }
-        // Screenshot trigger: fire immediately when the user message had attachments.
-        if !attachedParts.isEmpty {
-          Task { await updateSessionMemory() }
-        } else {
-          // Auto trigger: fire when >= geminiChatMemoryUpdateInterval undistilled messages sit outside the volatile window.
-          let outsideWindow = session.messages.dropLast(AppConstants.geminiChatVolatileWindowSize)
-          let undistilledCount = outsideWindow.filter { !$0.includedInMemory }.count
-          if undistilledCount >= AppConstants.geminiChatMemoryUpdateInterval {
-            Task { await updateSessionMemory() }
-          }
-        }
-      } catch is CancellationError {
-        DebugLogger.log("GEMINI-CHAT: Send cancelled by user")
-      } catch {
-        if sessionId == session.id { errorMessage = friendlyError(error) }
-        DebugLogger.logError("GEMINI-CHAT: \(error.localizedDescription)")
-      }
+    if isSending {
+      // Queue for sequential processing while current message is in-flight
+      messageQueue.append(QueuedChatMessage(content: finalContent, attachedParts: attachedParts))
+      DebugLogger.log("GEMINI-CHAT: Queued message, queue size: \(messageQueue.count)")
+      return
     }
-    sendTasks[sessionId] = task
+
+    performSend(content: finalContent, attachedParts: attachedParts)
   }
 
   func clearMessages() {
@@ -942,6 +990,30 @@ struct GeminiChatView: View {
             MessageBubbleView(message: message, onTapAttachedImage: { previewImageData = $0 })
               .id(message.id)
           }
+          ForEach(viewModel.messageQueue) { queued in
+            HStack(alignment: .top, spacing: 6) {
+              Spacer()
+              VStack(alignment: .trailing, spacing: 4) {
+                Button(action: { viewModel.removeQueuedMessage(id: queued.id) }) {
+                  Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(GeminiChatTheme.secondaryText)
+                }
+                .buttonStyle(.plain)
+                .help("Remove from queue")
+                Text(queued.displayContent)
+                  .font(.system(size: 14))
+                  .foregroundColor(GeminiChatTheme.secondaryText)
+                  .padding(.horizontal, 12)
+                  .padding(.vertical, 8)
+                  .background(GeminiChatTheme.controlBackground)
+                  .clipShape(RoundedRectangle(cornerRadius: 12))
+                  .lineLimit(4)
+                  .truncationMode(.tail)
+                  .frame(maxWidth: 320, alignment: .trailing)
+              }
+            }
+          }
           if viewModel.isSending {
             TypingIndicatorView()
               .id("typing")
@@ -1392,6 +1464,13 @@ struct GeminiInputAreaView: View {
           .menuStyle(.borderlessButton)
           .fixedSize()
           .help("Select model")
+        }
+
+        // Queue count indicator
+        if viewModel.isSending && !viewModel.messageQueue.isEmpty {
+          Text("\(viewModel.messageQueue.count) queued")
+            .font(.caption2)
+            .foregroundColor(GeminiChatTheme.secondaryText)
         }
 
         // Send / Stop button
