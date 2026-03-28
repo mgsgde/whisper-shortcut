@@ -497,6 +497,15 @@ struct SettingsDefaults {
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
   static let selectedMeetingSummaryModel = PromptModel.gemini3Flash
 
+  // MARK: - Subscription Fallback Models (used when remote config fetch fails)
+  #if SUBSCRIPTION_ENABLED
+  static let subscriptionPromptModel = PromptModel.gemini3Flash
+  static let subscriptionTranscriptionModel = TranscriptionModel.gemini31FlashLite
+  static let subscriptionOpenGeminiModel = PromptModel.gemini3Flash
+  static let subscriptionImprovementModel = PromptModel.gemini3Flash
+  static let subscriptionTTSModel = TTSModel.gemini25FlashTTS
+  #endif
+
   // MARK: - Backend API (when signed in, Gemini + usage use this)
   /// Debug: local API (npm run dev) unless WSUseProductionAPI UserDefaults is set. Release: production.
   static var proxyAPIBaseURL: String {

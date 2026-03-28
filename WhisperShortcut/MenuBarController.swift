@@ -435,7 +435,7 @@ class MenuBarController: NSObject {
         || activeMeetingSegment == .prompt
     )
     
-    updateMenuItem(menu, tag: 111, title: "Open Meeting", enabled: hasAPIKey)
+    updateMenuItem(menu, tag: 111, title: "Open Meeting", enabled: hasCredential)
 
     // Handle special case when no credential and no offline model is configured
     if !hasCredential && !hasOfflineTranscriptionModel && !hasOfflinePromptModel, let button = statusItem?.button {
