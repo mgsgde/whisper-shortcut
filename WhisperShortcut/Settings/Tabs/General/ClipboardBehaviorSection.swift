@@ -23,7 +23,10 @@ struct ClipboardBehaviorSection: View {
 
         Toggle("", isOn: $viewModel.data.autoPasteAfterDictation)
           .toggleStyle(SwitchToggleStyle())
-          .onChange(of: viewModel.data.autoPasteAfterDictation) { _, _ in
+          .onChange(of: viewModel.data.autoPasteAfterDictation) { _, newValue in
+            if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {
+              AccessibilityPermissionManager.showAccessibilityPermissionDialog()
+            }
             Task {
               await viewModel.saveSettings()
             }
@@ -32,7 +35,7 @@ struct ClipboardBehaviorSection: View {
         Spacer()
       }
 
-      Text("When enabled, transcriptions and AI responses are automatically pasted at the cursor position (simulates ⌘V). Works for Dictate, Prompt Mode, and Prompt Read Mode.")
+      Text("When enabled, transcriptions and AI responses are automatically pasted at the cursor position (simulates ⌘V). Works for Dictate and Prompt Mode. Requires Accessibility permission.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)

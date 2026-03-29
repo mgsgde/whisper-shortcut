@@ -1642,8 +1642,7 @@ class MenuBarController: NSObject {
       : SettingsDefaults.autoPasteAfterDictation
     if autoPasteEnabled {
       guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
-        AccessibilityPermissionManager.showAccessibilityPermissionDialog()
-        DebugLogger.logWarning("AUTO-PASTE: Accessibility permission not granted, showing permission dialog")
+        DebugLogger.logWarning("AUTO-PASTE: Skipped — accessibility permission not granted")
         return
       }
       // Small delay to ensure clipboard is ready
