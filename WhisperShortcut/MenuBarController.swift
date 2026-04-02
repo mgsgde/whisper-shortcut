@@ -768,25 +768,48 @@ class MenuBarController: NSObject {
   /// Opens the Gemini window from the global shortcut: copy selection from the frontmost app when possible, then prefill the composer.
   private func openGeminiWindowFromShortcut() {
     if AccessibilityPermissionManager.hasAccessibilityPermission() {
-      let beforeTrimmed =
-        clipboardManager.getCleanedClipboardText()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      let frontBefore = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "(nil)"
+      let beforeRaw = clipboardManager.getCleanedClipboardText() ?? ""
+      let beforeTrimmed = beforeRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+      let beforeLines = beforeRaw.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
+      DebugLogger.log(
+        "GEMINI-PREFILL: shortcut start frontmost=\(frontBefore) clipboardBefore chars=\(beforeRaw.count) trimmedChars=\(beforeTrimmed.count) nonEmptyLines=\(beforeLines)"
+      )
       simulateCopyPaste()
+      DebugLogger.log("GEMINI-PREFILL: synthetic Cmd+C posted")
       Task { @MainActor in
         try? await Task.sleep(for: .milliseconds(100))
+        let frontAfterCopy = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "(nil)"
         let afterFull = clipboardManager.getCleanedClipboardText() ?? ""
         let afterTrimmed = afterFull.trimmingCharacters(in: .whitespacesAndNewlines)
+        let afterLines = afterFull.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
+        let unchanged = afterTrimmed == beforeTrimmed
+        DebugLogger.log(
+          "GEMINI-PREFILL: after 100ms delay frontmost=\(frontAfterCopy) clipboardAfter chars=\(afterFull.count) trimmedChars=\(afterTrimmed.count) nonEmptyLines=\(afterLines) unchangedVsBeforeTrim=\(unchanged)"
+        )
         GeminiWindowManager.shared.show()
+        DebugLogger.log("GEMINI-PREFILL: show() called, waiting 120ms before prefill notification")
         // Defer prefill so GeminiInputAreaView has subscribed (first window open).
         try? await Task.sleep(for: .milliseconds(120))
-        if !afterTrimmed.isEmpty && afterTrimmed != beforeTrimmed {
+        if afterTrimmed.isEmpty {
+          DebugLogger.logWarning("GEMINI-PREFILL: skip prefill reason=emptyClipboardAfterCopy")
+        } else if unchanged {
+          DebugLogger.logWarning(
+            "GEMINI-PREFILL: skip prefill reason=clipboardUnchanged (no new selection copied or copy failed)"
+          )
+        } else {
           NotificationCenter.default.post(
             name: .geminiPrefillComposer,
             object: nil,
             userInfo: [Notification.Name.geminiPrefillComposerTextKey: afterFull]
           )
+          DebugLogger.log(
+            "GEMINI-PREFILL: posted geminiPrefillComposer chars=\(afterFull.count) nonEmptyLines=\(afterLines)"
+          )
         }
       }
     } else {
+      DebugLogger.logWarning("GEMINI-PREFILL: no accessibility permission, opening window without copy/prefill")
       _ = AccessibilityPermissionManager.checkPermissionForPromptUsage()
       GeminiWindowManager.shared.show()
     }

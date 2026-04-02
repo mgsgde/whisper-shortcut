@@ -1233,18 +1233,30 @@ struct GeminiInputAreaView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiPrefillComposer)) { note in
       Task { @MainActor in
-        guard let text = note.userInfo?[Notification.Name.geminiPrefillComposerTextKey] as? String else { return }
+        guard let text = note.userInfo?[Notification.Name.geminiPrefillComposerTextKey] as? String else {
+          DebugLogger.logWarning(
+            "GEMINI-PREFILL: composer received notification but userInfo[\(Notification.Name.geminiPrefillComposerTextKey)] missing or not a String"
+          )
+          return
+        }
         viewModel.resetPendingComposerContent()
         let lineCount = text.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
         if lineCount >= GeminiChatViewModel.pasteThresholdLines
           || text.count >= GeminiChatViewModel.pasteThresholdChars {
           viewModel.addPastedBlock(text)
           inputText = ""
+          DebugLogger.log(
+            "GEMINI-PREFILL: composer applied mode=pastedBlock chars=\(text.count) nonEmptyLines=\(lineCount) thresholds lines=\(GeminiChatViewModel.pasteThresholdLines) chars=\(GeminiChatViewModel.pasteThresholdChars)"
+          )
         } else {
           inputText = text
+          DebugLogger.log(
+            "GEMINI-PREFILL: composer applied mode=inlineInput chars=\(text.count) nonEmptyLines=\(lineCount)"
+          )
         }
         try? await Task.sleep(for: .milliseconds(50))
         inputFocused = true
+        DebugLogger.log("GEMINI-PREFILL: composer focus requested after prefill")
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiNewChat)) { _ in
