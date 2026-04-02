@@ -765,6 +765,33 @@ class MenuBarController: NSObject {
     GeminiWindowManager.shared.toggle()
   }
 
+  /// Opens the Gemini window from the global shortcut: copy selection from the frontmost app when possible, then prefill the composer.
+  private func openGeminiWindowFromShortcut() {
+    if AccessibilityPermissionManager.hasAccessibilityPermission() {
+      let beforeTrimmed =
+        clipboardManager.getCleanedClipboardText()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      simulateCopyPaste()
+      Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(100))
+        let afterFull = clipboardManager.getCleanedClipboardText() ?? ""
+        let afterTrimmed = afterFull.trimmingCharacters(in: .whitespacesAndNewlines)
+        GeminiWindowManager.shared.show()
+        // Defer prefill so GeminiInputAreaView has subscribed (first window open).
+        try? await Task.sleep(for: .milliseconds(120))
+        if !afterTrimmed.isEmpty && afterTrimmed != beforeTrimmed {
+          NotificationCenter.default.post(
+            name: .geminiPrefillComposer,
+            object: nil,
+            userInfo: [Notification.Name.geminiPrefillComposerTextKey: afterFull]
+          )
+        }
+      }
+    } else {
+      _ = AccessibilityPermissionManager.checkPermissionForPromptUsage()
+      GeminiWindowManager.shared.show()
+    }
+  }
+
   @objc func openMeetingWindow() {
     MeetingWindowManager.shared.toggle()
   }
@@ -1642,7 +1669,8 @@ class MenuBarController: NSObject {
       : SettingsDefaults.autoPasteAfterDictation
     if autoPasteEnabled {
       guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
-        DebugLogger.logWarning("AUTO-PASTE: Skipped — accessibility permission not granted")
+        DebugLogger.logWarning("AUTO-PASTE: Skipped — accessibility permission not granted, showing permission dialog")
+        AccessibilityPermissionManager.showAccessibilityPermissionDialog()
         return
       }
       // Small delay to ensure clipboard is ready
@@ -1772,7 +1800,7 @@ extension MenuBarController: ShortcutDelegate {
   func toggleDictation() { toggleTranscription() }
   // togglePrompting is already implemented above
   // openSettings is already implemented above
-  func openGemini() { openGeminiWindow() }
+  func openGemini() { openGeminiWindowFromShortcut() }
   func openMeeting() { openMeetingWindow() }
 }
 

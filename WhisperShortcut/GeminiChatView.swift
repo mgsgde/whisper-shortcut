@@ -212,6 +212,14 @@ class GeminiChatViewModel: ObservableObject {
     pendingFileAttachment = nil
   }
 
+  /// Clears staged composer content (attachments and model-side input) before shortcut-driven prefill from selection.
+  func resetPendingComposerContent() {
+    pastedBlocks = []
+    pendingScreenshots = []
+    pendingFileAttachment = nil
+    inputText = ""
+  }
+
   func attachFile() {
     let panel = NSOpenPanel()
     panel.allowsMultipleSelection = false
@@ -1219,6 +1227,22 @@ struct GeminiInputAreaView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiFocusInput)) { _ in
       Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(50))
+        inputFocused = true
+      }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .geminiPrefillComposer)) { note in
+      Task { @MainActor in
+        guard let text = note.userInfo?[Notification.Name.geminiPrefillComposerTextKey] as? String else { return }
+        viewModel.resetPendingComposerContent()
+        let lineCount = text.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
+        if lineCount >= GeminiChatViewModel.pasteThresholdLines
+          || text.count >= GeminiChatViewModel.pasteThresholdChars {
+          viewModel.addPastedBlock(text)
+          inputText = ""
+        } else {
+          inputText = text
+        }
         try? await Task.sleep(for: .milliseconds(50))
         inputFocused = true
       }
