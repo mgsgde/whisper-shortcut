@@ -19,9 +19,12 @@ class GeminiWindowManager {
     }
   }
 
-  func show() {
+  func show(suppressFocusLossClose: Bool = false) {
     if windowController == nil {
       windowController = GeminiWindowController()
+    }
+    if suppressFocusLossClose {
+      windowController?.beginSuppressCloseOnFocusLoss()
     }
     windowController?.showWindow()
     prefetchShareableContent()

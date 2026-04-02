@@ -793,7 +793,7 @@ class MenuBarController: NSObject {
       )
       simulateCopyPaste()
       DebugLogger.log("GEMINI-PREFILL: synthetic Cmd+C posted")
-      Task { [weak self] in
+      Task { @MainActor [weak self] in
         guard let self else { return }
         try? await Task.sleep(for: .milliseconds(100))
         guard generation == self.geminiShortcutOpenGeneration else {
@@ -808,8 +808,8 @@ class MenuBarController: NSObject {
         DebugLogger.log(
           "GEMINI-PREFILL: after 100ms delay frontmost=\(frontAfterCopy) clipboardAfter chars=\(afterFull.count) trimmedChars=\(afterTrimmed.count) nonEmptyLines=\(afterLines) unchangedVsBeforeTrim=\(unchanged)"
         )
-        GeminiWindowManager.shared.show()
-        DebugLogger.log("GEMINI-PREFILL: show() called, waiting 120ms before prefill notification")
+        GeminiWindowManager.shared.show(suppressFocusLossClose: true)
+        DebugLogger.log("GEMINI-PREFILL: show() called (focusLossClose suppressed), waiting 120ms before prefill notification")
         // Defer prefill so GeminiInputAreaView has subscribed (first window open).
         try? await Task.sleep(for: .milliseconds(120))
         guard generation == self.geminiShortcutOpenGeneration else {
@@ -836,7 +836,7 @@ class MenuBarController: NSObject {
     } else {
       DebugLogger.logWarning("GEMINI-PREFILL: no accessibility permission, opening window without copy/prefill")
       _ = AccessibilityPermissionManager.checkPermissionForPromptUsage()
-      GeminiWindowManager.shared.show()
+      GeminiWindowManager.shared.show(suppressFocusLossClose: true)
     }
   }
 

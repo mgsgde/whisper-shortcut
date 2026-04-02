@@ -19,6 +19,11 @@ class GeminiWindowController: NSWindowController {
   private var keyDownMonitor: Any?
   private var needsDefaultFrame: Bool = false
 
+  /// When true, `windowDidResignKey` will NOT auto-close the window.
+  /// Set by the shortcut path to avoid the race between simulateCopyPaste → show → prefill.
+  private(set) var suppressCloseOnFocusLoss: Bool = false
+  private var suppressResetTask: Task<Void, Never>?
+
   // MARK: - Constants
   private enum Constants {
     static let minWidth: CGFloat = 700
@@ -70,6 +75,20 @@ class GeminiWindowController: NSWindowController {
     NSApp.activate(ignoringOtherApps: true)
     window?.makeKeyAndOrderFront(nil)
     NotificationCenter.default.post(name: .geminiFocusInput, object: nil)
+  }
+
+  /// Temporarily suppresses close-on-focus-loss for the given duration.
+  /// Used by the shortcut path to prevent the window from closing during the copy → show → prefill sequence.
+  func beginSuppressCloseOnFocusLoss(for duration: TimeInterval = 0.5) {
+    suppressResetTask?.cancel()
+    suppressCloseOnFocusLoss = true
+    DebugLogger.log("GEMINI-PREFILL: suppressCloseOnFocusLoss ON for \(duration)s")
+    suppressResetTask = Task { @MainActor [weak self] in
+      try? await Task.sleep(for: .milliseconds(Int(duration * 1000)))
+      guard !Task.isCancelled else { return }
+      self?.suppressCloseOnFocusLoss = false
+      DebugLogger.log("GEMINI-PREFILL: suppressCloseOnFocusLoss OFF (timer expired)")
+    }
   }
 
   // MARK: - Private
@@ -140,6 +159,11 @@ extension GeminiWindowController: NSWindowDelegate {
   func windowDidResignKey(_ notification: Notification) {
     // Don't close while a modal sheet/panel (e.g. file picker) is active
     if NSApp.modalWindow != nil { return }
+    // Don't close during the shortcut copy → show → prefill sequence
+    if suppressCloseOnFocusLoss {
+      DebugLogger.log("GEMINI-PREFILL: windowDidResignKey suppressed (shortcut grace period)")
+      return
+    }
     let closeOnFocusLoss: Bool
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss) != nil {
       closeOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
