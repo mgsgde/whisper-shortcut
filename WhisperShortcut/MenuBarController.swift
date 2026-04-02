@@ -774,9 +774,6 @@ class MenuBarController: NSObject {
     if GeminiWindowManager.shared.isWindowOpen() {
       geminiShortcutOpenGeneration &+= 1
       GeminiWindowManager.shared.close()
-      DebugLogger.log(
-        "GEMINI-PREFILL: shortcut toggle — closed window (generation=\(geminiShortcutOpenGeneration))"
-      )
       return
     }
 
@@ -784,57 +781,29 @@ class MenuBarController: NSObject {
     let generation = geminiShortcutOpenGeneration
 
     if AccessibilityPermissionManager.hasAccessibilityPermission() {
-      let frontBefore = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "(nil)"
       let beforeRaw = clipboardManager.getCleanedClipboardText() ?? ""
       let beforeTrimmed = beforeRaw.trimmingCharacters(in: .whitespacesAndNewlines)
-      let beforeLines = beforeRaw.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
-      DebugLogger.log(
-        "GEMINI-PREFILL: shortcut start generation=\(generation) frontmost=\(frontBefore) clipboardBefore chars=\(beforeRaw.count) trimmedChars=\(beforeTrimmed.count) nonEmptyLines=\(beforeLines)"
-      )
       simulateCopyPaste()
-      DebugLogger.log("GEMINI-PREFILL: synthetic Cmd+C posted")
       Task { @MainActor [weak self] in
         guard let self else { return }
         try? await Task.sleep(for: .milliseconds(100))
-        guard generation == self.geminiShortcutOpenGeneration else {
-          DebugLogger.log("GEMINI-PREFILL: aborted after 100ms (stale generation, e.g. shortcut closed window)")
-          return
-        }
-        let frontAfterCopy = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "(nil)"
+        guard generation == self.geminiShortcutOpenGeneration else { return }
         let afterFull = self.clipboardManager.getCleanedClipboardText() ?? ""
         let afterTrimmed = afterFull.trimmingCharacters(in: .whitespacesAndNewlines)
-        let afterLines = afterFull.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
         let unchanged = afterTrimmed == beforeTrimmed
-        DebugLogger.log(
-          "GEMINI-PREFILL: after 100ms delay frontmost=\(frontAfterCopy) clipboardAfter chars=\(afterFull.count) trimmedChars=\(afterTrimmed.count) nonEmptyLines=\(afterLines) unchangedVsBeforeTrim=\(unchanged)"
-        )
         GeminiWindowManager.shared.show(suppressFocusLossClose: true)
-        DebugLogger.log("GEMINI-PREFILL: show() called (focusLossClose suppressed), waiting 120ms before prefill notification")
         // Defer prefill so GeminiInputAreaView has subscribed (first window open).
         try? await Task.sleep(for: .milliseconds(120))
-        guard generation == self.geminiShortcutOpenGeneration else {
-          DebugLogger.log("GEMINI-PREFILL: aborted before prefill notification (stale generation)")
-          return
-        }
-        if afterTrimmed.isEmpty {
-          DebugLogger.logWarning("GEMINI-PREFILL: skip prefill reason=emptyClipboardAfterCopy")
-        } else if unchanged {
-          DebugLogger.logWarning(
-            "GEMINI-PREFILL: skip prefill reason=clipboardUnchanged (no new selection copied or copy failed)"
-          )
-        } else {
+        guard generation == self.geminiShortcutOpenGeneration else { return }
+        if !afterTrimmed.isEmpty && !unchanged {
           NotificationCenter.default.post(
             name: .geminiPrefillComposer,
             object: nil,
             userInfo: [Notification.Name.geminiPrefillComposerTextKey: afterFull]
           )
-          DebugLogger.log(
-            "GEMINI-PREFILL: posted geminiPrefillComposer chars=\(afterFull.count) nonEmptyLines=\(afterLines)"
-          )
         }
       }
     } else {
-      DebugLogger.logWarning("GEMINI-PREFILL: no accessibility permission, opening window without copy/prefill")
       _ = AccessibilityPermissionManager.checkPermissionForPromptUsage()
       GeminiWindowManager.shared.show(suppressFocusLossClose: true)
     }
