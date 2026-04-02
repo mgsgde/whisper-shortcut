@@ -24,7 +24,7 @@ class GeminiWindowManager {
       windowController = GeminiWindowController()
     }
     if suppressFocusLossClose {
-      windowController?.beginSuppressCloseOnFocusLoss()
+      windowController?.suppressCloseOnFocusLoss()
     }
     windowController?.showWindow()
     prefetchShareableContent()
