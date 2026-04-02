@@ -162,6 +162,13 @@ class SettingsViewModel: ObservableObject {
       data.autoPasteAfterDictation = SettingsDefaults.autoPasteAfterDictation
     }
 
+    // Load screenshot in prompt mode setting
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil {
+      data.screenshotInPromptMode = UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
+    } else {
+      data.screenshotInPromptMode = SettingsDefaults.screenshotInPromptMode
+    }
+
     // Load Gemini window: close on focus loss
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss) != nil {
       data.geminiCloseOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
@@ -373,6 +380,9 @@ class SettingsViewModel: ObservableObject {
 
     // Save auto-paste setting
     UserDefaults.standard.set(data.autoPasteAfterDictation, forKey: UserDefaultsKeys.autoPasteAfterDictation)
+
+    // Save screenshot in prompt mode setting
+    UserDefaults.standard.set(data.screenshotInPromptMode, forKey: UserDefaultsKeys.screenshotInPromptMode)
 
     // Save Gemini window: close on focus loss
     UserDefaults.standard.set(data.geminiCloseOnFocusLoss, forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)

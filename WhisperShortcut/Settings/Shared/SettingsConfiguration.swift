@@ -492,6 +492,9 @@ struct SettingsDefaults {
   // MARK: - Auto-Paste Settings
   static let autoPasteAfterDictation = false
 
+  // MARK: - Screenshot Settings
+  static let screenshotInPromptMode = false
+
   // MARK: - Live Meeting Settings
   static let liveMeetingChunkInterval = LiveMeetingChunkInterval.fifteenSeconds
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
@@ -574,6 +577,9 @@ struct SettingsData {
 
   // MARK: - Auto-Paste Settings
   var autoPasteAfterDictation: Bool = SettingsDefaults.autoPasteAfterDictation
+
+  // MARK: - Screenshot Settings
+  var screenshotInPromptMode: Bool = SettingsDefaults.screenshotInPromptMode
 
   // MARK: - Live Meeting Settings
   var liveMeetingChunkInterval: LiveMeetingChunkInterval = SettingsDefaults.liveMeetingChunkInterval

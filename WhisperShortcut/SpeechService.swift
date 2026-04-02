@@ -310,8 +310,13 @@ class SpeechService {
       DebugLogger.log("PROMPT-MODE-GEMINI: Including \(historyCount) previous turns from conversation history")
     }
 
-    // Capture screenshot for prompt context (best-effort; continues without image on failure)
-    let screenshotData = await GeminiWindowManager.shared.captureScreenForPromptMode()
+    // Capture screenshot for prompt context if enabled (best-effort; continues without image on failure)
+    let screenshotEnabled = UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil
+      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
+      : SettingsDefaults.screenshotInPromptMode
+    let screenshotData: Data? = screenshotEnabled
+      ? await GeminiWindowManager.shared.captureScreenForPromptMode()
+      : nil
 
     // Build current user message parts
     var userParts: [GeminiChatRequest.GeminiChatPart] = []
@@ -549,8 +554,13 @@ class SpeechService {
       DebugLogger.log("PROMPT-MODE-TEXT: Including \(historyCount) previous turns from conversation history")
     }
 
-    // Capture screenshot for prompt context (best-effort; continues without image on failure)
-    let screenshotData = await GeminiWindowManager.shared.captureScreenForPromptMode()
+    // Capture screenshot for prompt context if enabled (best-effort; continues without image on failure)
+    let screenshotEnabled = UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil
+      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
+      : SettingsDefaults.screenshotInPromptMode
+    let screenshotData: Data? = screenshotEnabled
+      ? await GeminiWindowManager.shared.captureScreenForPromptMode()
+      : nil
 
     // Build current user message parts
     var userParts: [GeminiChatRequest.GeminiChatPart] = []

@@ -42,6 +42,9 @@ enum UserDefaultsKeys {
 
   // MARK: - Auto-Paste Settings
   static let autoPasteAfterDictation = "autoPasteAfterDictation"
+
+  // MARK: - Screenshot Settings
+  static let screenshotInPromptMode = "screenshotInPromptMode"
   
   // MARK: - App State
   static let shouldTerminate = "shouldTerminate"
