@@ -500,12 +500,15 @@ struct SettingsDefaults {
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
   static let selectedMeetingSummaryModel = PromptModel.gemini3Flash
 
+  /// Smart Improvement default when `SUBSCRIPTION_ENABLED` is off (App Store). Matches subscription API fallback.
+  static let defaultSmartImprovementModel = PromptModel.gemini3Flash
+
   // MARK: - Subscription Fallback Models (used when remote config fetch fails)
   #if SUBSCRIPTION_ENABLED
   static let subscriptionPromptModel = PromptModel.gemini3Flash
   static let subscriptionTranscriptionModel = TranscriptionModel.gemini31FlashLite
   static let subscriptionOpenGeminiModel = PromptModel.gemini3Flash
-  static let subscriptionImprovementModel = PromptModel.gemini3Flash
+  static let subscriptionImprovementModel = defaultSmartImprovementModel
   static let subscriptionTTSModel = TTSModel.gemini25FlashTTS
   #endif
 
