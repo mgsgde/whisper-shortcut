@@ -25,8 +25,23 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   struct PastedBlock: Identifiable {
-    let id = UUID()
+    enum Kind: Equatable {
+      /// Large Cmd+V paste in the composer.
+      case largePaste
+      /// Text captured via Open Gemini shortcut (front-app selection).
+      case shortcutSelection
+    }
+
+    let id: UUID
     let content: String
+    let kind: Kind
+
+    init(id: UUID = UUID(), content: String, kind: Kind = .largePaste) {
+      self.id = id
+      self.content = content
+      self.kind = kind
+    }
+
     var lineCount: Int { content.components(separatedBy: .newlines).filter { !$0.isEmpty }.count }
   }
 
@@ -43,7 +58,11 @@ class GeminiChatViewModel: ObservableObject {
          r1.upperBound <= r2.lowerBound {
         return String(content[r1.upperBound..<r2.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
       }
-      if content.contains("<pasted_content>") { return "[Pasted content]" }
+      let hasSelection = content.contains("<pasted_selection>")
+      let hasPaste = content.contains("<pasted_content>")
+      if hasSelection, hasPaste { return "[Selection] [Pasted content]" }
+      if hasSelection { return "[Selection]" }
+      if hasPaste { return "[Pasted content]" }
       return content
     }
   }
@@ -51,8 +70,8 @@ class GeminiChatViewModel: ObservableObject {
   static let pasteThresholdLines = 30
   static let pasteThresholdChars = 1500
 
-  func addPastedBlock(_ text: String) {
-    pastedBlocks.append(PastedBlock(content: text))
+  func addPastedBlock(_ text: String, kind: PastedBlock.Kind = .largePaste) {
+    pastedBlocks.append(PastedBlock(content: text, kind: kind))
   }
 
   func removePastedBlock(id: UUID) {
@@ -393,7 +412,14 @@ class GeminiChatViewModel: ObservableObject {
     var parts: [String] = []
     if !pastedBlocks.isEmpty {
       let pastedSection = pastedBlocks
-        .map { "<pasted_content>\n\($0.content)\n</pasted_content>" }
+        .map { block -> String in
+          switch block.kind {
+          case .largePaste:
+            return "<pasted_content>\n\(block.content)\n</pasted_content>"
+          case .shortcutSelection:
+            return "<pasted_selection>\n\(block.content)\n</pasted_selection>"
+          }
+        }
         .joined(separator: "\n\n")
       parts.append(pastedSection)
     }
@@ -432,14 +458,12 @@ class GeminiChatViewModel: ObservableObject {
 
   // MARK: - Private
 
-  /// Returns user-visible content for the session tab title (unwraps `<typed_by_user>...</typed_by_user>` if present).
+  /// Returns user-visible content for the session tab title (typed text, else first pasted/selection body).
   private static func contentForSessionTitle(_ rawContent: String) -> String {
-    let open = "<typed_by_user>"
-    let close = "</typed_by_user>"
-    guard let r1 = rawContent.range(of: open), let r2 = rawContent.range(of: close), r1.upperBound <= r2.lowerBound else {
-      return rawContent
-    }
-    return String(rawContent[r1.upperBound..<r2.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+    let parsed = parseUserMessagePastedXML(rawContent)
+    if !parsed.userText.isEmpty { return parsed.userText }
+    if let first = parsed.sections.first { return first.body }
+    return rawContent.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   /// Builds the system instruction: current date, base Gemini Chat prompt, plus optional meeting context (summary + recent transcript).
@@ -1241,19 +1265,11 @@ struct GeminiInputAreaView: View {
         }
         viewModel.resetPendingComposerContent()
         let lineCount = text.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
-        if lineCount >= GeminiChatViewModel.pasteThresholdLines
-          || text.count >= GeminiChatViewModel.pasteThresholdChars {
-          viewModel.addPastedBlock(text)
-          inputText = ""
-          DebugLogger.log(
-            "GEMINI-PREFILL: composer applied mode=pastedBlock chars=\(text.count) nonEmptyLines=\(lineCount) thresholds lines=\(GeminiChatViewModel.pasteThresholdLines) chars=\(GeminiChatViewModel.pasteThresholdChars)"
-          )
-        } else {
-          inputText = text
-          DebugLogger.log(
-            "GEMINI-PREFILL: composer applied mode=inlineInput chars=\(text.count) nonEmptyLines=\(lineCount)"
-          )
-        }
+        viewModel.addPastedBlock(text, kind: .shortcutSelection)
+        inputText = ""
+        DebugLogger.log(
+          "GEMINI-PREFILL: composer applied mode=selectionBlock chars=\(text.count) nonEmptyLines=\(lineCount)"
+        )
         try? await Task.sleep(for: .milliseconds(50))
         inputFocused = true
         DebugLogger.log("GEMINI-PREFILL: composer focus requested after prefill")
@@ -1675,11 +1691,27 @@ struct GeminiInputAreaView: View {
 
   private func pastedBlockChip(_ block: GeminiChatViewModel.PastedBlock) -> some View {
     let isFocused = focusedAttachment == .pastedBlock(block.id)
+    let chipLabel: String
+    let chipIcon: String
+    let removeHelp: String
+    let a11yLabel: String
+    switch block.kind {
+    case .shortcutSelection:
+      chipLabel = "Selection · \(block.lineCount) lines"
+      chipIcon = "text.cursor"
+      removeHelp = "Remove selection"
+      a11yLabel = "Text from selection, \(block.lineCount) lines. Press Delete to remove."
+    case .largePaste:
+      chipLabel = "Pasted · \(block.lineCount) lines"
+      chipIcon = "doc.plaintext"
+      removeHelp = "Remove pasted text"
+      a11yLabel = "Pasted content, \(block.lineCount) lines. Press Delete to remove."
+    }
     return HStack(spacing: 5) {
-      Image(systemName: "doc.plaintext")
+      Image(systemName: chipIcon)
         .font(.caption)
         .foregroundColor(GeminiChatTheme.secondaryText)
-      Text("Pasted · \(block.lineCount) lines")
+      Text(chipLabel)
         .font(.caption)
         .foregroundColor(GeminiChatTheme.primaryText)
       Button(action: { viewModel.removePastedBlock(id: block.id); inputFocused = true }) {
@@ -1688,7 +1720,7 @@ struct GeminiInputAreaView: View {
           .foregroundColor(GeminiChatTheme.secondaryText)
       }
       .buttonStyle(.plain)
-      .help("Remove pasted text")
+      .help(removeHelp)
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 5)
@@ -1704,7 +1736,7 @@ struct GeminiInputAreaView: View {
     .focused($focusedAttachment, equals: .pastedBlock(block.id))
     .onKeyPress(.deleteForward)  { viewModel.removePastedBlock(id: block.id); inputFocused = true; return .handled }
     .onKeyPress(.delete)         { viewModel.removePastedBlock(id: block.id); inputFocused = true; return .handled }
-    .accessibilityLabel("Pasted content, \(block.lineCount) lines. Press Delete to remove.")
+    .accessibilityLabel(a11yLabel)
   }
 
 }
@@ -2336,6 +2368,65 @@ private struct CopyReplyButtonView: View {
   }
 }
 
+// MARK: - User message XML (pasted blocks + typed)
+
+fileprivate struct UserMessagePastedSection: Equatable {
+  let body: String
+  /// True when wrapped as `<pasted_selection>` (shortcut selection); false for `<pasted_content>`.
+  let isSelection: Bool
+}
+
+fileprivate func unwrapUserMessageTypedByUser(_ s: String) -> String {
+  let open = "<typed_by_user>"
+  let close = "</typed_by_user>"
+  guard let r1 = s.range(of: open), let r2 = s.range(of: close), r1.upperBound <= r2.lowerBound else {
+    return s
+  }
+  return String(s[r1.upperBound..<r2.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+/// Strips leading `<pasted_content>` / `<pasted_selection>` blocks in order, then unwraps `<typed_by_user>`.
+fileprivate func parseUserMessagePastedXML(_ content: String) -> (sections: [UserMessagePastedSection], userText: String) {
+  var remaining = content.trimmingCharacters(in: .whitespacesAndNewlines)
+  var sections: [UserMessagePastedSection] = []
+  let pasteOpen = "<pasted_content>"
+  let pasteClose = "</pasted_content>"
+  let selOpen = "<pasted_selection>"
+  let selClose = "</pasted_selection>"
+  while true {
+    let rangePaste = remaining.range(of: pasteOpen)
+    let rangeSel = remaining.range(of: selOpen)
+    let usePasteBlock: Bool?
+    if let rp = rangePaste, let rs = rangeSel {
+      usePasteBlock = rp.lowerBound <= rs.lowerBound
+    } else if rangePaste != nil {
+      usePasteBlock = true
+    } else if rangeSel != nil {
+      usePasteBlock = false
+    } else {
+      usePasteBlock = nil
+    }
+    guard let takePaste = usePasteBlock else { break }
+    if takePaste {
+      guard let r1 = remaining.range(of: pasteOpen),
+            let r2 = remaining.range(of: pasteClose),
+            r1.upperBound <= r2.lowerBound else { break }
+      let body = String(remaining[r1.upperBound..<r2.lowerBound])
+      sections.append(UserMessagePastedSection(body: body, isSelection: false))
+      remaining = String(remaining[r2.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    } else {
+      guard let r1 = remaining.range(of: selOpen),
+            let r2 = remaining.range(of: selClose),
+            r1.upperBound <= r2.lowerBound else { break }
+      let body = String(remaining[r1.upperBound..<r2.lowerBound])
+      sections.append(UserMessagePastedSection(body: body, isSelection: true))
+      remaining = String(remaining[r2.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+  }
+  let userText = unwrapUserMessageTypedByUser(remaining)
+  return (sections, userText)
+}
+
 // MARK: - Message Bubble
 
 private struct MessageBubbleView: View {
@@ -2343,29 +2434,6 @@ private struct MessageBubbleView: View {
   var onTapAttachedImage: ((Data) -> Void)? = nil
 
   var isUser: Bool { message.role == .user }
-
-  static func parsePastedContent(_ content: String) -> (pastedSections: [String], userText: String) {
-    var remaining = content
-    var pasted: [String] = []
-    let open = "<pasted_content>"
-    let close = "</pasted_content>"
-    while let r1 = remaining.range(of: open), let r2 = remaining.range(of: close), r1.upperBound <= r2.lowerBound {
-      pasted.append(String(remaining[r1.upperBound..<r2.lowerBound]))
-      remaining = String(remaining[r2.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    let userText = Self.unwrapTypedByUser(remaining)
-    return (pasted, userText)
-  }
-
-  /// Extracts inner text from `<typed_by_user>...</typed_by_user>` for display; returns unchanged if no wrapper.
-  private static func unwrapTypedByUser(_ s: String) -> String {
-    let open = "<typed_by_user>"
-    let close = "</typed_by_user>"
-    guard let r1 = s.range(of: open), let r2 = s.range(of: close), r1.upperBound <= r2.lowerBound else {
-      return s
-    }
-    return String(s[r1.upperBound..<r2.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-  }
 
   var body: some View {
     VStack(alignment: isUser ? .trailing : .leading, spacing: 2) {
@@ -2386,10 +2454,12 @@ private struct MessageBubbleView: View {
   private var bubbleContent: some View {
     if isUser {
       VStack(alignment: .trailing, spacing: 6) {
-        let parsed = Self.parsePastedContent(message.content)
-        ForEach(Array(parsed.pastedSections.enumerated()), id: \.offset) { _, pasted in
-          let lines = pasted.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
-          Label("\(lines) lines pasted", systemImage: "doc.plaintext")
+        let parsed = parseUserMessagePastedXML(message.content)
+        ForEach(Array(parsed.sections.enumerated()), id: \.offset) { _, sec in
+          let lines = sec.body.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
+          let title = sec.isSelection ? "\(lines) lines from selection" : "\(lines) lines pasted"
+          let icon = sec.isSelection ? "text.cursor" : "doc.plaintext"
+          Label(title, systemImage: icon)
             .font(.caption)
             .foregroundColor(GeminiChatTheme.primaryText.opacity(0.7))
             .padding(.horizontal, 8)
