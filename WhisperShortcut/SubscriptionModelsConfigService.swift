@@ -71,7 +71,7 @@ enum SubscriptionModelsConfigService {
   static func effectivePromptModel() -> PromptModel { SettingsDefaults.selectedPromptModel }
   static func effectiveTranscriptionModel() -> TranscriptionModel { SettingsDefaults.selectedTranscriptionModel }
   static func effectiveOpenGeminiModel() -> PromptModel { SettingsDefaults.selectedOpenGeminiModel }
-  static func effectiveImprovementModel() -> PromptModel { SettingsDefaults.selectedImprovementModel }
+  static func effectiveImprovementModel() -> PromptModel { SettingsDefaults.subscriptionImprovementModel }
   static func effectiveTTSModel() -> TTSModel { SettingsDefaults.selectedTTSModel }
   static func effectiveMeetingSummaryModel() -> PromptModel { SettingsDefaults.selectedMeetingSummaryModel }
 }
