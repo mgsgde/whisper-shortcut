@@ -1,3 +1,4 @@
+import ScreenCaptureKit
 import SwiftUI
 
 /// Speech to Prompt Settings Tab - Shortcuts, Prompt, GPT Model
@@ -15,6 +16,11 @@ struct SpeechToPromptSettingsTab: View {
       // Model Selection Section
       modelSection
       
+      SpacedSectionDivider()
+
+      // Screen context for voice Prompt Mode (same UserDefaults key as before)
+      screenshotContextSection
+
       SpacedSectionDivider()
 
       // Usage Instructions Section
@@ -81,6 +87,48 @@ struct SpeechToPromptSettingsTab: View {
         }
       }
     )
+  }
+
+  // MARK: - Screen context (voice Prompt Mode)
+  @ViewBuilder
+  private var screenshotContextSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "🖥️ Screen context",
+        subtitle: "Optional screenshot sent with voice Prompt Mode requests"
+      )
+
+      HStack(alignment: .center, spacing: 16) {
+        Text("Screenshot context:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        Toggle("", isOn: $viewModel.data.screenshotInPromptMode)
+          .toggleStyle(SwitchToggleStyle())
+          .onChange(of: viewModel.data.screenshotInPromptMode) { _, newValue in
+            if newValue {
+              Task {
+                do {
+                  _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                } catch {
+                  DebugLogger.logWarning("SCREENSHOT SETTINGS: Screen recording permission not granted")
+                }
+              }
+            }
+            Task {
+              await viewModel.saveSettings()
+            }
+          }
+
+        Spacer()
+      }
+
+      Text("When enabled, a screenshot of the current screen is included in Prompt Mode requests to give the AI visual context. Requires Screen Recording permission.")
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
   }
 
   // MARK: - Usage Instructions
