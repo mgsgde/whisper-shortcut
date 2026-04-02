@@ -85,6 +85,9 @@ class MenuBarController: NSObject {
   /// When non-nil, an action is running in parallel with the live meeting.
   private var activeMeetingSegment: MeetingSegment?
 
+  /// Bumped when the Gemini shortcut closes the window or starts a new open; stale prefill tasks bail out before `show()` / notification.
+  private var geminiShortcutOpenGeneration: UInt64 = 0
+
   /// True when TTS is running in any phase: .ttsProcessing or chunked phases with TTS context. Derived from AppState only.
   private var isTTSRunning: Bool {
     if case .processing(let mode) = appState { return mode.isTTSContext }
@@ -766,21 +769,39 @@ class MenuBarController: NSObject {
   }
 
   /// Opens the Gemini window from the global shortcut: copy selection from the frontmost app when possible, then prefill the composer.
+  /// If the window is already open, closes it (same toggle behavior as the menu).
   private func openGeminiWindowFromShortcut() {
+    if GeminiWindowManager.shared.isWindowOpen() {
+      geminiShortcutOpenGeneration &+= 1
+      GeminiWindowManager.shared.close()
+      DebugLogger.log(
+        "GEMINI-PREFILL: shortcut toggle — closed window (generation=\(geminiShortcutOpenGeneration))"
+      )
+      return
+    }
+
+    geminiShortcutOpenGeneration &+= 1
+    let generation = geminiShortcutOpenGeneration
+
     if AccessibilityPermissionManager.hasAccessibilityPermission() {
       let frontBefore = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "(nil)"
       let beforeRaw = clipboardManager.getCleanedClipboardText() ?? ""
       let beforeTrimmed = beforeRaw.trimmingCharacters(in: .whitespacesAndNewlines)
       let beforeLines = beforeRaw.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
       DebugLogger.log(
-        "GEMINI-PREFILL: shortcut start frontmost=\(frontBefore) clipboardBefore chars=\(beforeRaw.count) trimmedChars=\(beforeTrimmed.count) nonEmptyLines=\(beforeLines)"
+        "GEMINI-PREFILL: shortcut start generation=\(generation) frontmost=\(frontBefore) clipboardBefore chars=\(beforeRaw.count) trimmedChars=\(beforeTrimmed.count) nonEmptyLines=\(beforeLines)"
       )
       simulateCopyPaste()
       DebugLogger.log("GEMINI-PREFILL: synthetic Cmd+C posted")
-      Task { @MainActor in
+      Task { [weak self] in
+        guard let self else { return }
         try? await Task.sleep(for: .milliseconds(100))
+        guard generation == self.geminiShortcutOpenGeneration else {
+          DebugLogger.log("GEMINI-PREFILL: aborted after 100ms (stale generation, e.g. shortcut closed window)")
+          return
+        }
         let frontAfterCopy = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "(nil)"
-        let afterFull = clipboardManager.getCleanedClipboardText() ?? ""
+        let afterFull = self.clipboardManager.getCleanedClipboardText() ?? ""
         let afterTrimmed = afterFull.trimmingCharacters(in: .whitespacesAndNewlines)
         let afterLines = afterFull.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
         let unchanged = afterTrimmed == beforeTrimmed
@@ -791,6 +812,10 @@ class MenuBarController: NSObject {
         DebugLogger.log("GEMINI-PREFILL: show() called, waiting 120ms before prefill notification")
         // Defer prefill so GeminiInputAreaView has subscribed (first window open).
         try? await Task.sleep(for: .milliseconds(120))
+        guard generation == self.geminiShortcutOpenGeneration else {
+          DebugLogger.log("GEMINI-PREFILL: aborted before prefill notification (stale generation)")
+          return
+        }
         if afterTrimmed.isEmpty {
           DebugLogger.logWarning("GEMINI-PREFILL: skip prefill reason=emptyClipboardAfterCopy")
         } else if unchanged {
