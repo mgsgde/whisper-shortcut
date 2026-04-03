@@ -670,11 +670,11 @@ enum TranscriptionError: Error, Equatable {
     }
   }
 
-  /// URL to open for topping up balance or subscription (e.g. dashboard); set for rate-limit 429 and subscriptionRequired 402.
+  /// URL to open for topping up balance or subscription (e.g. subscription page); set for rate-limit 429 and subscriptionRequired 402.
   var topUpURL: URL? {
     if case .rateLimited(_, let url) = self { return url }
     #if SUBSCRIPTION_ENABLED
-    if case .subscriptionRequired = self { return URL(string: "https://whispershortcut.com/dashboard") }
+    if case .subscriptionRequired = self { return URL(string: "https://whispershortcut.com/subscription") }
     #endif
     return nil
   }

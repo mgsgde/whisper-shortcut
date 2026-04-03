@@ -507,7 +507,7 @@ class MenuBarController: NSObject {
                 PopupNotificationWindow.showError(
                   "You need an active subscription to use dictation. Subscribe at whispershortcut.com or add an API key in Settings (General tab).",
                   title: "Subscription Required",
-                  topUpURL: URL(string: "https://whispershortcut.com/dashboard")
+                  topUpURL: URL(string: "https://whispershortcut.com/subscription")
                 )
                 return
               }
@@ -574,7 +574,7 @@ class MenuBarController: NSObject {
                 PopupNotificationWindow.showError(
                   "You need an active subscription to use dictation. Subscribe at whispershortcut.com or add an API key in Settings (General tab).",
                   title: "Subscription Required",
-                  topUpURL: URL(string: "https://whispershortcut.com/dashboard")
+                  topUpURL: URL(string: "https://whispershortcut.com/subscription")
                 )
                 return
               }
@@ -633,7 +633,7 @@ class MenuBarController: NSObject {
                 PopupNotificationWindow.showError(
                   "You need an active subscription to use prompt mode. Subscribe at whispershortcut.com or add an API key in Settings (General tab).",
                   title: "Subscription Required",
-                  topUpURL: URL(string: "https://whispershortcut.com/dashboard")
+                  topUpURL: URL(string: "https://whispershortcut.com/subscription")
                 )
                 return
               }
@@ -683,7 +683,7 @@ class MenuBarController: NSObject {
                 PopupNotificationWindow.showError(
                   "You need an active subscription to use prompt mode. Subscribe at whispershortcut.com or add an API key in Settings (General tab).",
                   title: "Subscription Required",
-                  topUpURL: URL(string: "https://whispershortcut.com/dashboard")
+                  topUpURL: URL(string: "https://whispershortcut.com/subscription")
                 )
                 return
               }
