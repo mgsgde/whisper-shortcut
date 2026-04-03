@@ -791,8 +791,13 @@ class MenuBarController: NSObject {
         let afterFull = self.clipboardManager.getCleanedClipboardText() ?? ""
         let afterTrimmed = afterFull.trimmingCharacters(in: .whitespacesAndNewlines)
         let unchanged = afterTrimmed == beforeTrimmed
+        // Buffer prefill text before showing so GeminiInputAreaView can pick it up
+        // in onAppear if the notification arrives before SwiftUI has subscribed.
+        if !afterTrimmed.isEmpty && !unchanged {
+          GeminiWindowManager.shared.pendingPrefillText = afterFull
+        }
         GeminiWindowManager.shared.show(suppressFocusLossClose: true)
-        // Defer prefill so GeminiInputAreaView has subscribed (first window open).
+        // Also post notification for the warm-window case (view already subscribed).
         try? await Task.sleep(for: .milliseconds(120))
         guard generation == self.geminiShortcutOpenGeneration else { return }
         if !afterTrimmed.isEmpty && !unchanged {
@@ -1652,8 +1657,9 @@ class MenuBarController: NSObject {
   }
   
   private func simulateCopyPaste() {
-    // Use HID system state so Cmd+C is delivered to the frontmost app (the one with the selection)
-    let source = CGEventSource(stateID: .hidSystemState)
+    // Use a private event source so modifier keys physically held (e.g. Option from the
+    // global shortcut) do not leak into the synthetic Cmd+C and turn it into Cmd+Option+C.
+    let source = CGEventSource(stateID: .privateState)
     let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true)
     let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
 

@@ -1258,6 +1258,8 @@ struct GeminiInputAreaView: View {
     .onReceive(NotificationCenter.default.publisher(for: .geminiPrefillComposer)) { note in
       Task { @MainActor in
         guard let text = note.userInfo?[Notification.Name.geminiPrefillComposerTextKey] as? String else { return }
+        // Clear buffer — notification arrived while view is subscribed (warm path).
+        GeminiWindowManager.shared.pendingPrefillText = nil
         viewModel.resetPendingComposerContent()
         viewModel.addPastedBlock(text, kind: .shortcutSelection)
         inputText = ""
@@ -1269,6 +1271,18 @@ struct GeminiInputAreaView: View {
       inputText = ""
     }
     .onAppear {
+      // Cold-start path: if the prefill notification was missed because SwiftUI
+      // hadn't subscribed yet, consume the buffered text now.
+      if let buffered = GeminiWindowManager.shared.pendingPrefillText {
+        GeminiWindowManager.shared.pendingPrefillText = nil
+        viewModel.resetPendingComposerContent()
+        viewModel.addPastedBlock(buffered, kind: .shortcutSelection)
+        inputText = ""
+        Task { @MainActor in
+          try? await Task.sleep(for: .milliseconds(50))
+          inputFocused = true
+        }
+      }
       pasteMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
         guard event.modifierFlags.contains(.command),
               event.charactersIgnoringModifiers == "v",
