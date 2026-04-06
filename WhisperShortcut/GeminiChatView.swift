@@ -108,6 +108,7 @@ class GeminiChatViewModel: ObservableObject {
   private static let unpinCommand = "/unpin"
   private static let rememberCommand = "/remember"
   private static let contextCommand = "/context"
+  private static let modelCommand = "/model"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -118,6 +119,7 @@ class GeminiChatViewModel: ObservableObject {
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
     ("/remember", "Trigger an immediate session memory update"),
     ("/context", "Show or edit your context (e.g. /context always use bullet points)"),
+    ("/model", "Switch Open Gemini model (e.g. /model 3.1 flash lite)"),
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
@@ -439,6 +441,16 @@ class GeminiChatViewModel: ObservableObject {
       }
     }
 
+    // /model command (switch Open Gemini model with fuzzy matching)
+    if lower == Self.modelCommand || lower.hasPrefix(Self.modelCommand + " ") {
+      inputText = ""
+      let arg = lower == Self.modelCommand
+        ? ""
+        : String(raw.dropFirst(Self.modelCommand.count + 1)).trimmingCharacters(in: .whitespaces)
+      handleModelCommand(argument: arg)
+      return
+    }
+
     // Slash commands: always immediate, never queued
     if lower == Self.newChatCommand || lower == Self.backChatCommand || lower == Self.nextChatCommand
         || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
@@ -652,6 +664,41 @@ class GeminiChatViewModel: ObservableObject {
     messages.append(msg)
     session.messages = messages
     store.save(session)
+  }
+
+  /// Handles the /model command. Resolves the fuzzy argument to a PromptModel
+  /// and either applies it (writes UserDefaults like the Settings picker) or
+  /// posts a model message explaining the situation. Subscription mode never
+  /// changes the selection.
+  @MainActor
+  private func handleModelCommand(argument: String) {
+    let sub = Self.isSubscription
+    let current = Self.openGeminiModel
+    let outcome = OpenGeminiModelCommandResolver.resolve(
+      argument: argument,
+      isSubscription: sub,
+      currentSelection: current
+    )
+    switch outcome {
+    case .subscriptionLocked(let effective):
+      appendModelMessage(
+        "Subscription mode uses a fixed chat model: **\(effective.displayName)**. Add your own Google API key in Settings to choose a different model."
+      )
+    case .usage(let cur):
+      appendModelMessage(
+        "Current model: **\(cur.displayName)**. Example: `/model 3.1 flash lite` or `/model 2.5 pro`."
+      )
+    case .applied(let model):
+      let migrated = PromptModel.migrateIfDeprecated(model)
+      UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+      appendModelMessage("Model set to **\(migrated.displayName)**.")
+    case .ambiguous(let candidates):
+      let list = candidates.map { "• **\($0.displayName)**" }.joined(separator: "\n")
+      appendModelMessage("Multiple matches. Be more specific:\n\(list)")
+    case .noMatch(let query):
+      appendModelMessage("No model matched \"\(query)\". Try a version and variant, e.g. `3.1 flash lite` or `2.5 pro`.")
+    }
+    DebugLogger.log("GEMINI-CHAT: /model argument=\(argument) outcome=\(outcome)")
   }
 
   /// Handles the /context command. With no instruction: shows current context. With instruction: updates via Gemini.
@@ -1241,6 +1288,9 @@ struct GeminiInputAreaView: View {
   var onTapScreenshotThumbnail: (Data) -> Void
 
   @StateObject private var composer = GeminiComposerController()
+  /// Tracks the session whose draft is currently in the composer so we can
+  /// save the draft on tab switch before loading the next session's draft.
+  @State private var loadedDraftSessionId: UUID? = nil
   @AppStorage(UserDefaultsKeys.geminiCloseOnFocusLoss) private var closeOnFocusLoss: Bool = SettingsDefaults.geminiCloseOnFocusLoss
   @AppStorage(UserDefaultsKeys.selectedOpenGeminiModel) private var selectedOpenGeminiModelRaw: String = SettingsDefaults.selectedOpenGeminiModel.rawValue
 
@@ -1331,6 +1381,20 @@ struct GeminiInputAreaView: View {
       }
       viewModel.pastedBlocks = []
     }
+    // Per-session composer drafts: save the current document under the
+    // outgoing session id, then load the incoming session's draft (or clear).
+    .onAppear {
+      if loadedDraftSessionId == nil {
+        loadedDraftSessionId = viewModel.currentSessionId
+      }
+    }
+    .onChange(of: viewModel.currentSessionId) { newId in
+      if let prev = loadedDraftSessionId, prev != newId {
+        composer.saveDraft(for: prev)
+      }
+      composer.loadDraft(for: newId)
+      loadedDraftSessionId = newId
+    }
   }
 
   private static let knownSlashCommands: Set<String> = [
@@ -1345,10 +1409,18 @@ struct GeminiInputAreaView: View {
     let output = composer.serialize()
     let typed = output.typedText
     let lower = typed.lowercased()
-    let isRecognizedSlashCommand = Self.knownSlashCommands.contains(lower) || lower.hasPrefix("/context ")
+    let isContextCommand = lower == "/context" || lower.hasPrefix("/context ")
+    let isModelCommand = lower == "/model" || lower.hasPrefix("/model ")
+    let isRecognizedSlashCommand =
+      Self.knownSlashCommands.contains(lower) || isContextCommand || isModelCommand
     if isRecognizedSlashCommand {
-      // Remove only the slash token; keep selections, screenshots, other text intact.
-      composer.removeTrailingWord()
+      if isContextCommand || isModelCommand {
+        // Strip the entire command line so multi-token args (e.g.
+        // "/model 3.1 flash lite") don't leave residue in the composer.
+        composer.removeTrailingPlainText(suffix: typed)
+      } else {
+        composer.removeTrailingWord()
+      }
       Task { await viewModel.sendMessage(userInput: typed) }
       return
     }
@@ -1368,7 +1440,14 @@ struct GeminiInputAreaView: View {
     guard word.hasPrefix("/"), !word.isEmpty else { return false }
     let matches = viewModel.suggestedCommands(for: word)
     guard let first = matches.first else { return false }
+    // Commands that take an argument: complete inline so the user can type
+    // the argument; do not dispatch yet.
+    let takesArgument = (first == "/context" || first == "/model")
     composer.removeTrailingWord()
+    if takesArgument {
+      composer.textView?.insertText(first + " ", replacementRange: NSRange(location: NSNotFound, length: 0))
+      return true
+    }
     Task { await viewModel.sendMessage(userInput: first) }
     return true
   }
@@ -2527,35 +2606,42 @@ private struct MessageBubbleView: View {
 // MARK: - Typing Indicator
 
 private struct TypingIndicatorView: View {
-  @State private var dotScale: [CGFloat] = [1, 1, 1]
+  // Drive the pulse from a single TimelineView clock and derive each dot's
+  // scale from (time + index offset). Avoids per-dot @State + repeatForever
+  // + scaleEffect inside a ScrollView, which on AppKit can occasionally leave
+  // a sublayer mispositioned for a frame (causing a stray dot above the pill).
+  private static let period: TimeInterval = 1.0
+  private static let stagger: TimeInterval = 0.15
+  private static let minScale: CGFloat = 0.4
+  private static let maxScale: CGFloat = 1.0
+
+  private func scale(at time: TimeInterval, index: Int) -> CGFloat {
+    let phase = ((time - Double(index) * Self.stagger).truncatingRemainder(dividingBy: Self.period) + Self.period)
+      .truncatingRemainder(dividingBy: Self.period) / Self.period
+    // 0…1 → ease-in-out via cosine, mapped to [minScale, maxScale]
+    let eased = (1 - cos(phase * 2 * .pi)) / 2
+    return Self.minScale + (Self.maxScale - Self.minScale) * eased
+  }
 
   var body: some View {
-    HStack(spacing: 4) {
-      ForEach(0..<3, id: \.self) { i in
-        Circle()
-          .fill(GeminiChatTheme.secondaryText)
-          .frame(width: 7, height: 7)
-          .scaleEffect(dotScale[i])
-          .animation(
-            .easeInOut(duration: 0.5)
-              .repeatForever()
-              .delay(Double(i) * 0.15),
-            value: dotScale[i]
-          )
-      }
-    }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 10)
-    .background(
-      RoundedRectangle(cornerRadius: 14)
-        .fill(GeminiChatTheme.controlBackground)
-    )
-    .onAppear {
-      for i in 0..<3 {
-        DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.15) {
-          dotScale[i] = 0.4
+    TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: false)) { context in
+      let t = context.date.timeIntervalSinceReferenceDate
+      HStack(spacing: 4) {
+        ForEach(0..<3, id: \.self) { i in
+          Circle()
+            .fill(GeminiChatTheme.secondaryText)
+            .frame(width: 7, height: 7)
+            .scaleEffect(scale(at: t, index: i), anchor: .center)
         }
       }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 10)
+      .compositingGroup()
+      .background(
+        RoundedRectangle(cornerRadius: 14)
+          .fill(GeminiChatTheme.controlBackground)
+      )
+      .clipShape(RoundedRectangle(cornerRadius: 14))
     }
   }
 }

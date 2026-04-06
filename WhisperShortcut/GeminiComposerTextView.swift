@@ -305,12 +305,91 @@ final class GeminiComposerController: ObservableObject {
     }
   }
 
+  /// Removes the exact `suffix` substring from the end of the document, if
+  /// present (after trimming trailing whitespace). Used to strip a full slash
+  /// command line such as `/model 3.1 flash lite` without touching attachments
+  /// or earlier text. No-op if the suffix is not actually at the end.
+  func removeTrailingPlainText(suffix: String) {
+    guard let tv = textView, let storage = tv.textStorage else { return }
+    guard !suffix.isEmpty else { return }
+    let nsStr = storage.string as NSString
+    let len = nsStr.length
+
+    // Trim trailing whitespace from the document end.
+    var end = len
+    while end > 0 {
+      let ch = nsStr.character(at: end - 1)
+      if let s = Unicode.Scalar(ch), CharacterSet.whitespacesAndNewlines.contains(s) {
+        end -= 1
+      } else { break }
+    }
+
+    let suffixNS = suffix as NSString
+    let suffixLen = suffixNS.length
+    guard suffixLen <= end else { return }
+    let start = end - suffixLen
+    let candidate = nsStr.substring(with: NSRange(location: start, length: suffixLen))
+    guard candidate == suffix else { return }
+
+    // Optional boundary check: char before start must be start-of-string,
+    // whitespace, or attachment marker — avoids matching inside a word.
+    if start > 0 {
+      let prev = nsStr.character(at: start - 1)
+      let isWhitespace = Unicode.Scalar(prev).map { CharacterSet.whitespacesAndNewlines.contains($0) } ?? false
+      if !isWhitespace && prev != 0xFFFC { return }
+    }
+
+    let removeRange = NSRange(location: start, length: len - start)
+    storage.deleteCharacters(in: removeRange)
+    tv.setSelectedRange(NSRange(location: start, length: 0))
+    tv.didChangeText()
+    tv.needsDisplay = true
+    refreshState()
+  }
+
   func clearAll() {
     guard let tv = textView else { return }
     tv.textStorage?.setAttributedString(NSAttributedString())
     tv.didChangeText()
     tv.needsDisplay = true
     refreshState()
+  }
+
+  // MARK: Per-session drafts
+  //
+  // Each chat tab keeps its own composer document. When the user switches
+  // tabs we save the current attributed string under the previous session id
+  // and load the (possibly empty) draft for the new session.
+
+  private var drafts: [UUID: NSAttributedString] = [:]
+
+  func saveDraft(for sessionId: UUID) {
+    guard let storage = textView?.textStorage else { return }
+    if storage.length == 0 {
+      drafts.removeValue(forKey: sessionId)
+    } else {
+      drafts[sessionId] = NSAttributedString(attributedString: storage)
+    }
+  }
+
+  func loadDraft(for sessionId: UUID) {
+    guard let tv = textView, let storage = tv.textStorage else { return }
+    let draft = drafts[sessionId] ?? NSAttributedString()
+    storage.setAttributedString(draft)
+    tv.setSelectedRange(NSRange(location: storage.length, length: 0))
+    var typing: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: 16),
+      .foregroundColor: NSColor.labelColor,
+    ]
+    typing.removeValue(forKey: .attachment as NSAttributedString.Key)
+    tv.typingAttributes = typing
+    tv.didChangeText()
+    tv.needsDisplay = true
+    refreshState()
+  }
+
+  func discardDraft(for sessionId: UUID) {
+    drafts.removeValue(forKey: sessionId)
   }
 
   func focus() {

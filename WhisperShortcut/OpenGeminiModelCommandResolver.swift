@@ -1,0 +1,110 @@
+import Foundation
+
+enum OpenGeminiModelCommandOutcome: Equatable {
+  case subscriptionLocked(effective: PromptModel)
+  case usage(current: PromptModel)
+  case applied(model: PromptModel)
+  case ambiguous(candidates: [PromptModel])
+  case noMatch(query: String)
+}
+
+/// Pure resolver: maps a fuzzy `/model` argument to a `PromptModel` outcome.
+/// Used by `GeminiChatViewModel.handleModelCommand` so the matching logic can
+/// be reasoned about without UI/state.
+enum OpenGeminiModelCommandResolver {
+  static func resolve(
+    argument: String,
+    isSubscription: Bool,
+    currentSelection: PromptModel
+  ) -> OpenGeminiModelCommandOutcome {
+    if isSubscription {
+      #if SUBSCRIPTION_ENABLED
+      return .subscriptionLocked(effective: SubscriptionModelsConfigService.effectiveOpenGeminiModel())
+      #else
+      return .subscriptionLocked(effective: currentSelection)
+      #endif
+    }
+
+    let q = argument.trimmingCharacters(in: .whitespacesAndNewlines)
+    if q.isEmpty {
+      return .usage(current: currentSelection)
+    }
+
+    // Exact rawValue match wins.
+    if let exact = PromptModel(rawValue: q) {
+      return .applied(model: PromptModel.migrateIfDeprecated(exact))
+    }
+
+    // Normalize: lowercase, dashes → spaces, collapse whitespace.
+    var normalized = q.lowercased().replacingOccurrences(of: "-", with: " ")
+    while normalized.contains("  ") {
+      normalized = normalized.replacingOccurrences(of: "  ", with: " ")
+    }
+    let padded = " \(normalized) "
+
+    // Detect version family (order matters).
+    var candidates: [PromptModel]
+    if normalized.contains("3.1") {
+      candidates = [.gemini31Pro, .gemini31FlashLite]
+    } else if normalized.contains("2.5") {
+      candidates = [.gemini25Flash, .gemini25FlashLite, .gemini25Pro]
+    } else if normalized.contains("2.0") || padded.contains(" 2 ") {
+      candidates = [.gemini20Flash]
+    } else if padded.contains(" 3 ") {
+      candidates = [.gemini3Flash, .gemini3Pro]
+    } else {
+      candidates = PromptModel.allCases
+    }
+
+    // Keyword narrowing.
+    let hasFlash = normalized.contains("flash")
+    let hasLite = normalized.contains("lite")
+    let hasPro = padded.contains(" pro") || normalized.hasPrefix("pro")
+
+    if hasFlash && hasLite {
+      let lites = candidates.filter { isFlashLite($0) }
+      if !lites.isEmpty { candidates = lites }
+    } else if hasPro {
+      let pros = candidates.filter { isPro($0) }
+      if !pros.isEmpty { candidates = pros }
+    } else if hasFlash {
+      let flashesNoLite = candidates.filter { isFlash($0) && !isFlashLite($0) }
+      if !flashesNoLite.isEmpty { candidates = flashesNoLite }
+    }
+
+    // Stable order based on PromptModel.allCases.
+    let order = PromptModel.allCases
+    candidates.sort { (a, b) in
+      (order.firstIndex(of: a) ?? 0) < (order.firstIndex(of: b) ?? 0)
+    }
+
+    if candidates.count == 1 {
+      return .applied(model: PromptModel.migrateIfDeprecated(candidates[0]))
+    }
+    if candidates.isEmpty {
+      return .noMatch(query: argument)
+    }
+    return .ambiguous(candidates: candidates)
+  }
+
+  private static func isFlashLite(_ m: PromptModel) -> Bool {
+    switch m {
+    case .gemini25FlashLite, .gemini31FlashLite: return true
+    default: return false
+    }
+  }
+
+  private static func isFlash(_ m: PromptModel) -> Bool {
+    switch m {
+    case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite: return true
+    default: return false
+    }
+  }
+
+  private static func isPro(_ m: PromptModel) -> Bool {
+    switch m {
+    case .gemini25Pro, .gemini3Pro, .gemini31Pro: return true
+    default: return false
+    }
+  }
+}
