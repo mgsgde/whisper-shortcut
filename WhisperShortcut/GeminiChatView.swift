@@ -1288,9 +1288,6 @@ struct GeminiInputAreaView: View {
   var onTapScreenshotThumbnail: (Data) -> Void
 
   @StateObject private var composer = GeminiComposerController()
-  /// Tracks the session whose draft is currently in the composer so we can
-  /// save the draft on tab switch before loading the next session's draft.
-  @State private var loadedDraftSessionId: UUID? = nil
   @AppStorage(UserDefaultsKeys.geminiCloseOnFocusLoss) private var closeOnFocusLoss: Bool = SettingsDefaults.geminiCloseOnFocusLoss
   @AppStorage(UserDefaultsKeys.selectedOpenGeminiModel) private var selectedOpenGeminiModelRaw: String = SettingsDefaults.selectedOpenGeminiModel.rawValue
 
@@ -1359,9 +1356,9 @@ struct GeminiInputAreaView: View {
         composer.focus()
       }
     }
-    .onReceive(NotificationCenter.default.publisher(for: .geminiNewChat)) { _ in
-      composer.clearAll()
-    }
+    // Note: composer state intentionally persists across tab switches and
+    // new-chat creation — the typed text and attached screenshots/selection
+    // belong to the user's in-progress draft, not to any particular session.
     // Drain VM-side staging fields (populated by /screenshot, attachFile button, etc.)
     // into the inline composer document, then clear the VM fields.
     .onChange(of: viewModel.pendingScreenshots) { newValue in
@@ -1383,18 +1380,6 @@ struct GeminiInputAreaView: View {
     }
     // Per-session composer drafts: save the current document under the
     // outgoing session id, then load the incoming session's draft (or clear).
-    .onAppear {
-      if loadedDraftSessionId == nil {
-        loadedDraftSessionId = viewModel.currentSessionId
-      }
-    }
-    .onChange(of: viewModel.currentSessionId) { newId in
-      if let prev = loadedDraftSessionId, prev != newId {
-        composer.saveDraft(for: prev)
-      }
-      composer.loadDraft(for: newId)
-      loadedDraftSessionId = newId
-    }
   }
 
   private static let knownSlashCommands: Set<String> = [

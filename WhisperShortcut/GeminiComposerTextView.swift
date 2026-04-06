@@ -355,43 +355,6 @@ final class GeminiComposerController: ObservableObject {
     refreshState()
   }
 
-  // MARK: Per-session drafts
-  //
-  // Each chat tab keeps its own composer document. When the user switches
-  // tabs we save the current attributed string under the previous session id
-  // and load the (possibly empty) draft for the new session.
-
-  private var drafts: [UUID: NSAttributedString] = [:]
-
-  func saveDraft(for sessionId: UUID) {
-    guard let storage = textView?.textStorage else { return }
-    if storage.length == 0 {
-      drafts.removeValue(forKey: sessionId)
-    } else {
-      drafts[sessionId] = NSAttributedString(attributedString: storage)
-    }
-  }
-
-  func loadDraft(for sessionId: UUID) {
-    guard let tv = textView, let storage = tv.textStorage else { return }
-    let draft = drafts[sessionId] ?? NSAttributedString()
-    storage.setAttributedString(draft)
-    tv.setSelectedRange(NSRange(location: storage.length, length: 0))
-    var typing: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: 16),
-      .foregroundColor: NSColor.labelColor,
-    ]
-    typing.removeValue(forKey: .attachment as NSAttributedString.Key)
-    tv.typingAttributes = typing
-    tv.didChangeText()
-    tv.needsDisplay = true
-    refreshState()
-  }
-
-  func discardDraft(for sessionId: UUID) {
-    drafts.removeValue(forKey: sessionId)
-  }
-
   func focus() {
     guard let tv = textView else { return }
     tv.window?.makeFirstResponder(tv)
