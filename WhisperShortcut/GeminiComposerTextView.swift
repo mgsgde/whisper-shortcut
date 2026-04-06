@@ -233,13 +233,25 @@ final class GeminiComposerController: ObservableObject {
 
   private func insertAttachment(_ attach: ComposerTextAttachment) {
     guard let tv = textView, let storage = tv.textStorage else { return }
+    let baseAttrs: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: 16),
+      .foregroundColor: NSColor.labelColor,
+    ]
     let attrStr = NSMutableAttributedString(attachment: attach)
-    attrStr.addAttribute(.font, value: NSFont.systemFont(ofSize: 16),
-                         range: NSRange(location: 0, length: attrStr.length))
+    attrStr.addAttributes(baseAttrs, range: NSRange(location: 0, length: attrStr.length))
+    // Trailing space for visual breathing room and so subsequent typing
+    // does not inherit the .attachment attribute from the glyph before it.
+    let space = NSAttributedString(string: " ", attributes: baseAttrs)
     let insertion = tv.selectedRange().location
     let clamped = min(max(0, insertion), storage.length)
     storage.insert(attrStr, at: clamped)
-    tv.setSelectedRange(NSRange(location: clamped + attrStr.length, length: 0))
+    storage.insert(space, at: clamped + attrStr.length)
+    let cursorAfter = clamped + attrStr.length + space.length
+    tv.setSelectedRange(NSRange(location: cursorAfter, length: 0))
+    // Reset typing attributes so newly typed text is plain (no inherited .attachment).
+    var typing = baseAttrs
+    typing.removeValue(forKey: .attachment as NSAttributedString.Key)
+    tv.typingAttributes = typing
     tv.didChangeText()
     tv.needsDisplay = true
     refreshState()
@@ -265,6 +277,36 @@ final class GeminiComposerController: ObservableObject {
     refreshState()
   }
 
+  /// Removes the trailing word (including any preceding whitespace) from the
+  /// document, preserving attachments. Used to strip a slash-command token
+  /// when dispatching a command without wiping the rest of the composer.
+  func removeTrailingWord() {
+    guard let tv = textView, let storage = tv.textStorage else { return }
+    let nsStr = storage.string as NSString
+    let len = nsStr.length
+    var end = len
+    while end > 0 {
+      let ch = nsStr.character(at: end - 1)
+      if let s = Unicode.Scalar(ch), CharacterSet.whitespacesAndNewlines.contains(s) {
+        end -= 1
+      } else { break }
+    }
+    var start = end
+    while start > 0 {
+      let ch = nsStr.character(at: start - 1)
+      if ch == 0xFFFC { break }
+      if let s = Unicode.Scalar(ch), CharacterSet.whitespacesAndNewlines.contains(s) { break }
+      start -= 1
+    }
+    if start < len {
+      storage.deleteCharacters(in: NSRange(location: start, length: len - start))
+      tv.setSelectedRange(NSRange(location: start, length: 0))
+      tv.didChangeText()
+      tv.needsDisplay = true
+      refreshState()
+    }
+  }
+
   func clearAll() {
     guard let tv = textView else { return }
     tv.textStorage?.setAttributedString(NSAttributedString())
@@ -282,11 +324,17 @@ final class GeminiComposerController: ObservableObject {
     guard let tv = textView, let storage = tv.textStorage else {
       self.plainText = ""; self.isEmpty = true; return
     }
-    // Plain text: concatenate non-attachment runs.
+    // Plain text: concatenate non-attachment runs. A range counts as an
+    // attachment only when it is the single attachment-marker character;
+    // otherwise treat it as plain text (defends against attribute leaks).
     var pt = ""
+    let nsStr = storage.string as NSString
     storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length), options: []) { val, range, _ in
-      if val == nil {
-        pt += (storage.string as NSString).substring(with: range)
+      let isRealAttachment = val is ComposerTextAttachment
+        && range.length == 1
+        && nsStr.character(at: range.location) == 0xFFFC
+      if !isRealAttachment {
+        pt += nsStr.substring(with: range)
       }
     }
     self.plainText = pt
@@ -325,10 +373,23 @@ final class GeminiComposerController: ObservableObject {
     var segments: [Segment] = []
     var cursor = 0
     let full = NSRange(location: 0, length: storage.length)
+    let nsStr = storage.string as NSString
     storage.enumerateAttribute(.attachment, in: full, options: []) { val, range, _ in
+      let isRealAttachment = val is ComposerTextAttachment
+        && range.length == 1
+        && nsStr.character(at: range.location) == 0xFFFC
+      if !isRealAttachment {
+        // Treat as plain text run.
+        if range.length > 0 {
+          let s = nsStr.substring(with: range)
+          if !s.isEmpty { segments.append(.text(s)) }
+        }
+        cursor = range.location + range.length
+        return
+      }
       if range.location > cursor {
         let textRange = NSRange(location: cursor, length: range.location - cursor)
-        let s = (storage.string as NSString).substring(with: textRange)
+        let s = nsStr.substring(with: textRange)
         if !s.isEmpty { segments.append(.text(s)) }
       }
       if let a = val as? ComposerTextAttachment {
@@ -421,6 +482,10 @@ struct GeminiComposerTextView: NSViewRepresentable {
     tv.font = NSFont.systemFont(ofSize: 16)
     tv.textColor = NSColor.labelColor
     tv.insertionPointColor = NSColor.labelColor
+    tv.typingAttributes = [
+      .font: NSFont.systemFont(ofSize: 16),
+      .foregroundColor: NSColor.labelColor,
+    ]
     tv.textContainerInset = NSSize(width: 8, height: 10)
     tv.isAutomaticQuoteSubstitutionEnabled = false
     tv.isAutomaticDashSubstitutionEnabled = false

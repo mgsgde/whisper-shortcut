@@ -1333,36 +1333,42 @@ struct GeminiInputAreaView: View {
     }
   }
 
-  /// Sends the current composer contents. If the composer is empty except for a
-  /// pure slash command, route through the legacy `sendMessage` for command dispatch.
+  private static let knownSlashCommands: Set<String> = [
+    "/new", "/back", "/next", "/clear", "/screenshot", "/remember",
+    "/context", "/settings", "/pin", "/unpin", "/stop"
+  ]
+
+  /// Sends the current composer contents. Recognized slash commands strip just
+  /// the slash token (preserving any other attachments / text) and dispatch
+  /// through the legacy `sendMessage`. Everything else is sent in document order.
   private func submitComposer() {
     let output = composer.serialize()
     let typed = output.typedText
     let lower = typed.lowercased()
-    let isPureSlash = output.attachedParts.isEmpty
-      && !output.finalContent.contains("<pasted_")
-      && lower.hasPrefix("/")
-    composer.clearAll()
-    if isPureSlash {
+    let isRecognizedSlashCommand = Self.knownSlashCommands.contains(lower) || lower.hasPrefix("/context ")
+    if isRecognizedSlashCommand {
+      // Remove only the slash token; keep selections, screenshots, other text intact.
+      composer.removeTrailingWord()
       Task { await viewModel.sendMessage(userInput: typed) }
-    } else {
-      Task {
-        await viewModel.sendComposed(
-          typedText: typed,
-          finalContent: output.finalContent,
-          attachedParts: output.attachedParts)
-      }
+      return
+    }
+    composer.clearAll()
+    Task {
+      await viewModel.sendComposed(
+        typedText: typed,
+        finalContent: output.finalContent,
+        attachedParts: output.attachedParts)
     }
   }
 
-  /// Tab key in composer: complete a slash-command prefix and submit it immediately.
-  /// Returns true when the tab was consumed.
+  /// Tab key in composer: complete a slash-command prefix and dispatch the
+  /// matched command without clearing the rest of the composer.
   private func handleTabComplete() -> Bool {
     let word = lastWord
     guard word.hasPrefix("/"), !word.isEmpty else { return false }
     let matches = viewModel.suggestedCommands(for: word)
     guard let first = matches.first else { return false }
-    composer.clearAll()
+    composer.removeTrailingWord()
     Task { await viewModel.sendMessage(userInput: first) }
     return true
   }
