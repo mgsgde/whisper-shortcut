@@ -1,4 +1,4 @@
-# WhisperShortcut 6.7.1
+# WhisperShortcut 6.7.2
 
 ## Installation
 
@@ -6,10 +6,12 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-- **Gemini model selection**: Fixed the model picker not prefilling correctly on the first open after a cold launch.
-- **App Store build**: Resolved a compile issue by moving `defaultSmartImprovementModel` outside the `SUBSCRIPTION_ENABLED` branch so the App Store target builds cleanly.
-- **Subscription models**: Fixed the `SubscriptionModelsConfigService` stub to use `subscriptionImprovementModel` for the improvement feature.
+- **Gemini Chat composer**: Inline composer using `NSTextView` attachments for a clearer chip-based input; composer state is preserved when using slash commands and while typing, stays consistent when switching chat tabs, and chip labels render on a single line.
+- **`/model` command**: New slash command in Gemini Chat to change the model with fuzzy name matching.
+- **Prefill & screenshots**: Pending screenshots are kept when the composer is prefilled from a text selection.
+- **Navigation**: Dashboard links now point to the subscription page where appropriate.
+- **Docs**: README updated (screenshot section removed).
 
 ## Full changelog
 
-[Compare v6.7…v6.7.1](https://github.com/mgsgde/whisper-shortcut/compare/v6.7...v6.7.1)
+[Compare v6.7.1…v6.7.2](https://github.com/mgsgde/whisper-shortcut/compare/v6.7.1...v6.7.2)
