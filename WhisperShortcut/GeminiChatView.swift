@@ -231,10 +231,9 @@ class GeminiChatViewModel: ObservableObject {
     pendingFileAttachment = nil
   }
 
-  /// Clears staged composer content (attachments and model-side input) before shortcut-driven prefill from selection.
+  /// Clears text/paste state and file attachment before shortcut-driven prefill from selection. Pending screenshots are kept.
   func resetPendingComposerContent() {
     pastedBlocks = []
-    pendingScreenshots = []
     pendingFileAttachment = nil
     inputText = ""
   }
