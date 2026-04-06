@@ -195,9 +195,73 @@ class GeminiChatViewModel: ObservableObject {
   /// Maximum number of screenshots that can be attached to one message.
   private static let maxPendingScreenshots = 5
 
+  /// Injected by the view so the VM can respect the in-composer screenshot count
+  /// when the inline composer already holds the attachments (legacy `pendingScreenshots`
+  /// is drained into the composer by the view).
+  var composerScreenshotCountProvider: () -> Int = { 0 }
+
+  /// Sends a message whose content and attachments were already assembled by the inline
+  /// composer in document order. Handles slash commands via `typedText`, bypasses the
+  /// VM-side chip model, and otherwise queues / dispatches via `performSend`.
+  func sendComposed(typedText: String, finalContent: String, attachedParts: [AttachedImagePart]) async {
+    let raw = typedText.trimmingCharacters(in: .whitespacesAndNewlines)
+    let lower = raw.lowercased()
+
+    if lower == Self.stopCommand {
+      cancelSend()
+      return
+    }
+
+    // /context with possible argument — only when no other content.
+    if attachedParts.isEmpty && !finalContent.contains("<pasted_") {
+      if lower == Self.contextCommand {
+        await handleContextCommand(instruction: nil); return
+      } else if lower.hasPrefix(Self.contextCommand + " ") {
+        let instruction = String(raw.dropFirst(Self.contextCommand.count + 1)).trimmingCharacters(in: .whitespaces)
+        if !instruction.isEmpty {
+          await handleContextCommand(instruction: instruction); return
+        }
+      }
+    }
+
+    // Bare slash commands — never carry attachments, never queue.
+    if attachedParts.isEmpty && !finalContent.contains("<pasted_") {
+      if lower == Self.newChatCommand || lower == Self.backChatCommand || lower == Self.nextChatCommand
+          || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
+          || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
+          || lower == Self.rememberCommand {
+        if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
+        else if lower == Self.backChatCommand { if !singleChatOnly { goBack() } }
+        else if lower == Self.nextChatCommand { if !singleChatOnly { goForward() } }
+        else if Self.clearChatCommands.contains(lower) { clearMessages() }
+        else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
+        else if lower == Self.pinCommand { togglePin() }
+        else if lower == Self.unpinCommand { unpin() }
+        else if lower == Self.rememberCommand {
+          guard !session.messages.isEmpty else { return }
+          Task { await updateSessionMemory() }
+        }
+        else { await captureScreenshot() }
+        return
+      }
+    }
+
+    let hasContent = !finalContent.isEmpty || !attachedParts.isEmpty
+    guard hasContent else { return }
+
+    errorMessage = nil
+    if isSending {
+      messageQueue.append(QueuedChatMessage(content: finalContent, attachedParts: attachedParts))
+      DebugLogger.log("GEMINI-CHAT: Queued composed message, queue size: \(messageQueue.count)")
+      return
+    }
+    performSend(content: finalContent, attachedParts: attachedParts)
+  }
+
   func captureScreenshot() async {
     guard !screenshotCaptureInProgress else { return }
-    if pendingScreenshots.count >= Self.maxPendingScreenshots {
+    let totalCount = pendingScreenshots.count + composerScreenshotCountProvider()
+    if totalCount >= Self.maxPendingScreenshots {
       errorMessage = "Maximum number of screenshots reached (\(Self.maxPendingScreenshots))."
       return
     }
@@ -1176,57 +1240,25 @@ struct GeminiInputAreaView: View {
   @ObservedObject var viewModel: GeminiChatViewModel
   var onTapScreenshotThumbnail: (Data) -> Void
 
-  @State private var inputText: String = ""
-  @FocusState private var inputFocused: Bool
-  @State private var measuredInputHeight: CGFloat = 0
-  @State private var pasteMonitor: Any? = nil
+  @StateObject private var composer = GeminiComposerController()
   @AppStorage(UserDefaultsKeys.geminiCloseOnFocusLoss) private var closeOnFocusLoss: Bool = SettingsDefaults.geminiCloseOnFocusLoss
   @AppStorage(UserDefaultsKeys.selectedOpenGeminiModel) private var selectedOpenGeminiModelRaw: String = SettingsDefaults.selectedOpenGeminiModel.rawValue
 
-  private enum AttachmentFocus: Hashable {
-    case screenshot(Int), file, pastedBlock(UUID)
-  }
-  @FocusState private var focusedAttachment: AttachmentFocus?
-
   private static let inputMinHeight: CGFloat = 40
   private static let inputMaxHeight: CGFloat = 180
-  private static let inputMeasurementMaxLines = 30
 
   private var inputHeight: CGFloat {
-    min(Self.inputMaxHeight, max(Self.inputMinHeight, measuredInputHeight))
+    min(Self.inputMaxHeight, max(Self.inputMinHeight, composer.measuredHeight))
   }
 
-  private var inputTextForSizing: String {
-    var text = inputText
-    if text.count > 500 { text = String(text.prefix(500)) }
-    let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-    let truncated = lines.prefix(Self.inputMeasurementMaxLines).joined(separator: "\n")
-    return truncated.isEmpty ? " " : truncated
-  }
-
-  // Last whitespace-separated word at end of input — for slash-command detection.
-  // Works whether "/command" is on its own line OR after other text on the same line.
+  // Last whitespace-separated word at end of plain text — for slash-command detection.
   private var lastWord: String {
-    let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmed = composer.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
     return trimmed.components(separatedBy: .whitespacesAndNewlines).last(where: { !$0.isEmpty }) ?? ""
   }
 
-  // Input text with the last word removed (kept when a last-word command is executed).
-  private var contentWithoutLastWord: String {
-    let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-    let word = lastWord
-    guard !word.isEmpty, let range = trimmed.range(of: word, options: .backwards),
-          range.lowerBound > trimmed.startIndex else { return "" }
-    return trimmed[..<range.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
-  }
-
   // True when the composer has anything to send
-  private var hasContent: Bool {
-    !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      || !viewModel.pendingScreenshots.isEmpty
-      || viewModel.pendingFileAttachment != nil
-      || !viewModel.pastedBlocks.isEmpty
-  }
+  private var hasContent: Bool { !composer.isEmpty }
 
   /// Current Open Gemini model for display (with migration); syncs with UserDefaults via @AppStorage.
   private var resolvedOpenGeminiModel: PromptModel {
@@ -1248,54 +1280,91 @@ struct GeminiInputAreaView: View {
       commandSuggestionsOverlay
       inputBar
     }
+    .onAppear {
+      viewModel.composerScreenshotCountProvider = { [weak composer] in composer?.screenshotCount ?? 0 }
+      // Cold-start prefill path
+      if let buffered = GeminiWindowManager.shared.pendingPrefillText {
+        GeminiWindowManager.shared.pendingPrefillText = nil
+        composer.clearAll()
+        composer.insertPastedBlock(text: buffered, kind: .shortcutSelection)
+        Task { @MainActor in
+          try? await Task.sleep(for: .milliseconds(50))
+          composer.focus()
+        }
+      }
+    }
     .onReceive(NotificationCenter.default.publisher(for: .geminiFocusInput)) { _ in
       Task { @MainActor in
         try? await Task.sleep(for: .milliseconds(50))
-        inputFocused = true
+        composer.focus()
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiPrefillComposer)) { note in
       Task { @MainActor in
         guard let text = note.userInfo?[Notification.Name.geminiPrefillComposerTextKey] as? String else { return }
-        // Clear buffer — notification arrived while view is subscribed (warm path).
         GeminiWindowManager.shared.pendingPrefillText = nil
-        viewModel.resetPendingComposerContent()
-        viewModel.addPastedBlock(text, kind: .shortcutSelection)
-        inputText = ""
+        composer.clearAll()
+        composer.insertPastedBlock(text: text, kind: .shortcutSelection)
         try? await Task.sleep(for: .milliseconds(50))
-        inputFocused = true
+        composer.focus()
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiNewChat)) { _ in
-      inputText = ""
+      composer.clearAll()
     }
-    .onAppear {
-      // Cold-start path: if the prefill notification was missed because SwiftUI
-      // hadn't subscribed yet, consume the buffered text now.
-      if let buffered = GeminiWindowManager.shared.pendingPrefillText {
-        GeminiWindowManager.shared.pendingPrefillText = nil
-        viewModel.resetPendingComposerContent()
-        viewModel.addPastedBlock(buffered, kind: .shortcutSelection)
-        inputText = ""
-        Task { @MainActor in
-          try? await Task.sleep(for: .milliseconds(50))
-          inputFocused = true
-        }
+    // Drain VM-side staging fields (populated by /screenshot, attachFile button, etc.)
+    // into the inline composer document, then clear the VM fields.
+    .onChange(of: viewModel.pendingScreenshots) { newValue in
+      guard !newValue.isEmpty else { return }
+      for data in newValue { composer.insertScreenshot(data) }
+      viewModel.pendingScreenshots = []
+    }
+    .onChange(of: viewModel.pendingFileAttachment?.filename) { _ in
+      guard let f = viewModel.pendingFileAttachment else { return }
+      composer.insertFile(data: f.data, mimeType: f.mimeType, filename: f.filename)
+      viewModel.pendingFileAttachment = nil
+    }
+    .onChange(of: viewModel.pastedBlocks.count) { _ in
+      guard !viewModel.pastedBlocks.isEmpty else { return }
+      for block in viewModel.pastedBlocks {
+        composer.insertPastedBlock(text: block.content, kind: block.kind)
       }
-      pasteMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-        guard event.modifierFlags.contains(.command),
-              event.charactersIgnoringModifiers == "v",
-              let str = NSPasteboard.general.string(forType: .string) else { return event }
-        let lineCount = str.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
-        guard lineCount >= GeminiChatViewModel.pasteThresholdLines
-                || str.count >= GeminiChatViewModel.pasteThresholdChars else { return event }
-        Task { @MainActor in viewModel.addPastedBlock(str) }
-        return nil
+      viewModel.pastedBlocks = []
+    }
+  }
+
+  /// Sends the current composer contents. If the composer is empty except for a
+  /// pure slash command, route through the legacy `sendMessage` for command dispatch.
+  private func submitComposer() {
+    let output = composer.serialize()
+    let typed = output.typedText
+    let lower = typed.lowercased()
+    let isPureSlash = output.attachedParts.isEmpty
+      && !output.finalContent.contains("<pasted_")
+      && lower.hasPrefix("/")
+    composer.clearAll()
+    if isPureSlash {
+      Task { await viewModel.sendMessage(userInput: typed) }
+    } else {
+      Task {
+        await viewModel.sendComposed(
+          typedText: typed,
+          finalContent: output.finalContent,
+          attachedParts: output.attachedParts)
       }
     }
-    .onDisappear {
-      if let monitor = pasteMonitor { NSEvent.removeMonitor(monitor) }
-    }
+  }
+
+  /// Tab key in composer: complete a slash-command prefix and submit it immediately.
+  /// Returns true when the tab was consumed.
+  private func handleTabComplete() -> Bool {
+    let word = lastWord
+    guard word.hasPrefix("/"), !word.isEmpty else { return false }
+    let matches = viewModel.suggestedCommands(for: word)
+    guard let first = matches.first else { return false }
+    composer.clearAll()
+    Task { await viewModel.sendMessage(userInput: first) }
+    return true
   }
 
   // MARK: - Command autocomplete
@@ -1345,94 +1414,17 @@ struct GeminiInputAreaView: View {
 
   private var inputBar: some View {
     VStack(spacing: 0) {
-      // Composer box: chips + text editor
-      VStack(spacing: 0) {
-        if !viewModel.pendingScreenshots.isEmpty || viewModel.pendingFileAttachment != nil || !viewModel.pastedBlocks.isEmpty {
-          attachmentChipsRow
-        }
-        ZStack(alignment: .topLeading) {
-          Text(inputTextForSizing)
-            .font(.system(size: 16))
-            .padding(.horizontal, 18)
-            .padding(.vertical, 13)
-            .fixedSize(horizontal: false, vertical: true)
-            .background(GeometryReader { geo in
-              Color.clear.preference(key: InputTextHeightKey.self, value: geo.size.height)
-            })
-            .frame(maxWidth: .infinity, maxHeight: Self.inputMaxHeight, alignment: .leading)
-            .opacity(0)
-            .accessibilityHidden(true)
-
-          if inputText.isEmpty {
-            Text("Message Gemini…")
-              .font(.system(size: 16))
-              .foregroundColor(GeminiChatTheme.secondaryText.opacity(0.5))
-              .padding(.leading, 18)
-              .padding(.trailing, 12)
-              .padding(.vertical, 13)
-              .allowsHitTesting(false)
-          }
-          TextEditor(text: $inputText)
-            .scrollContentBackground(.hidden)
-            .font(.system(size: 16))
-            .foregroundColor(GeminiChatTheme.primaryText)
-            .focused($inputFocused)
-            .onKeyPress(.tab) {
-              let word = lastWord
-              if word.hasPrefix("/"), !word.isEmpty {
-                let matches = viewModel.suggestedCommands(for: word)
-                if let first = matches.first {
-                  inputText = contentWithoutLastWord
-                  Task { await viewModel.sendMessage(userInput: first) }
-                  return .handled
-                }
-              }
-              return .ignored
-            }
-            .onKeyPress { keyPress in
-              if keyPress.modifiers.contains(.command), keyPress.characters == ".", viewModel.isSending {
-                viewModel.cancelSend()
-                return .handled
-              }
-              if keyPress.key == .delete, inputText.isEmpty {
-                if !viewModel.pastedBlocks.isEmpty {
-                  viewModel.removePastedBlock(id: viewModel.pastedBlocks.last!.id)
-                  return .handled
-                } else if viewModel.pendingFileAttachment != nil {
-                  viewModel.clearPendingFile()
-                  return .handled
-                } else if !viewModel.pendingScreenshots.isEmpty {
-                  viewModel.removePendingScreenshot(at: viewModel.pendingScreenshots.count - 1)
-                  return .handled
-                }
-              }
-              guard keyPress.key == .return else { return .ignored }
-              if keyPress.modifiers.contains(.shift) {
-                return .ignored
-              }
-              let word = lastWord
-              if word.hasPrefix("/"), !word.isEmpty {
-                let matches = viewModel.suggestedCommands(for: word)
-                if let first = matches.first, word.lowercased() == first.lowercased() {
-                  inputText = contentWithoutLastWord
-                  Task { await viewModel.sendMessage(userInput: word) }
-                  return .handled
-                }
-              }
-              let toSend = inputText
-              inputText = ""
-              Task { await viewModel.sendMessage(userInput: toSend) }
-              return .handled
-            }
-            .onAppear { inputFocused = true }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
-            .frame(height: inputHeight)
-            .background(GeminiInputScrollViewAutohideAnchor())
-        }
-        .frame(height: inputHeight)
-        .onPreferenceChange(InputTextHeightKey.self) { measuredInputHeight = $0 }
-      }
+      // Composer: NSTextView with inline screenshot/paste/file attachments.
+      GeminiComposerTextView(
+        controller: composer,
+        onSubmit: { submitComposer() },
+        onCancel: {
+          if viewModel.isSending { viewModel.cancelSend() }
+        },
+        onTabComplete: { handleTabComplete() },
+        onClickScreenshot: { data in onTapScreenshotThumbnail(data) }
+      )
+      .frame(height: inputHeight)
 
       // Toolbar row below composer: action buttons left, model selector + send right
       HStack(spacing: 4) {
@@ -1533,9 +1525,7 @@ struct GeminiInputAreaView: View {
           if viewModel.isSending {
             viewModel.cancelSend()
           } else {
-            let toSend = inputText
-            inputText = ""
-            Task { await viewModel.sendMessage(userInput: toSend) }
+            submitComposer()
           }
         }) {
           Group {
@@ -1575,31 +1565,12 @@ struct GeminiInputAreaView: View {
     .padding(.vertical, 12)
     .contentShape(Rectangle())
     .onTapGesture {
-      inputFocused = true
+      composer.focus()
     }
   }
 
-  // MARK: - Attachment chips row (inside composer box)
-
-  private var attachmentChipsRow: some View {
-    ScrollView(.horizontal, showsIndicators: false) {
-      HStack(spacing: 6) {
-        ForEach(Array(viewModel.pendingScreenshots.enumerated()), id: \.offset) { index, data in
-          screenshotChip(data: data, index: index)
-        }
-        if viewModel.pendingFileAttachment != nil {
-          fileChip
-        }
-        ForEach(viewModel.pastedBlocks) { block in
-          pastedBlockChip(block)
-        }
-      }
-      .padding(.horizontal, 10)
-      .padding(.top, 8)
-      .padding(.bottom, 4)
-    }
-  }
-
+  // (Legacy chip helpers removed — attachments are now inline in the composer.)
+  #if false
   private func screenshotChip(data: Data, index: Int) -> some View {
     let isFocused = focusedAttachment == .screenshot(index)
     let label = viewModel.pendingScreenshots.count == 1 ? "Screenshot" : "Screenshot \(index + 1)"
@@ -1741,6 +1712,7 @@ struct GeminiInputAreaView: View {
     .onKeyPress(.delete)         { viewModel.removePastedBlock(id: block.id); inputFocused = true; return .handled }
     .accessibilityLabel(a11yLabel)
   }
+  #endif
 
 }
 
