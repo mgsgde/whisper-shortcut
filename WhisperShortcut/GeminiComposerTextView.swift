@@ -103,13 +103,11 @@ final class ComposerAttachmentCell: NSTextAttachmentCell {
       .font: Self.labelFont,
       .foregroundColor: NSColor.labelColor,
     ]
-    let labelRect = NSRect(
-      x: textX,
-      y: rect.midY - 7,
-      width: rect.maxX - textX - Self.horizontalPadding,
-      height: 14
-    )
-    (label as NSString).draw(in: labelRect, withAttributes: attrs)
+    // Draw single-line at a point — draw(in:) word-wraps when the rect is
+    // narrow, which clips the trailing portion of the label.
+    let textSize = (label as NSString).size(withAttributes: attrs)
+    let drawPoint = NSPoint(x: textX, y: rect.midY - textSize.height / 2)
+    (label as NSString).draw(at: drawPoint, withAttributes: attrs)
   }
 }
 
