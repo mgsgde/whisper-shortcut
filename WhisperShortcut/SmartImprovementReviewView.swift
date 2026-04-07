@@ -104,29 +104,33 @@ struct SmartImprovementReviewView: View {
     return "Smart Improvement – \(focusDisplayName)"
   }
 
+  private var diffLines: [SmartImprovementDiffLine] {
+    computeSmartImprovementDiff(original: originalText, suggested: editedSuggestedText)
+  }
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 16) {
+    VStack(alignment: .leading, spacing: 12) {
       Text(windowTitle)
         .font(.headline)
         .padding(.bottom, 4)
 
+      // Outer ScrollView so all sections fit on small windows; buttons stay pinned at the bottom.
+      ScrollView(.vertical, showsIndicators: true) {
+        VStack(alignment: .leading, spacing: 16) {
       if let rationale = rationale, !rationale.isEmpty {
         VStack(alignment: .leading, spacing: 6) {
           Text("Why this change")
             .font(.subheadline)
             .fontWeight(.medium)
             .foregroundColor(.secondary)
-          ScrollView(.vertical, showsIndicators: true) {
-            Text(rationale)
-              .font(.system(.body))
-              .frame(maxWidth: .infinity, alignment: .topLeading)
-              .fixedSize(horizontal: false, vertical: true)
-              .textSelection(.enabled)
-              .padding(8)
-          }
-          .background(Color(nsColor: .textBackgroundColor))
-          .cornerRadius(6)
-          .frame(minHeight: 60, maxHeight: 140)
+          Text(rationale)
+            .font(.system(.body))
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
+            .padding(8)
+            .background(Color(nsColor: .textBackgroundColor))
+            .cornerRadius(6)
         }
       }
 
@@ -135,10 +139,8 @@ struct SmartImprovementReviewView: View {
           .font(.subheadline)
           .fontWeight(.medium)
           .foregroundColor(.secondary)
-        ScrollView(.vertical, showsIndicators: true) {
-          let lines = computeSmartImprovementDiff(original: originalText, suggested: editedSuggestedText)
-          VStack(alignment: .leading, spacing: 0) {
-            ForEach(lines) { line in
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(diffLines) { line in
               HStack(alignment: .top, spacing: 6) {
                 Text(line.kind == .added ? "+" : line.kind == .removed ? "−" : " ")
                   .font(.system(.body, design: .monospaced))
@@ -156,10 +158,8 @@ struct SmartImprovementReviewView: View {
             }
           }
           .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
-        .background(Color(nsColor: .textBackgroundColor))
-        .cornerRadius(6)
-        .frame(minHeight: 180, maxHeight: 320)
+          .background(Color(nsColor: .textBackgroundColor))
+          .cornerRadius(6)
       }
 
       VStack(alignment: .leading, spacing: 6) {
@@ -167,17 +167,14 @@ struct SmartImprovementReviewView: View {
           .font(.subheadline)
           .fontWeight(.medium)
           .foregroundColor(.secondary)
-        ScrollView(.vertical, showsIndicators: true) {
-          Text(originalText)
-            .font(.system(.body, design: .monospaced))
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .fixedSize(horizontal: false, vertical: true)
-            .textSelection(.enabled)
-            .padding(8)
-        }
-        .background(Color(nsColor: .textBackgroundColor))
-        .cornerRadius(6)
-        .frame(minHeight: 200, maxHeight: 320)
+        Text(originalText)
+          .font(.system(.body, design: .monospaced))
+          .frame(maxWidth: .infinity, alignment: .topLeading)
+          .fixedSize(horizontal: false, vertical: true)
+          .textSelection(.enabled)
+          .padding(8)
+          .background(Color(nsColor: .textBackgroundColor))
+          .cornerRadius(6)
       }
 
       VStack(alignment: .leading, spacing: 6) {
@@ -190,7 +187,10 @@ struct SmartImprovementReviewView: View {
           .scrollContentBackground(.hidden)
           .background(Color(nsColor: .textBackgroundColor))
           .cornerRadius(6)
-          .frame(minHeight: 200, maxHeight: 320)
+          .frame(minHeight: 260)
+      }
+        }
+        .padding(.trailing, 4)
       }
 
       HStack(spacing: 12) {
@@ -212,7 +212,7 @@ struct SmartImprovementReviewView: View {
       .padding(.top, 8)
     }
     .padding(24)
-    .frame(minWidth: 780, minHeight: 720)
+    .frame(minWidth: 820, minHeight: 600)
   }
 }
 
@@ -241,7 +241,7 @@ enum SmartImprovementReviewPanel {
 
       DispatchQueue.main.async {
         let panel = NSPanel(
-          contentRect: NSRect(x: 0, y: 0, width: 820, height: 760),
+          contentRect: NSRect(x: 0, y: 0, width: 900, height: 820),
           styleMask: [.titled, .closable, .resizable],
           backing: .buffered,
           defer: false
@@ -249,7 +249,7 @@ enum SmartImprovementReviewPanel {
         panel.isReleasedWhenClosed = false
         panel.becomesKeyOnlyIfNeeded = false
         panel.hidesOnDeactivate = false
-        panel.minSize = NSSize(width: 720, height: 560)
+        panel.minSize = NSSize(width: 760, height: 520)
 
         let view = SmartImprovementReviewView(
           focusDisplayName: focusDisplayName,
@@ -270,7 +270,7 @@ enum SmartImprovementReviewPanel {
           }
         )
         let hosting = NSHostingController(rootView: view)
-        hosting.view.frame = NSRect(x: 0, y: 0, width: 820, height: 760)
+        hosting.view.frame = NSRect(x: 0, y: 0, width: 900, height: 820)
         panel.title = view.windowTitle
         panel.contentViewController = hosting
 
