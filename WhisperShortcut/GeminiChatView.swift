@@ -162,6 +162,13 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   func createNewSession() {
+    // Reuse the current tab if it is already an empty "New chat" — avoids
+    // spawning a row of identical empty tabs when the user hits Cmd+N
+    // repeatedly. The user's composer draft is global and unaffected.
+    if session.messages.isEmpty && (session.title?.isEmpty ?? true) {
+      DebugLogger.log("GEMINI-CHAT: Cmd+N reused empty current tab \(session.id)")
+      return
+    }
     let newSession = store.createNewSession()
     session = newSession
     currentSessionId = newSession.id
@@ -919,6 +926,35 @@ class GeminiChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: Closed tab \(id)")
   }
 
+  /// Close every tab except `keepId`. The kept tab becomes the active one.
+  func closeOtherTabs(keep keepId: UUID) {
+    let toClose = recentSessions.map { $0.id }.filter { $0 != keepId }
+    for id in toClose { store.deleteSession(id: id) }
+    if session.id != keepId {
+      store.switchToSession(id: keepId)
+      switchToCurrentStoreSession()
+    } else {
+      refreshRecentSessions()
+    }
+    DebugLogger.log("GEMINI-CHAT: Closed \(toClose.count) other tab(s), kept \(keepId)")
+  }
+
+  /// Close every tab to the right of `anchorId` in the current visible order.
+  func closeTabsToTheRight(of anchorId: UUID) {
+    guard let anchorIdx = recentSessions.firstIndex(where: { $0.id == anchorId }) else { return }
+    let toClose = recentSessions.suffix(from: anchorIdx + 1).map { $0.id }
+    if toClose.isEmpty { return }
+    let activeWillBeClosed = toClose.contains(session.id)
+    for id in toClose { store.deleteSession(id: id) }
+    if activeWillBeClosed {
+      store.switchToSession(id: anchorId)
+      switchToCurrentStoreSession()
+    } else {
+      refreshRecentSessions()
+    }
+    DebugLogger.log("GEMINI-CHAT: Closed \(toClose.count) tab(s) right of \(anchorId)")
+  }
+
   private func buildContents() -> [[String: Any]] {
     let toSend = Array(messages.suffix(AppConstants.geminiChatVolatileWindowSize))
     return toSend.enumerated().map { index, msg in
@@ -1114,6 +1150,11 @@ struct GeminiChatView: View {
     .onHover { isHovered in hoveredTabId = isHovered ? session.id : nil }
     .background(NativeTooltip(text: title))
     .pointerCursorOnHover()
+    .contextMenu {
+      Button("Close Tab") { viewModel.closeTab(id: session.id) }
+      Button("Close Other Tabs") { viewModel.closeOtherTabs(keep: session.id) }
+      Button("Close Tabs to the Right") { viewModel.closeTabsToTheRight(of: session.id) }
+    }
   }
 
   // MARK: - Message List
