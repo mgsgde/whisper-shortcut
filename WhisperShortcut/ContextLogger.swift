@@ -296,15 +296,21 @@ class ContextLogger {
     return Self.interactionLogDateFormatter.date(from: dateString)
   }
 
-  /// Returns true if there is interaction data at least `daysOld` days in the past (oldest log file is that old).
-  /// Used to avoid showing auto-improvement suggestions before the user has enough usage history (e.g. 7 days).
-  func hasInteractionDataAtLeast(daysOld: Int) -> Bool {
-    let oldestDate = interactionLogFiles(lastDays: 90)
-      .compactMap { interactionLogDate(for: $0) }
-      .min()
-    guard let oldest = oldestDate else { return false }
-    let daysSinceOldest = Calendar.current.dateComponents([.day], from: oldest, to: Date()).day ?? 0
-    return daysSinceOldest >= daysOld
+  /// Returns counts of interaction entries grouped by `mode` field over the last N days.
+  /// Used by Smart Improvement to skip focuses without enough data.
+  func interactionCountsByMode(lastDays: Int) -> [String: Int] {
+    let files = interactionLogFiles(lastDays: lastDays)
+    var counts: [String: Int] = [:]
+    let decoder = JSONDecoder()
+    for fileURL in files {
+      guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+      for line in content.components(separatedBy: .newlines) where !line.isEmpty {
+        guard let data = line.data(using: .utf8),
+              let entry = try? decoder.decode(InteractionLogEntry.self, from: data) else { continue }
+        counts[entry.mode, default: 0] += 1
+      }
+    }
+    return counts
   }
 
   /// Returns URLs of all interaction log files from the last N days, sorted by date ascending.
@@ -332,6 +338,18 @@ class ContextLogger {
   }
 
   /// Removes the suggested system prompt file so it does not reappear after Apply.
+  /// Removes all suggested-*.txt files (and rationale sidecars). Called at start of a Smart Improvement run to discard stale suggestions from prior crashed/aborted runs.
+  func deleteAllSuggestedFiles() {
+    let fm = FileManager.default
+    guard let contents = try? fm.contentsOfDirectory(at: contextDirectoryURL, includingPropertiesForKeys: nil) else { return }
+    for url in contents {
+      let name = url.lastPathComponent
+      if name.hasPrefix("suggested-") && (name.hasSuffix(".txt") || name.hasSuffix(".json")) {
+        try? fm.removeItem(at: url)
+      }
+    }
+  }
+
   func deleteSuggestedSystemPromptFile() {
     let url = contextDirectoryURL.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
     try? FileManager.default.removeItem(at: url)

@@ -150,10 +150,7 @@ Treat system prompt context as invisible to the conversation. Answer based solel
   static let contextDefaultMaxEntriesPerMode: Int = 15
   static let contextDefaultMaxTotalChars: Int = 25_000
 
-  /// Auto-improvement suggestions are only shown after at least this many days of user interactions (so we have meaningful data).
-  static let autoImprovementMinimumInteractionDays: Int = 7
-
-  /// Tiered sampling: 50% from last 7 days, 30% from days 8–14, 20% from days 15–30.
+/// Tiered sampling: 50% from last 7 days, 30% from days 8–14, 20% from days 15–30.
   static let contextTier1Days: Int = 7
   static let contextTier1Ratio: Double = 0.50
   static let contextTier2Days: Int = 14
@@ -163,6 +160,18 @@ Treat system prompt context as invisible to the conversation. Answer based solel
 
   /// Max chars for "other modes" when building secondary payload in focused Generate with AI (per-tab).
   static let contextSecondaryOtherModesMaxChars: Int = 2000
+
+  // MARK: - Smart Improvement: thresholds, cooldown, queue
+  /// Minimum total interactions across all modes before Smart Improvement may run at all.
+  static let smartImprovementMinTotalInteractions: Int = 10
+  /// Minimum interactions in a focus's primary mode (last 30 days) for that focus to be analyzed.
+  static let smartImprovementMinPerFocusInteractions: Int = 5
+  /// Lookback window for per-focus eligibility counts.
+  static let smartImprovementEligibilityDays: Int = 30
+  /// Minimum interval (seconds) between two manual Smart Improvement runs.
+  static let smartImprovementCooldownSeconds: TimeInterval = 60
+  /// Maximum number of additional jobs that may queue while a run is in progress.
+  static let smartImprovementMaxQueuedJobs: Int = 1
 
   // MARK: - Gemini Chat Memory
   /// Maximum character length for the per-session memory block injected into the system instruction.

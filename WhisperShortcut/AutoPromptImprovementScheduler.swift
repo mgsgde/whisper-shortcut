@@ -17,16 +17,41 @@ class AutoPromptImprovementScheduler {
   /// - Parameter fromAutoRun: When true (e.g. launch/daily timer), no popup is shown when there is no interaction data; when false (user tapped "Improve from usage"), show error.
   func runImprovementNow(fromAutoRun: Bool = false) async {
     guard GeminiCredentialProvider.shared.hasCredential() else { return }
-    guard ContextLogger.shared.hasInteractionDataAtLeast(daysOld: 0) else {
+
+    // Total-data gate: require enough overall interactions before running anything.
+    let counts = ContextLogger.shared.interactionCountsByMode(lastDays: AppConstants.smartImprovementEligibilityDays)
+    let totalInteractions = counts.values.reduce(0, +)
+    if totalInteractions < AppConstants.smartImprovementMinTotalInteractions {
       if !fromAutoRun {
         PopupNotificationWindow.showError(
-          "No usage data available. Enable \"Save usage data\" and use dictation or prompt mode first.",
+          "Not enough usage data yet (\(totalInteractions)/\(AppConstants.smartImprovementMinTotalInteractions)). Use dictation or prompt mode a bit more, then try again.",
           title: "Smart Improvement"
         )
       }
       return
     }
+
+    // Cooldown gate: throttle manual triggers.
+    if !fromAutoRun, let last = lastRunStartedAt {
+      let elapsed = Date().timeIntervalSince(last)
+      if elapsed < AppConstants.smartImprovementCooldownSeconds {
+        let remaining = Int(ceil(AppConstants.smartImprovementCooldownSeconds - elapsed))
+        PopupNotificationWindow.showInfo(
+          "Smart Improvement is on cooldown. Try again in \(remaining)s.",
+          title: "Smart Improvement"
+        )
+        return
+      }
+    }
+
     if isImprovementRunning {
+      if improvementQueue.count >= AppConstants.smartImprovementMaxQueuedJobs {
+        PopupNotificationWindow.showInfo(
+          "A run is already in progress and the queue is full. Try again later.",
+          title: "Smart Improvement"
+        )
+        return
+      }
       improvementQueue.append(.fromUsage)
       showQueuedMessage()
       return
@@ -57,6 +82,8 @@ class AutoPromptImprovementScheduler {
 
   private var isImprovementRunning = false
   private var improvementQueue: [ImprovementJob] = []
+  /// Wall-clock time of the last run start (for cooldown check). nil = never run this session.
+  private var lastRunStartedAt: Date?
 
   private func showQueuedMessage() {
     let n = improvementQueue.count
@@ -93,9 +120,57 @@ class AutoPromptImprovementScheduler {
     return model.displayName
   }
 
+  /// Maps each focus to the interaction `mode` field that counts as its primary signal. Mirrors ContextDerivation.primaryMode.
+  /// `geminiChat` has no single primary mode and uses the total interaction count instead.
+  private func primaryModeKey(for focus: GenerationKind) -> String? {
+    switch focus {
+    case .dictation, .whisperGlossary: return "transcription"
+    case .promptMode: return "prompt"
+    case .promptAndRead: return "promptAndRead"
+    case .geminiChat: return nil
+    }
+  }
+
   private func runImprovement() async {
+    lastRunStartedAt = Date()
+    // Discard any stale suggestion files from a previously crashed/aborted run before generating new ones.
+    ContextLogger.shared.deleteAllSuggestedFiles()
+
     let derivation = ContextDerivation()
-    let focuses: [GenerationKind] = [.dictation, .whisperGlossary, .promptMode, .promptAndRead, .geminiChat]
+    let allFocuses: [GenerationKind] = [.dictation, .whisperGlossary, .promptMode, .promptAndRead, .geminiChat]
+
+    // Per-focus eligibility: skip focuses without enough primary-mode data in the lookback window.
+    let counts = ContextLogger.shared.interactionCountsByMode(lastDays: AppConstants.smartImprovementEligibilityDays)
+    let total = counts.values.reduce(0, +)
+    let minPerFocus = AppConstants.smartImprovementMinPerFocusInteractions
+    let focuses: [GenerationKind] = allFocuses.filter { focus in
+      if let mode = primaryModeKey(for: focus) {
+        let n = counts[mode] ?? 0
+        if n < minPerFocus {
+          DebugLogger.log("AUTO-IMPROVEMENT: Skipping \(focus) — only \(n) entries for mode \(mode) (need \(minPerFocus))")
+          return false
+        }
+      } else {
+        // geminiChat: gate on total instead of a single mode.
+        if total < minPerFocus {
+          DebugLogger.log("AUTO-IMPROVEMENT: Skipping \(focus) — only \(total) total entries (need \(minPerFocus))")
+          return false
+        }
+      }
+      return true
+    }
+
+    if focuses.isEmpty {
+      DebugLogger.log("AUTO-IMPROVEMENT: No focuses eligible — skipping run")
+      await MainActor.run {
+        PopupNotificationWindow.showInfo(
+          "Not enough per-mode usage yet. Use the app a bit more and try again.",
+          title: "Smart Improvement"
+        )
+      }
+      UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.lastAutoImprovementRunDate)
+      return
+    }
 
     typealias FocusResult = (focus: GenerationKind, error: Error?)
     let results: [FocusResult] = await withTaskGroup(of: FocusResult.self) { group in
@@ -143,13 +218,15 @@ class AutoPromptImprovementScheduler {
       for (index, kind) in pendingKinds.enumerated() {
         guard let suggested = readSuggestion(for: kind), !suggested.isEmpty else { continue }
         let original = currentContent(for: kind)
+        let rationale = readRationale(for: kind)
         let oneBased = index + 1
         let result = await SmartImprovementReviewPanel.present(
           focusDisplayName: kind.improvementDisplayName,
           index: total > 1 ? oneBased : nil,
           total: total > 1 ? total : nil,
           originalText: original,
-          suggestedText: suggested
+          suggestedText: suggested,
+          rationale: rationale
         )
         if let accepted = result, !accepted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
           applySuggestion(accepted, for: kind)
@@ -257,6 +334,21 @@ class AutoPromptImprovementScheduler {
     return trimmed.isEmpty ? nil : trimmed
   }
 
+  private func readRationale(for kind: GenerationKind) -> String? {
+    let baseName: String
+    switch kind {
+    case .dictation: baseName = "suggested-dictation-prompt"
+    case .whisperGlossary: baseName = "suggested-whisper-glossary"
+    case .promptMode: baseName = "suggested-prompt-mode-system-prompt"
+    case .promptAndRead: baseName = "suggested-prompt-read-mode-system-prompt"
+    case .geminiChat: baseName = "suggested-gemini-chat-system-prompt"
+    }
+    let url = ContextLogger.shared.directoryURL.appendingPathComponent(baseName + "-rationale.txt")
+    guard let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+  }
+
   /// Deletes the suggestion file for the given focus without applying. Use when the user cancels the review.
   private func discardSuggestion(for kind: GenerationKind) {
     switch kind {
@@ -266,6 +358,17 @@ class AutoPromptImprovementScheduler {
     case .promptAndRead: ContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
     case .geminiChat: ContextLogger.shared.deleteSuggestedGeminiChatSystemPromptFile()
     }
+    // Also remove rationale sidecar.
+    let baseName: String
+    switch kind {
+    case .dictation: baseName = "suggested-dictation-prompt"
+    case .whisperGlossary: baseName = "suggested-whisper-glossary"
+    case .promptMode: baseName = "suggested-prompt-mode-system-prompt"
+    case .promptAndRead: baseName = "suggested-prompt-read-mode-system-prompt"
+    case .geminiChat: baseName = "suggested-gemini-chat-system-prompt"
+    }
+    let url = ContextLogger.shared.directoryURL.appendingPathComponent(baseName + "-rationale.txt")
+    try? FileManager.default.removeItem(at: url)
   }
 
   private func applySuggestion(_ suggested: String, for kind: GenerationKind) {
