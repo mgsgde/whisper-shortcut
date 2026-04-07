@@ -15,6 +15,7 @@ class GeminiWindowController: NSWindowController {
   private static let keyCodeDownArrow: UInt16 = 125
   private static let keyCodeN: UInt16 = 45
   private static let keyCodeW: UInt16 = 13
+  private static let keyCodeT: UInt16 = 17
 
   private var keyDownMonitor: Any?
   private var needsDefaultFrame: Bool = false
@@ -118,9 +119,13 @@ class GeminiWindowController: NSWindowController {
     keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
       guard let self, let win = self.window, win.isKeyWindow else { return event }
       guard event.modifierFlags.contains(.command) else { return event }
+      let isShift = event.modifierFlags.contains(.shift)
       switch event.keyCode {
       case Self.keyCodeN:
         NotificationCenter.default.post(name: .geminiNewChat, object: nil)
+        return nil
+      case Self.keyCodeT where isShift:
+        NotificationCenter.default.post(name: .geminiReopenLastClosedTab, object: nil)
         return nil
       case Self.keyCodeW:
         NotificationCenter.default.post(name: .geminiCloseTab, object: nil)

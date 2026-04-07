@@ -81,6 +81,12 @@ class GeminiChatViewModel: ObservableObject {
   @Published private(set) var recentSessions: [ChatSession] = []
   @Published private(set) var currentSessionId: UUID = UUID()
 
+  /// In-memory ring buffer of recently closed sessions for Cmd+Shift+T undo.
+  /// Only sessions that had at least one message are stored — empty tabs are
+  /// considered disposable and not worth restoring.
+  private var recentlyClosedSessions: [ChatSession] = []
+  private static let recentlyClosedCapacity = 10
+
   private var session: ChatSession
   private let store: GeminiChatSessionStore
   private let apiClient = GeminiAPIClient()
@@ -917,6 +923,7 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   func closeTab(id: UUID) {
+    rememberClosed(id: id)
     store.deleteSession(id: id)
     if id == session.id {
       switchToCurrentStoreSession()
@@ -926,10 +933,45 @@ class GeminiChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: Closed tab \(id)")
   }
 
+  /// Pushes a session onto the recently-closed ring buffer if it has any
+  /// content worth restoring.
+  private func rememberClosed(id: UUID) {
+    guard let s = store.session(by: id), !s.messages.isEmpty else { return }
+    recentlyClosedSessions.append(s)
+    if recentlyClosedSessions.count > Self.recentlyClosedCapacity {
+      recentlyClosedSessions.removeFirst(recentlyClosedSessions.count - Self.recentlyClosedCapacity)
+    }
+  }
+
+  /// Restores the most recently closed tab and switches to it. No-op if the
+  /// undo buffer is empty.
+  func reopenLastClosedTab() {
+    guard let s = recentlyClosedSessions.popLast() else {
+      DebugLogger.log("GEMINI-CHAT: reopenLastClosedTab — buffer empty")
+      return
+    }
+    store.save(s)
+    store.switchToSession(id: s.id)
+    switchToCurrentStoreSession()
+    DebugLogger.log("GEMINI-CHAT: Reopened closed tab \(s.id)")
+  }
+
+  /// Renames the given session. Empty/whitespace-only titles clear the title
+  /// (so the tab falls back to "New chat" / the auto-title path).
+  func renameSession(id: UUID, to newTitle: String) {
+    guard var target = store.session(by: id) else { return }
+    let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    target.title = trimmed.isEmpty ? nil : String(trimmed.prefix(Self.maxSessionTitleLength))
+    store.save(target)
+    if id == session.id { session.title = target.title }
+    refreshRecentSessions()
+    DebugLogger.log("GEMINI-CHAT: Renamed tab \(id) → \(target.title ?? "<nil>")")
+  }
+
   /// Close every tab except `keepId`. The kept tab becomes the active one.
   func closeOtherTabs(keep keepId: UUID) {
     let toClose = recentSessions.map { $0.id }.filter { $0 != keepId }
-    for id in toClose { store.deleteSession(id: id) }
+    for id in toClose { rememberClosed(id: id); store.deleteSession(id: id) }
     if session.id != keepId {
       store.switchToSession(id: keepId)
       switchToCurrentStoreSession()
@@ -945,7 +987,7 @@ class GeminiChatViewModel: ObservableObject {
     let toClose = recentSessions.suffix(from: anchorIdx + 1).map { $0.id }
     if toClose.isEmpty { return }
     let activeWillBeClosed = toClose.contains(session.id)
-    for id in toClose { store.deleteSession(id: id) }
+    for id in toClose { rememberClosed(id: id); store.deleteSession(id: id) }
     if activeWillBeClosed {
       store.switchToSession(id: anchorId)
       switchToCurrentStoreSession()
@@ -1013,6 +1055,9 @@ struct GeminiChatView: View {
   @State private var previewImageData: Data? = nil
   @State private var scrollActions = GeminiScrollActions()
   @State private var hoveredTabId: UUID? = nil
+  /// Session id currently being renamed via the context-menu alert.
+  @State private var renamingTabId: UUID? = nil
+  @State private var renameDraft: String = ""
   /// When true, create a new chat session on first appear (e.g. for the meeting window so it opens with a fresh chat).
   @State private var createNewSessionOnAppear: Bool
   @State private var hasTriggeredNewSessionOnAppear: Bool = false
@@ -1061,6 +1106,20 @@ struct GeminiChatView: View {
     .onReceive(NotificationCenter.default.publisher(for: .geminiCloseTab)) { _ in
       viewModel.closeTab(id: viewModel.currentSessionId)
     }
+    .onReceive(NotificationCenter.default.publisher(for: .geminiReopenLastClosedTab)) { _ in
+      viewModel.reopenLastClosedTab()
+    }
+    .alert("Rename Tab", isPresented: Binding(
+      get: { renamingTabId != nil },
+      set: { if !$0 { renamingTabId = nil } }
+    )) {
+      TextField("Tab title", text: $renameDraft)
+      Button("Save") {
+        if let id = renamingTabId { viewModel.renameSession(id: id, to: renameDraft) }
+        renamingTabId = nil
+      }
+      Button("Cancel", role: .cancel) { renamingTabId = nil }
+    }
     .onReceive(NotificationCenter.default.publisher(for: .geminiScrollToTop)) { _ in
       scrollActions.scrollToTop?()
     }
@@ -1079,12 +1138,12 @@ struct GeminiChatView: View {
 
   private func tabStripHeader(containerWidth: CGFloat) -> some View {
     let iconWidth: CGFloat = 40
-    let tabsWidth = containerWidth - iconWidth
-    let tabMinWidth: CGFloat = 90
-    let tabMaxWidth: CGFloat = 200
-    let maxTabsFromWidth = max(1, Int(tabsWidth / tabMinWidth))
-    let sessions = viewModel.visibleTabs(maxCount: maxTabsFromWidth)
-    let tabWidth = min(tabMaxWidth, sessions.isEmpty ? tabMaxWidth : tabsWidth / CGFloat(sessions.count))
+    let overflowWidth: CGFloat = 32
+    let fixedTabWidth: CGFloat = 160
+    let availableWidth = containerWidth - iconWidth - overflowWidth
+    let allSessions = viewModel.visibleTabs(maxCount: 999)
+    let totalNeeded = CGFloat(allSessions.count) * fixedTabWidth
+    let overflows = totalNeeded > availableWidth
 
     return HStack(spacing: 0) {
       Image(systemName: "sparkles")
@@ -1092,13 +1151,56 @@ struct GeminiChatView: View {
         .font(.system(size: 13, weight: .medium))
         .frame(width: iconWidth, height: 52)
 
-      ForEach(sessions, id: \.id) { session in
-        sessionTab(session: session, width: tabWidth)
+      ScrollViewReader { proxy in
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: 0) {
+            ForEach(allSessions, id: \.id) { session in
+              sessionTab(session: session, width: fixedTabWidth)
+                .id(session.id)
+            }
+          }
+        }
+        .onChange(of: viewModel.currentSessionId) { newId in
+          // Keep the active tab visible after a switch (e.g. via reopen).
+          withAnimation { proxy.scrollTo(newId, anchor: .center) }
+        }
       }
 
-      Spacer()
+      tabOverflowMenu(sessions: allSessions)
+        .frame(width: overflowWidth, height: 52)
+        .opacity(overflows || allSessions.count > 1 ? 1 : 0)
     }
     .frame(height: 52)
+  }
+
+  private func tabOverflowMenu(sessions: [ChatSession]) -> some View {
+    Menu {
+      ForEach(sessions, id: \.id) { session in
+        let title = session.title.flatMap { $0.isEmpty ? nil : $0 } ?? "New chat"
+        Button {
+          viewModel.switchToSession(id: session.id)
+        } label: {
+          if session.id == viewModel.currentSessionId {
+            Label(title, systemImage: "checkmark")
+          } else {
+            Text(title)
+          }
+        }
+      }
+      Divider()
+      Button("Reopen Closed Tab") { viewModel.reopenLastClosedTab() }
+        .keyboardShortcut("t", modifiers: [.command, .shift])
+    } label: {
+      Image(systemName: "chevron.down")
+        .font(.system(size: 11, weight: .medium))
+        .foregroundColor(GeminiChatTheme.secondaryText)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+    }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .help("All tabs")
+    .pointerCursorOnHover()
   }
 
   private func sessionTab(session: ChatSession, width: CGFloat) -> some View {
@@ -1151,6 +1253,11 @@ struct GeminiChatView: View {
     .background(NativeTooltip(text: title))
     .pointerCursorOnHover()
     .contextMenu {
+      Button("Rename…") {
+        renameDraft = session.title ?? ""
+        renamingTabId = session.id
+      }
+      Divider()
       Button("Close Tab") { viewModel.closeTab(id: session.id) }
       Button("Close Other Tabs") { viewModel.closeOtherTabs(keep: session.id) }
       Button("Close Tabs to the Right") { viewModel.closeTabsToTheRight(of: session.id) }

@@ -431,6 +431,8 @@ extension Notification.Name {
   static let geminiClearChat = Notification.Name("geminiClearChat")
   /// Posted when user presses Cmd+W in Gemini chat window (close current tab).
   static let geminiCloseTab = Notification.Name("geminiCloseTab")
+  /// Posted when user presses Cmd+Shift+T in the Gemini chat window — reopens the most recently closed tab.
+  static let geminiReopenLastClosedTab = Notification.Name("geminiReopenLastClosedTab")
   /// Posted when user presses Cmd+Up in Gemini chat window (scroll to top).
   static let geminiScrollToTop = Notification.Name("geminiScrollToTop")
   /// Posted when user presses Cmd+Down in Gemini chat window (scroll to bottom).
