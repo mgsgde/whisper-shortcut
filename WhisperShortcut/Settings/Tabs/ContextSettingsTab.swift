@@ -1,12 +1,15 @@
 import AppKit
 import SwiftUI
 
-/// Context tab: context data, system prompts, and settings.
+/// Context tab: context data, system prompts, and Smart Improvement settings.
 struct ContextSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
+  @AppStorage(UserDefaultsKeys.improveFromUsageAutoRunInterval) private var autoRunIntervalRaw: Int = ImproveFromUsageAutoRunInterval.every7Days.rawValue
   @State private var showDeleteInteractionConfirmation = false
+  @State private var isImprovementRunning = false
+  @State private var queuedJobCount = 0
 
   @State private var systemPromptsText: String = ""
   @State private var lastSavedSystemPromptsText: String = ""
@@ -18,6 +21,14 @@ struct ContextSettingsTab: View {
       SpacedSectionDivider()
 
       systemPromptsOverviewSection
+
+      SpacedSectionDivider()
+
+      smartImprovementSection
+
+      SpacedSectionDivider()
+
+      usageInstructionsSection
     }
     .confirmationDialog("Delete context data?", isPresented: $showDeleteInteractionConfirmation, titleVisibility: .visible) {
       Button("Delete", role: .destructive) {
@@ -28,6 +39,7 @@ struct ContextSettingsTab: View {
       Text("All interaction data and everything in context files will be deleted. System prompts will be recreated with defaults. Settings are preserved. Continue?")
     }
     .onAppear {
+      refreshImprovementState()
       let content = SystemPromptsStore.shared.loadFullContent()
       systemPromptsText = content
       lastSavedSystemPromptsText = content
@@ -66,10 +78,6 @@ struct ContextSettingsTab: View {
         .pointerCursorOnHover()
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-
-      Toggle("Save usage data", isOn: $saveUsageData)
-        .toggleStyle(.checkbox)
-        .help("When enabled, interaction logs (dictation, prompt mode, Open Gemini chat) are stored for context. Disabled by default.")
     }
   }
 
@@ -82,7 +90,7 @@ struct ContextSettingsTab: View {
         subtitle: "All system prompts in one file. Edit the sections between the === headers. Save to apply."
       )
 
-      Text("Edit sections: Dictation (Speech-to-Text), Prompt Mode.")
+      Text("Edit sections: Dictation (Speech-to-Text), Prompt Mode, Prompt Read Mode, Gemini Chat.")
         .font(.caption)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -142,5 +150,145 @@ struct ContextSettingsTab: View {
     SystemPromptsStore.shared.saveFullContent(systemPromptsText)
     lastSavedSystemPromptsText = systemPromptsText
     NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
+  }
+
+  private func refreshImprovementState() {
+    isImprovementRunning = AutoPromptImprovementScheduler.shared.isRunning
+    queuedJobCount = AutoPromptImprovementScheduler.shared.queuedJobCount
+  }
+
+  private var improveFromUsageButtonLabel: String {
+    if isImprovementRunning {
+      return queuedJobCount > 0 ? "Running… (\(queuedJobCount) in queue)" : "Running…"
+    }
+    return "Improve from usage"
+  }
+
+  // MARK: - Smart Improvement
+  @ViewBuilder
+  private var smartImprovementSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Smart Improvement",
+        subtitle: "Improve prompts from your usage logs"
+      )
+
+      VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 8) {
+          Toggle("Save usage data", isOn: $saveUsageData)
+            .toggleStyle(.checkbox)
+            .help("When enabled, interaction logs (dictation, prompt mode, read aloud, Open Gemini chat) are stored so \"Improve from usage\" can suggest better prompts. On by default.")
+
+          HStack(alignment: .center, spacing: 12) {
+            Text("Improve from usage")
+              .font(.callout)
+              .fontWeight(.medium)
+            Spacer(minLength: 16)
+            Button(action: {
+              guard !isImprovementRunning else { return }
+              isImprovementRunning = true
+              queuedJobCount = 0
+              Task {
+                await AutoPromptImprovementScheduler.shared.runImprovementNow()
+                await MainActor.run { refreshImprovementState() }
+              }
+            }) {
+              Label(improveFromUsageButtonLabel, systemImage: "sparkles")
+                .font(.callout)
+            }
+            .buttonStyle(.bordered)
+            .disabled(isImprovementRunning || !saveUsageData)
+            .help("Improve prompts and context from your usage")
+            .pointerCursorOnHover()
+          }
+
+          Text("Runs in the background using your interaction logs. Enable \"Save usage data\" to collect logs. You can switch to another tab; you'll be notified when it's done.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        VStack(alignment: .leading, spacing: 8) {
+          HStack(alignment: .center, spacing: 12) {
+            Text("Run Improve from usage automatically")
+              .font(.callout)
+              .fontWeight(.medium)
+            Spacer(minLength: 16)
+            Picker("", selection: $autoRunIntervalRaw) {
+              ForEach(ImproveFromUsageAutoRunInterval.allCases, id: \.rawValue) { interval in
+                Text(interval.displayName).tag(interval.rawValue)
+              }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .onChange(of: autoRunIntervalRaw) { _, _ in
+              Task { @MainActor in
+                await ImproveFromUsageAutoRunCoordinator.shared.checkAndRunIfDue()
+              }
+            }
+          }
+          Text("When not Off, Improve from usage runs in the background at the chosen interval (e.g. every 14 days). You will be notified when it finishes.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .disabled(!saveUsageData)
+
+        let improvementSubscriptionMode: Bool = {
+          #if SUBSCRIPTION_ENABLED
+          return !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
+          #else
+          return false
+          #endif
+        }()
+        PromptModelSelectionView(
+          title: "Model for Smart Improvement",
+          subtitle: "Used for Smart Improvement (Improve from usage).",
+          showSectionHeader: false,
+          selectedModel: Binding(
+            get: { viewModel.data.selectedImprovementModel },
+            set: { newValue in
+              var d = viewModel.data
+              d.selectedImprovementModel = newValue
+              viewModel.data = d
+            }
+          ),
+          subscriptionMode: improvementSubscriptionMode,
+          subscriptionFixedModelDescription: "Smart Improvement uses \(SubscriptionModelsConfigService.effectiveImprovementModel().displayName) (fixed).",
+          subscriptionEffectiveModel: SubscriptionModelsConfigService.effectiveImprovementModel(),
+          onModelChanged: {
+            UserDefaults.standard.set(
+              viewModel.data.selectedImprovementModel.rawValue,
+              forKey: UserDefaultsKeys.selectedImprovementModel)
+            Task {
+              await viewModel.saveSettings()
+            }
+          }
+        )
+      }
+    }
+  }
+
+  // MARK: - Usage Instructions
+  @ViewBuilder
+  private var usageInstructionsSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "How to use",
+        subtitle: "Improve from usage"
+      )
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Improve from usage:")
+          .font(.callout)
+          .fontWeight(.semibold)
+          .foregroundColor(.secondary)
+          .padding(.top, 4)
+        Text("Enable \"Save usage data\" above, then use dictation or prompt mode. When you have enough data, click \"Improve from usage\" in Settings to generate suggested prompts from your interaction logs.")
+          .textSelection(.enabled)
+      }
+      .font(.callout)
+      .foregroundColor(.secondary)
+    }
   }
 }

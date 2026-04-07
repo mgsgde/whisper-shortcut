@@ -69,6 +69,9 @@ enum UserDefaultsKeys {
   static let contextInPromptEnabled = "userContextInPromptEnabled"
   static let contextMaxEntriesPerMode = "userContextMaxEntriesPerMode"
   static let contextMaxTotalChars = "userContextMaxTotalChars"
+  static let selectedImprovementModel = "selectedImprovementModel"
+  static let improveFromUsageAutoRunInterval = "improveFromUsageAutoRunInterval"
+  static let lastAutoImprovementRunDate = "lastAutoImprovementRunDate"
 
 }
 

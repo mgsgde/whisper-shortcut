@@ -49,7 +49,13 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     // Initialize interaction logging default if not set (default: save usage data on; user can disable in Settings)
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil {
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.contextLoggingEnabled)
+      UserDefaults.standard.set(false, forKey: UserDefaultsKeys.contextLoggingEnabled)
+    }
+
+    // Improve from usage auto-run: check if due and start daily timer
+    Task { @MainActor in
+      await ImproveFromUsageAutoRunCoordinator.shared.checkAndRunIfDue()
+      ImproveFromUsageAutoRunCoordinator.shared.startDailyTimer()
     }
 
   }

@@ -313,6 +313,35 @@ enum MeetingSafeguardDuration: Double, CaseIterable {
   }
 }
 
+// MARK: - Improve from Usage auto-run interval
+enum ImproveFromUsageAutoRunInterval: Int, CaseIterable {
+  case off = 0
+  case every3Days = 3
+  case every7Days = 7
+  case every14Days = 14
+  case every30Days = 30
+
+  var dayCount: Int? {
+    switch self {
+    case .off: return nil
+    case .every3Days: return 3
+    case .every7Days: return 7
+    case .every14Days: return 14
+    case .every30Days: return 30
+    }
+  }
+
+  var displayName: String {
+    switch self {
+    case .off: return "Off"
+    case .every3Days: return "Every 3 days"
+    case .every7Days: return "Every 7 days"
+    case .every14Days: return "Every 14 days"
+    case .every30Days: return "Every 30 days"
+    }
+  }
+}
+
 // MARK: - Whisper Language Enum
 enum WhisperLanguage: String, CaseIterable {
   case auto = "auto"
@@ -501,7 +530,8 @@ struct SettingsDefaults {
   static let selectedMeetingSummaryModel = PromptModel.gemini3Flash
 
   /// Smart Improvement default when `SUBSCRIPTION_ENABLED` is off (App Store). Matches subscription API fallback.
-  static let defaultSmartImprovementModel = PromptModel.gemini3Flash
+  static let defaultSmartImprovementModel = PromptModel.gemini31Pro
+  static let selectedImprovementModel = PromptModel.gemini31Pro
 
   // MARK: - Subscription Fallback Models (used when remote config fetch fails)
   #if SUBSCRIPTION_ENABLED
@@ -556,6 +586,7 @@ struct SettingsData {
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
   var selectedPromptModel: PromptModel = SettingsDefaults.selectedPromptModel
   var selectedOpenGeminiModel: PromptModel = SettingsDefaults.selectedOpenGeminiModel
+  var selectedImprovementModel: PromptModel = SettingsDefaults.selectedImprovementModel
   var geminiCloseOnFocusLoss: Bool = SettingsDefaults.geminiCloseOnFocusLoss
   var settingsCloseOnFocusLoss: Bool = SettingsDefaults.settingsCloseOnFocusLoss
   var customPromptText: String = SettingsDefaults.customPromptText

@@ -116,6 +116,26 @@ class SettingsViewModel: ObservableObject {
       data.selectedOpenGeminiModel = SettingsDefaults.selectedOpenGeminiModel
     }
 
+    // Smart Improvement model (persisted in API key mode; subscription uses effectiveImprovementModel in UI + ContextDerivation)
+    let improvementModelDefault: PromptModel
+    #if SUBSCRIPTION_ENABLED
+    improvementModelDefault = subscriptionMode
+      ? SubscriptionModelsConfigService.effectiveImprovementModel()
+      : SettingsDefaults.selectedImprovementModel
+    #else
+    improvementModelDefault = SettingsDefaults.selectedImprovementModel
+    #endif
+    if let savedImprovementModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel),
+       let savedImprovementModel = PromptModel(rawValue: savedImprovementModelString) {
+      let migrated = PromptModel.migrateIfDeprecated(savedImprovementModel)
+      data.selectedImprovementModel = migrated
+      if migrated != savedImprovementModel {
+        UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
+      }
+    } else {
+      data.selectedImprovementModel = improvementModelDefault
+    }
+
     // Load popup notifications setting
     let showPopupNotificationsExists =
       UserDefaults.standard.object(forKey: UserDefaultsKeys.showPopupNotifications) != nil
@@ -356,6 +376,8 @@ class SettingsViewModel: ObservableObject {
       data.selectedTranscriptionModel.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
     UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
     UserDefaults.standard.set(data.selectedOpenGeminiModel.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+    UserDefaults.standard.set(
+      data.selectedImprovementModel.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
 
     // System prompts are stored in UserContext/system-prompts.md (see SystemPromptsStore); not saved to UserDefaults.
 
