@@ -153,18 +153,23 @@ private struct SessionsFile: Codable {
   /// Forward: oldest→newest (pop last to go forward).
   var navBackStack: [UUID]
   var navForwardStack: [UUID]
+  /// Manual user ordering for the tab strip. When non-nil, ids in this list
+  /// are honored first; sessions not present fall back to lastUpdated order
+  /// and are appended after the manual block.
+  var tabOrder: [UUID]?
 
   private enum CodingKeys: String, CodingKey {
-    case currentSessionId, sessions, navBackStack, navForwardStack
+    case currentSessionId, sessions, navBackStack, navForwardStack, tabOrder
     // Legacy key — only decoded, never encoded (migration).
     case previousSessionIdForBack
   }
 
-  init(currentSessionId: UUID, sessions: [ChatSession], navBackStack: [UUID] = [], navForwardStack: [UUID] = []) {
+  init(currentSessionId: UUID, sessions: [ChatSession], navBackStack: [UUID] = [], navForwardStack: [UUID] = [], tabOrder: [UUID]? = nil) {
     self.currentSessionId = currentSessionId
     self.sessions = sessions
     self.navBackStack = navBackStack
     self.navForwardStack = navForwardStack
+    self.tabOrder = tabOrder
   }
 
   init(from decoder: Decoder) throws {
@@ -179,6 +184,7 @@ private struct SessionsFile: Codable {
       navBackStack = []
     }
     navForwardStack = try c.decodeIfPresent([UUID].self, forKey: .navForwardStack) ?? []
+    tabOrder = try c.decodeIfPresent([UUID].self, forKey: .tabOrder)
   }
 
   func encode(to encoder: Encoder) throws {
@@ -187,6 +193,7 @@ private struct SessionsFile: Codable {
     try c.encode(sessions, forKey: .sessions)
     try c.encode(navBackStack, forKey: .navBackStack)
     try c.encode(navForwardStack, forKey: .navForwardStack)
+    try c.encodeIfPresent(tabOrder, forKey: .tabOrder)
     // previousSessionIdForBack intentionally omitted — legacy field replaced by stacks.
   }
 }
@@ -388,9 +395,36 @@ class GeminiChatSessionStore {
     loadFile().sessions.first { $0.id == id }
   }
 
-  /// Sessions ordered by lastUpdated descending (most recent first).
+  /// Sessions for the tab strip. Honors the user's manual `tabOrder` first
+  /// (in declared order), then appends any sessions not present in the manual
+  /// list sorted by lastUpdated descending. Sessions in `tabOrder` whose ids
+  /// no longer exist are silently dropped.
   func recentSessions(limit: Int = 50) -> [ChatSession] {
-    Array(loadFile().sessions.sorted { $0.lastUpdated > $1.lastUpdated }.prefix(limit))
+    let file = loadFile()
+    let byId = Dictionary(uniqueKeysWithValues: file.sessions.map { ($0.id, $0) })
+    let manual = (file.tabOrder ?? []).compactMap { byId[$0] }
+    let manualIds = Set(manual.map { $0.id })
+    let rest = file.sessions
+      .filter { !manualIds.contains($0.id) }
+      .sorted { $0.lastUpdated > $1.lastUpdated }
+    return Array((manual + rest).prefix(limit))
+  }
+
+  /// Reorders the tab strip so that `id` ends up at `targetIndex` in the
+  /// canonical `recentSessions(limit:)` order. Persists the new order under
+  /// `tabOrder`. No-op if `id` is unknown.
+  func moveSession(id: UUID, toIndex targetIndex: Int) {
+    var file = loadFile()
+    guard file.sessions.contains(where: { $0.id == id }) else { return }
+    // Build the current effective order, then move.
+    var order: [UUID] = recentSessions(limit: 999).map { $0.id }
+    guard let from = order.firstIndex(of: id) else { return }
+    let clamped = max(0, min(targetIndex, order.count - 1))
+    if from == clamped { return }
+    order.remove(at: from)
+    order.insert(id, at: min(clamped, order.count))
+    file.tabOrder = order
+    saveSessionsFile(file)
   }
 
   /// Deletes the session with the given ID. Removes it from nav stacks. If it was current, switches to
@@ -400,6 +434,7 @@ class GeminiChatSessionStore {
     file.sessions.removeAll { $0.id == id }
     file.navBackStack.removeAll { $0 == id }
     file.navForwardStack.removeAll { $0 == id }
+    file.tabOrder?.removeAll { $0 == id }
     if file.currentSessionId == id {
       let next = file.sessions.sorted { $0.lastUpdated > $1.lastUpdated }.first
       if let next = next {
@@ -431,6 +466,19 @@ class GeminiChatSessionStore {
     file.navBackStack.append(file.currentSessionId)
     if file.navBackStack.count > Self.navStackLimit { file.navBackStack.removeFirst() }
     file.navForwardStack = []
+    // If the user has a manual tab order, snapshot the full current effective
+    // order (manual block + lastUpdated rest) so the new tab can be appended
+    // at the true right end, instead of slotting in between the manual block
+    // and the lastUpdated-sorted rest.
+    if file.tabOrder != nil {
+      let manualIds = file.tabOrder ?? []
+      let manualSet = Set(manualIds)
+      let restIds = file.sessions
+        .filter { !manualSet.contains($0.id) }
+        .sorted { $0.lastUpdated > $1.lastUpdated }
+        .map { $0.id }
+      file.tabOrder = manualIds + restIds + [newSession.id]
+    }
     file.sessions.insert(newSession, at: 0)
     file.currentSessionId = newSession.id
     saveSessionsFile(file)

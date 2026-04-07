@@ -956,6 +956,13 @@ class GeminiChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: Reopened closed tab \(s.id)")
   }
 
+  /// Drag-reorders the tab strip so the session with `id` lands at `targetIndex`.
+  func moveTab(id: UUID, toIndex targetIndex: Int) {
+    store.moveSession(id: id, toIndex: targetIndex)
+    refreshRecentSessions()
+    DebugLogger.log("GEMINI-CHAT: Moved tab \(id) → index \(targetIndex)")
+  }
+
   /// Renames the given session. Empty/whitespace-only titles clear the title
   /// (so the tab falls back to "New chat" / the auto-title path).
   func renameSession(id: UUID, to newTitle: String) {
@@ -1030,6 +1037,34 @@ class GeminiChatViewModel: ObservableObject {
       }
     }
     return error.localizedDescription
+  }
+}
+
+// MARK: - Tab drag & drop
+
+/// SwiftUI DropDelegate that resolves the dragged session id (carried as a
+/// plain text string) and forwards it to a callback once the drop is performed.
+private struct TabDropDelegate: DropDelegate {
+  let targetIndex: Int
+  let onDrop: (String) -> Void
+
+  func validateDrop(info: DropInfo) -> Bool {
+    info.hasItemsConforming(to: [.text])
+  }
+
+  func performDrop(info: DropInfo) -> Bool {
+    guard let provider = info.itemProviders(for: [.text]).first else { return false }
+    provider.loadItem(forTypeIdentifier: "public.text", options: nil) { item, _ in
+      let str: String? = {
+        if let data = item as? Data { return String(data: data, encoding: .utf8) }
+        if let s = item as? String { return s }
+        if let ns = item as? NSString { return ns as String }
+        return nil
+      }()
+      guard let id = str?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty else { return }
+      DispatchQueue.main.async { onDrop(id) }
+    }
+    return true
   }
 }
 
@@ -1137,26 +1172,34 @@ struct GeminiChatView: View {
   // MARK: - Tab Strip Header
 
   private func tabStripHeader(containerWidth: CGFloat) -> some View {
+    _ = containerWidth
     let iconWidth: CGFloat = 40
-    let overflowWidth: CGFloat = 32
     let fixedTabWidth: CGFloat = 160
-    let availableWidth = containerWidth - iconWidth - overflowWidth
     let allSessions = viewModel.visibleTabs(maxCount: 999)
-    let totalNeeded = CGFloat(allSessions.count) * fixedTabWidth
-    let overflows = totalNeeded > availableWidth
 
     return HStack(spacing: 0) {
-      Image(systemName: "sparkles")
-        .foregroundColor(.accentColor)
-        .font(.system(size: 13, weight: .medium))
+      tabOverflowMenu(sessions: allSessions)
         .frame(width: iconWidth, height: 52)
 
       ScrollViewReader { proxy in
         ScrollView(.horizontal, showsIndicators: false) {
           HStack(spacing: 0) {
-            ForEach(allSessions, id: \.id) { session in
+            ForEach(Array(allSessions.enumerated()), id: \.element.id) { index, session in
               sessionTab(session: session, width: fixedTabWidth)
                 .id(session.id)
+                .onDrag {
+                  NSItemProvider(object: session.id.uuidString as NSString)
+                }
+                .onDrop(
+                  of: [.text],
+                  delegate: TabDropDelegate(
+                    targetIndex: index,
+                    onDrop: { droppedIdString in
+                      guard let droppedId = UUID(uuidString: droppedIdString) else { return }
+                      viewModel.moveTab(id: droppedId, toIndex: index)
+                    }
+                  )
+                )
             }
           }
         }
@@ -1166,9 +1209,6 @@ struct GeminiChatView: View {
         }
       }
 
-      tabOverflowMenu(sessions: allSessions)
-        .frame(width: overflowWidth, height: 52)
-        .opacity(overflows || allSessions.count > 1 ? 1 : 0)
     }
     .frame(height: 52)
   }
