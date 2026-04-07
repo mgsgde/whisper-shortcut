@@ -1171,8 +1171,14 @@ struct GeminiChatView: View {
 
   // MARK: - Tab Strip Header
 
+  /// Keeps the active session tab visible in the horizontal tab strip.
+  private func scrollTabStripToActiveSession(using proxy: ScrollViewProxy) {
+    withAnimation {
+      proxy.scrollTo(viewModel.currentSessionId, anchor: .center)
+    }
+  }
+
   private func tabStripHeader(containerWidth: CGFloat) -> some View {
-    _ = containerWidth
     let iconWidth: CGFloat = 40
     let fixedTabWidth: CGFloat = 160
     let allSessions = viewModel.visibleTabs(maxCount: 999)
@@ -1203,9 +1209,13 @@ struct GeminiChatView: View {
             }
           }
         }
-        .onChange(of: viewModel.currentSessionId) { newId in
+        .onChange(of: viewModel.currentSessionId) { _ in
           // Keep the active tab visible after a switch (e.g. via reopen).
-          withAnimation { proxy.scrollTo(newId, anchor: .center) }
+          scrollTabStripToActiveSession(using: proxy)
+        }
+        .onChange(of: containerWidth) { _ in
+          // Window resize can reset/clamp scroll; re-anchor to the active tab.
+          scrollTabStripToActiveSession(using: proxy)
         }
       }
 
