@@ -1454,6 +1454,7 @@ struct GeminiChatView: View {
         .font(.footnote)
         .foregroundColor(.white)
         .fixedSize(horizontal: false, vertical: true)
+        .textSelection(.enabled)
       Spacer()
       Button(action: { viewModel.errorMessage = nil }) {
         Image(systemName: "xmark")

@@ -460,6 +460,11 @@ class GeminiAPIClient {
             tools.append(["code_execution": [:]])
           } else {
             tools.append(["function_declarations": functionDeclarations])
+            // Gemini 3 Flash rejects built-in tools (google_search/url_context)
+            // combined with function_declarations unless this flag is set.
+            body["tool_config"] = [
+              "include_server_side_tool_invocations": true
+            ]
           }
           body["tools"] = tools
           if let sys = systemInstruction {
@@ -469,7 +474,9 @@ class GeminiAPIClient {
             "temperature": 0.7,
             "topP": 0.95,
             "maxOutputTokens": 8192,
-            "thinkingConfig": ["thinkingBudget": -1]
+            // Disable thinking for chat: dynamic thinking (-1) delays the first
+            // output token by several seconds, defeating the visible-streaming UX.
+            "thinkingConfig": ["thinkingBudget": 0]
           ]
           body["safetySettings"] = [
             ["category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"],
@@ -507,7 +514,10 @@ class GeminiAPIClient {
             // Decode once via Codable for text/grounding/usage…
             if let chunk = try? JSONDecoder().decode(GeminiResponse.self, from: jsonData) {
               let deltaText = self.extractText(from: chunk)
-              if !deltaText.isEmpty { continuation.yield(.textDelta(deltaText)) }
+              if !deltaText.isEmpty {
+                DebugLogger.logNetwork("GEMINI-CHAT-STREAM: chunk textLen=\(deltaText.count)")
+                continuation.yield(.textDelta(deltaText))
+              }
               let chunkSources = self.extractGroundingSources(from: chunk)
               let chunkSupports = self.extractGroundingSupports(from: chunk)
               if !chunkSources.isEmpty { aggregatedSources = chunkSources }
