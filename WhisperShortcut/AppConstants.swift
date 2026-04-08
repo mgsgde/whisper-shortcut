@@ -173,17 +173,8 @@ Treat system prompt context as invisible to the conversation. Answer based solel
   /// Maximum number of additional jobs that may queue while a run is in progress.
   static let smartImprovementMaxQueuedJobs: Int = 1
 
-  // MARK: - Gemini Chat Memory
-  /// Maximum character length for the per-session memory block injected into the system instruction.
-  static let geminiChatSessionMemoryMaxChars: Int = 4000
-  /// Number of undistilled messages outside the volatile window before an automatic memory update fires.
-  static let geminiChatMemoryUpdateInterval: Int = 5
-  /// Number of most-recent messages always sent verbatim to the API (not summarised).
-  /// Legacy: retained only for the `/remember` fallback compaction path.
-  static let geminiChatVolatileWindowSize: Int = 15
+  // MARK: - Gemini Chat
   /// Hard cap on messages sent per turn. Gemini 2.x has a 1–2M token context window;
   /// this only protects against pathologically long sessions.
   static let geminiChatFullHistoryMaxMessages: Int = 400
-  /// Lightweight Gemini model used for background memory summarisation. Do not use the user's selected chat model.
-  static let geminiChatMemoryUpdateModel: String = "gemini-3.1-flash-lite-preview"
 }

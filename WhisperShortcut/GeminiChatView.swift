@@ -93,10 +93,6 @@ class GeminiChatViewModel: ObservableObject {
 
   /// In-flight send tasks keyed by session ID — multiple sessions can be sending simultaneously.
   private var sendTasks: [UUID: Task<Void, Never>] = [:]
-  /// True while a background memory update is in flight. Prevents concurrent updates.
-  private var isUpdatingMemory = false
-  /// Set when the last memory update failed. Blocks retries for 60 seconds.
-  private var memoryUpdateFailureTime: Date? = nil
 
   /// Returns true if the given session has an in-flight request (for tab spinner).
   func isSendingSession(_ id: UUID) -> Bool { sendingSessionIds.contains(id) }
@@ -112,7 +108,6 @@ class GeminiChatViewModel: ObservableObject {
   private static let settingsCommand = "/settings"
   private static let pinCommand = "/pin"
   private static let unpinCommand = "/unpin"
-  private static let rememberCommand = "/remember"
   private static let contextCommand = "/context"
   private static let modelCommand = "/model"
 
@@ -123,7 +118,6 @@ class GeminiChatViewModel: ObservableObject {
     ("/next", "Navigate to the next chat"),
     ("/clear", "Clear current chat messages"),
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
-    ("/remember", "Trigger an immediate session memory update"),
     ("/context", "Show or edit your context (e.g. /context always use bullet points)"),
     ("/model", "Switch Open Gemini model (e.g. /model 3.1 flash lite)"),
     ("/settings", "Open Settings"),
@@ -243,8 +237,7 @@ class GeminiChatViewModel: ObservableObject {
     if attachedParts.isEmpty && !finalContent.contains("<pasted_") {
       if lower == Self.newChatCommand || lower == Self.backChatCommand || lower == Self.nextChatCommand
           || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
-          || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
-          || lower == Self.rememberCommand {
+          || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand {
         if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
         else if lower == Self.backChatCommand { if !singleChatOnly { goBack() } }
         else if lower == Self.nextChatCommand { if !singleChatOnly { goForward() } }
@@ -252,10 +245,6 @@ class GeminiChatViewModel: ObservableObject {
         else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
         else if lower == Self.pinCommand { togglePin() }
         else if lower == Self.unpinCommand { unpin() }
-        else if lower == Self.rememberCommand {
-          guard !session.messages.isEmpty else { return }
-          Task { await updateSessionMemory() }
-        }
         else { await captureScreenshot() }
         return
       }
@@ -463,10 +452,8 @@ class GeminiChatViewModel: ObservableObject {
         if let s = store.session(by: sessionId), s.messages.count == 2 {
           Task { await generateAITitle(sessionId: sessionId) }
         }
-        // Rolling memory is no longer triggered automatically — we send the full
-        // conversation history each turn and rely on Gemini's 1–2M context window.
-        // The `/remember` slash command still runs on-demand compaction as a
-        // fallback for pathologically large sessions.
+        // Full conversation history is sent each turn (see buildContents);
+        // no separate rolling-memory distillation is performed.
       } catch is CancellationError {
         DebugLogger.log("GEMINI-CHAT: Send cancelled by user")
       } catch {
@@ -530,8 +517,7 @@ class GeminiChatViewModel: ObservableObject {
     // Slash commands: always immediate, never queued
     if lower == Self.newChatCommand || lower == Self.backChatCommand || lower == Self.nextChatCommand
         || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
-        || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
-        || lower == Self.rememberCommand {
+        || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand {
       inputText = ""
       if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
       else if lower == Self.backChatCommand { if !singleChatOnly { goBack() } }
@@ -540,10 +526,6 @@ class GeminiChatViewModel: ObservableObject {
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else if lower == Self.pinCommand { togglePin() }
       else if lower == Self.unpinCommand { unpin() }
-      else if lower == Self.rememberCommand {
-        guard !session.messages.isEmpty else { return }
-        Task { await updateSessionMemory() }
-      }
       else { await captureScreenshot() }
       return
     }
@@ -600,7 +582,6 @@ class GeminiChatViewModel: ObservableObject {
   func clearMessages() {
     messages = []
     session.messages = []
-    session.sessionMemory = nil
     session.lastUpdated = Date()
     store.save(session)
     refreshRecentSessions()
@@ -626,9 +607,6 @@ class GeminiChatViewModel: ObservableObject {
     text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
     if let extra = meetingContextProvider?(), !extra.isEmpty {
       text = "\(text)\n\n---\n\n[Meeting context for calibration only — do not reference directly]\n\(extra)"
-    }
-    if let memory = session.sessionMemory, !memory.isEmpty {
-      text = "\(text)\n\n--- Session Memory (use for all answers) ---\n\(memory)\n---"
     }
     return ["parts": [["text": text]]]
   }
@@ -923,73 +901,6 @@ class GeminiChatViewModel: ObservableObject {
     return result
   }
 
-  /// Distils undistilled messages outside the volatile window into `session.sessionMemory`.
-  /// Guards: empty session, concurrency lock, 60-second failure backoff.
-  /// Called from actor-inheriting `Task { }` — no MainActor.run{} wrappers needed.
-  private func updateSessionMemory() async {
-    guard !session.messages.isEmpty else { return }
-    guard !isUpdatingMemory else {
-      DebugLogger.log("GEMINI-MEMORY: Skipped — update already in flight")
-      return
-    }
-    if let failTime = memoryUpdateFailureTime, Date().timeIntervalSince(failTime) < 60 {
-      DebugLogger.log("GEMINI-MEMORY: Skipped — within 60s backoff after last failure")
-      return
-    }
-    guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
-      DebugLogger.logError("GEMINI-MEMORY: No credential available")
-      return
-    }
-
-    let toDistill = Array(session.messages.dropLast(AppConstants.geminiChatVolatileWindowSize))
-      .filter { !$0.includedInMemory }
-    guard !toDistill.isEmpty else {
-      DebugLogger.log("GEMINI-MEMORY: Nothing new to distil")
-      return
-    }
-
-    isUpdatingMemory = true
-    DebugLogger.log("GEMINI-MEMORY: Distilling \(toDistill.count) message(s) into session memory")
-
-    // Build multi-turn contents for the memory call — include images for all messages (not just last).
-    let contents: [[String: Any]] = toDistill.map { msg in
-      if msg.role == .user && !msg.attachedImageParts.isEmpty {
-        var parts: [[String: Any]] = msg.attachedImageParts.map { part in
-          ["inline_data": ["mime_type": part.mimeType ?? "image/png", "data": part.data.base64EncodedString()]]
-        }
-        if !msg.content.isEmpty { parts.append(["text": msg.content]) }
-        return ["role": msg.role.rawValue, "parts": parts]
-      }
-      return ["role": msg.role.rawValue, "parts": [["text": msg.content]]]
-    }
-
-    do {
-      var updatedMemory = try await apiClient.updateSessionMemory(
-        currentMemory: session.sessionMemory,
-        newMessageContents: contents,
-        credential: credential)
-      // Safety clamp.
-      if updatedMemory.count > AppConstants.geminiChatSessionMemoryMaxChars {
-        updatedMemory = String(updatedMemory.prefix(AppConstants.geminiChatSessionMemoryMaxChars))
-      }
-      // Mark distilled messages and persist.
-      let distilledIds = Set(toDistill.map { $0.id })
-      session.messages = session.messages.map { msg in
-        guard distilledIds.contains(msg.id) else { return msg }
-        var m = msg; m.includedInMemory = true; return m
-      }
-      messages = session.messages
-      session.sessionMemory = updatedMemory
-      memoryUpdateFailureTime = nil
-      store.save(session)
-      DebugLogger.log("GEMINI-MEMORY: Memory updated (\(updatedMemory.count) chars)")
-    } catch {
-      memoryUpdateFailureTime = Date()
-      DebugLogger.logError("GEMINI-MEMORY: Update failed — \(error.localizedDescription)")
-    }
-    isUpdatingMemory = false
-  }
-
   // MARK: - Tab navigation
 
   private func refreshRecentSessions() {
@@ -1098,8 +1009,6 @@ class GeminiChatViewModel: ObservableObject {
   private func buildContents() -> [[String: Any]] {
     // Send the full conversation history. Gemini 2.x has a 1M–2M token context window,
     // so truncation is only a safeguard against pathological sessions.
-    // Previously this used a small volatile window + a separate LLM call to distil older
-    // turns into `sessionMemory` — that lost information and added latency on every turn.
     let maxMessages = AppConstants.geminiChatFullHistoryMaxMessages
     let toSend = messages.count > maxMessages
       ? Array(messages.suffix(maxMessages))
@@ -1679,7 +1588,7 @@ struct GeminiInputAreaView: View {
   }
 
   private static let knownSlashCommands: Set<String> = [
-    "/new", "/back", "/next", "/clear", "/screenshot", "/remember",
+    "/new", "/back", "/next", "/clear", "/screenshot",
     "/context", "/settings", "/pin", "/unpin", "/stop"
   ]
 
