@@ -271,10 +271,20 @@ struct GeminiTranscriptionRequest: Codable {
 // MARK: - Gemini Response Models
 struct GeminiResponse: Codable {
   let candidates: [GeminiCandidate]
-  
+  let usageMetadata: GeminiUsageMetadata?
+
   struct GeminiCandidate: Codable {
     let content: GeminiContent?
     let groundingMetadata: GeminiGroundingMetadata?
+    let finishReason: String?
+  }
+
+  struct GeminiUsageMetadata: Codable {
+    let promptTokenCount: Int?
+    let candidatesTokenCount: Int?
+    let totalTokenCount: Int?
+    let cachedContentTokenCount: Int?
+    let thoughtsTokenCount: Int?
   }
 
   struct GeminiGroundingMetadata: Codable {

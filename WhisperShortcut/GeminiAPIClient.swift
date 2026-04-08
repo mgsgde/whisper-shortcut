@@ -437,7 +437,8 @@ class GeminiAPIClient {
     var tools: [[String: Any]] = []
     if useGrounding {
       tools.append(["google_search": [:]])
-      DebugLogger.logNetwork("GEMINI-CHAT: Google Search grounding enabled")
+      tools.append(["url_context": [:]])
+      DebugLogger.logNetwork("GEMINI-CHAT: Google Search + URL Context enabled")
     }
     tools.append(["code_execution": [:]])
     body["tools"] = tools
@@ -445,6 +446,23 @@ class GeminiAPIClient {
     if let sys = systemInstruction {
       body["system_instruction"] = sys
     }
+
+    // Explicit generation config: cap output to avoid MAX_TOKENS truncation,
+    // set conservative sampling, and let the model decide when to "think".
+    body["generationConfig"] = [
+      "temperature": 0.7,
+      "topP": 0.95,
+      "maxOutputTokens": 8192,
+      "thinkingConfig": ["thinkingBudget": -1]  // dynamic: model decides
+    ]
+
+    // Relax default safety thresholds for productivity chat (still blocks HIGH-severity content).
+    body["safetySettings"] = [
+      ["category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"],
+      ["category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"],
+      ["category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"],
+      ["category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"]
+    ]
     let proxyPath = {
       let base = SettingsDefaults.proxyAPIBaseURL
       let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
@@ -471,6 +489,18 @@ class GeminiAPIClient {
     }
     if !supports.isEmpty {
       DebugLogger.logNetwork("GEMINI-CHAT: \(supports.count) grounding support(s) for inline citations")
+    }
+    if let usage = response.usageMetadata {
+      let prompt = usage.promptTokenCount ?? 0
+      let output = usage.candidatesTokenCount ?? 0
+      let total = usage.totalTokenCount ?? 0
+      let cached = usage.cachedContentTokenCount ?? 0
+      let thoughts = usage.thoughtsTokenCount ?? 0
+      DebugLogger.logNetwork(
+        "GEMINI-CHAT: usage prompt=\(prompt) output=\(output) thoughts=\(thoughts) cached=\(cached) total=\(total)")
+    }
+    if let finish = response.candidates.first?.finishReason, finish != "STOP" {
+      DebugLogger.logWarning("GEMINI-CHAT: finishReason=\(finish) (response may be truncated)")
     }
     return (text: text, sources: sources, supports: supports)
   }
