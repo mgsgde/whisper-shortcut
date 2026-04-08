@@ -58,7 +58,7 @@ struct AttachedImagePart: Codable, Equatable {
 struct ChatMessage: Identifiable, Codable, Equatable {
   let id: UUID
   let role: ChatRole
-  let content: String
+  var content: String
   let timestamp: Date
   var sources: [GroundingSource]
   var groundingSupports: [GroundingSupport]

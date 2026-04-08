@@ -381,15 +381,38 @@ class GeminiChatViewModel: ObservableObject {
       let contents = buildContents()
       do {
         let model = Self.resolveOpenGeminiModel()
-        let result = try await apiClient.sendChatMessage(
+        // Placeholder model message that we update as stream deltas arrive.
+        let placeholderId = UUID()
+        let placeholder = ChatMessage(id: placeholderId, role: .model, content: "")
+        appendMessage(placeholder, toSessionId: sessionId)
+
+        var accumulated = ""
+        var finalSources: [GroundingSource] = []
+        var finalSupports: [GroundingSupport] = []
+        let stream = apiClient.sendChatMessageStream(
           model: model, contents: contents, credential: credential, useGrounding: true,
           systemInstruction: self.buildSystemInstruction())
-        let modelMsg = ChatMessage(
-          role: .model,
-          content: result.text,
-          sources: result.sources,
-          groundingSupports: result.supports)
-        appendMessage(modelMsg, toSessionId: sessionId)
+        for try await event in stream {
+          try Task.checkCancellation()
+          switch event {
+          case .textDelta(let delta):
+            accumulated += delta
+            await MainActor.run {
+              self.updateStreamingMessage(
+                id: placeholderId, sessionId: sessionId,
+                content: accumulated, sources: [], supports: [])
+            }
+          case .finished(let sources, let supports, _):
+            finalSources = sources
+            finalSupports = supports
+            await MainActor.run {
+              self.updateStreamingMessage(
+                id: placeholderId, sessionId: sessionId,
+                content: accumulated, sources: sources, supports: supports)
+            }
+          }
+        }
+        let result = (text: accumulated, sources: finalSources, supports: finalSupports)
         ContextLogger.shared.logGeminiChat(userMessage: content, modelResponse: result.text, model: model)
         if let s = store.session(by: sessionId), s.messages.count == 2 {
           Task { await generateAITitle(sessionId: sessionId) }
@@ -595,6 +618,34 @@ class GeminiChatViewModel: ObservableObject {
   /// Display name for the current Open Gemini model (e.g. "Gemini 3 Flash") for the nav bar.
   var openGeminiModelDisplayName: String {
     Self.openGeminiModel.displayName
+  }
+
+  /// Updates an existing model message in-place (used during streaming).
+  /// Persists to the store and, if it's the current session, refreshes the UI.
+  private func updateStreamingMessage(
+    id: UUID, sessionId: UUID, content: String,
+    sources: [GroundingSource], supports: [GroundingSupport]
+  ) {
+    let isCurrentSession = sessionId == session.id
+    var target: ChatSession
+    if isCurrentSession {
+      target = session
+    } else {
+      guard let s = store.session(by: sessionId) else { return }
+      target = s
+    }
+    guard let idx = target.messages.firstIndex(where: { $0.id == id }) else { return }
+    target.messages[idx].content = content
+    target.messages[idx].sources = sources
+    target.messages[idx].groundingSupports = supports
+    target.lastUpdated = Date()
+    // Persist throttled-ish: save on every update is fine for typical chat volumes;
+    // the alternative would be to save only on .finished, but crash recovery benefits from frequent saves.
+    store.save(target)
+    if isCurrentSession {
+      session = target
+      messages = target.messages
+    }
   }
 
   /// Appends a message to the session identified by `sessionId`.

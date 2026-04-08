@@ -505,6 +505,156 @@ class GeminiAPIClient {
     return (text: text, sources: sources, supports: supports)
   }
 
+  // MARK: - Streaming Chat
+
+  /// One event emitted while streaming a Gemini chat reply.
+  enum ChatStreamEvent {
+    /// Incremental text appended to the model's reply.
+    case textDelta(String)
+    /// Final event with grounding metadata and finish reason. Emitted exactly once, just before the stream ends.
+    case finished(sources: [GroundingSource], supports: [GroundingSupport], finishReason: String?)
+  }
+
+  /// Streams a chat reply from Gemini via the backend proxy (SSE). Yields text deltas as they arrive,
+  /// then a single `.finished` event with grounding metadata. Cancel the consuming Task to abort the upstream request.
+  func sendChatMessageStream(
+    model: String,
+    contents: [[String: Any]],
+    credential: GeminiCredential,
+    useGrounding: Bool = false,
+    systemInstruction: [String: Any]? = nil
+  ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
+    AsyncThrowingStream { continuation in
+      let task = Task {
+        do {
+          // Build endpoint: proxy if OAuth, else direct Gemini streamGenerateContent?alt=sse.
+          let proxyBase: String = {
+            let base = SettingsDefaults.proxyAPIBaseURL
+            return base.hasSuffix("/") ? String(base.dropLast()) : base
+          }()
+          let endpoint: String
+          let credentialForRequest: GeminiCredential?
+          switch credential {
+          case .bearer:
+            endpoint = proxyBase + "/v1/gemini/streamGenerateContent"
+            credentialForRequest = await Self.resolveCredentialForRequest(endpoint: endpoint, resolvedCredential: credential)
+          case .apiKey:
+            endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):streamGenerateContent?alt=sse"
+            credentialForRequest = credential
+          }
+          var request = try self.createRequest(endpoint: endpoint, credential: credentialForRequest)
+          request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+          request.timeoutInterval = Constants.resourceTimeout
+
+          var body: [String: Any] = ["contents": contents]
+          var tools: [[String: Any]] = []
+          if useGrounding {
+            tools.append(["google_search": [:]])
+            tools.append(["url_context": [:]])
+          }
+          tools.append(["code_execution": [:]])
+          body["tools"] = tools
+          if let sys = systemInstruction {
+            body["system_instruction"] = sys
+          }
+          body["generationConfig"] = [
+            "temperature": 0.7,
+            "topP": 0.95,
+            "maxOutputTokens": 8192,
+            "thinkingConfig": ["thinkingBudget": -1]
+          ]
+          body["safetySettings"] = [
+            ["category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"],
+            ["category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"],
+            ["category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"],
+            ["category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"]
+          ]
+          if endpoint.hasPrefix(proxyBase) {
+            body["request_type"] = "gemini_chat"
+            body["model"] = model
+          }
+          request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+          DebugLogger.logNetwork("GEMINI-CHAT-STREAM: POST \(endpoint)")
+          let (bytes, response) = try await self.session.bytes(for: request)
+          guard let http = response as? HTTPURLResponse else {
+            throw TranscriptionError.networkError("Invalid response")
+          }
+          if http.statusCode < 200 || http.statusCode >= 300 {
+            var errData = Data()
+            for try await b in bytes { errData.append(b) }
+            let text = String(data: errData, encoding: .utf8) ?? ""
+            DebugLogger.logError("GEMINI-CHAT-STREAM: HTTP \(http.statusCode) body=\(text.prefix(500))")
+            throw TranscriptionError.networkError("HTTP \(http.statusCode): \(text)")
+          }
+
+          var aggregatedSources: [GroundingSource] = []
+          var aggregatedSupports: [GroundingSupport] = []
+          var finishReason: String?
+          var pendingData = ""
+
+          // SSE frames are lines like `data: {json}`; events are separated by blank lines.
+          for try await line in bytes.lines {
+            try Task.checkCancellation()
+            if line.isEmpty {
+              // End of an event. Parse accumulated data if any.
+              if !pendingData.isEmpty {
+                if let jsonData = pendingData.data(using: .utf8),
+                   let chunk = try? JSONDecoder().decode(GeminiResponse.self, from: jsonData) {
+                  // Text delta
+                  let deltaText = self.extractText(from: chunk)
+                  if !deltaText.isEmpty {
+                    continuation.yield(.textDelta(deltaText))
+                  }
+                  // Grounding accumulation
+                  let chunkSources = self.extractGroundingSources(from: chunk)
+                  let chunkSupports = self.extractGroundingSupports(from: chunk)
+                  if !chunkSources.isEmpty { aggregatedSources = chunkSources }
+                  if !chunkSupports.isEmpty { aggregatedSupports = chunkSupports }
+                  if let reason = chunk.candidates.first?.finishReason {
+                    finishReason = reason
+                  }
+                  if let usage = chunk.usageMetadata,
+                     let total = usage.totalTokenCount, total > 0 {
+                    DebugLogger.logNetwork(
+                      "GEMINI-CHAT-STREAM: usage prompt=\(usage.promptTokenCount ?? 0) output=\(usage.candidatesTokenCount ?? 0) thoughts=\(usage.thoughtsTokenCount ?? 0) total=\(total)")
+                  }
+                }
+                pendingData = ""
+              }
+              continue
+            }
+            if line.hasPrefix("data:") {
+              let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+              pendingData += payload
+            }
+          }
+          // Flush any trailing event without blank-line terminator.
+          if !pendingData.isEmpty,
+             let jsonData = pendingData.data(using: .utf8),
+             let chunk = try? JSONDecoder().decode(GeminiResponse.self, from: jsonData) {
+            let deltaText = self.extractText(from: chunk)
+            if !deltaText.isEmpty { continuation.yield(.textDelta(deltaText)) }
+            let chunkSources = self.extractGroundingSources(from: chunk)
+            let chunkSupports = self.extractGroundingSupports(from: chunk)
+            if !chunkSources.isEmpty { aggregatedSources = chunkSources }
+            if !chunkSupports.isEmpty { aggregatedSupports = chunkSupports }
+            if let reason = chunk.candidates.first?.finishReason { finishReason = reason }
+          }
+
+          if let reason = finishReason, reason != "STOP" {
+            DebugLogger.logWarning("GEMINI-CHAT-STREAM: finishReason=\(reason)")
+          }
+          continuation.yield(.finished(sources: aggregatedSources, supports: aggregatedSupports, finishReason: finishReason))
+          continuation.finish()
+        } catch {
+          continuation.finish(throwing: error)
+        }
+      }
+      continuation.onTermination = { @Sendable _ in task.cancel() }
+    }
+  }
+
   /// Lightweight single-shot text generation — no tools, no retry, minimal tokens.
   /// Used for background tasks like session title generation. API key only.
   func generateText(model: String, prompt: String, apiKey: String) async throws -> String {
