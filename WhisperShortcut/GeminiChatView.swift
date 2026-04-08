@@ -452,8 +452,12 @@ class GeminiChatViewModel: ObservableObject {
         if let s = store.session(by: sessionId), s.messages.count == 2 {
           Task { await generateAITitle(sessionId: sessionId) }
         }
-        // Full conversation history is sent each turn (see buildContents);
-        // no separate rolling-memory distillation is performed.
+        // Full conversation history is sent each turn (see buildContents).
+        // This is the pragmatic choice for a single-user app with typically
+        // short sessions. The formally correct "best practice" for long
+        // sessions is Gemini's cachedContents API (~75% input cost reduction
+        // + flat prefill latency), which we deliberately skip because the
+        // cache lifecycle complexity isn't worth the savings at this scale.
       } catch is CancellationError {
         DebugLogger.log("GEMINI-CHAT: Send cancelled by user")
       } catch {
