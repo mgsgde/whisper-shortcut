@@ -378,7 +378,7 @@ class GeminiChatViewModel: ObservableObject {
       }
       let userMsg = ChatMessage(role: .user, content: content, attachedImageParts: attachedParts)
       appendMessage(userMsg, toSessionId: sessionId)
-      let contents = buildContents()
+      var currentContents = buildContents()
       do {
         let model = Self.resolveOpenGeminiModel()
         // Placeholder model message that we update as stream deltas arrive.
@@ -389,28 +389,74 @@ class GeminiChatViewModel: ObservableObject {
         var accumulated = ""
         var finalSources: [GroundingSource] = []
         var finalSupports: [GroundingSupport] = []
-        let stream = apiClient.sendChatMessageStream(
-          model: model, contents: contents, credential: credential, useGrounding: true,
-          systemInstruction: self.buildSystemInstruction())
-        for try await event in stream {
-          try Task.checkCancellation()
-          switch event {
-          case .textDelta(let delta):
-            accumulated += delta
-            await MainActor.run {
-              self.updateStreamingMessage(
-                id: placeholderId, sessionId: sessionId,
-                content: accumulated, sources: [], supports: [])
-            }
-          case .finished(let sources, let supports, _):
-            finalSources = sources
-            finalSupports = supports
-            await MainActor.run {
-              self.updateStreamingMessage(
-                id: placeholderId, sessionId: sessionId,
-                content: accumulated, sources: sources, supports: supports)
+
+        // Function-call loop: if Gemini calls a local tool we execute it,
+        // append the call + response turns to `currentContents`, and re-stream.
+        // Hard cap to prevent runaway tool loops.
+        let maxToolRounds = 5
+        toolLoop: for round in 0..<(maxToolRounds + 1) {
+          var pendingCalls: [(name: String, args: [String: Any])] = []
+          var sawFinished = false
+          let stream = apiClient.sendChatMessageStream(
+            model: model,
+            contents: currentContents,
+            credential: credential,
+            useGrounding: true,
+            systemInstruction: self.buildSystemInstruction(),
+            functionDeclarations: GeminiChatToolRegistry.functionDeclarations)
+          for try await event in stream {
+            try Task.checkCancellation()
+            switch event {
+            case .textDelta(let delta):
+              accumulated += delta
+              await MainActor.run {
+                self.updateStreamingMessage(
+                  id: placeholderId, sessionId: sessionId,
+                  content: accumulated, sources: [], supports: [])
+              }
+            case .functionCall(let name, let args):
+              pendingCalls.append((name, args))
+            case .finished(let sources, let supports, _):
+              finalSources = sources
+              finalSupports = supports
+              sawFinished = true
             }
           }
+          if pendingCalls.isEmpty {
+            break toolLoop
+          }
+          if round == maxToolRounds {
+            DebugLogger.logWarning("GEMINI-CHAT: tool loop exceeded \(maxToolRounds) rounds — stopping")
+            break toolLoop
+          }
+          _ = sawFinished
+          // Append model turn with the functionCall parts, then a user turn with
+          // matching functionResponse parts. Gemini requires this exact shape.
+          let callParts: [[String: Any]] = pendingCalls.map { call in
+            ["functionCall": ["name": call.name, "args": call.args]]
+          }
+          currentContents.append(["role": "model", "parts": callParts])
+          var responseParts: [[String: Any]] = []
+          for call in pendingCalls {
+            let result = await MainActor.run {
+              GeminiChatToolRegistry.execute(name: call.name, args: call.args)
+            }
+            responseParts.append([
+              "functionResponse": [
+                "name": call.name,
+                "response": result,
+              ]
+            ])
+          }
+          currentContents.append(["role": "user", "parts": responseParts])
+          DebugLogger.log("GEMINI-CHAT: executed \(pendingCalls.count) tool call(s), continuing stream")
+        }
+
+        // Finalize placeholder with grounding metadata.
+        await MainActor.run {
+          self.updateStreamingMessage(
+            id: placeholderId, sessionId: sessionId,
+            content: accumulated, sources: finalSources, supports: finalSupports)
         }
         let result = (text: accumulated, sources: finalSources, supports: finalSupports)
         ContextLogger.shared.logGeminiChat(userMessage: content, modelResponse: result.text, model: model)

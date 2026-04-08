@@ -511,18 +511,24 @@ class GeminiAPIClient {
   enum ChatStreamEvent {
     /// Incremental text appended to the model's reply.
     case textDelta(String)
+    /// Model requested a local tool call. The caller should execute the tool,
+    /// append a `functionResponse` turn to `contents`, and re-invoke the stream.
+    case functionCall(name: String, args: [String: Any])
     /// Final event with grounding metadata and finish reason. Emitted exactly once, just before the stream ends.
     case finished(sources: [GroundingSource], supports: [GroundingSupport], finishReason: String?)
   }
 
   /// Streams a chat reply from Gemini via the backend proxy (SSE). Yields text deltas as they arrive,
   /// then a single `.finished` event with grounding metadata. Cancel the consuming Task to abort the upstream request.
+  /// - Parameter functionDeclarations: Optional list of custom function declarations (Gemini Tool format)
+  ///   to enable function calling. When the model requests a call, a `.functionCall` event is yielded.
   func sendChatMessageStream(
     model: String,
     contents: [[String: Any]],
     credential: GeminiCredential,
     useGrounding: Bool = false,
-    systemInstruction: [String: Any]? = nil
+    systemInstruction: [String: Any]? = nil,
+    functionDeclarations: [[String: Any]] = []
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
@@ -552,7 +558,14 @@ class GeminiAPIClient {
             tools.append(["google_search": [:]])
             tools.append(["url_context": [:]])
           }
-          tools.append(["code_execution": [:]])
+          // Custom function declarations take precedence: when tools are defined,
+          // Gemini's built-in code_execution can conflict on some model versions,
+          // so we only include it when no custom tools are provided.
+          if functionDeclarations.isEmpty {
+            tools.append(["code_execution": [:]])
+          } else {
+            tools.append(["function_declarations": functionDeclarations])
+          }
           body["tools"] = tools
           if let sys = systemInstruction {
             body["system_instruction"] = sys
@@ -594,34 +607,46 @@ class GeminiAPIClient {
           var pendingData = ""
 
           // SSE frames are lines like `data: {json}`; events are separated by blank lines.
+          // Local helper to process one complete SSE event's JSON payload.
+          func processChunk(_ jsonData: Data) {
+            // Decode once via Codable for text/grounding/usage…
+            if let chunk = try? JSONDecoder().decode(GeminiResponse.self, from: jsonData) {
+              let deltaText = self.extractText(from: chunk)
+              if !deltaText.isEmpty { continuation.yield(.textDelta(deltaText)) }
+              let chunkSources = self.extractGroundingSources(from: chunk)
+              let chunkSupports = self.extractGroundingSupports(from: chunk)
+              if !chunkSources.isEmpty { aggregatedSources = chunkSources }
+              if !chunkSupports.isEmpty { aggregatedSupports = chunkSupports }
+              if let reason = chunk.candidates.first?.finishReason { finishReason = reason }
+              if let usage = chunk.usageMetadata, let total = usage.totalTokenCount, total > 0 {
+                DebugLogger.logNetwork(
+                  "GEMINI-CHAT-STREAM: usage prompt=\(usage.promptTokenCount ?? 0) output=\(usage.candidatesTokenCount ?? 0) thoughts=\(usage.thoughtsTokenCount ?? 0) total=\(total)")
+              }
+            }
+            // …and also parse as dict to detect functionCall parts (not in Codable model).
+            if !functionDeclarations.isEmpty,
+               let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+               let candidates = obj["candidates"] as? [[String: Any]],
+               let content = candidates.first?["content"] as? [String: Any],
+               let parts = content["parts"] as? [[String: Any]] {
+              for part in parts {
+                if let fc = part["functionCall"] as? [String: Any] ?? part["function_call"] as? [String: Any],
+                   let name = fc["name"] as? String {
+                  let args = (fc["args"] as? [String: Any]) ?? [:]
+                  DebugLogger.logNetwork("GEMINI-CHAT-STREAM: functionCall name=\(name)")
+                  continuation.yield(.functionCall(name: name, args: args))
+                }
+              }
+            }
+          }
+
           for try await line in bytes.lines {
             try Task.checkCancellation()
             if line.isEmpty {
-              // End of an event. Parse accumulated data if any.
-              if !pendingData.isEmpty {
-                if let jsonData = pendingData.data(using: .utf8),
-                   let chunk = try? JSONDecoder().decode(GeminiResponse.self, from: jsonData) {
-                  // Text delta
-                  let deltaText = self.extractText(from: chunk)
-                  if !deltaText.isEmpty {
-                    continuation.yield(.textDelta(deltaText))
-                  }
-                  // Grounding accumulation
-                  let chunkSources = self.extractGroundingSources(from: chunk)
-                  let chunkSupports = self.extractGroundingSupports(from: chunk)
-                  if !chunkSources.isEmpty { aggregatedSources = chunkSources }
-                  if !chunkSupports.isEmpty { aggregatedSupports = chunkSupports }
-                  if let reason = chunk.candidates.first?.finishReason {
-                    finishReason = reason
-                  }
-                  if let usage = chunk.usageMetadata,
-                     let total = usage.totalTokenCount, total > 0 {
-                    DebugLogger.logNetwork(
-                      "GEMINI-CHAT-STREAM: usage prompt=\(usage.promptTokenCount ?? 0) output=\(usage.candidatesTokenCount ?? 0) thoughts=\(usage.thoughtsTokenCount ?? 0) total=\(total)")
-                  }
-                }
-                pendingData = ""
+              if !pendingData.isEmpty, let jsonData = pendingData.data(using: .utf8) {
+                processChunk(jsonData)
               }
+              pendingData = ""
               continue
             }
             if line.hasPrefix("data:") {
@@ -629,17 +654,8 @@ class GeminiAPIClient {
               pendingData += payload
             }
           }
-          // Flush any trailing event without blank-line terminator.
-          if !pendingData.isEmpty,
-             let jsonData = pendingData.data(using: .utf8),
-             let chunk = try? JSONDecoder().decode(GeminiResponse.self, from: jsonData) {
-            let deltaText = self.extractText(from: chunk)
-            if !deltaText.isEmpty { continuation.yield(.textDelta(deltaText)) }
-            let chunkSources = self.extractGroundingSources(from: chunk)
-            let chunkSupports = self.extractGroundingSupports(from: chunk)
-            if !chunkSources.isEmpty { aggregatedSources = chunkSources }
-            if !chunkSupports.isEmpty { aggregatedSupports = chunkSupports }
-            if let reason = chunk.candidates.first?.finishReason { finishReason = reason }
+          if !pendingData.isEmpty, let jsonData = pendingData.data(using: .utf8) {
+            processChunk(jsonData)
           }
 
           if let reason = finishReason, reason != "STOP" {
