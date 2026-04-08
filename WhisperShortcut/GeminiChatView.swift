@@ -417,16 +417,10 @@ class GeminiChatViewModel: ObservableObject {
         if let s = store.session(by: sessionId), s.messages.count == 2 {
           Task { await generateAITitle(sessionId: sessionId) }
         }
-        // Auto memory update
-        if !attachedParts.isEmpty {
-          Task { await updateSessionMemory() }
-        } else {
-          let outsideWindow = session.messages.dropLast(AppConstants.geminiChatVolatileWindowSize)
-          let undistilledCount = outsideWindow.filter { !$0.includedInMemory }.count
-          if undistilledCount >= AppConstants.geminiChatMemoryUpdateInterval {
-            Task { await updateSessionMemory() }
-          }
-        }
+        // Rolling memory is no longer triggered automatically — we send the full
+        // conversation history each turn and rely on Gemini's 1–2M context window.
+        // The `/remember` slash command still runs on-demand compaction as a
+        // fallback for pathologically large sessions.
       } catch is CancellationError {
         DebugLogger.log("GEMINI-CHAT: Send cancelled by user")
       } catch {
@@ -1056,7 +1050,14 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   private func buildContents() -> [[String: Any]] {
-    let toSend = Array(messages.suffix(AppConstants.geminiChatVolatileWindowSize))
+    // Send the full conversation history. Gemini 2.x has a 1M–2M token context window,
+    // so truncation is only a safeguard against pathological sessions.
+    // Previously this used a small volatile window + a separate LLM call to distil older
+    // turns into `sessionMemory` — that lost information and added latency on every turn.
+    let maxMessages = AppConstants.geminiChatFullHistoryMaxMessages
+    let toSend = messages.count > maxMessages
+      ? Array(messages.suffix(maxMessages))
+      : messages
     return toSend.enumerated().map { index, msg in
       let isLastUserWithImages = index == toSend.count - 1 && msg.role == .user && !msg.attachedImageParts.isEmpty
       if isLastUserWithImages {
