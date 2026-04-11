@@ -781,26 +781,42 @@ class MenuBarController: NSObject {
     let generation = geminiShortcutOpenGeneration
 
     if AccessibilityPermissionManager.hasAccessibilityPermission() {
-      let beforeRaw = clipboardManager.getCleanedClipboardText() ?? ""
-      let beforeTrimmed = beforeRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+      // Track the pasteboard via changeCount, not string equality. The old
+      // comparison had two race-free failure modes that both skipped prefill:
+      //   1. The selection text equaled the existing clipboard content
+      //      (common — e.g. re-copying the same snippet) → string "unchanged"
+      //      even though Cmd+C landed.
+      //   2. Slow/Electron apps hadn't written the pasteboard within the
+      //      fixed 100 ms wait → stale read returned the old value.
+      // changeCount increments on every write regardless of content, so
+      // polling it is race-free; we give the front app up to 300 ms to land.
+      let beforeChangeCount = NSPasteboard.general.changeCount
       simulateCopyPaste()
       Task { @MainActor [weak self] in
         guard let self else { return }
-        try? await Task.sleep(for: .milliseconds(100))
-        guard generation == self.geminiShortcutOpenGeneration else { return }
-        let afterFull = self.clipboardManager.getCleanedClipboardText() ?? ""
+        var newText: String? = nil
+        let deadline = Date().addingTimeInterval(0.30)
+        while Date() < deadline {
+          try? await Task.sleep(for: .milliseconds(15))
+          guard generation == self.geminiShortcutOpenGeneration else { return }
+          if NSPasteboard.general.changeCount != beforeChangeCount {
+            newText = self.clipboardManager.getCleanedClipboardText()
+            break
+          }
+        }
+        let afterFull = newText ?? ""
         let afterTrimmed = afterFull.trimmingCharacters(in: .whitespacesAndNewlines)
-        let unchanged = afterTrimmed == beforeTrimmed
+        let didLand = !afterTrimmed.isEmpty
         // Buffer prefill text before showing so GeminiInputAreaView can pick it up
         // in onAppear if the notification arrives before SwiftUI has subscribed.
-        if !afterTrimmed.isEmpty && !unchanged {
+        if didLand {
           GeminiWindowManager.shared.pendingPrefillText = afterFull
         }
         GeminiWindowManager.shared.show(suppressFocusLossClose: true)
         // Also post notification for the warm-window case (view already subscribed).
         try? await Task.sleep(for: .milliseconds(120))
         guard generation == self.geminiShortcutOpenGeneration else { return }
-        if !afterTrimmed.isEmpty && !unchanged {
+        if didLand {
           NotificationCenter.default.post(
             name: .geminiPrefillComposer,
             object: nil,
