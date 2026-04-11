@@ -151,22 +151,21 @@ class GeminiWindowManager {
       return nil
     }
 
+    // Always fetch fresh SCShareableContent for the chat capture path.
+    // Using the cache caused the Gemini window to appear in screenshots:
+    // prefetchShareableContent() runs right after showWindow(), often before
+    // the window is actually on screen, so `applications` didn't contain
+    // WhisperShortcut — and that stale snapshot lived in the cache for 30s,
+    // making excludingApplications a no-op for every screenshot taken in
+    // that window.
     let content: SCShareableContent
-    let now = Date()
-    if let cached = cachedShareableContent,
-       let ts = cachedShareableContentDate,
-       now.timeIntervalSince(ts) < shareableContentCacheDuration {
-      content = cached
-      DebugLogger.log("GEMINI-SCREENSHOT: Using cached SCShareableContent")
-    } else {
-      do {
-        content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        cachedShareableContent = content
-        cachedShareableContentDate = now
-      } catch {
-        DebugLogger.log("GEMINI-SCREENSHOT: SCShareableContent failed: \(error.localizedDescription)")
-        return nil
-      }
+    do {
+      content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+      cachedShareableContent = content
+      cachedShareableContentDate = Date()
+    } catch {
+      DebugLogger.log("GEMINI-SCREENSHOT: SCShareableContent failed: \(error.localizedDescription)")
+      return nil
     }
 
     guard !content.displays.isEmpty else {
@@ -180,8 +179,15 @@ class GeminiWindowManager {
       return screenNumber.map { UInt32(truncating: $0) == d.displayID } ?? true
     } ?? content.displays[0]
 
-    let ourApp = content.applications.first { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
-    let filter = SCContentFilter(display: display, excludingApplications: ourApp.map { [$0] } ?? [], exceptingWindows: [])
+    // Collect every on-screen window that belongs to us, by bundle ID. This
+    // is belt-and-suspenders: excludingWindows is per-window and doesn't
+    // depend on `applications` containing WhisperShortcut at snapshot time.
+    let ourBundleID = Bundle.main.bundleIdentifier
+    let ourWindows = content.windows.filter { window in
+      window.owningApplication?.bundleIdentifier == ourBundleID
+    }
+    DebugLogger.log("GEMINI-SCREENSHOT: Excluding \(ourWindows.count) of our own window(s)")
+    let filter = SCContentFilter(display: display, excludingWindows: ourWindows)
 
     var config = SCStreamConfiguration()
     config.capturesAudio = false
