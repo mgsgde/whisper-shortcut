@@ -408,7 +408,9 @@ class GeminiAPIClient {
     case textDelta(String)
     /// Model requested a local tool call. The caller should execute the tool,
     /// append a `functionResponse` turn to `contents`, and re-invoke the stream.
-    case functionCall(name: String, args: [String: Any])
+    /// `thoughtSignature` must be echoed back in the model turn on the next request
+    /// (required by Gemini 3 — missing it returns HTTP 400).
+    case functionCall(name: String, args: [String: Any], thoughtSignature: String?)
     /// Final event with grounding metadata and finish reason. Emitted exactly once, just before the stream ends.
     case finished(sources: [GroundingSource], supports: [GroundingSupport], finishReason: String?)
   }
@@ -534,8 +536,12 @@ class GeminiAPIClient {
                 if let fc = part["functionCall"] as? [String: Any] ?? part["function_call"] as? [String: Any],
                    let name = fc["name"] as? String {
                   let args = (fc["args"] as? [String: Any]) ?? [:]
-                  DebugLogger.logNetwork("GEMINI-CHAT-STREAM: functionCall name=\(name)")
-                  continuation.yield(.functionCall(name: name, args: args))
+                  // Gemini 3 requires thoughtSignature to be echoed back with the
+                  // functionCall part on the follow-up turn, or the API returns 400.
+                  let thoughtSignature = part["thoughtSignature"] as? String
+                    ?? part["thought_signature"] as? String
+                  DebugLogger.logNetwork("GEMINI-CHAT-STREAM: functionCall name=\(name) sig=\(thoughtSignature != nil ? "yes" : "no")")
+                  continuation.yield(.functionCall(name: name, args: args, thoughtSignature: thoughtSignature))
                 }
               }
             }

@@ -384,7 +384,7 @@ class GeminiChatViewModel: ObservableObject {
         // Hard cap to prevent runaway tool loops.
         let maxToolRounds = 5
         toolLoop: for round in 0..<(maxToolRounds + 1) {
-          var pendingCalls: [(name: String, args: [String: Any])] = []
+          var pendingCalls: [(name: String, args: [String: Any], thoughtSignature: String?)] = []
           var sawFinished = false
           let stream = apiClient.sendChatMessageStream(
             model: model,
@@ -403,8 +403,8 @@ class GeminiChatViewModel: ObservableObject {
                   id: placeholderId, sessionId: sessionId,
                   content: accumulated, sources: [], supports: [])
               }
-            case .functionCall(let name, let args):
-              pendingCalls.append((name, args))
+            case .functionCall(let name, let args, let thoughtSignature):
+              pendingCalls.append((name, args, thoughtSignature))
             case .finished(let sources, let supports, _):
               finalSources = sources
               finalSupports = supports
@@ -421,8 +421,16 @@ class GeminiChatViewModel: ObservableObject {
           _ = sawFinished
           // Append model turn with the functionCall parts, then a user turn with
           // matching functionResponse parts. Gemini requires this exact shape.
+          // Gemini 3 additionally requires `thoughtSignature` to be echoed back
+          // on each functionCall part — omitting it returns HTTP 400.
           let callParts: [[String: Any]] = pendingCalls.map { call in
-            ["functionCall": ["name": call.name, "args": call.args]]
+            var part: [String: Any] = [
+              "functionCall": ["name": call.name, "args": call.args]
+            ]
+            if let sig = call.thoughtSignature {
+              part["thoughtSignature"] = sig
+            }
+            return part
           }
           currentContents.append(["role": "model", "parts": callParts])
           var responseParts: [[String: Any]] = []
