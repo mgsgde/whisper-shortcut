@@ -506,16 +506,12 @@ class GeminiAPIClient {
           var aggregatedSources: [GroundingSource] = []
           var aggregatedSupports: [GroundingSupport] = []
           var finishReason: String?
-          var pendingData = ""
 
-          // SSE frames are lines like `data: {json}`; events are separated by blank lines.
-          // Local helper to process one complete SSE event's JSON payload.
+          // Decode one complete top-level JSON object from the stream.
           func processChunk(_ jsonData: Data) {
-            // Decode once via Codable for text/grounding/usage…
             if let chunk = try? JSONDecoder().decode(GeminiResponse.self, from: jsonData) {
               let deltaText = self.extractText(from: chunk)
               if !deltaText.isEmpty {
-                DebugLogger.logNetwork("GEMINI-CHAT-STREAM: chunk textLen=\(deltaText.count)")
                 continuation.yield(.textDelta(deltaText))
               }
               let chunkSources = self.extractGroundingSources(from: chunk)
@@ -545,23 +541,56 @@ class GeminiAPIClient {
             }
           }
 
-          for try await line in bytes.lines {
+          // Byte-level parser: Gemini's streamGenerateContent may return either
+          // SSE (`data: {…}\n\n`) or a pretty-printed JSON array (`[ {…}, {…} ]`)
+          // depending on whether `?alt=sse` is honored. Parsing at the JSON-object
+          // level by tracking brace depth emits complete `{…}` chunks as soon as
+          // they arrive in either format.
+          var objectBytes = Data()
+          var depth = 0
+          var inString = false
+          var escape = false
+          var chunkCount = 0
+          for try await byte in bytes {
             try Task.checkCancellation()
-            if line.isEmpty {
-              if !pendingData.isEmpty, let jsonData = pendingData.data(using: .utf8) {
-                processChunk(jsonData)
+            let ch = Character(UnicodeScalar(byte))
+            if depth == 0 {
+              if ch == "{" {
+                objectBytes.removeAll(keepingCapacity: true)
+                objectBytes.append(byte)
+                depth = 1
+                inString = false
+                escape = false
               }
-              pendingData = ""
               continue
             }
-            if line.hasPrefix("data:") {
-              let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-              pendingData += payload
+            objectBytes.append(byte)
+            if inString {
+              if escape {
+                escape = false
+              } else if ch == "\\" {
+                escape = true
+              } else if ch == "\"" {
+                inString = false
+              }
+              continue
+            }
+            if ch == "\"" {
+              inString = true
+              continue
+            }
+            if ch == "{" {
+              depth += 1
+            } else if ch == "}" {
+              depth -= 1
+              if depth == 0 {
+                chunkCount += 1
+                processChunk(objectBytes)
+                objectBytes.removeAll(keepingCapacity: true)
+              }
             }
           }
-          if !pendingData.isEmpty, let jsonData = pendingData.data(using: .utf8) {
-            processChunk(jsonData)
-          }
+          DebugLogger.logNetwork("GEMINI-CHAT-STREAM: stream end, totalObjects=\(chunkCount)")
 
           if let reason = finishReason, reason != "STOP" {
             DebugLogger.logWarning("GEMINI-CHAT-STREAM: finishReason=\(reason)")
