@@ -601,6 +601,7 @@ class GeminiAPIClient {
           if let reason = finishReason, reason != "STOP" {
             DebugLogger.logWarning("GEMINI-CHAT-STREAM: finishReason=\(reason)")
           }
+          DebugLogger.logNetwork("GEMINI-CHAT-STREAM: grounding sources=\(aggregatedSources.count) supports=\(aggregatedSupports.count)")
           continuation.yield(.finished(sources: aggregatedSources, supports: aggregatedSupports, finishReason: finishReason))
           continuation.finish()
         } catch {
