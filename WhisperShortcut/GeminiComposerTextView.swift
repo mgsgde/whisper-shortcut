@@ -168,6 +168,15 @@ final class GeminiComposerNSTextView: NSTextView {
           || str.count >= GeminiChatViewModel.pasteThresholdChars {
         if onLargePaste?(str) == true { return }
       }
+      // Always insert as plain text with standard typing attributes so
+      // pasted text never inherits foreign fonts, colors, or link styling.
+      let attrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 16),
+        .foregroundColor: NSColor.labelColor,
+      ]
+      let plain = NSAttributedString(string: str, attributes: attrs)
+      insertText(plain, replacementRange: selectedRange())
+      return
     }
     super.paste(sender)
   }
