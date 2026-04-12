@@ -1,8 +1,15 @@
 import Foundation
 
-// MARK: - Unified Prompt Model Enum (for Prompt Mode) - Gemini multimodal models only
+// MARK: - Chat Model Provider
+enum ChatModelProvider: String, CaseIterable {
+  case gemini
+  case grok
+}
+
+// MARK: - Unified Prompt Model Enum (for Prompt Mode) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash (and sibling docs)
 // GA (stable IDs): gemini-2.5-flash, gemini-2.5-flash-lite; 2.0 deprecated. gemini-2.0-flash-lite removed (API 404). Preview: gemini-3-*.
+// Grok model IDs: https://docs.x.ai/docs/models
 enum PromptModel: String, CaseIterable {
   // Gemini Models (multimodal, direct audio input)
   case gemini20Flash = "gemini-2.0-flash"
@@ -13,6 +20,11 @@ enum PromptModel: String, CaseIterable {
   case gemini3Pro = "gemini-3-pro-preview"
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite-preview"
+
+  // Grok Models (xAI, OpenAI-compatible API, text + search for chat)
+  case grok4 = "grok-4.20-0309-non-reasoning"
+  case grok4Reasoning = "grok-4.20-0309-reasoning"
+  case grok4Fast = "grok-4-1-fast-non-reasoning"
   
   var displayName: String {
     switch self {
@@ -32,6 +44,12 @@ enum PromptModel: String, CaseIterable {
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
       return "Gemini 3.1 Flash-Lite"
+    case .grok4:
+      return "Grok 4"
+    case .grok4Reasoning:
+      return "Grok 4 Reasoning"
+    case .grok4Fast:
+      return "Grok 4 Fast"
     }
   }
   
@@ -46,13 +64,19 @@ enum PromptModel: String, CaseIterable {
     case .gemini25Pro:
       return "Google's Gemini 2.5 Pro model • Strong reasoning and instruction following • Stable (GA)"
     case .gemini3Flash:
-      return "Google's Gemini 3 Flash model • Latest 3-series • Pro-level intelligence at Flash speed • Multimodal"
+      return "Google's Gemini 3 Flash model • Latest 3-series ��� Pro-level intelligence at Flash speed • Multimodal"
     case .gemini3Pro:
       return "Google's Gemini 3 Pro model • Best quality and reasoning • Multimodal"
     case .gemini31Pro:
       return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
     case .gemini31FlashLite:
       return "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Multimodal"
+    case .grok4:
+      return "xAI's Grok 4 • Frontier-class intelligence • Web + X search • Requires xAI API key"
+    case .grok4Reasoning:
+      return "xAI's Grok 4 Reasoning • Extended thinking for complex tasks • Web + X search • Requires xAI API key"
+    case .grok4Fast:
+      return "xAI's Grok 4 Fast • Low-latency responses • Web + X search • Requires xAI API key"
     }
   }
   
@@ -67,6 +91,19 @@ enum PromptModel: String, CaseIterable {
       return "Low"
     case .gemini25Pro, .gemini3Pro, .gemini31Pro:
       return "Medium"
+    case .grok4, .grok4Reasoning:
+      return "Medium"
+    case .grok4Fast:
+      return "Low"
+    }
+  }
+
+  var provider: ChatModelProvider {
+    switch self {
+    case .grok4, .grok4Reasoning, .grok4Fast:
+      return .grok
+    default:
+      return .gemini
     }
   }
   
@@ -79,7 +116,7 @@ enum PromptModel: String, CaseIterable {
   }
   
   var isGemini: Bool {
-    return true // All prompt models are Gemini (offline LLM support planned for future)
+    return provider == .gemini
   }
   
   var isOffline: Bool {
@@ -109,7 +146,29 @@ enum PromptModel: String, CaseIterable {
       return .gemini31Pro
     case .gemini31FlashLite:
       return .gemini31FlashLite
+    case .grok4, .grok4Reasoning, .grok4Fast:
+      return nil // Grok models are text-only, no audio transcription
     }
+  }
+
+  /// Whether this model supports grounding/search (Gemini: google_search + url_context; Grok: web_search via Responses API).
+  var supportsGrounding: Bool {
+    return true
+  }
+
+  /// Whether this model supports code execution. Only Gemini models do.
+  var supportsCodeExecution: Bool {
+    return provider == .gemini
+  }
+
+  /// All models available for the Open Gemini chat window (all providers).
+  static var chatModels: [PromptModel] {
+    return allCases
+  }
+
+  /// Only Gemini models (for prompt mode, transcription, etc. where Gemini-specific features are required).
+  static var geminiOnlyModels: [PromptModel] {
+    return allCases.filter { $0.provider == .gemini }
   }
 
   /// Migrates deprecated 2.0 Flash models to 2.5; returns the model unchanged otherwise.

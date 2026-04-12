@@ -361,15 +361,27 @@ class GeminiChatViewModel: ObservableObject {
         sendTasks.removeValue(forKey: sessionId)
         Task { @MainActor in self.processNextQueued() }
       }
-      guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
-        errorMessage = "Add your Google API key in Settings or sign in with Google to use Gemini Chat."
-        return
+      let selectedModel = Self.openGeminiModel
+      let provider = LLMProviderFactory.provider(for: selectedModel)
+      let model = selectedModel.rawValue
+
+      // Validate credential: Grok needs xAI key, Gemini needs Google credential.
+      if selectedModel.provider == .grok {
+        guard KeychainManager.shared.hasValidXAIAPIKey() else {
+          errorMessage = "Add your xAI API key in Settings to use Grok models."
+          return
+        }
+      } else {
+        guard await GeminiCredentialProvider.shared.getCredential() != nil else {
+          errorMessage = "Add your Google API key in Settings or sign in with Google to use Gemini Chat."
+          return
+        }
       }
+
       let userMsg = ChatMessage(role: .user, content: content, attachedImageParts: attachedParts)
       appendMessage(userMsg, toSessionId: sessionId)
       var currentContents = buildContents()
       do {
-        let model = Self.resolveOpenGeminiModel()
         // Placeholder model message that we update as stream deltas arrive.
         let placeholderId = UUID()
         let placeholder = ChatMessage(id: placeholderId, role: .model, content: "")
@@ -379,20 +391,28 @@ class GeminiChatViewModel: ObservableObject {
         var finalSources: [GroundingSource] = []
         var finalSupports: [GroundingSupport] = []
 
-        // Function-call loop: if Gemini calls a local tool we execute it,
+        // Convert tool declarations to provider-agnostic format
+        let tools = GeminiChatToolRegistry.functionDeclarations.compactMap { decl -> LLMToolDeclaration? in
+          guard let name = decl["name"] as? String,
+                let desc = decl["description"] as? String,
+                let params = decl["parameters"] as? [String: Any] else { return nil }
+          return LLMToolDeclaration(name: name, description: desc, parameters: params)
+        }
+
+        // Function-call loop: if the model calls a local tool we execute it,
         // append the call + response turns to `currentContents`, and re-stream.
         // Hard cap to prevent runaway tool loops.
         let maxToolRounds = 5
+        let useGrounding = selectedModel.supportsGrounding
         toolLoop: for round in 0..<(maxToolRounds + 1) {
           var pendingCalls: [(name: String, args: [String: Any], thoughtSignature: String?)] = []
           var sawFinished = false
-          let stream = apiClient.sendChatMessageStream(
+          let stream = provider.sendChatStream(
             model: model,
             contents: currentContents,
-            credential: credential,
-            useGrounding: true,
             systemInstruction: self.buildSystemInstruction(),
-            functionDeclarations: GeminiChatToolRegistry.functionDeclarations)
+            tools: tools,
+            useGrounding: useGrounding)
           for try await event in stream {
             try Task.checkCancellation()
             switch event {
@@ -415,14 +435,13 @@ class GeminiChatViewModel: ObservableObject {
             break toolLoop
           }
           if round == maxToolRounds {
-            DebugLogger.logWarning("GEMINI-CHAT: tool loop exceeded \(maxToolRounds) rounds — stopping")
+            DebugLogger.logWarning("CHAT: tool loop exceeded \(maxToolRounds) rounds — stopping")
             break toolLoop
           }
           _ = sawFinished
           // Append model turn with the functionCall parts, then a user turn with
-          // matching functionResponse parts. Gemini requires this exact shape.
-          // Gemini 3 additionally requires `thoughtSignature` to be echoed back
-          // on each functionCall part — omitting it returns HTTP 400.
+          // matching functionResponse parts. This format is understood by both
+          // Gemini (natively) and Grok (via GrokChatProvider.convertContentsToMessages).
           let callParts: [[String: Any]] = pendingCalls.map { call in
             var part: [String: Any] = [
               "functionCall": ["name": call.name, "args": call.args]
@@ -446,7 +465,7 @@ class GeminiChatViewModel: ObservableObject {
             ])
           }
           currentContents.append(["role": "user", "parts": responseParts])
-          DebugLogger.log("GEMINI-CHAT: executed \(pendingCalls.count) tool call(s), continuing stream")
+          DebugLogger.log("CHAT: executed \(pendingCalls.count) tool call(s), continuing stream")
         }
 
         // Finalize placeholder with grounding metadata.
@@ -460,17 +479,11 @@ class GeminiChatViewModel: ObservableObject {
         if let s = store.session(by: sessionId), s.messages.count == 2 {
           Task { await generateAITitle(sessionId: sessionId) }
         }
-        // Full conversation history is sent each turn (see buildContents).
-        // This is the pragmatic choice for a single-user app with typically
-        // short sessions. The formally correct "best practice" for long
-        // sessions is Gemini's cachedContents API (~75% input cost reduction
-        // + flat prefill latency), which we deliberately skip because the
-        // cache lifecycle complexity isn't worth the savings at this scale.
       } catch is CancellationError {
-        DebugLogger.log("GEMINI-CHAT: Send cancelled by user")
+        DebugLogger.log("CHAT: Send cancelled by user")
       } catch {
         if sessionId == session.id { errorMessage = friendlyError(error) }
-        DebugLogger.logError("GEMINI-CHAT: \(error.localizedDescription)")
+        DebugLogger.logError("CHAT: \(error.localizedDescription)")
       }
     }
     sendTasks[sessionId] = task

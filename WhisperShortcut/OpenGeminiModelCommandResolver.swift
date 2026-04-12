@@ -42,9 +42,14 @@ enum OpenGeminiModelCommandResolver {
     }
     let padded = " \(normalized) "
 
+    // Detect provider family first.
+    let hasGrok = normalized.contains("grok")
+
     // Detect version family (order matters).
     var candidates: [PromptModel]
-    if normalized.contains("3.1") {
+    if hasGrok {
+      candidates = [.grok4, .grok4Reasoning, .grok4Fast]
+    } else if normalized.contains("3.1") {
       candidates = [.gemini31Pro, .gemini31FlashLite]
     } else if normalized.contains("2.5") {
       candidates = [.gemini25Flash, .gemini25FlashLite, .gemini25Pro]
@@ -59,9 +64,17 @@ enum OpenGeminiModelCommandResolver {
     // Keyword narrowing.
     let hasFlash = normalized.contains("flash")
     let hasLite = normalized.contains("lite")
+    let hasFast = normalized.contains("fast")
+    let hasReasoning = normalized.contains("reason")
     let hasPro = padded.contains(" pro") || normalized.hasPrefix("pro")
 
-    if hasFlash && hasLite {
+    if hasFast {
+      let fasts = candidates.filter { isFast($0) }
+      if !fasts.isEmpty { candidates = fasts }
+    } else if hasReasoning {
+      let reasonings = candidates.filter { isReasoning($0) }
+      if !reasonings.isEmpty { candidates = reasonings }
+    } else if hasFlash && hasLite {
       let lites = candidates.filter { isFlashLite($0) }
       if !lites.isEmpty { candidates = lites }
     } else if hasPro {
@@ -104,6 +117,20 @@ enum OpenGeminiModelCommandResolver {
   private static func isPro(_ m: PromptModel) -> Bool {
     switch m {
     case .gemini25Pro, .gemini3Pro, .gemini31Pro: return true
+    default: return false
+    }
+  }
+
+  private static func isFast(_ m: PromptModel) -> Bool {
+    switch m {
+    case .grok4Fast: return true
+    default: return false
+    }
+  }
+
+  private static func isReasoning(_ m: PromptModel) -> Bool {
+    switch m {
+    case .grok4Reasoning: return true
     default: return false
     }
   }

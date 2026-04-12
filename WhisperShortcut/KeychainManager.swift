@@ -13,6 +13,10 @@ protocol KeychainManaging {
   func hasGoogleAPIKey() -> Bool
   /// Returns true if a non-empty Google API key is stored.
   func hasValidGoogleAPIKey() -> Bool
+  func saveXAIAPIKey(_ apiKey: String) -> Bool
+  func getXAIAPIKey() -> String?
+  func deleteXAIAPIKey() -> Bool
+  func hasValidXAIAPIKey() -> Bool
 }
 
 class KeychainManager: KeychainManaging {
@@ -23,10 +27,12 @@ class KeychainManager: KeychainManaging {
     static let serviceName = "com.whispershortcut.openai"
     static let accountName = "api-key"
     static let googleAccountName = "google-api-key"
+    static let xaiAccountName = "xai-api-key"
   }
 
   private var cachedAPIKey: String?
   private var cachedGoogleAPIKey: String?
+  private var cachedXAIAPIKey: String?
 
   private init() {}
 
@@ -152,6 +158,25 @@ class KeychainManager: KeychainManaging {
 
   func hasValidGoogleAPIKey() -> Bool {
     guard let key = getGoogleAPIKey() else { return false }
+    return !key.isEmpty
+  }
+
+  // MARK: - xAI API Key Management
+
+  func saveXAIAPIKey(_ apiKey: String) -> Bool {
+    return saveKey(apiKey, accountName: Constants.xaiAccountName, cache: &cachedXAIAPIKey)
+  }
+
+  func getXAIAPIKey() -> String? {
+    return getKey(accountName: Constants.xaiAccountName, cache: &cachedXAIAPIKey)
+  }
+
+  func deleteXAIAPIKey() -> Bool {
+    return deleteKey(accountName: Constants.xaiAccountName, cache: &cachedXAIAPIKey)
+  }
+
+  func hasValidXAIAPIKey() -> Bool {
+    guard let key = getXAIAPIKey() else { return false }
     return !key.isEmpty
   }
 }

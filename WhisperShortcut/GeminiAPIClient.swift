@@ -403,7 +403,7 @@ class GeminiAPIClient {
   // MARK: - Streaming Chat
 
   /// One event emitted while streaming a Gemini chat reply.
-  enum ChatStreamEvent {
+  enum GeminiStreamEvent {
     /// Incremental text appended to the model's reply.
     case textDelta(String)
     /// Model requested a local tool call. The caller should execute the tool,
@@ -426,7 +426,7 @@ class GeminiAPIClient {
     useGrounding: Bool = false,
     systemInstruction: [String: Any]? = nil,
     functionDeclarations: [[String: Any]] = []
-  ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
+  ) -> AsyncThrowingStream<GeminiStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
         do {

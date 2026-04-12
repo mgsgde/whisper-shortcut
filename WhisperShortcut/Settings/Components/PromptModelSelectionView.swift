@@ -15,12 +15,15 @@ struct PromptModelSelectionView: View {
   let subscriptionFixedModelDescription: String?
   /// When in subscription mode, if set, this model is shown as selected in the grid and used for Model Details (so only this tile is highlighted, others grayed out).
   let subscriptionEffectiveModel: PromptModel?
+  /// Models to display. When nil, shows all `PromptModel.allCases`.
+  let availableModels: [PromptModel]?
 
   init(
     title: String,
     subtitle: String? = nil,
     showSectionHeader: Bool = true,
     selectedModel: Binding<PromptModel>,
+    availableModels: [PromptModel]? = nil,
     subscriptionMode: Bool = false,
     subscriptionFixedModelDescription: String? = nil,
     subscriptionEffectiveModel: PromptModel? = nil,
@@ -30,10 +33,15 @@ struct PromptModelSelectionView: View {
     self.subtitle = subtitle
     self.showSectionHeader = showSectionHeader
     self._selectedModel = selectedModel
+    self.availableModels = availableModels
     self.subscriptionMode = subscriptionMode
     self.subscriptionFixedModelDescription = subscriptionFixedModelDescription
     self.subscriptionEffectiveModel = subscriptionEffectiveModel
     self.onModelChanged = onModelChanged
+  }
+
+  private var models: [PromptModel] {
+    availableModels ?? PromptModel.geminiOnlyModels
   }
 
   /// Model to show as selected and for details: when in subscription with a fixed model, use that; otherwise use the binding.
@@ -86,7 +94,7 @@ struct PromptModelSelectionView: View {
 
       // Model Selection Grid (when subscription + effectiveModel set, only that model is highlighted; others grayed out)
       LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
-        ForEach(PromptModel.allCases, id: \.self) { model in
+        ForEach(models, id: \.self) { model in
           let isDisabled = subscriptionMode
           let isSelected = displayModel == model
           ZStack {

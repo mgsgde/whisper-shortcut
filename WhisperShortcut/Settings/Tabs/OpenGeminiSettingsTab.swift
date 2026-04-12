@@ -74,8 +74,9 @@ struct OpenGeminiSettingsTab: View {
   private var modelSection: some View {
     PromptModelSelectionView(
       title: "Model for Open Gemini window",
-      subtitle: "Choose which Gemini model powers the chat in the Open Gemini window",
+      subtitle: "Choose which model powers the chat. Grok models require an xAI API key (Settings > General).",
       selectedModel: $viewModel.data.selectedOpenGeminiModel,
+      availableModels: PromptModel.chatModels,
       subscriptionMode: !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn(),
       subscriptionFixedModelDescription: "The Open Gemini window uses \(SubscriptionModelsConfigService.effectiveOpenGeminiModel().displayName) (fixed).",
       subscriptionEffectiveModel: SubscriptionModelsConfigService.effectiveOpenGeminiModel(),

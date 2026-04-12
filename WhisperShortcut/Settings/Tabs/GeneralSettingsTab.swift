@@ -34,6 +34,10 @@ struct GeneralSettingsTab: View {
       SpacedSectionDivider()
       #endif
 
+      XAIAPIKeySection(viewModel: viewModel)
+
+      SpacedSectionDivider()
+
       KeyboardShortcutsSection(viewModel: viewModel, focusedField: $focusedField)
 
       SpacedSectionDivider()
