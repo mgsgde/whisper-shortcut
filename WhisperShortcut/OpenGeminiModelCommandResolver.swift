@@ -85,6 +85,13 @@ enum OpenGeminiModelCommandResolver {
       if !flashesNoLite.isEmpty { candidates = flashesNoLite }
     }
 
+    // When "grok 4" matches all Grok models but no narrowing keyword was given,
+    // pick the base model (non-reasoning, non-fast) as the sensible default.
+    if hasGrok && !hasFast && !hasReasoning && candidates.count > 1 {
+      let base = candidates.filter { !isFast($0) && !isReasoning($0) }
+      if base.count == 1 { candidates = base }
+    }
+
     // Stable order based on PromptModel.allCases.
     let order = PromptModel.allCases
     candidates.sort { (a, b) in
