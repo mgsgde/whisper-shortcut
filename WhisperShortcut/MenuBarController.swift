@@ -1434,9 +1434,15 @@ class MenuBarController: NSObject {
       let isRetryable = transcriptionError?.isRetryable ?? false
       
       // Define retry action
+      let isServerError = transcriptionError?.isServerOrUnavailable ?? false
       let retryAction: (() -> Void)? = isRetryable ? { [weak self] in
         guard let self = self else { return }
         Task {
+          // Brief delay before retrying server errors to give the API time to recover
+          if isServerError {
+            DebugLogger.log("RETRY: Waiting 3s before retrying after server error...")
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+          }
           switch mode {
           case .transcription:
             await self.performTranscription(audioURL: audioURL)

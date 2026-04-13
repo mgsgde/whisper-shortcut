@@ -153,7 +153,8 @@ struct SpeechErrorFormatter {
         🔄 Service Unavailable
 
         Google's service is temporarily unavailable.
-        Please try again in a few moments.
+        Multiple retries were attempted automatically.
+        Please wait a moment and try again.
         """
 
     case .slowDown:

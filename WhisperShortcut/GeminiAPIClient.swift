@@ -62,7 +62,8 @@ class GeminiAPIClient {
   private enum Constants {
     static let requestTimeout: TimeInterval = 60.0
     static let resourceTimeout: TimeInterval = 300.0
-    static let maxRetryAttempts = 4  // Increased to handle rate limiting with proper delays
+    static let maxRetryAttempts = 5  // Handle rate limiting and transient 503s
+    static let maxServerErrorRetryAttempts = 6  // Extra attempts for 503/500 server errors
     static let retryDelaySeconds: TimeInterval = 1.5
     static let filesAPIBaseURL = "https://generativelanguage.googleapis.com/upload/v1beta/files"
   }
@@ -155,8 +156,8 @@ class GeminiAPIClient {
     withRetry: Bool = false
   ) async throws -> T {
     var lastError: Error?
-    let maxAttempts = withRetry ? Constants.maxRetryAttempts : 1
-    
+    var maxAttempts = withRetry ? Constants.maxRetryAttempts : 1
+
     for attempt in 1...maxAttempts {
       do {
         if attempt > 1 {
@@ -381,6 +382,11 @@ class GeminiAPIClient {
 
             continue  // Always retry after API-requested wait
           }
+        }
+
+        // For server errors (503/500), allow more retry attempts with longer backoff
+        if let te = error as? TranscriptionError, te.isServerOrUnavailable, withRetry {
+          maxAttempts = max(maxAttempts, Constants.maxServerErrorRetryAttempts)
         }
 
         if attempt < maxAttempts {

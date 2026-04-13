@@ -401,7 +401,7 @@ class SpeechService {
       request,
       responseType: GeminiChatResponse.self,
       mode: "PROMPT-MODE-GEMINI",
-      withRetry: false
+      withRetry: true
     )
 
     guard let firstCandidate = result.candidates.first else {
@@ -497,7 +497,7 @@ class SpeechService {
       request,
       responseType: GeminiChatResponse.self,
       mode: "PROMPT-HISTORY-TRANSCRIBE",
-      withRetry: false
+      withRetry: true
     )
 
     guard let firstCandidate = result.candidates.first,
@@ -629,7 +629,7 @@ class SpeechService {
       request,
       responseType: GeminiChatResponse.self,
       mode: "PROMPT-MODE-TEXT",
-      withRetry: false
+      withRetry: true
     )
 
     guard let firstCandidate = result.candidates.first else {
