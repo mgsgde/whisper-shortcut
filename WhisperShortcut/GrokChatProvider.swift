@@ -353,10 +353,54 @@ final class GrokChatProvider: LLMChatProvider {
   // MARK: - Format Conversion
 
   /// Converts Gemini-format `contents` to Responses API `input` array.
-  /// The Responses API uses the same message format as Chat Completions.
+  /// The Responses API uses a different format from Chat Completions:
+  /// - Text content uses `{"type": "input_text"/"output_text", "text": "..."}`
+  /// - Images use `{"type": "input_image", "image_url": "data:..."}`
+  /// - Function call/response turns from history are skipped (Responses API
+  ///   manages tool calls internally via its own output items).
   static func convertContentsToResponsesInput(_ contents: [[String: Any]], systemInstruction: [String: Any]?) -> [[String: Any]] {
-    // Responses API input is the same format as Chat Completions messages
-    return convertContentsToMessages(contents)
+    var input: [[String: Any]] = []
+    for content in contents {
+      guard let role = content["role"] as? String,
+            let parts = content["parts"] as? [[String: Any]] else { continue }
+
+      // Skip function call and function response turns — the Responses API
+      // handles tool calling via its own output/input items, not via message history.
+      let hasFunctionCall = parts.contains { $0["functionCall"] != nil }
+      let hasFunctionResponse = parts.contains { $0["functionResponse"] != nil }
+      if hasFunctionCall || hasFunctionResponse { continue }
+
+      let apiRole: String
+      switch role {
+      case "model": apiRole = "assistant"
+      case "user": apiRole = "user"
+      default: apiRole = role
+      }
+
+      // Build content array in Responses API format
+      var contentParts: [[String: Any]] = []
+      for part in parts {
+        if let text = part["text"] as? String, !text.isEmpty {
+          let textType = apiRole == "assistant" ? "output_text" : "input_text"
+          contentParts.append(["type": textType, "text": text])
+        } else if let inlineData = part["inline_data"] as? [String: Any],
+                  let mimeType = inlineData["mime_type"] as? String,
+                  let data = inlineData["data"] as? String {
+          contentParts.append([
+            "type": "input_image",
+            "image_url": "data:\(mimeType);base64,\(data)",
+          ])
+        }
+      }
+
+      if !contentParts.isEmpty {
+        input.append([
+          "role": apiRole,
+          "content": contentParts,
+        ])
+      }
+    }
+    return input
   }
 
   /// Converts Gemini-format `contents` (role/parts dicts) to OpenAI-format `messages`.
