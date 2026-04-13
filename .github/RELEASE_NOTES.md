@@ -1,4 +1,4 @@
-# WhisperShortcut 6.9.1
+# WhisperShortcut 6.9.2
 
 ## Installation
 
@@ -6,9 +6,11 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-- **Grok chat — conversation history**: Follow-up turns now send history to the xAI Responses API in the format the API expects, so multi-turn Grok conversations behave reliably.
-- **`/model` command**: `/model grok 4` resolves to the base **Grok 4** model as intended (instead of a mismatched or invalid id).
+- **Gemini reliability**: More resilient requests when Google’s API returns **503** or **500**—the client retries more times with appropriate backoff for transient server issues.
+- **Speech-to-Prompt**: Gemini calls for prompt mode (including history and text flows) now use the same **automatic retry** path as other features, so brief outages are less likely to fail the whole action.
+- **Retry from the error UI**: If you tap **Retry** after a service-unavailable style error, the app waits **3 seconds** before retrying so the service has time to recover.
+- **Clearer messaging**: The “service unavailable” explanation now notes that **automatic retries already ran**, so you know what happened before trying again manually.
 
 ## Full changelog
 
-[Compare v6.9…v6.9.1](https://github.com/mgsgde/whisper-shortcut/compare/v6.9...v6.9.1)
+[Compare v6.9.1…v6.9.2](https://github.com/mgsgde/whisper-shortcut/compare/v6.9.1...v6.9.2)
