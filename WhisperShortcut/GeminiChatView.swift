@@ -1257,7 +1257,7 @@ struct GeminiChatView: View {
 
   private func tabOverflowMenu(sessions: [ChatSession]) -> some View {
     Menu {
-      ForEach(sessions, id: \.id) { session in
+      ForEach(sessions.reversed(), id: \.id) { session in
         let title = session.title.flatMap { $0.isEmpty ? nil : $0 } ?? "New chat"
         Button {
           viewModel.switchToSession(id: session.id)
