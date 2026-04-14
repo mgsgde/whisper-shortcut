@@ -14,7 +14,7 @@ class GeminiChatViewModel: ObservableObject {
   @Published var errorMessage: String? = nil
   @Published var pendingScreenshots: [Data] = []
   @Published var screenshotCaptureInProgress: Bool = false
-  @Published var pendingFileAttachment: PendingFile? = nil
+  @Published var pendingFileAttachments: [PendingFile] = []
   @Published var pastedBlocks: [PastedBlock] = []
   @Published var messageQueue: [QueuedChatMessage] = []
 
@@ -209,6 +209,9 @@ class GeminiChatViewModel: ObservableObject {
   /// is drained into the composer by the view).
   var composerScreenshotCountProvider: () -> Int = { 0 }
 
+  /// Injected by the view so the VM can respect the in-composer file count.
+  var composerFileCountProvider: () -> Int = { 0 }
+
   /// Sends a message whose content and attachments were already assembled by the inline
   /// composer in document order. Handles slash commands via `typedText`, bypasses the
   /// VM-side chip model, and otherwise queues / dispatches via `performSend`.
@@ -295,29 +298,46 @@ class GeminiChatViewModel: ObservableObject {
     pendingScreenshots = []
   }
 
-  func clearPendingFile() {
-    pendingFileAttachment = nil
+  func clearPendingFiles() {
+    pendingFileAttachments = []
   }
 
-  /// Clears text/paste state and file attachment before shortcut-driven prefill from selection. Pending screenshots are kept.
+  /// Clears text/paste state and file attachments before shortcut-driven prefill from selection. Pending screenshots are kept.
   func resetPendingComposerContent() {
     pastedBlocks = []
-    pendingFileAttachment = nil
+    pendingFileAttachments = []
     inputText = ""
   }
 
+  /// Maximum number of file attachments (images, PDFs, etc.) per message.
+  private static let maxFileAttachments = 5
+
   func attachFile() {
     let panel = NSOpenPanel()
-    panel.allowsMultipleSelection = false
+    panel.allowsMultipleSelection = true
     panel.canChooseDirectories = false
     panel.allowedContentTypes = [.pdf, .png, .jpeg, .gif, .webP, .plainText]
-    panel.message = "Select a file to attach to your next message"
-    guard panel.runModal() == .OK, let url = panel.url else { return }
-    guard let data = try? Data(contentsOf: url) else { return }
-    let mimeType = Self.mimeType(for: url)
-    pendingFileAttachment = PendingFile(data: data, mimeType: mimeType, filename: url.lastPathComponent)
-    pendingScreenshots = []
-    DebugLogger.log("GEMINI-CHAT: File attached: \(url.lastPathComponent) (\(mimeType), \(data.count) bytes)")
+    panel.message = "Select files to attach to your next message"
+    guard panel.runModal() == .OK else { return }
+
+    let currentFileCount = pendingFileAttachments.count + composerFileCountProvider()
+    let remaining = Self.maxFileAttachments - currentFileCount
+    if remaining <= 0 {
+      errorMessage = "Maximum number of file attachments reached (\(Self.maxFileAttachments))."
+      return
+    }
+
+    let urls = Array(panel.urls.prefix(remaining))
+    if panel.urls.count > remaining {
+      errorMessage = "Only \(remaining) of \(panel.urls.count) files attached (limit: \(Self.maxFileAttachments))."
+    }
+
+    for url in urls {
+      guard let data = try? Data(contentsOf: url) else { continue }
+      let mimeType = Self.mimeType(for: url)
+      pendingFileAttachments.append(PendingFile(data: data, mimeType: mimeType, filename: url.lastPathComponent))
+      DebugLogger.log("GEMINI-CHAT: File attached: \(url.lastPathComponent) (\(mimeType), \(data.count) bytes)")
+    }
   }
 
   private static func mimeType(for url: URL) -> String {
@@ -512,7 +532,7 @@ class GeminiChatViewModel: ObservableObject {
       cancelSend()
       return
     }
-    let hasContent = !raw.isEmpty || !pendingScreenshots.isEmpty || pendingFileAttachment != nil || !pastedBlocks.isEmpty
+    let hasContent = !raw.isEmpty || !pendingScreenshots.isEmpty || !pendingFileAttachments.isEmpty || !pastedBlocks.isEmpty
     guard hasContent else { return }
 
     // /context command (show or update system prompts)
@@ -556,16 +576,15 @@ class GeminiChatViewModel: ObservableObject {
     }
 
     // Build attachment parts before clearing input (needed for queue snapshot)
-    let attachedParts: [AttachedImagePart]
-    if let file = pendingFileAttachment {
-      attachedParts = [AttachedImagePart(data: file.data, mimeType: file.mimeType, filename: file.filename)]
-    } else if !pendingScreenshots.isEmpty {
-      attachedParts = pendingScreenshots.enumerated().map { index, data in
+    var attachedParts: [AttachedImagePart] = []
+    for file in pendingFileAttachments {
+      attachedParts.append(AttachedImagePart(data: file.data, mimeType: file.mimeType, filename: file.filename))
+    }
+    if !pendingScreenshots.isEmpty {
+      attachedParts += pendingScreenshots.enumerated().map { index, data in
         let filename = pendingScreenshots.count == 1 ? "screenshot.png" : "screenshot \(index + 1).png"
         return AttachedImagePart(data: data, mimeType: "image/png", filename: filename)
       }
-    } else {
-      attachedParts = []
     }
     var parts: [String] = []
     if !pastedBlocks.isEmpty {
@@ -592,7 +611,7 @@ class GeminiChatViewModel: ObservableObject {
     errorMessage = nil
     pastedBlocks = []
     pendingScreenshots = []
-    pendingFileAttachment = nil
+    pendingFileAttachments = []
 
     if isSending {
       // Queue for sequential processing while current message is in-flight
@@ -1560,6 +1579,7 @@ struct GeminiInputAreaView: View {
     }
     .onAppear {
       viewModel.composerScreenshotCountProvider = { [weak composer] in composer?.screenshotCount ?? 0 }
+      viewModel.composerFileCountProvider = { [weak composer] in composer?.fileAttachmentCount ?? 0 }
       // Cold-start prefill path
       if let buffered = GeminiWindowManager.shared.pendingPrefillText {
         GeminiWindowManager.shared.pendingPrefillText = nil
@@ -1597,10 +1617,12 @@ struct GeminiInputAreaView: View {
       for data in newValue { composer.insertScreenshot(data) }
       viewModel.pendingScreenshots = []
     }
-    .onChange(of: viewModel.pendingFileAttachment?.filename) { _ in
-      guard let f = viewModel.pendingFileAttachment else { return }
-      composer.insertFile(data: f.data, mimeType: f.mimeType, filename: f.filename)
-      viewModel.pendingFileAttachment = nil
+    .onChange(of: viewModel.pendingFileAttachments.count) { _ in
+      guard !viewModel.pendingFileAttachments.isEmpty else { return }
+      for f in viewModel.pendingFileAttachments {
+        composer.insertFile(data: f.data, mimeType: f.mimeType, filename: f.filename)
+      }
+      viewModel.pendingFileAttachments = []
     }
     .onChange(of: viewModel.pastedBlocks.count) { _ in
       guard !viewModel.pastedBlocks.isEmpty else { return }
@@ -1919,7 +1941,7 @@ struct GeminiInputAreaView: View {
   }
 
   private var fileChip: some View {
-    let file = viewModel.pendingFileAttachment
+    let file = viewModel.pendingFileAttachments.first
     let isFocused = focusedAttachment == .file
     return HStack(spacing: 5) {
       if let f = file, f.mimeType.hasPrefix("image/"), let img = NSImage(data: f.data) {
@@ -1939,7 +1961,7 @@ struct GeminiInputAreaView: View {
         .foregroundColor(GeminiChatTheme.primaryText)
         .lineLimit(1)
         .frame(maxWidth: 120, alignment: .leading)
-      Button(action: { viewModel.clearPendingFile(); inputFocused = true }) {
+      Button(action: { viewModel.clearPendingFiles(); inputFocused = true }) {
         Image(systemName: "xmark")
           .font(.system(size: 8, weight: .bold))
           .foregroundColor(GeminiChatTheme.secondaryText)
@@ -1959,8 +1981,8 @@ struct GeminiInputAreaView: View {
     )
     .focusable()
     .focused($focusedAttachment, equals: .file)
-    .onKeyPress(.deleteForward)  { viewModel.clearPendingFile(); inputFocused = true; return .handled }
-    .onKeyPress(.delete)         { viewModel.clearPendingFile(); inputFocused = true; return .handled }
+    .onKeyPress(.deleteForward)  { viewModel.clearPendingFiles(); inputFocused = true; return .handled }
+    .onKeyPress(.delete)         { viewModel.clearPendingFiles(); inputFocused = true; return .handled }
     .accessibilityLabel("File attachment \(file?.filename ?? ""). Press Delete to remove.")
   }
 
@@ -2750,10 +2772,9 @@ private struct MessageBubbleView: View {
             .textSelection(.enabled)
         }
         if !message.attachedImageParts.isEmpty {
-          let summary = message.attachedImageParts.count == 1
-            ? (message.attachedImageParts[0].filename ?? "1 image")
-            : "\(message.attachedImageParts.count) screenshots"
-          Text(summary)
+          Text(message.attachedImageParts.count == 1
+               ? (message.attachedImageParts[0].filename ?? "1 attachment")
+               : "\(message.attachedImageParts.count) attachments")
             .font(.caption)
             .foregroundColor(GeminiChatTheme.primaryText.opacity(0.6))
         }

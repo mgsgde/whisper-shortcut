@@ -99,15 +99,23 @@ final class ComposerAttachmentCell: NSTextAttachmentCell {
       textX = thumbRect.maxX + 4
     }
 
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.lineBreakMode = .byTruncatingTail
+
     let attrs: [NSAttributedString.Key: Any] = [
       .font: Self.labelFont,
       .foregroundColor: NSColor.labelColor,
+      .paragraphStyle: paragraph,
     ]
-    // Draw single-line at a point — draw(in:) word-wraps when the rect is
-    // narrow, which clips the trailing portion of the label.
     let textSize = (label as NSString).size(withAttributes: attrs)
-    let drawPoint = NSPoint(x: textX, y: rect.midY - textSize.height / 2)
-    (label as NSString).draw(at: drawPoint, withAttributes: attrs)
+    let availableWidth = rect.maxX - textX - Self.horizontalPadding
+    let textRect = NSRect(
+      x: textX,
+      y: rect.midY - textSize.height / 2,
+      width: max(0, availableWidth),
+      height: textSize.height
+    )
+    (label as NSString).draw(in: textRect, withAttributes: attrs)
   }
 }
 
@@ -202,6 +210,7 @@ final class GeminiComposerNSTextView: NSTextView {
 @MainActor
 final class GeminiComposerController: ObservableObject {
   static let maxScreenshots = 5
+  static let maxFileAttachments = 5
 
   weak var textView: GeminiComposerNSTextView?
 
@@ -220,11 +229,19 @@ final class GeminiComposerController: ObservableObject {
     return count
   }
 
+  var fileAttachmentCount: Int {
+    guard let storage = textView?.textStorage else { return 0 }
+    var count = 0
+    storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length), options: []) { val, _, _ in
+      if let a = val as? ComposerTextAttachment, case .file = a.kind { count += 1 }
+    }
+    return count
+  }
+
   // MARK: Insertions
 
   func insertScreenshot(_ data: Data) {
     guard screenshotCount < Self.maxScreenshots else { return }
-    removeAllFileAttachments()
     insertAttachment(ComposerTextAttachment(kind: .screenshot(data)))
   }
 
@@ -233,8 +250,7 @@ final class GeminiComposerController: ObservableObject {
   }
 
   func insertFile(data: Data, mimeType: String, filename: String) {
-    removeAllScreenshots()
-    removeAllFileAttachments()
+    guard fileAttachmentCount < Self.maxFileAttachments else { return }
     insertAttachment(ComposerTextAttachment(kind: .file(data: data, mimeType: mimeType, filename: filename)))
   }
 
