@@ -27,8 +27,8 @@ enum MarkdownParsing {
   /// Returns the font for a heading level, scaled relative to `baseSize` (chat = 16, summary = 14).
   static func fontForHeadingLevel(_ level: Int, baseSize: CGFloat = 16) -> Font {
     switch level {
-    case 1: return .system(size: baseSize + 10, weight: .bold)
-    case 2: return .system(size: baseSize + 6, weight: .bold)
+    case 1: return .system(size: baseSize + 7, weight: .bold)
+    case 2: return .system(size: baseSize + 4, weight: .bold)
     case 3: return .system(size: baseSize + 2, weight: .semibold)
     case 4: return .system(size: baseSize, weight: .semibold)
     case 5: return .system(size: baseSize - 1, weight: .semibold)

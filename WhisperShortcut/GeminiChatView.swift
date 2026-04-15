@@ -2256,6 +2256,7 @@ private struct FlowLayout: Layout {
 
 private enum ReplyContentBlock {
   case text(AttributedString)
+  case bulletList([AttributedString]) // each item is one bullet
   case table(ParsedTable)
   case separator
   case codeBlock(String, String?) // code content, optional language
@@ -2318,15 +2319,39 @@ private struct ModelReplyView: View {
 
   var body: some View {
     let blocks = Self.buildReplyBlocks(content: content, sources: sources, groundingSupports: groundingSupports)
-    return VStack(alignment: .leading, spacing: 24) {
-      ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+    return VStack(alignment: .leading, spacing: 18) {
+      ForEach(Array(blocks.enumerated()), id: \.offset) { idx, block in
+        // Add a thin divider before headings (except the first block)
+        if idx > 0, case .text(let nextAttr) = block,
+           Self.isHeadingBlock(nextAttr) {
+          Rectangle()
+            .fill(GeminiChatTheme.primaryText.opacity(0.08))
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 2)
+        }
         switch block {
         case .text(let attrStr):
           Text(attrStr)
             .font(.system(size: 16))
-            .lineSpacing(10)
+            .lineSpacing(8)
             .foregroundColor(GeminiChatTheme.primaryText)
             .textSelection(.enabled)
+        case .bulletList(let items):
+          VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+              HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("•")
+                  .font(.system(size: 16))
+                  .foregroundColor(GeminiChatTheme.primaryText.opacity(0.5))
+                Text(item)
+                  .font(.system(size: 16))
+                  .lineSpacing(6)
+                  .foregroundColor(GeminiChatTheme.primaryText)
+                  .textSelection(.enabled)
+              }
+            }
+          }
         case .table(let parsed):
           MarkdownTableView(headers: parsed.headers, rows: parsed.rows)
         case .separator:
@@ -2355,6 +2380,17 @@ private struct ModelReplyView: View {
     .onHover { inside in
       if inside { NSCursor.iBeam.push() } else { NSCursor.pop() }
     }
+  }
+
+  /// Checks if a text block starts with heading-level font (used for section dividers).
+  private static func isHeadingBlock(_ attr: AttributedString) -> Bool {
+    guard let firstRun = attr.runs.first else { return false }
+    if let font = firstRun.font {
+      // Heading fonts are bold/semibold and larger than base 16pt
+      let desc = String(describing: font)
+      return desc.contains("bold") || desc.contains("semibold")
+    }
+    return false
   }
 
   private static func contentHasTable(_ content: String) -> Bool {
@@ -2417,11 +2453,35 @@ private struct ModelReplyView: View {
         blocks.append(.separator)
       } else if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
         blocks.append(.table(parsed))
+      } else if let bulletItems = parseBulletItems(trimmed) {
+        blocks.append(.bulletList(bulletItems))
+      } else if let (headingPart, bulletPart) = splitHeadingAndBullets(trimmed) {
+        // Heading followed by bullets in the same paragraph (no blank line between them)
+        blocks.append(.text(buildSingleParagraphAttributed(headingPart, options: options)))
+        if let items = parseBulletItems(bulletPart) {
+          blocks.append(.bulletList(items))
+        } else {
+          blocks.append(.text(buildSingleParagraphAttributed(bulletPart, options: options)))
+        }
       } else {
         blocks.append(.text(buildSingleParagraphAttributed(trimmed, options: options)))
       }
     }
     return blocks.isEmpty ? [.text(AttributedString(content))] : blocks
+  }
+
+  /// Splits a paragraph that has non-bullet text followed by bullet lines.
+  /// Returns (textPart, bulletPart) if found; nil otherwise.
+  private static func splitHeadingAndBullets(_ trimmed: String) -> (String, String)? {
+    let lines = trimmed.components(separatedBy: "\n")
+    guard lines.count >= 2 else { return nil }
+    // Find the first bullet line
+    guard let bulletStart = lines.firstIndex(where: { MarkdownParsing.parseBullet($0.trimmingCharacters(in: .whitespaces)) != nil }) else { return nil }
+    guard bulletStart > 0 else { return nil }
+    let headingPart = lines[0..<bulletStart].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    let bulletPart = lines[bulletStart...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !headingPart.isEmpty, !bulletPart.isEmpty else { return nil }
+    return (headingPart, bulletPart)
   }
 
   /// Checks if a paragraph is a Gemini inline image marker and returns the decoded image data.
@@ -2438,27 +2498,21 @@ private struct ModelReplyView: View {
     return Data(base64Encoded: base64)
   }
 
-  /// Renders a paragraph block that consists entirely of bullet/numbered-list lines.
-  /// Returns nil if the block contains any non-bullet lines.
-  private static func buildBulletListAttributed(_ trimmed: String) -> AttributedString? {
+  /// Parses a paragraph block that consists entirely of bullet/numbered-list lines.
+  /// Returns individual attributed strings for each bullet item, or nil if not a bullet block.
+  private static func parseBulletItems(_ trimmed: String) -> [AttributedString]? {
     let lines = trimmed.components(separatedBy: .newlines)
       .map { $0.trimmingCharacters(in: .whitespaces) }
       .filter { !$0.isEmpty }
     guard !lines.isEmpty, lines.allSatisfy({ MarkdownParsing.parseBullet($0) != nil }) else { return nil }
     let opts = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-    var result = AttributedString()
-    for (i, line) in lines.enumerated() {
+    return lines.map { line in
       let rawContent = MarkdownParsing.parseBullet(line)!.trimmingCharacters(in: .whitespaces)
       let content = MarkdownParsing.renderLatexToUnicode(rawContent)
-      if i > 0 { result.append(AttributedString("\n")) }
-      var bullet = AttributedString("• ")
-      bullet.font = .system(size: 16, weight: .regular)
-      result.append(bullet)
       var contentAttr = MarkdownParsing.inlineAttributedString(content, options: opts)
       contentAttr.font = .system(size: 16, weight: .regular)
-      result.append(contentAttr)
+      return contentAttr
     }
-    return result
   }
 
   private static func buildSingleParagraphAttributed(
@@ -2483,7 +2537,7 @@ private struct ModelReplyView: View {
       }
       return headingAttr
     }
-    if let bulletAttr = buildBulletListAttributed(trimmed) { return bulletAttr }
+    // Bullet lists are now handled at the block level, not here
     // Convert LaTeX formulas to Unicode before markdown parsing
     let latexProcessed = MarkdownParsing.renderLatexToUnicode(trimmed)
     let fullOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
@@ -2574,8 +2628,15 @@ private struct ModelReplyView: View {
         var tableAttr = AttributedString(trimmed)
         tableAttr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
         result.append(tableAttr)
-      } else if let bulletAttr = buildBulletListAttributed(trimmed) {
-        result.append(bulletAttr)
+      } else if let bulletItems = parseBulletItems(trimmed) {
+        // Flatten bullet items into a single AttributedString for this legacy path
+        for (i, item) in bulletItems.enumerated() {
+          if i > 0 { result.append(AttributedString("\n")) }
+          var bullet = AttributedString("• ")
+          bullet.font = .system(size: 16, weight: .regular)
+          result.append(bullet)
+          result.append(item)
+        }
       } else {
         let latexProcessed = MarkdownParsing.renderLatexToUnicode(trimmed)
         let fullOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
