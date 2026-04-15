@@ -92,11 +92,12 @@ struct GeminiChatSidebar: View {
 
   private func sectionHeader(_ title: String) -> some View {
     Text(title.uppercased())
-      .font(.system(size: 10, weight: .semibold))
-      .foregroundColor(GeminiChatTheme.secondaryText)
+      .font(.system(size: 9, weight: .bold, design: .default))
+      .tracking(1.2)
+      .foregroundColor(GeminiChatTheme.secondaryText.opacity(0.8))
       .padding(.horizontal, 12)
-      .padding(.top, 12)
-      .padding(.bottom, 4)
+      .padding(.top, 14)
+      .padding(.bottom, 6)
       .frame(width: Self.sidebarWidth, alignment: .leading)
   }
 
