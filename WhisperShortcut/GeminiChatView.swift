@@ -1208,10 +1208,17 @@ struct GeminiChatView: View {
             Divider()
           }
           messageList(scrollActions: scrollActions, containerWidth: geometry.size.width)
+            .overlay(alignment: .bottom) {
+              LinearGradient(
+                colors: [GeminiChatTheme.windowBackground.opacity(0), GeminiChatTheme.windowBackground],
+                startPoint: .top, endPoint: .bottom
+              )
+              .frame(height: 24)
+              .allowsHitTesting(false)
+            }
           if let error = viewModel.errorMessage {
             errorBanner(error)
           }
-          Divider()
           GeminiInputAreaView(viewModel: viewModel, onTapScreenshotThumbnail: { data in
             previewImageData = data
           })
