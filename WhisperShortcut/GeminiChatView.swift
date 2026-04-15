@@ -1476,10 +1476,10 @@ struct GeminiChatView: View {
           }
           Color.clear.frame(height: 1).id("listBottom")
         }
-        .frame(maxWidth: 680)
+        .frame(maxWidth: 720)
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
+        .padding(.horizontal, 24)
+        .padding(.top, 16)
         .padding(.bottom, 28)
         .id(widthBucket)
       }
@@ -1606,8 +1606,8 @@ struct GeminiInputAreaView: View {
   @AppStorage(UserDefaultsKeys.geminiCloseOnFocusLoss) private var closeOnFocusLoss: Bool = SettingsDefaults.geminiCloseOnFocusLoss
   @AppStorage(UserDefaultsKeys.selectedOpenGeminiModel) private var selectedOpenGeminiModelRaw: String = SettingsDefaults.selectedOpenGeminiModel.rawValue
 
-  private static let inputMinHeight: CGFloat = 40
-  private static let inputMaxHeight: CGFloat = 180
+  private static let inputMinHeight: CGFloat = 32
+  private static let inputMaxHeight: CGFloat = 160
 
   private var inputHeight: CGFloat {
     min(Self.inputMaxHeight, max(Self.inputMinHeight, composer.measuredHeight))
@@ -1789,9 +1789,9 @@ struct GeminiInputAreaView: View {
               .strokeBorder(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity), lineWidth: 1)
           )
           .clipShape(RoundedRectangle(cornerRadius: 8))
-          .frame(maxWidth: 680)
+          .frame(maxWidth: 720)
           .frame(maxWidth: .infinity, alignment: .center)
-          .padding(.horizontal, 20)
+          .padding(.horizontal, 24)
           .padding(.bottom, 4)
         }
       }
@@ -1939,9 +1939,9 @@ struct GeminiInputAreaView: View {
         .pointerCursorOnHover()
       }
       .padding(.horizontal, 8)
-      .padding(.vertical, 8)
+      .padding(.vertical, 6)
     }
-    .frame(maxWidth: 680)
+    .frame(maxWidth: 720)
     .background(GeminiChatTheme.controlBackground)
     .clipShape(RoundedRectangle(cornerRadius: 14))
     .overlay(
@@ -1949,8 +1949,9 @@ struct GeminiInputAreaView: View {
         .strokeBorder(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity), lineWidth: 1)
     )
     .frame(maxWidth: .infinity, alignment: .center)
-    .padding(.horizontal, 20)
-    .padding(.vertical, 12)
+    .padding(.horizontal, 24)
+    .padding(.top, 10)
+    .padding(.bottom, 14)
     .contentShape(Rectangle())
     .onTapGesture {
       composer.focus()
@@ -2418,6 +2419,39 @@ private struct ModelReplyView: View {
         blocks.append(.separator)
       } else if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
         blocks.append(.table(parsed))
+      } else if let bulletItems = parseBulletItems(trimmed) {
+        // Pure bullet block — attach citations to the last item
+        if para.chunkIndices.isEmpty {
+          blocks.append(.bulletList(bulletItems))
+        } else {
+          var items = bulletItems
+          var lastItem = items.removeLast()
+          for idx in para.chunkIndices where idx < sources.count {
+            let oneBased = idx + 1
+            var markerAttr = AttributedString(" [\(oneBased)]")
+            markerAttr.font = .system(size: 14)
+            if let url = URL(string: sources[idx].uri) { markerAttr.link = url }
+            lastItem.append(markerAttr)
+          }
+          items.append(lastItem)
+          blocks.append(.bulletList(items))
+        }
+      } else if let (headingPart, bulletPart) = splitHeadingAndBullets(trimmed) {
+        // Heading followed by bullets — heading gets citations, bullets rendered separately
+        var headingAttr = buildSingleParagraphAttributed(headingPart, options: options)
+        for idx in para.chunkIndices where idx < sources.count {
+          let oneBased = idx + 1
+          var markerAttr = AttributedString(" [\(oneBased)]")
+          markerAttr.font = .system(size: 14)
+          if let url = URL(string: sources[idx].uri) { markerAttr.link = url }
+          headingAttr.append(markerAttr)
+        }
+        blocks.append(.text(headingAttr))
+        if let items = parseBulletItems(bulletPart) {
+          blocks.append(.bulletList(items))
+        } else {
+          blocks.append(.text(buildSingleParagraphAttributed(bulletPart, options: options)))
+        }
       } else {
         var attrText = buildSingleParagraphAttributed(trimmed, options: options)
         for idx in para.chunkIndices where idx < sources.count {
@@ -2454,16 +2488,19 @@ private struct ModelReplyView: View {
       } else if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
         blocks.append(.table(parsed))
       } else if let bulletItems = parseBulletItems(trimmed) {
+        DebugLogger.log("BLOCKS: bulletList with \(bulletItems.count) items")
         blocks.append(.bulletList(bulletItems))
       } else if let (headingPart, bulletPart) = splitHeadingAndBullets(trimmed) {
-        // Heading followed by bullets in the same paragraph (no blank line between them)
+        DebugLogger.log("BLOCKS: split heading+bullets")
         blocks.append(.text(buildSingleParagraphAttributed(headingPart, options: options)))
         if let items = parseBulletItems(bulletPart) {
           blocks.append(.bulletList(items))
         } else {
+          DebugLogger.log("BLOCKS: bullet part failed parse: \(bulletPart.prefix(80))")
           blocks.append(.text(buildSingleParagraphAttributed(bulletPart, options: options)))
         }
       } else {
+        DebugLogger.log("BLOCKS: text block: \(trimmed.prefix(80))")
         blocks.append(.text(buildSingleParagraphAttributed(trimmed, options: options)))
       }
     }
