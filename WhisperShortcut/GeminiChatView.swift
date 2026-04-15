@@ -965,21 +965,22 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   func switchToSession(id: UUID) {
+    DebugLogger.log("SIDEBAR: switchToSession id=\(id) current=\(session.id) same=\(id == session.id)")
     guard id != session.id else { return }
     store.switchToSession(id: id)
     switchToCurrentStoreSession()
-    DebugLogger.log("GEMINI-CHAT: Switched to session \(id) via tab")
+    DebugLogger.log("SIDEBAR: switchToSession done → now on \(session.id)")
   }
 
   func closeTab(id: UUID) {
-    rememberClosed(id: id)
-    store.deleteSession(id: id)
+    // Archive instead of delete — session moves to the Archive section in the sidebar
+    store.archiveSession(id: id)
     if id == session.id {
       switchToCurrentStoreSession()
     } else {
       refreshRecentSessions()
     }
-    DebugLogger.log("GEMINI-CHAT: Closed tab \(id)")
+    DebugLogger.log("GEMINI-CHAT: Closed (archived) tab \(id)")
   }
 
   /// Pushes a session onto the recently-closed ring buffer if it has any
@@ -1008,30 +1009,37 @@ class GeminiChatViewModel: ObservableObject {
   // MARK: - Archive / Restore / Delete
 
   func archiveSession(id: UUID) {
+    let wasActive = id == session.id
+    DebugLogger.log("SIDEBAR: archiveSession id=\(id) wasActive=\(wasActive) currentSession=\(session.id)")
     store.archiveSession(id: id)
-    if id == session.id { switchToCurrentStoreSession() }
-    else { refreshRecentSessions() }
-    DebugLogger.log("GEMINI-CHAT: Archived session \(id)")
+    if wasActive {
+      DebugLogger.log("SIDEBAR: archiveSession → switchToCurrentStoreSession")
+      switchToCurrentStoreSession()
+    } else {
+      refreshRecentSessions()
+    }
+    DebugLogger.log("SIDEBAR: archiveSession done. recentSessions=\(recentSessions.count) archived=\(archivedSessionsList.count) currentSession=\(session.id)")
   }
 
   func archiveOlderSessions(than date: Date) {
     store.archiveOlderSessions(than: date)
     if store.load().id != session.id { switchToCurrentStoreSession() }
     else { refreshRecentSessions() }
-    DebugLogger.log("GEMINI-CHAT: Archived sessions older than \(date)")
+    DebugLogger.log("SIDEBAR: Archived sessions older than \(date)")
   }
 
   func restoreSession(id: UUID) {
+    DebugLogger.log("SIDEBAR: restoreSession id=\(id) currentSession=\(session.id)")
     store.restoreSession(id: id)
     refreshRecentSessions()
-    DebugLogger.log("GEMINI-CHAT: Restored session \(id)")
+    DebugLogger.log("SIDEBAR: restoreSession done. recentSessions=\(recentSessions.count) archived=\(archivedSessionsList.count)")
   }
 
   func deleteSessionPermanently(id: UUID) {
     store.deleteSession(id: id)
     if id == session.id { switchToCurrentStoreSession() }
     else { refreshRecentSessions() }
-    DebugLogger.log("GEMINI-CHAT: Permanently deleted session \(id)")
+    DebugLogger.log("SIDEBAR: Permanently deleted session \(id)")
   }
 
   /// Drag-reorders the tab strip so the session with `id` lands at `targetIndex`.
@@ -1287,9 +1295,6 @@ struct GeminiChatView: View {
       }
       .buttonStyle(.plain)
       .help("Toggle sidebar")
-
-      tabOverflowMenu(sessions: allSessions)
-        .frame(width: iconWidth, height: 52)
 
       ScrollViewReader { proxy in
         ScrollView(.horizontal, showsIndicators: false) {

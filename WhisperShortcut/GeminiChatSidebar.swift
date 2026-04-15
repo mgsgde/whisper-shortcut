@@ -16,14 +16,14 @@ struct GeminiChatSidebar: View {
       sidebarHeader
       Divider()
       ScrollView(.vertical, showsIndicators: true) {
-        LazyVStack(spacing: 0) {
+        VStack(spacing: 0) {
           let active = viewModel.recentSessions.sorted { $0.lastUpdated > $1.lastUpdated }
           let archived = viewModel.archivedSessionsList
 
           if !active.isEmpty {
             sectionHeader("Chats")
             ForEach(active, id: \.id) { session in
-              sidebarRow(session: session, isArchived: false)
+              sidebarRow(session: session)
             }
           }
 
@@ -34,7 +34,7 @@ struct GeminiChatSidebar: View {
             }
             sectionHeader("Archive")
             ForEach(archived, id: \.id) { session in
-              sidebarRow(session: session, isArchived: true)
+              sidebarRow(session: session)
             }
           }
         }
@@ -94,17 +94,18 @@ struct GeminiChatSidebar: View {
     Text(title.uppercased())
       .font(.system(size: 10, weight: .semibold))
       .foregroundColor(GeminiChatTheme.secondaryText)
-      .frame(width: Self.sidebarWidth, alignment: .leading)
       .padding(.horizontal, 12)
       .padding(.top, 12)
       .padding(.bottom, 4)
+      .frame(width: Self.sidebarWidth, alignment: .leading)
   }
 
   // MARK: - Row
 
-  private func sidebarRow(session: ChatSession, isArchived: Bool) -> some View {
+  private func sidebarRow(session: ChatSession) -> some View {
     let isActive = session.id == viewModel.currentSessionId
     let isHovered = hoveredRowId == session.id
+    let isArchived = session.archived
     let rawTitle = session.title.flatMap { $0.isEmpty ? nil : $0 }
       ?? session.messages.first(where: { $0.role == .user })?.content.prefix(60).trimmingCharacters(in: .whitespacesAndNewlines)
       ?? "New chat"
@@ -127,29 +128,20 @@ struct GeminiChatSidebar: View {
         .lineLimit(1)
         .truncationMode(.tail)
         .padding(.leading, 10)
-        .padding(.trailing, 10)
         .padding(.vertical, 8)
+
+      Spacer(minLength: 4)
+
+      if isHovered {
+        hoverActionIcon(session: session, isArchived: isArchived)
+          .padding(.trailing, 6)
+      }
     }
     .frame(width: Self.sidebarWidth, alignment: .leading)
     .background(rowBg)
     .contentShape(Rectangle())
-    .overlay(alignment: .trailing) {
-      if isHovered {
-        HStack(spacing: 0) {
-          LinearGradient(
-            colors: [rowBg.opacity(0), rowBg],
-            startPoint: .leading, endPoint: .trailing
-          )
-          .frame(width: 16)
-
-          hoverActions(session: session, isArchived: isArchived)
-            .padding(.trailing, 6)
-            .background(rowBg)
-        }
-      }
-    }
     .onTapGesture {
-      if isArchived { viewModel.restoreSession(id: session.id) }
+      DebugLogger.log("SIDEBAR: row tap id=\(session.id) archived=\(isArchived)")
       viewModel.switchToSession(id: session.id)
     }
     .onHover { over in hoveredRowId = over ? session.id : nil }
@@ -165,31 +157,32 @@ struct GeminiChatSidebar: View {
     }
   }
 
-  // MARK: - Hover actions
+  // MARK: - Hover action icon
 
-  private func hoverActions(session: ChatSession, isArchived: Bool) -> some View {
-    HStack(spacing: 2) {
-      if isArchived {
-        Button(action: { viewModel.restoreSession(id: session.id) }) {
-          Image(systemName: "arrow.uturn.left")
-            .font(.system(size: 10, weight: .medium))
-            .foregroundColor(GeminiChatTheme.secondaryText)
-            .frame(width: 20, height: 20)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+  @ViewBuilder
+  private func hoverActionIcon(session: ChatSession, isArchived: Bool) -> some View {
+    if isArchived {
+      Image(systemName: "arrow.uturn.left")
+        .font(.system(size: 10, weight: .medium))
+        .foregroundColor(GeminiChatTheme.secondaryText)
+        .frame(width: 20, height: 20)
+        .contentShape(Rectangle())
+        .highPriorityGesture(TapGesture().onEnded {
+          DebugLogger.log("SIDEBAR: restore icon tap id=\(session.id)")
+          viewModel.restoreSession(id: session.id)
+        })
         .help("Restore chat")
-      } else {
-        Button(action: { viewModel.archiveSession(id: session.id) }) {
-          Image(systemName: "archivebox")
-            .font(.system(size: 10, weight: .medium))
-            .foregroundColor(GeminiChatTheme.secondaryText)
-            .frame(width: 20, height: 20)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+    } else {
+      Image(systemName: "archivebox")
+        .font(.system(size: 10, weight: .medium))
+        .foregroundColor(GeminiChatTheme.secondaryText)
+        .frame(width: 20, height: 20)
+        .contentShape(Rectangle())
+        .highPriorityGesture(TapGesture().onEnded {
+          DebugLogger.log("SIDEBAR: archive icon tap id=\(session.id)")
+          viewModel.archiveSession(id: session.id)
+        })
         .help("Archive chat")
-      }
     }
   }
 }

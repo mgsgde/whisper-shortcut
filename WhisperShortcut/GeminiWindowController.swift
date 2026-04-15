@@ -95,10 +95,10 @@ class GeminiWindowController: NSWindowController {
     UserDefaults.standard.object(forKey: "NSWindow Frame \(Constants.frameAutosaveName)") != nil
   }
 
-  /// Positions the window to fill the left third of the given screen at full height.
+  /// Positions the window to fill the left half of the given screen at full height.
   private func applyDefaultFrame(on screen: NSScreen, window: NSWindow) {
     let usable = screen.visibleFrame
-    let w = min(max(usable.width / 3, Constants.minWidth), Constants.maxWidth)
+    let w = min(max(usable.width / 2, Constants.minWidth), Constants.maxWidth)
     let h = min(max(usable.height, Constants.minHeight), Constants.maxHeight)
     let frame = NSRect(x: usable.minX, y: usable.minY, width: w, height: h)
     window.setFrame(frame, display: true, animate: false)

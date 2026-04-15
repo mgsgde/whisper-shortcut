@@ -411,8 +411,12 @@ class GeminiChatSessionStore {
     let file = loadFile()
     let active = file.sessions.filter { !$0.archived }
     let byId = Dictionary(uniqueKeysWithValues: active.map { ($0.id, $0) })
-    let manual = (file.tabOrder ?? []).compactMap { byId[$0] }
-    let manualIds = Set(manual.map { $0.id })
+    var seenIds = Set<UUID>()
+    let manual = (file.tabOrder ?? []).compactMap { id -> ChatSession? in
+      guard let s = byId[id], seenIds.insert(id).inserted else { return nil }
+      return s
+    }
+    let manualIds = seenIds
     let rest = active
       .filter { !manualIds.contains($0.id) }
       .sorted { $0.lastUpdated > $1.lastUpdated }
@@ -459,7 +463,8 @@ class GeminiChatSessionStore {
   /// If it was the current session, switches to the next best non-archived session.
   func archiveSession(id: UUID) {
     var file = loadFile()
-    guard let idx = file.sessions.firstIndex(where: { $0.id == id }) else { return }
+    guard let idx = file.sessions.firstIndex(where: { $0.id == id }),
+          !file.sessions[idx].archived else { return }
     file.sessions[idx].archived = true
     file.tabOrder?.removeAll { $0 == id }
     file.navBackStack.removeAll { $0 == id }
@@ -495,9 +500,10 @@ class GeminiChatSessionStore {
   /// Restores an archived session (sets archived = false). Appends to tab order if present.
   func restoreSession(id: UUID) {
     var file = loadFile()
-    guard let idx = file.sessions.firstIndex(where: { $0.id == id }) else { return }
+    guard let idx = file.sessions.firstIndex(where: { $0.id == id }),
+          file.sessions[idx].archived else { return }
     file.sessions[idx].archived = false
-    if file.tabOrder != nil {
+    if file.tabOrder != nil, !(file.tabOrder ?? []).contains(id) {
       file.tabOrder?.append(id)
     }
     saveSessionsFile(file)
