@@ -64,7 +64,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini25Pro:
       return "Google's Gemini 2.5 Pro model • Strong reasoning and instruction following • Stable (GA)"
     case .gemini3Flash:
-      return "Google's Gemini 3 Flash model • Latest 3-series ��� Pro-level intelligence at Flash speed • Multimodal"
+      return "Google's Gemini 3 Flash model • Latest 3-series • Pro-level intelligence at Flash speed • Multimodal"
     case .gemini3Pro:
       return "Google's Gemini 3 Pro model • Best quality and reasoning • Multimodal"
     case .gemini31Pro:
