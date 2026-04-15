@@ -102,7 +102,6 @@ class GeminiChatViewModel: ObservableObject {
   /// Commands are slash-only (e.g. /stop, /new); do not use hotkeys/shortcuts for command actions.
   private static let newChatCommand = "/new"
   private static let backChatCommand = "/back"
-  private static let nextChatCommand = "/next"
   private static let clearChatCommands = ["/clear"]
   static let screenshotCommand = "/screenshot"
   private static let stopCommand = "/stop"
@@ -116,7 +115,6 @@ class GeminiChatViewModel: ObservableObject {
   static let commandSuggestions: [(command: String, description: String)] = [
     ("/new", "Start a new chat (previous chat stays in history)"),
     ("/back", "Navigate to the previous chat"),
-    ("/next", "Navigate to the next chat"),
     ("/clear", "Clear current chat messages"),
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
     ("/context", "Show or edit your context (e.g. /context always use bullet points)"),
@@ -130,7 +128,7 @@ class GeminiChatViewModel: ObservableObject {
   /// Commands to show in UI (excludes /new, /back, /next when single-chat mode).
   var commandSuggestionsForDisplay: [(command: String, description: String)] {
     if singleChatOnly {
-      return Self.commandSuggestions.filter { !["/new", "/back", "/next"].contains($0.command) }
+      return Self.commandSuggestions.filter { !["/new", "/back"].contains($0.command) }
     }
     return Self.commandSuggestions
   }
@@ -240,12 +238,11 @@ class GeminiChatViewModel: ObservableObject {
 
     // Bare slash commands — never carry attachments, never queue.
     if attachedParts.isEmpty && !finalContent.contains("<pasted_") {
-      if lower == Self.newChatCommand || lower == Self.backChatCommand || lower == Self.nextChatCommand
+      if lower == Self.newChatCommand || lower == Self.backChatCommand
           || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
           || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand {
         if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
         else if lower == Self.backChatCommand { if !singleChatOnly { goBack() } }
-        else if lower == Self.nextChatCommand { if !singleChatOnly { goForward() } }
         else if Self.clearChatCommands.contains(lower) { clearMessages() }
         else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
         else if lower == Self.pinCommand { togglePin() }
@@ -304,7 +301,7 @@ class GeminiChatViewModel: ObservableObject {
     pendingFileAttachments = []
   }
 
-  /// Clears text/paste state and file attachments before shortcut-driven prefill from selection. Pending screenshots are kept.
+  /// Clears typed text, paste blocks, and file attachments. Pending screenshots are kept.
   func resetPendingComposerContent() {
     pastedBlocks = []
     pendingFileAttachments = []
@@ -562,13 +559,12 @@ class GeminiChatViewModel: ObservableObject {
     }
 
     // Slash commands: always immediate, never queued
-    if lower == Self.newChatCommand || lower == Self.backChatCommand || lower == Self.nextChatCommand
+    if lower == Self.newChatCommand || lower == Self.backChatCommand
         || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
         || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand {
       inputText = ""
       if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
       else if lower == Self.backChatCommand { if !singleChatOnly { goBack() } }
-      else if lower == Self.nextChatCommand { if !singleChatOnly { goForward() } }
       else if Self.clearChatCommands.contains(lower) { clearMessages() }
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else if lower == Self.pinCommand { togglePin() }
@@ -1645,29 +1641,9 @@ struct GeminiInputAreaView: View {
     .onAppear {
       viewModel.composerScreenshotCountProvider = { [weak composer] in composer?.screenshotCount ?? 0 }
       viewModel.composerFileCountProvider = { [weak composer] in composer?.fileAttachmentCount ?? 0 }
-      // Cold-start prefill path
-      if let buffered = GeminiWindowManager.shared.pendingPrefillText {
-        GeminiWindowManager.shared.pendingPrefillText = nil
-        composer.clearAll()
-        composer.insertPastedBlock(text: buffered, kind: .shortcutSelection)
-        Task { @MainActor in
-          try? await Task.sleep(for: .milliseconds(50))
-          composer.focus()
-        }
-      }
     }
     .onReceive(NotificationCenter.default.publisher(for: .geminiFocusInput)) { _ in
       Task { @MainActor in
-        try? await Task.sleep(for: .milliseconds(50))
-        composer.focus()
-      }
-    }
-    .onReceive(NotificationCenter.default.publisher(for: .geminiPrefillComposer)) { note in
-      Task { @MainActor in
-        guard let text = note.userInfo?[Notification.Name.geminiPrefillComposerTextKey] as? String else { return }
-        GeminiWindowManager.shared.pendingPrefillText = nil
-        composer.clearAll()
-        composer.insertPastedBlock(text: text, kind: .shortcutSelection)
         try? await Task.sleep(for: .milliseconds(50))
         composer.focus()
       }
@@ -1701,7 +1677,7 @@ struct GeminiInputAreaView: View {
   }
 
   private static let knownSlashCommands: Set<String> = [
-    "/new", "/back", "/next", "/clear", "/screenshot",
+    "/new", "/back", "/clear", "/screenshot",
     "/context", "/settings", "/pin", "/unpin", "/stop"
   ]
 

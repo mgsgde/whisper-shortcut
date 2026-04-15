@@ -23,7 +23,7 @@ class GeminiWindowController: NSWindowController {
   private var needsDefaultFrame: Bool = false
 
   /// Timestamp until which `windowDidResignKey` will NOT auto-close the window.
-  /// Set by the shortcut path to avoid the race between simulateCopyPaste → show → prefill.
+  /// Set when opening via the global shortcut so a brief focus transition does not dismiss the window.
   private var suppressCloseUntil: Date = .distantPast
 
   // MARK: - Constants

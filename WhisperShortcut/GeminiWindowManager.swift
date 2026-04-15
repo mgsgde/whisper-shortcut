@@ -9,11 +9,6 @@ class GeminiWindowManager {
   private var cachedShareableContentDate: Date?
   private let shareableContentCacheDuration: TimeInterval = 30
 
-  /// Buffered prefill text set by the shortcut path before the window is shown.
-  /// `GeminiInputAreaView.onAppear` consumes this if the `.geminiPrefillComposer`
-  /// notification was missed (cold first-open race).
-  var pendingPrefillText: String?
-
   private init() {}
 
   func toggle() {

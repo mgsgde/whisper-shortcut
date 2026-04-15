@@ -85,9 +85,6 @@ class MenuBarController: NSObject {
   /// When non-nil, an action is running in parallel with the live meeting.
   private var activeMeetingSegment: MeetingSegment?
 
-  /// Bumped when the Gemini shortcut closes the window or starts a new open; stale prefill tasks bail out before `show()` / notification.
-  private var geminiShortcutOpenGeneration: UInt64 = 0
-
   /// True when TTS is running in any phase: .ttsProcessing or chunked phases with TTS context. Derived from AppState only.
   private var isTTSRunning: Bool {
     if case .processing(let mode) = appState { return mode.isTTSContext }
@@ -768,66 +765,13 @@ class MenuBarController: NSObject {
     GeminiWindowManager.shared.toggle()
   }
 
-  /// Opens the Gemini window from the global shortcut: copy selection from the frontmost app when possible, then prefill the composer.
-  /// If the window is already open, closes it (same toggle behavior as the menu).
+  /// Opens the Gemini window from the global shortcut. If the window is already open, closes it (same toggle behavior as the menu).
   private func openGeminiWindowFromShortcut() {
     if GeminiWindowManager.shared.isWindowOpen() {
-      geminiShortcutOpenGeneration &+= 1
       GeminiWindowManager.shared.close()
       return
     }
-
-    geminiShortcutOpenGeneration &+= 1
-    let generation = geminiShortcutOpenGeneration
-
-    if AccessibilityPermissionManager.hasAccessibilityPermission() {
-      // Track the pasteboard via changeCount, not string equality. The old
-      // comparison had two race-free failure modes that both skipped prefill:
-      //   1. The selection text equaled the existing clipboard content
-      //      (common — e.g. re-copying the same snippet) → string "unchanged"
-      //      even though Cmd+C landed.
-      //   2. Slow/Electron apps hadn't written the pasteboard within the
-      //      fixed 100 ms wait → stale read returned the old value.
-      // changeCount increments on every write regardless of content, so
-      // polling it is race-free; we give the front app up to 300 ms to land.
-      let beforeChangeCount = NSPasteboard.general.changeCount
-      simulateCopyPaste()
-      Task { @MainActor [weak self] in
-        guard let self else { return }
-        var newText: String? = nil
-        let deadline = Date().addingTimeInterval(0.30)
-        while Date() < deadline {
-          try? await Task.sleep(for: .milliseconds(15))
-          guard generation == self.geminiShortcutOpenGeneration else { return }
-          if NSPasteboard.general.changeCount != beforeChangeCount {
-            newText = self.clipboardManager.getCleanedClipboardText()
-            break
-          }
-        }
-        let afterFull = newText ?? ""
-        let afterTrimmed = afterFull.trimmingCharacters(in: .whitespacesAndNewlines)
-        let didLand = !afterTrimmed.isEmpty
-        // Buffer prefill text before showing so GeminiInputAreaView can pick it up
-        // in onAppear if the notification arrives before SwiftUI has subscribed.
-        if didLand {
-          GeminiWindowManager.shared.pendingPrefillText = afterFull
-        }
-        GeminiWindowManager.shared.show(suppressFocusLossClose: true)
-        // Also post notification for the warm-window case (view already subscribed).
-        try? await Task.sleep(for: .milliseconds(120))
-        guard generation == self.geminiShortcutOpenGeneration else { return }
-        if didLand {
-          NotificationCenter.default.post(
-            name: .geminiPrefillComposer,
-            object: nil,
-            userInfo: [Notification.Name.geminiPrefillComposerTextKey: afterFull]
-          )
-        }
-      }
-    } else {
-      _ = AccessibilityPermissionManager.checkPermissionForPromptUsage()
-      GeminiWindowManager.shared.show(suppressFocusLossClose: true)
-    }
+    GeminiWindowManager.shared.show(suppressFocusLossClose: true)
   }
 
   @objc func openMeetingWindow() {
