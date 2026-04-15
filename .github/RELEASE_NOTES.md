@@ -1,4 +1,4 @@
-# WhisperShortcut 6.9.2
+# WhisperShortcut 6.10.0
 
 ## Installation
 
@@ -6,11 +6,12 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-- **Gemini reliability**: More resilient requests when Google’s API returns **503** or **500**—the client retries more times with appropriate backoff for transient server issues.
-- **Speech-to-Prompt**: Gemini calls for prompt mode (including history and text flows) now use the same **automatic retry** path as other features, so brief outages are less likely to fail the whole action.
-- **Retry from the error UI**: If you tap **Retry** after a service-unavailable style error, the app waits **3 seconds** before retrying so the service has time to recover.
-- **Clearer messaging**: The “service unavailable” explanation now notes that **automatic retries already ran**, so you know what happened before trying again manually.
+- **Gemini chat sidebar**: Browse, archive, restore, and delete chat sessions from a sidebar; clearer section styling and a wider default window. Archive and restore behavior is fixed, and the old tab dropdown is removed in favor of the session list.
+- **Composer**: Attach multiple files at once, use screenshots and file attachments together, and see tidier attachment chips when labels get long.
+- **Chat experience**: Newest chats appear first in the tab overflow menu; a subtle gradient separates the message list from the input area; typography, bullets, and colors are refined—especially for grounded search replies with lists.
+- **Open Gemini shortcut**: The global shortcut now only opens or closes the chat window; it no longer simulates copy or pulls the front app’s text selection into the composer (use copy/paste or attach as needed).
+- **Settings**: Gemini 3 Flash model description is corrected; the xAI API key section title matches the rest of Settings.
 
 ## Full changelog
 
-[Compare v6.9.1…v6.9.2](https://github.com/mgsgde/whisper-shortcut/compare/v6.9.1...v6.9.2)
+[Compare v6.9.2…v6.10.0](https://github.com/mgsgde/whisper-shortcut/compare/v6.9.2...v6.10.0)
