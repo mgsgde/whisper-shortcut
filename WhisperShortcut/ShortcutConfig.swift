@@ -437,6 +437,7 @@ extension Notification.Name {
   static let geminiScrollToTop = Notification.Name("geminiScrollToTop")
   /// Posted when user presses Cmd+Down in Gemini chat window (scroll to bottom).
   static let geminiScrollToBottom = Notification.Name("geminiScrollToBottom")
+  static let geminiToggleSidebar = Notification.Name("geminiToggleSidebar")
   /// Posted when the Gemini window is shown so the chat view can focus the message input field.
   static let geminiFocusInput = Notification.Name("geminiFocusInput")
   /// Posted after opening Gemini via the global shortcut when clipboard text should fill the composer. userInfo: `geminiPrefillComposerTextKey` (String).

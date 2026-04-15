@@ -125,18 +125,29 @@ struct ChatSession: Codable {
   var lastUpdated: Date
   var messages: [ChatMessage]
   var title: String?
+  var archived: Bool
 
-  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil) {
+  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false) {
     self.id = id
     self.lastUpdated = lastUpdated
     self.messages = messages
     self.title = title
+    self.archived = archived
   }
 
   // Custom decoder so existing on-disk sessions that still contain a legacy
   // `sessionMemory` field decode cleanly (the value is dropped).
   private enum CodingKeys: String, CodingKey {
-    case id, lastUpdated, messages, title
+    case id, lastUpdated, messages, title, archived
+  }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(UUID.self, forKey: .id)
+    lastUpdated = try c.decode(Date.self, forKey: .lastUpdated)
+    messages = try c.decode([ChatMessage].self, forKey: .messages)
+    title = try c.decodeIfPresent(String.self, forKey: .title)
+    archived = try c.decodeIfPresent(Bool.self, forKey: .archived) ?? false
   }
 }
 
@@ -204,7 +215,7 @@ class GeminiChatSessionStore {
   private let scope: String?
   private static let navStackLimit = 20
   /// Maximum number of sessions kept on disk. Oldest sessions (by lastUpdated) are pruned when exceeded.
-  private static let maxSessionCount = 10
+  private static let maxSessionCount = 50
   /// Sessions older than this many days have their attached image binaries stripped from the in-memory
   /// cache to avoid holding screenshots for stale conversations indefinitely.
   private static let imageRetentionDays: Double = 7
@@ -398,13 +409,19 @@ class GeminiChatSessionStore {
   /// no longer exist are silently dropped.
   func recentSessions(limit: Int = 50) -> [ChatSession] {
     let file = loadFile()
-    let byId = Dictionary(uniqueKeysWithValues: file.sessions.map { ($0.id, $0) })
+    let active = file.sessions.filter { !$0.archived }
+    let byId = Dictionary(uniqueKeysWithValues: active.map { ($0.id, $0) })
     let manual = (file.tabOrder ?? []).compactMap { byId[$0] }
     let manualIds = Set(manual.map { $0.id })
-    let rest = file.sessions
+    let rest = active
       .filter { !manualIds.contains($0.id) }
       .sorted { $0.lastUpdated > $1.lastUpdated }
     return Array((manual + rest).prefix(limit))
+  }
+
+  /// Returns all archived sessions sorted by lastUpdated descending.
+  func archivedSessions() -> [ChatSession] {
+    loadFile().sessions.filter { $0.archived }.sorted { $0.lastUpdated > $1.lastUpdated }
   }
 
   /// Reorders the tab strip so that `id` ends up at `targetIndex` in the
@@ -425,7 +442,7 @@ class GeminiChatSessionStore {
   }
 
   /// Deletes the session with the given ID. Removes it from nav stacks. If it was current, switches to
-  /// the most-recently-updated remaining session (or creates a new empty one if none remain).
+  /// the most-recently-updated remaining non-archived session (or creates a new empty one if none remain).
   func deleteSession(id: UUID) {
     var file = loadFile()
     file.sessions.removeAll { $0.id == id }
@@ -433,16 +450,72 @@ class GeminiChatSessionStore {
     file.navForwardStack.removeAll { $0 == id }
     file.tabOrder?.removeAll { $0 == id }
     if file.currentSessionId == id {
-      let next = file.sessions.sorted { $0.lastUpdated > $1.lastUpdated }.first
-      if let next = next {
-        file.currentSessionId = next.id
-      } else {
-        let newSession = ChatSession()
-        file.sessions = [newSession]
-        file.currentSessionId = newSession.id
-      }
+      switchToNextBestSession(in: &file)
     }
     saveSessionsFile(file)
+  }
+
+  /// Archives a session (sets archived = true). Removes from tab order and nav stacks.
+  /// If it was the current session, switches to the next best non-archived session.
+  func archiveSession(id: UUID) {
+    var file = loadFile()
+    guard let idx = file.sessions.firstIndex(where: { $0.id == id }) else { return }
+    file.sessions[idx].archived = true
+    file.tabOrder?.removeAll { $0 == id }
+    file.navBackStack.removeAll { $0 == id }
+    file.navForwardStack.removeAll { $0 == id }
+    if file.currentSessionId == id {
+      switchToNextBestSession(in: &file)
+    }
+    saveSessionsFile(file)
+  }
+
+  /// Archives all non-archived sessions whose lastUpdated is strictly older than the given date.
+  func archiveOlderSessions(than date: Date) {
+    var file = loadFile()
+    var archivedIds: [UUID] = []
+    for i in file.sessions.indices {
+      if !file.sessions[i].archived && file.sessions[i].lastUpdated < date {
+        file.sessions[i].archived = true
+        archivedIds.append(file.sessions[i].id)
+      }
+    }
+    guard !archivedIds.isEmpty else { return }
+    let archivedSet = Set(archivedIds)
+    file.tabOrder?.removeAll { archivedSet.contains($0) }
+    file.navBackStack.removeAll { archivedSet.contains($0) }
+    file.navForwardStack.removeAll { archivedSet.contains($0) }
+    if archivedSet.contains(file.currentSessionId) {
+      switchToNextBestSession(in: &file)
+    }
+    saveSessionsFile(file)
+    DebugLogger.log("GEMINI-CHAT: Archived \(archivedIds.count) older session(s)")
+  }
+
+  /// Restores an archived session (sets archived = false). Appends to tab order if present.
+  func restoreSession(id: UUID) {
+    var file = loadFile()
+    guard let idx = file.sessions.firstIndex(where: { $0.id == id }) else { return }
+    file.sessions[idx].archived = false
+    if file.tabOrder != nil {
+      file.tabOrder?.append(id)
+    }
+    saveSessionsFile(file)
+  }
+
+  /// Switches currentSessionId to the best non-archived session by recency, or creates a new one.
+  private func switchToNextBestSession(in file: inout SessionsFile) {
+    let next = file.sessions
+      .filter { !$0.archived && $0.id != file.currentSessionId }
+      .sorted { $0.lastUpdated > $1.lastUpdated }
+      .first
+    if let next = next {
+      file.currentSessionId = next.id
+    } else {
+      let newSession = ChatSession()
+      file.sessions.append(newSession)
+      file.currentSessionId = newSession.id
+    }
   }
 
   /// Switches to an existing session via tab click, pushing current to back stack and clearing forward stack.

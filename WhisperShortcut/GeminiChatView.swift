@@ -79,6 +79,7 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   @Published private(set) var recentSessions: [ChatSession] = []
+  @Published private(set) var archivedSessionsList: [ChatSession] = []
   @Published private(set) var currentSessionId: UUID = UUID()
 
   /// In-memory ring buffer of recently closed sessions for Cmd+Shift+T undo.
@@ -159,6 +160,7 @@ class GeminiChatViewModel: ObservableObject {
     currentSessionId = session.id
     messages = session.messages
     recentSessions = store.recentSessions(limit: 20)
+    archivedSessionsList = store.archivedSessions()
   }
 
   func createNewSession() {
@@ -949,6 +951,7 @@ class GeminiChatViewModel: ObservableObject {
 
   private func refreshRecentSessions() {
     recentSessions = store.recentSessions(limit: 20)
+    archivedSessionsList = store.archivedSessions()
   }
 
   /// Returns the sessions to display as tabs, ensuring the current session is always included.
@@ -1000,6 +1003,35 @@ class GeminiChatViewModel: ObservableObject {
     store.switchToSession(id: s.id)
     switchToCurrentStoreSession()
     DebugLogger.log("GEMINI-CHAT: Reopened closed tab \(s.id)")
+  }
+
+  // MARK: - Archive / Restore / Delete
+
+  func archiveSession(id: UUID) {
+    store.archiveSession(id: id)
+    if id == session.id { switchToCurrentStoreSession() }
+    else { refreshRecentSessions() }
+    DebugLogger.log("GEMINI-CHAT: Archived session \(id)")
+  }
+
+  func archiveOlderSessions(than date: Date) {
+    store.archiveOlderSessions(than: date)
+    if store.load().id != session.id { switchToCurrentStoreSession() }
+    else { refreshRecentSessions() }
+    DebugLogger.log("GEMINI-CHAT: Archived sessions older than \(date)")
+  }
+
+  func restoreSession(id: UUID) {
+    store.restoreSession(id: id)
+    refreshRecentSessions()
+    DebugLogger.log("GEMINI-CHAT: Restored session \(id)")
+  }
+
+  func deleteSessionPermanently(id: UUID) {
+    store.deleteSession(id: id)
+    if id == session.id { switchToCurrentStoreSession() }
+    else { refreshRecentSessions() }
+    DebugLogger.log("GEMINI-CHAT: Permanently deleted session \(id)")
   }
 
   /// Drag-reorders the tab strip so the session with `id` lands at `targetIndex`.
@@ -1147,6 +1179,7 @@ struct GeminiChatView: View {
   /// When true, create a new chat session on first appear (e.g. for the meeting window so it opens with a fresh chat).
   @State private var createNewSessionOnAppear: Bool
   @State private var hasTriggeredNewSessionOnAppear: Bool = false
+  @AppStorage(UserDefaultsKeys.geminiSidebarVisible) private var sidebarVisible: Bool = false
 
   init(meetingContextProvider: (() -> String?)? = nil, createNewSessionOnAppear: Bool = false, store: GeminiChatSessionStore = .shared, singleChatOnly: Bool = false) {
     _viewModel = StateObject(wrappedValue: GeminiChatViewModel(meetingContextProvider: meetingContextProvider, store: store, singleChatOnly: singleChatOnly))
@@ -1154,20 +1187,27 @@ struct GeminiChatView: View {
   }
 
   var body: some View {
-    GeometryReader { geometry in
-      VStack(spacing: 0) {
-        if !viewModel.singleChatOnly {
-          tabStripHeader(containerWidth: geometry.size.width)
-          Divider()
-        }
-        messageList(scrollActions: scrollActions, containerWidth: geometry.size.width)
-        if let error = viewModel.errorMessage {
-          errorBanner(error)
-        }
+    HStack(spacing: 0) {
+      if sidebarVisible && !viewModel.singleChatOnly {
+        GeminiChatSidebar(viewModel: viewModel, sidebarVisible: $sidebarVisible)
         Divider()
-        GeminiInputAreaView(viewModel: viewModel, onTapScreenshotThumbnail: { data in
-          previewImageData = data
-        })
+      }
+
+      GeometryReader { geometry in
+        VStack(spacing: 0) {
+          if !viewModel.singleChatOnly && !sidebarVisible {
+            tabStripHeader(containerWidth: geometry.size.width)
+            Divider()
+          }
+          messageList(scrollActions: scrollActions, containerWidth: geometry.size.width)
+          if let error = viewModel.errorMessage {
+            errorBanner(error)
+          }
+          Divider()
+          GeminiInputAreaView(viewModel: viewModel, onTapScreenshotThumbnail: { data in
+            previewImageData = data
+          })
+        }
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1206,6 +1246,9 @@ struct GeminiChatView: View {
       }
       Button("Cancel", role: .cancel) { renamingTabId = nil }
     }
+    .onReceive(NotificationCenter.default.publisher(for: .geminiToggleSidebar)) { _ in
+      withAnimation(.easeInOut(duration: 0.2)) { sidebarVisible.toggle() }
+    }
     .onReceive(NotificationCenter.default.publisher(for: .geminiScrollToTop)) { _ in
       scrollActions.scrollToTop?()
     }
@@ -1235,6 +1278,16 @@ struct GeminiChatView: View {
     let allSessions = viewModel.visibleTabs(maxCount: 999)
 
     return HStack(spacing: 0) {
+      Button(action: { withAnimation(.easeInOut(duration: 0.2)) { sidebarVisible.toggle() } }) {
+        Image(systemName: "sidebar.left")
+          .font(.system(size: 12, weight: .medium))
+          .foregroundColor(GeminiChatTheme.primaryText)
+          .frame(width: iconWidth, height: 52)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .help("Toggle sidebar")
+
       tabOverflowMenu(sessions: allSessions)
         .frame(width: iconWidth, height: 52)
 

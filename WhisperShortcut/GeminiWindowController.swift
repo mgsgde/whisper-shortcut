@@ -16,6 +16,7 @@ class GeminiWindowController: NSWindowController {
   private static let keyCodeN: UInt16 = 45
   private static let keyCodeW: UInt16 = 13
   private static let keyCodeT: UInt16 = 17
+  private static let keyCodeBackslash: UInt16 = 42
 
   private var keyDownMonitor: Any?
   private var needsDefaultFrame: Bool = false
@@ -135,6 +136,9 @@ class GeminiWindowController: NSWindowController {
         return nil
       case Self.keyCodeDownArrow:
         NotificationCenter.default.post(name: .geminiScrollToBottom, object: nil)
+        return nil
+      case Self.keyCodeBackslash:
+        NotificationCenter.default.post(name: .geminiToggleSidebar, object: nil)
         return nil
       default:
         return event

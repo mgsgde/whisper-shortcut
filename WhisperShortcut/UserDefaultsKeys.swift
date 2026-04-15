@@ -5,6 +5,7 @@ import Foundation
 enum UserDefaultsKeys {
   // MARK: - Gemini Window Settings
   static let geminiCloseOnFocusLoss = "geminiCloseOnFocusLoss"
+  static let geminiSidebarVisible = "geminiSidebarVisible"
 
   // MARK: - Settings Window
   static let settingsCloseOnFocusLoss = "settingsCloseOnFocusLoss"
