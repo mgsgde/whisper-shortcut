@@ -110,6 +110,8 @@ class GeminiChatViewModel: ObservableObject {
   private static let unpinCommand = "/unpin"
   private static let contextCommand = "/context"
   private static let modelCommand = "/model"
+  private static let grokCommand = "/grok"
+  private static let geminiCommand = "/gemini"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -119,6 +121,8 @@ class GeminiChatViewModel: ObservableObject {
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
     ("/context", "Show or edit your context (e.g. /context always use bullet points)"),
     ("/model", "Switch Open Gemini model (e.g. /model 3.1 flash lite)"),
+    ("/gemini", "Switch to Gemini 3 Flash"),
+    ("/grok", "Switch to Grok 4"),
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
@@ -240,13 +244,16 @@ class GeminiChatViewModel: ObservableObject {
     if attachedParts.isEmpty && !finalContent.contains("<pasted_") {
       if lower == Self.newChatCommand || lower == Self.backChatCommand
           || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
-          || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand {
+          || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
+          || lower == Self.grokCommand || lower == Self.geminiCommand {
         if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
         else if lower == Self.backChatCommand { if !singleChatOnly { goBack() } }
         else if Self.clearChatCommands.contains(lower) { clearMessages() }
         else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
         else if lower == Self.pinCommand { togglePin() }
         else if lower == Self.unpinCommand { unpin() }
+        else if lower == Self.grokCommand { switchToModel(.grok4) }
+        else if lower == Self.geminiCommand { switchToModel(.gemini3Flash) }
         else { await captureScreenshot() }
         return
       }
@@ -561,7 +568,8 @@ class GeminiChatViewModel: ObservableObject {
     // Slash commands: always immediate, never queued
     if lower == Self.newChatCommand || lower == Self.backChatCommand
         || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
-        || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand {
+        || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
+        || lower == Self.grokCommand || lower == Self.geminiCommand {
       inputText = ""
       if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
       else if lower == Self.backChatCommand { if !singleChatOnly { goBack() } }
@@ -569,6 +577,8 @@ class GeminiChatViewModel: ObservableObject {
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else if lower == Self.pinCommand { togglePin() }
       else if lower == Self.unpinCommand { unpin() }
+      else if lower == Self.grokCommand { switchToModel(.grok4) }
+      else if lower == Self.geminiCommand { switchToModel(.gemini3Flash) }
       else { await captureScreenshot() }
       return
     }
@@ -823,6 +833,14 @@ class GeminiChatViewModel: ObservableObject {
       appendModelMessage("No model matched \"\(query)\". Try a version and variant, e.g. `3.1 flash lite` or `2.5 pro`.")
     }
     DebugLogger.log("GEMINI-CHAT: /model argument=\(argument) outcome=\(outcome)")
+  }
+
+  /// Switches the Open Gemini model directly (used by /grok and /gemini shortcuts).
+  private func switchToModel(_ model: PromptModel) {
+    let migrated = PromptModel.migrateIfDeprecated(model)
+    UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+    appendModelMessage("Model set to **\(migrated.displayName)**.")
+    DebugLogger.log("GEMINI-CHAT: switchToModel \(migrated.displayName)")
   }
 
   /// Handles the /context command. With no instruction: shows current context. With instruction: updates via Gemini.
@@ -1678,7 +1696,8 @@ struct GeminiInputAreaView: View {
 
   private static let knownSlashCommands: Set<String> = [
     "/new", "/back", "/clear", "/screenshot",
-    "/context", "/settings", "/pin", "/unpin", "/stop"
+    "/context", "/settings", "/pin", "/unpin", "/stop",
+    "/grok", "/gemini"
   ]
 
   /// Sends the current composer contents. Recognized slash commands strip just
@@ -2289,6 +2308,14 @@ private struct CodeBlockExtractor {
 
 // MARK: - Model Reply View
 
+/// One selectable prose region, or a non-text block (tables/code/images stay separate so layout stays correct).
+private enum ModelReplyRenderSegment {
+  case prose(AttributedString)
+  case table(ParsedTable)
+  case codeBlock(String, String?)
+  case image(Data)
+}
+
 private struct ModelReplyView: View {
   let content: String
   let sources: [GroundingSource]
@@ -2296,46 +2323,18 @@ private struct ModelReplyView: View {
 
   var body: some View {
     let blocks = Self.buildReplyBlocks(content: content, sources: sources, groundingSupports: groundingSupports)
+    let segments = Self.mergedSegments(from: blocks)
     return VStack(alignment: .leading, spacing: 18) {
-      ForEach(Array(blocks.enumerated()), id: \.offset) { idx, block in
-        // Add a thin divider before headings (except the first block)
-        if idx > 0, case .text(let nextAttr) = block,
-           Self.isHeadingBlock(nextAttr) {
-          Rectangle()
-            .fill(GeminiChatTheme.primaryText.opacity(0.08))
-            .frame(height: 1)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 2)
-        }
-        switch block {
-        case .text(let attrStr):
+      ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+        switch segment {
+        case .prose(let attrStr):
           Text(attrStr)
             .font(.system(size: 16))
             .lineSpacing(8)
             .foregroundColor(GeminiChatTheme.primaryText)
             .textSelection(.enabled)
-        case .bulletList(let items):
-          VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-              HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("•")
-                  .font(.system(size: 16))
-                  .foregroundColor(GeminiChatTheme.primaryText.opacity(0.5))
-                Text(item)
-                  .font(.system(size: 16))
-                  .lineSpacing(6)
-                  .foregroundColor(GeminiChatTheme.primaryText)
-                  .textSelection(.enabled)
-              }
-            }
-          }
         case .table(let parsed):
           MarkdownTableView(headers: parsed.headers, rows: parsed.rows)
-        case .separator:
-          Rectangle()
-            .fill(GeminiChatTheme.primaryText.opacity(0.15))
-            .frame(height: 1)
-            .frame(maxWidth: .infinity)
         case .codeBlock(let code, let language):
           CodeBlockView(code: code, language: language)
         case .image(let imageData):
@@ -2359,15 +2358,96 @@ private struct ModelReplyView: View {
     }
   }
 
-  /// Checks if a text block starts with heading-level font (used for section dividers).
+  /// Whether the block opens with heading typography (used for a thin rule before the heading).
+  /// Heuristic: chat headings use bold/semibold from `MarkdownParsing.fontForHeadingLevel`; bold-only body
+  /// paragraphs are rare but could show a divider—acceptable tradeoff without storing heading metadata on blocks.
   private static func isHeadingBlock(_ attr: AttributedString) -> Bool {
     guard let firstRun = attr.runs.first else { return false }
     if let font = firstRun.font {
-      // Heading fonts are bold/semibold and larger than base 16pt
       let desc = String(describing: font)
       return desc.contains("bold") || desc.contains("semibold")
     }
     return false
+  }
+
+  /// Horizontal rule line (same characters as `MarkdownParsing.separatorLineContent`) before a heading.
+  private static func appendHeadingRuleLine(to prose: inout AttributedString) {
+    var dashes = AttributedString(MarkdownParsing.separatorLineContent)
+    dashes.font = .system(size: 10, weight: .light)
+    dashes.foregroundColor = GeminiChatTheme.primaryText.opacity(0.14)
+    prose.append(dashes)
+  }
+
+  /// Merges consecutive `.text`, `.bulletList`, and `.separator` blocks into one `AttributedString` so
+  /// `textSelection` can span multiple paragraphs. Tables, fenced code, and images stay as separate views.
+  private static func mergedSegments(from blocks: [ReplyContentBlock]) -> [ModelReplyRenderSegment] {
+    var segments: [ModelReplyRenderSegment] = []
+    var prose = AttributedString()
+    var hasProse = false
+
+    func flushProse() {
+      guard hasProse, prose.startIndex != prose.endIndex else {
+        prose = AttributedString()
+        hasProse = false
+        return
+      }
+      segments.append(.prose(prose))
+      prose = AttributedString()
+      hasProse = false
+    }
+
+    for block in blocks {
+      switch block {
+      case .table(let parsed):
+        flushProse()
+        segments.append(.table(parsed))
+      case .codeBlock(let code, let language):
+        flushProse()
+        segments.append(.codeBlock(code, language))
+      case .image(let data):
+        flushProse()
+        segments.append(.image(data))
+      case .separator:
+        if hasProse {
+          prose.append(AttributedString("\n\n"))
+        }
+        var lineAttr = AttributedString(MarkdownParsing.separatorLineContent)
+        lineAttr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.4)
+        prose.append(lineAttr)
+        hasProse = true
+      case .bulletList(let items):
+        if hasProse {
+          prose.append(AttributedString("\n\n"))
+        }
+        for (itemIndex, item) in items.enumerated() {
+          if itemIndex > 0 {
+            prose.append(AttributedString("\n"))
+          }
+          var bullet = AttributedString("• ")
+          bullet.font = .system(size: 16, weight: .regular)
+          bullet.foregroundColor = GeminiChatTheme.primaryText.opacity(0.5)
+          prose.append(bullet)
+          prose.append(item)
+        }
+        hasProse = true
+      case .text(let attrStr):
+        let heading = isHeadingBlock(attrStr)
+        if hasProse {
+          prose.append(AttributedString("\n\n"))
+          if heading {
+            appendHeadingRuleLine(to: &prose)
+            prose.append(AttributedString("\n\n"))
+          }
+        } else if heading, !segments.isEmpty {
+          appendHeadingRuleLine(to: &prose)
+          prose.append(AttributedString("\n\n"))
+        }
+        prose.append(attrStr)
+        hasProse = true
+      }
+    }
+    flushProse()
+    return segments
   }
 
   private static func contentHasTable(_ content: String) -> Bool {
