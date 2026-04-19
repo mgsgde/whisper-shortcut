@@ -124,6 +124,15 @@ struct MeetingRootView: View {
           showEndMeetingNameSheet = false
         }
         .keyboardShortcut(.cancelAction)
+        Button("Discard", role: .destructive) {
+          showEndMeetingNameSheet = false
+          NotificationCenter.default.post(
+            name: .geminiEndMeetingWithName,
+            object: nil,
+            userInfo: ["meetingName": "", "discard": true]
+          )
+        }
+        .help("End meeting and delete transcript")
         Spacer()
         Button("End Meeting") {
           let name = endMeetingNameInput.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -730,6 +730,12 @@ class GeminiAPIClient {
     try await generateMeetingSummary(transcript: transcript, model: model, credential: .apiKey(apiKey))
   }
 
+  /// Consolidates speaker labels across the full transcript so Speaker A/B/C are consistent.
+  func consolidateSpeakerLabels(transcript: String, model: String, credential: GeminiCredential) async throws -> String {
+    let prompt = AppConstants.liveMeetingSpeakerConsolidationPrompt + "\n" + transcript
+    return try await generateText(model: model, prompt: prompt, credential: credential, requestTypeForProxy: "meeting_summary")
+  }
+
   /// Extracts grounding sources (web URIs + titles) from a Gemini response.
   private func extractGroundingSources(from response: GeminiResponse) -> [GroundingSource] {
     guard let candidate = response.candidates.first,

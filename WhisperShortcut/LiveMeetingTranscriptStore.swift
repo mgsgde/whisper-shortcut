@@ -41,7 +41,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// User-entered name for the current live meeting; used as pre-fill when ending the meeting. Cleared on new meeting or end session.
   @Published var preferredMeetingName: String?
 
-  /// Max chunks to retain (oldest dropped). ~90 min at 15s chunks ≈ 360.
+  /// Max chunks to retain (oldest dropped). At 60s chunks with dual-source, ~250 min of meeting.
   private let maxChunks: Int = 500
 
   private let queue = DispatchQueue(label: "com.magnusgoedde.whispershortcut.liveMeetingStore", qos: .userInitiated)

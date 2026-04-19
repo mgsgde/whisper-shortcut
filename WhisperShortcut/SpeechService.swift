@@ -135,11 +135,13 @@ class SpeechService {
   }
 
   // MARK: - Transcription Mode (Public API with Task Tracking)
-  /// - Parameter preferredModel: If set (e.g. for live meeting), use this model; otherwise use the global Dictate selection.
-  func transcribe(audioURL: URL, preferredModel: TranscriptionModel? = nil) async throws -> String {
+  /// - Parameters:
+  ///   - preferredModel: If set (e.g. for live meeting), use this model; otherwise use the global Dictate selection.
+  ///   - promptOverride: If set, use this prompt instead of the user's dictation prompt.
+  func transcribe(audioURL: URL, preferredModel: TranscriptionModel? = nil, promptOverride: String? = nil) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
-      try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel)
+      try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride)
     }
     
     currentTranscriptionTask = task
@@ -149,7 +151,7 @@ class SpeechService {
   }
 
   // MARK: - Transcription Mode (Private Implementation)
-  private func performTranscription(audioURL: URL, preferredModel: TranscriptionModel? = nil) async throws -> String {
+  private func performTranscription(audioURL: URL, preferredModel: TranscriptionModel? = nil, promptOverride: String? = nil) async throws -> String {
     let startTime = CFAbsoluteTimeGetCurrent()
     let model = preferredModel ?? TranscriptionModel.loadSelected()
 
@@ -201,7 +203,7 @@ class SpeechService {
     if model.isGemini {
       // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
       try validateAudioFileFormat(at: audioURL)
-      let result = try await transcribeWithGemini(audioURL: audioURL, model: model)
+      let result = try await transcribeWithGemini(audioURL: audioURL, model: model, promptOverride: promptOverride)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: [\(model.displayName)] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -764,7 +766,7 @@ class SpeechService {
   // MARK: - Gemini API Helpers (delegated to GeminiAPIClient)
 
   // MARK: - Gemini Transcription
-  private func transcribeWithGemini(audioURL: URL, model: TranscriptionModel) async throws -> String {
+  private func transcribeWithGemini(audioURL: URL, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
     let apiStartTime = CFAbsoluteTimeGetCurrent()
 
     guard let credential = await credentialProvider.getCredential() else {
@@ -796,18 +798,18 @@ class SpeechService {
     // Use chunking for long audio (>45s by default)
     if audioDuration > AppConstants.chunkingThresholdSeconds {
       DebugLogger.log("GEMINI-TRANSCRIPTION: Using chunked transcription (duration > \(AppConstants.chunkingThresholdSeconds)s)")
-      result = try await transcribeWithChunking(audioURL: audioURL, credential: credential, model: model)
+      result = try await transcribeWithChunking(audioURL: audioURL, credential: credential, model: model, promptOverride: promptOverride)
     }
     // For files >20MB, use Files API (resumable upload)
     // For files ≤20MB, use inline base64
     // DEBUG: Can force Files API usage via Constants.debugForceFilesAPI
     else if Constants.debugForceFilesAPI {
       DebugLogger.log("GEMINI-TRANSCRIPTION: DEBUG - Forcing Files API usage (debugForceFilesAPI = true)")
-      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential, model: model)
+      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential, model: model, promptOverride: promptOverride)
     } else if audioSize > AppConstants.maxFileSizeBytes {
-      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential, model: model)
+      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential, model: model, promptOverride: promptOverride)
     } else {
-      result = try await transcribeWithGeminiInline(audioURL: audioURL, credential: credential, model: model)
+      result = try await transcribeWithGeminiInline(audioURL: audioURL, credential: credential, model: model, promptOverride: promptOverride)
     }
 
     let apiElapsedTime = CFAbsoluteTimeGetCurrent() - apiStartTime
@@ -817,11 +819,11 @@ class SpeechService {
   }
 
   // MARK: - Chunked Transcription
-  private func transcribeWithChunking(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel) async throws -> String {
+  private func transcribeWithChunking(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
     let chunkService = ChunkTranscriptionService(geminiClient: geminiClient)
     chunkService.progressDelegate = chunkProgressDelegate
 
-    let prompt = buildDictationPrompt()
+    let prompt = promptOverride ?? buildDictationPrompt()
 
     return try await chunkService.transcribe(
       fileURL: audioURL,
@@ -838,23 +840,23 @@ class SpeechService {
     return CMTimeGetSeconds(duration)
   }
   
-  private func transcribeWithGeminiInline(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel) async throws -> String {
+  private func transcribeWithGeminiInline(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
     let inlineStartTime = CFAbsoluteTimeGetCurrent()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using inline audio (file ≤20MB)")
-    
+
     // Read audio file and convert to base64
     let encodeStartTime = CFAbsoluteTimeGetCurrent()
     let audioData = try Data(contentsOf: audioURL)
     let base64Audio = audioData.base64EncodedString()
     let encodeTime = CFAbsoluteTimeGetCurrent() - encodeStartTime
     DebugLogger.logSpeech("SPEED: Base64 encoding took \(String(format: "%.3f", encodeTime))s (\(String(format: "%.0f", encodeTime * 1000))ms)")
-    
+
     // Determine MIME type from file extension
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = geminiClient.getMimeType(for: fileExtension)
-    
+
     // Get dictation system prompt
-    let promptToUse = buildDictationPrompt()
+    let promptToUse = promptOverride ?? buildDictationPrompt()
     
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
     
@@ -911,10 +913,10 @@ class SpeechService {
     return normalizedText
   }
 
-  private func transcribeWithGeminiFilesAPI(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel) async throws -> String {
+  private func transcribeWithGeminiFilesAPI(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
     let filesAPIStartTime = CFAbsoluteTimeGetCurrent()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using Files API (file >20MB)")
-    
+
     // Step 1: Upload file using resumable upload
     let uploadStartTime = CFAbsoluteTimeGetCurrent()
     let fileURI = try await geminiClient.uploadFile(audioURL: audioURL, credential: credential)
@@ -922,7 +924,7 @@ class SpeechService {
     DebugLogger.logSpeech("SPEED: File upload took \(String(format: "%.3f", uploadTime))s (\(String(format: "%.0f", uploadTime * 1000))ms)")
 
     // Step 2: Use file URI for transcription
-    let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, credential: credential, model: model)
+    let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, credential: credential, model: model, promptOverride: promptOverride)
     
     let filesAPIElapsedTime = CFAbsoluteTimeGetCurrent() - filesAPIStartTime
     DebugLogger.logSpeech("SPEED: Gemini Files API transcription total time: \(String(format: "%.3f", filesAPIElapsedTime))s (\(String(format: "%.0f", filesAPIElapsedTime * 1000))ms)")
@@ -932,11 +934,11 @@ class SpeechService {
   
   // File upload is now handled by GeminiAPIClient
   
-  private func transcribeWithGeminiFileURI(fileURI: String, credential: GeminiCredential, model: TranscriptionModel) async throws -> String {
+  private func transcribeWithGeminiFileURI(fileURI: String, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
     let fileURIStartTime = CFAbsoluteTimeGetCurrent()
-    
+
     // Get dictation system prompt
-    let promptToUse = buildDictationPrompt()
+    let promptToUse = promptOverride ?? buildDictationPrompt()
     
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
     

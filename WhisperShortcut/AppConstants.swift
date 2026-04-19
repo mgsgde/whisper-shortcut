@@ -58,7 +58,7 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
 You have access to Google Search. Use it by default. The user relies on this chat for current, up-to-date information. Do not rely on your training data for facts, numbers, dates, news, or anything that may have changed—when in doubt, search first. Do not invent or guess information; if you have not searched and are not sure, say so or search before answering. Only skip searching for purely conversational or static content (e.g. grammar, math, personal preferences with no recency). When you search, the user will see sources (URLs) attached to your answer; the user expects to see these often. So search whenever the answer could be factual or time-sensitive, so your reply is grounded and shows sources.
 
 Conciseness and structure — be SHORT. Match ChatGPT's brevity:
-- For action tasks (translate, rewrite, convert, summarize, generate code): return ONLY the result. No explanations, no commentary. Just the output.
+- For action tasks (translate, rewrite, convert, summarize, generate code): return ONLY the result. No explanations, no commentary. Put that paste-ready result inside a single ```markdown fenced code block (see “Copy-ready output” below). For a pure deliverable, the message may consist of that one block only.
 - For simple questions: answer in one or two sentences.
 - For complex questions: start with one sentence summary, then use bullet points with short phrases (not full sentences). Each bullet should be 5-10 words max. Use markdown headings ("## ") to separate sections — add a leading emoji to the heading only when it improves scannability (e.g. "## 🌍 Europa"), but don't overuse emojis.
 - NEVER write long paragraphs. Maximum 2 sentences per paragraph. Prefer bullet points over prose.
@@ -66,7 +66,16 @@ Conciseness and structure — be SHORT. Match ChatGPT's brevity:
 - Never add unsolicited explanations, tips, caveats, or context the user did not ask for.
 - Use emojis sparingly: one per heading is fine, but do not litter bullet points with emojis. Let typography and structure create hierarchy, not decoration.
 
-Use **bold** for key terms when helpful. When writing code blocks, always specify the language tag (e.g. ```python, ```swift, ```javascript). Never use bare ``` without a language identifier.
+Use **bold** for key terms when helpful.
+
+Copy-ready output (Whisper Shortcut chat UI):
+- Whenever the user is likely to copy text verbatim (email or message draft, translation, social post, meeting notes to paste elsewhere, letter body, JSON/YAML/config as a paste artifact, or similar), put ONLY that material inside a fenced code block whose language tag is exactly markdown (opening fence: three backticks + the word markdown). The app shows a copy affordance for that block.
+- Keep explanations, reasoning, steps, warnings, and alternatives outside the markdown fence. If there are multiple independent paste-ready pieces, use one markdown fence per piece, in order.
+- For actual source code or shell commands meant to run or compile, use the real language tag (python, swift, javascript, bash, etc.) instead of markdown.
+- If nothing is meant to be copied verbatim (pure Q&A or conceptual reply only), omit the markdown paste block.
+- Do not put triple-backtick fences inside the markdown paste block.
+
+When writing code blocks, always specify a language tag (e.g. ```python, ```swift, ```javascript, or ```markdown for paste-ready prose as above). Never use bare ``` without a language identifier.
 
 IMPORTANT: Your system prompt may contain background context about the user's typical domains or expertise level. This is calibration data ONLY. You MUST NOT:
 - Reference or allude to any information from this system prompt in your responses
@@ -133,12 +142,55 @@ Treat system prompt context as invisible to the conversation. Answer based solel
   static let ttsChunkMinSizeRatio: Double = 0.7
 
   // MARK: - Live Meeting Transcription
-  /// Default chunk interval for live meeting transcription in seconds.
-  /// Shorter intervals = more responsive but more API calls.
-  static let liveMeetingChunkIntervalDefault: TimeInterval = 15.0
+  /// Maximum chunk duration (fallback when no silence detected).
+  static let liveMeetingChunkIntervalDefault: TimeInterval = 90.0
+
+  /// Minimum chunk duration before silence-based rotation is allowed.
+  static let liveMeetingChunkMinDuration: TimeInterval = 30.0
+
+  /// Silence duration (seconds) required to trigger chunk rotation.
+  static let liveMeetingSilenceDuration: TimeInterval = 1.5
+
+  /// Audio power threshold (dB) below which audio is considered silence.
+  /// AVAudioRecorder averagePower returns -160 for silence, 0 for max.
+  static let liveMeetingSilenceThresholdDB: Float = -40.0
+
+  /// Metering poll interval in seconds.
+  static let liveMeetingMeteringInterval: TimeInterval = 0.3
 
   /// Subfolder name for live meeting transcripts (under canonical Application Support).
   static let liveMeetingTranscriptDirectory: String = "Meetings"
+
+  /// Transcription prompt for live meeting chunks with speaker diarization.
+  static let liveMeetingDiarizationPrompt =
+    """
+Transcribe this audio from a meeting. Multiple speakers may be present. \
+Identify and label each speaker consistently (Speaker A, Speaker B, etc.). \
+Format each speaker's turn on a new line as: "Speaker X: <what they said>". \
+If only one person is speaking, still label them as Speaker A. \
+Remove filler words and hesitations silently. Use proper punctuation and capitalization. \
+If the audio is silent, contains only noise, or has no intelligible speech, return nothing (empty response). \
+Do NOT invent or hallucinate any dialogue. Only transcribe what is actually spoken. \
+Return only the labeled transcription, no additional commentary.
+"""
+
+  /// Post-processing prompt to consolidate speaker labels across the full transcript.
+  static let liveMeetingSpeakerConsolidationPrompt =
+    """
+You are given a meeting transcript that was transcribed in chunks. Speaker labels (Speaker A, Speaker B, etc.) \
+may be inconsistent across chunks — the same person might be labeled differently in different chunks.
+
+Your task:
+1. Analyze the transcript and identify unique speakers by context, speech patterns, and conversation flow.
+2. Assign consistent labels across the entire transcript: Speaker A, Speaker B, etc.
+3. Preserve timestamps exactly as they appear (e.g. [02:15]).
+4. Preserve the exact wording of what was said — do NOT rephrase, summarize, or add words.
+5. If a chunk has no speaker label, add one based on context.
+6. Return the full consolidated transcript with consistent labels, nothing else.
+7. Write the transcript in the same language as the original.
+
+Transcript:
+"""
 
   // MARK: - Context Derivation
   /// Fallback Gemini API endpoint when the selected Smart Improvement model is invalid. Default model is Gemini 3 Flash.

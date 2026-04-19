@@ -71,6 +71,8 @@ class MenuBarController: NSObject {
   private var liveMeetingPreferredName: String?
   /// Set to true after showing rate-limit popup once this session so we don't spam.
   private var liveMeetingDidShowRateLimitAlert: Bool = false
+  /// When true, finishLiveMeetingSession will delete the transcript instead of saving.
+  private var liveMeetingDiscard: Bool = false
 
   /// True when live meeting is active (recording or stopping with pending chunks).
   private var isLiveMeetingActive: Bool {
@@ -304,8 +306,10 @@ class MenuBarController: NSObject {
 
   @objc private func endMeetingWithName(_ notification: Notification) {
     let name = (notification.userInfo?["meetingName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let discard = notification.userInfo?["discard"] as? Bool ?? false
     DispatchQueue.main.async { [weak self] in
       self?.liveMeetingPreferredName = name
+      self?.liveMeetingDiscard = discard
       self?.stopLiveMeeting()
     }
   }
@@ -828,7 +832,7 @@ class MenuBarController: NSObject {
     let chunkInterval: TimeInterval = savedInterval > 0 ? savedInterval : AppConstants.liveMeetingChunkIntervalDefault
 
     // Create and start recorder
-    liveMeetingRecorder = LiveMeetingRecorder(chunkDuration: chunkInterval)
+    liveMeetingRecorder = LiveMeetingRecorder(maxChunkDuration: chunkInterval)
     liveMeetingRecorder?.delegate = self
     liveMeetingRecorder?.startSession()
 
@@ -901,40 +905,76 @@ class MenuBarController: NSObject {
   }
 
   private func finishLiveMeetingSession() {
-    DebugLogger.log("LIVE-MEETING: Session finished")
+    let discard = liveMeetingDiscard
+    DebugLogger.log("LIVE-MEETING: Session finished (discard=\(discard))")
 
-    if let url = liveMeetingTranscriptURL, let preferred = liveMeetingPreferredName, !preferred.isEmpty {
-      let currentStem = url.deletingPathExtension().lastPathComponent
-      if preferred != currentStem {
-        renameTranscriptFile(from: url, preferredName: preferred, currentStem: currentStem)
+    if discard {
+      if let url = liveMeetingTranscriptURL {
+        try? FileManager.default.removeItem(at: url)
+        let summaryURL = url.deletingPathExtension().appendingPathExtension("summary.md")
+        try? FileManager.default.removeItem(at: summaryURL)
+        DebugLogger.log("LIVE-MEETING: Discarded transcript and summary files")
       }
-      liveMeetingPreferredName = nil
+      liveMeetingTranscriptURL = nil
+      LiveMeetingTranscriptStore.shared.clearForNewMeeting()
+      MeetingListService.shared.refresh()
+    } else {
+      if let url = liveMeetingTranscriptURL, let preferred = liveMeetingPreferredName, !preferred.isEmpty {
+        let currentStem = url.deletingPathExtension().lastPathComponent
+        if preferred != currentStem {
+          renameTranscriptFile(from: url, preferredName: preferred, currentStem: currentStem)
+        }
+      }
+      LiveMeetingTranscriptStore.shared.endSession()
     }
 
+    liveMeetingPreferredName = nil
     liveMeetingSafeguardTimer?.invalidate()
     liveMeetingSafeguardTimer = nil
     liveMeetingStopping = false
+    liveMeetingDiscard = false
     liveMeetingRecorder = nil
     liveMeetingPendingChunks = 0
     appState = appState.finish()
-    LiveMeetingTranscriptStore.shared.endSession()
 
-    if let transcriptURL = liveMeetingTranscriptURL {
+    if !discard, let transcriptURL = liveMeetingTranscriptURL {
       let store = LiveMeetingTranscriptStore.shared
       let chunksSnapshot = store.chunks
       Task {
         let transcriptText = chunksSnapshot.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n\n")
         guard !transcriptText.isEmpty else { return }
         guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
-        var text = transcriptText
-        if text.count > MeetingListService.contextMaxChars {
-          text = String(text.suffix(MeetingListService.contextMaxChars))
-        }
         let model = credential.isOAuth
           ? SubscriptionModelsConfigService.effectiveMeetingSummaryModel().rawValue
           : PromptModel.loadSelectedMeetingSummary().rawValue
+        let api = GeminiAPIClient()
+
+        // Post-processing: consolidate speaker labels across the full transcript
+        var finalTranscript = transcriptText
         do {
-          let summary = try await GeminiAPIClient().generateMeetingSummary(transcript: text, model: model, credential: credential)
+          let consolidated = try await api.consolidateSpeakerLabels(transcript: transcriptText, model: model, credential: credential)
+          let trimmed = consolidated.trimmingCharacters(in: .whitespacesAndNewlines)
+          if !trimmed.isEmpty {
+            finalTranscript = trimmed
+            if let data = trimmed.data(using: .utf8) {
+              try data.write(to: transcriptURL, options: .atomic)
+            }
+            await MainActor.run {
+              MeetingListService.shared.invalidateCache(for: nil)
+            }
+            DebugLogger.log("LIVE-MEETING: Speaker labels consolidated and transcript rewritten")
+          }
+        } catch {
+          DebugLogger.logWarning("LIVE-MEETING: Speaker consolidation failed (using raw transcript): \(error.localizedDescription)")
+        }
+
+        // Generate summary from the (possibly consolidated) transcript
+        var textForSummary = finalTranscript
+        if textForSummary.count > MeetingListService.contextMaxChars {
+          textForSummary = String(textForSummary.suffix(MeetingListService.contextMaxChars))
+        }
+        do {
+          let summary = try await api.generateMeetingSummary(transcript: textForSummary, model: model, credential: credential)
           let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
           if !trimmed.isEmpty {
             MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
@@ -946,7 +986,7 @@ class MenuBarController: NSObject {
       }
     }
 
-    DebugLogger.logSuccess("LIVE-MEETING: Transcription saved")
+    DebugLogger.logSuccess("LIVE-MEETING: Session cleanup complete")
   }
 
   /// Renames the transcript file to include the user's preferred name. Keeps timestamp prefix for parsing.
@@ -1951,27 +1991,27 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
 
     Task {
       do {
-        // Transcribe the chunk using the meeting-specific model (or Dictate model if not set)
-        let text = try await speechService.transcribe(audioURL: audioURL, preferredModel: TranscriptionModel.loadSelectedForMeeting())
+        let text = try await speechService.transcribe(
+          audioURL: audioURL,
+          preferredModel: TranscriptionModel.loadSelectedForMeeting(),
+          promptOverride: AppConstants.liveMeetingDiarizationPrompt
+        )
 
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if trimmedText.isEmpty {
           DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (silent)")
         } else {
-          // Append to transcript on main thread and maybe trigger rolling summary
           await MainActor.run {
             self.appendToTranscript(trimmedText, chunkStartTime: startTime)
             self.triggerRollingSummaryUpdateIfNeeded()
           }
         }
 
-        // Cleanup audio file
         cleanupAudioFile(at: audioURL)
 
       } catch {
         DebugLogger.logError("LIVE-MEETING: Chunk \(chunkIndex) transcription failed: \(error)")
-        // Show user once when quota/rate limit is hit so they know why chunks are missing
         let isRateLimitOrQuota: Bool = {
           if let te = error as? TranscriptionError {
             switch te { case .rateLimited, .quotaExceeded: return true; default: return false }
@@ -1995,7 +2035,6 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
       await MainActor.run {
         self.liveMeetingPendingChunks -= 1
 
-        // Check if session should end
         if self.liveMeetingStopping && self.liveMeetingPendingChunks == 0 {
           self.finishLiveMeetingSession()
         }

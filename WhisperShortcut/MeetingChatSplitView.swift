@@ -212,17 +212,58 @@ struct MeetingChatSplitView: View {
     chunks.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n")
   }
 
-  /// Transcript with timestamps in accent (blue) for the live transcript display.
+  private static let speakerColors: [Color] = [
+    .orange, .purple, .pink, .cyan, .yellow, .mint
+  ]
+
+  /// Transcript with timestamps in accent (blue) and speaker labels color-coded.
   private var attributedTranscriptText: AttributedString {
     var result = AttributedString()
     for (index, chunk) in chunks.enumerated() {
       var ts = AttributedString(chunk.timestampString)
       ts.foregroundColor = Color.accentColor
       result.append(ts)
-      var rest = AttributedString(" " + chunk.text)
-      rest.foregroundColor = GeminiChatTheme.primaryText
-      result.append(rest)
+
+      let text = " " + chunk.text
+      result.append(coloredSpeakerText(text))
+
       if index < chunks.count - 1 {
+        result.append(AttributedString("\n"))
+      }
+    }
+    return result
+  }
+
+  /// Colors speaker labels (Speaker A:, Speaker B:, etc.) in transcript text.
+  private func coloredSpeakerText(_ text: String) -> AttributedString {
+    var result = AttributedString()
+    let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+    for (i, line) in lines.enumerated() {
+      let lineStr = String(line)
+      if let match = lineStr.range(of: #"Speaker [A-Z]:"#, options: .regularExpression) {
+        let label = String(lineStr[match])
+        let speakerLetter = label.dropFirst("Speaker ".count).dropLast(1)
+        let colorIndex = max(0, Int(speakerLetter.first?.asciiValue ?? 65) - 65) % Self.speakerColors.count
+        let before = String(lineStr[lineStr.startIndex..<match.lowerBound])
+        if !before.isEmpty {
+          var attr = AttributedString(before)
+          attr.foregroundColor = GeminiChatTheme.primaryText
+          result.append(attr)
+        }
+        var labelAttr = AttributedString(label)
+        labelAttr.foregroundColor = Self.speakerColors[colorIndex]
+        labelAttr.font = .system(size: 12, weight: .semibold)
+        result.append(labelAttr)
+        let after = String(lineStr[match.upperBound...])
+        var rest = AttributedString(after)
+        rest.foregroundColor = GeminiChatTheme.primaryText
+        result.append(rest)
+      } else {
+        var attr = AttributedString(lineStr)
+        attr.foregroundColor = GeminiChatTheme.primaryText
+        result.append(attr)
+      }
+      if i < lines.count - 1 {
         result.append(AttributedString("\n"))
       }
     }
@@ -325,7 +366,7 @@ struct MeetingChatSplitView: View {
       ProgressView()
         .scaleEffect(1.2)
         .tint(GeminiChatTheme.secondaryText)
-      Text("Transcription appears here about every 15 seconds.")
+      Text("Transcription appears here periodically as the meeting progresses.")
         .font(.system(size: 13))
         .foregroundColor(GeminiChatTheme.secondaryText)
         .multilineTextAlignment(.center)
