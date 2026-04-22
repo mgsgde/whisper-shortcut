@@ -167,16 +167,6 @@ enum TranscriptionModel: String, CaseIterable {
   /// When in subscription mode (no API key, signed in with Google), returns the saved model if it is an offline Whisper model; otherwise returns the fixed subscription (Gemini) model.
   /// Migrates removed models (e.g. gemini-2.0-flash-lite → gemini-2.5-flash-lite). Deprecated but still available models (e.g. gemini-2.0-flash) are returned so the user's choice persists.
   static func loadSelected() -> TranscriptionModel {
-    #if SUBSCRIPTION_ENABLED
-    if !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn() {
-      if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel),
-         let savedModel = TranscriptionModel(rawValue: savedModelString),
-         savedModel.isOffline {
-        return savedModel
-      }
-      return SubscriptionModelsConfigService.effectiveTranscriptionModel()
-    }
-    #endif
     guard let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) else {
       return SettingsDefaults.selectedTranscriptionModel
     }
@@ -223,13 +213,7 @@ enum TranscriptionModel: String, CaseIterable {
 // MARK: - Gemini Transcription Request Models
 struct GeminiTranscriptionRequest: Codable {
   let contents: [GeminiTranscriptionContent]
-  /// When using proxy (subscription), backend uses this to apply fixed model (e.g. transcription → gemini-2.5-flash).
-  let requestType: String?
 
-  enum CodingKeys: String, CodingKey {
-    case contents
-    case requestType = "request_type"
-  }
 
   struct GeminiTranscriptionContent: Codable {
     let parts: [GeminiTranscriptionPart]
@@ -357,8 +341,6 @@ struct GeminiChatRequest: Codable {
   let tools: [GeminiTool]?
   let generationConfig: GeminiGenerationConfig?
   let model: String?  // Optional model field (required for TTS models)
-  /// When using proxy (subscription), backend uses this to apply fixed model (e.g. prompt_mode → gemini-2.5-flash).
-  let requestType: String?
 
   enum CodingKeys: String, CodingKey {
     case contents
@@ -366,7 +348,6 @@ struct GeminiChatRequest: Codable {
     case tools
     case generationConfig = "generationConfig"
     case model
-    case requestType = "request_type"
   }
   
   // MARK: - Generation Config
@@ -578,8 +559,6 @@ struct GeminiChatResponse: Codable {
 struct GeminiTTSRequest: Codable {
   let contents: [GeminiTTSContent]
   let generationConfig: GeminiTTSGenerationConfig
-  /// When using proxy (OAuth), send so the backend uses the selected TTS model.
-  let model: String?
 
   struct GeminiTTSContent: Codable {
     let parts: [GeminiTTSPart]
@@ -680,12 +659,8 @@ enum TranscriptionError: Error, Equatable {
     }
   }
 
-  /// URL to open for topping up balance or subscription (e.g. subscription page); set for rate-limit 429 and subscriptionRequired 402.
   var topUpURL: URL? {
     if case .rateLimited(_, let url) = self { return url }
-    #if SUBSCRIPTION_ENABLED
-    if case .subscriptionRequired = self { return URL(string: "https://whispershortcut.com/subscription") }
-    #endif
     return nil
   }
   

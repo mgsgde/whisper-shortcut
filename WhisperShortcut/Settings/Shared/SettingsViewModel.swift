@@ -42,12 +42,7 @@ class SettingsViewModel: ObservableObject {
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
-    #if SUBSCRIPTION_ENABLED
-    let subscriptionMode = !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
-    #else
-    let subscriptionMode = false
-    #endif
-    let promptModelDefault = subscriptionMode ? SubscriptionModelsConfigService.effectivePromptModel() : SettingsDefaults.selectedPromptModel
+    let promptModelDefault = SettingsDefaults.selectedPromptModel
 
     // Load Prompt model preference (for Prompt Mode); migrate deprecated or removed models (e.g. gemini-2.0-flash-lite → 2.5 Flash-Lite)
     if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) {
@@ -89,10 +84,7 @@ class SettingsViewModel: ObservableObject {
       data.selectedReadAloudVoice = SettingsDefaults.selectedReadAloudVoice
     }
 
-    // Load TTS model setting; subscription uses fixed stable model (display and runtime)
-    if subscriptionMode {
-      data.selectedTTSModel = SubscriptionModelsConfigService.effectiveTTSModel()
-    } else if let savedTTSModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTTSModel),
+    if let savedTTSModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTTSModel),
       let savedTTSModel = TTSModel(rawValue: savedTTSModelString)
     {
       data.selectedTTSModel = savedTTSModel
@@ -116,15 +108,7 @@ class SettingsViewModel: ObservableObject {
       data.selectedOpenGeminiModel = SettingsDefaults.selectedOpenGeminiModel
     }
 
-    // Smart Improvement model (persisted in API key mode; subscription uses effectiveImprovementModel in UI + ContextDerivation)
-    let improvementModelDefault: PromptModel
-    #if SUBSCRIPTION_ENABLED
-    improvementModelDefault = subscriptionMode
-      ? SubscriptionModelsConfigService.effectiveImprovementModel()
-      : SettingsDefaults.selectedImprovementModel
-    #else
-    improvementModelDefault = SettingsDefaults.selectedImprovementModel
-    #endif
+    let improvementModelDefault = SettingsDefaults.selectedImprovementModel
     if let savedImprovementModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel),
        let savedImprovementModel = PromptModel(rawValue: savedImprovementModelString) {
       let migrated = PromptModel.migrateIfDeprecated(savedImprovementModel)

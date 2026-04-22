@@ -101,14 +101,11 @@ class GeminiChatViewModel: ObservableObject {
   private static let maxSessionTitleLength = 50
   /// Commands are slash-only (e.g. /stop, /new); do not use hotkeys/shortcuts for command actions.
   private static let newChatCommand = "/new"
-  private static let backChatCommand = "/back"
-  private static let clearChatCommands = ["/clear"]
   static let screenshotCommand = "/screenshot"
   private static let stopCommand = "/stop"
   private static let settingsCommand = "/settings"
   private static let pinCommand = "/pin"
   private static let unpinCommand = "/unpin"
-  private static let contextCommand = "/context"
   private static let modelCommand = "/model"
   private static let grokCommand = "/grok"
   private static let geminiCommand = "/gemini"
@@ -116,10 +113,7 @@ class GeminiChatViewModel: ObservableObject {
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
     ("/new", "Start a new chat (previous chat stays in history)"),
-    ("/back", "Navigate to the previous chat"),
-    ("/clear", "Clear current chat messages"),
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
-    ("/context", "Show or edit your context (e.g. /context always use bullet points)"),
     ("/model", "Switch Open Gemini model (e.g. /model 3.1 flash lite)"),
     ("/gemini", "Switch to Gemini 3 Flash"),
     ("/grok", "Switch to Grok 4"),
@@ -129,10 +123,10 @@ class GeminiChatViewModel: ObservableObject {
     ("/stop", "Stop sending (while a message is being sent)")
   ]
 
-  /// Commands to show in UI (excludes /new, /back, /next when single-chat mode).
+  /// Commands to show in UI (excludes /new when single-chat mode).
   var commandSuggestionsForDisplay: [(command: String, description: String)] {
     if singleChatOnly {
-      return Self.commandSuggestions.filter { !["/new", "/back"].contains($0.command) }
+      return Self.commandSuggestions.filter { $0.command != "/new" }
     }
     return Self.commandSuggestions
   }
@@ -146,12 +140,9 @@ class GeminiChatViewModel: ObservableObject {
       .filter { $0.lowercased().hasPrefix(prefix) || prefix.isEmpty }
   }
 
-  var canGoBack: Bool { store.canGoBack() }
-  var canGoForward: Bool { store.canGoForward() }
-
   /// When non-nil, this provider supplies extra context (e.g. meeting summary + recent transcript) appended to the system instruction. Used by the Meeting Chat window.
   private let meetingContextProvider: (() -> String?)?
-  /// When true, exactly one chat per meeting: no tabs, no /new /back /next, no "New chat" button.
+  /// When true, exactly one chat per meeting: no tabs, no /new, no "New chat" button.
   let singleChatOnly: Bool
 
   init(meetingContextProvider: (() -> String?)? = nil, store: GeminiChatSessionStore = .shared, singleChatOnly: Bool = false) {
@@ -182,18 +173,6 @@ class GeminiChatViewModel: ObservableObject {
     pendingScreenshots = []
     refreshRecentSessions()
     DebugLogger.log("GEMINI-CHAT: Switched to new chat")
-  }
-
-  func goBack() {
-    guard store.navigateBack() != nil else { return }
-    switchToCurrentStoreSession()
-    DebugLogger.log("GEMINI-CHAT: Navigated back to \(session.id)")
-  }
-
-  func goForward() {
-    guard store.navigateForward() != nil else { return }
-    switchToCurrentStoreSession()
-    DebugLogger.log("GEMINI-CHAT: Navigated forward to \(session.id)")
   }
 
   private func switchToCurrentStoreSession() {
@@ -228,27 +207,12 @@ class GeminiChatViewModel: ObservableObject {
       return
     }
 
-    // /context with possible argument — only when no other content.
-    if attachedParts.isEmpty && !finalContent.contains("<pasted_") {
-      if lower == Self.contextCommand {
-        await handleContextCommand(instruction: nil); return
-      } else if lower.hasPrefix(Self.contextCommand + " ") {
-        let instruction = String(raw.dropFirst(Self.contextCommand.count + 1)).trimmingCharacters(in: .whitespaces)
-        if !instruction.isEmpty {
-          await handleContextCommand(instruction: instruction); return
-        }
-      }
-    }
-
     // Bare slash commands — never carry attachments, never queue.
     if attachedParts.isEmpty && !finalContent.contains("<pasted_") {
-      if lower == Self.newChatCommand || lower == Self.backChatCommand
-          || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
+      if lower == Self.newChatCommand || lower == Self.screenshotCommand
           || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
           || lower == Self.grokCommand || lower == Self.geminiCommand {
         if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
-        else if lower == Self.backChatCommand { if !singleChatOnly { goBack() } }
-        else if Self.clearChatCommands.contains(lower) { clearMessages() }
         else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
         else if lower == Self.pinCommand { togglePin() }
         else if lower == Self.unpinCommand { unpin() }
@@ -541,20 +505,6 @@ class GeminiChatViewModel: ObservableObject {
     let hasContent = !raw.isEmpty || !pendingScreenshots.isEmpty || !pendingFileAttachments.isEmpty || !pastedBlocks.isEmpty
     guard hasContent else { return }
 
-    // /context command (show or update system prompts)
-    if lower == Self.contextCommand {
-      inputText = ""
-      await handleContextCommand(instruction: nil)
-      return
-    } else if lower.hasPrefix(Self.contextCommand + " ") {
-      let instruction = String(raw.dropFirst(Self.contextCommand.count + 1)).trimmingCharacters(in: .whitespaces)
-      inputText = ""
-      if !instruction.isEmpty {
-        await handleContextCommand(instruction: instruction)
-        return
-      }
-    }
-
     // /model command (switch Open Gemini model with fuzzy matching)
     if lower == Self.modelCommand || lower.hasPrefix(Self.modelCommand + " ") {
       inputText = ""
@@ -566,14 +516,11 @@ class GeminiChatViewModel: ObservableObject {
     }
 
     // Slash commands: always immediate, never queued
-    if lower == Self.newChatCommand || lower == Self.backChatCommand
-        || Self.clearChatCommands.contains(lower) || lower == Self.screenshotCommand
+    if lower == Self.newChatCommand || lower == Self.screenshotCommand
         || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
         || lower == Self.grokCommand || lower == Self.geminiCommand {
       inputText = ""
       if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
-      else if lower == Self.backChatCommand { if !singleChatOnly { goBack() } }
-      else if Self.clearChatCommands.contains(lower) { clearMessages() }
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else if lower == Self.pinCommand { togglePin() }
       else if lower == Self.unpinCommand { unpin() }
@@ -668,17 +615,7 @@ class GeminiChatViewModel: ObservableObject {
     openGeminiModel.rawValue
   }
 
-  private static var isSubscription: Bool {
-    #if SUBSCRIPTION_ENABLED
-    return !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
-    #else
-    return false
-    #endif
-  }
-
-  /// Resolves the selected Open Gemini model for display and API. In subscription mode returns the fixed model (e.g. Gemini 3 Flash).
   static var openGeminiModel: PromptModel {
-    if isSubscription { return SubscriptionModelsConfigService.effectiveOpenGeminiModel() }
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel)
       ?? SettingsDefaults.selectedOpenGeminiModel.rawValue
     return PromptModel(rawValue: raw).map { PromptModel.migrateIfDeprecated($0) }
@@ -789,7 +726,7 @@ class GeminiChatViewModel: ObservableObject {
     }
   }
 
-  // MARK: - /context command
+  // MARK: - Local model messages (slash commands)
 
   /// Appends a model message directly to the chat (used for local command responses).
   @MainActor
@@ -806,18 +743,12 @@ class GeminiChatViewModel: ObservableObject {
   /// changes the selection.
   @MainActor
   private func handleModelCommand(argument: String) {
-    let sub = Self.isSubscription
     let current = Self.openGeminiModel
     let outcome = OpenGeminiModelCommandResolver.resolve(
       argument: argument,
-      isSubscription: sub,
       currentSelection: current
     )
     switch outcome {
-    case .subscriptionLocked(let effective):
-      appendModelMessage(
-        "Subscription mode uses a fixed chat model: **\(effective.displayName)**. Add your own Google API key in Settings to choose a different model."
-      )
     case .usage(let cur):
       appendModelMessage(
         "Current model: **\(cur.displayName)**. Example: `/model 3.1 flash lite` or `/model 2.5 pro`."
@@ -841,124 +772,6 @@ class GeminiChatViewModel: ObservableObject {
     UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
     appendModelMessage("Model set to **\(migrated.displayName)**.")
     DebugLogger.log("GEMINI-CHAT: switchToModel \(migrated.displayName)")
-  }
-
-  /// Handles the /context command. With no instruction: shows current context. With instruction: updates via Gemini.
-  private func handleContextCommand(instruction: String?) async {
-    guard let instruction = instruction else {
-      // Show current context
-      let sections: [(String, SystemPromptSection)] = [
-        ("Dictation", .dictation),
-        ("Prompt Mode", .promptMode),
-        ("Prompt & Read", .promptAndRead),
-        ("Gemini Chat", .geminiChat),
-        ("Whisper Glossary", .whisperGlossary),
-      ]
-      var lines = ["**Your current context:**"]
-      for (label, section) in sections {
-        let content = SystemPromptsStore.shared.loadSection(section)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        lines.append("\n---\n**\(label)**\n\(content.isEmpty ? "_not set_" : content)")
-      }
-      lines.append("\n_Use `/context <instruction>` to update, e.g. `/context always format responses as bullet points`_")
-      appendModelMessage(lines.joined(separator: "\n"))
-      return
-    }
-
-    // Show user command in chat
-    let userMsg = ChatMessage(role: .user, content: "/context \(instruction)")
-    messages.append(userMsg)
-    session.messages = messages
-    store.save(session)
-
-    // Add placeholder while working
-    let placeholderMsg = ChatMessage(role: .model, content: "Updating your context…")
-    messages.append(placeholderMsg)
-    session.messages = messages
-    store.save(session)
-
-    guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
-      replaceLastModelMessage("Could not update context: no API credential available.")
-      return
-    }
-
-    let oldContent = SystemPromptsStore.shared.loadFullContent()
-    let prompt = """
-      You are updating the user's personal context for WhisperShortcut, a voice transcription app.
-
-      Current context file:
-      ---
-      \(oldContent)
-      ---
-
-      The user wants to: \(instruction)
-
-      Update the relevant section(s) based on this instruction. Return ONLY the complete updated file content in the exact same format, preserving all section headers (=== ... ===). Do not add any explanation — only the file content.
-      """
-
-    let model = Self.resolveOpenGeminiModel()
-    do {
-      let response = try await apiClient.generateText(model: model, prompt: prompt, credential: credential)
-      let newContent = response.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !newContent.isEmpty else {
-        replaceLastModelMessage("Context update failed: empty response from Gemini.")
-        return
-      }
-
-      // Compare sections to summarize what changed
-      let oldSections = extractSections(from: oldContent)
-      SystemPromptsStore.shared.saveFullContent(newContent)
-      NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
-      let newSections = extractSections(from: SystemPromptsStore.shared.loadFullContent())
-
-      var changed: [String] = []
-      for section in SystemPromptSection.allCases {
-        if oldSections[section] != newSections[section] {
-          changed.append(section.fileHeader.replacingOccurrences(of: "===", with: "").trimmingCharacters(in: .whitespaces))
-        }
-      }
-      let summary = changed.isEmpty
-        ? "Context saved (no section content changed)."
-        : "Context updated. Changed: \(changed.joined(separator: ", "))."
-      replaceLastModelMessage(summary)
-      DebugLogger.log("GEMINI-CHAT: /context updated: \(summary)")
-    } catch {
-      replaceLastModelMessage("Context update failed: \(error.localizedDescription)")
-      DebugLogger.logError("GEMINI-CHAT: /context error: \(error.localizedDescription)")
-    }
-  }
-
-  /// Replaces the last model message in the chat (used to swap placeholder with result).
-  @MainActor
-  private func replaceLastModelMessage(_ content: String) {
-    if let idx = messages.indices.last(where: { messages[$0].role == .model }) {
-      messages[idx] = ChatMessage(role: .model, content: content)
-      session.messages = messages
-      store.save(session)
-    }
-  }
-
-  /// Extracts section content map from a raw system-prompts file string.
-  private func extractSections(from content: String) -> [SystemPromptSection: String] {
-    var result: [SystemPromptSection: String] = [:]
-    let lines = content.components(separatedBy: "\n")
-    var currentSection: SystemPromptSection? = nil
-    var body: [String] = []
-    func flush() {
-      if let s = currentSection {
-        result[s] = body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-      }
-    }
-    for line in lines {
-      if let section = SystemPromptSection.section(forHeader: line) {
-        flush()
-        currentSection = section
-        body = []
-      } else {
-        body.append(line)
-      }
-    }
-    flush()
-    return result
   }
 
   // MARK: - Tab navigation
@@ -1643,13 +1456,6 @@ struct GeminiInputAreaView: View {
       ?? SettingsDefaults.selectedOpenGeminiModel
   }
 
-  private var isSubscription: Bool {
-    #if SUBSCRIPTION_ENABLED
-    return !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
-    #else
-    return false
-    #endif
-  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -1695,8 +1501,8 @@ struct GeminiInputAreaView: View {
   }
 
   private static let knownSlashCommands: Set<String> = [
-    "/new", "/back", "/clear", "/screenshot",
-    "/context", "/settings", "/pin", "/unpin", "/stop",
+    "/new", "/screenshot",
+    "/settings", "/pin", "/unpin", "/stop",
     "/grok", "/gemini"
   ]
 
@@ -1707,12 +1513,11 @@ struct GeminiInputAreaView: View {
     let output = composer.serialize()
     let typed = output.typedText
     let lower = typed.lowercased()
-    let isContextCommand = lower == "/context" || lower.hasPrefix("/context ")
     let isModelCommand = lower == "/model" || lower.hasPrefix("/model ")
     let isRecognizedSlashCommand =
-      Self.knownSlashCommands.contains(lower) || isContextCommand || isModelCommand
+      Self.knownSlashCommands.contains(lower) || isModelCommand
     if isRecognizedSlashCommand {
-      if isContextCommand || isModelCommand {
+      if isModelCommand {
         // Strip the entire command line so multi-token args (e.g.
         // "/model 3.1 flash lite") don't leave residue in the composer.
         composer.removeTrailingPlainText(suffix: typed)
@@ -1740,7 +1545,7 @@ struct GeminiInputAreaView: View {
     guard let first = matches.first else { return false }
     // Commands that take an argument: complete inline so the user can type
     // the argument; do not dispatch yet.
-    let takesArgument = (first == "/context" || first == "/model")
+    let takesArgument = (first == "/model")
     composer.removeTrailingWord()
     if takesArgument {
       composer.textView?.insertText(first + " ", replacementRange: NSRange(location: NSNotFound, length: 0))
@@ -1863,38 +1668,27 @@ struct GeminiInputAreaView: View {
 
         Spacer()
 
-        if isSubscription {
+        Menu {
+          ForEach(PromptModel.allCases, id: \.self) { model in
+            Button(action: {
+              selectedOpenGeminiModelRaw = model.rawValue
+            }) {
+              Text(model.displayName)
+            }
+          }
+        } label: {
           HStack(spacing: 4) {
             Image(systemName: "cpu").font(.caption)
-            Text(SubscriptionModelsConfigService.effectiveOpenGeminiModel().displayName).font(.caption)
+            Text(resolvedOpenGeminiModel.displayName).font(.caption)
           }
           .foregroundColor(GeminiChatTheme.secondaryText)
           .padding(.horizontal, 8)
           .padding(.vertical, 5)
-          .help("Model is fixed in subscription mode")
-        } else {
-          Menu {
-            ForEach(PromptModel.allCases, id: \.self) { model in
-              Button(action: {
-                selectedOpenGeminiModelRaw = model.rawValue
-              }) {
-                Text(model.displayName)
-              }
-            }
-          } label: {
-            HStack(spacing: 4) {
-              Image(systemName: "cpu").font(.caption)
-              Text(resolvedOpenGeminiModel.displayName).font(.caption)
-            }
-            .foregroundColor(GeminiChatTheme.secondaryText)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
-          }
-          .menuStyle(.borderlessButton)
-          .fixedSize()
-          .help("Select model")
+          .contentShape(Rectangle())
         }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Select model")
 
         // Queue count indicator
         if viewModel.isSending && !viewModel.messageQueue.isEmpty {
@@ -2353,6 +2147,10 @@ private struct ModelReplyView: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .fixedSize(horizontal: false, vertical: true)
     .contentShape(Rectangle())
+    .environment(\.openURL, OpenURLAction { url in
+      NSWorkspace.shared.open(url)
+      return .handled
+    })
     .onHover { inside in
       if inside { NSCursor.iBeam.push() } else { NSCursor.pop() }
     }
@@ -2634,7 +2432,10 @@ private struct ModelReplyView: View {
     // Convert LaTeX formulas to Unicode before markdown parsing
     let latexProcessed = MarkdownParsing.renderLatexToUnicode(trimmed)
     let fullOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
-    var attr = (try? AttributedString(markdown: latexProcessed, options: fullOptions)) ?? AttributedString(latexProcessed)
+    let inlineOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+    var attr = (try? AttributedString(markdown: latexProcessed, options: fullOptions))
+      ?? (try? AttributedString(markdown: latexProcessed, options: inlineOptions))
+      ?? AttributedString(latexProcessed)
     attr.font = .system(size: 16, weight: .regular)
     return attr
   }

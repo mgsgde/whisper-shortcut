@@ -26,9 +26,6 @@ struct SettingsView: View {
     }
     .onAppear {
       setupWindow()
-      #if SUBSCRIPTION_ENABLED
-      Task { await SubscriptionModelsConfigService.refresh() }
-      #endif
     }
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
       setupFloatingWindow()
@@ -119,7 +116,7 @@ struct SettingsView: View {
   private func description(for tab: SettingsTab) -> String {
     switch tab {
     case .general:
-      return "Google sign-in (SSO), API key, shortcuts"
+      return "API key, shortcuts, and preferences"
     case .speechToText:
       return "Model, prompt, and shortcut"
     case .speechToPrompt:
@@ -148,7 +145,7 @@ struct SettingsView: View {
     if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
       window.makeKeyAndOrderFront(nil)
     }
-    if !DefaultGoogleAuthService.shared.isSignedIn() {
+    if !GeminiCredentialProvider.shared.hasCredential() {
       focusedField = .googleAPIKey
     }
   }

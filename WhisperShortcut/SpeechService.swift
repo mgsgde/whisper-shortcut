@@ -83,12 +83,6 @@ class SpeechService {
   }
   
   func getPromptModelInfo() -> String {
-    #if SUBSCRIPTION_ENABLED
-    let isSubscription = DefaultGoogleAuthService.shared.isSignedIn()
-    if isSubscription {
-      return SubscriptionModelsConfigService.effectivePromptModel().displayName
-    }
-    #endif
     let selectedPromptModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? SettingsDefaults.selectedPromptModel.rawValue
     let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? SettingsDefaults.selectedPromptModel
     return selectedPromptModel.displayName
@@ -298,7 +292,6 @@ class SpeechService {
     // Always require raw output only (no meta), regardless of custom prompt
     systemPrompt += AppConstants.promptModeOutputRule
 
-    // Build request (proxy-aware)
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
     let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
     var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
@@ -382,18 +375,13 @@ class SpeechService {
       parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
     )
 
-    // When using proxy (OAuth), send model and request_type so backend uses fixed model for subscription.
-    let modelForRequest: String? = credential.isOAuth ? selectedPromptModel.rawValue : nil
-    let requestTypeForProxy: String? = credential.isOAuth ? "prompt_mode" : nil
-
     // Create request (no tools for prompt mode, no audio output needed)
     let chatRequest = GeminiChatRequest(
       contents: contents,
       systemInstruction: systemInstruction,
       tools: nil,
       generationConfig: nil,
-      model: modelForRequest,
-      requestType: requestTypeForProxy
+      model: nil
     )
 
     request.httpBody = try JSONEncoder().encode(chatRequest)
@@ -482,15 +470,12 @@ class SpeechService {
       parts: [GeminiChatRequest.GeminiSystemPart(text: "Transcribe this audio exactly. Return only the transcribed text, nothing else.")]
     )
 
-    // When using proxy (OAuth), send request_type so backend tracks feature (e.g. prompt_mode) instead of "unknown".
-    let requestTypeForProxy: String? = credential.isOAuth ? "prompt_mode" : nil
     let chatRequest = GeminiChatRequest(
       contents: [GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts)],
       systemInstruction: systemInstruction,
       tools: nil,
       generationConfig: nil,
-      model: nil,
-      requestType: requestTypeForProxy
+      model: nil
     )
 
     request.httpBody = try JSONEncoder().encode(chatRequest)
@@ -542,7 +527,6 @@ class SpeechService {
     // Always require raw output only (no meta), regardless of custom prompt
     systemPrompt += AppConstants.promptModeOutputRule
 
-    // Build request (proxy-aware)
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
     let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
     var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
@@ -610,18 +594,13 @@ class SpeechService {
       parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
     )
 
-    // When using proxy (OAuth), send model and request_type so backend uses fixed model for subscription.
-    let modelForRequest: String? = credential.isOAuth ? selectedPromptModel.rawValue : nil
-    let requestTypeForProxy: String? = credential.isOAuth ? "prompt_mode" : nil
-
     // Create request
     let chatRequest = GeminiChatRequest(
       contents: contents,
       systemInstruction: systemInstruction,
       tools: nil,
       generationConfig: nil,
-      model: modelForRequest,
-      requestType: requestTypeForProxy
+      model: nil
     )
 
     request.httpBody = try JSONEncoder().encode(chatRequest)
@@ -690,16 +669,8 @@ class SpeechService {
     // Load voice from UserDefaults if not provided
     let selectedVoice = voiceName ?? UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoice) ?? SettingsDefaults.selectedReadAloudVoice
     
-    // Load TTS model from UserDefaults; subscription uses fixed stable model
     let selectedTTSModel: TTSModel
-    #if SUBSCRIPTION_ENABLED
-    let isSubscriptionTTS = DefaultGoogleAuthService.shared.isSignedIn()
-    #else
-    let isSubscriptionTTS = false
-    #endif
-    if isSubscriptionTTS {
-      selectedTTSModel = SubscriptionModelsConfigService.effectiveTTSModel()
-    } else if let savedTTSModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTTSModel),
+    if let savedTTSModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTTSModel),
        let savedTTSModel = TTSModel(rawValue: savedTTSModelString) {
       selectedTTSModel = savedTTSModel
     } else {
@@ -738,8 +709,7 @@ class SpeechService {
             prebuiltVoiceConfig: GeminiTTSRequest.GeminiTTSPrebuiltVoiceConfig(voiceName: selectedVoice)
           )
         )
-      ),
-      model: credential.isOAuth ? selectedTTSModel.rawValue : nil
+      )
     )
     request.httpBody = try JSONEncoder().encode(ttsRequest)
 
@@ -860,13 +830,12 @@ class SpeechService {
     
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
     
-    // Create request with dynamic endpoint based on selected model (proxy-aware)
+    // Create request with dynamic endpoint based on selected model
     let endpoint = model.apiEndpoint
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(model.displayName) (\(model.rawValue))")
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
-    
-    // Build request using Codable struct. When using proxy (subscription), send request_type so backend uses fixed model.
-    let requestTypeForProxy: String? = credential.isOAuth ? "transcription" : nil
+
+    // Build request using Codable struct
     let transcriptionRequest = GeminiTranscriptionRequest(
       contents: [
         GeminiTranscriptionRequest.GeminiTranscriptionContent(
@@ -883,8 +852,7 @@ class SpeechService {
             )
           ]
         )
-      ],
-      requestType: requestTypeForProxy
+      ]
     )
     
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
@@ -942,13 +910,12 @@ class SpeechService {
     
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
     
-    // Create request with dynamic endpoint based on selected model (proxy-aware)
+    // Create request with dynamic endpoint based on selected model
     let endpoint = model.apiEndpoint
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(model.displayName) (\(model.rawValue))")
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
-    
-    // Build request using Codable struct. When using proxy (subscription), send request_type so backend uses fixed model.
-    let requestTypeForProxy: String? = credential.isOAuth ? "transcription" : nil
+
+    // Build request using Codable struct
     let transcriptionRequest = GeminiTranscriptionRequest(
       contents: [
         GeminiTranscriptionRequest.GeminiTranscriptionContent(
@@ -965,8 +932,7 @@ class SpeechService {
             )
           ]
         )
-      ],
-      requestType: requestTypeForProxy
+      ]
     )
 
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)

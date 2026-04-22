@@ -332,15 +332,7 @@ struct SpeechErrorFormatter {
         """
 
     case .subscriptionRequired:
-      #if SUBSCRIPTION_ENABLED
-      return """
-        Subscription Required
-
-        You need an active subscription to use this feature. Subscribe at whispershortcut.com or add a Google API key in Settings (General tab) to use the app without a subscription.
-        """
-      #else
       return "Authentication required. Add your API key in Settings (General tab)."
-      #endif
     }
   }
 
@@ -390,11 +382,7 @@ struct SpeechErrorFormatter {
     case .voiceRequiresAPIKey:
       return "🎤 Voice Requires API Key"
     case .subscriptionRequired:
-      #if SUBSCRIPTION_ENABLED
-      return "⚠️ Subscription Required"
-      #else
       return "⚠️ Authentication Required"
-      #endif
     default:
       return "❌ Error"
     }

@@ -46,12 +46,7 @@ struct ModelSelectionView: View {
 
       LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
         ForEach(models, id: \.self) { model in
-          let isDisabled: Bool = {
-            if subscriptionMode && model.isGemini {
-              return model != SubscriptionModelsConfigService.effectiveTranscriptionModel()
-            }
-            return geminiDisabled && model.isGemini
-          }()
+          let isDisabled = geminiDisabled && model.isGemini
           ZStack {
             Rectangle()
               .fill(selectedTranscriptionModel == model ? Color.accentColor : Color.clear)

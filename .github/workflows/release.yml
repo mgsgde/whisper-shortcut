@@ -80,8 +80,6 @@ jobs:
           echo "Installed provisioning profile: $PP_NAME ($PP_UUID)"
 
       - name: Build and archive
-        # GitHub/website build: SUBSCRIPTION_ENABLED is set in the scheme's build settings,
-        # but also passed explicitly here as a safety net.
         run: |
           xcodebuild clean archive \
             -project WhisperShortcut.xcodeproj \
@@ -90,8 +88,7 @@ jobs:
             -archivePath $RUNNER_TEMP/WhisperShortcut.xcarchive \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
-            DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }} \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS="SUBSCRIPTION_ENABLED \$(inherited)"
+            DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }}
 
       - name: Export archive
         run: |

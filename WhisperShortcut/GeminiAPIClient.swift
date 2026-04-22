@@ -120,31 +120,15 @@ class GeminiAPIClient {
     try createRequest(endpoint: endpoint, credential: .apiKey(apiKey))
   }
 
-  // MARK: - Proxy Endpoint Resolution (Phase 1)
-  /// Resolves the effective generateContent endpoint and credential.
-  /// When user is signed in (OAuth) and proxy base URL is set, uses proxy. Otherwise direct Gemini.
-  /// When using SSO (bearer), returns proxy URL and nil (caller must use resolveCredentialForRequest to get Bearer ID token).
+  // MARK: - Endpoint Resolution
+  /// Returns the direct endpoint and credential (no proxy).
   static func resolveGenerateContentEndpoint(directEndpoint: String, credential: GeminiCredential) -> (endpoint: String, credential: GeminiCredential?) {
-    let base = SettingsDefaults.proxyAPIBaseURL
-    if credential.isOAuth, !base.isEmpty {
-      let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
-      return (trimmed + "/v1/gemini/generateContent", nil)
-    }
     return (directEndpoint, credential)
   }
 
-  /// When resolved credential is nil (proxy path), returns .bearer(ID token) for request auth if signed in; otherwise nil.
-  /// Call before createRequest so proxy requests get Authorization: Bearer <Google ID token>.
+  /// Returns the resolved credential for the request.
   static func resolveCredentialForRequest(endpoint: String, resolvedCredential: GeminiCredential?) async -> GeminiCredential? {
-    if let cred = resolvedCredential { return cred }
-    let base = SettingsDefaults.proxyAPIBaseURL
-    guard !base.isEmpty else { return nil }
-    let proxyPath = (base.hasSuffix("/") ? String(base.dropLast()) : base) + "/v1/gemini/generateContent"
-    guard endpoint == proxyPath, DefaultGoogleAuthService.shared.isSignedIn(),
-          let idToken = await DefaultGoogleAuthService.shared.getIDToken(), !idToken.isEmpty else {
-      return nil
-    }
-    return .bearer(idToken)
+    return resolvedCredential
   }
   
   // MARK: - Request Execution
@@ -436,21 +420,8 @@ class GeminiAPIClient {
     AsyncThrowingStream { continuation in
       let task = Task {
         do {
-          // Build endpoint: proxy if OAuth, else direct Gemini streamGenerateContent?alt=sse.
-          let proxyBase: String = {
-            let base = SettingsDefaults.proxyAPIBaseURL
-            return base.hasSuffix("/") ? String(base.dropLast()) : base
-          }()
-          let endpoint: String
-          let credentialForRequest: GeminiCredential?
-          switch credential {
-          case .bearer:
-            endpoint = proxyBase + "/v1/gemini/streamGenerateContent"
-            credentialForRequest = await Self.resolveCredentialForRequest(endpoint: endpoint, resolvedCredential: credential)
-          case .apiKey:
-            endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):streamGenerateContent?alt=sse"
-            credentialForRequest = credential
-          }
+          let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):streamGenerateContent?alt=sse"
+          let credentialForRequest: GeminiCredential? = credential
           var request = try self.createRequest(endpoint: endpoint, credential: credentialForRequest)
           request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
           request.timeoutInterval = Constants.resourceTimeout
@@ -492,10 +463,6 @@ class GeminiAPIClient {
             ["category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"],
             ["category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"]
           ]
-          if endpoint.hasPrefix(proxyBase) {
-            body["request_type"] = "gemini_chat"
-            body["model"] = model
-          }
           request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
           DebugLogger.logNetwork("GEMINI-CHAT-STREAM: POST \(endpoint)")
@@ -624,25 +591,12 @@ class GeminiAPIClient {
     try await generateText(model: model, prompt: prompt, credential: .apiKey(apiKey))
   }
 
-  /// Lightweight single-shot text generation using credential (API key or Bearer for proxy). When using proxy, sends request_type so backend applies subscription model.
-  /// - Parameter requestTypeForProxy: When using proxy (OAuth), request_type sent to backend (e.g. "gemini_chat", "meeting_summary"). Ignored for API key.
-  func generateText(model: String, prompt: String, credential: GeminiCredential, requestTypeForProxy: String = "gemini_chat") async throws -> String {
-    let directEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
-    let (endpoint, resolvedCredential) = Self.resolveGenerateContentEndpoint(directEndpoint: directEndpoint, credential: credential)
-    let credentialForRequest = await Self.resolveCredentialForRequest(endpoint: endpoint, resolvedCredential: resolvedCredential)
-    var request = try createRequest(endpoint: endpoint, credential: credentialForRequest)
+  func generateText(model: String, prompt: String, credential: GeminiCredential) async throws -> String {
+    let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
+    var request = try createRequest(endpoint: endpoint, credential: credential)
     var body: [String: Any] = [
       "contents": [["role": "user", "parts": [["text": prompt]]]]
     ]
-    let proxyPath = {
-      let base = SettingsDefaults.proxyAPIBaseURL
-      let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
-      return trimmed + "/v1/gemini/generateContent"
-    }()
-    if endpoint == proxyPath {
-      body["request_type"] = requestTypeForProxy
-      body["model"] = model
-    }
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
     let response: GeminiResponse = try await performRequest(
       request, responseType: GeminiResponse.self, mode: "GEMINI-TITLE", withRetry: false)
@@ -650,7 +604,6 @@ class GeminiAPIClient {
   }
 
   /// Updates a rolling meeting summary by merging new transcript content into the existing summary.
-  /// Uses credential (API key or Bearer); when OAuth, sends request_type "meeting_summary" so backend uses subscription model.
   func updateRollingSummary(
     model: String,
     currentSummary: String,
@@ -692,7 +645,7 @@ class GeminiAPIClient {
         \(newTranscriptText)
         """
     }
-    return try await generateText(model: model, prompt: prompt, credential: credential, requestTypeForProxy: "meeting_summary")
+    return try await generateText(model: model, prompt: prompt, credential: credential)
   }
 
   /// Legacy API-key-only overload.
@@ -706,7 +659,6 @@ class GeminiAPIClient {
   }
 
   /// Generates a final Markdown summary of a full meeting transcript (main points, decisions, action items).
-  /// Uses credential (API key or Bearer); when OAuth, sends request_type "meeting_summary" so backend uses subscription model.
   func generateMeetingSummary(transcript: String, model: String, credential: GeminiCredential) async throws -> String {
     let prompt = """
       You are summarizing a completed meeting transcript.
@@ -722,10 +674,10 @@ class GeminiAPIClient {
       Transcript:
       \(transcript)
       """
-    return try await generateText(model: model, prompt: prompt, credential: credential, requestTypeForProxy: "meeting_summary")
+    return try await generateText(model: model, prompt: prompt, credential: credential)
   }
 
-  /// Legacy API-key-only overload. Prefer generateMeetingSummary(transcript:model:credential:) for subscription support.
+  /// Legacy API-key-only overload.
   func generateMeetingSummary(transcript: String, model: String, apiKey: String) async throws -> String {
     try await generateMeetingSummary(transcript: transcript, model: model, credential: .apiKey(apiKey))
   }
@@ -733,7 +685,7 @@ class GeminiAPIClient {
   /// Consolidates speaker labels across the full transcript so Speaker A/B/C are consistent.
   func consolidateSpeakerLabels(transcript: String, model: String, credential: GeminiCredential) async throws -> String {
     let prompt = AppConstants.liveMeetingSpeakerConsolidationPrompt + "\n" + transcript
-    return try await generateText(model: model, prompt: prompt, credential: credential, requestTypeForProxy: "meeting_summary")
+    return try await generateText(model: model, prompt: prompt, credential: credential)
   }
 
   /// Extracts grounding sources (web URIs + titles) from a Gemini response.
@@ -935,13 +887,8 @@ class GeminiAPIClient {
   
   /// Parses Gemini error responses into TranscriptionError
   func parseErrorResponse(data: Data, statusCode: Int) throws -> TranscriptionError {
-    // Backend proxy 402: no active subscription for signed-in user
     if statusCode == 402 {
-      #if SUBSCRIPTION_ENABLED
-      return .subscriptionRequired
-      #else
       return .serverError(402)
-      #endif
     }
     // Backend proxy 429: { error: string, code: "rate_limit_exceeded", top_up_url: string }
     if statusCode == 429,
@@ -1030,11 +977,7 @@ class GeminiAPIClient {
     switch statusCode {
     case 400: return .invalidRequest
     case 401: return .invalidAPIKey
-    #if SUBSCRIPTION_ENABLED
-    case 402: return .subscriptionRequired
-    #else
     case 402: return .serverError(402)
-    #endif
     case 403: return .permissionDenied
     case 404: return .notFound
     case 429: return .rateLimited(retryAfter: retryAfter, topUpURL: nil)

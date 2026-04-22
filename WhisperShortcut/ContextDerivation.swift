@@ -8,18 +8,8 @@ class ContextDerivation {
   private let maxFieldChars = 1000
   /// API endpoint from the selected Smart Improvement / Generate with AI model; falls back to default (Gemini 3 Flash) if unset or invalid. Subscription uses stable Gemini 2.5 Flash.
   private var analysisEndpoint: String {
-    #if SUBSCRIPTION_ENABLED
-    let isSubscription = !KeychainManager.shared.hasValidGoogleAPIKey() && DefaultGoogleAuthService.shared.isSignedIn()
-    #else
-    let isSubscription = false
-    #endif
-    let raw: String
-    if isSubscription {
-      raw = SubscriptionModelsConfigService.effectiveImprovementModel().rawValue
-    } else {
-      raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
-        ?? SettingsDefaults.selectedImprovementModel.rawValue
-    }
+    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
+      ?? SettingsDefaults.selectedImprovementModel.rawValue
     guard let model = PromptModel(rawValue: raw), let transcriptionModel = model.asTranscriptionModel else {
       return AppConstants.contextDerivationEndpoint
     }
@@ -571,14 +561,12 @@ class ContextDerivation {
         parts: [GeminiChatRequest.GeminiChatPart(text: userMessage, inlineData: nil, fileData: nil, url: nil)]
       )
     ]
-    let requestTypeForProxy: String? = credential.isOAuth ? "smart_improvement" : nil
     let chatRequest = GeminiChatRequest(
       contents: contents,
       systemInstruction: systemInstruction,
       tools: nil,
       generationConfig: nil,
-      model: nil,
-      requestType: requestTypeForProxy
+      model: nil
     )
     request.httpBody = try JSONEncoder().encode(chatRequest)
 

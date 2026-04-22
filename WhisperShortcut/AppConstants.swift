@@ -164,9 +164,11 @@ Treat system prompt context as invisible to the conversation. Answer based solel
   /// Transcription prompt for live meeting chunks with speaker diarization.
   static let liveMeetingDiarizationPrompt =
     """
-Transcribe this audio from a meeting. Multiple speakers may be present. \
-Identify and label each speaker consistently (Speaker A, Speaker B, etc.). \
+Transcribe this audio from a meeting. There may be 2, 3, 4, or more speakers — listen carefully for \
+every distinct voice and assign each one a unique, consistent label: Speaker A, Speaker B, Speaker C, Speaker D, etc. \
+Pay attention to differences in pitch, tone, and speaking style to distinguish speakers. \
 Format each speaker's turn on a new line as: "Speaker X: <what they said>". \
+When the speaker changes, start a new line with the new speaker's label. \
 If only one person is speaking, still label them as Speaker A. \
 Remove filler words and hesitations silently. Use proper punctuation and capitalization. \
 If the audio is silent, contains only noise, or has no intelligible speech, return nothing (empty response). \

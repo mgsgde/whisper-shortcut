@@ -1,7 +1,6 @@
 import Foundation
 
 enum OpenGeminiModelCommandOutcome: Equatable {
-  case subscriptionLocked(effective: PromptModel)
   case usage(current: PromptModel)
   case applied(model: PromptModel)
   case ambiguous(candidates: [PromptModel])
@@ -14,17 +13,8 @@ enum OpenGeminiModelCommandOutcome: Equatable {
 enum OpenGeminiModelCommandResolver {
   static func resolve(
     argument: String,
-    isSubscription: Bool,
     currentSelection: PromptModel
   ) -> OpenGeminiModelCommandOutcome {
-    if isSubscription {
-      #if SUBSCRIPTION_ENABLED
-      return .subscriptionLocked(effective: SubscriptionModelsConfigService.effectiveOpenGeminiModel())
-      #else
-      return .subscriptionLocked(effective: currentSelection)
-      #endif
-    }
-
     let q = argument.trimmingCharacters(in: .whitespacesAndNewlines)
     if q.isEmpty {
       return .usage(current: currentSelection)

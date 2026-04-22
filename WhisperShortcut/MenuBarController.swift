@@ -444,7 +444,7 @@ class MenuBarController: NSObject {
     // Handle special case when no credential and no offline model is configured
     if !hasCredential && !hasOfflineTranscriptionModel && !hasOfflinePromptModel, let button = statusItem?.button {
       button.title = "⚠️"
-      button.toolTip = "Sign in with Google or add an API key, or use an offline model - click to configure"
+      button.toolTip = "Add an API key or use an offline model - click to configure"
     }
   }
 
@@ -498,44 +498,14 @@ class MenuBarController: NSObject {
       let selectedModel = TranscriptionModel.loadSelected()
       let hasOfflineModel = selectedModel.isOfflineModelAvailable()
       if hasCredential || hasOfflineModel {
-        #if SUBSCRIPTION_ENABLED
-        if DefaultGoogleAuthService.shared.isSignedIn() {
-          Task { [weak self] in
-            guard let self = self else { return }
-            let active = await BackendAPIClient.fetchSubscriptionStatus(idTokenProvider: { await DefaultGoogleAuthService.shared.getIDToken() })
-            await MainActor.run {
-              if active != true {
-                PopupNotificationWindow.showError(
-                  "You need an active subscription to use dictation. Subscribe at whispershortcut.com or add an API key in Settings (General tab).",
-                  title: "Subscription Required",
-                  topUpURL: URL(string: "https://whispershortcut.com/subscription")
-                )
-                return
-              }
-              DebugLogger.log("MEETING-SEGMENT: Starting dictation segment during meeting")
-              self.activeMeetingSegment = .dictation
-              self.audioRecorder.startRecording()
-            }
-          }
-          return
-        }
-        #endif
         DebugLogger.log("MEETING-SEGMENT: Starting dictation segment during meeting")
         activeMeetingSegment = .dictation
         audioRecorder.startRecording()
       } else {
-        #if SUBSCRIPTION_ENABLED
-        PopupNotificationWindow.showError(
-          "Sign in with Google or add an API key in Settings (General tab) to use dictation. For offline use, download a Whisper model in Speech-to-Text settings.",
-          title: "Sign In or API Key Required",
-          signInAction: { Task { try? await DefaultGoogleAuthService.shared.signIn() } }
-        )
-        #else
         PopupNotificationWindow.showError(
           "Add your Gemini API key in Settings (General tab) to use dictation. For offline use, download a Whisper model in Speech-to-Text settings.",
           title: "API Key Required"
         )
-        #endif
       }
       return
     }
@@ -565,42 +535,13 @@ class MenuBarController: NSObject {
       let hasOfflineModel = selectedModel.isOfflineModelAvailable()
 
       if appState.canStartTranscription(hasAPIKey: hasCredential, hasOfflineModel: hasOfflineModel) {
-        #if SUBSCRIPTION_ENABLED
-        if DefaultGoogleAuthService.shared.isSignedIn() {
-          Task { [weak self] in
-            guard let self = self else { return }
-            let active = await BackendAPIClient.fetchSubscriptionStatus(idTokenProvider: { await DefaultGoogleAuthService.shared.getIDToken() })
-            await MainActor.run {
-              if active != true {
-                PopupNotificationWindow.showError(
-                  "You need an active subscription to use dictation. Subscribe at whispershortcut.com or add an API key in Settings (General tab).",
-                  title: "Subscription Required",
-                  topUpURL: URL(string: "https://whispershortcut.com/subscription")
-                )
-                return
-              }
-              self.appState = self.appState.startRecording(.transcription)
-              self.audioRecorder.startRecording()
-            }
-          }
-          return
-        }
-        #endif
         appState = appState.startRecording(.transcription)
         audioRecorder.startRecording()
       } else {
-        #if SUBSCRIPTION_ENABLED
-        PopupNotificationWindow.showError(
-          "Sign in with Google or add an API key in Settings (General tab) to use dictation. For offline use, download a Whisper model in Speech-to-Text settings.",
-          title: "Sign In or API Key Required",
-          signInAction: { Task { try? await DefaultGoogleAuthService.shared.signIn() } }
-        )
-        #else
         PopupNotificationWindow.showError(
           "Add your Gemini API key in Settings (General tab) to use dictation. For offline use, download a Whisper model in Speech-to-Text settings.",
           title: "API Key Required"
         )
-        #endif
       }
     default:
       break
@@ -624,29 +565,6 @@ class MenuBarController: NSObject {
       let hasCredential = GeminiCredentialProvider.shared.hasCredential()
       if hasCredential {
         if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return }
-        #if SUBSCRIPTION_ENABLED
-        if DefaultGoogleAuthService.shared.isSignedIn() {
-          Task { [weak self] in
-            guard let self = self else { return }
-            let active = await BackendAPIClient.fetchSubscriptionStatus(idTokenProvider: { await DefaultGoogleAuthService.shared.getIDToken() })
-            await MainActor.run {
-              if active != true {
-                PopupNotificationWindow.showError(
-                  "You need an active subscription to use prompt mode. Subscribe at whispershortcut.com or add an API key in Settings (General tab).",
-                  title: "Subscription Required",
-                  topUpURL: URL(string: "https://whispershortcut.com/subscription")
-                )
-                return
-              }
-              DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
-              self.simulateCopyPaste()
-              self.activeMeetingSegment = .prompt
-              self.audioRecorder.startRecording()
-            }
-          }
-          return
-        }
-        #endif
         DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
         simulateCopyPaste()
         activeMeetingSegment = .prompt
@@ -674,28 +592,6 @@ class MenuBarController: NSObject {
         if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
           return
         }
-        #if SUBSCRIPTION_ENABLED
-        if DefaultGoogleAuthService.shared.isSignedIn() {
-          Task { [weak self] in
-            guard let self = self else { return }
-            let active = await BackendAPIClient.fetchSubscriptionStatus(idTokenProvider: { await DefaultGoogleAuthService.shared.getIDToken() })
-            await MainActor.run {
-              if active != true {
-                PopupNotificationWindow.showError(
-                  "You need an active subscription to use prompt mode. Subscribe at whispershortcut.com or add an API key in Settings (General tab).",
-                  title: "Subscription Required",
-                  topUpURL: URL(string: "https://whispershortcut.com/subscription")
-                )
-                return
-              }
-              self.simulateCopyPaste()
-              self.appState = self.appState.startRecording(.prompt)
-              self.audioRecorder.startRecording()
-            }
-          }
-          return
-        }
-        #endif
         simulateCopyPaste()
         appState = appState.startRecording(.prompt)
         audioRecorder.startRecording()
@@ -793,18 +689,10 @@ class MenuBarController: NSObject {
 
   private func startLiveMeeting() {
     guard GeminiCredentialProvider.shared.hasCredential() else {
-      #if SUBSCRIPTION_ENABLED
-      PopupNotificationWindow.showError(
-        "Sign in with Google or add an API key in Settings (General tab) to use live meeting transcription.",
-        title: "Sign In or API Key Required",
-        signInAction: { Task { try? await DefaultGoogleAuthService.shared.signIn() } }
-      )
-      #else
       PopupNotificationWindow.showError(
         "Add your Gemini API key in Settings (General tab) to use live meeting transcription.",
         title: "API Key Required"
       )
-      #endif
       return
     }
 
@@ -944,9 +832,7 @@ class MenuBarController: NSObject {
         let transcriptText = chunksSnapshot.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n\n")
         guard !transcriptText.isEmpty else { return }
         guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
-        let model = credential.isOAuth
-          ? SubscriptionModelsConfigService.effectiveMeetingSummaryModel().rawValue
-          : PromptModel.loadSelectedMeetingSummary().rawValue
+        let model = PromptModel.loadSelectedMeetingSummary().rawValue
         let api = GeminiAPIClient()
 
         // Post-processing: consolidate speaker labels across the full transcript
@@ -1109,9 +995,7 @@ class MenuBarController: NSObject {
   /// Calls Gemini to merge new transcript into the rolling summary and updates the store. Call from a Task.
   private func runRollingSummaryUpdate(currentSummary: String, newText: String) async {
     guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
-    let model = credential.isOAuth
-      ? SubscriptionModelsConfigService.effectiveMeetingSummaryModel().rawValue
-      : PromptModel.loadSelectedMeetingSummary().rawValue
+    let model = PromptModel.loadSelectedMeetingSummary().rawValue
     do {
       let updated = try await GeminiAPIClient().updateRollingSummary(
         model: model,

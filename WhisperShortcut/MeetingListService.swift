@@ -206,16 +206,7 @@ final class MeetingListService: ObservableObject {
       transcriptText = String(transcriptText.suffix(Self.contextMaxChars))
     }
     guard !transcriptText.isEmpty else { return "" }
-    let model: String
-    #if SUBSCRIPTION_ENABLED
-    if credential.isOAuth {
-      model = SubscriptionModelsConfigService.effectiveMeetingSummaryModel().rawValue
-    } else {
-      model = PromptModel.loadSelectedMeetingSummary().rawValue
-    }
-    #else
-    model = PromptModel.loadSelectedMeetingSummary().rawValue
-    #endif
+    let model = PromptModel.loadSelectedMeetingSummary().rawValue
     do {
       let summaryText = try await GeminiAPIClient().generateMeetingSummary(transcript: transcriptText, model: model, credential: credential)
       let trimmed = summaryText.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -292,14 +292,12 @@ class ChunkTranscriptionService {
                 let fileExtension = chunk.url.pathExtension.lowercased()
                 let mimeType = geminiClient.getMimeType(for: fileExtension)
 
-                // Build request (proxy-aware)
                 let endpoint = model.apiEndpoint
                 let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
                 let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
                 var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
                 request.timeoutInterval = Self.chunkResourceTimeout
 
-                let requestTypeForProxy: String? = credential.isOAuth ? "transcription" : nil
                 let transcriptionRequest = GeminiTranscriptionRequest(
                     contents: [
                         GeminiTranscriptionRequest.GeminiTranscriptionContent(
@@ -321,8 +319,7 @@ class ChunkTranscriptionService {
                                 )
                             ]
                         )
-                    ],
-                    requestType: requestTypeForProxy
+                    ]
                 )
 
                 request.httpBody = try JSONEncoder().encode(transcriptionRequest)

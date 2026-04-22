@@ -584,35 +584,16 @@ struct SettingsDefaults {
   static let screenshotInPromptMode = false
 
   // MARK: - Live Meeting Settings
-  static let liveMeetingChunkInterval = LiveMeetingChunkInterval.fifteenSeconds
+  static let liveMeetingChunkInterval = LiveMeetingChunkInterval.sixtySeconds
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
   static let selectedMeetingSummaryModel = PromptModel.gemini3Flash
 
-  /// Smart Improvement default when `SUBSCRIPTION_ENABLED` is off (App Store). Matches subscription API fallback.
+  /// Smart Improvement default model.
   static let defaultSmartImprovementModel = PromptModel.gemini31Pro
   static let selectedImprovementModel = PromptModel.gemini31Pro
 
-  // MARK: - Subscription Fallback Models (used when remote config fetch fails)
-  #if SUBSCRIPTION_ENABLED
-  static let subscriptionPromptModel = PromptModel.gemini3Flash
-  static let subscriptionTranscriptionModel = TranscriptionModel.gemini31FlashLite
-  static let subscriptionOpenGeminiModel = PromptModel.gemini3Flash
-  static let subscriptionImprovementModel = defaultSmartImprovementModel
-  static let subscriptionTTSModel = TTSModel.gemini25FlashTTS
-  #endif
-
-  // MARK: - Backend API (when signed in, Gemini + usage use this)
-  /// Debug: local API (npm run dev) unless WSUseProductionAPI UserDefaults is set. Release: production.
-  static var proxyAPIBaseURL: String {
-    #if DEBUG
-    if UserDefaults.standard.bool(forKey: "WSUseProductionAPI") {
-      return "https://whisper-api-797100884157.europe-west3.run.app"
-    }
-    return "http://localhost:8080"
-    #else
-    return "https://whisper-api-797100884157.europe-west3.run.app"
-    #endif
-  }
+  // proxyAPIBaseURL removed — no backend proxy; all requests go direct to Gemini API
+  static var proxyAPIBaseURL: String { "" }
 
   // MARK: - UI State
   static let errorMessage = ""
