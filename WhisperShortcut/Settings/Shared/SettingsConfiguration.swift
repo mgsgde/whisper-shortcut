@@ -578,10 +578,10 @@ struct SettingsDefaults {
   static let confirmAboveDuration = ConfirmAboveDuration.fiveMinutes
 
   // MARK: - Auto-Paste Settings
-  static let autoPasteAfterDictation = false
+  static let autoPasteAfterDictation = true
 
   // MARK: - Screenshot Settings
-  static let screenshotInPromptMode = false
+  static let screenshotInPromptMode = true
 
   // MARK: - Live Meeting Settings
   static let liveMeetingChunkInterval = LiveMeetingChunkInterval.sixtySeconds
