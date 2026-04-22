@@ -2334,7 +2334,11 @@ private struct ModelReplyView: View {
       if trimmed.isEmpty { continue }
       if let idx = CodeBlockExtractor.placeholderIndex(trimmed), idx < codeBlocks.count {
         let cb = codeBlocks[idx]
-        blocks.append(.codeBlock(cb.code, cb.language))
+        if cb.language == "markdown" && Self.looksLikeStructuredAnswer(cb.code) {
+          blocks.append(contentsOf: buildContentOnlyBlocks(content: cb.code, options: options))
+        } else {
+          blocks.append(.codeBlock(cb.code, cb.language))
+        }
       } else if let imageData = Self.extractInlineImageData(trimmed) {
         blocks.append(.image(imageData))
       } else if MarkdownParsing.isSeparatorParagraph(trimmed) {
@@ -2373,6 +2377,12 @@ private struct ModelReplyView: View {
     let bulletPart = lines[bulletStart...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     guard !headingPart.isEmpty, !bulletPart.isEmpty else { return nil }
     return (headingPart, bulletPart)
+  }
+
+  private static func looksLikeStructuredAnswer(_ code: String) -> Bool {
+    let lines = code.components(separatedBy: "\n")
+    let headingCount = lines.filter { $0.hasPrefix("#") }.count
+    return headingCount >= 2
   }
 
   /// Checks if a paragraph is a Gemini inline image marker and returns the decoded image data.
@@ -2492,6 +2502,11 @@ private struct ModelReplyView: View {
       if index > 0 { result.append(separator) }
       if let idx = CodeBlockExtractor.placeholderIndex(trimmed), idx < codeBlocks.count {
         let cb = codeBlocks[idx]
+        if cb.language == "markdown" && looksLikeStructuredAnswer(cb.code) {
+          let unwrapped = buildAttributedReplyContentOnly(content: cb.code, options: options)
+          result.append(unwrapped)
+          continue
+        }
         let label = cb.language.map { "[\($0)] " } ?? ""
         var attr = AttributedString("\(label)\(cb.code)")
         attr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
