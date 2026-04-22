@@ -6,6 +6,26 @@ actor GoogleTasksAPIClient {
   private let baseURL = "https://www.googleapis.com/tasks/v1"
   private let maxResultsCap = 100
 
+  // MARK: - List Task Lists
+
+  func listTaskLists() async throws -> [[String: Any]] {
+    let url = URL(string: "\(baseURL)/users/@me/lists")!
+    let data = try await authorizedRequest(url: url, httpMethod: "GET")
+
+    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let items = json["items"] as? [[String: Any]]
+    else {
+      return []
+    }
+
+    return items.map { item in
+      var list: [String: Any] = [:]
+      if let id = item["id"] as? String { list["list_id"] = id }
+      if let title = item["title"] as? String { list["title"] = title }
+      return list
+    }
+  }
+
   // MARK: - List Tasks
 
   func listTasks(taskListId: String = "@default", maxResults: Int = 20, showCompleted: Bool = false) async throws -> [[String: Any]] {

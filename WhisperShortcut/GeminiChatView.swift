@@ -631,7 +631,7 @@ class GeminiChatViewModel: ObservableObject {
       text = "\(text)\n\n---\n\n[Meeting context for calibration only — do not reference directly]\n\(extra)"
     }
     if GoogleCalendarOAuthService.shared.isConnected {
-      text += "\n\nYou have access to Google Calendar tools (google_calendar_list_events, google_calendar_create_event) and Google Tasks tools (google_tasks_list, google_tasks_create, google_tasks_complete). Use the user's local time zone (\(TimeZone.current.identifier)) when creating events. Always confirm details with the user before creating events or tasks."
+      text += "\n\nIMPORTANT — you have two distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_complete, google_tasks_delete\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating events or tasks."
     }
     return ["parts": [["text": text]]]
   }

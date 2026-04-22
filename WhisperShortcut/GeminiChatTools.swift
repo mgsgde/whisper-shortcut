@@ -58,7 +58,7 @@ enum GeminiChatToolRegistry {
   static let calendarFunctionDeclarations: [[String: Any]] = [
     [
       "name": "google_calendar_list_events",
-      "description": "Lists upcoming events from the user's Google Calendar. Use when the user asks about their schedule, upcoming meetings, or calendar.",
+      "description": "Lists upcoming calendar events (meetings, appointments) from Google Calendar. Use ONLY for scheduled events with specific start/end times. Do NOT use for tasks or to-dos — use google_tasks_list instead.",
       "parameters": [
         "type": "object",
         "properties": [
@@ -75,7 +75,7 @@ enum GeminiChatToolRegistry {
     ],
     [
       "name": "google_calendar_create_event",
-      "description": "Creates a new event on the user's Google Calendar. Always confirm details with the user before calling this.",
+      "description": "Creates a new calendar event (meeting, appointment) with a specific start and end time on Google Calendar. Do NOT use for tasks or to-dos — use google_tasks_create instead. Always confirm details with the user before calling this.",
       "parameters": [
         "type": "object",
         "properties": [
@@ -103,11 +103,23 @@ enum GeminiChatToolRegistry {
 
   static let tasksFunctionDeclarations: [[String: Any]] = [
     [
+      "name": "google_tasks_list_tasklists",
+      "description": "Lists all of the user's Google Tasks lists (e.g. 'Todos', 'backlog', 'waiting'). Call this first to discover available lists and their IDs before operating on a specific list.",
+      "parameters": [
+        "type": "object",
+        "properties": [:] as [String: Any],
+      ],
+    ],
+    [
       "name": "google_tasks_list",
-      "description": "Lists the user's Google Tasks. Use when the user asks about their to-do list, tasks, or things to do.",
+      "description": "Lists the user's Google Tasks (to-do items) from a specific list. Use when the user asks about tasks, to-dos, reminders, or things to do. Do NOT use for calendar events or meetings — use google_calendar_list_events instead. Call google_tasks_list_tasklists first if you need to find the right list.",
       "parameters": [
         "type": "object",
         "properties": [
+          "task_list_id": [
+            "type": "string",
+            "description": "ID of the task list to query (from google_tasks_list_tasklists). Defaults to the primary list if omitted.",
+          ],
           "max_results": [
             "type": "integer",
             "description": "Maximum number of tasks to return (1-100, default 20).",
@@ -121,13 +133,17 @@ enum GeminiChatToolRegistry {
     ],
     [
       "name": "google_tasks_create",
-      "description": "Creates a new Google Task. Use when the user asks to add a task, to-do, or reminder.",
+      "description": "Creates a new Google Task (to-do item, not a calendar event). Use when the user asks to add a task, to-do, or reminder. Do NOT use for calendar events or meetings — use google_calendar_create_event instead.",
       "parameters": [
         "type": "object",
         "properties": [
           "title": [
             "type": "string",
             "description": "Title of the task.",
+          ],
+          "task_list_id": [
+            "type": "string",
+            "description": "ID of the task list to add to (from google_tasks_list_tasklists). Defaults to the primary list if omitted.",
           ],
           "notes": [
             "type": "string",
@@ -151,6 +167,10 @@ enum GeminiChatToolRegistry {
             "type": "string",
             "description": "The ID of the task to complete (from google_tasks_list results).",
           ],
+          "task_list_id": [
+            "type": "string",
+            "description": "ID of the task list containing the task. Defaults to the primary list if omitted.",
+          ],
         ] as [String: Any],
         "required": ["task_id"],
       ],
@@ -164,6 +184,10 @@ enum GeminiChatToolRegistry {
           "task_id": [
             "type": "string",
             "description": "The ID of the task to delete (from google_tasks_list results).",
+          ],
+          "task_list_id": [
+            "type": "string",
+            "description": "ID of the task list containing the task. Defaults to the primary list if omitted.",
           ],
         ] as [String: Any],
         "required": ["task_id"],
@@ -241,15 +265,28 @@ enum GeminiChatToolRegistry {
         return ["error": error.localizedDescription]
       }
 
+    case "google_tasks_list_tasklists":
+      guard GoogleCalendarOAuthService.shared.isConnected else {
+        return ["error": "Google account is not connected. Connect it in Settings."]
+      }
+      do {
+        let lists = try await GoogleTasksAPIClient.shared.listTaskLists()
+        return ["task_lists": lists, "count": lists.count]
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list_tasklists failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
     case "google_tasks_list":
       guard GoogleCalendarOAuthService.shared.isConnected else {
         return ["error": "Google account is not connected. Connect it in Settings."]
       }
+      let taskListId = args["task_list_id"] as? String ?? "@default"
       let maxResults = args["max_results"] as? Int ?? 20
       let showCompleted = args["show_completed"] as? Bool ?? false
       do {
         let tasks = try await GoogleTasksAPIClient.shared.listTasks(
-          maxResults: maxResults, showCompleted: showCompleted)
+          taskListId: taskListId, maxResults: maxResults, showCompleted: showCompleted)
         return ["tasks": tasks, "count": tasks.count]
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list failed: \(error.localizedDescription)")
@@ -263,11 +300,12 @@ enum GeminiChatToolRegistry {
       guard let title = args["title"] as? String else {
         return ["error": "Missing required argument: title"]
       }
+      let taskListId = args["task_list_id"] as? String ?? "@default"
       let notes = args["notes"] as? String
       let due = args["due"] as? String
       do {
         let result = try await GoogleTasksAPIClient.shared.createTask(
-          title: title, notes: notes, due: due)
+          title: title, notes: notes, due: due, taskListId: taskListId)
         return result
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: tasks create failed: \(error.localizedDescription)")
@@ -281,8 +319,10 @@ enum GeminiChatToolRegistry {
       guard let taskId = args["task_id"] as? String else {
         return ["error": "Missing required argument: task_id"]
       }
+      let taskListId = args["task_list_id"] as? String ?? "@default"
       do {
-        let result = try await GoogleTasksAPIClient.shared.completeTask(taskId: taskId)
+        let result = try await GoogleTasksAPIClient.shared.completeTask(
+          taskId: taskId, taskListId: taskListId)
         return result
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: tasks complete failed: \(error.localizedDescription)")
@@ -296,8 +336,10 @@ enum GeminiChatToolRegistry {
       guard let taskId = args["task_id"] as? String else {
         return ["error": "Missing required argument: task_id"]
       }
+      let taskListId = args["task_list_id"] as? String ?? "@default"
       do {
-        let result = try await GoogleTasksAPIClient.shared.deleteTask(taskId: taskId)
+        let result = try await GoogleTasksAPIClient.shared.deleteTask(
+          taskId: taskId, taskListId: taskListId)
         return result
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: tasks delete failed: \(error.localizedDescription)")
