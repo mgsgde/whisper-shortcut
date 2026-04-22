@@ -1,4 +1,4 @@
-# WhisperShortcut 6.11.1
+# WhisperShortcut 6.12.0
 
 ## Installation
 
@@ -14,4 +14,4 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Full changelog
 
-[Compare v6.11.0…v6.11.1](https://github.com/mgsgde/whisper-shortcut/compare/v6.11.0...v6.11.1)
+[Compare v6.11.1…v6.12.0](https://github.com/mgsgde/whisper-shortcut/compare/v6.11.1...v6.12.0)
