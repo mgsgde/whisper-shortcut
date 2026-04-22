@@ -385,16 +385,27 @@ final class GrokChatProvider: LLMChatProvider {
         continue
       }
 
-      // Function response turns (tool result → model): emit as function_call_output items
+      // Function response turns (tool result → model): emit as function_call_output items.
+      // Match call_ids from the preceding model turn's function_call items by position.
       let functionResponseParts = parts.filter { $0["functionResponse"] != nil }
       if !functionResponseParts.isEmpty {
-        for part in functionResponseParts {
+        // Find call_ids from the last emitted function_call items
+        var callIds: [String] = []
+        for item in input.reversed() {
+          if let type = item["type"] as? String, type == "function_call",
+             let cid = item["call_id"] as? String {
+            callIds.insert(cid, at: 0)
+          } else if !callIds.isEmpty {
+            break
+          }
+        }
+        for (idx, part) in functionResponseParts.enumerated() {
           guard let fr = part["functionResponse"] as? [String: Any],
                 let name = fr["name"] as? String,
                 let resp = fr["response"] as? [String: Any] else { continue }
           let respJSON = (try? JSONSerialization.data(withJSONObject: resp))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-          let callId = part["callId"] as? String ?? "call_\(name)"
+          let callId = idx < callIds.count ? callIds[idx] : "call_\(name)"
           input.append([
             "type": "function_call_output",
             "call_id": callId,

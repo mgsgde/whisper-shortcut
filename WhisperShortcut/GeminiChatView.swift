@@ -458,16 +458,12 @@ class GeminiChatViewModel: ObservableObject {
           var responseParts: [[String: Any]] = []
           for call in pendingCalls {
             let result = await GeminiChatToolRegistry.execute(name: call.name, args: call.args)
-            var part: [String: Any] = [
+            responseParts.append([
               "functionResponse": [
                 "name": call.name,
                 "response": result,
               ]
-            ]
-            if let callId = call.thoughtSignature {
-              part["callId"] = callId
-            }
-            responseParts.append(part)
+            ])
           }
           currentContents.append(["role": "user", "parts": responseParts])
           DebugLogger.log("CHAT: executed \(pendingCalls.count) tool call(s), continuing stream")
