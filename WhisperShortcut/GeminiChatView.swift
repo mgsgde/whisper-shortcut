@@ -2180,7 +2180,6 @@ private struct ModelReplyView: View {
             .font(.system(size: 16))
             .lineSpacing(8)
             .foregroundColor(GeminiChatTheme.primaryText)
-            .textSelection(.enabled)
         case .table(let parsed):
           MarkdownTableView(headers: parsed.headers, rows: parsed.rows)
         case .codeBlock(let code, let language):
@@ -2196,6 +2195,7 @@ private struct ModelReplyView: View {
         }
       }
     }
+    .textSelection(.enabled)
     .padding(.horizontal, 16)
     .padding(.vertical, 14)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -2205,9 +2205,6 @@ private struct ModelReplyView: View {
       NSWorkspace.shared.open(url)
       return .handled
     })
-    .onHover { inside in
-      if inside { NSCursor.iBeam.push() } else { NSCursor.pop() }
-    }
   }
 
   /// Whether the block opens with heading typography (used for a thin rule before the heading).
