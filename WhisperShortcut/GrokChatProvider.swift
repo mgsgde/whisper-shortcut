@@ -116,7 +116,7 @@ final class GrokChatProvider: LLMChatProvider {
 
           // Parse Responses API SSE stream.
           // Event format: "event: <type>\ndata: <json>\n\n"
-          var pendingFunctionCalls: [(name: String, args: [String: Any])] = []
+          var pendingFunctionCalls: [(name: String, args: [String: Any], callId: String)] = []
           var functionCallNames: [String: String] = [:]  // item_id → function name
           var currentEventType: String?
           var finishReason: String?
@@ -160,7 +160,7 @@ final class GrokChatProvider: LLMChatProvider {
                 } else {
                   args = [:]
                 }
-                pendingFunctionCalls.append((name: existing, args: args))
+                pendingFunctionCalls.append((name: existing, args: args, callId: itemId))
               }
 
             case "response.output_item.added":
@@ -184,10 +184,10 @@ final class GrokChatProvider: LLMChatProvider {
             }
           }
 
-          // Emit collected function calls
+          // Emit collected function calls (pass callId via thoughtSignature for round-trip)
           for call in pendingFunctionCalls {
-            DebugLogger.logNetwork("GROK-RESPONSES: functionCall name=\(call.name)")
-            continuation.yield(.functionCall(name: call.name, args: call.args, thoughtSignature: nil))
+            DebugLogger.logNetwork("GROK-RESPONSES: functionCall name=\(call.name) callId=\(call.callId)")
+            continuation.yield(.functionCall(name: call.name, args: call.args, thoughtSignature: call.callId))
           }
 
           DebugLogger.logNetwork("GROK-RESPONSES: stream end, finishReason=\(finishReason ?? "nil")")
@@ -364,11 +364,45 @@ final class GrokChatProvider: LLMChatProvider {
       guard let role = content["role"] as? String,
             let parts = content["parts"] as? [[String: Any]] else { continue }
 
-      // Skip function call and function response turns — the Responses API
-      // handles tool calling via its own output/input items, not via message history.
-      let hasFunctionCall = parts.contains { $0["functionCall"] != nil }
-      let hasFunctionResponse = parts.contains { $0["functionResponse"] != nil }
-      if hasFunctionCall || hasFunctionResponse { continue }
+      // Function call turns (model → tool invocation): emit as Responses API function_call items
+      let functionCallParts = parts.filter { $0["functionCall"] != nil }
+      if !functionCallParts.isEmpty {
+        for part in functionCallParts {
+          guard let fc = part["functionCall"] as? [String: Any],
+                let name = fc["name"] as? String else { continue }
+          let args = fc["args"] as? [String: Any] ?? [:]
+          let argsJSON = (try? JSONSerialization.data(withJSONObject: args))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+          let callId = part["thoughtSignature"] as? String ?? "call_\(name)"
+          input.append([
+            "type": "function_call",
+            "id": callId,
+            "call_id": callId,
+            "name": name,
+            "arguments": argsJSON,
+          ])
+        }
+        continue
+      }
+
+      // Function response turns (tool result → model): emit as function_call_output items
+      let functionResponseParts = parts.filter { $0["functionResponse"] != nil }
+      if !functionResponseParts.isEmpty {
+        for part in functionResponseParts {
+          guard let fr = part["functionResponse"] as? [String: Any],
+                let name = fr["name"] as? String,
+                let resp = fr["response"] as? [String: Any] else { continue }
+          let respJSON = (try? JSONSerialization.data(withJSONObject: resp))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+          let callId = fr["call_id"] as? String ?? "call_\(name)"
+          input.append([
+            "type": "function_call_output",
+            "call_id": callId,
+            "output": respJSON,
+          ])
+        }
+        continue
+      }
 
       let apiRole: String
       switch role {

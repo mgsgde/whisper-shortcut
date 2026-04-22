@@ -466,7 +466,7 @@ class GeminiChatSessionStore {
         .filter { !manualSet.contains($0.id) }
         .sorted { $0.lastUpdated > $1.lastUpdated }
         .map { $0.id }
-      file.tabOrder = manualIds + restIds + [newSession.id]
+      file.tabOrder = [newSession.id] + manualIds + restIds
     }
     file.sessions.insert(newSession, at: 0)
     file.currentSessionId = newSession.id
