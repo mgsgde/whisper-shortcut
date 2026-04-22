@@ -116,7 +116,8 @@ class AutoPromptImprovementScheduler {
   private func currentImprovementModelDisplayName() -> String? {
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
       ?? SettingsDefaults.selectedImprovementModel.rawValue
-    guard let model = PromptModel(rawValue: raw) else { return nil }
+    let migratedRaw = PromptModel.migrateLegacyPromptRawValue(raw)
+    guard let model = PromptModel(rawValue: migratedRaw) else { return nil }
     return model.displayName
   }
 

@@ -10,7 +10,8 @@ class ContextDerivation {
   private var analysisEndpoint: String {
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
       ?? SettingsDefaults.selectedImprovementModel.rawValue
-    guard let model = PromptModel(rawValue: raw), let transcriptionModel = model.asTranscriptionModel else {
+    let migratedRaw = PromptModel.migrateLegacyPromptRawValue(raw)
+    guard let model = PromptModel(rawValue: migratedRaw), let transcriptionModel = model.asTranscriptionModel else {
       return AppConstants.contextDerivationEndpoint
     }
     return transcriptionModel.apiEndpoint

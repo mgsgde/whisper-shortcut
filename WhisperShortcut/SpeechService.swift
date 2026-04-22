@@ -84,7 +84,8 @@ class SpeechService {
   
   func getPromptModelInfo() -> String {
     let selectedPromptModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? SettingsDefaults.selectedPromptModel.rawValue
-    let selectedPromptModel = PromptModel(rawValue: selectedPromptModelString) ?? SettingsDefaults.selectedPromptModel
+    let normalized = PromptModel.migrateLegacyPromptRawValue(selectedPromptModelString)
+    let selectedPromptModel = PromptModel(rawValue: normalized) ?? SettingsDefaults.selectedPromptModel
     return selectedPromptModel.displayName
   }
   
@@ -98,7 +99,8 @@ class SpeechService {
       : UserDefaultsKeys.selectedPromptAndReadModel
     let defaultModel = SettingsDefaults.selectedPromptModel
     let modelString = UserDefaults.standard.string(forKey: modelKey) ?? defaultModel.rawValue
-    return PromptModel(rawValue: modelString) ?? defaultModel
+    let normalized = PromptModel.migrateLegacyPromptRawValue(modelString)
+    return PromptModel(rawValue: normalized) ?? defaultModel
   }
 
   // MARK: - Prompt Building
@@ -451,8 +453,8 @@ class SpeechService {
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = geminiClient.getMimeType(for: fileExtension)
 
-    // Use Gemini Flash for fast, cheap transcription (full URL required by createRequest)
-    let endpoint = TranscriptionModel.gemini20Flash.apiEndpoint
+    // Use Gemini 2.5 Flash for fast, cheap transcription (full URL required by createRequest)
+    let endpoint = TranscriptionModel.gemini25Flash.apiEndpoint
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
     let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
     var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)

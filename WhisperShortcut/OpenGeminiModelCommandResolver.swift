@@ -20,8 +20,8 @@ enum OpenGeminiModelCommandResolver {
       return .usage(current: currentSelection)
     }
 
-    // Exact rawValue match wins.
-    if let exact = PromptModel(rawValue: q) {
+    // Exact rawValue match wins (after migrating removed 2.0 IDs).
+    if let exact = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(q)) {
       return .applied(model: PromptModel.migrateIfDeprecated(exact))
     }
 
@@ -44,7 +44,7 @@ enum OpenGeminiModelCommandResolver {
     } else if normalized.contains("2.5") {
       candidates = [.gemini25Flash, .gemini25FlashLite, .gemini25Pro]
     } else if normalized.contains("2.0") || padded.contains(" 2 ") {
-      candidates = [.gemini20Flash]
+      candidates = [.gemini25Flash]
     } else if padded.contains(" 3 ") {
       candidates = [.gemini3Flash, .gemini3Pro]
     } else {
@@ -106,7 +106,7 @@ enum OpenGeminiModelCommandResolver {
 
   private static func isFlash(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite: return true
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite: return true
     default: return false
     }
   }

@@ -9,11 +9,10 @@ import Foundation
 
 // MARK: - Transcription Model Enum
 // Current Gemini model IDs: https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash (and sibling docs)
-// GA (stable IDs, no -preview): gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.0-flash (2.0 deprecated). gemini-2.0-flash-lite removed (API 404).
+// GA (stable IDs, no -preview): gemini-2.5-flash, gemini-2.5-flash-lite. gemini-2.0-flash and gemini-2.0-flash-lite removed.
 // Preview (keep -preview): gemini-3-flash-preview, gemini-3-pro-preview, gemini-3.1-pro-preview, gemini-3.1-flash-lite-preview.
 enum TranscriptionModel: String, CaseIterable {
   // Gemini models (online)
-  case gemini20Flash = "gemini-2.0-flash"
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
   case gemini3Flash = "gemini-3-flash-preview"
@@ -30,8 +29,6 @@ enum TranscriptionModel: String, CaseIterable {
 
   var displayName: String {
     switch self {
-    case .gemini20Flash:
-      return "Gemini 2.0 Flash (Deprecated)"
     case .gemini25Flash:
       return "Gemini 2.5 Flash"
     case .gemini25FlashLite:
@@ -60,8 +57,6 @@ enum TranscriptionModel: String, CaseIterable {
   /// Uses v1beta so Gemini 3 preview models are available (v1 returns 404 for them).
   var apiEndpoint: String {
     switch self {
-    case .gemini20Flash:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
     case .gemini25Flash:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     case .gemini25FlashLite:
@@ -83,24 +78,17 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini31FlashLite, .gemini25FlashLite, .gemini25Flash, .whisperBase:
       return true
-    case .gemini20Flash, .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge:
+    case .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge:
       return false
     }
   }
 
-  /// True for Gemini models no longer available to new users (e.g. gemini-2.0-flash). Used to migrate to current default.
-  var isDeprecated: Bool {
-    switch self {
-    case .gemini20Flash:
-      return true
-    default:
-      return false
-    }
-  }
+  /// Gemini 2.0 family was removed from this enum; no transcription option is deprecated in-app.
+  var isDeprecated: Bool { false }
 
   var costLevel: String {
     switch self {
-    case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite:
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite:
       return "Low"
     case .gemini3Pro, .gemini31Pro:
       return "Medium"
@@ -111,8 +99,6 @@ enum TranscriptionModel: String, CaseIterable {
 
   var description: String {
     switch self {
-    case .gemini20Flash:
-      return "Google's Gemini 2.0 Flash model • Fast and efficient"
     case .gemini25Flash:
       return "Google's Gemini 2.5 Flash model • Fast and efficient"
     case .gemini25FlashLite:
@@ -140,7 +126,7 @@ enum TranscriptionModel: String, CaseIterable {
   
   var isGemini: Bool {
     switch self {
-    case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .gemini31FlashLite:
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .gemini31FlashLite:
       return true
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return false
@@ -165,10 +151,14 @@ enum TranscriptionModel: String, CaseIterable {
   // MARK: - Model Loading
   /// Loads the selected transcription model from UserDefaults, or returns the default model.
   /// When in subscription mode (no API key, signed in with Google), returns the saved model if it is an offline Whisper model; otherwise returns the fixed subscription (Gemini) model.
-  /// Migrates removed models (e.g. gemini-2.0-flash-lite → gemini-2.5-flash-lite). Deprecated but still available models (e.g. gemini-2.0-flash) are returned so the user's choice persists.
+  /// Migrates removed models (gemini-2.0-flash, gemini-2.0-flash-lite) to current equivalents.
   static func loadSelected() -> TranscriptionModel {
     guard let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) else {
       return SettingsDefaults.selectedTranscriptionModel
+    }
+    if savedModelString == "gemini-2.0-flash" {
+      UserDefaults.standard.set(TranscriptionModel.gemini25Flash.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
+      return .gemini25Flash
     }
     if savedModelString == "gemini-2.0-flash-lite" {
       UserDefaults.standard.set(TranscriptionModel.gemini25FlashLite.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
@@ -187,6 +177,10 @@ enum TranscriptionModel: String, CaseIterable {
   static func loadSelectedForMeeting() -> TranscriptionModel {
     guard let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) else {
       return loadSelected()
+    }
+    if savedModelString == "gemini-2.0-flash" {
+      UserDefaults.standard.set(TranscriptionModel.gemini25Flash.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
+      return .gemini25Flash
     }
     if savedModelString == "gemini-2.0-flash-lite" {
       UserDefaults.standard.set(TranscriptionModel.gemini25FlashLite.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)

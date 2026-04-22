@@ -8,11 +8,10 @@ enum ChatModelProvider: String, CaseIterable {
 
 // MARK: - Unified Prompt Model Enum (for Prompt Mode) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash (and sibling docs)
-// GA (stable IDs): gemini-2.5-flash, gemini-2.5-flash-lite; 2.0 deprecated. gemini-2.0-flash-lite removed (API 404). Preview: gemini-3-*.
+// GA (stable IDs): gemini-2.5-flash, gemini-2.5-flash-lite. 2.0 removed. Preview: gemini-3-*.
 // Grok model IDs: https://docs.x.ai/docs/models
 enum PromptModel: String, CaseIterable {
   // Gemini Models (multimodal, direct audio input)
-  case gemini20Flash = "gemini-2.0-flash"
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
   case gemini25Pro = "gemini-2.5-pro"
@@ -28,8 +27,6 @@ enum PromptModel: String, CaseIterable {
   
   var displayName: String {
     switch self {
-    case .gemini20Flash:
-      return "Gemini 2.0 Flash"
     case .gemini25Flash:
       return "Gemini 2.5 Flash"
     case .gemini25FlashLite:
@@ -55,8 +52,6 @@ enum PromptModel: String, CaseIterable {
   
   var description: String {
     switch self {
-    case .gemini20Flash:
-      return "Google's Gemini 2.0 Flash model • Fast and efficient • Multimodal audio processing"
     case .gemini25Flash:
       return "Google's Gemini 2.5 Flash model • Fast and efficient • Multimodal audio processing"
     case .gemini25FlashLite:
@@ -87,7 +82,7 @@ enum PromptModel: String, CaseIterable {
   
   var costLevel: String {
     switch self {
-    case .gemini20Flash, .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite:
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite:
       return "Low"
     case .gemini25Pro, .gemini3Pro, .gemini31Pro:
       return "Medium"
@@ -130,8 +125,6 @@ enum PromptModel: String, CaseIterable {
   // Convert to TranscriptionModel for API endpoint access (for Gemini models)
   var asTranscriptionModel: TranscriptionModel? {
     switch self {
-    case .gemini20Flash:
-      return .gemini20Flash
     case .gemini25Flash:
       return .gemini25Flash
     case .gemini25FlashLite:
@@ -171,18 +164,33 @@ enum PromptModel: String, CaseIterable {
     return allCases.filter { $0.provider == .gemini }
   }
 
-  /// Migrates deprecated 2.0 Flash models to 2.5; returns the model unchanged otherwise.
+  /// Migrates deprecated in-enum cases; identity today (2.0 removed — use `migrateLegacyPromptRawValue` for UserDefaults).
   static func migrateIfDeprecated(_ model: PromptModel) -> PromptModel {
-    switch model {
-    case .gemini20Flash: return .gemini25Flash
-    default: return model
+    model
+  }
+
+  /// Maps removed `PromptModel` raw values so `PromptModel(rawValue:)` succeeds after enum case removal.
+  static func migrateLegacyPromptRawValue(_ raw: String) -> String {
+    switch raw {
+    case "gemini-2.0-flash":
+      return Self.gemini25Flash.rawValue
+    case "gemini-2.0-flash-lite":
+      return Self.gemini25FlashLite.rawValue
+    default:
+      return raw
     }
   }
 
   /// Loads the model selected for the Open Gemini window (Settings → Open Gemini).
   static func loadSelectedOpenGemini() -> PromptModel {
-    guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel),
-          let parsed = PromptModel(rawValue: raw) else {
+    guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel) else {
+      return SettingsDefaults.selectedOpenGeminiModel
+    }
+    let migratedRaw = migrateLegacyPromptRawValue(raw)
+    if migratedRaw != raw {
+      UserDefaults.standard.set(migratedRaw, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+    }
+    guard let parsed = PromptModel(rawValue: migratedRaw) else {
       return SettingsDefaults.selectedOpenGeminiModel
     }
     return migrateIfDeprecated(parsed)
@@ -190,8 +198,14 @@ enum PromptModel: String, CaseIterable {
 
   /// Loads the model selected for meeting summary (rolling and final). Settings → Live Meeting → Summary Model.
   static func loadSelectedMeetingSummary() -> PromptModel {
-    guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedMeetingSummaryModel),
-          let parsed = PromptModel(rawValue: raw) else {
+    guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedMeetingSummaryModel) else {
+      return SettingsDefaults.selectedMeetingSummaryModel
+    }
+    let migratedRaw = migrateLegacyPromptRawValue(raw)
+    if migratedRaw != raw {
+      UserDefaults.standard.set(migratedRaw, forKey: UserDefaultsKeys.selectedMeetingSummaryModel)
+    }
+    guard let parsed = PromptModel(rawValue: migratedRaw) else {
       return SettingsDefaults.selectedMeetingSummaryModel
     }
     return migrateIfDeprecated(parsed)

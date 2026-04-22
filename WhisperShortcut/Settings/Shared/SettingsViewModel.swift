@@ -44,12 +44,13 @@ class SettingsViewModel: ObservableObject {
 
     let promptModelDefault = SettingsDefaults.selectedPromptModel
 
-    // Load Prompt model preference (for Prompt Mode); migrate deprecated or removed models (e.g. gemini-2.0-flash-lite → 2.5 Flash-Lite)
+    // Load Prompt model preference (for Prompt Mode); migrate removed 2.0 raw values to 2.5 equivalents.
     if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) {
-      if savedModelString == "gemini-2.0-flash-lite" {
-        data.selectedPromptModel = .gemini25FlashLite
-        UserDefaults.standard.set(PromptModel.gemini25FlashLite.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
-      } else if let savedModel = PromptModel(rawValue: savedModelString) {
+      let normalized = PromptModel.migrateLegacyPromptRawValue(savedModelString)
+      if normalized != savedModelString {
+        UserDefaults.standard.set(normalized, forKey: UserDefaultsKeys.selectedPromptModel)
+      }
+      if let savedModel = PromptModel(rawValue: normalized) {
         let migrated = PromptModel.migrateIfDeprecated(savedModel)
         data.selectedPromptModel = migrated
         if migrated != savedModel {
@@ -96,25 +97,38 @@ class SettingsViewModel: ObservableObject {
     data.readAloudPlaybackRate = SettingsDefaults.clampedReadAloudPlaybackRate()
 
     // Load Open Gemini window model
-    if let savedOpenGeminiModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel),
-      let savedOpenGeminiModel = PromptModel(rawValue: savedOpenGeminiModelString)
-    {
-      let migrated = PromptModel.migrateIfDeprecated(savedOpenGeminiModel)
-      data.selectedOpenGeminiModel = migrated
-      if migrated != savedOpenGeminiModel {
-        UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+    if let savedOpenGeminiModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel) {
+      let normalized = PromptModel.migrateLegacyPromptRawValue(savedOpenGeminiModelString)
+      if normalized != savedOpenGeminiModelString {
+        UserDefaults.standard.set(normalized, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+      }
+      if let savedOpenGeminiModel = PromptModel(rawValue: normalized) {
+        let migrated = PromptModel.migrateIfDeprecated(savedOpenGeminiModel)
+        data.selectedOpenGeminiModel = migrated
+        if migrated != savedOpenGeminiModel {
+          UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+        }
+      } else {
+        data.selectedOpenGeminiModel = SettingsDefaults.selectedOpenGeminiModel
       }
     } else {
       data.selectedOpenGeminiModel = SettingsDefaults.selectedOpenGeminiModel
     }
 
     let improvementModelDefault = SettingsDefaults.selectedImprovementModel
-    if let savedImprovementModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel),
-       let savedImprovementModel = PromptModel(rawValue: savedImprovementModelString) {
-      let migrated = PromptModel.migrateIfDeprecated(savedImprovementModel)
-      data.selectedImprovementModel = migrated
-      if migrated != savedImprovementModel {
-        UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
+    if let savedImprovementModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel) {
+      let normalized = PromptModel.migrateLegacyPromptRawValue(savedImprovementModelString)
+      if normalized != savedImprovementModelString {
+        UserDefaults.standard.set(normalized, forKey: UserDefaultsKeys.selectedImprovementModel)
+      }
+      if let savedImprovementModel = PromptModel(rawValue: normalized) {
+        let migrated = PromptModel.migrateIfDeprecated(savedImprovementModel)
+        data.selectedImprovementModel = migrated
+        if migrated != savedImprovementModel {
+          UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
+        }
+      } else {
+        data.selectedImprovementModel = improvementModelDefault
       }
     } else {
       data.selectedImprovementModel = improvementModelDefault
@@ -204,12 +218,19 @@ class SettingsViewModel: ObservableObject {
       data.selectedTranscriptionModelForMeetings = TranscriptionModel.loadSelected()
     }
 
-    if let savedSummaryModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedMeetingSummaryModel),
-       let savedSummaryModel = PromptModel(rawValue: savedSummaryModelString) {
-      let migrated = PromptModel.migrateIfDeprecated(savedSummaryModel)
-      data.selectedMeetingSummaryModel = migrated
-      if migrated != savedSummaryModel {
-        UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedMeetingSummaryModel)
+    if let savedSummaryModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedMeetingSummaryModel) {
+      let normalized = PromptModel.migrateLegacyPromptRawValue(savedSummaryModelString)
+      if normalized != savedSummaryModelString {
+        UserDefaults.standard.set(normalized, forKey: UserDefaultsKeys.selectedMeetingSummaryModel)
+      }
+      if let savedSummaryModel = PromptModel(rawValue: normalized) {
+        let migrated = PromptModel.migrateIfDeprecated(savedSummaryModel)
+        data.selectedMeetingSummaryModel = migrated
+        if migrated != savedSummaryModel {
+          UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedMeetingSummaryModel)
+        }
+      } else {
+        data.selectedMeetingSummaryModel = SettingsDefaults.selectedMeetingSummaryModel
       }
     } else {
       data.selectedMeetingSummaryModel = SettingsDefaults.selectedMeetingSummaryModel

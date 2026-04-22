@@ -40,6 +40,8 @@ playground.xcworkspace
 # Packages/
 # Package.pins
 Package.resolved
+# Xcode SPM lockfile (required for Dependabot swift + reproducible resolves)
+!WhisperShortcut.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 # *.xcodeproj
 #
 # Xcode automatically generates this directory with a .xcworkspacedata file and xcuserdata

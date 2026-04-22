@@ -618,7 +618,8 @@ class GeminiChatViewModel: ObservableObject {
   static var openGeminiModel: PromptModel {
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel)
       ?? SettingsDefaults.selectedOpenGeminiModel.rawValue
-    return PromptModel(rawValue: raw).map { PromptModel.migrateIfDeprecated($0) }
+    let migratedRaw = PromptModel.migrateLegacyPromptRawValue(raw)
+    return PromptModel(rawValue: migratedRaw).map { PromptModel.migrateIfDeprecated($0) }
       ?? SettingsDefaults.selectedOpenGeminiModel
   }
 
@@ -1451,7 +1452,8 @@ struct GeminiInputAreaView: View {
 
   /// Current Open Gemini model for display (with migration); syncs with UserDefaults via @AppStorage.
   private var resolvedOpenGeminiModel: PromptModel {
-    PromptModel(rawValue: selectedOpenGeminiModelRaw)
+    let migratedRaw = PromptModel.migrateLegacyPromptRawValue(selectedOpenGeminiModelRaw)
+    return PromptModel(rawValue: migratedRaw)
       .map { PromptModel.migrateIfDeprecated($0) }
       ?? SettingsDefaults.selectedOpenGeminiModel
   }
