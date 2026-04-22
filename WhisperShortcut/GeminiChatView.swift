@@ -382,7 +382,8 @@ class GeminiChatViewModel: ObservableObject {
         var finalSupports: [GroundingSupport] = []
 
         // Convert tool declarations to provider-agnostic format
-        let tools = GeminiChatToolRegistry.functionDeclarations.compactMap { decl -> LLMToolDeclaration? in
+        let calendarConnected = await MainActor.run { GoogleCalendarOAuthService.shared.isConnected }
+        let tools = GeminiChatToolRegistry.allDeclarations(calendarConnected: calendarConnected).compactMap { decl -> LLMToolDeclaration? in
           guard let name = decl["name"] as? String,
                 let desc = decl["description"] as? String,
                 let params = decl["parameters"] as? [String: Any] else { return nil }
@@ -444,9 +445,7 @@ class GeminiChatViewModel: ObservableObject {
           currentContents.append(["role": "model", "parts": callParts])
           var responseParts: [[String: Any]] = []
           for call in pendingCalls {
-            let result = await MainActor.run {
-              GeminiChatToolRegistry.execute(name: call.name, args: call.args)
-            }
+            let result = await GeminiChatToolRegistry.execute(name: call.name, args: call.args)
             responseParts.append([
               "functionResponse": [
                 "name": call.name,
@@ -606,6 +605,9 @@ class GeminiChatViewModel: ObservableObject {
     text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
     if let extra = meetingContextProvider?(), !extra.isEmpty {
       text = "\(text)\n\n---\n\n[Meeting context for calibration only — do not reference directly]\n\(extra)"
+    }
+    if GoogleCalendarOAuthService.shared.isConnected {
+      text += "\n\nYou have access to google_calendar_list_events and google_calendar_create_event tools. Use the user's local time zone (\(TimeZone.current.identifier)) when creating events. Always confirm event details with the user before creating."
     }
     return ["parts": [["text": text]]]
   }

@@ -15,8 +15,7 @@ import Foundation
 
 enum GeminiChatToolRegistry {
 
-  /// Function declarations in Gemini's Tool format, ready to embed under
-  /// `tools: [{ function_declarations: [...] }]`.
+  /// Base function declarations (always available).
   static let functionDeclarations: [[String: Any]] = [
     [
       "name": "read_clipboard",
@@ -56,10 +55,61 @@ enum GeminiChatToolRegistry {
     ],
   ]
 
-  /// Executes a named tool with the given args and returns a dict to embed in
-  /// the `functionResponse.response` field. Unknown tools return an error payload.
+  static let calendarFunctionDeclarations: [[String: Any]] = [
+    [
+      "name": "google_calendar_list_events",
+      "description": "Lists upcoming events from the user's Google Calendar. Use when the user asks about their schedule, upcoming meetings, or calendar.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "max_results": [
+            "type": "integer",
+            "description": "Maximum number of events to return (1-50, default 10).",
+          ],
+          "hours_ahead": [
+            "type": "integer",
+            "description": "How many hours ahead to look (default 168 = 1 week).",
+          ],
+        ] as [String: Any],
+      ],
+    ],
+    [
+      "name": "google_calendar_create_event",
+      "description": "Creates a new event on the user's Google Calendar. Always confirm details with the user before calling this.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "summary": [
+            "type": "string",
+            "description": "Title/summary of the event.",
+          ],
+          "start_iso8601": [
+            "type": "string",
+            "description": "Start time in ISO 8601 format (e.g. 2026-04-22T15:00:00+02:00).",
+          ],
+          "end_iso8601": [
+            "type": "string",
+            "description": "End time in ISO 8601 format (e.g. 2026-04-22T15:30:00+02:00).",
+          ],
+          "time_zone": [
+            "type": "string",
+            "description": "IANA time zone identifier (e.g. Europe/Berlin). Defaults to the user's local time zone if omitted.",
+          ],
+        ] as [String: Any],
+        "required": ["summary", "start_iso8601", "end_iso8601"],
+      ],
+    ],
+  ]
+
+  static func allDeclarations(calendarConnected: Bool) -> [[String: Any]] {
+    if calendarConnected {
+      return functionDeclarations + calendarFunctionDeclarations
+    }
+    return functionDeclarations
+  }
+
   @MainActor
-  static func execute(name: String, args: [String: Any]) -> [String: Any] {
+  static func execute(name: String, args: [String: Any]) async -> [String: Any] {
     DebugLogger.log("GEMINI-CHAT-TOOL: execute name=\(name)")
     switch name {
     case "read_clipboard":
@@ -85,6 +135,41 @@ enum GeminiChatToolRegistry {
       }
       NSWorkspace.shared.open(url)
       return ["ok": true, "url": urlString]
+
+    case "google_calendar_list_events":
+      guard GoogleCalendarOAuthService.shared.isConnected else {
+        return ["error": "Google Calendar is not connected. Connect it in Settings."]
+      }
+      let maxResults = args["max_results"] as? Int ?? 10
+      let hoursAhead = args["hours_ahead"] as? Int ?? 168
+      do {
+        let events = try await GoogleCalendarAPIClient.shared.listUpcomingEvents(
+          maxResults: maxResults, hoursAhead: hoursAhead)
+        return ["events": events, "count": events.count]
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar list failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "google_calendar_create_event":
+      guard GoogleCalendarOAuthService.shared.isConnected else {
+        return ["error": "Google Calendar is not connected. Connect it in Settings."]
+      }
+      guard let summary = args["summary"] as? String,
+            let startISO = args["start_iso8601"] as? String,
+            let endISO = args["end_iso8601"] as? String
+      else {
+        return ["error": "Missing required arguments: summary, start_iso8601, end_iso8601"]
+      }
+      let timeZone = args["time_zone"] as? String ?? TimeZone.current.identifier
+      do {
+        let result = try await GoogleCalendarAPIClient.shared.createEvent(
+          summary: summary, startISO: startISO, endISO: endISO, timeZone: timeZone)
+        return result
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar create failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
 
     default:
       return ["error": "Unknown tool: \(name)"]

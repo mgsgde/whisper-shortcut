@@ -23,6 +23,10 @@ struct OpenGeminiSettingsTab: View {
 
       SpacedSectionDivider()
 
+      GoogleCalendarConnectionSection()
+
+      SpacedSectionDivider()
+
       usageSection
     }
   }

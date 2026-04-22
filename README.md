@@ -1,6 +1,6 @@
 # WhisperShortcut
 
-**Speech-to-Text** and **Voice-to-Prompt** shortcut for macOS with **Google Gemini** and **Offline Whisper** support
+**Speech-to-Text**, **Voice-to-Prompt**, and **Gemini Chat** for macOS with **Google Gemini** and **Offline Whisper** support
 
 📺 **[Watch Demo Video](https://youtu.be/ZaD2iSZ0Y2M)**
 
@@ -55,17 +55,29 @@ Combine AI prompting with text-to-speech in one workflow:
 2. **Press Shortcut** - Start recording your voice instruction
 3. **Process & Read** - Gemini processes your voice instruction and selected text, then reads the result aloud automatically
 
+### Gemini Chat
+
+A dedicated chat window for multi-turn conversations with Gemini (separate from voice dictation):
+
+1. **Open** - Choose **Open Gemini** from the menu bar (you can set a keyboard shortcut in Settings)
+2. **Chat** - Type messages, use multiple tabs for separate threads, and pick the model in Settings (Open Gemini tab) or with slash commands such as `/model`
+3. **Images** - Attach images from the input area, or use **Gemini → Capture Screenshot** (e.g. **⇧⌘S**) to send a screen capture to the model
+4. **Tools** - The model can use controlled helpers: read or write the clipboard, and open `http`/`https` links in your default browser
+
+Requires a Gemini API key (Settings → General). Chats are persisted on your Mac so you can pick up where you left off.
+
 ### Live Meeting Transcription
 
-Real-time transcription that streams into a text file as you speak (e.g. for meetings or calls):
+Real-time meeting transcription inside the app (e.g. for calls or meetings):
 
-1. **Start** - Click "Transcribe Meeting" in the menu bar (requires Gemini API key)
-2. **File Opens** - A transcript file is created at `~/Documents/WhisperShortcut/Meeting-<timestamp>.txt` and opens in your default editor
-3. **Streaming** - Audio is recorded in chunks (e.g. every 15 seconds), transcribed with Gemini, and appended to the file
-4. **Optional Timestamps** - Enable `[MM:SS]` markers in Settings → Live Meeting
-5. **Stop** - Click "Stop Transcribe Meeting" when done
+1. **Open Meeting** - From the menu bar, choose **Open Meeting** (or use its shortcut)
+2. **New Meeting** - In the Meeting window, click **New Meeting** to start recording (requires a Gemini API key). The transcript appears in the Meeting view as chunks complete
+3. **Streaming** - Audio is recorded in timed segments (default interval configurable in **Settings → Live Meeting**), each segment is transcribed with Gemini, and text is appended in the UI
+4. **Save & library** - Transcripts are saved as text files under the app’s Application Support folder (meeting library). Use **Open Meeting** in the toolbar to browse past meetings when no live session is running
+5. **Optional timestamps** - Enable `[MM:SS]` markers in **Settings → Live Meeting**
+6. **End Meeting** - Click **End Meeting**, optionally name the file, or discard the transcript from the same flow
 
-Use the live transcript with AI assistants in your editor (e.g. Cursor) while the meeting runs.
+You can keep the Meeting window visible alongside other apps while you work.
 
 ### Smart Improvement
 
@@ -73,8 +85,9 @@ You can improve your system prompts and user context in two ways:
 
 1. **Improve from usage** – **Save usage data** is on by default; the app stores interaction logs (what you dictated, which mode you used). When you have enough data, click **"Improve from usage"** in Settings → Smart Improvement. Gemini (model selectable in Settings) analyzes your logs and suggests updates for: **User Context** (language, topics, style), **Dictation** (Speech-to-Text system prompt), **Dictate Prompt** system prompt, and **Prompt & Read** system prompt. Suggestions are applied automatically; a popup tells you what was improved. Check the relevant settings tabs to review or edit.
 2. **Improve from voice** – Use the **Improve from voice** shortcut (e.g. Cmd+6). Record a voice instruction (e.g. "always add bullet points", "I work in legal"); the app transcribes it and updates system prompts accordingly. No interaction logs required.
+3. **Automatic Improve from usage** (optional) – In the same Smart Improvement section, set **Run Improve from usage automatically** to an interval (or Off). When enabled, the app can run **Improve from usage** in the background on that schedule while the app is open.
 
-**Settings** (Settings → Smart Improvement): **Save usage data** (on by default), **model** (default: Gemini 3 Flash), and the **Improve from voice** shortcut. The same model is used for "Generate with AI" in the prompt and user-context settings.
+**Settings** (Settings → Smart Improvement): **Save usage data** (on by default), **Run Improve from usage automatically**, **model** (default: Gemini 3 Flash), and the **Improve from voice** shortcut. The same model is used for "Generate with AI" in the prompt and user-context settings.
 
 ## Installation
 
@@ -102,12 +115,13 @@ bash install.sh
 - **Voice-to-Prompt Mode**: Speak instructions to modify selected clipboard text using Gemini AI
 - **Read Aloud Mode**: Text-to-speech functionality to read selected text aloud with AI voices
 - **Prompt & Read Mode**: Combined workflow that processes text with AI and reads the result aloud
+- **Gemini Chat**: Multi-tab chat window with Gemini, image attachments, screen capture to chat, slash commands (e.g. `/model`), persisted sessions, and safe local tools (clipboard read/write, open browser links)
 - **Offline Support (Privacy Mode)**: Use local Whisper models for completely offline transcription
 - **Smart Clipboard Integration**: Automatic copy to clipboard for transcription and prompt modes
-- **Customizable Shortcuts**: Configurable keyboard shortcuts for each mode
+- **Customizable Shortcuts**: Configurable keyboard shortcuts for each mode (including Open Gemini and Open Meeting)
 - **Multiple TTS Models & Voices**: Choose from Gemini 2.5 Flash/Pro TTS models and 10 AI voices (e.g. Charon, Puck, Kore)
-- **Live Meeting Transcription**: Real-time transcription streamed to a text file; configurable chunk interval and timestamps; file opens in your default editor
-- **Smart Improvement**: Manual system prompt and user context improvements via "Improve from usage" (requires enabling "Save usage data") or "Improve from voice" shortcut; suggestions applied automatically; review or edit in the relevant settings tabs
+- **Live Meeting Transcription**: Real-time transcription in the Meeting window; transcripts saved for the meeting library; configurable chunk interval and optional timestamps
+- **Smart Improvement**: System prompt and user context improvements via "Improve from usage" (with optional automatic scheduling), "Improve from voice" shortcut, or manual review in settings; suggestions applied automatically when you run improvement
 
 ## Development
 
@@ -115,7 +129,7 @@ bash install.sh
 
 - macOS 15.5+
 - Xcode 16.0+
-- Gemini API key (required only for cloud transcription and prompt mode; optional for offline Whisper transcription)
+- Gemini API key (required for cloud transcription, prompt workflows, Gemini Chat, and Live Meeting; optional for offline Whisper-only transcription)
 
 ## License
 

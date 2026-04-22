@@ -17,6 +17,10 @@ protocol KeychainManaging {
   func getXAIAPIKey() -> String?
   func deleteXAIAPIKey() -> Bool
   func hasValidXAIAPIKey() -> Bool
+  func saveGoogleCalendarRefreshToken(_ token: String) -> Bool
+  func getGoogleCalendarRefreshToken() -> String?
+  func deleteGoogleCalendarRefreshToken() -> Bool
+  func hasGoogleCalendarRefreshToken() -> Bool
 }
 
 class KeychainManager: KeychainManaging {
@@ -28,11 +32,13 @@ class KeychainManager: KeychainManaging {
     static let accountName = "api-key"
     static let googleAccountName = "google-api-key"
     static let xaiAccountName = "xai-api-key"
+    static let googleCalendarRefreshTokenAccountName = "google-calendar-refresh-token"
   }
 
   private var cachedAPIKey: String?
   private var cachedGoogleAPIKey: String?
   private var cachedXAIAPIKey: String?
+  private var cachedGoogleCalendarRefreshToken: String?
 
   private init() {}
 
@@ -178,5 +184,23 @@ class KeychainManager: KeychainManaging {
   func hasValidXAIAPIKey() -> Bool {
     guard let key = getXAIAPIKey() else { return false }
     return !key.isEmpty
+  }
+
+  // MARK: - Google Calendar Refresh Token Management
+
+  func saveGoogleCalendarRefreshToken(_ token: String) -> Bool {
+    return saveKey(token, accountName: Constants.googleCalendarRefreshTokenAccountName, cache: &cachedGoogleCalendarRefreshToken)
+  }
+
+  func getGoogleCalendarRefreshToken() -> String? {
+    return getKey(accountName: Constants.googleCalendarRefreshTokenAccountName, cache: &cachedGoogleCalendarRefreshToken)
+  }
+
+  func deleteGoogleCalendarRefreshToken() -> Bool {
+    return deleteKey(accountName: Constants.googleCalendarRefreshTokenAccountName, cache: &cachedGoogleCalendarRefreshToken)
+  }
+
+  func hasGoogleCalendarRefreshToken() -> Bool {
+    return hasKey(accountName: Constants.googleCalendarRefreshTokenAccountName, cache: cachedGoogleCalendarRefreshToken)
   }
 }

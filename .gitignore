@@ -131,12 +131,11 @@ website/node_modules/
 
 test-config
 
-# Documentation (local/generated)
-docs/
-
 # Todo files
 todo*.md
 
 developer-id-cert.p12
 .env
-.claude/settings.local.json
+
+# Track despite common global gitignore (**/.claude/settings.local.json)
+!.claude/settings.local.json
