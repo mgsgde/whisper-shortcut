@@ -1,4 +1,4 @@
-# WhisperShortcut 6.11.0
+# WhisperShortcut 6.11.1
 
 ## Installation
 
@@ -6,9 +6,12 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-- **Gemini chat — text selection**: Assistant replies now use a single selectable prose region so you can drag to select and copy across multiple paragraphs, bullet lists, and horizontal rules. Tables, fenced code blocks, and images stay as separate controls so markdown layout and the code copy button behave as before.
-- **Polish**: Heading section dividers and markdown-style separators reuse the same horizontal rule characters as elsewhere in the app for a consistent look.
+- **BYOK-only**: Subscriptions are removed. The app is built around bringing your own Google API key so you stay in control of billing and usage.
+- **Meeting transcription**: Smarter diarization with silence-based chunking and post-processing that consolidates speaker labels for clearer transcripts.
+- **Gemini chat**: Markdown code blocks that wrap structured Q&A answers are unwrapped so the content reads naturally in the chat UI.
+- **Open Gemini**: The sidebar session list is inset from the left edge for a cleaner layout.
+- **Defaults for new installs**: Auto-paste after dictation, saving usage data, and screen context in Prompt Mode are enabled by default so first-run setup matches how most people use the app.
 
 ## Full changelog
 
-[Compare v6.10.0…v6.11.0](https://github.com/mgsgde/whisper-shortcut/compare/v6.10.0...v6.11.0)
+[Compare v6.11.0…v6.11.1](https://github.com/mgsgde/whisper-shortcut/compare/v6.11.0...v6.11.1)
