@@ -72,9 +72,9 @@ struct SpeechErrorFormatter {
       return """
         ❌ Model No Longer Available
 
-        The requested resource was not found. This can happen if the selected model is deprecated and no longer available for your account (e.g. Gemini 2.0 Flash).
+        The requested resource was not found. This can happen if the selected model is no longer available.
 
-        Choose a newer model in Settings → Dictate (e.g. Gemini 2.5 Flash).
+        Choose a different model in Settings → Dictate (e.g. Gemini 2.5 Flash).
         """
 
     case .rateLimited(let retryAfter, let topUpURL):

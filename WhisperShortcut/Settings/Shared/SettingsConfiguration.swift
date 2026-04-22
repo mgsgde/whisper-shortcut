@@ -172,10 +172,8 @@ enum PromptModel: String, CaseIterable {
   /// Maps removed `PromptModel` raw values so `PromptModel(rawValue:)` succeeds after enum case removal.
   static func migrateLegacyPromptRawValue(_ raw: String) -> String {
     switch raw {
-    case "gemini-2.0-flash":
-      return Self.gemini25Flash.rawValue
-    case "gemini-2.0-flash-lite":
-      return Self.gemini25FlashLite.rawValue
+    case "gemini-2.0-flash", "gemini-2.0-flash-lite":
+      return Self.gemini31FlashLite.rawValue
     default:
       return raw
     }

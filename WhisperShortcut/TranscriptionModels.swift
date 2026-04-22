@@ -156,13 +156,9 @@ enum TranscriptionModel: String, CaseIterable {
     guard let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) else {
       return SettingsDefaults.selectedTranscriptionModel
     }
-    if savedModelString == "gemini-2.0-flash" {
-      UserDefaults.standard.set(TranscriptionModel.gemini25Flash.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
-      return .gemini25Flash
-    }
-    if savedModelString == "gemini-2.0-flash-lite" {
-      UserDefaults.standard.set(TranscriptionModel.gemini25FlashLite.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
-      return .gemini25FlashLite
+    if savedModelString == "gemini-2.0-flash" || savedModelString == "gemini-2.0-flash-lite" {
+      UserDefaults.standard.set(TranscriptionModel.gemini31FlashLite.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
+      return .gemini31FlashLite
     }
     if let savedModel = TranscriptionModel(rawValue: savedModelString) {
       return savedModel
@@ -178,13 +174,9 @@ enum TranscriptionModel: String, CaseIterable {
     guard let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) else {
       return loadSelected()
     }
-    if savedModelString == "gemini-2.0-flash" {
-      UserDefaults.standard.set(TranscriptionModel.gemini25Flash.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
-      return .gemini25Flash
-    }
-    if savedModelString == "gemini-2.0-flash-lite" {
-      UserDefaults.standard.set(TranscriptionModel.gemini25FlashLite.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
-      return .gemini25FlashLite
+    if savedModelString == "gemini-2.0-flash" || savedModelString == "gemini-2.0-flash-lite" {
+      UserDefaults.standard.set(TranscriptionModel.gemini31FlashLite.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
+      return .gemini31FlashLite
     }
     if let savedModel = TranscriptionModel(rawValue: savedModelString) {
       return savedModel

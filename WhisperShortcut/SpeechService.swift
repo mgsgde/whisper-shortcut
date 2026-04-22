@@ -453,8 +453,7 @@ class SpeechService {
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = geminiClient.getMimeType(for: fileExtension)
 
-    // Use Gemini 2.5 Flash for fast, cheap transcription (full URL required by createRequest)
-    let endpoint = TranscriptionModel.gemini25Flash.apiEndpoint
+    let endpoint = TranscriptionModel.gemini31FlashLite.apiEndpoint
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
     let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
     var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
