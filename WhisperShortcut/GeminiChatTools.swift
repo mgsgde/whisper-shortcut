@@ -155,6 +155,20 @@ enum GeminiChatToolRegistry {
         "required": ["task_id"],
       ],
     ],
+    [
+      "name": "google_tasks_delete",
+      "description": "Deletes a Google Task permanently. Requires the task_id from google_tasks_list. Always confirm with the user before deleting.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "task_id": [
+            "type": "string",
+            "description": "The ID of the task to delete (from google_tasks_list results).",
+          ],
+        ] as [String: Any],
+        "required": ["task_id"],
+      ],
+    ],
   ]
 
   static func allDeclarations(calendarConnected: Bool) -> [[String: Any]] {
@@ -272,6 +286,21 @@ enum GeminiChatToolRegistry {
         return result
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: tasks complete failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "google_tasks_delete":
+      guard GoogleCalendarOAuthService.shared.isConnected else {
+        return ["error": "Google account is not connected. Connect it in Settings."]
+      }
+      guard let taskId = args["task_id"] as? String else {
+        return ["error": "Missing required argument: task_id"]
+      }
+      do {
+        let result = try await GoogleTasksAPIClient.shared.deleteTask(taskId: taskId)
+        return result
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks delete failed: \(error.localizedDescription)")
         return ["error": error.localizedDescription]
       }
 

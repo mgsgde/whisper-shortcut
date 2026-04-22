@@ -85,6 +85,14 @@ actor GoogleTasksAPIClient {
     return ["ok": true, "task_id": taskId, "status": json["status"] as? String ?? "completed"]
   }
 
+  // MARK: - Delete Task
+
+  func deleteTask(taskId: String, taskListId: String = "@default") async throws -> [String: Any] {
+    let url = URL(string: "\(baseURL)/lists/\(taskListId)/tasks/\(taskId)")!
+    _ = try await authorizedRequest(url: url, httpMethod: "DELETE")
+    return ["ok": true, "task_id": taskId, "deleted": true]
+  }
+
   // MARK: - Authorized Request
 
   private func authorizedRequest(url: URL, httpMethod: String, body: Data? = nil) async throws -> Data {
