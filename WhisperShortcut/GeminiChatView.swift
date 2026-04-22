@@ -109,6 +109,8 @@ class GeminiChatViewModel: ObservableObject {
   private static let modelCommand = "/model"
   private static let grokCommand = "/grok"
   private static let geminiCommand = "/gemini"
+  private static let connectCalendarCommand = "/connect-calendar"
+  private static let disconnectCalendarCommand = "/disconnect-calendar"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -120,7 +122,9 @@ class GeminiChatViewModel: ObservableObject {
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
-    ("/stop", "Stop sending (while a message is being sent)")
+    ("/stop", "Stop sending (while a message is being sent)"),
+    ("/connect-calendar", "Connect Google Calendar to enable calendar tools"),
+    ("/disconnect-calendar", "Disconnect Google Calendar"),
   ]
 
   /// Commands to show in UI (excludes /new when single-chat mode).
@@ -209,6 +213,14 @@ class GeminiChatViewModel: ObservableObject {
 
     // Bare slash commands — never carry attachments, never queue.
     if attachedParts.isEmpty && !finalContent.contains("<pasted_") {
+      if lower == Self.connectCalendarCommand {
+        await handleConnectCalendar()
+        return
+      }
+      if lower == Self.disconnectCalendarCommand {
+        handleDisconnectCalendar()
+        return
+      }
       if lower == Self.newChatCommand || lower == Self.screenshotCommand
           || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
           || lower == Self.grokCommand || lower == Self.geminiCommand {
@@ -514,6 +526,18 @@ class GeminiChatViewModel: ObservableObject {
       return
     }
 
+    // Calendar commands
+    if lower == Self.connectCalendarCommand {
+      inputText = ""
+      await handleConnectCalendar()
+      return
+    }
+    if lower == Self.disconnectCalendarCommand {
+      inputText = ""
+      handleDisconnectCalendar()
+      return
+    }
+
     // Slash commands: always immediate, never queued
     if lower == Self.newChatCommand || lower == Self.screenshotCommand
         || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
@@ -775,6 +799,31 @@ class GeminiChatViewModel: ObservableObject {
     UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
     appendModelMessage("Model set to **\(migrated.displayName)**.")
     DebugLogger.log("GEMINI-CHAT: switchToModel \(migrated.displayName)")
+  }
+
+  @MainActor
+  private func handleConnectCalendar() async {
+    if GoogleCalendarOAuthService.shared.isConnected {
+      appendModelMessage("Google Calendar is already connected. Use `/disconnect-calendar` to disconnect.")
+      return
+    }
+    appendModelMessage("Opening Google sign-in...")
+    do {
+      try await GoogleCalendarOAuthService.shared.startAuthorization()
+      appendModelMessage("Google Calendar connected. You can now ask about your schedule or create events.")
+    } catch {
+      appendModelMessage("Failed to connect Google Calendar: \(error.localizedDescription)")
+    }
+  }
+
+  @MainActor
+  private func handleDisconnectCalendar() {
+    guard GoogleCalendarOAuthService.shared.isConnected else {
+      appendModelMessage("Google Calendar is not connected. Use `/connect-calendar` to connect.")
+      return
+    }
+    GoogleCalendarOAuthService.shared.disconnect()
+    appendModelMessage("Google Calendar disconnected.")
   }
 
   // MARK: - Tab navigation
@@ -1507,7 +1556,8 @@ struct GeminiInputAreaView: View {
   private static let knownSlashCommands: Set<String> = [
     "/new", "/screenshot",
     "/settings", "/pin", "/unpin", "/stop",
-    "/grok", "/gemini"
+    "/grok", "/gemini",
+    "/connect-calendar", "/disconnect-calendar"
   ]
 
   /// Sends the current composer contents. Recognized slash commands strip just
