@@ -394,7 +394,7 @@ final class GrokChatProvider: LLMChatProvider {
                 let resp = fr["response"] as? [String: Any] else { continue }
           let respJSON = (try? JSONSerialization.data(withJSONObject: resp))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-          let callId = fr["call_id"] as? String ?? "call_\(name)"
+          let callId = part["callId"] as? String ?? "call_\(name)"
           input.append([
             "type": "function_call_output",
             "call_id": callId,
