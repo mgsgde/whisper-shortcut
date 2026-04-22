@@ -631,7 +631,7 @@ class GeminiChatViewModel: ObservableObject {
       text = "\(text)\n\n---\n\n[Meeting context for calibration only — do not reference directly]\n\(extra)"
     }
     if GoogleCalendarOAuthService.shared.isConnected {
-      text += "\n\nYou have access to google_calendar_list_events and google_calendar_create_event tools. Use the user's local time zone (\(TimeZone.current.identifier)) when creating events. Always confirm event details with the user before creating."
+      text += "\n\nYou have access to Google Calendar tools (google_calendar_list_events, google_calendar_create_event) and Google Tasks tools (google_tasks_list, google_tasks_create, google_tasks_complete). Use the user's local time zone (\(TimeZone.current.identifier)) when creating events. Always confirm details with the user before creating events or tasks."
     }
     return ["parts": [["text": text]]]
   }
@@ -2825,7 +2825,9 @@ private struct MessageBubbleView: View {
       if !message.sources.isEmpty {
         sourcesView
       }
-      if !isUser {
+      if isUser {
+        userCopyButtonRow
+      } else {
         readAloudButtonRow
       }
     }
@@ -2884,6 +2886,19 @@ private struct MessageBubbleView: View {
         content: message.content,
         sources: message.sources,
         groundingSupports: message.groundingSupports)
+    }
+  }
+
+  private var userCopyButtonRow: some View {
+    let parsed = parseUserMessagePastedXML(message.content)
+    let text = parsed.userText.trimmingCharacters(in: .whitespacesAndNewlines)
+    return Group {
+      if !text.isEmpty {
+        HStack(spacing: 8) {
+          CopyReplyButtonView(messageContent: text)
+        }
+        .padding(.top, 4)
+      }
     }
   }
 

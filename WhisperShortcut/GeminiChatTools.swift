@@ -101,9 +101,65 @@ enum GeminiChatToolRegistry {
     ],
   ]
 
+  static let tasksFunctionDeclarations: [[String: Any]] = [
+    [
+      "name": "google_tasks_list",
+      "description": "Lists the user's Google Tasks. Use when the user asks about their to-do list, tasks, or things to do.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "max_results": [
+            "type": "integer",
+            "description": "Maximum number of tasks to return (1-100, default 20).",
+          ],
+          "show_completed": [
+            "type": "boolean",
+            "description": "Whether to include completed tasks (default false).",
+          ],
+        ] as [String: Any],
+      ],
+    ],
+    [
+      "name": "google_tasks_create",
+      "description": "Creates a new Google Task. Use when the user asks to add a task, to-do, or reminder.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "title": [
+            "type": "string",
+            "description": "Title of the task.",
+          ],
+          "notes": [
+            "type": "string",
+            "description": "Optional notes or details for the task.",
+          ],
+          "due": [
+            "type": "string",
+            "description": "Optional due date in ISO 8601 format (e.g. 2026-04-23T00:00:00Z).",
+          ],
+        ] as [String: Any],
+        "required": ["title"],
+      ],
+    ],
+    [
+      "name": "google_tasks_complete",
+      "description": "Marks a Google Task as completed. Requires the task_id from google_tasks_list.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "task_id": [
+            "type": "string",
+            "description": "The ID of the task to complete (from google_tasks_list results).",
+          ],
+        ] as [String: Any],
+        "required": ["task_id"],
+      ],
+    ],
+  ]
+
   static func allDeclarations(calendarConnected: Bool) -> [[String: Any]] {
     if calendarConnected {
-      return functionDeclarations + calendarFunctionDeclarations
+      return functionDeclarations + calendarFunctionDeclarations + tasksFunctionDeclarations
     }
     return functionDeclarations
   }
@@ -168,6 +224,54 @@ enum GeminiChatToolRegistry {
         return result
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: calendar create failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "google_tasks_list":
+      guard GoogleCalendarOAuthService.shared.isConnected else {
+        return ["error": "Google account is not connected. Connect it in Settings."]
+      }
+      let maxResults = args["max_results"] as? Int ?? 20
+      let showCompleted = args["show_completed"] as? Bool ?? false
+      do {
+        let tasks = try await GoogleTasksAPIClient.shared.listTasks(
+          maxResults: maxResults, showCompleted: showCompleted)
+        return ["tasks": tasks, "count": tasks.count]
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "google_tasks_create":
+      guard GoogleCalendarOAuthService.shared.isConnected else {
+        return ["error": "Google account is not connected. Connect it in Settings."]
+      }
+      guard let title = args["title"] as? String else {
+        return ["error": "Missing required argument: title"]
+      }
+      let notes = args["notes"] as? String
+      let due = args["due"] as? String
+      do {
+        let result = try await GoogleTasksAPIClient.shared.createTask(
+          title: title, notes: notes, due: due)
+        return result
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks create failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "google_tasks_complete":
+      guard GoogleCalendarOAuthService.shared.isConnected else {
+        return ["error": "Google account is not connected. Connect it in Settings."]
+      }
+      guard let taskId = args["task_id"] as? String else {
+        return ["error": "Missing required argument: task_id"]
+      }
+      do {
+        let result = try await GoogleTasksAPIClient.shared.completeTask(taskId: taskId)
+        return result
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks complete failed: \(error.localizedDescription)")
         return ["error": error.localizedDescription]
       }
 

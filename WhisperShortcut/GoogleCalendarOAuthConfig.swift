@@ -23,7 +23,7 @@ enum GoogleCalendarOAuthConfig {
     return scheme
   }
 
-  static let scope = "https://www.googleapis.com/auth/calendar.events"
+  static let scope = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks"
   static let authorizationEndpoint = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
   static let tokenEndpoint = URL(string: "https://oauth2.googleapis.com/token")!
 }
