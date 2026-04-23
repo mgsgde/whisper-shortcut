@@ -126,19 +126,19 @@ struct ChatSession: Codable {
   var messages: [ChatMessage]
   var title: String?
   var archived: Bool
+  var pinned: Bool
 
-  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false) {
+  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false) {
     self.id = id
     self.lastUpdated = lastUpdated
     self.messages = messages
     self.title = title
     self.archived = archived
+    self.pinned = pinned
   }
 
-  // Custom decoder so existing on-disk sessions that still contain a legacy
-  // `sessionMemory` field decode cleanly (the value is dropped).
   private enum CodingKeys: String, CodingKey {
-    case id, lastUpdated, messages, title, archived
+    case id, lastUpdated, messages, title, archived, pinned
   }
 
   init(from decoder: Decoder) throws {
@@ -148,6 +148,7 @@ struct ChatSession: Codable {
     messages = try c.decode([ChatMessage].self, forKey: .messages)
     title = try c.decodeIfPresent(String.self, forKey: .title)
     archived = try c.decodeIfPresent(Bool.self, forKey: .archived) ?? false
+    pinned = try c.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
   }
 }
 
@@ -353,6 +354,25 @@ class GeminiChatSessionStore {
     loadFile().sessions.filter { $0.archived }.sorted { $0.lastUpdated > $1.lastUpdated }
   }
 
+  /// Returns all sessions (active + archived) for sidebar display, sorted by lastUpdated descending.
+  func allSessions() -> [ChatSession] {
+    loadFile().sessions.sorted { $0.lastUpdated > $1.lastUpdated }
+  }
+
+  func pinSession(id: UUID) {
+    var file = loadFile()
+    guard let idx = file.sessions.firstIndex(where: { $0.id == id }) else { return }
+    file.sessions[idx].pinned = true
+    saveSessionsFile(file)
+  }
+
+  func unpinSession(id: UUID) {
+    var file = loadFile()
+    guard let idx = file.sessions.firstIndex(where: { $0.id == id }) else { return }
+    file.sessions[idx].pinned = false
+    saveSessionsFile(file)
+  }
+
   /// Reorders the tab strip so that `id` ends up at `targetIndex` in the
   /// canonical `recentSessions(limit:)` order. Persists the new order under
   /// `tabOrder`. No-op if `id` is unknown.
@@ -380,6 +400,24 @@ class GeminiChatSessionStore {
       switchToNextBestSession(in: &file)
     }
     saveSessionsFile(file)
+  }
+
+  /// Deletes all non-pinned sessions whose lastUpdated is strictly older than the given date.
+  /// Returns the number of deleted sessions.
+  @discardableResult
+  func deleteOlderSessions(than date: Date) -> Int {
+    var file = loadFile()
+    let toDelete = file.sessions.filter { !$0.pinned && $0.lastUpdated < date }
+    guard !toDelete.isEmpty else { return 0 }
+    let deleteIds = Set(toDelete.map { $0.id })
+    file.sessions.removeAll { deleteIds.contains($0.id) }
+    file.tabOrder?.removeAll { deleteIds.contains($0) }
+    if deleteIds.contains(file.currentSessionId) {
+      switchToNextBestSession(in: &file)
+    }
+    saveSessionsFile(file)
+    DebugLogger.log("GEMINI-CHAT: Deleted \(deleteIds.count) older session(s)")
+    return deleteIds.count
   }
 
   /// Archives a session (sets archived = true). Removes from tab order.
@@ -443,10 +481,14 @@ class GeminiChatSessionStore {
     }
   }
 
-  /// Switches to an existing session via tab click.
+  /// Switches to an existing session via tab click or sidebar click.
+  /// Un-archives if needed so the session reappears in the tab bar.
   func switchToSession(id: UUID) {
     var file = loadFile()
-    guard file.sessions.contains(where: { $0.id == id }), id != file.currentSessionId else { return }
+    guard let idx = file.sessions.firstIndex(where: { $0.id == id }), id != file.currentSessionId else { return }
+    if file.sessions[idx].archived {
+      file.sessions[idx].archived = false
+    }
     file.currentSessionId = id
     saveSessionsFile(file)
   }

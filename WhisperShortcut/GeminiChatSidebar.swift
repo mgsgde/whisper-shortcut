@@ -8,6 +8,7 @@ struct GeminiChatSidebar: View {
 
   @State private var hoveredRowId: UUID? = nil
   @State private var deletingSessionId: UUID? = nil
+  @State private var deletingOlderThanSession: ChatSession? = nil
 
   static let sidebarWidth: CGFloat = 220
 
@@ -54,9 +55,17 @@ struct GeminiChatSidebar: View {
       Divider()
       ScrollView(.vertical, showsIndicators: true) {
         VStack(spacing: 0) {
-          let active = viewModel.recentSessions
-          let archived = viewModel.archivedSessionsList
-          let grouped = groupedSessions(active)
+          let all = viewModel.allSessionsList
+          let pinned = all.filter { $0.pinned }.sorted { $0.lastUpdated > $1.lastUpdated }
+          let unpinned = all.filter { !$0.pinned }
+          let grouped = groupedSessions(unpinned)
+
+          if !pinned.isEmpty {
+            sectionHeader("Pinned")
+            ForEach(pinned, id: \.id) { session in
+              sidebarRow(session: session)
+            }
+          }
 
           ForEach(Array(grouped.enumerated()), id: \.offset) { _, pair in
             sectionHeader(pair.0.label)
@@ -64,19 +73,7 @@ struct GeminiChatSidebar: View {
               sidebarRow(session: session)
             }
           }
-
-          if !archived.isEmpty {
-            if !active.isEmpty {
-              Divider()
-                .padding(.top, 8)
-            }
-            sectionHeader("Archive")
-            ForEach(archived, id: \.id) { session in
-              sidebarRow(session: session)
-            }
-          }
         }
-        // Inset session list from the sidebar edge; rows use maxWidth so hover fills this column.
         .padding(.leading, 10)
         .padding(.bottom, 8)
       }
@@ -99,6 +96,23 @@ struct GeminiChatSidebar: View {
       }
     } message: {
       Text("This chat will be permanently deleted. This action cannot be undone.")
+    }
+    .alert(
+      "Delete older chats?",
+      isPresented: Binding(
+        get: { deletingOlderThanSession != nil },
+        set: { if !$0 { deletingOlderThanSession = nil } }
+      )
+    ) {
+      Button("Cancel", role: .cancel) { deletingOlderThanSession = nil }
+      Button("Delete", role: .destructive) {
+        if let s = deletingOlderThanSession {
+          viewModel.deleteOlderSessions(than: s.lastUpdated)
+          deletingOlderThanSession = nil
+        }
+      }
+    } message: {
+      Text("All chats older than this one will be permanently deleted. Pinned chats are kept.")
     }
   }
 
@@ -147,7 +161,7 @@ struct GeminiChatSidebar: View {
   private func sidebarRow(session: ChatSession) -> some View {
     let isActive = session.id == viewModel.currentSessionId
     let isHovered = hoveredRowId == session.id
-    let isArchived = session.archived
+    let isPinned = session.pinned
     let rawTitle: String = {
       if let t = session.title, !t.isEmpty {
         let stripped = unwrapUserMessageTypedByUser(t)
@@ -181,58 +195,24 @@ struct GeminiChatSidebar: View {
         .padding(.vertical, 8)
 
       Spacer(minLength: 4)
-
-      if isHovered {
-        hoverActionIcon(session: session, isArchived: isArchived)
-          .padding(.trailing, 6)
-      }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(rowBg)
     .contentShape(Rectangle())
     .onTapGesture {
-      DebugLogger.log("SIDEBAR: row tap id=\(session.id) archived=\(isArchived)")
+      DebugLogger.log("SIDEBAR: row tap id=\(session.id)")
       viewModel.switchToSession(id: session.id)
     }
     .onHover { over in hoveredRowId = over ? session.id : nil }
     .contextMenu {
-      if isArchived {
-        Button("Restore chat") { viewModel.restoreSession(id: session.id) }
+      if isPinned {
+        Button("Unpin chat") { viewModel.unpinSession(id: session.id) }
       } else {
-        Button("Archive chat") { viewModel.archiveSession(id: session.id) }
-        Button("Archive older chats") { viewModel.archiveOlderSessions(than: session.lastUpdated) }
+        Button("Pin chat") { viewModel.pinSession(id: session.id) }
       }
       Divider()
       Button("Delete chat\u{2026}", role: .destructive) { deletingSessionId = session.id }
-    }
-  }
-
-  // MARK: - Hover action icon
-
-  @ViewBuilder
-  private func hoverActionIcon(session: ChatSession, isArchived: Bool) -> some View {
-    if isArchived {
-      Image(systemName: "arrow.uturn.left")
-        .font(.system(size: 10, weight: .medium))
-        .foregroundColor(GeminiChatTheme.secondaryText)
-        .frame(width: 20, height: 20)
-        .contentShape(Rectangle())
-        .highPriorityGesture(TapGesture().onEnded {
-          DebugLogger.log("SIDEBAR: restore icon tap id=\(session.id)")
-          viewModel.restoreSession(id: session.id)
-        })
-        .help("Restore chat")
-    } else {
-      Image(systemName: "archivebox")
-        .font(.system(size: 10, weight: .medium))
-        .foregroundColor(GeminiChatTheme.secondaryText)
-        .frame(width: 20, height: 20)
-        .contentShape(Rectangle())
-        .highPriorityGesture(TapGesture().onEnded {
-          DebugLogger.log("SIDEBAR: archive icon tap id=\(session.id)")
-          viewModel.archiveSession(id: session.id)
-        })
-        .help("Archive chat")
+      Button("Delete older chats\u{2026}", role: .destructive) { deletingOlderThanSession = session }
     }
   }
 }

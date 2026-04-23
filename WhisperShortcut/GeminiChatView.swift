@@ -80,6 +80,7 @@ class GeminiChatViewModel: ObservableObject {
 
   @Published private(set) var recentSessions: [ChatSession] = []
   @Published private(set) var archivedSessionsList: [ChatSession] = []
+  @Published private(set) var allSessionsList: [ChatSession] = []
   @Published private(set) var currentSessionId: UUID = UUID()
 
   /// In-memory ring buffer of recently closed sessions for Cmd+Shift+T undo.
@@ -99,10 +100,9 @@ class GeminiChatViewModel: ObservableObject {
   func isSendingSession(_ id: UUID) -> Bool { sendingSessionIds.contains(id) }
   /// Maximum length for auto-generated session title from first user message.
   private static let maxSessionTitleLength = 50
-  /// Commands are slash-only (e.g. /stop, /new); do not use hotkeys/shortcuts for command actions.
+  /// Commands are slash-only (e.g. /new); do not use hotkeys/shortcuts for command actions.
   private static let newChatCommand = "/new"
   static let screenshotCommand = "/screenshot"
-  private static let stopCommand = "/stop"
   private static let settingsCommand = "/settings"
   private static let pinCommand = "/pin"
   private static let unpinCommand = "/unpin"
@@ -122,7 +122,6 @@ class GeminiChatViewModel: ObservableObject {
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
-    ("/stop", "Stop sending (while a message is being sent)"),
     ("/connect-calendar", "Connect Google Calendar to enable calendar tools"),
     ("/disconnect-calendar", "Disconnect Google Calendar"),
   ]
@@ -158,6 +157,7 @@ class GeminiChatViewModel: ObservableObject {
     messages = session.messages
     recentSessions = store.recentSessions(limit: 20)
     archivedSessionsList = store.archivedSessions()
+    allSessionsList = store.allSessions()
   }
 
   func createNewSession() {
@@ -205,11 +205,6 @@ class GeminiChatViewModel: ObservableObject {
   func sendComposed(typedText: String, finalContent: String, attachedParts: [AttachedImagePart]) async {
     let raw = typedText.trimmingCharacters(in: .whitespacesAndNewlines)
     let lower = raw.lowercased()
-
-    if lower == Self.stopCommand {
-      cancelSend()
-      return
-    }
 
     // Bare slash commands — never carry attachments, never queue.
     if attachedParts.isEmpty && !finalContent.contains("<pasted_") {
@@ -508,11 +503,6 @@ class GeminiChatViewModel: ObservableObject {
   func sendMessage(userInput: String? = nil) async {
     let raw = (userInput ?? inputText).trimmingCharacters(in: .whitespacesAndNewlines)
     let lower = raw.lowercased()
-    if lower == Self.stopCommand {
-      inputText = ""
-      cancelSend()
-      return
-    }
     let hasContent = !raw.isEmpty || !pendingScreenshots.isEmpty || !pendingFileAttachments.isEmpty || !pastedBlocks.isEmpty
     guard hasContent else { return }
 
@@ -722,9 +712,8 @@ class GeminiChatViewModel: ObservableObject {
     let userText = String(target.messages[0].content.prefix(400))
     let modelText = String(target.messages[1].content.prefix(400))
     let prompt = """
-      Give this conversation a two-word title that captures its core topic. \
-      Put each word on its own line. \
-      Reply with only the two words, one per line — no quotes, no punctuation, no explanation.
+      Give this conversation a short descriptive title (3–6 words) that captures its core topic. \
+      Reply with only the title on a single line — no quotes, no punctuation, no explanation.
 
       User: \(userText)
       Assistant: \(modelText)
@@ -732,15 +721,14 @@ class GeminiChatViewModel: ObservableObject {
     do {
       let raw = try await apiClient.generateText(
         model: "gemini-2.5-flash-lite", prompt: prompt, credential: credential)
-      let lines = raw
+      let title = raw
         .components(separatedBy: .newlines)
         .map {
           $0.trimmingCharacters(in: .whitespaces)
             .replacingOccurrences(of: "\"", with: "")
             .replacingOccurrences(of: "'", with: "")
         }
-        .filter { !$0.isEmpty }
-      let title = lines.prefix(2).joined(separator: "\n")
+        .first { !$0.isEmpty } ?? ""
       guard !title.isEmpty else { return }
       guard var updated = store.session(by: sessionId) else { return }
       updated.title = String(title.prefix(Self.maxSessionTitleLength))
@@ -831,6 +819,7 @@ class GeminiChatViewModel: ObservableObject {
   private func refreshRecentSessions() {
     recentSessions = store.recentSessions(limit: 20)
     archivedSessionsList = store.archivedSessions()
+    allSessionsList = store.allSessions()
   }
 
   /// Returns the sessions to display as tabs, ensuring the current session is always included.
@@ -885,6 +874,20 @@ class GeminiChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: Reopened closed tab \(s.id)")
   }
 
+  // MARK: - Pin / Unpin
+
+  func pinSession(id: UUID) {
+    store.pinSession(id: id)
+    refreshRecentSessions()
+    DebugLogger.log("SIDEBAR: Pinned session \(id)")
+  }
+
+  func unpinSession(id: UUID) {
+    store.unpinSession(id: id)
+    refreshRecentSessions()
+    DebugLogger.log("SIDEBAR: Unpinned session \(id)")
+  }
+
   // MARK: - Archive / Restore / Delete
 
   func archiveSession(id: UUID) {
@@ -919,6 +922,13 @@ class GeminiChatViewModel: ObservableObject {
     if id == session.id { switchToCurrentStoreSession() }
     else { refreshRecentSessions() }
     DebugLogger.log("SIDEBAR: Permanently deleted session \(id)")
+  }
+
+  func deleteOlderSessions(than date: Date) {
+    let count = store.deleteOlderSessions(than: date)
+    if store.load().id != session.id { switchToCurrentStoreSession() }
+    else { refreshRecentSessions() }
+    DebugLogger.log("SIDEBAR: Deleted \(count) sessions older than \(date)")
   }
 
   /// Drag-reorders the tab strip so the session with `id` lands at `targetIndex`.
@@ -1555,7 +1565,7 @@ struct GeminiInputAreaView: View {
 
   private static let knownSlashCommands: Set<String> = [
     "/new", "/screenshot",
-    "/settings", "/pin", "/unpin", "/stop",
+    "/settings", "/pin", "/unpin",
     "/grok", "/gemini",
     "/connect-calendar", "/disconnect-calendar"
   ]
