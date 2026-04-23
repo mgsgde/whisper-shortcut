@@ -481,6 +481,11 @@ class GeminiAPIClient {
           var aggregatedSources: [GroundingSource] = []
           var aggregatedSupports: [GroundingSupport] = []
           var finishReason: String?
+          // Accumulate function call parts across streaming chunks. Chunks are
+          // cumulative: each contains ALL parts so far. A new part may arrive
+          // without its thoughtSignature, which only appears in a later chunk.
+          // We keep the latest snapshot and yield everything after the stream ends.
+          var latestFunctionCallParts: [[String: Any]] = []
 
           // Decode one complete top-level JSON object from the stream.
           func processChunk(_ jsonData: Data) {
@@ -499,23 +504,16 @@ class GeminiAPIClient {
                   "GEMINI-CHAT-STREAM: usage prompt=\(usage.promptTokenCount ?? 0) output=\(usage.candidatesTokenCount ?? 0) thoughts=\(usage.thoughtsTokenCount ?? 0) total=\(total)")
               }
             }
-            // …and also parse as dict to detect functionCall parts (not in Codable model).
+            // Snapshot the function call parts from each cumulative chunk.
+            // The final chunk will have the complete set with all signatures.
             if !functionDeclarations.isEmpty,
                let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                let candidates = obj["candidates"] as? [[String: Any]],
                let content = candidates.first?["content"] as? [String: Any],
                let parts = content["parts"] as? [[String: Any]] {
-              for part in parts {
-                if let fc = part["functionCall"] as? [String: Any] ?? part["function_call"] as? [String: Any],
-                   let name = fc["name"] as? String {
-                  let args = (fc["args"] as? [String: Any]) ?? [:]
-                  // Gemini 3 requires thoughtSignature to be echoed back with the
-                  // functionCall part on the follow-up turn, or the API returns 400.
-                  let thoughtSignature = part["thoughtSignature"] as? String
-                    ?? part["thought_signature"] as? String
-                  DebugLogger.logNetwork("GEMINI-CHAT-STREAM: functionCall name=\(name) sig=\(thoughtSignature != nil ? "yes" : "no")")
-                  continuation.yield(.functionCall(name: name, args: args, thoughtSignature: thoughtSignature))
-                }
+              let fcParts = parts.filter { $0["functionCall"] != nil || $0["function_call"] != nil }
+              if !fcParts.isEmpty {
+                latestFunctionCallParts = fcParts
               }
             }
           }
@@ -570,6 +568,19 @@ class GeminiAPIClient {
             }
           }
           DebugLogger.logNetwork("GEMINI-CHAT-STREAM: stream end, totalObjects=\(chunkCount)")
+
+          // Yield accumulated function calls now that the stream is complete
+          // and all thoughtSignatures have been received.
+          for part in latestFunctionCallParts {
+            if let fc = part["functionCall"] as? [String: Any] ?? part["function_call"] as? [String: Any],
+               let name = fc["name"] as? String {
+              let args = (fc["args"] as? [String: Any]) ?? [:]
+              let thoughtSignature = part["thoughtSignature"] as? String
+                ?? part["thought_signature"] as? String
+              DebugLogger.logNetwork("GEMINI-CHAT-STREAM: functionCall name=\(name) sig=\(thoughtSignature != nil ? "yes" : "no")")
+              continuation.yield(.functionCall(name: name, args: args, thoughtSignature: thoughtSignature))
+            }
+          }
 
           if let reason = finishReason, reason != "STOP" {
             DebugLogger.logWarning("GEMINI-CHAT-STREAM: finishReason=\(reason)")

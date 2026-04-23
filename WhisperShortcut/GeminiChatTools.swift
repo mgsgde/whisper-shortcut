@@ -195,9 +195,43 @@ enum GeminiChatToolRegistry {
     ],
   ]
 
+  static let gmailFunctionDeclarations: [[String: Any]] = [
+    [
+      "name": "gmail_search",
+      "description": "Searches the user's Gmail inbox. Returns a list of matching emails with sender, subject, date, and snippet. Use when the user asks about emails, messages, or inbox contents. Supports Gmail search syntax (e.g. 'from:alice', 'is:unread', 'subject:invoice', 'newer_than:2d').",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "query": [
+            "type": "string",
+            "description": "Gmail search query (e.g. 'is:unread', 'from:boss@company.com', 'subject:meeting newer_than:7d'). Defaults to recent emails if empty.",
+          ],
+          "max_results": [
+            "type": "integer",
+            "description": "Maximum number of emails to return (1-50, default 10).",
+          ],
+        ] as [String: Any],
+      ],
+    ],
+    [
+      "name": "gmail_read",
+      "description": "Reads the full content of a specific email by its message_id (from gmail_search results). Returns subject, from, to, date, and the full body text.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "message_id": [
+            "type": "string",
+            "description": "The message ID to read (from gmail_search results).",
+          ],
+        ] as [String: Any],
+        "required": ["message_id"],
+      ],
+    ],
+  ]
+
   static func allDeclarations(calendarConnected: Bool) -> [[String: Any]] {
     if calendarConnected {
-      return functionDeclarations + calendarFunctionDeclarations + tasksFunctionDeclarations
+      return functionDeclarations + calendarFunctionDeclarations + tasksFunctionDeclarations + gmailFunctionDeclarations
     }
     return functionDeclarations
   }
@@ -343,6 +377,36 @@ enum GeminiChatToolRegistry {
         return result
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: tasks delete failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "gmail_search":
+      guard GoogleCalendarOAuthService.shared.isConnected else {
+        return ["error": "Google account is not connected. Connect it in Settings."]
+      }
+      let query = args["query"] as? String ?? ""
+      let maxResults = args["max_results"] as? Int ?? 10
+      do {
+        let messages = try await GmailAPIClient.shared.searchMessages(
+          query: query, maxResults: maxResults)
+        return ["emails": messages, "count": messages.count]
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail search failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "gmail_read":
+      guard GoogleCalendarOAuthService.shared.isConnected else {
+        return ["error": "Google account is not connected. Connect it in Settings."]
+      }
+      guard let messageId = args["message_id"] as? String else {
+        return ["error": "Missing required argument: message_id"]
+      }
+      do {
+        let message = try await GmailAPIClient.shared.readMessage(messageId: messageId)
+        return message
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail read failed: \(error.localizedDescription)")
         return ["error": error.localizedDescription]
       }
 
