@@ -613,7 +613,7 @@ class GeminiChatViewModel: ObservableObject {
   // MARK: - Private
 
   /// Returns user-visible content for the session tab title (typed text, else first pasted/selection body).
-  private static func contentForSessionTitle(_ rawContent: String) -> String {
+  static func contentForSessionTitle(_ rawContent: String) -> String {
     let parsed = parseUserMessagePastedXML(rawContent)
     if !parsed.userText.isEmpty { return parsed.userText }
     if let first = parsed.sections.first { return first.body }
@@ -2754,13 +2754,13 @@ private struct CopyReplyButtonView: View {
 
 // MARK: - User message XML (pasted blocks + typed)
 
-fileprivate struct UserMessagePastedSection: Equatable {
+struct UserMessagePastedSection: Equatable {
   let body: String
   /// True when wrapped as `<pasted_selection>` (shortcut selection); false for `<pasted_content>`.
   let isSelection: Bool
 }
 
-fileprivate func unwrapUserMessageTypedByUser(_ s: String) -> String {
+func unwrapUserMessageTypedByUser(_ s: String) -> String {
   let open = "<typed_by_user>"
   let close = "</typed_by_user>"
   guard let r1 = s.range(of: open), let r2 = s.range(of: close), r1.upperBound <= r2.lowerBound else {
@@ -2770,7 +2770,7 @@ fileprivate func unwrapUserMessageTypedByUser(_ s: String) -> String {
 }
 
 /// Strips leading `<pasted_content>` / `<pasted_selection>` blocks in order, then unwraps `<typed_by_user>`.
-fileprivate func parseUserMessagePastedXML(_ content: String) -> (sections: [UserMessagePastedSection], userText: String) {
+func parseUserMessagePastedXML(_ content: String) -> (sections: [UserMessagePastedSection], userText: String) {
   var remaining = content.trimmingCharacters(in: .whitespacesAndNewlines)
   var sections: [UserMessagePastedSection] = []
   let pasteOpen = "<pasted_content>"

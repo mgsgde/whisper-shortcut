@@ -11,18 +11,56 @@ struct GeminiChatSidebar: View {
 
   static let sidebarWidth: CGFloat = 220
 
+  private enum DateGroup: CaseIterable {
+    case today, yesterday, previous7Days, previous30Days, older
+
+    var label: String {
+      switch self {
+      case .today: return "Today"
+      case .yesterday: return "Yesterday"
+      case .previous7Days: return "Previous 7 Days"
+      case .previous30Days: return "Previous 30 Days"
+      case .older: return "Older"
+      }
+    }
+  }
+
+  private func dateGroup(for date: Date) -> DateGroup {
+    let cal = Calendar.current
+    if cal.isDateInToday(date) { return .today }
+    if cal.isDateInYesterday(date) { return .yesterday }
+    let daysAgo = cal.dateComponents([.day], from: date, to: Date()).day ?? 0
+    if daysAgo < 7 { return .previous7Days }
+    if daysAgo < 30 { return .previous30Days }
+    return .older
+  }
+
+  private func groupedSessions(_ sessions: [ChatSession]) -> [(DateGroup, [ChatSession])] {
+    let sorted = sessions.sorted { $0.lastUpdated > $1.lastUpdated }
+    var groups: [DateGroup: [ChatSession]] = [:]
+    for session in sorted {
+      let group = dateGroup(for: session.lastUpdated)
+      groups[group, default: []].append(session)
+    }
+    return DateGroup.allCases.compactMap { group in
+      guard let items = groups[group], !items.isEmpty else { return nil }
+      return (group, items)
+    }
+  }
+
   var body: some View {
     VStack(spacing: 0) {
       sidebarHeader
       Divider()
       ScrollView(.vertical, showsIndicators: true) {
         VStack(spacing: 0) {
-          let active = viewModel.recentSessions.sorted { $0.lastUpdated > $1.lastUpdated }
+          let active = viewModel.recentSessions
           let archived = viewModel.archivedSessionsList
+          let grouped = groupedSessions(active)
 
-          if !active.isEmpty {
-            sectionHeader("Chats")
-            ForEach(active, id: \.id) { session in
+          ForEach(Array(grouped.enumerated()), id: \.offset) { _, pair in
+            sectionHeader(pair.0.label)
+            ForEach(pair.1, id: \.id) { session in
               sidebarRow(session: session)
             }
           }
@@ -110,9 +148,17 @@ struct GeminiChatSidebar: View {
     let isActive = session.id == viewModel.currentSessionId
     let isHovered = hoveredRowId == session.id
     let isArchived = session.archived
-    let rawTitle = session.title.flatMap { $0.isEmpty ? nil : $0 }
-      ?? session.messages.first(where: { $0.role == .user })?.content.prefix(60).trimmingCharacters(in: .whitespacesAndNewlines)
-      ?? "New chat"
+    let rawTitle: String = {
+      if let t = session.title, !t.isEmpty {
+        let stripped = unwrapUserMessageTypedByUser(t)
+        return stripped.isEmpty ? t : stripped
+      }
+      if let firstContent = session.messages.first(where: { $0.role == .user })?.content {
+        let cleaned = GeminiChatViewModel.contentForSessionTitle(firstContent)
+        if !cleaned.isEmpty { return String(cleaned.prefix(60)) }
+      }
+      return "New chat"
+    }()
     let title = rawTitle.replacingOccurrences(of: "\n", with: " ")
 
     let rowBg: Color = isActive
