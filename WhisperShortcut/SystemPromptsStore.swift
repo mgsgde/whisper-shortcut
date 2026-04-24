@@ -20,17 +20,18 @@ enum SystemPromptSection: String, CaseIterable {
     switch self {
     case .dictation: return "=== Dictation (Speech-to-Text) ==="
     case .whisperGlossary: return "=== Whisper Glossary (Offline) ==="
-    case .promptMode: return "=== Prompt Mode ==="
+    case .promptMode: return "=== Dictate Prompt ==="
     case .promptAndRead: return "=== Prompt Read Mode ==="
-    case .geminiChat: return "=== Gemini Chat ==="
+    case .geminiChat: return "=== Chat ==="
     }
   }
 
   /// Legacy headers supported for backward compatibility when reading existing files.
   private static let legacyHeaders: [String: SystemPromptSection] = [
-    "=== Dictate Prompt ===": .promptMode,
+    "=== Prompt Mode ===": .promptMode,
     "=== Prompt & Read ===": .promptAndRead,
     "=== Prompt Voice Mode ===": .promptAndRead,
+    "=== Gemini Chat ===": .geminiChat,
   ]
 
   static func section(forHeader line: String) -> SystemPromptSection? {

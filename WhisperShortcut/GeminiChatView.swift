@@ -123,7 +123,7 @@ class GeminiChatViewModel: ObservableObject {
   static let commandSuggestions: [(command: String, description: String)] = [
     ("/new", "Start a new chat (previous chat stays in history)"),
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
-    ("/model", "Switch Open Gemini model (e.g. /model 3.1 flash lite)"),
+    ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
     ("/gemini", "Switch to Gemini 3 Flash"),
     ("/grok", "Switch to Grok 4"),
     ("/settings", "Open Settings"),
@@ -1483,7 +1483,7 @@ struct GeminiChatView: View {
     let shortcuts: [(shortcut: String, description: String)] = [
       (config.startRecording.displayString, "Speech-to-Text"),
       (config.startPrompting.displayString, "Speech-to-Prompt"),
-      (config.openGemini.displayString, "Open Gemini"),
+      (config.openGemini.displayString, "Chat"),
       (config.openSettings.displayString, "Settings"),
     ]
     return VStack(alignment: .leading, spacing: 20) {

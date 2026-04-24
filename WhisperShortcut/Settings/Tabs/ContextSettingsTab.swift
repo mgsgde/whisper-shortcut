@@ -90,7 +90,7 @@ struct ContextSettingsTab: View {
         subtitle: "All system prompts in one file. Edit the sections between the === headers. Save to apply."
       )
 
-      Text("Edit sections: Dictation (Speech-to-Text), Prompt Mode, Prompt Read Mode, Gemini Chat.")
+      Text("Edit sections: Dictation (Speech-to-Text), Dictate Prompt, Prompt Read Mode, Chat.")
         .font(.caption)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -177,7 +177,7 @@ struct ContextSettingsTab: View {
         VStack(alignment: .leading, spacing: 8) {
           Toggle("Save usage data", isOn: $saveUsageData)
             .toggleStyle(.checkbox)
-            .help("When enabled, interaction logs (dictation, prompt mode, read aloud, Open Gemini chat) are stored so \"Improve from usage\" can suggest better prompts. On by default.")
+            .help("When enabled, interaction logs (dictation, dictate prompt, read aloud, chat) are stored so \"Improve from usage\" can suggest better prompts. On by default.")
 
           HStack(alignment: .center, spacing: 12) {
             Text("Improve from usage")
@@ -276,7 +276,7 @@ struct ContextSettingsTab: View {
           .fontWeight(.semibold)
           .foregroundColor(.secondary)
           .padding(.top, 4)
-        Text("Enable \"Save usage data\" above, then use dictation or prompt mode. When you have enough data, click \"Improve from usage\" in Settings to generate suggested prompts from your interaction logs.")
+        Text("Enable \"Save usage data\" above, then use dictation or dictate prompt. When you have enough data, click \"Improve from usage\" in Settings to generate suggested prompts from your interaction logs.")
           .textSelection(.enabled)
       }
       .font(.callout)

@@ -12,7 +12,7 @@ struct ClipboardBehaviorSection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "📋 Clipboard Behavior",
-        subtitle: "Configure what happens after dictation or prompt mode completes"
+        subtitle: "Configure what happens after dictation or dictate prompt completes"
       )
 
       HStack(alignment: .center, spacing: 16) {
@@ -37,7 +37,7 @@ struct ClipboardBehaviorSection: View {
         Spacer()
       }
 
-      Text("When enabled, transcriptions and AI responses are automatically pasted at the cursor position (simulates ⌘V). Works for Dictate and Prompt Mode. Requires Accessibility permission.")
+      Text("When enabled, transcriptions and AI responses are automatically pasted at the cursor position (simulates ⌘V). Works for Dictate and Dictate Prompt. Requires Accessibility permission.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)

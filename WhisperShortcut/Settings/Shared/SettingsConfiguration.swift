@@ -507,8 +507,8 @@ enum WhisperLanguage: String, CaseIterable {
 enum SettingsTab: String, CaseIterable {
   case general = "General"
   case speechToText = "Dictate"
-  case speechToPrompt = "Prompt Mode"
-  case openGemini = "Open Gemini"
+  case speechToPrompt = "Dictate Prompt"
+  case openGemini = "Chat"
   case context = "Context"
 }
 

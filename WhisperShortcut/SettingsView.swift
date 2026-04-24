@@ -116,9 +116,9 @@ struct SettingsView: View {
     case .speechToText:
       return "Model, prompt, and shortcut"
     case .speechToPrompt:
-      return "Shortcut for prompt mode"
+      return "Shortcut for dictate prompt"
     case .openGemini:
-      return "Shortcut, model, voice, and live meeting settings"
+      return "Model, voice, and live meeting settings"
     case .context:
       return "Context data, system prompts, and improvement settings"
     }

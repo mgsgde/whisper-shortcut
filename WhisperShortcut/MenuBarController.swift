@@ -160,14 +160,14 @@ class MenuBarController: NSObject {
         shortcut: currentConfig.startRecording, tag: 101))
     menu.addItem(
       createMenuItemWithShortcut(
-        "Prompt Mode", action: #selector(togglePrompting),
+        "Dictate Prompt", action: #selector(togglePrompting),
         shortcut: currentConfig.startPrompting, tag: 102))
     menu.addItem(NSMenuItem.separator())
 
     // Gemini window
     menu.addItem(
       createMenuItemWithShortcut(
-        "Open Gemini", action: #selector(openGeminiWindow),
+        "Chat", action: #selector(openGeminiWindow),
         shortcut: currentConfig.openGemini, tag: 110))
 
 
@@ -427,7 +427,7 @@ class MenuBarController: NSObject {
     updateMenuItem(
       menu, tag: 102,
       title: (appState.recordingMode == .prompt || activeMeetingSegment == .prompt)
-        ? "Stop Prompt Mode" : "Prompt Mode",
+        ? "Stop Dictate Prompt" : "Dictate Prompt",
       enabled: appState.canStartPrompting(hasAPIKey: hasCredential, hasOfflineModel: hasOfflinePromptModel)
         || appState.recordingMode == .prompt
         || meetingAllowsActions && hasCredential

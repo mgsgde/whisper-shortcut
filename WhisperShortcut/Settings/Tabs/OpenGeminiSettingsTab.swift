@@ -53,11 +53,11 @@ struct OpenGeminiSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "⌨️ Keyboard Shortcut",
-        subtitle: "Open the Gemini chat window"
+        subtitle: "Open the chat window"
       )
 
       ShortcutInputRow(
-        label: "Open Gemini:",
+        label: "Chat:",
         placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.openGemini),
         text: $viewModel.data.openGemini,
         focusedField: .toggleGemini,
@@ -93,7 +93,7 @@ struct OpenGeminiSettingsTab: View {
   @ViewBuilder
   private var modelSection: some View {
     PromptModelSelectionView(
-      title: "Model for Open Gemini window",
+      title: "Chat model",
       subtitle: "Choose which model powers the chat. Grok models require an xAI API key (Settings > General).",
       selectedModel: $viewModel.data.selectedOpenGeminiModel,
       availableModels: PromptModel.chatModels,
@@ -299,11 +299,11 @@ struct OpenGeminiSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "📋 How to Use",
-        subtitle: "Gemini chat and live meeting"
+        subtitle: "Chat and live meeting"
       )
 
       VStack(alignment: .leading, spacing: 8) {
-        Text("Use the shortcut or the menu bar item \"Open Gemini\" to open the chat window.")
+        Text("Use the shortcut or the menu bar item \"Chat\" to open the chat window.")
           .textSelection(.enabled)
         Text("Type /meeting or use the Meeting shortcut to start/stop live meeting recording.")
           .textSelection(.enabled)

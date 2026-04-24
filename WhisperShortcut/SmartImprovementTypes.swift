@@ -13,9 +13,9 @@ enum GenerationKind: Equatable, Codable {
     switch self {
     case .dictation: return "Dictation Prompt"
     case .whisperGlossary: return "Whisper Glossary"
-    case .promptMode: return "Prompt Mode System Prompt"
+    case .promptMode: return "Dictate Prompt System Prompt"
     case .promptAndRead: return "Prompt Read Mode System Prompt"
-    case .geminiChat: return "Gemini Chat System Prompt"
+    case .geminiChat: return "Chat System Prompt"
     }
   }
 }

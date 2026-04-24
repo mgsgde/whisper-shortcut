@@ -24,7 +24,7 @@ class AutoPromptImprovementScheduler {
     if totalInteractions < AppConstants.smartImprovementMinTotalInteractions {
       if !fromAutoRun {
         PopupNotificationWindow.showError(
-          "Not enough usage data yet (\(totalInteractions)/\(AppConstants.smartImprovementMinTotalInteractions)). Use dictation or prompt mode a bit more, then try again.",
+          "Not enough usage data yet (\(totalInteractions)/\(AppConstants.smartImprovementMinTotalInteractions)). Use dictation or dictate prompt a bit more, then try again.",
           title: "Smart Improvement"
         )
       }

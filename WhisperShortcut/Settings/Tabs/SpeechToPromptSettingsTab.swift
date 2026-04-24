@@ -95,7 +95,7 @@ struct SpeechToPromptSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "🖥️ Screen context",
-        subtitle: "Optional screenshot sent with voice Prompt Mode requests"
+        subtitle: "Optional screenshot sent with voice Dictate Prompt requests"
       )
 
       HStack(alignment: .center, spacing: 16) {
@@ -124,7 +124,7 @@ struct SpeechToPromptSettingsTab: View {
         Spacer()
       }
 
-      Text("When enabled, a screenshot of the current screen is included in Prompt Mode requests to give the AI visual context. Requires Screen Recording permission.")
+      Text("When enabled, a screenshot of the current screen is included in Dictate Prompt requests to give the AI visual context. Requires Screen Recording permission.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -137,7 +137,7 @@ struct SpeechToPromptSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "📋 How to Use",
-        subtitle: "Step-by-step instructions for using dictate prompt mode"
+        subtitle: "Step-by-step instructions for using Dictate Prompt"
       )
 
       VStack(alignment: .leading, spacing: 8) {

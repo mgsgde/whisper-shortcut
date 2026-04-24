@@ -207,7 +207,7 @@ class ContextDerivation {
     case .whisperGlossary:
       if let p = currentWhisperGlossary, !p.isEmpty { secondaryParts.append("Current Whisper Glossary (refine based on new data):\n\(p)") }
     case .promptMode:
-      if let p = currentPromptModeSystemPrompt, !p.isEmpty { secondaryParts.append("Current Prompt Mode system prompt (refine based on new data):\n\(p)") }
+      if let p = currentPromptModeSystemPrompt, !p.isEmpty { secondaryParts.append("Current Dictate Prompt system prompt (refine based on new data):\n\(p)") }
     case .promptAndRead:
       if let p = currentPromptAndReadSystemPrompt, !p.isEmpty { secondaryParts.append("Current Prompt Read Mode system prompt (refine based on new data):\n\(p)") }
     case .geminiChat:
@@ -372,7 +372,7 @@ class ContextDerivation {
       IMPORTANT – Only include behavioral rules that are clearly evidenced by the interaction data. \
       Do not invent style preferences or patterns not supported by actual usage.
 
-      Your task: generate a system prompt for the "Prompt Mode". It will be set as the Gemini systemInstruction. \
+      Your task: generate a system prompt for the "Dictate Prompt" mode. It will be set as the Gemini systemInstruction. \
       At runtime the model receives SELECTED TEXT (from clipboard) and VOICE INSTRUCTION (transcribed from audio). \
       Output-format rules are appended at runtime — do NOT include them in your suggested prompt. \
       Focus on behavioral instructions only.
@@ -431,7 +431,7 @@ class ContextDerivation {
       Do not invent style preferences or patterns not supported by actual usage.
 
       Your task: generate a system prompt for the "Prompt Read Mode". It will be set as the Gemini systemInstruction. \
-      Same as Prompt Mode (selected text + voice instruction) but the output is spoken aloud via TTS. \
+      Same as Dictate Prompt (selected text + voice instruction) but the output is spoken aloud via TTS. \
       Output-format rules are appended at runtime — do NOT include them in your suggested prompt. \
       Focus on behavioral instructions only.
 
@@ -484,9 +484,9 @@ class ContextDerivation {
     case .geminiChat:
       return """
       You are analyzing a user's interaction history with a voice-to-text application called WhisperShortcut. \
-      The interactions include dictation (transcription), prompt mode (voice instructions applied to selected text), and prompt-and-read (same with TTS output).
+      The interactions include dictation (transcription), dictate prompt (voice instructions applied to selected text), and prompt-and-read (same with TTS output).
 
-      Your task: generate a system prompt for the "Gemini Chat" mode. This is the system instruction for the app's Open Gemini chat window — a general-purpose chat where the user can ask questions, get summaries, or request structured answers. \
+      Your task: generate a system prompt for the "Chat" mode. This is the system instruction for the app's chat window — a general-purpose chat where the user can ask questions, get summaries, or request structured answers. \
       Use the interaction data (all modes) to infer the user's preferences: language, tone, domains (e.g. software, projects), and any style rules (e.g. "In short:", headings with emojis, bold for key terms). \
       If a current Gemini Chat prompt is provided, refine it based on the data; do not rewrite from scratch unless the data strongly suggests a different direction.
 
@@ -497,7 +497,7 @@ class ContextDerivation {
       \(geminiChatPromptEndMarker)
 
       Write a system prompt following this structure (Persona → Task → Guardrails → Output):
-      1. Persona: Helpful assistant for the user's Open Gemini chat. DO NOT include biographical facts (name, job title, employer, location, projects, industry). Instead, adapt vocabulary and assumed expertise level based on patterns in the data, without stating why.
+      1. Persona: Helpful assistant for the user's chat. DO NOT include biographical facts (name, job title, employer, location, projects, industry). Instead, adapt vocabulary and assumed expertise level based on patterns in the data, without stating why.
       2. Task: Answer questions naturally; for complex answers use "In short:" then details; use markdown headings with emojis where appropriate; use **bold** for key terms.
       3. Guardrails: Be helpful and accurate; match the user's language; do not invent information. Never reference or allude to any background context about the user in responses. Do not mention the user's profession, sector, projects, or personal details.
       4. Output: Clear, well-structured responses; no unnecessary meta-commentary.
@@ -645,9 +645,9 @@ class ContextDerivation {
       if let suggested = extractSection(from: analysisResult, startMarker: systemPromptMarker, endMarker: systemPromptEndMarker) {
         let fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
         try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
-        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Prompt Mode system prompt (\(suggested.count) chars)")
+        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Dictate Prompt system prompt (\(suggested.count) chars)")
       } else {
-        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for prompt mode")
+        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for dictate prompt")
       }
     case .promptAndRead:
       if let suggested = extractSection(from: analysisResult, startMarker: promptAndReadSystemPromptMarker, endMarker: promptAndReadSystemPromptEndMarker) {
