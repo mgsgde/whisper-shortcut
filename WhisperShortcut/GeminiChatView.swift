@@ -1165,7 +1165,7 @@ struct GeminiChatView: View {
   /// When true, create a new chat session on first appear (e.g. for the meeting window so it opens with a fresh chat).
   @State private var createNewSessionOnAppear: Bool
   @State private var hasTriggeredNewSessionOnAppear: Bool = false
-  @AppStorage(UserDefaultsKeys.geminiSidebarVisible) private var sidebarVisible: Bool = false
+  @AppStorage(UserDefaultsKeys.geminiSidebarVisible) private var sidebarVisible: Bool = true
   @State private var meetingTab: MeetingTab = .chat
 
   private enum MeetingTab: String, CaseIterable {
