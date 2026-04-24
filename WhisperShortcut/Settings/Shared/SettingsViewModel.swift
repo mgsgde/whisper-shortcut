@@ -430,7 +430,7 @@ class SettingsViewModel: ObservableObject {
       toggleMeeting: currentConfig.toggleMeeting,
       stopMeeting: currentConfig.stopMeeting,
       openSettings: shortcuts["open settings"]!
-        ?? ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: false),
+        ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
       openGemini: shortcuts["open gemini"]!
         ?? ShortcutDefinition(key: .eight, modifiers: [.command], isEnabled: false)
     )

@@ -113,7 +113,7 @@ struct ShortcutConfig: Codable {
     stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
     toggleMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
     stopMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
-    openSettings: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true),
+    openSettings: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
     openGemini: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true)
   )
 
@@ -121,7 +121,7 @@ struct ShortcutConfig: Codable {
   static let availableKeysHint =
     "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • space • up • down • left • right • comma • period"
 
-  /// Placeholder for shortcut text fields (e.g. "e.g., command+7"). Use with default so changing defaults updates the UI.
+  /// Placeholder for shortcut text fields (e.g. "e.g., command+3"). Use with default so changing defaults updates the UI.
   static func examplePlaceholder(for definition: ShortcutDefinition) -> String {
     "e.g., \(definition.textDisplayString)"
   }
@@ -246,7 +246,7 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.toggleMeetingKey) ?? ShortcutConfig.default.toggleMeeting
     let stopMeeting =
       loadShortcut(for: Constants.stopMeetingKey) ?? ShortcutConfig.default.stopMeeting
-    // Migration: if Meeting shortcut was never saved, use default Settings (⌘7) to avoid conflict with Meeting (⌘5)
+    // Migration: if Meeting shortcut was never saved, use default Settings (⌘3) to avoid conflict with Meeting (⌘5)
     let openSettings = userDefaults.data(forKey: Constants.toggleMeetingKey) != nil
       ? (loadShortcut(for: Constants.openSettingsKey) ?? ShortcutConfig.default.openSettings)
       : ShortcutConfig.default.openSettings
