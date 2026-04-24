@@ -3,6 +3,7 @@ import SwiftUI
 struct XAIAPIKeySection: View {
   @ObservedObject var viewModel: SettingsViewModel
   @State private var xaiAPIKey: String = ""
+  @State private var isKeyVisible: Bool = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -18,17 +19,33 @@ struct XAIAPIKeySection: View {
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
           .textSelection(.enabled)
 
-        TextField("xai-...", text: $xaiAPIKey)
-          .textFieldStyle(.roundedBorder)
-          .font(.system(.body, design: .monospaced))
-          .frame(height: SettingsConstants.textFieldHeight)
-          .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
-          .onAppear {
-            xaiAPIKey = KeychainManager.shared.getXAIAPIKey() ?? ""
+        ZStack {
+          if isKeyVisible {
+            TextField("xai-...", text: $xaiAPIKey)
+              .textFieldStyle(.roundedBorder)
+              .font(.system(.body, design: .monospaced))
+              .frame(height: SettingsConstants.textFieldHeight)
+          } else {
+            SecureField("xai-...", text: $xaiAPIKey)
+              .textFieldStyle(.roundedBorder)
+              .font(.system(.body, design: .monospaced))
+              .frame(height: SettingsConstants.textFieldHeight)
           }
-          .onChange(of: xaiAPIKey) { _, newValue in
-            _ = KeychainManager.shared.saveXAIAPIKey(newValue)
-          }
+        }
+        .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
+        .onAppear {
+          xaiAPIKey = KeychainManager.shared.getXAIAPIKey() ?? ""
+        }
+        .onChange(of: xaiAPIKey) { _, newValue in
+          _ = KeychainManager.shared.saveXAIAPIKey(newValue)
+        }
+
+        Button(action: { isKeyVisible.toggle() }) {
+          Image(systemName: isKeyVisible ? "eye.slash" : "eye")
+            .foregroundColor(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(isKeyVisible ? "Hide API key" : "Show API key")
 
         Spacer()
       }

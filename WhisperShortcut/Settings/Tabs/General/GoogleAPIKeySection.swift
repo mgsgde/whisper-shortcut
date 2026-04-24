@@ -9,6 +9,7 @@ import AppKit
 struct GoogleAPIKeySection: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
+  @State private var isKeyVisible: Bool = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -24,20 +25,37 @@ struct GoogleAPIKeySection: View {
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
           .textSelection(.enabled)
 
-        TextField("AIza...", text: $viewModel.data.googleAPIKey)
-          .textFieldStyle(.roundedBorder)
-          .font(.system(.body, design: .monospaced))
-          .frame(height: SettingsConstants.textFieldHeight)
-          .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
-          .onAppear {
-            viewModel.data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
+        ZStack {
+          if isKeyVisible {
+            TextField("AIza...", text: $viewModel.data.googleAPIKey)
+              .textFieldStyle(.roundedBorder)
+              .font(.system(.body, design: .monospaced))
+              .frame(height: SettingsConstants.textFieldHeight)
+              .focused($focusedField, equals: .googleAPIKey)
+          } else {
+            SecureField("AIza...", text: $viewModel.data.googleAPIKey)
+              .textFieldStyle(.roundedBorder)
+              .font(.system(.body, design: .monospaced))
+              .frame(height: SettingsConstants.textFieldHeight)
+              .focused($focusedField, equals: .googleAPIKey)
           }
-          .focused($focusedField, equals: .googleAPIKey)
-          .onChange(of: viewModel.data.googleAPIKey) { _, newValue in
-            Task {
-              _ = KeychainManager.shared.saveGoogleAPIKey(newValue)
-            }
+        }
+        .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
+        .onAppear {
+          viewModel.data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
+        }
+        .onChange(of: viewModel.data.googleAPIKey) { _, newValue in
+          Task {
+            _ = KeychainManager.shared.saveGoogleAPIKey(newValue)
           }
+        }
+
+        Button(action: { isKeyVisible.toggle() }) {
+          Image(systemName: isKeyVisible ? "eye.slash" : "eye")
+            .foregroundColor(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(isKeyVisible ? "Hide API key" : "Show API key")
 
         Spacer()
       }
