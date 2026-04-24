@@ -19,6 +19,16 @@ struct OpenGeminiSettingsTab: View {
 
       SpacedSectionDivider()
 
+      // Chat system prompt editor
+      SystemPromptSectionEditor(
+        title: "System prompt",
+        subtitle: "Instructions sent to the model in Chat mode. Edit to customize chat behavior.",
+        section: .geminiChat,
+        defaultContent: AppConstants.defaultGeminiChatSystemPrompt
+      )
+
+      SpacedSectionDivider()
+
       readAloudSection
 
       SpacedSectionDivider()
@@ -115,7 +125,7 @@ struct OpenGeminiSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "🪟 Window Behavior",
-        subtitle: "Control how the Gemini chat window behaves"
+        subtitle: "Control how the chat window behaves"
       )
 
       Toggle(isOn: $viewModel.data.geminiCloseOnFocusLoss) {

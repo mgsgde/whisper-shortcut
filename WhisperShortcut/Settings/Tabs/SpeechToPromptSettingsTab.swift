@@ -23,6 +23,16 @@ struct SpeechToPromptSettingsTab: View {
 
       SpacedSectionDivider()
 
+      // Dictate Prompt system prompt editor
+      SystemPromptSectionEditor(
+        title: "System prompt",
+        subtitle: "Instructions sent to the model in Dictate Prompt mode. Edit to customize how voice instructions are applied to text.",
+        section: .promptMode,
+        defaultContent: AppConstants.defaultPromptModeSystemPrompt
+      )
+
+      SpacedSectionDivider()
+
       // Usage Instructions Section
       usageInstructionsSection
     }

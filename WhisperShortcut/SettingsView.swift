@@ -65,7 +65,6 @@ struct SettingsView: View {
   // MARK: - Detail View
   @ViewBuilder
   private var detailView: some View {
-    // Content only - no action buttons for Apple's System Settings consistency
     contentSection
   }
 
@@ -83,13 +82,11 @@ struct SettingsView: View {
           SpeechToPromptSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .openGemini:
           OpenGeminiSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .context:
-          ContextSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         }
       }
       .padding(.horizontal, 24)
       .padding(.top, 20)
-      .padding(.bottom, 40)  // Extra margin for better scrolling experience
+      .padding(.bottom, 40)
     }
   }
 
@@ -104,8 +101,6 @@ struct SettingsView: View {
       return "text.bubble"
     case .openGemini:
       return "sparkles"
-    case .context:
-      return "brain"
     }
   }
 
@@ -114,13 +109,11 @@ struct SettingsView: View {
     case .general:
       return "API key, shortcuts, and preferences"
     case .speechToText:
-      return "Model, prompt, and shortcut"
+      return "Model, system prompt, and shortcut"
     case .speechToPrompt:
-      return "Shortcut for dictate prompt"
+      return "Model, system prompt, and shortcut"
     case .openGemini:
-      return "Model, voice, and live meeting settings"
-    case .context:
-      return "Context data, system prompts, and improvement settings"
+      return "Model, system prompt, and live meeting settings"
     }
   }
 
@@ -150,4 +143,3 @@ struct SettingsView: View {
     }
   }
 }
-

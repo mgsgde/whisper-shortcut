@@ -32,6 +32,26 @@ struct SpeechToTextSettingsTab: View {
         SpacedSectionDivider()
       }
 
+      // Dictation system prompt editor
+      SystemPromptSectionEditor(
+        title: "System prompt",
+        subtitle: "Instructions sent to the transcription model. Edit to customize transcription behavior.",
+        section: .dictation,
+        defaultContent: AppConstants.defaultTranscriptionSystemPrompt
+      )
+
+      SpacedSectionDivider()
+
+      // Whisper Glossary editor
+      SystemPromptSectionEditor(
+        title: "Whisper Glossary (Offline)",
+        subtitle: "Comma-separated vocabulary list for offline Whisper conditioning. Leave empty for no conditioning.",
+        section: .whisperGlossary,
+        defaultContent: AppConstants.defaultWhisperGlossary
+      )
+
+      SpacedSectionDivider()
+
       // Usage Instructions Section
       usageInstructionsSection
     }

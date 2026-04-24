@@ -509,7 +509,6 @@ enum SettingsTab: String, CaseIterable {
   case speechToText = "Dictate"
   case speechToPrompt = "Dictate Prompt"
   case openGemini = "Chat"
-  case context = "Context"
 }
 
 // MARK: - Live Meeting Chunk Interval Options
