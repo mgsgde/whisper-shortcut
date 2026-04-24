@@ -189,6 +189,7 @@ struct GeminiChatSidebar: View {
       : (isHovered ? GeminiChatTheme.windowBackground.opacity(0.5) : Color.clear)
 
     let isRenaming = renamingSessionId == session.id
+    let isMeetingLive = session.isMeeting && isActive && viewModel.isMeetingActive
 
     return HStack(spacing: 0) {
       if isActive {
@@ -208,13 +209,20 @@ struct GeminiChatSidebar: View {
         .padding(.vertical, 6)
         .onExitCommand { renamingSessionId = nil }
       } else {
-        Text(title)
-          .font(.system(size: 13))
-          .foregroundColor(isActive ? GeminiChatTheme.primaryText : GeminiChatTheme.secondaryText)
-          .lineLimit(1)
-          .truncationMode(.tail)
-          .padding(.leading, 10)
-          .padding(.vertical, 8)
+        HStack(spacing: 6) {
+          if session.isMeeting {
+            Image(systemName: "mic.circle.fill")
+              .font(.system(size: 11))
+              .foregroundColor(isMeetingLive ? .red : GeminiChatTheme.secondaryText.opacity(0.6))
+          }
+          Text(title)
+            .font(.system(size: 13))
+            .foregroundColor(isActive ? GeminiChatTheme.primaryText : GeminiChatTheme.secondaryText)
+            .lineLimit(1)
+            .truncationMode(.tail)
+        }
+        .padding(.leading, 10)
+        .padding(.vertical, 8)
       }
 
       Spacer(minLength: 4)

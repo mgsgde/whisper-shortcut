@@ -166,7 +166,13 @@ class GeminiChatViewModel: ObservableObject {
     isMeetingActive = LiveMeetingTranscriptStore.shared.isSessionActive
     meetingCancellable = LiveMeetingTranscriptStore.shared.$isSessionActive
       .receive(on: DispatchQueue.main)
-      .sink { [weak self] active in self?.isMeetingActive = active }
+      .sink { [weak self] active in
+        guard let self else { return }
+        self.isMeetingActive = active
+        if active {
+          self.markCurrentSessionAsMeeting()
+        }
+      }
   }
 
   func createNewSession() {
@@ -906,6 +912,12 @@ class GeminiChatViewModel: ObservableObject {
     store.unpinSession(id: id)
     refreshRecentSessions()
     DebugLogger.log("SIDEBAR: Unpinned session \(id)")
+  }
+
+  private func markCurrentSessionAsMeeting() {
+    session.isMeeting = true
+    store.markSessionAsMeeting(id: session.id)
+    refreshRecentSessions()
   }
 
   // MARK: - Archive / Restore / Delete
