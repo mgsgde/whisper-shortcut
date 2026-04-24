@@ -9,6 +9,8 @@ struct GeminiChatSidebar: View {
   @State private var hoveredRowId: UUID? = nil
   @State private var deletingSessionId: UUID? = nil
   @State private var deletingOlderThanSession: ChatSession? = nil
+  @State private var renamingSessionId: UUID? = nil
+  @State private var renameDraft: String = ""
 
   static let sidebarWidth: CGFloat = 220
 
@@ -67,8 +69,8 @@ struct GeminiChatSidebar: View {
             }
           }
 
-          ForEach(Array(grouped.enumerated()), id: \.offset) { _, pair in
-            sectionHeader(pair.0.label)
+          ForEach(Array(grouped.enumerated()), id: \.offset) { index, pair in
+            sectionHeader(pair.0.label, showDivider: !pinned.isEmpty || index > 0)
             ForEach(pair.1, id: \.id) { session in
               sidebarRow(session: session)
             }
@@ -144,16 +146,23 @@ struct GeminiChatSidebar: View {
 
   // MARK: - Section header
 
-  private func sectionHeader(_ title: String) -> some View {
-    Text(title.uppercased())
-      .font(.system(size: 9, weight: .bold, design: .default))
-      .tracking(1.2)
-      .foregroundColor(GeminiChatTheme.secondaryText.opacity(0.8))
-      .padding(.leading, 10)
-      .padding(.trailing, 12)
-      .padding(.top, 14)
-      .padding(.bottom, 6)
-      .frame(maxWidth: .infinity, alignment: .leading)
+  private func sectionHeader(_ title: String, showDivider: Bool = false) -> some View {
+    VStack(spacing: 0) {
+      if showDivider {
+        Divider()
+          .padding(.horizontal, 10)
+          .padding(.top, 12)
+      }
+      Text(title.uppercased())
+        .font(.system(size: 9, weight: .bold, design: .default))
+        .tracking(1.2)
+        .foregroundColor(GeminiChatTheme.secondaryText.opacity(0.8))
+        .padding(.leading, 10)
+        .padding(.trailing, 12)
+        .padding(.top, showDivider ? 12 : 14)
+        .padding(.bottom, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
   }
 
   // MARK: - Row
@@ -179,6 +188,8 @@ struct GeminiChatSidebar: View {
       ? GeminiChatTheme.windowBackground
       : (isHovered ? GeminiChatTheme.windowBackground.opacity(0.5) : Color.clear)
 
+    let isRenaming = renamingSessionId == session.id
+
     return HStack(spacing: 0) {
       if isActive {
         Rectangle()
@@ -186,25 +197,44 @@ struct GeminiChatSidebar: View {
           .frame(width: 2)
       }
 
-      Text(title)
+      if isRenaming {
+        TextField("Title", text: $renameDraft, onCommit: {
+          viewModel.renameSession(id: session.id, to: renameDraft)
+          renamingSessionId = nil
+        })
         .font(.system(size: 13))
-        .foregroundColor(isActive ? GeminiChatTheme.primaryText : GeminiChatTheme.secondaryText)
-        .lineLimit(1)
-        .truncationMode(.tail)
+        .textFieldStyle(.plain)
         .padding(.leading, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
+        .onExitCommand { renamingSessionId = nil }
+      } else {
+        Text(title)
+          .font(.system(size: 13))
+          .foregroundColor(isActive ? GeminiChatTheme.primaryText : GeminiChatTheme.secondaryText)
+          .lineLimit(1)
+          .truncationMode(.tail)
+          .padding(.leading, 10)
+          .padding(.vertical, 8)
+      }
 
       Spacer(minLength: 4)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(rowBg)
     .contentShape(Rectangle())
-    .onTapGesture {
-      DebugLogger.log("SIDEBAR: row tap id=\(session.id)")
+    .onTapGesture(count: 2) {
+      renameDraft = session.title ?? ""
+      renamingSessionId = session.id
+    }
+    .onTapGesture(count: 1) {
       viewModel.switchToSession(id: session.id)
     }
     .onHover { over in hoveredRowId = over ? session.id : nil }
     .contextMenu {
+      Button("Rename\u{2026}") {
+        renameDraft = session.title ?? ""
+        renamingSessionId = session.id
+      }
       if isPinned {
         Button("Unpin chat") { viewModel.unpinSession(id: session.id) }
       } else {

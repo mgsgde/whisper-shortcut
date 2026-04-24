@@ -8,8 +8,8 @@ struct GoogleCalendarConnectionSection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Google Calendar",
-        subtitle: "Connect your Google account to let Gemini read and create calendar events"
+        title: "Google Account",
+        subtitle: "Connect your Google account to let Gemini access Calendar, Tasks, and Gmail"
       )
 
       HStack(spacing: 12) {
@@ -30,7 +30,7 @@ struct GoogleCalendarConnectionSection: View {
             .font(.callout)
             .foregroundColor(.secondary)
           Spacer()
-          Button("Connect Google Calendar") {
+          Button("Connect Google Account") {
             isAuthorizing = true
             errorMessage = nil
             Task {

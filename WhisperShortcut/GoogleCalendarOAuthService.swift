@@ -228,8 +228,8 @@ class GoogleCalendarOAuthService: NSObject, ObservableObject {
       case .noAuthorizationCode: return "No authorization code in callback."
       case .tokenExchangeFailed(let msg): return "Token exchange failed: \(msg)"
       case .missingAccessToken: return "No access token in response."
-      case .notConnected: return "Google Calendar is not connected. Connect it in Settings."
-      case .refreshTokenRevoked: return "Google Calendar access was revoked. Please connect again in Settings."
+      case .notConnected: return "Google is not connected. Connect it in Settings or use /connect-google."
+      case .refreshTokenRevoked: return "Google access was revoked. Please connect again in Settings."
       case .invalidResponse: return "Invalid response from Google."
       }
     }

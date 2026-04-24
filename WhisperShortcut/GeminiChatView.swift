@@ -109,8 +109,8 @@ class GeminiChatViewModel: ObservableObject {
   private static let modelCommand = "/model"
   private static let grokCommand = "/grok"
   private static let geminiCommand = "/gemini"
-  private static let connectCalendarCommand = "/connect-calendar"
-  private static let disconnectCalendarCommand = "/disconnect-calendar"
+  private static let connectGoogleCommand = "/connect-google"
+  private static let disconnectGoogleCommand = "/disconnect-google"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -122,8 +122,8 @@ class GeminiChatViewModel: ObservableObject {
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
-    ("/connect-calendar", "Connect Google Calendar to enable calendar tools"),
-    ("/disconnect-calendar", "Disconnect Google Calendar"),
+    ("/connect-google", "Connect Google account (Calendar, Tasks, Gmail)"),
+    ("/disconnect-google", "Disconnect Google account"),
   ]
 
   /// Commands to show in UI (excludes /new when single-chat mode).
@@ -208,12 +208,12 @@ class GeminiChatViewModel: ObservableObject {
 
     // Bare slash commands — never carry attachments, never queue.
     if attachedParts.isEmpty && !finalContent.contains("<pasted_") {
-      if lower == Self.connectCalendarCommand {
-        await handleConnectCalendar()
+      if lower == Self.connectGoogleCommand {
+        await handleConnectGoogle()
         return
       }
-      if lower == Self.disconnectCalendarCommand {
-        handleDisconnectCalendar()
+      if lower == Self.disconnectGoogleCommand {
+        handleDisconnectGoogle()
         return
       }
       if lower == Self.newChatCommand || lower == Self.screenshotCommand
@@ -516,15 +516,15 @@ class GeminiChatViewModel: ObservableObject {
       return
     }
 
-    // Calendar commands
-    if lower == Self.connectCalendarCommand {
+    // Google account commands
+    if lower == Self.connectGoogleCommand {
       inputText = ""
-      await handleConnectCalendar()
+      await handleConnectGoogle()
       return
     }
-    if lower == Self.disconnectCalendarCommand {
+    if lower == Self.disconnectGoogleCommand {
       inputText = ""
-      handleDisconnectCalendar()
+      handleDisconnectGoogle()
       return
     }
 
@@ -712,7 +712,7 @@ class GeminiChatViewModel: ObservableObject {
     let userText = String(target.messages[0].content.prefix(400))
     let modelText = String(target.messages[1].content.prefix(400))
     let prompt = """
-      Give this conversation a short descriptive title (3–6 words) that captures its core topic. \
+      Give this conversation a short title (2–3 words) that captures its core topic. \
       Reply with only the title on a single line — no quotes, no punctuation, no explanation.
 
       User: \(userText)
@@ -790,28 +790,28 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   @MainActor
-  private func handleConnectCalendar() async {
+  private func handleConnectGoogle() async {
     if GoogleCalendarOAuthService.shared.isConnected {
-      appendModelMessage("Google Calendar is already connected. Use `/disconnect-calendar` to disconnect.")
+      appendModelMessage("Google is already connected. Use `/disconnect-google` to disconnect.")
       return
     }
     appendModelMessage("Opening Google sign-in...")
     do {
       try await GoogleCalendarOAuthService.shared.startAuthorization()
-      appendModelMessage("Google Calendar connected. You can now ask about your schedule or create events.")
+      appendModelMessage("Google connected. You can now use Calendar, Tasks, and Gmail.")
     } catch {
-      appendModelMessage("Failed to connect Google Calendar: \(error.localizedDescription)")
+      appendModelMessage("Failed to connect Google: \(error.localizedDescription)")
     }
   }
 
   @MainActor
-  private func handleDisconnectCalendar() {
+  private func handleDisconnectGoogle() {
     guard GoogleCalendarOAuthService.shared.isConnected else {
-      appendModelMessage("Google Calendar is not connected. Use `/connect-calendar` to connect.")
+      appendModelMessage("Google is not connected. Use `/connect-google` to connect.")
       return
     }
     GoogleCalendarOAuthService.shared.disconnect()
-    appendModelMessage("Google Calendar disconnected.")
+    appendModelMessage("Google disconnected.")
   }
 
   // MARK: - Tab navigation
@@ -1404,16 +1404,41 @@ struct GeminiChatView: View {
 
   private var emptyStateCommandHints: some View {
     let suggestions = viewModel.commandSuggestionsForDisplay
-    return VStack(alignment: .leading, spacing: 12) {
-      Text("Commands")
-        .font(.headline)
-        .fontWeight(.semibold)
-        .foregroundColor(GeminiChatTheme.secondaryText)
-      VStack(alignment: .leading, spacing: 8) {
-        ForEach(suggestions, id: \.command) { item in
-          Text("\(item.command) — \(item.description)")
-            .font(.system(size: 15))
-            .foregroundColor(GeminiChatTheme.secondaryText)
+    let config = ShortcutConfigManager.shared.loadConfiguration()
+    let shortcuts: [(shortcut: String, description: String)] = [
+      (config.startRecording.displayString, "Speech-to-Text"),
+      (config.startPrompting.displayString, "Speech-to-Prompt"),
+      (config.openGemini.displayString, "Open Gemini"),
+      (config.openMeeting.displayString, "Open Meeting"),
+      (config.openSettings.displayString, "Settings"),
+    ]
+    return VStack(alignment: .leading, spacing: 20) {
+      VStack(alignment: .leading, spacing: 12) {
+        Text("Commands")
+          .font(.headline)
+          .fontWeight(.semibold)
+          .foregroundColor(GeminiChatTheme.secondaryText)
+        VStack(alignment: .leading, spacing: 8) {
+          ForEach(suggestions, id: \.command) { item in
+            Text("\(item.command) — \(item.description)")
+              .font(.system(size: 15))
+              .foregroundColor(GeminiChatTheme.secondaryText)
+          }
+        }
+      }
+      Divider()
+        .opacity(0.5)
+      VStack(alignment: .leading, spacing: 12) {
+        Text("Keyboard Shortcuts")
+          .font(.headline)
+          .fontWeight(.semibold)
+          .foregroundColor(GeminiChatTheme.secondaryText)
+        VStack(alignment: .leading, spacing: 8) {
+          ForEach(shortcuts, id: \.shortcut) { item in
+            Text("\(item.shortcut)  \(item.description)")
+              .font(.system(size: 15))
+              .foregroundColor(GeminiChatTheme.secondaryText)
+          }
         }
       }
     }
@@ -1567,7 +1592,7 @@ struct GeminiInputAreaView: View {
     "/new", "/screenshot",
     "/settings", "/pin", "/unpin",
     "/grok", "/gemini",
-    "/connect-calendar", "/disconnect-calendar"
+    "/connect-google", "/disconnect-google"
   ]
 
   /// Sends the current composer contents. Recognized slash commands strip just

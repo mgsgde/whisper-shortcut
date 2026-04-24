@@ -95,6 +95,14 @@ enum GeminiChatToolRegistry {
             "type": "string",
             "description": "IANA time zone identifier (e.g. Europe/Berlin). Defaults to the user's local time zone if omitted.",
           ],
+          "location": [
+            "type": "string",
+            "description": "Location or address of the event (e.g. 'Kaiserstraße 231-233, 76133 Karlsruhe').",
+          ],
+          "description": [
+            "type": "string",
+            "description": "Detailed description or notes for the event (e.g. links, agenda, instructions).",
+          ],
         ] as [String: Any],
         "required": ["summary", "start_iso8601", "end_iso8601"],
       ],
@@ -266,7 +274,7 @@ enum GeminiChatToolRegistry {
 
     case "google_calendar_list_events":
       guard GoogleCalendarOAuthService.shared.isConnected else {
-        return ["error": "Google Calendar is not connected. Connect it in Settings."]
+        return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
       }
       let maxResults = args["max_results"] as? Int ?? 10
       let hoursAhead = args["hours_ahead"] as? Int ?? 168
@@ -281,7 +289,7 @@ enum GeminiChatToolRegistry {
 
     case "google_calendar_create_event":
       guard GoogleCalendarOAuthService.shared.isConnected else {
-        return ["error": "Google Calendar is not connected. Connect it in Settings."]
+        return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
       }
       guard let summary = args["summary"] as? String,
             let startISO = args["start_iso8601"] as? String,
@@ -290,9 +298,12 @@ enum GeminiChatToolRegistry {
         return ["error": "Missing required arguments: summary, start_iso8601, end_iso8601"]
       }
       let timeZone = args["time_zone"] as? String ?? TimeZone.current.identifier
+      let location = args["location"] as? String
+      let description = args["description"] as? String
       do {
         let result = try await GoogleCalendarAPIClient.shared.createEvent(
-          summary: summary, startISO: startISO, endISO: endISO, timeZone: timeZone)
+          summary: summary, startISO: startISO, endISO: endISO, timeZone: timeZone,
+          location: location, description: description)
         return result
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: calendar create failed: \(error.localizedDescription)")
