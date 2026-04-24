@@ -5,7 +5,6 @@ enum GenerationKind: Equatable, Codable {
   case dictation
   case whisperGlossary
   case promptMode
-  case promptAndRead
   case geminiChat
 
   /// Display name for the review window title and summary messages.
@@ -14,7 +13,6 @@ enum GenerationKind: Equatable, Codable {
     case .dictation: return "Dictation Prompt"
     case .whisperGlossary: return "Whisper Glossary"
     case .promptMode: return "Dictate Prompt System Prompt"
-    case .promptAndRead: return "Prompt Read Mode System Prompt"
     case .geminiChat: return "Chat System Prompt"
     }
   }

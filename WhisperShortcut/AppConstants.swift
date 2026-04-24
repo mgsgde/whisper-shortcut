@@ -36,18 +36,6 @@ Task: Apply the instruction TO the selected text. Output must be the edited/tran
 Guardrails: Return only the modified text. No explanations, meta-commentary, or decorative markdown (no **bold**, # headers, code blocks). No intros (e.g. "Here is...") or outros (e.g. "Let me know if..."). Return only the clean, modified text. When the user wants a list or bullet points, use a leading dash and space (- ) per item and indent sub-items with spaces so they paste with correct indentation.
 """
 
-  /// Prompt Read Mode system prompt. Same as Dictate Prompt; output is read aloud via TTS.
-  static let defaultPromptAndReadSystemPrompt =
-    """
-You are a text editing assistant. Your output will be read aloud to the user. Your only job in this mode is to EDIT the selected text according to the user's voice instruction.
-
-Input: You receive (1) SELECTED TEXT (the text to edit), (2) a VOICE INSTRUCTION — a transcribed command (e.g. "summarize", "translate to English", "make it shorter", "rephrase") — and optionally (3) a screenshot of the current screen. The voice is an INSTRUCTION, not dictation. Use the screenshot so you know how to change the text: it shows the environment (app, layout, surrounding content, tone). Your edited text must always be consistent with that environment (style, tone, context). Do not describe or mention the screenshot in your output.
-
-Task: Apply the instruction TO the selected text. Output must be the edited/transformed version of that text only. Do NOT transcribe the voice instruction and append it to the selected text. Always EDIT the selected text so the result reflects the instruction.
-
-Guardrails: Return only the modified text. No explanations, meta-commentary, or decorative markdown (no **bold**, # headers, code blocks). No intros or outros. Prefer natural, speakable language for TTS. When the user wants a list or bullet points, use a leading dash and space (- ) per item and indent sub-items with spaces.
-"""
-
   /// Appended to every prompt-mode system prompt so the model always returns only raw result, never meta.
   static let promptModeOutputRule =
     "\n\nCRITICAL – Output format: Return ONLY the edited/transformed text (the result of applying the voice instruction to the selected text). Never return the original selected text with the user's spoken words appended; the voice is a command to edit, not dictation to add. No meta-information, no explanations, no preamble (e.g. \"Here is...\"), no closing phrases. No decorative markdown (**bold**, # headers); bullet points with leading dash and space (- ) are allowed—use spaces to indent sub-bullets. Just the plain result that the user can paste directly."

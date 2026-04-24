@@ -127,7 +127,6 @@ class AutoPromptImprovementScheduler {
     switch focus {
     case .dictation, .whisperGlossary: return "transcription"
     case .promptMode: return "prompt"
-    case .promptAndRead: return "promptAndRead"
     case .geminiChat: return nil
     }
   }
@@ -138,7 +137,7 @@ class AutoPromptImprovementScheduler {
     ContextLogger.shared.deleteAllSuggestedFiles()
 
     let derivation = ContextDerivation()
-    let allFocuses: [GenerationKind] = [.dictation, .whisperGlossary, .promptMode, .promptAndRead, .geminiChat]
+    let allFocuses: [GenerationKind] = [.dictation, .whisperGlossary, .promptMode, .geminiChat]
 
     // Per-focus eligibility: skip focuses without enough primary-mode data in the lookback window.
     let counts = ContextLogger.shared.interactionCountsByMode(lastDays: AppConstants.smartImprovementEligibilityDays)
@@ -206,7 +205,7 @@ class AutoPromptImprovementScheduler {
       }
     }
 
-    // Stable order for review UI (dictation, promptMode, promptAndRead, geminiChat)
+    // Stable order for review UI (dictation, promptMode, geminiChat)
     pendingKinds.sort { a, b in
       (focuses.firstIndex(of: a) ?? 0) < (focuses.firstIndex(of: b) ?? 0)
     }
@@ -285,8 +284,6 @@ class AutoPromptImprovementScheduler {
       fileURL = contextDir.appendingPathComponent("suggested-whisper-glossary.txt")
     case .promptMode:
       fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
-    case .promptAndRead:
-      fileURL = contextDir.appendingPathComponent("suggested-prompt-read-mode-system-prompt.txt")
     case .geminiChat:
       fileURL = contextDir.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
     }
@@ -305,7 +302,6 @@ class AutoPromptImprovementScheduler {
     case .dictation: return store.loadDictationPrompt()
     case .whisperGlossary: return store.loadWhisperGlossary()
     case .promptMode: return store.loadDictatePromptSystemPrompt()
-    case .promptAndRead: return store.loadPromptAndReadSystemPrompt()
     case .geminiChat: return store.loadSection(.geminiChat) ?? ""
     }
   }
@@ -321,8 +317,6 @@ class AutoPromptImprovementScheduler {
       fileURL = contextDir.appendingPathComponent("suggested-whisper-glossary.txt")
     case .promptMode:
       fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
-    case .promptAndRead:
-      fileURL = contextDir.appendingPathComponent("suggested-prompt-read-mode-system-prompt.txt")
     case .geminiChat:
       fileURL = contextDir.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
     }
@@ -341,7 +335,6 @@ class AutoPromptImprovementScheduler {
     case .dictation: baseName = "suggested-dictation-prompt"
     case .whisperGlossary: baseName = "suggested-whisper-glossary"
     case .promptMode: baseName = "suggested-prompt-mode-system-prompt"
-    case .promptAndRead: baseName = "suggested-prompt-read-mode-system-prompt"
     case .geminiChat: baseName = "suggested-gemini-chat-system-prompt"
     }
     let url = ContextLogger.shared.directoryURL.appendingPathComponent(baseName + "-rationale.txt")
@@ -356,7 +349,6 @@ class AutoPromptImprovementScheduler {
     case .dictation: ContextLogger.shared.deleteSuggestedDictationPromptFile()
     case .whisperGlossary: ContextLogger.shared.deleteSuggestedWhisperGlossaryFile()
     case .promptMode: ContextLogger.shared.deleteSuggestedSystemPromptFile()
-    case .promptAndRead: ContextLogger.shared.deleteSuggestedPromptAndReadSystemPromptFile()
     case .geminiChat: ContextLogger.shared.deleteSuggestedGeminiChatSystemPromptFile()
     }
     // Also remove rationale sidecar.
@@ -365,7 +357,6 @@ class AutoPromptImprovementScheduler {
     case .dictation: baseName = "suggested-dictation-prompt"
     case .whisperGlossary: baseName = "suggested-whisper-glossary"
     case .promptMode: baseName = "suggested-prompt-mode-system-prompt"
-    case .promptAndRead: baseName = "suggested-prompt-read-mode-system-prompt"
     case .geminiChat: baseName = "suggested-gemini-chat-system-prompt"
     }
     let url = ContextLogger.shared.directoryURL.appendingPathComponent(baseName + "-rationale.txt")
@@ -401,7 +392,6 @@ private extension GenerationKind {
     case .dictation: return .dictation
     case .whisperGlossary: return .whisperGlossary
     case .promptMode: return .promptMode
-    case .promptAndRead: return .promptAndRead
     case .geminiChat: return .geminiChat
     }
   }

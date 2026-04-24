@@ -29,8 +29,6 @@ class ContextDerivation {
   // MARK: - Markers for parsing
   private let systemPromptMarker = "===SUGGESTED_SYSTEM_PROMPT_START==="
   private let systemPromptEndMarker = "===SUGGESTED_SYSTEM_PROMPT_END==="
-  private let promptAndReadSystemPromptMarker = "===SUGGESTED_PROMPT_AND_READ_SYSTEM_PROMPT_START==="
-  private let promptAndReadSystemPromptEndMarker = "===SUGGESTED_PROMPT_AND_READ_SYSTEM_PROMPT_END==="
   private let dictationPromptMarker = "===SUGGESTED_DICTATION_PROMPT_START==="
   private let dictationPromptEndMarker = "===SUGGESTED_DICTATION_PROMPT_END==="
   private let whisperGlossaryMarker = "===SUGGESTED_WHISPER_GLOSSARY_START==="
@@ -75,14 +73,12 @@ class ContextDerivation {
 
     let store = SystemPromptsStore.shared
     let currentPromptModeSystemPrompt = store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
-    let currentPromptAndReadSystemPrompt = store.loadPromptAndReadSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentDictationPrompt = store.loadDictationPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentWhisperGlossary = store.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentGeminiChatPrompt = store.loadSection(.geminiChat)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
     let loaded = try loadAndSampleLogs(focus: focus,
                                        currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
-                                       currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
                                        currentDictationPrompt: currentDictationPrompt,
                                        currentWhisperGlossary: currentWhisperGlossary,
                                        currentGeminiChatPrompt: currentGeminiChatPrompt)
@@ -99,7 +95,6 @@ class ContextDerivation {
       primaryText: loaded.primaryText,
       secondaryText: loaded.secondaryText,
       currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
-      currentPromptAndReadSystemPrompt: currentPromptAndReadSystemPrompt,
       currentDictationPrompt: currentDictationPrompt,
       currentWhisperGlossary: currentWhisperGlossary,
       credential: credential
@@ -117,15 +112,13 @@ class ContextDerivation {
     case .dictation: return "transcription"
     case .whisperGlossary: return "transcription"
     case .promptMode: return "prompt"
-    case .promptAndRead: return "promptAndRead"
-    case .geminiChat: return nil  // Use all modes combined in loadAndSampleLogs
+    case .geminiChat: return nil
     }
   }
 
   private func loadAndSampleLogs(
     focus: GenerationKind,
     currentPromptModeSystemPrompt: String?,
-    currentPromptAndReadSystemPrompt: String?,
     currentDictationPrompt: String?,
     currentWhisperGlossary: String?,
     currentGeminiChatPrompt: String? = nil
@@ -208,8 +201,6 @@ class ContextDerivation {
       if let p = currentWhisperGlossary, !p.isEmpty { secondaryParts.append("Current Whisper Glossary (refine based on new data):\n\(p)") }
     case .promptMode:
       if let p = currentPromptModeSystemPrompt, !p.isEmpty { secondaryParts.append("Current Dictate Prompt system prompt (refine based on new data):\n\(p)") }
-    case .promptAndRead:
-      if let p = currentPromptAndReadSystemPrompt, !p.isEmpty { secondaryParts.append("Current Prompt Read Mode system prompt (refine based on new data):\n\(p)") }
     case .geminiChat:
       break  // Handled above
     }
@@ -419,72 +410,10 @@ class ContextDerivation {
       \(systemPromptEndMarker)
       """
 
-    case .promptAndRead:
-      return """
-      You are analyzing a user's interaction history with a voice-to-text application called WhisperShortcut. \
-      Focus on "promptAndRead" mode entries where voice instructions modify clipboard text and the result is read aloud via TTS.
-
-      CRITICAL – The "userInstruction" field is transcribed speech and may contain recognition errors. \
-      Infer intended words from context; do not take them literally.
-
-      IMPORTANT – Only include behavioral rules that are clearly evidenced by the interaction data. \
-      Do not invent style preferences or patterns not supported by actual usage.
-
-      Your task: generate a system prompt for the "Prompt Read Mode". It will be set as the Gemini systemInstruction. \
-      Same as Dictate Prompt (selected text + voice instruction) but the output is spoken aloud via TTS. \
-      Output-format rules are appended at runtime — do NOT include them in your suggested prompt. \
-      Focus on behavioral instructions only.
-
-      Use primary data (promptAndRead interactions) as the main signal; use secondary data to refine. \
-      If no primary data exists, base the suggestion on secondary data only.
-
-      You MUST wrap your entire output in these markers exactly as shown:
-
-      \(promptAndReadSystemPromptMarker)
-      [your content here]
-      \(promptAndReadSystemPromptEndMarker)
-
-      Write a system prompt following this structure (Persona → Task → Behavioral rules):
-
-      1. Persona: Text editing assistant whose output will be read aloud via text-to-speech.
-
-      2. Task: The user provides selected text and a voice instruction. Apply the instruction to that text. \
-      The output will be spoken by a TTS engine.
-
-      3. Behavioral rules (only those evidenced by the data):
-         - Format and tone mirroring: match the tone of the input.
-         - TTS-specific rules: write numbers as words (e.g., "forty-two" not "42"), avoid parenthetical asides, \
-      spell out abbreviations (e.g., "for example" not "e.g."), use simple sentence structures, avoid markdown or \
-      formatting that is meaningless when spoken (no bullet points, no headers, no bold/italic).
-         - Language preferences observed in the data.
-
-      If a current prompt is provided, refine it based on actual usage patterns — do not rewrite from scratch. \
-      But "refine" does NOT mean "append": merge overlapping or redundant rules into single clear statements, \
-      remove rules that are no longer evidenced by recent data, and compress verbose sections. The result should \
-      be equal in length or shorter than the current prompt unless genuinely new rules are needed. If the current \
-      prompt contains rules that the data suggests are wrong or harmful (e.g. modelResponse misses user intent, \
-      or a rule leads to poor TTS outcomes), remove or correct those rules — do not reinforce them just because \
-      the model followed them.
-
-      CONCISENESS: Aim for a prompt of 800–1400 characters. Do not repeat the same rule in different sections. \
-      Use the structure Persona → Task → Behavioral rules; do not duplicate information across sections.
-
-      Example structure (do not copy content, only the format):
-
-      \(promptAndReadSystemPromptMarker)
-      You are a text editing assistant whose output will be read aloud. The user provides selected text and a voice instruction. Apply the instruction to the text.
-
-      Write for spoken delivery: use complete sentences, spell out numbers and abbreviations, avoid markdown formatting. \
-      Keep a natural, conversational tone.
-
-      Match the language of the instruction in your response.
-      \(promptAndReadSystemPromptEndMarker)
-      """
-
     case .geminiChat:
       return """
       You are analyzing a user's interaction history with a voice-to-text application called WhisperShortcut. \
-      The interactions include dictation (transcription), dictate prompt (voice instructions applied to selected text), and prompt-and-read (same with TTS output).
+      The interactions include dictation (transcription) and dictate prompt (voice instructions applied to selected text).
 
       Your task: generate a system prompt for the "Chat" mode. This is the system instruction for the app's chat window — a general-purpose chat where the user can ask questions, get summaries, or request structured answers. \
       Use the interaction data (all modes) to infer the user's preferences: language, tone, domains (e.g. software, projects), and any style rules (e.g. "In short:", headings with emojis, bold for key terms). \
@@ -512,7 +441,6 @@ class ContextDerivation {
     primaryText: String,
     secondaryText: String,
     currentPromptModeSystemPrompt: String?,
-    currentPromptAndReadSystemPrompt: String?,
     currentDictationPrompt: String?,
     currentWhisperGlossary: String?,
     credential: GeminiCredential
@@ -531,7 +459,6 @@ class ContextDerivation {
       case .dictation: return currentDictationPrompt ?? ""
       case .whisperGlossary: return currentWhisperGlossary ?? ""
       case .promptMode: return currentPromptModeSystemPrompt ?? ""
-      case .promptAndRead: return currentPromptAndReadSystemPrompt ?? ""
       case .geminiChat: return SystemPromptsStore.shared.loadSection(.geminiChat) ?? ""
       }
     }()
@@ -597,7 +524,6 @@ class ContextDerivation {
     case .dictation: return "suggested-dictation-prompt"
     case .whisperGlossary: return "suggested-whisper-glossary"
     case .promptMode: return "suggested-prompt-mode-system-prompt"
-    case .promptAndRead: return "suggested-prompt-read-mode-system-prompt"
     case .geminiChat: return "suggested-gemini-chat-system-prompt"
     }
   }
@@ -615,7 +541,6 @@ class ContextDerivation {
     if analysisResult.contains(noChangeSentinel) &&
        extractSection(from: analysisResult, startMarker: dictationPromptMarker, endMarker: dictationPromptEndMarker) == nil &&
        extractSection(from: analysisResult, startMarker: systemPromptMarker, endMarker: systemPromptEndMarker) == nil &&
-       extractSection(from: analysisResult, startMarker: promptAndReadSystemPromptMarker, endMarker: promptAndReadSystemPromptEndMarker) == nil &&
        extractSection(from: analysisResult, startMarker: whisperGlossaryMarker, endMarker: whisperGlossaryEndMarker) == nil &&
        extractSection(from: analysisResult, startMarker: geminiChatPromptMarker, endMarker: geminiChatPromptEndMarker) == nil {
       DebugLogger.log("USER-CONTEXT-DERIVATION: NO_CHANGE for \(focus) — no suggestion written")
@@ -648,14 +573,6 @@ class ContextDerivation {
         DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Dictate Prompt system prompt (\(suggested.count) chars)")
       } else {
         DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for dictate prompt")
-      }
-    case .promptAndRead:
-      if let suggested = extractSection(from: analysisResult, startMarker: promptAndReadSystemPromptMarker, endMarker: promptAndReadSystemPromptEndMarker) {
-        let fileURL = contextDir.appendingPathComponent("suggested-prompt-read-mode-system-prompt.txt")
-        try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
-        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Prompt Read Mode system prompt (\(suggested.count) chars)")
-      } else {
-        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for prompt read mode")
       }
     case .geminiChat:
       if let suggested = extractSection(from: analysisResult, startMarker: geminiChatPromptMarker, endMarker: geminiChatPromptEndMarker) {

@@ -13,13 +13,11 @@ enum UserDefaultsKeys {
   // MARK: - Model Settings
   static let selectedTranscriptionModel = "selectedTranscriptionModel"
   static let selectedPromptModel = "selectedPromptModel"
-  static let selectedPromptAndReadModel = "selectedPromptAndReadModel"
   static let selectedOpenGeminiModel = "selectedOpenGeminiModel"
 
   // MARK: - Prompt Settings
   static let customPromptText = "customPromptText"
   static let promptModeSystemPrompt = "promptModeSystemPrompt"
-  static let promptAndReadSystemPrompt = "promptAndReadSystemPrompt"
   
   // MARK: - Read Aloud Settings (for Chat TTS)
   static let selectedReadAloudVoice = "selectedReadAloudVoice"

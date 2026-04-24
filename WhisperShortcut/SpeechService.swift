@@ -5,7 +5,6 @@ import NaturalLanguage
 // MARK: - Prompt Mode Enum
 enum PromptMode {
   case togglePrompting
-  case promptAndRead
 }
 
 // MARK: - Constants
@@ -90,15 +89,11 @@ class SpeechService {
   }
   
   // MARK: - Prompt Model Selection Helper
-  /// Gets the selected prompt model for the given mode. When on subscription (proxy), always returns stable Gemini 2.5 Flash.
-  /// - Parameter mode: The prompt mode (togglePrompting or promptAndRead)
+  /// Gets the selected prompt model. When on subscription (proxy), always returns stable Gemini 2.5 Flash.
   /// - Returns: The selected PromptModel based on UserDefaults or default; subscription uses stable model only
   private func getPromptModel(for mode: PromptMode) -> PromptModel {
-    let modelKey = mode == .togglePrompting
-      ? UserDefaultsKeys.selectedPromptModel
-      : UserDefaultsKeys.selectedPromptAndReadModel
     let defaultModel = SettingsDefaults.selectedPromptModel
-    let modelString = UserDefaults.standard.string(forKey: modelKey) ?? defaultModel.rawValue
+    let modelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? defaultModel.rawValue
     let normalized = PromptModel.migrateLegacyPromptRawValue(modelString)
     return PromptModel(rawValue: normalized) ?? defaultModel
   }
@@ -249,7 +244,7 @@ class SpeechService {
       throw TranscriptionError.noGoogleAPIKey
     }
 
-    DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt Read Mode"))")
+    DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution")
 
     // Run transcription for history in parallel with main prompt (no extra latency)
     let transcriptionTask = Task<String, Never> {
@@ -279,13 +274,11 @@ class SpeechService {
     let hasContext = clipboardContext != nil
     DebugLogger.log("PROMPT-MODE-GEMINI: Clipboard context: \(hasContext ? "present" : "none")")
 
-    // Build system prompt based on mode
-    let systemPromptBase = mode == .togglePrompting
-      ? SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
-      : SystemPromptsStore.shared.loadPromptAndReadSystemPrompt()
+    // Build system prompt
+    let systemPromptBase = SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
     var systemPrompt = systemPromptBase.trimmingCharacters(in: .whitespacesAndNewlines)
     if systemPrompt.isEmpty {
-      systemPrompt = (mode == .togglePrompting ? AppConstants.defaultPromptModeSystemPrompt : AppConstants.defaultPromptAndReadSystemPrompt)
+      systemPrompt = AppConstants.defaultPromptModeSystemPrompt
       DebugLogger.log("PROMPT-MODE-GEMINI: Using base system prompt")
     } else {
       DebugLogger.log("PROMPT-MODE-GEMINI: Using custom system prompt")
@@ -503,7 +496,7 @@ class SpeechService {
     }
 
     let hasSelectedText = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-    DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command (mode: \(mode == .togglePrompting ? "Toggle Prompting" : "Prompt Read Mode"), hasSelectedText: \(hasSelectedText))")
+    DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command (hasSelectedText: \(hasSelectedText))")
 
     // Get selected model from settings based on mode
     let selectedPromptModel = getPromptModel(for: mode)
@@ -516,13 +509,11 @@ class SpeechService {
     let endpoint = transcriptionModel.apiEndpoint
     DebugLogger.log("PROMPT-MODE-TEXT: Using model: \(selectedPromptModel.displayName)")
 
-    // Build system prompt based on mode
-    let systemPromptBase = mode == .togglePrompting
-      ? SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
-      : SystemPromptsStore.shared.loadPromptAndReadSystemPrompt()
+    // Build system prompt
+    let systemPromptBase = SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
     var systemPrompt = systemPromptBase.trimmingCharacters(in: .whitespacesAndNewlines)
     if systemPrompt.isEmpty {
-      systemPrompt = mode == .togglePrompting ? AppConstants.defaultPromptModeSystemPrompt : AppConstants.defaultPromptAndReadSystemPrompt
+      systemPrompt = AppConstants.defaultPromptModeSystemPrompt
     }
 
     // Always require raw output only (no meta), regardless of custom prompt

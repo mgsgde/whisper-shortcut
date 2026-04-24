@@ -2,7 +2,7 @@
 //  SystemPromptsStore.swift
 //  WhisperShortcut
 //
-//  Single file storage for all system prompts (Dictation, Dictate Prompt, Prompt Read Mode).
+//  Single file storage for all system prompts (Dictation, Dictate Prompt, Chat).
 //  Reads/writes UserContext/system-prompts.md with section headers. Migrates from UserDefaults when missing.
 //
 
@@ -13,7 +13,6 @@ enum SystemPromptSection: String, CaseIterable {
   case dictation = "dictation"
   case whisperGlossary = "whisperGlossary"
   case promptMode = "promptMode"
-  case promptAndRead = "promptAndRead"
   case geminiChat = "geminiChat"
 
   var fileHeader: String {
@@ -21,17 +20,22 @@ enum SystemPromptSection: String, CaseIterable {
     case .dictation: return "=== Dictation (Speech-to-Text) ==="
     case .whisperGlossary: return "=== Whisper Glossary (Offline) ==="
     case .promptMode: return "=== Dictate Prompt ==="
-    case .promptAndRead: return "=== Prompt Read Mode ==="
     case .geminiChat: return "=== Chat ==="
     }
   }
 
   /// Legacy headers supported for backward compatibility when reading existing files.
+  /// Legacy Prompt Read Mode headers are recognized but skipped (section removed).
   private static let legacyHeaders: [String: SystemPromptSection] = [
     "=== Prompt Mode ===": .promptMode,
-    "=== Prompt & Read ===": .promptAndRead,
-    "=== Prompt Voice Mode ===": .promptAndRead,
     "=== Gemini Chat ===": .geminiChat,
+  ]
+
+  /// Legacy headers for removed sections; recognized during parsing so their content is skipped cleanly.
+  private static let removedHeaders: Set<String> = [
+    "=== Prompt Read Mode ===",
+    "=== Prompt & Read ===",
+    "=== Prompt Voice Mode ===",
   ]
 
   static func section(forHeader line: String) -> SystemPromptSection? {
@@ -40,6 +44,10 @@ enum SystemPromptSection: String, CaseIterable {
       return section
     }
     return legacyHeaders[trimmed]
+  }
+
+  static func isRemovedHeader(_ line: String) -> Bool {
+    removedHeaders.contains(line.trimmingCharacters(in: .whitespacesAndNewlines))
   }
 }
 
@@ -74,12 +82,6 @@ final class SystemPromptsStore {
   func loadDictatePromptSystemPrompt() -> String {
     (loadSection(.promptMode)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
       ?? AppConstants.defaultPromptModeSystemPrompt
-  }
-
-  /// Prompt Read Mode system prompt. Returns default if section missing or empty.
-  func loadPromptAndReadSystemPrompt() -> String {
-    (loadSection(.promptAndRead)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
-      ?? AppConstants.defaultPromptAndReadSystemPrompt
   }
 
   /// Chat system prompt. Returns default if section missing or empty.
@@ -176,7 +178,6 @@ final class SystemPromptsStore {
       .dictation: AppConstants.defaultTranscriptionSystemPrompt,
       .whisperGlossary: AppConstants.defaultWhisperGlossary,
       .promptMode: AppConstants.defaultPromptModeSystemPrompt,
-      .promptAndRead: AppConstants.defaultPromptAndReadSystemPrompt,
       .geminiChat: AppConstants.defaultGeminiChatSystemPrompt,
     ])
   }
@@ -198,12 +199,18 @@ final class SystemPromptsStore {
         var bodyLines: [String] = []
         i += 1
         while i < lines.count {
-          if SystemPromptSection.section(forHeader: lines[i]) != nil { break }
+          if SystemPromptSection.section(forHeader: lines[i]) != nil || SystemPromptSection.isRemovedHeader(lines[i]) { break }
           bodyLines.append(lines[i])
           i += 1
         }
         let body = bodyLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         result[section] = body
+      } else if SystemPromptSection.isRemovedHeader(line) {
+        i += 1
+        while i < lines.count {
+          if SystemPromptSection.section(forHeader: lines[i]) != nil || SystemPromptSection.isRemovedHeader(lines[i]) { break }
+          i += 1
+        }
       } else {
         i += 1
       }
@@ -216,13 +223,10 @@ final class SystemPromptsStore {
       ?? AppConstants.defaultTranscriptionSystemPrompt
     let promptMode = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)
       ?? AppConstants.defaultPromptModeSystemPrompt
-    let promptAndRead = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptAndReadSystemPrompt)
-      ?? AppConstants.defaultPromptAndReadSystemPrompt
     let content = formatContent([
       .dictation: dictation,
       .whisperGlossary: AppConstants.defaultWhisperGlossary,
       .promptMode: promptMode,
-      .promptAndRead: promptAndRead,
       .geminiChat: AppConstants.defaultGeminiChatSystemPrompt,
     ])
     do {

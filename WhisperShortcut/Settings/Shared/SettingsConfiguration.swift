@@ -556,7 +556,6 @@ struct SettingsDefaults {
   static let settingsCloseOnFocusLoss = true
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
-  static let promptAndReadSystemPrompt = ""
   
   // MARK: - Read Aloud Settings (for Chat TTS)
   static let selectedReadAloudVoice = "Charon"
