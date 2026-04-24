@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Unified model selection component for Prompt Mode (GPT-Audio and Gemini multimodal models) and Smart Improvement.
+/// Unified model selection component for Dictate Prompt (GPT-Audio and Gemini multimodal models) and Smart Improvement.
 struct PromptModelSelectionView: View {
   let title: String
-  /// When nil, uses the default Prompt Mode subtitle.
+  /// When nil, uses the default Dictate Prompt subtitle.
   let subtitle: String?
   /// When false, renders a small label instead of SectionHeader (e.g. when embedded in another section).
   let showSectionHeader: Bool
@@ -11,7 +11,7 @@ struct PromptModelSelectionView: View {
   let onModelChanged: (() -> Void)?
   /// When true, user is on subscription (proxy); model selection is fixed by the backend. All options disabled.
   let subscriptionMode: Bool
-  /// When in subscription mode, optional custom text for the fixed model (e.g. "The Open Gemini window uses Gemini 3.1 Flash-Lite (fixed)."). If nil, shows Dictate Prompt / Smart Improvement text.
+  /// When in subscription mode, optional custom text for the fixed model (e.g. "The chat window uses Gemini 3.1 Flash-Lite (fixed)."). If nil, shows Dictate Prompt / Smart Improvement text.
   let subscriptionFixedModelDescription: String?
   /// When in subscription mode, if set, this model is shown as selected in the grid and used for Model Details (so only this tile is highlighted, others grayed out).
   let subscriptionEffectiveModel: PromptModel?

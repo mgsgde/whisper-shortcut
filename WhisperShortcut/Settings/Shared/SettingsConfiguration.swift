@@ -6,7 +6,7 @@ enum ChatModelProvider: String, CaseIterable {
   case grok
 }
 
-// MARK: - Unified Prompt Model Enum (for Prompt Mode) - Gemini multimodal models + Grok
+// MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash (and sibling docs)
 // GA (stable IDs): gemini-2.5-flash, gemini-2.5-flash-lite. 2.0 removed. Preview: gemini-3-*.
 // Grok model IDs: https://docs.x.ai/docs/models
@@ -154,12 +154,12 @@ enum PromptModel: String, CaseIterable {
     return provider == .gemini
   }
 
-  /// All models available for the Open Gemini chat window (all providers).
+  /// All models available for the chat window (all providers).
   static var chatModels: [PromptModel] {
     return allCases
   }
 
-  /// Only Gemini models (for prompt mode, transcription, etc. where Gemini-specific features are required).
+  /// Only Gemini models (for dictate prompt, transcription, etc. where Gemini-specific features are required).
   static var geminiOnlyModels: [PromptModel] {
     return allCases.filter { $0.provider == .gemini }
   }
@@ -179,7 +179,7 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
-  /// Loads the model selected for the Open Gemini window (Settings → Open Gemini).
+  /// Loads the model selected for the chat window (Settings → Chat).
   static func loadSelectedOpenGemini() -> PromptModel {
     guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel) else {
       return SettingsDefaults.selectedOpenGeminiModel
@@ -558,7 +558,7 @@ struct SettingsDefaults {
   static let promptModeSystemPrompt = ""
   static let promptAndReadSystemPrompt = ""
   
-  // MARK: - Read Aloud Settings (for Gemini Chat TTS)
+  // MARK: - Read Aloud Settings (for Chat TTS)
   static let selectedReadAloudVoice = "Charon"
   static let selectedTTSModel = TTSModel.gemini25FlashTTS
   static let readAloudPlaybackRateMin: Float = 0.5
@@ -639,7 +639,7 @@ struct SettingsData {
   var customPromptText: String = SettingsDefaults.customPromptText
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
 
-  // MARK: - Read Aloud Settings (for Gemini Chat TTS)
+  // MARK: - Read Aloud Settings (for Chat TTS)
   var selectedReadAloudVoice: String = SettingsDefaults.selectedReadAloudVoice
   var selectedTTSModel: TTSModel = SettingsDefaults.selectedTTSModel
   var readAloudPlaybackRate: Float = SettingsDefaults.readAloudPlaybackRate

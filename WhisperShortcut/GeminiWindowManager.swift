@@ -62,7 +62,7 @@ class GeminiWindowManager {
     }
   }
 
-  /// Captures the primary display for Prompt Mode — no Gemini window required.
+  /// Captures the primary display for Dictate Prompt — no chat window required.
   /// Returns JPEG data (max 1920 px wide, 80 % quality) or nil on failure (missing permission, no display, etc.).
   @MainActor
   func captureScreenForPromptMode() async -> Data? {

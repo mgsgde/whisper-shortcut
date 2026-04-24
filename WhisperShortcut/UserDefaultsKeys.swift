@@ -21,7 +21,7 @@ enum UserDefaultsKeys {
   static let promptModeSystemPrompt = "promptModeSystemPrompt"
   static let promptAndReadSystemPrompt = "promptAndReadSystemPrompt"
   
-  // MARK: - Read Aloud Settings (for Gemini Chat TTS)
+  // MARK: - Read Aloud Settings (for Chat TTS)
   static let selectedReadAloudVoice = "selectedReadAloudVoice"
   static let readAloudPlaybackRate = "readAloudPlaybackRate"
 

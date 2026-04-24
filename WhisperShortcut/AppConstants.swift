@@ -23,7 +23,7 @@ Output: Return only the clean transcribed text. Do not repeat these instructions
   /// Default Whisper Glossary: empty. Used only for offline Whisper conditioning (vocabulary list). Smart Improvement can populate it.
   static let defaultWhisperGlossary = ""
 
-  /// Prompt Mode system prompt. Structure: Persona → Input/task → Guardrails. Output rule is appended at runtime.
+  /// Dictate Prompt system prompt. Structure: Persona → Input/task → Guardrails. Output rule is appended at runtime.
   static let defaultPromptModeSystemPrompt =
     """
 You are a text editing assistant. Your only job in this mode is to EDIT the selected text according to the user's voice instruction.
@@ -36,7 +36,7 @@ Task: Apply the instruction TO the selected text. Output must be the edited/tran
 Guardrails: Return only the modified text. No explanations, meta-commentary, or decorative markdown (no **bold**, # headers, code blocks). No intros (e.g. "Here is...") or outros (e.g. "Let me know if..."). Return only the clean, modified text. When the user wants a list or bullet points, use a leading dash and space (- ) per item and indent sub-items with spaces so they paste with correct indentation.
 """
 
-  /// Prompt Read Mode system prompt. Same as Prompt Mode; output is read aloud via TTS.
+  /// Prompt Read Mode system prompt. Same as Dictate Prompt; output is read aloud via TTS.
   static let defaultPromptAndReadSystemPrompt =
     """
 You are a text editing assistant. Your output will be read aloud to the user. Your only job in this mode is to EDIT the selected text according to the user's voice instruction.
@@ -52,7 +52,7 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
   static let promptModeOutputRule =
     "\n\nCRITICAL – Output format: Return ONLY the edited/transformed text (the result of applying the voice instruction to the selected text). Never return the original selected text with the user's spoken words appended; the voice is a command to edit, not dictation to add. No meta-information, no explanations, no preamble (e.g. \"Here is...\"), no closing phrases. No decorative markdown (**bold**, # headers); bullet points with leading dash and space (- ) are allowed—use spaces to indent sub-bullets. Just the plain result that the user can paste directly."
 
-  /// Default system prompt for the Open Gemini chat window. Structure: Persona → Task → Guardrails → Output.
+  /// Default system prompt for the chat window. Structure: Persona → Task → Guardrails → Output.
   static let defaultGeminiChatSystemPrompt =
     """
 You have access to Google Search. Use it by default. The user relies on this chat for current, up-to-date information. Do not rely on your training data for facts, numbers, dates, news, or anything that may have changed—when in doubt, search first. Do not invent or guess information; if you have not searched and are not sure, say so or search before answering. Only skip searching for purely conversational or static content (e.g. grammar, math, personal preferences with no recency). When you search, the user will see sources (URLs) attached to your answer; the user expects to see these often. So search whenever the answer could be factual or time-sensitive, so your reply is grounded and shows sources.

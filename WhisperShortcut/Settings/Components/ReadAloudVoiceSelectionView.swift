@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Voice selection component for Read Aloud (Prompt Mode + Read Aloud)
+/// Voice selection component for Read Aloud (Dictate Prompt + Read Aloud)
 struct ReadAloudVoiceSelectionView: View {
   @Binding var selectedVoice: String
   let onVoiceChanged: (() -> Void)?

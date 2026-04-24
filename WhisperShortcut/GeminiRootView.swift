@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Root view for the Gemini Chat window. Chat only; no Meeting mode.
+/// Root view for the chat window.
 struct GeminiRootView: View {
   var body: some View {
     GeminiChatView()

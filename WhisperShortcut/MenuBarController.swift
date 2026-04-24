@@ -61,12 +61,21 @@ class MenuBarController: NSObject {
   // MARK: - Live Meeting State
   private var liveMeetingRecorder: LiveMeetingRecorder?
   private var liveMeetingStopping: Bool = false
+  /// Latched true once `finishLiveMeetingSession` has run; used to drop late chunk deliveries
+  /// from AVAudioRecorder that arrive after the post-processing Task started.
+  private var liveMeetingFinalized: Bool = false
+  /// Set to true on stop; cleared when the recorder delivers its final chunk. Gates
+  /// `finishLiveMeetingSession` so post-processing can't start before the last audio arrives.
+  private var liveMeetingAwaitingFinalChunk: Bool = false
   private var liveMeetingTranscriptURL: URL?
   private var liveMeetingPendingChunks: Int = 0
   private var liveMeetingSessionStartTime: Date?
   private var liveMeetingSafeguardTimer: Timer?
-  /// Number of transcript chunks already included in the rolling summary. Used to trigger summary every N chunks.
-  private var liveMeetingChunksSummarized: Int = 0
+  /// ID of the last chunk included in the rolling summary. Robust against chunk trimming.
+  private var liveMeetingLastSummarizedChunkID: UUID? = nil
+  /// How many chunks have arrived since `liveMeetingLastSummarizedChunkID` was updated.
+  /// We kick off a new rolling-summary call once this reaches the threshold.
+  private var liveMeetingChunksSinceSummary: Int = 0
   /// When non-nil, finishLiveMeetingSession will rename the transcript file to this stem (or timestamp-suffix) before ending.
   private var liveMeetingPreferredName: String?
   /// Set to true after showing rate-limit popup once this session so we don't spam.
@@ -708,22 +717,37 @@ class MenuBarController: NSObject {
     let savedInterval = UserDefaults.standard.double(forKey: UserDefaultsKeys.liveMeetingChunkInterval)
     let chunkInterval: TimeInterval = savedInterval > 0 ? savedInterval : AppConstants.liveMeetingChunkIntervalDefault
 
+    // Compute resume offset so new chunks continue from where the previous recording
+    // left off, keeping transcript timestamps monotonic.
+    let existingChunks = LiveMeetingTranscriptStore.shared.chunks
+    let resumeOffset: TimeInterval
+    if let last = existingChunks.last {
+      // Buffer past the last chunk's start so labels don't collide.
+      resumeOffset = last.startTime + max(1, chunkInterval)
+    } else {
+      resumeOffset = 0
+    }
+
     // Create and start recorder
     liveMeetingRecorder = LiveMeetingRecorder(maxChunkDuration: chunkInterval)
     liveMeetingRecorder?.delegate = self
-    liveMeetingRecorder?.startSession()
+    liveMeetingRecorder?.startSession(resumeTimeOffset: resumeOffset)
 
     // Update state
     liveMeetingStopping = false
+    liveMeetingFinalized = false
+    liveMeetingAwaitingFinalChunk = false
     liveMeetingPendingChunks = 0
     liveMeetingSessionStartTime = Date()
     liveMeetingDidShowRateLimitAlert = false
     appState = .recording(.liveMeeting)
-    if LiveMeetingTranscriptStore.shared.chunks.isEmpty {
+    if existingChunks.isEmpty {
       LiveMeetingTranscriptStore.shared.startSession()
-      liveMeetingChunksSummarized = 0
+      liveMeetingLastSummarizedChunkID = nil
+      liveMeetingChunksSinceSummary = 0
     } else {
       LiveMeetingTranscriptStore.shared.resumeSession()
+      // Preserve existing summarized state; if nil it falls back to "from start" which is safe.
     }
 
     // Schedule duration safeguard if enabled
@@ -776,16 +800,32 @@ class MenuBarController: NSObject {
     liveMeetingSafeguardTimer?.invalidate()
     liveMeetingSafeguardTimer = nil
     liveMeetingStopping = true
+    // AVAudioRecorder delivers its final chunk async via audioRecorderDidFinishRecording,
+    // so wait for it before finalizing (prevents a race where post-processing rewrites
+    // the transcript file while a late chunk is still being appended).
+    liveMeetingAwaitingFinalChunk = true
     liveMeetingRecorder?.stopSession()
 
-    // If no pending chunks, finish immediately
-    if liveMeetingPendingChunks == 0 {
-      finishLiveMeetingSession()
+    // Safety net: if the final chunk never arrives within 30s, finish anyway so the UI
+    // doesn't get stuck in "stopping" forever.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+      guard let self = self else { return }
+      if self.liveMeetingStopping && !self.liveMeetingFinalized {
+        DebugLogger.logWarning("LIVE-MEETING: Final chunk timeout; finishing session anyway")
+        self.liveMeetingAwaitingFinalChunk = false
+        self.liveMeetingPendingChunks = 0
+        self.finishLiveMeetingSession()
+      }
     }
-    // Otherwise, wait for pending chunks to complete (handled in delegate)
   }
 
   private func finishLiveMeetingSession() {
+    guard !liveMeetingFinalized else {
+      DebugLogger.log("LIVE-MEETING: finishLiveMeetingSession ignored (already finalized)")
+      return
+    }
+    liveMeetingFinalized = true
+
     let discard = liveMeetingDiscard
     DebugLogger.log("LIVE-MEETING: Session finished (discard=\(discard))")
 
@@ -809,16 +849,23 @@ class MenuBarController: NSObject {
       LiveMeetingTranscriptStore.shared.endSession()
     }
 
+    // Capture URL for the post-processing Task before we clear it.
+    let transcriptURLForPostProcessing: URL? = discard ? nil : liveMeetingTranscriptURL
+
     liveMeetingPreferredName = nil
     liveMeetingSafeguardTimer?.invalidate()
     liveMeetingSafeguardTimer = nil
     liveMeetingStopping = false
+    liveMeetingAwaitingFinalChunk = false
     liveMeetingDiscard = false
     liveMeetingRecorder = nil
     liveMeetingPendingChunks = 0
+    liveMeetingTranscriptURL = nil
+    liveMeetingLastSummarizedChunkID = nil
+    liveMeetingChunksSinceSummary = 0
     appState = appState.finish()
 
-    if !discard, let transcriptURL = liveMeetingTranscriptURL {
+    if let transcriptURL = transcriptURLForPostProcessing {
       let store = LiveMeetingTranscriptStore.shared
       let chunksSnapshot = store.chunks
       Task {
@@ -923,8 +970,15 @@ class MenuBarController: NSObject {
       try FileManager.default.createDirectory(at: meetingsDir, withIntermediateDirectories: true)
     }
 
-    let stem = LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem
-               ?? LiveMeetingTranscriptStore.generateStem()
+    // If the store has no stem yet (e.g. first-ever meeting via global shortcut),
+    // generate one and publish it so subsequent reads pick the SAME stem.
+    let stem: String
+    if let existing = LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem {
+      stem = existing
+    } else {
+      stem = LiveMeetingTranscriptStore.generateStem()
+      LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem = stem
+    }
     let filename = "\(stem).txt"
 
     let fileURL = meetingsDir.appendingPathComponent(filename)
@@ -969,24 +1023,31 @@ class MenuBarController: NSObject {
 
   /// If at least 4 new chunks since last summary, kick off a rolling summary update (async).
   private func triggerRollingSummaryUpdateIfNeeded() {
-    let store = LiveMeetingTranscriptStore.shared
-    let count = store.chunks.count
     let threshold = 4
-    guard count - liveMeetingChunksSummarized >= threshold else { return }
+    liveMeetingChunksSinceSummary += 1
+    guard liveMeetingChunksSinceSummary >= threshold else { return }
 
-    let fromIndex = liveMeetingChunksSummarized
-    liveMeetingChunksSummarized = count
+    let store = LiveMeetingTranscriptStore.shared
+    let result = store.chunkTexts(afterID: liveMeetingLastSummarizedChunkID)
+    guard !result.text.isEmpty, let newLastID = result.lastID else { return }
+
     let currentSummary = store.summary
-    let newText = store.chunkTexts(fromIndex: fromIndex)
-    guard !newText.isEmpty else { return }
+    let newText = result.text
+    let previousLastID = liveMeetingLastSummarizedChunkID
+    liveMeetingLastSummarizedChunkID = newLastID
+    liveMeetingChunksSinceSummary = 0
 
     Task {
-      await runRollingSummaryUpdate(currentSummary: currentSummary, newText: newText)
+      await runRollingSummaryUpdate(
+        currentSummary: currentSummary,
+        newText: newText,
+        previousLastID: previousLastID
+      )
     }
   }
 
   /// Calls Gemini to merge new transcript into the rolling summary and updates the store. Call from a Task.
-  private func runRollingSummaryUpdate(currentSummary: String, newText: String) async {
+  private func runRollingSummaryUpdate(currentSummary: String, newText: String, previousLastID: UUID?) async {
     guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
     let model = PromptModel.loadSelectedMeetingSummary().rawValue
     do {
@@ -1007,7 +1068,9 @@ class MenuBarController: NSObject {
     } catch {
       DebugLogger.logError("LIVE-MEETING-SUMMARY: Update failed: \(error.localizedDescription)")
       await MainActor.run {
-        liveMeetingChunksSummarized = max(0, liveMeetingChunksSummarized - 4)
+        // Roll back so the next attempt re-summarizes the same range.
+        self.liveMeetingLastSummarizedChunkID = previousLastID
+        self.liveMeetingChunksSinceSummary = 0
       }
     }
   }
@@ -1860,8 +1923,19 @@ extension MenuBarController: ChunkProgressDelegate {
 
 // MARK: - LiveMeetingRecorderDelegate
 extension MenuBarController: LiveMeetingRecorderDelegate {
-  func liveMeetingRecorder(didFinishChunk audioURL: URL, chunkIndex: Int, startTime: TimeInterval, isSilent: Bool) {
-    DebugLogger.log("LIVE-MEETING: Received chunk \(chunkIndex) at \(formatTimestamp(elapsedSeconds: startTime))\(isSilent ? " (silent)" : "")")
+  func liveMeetingRecorder(didFinishChunk audioURL: URL, chunkIndex: Int, startTime: TimeInterval, isSilent: Bool, isFinal: Bool) {
+    DebugLogger.log("LIVE-MEETING: Received chunk \(chunkIndex) at \(formatTimestamp(elapsedSeconds: startTime))\(isSilent ? " (silent)" : "")\(isFinal ? " (final)" : "")")
+
+    // Drop late deliveries that arrive after the session was finalized.
+    if liveMeetingFinalized {
+      DebugLogger.logWarning("LIVE-MEETING: Dropping late chunk \(chunkIndex) (session already finalized)")
+      cleanupAudioFile(at: audioURL)
+      return
+    }
+
+    if isFinal {
+      liveMeetingAwaitingFinalChunk = false
+    }
 
     liveMeetingPendingChunks += 1
 
@@ -1869,9 +1943,7 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
       DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (silent audio)")
       cleanupAudioFile(at: audioURL)
       liveMeetingPendingChunks -= 1
-      if liveMeetingStopping && liveMeetingPendingChunks == 0 {
-        finishLiveMeetingSession()
-      }
+      maybeFinishAfterChunkCompletion()
       return
     }
 
@@ -1921,12 +1993,19 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
 
       await MainActor.run {
         self.liveMeetingPendingChunks -= 1
-
-        if self.liveMeetingStopping && self.liveMeetingPendingChunks == 0 {
-          self.finishLiveMeetingSession()
-        }
+        self.maybeFinishAfterChunkCompletion()
       }
     }
+  }
+
+  /// Called whenever a chunk's pending work completes. Finalizes the session once
+  /// the user has requested stop, all pending chunks have completed, and the
+  /// recorder has delivered its final chunk (tracked via `liveMeetingAwaitingFinalChunk`).
+  private func maybeFinishAfterChunkCompletion() {
+    guard liveMeetingStopping else { return }
+    guard liveMeetingPendingChunks == 0 else { return }
+    guard !liveMeetingAwaitingFinalChunk else { return }
+    finishLiveMeetingSession()
   }
 
   func liveMeetingRecorder(didFailWithError error: Error) {

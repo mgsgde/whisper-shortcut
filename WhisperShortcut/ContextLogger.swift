@@ -143,7 +143,7 @@ class ContextLogger {
     writeEntry(entry)
   }
 
-  /// Logs one Open Gemini chat turn (user message + model response) when "Save usage data" is enabled.
+  /// Logs one chat turn (user message + model response) when "Save usage data" is enabled.
   func logGeminiChat(userMessage: String, modelResponse: String, model: String?) {
     guard isLoggingEnabled else { return }
     let entry = InteractionLogEntry(
@@ -379,13 +379,13 @@ class ContextLogger {
     try? FileManager.default.removeItem(at: url)
   }
 
-  /// Removes the suggested Gemini Chat system prompt file so it does not reappear after Apply.
+  /// Removes the suggested Chat system prompt file so it does not reappear after Apply.
   func deleteSuggestedGeminiChatSystemPromptFile() {
     let url = contextDirectoryURL.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
     try? FileManager.default.removeItem(at: url)
   }
 
-  /// Appends one entry to the system prompt history JSONL (for Dictate (transcription), Prompt Mode, or Prompt Read Mode).
+  /// Appends one entry to the system prompt history JSONL (for Dictate (transcription), Dictate Prompt, or Prompt Read Mode).
   /// File name: system-prompt-history-{suffix}.jsonl (e.g. dictation, prompt-mode, prompt-and-read).
   /// Called when auto-improvement applies a new system prompt. History is removed when context data is deleted.
   func appendSystemPromptHistory(historyFileSuffix: String, previousLength: Int, newLength: Int, content: String, model: String? = nil) {

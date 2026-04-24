@@ -152,7 +152,7 @@ class ContextDerivation {
       }
     }
 
-    // Gemini Chat: use all modes combined as primary; secondary is current Gemini Chat prompt.
+    // Chat: use all modes combined as primary; secondary is current Chat prompt.
     if focus == .geminiChat {
       var allEntries: [InteractionLogEntry] = []
       for (_, entries) in entriesByMode {
@@ -661,9 +661,9 @@ class ContextDerivation {
       if let suggested = extractSection(from: analysisResult, startMarker: geminiChatPromptMarker, endMarker: geminiChatPromptEndMarker) {
         let fileURL = contextDir.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
         try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
-        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Gemini Chat system prompt (\(suggested.count) chars)")
+        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Chat system prompt (\(suggested.count) chars)")
       } else {
-        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for Gemini Chat prompt")
+        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for Chat prompt")
       }
     }
   }

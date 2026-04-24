@@ -18,7 +18,7 @@ struct SpeechToPromptSettingsTab: View {
       
       SpacedSectionDivider()
 
-      // Screen context for voice Prompt Mode (same UserDefaults key as before)
+      // Screen context for voice Dictate Prompt (same UserDefaults key as before)
       screenshotContextSection
 
       SpacedSectionDivider()
@@ -89,7 +89,7 @@ struct SpeechToPromptSettingsTab: View {
     )
   }
 
-  // MARK: - Screen context (voice Prompt Mode)
+  // MARK: - Screen context (voice Dictate Prompt)
   @ViewBuilder
   private var screenshotContextSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Fixed appearance for the Open Gemini chat window (dark, no theme switching).
+/// Fixed appearance for the chat window (dark, no theme switching).
 /// Dark palette closely matching Claude's UI: near-black surfaces with warm undertones.
 enum GeminiChatTheme {
   /// Main content area background (message list). Dark, matching ChatGPT.

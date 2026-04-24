@@ -5,7 +5,9 @@ import Foundation
 protocol LiveMeetingRecorderDelegate: AnyObject {
   /// Called when a chunk has finished recording and is ready for transcription.
   /// `isSilent` is true when the peak audio level during the chunk stayed below the silence threshold.
-  func liveMeetingRecorder(didFinishChunk audioURL: URL, chunkIndex: Int, startTime: TimeInterval, isSilent: Bool)
+  /// `isFinal` is true only for the single chunk that is delivered from `stopSession()` —
+  /// the delegate uses this to know the recorder will deliver no further chunks.
+  func liveMeetingRecorder(didFinishChunk audioURL: URL, chunkIndex: Int, startTime: TimeInterval, isSilent: Bool, isFinal: Bool)
 
   /// Called when recording fails
   func liveMeetingRecorder(didFailWithError error: Error)
@@ -61,11 +63,14 @@ class LiveMeetingRecorder: NSObject {
   /// Session start time for calculating timestamps
   private var sessionStartTime: Date?
 
-  /// Current chunk start time (relative to session start)
+  /// Current chunk start time (relative to meeting start, including any resume offset)
   private var currentChunkStartTime: TimeInterval = 0
 
   /// When the current chunk started recording (wall clock)
   private var currentChunkWallStart: Date?
+
+  /// Seconds already elapsed before this recorder started (set when resuming a meeting).
+  private var resumeTimeOffset: TimeInterval = 0
 
   /// Flag indicating if session is active
   private(set) var isSessionActive: Bool = false
@@ -103,9 +108,12 @@ class LiveMeetingRecorder: NSObject {
 
   // MARK: - Public Methods
 
-  /// Starts a new live meeting recording session
-  func startSession() {
-    DebugLogger.log("LIVE-MEETING: Starting session (max=\(maxChunkDuration)s, min=\(minChunkDuration)s, silence=\(silenceDuration)s)")
+  /// Starts a new live meeting recording session. When resuming, pass the total seconds
+  /// already elapsed in the meeting so new chunk timestamps continue from that offset.
+  func startSession(resumeTimeOffset: TimeInterval = 0) {
+    DebugLogger.log("LIVE-MEETING: Starting session (max=\(maxChunkDuration)s, min=\(minChunkDuration)s, silence=\(silenceDuration)s, resumeOffset=\(resumeTimeOffset)s)")
+
+    self.resumeTimeOffset = max(0, resumeTimeOffset)
 
     requestMicrophonePermission { [weak self] granted in
       guard let self = self else { return }
@@ -164,7 +172,7 @@ class LiveMeetingRecorder: NSObject {
 
       self.sessionStartTime = Date()
       self.chunkIndex = 0
-      self.currentChunkStartTime = 0
+      self.currentChunkStartTime = self.resumeTimeOffset
       self.currentChunkWallStart = Date()
       self.consecutiveSilenceSamples = 0
       self.isSessionActive = true
@@ -245,14 +253,17 @@ class LiveMeetingRecorder: NSObject {
 
   private func checkSilence() {
     guard isSessionActive, let recorder = activeRecorder, recorder.isRecording else { return }
-
     guard let wallStart = currentChunkWallStart else { return }
     let elapsed = Date().timeIntervalSince(wallStart)
-    guard elapsed >= minChunkDuration else { return }
 
     recorder.updateMeters()
     let power = recorder.averagePower(forChannel: 0)
+    // Track peak over the ENTIRE chunk (not only after minChunkDuration) so the
+    // isSilent flag reflects whether any speech occurred anywhere in the chunk.
     if power > peakPowerDuringChunk { peakPowerDuringChunk = power }
+
+    // Silence-based rotation only kicks in after minChunkDuration.
+    guard elapsed >= minChunkDuration else { return }
 
     if power < silenceThresholdDB {
       consecutiveSilenceSamples += 1
@@ -276,7 +287,7 @@ class LiveMeetingRecorder: NSObject {
     let chunkWasSilent = peakPowerDuringChunk < silenceThresholdDB
 
     let nextChunkStartTime = (sessionStartTime != nil)
-      ? Date().timeIntervalSince(sessionStartTime!)
+      ? resumeTimeOffset + Date().timeIntervalSince(sessionStartTime!)
       : currentChunkStartTime + maxChunkDuration
 
     do {
@@ -287,7 +298,36 @@ class LiveMeetingRecorder: NSObject {
       scheduleTimers()
     } catch {
       DebugLogger.logError("LIVE-MEETING: Failed to start next recorder: \(error)")
-      delegate?.liveMeetingRecorder(didFailWithError: error)
+      // Tear down cleanly to avoid a zombie session where the old timer keeps
+      // firing rotations against a recorder we can no longer advance.
+      isSessionActive = false
+      chunkTimer?.invalidate()
+      chunkTimer = nil
+      meteringTimer?.invalidate()
+      meteringTimer = nil
+      if wasRecorderAActive {
+        recorderA?.stop()
+      } else {
+        recorderB?.stop()
+      }
+      // Still deliver the completed chunk so in-flight audio isn't silently lost.
+      // Mark it final because no further chunks will come (session torn down).
+      if let url = completedRecordingURL {
+        DispatchQueue.main.async { [weak self] in
+          self?.delegate?.liveMeetingRecorder(
+            didFinishChunk: url,
+            chunkIndex: completedChunkIndex,
+            startTime: completedChunkStartTime,
+            isSilent: chunkWasSilent,
+            isFinal: true
+          )
+          self?.delegate?.liveMeetingRecorder(didFailWithError: error)
+        }
+      } else {
+        DispatchQueue.main.async { [weak self] in
+          self?.delegate?.liveMeetingRecorder(didFailWithError: error)
+        }
+      }
       return
     }
 
@@ -303,7 +343,8 @@ class LiveMeetingRecorder: NSObject {
           didFinishChunk: url,
           chunkIndex: completedChunkIndex,
           startTime: completedChunkStartTime,
-          isSilent: chunkWasSilent
+          isSilent: chunkWasSilent,
+          isFinal: false
         )
       }
     }
@@ -337,15 +378,12 @@ extension LiveMeetingRecorder: AVAudioRecorderDelegate {
 
           if fileSize > 0 {
             DebugLogger.log("LIVE-MEETING: Final chunk recorded successfully (\(fileSize) bytes)")
-            let finalChunkStartTime = (sessionStartTime != nil)
-              ? Date().timeIntervalSince(sessionStartTime!) - (Date().timeIntervalSince(currentChunkWallStart ?? Date()))
-              : currentChunkStartTime
-
             delegate?.liveMeetingRecorder(
               didFinishChunk: url,
               chunkIndex: chunkIndex,
-              startTime: max(0, finalChunkStartTime),
-              isSilent: peakPowerDuringChunk < silenceThresholdDB
+              startTime: max(0, currentChunkStartTime),
+              isSilent: peakPowerDuringChunk < silenceThresholdDB,
+              isFinal: true
             )
           } else {
             DebugLogger.logWarning("LIVE-MEETING: Final chunk is empty, skipping")

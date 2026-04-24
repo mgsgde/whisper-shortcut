@@ -2,7 +2,7 @@
 //  SystemPromptsStore.swift
 //  WhisperShortcut
 //
-//  Single file storage for all system prompts (Dictation, Prompt Mode, Prompt Read Mode).
+//  Single file storage for all system prompts (Dictation, Dictate Prompt, Prompt Read Mode).
 //  Reads/writes UserContext/system-prompts.md with section headers. Migrates from UserDefaults when missing.
 //
 
@@ -70,7 +70,7 @@ final class SystemPromptsStore {
       ?? AppConstants.defaultTranscriptionSystemPrompt
   }
 
-  /// Prompt Mode system prompt. Returns default if section missing or empty.
+  /// Dictate Prompt system prompt. Returns default if section missing or empty.
   func loadDictatePromptSystemPrompt() -> String {
     (loadSection(.promptMode)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
       ?? AppConstants.defaultPromptModeSystemPrompt
@@ -82,7 +82,7 @@ final class SystemPromptsStore {
       ?? AppConstants.defaultPromptAndReadSystemPrompt
   }
 
-  /// Gemini Chat system prompt. Returns default if section missing or empty.
+  /// Chat system prompt. Returns default if section missing or empty.
   func loadGeminiChatSystemPrompt() -> String {
     (loadSection(.geminiChat)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
       ?? AppConstants.defaultGeminiChatSystemPrompt

@@ -42,7 +42,7 @@ class SettingsViewModel: ObservableObject {
 
     let promptModelDefault = SettingsDefaults.selectedPromptModel
 
-    // Load Prompt model preference (for Prompt Mode); migrate removed 2.0 raw values to 2.5 equivalents.
+    // Load Prompt model preference (for Dictate Prompt); migrate removed 2.0 raw values to 2.5 equivalents.
     if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) {
       let normalized = PromptModel.migrateLegacyPromptRawValue(savedModelString)
       if normalized != savedModelString {
@@ -94,7 +94,7 @@ class SettingsViewModel: ObservableObject {
     // Load read aloud playback rate (clamp to valid range)
     data.readAloudPlaybackRate = SettingsDefaults.clampedReadAloudPlaybackRate()
 
-    // Load Open Gemini window model
+    // Load chat window model
     if let savedOpenGeminiModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel) {
       let normalized = PromptModel.migrateLegacyPromptRawValue(savedOpenGeminiModelString)
       if normalized != savedOpenGeminiModelString {
@@ -246,7 +246,7 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Validation
   func validateSettings() -> String? {
-    // Note: Prompt Mode API key validation is handled at runtime in SpeechService.
+    // Note: Dictate Prompt API key validation is handled at runtime in SpeechService.
     // Transcription model is always allowed to be saved (including Gemini without API key)
     // so state stays consistent; Dictate is disabled at runtime when Gemini is selected and no key is set.
 
@@ -376,7 +376,7 @@ class SettingsViewModel: ObservableObject {
 
     // System prompts are stored in UserContext/system-prompts.md (see SystemPromptsStore); not saved to UserDefaults.
 
-    // Save read aloud voice settings (used by Gemini Chat TTS)
+    // Save read aloud voice settings (used by Chat TTS)
     UserDefaults.standard.set(data.selectedReadAloudVoice, forKey: UserDefaultsKeys.selectedReadAloudVoice)
     UserDefaults.standard.set(data.selectedTTSModel.rawValue, forKey: UserDefaultsKeys.selectedTTSModel)
     UserDefaults.standard.set(data.readAloudPlaybackRate, forKey: UserDefaultsKeys.readAloudPlaybackRate)

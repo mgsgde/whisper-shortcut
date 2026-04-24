@@ -58,30 +58,26 @@ final class LiveMeetingTranscriptStore: ObservableObject {
 
   /// Call when a new meeting session starts. Clears previous data.
   /// Generates a stem if one was not already set (e.g. when starting via global shortcut without "New Meeting").
+  /// Must be called on the main thread (state mutations are synchronous so callers can read
+  /// `currentMeetingFilenameStem` immediately after this returns, avoiding stem races).
   func startSession() {
-    queue.async { [weak self] in
-      guard let self else { return }
-      DispatchQueue.main.async {
-        if self.currentMeetingFilenameStem == nil {
-          self.currentMeetingFilenameStem = Self.generateStem()
-        }
-        self.chunks = []
-        self.summary = ""
-        self.isSessionActive = true
-        DebugLogger.log("LIVE-MEETING-STORE: Session started, store cleared (stem: \(self.currentMeetingFilenameStem ?? "nil"))")
-      }
+    assert(Thread.isMainThread, "LiveMeetingTranscriptStore.startSession must be called on main thread")
+    if self.currentMeetingFilenameStem == nil {
+      self.currentMeetingFilenameStem = Self.generateStem()
     }
+    self.chunks = []
+    self.summary = ""
+    self.isSessionActive = true
+    DebugLogger.log("LIVE-MEETING-STORE: Session started, store cleared (stem: \(self.currentMeetingFilenameStem ?? "nil"))")
   }
 
   /// Resume a previously stopped session. Keeps existing chunks and summary.
+  /// Must be called on the main thread (synchronous so the stem is stable when callers
+  /// read `currentMeetingFilenameStem` immediately after).
   func resumeSession() {
-    queue.async { [weak self] in
-      guard let self else { return }
-      DispatchQueue.main.async {
-        self.isSessionActive = true
-        DebugLogger.log("LIVE-MEETING-STORE: Session resumed, data retained (stem: \(self.currentMeetingFilenameStem ?? "nil"), chunks: \(self.chunks.count))")
-      }
-    }
+    assert(Thread.isMainThread, "LiveMeetingTranscriptStore.resumeSession must be called on main thread")
+    self.isSessionActive = true
+    DebugLogger.log("LIVE-MEETING-STORE: Session resumed, data retained (stem: \(self.currentMeetingFilenameStem ?? "nil"), chunks: \(self.chunks.count))")
   }
 
   /// Append a transcribed chunk. Call from main thread or from the same place as appendToTranscript.
@@ -101,25 +97,30 @@ final class LiveMeetingTranscriptStore: ObservableObject {
 
   /// Call when the meeting session ends. Keeps chunks, summary, and name so the meeting window can keep showing them.
   func endSession() {
-    DispatchQueue.main.async { [weak self] in
-      self?.isSessionActive = false
+    if Thread.isMainThread {
+      self.isSessionActive = false
       DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
+    } else {
+      DispatchQueue.main.async { [weak self] in
+        self?.isSessionActive = false
+        DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
+      }
     }
   }
 
   /// Clears store for a new meeting without starting recording. Used when user taps "New Meeting".
   /// Generates a fresh stem so the meeting has a unique ID from the start (used as chat scope).
+  /// Must be called on the main thread so the new stem is visible to the next
+  /// `startSession` / `createTranscriptFile` call synchronously (avoids stem races).
   func clearForNewMeeting() {
+    assert(Thread.isMainThread, "LiveMeetingTranscriptStore.clearForNewMeeting must be called on main thread")
     let stem = Self.generateStem()
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      self.chunks = []
-      self.summary = ""
-      self.isSessionActive = false
-      self.currentMeetingFilenameStem = stem
-      self.preferredMeetingName = nil
-      DebugLogger.log("LIVE-MEETING-STORE: Cleared for new meeting (stem: \(stem))")
-    }
+    self.chunks = []
+    self.summary = ""
+    self.isSessionActive = false
+    self.currentMeetingFilenameStem = stem
+    self.preferredMeetingName = nil
+    DebugLogger.log("LIVE-MEETING-STORE: Cleared for new meeting (stem: \(stem))")
   }
 
   /// Returns transcript text for chunks from the given index to the end. Used for rolling summary (merge new content).
@@ -128,6 +129,23 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     return chunks[startIndex...]
       .map { "\($0.timestampString) \($0.text)" }
       .joined(separator: "\n")
+  }
+
+  /// Returns transcript text for chunks appearing strictly after the chunk with the given ID.
+  /// If `afterID` is nil or not found, returns all chunks. Safe across chunk trimming.
+  func chunkTexts(afterID: UUID?) -> (text: String, lastID: UUID?) {
+    guard !chunks.isEmpty else { return ("", nil) }
+    let startIndex: Int
+    if let afterID, let i = chunks.firstIndex(where: { $0.id == afterID }) {
+      startIndex = i + 1
+    } else {
+      startIndex = 0
+    }
+    guard startIndex < chunks.count else { return ("", chunks.last?.id) }
+    let text = chunks[startIndex...]
+      .map { "\($0.timestampString) \($0.text)" }
+      .joined(separator: "\n")
+    return (text, chunks.last?.id)
   }
 
   /// Returns transcript text for the last N minutes (by chunk startTime). Used for chat context.

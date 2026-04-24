@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Open Gemini Settings Tab - Shortcut and model for the Gemini chat window
+/// Chat Settings Tab — shortcut, model, voice, and live meeting settings
 struct OpenGeminiSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?

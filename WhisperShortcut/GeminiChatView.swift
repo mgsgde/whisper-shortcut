@@ -29,7 +29,7 @@ class GeminiChatViewModel: ObservableObject {
     enum Kind: Equatable {
       /// Large Cmd+V paste in the composer.
       case largePaste
-      /// Text captured via Open Gemini shortcut (front-app selection).
+      /// Text captured via Chat shortcut (front-app selection).
       case shortcutSelection
     }
 
@@ -173,8 +173,21 @@ class GeminiChatViewModel: ObservableObject {
         guard let self else { return }
         self.isMeetingActive = active
         if active && self.meetingSessionId == nil {
-          self.meetingSessionId = self.session.id
-          self.markCurrentSessionAsMeeting()
+          // Prefer reattaching to an existing ChatSession already associated with the
+          // current meeting's stem (e.g. on resume), so we don't repurpose whichever
+          // chat the user happens to be viewing.
+          let stem = LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem
+          if let stem, let existing = self.store.allSessions().first(where: { $0.isMeeting && $0.meetingStem == stem }) {
+            self.meetingSessionId = existing.id
+            if self.session.id == existing.id {
+              self.session.isMeeting = true
+              self.session.meetingStem = stem
+            }
+            self.refreshRecentSessions()
+          } else {
+            self.meetingSessionId = self.session.id
+            self.markCurrentSessionAsMeeting()
+          }
         } else if !active {
           self.meetingSessionId = nil
         }
@@ -531,7 +544,7 @@ class GeminiChatViewModel: ObservableObject {
     let hasContent = !raw.isEmpty || !pendingScreenshots.isEmpty || !pendingFileAttachments.isEmpty || !pastedBlocks.isEmpty
     guard hasContent else { return }
 
-    // /model command (switch Open Gemini model with fuzzy matching)
+    // /model command (switch chat model with fuzzy matching)
     if lower == Self.modelCommand || lower.hasPrefix(Self.modelCommand + " ") {
       inputText = ""
       let arg = lower == Self.modelCommand
@@ -640,15 +653,17 @@ class GeminiChatViewModel: ObservableObject {
     return rawContent.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  /// Builds the system instruction: current date, base Gemini Chat prompt, plus optional meeting context (summary + recent transcript).
+  /// Builds the system instruction: current date, base chat prompt, plus optional meeting context (summary + recent transcript).
   private func buildSystemInstruction() -> [String: Any] {
     var text = SystemPromptsStore.shared.loadGeminiChatSystemPrompt()
     let formatter = DateFormatter()
     formatter.dateFormat = "EEEE, MMMM d, yyyy"
     formatter.locale = Locale(identifier: "en_US")
     text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
+    // Only inject live meeting context when the current chat IS the active meeting
+    // session — otherwise switching to an unrelated chat would leak meeting content.
     let meetingContext = meetingContextProvider?()
-      ?? (isMeetingActive ? LiveMeetingTranscriptStore.shared.meetingContextForChat(lastMinutes: 5) : nil)
+      ?? (isCurrentSessionTheActiveMeeting ? LiveMeetingTranscriptStore.shared.meetingContextForChat(lastMinutes: 5) : nil)
     if let extra = meetingContext, !extra.isEmpty {
       text = "\(text)\n\n---\n\n[Meeting context for calibration only — do not reference directly]\n\(extra)"
     }
@@ -658,7 +673,7 @@ class GeminiChatViewModel: ObservableObject {
     return ["parts": [["text": text]]]
   }
 
-  /// Resolves the model ID for the Open Gemini chat window from UserDefaults (Settings > Open Gemini), or subscription fixed model when on subscription.
+  /// Resolves the model ID for the chat window from UserDefaults (Settings > Chat), or subscription fixed model when on subscription.
   private static func resolveOpenGeminiModel() -> String {
     openGeminiModel.rawValue
   }
@@ -671,7 +686,7 @@ class GeminiChatViewModel: ObservableObject {
       ?? SettingsDefaults.selectedOpenGeminiModel
   }
 
-  /// Display name for the current Open Gemini model (e.g. "Gemini 3 Flash") for the nav bar.
+  /// Display name for the current chat model (e.g. "Gemini 3 Flash") for the nav bar.
   var openGeminiModelDisplayName: String {
     Self.openGeminiModel.displayName
   }
@@ -813,7 +828,7 @@ class GeminiChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: /model argument=\(argument) outcome=\(outcome)")
   }
 
-  /// Switches the Open Gemini model directly (used by /grok and /gemini shortcuts).
+  /// Switches the chat model directly (used by /grok and /gemini shortcuts).
   private func switchToModel(_ model: PromptModel) {
     let migrated = PromptModel.migrateIfDeprecated(model)
     UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
@@ -976,6 +991,14 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   func deleteSessionPermanently(id: UUID) {
+    // If the deleted session owns the active live meeting, stop the recording first
+    // so we don't leave a zombie recorder writing to disk for a session that no
+    // longer exists in the UI.
+    if isMeetingActive && meetingSessionId == id {
+      DebugLogger.log("SIDEBAR: Deleting active meeting session — stopping recorder first")
+      NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
+      meetingSessionId = nil
+    }
     store.deleteSession(id: id)
     if id == session.id { switchToCurrentStoreSession() }
     else { refreshRecentSessions() }
@@ -983,6 +1006,14 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   func deleteOlderSessions(than date: Date) {
+    // Stop the active meeting if its owning session will be deleted by this call.
+    if isMeetingActive, let mid = meetingSessionId,
+       let mSession = store.allSessions().first(where: { $0.id == mid }),
+       mSession.lastUpdated < date {
+      DebugLogger.log("SIDEBAR: Bulk delete includes active meeting session — stopping recorder first")
+      NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
+      meetingSessionId = nil
+    }
     let count = store.deleteOlderSessions(than: date)
     if store.load().id != session.id { switchToCurrentStoreSession() }
     else { refreshRecentSessions() }
@@ -1723,7 +1754,7 @@ struct GeminiInputAreaView: View {
   // True when the composer has anything to send
   private var hasContent: Bool { !composer.isEmpty }
 
-  /// Current Open Gemini model for display (with migration); syncs with UserDefaults via @AppStorage.
+  /// Current chat model for display (with migration); syncs with UserDefaults via @AppStorage.
   private var resolvedOpenGeminiModel: PromptModel {
     let migratedRaw = PromptModel.migrateLegacyPromptRawValue(selectedOpenGeminiModelRaw)
     return PromptModel(rawValue: migratedRaw)
