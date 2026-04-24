@@ -128,8 +128,9 @@ struct ChatSession: Codable {
   var archived: Bool
   var pinned: Bool
   var isMeeting: Bool
+  var meetingStem: String?
 
-  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false) {
+  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil) {
     self.id = id
     self.lastUpdated = lastUpdated
     self.messages = messages
@@ -137,10 +138,11 @@ struct ChatSession: Codable {
     self.archived = archived
     self.pinned = pinned
     self.isMeeting = isMeeting
+    self.meetingStem = meetingStem
   }
 
   private enum CodingKeys: String, CodingKey {
-    case id, lastUpdated, messages, title, archived, pinned, isMeeting
+    case id, lastUpdated, messages, title, archived, pinned, isMeeting, meetingStem
   }
 
   init(from decoder: Decoder) throws {
@@ -152,6 +154,7 @@ struct ChatSession: Codable {
     archived = try c.decodeIfPresent(Bool.self, forKey: .archived) ?? false
     pinned = try c.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
     isMeeting = try c.decodeIfPresent(Bool.self, forKey: .isMeeting) ?? false
+    meetingStem = try c.decodeIfPresent(String.self, forKey: .meetingStem)
   }
 }
 
@@ -376,10 +379,11 @@ class GeminiChatSessionStore {
     saveSessionsFile(file)
   }
 
-  func markSessionAsMeeting(id: UUID) {
+  func markSessionAsMeeting(id: UUID, stem: String? = nil) {
     var file = loadFile()
     guard let idx = file.sessions.firstIndex(where: { $0.id == id }) else { return }
     file.sessions[idx].isMeeting = true
+    if let stem { file.sessions[idx].meetingStem = stem }
     saveSessionsFile(file)
   }
 

@@ -7,8 +7,6 @@ struct GeminiChatSidebar: View {
   @Binding var sidebarVisible: Bool
 
   @State private var hoveredRowId: UUID? = nil
-  @State private var deletingSessionId: UUID? = nil
-  @State private var deletingOlderThanSession: ChatSession? = nil
   @State private var renamingSessionId: UUID? = nil
   @State private var renameDraft: String = ""
 
@@ -82,40 +80,6 @@ struct GeminiChatSidebar: View {
     }
     .frame(width: Self.sidebarWidth)
     .background(GeminiChatTheme.controlBackground)
-    .alert(
-      "Delete chat?",
-      isPresented: Binding(
-        get: { deletingSessionId != nil },
-        set: { if !$0 { deletingSessionId = nil } }
-      )
-    ) {
-      Button("Cancel", role: .cancel) { deletingSessionId = nil }
-      Button("Delete", role: .destructive) {
-        if let id = deletingSessionId {
-          viewModel.deleteSessionPermanently(id: id)
-          deletingSessionId = nil
-        }
-      }
-    } message: {
-      Text("This chat will be permanently deleted. This action cannot be undone.")
-    }
-    .alert(
-      "Delete older chats?",
-      isPresented: Binding(
-        get: { deletingOlderThanSession != nil },
-        set: { if !$0 { deletingOlderThanSession = nil } }
-      )
-    ) {
-      Button("Cancel", role: .cancel) { deletingOlderThanSession = nil }
-      Button("Delete", role: .destructive) {
-        if let s = deletingOlderThanSession {
-          viewModel.deleteOlderSessions(than: s.lastUpdated)
-          deletingOlderThanSession = nil
-        }
-      }
-    } message: {
-      Text("All chats older than this one will be permanently deleted. Pinned chats are kept.")
-    }
   }
 
   // MARK: - Header
@@ -189,7 +153,7 @@ struct GeminiChatSidebar: View {
       : (isHovered ? GeminiChatTheme.windowBackground.opacity(0.5) : Color.clear)
 
     let isRenaming = renamingSessionId == session.id
-    let isMeetingLive = session.isMeeting && isActive && viewModel.isMeetingActive
+    let isMeetingLive = session.isMeeting && viewModel.isMeetingActive && viewModel.meetingSessionId == session.id
 
     return HStack(spacing: 0) {
       if isActive {
@@ -226,6 +190,16 @@ struct GeminiChatSidebar: View {
       }
 
       Spacer(minLength: 4)
+
+      if isHovered && !isRenaming {
+        Button(action: { viewModel.deleteSessionPermanently(id: session.id) }) {
+          Image(systemName: "xmark")
+            .font(.system(size: 9, weight: .medium))
+            .foregroundColor(GeminiChatTheme.secondaryText.opacity(0.6))
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, 8)
+      }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(rowBg)
@@ -249,8 +223,8 @@ struct GeminiChatSidebar: View {
         Button("Pin chat") { viewModel.pinSession(id: session.id) }
       }
       Divider()
-      Button("Delete chat\u{2026}", role: .destructive) { deletingSessionId = session.id }
-      Button("Delete older chats\u{2026}", role: .destructive) { deletingOlderThanSession = session }
+      Button("Delete chat", role: .destructive) { viewModel.deleteSessionPermanently(id: session.id) }
+      Button("Delete older chats", role: .destructive) { viewModel.deleteOlderSessions(than: session.lastUpdated) }
     }
   }
 }

@@ -6,7 +6,6 @@ protocol ShortcutDelegate: AnyObject {
   func togglePrompting()
   func openSettings()
   func openGemini()
-  func openMeeting()
 }
 
 // Configurable shortcuts using ShortcutConfigManager
@@ -17,7 +16,6 @@ class Shortcuts {
   private var togglePromptingKey: HotKey?
   private var openSettingsKey: HotKey?
   private var openGeminiKey: HotKey?
-  private var openMeetingKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -78,14 +76,6 @@ class Shortcuts {
       }
     }
 
-    // Create Meeting window shortcut (only if enabled)
-    if config.openMeeting.isEnabled {
-      openMeetingKey = HotKey(
-        key: config.openMeeting.key, modifiers: config.openMeeting.modifiers)
-      openMeetingKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.openMeeting()
-      }
-    }
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -101,7 +91,6 @@ class Shortcuts {
     togglePromptingKey = nil
     openSettingsKey = nil
     openGeminiKey = nil
-    openMeetingKey = nil
   }
 
   deinit {

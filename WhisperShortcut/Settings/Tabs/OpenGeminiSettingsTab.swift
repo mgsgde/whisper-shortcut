@@ -27,10 +27,6 @@ struct OpenGeminiSettingsTab: View {
 
       SpacedSectionDivider()
 
-      meetingShortcutSection
-
-      SpacedSectionDivider()
-
       meetingChunkIntervalSection
 
       SpacedSectionDivider()
@@ -200,29 +196,6 @@ struct OpenGeminiSettingsTab: View {
           .font(.caption)
           .foregroundColor(.secondary)
       }
-    }
-  }
-
-  // MARK: - Meeting Shortcut Section
-  @ViewBuilder
-  private var meetingShortcutSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "⌨️ Meeting Shortcut",
-        subtitle: "Open the Gemini window and start/stop meeting recording"
-      )
-
-      ShortcutInputRow(
-        label: "Open Meeting:",
-        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.openMeeting),
-        text: $viewModel.data.openMeeting,
-        focusedField: .openMeeting,
-        currentFocus: $focusedField,
-        onShortcutChanged: {
-          Task { await viewModel.saveSettings() }
-        },
-        validateShortcut: viewModel.validateShortcut
-      )
     }
   }
 

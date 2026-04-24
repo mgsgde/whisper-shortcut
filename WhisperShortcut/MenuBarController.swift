@@ -164,12 +164,7 @@ class MenuBarController: NSObject {
         shortcut: currentConfig.startPrompting, tag: 102))
     menu.addItem(NSMenuItem.separator())
 
-    // Meeting and Gemini windows
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Open Meeting", action: #selector(openMeetingWindow),
-        shortcut: currentConfig.openMeeting, tag: 113))
-
+    // Gemini window
     menu.addItem(
       createMenuItemWithShortcut(
         "Open Gemini", action: #selector(openGeminiWindow),
@@ -439,8 +434,6 @@ class MenuBarController: NSObject {
         || activeMeetingSegment == .prompt
     )
     
-    updateMenuItem(menu, tag: 111, title: "Open Meeting", enabled: hasCredential)
-
     // Handle special case when no credential and no offline model is configured
     if !hasCredential && !hasOfflineTranscriptionModel && !hasOfflinePromptModel, let button = statusItem?.button {
       button.title = "⚠️"
@@ -674,10 +667,6 @@ class MenuBarController: NSObject {
     GeminiWindowManager.shared.show(suppressFocusLossClose: true)
   }
 
-  @objc func openMeetingWindow() {
-    GeminiWindowManager.shared.show(suppressFocusLossClose: true)
-  }
-
   // MARK: - Live Meeting Transcription
   @objc func toggleLiveMeeting() {
     if isLiveMeetingActive {
@@ -730,8 +719,12 @@ class MenuBarController: NSObject {
     liveMeetingSessionStartTime = Date()
     liveMeetingDidShowRateLimitAlert = false
     appState = .recording(.liveMeeting)
-    LiveMeetingTranscriptStore.shared.startSession()
-    liveMeetingChunksSummarized = 0
+    if LiveMeetingTranscriptStore.shared.chunks.isEmpty {
+      LiveMeetingTranscriptStore.shared.startSession()
+      liveMeetingChunksSummarized = 0
+    } else {
+      LiveMeetingTranscriptStore.shared.resumeSession()
+    }
 
     // Schedule duration safeguard if enabled
     let safeguardThreshold = MeetingSafeguardDuration.loadFromUserDefaults()
@@ -1714,7 +1707,6 @@ extension MenuBarController: ShortcutDelegate {
   // togglePrompting is already implemented above
   // openSettings is already implemented above
   func openGemini() { openGeminiWindowFromShortcut() }
-  func openMeeting() { openMeetingWindow() }
 }
 
 // MARK: - ChunkProgressDelegate (Chunked Transcription Progress)
@@ -1868,12 +1860,40 @@ extension MenuBarController: ChunkProgressDelegate {
 
 // MARK: - LiveMeetingRecorderDelegate
 extension MenuBarController: LiveMeetingRecorderDelegate {
+  private func audioChunkIsSilent(_ url: URL, thresholdDB: Float = -40) -> Bool {
+    guard let file = try? AVAudioFile(forReading: url) else { return false }
+    let format = file.processingFormat
+    let frameCount = AVAudioFrameCount(file.length)
+    guard frameCount > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return false }
+    do { try file.read(into: buffer) } catch { return false }
+    guard let data = buffer.floatChannelData?[0] else { return false }
+    var sumSquares: Float = 0
+    let count = Int(buffer.frameLength)
+    for i in 0..<count { sumSquares += data[i] * data[i] }
+    let rms = sqrt(sumSquares / Float(max(count, 1)))
+    let db = 20 * log10(max(rms, 1e-10))
+    DebugLogger.log("LIVE-MEETING: Chunk audio level: \(String(format: "%.1f", db)) dB (threshold: \(thresholdDB) dB)")
+    return db < thresholdDB
+  }
+
   func liveMeetingRecorder(didFinishChunk audioURL: URL, chunkIndex: Int, startTime: TimeInterval) {
     DebugLogger.log("LIVE-MEETING: Received chunk \(chunkIndex) at \(formatTimestamp(elapsedSeconds: startTime))")
 
     liveMeetingPendingChunks += 1
 
     Task {
+      if audioChunkIsSilent(audioURL) {
+        DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (silent audio)")
+        cleanupAudioFile(at: audioURL)
+        await MainActor.run {
+          self.liveMeetingPendingChunks -= 1
+          if self.liveMeetingStopping && self.liveMeetingPendingChunks == 0 {
+            self.finishLiveMeetingSession()
+          }
+        }
+        return
+      }
+
       do {
         let text = try await speechService.transcribe(
           audioURL: audioURL,

@@ -73,6 +73,17 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     }
   }
 
+  /// Resume a previously stopped session. Keeps existing chunks and summary.
+  func resumeSession() {
+    queue.async { [weak self] in
+      guard let self else { return }
+      DispatchQueue.main.async {
+        self.isSessionActive = true
+        DebugLogger.log("LIVE-MEETING-STORE: Session resumed, data retained (stem: \(self.currentMeetingFilenameStem ?? "nil"), chunks: \(self.chunks.count))")
+      }
+    }
+  }
+
   /// Append a transcribed chunk. Call from main thread or from the same place as appendToTranscript.
   func appendChunk(startTime: TimeInterval, text: String) {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

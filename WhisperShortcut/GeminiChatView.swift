@@ -84,6 +84,9 @@ class GeminiChatViewModel: ObservableObject {
   @Published private(set) var allSessionsList: [ChatSession] = []
   @Published private(set) var currentSessionId: UUID = UUID()
   @Published private(set) var isMeetingActive: Bool = false
+  @Published private(set) var meetingSessionId: UUID? = nil
+  var isCurrentSessionMeeting: Bool { session.isMeeting }
+  var isCurrentSessionTheActiveMeeting: Bool { isMeetingActive && meetingSessionId == session.id }
   private var meetingCancellable: AnyCancellable?
 
   /// In-memory ring buffer of recently closed sessions for Cmd+Shift+T undo.
@@ -169,8 +172,11 @@ class GeminiChatViewModel: ObservableObject {
       .sink { [weak self] active in
         guard let self else { return }
         self.isMeetingActive = active
-        if active {
+        if active && self.meetingSessionId == nil {
+          self.meetingSessionId = self.session.id
           self.markCurrentSessionAsMeeting()
+        } else if !active {
+          self.meetingSessionId = nil
         }
       }
   }
@@ -179,7 +185,7 @@ class GeminiChatViewModel: ObservableObject {
     // Reuse the current tab if it is already an empty "New chat" — avoids
     // spawning a row of identical empty tabs when the user hits Cmd+N
     // repeatedly. The user's composer draft is global and unaffected.
-    if session.messages.isEmpty && (session.title?.isEmpty ?? true) {
+    if session.messages.isEmpty && (session.title?.isEmpty ?? true) && !session.isMeeting {
       DebugLogger.log("GEMINI-CHAT: Cmd+N reused empty current tab \(session.id)")
       return
     }
@@ -915,9 +921,29 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   private func markCurrentSessionAsMeeting() {
+    let stem = LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem
     session.isMeeting = true
-    store.markSessionAsMeeting(id: session.id)
+    session.meetingStem = stem
+    store.markSessionAsMeeting(id: session.id, stem: stem)
     refreshRecentSessions()
+  }
+
+  var currentMeetingStem: String? { session.meetingStem }
+
+  func loadMeetingTranscriptFromDisk() -> String? {
+    guard let stem = session.meetingStem else { return nil }
+    let url = AppSupportPaths.whisperShortcutApplicationSupportURL()
+      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+      .appendingPathComponent("\(stem).txt")
+    return try? String(contentsOf: url, encoding: .utf8)
+  }
+
+  func loadMeetingSummaryFromDisk() -> String? {
+    guard let stem = session.meetingStem else { return nil }
+    let url = AppSupportPaths.whisperShortcutApplicationSupportURL()
+      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+      .appendingPathComponent("\(stem).summary.md")
+    return try? String(contentsOf: url, encoding: .utf8)
   }
 
   // MARK: - Archive / Restore / Delete
@@ -1109,6 +1135,13 @@ struct GeminiChatView: View {
   @State private var createNewSessionOnAppear: Bool
   @State private var hasTriggeredNewSessionOnAppear: Bool = false
   @AppStorage(UserDefaultsKeys.geminiSidebarVisible) private var sidebarVisible: Bool = false
+  @State private var meetingTab: MeetingTab = .chat
+
+  private enum MeetingTab: String, CaseIterable {
+    case chat = "Chat"
+    case transcript = "Transcript"
+    case summary = "Summary"
+  }
 
   init(meetingContextProvider: (() -> String?)? = nil, createNewSessionOnAppear: Bool = false, store: GeminiChatSessionStore = .shared, singleChatOnly: Bool = false) {
     _viewModel = StateObject(wrappedValue: GeminiChatViewModel(meetingContextProvider: meetingContextProvider, store: store, singleChatOnly: singleChatOnly))
@@ -1128,24 +1161,30 @@ struct GeminiChatView: View {
             tabStripHeader(containerWidth: geometry.size.width)
             Divider()
           }
-          if viewModel.isMeetingActive {
+          if viewModel.isCurrentSessionTheActiveMeeting || viewModel.isCurrentSessionMeeting {
             meetingRecordingBar
           }
-          messageList(scrollActions: scrollActions, containerWidth: geometry.size.width)
-            .overlay(alignment: .bottom) {
-              LinearGradient(
-                colors: [GeminiChatTheme.windowBackground.opacity(0), GeminiChatTheme.windowBackground],
-                startPoint: .top, endPoint: .bottom
-              )
-              .frame(height: 24)
-              .allowsHitTesting(false)
+          if viewModel.isCurrentSessionMeeting && meetingTab == .transcript {
+            meetingTranscriptView
+          } else if viewModel.isCurrentSessionMeeting && meetingTab == .summary {
+            meetingSummaryView
+          } else {
+            messageList(scrollActions: scrollActions, containerWidth: geometry.size.width)
+              .overlay(alignment: .bottom) {
+                LinearGradient(
+                  colors: [GeminiChatTheme.windowBackground.opacity(0), GeminiChatTheme.windowBackground],
+                  startPoint: .top, endPoint: .bottom
+                )
+                .frame(height: 24)
+                .allowsHitTesting(false)
+              }
+            if let error = viewModel.errorMessage {
+              errorBanner(error)
             }
-          if let error = viewModel.errorMessage {
-            errorBanner(error)
+            GeminiInputAreaView(viewModel: viewModel, onTapScreenshotThumbnail: { data in
+              previewImageData = data
+            })
           }
-          GeminiInputAreaView(viewModel: viewModel, onTapScreenshotThumbnail: { data in
-            previewImageData = data
-          })
         }
       }
     }
@@ -1252,6 +1291,7 @@ struct GeminiChatView: View {
         .onChange(of: viewModel.currentSessionId) { _ in
           // Keep the active tab visible after a switch (e.g. via reopen).
           scrollTabStripToActiveSession(using: proxy)
+          meetingTab = .chat
         }
         .onChange(of: containerWidth) { _ in
           // Window resize can reset/clamp scroll; re-anchor to the active tab.
@@ -1444,7 +1484,6 @@ struct GeminiChatView: View {
       (config.startRecording.displayString, "Speech-to-Text"),
       (config.startPrompting.displayString, "Speech-to-Prompt"),
       (config.openGemini.displayString, "Open Gemini"),
-      (config.openMeeting.displayString, "Open Meeting"),
       (config.openSettings.displayString, "Settings"),
     ]
     return VStack(alignment: .leading, spacing: 20) {
@@ -1500,30 +1539,116 @@ struct GeminiChatView: View {
   // MARK: - Error Banner
 
   private var meetingRecordingBar: some View {
-    HStack(spacing: 8) {
-      Circle()
-        .fill(Color.red)
-        .frame(width: 8, height: 8)
-      Text("Meeting recording")
-        .font(.system(size: 12, weight: .medium))
-        .foregroundColor(GeminiChatTheme.primaryText)
-      Spacer()
-      Button(action: {
-        NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
-      }) {
-        Text("Stop")
-          .font(.system(size: 11, weight: .medium))
-          .foregroundColor(.white)
-          .padding(.horizontal, 10)
-          .padding(.vertical, 3)
-          .background(Color.red.opacity(0.85))
-          .cornerRadius(4)
+    let isRecording = viewModel.isCurrentSessionTheActiveMeeting
+    return VStack(spacing: 0) {
+      HStack(spacing: 0) {
+        HStack(spacing: 6) {
+          Circle()
+            .fill(isRecording ? Color.red : GeminiChatTheme.secondaryText.opacity(0.4))
+            .frame(width: 7, height: 7)
+          Text(isRecording ? "Recording" : "Ended")
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(GeminiChatTheme.secondaryText)
+        }
+        .frame(width: 80, alignment: .leading)
+
+        HStack(spacing: 2) {
+          ForEach(MeetingTab.allCases, id: \.self) { tab in
+            Button(action: { meetingTab = tab }) {
+              Text(tab.rawValue)
+                .font(.system(size: 12, weight: meetingTab == tab ? .semibold : .regular))
+                .foregroundColor(meetingTab == tab ? GeminiChatTheme.primaryText : GeminiChatTheme.secondaryText)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(meetingTab == tab ? GeminiChatTheme.windowBackground : Color.clear)
+                .cornerRadius(4)
+            }
+            .buttonStyle(.plain)
+          }
+        }
+
+        Spacer()
+
+        Button(action: {
+          NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
+        }) {
+          Text(isRecording ? "Stop" : "Resume")
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(isRecording ? .white : GeminiChatTheme.primaryText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 3)
+            .background(isRecording ? Color.red.opacity(0.85) : Color.clear)
+            .cornerRadius(4)
+            .overlay(isRecording ? nil : RoundedRectangle(cornerRadius: 4).stroke(GeminiChatTheme.secondaryText.opacity(0.3), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
       }
-      .buttonStyle(.plain)
+      .padding(.horizontal, 12)
+      .padding(.vertical, 6)
+      Divider()
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 6)
     .background(GeminiChatTheme.controlBackground)
+  }
+
+  private var meetingTranscriptView: some View {
+    let liveChunks = LiveMeetingTranscriptStore.shared.chunks
+    let diskText = liveChunks.isEmpty ? viewModel.loadMeetingTranscriptFromDisk() : nil
+    return ScrollView {
+      LazyVStack(alignment: .leading, spacing: 8) {
+        if !liveChunks.isEmpty {
+          ForEach(liveChunks) { chunk in
+            HStack(alignment: .top, spacing: 8) {
+              Text(chunk.timestampString)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(GeminiChatTheme.secondaryText)
+              Text(chunk.text)
+                .font(.system(size: 14))
+                .foregroundColor(GeminiChatTheme.primaryText)
+                .textSelection(.enabled)
+            }
+          }
+        } else if let text = diskText, !text.isEmpty {
+          Text(text)
+            .font(.system(size: 14))
+            .foregroundColor(GeminiChatTheme.primaryText)
+            .textSelection(.enabled)
+        } else {
+          Text("No transcript yet.")
+            .font(.system(size: 14))
+            .foregroundColor(GeminiChatTheme.secondaryText)
+            .padding(.top, 40)
+            .frame(maxWidth: .infinity)
+        }
+      }
+      .padding(16)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(GeminiChatTheme.windowBackground)
+  }
+
+  private var meetingSummaryView: some View {
+    let liveSummary = LiveMeetingTranscriptStore.shared.summary
+    let diskSummary = liveSummary.isEmpty ? viewModel.loadMeetingSummaryFromDisk() : nil
+    let text = !liveSummary.isEmpty ? liveSummary : diskSummary
+    return ScrollView {
+      VStack(alignment: .leading, spacing: 12) {
+        if let text, !text.isEmpty {
+          Text(text)
+            .font(.system(size: 14))
+            .foregroundColor(GeminiChatTheme.primaryText)
+            .textSelection(.enabled)
+        } else {
+          Text("No summary yet.")
+            .font(.system(size: 14))
+            .foregroundColor(GeminiChatTheme.secondaryText)
+            .padding(.top, 40)
+            .frame(maxWidth: .infinity)
+        }
+      }
+      .padding(16)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(GeminiChatTheme.windowBackground)
   }
 
   private func errorBanner(_ message: String) -> some View {

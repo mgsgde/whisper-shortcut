@@ -105,7 +105,6 @@ struct ShortcutConfig: Codable {
   var stopMeeting: ShortcutDefinition
   var openSettings: ShortcutDefinition
   var openGemini: ShortcutDefinition
-  var openMeeting: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
@@ -115,8 +114,7 @@ struct ShortcutConfig: Codable {
     toggleMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
     stopMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
     openSettings: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true),
-    openGemini: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true),
-    openMeeting: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true)
+    openGemini: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true)
   )
 
   /// Single source for the "Available keys" hint text used in all shortcut settings.
@@ -228,7 +226,6 @@ class ShortcutConfigManager {
     static let stopMeetingKey = "shortcut_stop_meeting"
     static let openSettingsKey = "shortcut_open_settings"
     static let openGeminiKey = "shortcut_open_gemini"
-    static let openMeetingKey = "shortcut_open_meeting"
   }
 
   private let userDefaults = UserDefaults.standard
@@ -255,8 +252,6 @@ class ShortcutConfigManager {
       : ShortcutConfig.default.openSettings
     let openGemini =
       loadShortcut(for: Constants.openGeminiKey) ?? ShortcutConfig.default.openGemini
-    let openMeeting =
-      loadShortcut(for: Constants.openMeetingKey) ?? ShortcutConfig.default.openMeeting
     return ShortcutConfig(
       startRecording: startRecording,
       stopRecording: stopRecording,
@@ -265,8 +260,7 @@ class ShortcutConfigManager {
       toggleMeeting: toggleMeeting,
       stopMeeting: stopMeeting,
       openSettings: openSettings,
-      openGemini: openGemini,
-      openMeeting: openMeeting
+      openGemini: openGemini
     )
   }
 
@@ -279,7 +273,6 @@ class ShortcutConfigManager {
     saveShortcut(config.stopMeeting, for: Constants.stopMeetingKey)
     saveShortcut(config.openSettings, for: Constants.openSettingsKey)
     saveShortcut(config.openGemini, for: Constants.openGeminiKey)
-    saveShortcut(config.openMeeting, for: Constants.openMeetingKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)
@@ -458,10 +451,4 @@ extension Notification.Name {
   static let geminiToggleLiveMeeting = Notification.Name("geminiToggleLiveMeeting")
   /// Posted when user confirms "End Meeting" with an optional name. userInfo["meetingName"] = String (default or custom).
   static let geminiEndMeetingWithName = Notification.Name("geminiEndMeetingWithName")
-  /// Posted to show the Meeting Library sheet in the Meeting window (e.g. when "Open Meeting" is used while the window is already open).
-  static let showMeetingLibraryInMeetingWindow = Notification.Name("showMeetingLibraryInMeetingWindow")
-  /// Posted when the Meeting window presents a sheet (e.g. Library). Prevents close-on-focus-loss from closing the window while the sheet is key.
-  static let meetingWindowSheetDidPresent = Notification.Name("meetingWindowSheetDidPresent")
-  /// Posted when the Meeting window dismisses that sheet.
-  static let meetingWindowSheetDidDismiss = Notification.Name("meetingWindowSheetDidDismiss")
 }

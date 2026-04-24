@@ -30,14 +30,12 @@ class SettingsViewModel: ObservableObject {
     data.toggleMeeting = currentConfig.toggleMeeting.isEnabled ? currentConfig.toggleMeeting.textDisplayString : ""
     data.openSettings = currentConfig.openSettings.isEnabled ? currentConfig.openSettings.textDisplayString : ""
     data.openGemini = currentConfig.openGemini.isEnabled ? currentConfig.openGemini.textDisplayString : ""
-    data.openMeeting = currentConfig.openMeeting.isEnabled ? currentConfig.openMeeting.textDisplayString : ""
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
     data.toggleMeetingEnabled = currentConfig.toggleMeeting.isEnabled
     data.openSettingsEnabled = currentConfig.openSettings.isEnabled
     data.openGeminiEnabled = currentConfig.openGemini.isEnabled
-    data.openMeetingEnabled = currentConfig.openMeeting.isEnabled
 
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
@@ -270,11 +268,6 @@ class SettingsViewModel: ObservableObject {
        ShortcutConfigManager.parseShortcut(from: data.openGemini) == nil {
       return "Invalid open Gemini shortcut format"
     }
-    if !data.openMeeting.trimmingCharacters(in: trim).isEmpty,
-       ShortcutConfigManager.parseShortcut(from: data.openMeeting) == nil {
-      return "Invalid open Meeting shortcut format"
-    }
-
     let shortcuts = parseShortcuts()
 
     // Check for duplicates
@@ -337,8 +330,6 @@ class SettingsViewModel: ObservableObject {
       return name == "open settings"
     case .toggleGemini:
       return name == "open gemini"
-    case .openMeeting:
-      return name == "open meeting"
     default:
       return false
     }
@@ -357,7 +348,6 @@ class SettingsViewModel: ObservableObject {
       "toggle prompting": parsed(data.togglePrompting),
       "open settings": parsed(data.openSettings),
       "open gemini": parsed(data.openGemini),
-      "open meeting": parsed(data.openMeeting),
     ]
   }
 
@@ -442,9 +432,7 @@ class SettingsViewModel: ObservableObject {
       openSettings: shortcuts["open settings"]!
         ?? ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: false),
       openGemini: shortcuts["open gemini"]!
-        ?? ShortcutDefinition(key: .eight, modifiers: [.command], isEnabled: false),
-      openMeeting: shortcuts["open meeting"]!
-        ?? ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: false)
+        ?? ShortcutDefinition(key: .eight, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 
