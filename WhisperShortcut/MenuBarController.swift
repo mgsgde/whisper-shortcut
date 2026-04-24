@@ -1860,39 +1860,22 @@ extension MenuBarController: ChunkProgressDelegate {
 
 // MARK: - LiveMeetingRecorderDelegate
 extension MenuBarController: LiveMeetingRecorderDelegate {
-  private func audioChunkIsSilent(_ url: URL, thresholdDB: Float = -40) -> Bool {
-    guard let file = try? AVAudioFile(forReading: url) else { return false }
-    let format = file.processingFormat
-    let frameCount = AVAudioFrameCount(file.length)
-    guard frameCount > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return false }
-    do { try file.read(into: buffer) } catch { return false }
-    guard let data = buffer.floatChannelData?[0] else { return false }
-    var sumSquares: Float = 0
-    let count = Int(buffer.frameLength)
-    for i in 0..<count { sumSquares += data[i] * data[i] }
-    let rms = sqrt(sumSquares / Float(max(count, 1)))
-    let db = 20 * log10(max(rms, 1e-10))
-    DebugLogger.log("LIVE-MEETING: Chunk audio level: \(String(format: "%.1f", db)) dB (threshold: \(thresholdDB) dB)")
-    return db < thresholdDB
-  }
-
-  func liveMeetingRecorder(didFinishChunk audioURL: URL, chunkIndex: Int, startTime: TimeInterval) {
-    DebugLogger.log("LIVE-MEETING: Received chunk \(chunkIndex) at \(formatTimestamp(elapsedSeconds: startTime))")
+  func liveMeetingRecorder(didFinishChunk audioURL: URL, chunkIndex: Int, startTime: TimeInterval, isSilent: Bool) {
+    DebugLogger.log("LIVE-MEETING: Received chunk \(chunkIndex) at \(formatTimestamp(elapsedSeconds: startTime))\(isSilent ? " (silent)" : "")")
 
     liveMeetingPendingChunks += 1
 
-    Task {
-      if audioChunkIsSilent(audioURL) {
-        DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (silent audio)")
-        cleanupAudioFile(at: audioURL)
-        await MainActor.run {
-          self.liveMeetingPendingChunks -= 1
-          if self.liveMeetingStopping && self.liveMeetingPendingChunks == 0 {
-            self.finishLiveMeetingSession()
-          }
-        }
-        return
+    if isSilent {
+      DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (silent audio)")
+      cleanupAudioFile(at: audioURL)
+      liveMeetingPendingChunks -= 1
+      if liveMeetingStopping && liveMeetingPendingChunks == 0 {
+        finishLiveMeetingSession()
       }
+      return
+    }
+
+    Task {
 
       do {
         let text = try await speechService.transcribe(

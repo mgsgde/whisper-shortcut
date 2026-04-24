@@ -3,8 +3,9 @@ import Foundation
 
 /// Delegate protocol for receiving live meeting recording events
 protocol LiveMeetingRecorderDelegate: AnyObject {
-  /// Called when a chunk has finished recording and is ready for transcription
-  func liveMeetingRecorder(didFinishChunk audioURL: URL, chunkIndex: Int, startTime: TimeInterval)
+  /// Called when a chunk has finished recording and is ready for transcription.
+  /// `isSilent` is true when the peak audio level during the chunk stayed below the silence threshold.
+  func liveMeetingRecorder(didFinishChunk audioURL: URL, chunkIndex: Int, startTime: TimeInterval, isSilent: Bool)
 
   /// Called when recording fails
   func liveMeetingRecorder(didFailWithError error: Error)
@@ -74,6 +75,9 @@ class LiveMeetingRecorder: NSObject {
 
   /// Consecutive silence samples counter
   private var consecutiveSilenceSamples: Int = 0
+
+  /// Peak audio power (dB) observed during the current chunk; used to flag fully-silent chunks
+  private var peakPowerDuringChunk: Float = -160
 
   /// Number of silence samples needed to trigger rotation
   private var silenceSamplesNeeded: Int {
@@ -226,6 +230,7 @@ class LiveMeetingRecorder: NSObject {
     chunkTimer?.invalidate()
     meteringTimer?.invalidate()
     consecutiveSilenceSamples = 0
+    peakPowerDuringChunk = -160
 
     chunkTimer = Timer.scheduledTimer(withTimeInterval: maxChunkDuration, repeats: false) { [weak self] _ in
       guard let self, self.isSessionActive else { return }
@@ -247,6 +252,7 @@ class LiveMeetingRecorder: NSObject {
 
     recorder.updateMeters()
     let power = recorder.averagePower(forChannel: 0)
+    if power > peakPowerDuringChunk { peakPowerDuringChunk = power }
 
     if power < silenceThresholdDB {
       consecutiveSilenceSamples += 1
@@ -267,6 +273,7 @@ class LiveMeetingRecorder: NSObject {
     let completedChunkStartTime = currentChunkStartTime
     let completedRecordingURL = activeRecordingURL
     let wasRecorderAActive = isRecorderAActive
+    let chunkWasSilent = peakPowerDuringChunk < silenceThresholdDB
 
     let nextChunkStartTime = (sessionStartTime != nil)
       ? Date().timeIntervalSince(sessionStartTime!)
@@ -295,7 +302,8 @@ class LiveMeetingRecorder: NSObject {
         self?.delegate?.liveMeetingRecorder(
           didFinishChunk: url,
           chunkIndex: completedChunkIndex,
-          startTime: completedChunkStartTime
+          startTime: completedChunkStartTime,
+          isSilent: chunkWasSilent
         )
       }
     }
@@ -336,7 +344,8 @@ extension LiveMeetingRecorder: AVAudioRecorderDelegate {
             delegate?.liveMeetingRecorder(
               didFinishChunk: url,
               chunkIndex: chunkIndex,
-              startTime: max(0, finalChunkStartTime)
+              startTime: max(0, finalChunkStartTime),
+              isSilent: peakPowerDuringChunk < silenceThresholdDB
             )
           } else {
             DebugLogger.logWarning("LIVE-MEETING: Final chunk is empty, skipping")

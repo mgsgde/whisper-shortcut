@@ -162,7 +162,7 @@ class ContextDerivation {
       let (primaryText, primaryEntryCount, primaryCharCount) = buildAggregatedText(from: allEntries, maxChars: maxChars)
       var secondaryParts: [String] = []
       if let p = currentGeminiChatPrompt, !p.isEmpty {
-        secondaryParts.append("Current Gemini Chat system prompt (refine based on new data):\n\(p)")
+        secondaryParts.append("Current Chat system prompt (refine based on new data):\n\(p)")
       }
       let secondaryText = secondaryParts.joined(separator: "\n\n---\n\n")
       return FocusedLoadResult(
@@ -488,7 +488,7 @@ class ContextDerivation {
 
       Your task: generate a system prompt for the "Chat" mode. This is the system instruction for the app's chat window — a general-purpose chat where the user can ask questions, get summaries, or request structured answers. \
       Use the interaction data (all modes) to infer the user's preferences: language, tone, domains (e.g. software, projects), and any style rules (e.g. "In short:", headings with emojis, bold for key terms). \
-      If a current Gemini Chat prompt is provided, refine it based on the data; do not rewrite from scratch unless the data strongly suggests a different direction.
+      If a current Chat prompt is provided, refine it based on the data; do not rewrite from scratch unless the data strongly suggests a different direction.
 
       You MUST wrap your entire output in these markers exactly as shown:
 

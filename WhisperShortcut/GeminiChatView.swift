@@ -395,7 +395,7 @@ class GeminiChatViewModel: ObservableObject {
         }
       } else {
         guard await GeminiCredentialProvider.shared.getCredential() != nil else {
-          errorMessage = "Add your Google API key in Settings or sign in with Google to use Gemini Chat."
+          errorMessage = "Add your Google API key in Settings or sign in with Google to use Chat."
           return
         }
       }
