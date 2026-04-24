@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct GoogleCalendarConnectionSection: View {
-  @ObservedObject var oauthService = GoogleCalendarOAuthService.shared
+  @ObservedObject var oauthService = GoogleAccountOAuthService.shared
   @State private var isAuthorizing = false
   @State private var errorMessage: String?
 

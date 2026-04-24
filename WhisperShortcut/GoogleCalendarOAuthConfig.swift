@@ -1,6 +1,6 @@
 import Foundation
 
-enum GoogleCalendarOAuthConfig {
+enum GoogleAccountOAuthConfig {
   static var clientID: String {
     (Bundle.main.object(forInfoDictionaryKey: "GIDClientID") as? String) ?? ""
   }

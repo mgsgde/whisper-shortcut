@@ -95,7 +95,8 @@ actor GoogleCalendarAPIClient {
 
   func deleteEvent(eventId: String) async throws -> [String: Any] {
     DebugLogger.logNetwork("GOOGLE-CALENDAR: deleteEvent id=\(eventId)")
-    let url = URL(string: "\(baseURL)/calendars/primary/events/\(eventId)")!
+    let encoded = eventId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? eventId
+    let url = URL(string: "\(baseURL)/calendars/primary/events/\(encoded)")!
     _ = try await authorizedRequest(url: url, httpMethod: "DELETE")
     DebugLogger.logSuccess("GOOGLE-CALENDAR: deleted event id=\(eventId)")
     return ["ok": true, "event_id": eventId, "deleted": true]
@@ -104,7 +105,7 @@ actor GoogleCalendarAPIClient {
   // MARK: - Authorized Request
 
   private func authorizedRequest(url: URL, httpMethod: String, body: Data? = nil) async throws -> Data {
-    let token = try await GoogleCalendarOAuthService.shared.getValidAccessToken()
+    let token = try await GoogleAccountOAuthService.shared.getValidAccessToken()
 
     var request = URLRequest(url: url)
     request.httpMethod = httpMethod
@@ -122,7 +123,7 @@ actor GoogleCalendarAPIClient {
 
     if httpResponse.statusCode == 401 {
       DebugLogger.logNetwork("GOOGLE-CALENDAR: 401, refreshing token and retrying")
-      let newToken = try await GoogleCalendarOAuthService.shared.refreshAccessToken()
+      let newToken = try await GoogleAccountOAuthService.shared.refreshAccessToken()
 
       var retryRequest = request
       retryRequest.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")

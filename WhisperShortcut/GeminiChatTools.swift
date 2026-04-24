@@ -287,7 +287,7 @@ enum GeminiChatToolRegistry {
       return ["ok": true, "url": urlString]
 
     case "google_calendar_list_events":
-      guard GoogleCalendarOAuthService.shared.isConnected else {
+      guard GoogleAccountOAuthService.shared.isConnected else {
         return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
       }
       let maxResults = args["max_results"] as? Int ?? 10
@@ -303,7 +303,7 @@ enum GeminiChatToolRegistry {
       }
 
     case "google_calendar_create_event":
-      guard GoogleCalendarOAuthService.shared.isConnected else {
+      guard GoogleAccountOAuthService.shared.isConnected else {
         return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
       }
       guard let summary = args["summary"] as? String,
@@ -327,7 +327,7 @@ enum GeminiChatToolRegistry {
       }
 
     case "google_calendar_delete_event":
-      guard GoogleCalendarOAuthService.shared.isConnected else {
+      guard GoogleAccountOAuthService.shared.isConnected else {
         return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
       }
       guard let eventId = args["event_id"] as? String else {
@@ -342,7 +342,7 @@ enum GeminiChatToolRegistry {
       }
 
     case "google_tasks_list_tasklists":
-      guard GoogleCalendarOAuthService.shared.isConnected else {
+      guard GoogleAccountOAuthService.shared.isConnected else {
         return ["error": "Google account is not connected. Connect it in Settings."]
       }
       do {
@@ -354,7 +354,7 @@ enum GeminiChatToolRegistry {
       }
 
     case "google_tasks_list":
-      guard GoogleCalendarOAuthService.shared.isConnected else {
+      guard GoogleAccountOAuthService.shared.isConnected else {
         return ["error": "Google account is not connected. Connect it in Settings."]
       }
       let taskListId = args["task_list_id"] as? String ?? "@default"
@@ -370,7 +370,7 @@ enum GeminiChatToolRegistry {
       }
 
     case "google_tasks_create":
-      guard GoogleCalendarOAuthService.shared.isConnected else {
+      guard GoogleAccountOAuthService.shared.isConnected else {
         return ["error": "Google account is not connected. Connect it in Settings."]
       }
       guard let title = args["title"] as? String else {
@@ -389,7 +389,7 @@ enum GeminiChatToolRegistry {
       }
 
     case "google_tasks_complete":
-      guard GoogleCalendarOAuthService.shared.isConnected else {
+      guard GoogleAccountOAuthService.shared.isConnected else {
         return ["error": "Google account is not connected. Connect it in Settings."]
       }
       guard let taskId = args["task_id"] as? String else {
@@ -406,7 +406,7 @@ enum GeminiChatToolRegistry {
       }
 
     case "google_tasks_delete":
-      guard GoogleCalendarOAuthService.shared.isConnected else {
+      guard GoogleAccountOAuthService.shared.isConnected else {
         return ["error": "Google account is not connected. Connect it in Settings."]
       }
       guard let taskId = args["task_id"] as? String else {
@@ -423,7 +423,7 @@ enum GeminiChatToolRegistry {
       }
 
     case "gmail_search":
-      guard GoogleCalendarOAuthService.shared.isConnected else {
+      guard GoogleAccountOAuthService.shared.isConnected else {
         return ["error": "Google account is not connected. Connect it in Settings."]
       }
       let query = args["query"] as? String ?? ""
@@ -438,7 +438,7 @@ enum GeminiChatToolRegistry {
       }
 
     case "gmail_read":
-      guard GoogleCalendarOAuthService.shared.isConnected else {
+      guard GoogleAccountOAuthService.shared.isConnected else {
         return ["error": "Google account is not connected. Connect it in Settings."]
       }
       guard let messageId = args["message_id"] as? String else {

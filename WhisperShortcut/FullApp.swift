@@ -58,7 +58,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
   func application(_ application: NSApplication, open urls: [URL]) {
     for url in urls {
-      GoogleCalendarOAuthService.shared.handleRedirect(url: url)
+      GoogleAccountOAuthService.shared.handleRedirect(url: url)
     }
   }
 

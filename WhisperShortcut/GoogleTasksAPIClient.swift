@@ -92,7 +92,9 @@ actor GoogleTasksAPIClient {
   // MARK: - Complete Task
 
   func completeTask(taskId: String, taskListId: String = "@default") async throws -> [String: Any] {
-    let url = URL(string: "\(baseURL)/lists/\(taskListId)/tasks/\(taskId)")!
+    let encodedList = taskListId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskListId
+    let encodedTask = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
+    let url = URL(string: "\(baseURL)/lists/\(encodedList)/tasks/\(encodedTask)")!
 
     let body: [String: Any] = ["status": "completed"]
     let bodyData = try JSONSerialization.data(withJSONObject: body)
@@ -108,7 +110,9 @@ actor GoogleTasksAPIClient {
   // MARK: - Delete Task
 
   func deleteTask(taskId: String, taskListId: String = "@default") async throws -> [String: Any] {
-    let url = URL(string: "\(baseURL)/lists/\(taskListId)/tasks/\(taskId)")!
+    let encodedList = taskListId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskListId
+    let encodedTask = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
+    let url = URL(string: "\(baseURL)/lists/\(encodedList)/tasks/\(encodedTask)")!
     _ = try await authorizedRequest(url: url, httpMethod: "DELETE")
     return ["ok": true, "task_id": taskId, "deleted": true]
   }
@@ -116,7 +120,7 @@ actor GoogleTasksAPIClient {
   // MARK: - Authorized Request
 
   private func authorizedRequest(url: URL, httpMethod: String, body: Data? = nil) async throws -> Data {
-    let token = try await GoogleCalendarOAuthService.shared.getValidAccessToken()
+    let token = try await GoogleAccountOAuthService.shared.getValidAccessToken()
 
     var request = URLRequest(url: url)
     request.httpMethod = httpMethod
@@ -134,7 +138,7 @@ actor GoogleTasksAPIClient {
 
     if httpResponse.statusCode == 401 {
       DebugLogger.logNetwork("GOOGLE-TASKS: 401, refreshing token and retrying")
-      let newToken = try await GoogleCalendarOAuthService.shared.refreshAccessToken()
+      let newToken = try await GoogleAccountOAuthService.shared.refreshAccessToken()
 
       var retryRequest = request
       retryRequest.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")

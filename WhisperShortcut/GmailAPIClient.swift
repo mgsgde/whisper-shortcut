@@ -29,11 +29,16 @@ actor GmailAPIClient {
     }
 
     var results: [[String: Any]] = []
-    for msg in messages.prefix(cappedMax) {
+    let candidates = Array(messages.prefix(cappedMax))
+    for msg in candidates {
       guard let id = msg["id"] as? String else { continue }
       if let detail = try? await getMessageSummary(messageId: id) {
         results.append(detail)
       }
+    }
+    let skipped = candidates.count - results.count
+    if skipped > 0 {
+      DebugLogger.logWarning("GMAIL: \(skipped) message(s) failed to fetch")
     }
     return results
   }
@@ -147,7 +152,7 @@ actor GmailAPIClient {
   // MARK: - Authorized Request
 
   private func authorizedRequest(url: URL, httpMethod: String, body: Data? = nil) async throws -> Data {
-    let token = try await GoogleCalendarOAuthService.shared.getValidAccessToken()
+    let token = try await GoogleAccountOAuthService.shared.getValidAccessToken()
 
     var request = URLRequest(url: url)
     request.httpMethod = httpMethod
@@ -165,7 +170,7 @@ actor GmailAPIClient {
 
     if httpResponse.statusCode == 401 {
       DebugLogger.logNetwork("GMAIL: 401, refreshing token and retrying")
-      let newToken = try await GoogleCalendarOAuthService.shared.refreshAccessToken()
+      let newToken = try await GoogleAccountOAuthService.shared.refreshAccessToken()
 
       var retryRequest = request
       retryRequest.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")

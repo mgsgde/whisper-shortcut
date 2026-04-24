@@ -3,8 +3,8 @@ import CryptoKit
 import Foundation
 
 @MainActor
-class GoogleCalendarOAuthService: NSObject, ObservableObject {
-  static let shared = GoogleCalendarOAuthService()
+class GoogleAccountOAuthService: NSObject, ObservableObject {
+  static let shared = GoogleAccountOAuthService()
 
   @Published private(set) var isConnected: Bool = false
   private(set) var accessToken: String?
@@ -42,12 +42,12 @@ class GoogleCalendarOAuthService: NSObject, ObservableObject {
     let verifier = generateCodeVerifier()
     let challenge = codeChallengeS256(verifier: verifier)
 
-    var components = URLComponents(url: GoogleCalendarOAuthConfig.authorizationEndpoint, resolvingAgainstBaseURL: false)!
+    var components = URLComponents(url: GoogleAccountOAuthConfig.authorizationEndpoint, resolvingAgainstBaseURL: false)!
     components.queryItems = [
-      URLQueryItem(name: "client_id", value: GoogleCalendarOAuthConfig.clientID),
-      URLQueryItem(name: "redirect_uri", value: GoogleCalendarOAuthConfig.redirectURI),
+      URLQueryItem(name: "client_id", value: GoogleAccountOAuthConfig.clientID),
+      URLQueryItem(name: "redirect_uri", value: GoogleAccountOAuthConfig.redirectURI),
       URLQueryItem(name: "response_type", value: "code"),
-      URLQueryItem(name: "scope", value: GoogleCalendarOAuthConfig.scope),
+      URLQueryItem(name: "scope", value: GoogleAccountOAuthConfig.scope),
       URLQueryItem(name: "code_challenge", value: challenge),
       URLQueryItem(name: "code_challenge_method", value: "S256"),
       URLQueryItem(name: "access_type", value: "offline"),
@@ -59,7 +59,7 @@ class GoogleCalendarOAuthService: NSObject, ObservableObject {
     }
 
     let callbackURL: URL
-    let scheme = GoogleCalendarOAuthConfig.redirectScheme
+    let scheme = GoogleAccountOAuthConfig.redirectScheme
 
     let session = ASWebAuthenticationSession(url: authURL, callbackURLScheme: scheme) { [weak self] url, error in
       guard let self else { return }
@@ -99,9 +99,9 @@ class GoogleCalendarOAuthService: NSObject, ObservableObject {
   private func exchangeCodeForTokens(code: String, verifier: String) async throws {
     let body: [String: String] = [
       "grant_type": "authorization_code",
-      "client_id": GoogleCalendarOAuthConfig.clientID,
+      "client_id": GoogleAccountOAuthConfig.clientID,
       "code": code,
-      "redirect_uri": GoogleCalendarOAuthConfig.redirectURI,
+      "redirect_uri": GoogleAccountOAuthConfig.redirectURI,
       "code_verifier": verifier,
     ]
 
@@ -128,7 +128,7 @@ class GoogleCalendarOAuthService: NSObject, ObservableObject {
 
     let body: [String: String] = [
       "grant_type": "refresh_token",
-      "client_id": GoogleCalendarOAuthConfig.clientID,
+      "client_id": GoogleAccountOAuthConfig.clientID,
       "refresh_token": refreshToken,
     ]
 
@@ -182,7 +182,7 @@ class GoogleCalendarOAuthService: NSObject, ObservableObject {
   // MARK: - Helpers
 
   private func postTokenRequest(body: [String: String]) async throws -> [String: Any] {
-    var request = URLRequest(url: GoogleCalendarOAuthConfig.tokenEndpoint)
+    var request = URLRequest(url: GoogleAccountOAuthConfig.tokenEndpoint)
     request.httpMethod = "POST"
     request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
 
@@ -238,7 +238,7 @@ class GoogleCalendarOAuthService: NSObject, ObservableObject {
 
 // MARK: - ASWebAuthenticationPresentationContextProviding
 
-extension GoogleCalendarOAuthService: ASWebAuthenticationPresentationContextProviding {
+extension GoogleAccountOAuthService: ASWebAuthenticationPresentationContextProviding {
   func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
     NSApplication.shared.keyWindow ?? ASPresentationAnchor()
   }

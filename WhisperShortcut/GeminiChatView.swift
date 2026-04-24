@@ -427,7 +427,7 @@ class GeminiChatViewModel: ObservableObject {
         var finalSupports: [GroundingSupport] = []
 
         // Convert tool declarations to provider-agnostic format
-        let calendarConnected = await MainActor.run { GoogleCalendarOAuthService.shared.isConnected }
+        let calendarConnected = await MainActor.run { GoogleAccountOAuthService.shared.isConnected }
         let tools = GeminiChatToolRegistry.allDeclarations(calendarConnected: calendarConnected).compactMap { decl -> LLMToolDeclaration? in
           guard let name = decl["name"] as? String,
                 let desc = decl["description"] as? String,
@@ -667,8 +667,8 @@ class GeminiChatViewModel: ObservableObject {
     if let extra = meetingContext, !extra.isEmpty {
       text = "\(text)\n\n---\n\n[Meeting context for calibration only — do not reference directly]\n\(extra)"
     }
-    if GoogleCalendarOAuthService.shared.isConnected {
-      text += "\n\nIMPORTANT — you have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating events or tasks."
+    if GoogleAccountOAuthService.shared.isConnected {
+      text += "\n\nIMPORTANT — you have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks."
     }
     return ["parts": [["text": text]]]
   }
@@ -838,13 +838,13 @@ class GeminiChatViewModel: ObservableObject {
 
   @MainActor
   private func handleConnectGoogle() async {
-    if GoogleCalendarOAuthService.shared.isConnected {
+    if GoogleAccountOAuthService.shared.isConnected {
       appendModelMessage("Google is already connected. Use `/disconnect-google` to disconnect.")
       return
     }
     appendModelMessage("Opening Google sign-in...")
     do {
-      try await GoogleCalendarOAuthService.shared.startAuthorization()
+      try await GoogleAccountOAuthService.shared.startAuthorization()
       appendModelMessage("Google connected. You can now use Calendar, Tasks, and Gmail.")
     } catch {
       appendModelMessage("Failed to connect Google: \(error.localizedDescription)")
@@ -853,11 +853,11 @@ class GeminiChatViewModel: ObservableObject {
 
   @MainActor
   private func handleDisconnectGoogle() {
-    guard GoogleCalendarOAuthService.shared.isConnected else {
+    guard GoogleAccountOAuthService.shared.isConnected else {
       appendModelMessage("Google is not connected. Use `/connect-google` to connect.")
       return
     }
-    GoogleCalendarOAuthService.shared.disconnect()
+    GoogleAccountOAuthService.shared.disconnect()
     appendModelMessage("Google disconnected.")
   }
 
