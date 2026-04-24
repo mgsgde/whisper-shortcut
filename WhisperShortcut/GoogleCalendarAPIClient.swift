@@ -9,6 +9,7 @@ actor GoogleCalendarAPIClient {
   // MARK: - List Events
 
   func listUpcomingEvents(maxResults: Int = 10, hoursAhead: Int = 168) async throws -> [[String: Any]] {
+    DebugLogger.logNetwork("GOOGLE-CALENDAR: listUpcomingEvents maxResults=\(maxResults) hoursAhead=\(hoursAhead)")
     let cappedMax = min(max(maxResults, 1), maxResultsCap)
     let now = Date()
     let future = now.addingTimeInterval(TimeInterval(hoursAhead * 3600))
@@ -37,7 +38,7 @@ actor GoogleCalendarAPIClient {
       return []
     }
 
-    return items.map { item in
+    let mapped = items.map { item in
       var event: [String: Any] = [:]
       if let summary = item["summary"] as? String { event["summary"] = summary }
       if let htmlLink = item["htmlLink"] as? String { event["html_link"] = htmlLink }
@@ -52,12 +53,15 @@ actor GoogleCalendarAPIClient {
       if let status = item["status"] as? String { event["status"] = status }
       return event
     }
+    DebugLogger.logNetwork("GOOGLE-CALENDAR: listUpcomingEvents returned \(mapped.count) events")
+    return mapped
   }
 
   // MARK: - Create Event
 
   func createEvent(summary: String, startISO: String, endISO: String, timeZone: String,
                    location: String? = nil, description: String? = nil) async throws -> [String: Any] {
+    DebugLogger.logNetwork("GOOGLE-CALENDAR: createEvent summary=\(summary) start=\(startISO) end=\(endISO)")
     guard isValidISO8601(startISO), isValidISO8601(endISO) else {
       throw CalendarAPIError.invalidDateFormat
     }
@@ -83,7 +87,18 @@ actor GoogleCalendarAPIClient {
     if let id = json["id"] as? String { result["event_id"] = id }
     if let htmlLink = json["htmlLink"] as? String { result["html_link"] = htmlLink }
     if let summary = json["summary"] as? String { result["summary"] = summary }
+    DebugLogger.logSuccess("GOOGLE-CALENDAR: created event id=\(result["event_id"] ?? "?")")
     return result
+  }
+
+  // MARK: - Delete Event
+
+  func deleteEvent(eventId: String) async throws -> [String: Any] {
+    DebugLogger.logNetwork("GOOGLE-CALENDAR: deleteEvent id=\(eventId)")
+    let url = URL(string: "\(baseURL)/calendars/primary/events/\(eventId)")!
+    _ = try await authorizedRequest(url: url, httpMethod: "DELETE")
+    DebugLogger.logSuccess("GOOGLE-CALENDAR: deleted event id=\(eventId)")
+    return ["ok": true, "event_id": eventId, "deleted": true]
   }
 
   // MARK: - Authorized Request

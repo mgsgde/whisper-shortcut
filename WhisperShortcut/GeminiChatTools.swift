@@ -107,6 +107,20 @@ enum GeminiChatToolRegistry {
         "required": ["summary", "start_iso8601", "end_iso8601"],
       ],
     ],
+    [
+      "name": "google_calendar_delete_event",
+      "description": "Deletes a calendar event by its event_id (from google_calendar_list_events results). Always confirm with the user before deleting.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "event_id": [
+            "type": "string",
+            "description": "The ID of the event to delete (from google_calendar_list_events results).",
+          ],
+        ] as [String: Any],
+        "required": ["event_id"],
+      ],
+    ],
   ]
 
   static let tasksFunctionDeclarations: [[String: Any]] = [
@@ -281,6 +295,7 @@ enum GeminiChatToolRegistry {
       do {
         let events = try await GoogleCalendarAPIClient.shared.listUpcomingEvents(
           maxResults: maxResults, hoursAhead: hoursAhead)
+        DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar list returned \(events.count) events")
         return ["events": events, "count": events.count]
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: calendar list failed: \(error.localizedDescription)")
@@ -304,9 +319,25 @@ enum GeminiChatToolRegistry {
         let result = try await GoogleCalendarAPIClient.shared.createEvent(
           summary: summary, startISO: startISO, endISO: endISO, timeZone: timeZone,
           location: location, description: description)
+        DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar create ok, id=\(result["event_id"] ?? "?")")
         return result
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: calendar create failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "google_calendar_delete_event":
+      guard GoogleCalendarOAuthService.shared.isConnected else {
+        return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
+      }
+      guard let eventId = args["event_id"] as? String else {
+        return ["error": "Missing required argument: event_id"]
+      }
+      do {
+        let result = try await GoogleCalendarAPIClient.shared.deleteEvent(eventId: eventId)
+        return result
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar delete failed: \(error.localizedDescription)")
         return ["error": error.localizedDescription]
       }
 
