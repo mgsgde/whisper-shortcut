@@ -56,18 +56,21 @@ actor GoogleCalendarAPIClient {
 
   // MARK: - Create Event
 
-  func createEvent(summary: String, startISO: String, endISO: String, timeZone: String) async throws -> [String: Any] {
+  func createEvent(summary: String, startISO: String, endISO: String, timeZone: String,
+                   location: String? = nil, description: String? = nil) async throws -> [String: Any] {
     guard isValidISO8601(startISO), isValidISO8601(endISO) else {
       throw CalendarAPIError.invalidDateFormat
     }
 
     let url = URL(string: "\(baseURL)/calendars/primary/events")!
 
-    let body: [String: Any] = [
+    var body: [String: Any] = [
       "summary": summary,
       "start": ["dateTime": startISO, "timeZone": timeZone],
       "end": ["dateTime": endISO, "timeZone": timeZone],
     ]
+    if let location { body["location"] = location }
+    if let description { body["description"] = description }
 
     let bodyData = try JSONSerialization.data(withJSONObject: body)
     let data = try await authorizedRequest(url: url, httpMethod: "POST", body: bodyData)

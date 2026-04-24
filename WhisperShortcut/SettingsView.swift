@@ -81,8 +81,6 @@ struct SettingsView: View {
           SpeechToTextSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .speechToPrompt:
           SpeechToPromptSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .openMeeting:
-          LiveMeetingSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .openGemini:
           OpenGeminiSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .context:
@@ -104,8 +102,6 @@ struct SettingsView: View {
       return "mic"
     case .speechToPrompt:
       return "text.bubble"
-    case .openMeeting:
-      return "text.badge.plus"
     case .openGemini:
       return "sparkles"
     case .context:
@@ -121,10 +117,8 @@ struct SettingsView: View {
       return "Model, prompt, and shortcut"
     case .speechToPrompt:
       return "Shortcut for prompt mode"
-    case .openMeeting:
-      return "Shortcut for Meeting window, chunk interval, safeguard"
     case .openGemini:
-      return "Shortcut, model, and voice for Gemini chat window"
+      return "Shortcut, model, voice, and live meeting settings"
     case .context:
       return "Context data, system prompts, and improvement settings"
     }

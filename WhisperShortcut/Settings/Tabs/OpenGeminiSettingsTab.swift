@@ -27,6 +27,26 @@ struct OpenGeminiSettingsTab: View {
 
       SpacedSectionDivider()
 
+      meetingShortcutSection
+
+      SpacedSectionDivider()
+
+      meetingChunkIntervalSection
+
+      SpacedSectionDivider()
+
+      meetingTranscriptionModelSection
+
+      SpacedSectionDivider()
+
+      meetingSummaryModelSection
+
+      SpacedSectionDivider()
+
+      meetingSafeguardSection
+
+      SpacedSectionDivider()
+
       usageSection
     }
   }
@@ -183,19 +203,153 @@ struct OpenGeminiSettingsTab: View {
     }
   }
 
+  // MARK: - Meeting Shortcut Section
+  @ViewBuilder
+  private var meetingShortcutSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "⌨️ Meeting Shortcut",
+        subtitle: "Open the Gemini window and start/stop meeting recording"
+      )
+
+      ShortcutInputRow(
+        label: "Open Meeting:",
+        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.openMeeting),
+        text: $viewModel.data.openMeeting,
+        focusedField: .openMeeting,
+        currentFocus: $focusedField,
+        onShortcutChanged: {
+          Task { await viewModel.saveSettings() }
+        },
+        validateShortcut: viewModel.validateShortcut
+      )
+    }
+  }
+
+  // MARK: - Meeting Chunk Interval Section
+  @ViewBuilder
+  private var meetingChunkIntervalSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Chunk Interval",
+        subtitle: "How often the audio is transcribed and added to the file"
+      )
+
+      Picker("Interval:", selection: $viewModel.data.liveMeetingChunkInterval) {
+        ForEach(LiveMeetingChunkInterval.allCases, id: \.self) { interval in
+          Text(interval.displayName).tag(interval)
+        }
+      }
+      .pickerStyle(.segmented)
+      .onChange(of: viewModel.data.liveMeetingChunkInterval) { _, _ in
+        Task { await viewModel.saveSettings() }
+      }
+
+      Text("Shorter intervals provide more responsive updates but use more API calls.")
+        .font(.callout)
+        .foregroundColor(.secondary)
+    }
+  }
+
+  // MARK: - Meeting Transcription Model Section
+  @ViewBuilder
+  private var meetingTranscriptionModelSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      ModelSelectionView(
+        title: "Meeting Transcription Model",
+        selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModelForMeetings,
+        geminiDisabled: !GeminiCredentialProvider.shared.hasCredential(),
+        onModelChanged: {
+          Task { await viewModel.saveSettings() }
+        }
+      )
+      if viewModel.data.selectedTranscriptionModelForMeetings.isGemini && !GeminiCredentialProvider.shared.hasCredential() {
+        Text("Sign in with Google or add your API key in the General tab for Gemini models. You can also select an offline Whisper model.")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+      }
+    }
+  }
+
+  // MARK: - Meeting Summary Model Section
+  @ViewBuilder
+  private var meetingSummaryModelSection: some View {
+    PromptModelSelectionView(
+      title: "Meeting Summary Model",
+      subtitle: "Gemini model used for rolling summary during the meeting and for the final summary when the meeting ends",
+      selectedModel: $viewModel.data.selectedMeetingSummaryModel,
+      onModelChanged: {
+        Task { await viewModel.saveSettings() }
+      }
+    )
+  }
+
+  // MARK: - Meeting Safeguard Section
+  @ViewBuilder
+  private var meetingSafeguardSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "🛡️ Meeting Safeguard",
+        subtitle: "Ask after this duration to optionally stop the meeting or continue transcribing"
+      )
+
+      HStack(alignment: .center, spacing: 16) {
+        Text("Ask when meeting longer than:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        Picker("", selection: $viewModel.data.liveMeetingSafeguardDuration) {
+          ForEach(MeetingSafeguardDuration.allCases, id: \.rawValue) { duration in
+            Text(duration.displayName).tag(duration)
+          }
+        }
+        .pickerStyle(MenuPickerStyle())
+        .frame(width: 200)
+        .onChange(of: viewModel.data.liveMeetingSafeguardDuration) { _, _ in
+          Task { await viewModel.saveSettings() }
+        }
+
+        Spacer()
+      }
+
+      Text("Choose \"Never\" to disable.")
+        .font(.callout)
+        .foregroundColor(.secondary)
+    }
+  }
+
   // MARK: - Usage Section
   @ViewBuilder
   private var usageSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "📋 How to Use",
-        subtitle: "Open the Gemini chat window from the menu bar or with your shortcut"
+        subtitle: "Gemini chat and live meeting"
       )
 
-      Text("Use the shortcut or the menu bar item \"Open Gemini\" to open the Gemini chat window.")
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .textSelection(.enabled)
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Use the shortcut or the menu bar item \"Open Gemini\" to open the chat window.")
+          .textSelection(.enabled)
+        Text("Type /meeting or use the Meeting shortcut to start/stop live meeting recording.")
+          .textSelection(.enabled)
+        Text("While recording, Gemini has access to the meeting transcript for context.")
+          .textSelection(.enabled)
+      }
+      .font(.callout)
+      .foregroundColor(.secondary)
+
+      HStack(alignment: .center, spacing: 12) {
+        Button(action: { viewModel.openTranscriptsFolder() }) {
+          Label("Open transcripts folder", systemImage: "folder")
+            .font(.callout)
+        }
+        .buttonStyle(.bordered)
+        .help("Open transcripts folder in Finder")
+        .pointerCursorOnHover()
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 }

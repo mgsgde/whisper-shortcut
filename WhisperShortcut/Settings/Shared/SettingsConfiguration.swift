@@ -508,7 +508,6 @@ enum SettingsTab: String, CaseIterable {
   case general = "General"
   case speechToText = "Dictate"
   case speechToPrompt = "Prompt Mode"
-  case openMeeting = "Open Meeting"
   case openGemini = "Open Gemini"
   case context = "Context"
 }

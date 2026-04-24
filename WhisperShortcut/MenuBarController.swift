@@ -675,7 +675,7 @@ class MenuBarController: NSObject {
   }
 
   @objc func openMeetingWindow() {
-    MeetingWindowManager.shared.toggle()
+    GeminiWindowManager.shared.show(suppressFocusLossClose: true)
   }
 
   // MARK: - Live Meeting Transcription
@@ -746,7 +746,7 @@ class MenuBarController: NSObject {
       DebugLogger.log("LIVE-MEETING-SAFEGUARD: Reminder scheduled after \(Int(safeguardThreshold.rawValue / 60)) minutes")
     }
 
-    MeetingWindowManager.shared.show()
+    GeminiWindowManager.shared.show(suppressFocusLossClose: true)
 
     DebugLogger.logSuccess("LIVE-MEETING: Session started")
   }

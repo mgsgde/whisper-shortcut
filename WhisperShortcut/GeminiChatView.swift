@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 import UniformTypeIdentifiers
 
 // MARK: - ViewModel
@@ -82,6 +83,8 @@ class GeminiChatViewModel: ObservableObject {
   @Published private(set) var archivedSessionsList: [ChatSession] = []
   @Published private(set) var allSessionsList: [ChatSession] = []
   @Published private(set) var currentSessionId: UUID = UUID()
+  @Published private(set) var isMeetingActive: Bool = false
+  private var meetingCancellable: AnyCancellable?
 
   /// In-memory ring buffer of recently closed sessions for Cmd+Shift+T undo.
   /// Only sessions that had at least one message are stored — empty tabs are
@@ -111,6 +114,7 @@ class GeminiChatViewModel: ObservableObject {
   private static let geminiCommand = "/gemini"
   private static let connectGoogleCommand = "/connect-google"
   private static let disconnectGoogleCommand = "/disconnect-google"
+  private static let meetingCommand = "/meeting"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -124,6 +128,7 @@ class GeminiChatViewModel: ObservableObject {
     ("/unpin", "Make the window close when losing focus"),
     ("/connect-google", "Connect Google account (Calendar, Tasks, Gmail)"),
     ("/disconnect-google", "Disconnect Google account"),
+    ("/meeting", "Start or stop live meeting recording"),
   ]
 
   /// Commands to show in UI (excludes /new when single-chat mode).
@@ -158,6 +163,10 @@ class GeminiChatViewModel: ObservableObject {
     recentSessions = store.recentSessions(limit: 20)
     archivedSessionsList = store.archivedSessions()
     allSessionsList = store.allSessions()
+    isMeetingActive = LiveMeetingTranscriptStore.shared.isSessionActive
+    meetingCancellable = LiveMeetingTranscriptStore.shared.$isSessionActive
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] active in self?.isMeetingActive = active }
   }
 
   func createNewSession() {
@@ -214,6 +223,10 @@ class GeminiChatViewModel: ObservableObject {
       }
       if lower == Self.disconnectGoogleCommand {
         handleDisconnectGoogle()
+        return
+      }
+      if lower == Self.meetingCommand {
+        NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
         return
       }
       if lower == Self.newChatCommand || lower == Self.screenshotCommand
@@ -527,6 +540,11 @@ class GeminiChatViewModel: ObservableObject {
       handleDisconnectGoogle()
       return
     }
+    if lower == Self.meetingCommand {
+      inputText = ""
+      NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
+      return
+    }
 
     // Slash commands: always immediate, never queued
     if lower == Self.newChatCommand || lower == Self.screenshotCommand
@@ -617,7 +635,9 @@ class GeminiChatViewModel: ObservableObject {
     formatter.dateFormat = "EEEE, MMMM d, yyyy"
     formatter.locale = Locale(identifier: "en_US")
     text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
-    if let extra = meetingContextProvider?(), !extra.isEmpty {
+    let meetingContext = meetingContextProvider?()
+      ?? (isMeetingActive ? LiveMeetingTranscriptStore.shared.meetingContextForChat(lastMinutes: 5) : nil)
+    if let extra = meetingContext, !extra.isEmpty {
       text = "\(text)\n\n---\n\n[Meeting context for calibration only — do not reference directly]\n\(extra)"
     }
     if GoogleCalendarOAuthService.shared.isConnected {
@@ -1096,6 +1116,9 @@ struct GeminiChatView: View {
             tabStripHeader(containerWidth: geometry.size.width)
             Divider()
           }
+          if viewModel.isMeetingActive {
+            meetingRecordingBar
+          }
           messageList(scrollActions: scrollActions, containerWidth: geometry.size.width)
             .overlay(alignment: .bottom) {
               LinearGradient(
@@ -1464,6 +1487,33 @@ struct GeminiChatView: View {
 
   // MARK: - Error Banner
 
+  private var meetingRecordingBar: some View {
+    HStack(spacing: 8) {
+      Circle()
+        .fill(Color.red)
+        .frame(width: 8, height: 8)
+      Text("Meeting recording")
+        .font(.system(size: 12, weight: .medium))
+        .foregroundColor(GeminiChatTheme.primaryText)
+      Spacer()
+      Button(action: {
+        NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
+      }) {
+        Text("Stop")
+          .font(.system(size: 11, weight: .medium))
+          .foregroundColor(.white)
+          .padding(.horizontal, 10)
+          .padding(.vertical, 3)
+          .background(Color.red.opacity(0.85))
+          .cornerRadius(4)
+      }
+      .buttonStyle(.plain)
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 6)
+    .background(GeminiChatTheme.controlBackground)
+  }
+
   private func errorBanner(_ message: String) -> some View {
     HStack(spacing: 8) {
       Image(systemName: "exclamationmark.triangle.fill")
@@ -1592,7 +1642,8 @@ struct GeminiInputAreaView: View {
     "/new", "/screenshot",
     "/settings", "/pin", "/unpin",
     "/grok", "/gemini",
-    "/connect-google", "/disconnect-google"
+    "/connect-google", "/disconnect-google",
+    "/meeting"
   ]
 
   /// Sends the current composer contents. Recognized slash commands strip just
