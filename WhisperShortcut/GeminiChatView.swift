@@ -2918,57 +2918,6 @@ private struct CodeBlockView: View {
   }
 }
 
-// MARK: - Read Aloud Button (under model replies)
-
-private struct ReadAloudButtonView: View {
-  let messageContent: String
-  @State private var isHovered = false
-  @State private var isTTSActive = false
-
-  var body: some View {
-    Button {
-      if isTTSActive {
-        NotificationCenter.default.post(name: .geminiReadAloudStop, object: nil)
-      } else {
-        NotificationCenter.default.post(
-          name: .geminiReadAloud,
-          object: nil,
-          userInfo: [Notification.Name.geminiReadAloudTextKey: messageContent]
-        )
-      }
-    } label: {
-      HStack(spacing: 5) {
-        Image(systemName: isTTSActive ? "stop.fill" : "speaker.wave.2")
-          .font(.system(size: 12))
-        Text(isTTSActive ? "Reading…" : "Read Aloud")
-          .font(.caption)
-      }
-      .foregroundColor(isHovered ? GeminiChatTheme.primaryText : GeminiChatTheme.secondaryText)
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
-      .frame(minHeight: 28)
-      .contentShape(Rectangle())
-      .background(
-        RoundedRectangle(cornerRadius: 6)
-          .fill(isHovered ? GeminiChatTheme.controlBackground.opacity(0.9) : GeminiChatTheme.controlBackground.opacity(0.5))
-      )
-    }
-    .buttonStyle(.plain)
-    .onHover { inside in
-      isHovered = inside
-    }
-    .pointerCursorOnHover()
-    .onReceive(NotificationCenter.default.publisher(for: .ttsDidStart)) { _ in
-      isTTSActive = true
-    }
-    .onReceive(NotificationCenter.default.publisher(for: .ttsDidStop)) { _ in
-      isTTSActive = false
-    }
-    .help(isTTSActive ? "Click to stop" : "Read this reply aloud")
-    .accessibilityLabel(isTTSActive ? "Reading aloud; click to stop" : "Read this reply aloud")
-  }
-}
-
 // MARK: - Copy Reply Button (under model replies)
 
 private struct CopyReplyButtonView: View {
@@ -3082,7 +3031,7 @@ private struct MessageBubbleView: View {
       if isUser {
         userCopyButtonRow
       } else {
-        readAloudButtonRow
+        assistantCopyButtonRow
       }
     }
     // Inner frame constrains bubble width; outer fills the row so alignment spans full width.
@@ -3156,13 +3105,12 @@ private struct MessageBubbleView: View {
     }
   }
 
-  /// Read Aloud and Copy action row for assistant replies; hidden when content is empty.
-  private var readAloudButtonRow: some View {
+  /// Copy action row for assistant replies; hidden when content is empty.
+  private var assistantCopyButtonRow: some View {
     let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
     return Group {
       if !trimmed.isEmpty {
         HStack(spacing: 8) {
-          ReadAloudButtonView(messageContent: message.content)
           CopyReplyButtonView(messageContent: message.content)
         }
         .padding(.top, 6)

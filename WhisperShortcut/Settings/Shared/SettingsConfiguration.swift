@@ -245,9 +245,8 @@ enum TTSModel: String, CaseIterable {
     return self.rawValue
   }
   
-  /// Recommended is aligned with default; single source of truth in SettingsDefaults.
   var isRecommended: Bool {
-    return self == SettingsDefaults.selectedTTSModel
+    return self == .gemini25FlashTTS
   }
   
   var costLevel: String {
@@ -556,22 +555,6 @@ struct SettingsDefaults {
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
   
-  // MARK: - Read Aloud Settings (for Chat TTS)
-  static let selectedReadAloudVoice = "Charon"
-  static let selectedTTSModel = TTSModel.gemini25FlashTTS
-  static let readAloudPlaybackRateMin: Float = 0.5
-  static let readAloudPlaybackRateMax: Float = 2.0
-  static let readAloudPlaybackRate: Float = 1.0
-
-  /// Returns the read-aloud playback rate from UserDefaults, clamped to valid range, or default if not set.
-  static func clampedReadAloudPlaybackRate() -> Float {
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.readAloudPlaybackRate) != nil {
-      let saved = UserDefaults.standard.float(forKey: UserDefaultsKeys.readAloudPlaybackRate)
-      return min(max(saved, readAloudPlaybackRateMin), readAloudPlaybackRateMax)
-    }
-    return readAloudPlaybackRate
-  }
-
   // MARK: - Whisper Language Settings
   static let whisperLanguage = WhisperLanguage.auto
 
@@ -636,11 +619,6 @@ struct SettingsData {
   var settingsCloseOnFocusLoss: Bool = SettingsDefaults.settingsCloseOnFocusLoss
   var customPromptText: String = SettingsDefaults.customPromptText
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
-
-  // MARK: - Read Aloud Settings (for Chat TTS)
-  var selectedReadAloudVoice: String = SettingsDefaults.selectedReadAloudVoice
-  var selectedTTSModel: TTSModel = SettingsDefaults.selectedTTSModel
-  var readAloudPlaybackRate: Float = SettingsDefaults.readAloudPlaybackRate
 
   // MARK: - Whisper Language Settings
   var whisperLanguage: WhisperLanguage = SettingsDefaults.whisperLanguage

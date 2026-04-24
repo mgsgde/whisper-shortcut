@@ -72,28 +72,6 @@ class SettingsViewModel: ObservableObject {
       data.whisperLanguage = SettingsDefaults.whisperLanguage
     }
 
-    // Load read aloud voice setting (with migration from legacy key)
-    if let savedVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoice) {
-      data.selectedReadAloudVoice = savedVoice
-    } else if let legacyVoice = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoiceLegacy) {
-      // Migration: Copy from legacy key to new key
-      data.selectedReadAloudVoice = legacyVoice
-      UserDefaults.standard.set(legacyVoice, forKey: UserDefaultsKeys.selectedReadAloudVoice)
-    } else {
-      data.selectedReadAloudVoice = SettingsDefaults.selectedReadAloudVoice
-    }
-
-    if let savedTTSModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTTSModel),
-      let savedTTSModel = TTSModel(rawValue: savedTTSModelString)
-    {
-      data.selectedTTSModel = savedTTSModel
-    } else {
-      data.selectedTTSModel = SettingsDefaults.selectedTTSModel
-    }
-
-    // Load read aloud playback rate (clamp to valid range)
-    data.readAloudPlaybackRate = SettingsDefaults.clampedReadAloudPlaybackRate()
-
     // Load chat window model
     if let savedOpenGeminiModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel) {
       let normalized = PromptModel.migrateLegacyPromptRawValue(savedOpenGeminiModelString)
@@ -376,11 +354,6 @@ class SettingsViewModel: ObservableObject {
 
     // System prompts are stored in UserContext/system-prompts.md (see SystemPromptsStore); not saved to UserDefaults.
 
-    // Save read aloud voice settings (used by Chat TTS)
-    UserDefaults.standard.set(data.selectedReadAloudVoice, forKey: UserDefaultsKeys.selectedReadAloudVoice)
-    UserDefaults.standard.set(data.selectedTTSModel.rawValue, forKey: UserDefaultsKeys.selectedTTSModel)
-    UserDefaults.standard.set(data.readAloudPlaybackRate, forKey: UserDefaultsKeys.readAloudPlaybackRate)
-    
     // Save Whisper language setting
     UserDefaults.standard.set(data.whisperLanguage.rawValue, forKey: UserDefaultsKeys.whisperLanguage)
 

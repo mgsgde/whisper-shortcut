@@ -19,12 +19,7 @@ enum UserDefaultsKeys {
   static let customPromptText = "customPromptText"
   static let promptModeSystemPrompt = "promptModeSystemPrompt"
   
-  // MARK: - Read Aloud Settings (for Chat TTS)
-  static let selectedReadAloudVoice = "selectedReadAloudVoice"
-  static let readAloudPlaybackRate = "readAloudPlaybackRate"
-
   // MARK: - Legacy Keys (for migration)
-  static let selectedReadAloudVoiceLegacy = "selected_read_aloud_voice"
   static let selectedTTSModel = "selectedTTSModel"
   
   // MARK: - Whisper Settings

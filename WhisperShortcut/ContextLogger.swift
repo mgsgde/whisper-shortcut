@@ -127,22 +127,6 @@ class ContextLogger {
     writeEntry(entry)
   }
 
-  func logReadAloud(text: String, voice: String?) {
-    guard isLoggingEnabled else { return }
-    let entry = InteractionLogEntry(
-      ts: iso8601Now(),
-      mode: "readAloud",
-      model: nil,
-      result: nil,
-      selectedText: nil,
-      userInstruction: nil,
-      modelResponse: nil,
-      text: text,
-      voice: voice
-    )
-    writeEntry(entry)
-  }
-
   /// Logs one chat turn (user message + model response) when "Save usage data" is enabled.
   func logGeminiChat(userMessage: String, modelResponse: String, model: String?) {
     guard isLoggingEnabled else { return }
