@@ -46,8 +46,8 @@ class PopupNotificationWindow: NSWindow {
     static let shadowRadius: CGFloat = 8  // Subtle shadow like native macOS notifications
     static let shadowOpacity: Float = 0.15  // Very subtle, barely visible shadow
     static let animationDuration: TimeInterval = 0.25  // Smoother animation
-    static let displayDuration: TimeInterval = 3.0  // Default display time
-    static let errorDisplayDuration: TimeInterval = 30.0  // Long duration for error messages with feedback option
+    static let displayDuration: TimeInterval = SettingsDefaults.notificationDuration.rawValue
+    static let errorDisplayDuration: TimeInterval = SettingsDefaults.errorNotificationDuration.rawValue
     static let outerPadding: CGFloat = 20  // Generous outer padding
     static let innerPadding: CGFloat = 16  // Inner content padding
     static let titleBottomSpacing: CGFloat = 16  // More space between title and text
