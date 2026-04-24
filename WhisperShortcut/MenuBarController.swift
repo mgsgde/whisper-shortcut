@@ -1456,6 +1456,14 @@ extension MenuBarController: AudioRecorderDelegate {
       // Mark this URL as processed to prevent duplicate processing
       self.processedAudioURLs.insert(audioURL)
 
+      if self.audioRecorder.lastRecordingWasSilent {
+        DebugLogger.log("AUDIO: Skipping API call — recording was silent")
+        self.cleanupAudioFile(at: audioURL)
+        self.appState = self.appState.stopRecording()
+        self.appState = self.appState.finish()
+        return
+      }
+
       if recordingMode == .transcription {
         self.currentTranscriptionAudioURL = audioURL
       }

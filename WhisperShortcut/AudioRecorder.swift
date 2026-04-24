@@ -12,6 +12,13 @@ class AudioRecorder: NSObject {
   private var audioRecorder: AVAudioRecorder?
   private var recordingURL: URL?
 
+  private var meteringTimer: Timer?
+  private var peakPowerDuringRecording: Float = -160
+  private static let silenceThresholdDB: Float = -35
+
+  /// Whether the last completed recording contained only silence (no speech detected).
+  private(set) var lastRecordingWasSilent: Bool = false
+
   // MARK: - Constants
   private enum Constants {
     static let sampleRate: Double = 24000.0  // 24kHz to match realtime API requirements
@@ -109,10 +116,19 @@ class AudioRecorder: NSObject {
 
       audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
       audioRecorder?.delegate = self
+      audioRecorder?.isMeteringEnabled = true
+      peakPowerDuringRecording = -160
+      lastRecordingWasSilent = false
 
       let success = audioRecorder?.record() ?? false
       if success {
-      } else {
+        meteringTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+          self?.sampleMetering()
+        }
+      }
+      if !success {
+        meteringTimer?.invalidate()
+        meteringTimer = nil
         throw NSError(
           domain: Constants.errorDomain, code: Constants.recordingFailedCode,
           userInfo: [
@@ -125,18 +141,28 @@ class AudioRecorder: NSObject {
     }
   }
 
-  func stopRecording() {
-    guard let recorder = audioRecorder, recorder.isRecording else {
+  private func sampleMetering() {
+    guard let recorder = audioRecorder, recorder.isRecording else { return }
+    recorder.updateMeters()
+    let power = recorder.averagePower(forChannel: 0)
+    if power > peakPowerDuringRecording { peakPowerDuringRecording = power }
+  }
 
-      return
-    }
+  func stopRecording() {
+    meteringTimer?.invalidate()
+    meteringTimer = nil
+
+    guard let recorder = audioRecorder, recorder.isRecording else { return }
+
+    lastRecordingWasSilent = peakPowerDuringRecording < Self.silenceThresholdDB
+    DebugLogger.logAudio("AUDIO: Recording peak \(String(format: "%.1f", peakPowerDuringRecording)) dB, threshold \(Self.silenceThresholdDB) dB, silent=\(lastRecordingWasSilent)")
 
     recorder.stop()
-
   }
 
   func cleanup() {
-    // Simple and safe cleanup
+    meteringTimer?.invalidate()
+    meteringTimer = nil
     audioRecorder?.stop()
     audioRecorder = nil
 

@@ -1974,6 +1974,25 @@ struct GeminiInputAreaView: View {
         .help("Capture screen without this window; image will be attached to your next message.")
         .pointerCursorOnHover()
 
+        Button(action: {
+          NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
+        }) {
+          HStack(spacing: 4) {
+            Image(systemName: viewModel.isMeetingActive ? "record.circle" : "record.circle")
+              .font(.caption)
+              .foregroundColor(viewModel.isMeetingActive ? .red : GeminiChatTheme.secondaryText)
+            Text(viewModel.isMeetingActive ? "Stop meeting" : "Meeting")
+              .font(.caption)
+          }
+          .foregroundColor(viewModel.isMeetingActive ? .red : GeminiChatTheme.secondaryText)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 5)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(viewModel.isMeetingActive ? "Stop the current meeting recording" : "Start a new live meeting recording")
+        .pointerCursorOnHover()
+
         Spacer()
 
         Menu {
