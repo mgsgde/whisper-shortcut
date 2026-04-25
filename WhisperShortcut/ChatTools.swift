@@ -13,7 +13,7 @@ import Foundation
 // writes. Every action is either a read (clipboard) or an explicit UI effect
 // (clipboard write, open URL) that the user can immediately see.
 
-enum GeminiChatToolRegistry {
+enum ChatToolRegistry {
 
   /// Base function declarations (always available).
   static let functionDeclarations: [[String: Any]] = [

@@ -267,23 +267,23 @@ struct MarkdownTableView: View {
       GridRow {
         ForEach(0..<colCount, id: \.self) { col in
           Text(Self.parseCellText(headers[col], isHeader: true, fontSize: fontSize))
-            .foregroundColor(GeminiChatTheme.primaryText)
+            .foregroundColor(ChatTheme.primaryText)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
       }
-      .background(GeminiChatTheme.controlBackground)
+      .background(ChatTheme.controlBackground)
 
       Rectangle()
-        .fill(GeminiChatTheme.primaryText.opacity(0.2))
+        .fill(ChatTheme.primaryText.opacity(0.2))
         .frame(height: 1)
 
       ForEach(Array(rows.enumerated()), id: \.offset) { rowIdx, row in
         GridRow {
           ForEach(0..<colCount, id: \.self) { col in
             Text(Self.parseCellText(col < row.count ? row[col] : "", isHeader: false, fontSize: fontSize))
-              .foregroundColor(GeminiChatTheme.primaryText)
+              .foregroundColor(ChatTheme.primaryText)
               .padding(.horizontal, 10)
               .padding(.vertical, 8)
               .frame(maxWidth: .infinity, alignment: .leading)
@@ -291,7 +291,7 @@ struct MarkdownTableView: View {
         }
         if rowIdx < rows.count - 1 {
           Rectangle()
-            .fill(GeminiChatTheme.primaryText.opacity(0.08))
+            .fill(ChatTheme.primaryText.opacity(0.08))
             .frame(height: 1)
         }
       }
@@ -300,7 +300,7 @@ struct MarkdownTableView: View {
     .clipShape(RoundedRectangle(cornerRadius: 8))
     .overlay(
       RoundedRectangle(cornerRadius: 8)
-        .strokeBorder(GeminiChatTheme.primaryText.opacity(0.15), lineWidth: 1)
+        .strokeBorder(ChatTheme.primaryText.opacity(0.15), lineWidth: 1)
     )
   }
 
@@ -361,36 +361,36 @@ struct MarkdownBlockView: View {
     case .heading(let level, let content):
       inlineText(content)
         .font(MarkdownParsing.fontForHeadingLevel(level, baseSize: baseSize))
-        .foregroundColor(GeminiChatTheme.primaryText)
+        .foregroundColor(ChatTheme.primaryText)
         .padding(.top, level <= 1 ? 6 : 4)
         .padding(.bottom, 2)
     case .bullet(let content):
       HStack(alignment: .firstTextBaseline, spacing: 6) {
         Text("\u{2022}")
           .font(.system(size: baseSize))
-          .foregroundColor(GeminiChatTheme.primaryText)
+          .foregroundColor(ChatTheme.primaryText)
         inlineText(content)
           .font(.system(size: baseSize))
-          .foregroundColor(GeminiChatTheme.primaryText)
+          .foregroundColor(ChatTheme.primaryText)
       }
     case .paragraph(let content):
       inlineText(content)
         .font(.system(size: baseSize))
-        .foregroundColor(GeminiChatTheme.primaryText)
+        .foregroundColor(ChatTheme.primaryText)
         .padding(.vertical, 1)
     case .separator:
       Text(MarkdownParsing.separatorLineContent)
         .font(.system(size: baseSize))
-        .foregroundColor(GeminiChatTheme.primaryText.opacity(0.4))
+        .foregroundColor(ChatTheme.primaryText.opacity(0.4))
     case .table(let parsed):
       MarkdownTableView(headers: parsed.headers, rows: parsed.rows, fontSize: baseSize)
     case .codeBlock(let content):
       Text(content)
         .font(.system(size: baseSize - 1, design: .monospaced))
-        .foregroundColor(GeminiChatTheme.primaryText)
+        .foregroundColor(ChatTheme.primaryText)
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(GeminiChatTheme.controlBackground.opacity(0.5))
+        .background(ChatTheme.controlBackground.opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
   }

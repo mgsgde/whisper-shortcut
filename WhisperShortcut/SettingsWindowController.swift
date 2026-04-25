@@ -85,7 +85,7 @@ class SettingsWindowController: NSWindowController {
     window.level = .floating
     window.isMovableByWindowBackground = false
 
-    // Same as Gemini window: show in current space (including fullscreen) so opening from fullscreen does not switch spaces.
+    // Same as chat window: show in current space (including fullscreen) so opening from fullscreen does not switch spaces.
     window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .participatesInCycle]
 
     // Set size constraints with reasonable limits

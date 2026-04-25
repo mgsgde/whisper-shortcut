@@ -13,14 +13,14 @@ enum SystemPromptSection: String, CaseIterable {
   case dictation = "dictation"
   case whisperGlossary = "whisperGlossary"
   case promptMode = "promptMode"
-  case geminiChat = "geminiChat"
+  case chat = "geminiChat"
 
   var fileHeader: String {
     switch self {
     case .dictation: return "=== Dictation (Speech-to-Text) ==="
     case .whisperGlossary: return "=== Whisper Glossary (Offline) ==="
     case .promptMode: return "=== Dictate Prompt ==="
-    case .geminiChat: return "=== Chat ==="
+    case .chat: return "=== Chat ==="
     }
   }
 
@@ -28,7 +28,7 @@ enum SystemPromptSection: String, CaseIterable {
   /// Legacy Prompt Read Mode headers are recognized but skipped (section removed).
   private static let legacyHeaders: [String: SystemPromptSection] = [
     "=== Prompt Mode ===": .promptMode,
-    "=== Gemini Chat ===": .geminiChat,
+    "=== Gemini Chat ===": .chat,
   ]
 
   /// Legacy headers for removed sections; recognized during parsing so their content is skipped cleanly.
@@ -85,9 +85,9 @@ final class SystemPromptsStore {
   }
 
   /// Chat system prompt. Returns default if section missing or empty.
-  func loadGeminiChatSystemPrompt() -> String {
-    (loadSection(.geminiChat)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
-      ?? AppConstants.defaultGeminiChatSystemPrompt
+  func loadChatSystemPrompt() -> String {
+    (loadSection(.chat)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+      ?? AppConstants.defaultChatSystemPrompt
   }
 
   /// Whisper Glossary: short vocabulary list for offline Whisper conditioning. Returns empty string if missing or empty (no conditioning).
@@ -178,7 +178,7 @@ final class SystemPromptsStore {
       .dictation: AppConstants.defaultTranscriptionSystemPrompt,
       .whisperGlossary: AppConstants.defaultWhisperGlossary,
       .promptMode: AppConstants.defaultPromptModeSystemPrompt,
-      .geminiChat: AppConstants.defaultGeminiChatSystemPrompt,
+      .chat: AppConstants.defaultChatSystemPrompt,
     ])
   }
 
@@ -227,7 +227,7 @@ final class SystemPromptsStore {
       .dictation: dictation,
       .whisperGlossary: AppConstants.defaultWhisperGlossary,
       .promptMode: promptMode,
-      .geminiChat: AppConstants.defaultGeminiChatSystemPrompt,
+      .chat: AppConstants.defaultChatSystemPrompt,
     ])
     do {
       try content.write(to: fileURL, atomically: true, encoding: .utf8)

@@ -125,7 +125,7 @@ class MenuBarController: NSObject {
     loadModelConfiguration()
 
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-      GeminiWindowManager.shared.preWarm()
+      ChatWindowManager.shared.preWarm()
     }
   }
 
@@ -173,11 +173,11 @@ class MenuBarController: NSObject {
         shortcut: currentConfig.startPrompting, tag: 102))
     menu.addItem(NSMenuItem.separator())
 
-    // Gemini window
+    // Chat window
     menu.addItem(
       createMenuItemWithShortcut(
-        "Chat", action: #selector(openGeminiWindow),
-        shortcut: currentConfig.openGemini, tag: 110))
+        "Chat", action: #selector(openChatWindow),
+        shortcut: currentConfig.openChat, tag: 110))
 
 
     menu.addItem(NSMenuItem.separator())
@@ -285,13 +285,13 @@ class MenuBarController: NSObject {
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(toggleLiveMeeting),
-      name: .geminiToggleLiveMeeting,
+      name: .chatToggleLiveMeeting,
       object: nil
     )
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(endMeetingWithName(_:)),
-      name: .geminiEndMeetingWithName,
+      name: .chatEndMeetingWithName,
       object: nil
     )
   }
@@ -615,17 +615,17 @@ class MenuBarController: NSObject {
     SettingsManager.shared.toggleSettings()
   }
 
-  @objc func openGeminiWindow() {
-    GeminiWindowManager.shared.toggle()
+  @objc func openChatWindow() {
+    ChatWindowManager.shared.toggle()
   }
 
-  /// Opens the Gemini window from the global shortcut. If the window is already open, closes it (same toggle behavior as the menu).
-  private func openGeminiWindowFromShortcut() {
-    if GeminiWindowManager.shared.isWindowOpen() {
-      GeminiWindowManager.shared.close()
+  /// Opens the chat window from the global shortcut. If the window is already open, closes it (same toggle behavior as the menu).
+  private func openChatWindowFromShortcut() {
+    if ChatWindowManager.shared.isWindowOpen() {
+      ChatWindowManager.shared.close()
       return
     }
-    GeminiWindowManager.shared.show(suppressFocusLossClose: true)
+    ChatWindowManager.shared.show(suppressFocusLossClose: true)
   }
 
   // MARK: - Live Meeting Transcription
@@ -715,7 +715,7 @@ class MenuBarController: NSObject {
       DebugLogger.log("LIVE-MEETING-SAFEGUARD: Reminder scheduled after \(Int(safeguardThreshold.rawValue / 60)) minutes")
     }
 
-    GeminiWindowManager.shared.show(suppressFocusLossClose: true)
+    ChatWindowManager.shared.show(suppressFocusLossClose: true)
 
     DebugLogger.logSuccess("LIVE-MEETING: Session started")
   }
@@ -1510,7 +1510,7 @@ extension MenuBarController: ShortcutDelegate {
   func toggleDictation() { toggleTranscription() }
   // togglePrompting is already implemented above
   // openSettings is already implemented above
-  func openGemini() { openGeminiWindowFromShortcut() }
+  func openChat() { openChatWindowFromShortcut() }
 }
 
 // MARK: - ChunkProgressDelegate (Chunked Transcription Progress)

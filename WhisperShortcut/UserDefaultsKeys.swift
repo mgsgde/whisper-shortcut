@@ -3,9 +3,9 @@ import Foundation
 /// Centralized UserDefaults keys for type-safe access throughout the app
 /// This prevents typos and makes refactoring easier
 enum UserDefaultsKeys {
-  // MARK: - Gemini Window Settings
-  static let geminiCloseOnFocusLoss = "geminiCloseOnFocusLoss"
-  static let geminiSidebarVisible = "geminiSidebarVisible"
+  // MARK: - Chat Window Settings
+  static let chatCloseOnFocusLoss = "geminiCloseOnFocusLoss"
+  static let chatSidebarVisible = "geminiSidebarVisible"
 
   // MARK: - Settings Window
   static let settingsCloseOnFocusLoss = "settingsCloseOnFocusLoss"
@@ -13,7 +13,7 @@ enum UserDefaultsKeys {
   // MARK: - Model Settings
   static let selectedTranscriptionModel = "selectedTranscriptionModel"
   static let selectedPromptModel = "selectedPromptModel"
-  static let selectedOpenGeminiModel = "selectedOpenGeminiModel"
+  static let selectedChatModel = "selectedOpenGeminiModel"
 
   // MARK: - Prompt Settings
   static let customPromptText = "customPromptText"

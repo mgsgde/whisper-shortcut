@@ -122,12 +122,12 @@ class AutoPromptImprovementScheduler {
   }
 
   /// Maps each focus to the interaction `mode` field that counts as its primary signal. Mirrors ContextDerivation.primaryMode.
-  /// `geminiChat` has no single primary mode and uses the total interaction count instead.
+  /// `chat` has no single primary mode and uses the total interaction count instead.
   private func primaryModeKey(for focus: GenerationKind) -> String? {
     switch focus {
     case .dictation, .whisperGlossary: return "transcription"
     case .promptMode: return "prompt"
-    case .geminiChat: return nil
+    case .chat: return nil
     }
   }
 
@@ -137,7 +137,7 @@ class AutoPromptImprovementScheduler {
     ContextLogger.shared.deleteAllSuggestedFiles()
 
     let derivation = ContextDerivation()
-    let allFocuses: [GenerationKind] = [.dictation, .whisperGlossary, .promptMode, .geminiChat]
+    let allFocuses: [GenerationKind] = [.dictation, .whisperGlossary, .promptMode, .chat]
 
     // Per-focus eligibility: skip focuses without enough primary-mode data in the lookback window.
     let counts = ContextLogger.shared.interactionCountsByMode(lastDays: AppConstants.smartImprovementEligibilityDays)
@@ -151,7 +151,7 @@ class AutoPromptImprovementScheduler {
           return false
         }
       } else {
-        // geminiChat: gate on total instead of a single mode.
+        // chat: gate on total instead of a single mode.
         if total < minPerFocus {
           DebugLogger.log("AUTO-IMPROVEMENT: Skipping \(focus) — only \(total) total entries (need \(minPerFocus))")
           return false
@@ -205,7 +205,7 @@ class AutoPromptImprovementScheduler {
       }
     }
 
-    // Stable order for review UI (dictation, promptMode, geminiChat)
+    // Stable order for review UI (dictation, promptMode, chat)
     pendingKinds.sort { a, b in
       (focuses.firstIndex(of: a) ?? 0) < (focuses.firstIndex(of: b) ?? 0)
     }
@@ -284,7 +284,7 @@ class AutoPromptImprovementScheduler {
       fileURL = contextDir.appendingPathComponent("suggested-whisper-glossary.txt")
     case .promptMode:
       fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
-    case .geminiChat:
+    case .chat:
       fileURL = contextDir.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
     }
 
@@ -302,7 +302,7 @@ class AutoPromptImprovementScheduler {
     case .dictation: return store.loadDictationPrompt()
     case .whisperGlossary: return store.loadWhisperGlossary()
     case .promptMode: return store.loadDictatePromptSystemPrompt()
-    case .geminiChat: return store.loadSection(.geminiChat) ?? ""
+    case .chat: return store.loadSection(.chat) ?? ""
     }
   }
 
@@ -317,7 +317,7 @@ class AutoPromptImprovementScheduler {
       fileURL = contextDir.appendingPathComponent("suggested-whisper-glossary.txt")
     case .promptMode:
       fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
-    case .geminiChat:
+    case .chat:
       fileURL = contextDir.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
     }
 
@@ -335,7 +335,7 @@ class AutoPromptImprovementScheduler {
     case .dictation: baseName = "suggested-dictation-prompt"
     case .whisperGlossary: baseName = "suggested-whisper-glossary"
     case .promptMode: baseName = "suggested-prompt-mode-system-prompt"
-    case .geminiChat: baseName = "suggested-gemini-chat-system-prompt"
+    case .chat: baseName = "suggested-gemini-chat-system-prompt"
     }
     let url = ContextLogger.shared.directoryURL.appendingPathComponent(baseName + "-rationale.txt")
     guard let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
@@ -349,7 +349,7 @@ class AutoPromptImprovementScheduler {
     case .dictation: ContextLogger.shared.deleteSuggestedDictationPromptFile()
     case .whisperGlossary: ContextLogger.shared.deleteSuggestedWhisperGlossaryFile()
     case .promptMode: ContextLogger.shared.deleteSuggestedSystemPromptFile()
-    case .geminiChat: ContextLogger.shared.deleteSuggestedGeminiChatSystemPromptFile()
+    case .chat: ContextLogger.shared.deleteSuggestedChatSystemPromptFile()
     }
     // Also remove rationale sidecar.
     let baseName: String
@@ -357,7 +357,7 @@ class AutoPromptImprovementScheduler {
     case .dictation: baseName = "suggested-dictation-prompt"
     case .whisperGlossary: baseName = "suggested-whisper-glossary"
     case .promptMode: baseName = "suggested-prompt-mode-system-prompt"
-    case .geminiChat: baseName = "suggested-gemini-chat-system-prompt"
+    case .chat: baseName = "suggested-gemini-chat-system-prompt"
     }
     let url = ContextLogger.shared.directoryURL.appendingPathComponent(baseName + "-rationale.txt")
     try? FileManager.default.removeItem(at: url)
@@ -392,7 +392,7 @@ private extension GenerationKind {
     case .dictation: return .dictation
     case .whisperGlossary: return .whisperGlossary
     case .promptMode: return .promptMode
-    case .geminiChat: return .geminiChat
+    case .chat: return .chat
     }
   }
 }

@@ -1,9 +1,9 @@
 import Cocoa
 import ScreenCaptureKit
 
-class GeminiWindowManager {
-  static let shared = GeminiWindowManager()
-  private var windowController: GeminiWindowController?
+class ChatWindowManager {
+  static let shared = ChatWindowManager()
+  private var windowController: ChatWindowController?
 
   private var cachedShareableContent: SCShareableContent?
   private var cachedShareableContentDate: Date?
@@ -21,7 +21,7 @@ class GeminiWindowManager {
 
   func show(suppressFocusLossClose: Bool = false) {
     if windowController == nil {
-      windowController = GeminiWindowController()
+      windowController = ChatWindowController()
     }
     if suppressFocusLossClose {
       windowController?.suppressCloseOnFocusLoss()
@@ -30,10 +30,10 @@ class GeminiWindowManager {
     prefetchShareableContent()
   }
 
-  /// Shows the Gemini window and switches to the Meeting view (for live meeting).
+  /// Shows the chat window and switches to the Meeting view (for live meeting).
   func showAndSwitchToMeeting() {
     show()
-    NotificationCenter.default.post(name: .geminiSwitchToMeeting, object: nil)
+    NotificationCenter.default.post(name: .chatSwitchToMeeting, object: nil)
   }
 
   func close() {
@@ -48,7 +48,7 @@ class GeminiWindowManager {
   /// Creates the window controller in the background so the first show() call is instant.
   func preWarm() {
     if windowController == nil {
-      windowController = GeminiWindowController()
+      windowController = ChatWindowController()
     }
   }
 
@@ -137,17 +137,17 @@ class GeminiWindowManager {
     return jpegData
   }
 
-  /// Captures the display that contains the Gemini window, excluding this app's windows via ScreenCaptureKit.
+  /// Captures the display that contains the chat window, excluding this app's windows via ScreenCaptureKit.
   /// Returns PNG data or nil on failure (e.g. no Screen Recording permission).
   @MainActor
-  func captureScreenExcludingGeminiWindow() async -> Data? {
+  func captureScreenExcludingChatWindow() async -> Data? {
     guard windowController?.window != nil else {
       DebugLogger.log("GEMINI-SCREENSHOT: No window")
       return nil
     }
 
     // Always fetch fresh SCShareableContent for the chat capture path.
-    // Using the cache caused the Gemini window to appear in screenshots:
+    // Using the cache caused the chat window to appear in screenshots:
     // prefetchShareableContent() runs right after showWindow(), often before
     // the window is actually on screen, so `applications` didn't contain
     // WhisperShortcut — and that stale snapshot lived in the cache for 30s,

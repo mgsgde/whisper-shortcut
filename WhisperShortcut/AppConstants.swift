@@ -42,7 +42,7 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
     "\n\nCRITICAL – Output format: Return ONLY the edited/transformed text (the result of applying the voice instruction to the selected text). Never return the original selected text with the user's spoken words appended; the voice is a command to edit, not dictation to add. No meta-information, no explanations, no preamble (e.g. \"Here is...\"), no closing phrases. No decorative markdown (**bold**, # headers); bullet points with leading dash and space (- ) are allowed—use spaces to indent sub-bullets. Just the plain result that the user can paste directly."
 
   /// Default system prompt for the chat window. Structure: Persona → Task → Guardrails → Output.
-  static let defaultGeminiChatSystemPrompt =
+  static let defaultChatSystemPrompt =
     """
 You have access to Google Search. Use it by default. The user relies on this chat for current, up-to-date information. Do not rely on your training data for facts, numbers, dates, news, or anything that may have changed—when in doubt, search first. Do not invent or guess information; if you have not searched and are not sure, say so or search before answering. Only skip searching for purely conversational or static content (e.g. grammar, math, personal preferences with no recency). When you search, the user will see sources (URLs) attached to your answer; the user expects to see these often. So search whenever the answer could be factual or time-sensitive, so your reply is grounded and shows sources.
 
@@ -222,5 +222,5 @@ Transcript:
   // MARK: - Gemini Chat
   /// Hard cap on messages sent per turn. Gemini 2.x has a 1–2M token context window;
   /// this only protects against pathologically long sessions.
-  static let geminiChatFullHistoryMaxMessages: Int = 400
+  static let chatFullHistoryMaxMessages: Int = 400
 }

@@ -171,8 +171,8 @@ private struct SessionsFile: Codable {
 
 // MARK: - Store
 
-class GeminiChatSessionStore {
-  static let shared = GeminiChatSessionStore()
+class ChatSessionStore {
+  static let shared = ChatSessionStore()
 
   private let fileName: String
   private let legacyFileName = "gemini-chat-session.json"
@@ -190,7 +190,7 @@ class GeminiChatSessionStore {
   private var debounceWorkItem: DispatchWorkItem?
   private static let saveDebounceSeconds: Double = 2.0
   /// Maximum messages kept per session on disk. Older messages are trimmed.
-  /// Matches `AppConstants.geminiChatFullHistoryMaxMessages` so trimming never
+  /// Matches `AppConstants.chatFullHistoryMaxMessages` so trimming never
   /// drops turns that would still be sent on the next request.
   private static let maxMessagesPerSession = 400
 

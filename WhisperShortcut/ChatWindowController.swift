@@ -2,13 +2,13 @@ import Cocoa
 import SwiftUI
 
 /// Custom NSWindow subclass that routes Cmd+W to tab-close instead of window-close.
-private class GeminiWindow: NSWindow {
+private class ChatWindow: NSWindow {
   override func performClose(_ sender: Any?) {
-    NotificationCenter.default.post(name: .geminiCloseTab, object: nil)
+    NotificationCenter.default.post(name: .chatCloseTab, object: nil)
   }
 }
 
-class GeminiWindowController: NSWindowController {
+class ChatWindowController: NSWindowController {
 
   /// Key codes (layout-independent, NSEvent.keyCode).
   private static let keyCodeUpArrow: UInt16 = 126
@@ -34,15 +34,15 @@ class GeminiWindowController: NSWindowController {
     static let maxHeight: CGFloat = 1600
 
     static let windowTitle = "WhisperShortcut"
-    static let frameAutosaveName = "GeminiWindowV5"
+    static let frameAutosaveName = "ChatWindowV5"
   }
 
   init() {
-    let rootView = GeminiRootView()
+    let rootView = ChatRootView()
     let hostingController = NSHostingController(rootView: rootView)
     hostingController.sizingOptions = []
 
-    let window = GeminiWindow(
+    let window = ChatWindow(
       contentRect: NSRect(x: 0, y: 0, width: Constants.minWidth, height: Constants.minHeight),
       styleMask: [.titled, .closable, .resizable],
       backing: .buffered,
@@ -76,7 +76,7 @@ class GeminiWindowController: NSWindowController {
     setupCmdArrowScrollMonitor()  // Re-add monitor if it was removed when window closed
     NSApp.activate(ignoringOtherApps: true)
     window?.makeKeyAndOrderFront(nil)
-    NotificationCenter.default.post(name: .geminiFocusInput, object: nil)
+    NotificationCenter.default.post(name: .chatFocusInput, object: nil)
   }
 
   /// Temporarily suppresses close-on-focus-loss for the given duration.
@@ -124,22 +124,22 @@ class GeminiWindowController: NSWindowController {
       let isShift = event.modifierFlags.contains(.shift)
       switch event.keyCode {
       case Self.keyCodeN:
-        NotificationCenter.default.post(name: .geminiNewChat, object: nil)
+        NotificationCenter.default.post(name: .chatNewChat, object: nil)
         return nil
       case Self.keyCodeT where isShift:
-        NotificationCenter.default.post(name: .geminiReopenLastClosedTab, object: nil)
+        NotificationCenter.default.post(name: .chatReopenLastClosedTab, object: nil)
         return nil
       case Self.keyCodeW:
-        NotificationCenter.default.post(name: .geminiCloseTab, object: nil)
+        NotificationCenter.default.post(name: .chatCloseTab, object: nil)
         return nil
       case Self.keyCodeUpArrow:
-        NotificationCenter.default.post(name: .geminiScrollToTop, object: nil)
+        NotificationCenter.default.post(name: .chatScrollToTop, object: nil)
         return nil
       case Self.keyCodeDownArrow:
-        NotificationCenter.default.post(name: .geminiScrollToBottom, object: nil)
+        NotificationCenter.default.post(name: .chatScrollToBottom, object: nil)
         return nil
       case Self.keyCodeBackslash, Self.keyCodeB:
-        NotificationCenter.default.post(name: .geminiToggleSidebar, object: nil)
+        NotificationCenter.default.post(name: .chatToggleSidebar, object: nil)
         return nil
       default:
         return event
@@ -156,17 +156,17 @@ class GeminiWindowController: NSWindowController {
 }
 
 // MARK: - NSWindowDelegate
-extension GeminiWindowController: NSWindowDelegate {
+extension ChatWindowController: NSWindowDelegate {
   func windowDidResignKey(_ notification: Notification) {
     // Don't close while a modal sheet/panel (e.g. file picker) is active
     if NSApp.modalWindow != nil { return }
     // Don't close during the shortcut copy → show → prefill sequence
     if Date() < suppressCloseUntil { return }
     let closeOnFocusLoss: Bool
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss) != nil {
-      closeOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.chatCloseOnFocusLoss) != nil {
+      closeOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.chatCloseOnFocusLoss)
     } else {
-      closeOnFocusLoss = SettingsDefaults.geminiCloseOnFocusLoss
+      closeOnFocusLoss = SettingsDefaults.chatCloseOnFocusLoss
     }
     if closeOnFocusLoss {
       window?.close()

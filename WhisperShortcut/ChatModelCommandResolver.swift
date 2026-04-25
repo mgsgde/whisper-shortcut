@@ -1,6 +1,6 @@
 import Foundation
 
-enum OpenGeminiModelCommandOutcome: Equatable {
+enum ChatModelCommandOutcome: Equatable {
   case usage(current: PromptModel)
   case applied(model: PromptModel)
   case ambiguous(candidates: [PromptModel])
@@ -8,13 +8,13 @@ enum OpenGeminiModelCommandOutcome: Equatable {
 }
 
 /// Pure resolver: maps a fuzzy `/model` argument to a `PromptModel` outcome.
-/// Used by `GeminiChatViewModel.handleModelCommand` so the matching logic can
+/// Used by `ChatViewModel.handleModelCommand` so the matching logic can
 /// be reasoned about without UI/state.
-enum OpenGeminiModelCommandResolver {
+enum ChatModelCommandResolver {
   static func resolve(
     argument: String,
     currentSelection: PromptModel
-  ) -> OpenGeminiModelCommandOutcome {
+  ) -> ChatModelCommandOutcome {
     let q = argument.trimmingCharacters(in: .whitespacesAndNewlines)
     if q.isEmpty {
       return .usage(current: currentSelection)

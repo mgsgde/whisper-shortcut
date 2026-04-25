@@ -2,8 +2,8 @@ import SwiftUI
 
 // MARK: - Sidebar for Gemini Chat session list
 
-struct GeminiChatSidebar: View {
-  @ObservedObject var viewModel: GeminiChatViewModel
+struct ChatSidebar: View {
+  @ObservedObject var viewModel: ChatViewModel
   @Binding var sidebarVisible: Bool
 
   @State private var hoveredRowId: UUID? = nil
@@ -79,7 +79,7 @@ struct GeminiChatSidebar: View {
       }
     }
     .frame(width: Self.sidebarWidth)
-    .background(GeminiChatTheme.controlBackground)
+    .background(ChatTheme.controlBackground)
   }
 
   // MARK: - Header
@@ -89,7 +89,7 @@ struct GeminiChatSidebar: View {
       Button(action: { withAnimation(.easeInOut(duration: 0.2)) { sidebarVisible = false } }) {
         Image(systemName: "sidebar.left")
           .font(.system(size: 12, weight: .medium))
-          .foregroundColor(GeminiChatTheme.primaryText)
+          .foregroundColor(ChatTheme.primaryText)
       }
       .buttonStyle(.plain)
       .help("Hide sidebar")
@@ -99,7 +99,7 @@ struct GeminiChatSidebar: View {
       Button(action: { viewModel.createNewSession() }) {
         Image(systemName: "square.and.pencil")
           .font(.system(size: 12, weight: .medium))
-          .foregroundColor(GeminiChatTheme.secondaryText)
+          .foregroundColor(ChatTheme.secondaryText)
       }
       .buttonStyle(.plain)
       .help("New chat")
@@ -120,7 +120,7 @@ struct GeminiChatSidebar: View {
       Text(title.uppercased())
         .font(.system(size: 9, weight: .bold, design: .default))
         .tracking(1.2)
-        .foregroundColor(GeminiChatTheme.secondaryText.opacity(0.8))
+        .foregroundColor(ChatTheme.secondaryText.opacity(0.8))
         .padding(.leading, 10)
         .padding(.trailing, 12)
         .padding(.top, showDivider ? 12 : 14)
@@ -141,7 +141,7 @@ struct GeminiChatSidebar: View {
         return stripped.isEmpty ? t : stripped
       }
       if let firstContent = session.messages.first(where: { $0.role == .user })?.content {
-        let cleaned = GeminiChatViewModel.contentForSessionTitle(firstContent)
+        let cleaned = ChatViewModel.contentForSessionTitle(firstContent)
         if !cleaned.isEmpty { return String(cleaned.prefix(60)) }
       }
       return "New chat"
@@ -149,8 +149,8 @@ struct GeminiChatSidebar: View {
     let title = rawTitle.replacingOccurrences(of: "\n", with: " ")
 
     let rowBg: Color = isActive
-      ? GeminiChatTheme.windowBackground
-      : (isHovered ? GeminiChatTheme.windowBackground.opacity(0.5) : Color.clear)
+      ? ChatTheme.windowBackground
+      : (isHovered ? ChatTheme.windowBackground.opacity(0.5) : Color.clear)
 
     let isRenaming = renamingSessionId == session.id
     let isMeetingLive = session.isMeeting && viewModel.isMeetingActive && viewModel.meetingSessionId == session.id
@@ -177,11 +177,11 @@ struct GeminiChatSidebar: View {
           if session.isMeeting {
             Image(systemName: "mic.circle.fill")
               .font(.system(size: 11))
-              .foregroundColor(isMeetingLive ? .red : GeminiChatTheme.secondaryText.opacity(0.6))
+              .foregroundColor(isMeetingLive ? .red : ChatTheme.secondaryText.opacity(0.6))
           }
           Text(title)
             .font(.system(size: 13))
-            .foregroundColor(isActive ? GeminiChatTheme.primaryText : GeminiChatTheme.secondaryText)
+            .foregroundColor(isActive ? ChatTheme.primaryText : ChatTheme.secondaryText)
             .lineLimit(1)
             .truncationMode(.tail)
         }
@@ -195,7 +195,7 @@ struct GeminiChatSidebar: View {
         Button(action: { viewModel.deleteSessionPermanently(id: session.id) }) {
           Image(systemName: "xmark")
             .font(.system(size: 9, weight: .medium))
-            .foregroundColor(GeminiChatTheme.secondaryText.opacity(0.6))
+            .foregroundColor(ChatTheme.secondaryText.opacity(0.6))
         }
         .buttonStyle(.plain)
         .padding(.trailing, 8)

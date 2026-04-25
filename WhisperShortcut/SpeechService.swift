@@ -305,7 +305,7 @@ class SpeechService {
       ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
       : SettingsDefaults.screenshotInPromptMode
     let screenshotData: Data? = screenshotEnabled
-      ? await GeminiWindowManager.shared.captureScreenForPromptMode()
+      ? await ChatWindowManager.shared.captureScreenForPromptMode()
       : nil
 
     // Build current user message parts
@@ -537,7 +537,7 @@ class SpeechService {
       ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
       : SettingsDefaults.screenshotInPromptMode
     let screenshotData: Data? = screenshotEnabled
-      ? await GeminiWindowManager.shared.captureScreenForPromptMode()
+      ? await ChatWindowManager.shared.captureScreenForPromptMode()
       : nil
 
     // Build current user message parts

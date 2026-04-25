@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Fixed appearance for the chat window (dark, no theme switching).
 /// Dark palette closely matching Claude's UI: near-black surfaces with warm undertones.
-enum GeminiChatTheme {
+enum ChatTheme {
   /// Main content area background (message list). Dark, matching ChatGPT.
   static let windowBackground = Color(red: 23/255, green: 23/255, blue: 23/255)    // #171717
   /// Input bar, command overlay. Slightly elevated surface.

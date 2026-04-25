@@ -13,7 +13,7 @@ import AppKit
 
 enum ComposerAttachmentKind {
   case screenshot(Data)
-  case pastedBlock(id: UUID, content: String, kind: GeminiChatViewModel.PastedBlock.Kind)
+  case pastedBlock(id: UUID, content: String, kind: ChatViewModel.PastedBlock.Kind)
   case file(data: Data, mimeType: String, filename: String)
 }
 
@@ -121,7 +121,7 @@ final class ComposerAttachmentCell: NSTextAttachmentCell {
 
 // MARK: - NSTextView subclass (placeholder, paste intercept, key handling)
 
-final class GeminiComposerNSTextView: NSTextView {
+final class ChatComposerNSTextView: NSTextView {
   var onSubmit: (() -> Void)?
   var onCancel: (() -> Void)?
   var onTabComplete: (() -> Bool)?
@@ -172,8 +172,8 @@ final class GeminiComposerNSTextView: NSTextView {
   override func paste(_ sender: Any?) {
     if let str = NSPasteboard.general.string(forType: .string) {
       let lineCount = str.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
-      if lineCount >= GeminiChatViewModel.pasteThresholdLines
-          || str.count >= GeminiChatViewModel.pasteThresholdChars {
+      if lineCount >= ChatViewModel.pasteThresholdLines
+          || str.count >= ChatViewModel.pasteThresholdChars {
         if onLargePaste?(str) == true { return }
       }
       // Always insert as plain text with standard typing attributes so
@@ -212,7 +212,7 @@ final class GeminiComposerController: ObservableObject {
   static let maxScreenshots = 5
   static let maxFileAttachments = 5
 
-  weak var textView: GeminiComposerNSTextView?
+  weak var textView: ChatComposerNSTextView?
 
   @Published var plainText: String = ""
   @Published var isEmpty: Bool = true
@@ -245,7 +245,7 @@ final class GeminiComposerController: ObservableObject {
     insertAttachment(ComposerTextAttachment(kind: .screenshot(data)))
   }
 
-  func insertPastedBlock(text: String, kind: GeminiChatViewModel.PastedBlock.Kind) {
+  func insertPastedBlock(text: String, kind: ChatViewModel.PastedBlock.Kind) {
     insertAttachment(ComposerTextAttachment(kind: .pastedBlock(id: UUID(), content: text, kind: kind)))
   }
 
@@ -431,7 +431,7 @@ final class GeminiComposerController: ObservableObject {
 
     enum Segment {
       case text(String)
-      case pasted(String, GeminiChatViewModel.PastedBlock.Kind)
+      case pasted(String, ChatViewModel.PastedBlock.Kind)
       case screenshot(Data)
       case file(Data, String, String)
     }
@@ -513,7 +513,7 @@ final class GeminiComposerController: ObservableObject {
 
 // MARK: - NSViewRepresentable
 
-struct GeminiComposerTextView: NSViewRepresentable {
+struct ChatComposerTextView: NSViewRepresentable {
   @ObservedObject var controller: GeminiComposerController
   var onSubmit: () -> Void
   var onCancel: () -> Void
@@ -538,7 +538,7 @@ struct GeminiComposerTextView: NSViewRepresentable {
     storage.addLayoutManager(layout)
     layout.addTextContainer(container)
 
-    let tv = GeminiComposerNSTextView(frame: .zero, textContainer: container)
+    let tv = ChatComposerNSTextView(frame: .zero, textContainer: container)
     tv.isEditable = true
     tv.isRichText = true
     tv.allowsUndo = true
@@ -599,8 +599,8 @@ struct GeminiComposerTextView: NSViewRepresentable {
   }
 
   final class Coordinator: NSObject, NSTextViewDelegate {
-    var parent: GeminiComposerTextView
-    init(_ parent: GeminiComposerTextView) { self.parent = parent }
+    var parent: ChatComposerTextView
+    init(_ parent: ChatComposerTextView) { self.parent = parent }
 
     func textDidChange(_ notification: Notification) {
       let ctrl = parent.controller

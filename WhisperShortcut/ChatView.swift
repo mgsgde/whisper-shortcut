@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 // MARK: - ViewModel
 
 @MainActor
-class GeminiChatViewModel: ObservableObject {
+class ChatViewModel: ObservableObject {
   @Published var messages: [ChatMessage] = []
   @Published var inputText: String = ""
   @Published private(set) var sendingSessionIds: Set<UUID> = []
@@ -96,7 +96,7 @@ class GeminiChatViewModel: ObservableObject {
   private static let recentlyClosedCapacity = 10
 
   private var session: ChatSession
-  private let store: GeminiChatSessionStore
+  private let store: ChatSessionStore
   private let apiClient = GeminiAPIClient()
 
   /// In-flight send tasks keyed by session ID — multiple sessions can be sending simultaneously.
@@ -156,7 +156,7 @@ class GeminiChatViewModel: ObservableObject {
   /// When true, exactly one chat per meeting: no tabs, no /new, no "New chat" button.
   let singleChatOnly: Bool
 
-  init(meetingContextProvider: (() -> String?)? = nil, store: GeminiChatSessionStore = .shared, singleChatOnly: Bool = false) {
+  init(meetingContextProvider: (() -> String?)? = nil, store: ChatSessionStore = .shared, singleChatOnly: Bool = false) {
     self.meetingContextProvider = meetingContextProvider
     self.store = store
     self.singleChatOnly = singleChatOnly
@@ -251,7 +251,7 @@ class GeminiChatViewModel: ObservableObject {
         return
       }
       if lower == Self.meetingCommand {
-        NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
+        NotificationCenter.default.post(name: .chatToggleLiveMeeting, object: nil)
         return
       }
       if lower == Self.newChatCommand || lower == Self.screenshotCommand
@@ -290,7 +290,7 @@ class GeminiChatViewModel: ObservableObject {
     screenshotCaptureInProgress = true
     errorMessage = nil
     DebugLogger.log("GEMINI-CHAT: Starting screen capture (window will hide briefly)")
-    let data = await GeminiWindowManager.shared.captureScreenExcludingGeminiWindow()
+    let data = await ChatWindowManager.shared.captureScreenExcludingChatWindow()
     screenshotCaptureInProgress = false
     if let data = data {
       pendingScreenshots.append(data)
@@ -366,16 +366,16 @@ class GeminiChatViewModel: ObservableObject {
   }
 
   func togglePin() {
-    let closeOnFocusLoss = UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss) as? Bool
-      ?? SettingsDefaults.geminiCloseOnFocusLoss
+    let closeOnFocusLoss = UserDefaults.standard.object(forKey: UserDefaultsKeys.chatCloseOnFocusLoss) as? Bool
+      ?? SettingsDefaults.chatCloseOnFocusLoss
     let newValue = !closeOnFocusLoss
-    UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
+    UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.chatCloseOnFocusLoss)
     let nowPinned = !newValue
     DebugLogger.log("GEMINI-CHAT: /pin — window is now \(nowPinned ? "pinned (stays open)" : "unpinned (closes on focus loss)")")
   }
 
   func unpin() {
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.chatCloseOnFocusLoss)
     DebugLogger.log("GEMINI-CHAT: /unpin — window is now unpinned (closes on focus loss)")
   }
 
@@ -396,7 +396,7 @@ class GeminiChatViewModel: ObservableObject {
         sendTasks.removeValue(forKey: sessionId)
         Task { @MainActor in self.processNextQueued() }
       }
-      let selectedModel = Self.openGeminiModel
+      let selectedModel = Self.openChatModel
       let provider = LLMProviderFactory.provider(for: selectedModel)
       let model = selectedModel.rawValue
 
@@ -428,7 +428,7 @@ class GeminiChatViewModel: ObservableObject {
 
         // Convert tool declarations to provider-agnostic format
         let calendarConnected = await MainActor.run { GoogleAccountOAuthService.shared.isConnected }
-        let tools = GeminiChatToolRegistry.allDeclarations(calendarConnected: calendarConnected).compactMap { decl -> LLMToolDeclaration? in
+        let tools = ChatToolRegistry.allDeclarations(calendarConnected: calendarConnected).compactMap { decl -> LLMToolDeclaration? in
           guard let name = decl["name"] as? String,
                 let desc = decl["description"] as? String,
                 let params = decl["parameters"] as? [String: Any] else { return nil }
@@ -490,7 +490,7 @@ class GeminiChatViewModel: ObservableObject {
           currentContents.append(["role": "model", "parts": callParts])
           var responseParts: [[String: Any]] = []
           for call in pendingCalls {
-            let result = await GeminiChatToolRegistry.execute(name: call.name, args: call.args)
+            let result = await ChatToolRegistry.execute(name: call.name, args: call.args)
             responseParts.append([
               "functionResponse": [
                 "name": call.name,
@@ -509,7 +509,7 @@ class GeminiChatViewModel: ObservableObject {
             content: accumulated, sources: finalSources, supports: finalSupports)
         }
         let result = (text: accumulated, sources: finalSources, supports: finalSupports)
-        ContextLogger.shared.logGeminiChat(userMessage: content, modelResponse: result.text, model: model)
+        ContextLogger.shared.logChat(userMessage: content, modelResponse: result.text, model: model)
         if let s = store.session(by: sessionId), s.messages.count == 2 {
           Task { await generateAITitle(sessionId: sessionId) }
         }
@@ -567,7 +567,7 @@ class GeminiChatViewModel: ObservableObject {
     }
     if lower == Self.meetingCommand {
       inputText = ""
-      NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
+      NotificationCenter.default.post(name: .chatToggleLiveMeeting, object: nil)
       return
     }
 
@@ -655,7 +655,7 @@ class GeminiChatViewModel: ObservableObject {
 
   /// Builds the system instruction: current date, base chat prompt, plus optional meeting context (summary + recent transcript).
   private func buildSystemInstruction() -> [String: Any] {
-    var text = SystemPromptsStore.shared.loadGeminiChatSystemPrompt()
+    var text = SystemPromptsStore.shared.loadChatSystemPrompt()
     let formatter = DateFormatter()
     formatter.dateFormat = "EEEE, MMMM d, yyyy"
     formatter.locale = Locale(identifier: "en_US")
@@ -675,20 +675,20 @@ class GeminiChatViewModel: ObservableObject {
 
   /// Resolves the model ID for the chat window from UserDefaults (Settings > Chat), or subscription fixed model when on subscription.
   private static func resolveOpenGeminiModel() -> String {
-    openGeminiModel.rawValue
+    openChatModel.rawValue
   }
 
-  static var openGeminiModel: PromptModel {
-    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel)
-      ?? SettingsDefaults.selectedOpenGeminiModel.rawValue
+  static var openChatModel: PromptModel {
+    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedChatModel)
+      ?? SettingsDefaults.selectedChatModel.rawValue
     let migratedRaw = PromptModel.migrateLegacyPromptRawValue(raw)
     return PromptModel(rawValue: migratedRaw).map { PromptModel.migrateIfDeprecated($0) }
-      ?? SettingsDefaults.selectedOpenGeminiModel
+      ?? SettingsDefaults.selectedChatModel
   }
 
   /// Display name for the current chat model (e.g. "Gemini 3 Flash") for the nav bar.
-  var openGeminiModelDisplayName: String {
-    Self.openGeminiModel.displayName
+  var openChatModelDisplayName: String {
+    Self.openChatModel.displayName
   }
 
   /// Updates an existing model message in-place (used during streaming).
@@ -805,8 +805,8 @@ class GeminiChatViewModel: ObservableObject {
   /// changes the selection.
   @MainActor
   private func handleModelCommand(argument: String) {
-    let current = Self.openGeminiModel
-    let outcome = OpenGeminiModelCommandResolver.resolve(
+    let current = Self.openChatModel
+    let outcome = ChatModelCommandResolver.resolve(
       argument: argument,
       currentSelection: current
     )
@@ -817,7 +817,7 @@ class GeminiChatViewModel: ObservableObject {
       )
     case .applied(let model):
       let migrated = PromptModel.migrateIfDeprecated(model)
-      UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+      UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
       appendModelMessage("Model set to **\(migrated.displayName)**.")
     case .ambiguous(let candidates):
       let list = candidates.map { "• **\($0.displayName)**" }.joined(separator: "\n")
@@ -831,7 +831,7 @@ class GeminiChatViewModel: ObservableObject {
   /// Switches the chat model directly (used by /grok and /gemini shortcuts).
   private func switchToModel(_ model: PromptModel) {
     let migrated = PromptModel.migrateIfDeprecated(model)
-    UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+    UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
     appendModelMessage("Model set to **\(migrated.displayName)**.")
     DebugLogger.log("GEMINI-CHAT: switchToModel \(migrated.displayName)")
   }
@@ -996,7 +996,7 @@ class GeminiChatViewModel: ObservableObject {
     // longer exists in the UI.
     if isMeetingActive && meetingSessionId == id {
       DebugLogger.log("SIDEBAR: Deleting active meeting session — stopping recorder first")
-      NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
+      NotificationCenter.default.post(name: .chatToggleLiveMeeting, object: nil)
       meetingSessionId = nil
     }
     store.deleteSession(id: id)
@@ -1011,7 +1011,7 @@ class GeminiChatViewModel: ObservableObject {
        let mSession = store.allSessions().first(where: { $0.id == mid }),
        mSession.lastUpdated < date {
       DebugLogger.log("SIDEBAR: Bulk delete includes active meeting session — stopping recorder first")
-      NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
+      NotificationCenter.default.post(name: .chatToggleLiveMeeting, object: nil)
       meetingSessionId = nil
     }
     let count = store.deleteOlderSessions(than: date)
@@ -1071,7 +1071,7 @@ class GeminiChatViewModel: ObservableObject {
   private func buildContents() -> [[String: Any]] {
     // Send the full conversation history. Gemini 2.x has a 1M–2M token context window,
     // so truncation is only a safeguard against pathological sessions.
-    let maxMessages = AppConstants.geminiChatFullHistoryMaxMessages
+    let maxMessages = AppConstants.chatFullHistoryMaxMessages
     let toSend = messages.count > maxMessages
       ? Array(messages.suffix(maxMessages))
       : messages
@@ -1140,7 +1140,7 @@ private struct TabDropDelegate: DropDelegate {
 // MARK: - Main View
 
 /// Holds scroll callbacks so Cmd+Up/Down can scroll the message list from anywhere (e.g. when the text field is focused).
-private final class GeminiScrollActions {
+private final class ChatScrollActions {
   var scrollToTop: (() -> Void)?
   var scrollToBottom: (() -> Void)?
 }
@@ -1153,11 +1153,11 @@ private struct InputTextHeightKey: PreferenceKey {
   }
 }
 
-struct GeminiChatView: View {
-  @StateObject private var viewModel: GeminiChatViewModel
+struct ChatView: View {
+  @StateObject private var viewModel: ChatViewModel
   /// Image data to show in the full-size preview sheet (from pending screenshot or from a sent message thumbnail).
   @State private var previewImageData: Data? = nil
-  @State private var scrollActions = GeminiScrollActions()
+  @State private var scrollActions = ChatScrollActions()
   @State private var hoveredTabId: UUID? = nil
   /// Session id currently being renamed via the context-menu alert.
   @State private var renamingTabId: UUID? = nil
@@ -1165,7 +1165,7 @@ struct GeminiChatView: View {
   /// When true, create a new chat session on first appear (e.g. for the meeting window so it opens with a fresh chat).
   @State private var createNewSessionOnAppear: Bool
   @State private var hasTriggeredNewSessionOnAppear: Bool = false
-  @AppStorage(UserDefaultsKeys.geminiSidebarVisible) private var sidebarVisible: Bool = true
+  @AppStorage(UserDefaultsKeys.chatSidebarVisible) private var sidebarVisible: Bool = true
   @State private var meetingTab: MeetingTab = .chat
 
   private enum MeetingTab: String, CaseIterable {
@@ -1174,15 +1174,15 @@ struct GeminiChatView: View {
     case summary = "Summary"
   }
 
-  init(meetingContextProvider: (() -> String?)? = nil, createNewSessionOnAppear: Bool = false, store: GeminiChatSessionStore = .shared, singleChatOnly: Bool = false) {
-    _viewModel = StateObject(wrappedValue: GeminiChatViewModel(meetingContextProvider: meetingContextProvider, store: store, singleChatOnly: singleChatOnly))
+  init(meetingContextProvider: (() -> String?)? = nil, createNewSessionOnAppear: Bool = false, store: ChatSessionStore = .shared, singleChatOnly: Bool = false) {
+    _viewModel = StateObject(wrappedValue: ChatViewModel(meetingContextProvider: meetingContextProvider, store: store, singleChatOnly: singleChatOnly))
     _createNewSessionOnAppear = State(initialValue: createNewSessionOnAppear)
   }
 
   var body: some View {
     HStack(spacing: 0) {
       if sidebarVisible && !viewModel.singleChatOnly {
-        GeminiChatSidebar(viewModel: viewModel, sidebarVisible: $sidebarVisible)
+        ChatSidebar(viewModel: viewModel, sidebarVisible: $sidebarVisible)
         Divider()
       }
 
@@ -1203,7 +1203,7 @@ struct GeminiChatView: View {
             messageList(scrollActions: scrollActions, containerWidth: geometry.size.width)
               .overlay(alignment: .bottom) {
                 LinearGradient(
-                  colors: [GeminiChatTheme.windowBackground.opacity(0), GeminiChatTheme.windowBackground],
+                  colors: [ChatTheme.windowBackground.opacity(0), ChatTheme.windowBackground],
                   startPoint: .top, endPoint: .bottom
                 )
                 .frame(height: 24)
@@ -1212,7 +1212,7 @@ struct GeminiChatView: View {
             if let error = viewModel.errorMessage {
               errorBanner(error)
             }
-            GeminiInputAreaView(viewModel: viewModel, onTapScreenshotThumbnail: { data in
+            ChatInputAreaView(viewModel: viewModel, onTapScreenshotThumbnail: { data in
               previewImageData = data
             })
           }
@@ -1220,7 +1220,7 @@ struct GeminiChatView: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(GeminiChatTheme.windowBackground)
+    .background(ChatTheme.windowBackground)
     .sheet(isPresented: Binding(
       get: { previewImageData != nil },
       set: { if !$0 { previewImageData = nil } }
@@ -1229,19 +1229,19 @@ struct GeminiChatView: View {
         screenshotPreviewSheet(image: nsImage, onDone: { previewImageData = nil })
       }
     }
-    .onReceive(NotificationCenter.default.publisher(for: .geminiNewChat)) { _ in
+    .onReceive(NotificationCenter.default.publisher(for: .chatNewChat)) { _ in
       if !viewModel.singleChatOnly { viewModel.createNewSession() }
     }
-    .onReceive(NotificationCenter.default.publisher(for: .geminiCaptureScreenshot)) { _ in
+    .onReceive(NotificationCenter.default.publisher(for: .chatCaptureScreenshot)) { _ in
       Task { await viewModel.captureScreenshot() }
     }
-    .onReceive(NotificationCenter.default.publisher(for: .geminiClearChat)) { _ in
+    .onReceive(NotificationCenter.default.publisher(for: .chatClearChat)) { _ in
       viewModel.clearMessages()
     }
-    .onReceive(NotificationCenter.default.publisher(for: .geminiCloseTab)) { _ in
+    .onReceive(NotificationCenter.default.publisher(for: .chatCloseTab)) { _ in
       viewModel.closeTab(id: viewModel.currentSessionId)
     }
-    .onReceive(NotificationCenter.default.publisher(for: .geminiReopenLastClosedTab)) { _ in
+    .onReceive(NotificationCenter.default.publisher(for: .chatReopenLastClosedTab)) { _ in
       viewModel.reopenLastClosedTab()
     }
     .alert("Rename Tab", isPresented: Binding(
@@ -1255,13 +1255,13 @@ struct GeminiChatView: View {
       }
       Button("Cancel", role: .cancel) { renamingTabId = nil }
     }
-    .onReceive(NotificationCenter.default.publisher(for: .geminiToggleSidebar)) { _ in
+    .onReceive(NotificationCenter.default.publisher(for: .chatToggleSidebar)) { _ in
       withAnimation(.easeInOut(duration: 0.2)) { sidebarVisible.toggle() }
     }
-    .onReceive(NotificationCenter.default.publisher(for: .geminiScrollToTop)) { _ in
+    .onReceive(NotificationCenter.default.publisher(for: .chatScrollToTop)) { _ in
       scrollActions.scrollToTop?()
     }
-    .onReceive(NotificationCenter.default.publisher(for: .geminiScrollToBottom)) { _ in
+    .onReceive(NotificationCenter.default.publisher(for: .chatScrollToBottom)) { _ in
       scrollActions.scrollToBottom?()
     }
     .onAppear {
@@ -1290,7 +1290,7 @@ struct GeminiChatView: View {
       Button(action: { withAnimation(.easeInOut(duration: 0.2)) { sidebarVisible.toggle() } }) {
         Image(systemName: "sidebar.left")
           .font(.system(size: 12, weight: .medium))
-          .foregroundColor(GeminiChatTheme.primaryText)
+          .foregroundColor(ChatTheme.primaryText)
           .frame(width: iconWidth, height: 52)
           .contentShape(Rectangle())
       }
@@ -1354,7 +1354,7 @@ struct GeminiChatView: View {
     } label: {
       Image(systemName: "chevron.down")
         .font(.system(size: 11, weight: .medium))
-        .foregroundColor(GeminiChatTheme.secondaryText)
+        .foregroundColor(ChatTheme.secondaryText)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
     }
@@ -1381,11 +1381,11 @@ struct GeminiChatView: View {
       }
       .padding(.horizontal, 10)
       .frame(width: width, height: 52)
-      .background(isActive ? GeminiChatTheme.controlBackground : Color.clear)
+      .background(isActive ? ChatTheme.controlBackground : Color.clear)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .foregroundColor(isActive ? GeminiChatTheme.primaryText : GeminiChatTheme.secondaryText)
+    .foregroundColor(isActive ? ChatTheme.primaryText : ChatTheme.secondaryText)
     .overlay(alignment: .bottom) {
       if isActive {
         Rectangle().fill(Color.accentColor).frame(height: 2)
@@ -1393,7 +1393,7 @@ struct GeminiChatView: View {
     }
     .overlay(alignment: .trailing) {
       Rectangle()
-        .fill(GeminiChatTheme.primaryText.opacity(0.1))
+        .fill(ChatTheme.primaryText.opacity(0.1))
         .frame(width: 1)
     }
     .overlay(alignment: .topTrailing) {
@@ -1401,9 +1401,9 @@ struct GeminiChatView: View {
         Button(action: { viewModel.closeTab(id: session.id) }) {
           Image(systemName: "xmark")
             .font(.system(size: 7, weight: .bold))
-            .foregroundColor(GeminiChatTheme.secondaryText)
+            .foregroundColor(ChatTheme.secondaryText)
             .frame(width: 13, height: 13)
-            .background(GeminiChatTheme.controlBackground)
+            .background(ChatTheme.controlBackground)
             .clipShape(Circle())
         }
         .buttonStyle(.plain)
@@ -1427,7 +1427,7 @@ struct GeminiChatView: View {
 
   // MARK: - Message List
 
-  private func messageList(scrollActions: GeminiScrollActions, containerWidth: CGFloat) -> some View {
+  private func messageList(scrollActions: ChatScrollActions, containerWidth: CGFloat) -> some View {
     /// Rounded to 50pt steps so resize doesn't constantly recreate the list (preserves scroll position for small moves).
     let widthBucket = (containerWidth / 50).rounded(.down) * 50
     return ScrollViewReader { proxy in
@@ -1448,16 +1448,16 @@ struct GeminiChatView: View {
                 Button(action: { viewModel.removeQueuedMessage(id: queued.id) }) {
                   Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 13))
-                    .foregroundColor(GeminiChatTheme.secondaryText)
+                    .foregroundColor(ChatTheme.secondaryText)
                 }
                 .buttonStyle(.plain)
                 .help("Remove from queue")
                 Text(queued.displayContent)
                   .font(.system(size: 14))
-                  .foregroundColor(GeminiChatTheme.secondaryText)
+                  .foregroundColor(ChatTheme.secondaryText)
                   .padding(.horizontal, 12)
                   .padding(.vertical, 8)
-                  .background(GeminiChatTheme.controlBackground)
+                  .background(ChatTheme.controlBackground)
                   .clipShape(RoundedRectangle(cornerRadius: 12))
                   .lineLimit(4)
                   .truncationMode(.tail)
@@ -1514,7 +1514,7 @@ struct GeminiChatView: View {
     let shortcuts: [(shortcut: String, description: String)] = [
       (config.startRecording.displayString, "Speech-to-Text"),
       (config.startPrompting.displayString, "Speech-to-Prompt"),
-      (config.openGemini.displayString, "Chat"),
+      (config.openChat.displayString, "Chat"),
       (config.openSettings.displayString, "Settings"),
     ]
     return VStack(alignment: .leading, spacing: 20) {
@@ -1522,12 +1522,12 @@ struct GeminiChatView: View {
         Text("Commands")
           .font(.headline)
           .fontWeight(.semibold)
-          .foregroundColor(GeminiChatTheme.secondaryText)
+          .foregroundColor(ChatTheme.secondaryText)
         VStack(alignment: .leading, spacing: 8) {
           ForEach(suggestions, id: \.command) { item in
             Text("\(item.command) — \(item.description)")
               .font(.system(size: 15))
-              .foregroundColor(GeminiChatTheme.secondaryText)
+              .foregroundColor(ChatTheme.secondaryText)
           }
         }
       }
@@ -1537,12 +1537,12 @@ struct GeminiChatView: View {
         Text("Keyboard Shortcuts")
           .font(.headline)
           .fontWeight(.semibold)
-          .foregroundColor(GeminiChatTheme.secondaryText)
+          .foregroundColor(ChatTheme.secondaryText)
         VStack(alignment: .leading, spacing: 8) {
           ForEach(shortcuts, id: \.shortcut) { item in
             Text("\(item.shortcut)  \(item.description)")
               .font(.system(size: 15))
-              .foregroundColor(GeminiChatTheme.secondaryText)
+              .foregroundColor(ChatTheme.secondaryText)
           }
         }
       }
@@ -1575,11 +1575,11 @@ struct GeminiChatView: View {
       HStack(spacing: 0) {
         HStack(spacing: 6) {
           Circle()
-            .fill(isRecording ? Color.red : GeminiChatTheme.secondaryText.opacity(0.4))
+            .fill(isRecording ? Color.red : ChatTheme.secondaryText.opacity(0.4))
             .frame(width: 7, height: 7)
           Text(isRecording ? "Recording" : "Ended")
             .font(.system(size: 11, weight: .medium))
-            .foregroundColor(GeminiChatTheme.secondaryText)
+            .foregroundColor(ChatTheme.secondaryText)
         }
         .frame(width: 80, alignment: .leading)
 
@@ -1588,10 +1588,10 @@ struct GeminiChatView: View {
             Button(action: { meetingTab = tab }) {
               Text(tab.rawValue)
                 .font(.system(size: 12, weight: meetingTab == tab ? .semibold : .regular))
-                .foregroundColor(meetingTab == tab ? GeminiChatTheme.primaryText : GeminiChatTheme.secondaryText)
+                .foregroundColor(meetingTab == tab ? ChatTheme.primaryText : ChatTheme.secondaryText)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
-                .background(meetingTab == tab ? GeminiChatTheme.windowBackground : Color.clear)
+                .background(meetingTab == tab ? ChatTheme.windowBackground : Color.clear)
                 .cornerRadius(4)
             }
             .buttonStyle(.plain)
@@ -1601,16 +1601,16 @@ struct GeminiChatView: View {
         Spacer()
 
         Button(action: {
-          NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
+          NotificationCenter.default.post(name: .chatToggleLiveMeeting, object: nil)
         }) {
           Text(isRecording ? "Stop" : "Resume")
             .font(.system(size: 11, weight: .medium))
-            .foregroundColor(isRecording ? .white : GeminiChatTheme.primaryText)
+            .foregroundColor(isRecording ? .white : ChatTheme.primaryText)
             .padding(.horizontal, 10)
             .padding(.vertical, 3)
             .background(isRecording ? Color.red.opacity(0.85) : Color.clear)
             .cornerRadius(4)
-            .overlay(isRecording ? nil : RoundedRectangle(cornerRadius: 4).stroke(GeminiChatTheme.secondaryText.opacity(0.3), lineWidth: 1))
+            .overlay(isRecording ? nil : RoundedRectangle(cornerRadius: 4).stroke(ChatTheme.secondaryText.opacity(0.3), lineWidth: 1))
         }
         .buttonStyle(.plain)
       }
@@ -1618,7 +1618,7 @@ struct GeminiChatView: View {
       .padding(.vertical, 6)
       Divider()
     }
-    .background(GeminiChatTheme.controlBackground)
+    .background(ChatTheme.controlBackground)
   }
 
   private var meetingTranscriptView: some View {
@@ -1631,22 +1631,22 @@ struct GeminiChatView: View {
             HStack(alignment: .top, spacing: 8) {
               Text(chunk.timestampString)
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundColor(GeminiChatTheme.secondaryText)
+                .foregroundColor(ChatTheme.secondaryText)
               Text(chunk.text)
                 .font(.system(size: 14))
-                .foregroundColor(GeminiChatTheme.primaryText)
+                .foregroundColor(ChatTheme.primaryText)
                 .textSelection(.enabled)
             }
           }
         } else if let text = diskText, !text.isEmpty {
           Text(text)
             .font(.system(size: 14))
-            .foregroundColor(GeminiChatTheme.primaryText)
+            .foregroundColor(ChatTheme.primaryText)
             .textSelection(.enabled)
         } else {
           Text("No transcript yet.")
             .font(.system(size: 14))
-            .foregroundColor(GeminiChatTheme.secondaryText)
+            .foregroundColor(ChatTheme.secondaryText)
             .padding(.top, 40)
             .frame(maxWidth: .infinity)
         }
@@ -1654,7 +1654,7 @@ struct GeminiChatView: View {
       .padding(16)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(GeminiChatTheme.windowBackground)
+    .background(ChatTheme.windowBackground)
   }
 
   private var meetingSummaryView: some View {
@@ -1666,12 +1666,12 @@ struct GeminiChatView: View {
         if let text, !text.isEmpty {
           Text(text)
             .font(.system(size: 14))
-            .foregroundColor(GeminiChatTheme.primaryText)
+            .foregroundColor(ChatTheme.primaryText)
             .textSelection(.enabled)
         } else {
           Text("No summary yet.")
             .font(.system(size: 14))
-            .foregroundColor(GeminiChatTheme.secondaryText)
+            .foregroundColor(ChatTheme.secondaryText)
             .padding(.top, 40)
             .frame(maxWidth: .infinity)
         }
@@ -1679,7 +1679,7 @@ struct GeminiChatView: View {
       .padding(16)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(GeminiChatTheme.windowBackground)
+    .background(ChatTheme.windowBackground)
   }
 
   private func errorBanner(_ message: String) -> some View {
@@ -1719,7 +1719,7 @@ struct GeminiChatView: View {
         .resizable()
         .scaledToFit()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(GeminiChatTheme.windowBackground)
+        .background(ChatTheme.windowBackground)
     }
     .frame(minWidth: 800, minHeight: 600)
     .frame(idealWidth: 1000, idealHeight: 700)
@@ -1730,13 +1730,13 @@ struct GeminiChatView: View {
 
 /// Standalone view that owns the input text state. Typing only invalidates this subtree,
 /// not the parent's message list, header, or other heavy views.
-struct GeminiInputAreaView: View {
-  @ObservedObject var viewModel: GeminiChatViewModel
+struct ChatInputAreaView: View {
+  @ObservedObject var viewModel: ChatViewModel
   var onTapScreenshotThumbnail: (Data) -> Void
 
   @StateObject private var composer = GeminiComposerController()
-  @AppStorage(UserDefaultsKeys.geminiCloseOnFocusLoss) private var closeOnFocusLoss: Bool = SettingsDefaults.geminiCloseOnFocusLoss
-  @AppStorage(UserDefaultsKeys.selectedOpenGeminiModel) private var selectedOpenGeminiModelRaw: String = SettingsDefaults.selectedOpenGeminiModel.rawValue
+  @AppStorage(UserDefaultsKeys.chatCloseOnFocusLoss) private var closeOnFocusLoss: Bool = SettingsDefaults.chatCloseOnFocusLoss
+  @AppStorage(UserDefaultsKeys.selectedChatModel) private var selectedChatModelRaw: String = SettingsDefaults.selectedChatModel.rawValue
 
   private static let inputMinHeight: CGFloat = 32
   private static let inputMaxHeight: CGFloat = 160
@@ -1756,10 +1756,10 @@ struct GeminiInputAreaView: View {
 
   /// Current chat model for display (with migration); syncs with UserDefaults via @AppStorage.
   private var resolvedOpenGeminiModel: PromptModel {
-    let migratedRaw = PromptModel.migrateLegacyPromptRawValue(selectedOpenGeminiModelRaw)
+    let migratedRaw = PromptModel.migrateLegacyPromptRawValue(selectedChatModelRaw)
     return PromptModel(rawValue: migratedRaw)
       .map { PromptModel.migrateIfDeprecated($0) }
-      ?? SettingsDefaults.selectedOpenGeminiModel
+      ?? SettingsDefaults.selectedChatModel
   }
 
 
@@ -1772,7 +1772,7 @@ struct GeminiInputAreaView: View {
       viewModel.composerScreenshotCountProvider = { [weak composer] in composer?.screenshotCount ?? 0 }
       viewModel.composerFileCountProvider = { [weak composer] in composer?.fileAttachmentCount ?? 0 }
     }
-    .onReceive(NotificationCenter.default.publisher(for: .geminiFocusInput)) { _ in
+    .onReceive(NotificationCenter.default.publisher(for: .chatFocusInput)) { _ in
       Task { @MainActor in
         try? await Task.sleep(for: .milliseconds(50))
         composer.focus()
@@ -1877,10 +1877,10 @@ struct GeminiInputAreaView: View {
                 Text(item.command)
                   .font(.system(.body, design: .monospaced))
                   .fontWeight(.medium)
-                  .foregroundColor(GeminiChatTheme.primaryText)
+                  .foregroundColor(ChatTheme.primaryText)
                 Text(item.description)
                   .font(.caption)
-                  .foregroundColor(GeminiChatTheme.secondaryText)
+                  .foregroundColor(ChatTheme.secondaryText)
                   .lineLimit(2)
               }
               .frame(maxWidth: .infinity, alignment: .leading)
@@ -1891,10 +1891,10 @@ struct GeminiInputAreaView: View {
           .allowsHitTesting(false)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.vertical, 6)
-          .background(GeminiChatTheme.controlBackground)
+          .background(ChatTheme.controlBackground)
           .overlay(
             RoundedRectangle(cornerRadius: 8)
-              .strokeBorder(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity), lineWidth: 1)
+              .strokeBorder(ChatTheme.primaryText.opacity(ChatTheme.borderOpacity), lineWidth: 1)
           )
           .clipShape(RoundedRectangle(cornerRadius: 8))
           .frame(maxWidth: 720)
@@ -1911,7 +1911,7 @@ struct GeminiInputAreaView: View {
   private var inputBar: some View {
     VStack(spacing: 0) {
       // Composer: NSTextView with inline screenshot/paste/file attachments.
-      GeminiComposerTextView(
+      ChatComposerTextView(
         controller: composer,
         onSubmit: { submitComposer() },
         onCancel: {
@@ -1930,7 +1930,7 @@ struct GeminiInputAreaView: View {
               Image(systemName: "square.and.pencil").font(.caption)
               Text("New chat").font(.caption)
             }
-            .foregroundColor(GeminiChatTheme.secondaryText)
+            .foregroundColor(ChatTheme.secondaryText)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .contentShape(Rectangle())
@@ -1945,7 +1945,7 @@ struct GeminiInputAreaView: View {
             Image(systemName: "paperclip").font(.caption)
             Text("Attach").font(.caption)
           }
-          .foregroundColor(GeminiChatTheme.secondaryText)
+          .foregroundColor(ChatTheme.secondaryText)
           .padding(.horizontal, 8)
           .padding(.vertical, 5)
           .contentShape(Rectangle())
@@ -1964,7 +1964,7 @@ struct GeminiInputAreaView: View {
             }
             Text("Screenshot").font(.caption)
           }
-          .foregroundColor(viewModel.screenshotCaptureInProgress ? GeminiChatTheme.secondaryText.opacity(0.6) : GeminiChatTheme.secondaryText)
+          .foregroundColor(viewModel.screenshotCaptureInProgress ? ChatTheme.secondaryText.opacity(0.6) : ChatTheme.secondaryText)
           .padding(.horizontal, 8)
           .padding(.vertical, 5)
           .contentShape(Rectangle())
@@ -1975,16 +1975,16 @@ struct GeminiInputAreaView: View {
         .pointerCursorOnHover()
 
         Button(action: {
-          NotificationCenter.default.post(name: .geminiToggleLiveMeeting, object: nil)
+          NotificationCenter.default.post(name: .chatToggleLiveMeeting, object: nil)
         }) {
           HStack(spacing: 4) {
             Image(systemName: viewModel.isMeetingActive ? "record.circle" : "record.circle")
               .font(.caption)
-              .foregroundColor(viewModel.isMeetingActive ? .red : GeminiChatTheme.secondaryText)
+              .foregroundColor(viewModel.isMeetingActive ? .red : ChatTheme.secondaryText)
             Text(viewModel.isMeetingActive ? "Stop meeting" : "Meeting")
               .font(.caption)
           }
-          .foregroundColor(viewModel.isMeetingActive ? .red : GeminiChatTheme.secondaryText)
+          .foregroundColor(viewModel.isMeetingActive ? .red : ChatTheme.secondaryText)
           .padding(.horizontal, 8)
           .padding(.vertical, 5)
           .contentShape(Rectangle())
@@ -1998,7 +1998,7 @@ struct GeminiInputAreaView: View {
         Menu {
           ForEach(PromptModel.allCases, id: \.self) { model in
             Button(action: {
-              selectedOpenGeminiModelRaw = model.rawValue
+              selectedChatModelRaw = model.rawValue
             }) {
               Text(model.displayName)
             }
@@ -2008,7 +2008,7 @@ struct GeminiInputAreaView: View {
             Image(systemName: "cpu").font(.caption)
             Text(resolvedOpenGeminiModel.displayName).font(.caption)
           }
-          .foregroundColor(GeminiChatTheme.secondaryText)
+          .foregroundColor(ChatTheme.secondaryText)
           .padding(.horizontal, 8)
           .padding(.vertical, 5)
           .contentShape(Rectangle())
@@ -2021,7 +2021,7 @@ struct GeminiInputAreaView: View {
         if viewModel.isSending && !viewModel.messageQueue.isEmpty {
           Text("\(viewModel.messageQueue.count) queued")
             .font(.caption2)
-            .foregroundColor(GeminiChatTheme.secondaryText)
+            .foregroundColor(ChatTheme.secondaryText)
         }
 
         // Send / Stop button
@@ -2036,17 +2036,17 @@ struct GeminiInputAreaView: View {
             if viewModel.isSending {
               Image(systemName: "stop.fill")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(GeminiChatTheme.primaryText)
+                .foregroundColor(ChatTheme.primaryText)
             } else {
               Image(systemName: "arrow.up")
                 .font(.system(size: 14, weight: .bold))
-                .foregroundColor(hasContent ? GeminiChatTheme.windowBackground : GeminiChatTheme.secondaryText.opacity(0.5))
+                .foregroundColor(hasContent ? ChatTheme.windowBackground : ChatTheme.secondaryText.opacity(0.5))
             }
           }
           .frame(width: 30, height: 30)
           .background(
             RoundedRectangle(cornerRadius: 8)
-              .fill(viewModel.isSending ? Color.red.opacity(0.8) : (hasContent ? GeminiChatTheme.primaryText : GeminiChatTheme.controlBackground))
+              .fill(viewModel.isSending ? Color.red.opacity(0.8) : (hasContent ? ChatTheme.primaryText : ChatTheme.controlBackground))
           )
         }
         .buttonStyle(.plain)
@@ -2058,11 +2058,11 @@ struct GeminiInputAreaView: View {
       .padding(.vertical, 6)
     }
     .frame(maxWidth: 720)
-    .background(GeminiChatTheme.controlBackground)
+    .background(ChatTheme.controlBackground)
     .clipShape(RoundedRectangle(cornerRadius: 14))
     .overlay(
       RoundedRectangle(cornerRadius: 14)
-        .strokeBorder(GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity), lineWidth: 1)
+        .strokeBorder(ChatTheme.primaryText.opacity(ChatTheme.borderOpacity), lineWidth: 1)
     )
     .frame(maxWidth: .infinity, alignment: .center)
     .padding(.horizontal, 24)
@@ -2092,27 +2092,27 @@ struct GeminiInputAreaView: View {
       } else {
         Image(systemName: "camera.viewfinder")
           .font(.caption)
-          .foregroundColor(GeminiChatTheme.secondaryText)
+          .foregroundColor(ChatTheme.secondaryText)
       }
       Text(label)
         .font(.caption)
-        .foregroundColor(GeminiChatTheme.primaryText)
+        .foregroundColor(ChatTheme.primaryText)
       Button(action: { viewModel.removePendingScreenshot(at: index); inputFocused = true }) {
         Image(systemName: "xmark")
           .font(.system(size: 8, weight: .bold))
-          .foregroundColor(GeminiChatTheme.secondaryText)
+          .foregroundColor(ChatTheme.secondaryText)
       }
       .buttonStyle(.plain)
       .help("Remove screenshot")
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 5)
-    .background(GeminiChatTheme.windowBackground.opacity(0.6))
+    .background(ChatTheme.windowBackground.opacity(0.6))
     .clipShape(RoundedRectangle(cornerRadius: 8))
     .overlay(
       RoundedRectangle(cornerRadius: 8)
         .strokeBorder(
-          isFocused ? Color.accentColor : GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity),
+          isFocused ? Color.accentColor : ChatTheme.primaryText.opacity(ChatTheme.borderOpacity),
           lineWidth: isFocused ? 1.5 : 1)
     )
     .focusable()
@@ -2136,29 +2136,29 @@ struct GeminiInputAreaView: View {
       } else {
         Image(systemName: file?.mimeType == "application/pdf" ? "doc.richtext" : "doc")
           .font(.caption)
-          .foregroundColor(GeminiChatTheme.secondaryText)
+          .foregroundColor(ChatTheme.secondaryText)
       }
       Text(file?.filename ?? "File")
         .font(.caption)
-        .foregroundColor(GeminiChatTheme.primaryText)
+        .foregroundColor(ChatTheme.primaryText)
         .lineLimit(1)
         .frame(maxWidth: 120, alignment: .leading)
       Button(action: { viewModel.clearPendingFiles(); inputFocused = true }) {
         Image(systemName: "xmark")
           .font(.system(size: 8, weight: .bold))
-          .foregroundColor(GeminiChatTheme.secondaryText)
+          .foregroundColor(ChatTheme.secondaryText)
       }
       .buttonStyle(.plain)
       .help("Remove attachment")
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 5)
-    .background(GeminiChatTheme.windowBackground.opacity(0.6))
+    .background(ChatTheme.windowBackground.opacity(0.6))
     .clipShape(RoundedRectangle(cornerRadius: 8))
     .overlay(
       RoundedRectangle(cornerRadius: 8)
         .strokeBorder(
-          isFocused ? Color.accentColor : GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity),
+          isFocused ? Color.accentColor : ChatTheme.primaryText.opacity(ChatTheme.borderOpacity),
           lineWidth: isFocused ? 1.5 : 1)
     )
     .focusable()
@@ -2168,7 +2168,7 @@ struct GeminiInputAreaView: View {
     .accessibilityLabel("File attachment \(file?.filename ?? ""). Press Delete to remove.")
   }
 
-  private func pastedBlockChip(_ block: GeminiChatViewModel.PastedBlock) -> some View {
+  private func pastedBlockChip(_ block: ChatViewModel.PastedBlock) -> some View {
     let isFocused = focusedAttachment == .pastedBlock(block.id)
     let chipLabel: String
     let chipIcon: String
@@ -2189,26 +2189,26 @@ struct GeminiInputAreaView: View {
     return HStack(spacing: 5) {
       Image(systemName: chipIcon)
         .font(.caption)
-        .foregroundColor(GeminiChatTheme.secondaryText)
+        .foregroundColor(ChatTheme.secondaryText)
       Text(chipLabel)
         .font(.caption)
-        .foregroundColor(GeminiChatTheme.primaryText)
+        .foregroundColor(ChatTheme.primaryText)
       Button(action: { viewModel.removePastedBlock(id: block.id); inputFocused = true }) {
         Image(systemName: "xmark")
           .font(.system(size: 8, weight: .bold))
-          .foregroundColor(GeminiChatTheme.secondaryText)
+          .foregroundColor(ChatTheme.secondaryText)
       }
       .buttonStyle(.plain)
       .help(removeHelp)
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 5)
-    .background(GeminiChatTheme.windowBackground.opacity(0.6))
+    .background(ChatTheme.windowBackground.opacity(0.6))
     .clipShape(RoundedRectangle(cornerRadius: 8))
     .overlay(
       RoundedRectangle(cornerRadius: 8)
         .strokeBorder(
-          isFocused ? Color.accentColor : GeminiChatTheme.primaryText.opacity(GeminiChatTheme.borderOpacity),
+          isFocused ? Color.accentColor : ChatTheme.primaryText.opacity(ChatTheme.borderOpacity),
           lineWidth: isFocused ? 1.5 : 1)
     )
     .focusable()
@@ -2234,7 +2234,7 @@ private struct NativeTooltip: NSViewRepresentable {
 
 /// Finds the NSScrollView backing the TextEditor (sibling in the view hierarchy) and sets autohidesScrollers
 /// so the scrollbar only appears when content overflows.
-private struct GeminiInputScrollViewAutohideAnchor: NSViewRepresentable {
+private struct ChatInputScrollViewAutohideAnchor: NSViewRepresentable {
   func makeNSView(context: Context) -> NSView {
     let v = NSView()
     v.frame = .zero
@@ -2452,7 +2452,7 @@ private struct ModelReplyView: View {
           Text(attrStr)
             .font(.system(size: 16))
             .lineSpacing(8)
-            .foregroundColor(GeminiChatTheme.primaryText)
+            .foregroundColor(ChatTheme.primaryText)
         case .table(let parsed):
           MarkdownTableView(headers: parsed.headers, rows: parsed.rows)
         case .codeBlock(let code, let language):
@@ -2496,7 +2496,7 @@ private struct ModelReplyView: View {
   private static func appendHeadingRuleLine(to prose: inout AttributedString) {
     var dashes = AttributedString(MarkdownParsing.separatorLineContent)
     dashes.font = .system(size: 10, weight: .light)
-    dashes.foregroundColor = GeminiChatTheme.primaryText.opacity(0.14)
+    dashes.foregroundColor = ChatTheme.primaryText.opacity(0.14)
     prose.append(dashes)
   }
 
@@ -2534,7 +2534,7 @@ private struct ModelReplyView: View {
           prose.append(AttributedString("\n\n"))
         }
         var lineAttr = AttributedString(MarkdownParsing.separatorLineContent)
-        lineAttr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.4)
+        lineAttr.foregroundColor = ChatTheme.primaryText.opacity(0.4)
         prose.append(lineAttr)
         hasProse = true
       case .bulletList(let items):
@@ -2547,7 +2547,7 @@ private struct ModelReplyView: View {
           }
           var bullet = AttributedString("• ")
           bullet.font = .system(size: 16, weight: .regular)
-          bullet.foregroundColor = GeminiChatTheme.primaryText.opacity(0.5)
+          bullet.foregroundColor = ChatTheme.primaryText.opacity(0.5)
           prose.append(bullet)
           prose.append(item)
         }
@@ -2746,7 +2746,7 @@ private struct ModelReplyView: View {
   ) -> AttributedString {
     if MarkdownParsing.isSeparatorParagraph(trimmed) {
       var lineAttr = AttributedString(MarkdownParsing.separatorLineContent)
-      lineAttr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.4)
+      lineAttr.foregroundColor = ChatTheme.primaryText.opacity(0.4)
       return lineAttr
     }
     if let (level, title) = MarkdownParsing.parseATXHeading(trimmed) {
@@ -2792,7 +2792,7 @@ private struct ModelReplyView: View {
       if !result.description.isEmpty { result.append(paragraphSeparator) }
       if MarkdownParsing.isSeparatorParagraph(trimmed) {
         var lineAttr = AttributedString(MarkdownParsing.separatorLineContent)
-        lineAttr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.4)
+        lineAttr.foregroundColor = ChatTheme.primaryText.opacity(0.4)
         result.append(lineAttr)
         continue
       }
@@ -2839,11 +2839,11 @@ private struct ModelReplyView: View {
         // Inline image marker — skip in AttributedString fallback path (rendered in SwiftUI path)
         var attr = AttributedString("[Image]")
         attr.font = .system(size: 14, weight: .medium)
-        attr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.5)
+        attr.foregroundColor = ChatTheme.primaryText.opacity(0.5)
         result.append(attr)
       } else if MarkdownParsing.isSeparatorParagraph(trimmed) {
         var lineAttr = AttributedString(MarkdownParsing.separatorLineContent)
-        lineAttr.foregroundColor = GeminiChatTheme.primaryText.opacity(0.4)
+        lineAttr.foregroundColor = ChatTheme.primaryText.opacity(0.4)
         result.append(lineAttr)
       } else if let (level, title) = MarkdownParsing.parseATXHeading(trimmed) {
         let parts = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
@@ -2898,7 +2898,7 @@ private struct CodeBlockView: View {
       HStack {
         Text(language ?? "code")
           .font(.system(size: 12, weight: .medium))
-          .foregroundColor(GeminiChatTheme.primaryText.opacity(0.5))
+          .foregroundColor(ChatTheme.primaryText.opacity(0.5))
         Spacer()
         Button(action: {
           NSPasteboard.general.clearContents()
@@ -2912,7 +2912,7 @@ private struct CodeBlockView: View {
             Text(copied ? "Copied" : "Copy")
               .font(.system(size: 11))
           }
-          .foregroundColor(GeminiChatTheme.primaryText.opacity(0.5))
+          .foregroundColor(ChatTheme.primaryText.opacity(0.5))
         }
         .buttonStyle(.plain)
         .onHover { inside in
@@ -2927,7 +2927,7 @@ private struct CodeBlockView: View {
       ScrollView(.horizontal, showsIndicators: false) {
         Text(code)
           .font(.system(size: 13, design: .monospaced))
-          .foregroundColor(GeminiChatTheme.primaryText.opacity(0.9))
+          .foregroundColor(ChatTheme.primaryText.opacity(0.9))
           .textSelection(.enabled)
           .padding(14)
       }
@@ -2954,14 +2954,14 @@ private struct CopyReplyButtonView: View {
         Text("Copy")
           .font(.caption)
       }
-      .foregroundColor(isHovered ? GeminiChatTheme.primaryText : GeminiChatTheme.secondaryText)
+      .foregroundColor(isHovered ? ChatTheme.primaryText : ChatTheme.secondaryText)
       .padding(.horizontal, 10)
       .padding(.vertical, 6)
       .frame(minHeight: 28)
       .contentShape(Rectangle())
       .background(
         RoundedRectangle(cornerRadius: 6)
-          .fill(isHovered ? GeminiChatTheme.controlBackground.opacity(0.9) : GeminiChatTheme.controlBackground.opacity(0.5))
+          .fill(isHovered ? ChatTheme.controlBackground.opacity(0.9) : ChatTheme.controlBackground.opacity(0.5))
       )
     }
     .buttonStyle(.plain)
@@ -3069,7 +3069,7 @@ private struct MessageBubbleView: View {
           let icon = sec.isSelection ? "text.cursor" : "doc.plaintext"
           Label(title, systemImage: icon)
             .font(.caption)
-            .foregroundColor(GeminiChatTheme.primaryText.opacity(0.7))
+            .foregroundColor(ChatTheme.primaryText.opacity(0.7))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(Color.white.opacity(0.1))
@@ -3078,7 +3078,7 @@ private struct MessageBubbleView: View {
         if !parsed.userText.isEmpty {
           Text(parsed.userText)
             .font(.system(size: 16))
-            .foregroundColor(GeminiChatTheme.primaryText)
+            .foregroundColor(ChatTheme.primaryText)
             .textSelection(.enabled)
         }
         if !message.attachedImageParts.isEmpty {
@@ -3086,7 +3086,7 @@ private struct MessageBubbleView: View {
                ? (message.attachedImageParts[0].filename ?? "1 attachment")
                : "\(message.attachedImageParts.count) attachments")
             .font(.caption)
-            .foregroundColor(GeminiChatTheme.primaryText.opacity(0.6))
+            .foregroundColor(ChatTheme.primaryText.opacity(0.6))
         }
       }
       .padding(.horizontal, 16)
@@ -3094,7 +3094,7 @@ private struct MessageBubbleView: View {
       .contentShape(Rectangle())
       .background(
         RoundedRectangle(cornerRadius: 14)
-          .fill(GeminiChatTheme.userBubbleBackground)
+          .fill(ChatTheme.userBubbleBackground)
       )
       .onHover { inside in
         if inside {
@@ -3188,7 +3188,7 @@ private struct TypingIndicatorView: View {
       HStack(spacing: 4) {
         ForEach(0..<3, id: \.self) { i in
           Circle()
-            .fill(GeminiChatTheme.secondaryText)
+            .fill(ChatTheme.secondaryText)
             .frame(width: 7, height: 7)
             .scaleEffect(scale(at: t, index: i), anchor: .center)
         }
@@ -3198,7 +3198,7 @@ private struct TypingIndicatorView: View {
       .compositingGroup()
       .background(
         RoundedRectangle(cornerRadius: 14)
-          .fill(GeminiChatTheme.controlBackground)
+          .fill(ChatTheme.controlBackground)
       )
       .clipShape(RoundedRectangle(cornerRadius: 14))
     }

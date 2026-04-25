@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Chat Settings Tab — shortcut, model, voice, and live meeting settings
-struct OpenGeminiSettingsTab: View {
+struct ChatSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
 
@@ -23,8 +23,8 @@ struct OpenGeminiSettingsTab: View {
       SystemPromptSectionEditor(
         title: "System prompt",
         subtitle: "Instructions sent to the model in Chat mode. Edit to customize chat behavior.",
-        section: .geminiChat,
-        defaultContent: AppConstants.defaultGeminiChatSystemPrompt
+        section: .chat,
+        defaultContent: AppConstants.defaultChatSystemPrompt
       )
 
       SpacedSectionDivider()
@@ -64,9 +64,9 @@ struct OpenGeminiSettingsTab: View {
 
       ShortcutInputRow(
         label: "Chat:",
-        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.openGemini),
-        text: $viewModel.data.openGemini,
-        focusedField: .toggleGemini,
+        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.openChat),
+        text: $viewModel.data.openChat,
+        focusedField: .toggleChat,
         currentFocus: $focusedField,
         onShortcutChanged: {
           Task {
@@ -101,13 +101,13 @@ struct OpenGeminiSettingsTab: View {
     PromptModelSelectionView(
       title: "Chat model",
       subtitle: "Choose which model powers the chat. Grok models require an xAI API key (Settings > General).",
-      selectedModel: $viewModel.data.selectedOpenGeminiModel,
+      selectedModel: $viewModel.data.selectedChatModel,
       availableModels: PromptModel.chatModels,
       subscriptionMode: false,
       onModelChanged: {
         UserDefaults.standard.set(
-          viewModel.data.selectedOpenGeminiModel.rawValue,
-          forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+          viewModel.data.selectedChatModel.rawValue,
+          forKey: UserDefaultsKeys.selectedChatModel)
         Task {
           await viewModel.saveSettings()
         }
@@ -124,7 +124,7 @@ struct OpenGeminiSettingsTab: View {
         subtitle: "Control how the chat window behaves"
       )
 
-      Toggle(isOn: $viewModel.data.geminiCloseOnFocusLoss) {
+      Toggle(isOn: $viewModel.data.chatCloseOnFocusLoss) {
         VStack(alignment: .leading, spacing: 2) {
           Text("Close window when losing focus")
             .font(.callout)
@@ -134,7 +134,7 @@ struct OpenGeminiSettingsTab: View {
         }
       }
       .toggleStyle(.switch)
-      .onChange(of: viewModel.data.geminiCloseOnFocusLoss) { _ in
+      .onChange(of: viewModel.data.chatCloseOnFocusLoss) { _ in
         Task { await viewModel.saveSettings() }
       }
     }

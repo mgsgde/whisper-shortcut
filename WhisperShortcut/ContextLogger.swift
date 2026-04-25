@@ -128,7 +128,7 @@ class ContextLogger {
   }
 
   /// Logs one chat turn (user message + model response) when "Save usage data" is enabled.
-  func logGeminiChat(userMessage: String, modelResponse: String, model: String?) {
+  func logChat(userMessage: String, modelResponse: String, model: String?) {
     guard isLoggingEnabled else { return }
     let entry = InteractionLogEntry(
       ts: iso8601Now(),
@@ -358,7 +358,7 @@ class ContextLogger {
   }
 
   /// Removes the suggested Chat system prompt file so it does not reappear after Apply.
-  func deleteSuggestedGeminiChatSystemPromptFile() {
+  func deleteSuggestedChatSystemPromptFile() {
     let url = contextDirectoryURL.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
     try? FileManager.default.removeItem(at: url)
   }

@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Root view for the chat window.
-struct GeminiRootView: View {
+struct ChatRootView: View {
   var body: some View {
-    GeminiChatView()
+    ChatView()
       .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 }

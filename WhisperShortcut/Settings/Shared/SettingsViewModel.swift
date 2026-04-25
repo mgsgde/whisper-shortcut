@@ -29,13 +29,13 @@ class SettingsViewModel: ObservableObject {
     data.togglePrompting = currentConfig.startPrompting.isEnabled ? currentConfig.startPrompting.textDisplayString : ""
     data.toggleMeeting = currentConfig.toggleMeeting.isEnabled ? currentConfig.toggleMeeting.textDisplayString : ""
     data.openSettings = currentConfig.openSettings.isEnabled ? currentConfig.openSettings.textDisplayString : ""
-    data.openGemini = currentConfig.openGemini.isEnabled ? currentConfig.openGemini.textDisplayString : ""
+    data.openChat = currentConfig.openChat.isEnabled ? currentConfig.openChat.textDisplayString : ""
     // Load toggle shortcut enabled states
     data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
     data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
     data.toggleMeetingEnabled = currentConfig.toggleMeeting.isEnabled
     data.openSettingsEnabled = currentConfig.openSettings.isEnabled
-    data.openGeminiEnabled = currentConfig.openGemini.isEnabled
+    data.openChatEnabled = currentConfig.openChat.isEnabled
 
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
@@ -73,22 +73,22 @@ class SettingsViewModel: ObservableObject {
     }
 
     // Load chat window model
-    if let savedOpenGeminiModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel) {
-      let normalized = PromptModel.migrateLegacyPromptRawValue(savedOpenGeminiModelString)
-      if normalized != savedOpenGeminiModelString {
-        UserDefaults.standard.set(normalized, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+    if let savedChatModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedChatModel) {
+      let normalized = PromptModel.migrateLegacyPromptRawValue(savedChatModelString)
+      if normalized != savedChatModelString {
+        UserDefaults.standard.set(normalized, forKey: UserDefaultsKeys.selectedChatModel)
       }
-      if let savedOpenGeminiModel = PromptModel(rawValue: normalized) {
-        let migrated = PromptModel.migrateIfDeprecated(savedOpenGeminiModel)
-        data.selectedOpenGeminiModel = migrated
-        if migrated != savedOpenGeminiModel {
-          UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+      if let savedChatModel = PromptModel(rawValue: normalized) {
+        let migrated = PromptModel.migrateIfDeprecated(savedChatModel)
+        data.selectedChatModel = migrated
+        if migrated != savedChatModel {
+          UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
         }
       } else {
-        data.selectedOpenGeminiModel = SettingsDefaults.selectedOpenGeminiModel
+        data.selectedChatModel = SettingsDefaults.selectedChatModel
       }
     } else {
-      data.selectedOpenGeminiModel = SettingsDefaults.selectedOpenGeminiModel
+      data.selectedChatModel = SettingsDefaults.selectedChatModel
     }
 
     let improvementModelDefault = SettingsDefaults.selectedImprovementModel
@@ -164,10 +164,10 @@ class SettingsViewModel: ObservableObject {
     }
 
     // Load Gemini window: close on focus loss
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss) != nil {
-      data.geminiCloseOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.chatCloseOnFocusLoss) != nil {
+      data.chatCloseOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.chatCloseOnFocusLoss)
     } else {
-      data.geminiCloseOnFocusLoss = SettingsDefaults.geminiCloseOnFocusLoss
+      data.chatCloseOnFocusLoss = SettingsDefaults.chatCloseOnFocusLoss
     }
 
     // Load Settings window: close on focus loss
@@ -242,9 +242,9 @@ class SettingsViewModel: ObservableObject {
        ShortcutConfigManager.parseShortcut(from: data.openSettings) == nil {
       return "Invalid open settings shortcut format"
     }
-    if !data.openGemini.trimmingCharacters(in: trim).isEmpty,
-       ShortcutConfigManager.parseShortcut(from: data.openGemini) == nil {
-      return "Invalid open Gemini shortcut format"
+    if !data.openChat.trimmingCharacters(in: trim).isEmpty,
+       ShortcutConfigManager.parseShortcut(from: data.openChat) == nil {
+      return "Invalid open chat shortcut format"
     }
     let shortcuts = parseShortcuts()
 
@@ -306,7 +306,7 @@ class SettingsViewModel: ObservableObject {
       return name == "toggle prompting"
     case .toggleSettings:
       return name == "open settings"
-    case .toggleGemini:
+    case .toggleChat:
       return name == "open gemini"
     default:
       return false
@@ -325,7 +325,7 @@ class SettingsViewModel: ObservableObject {
       "toggle dictation": parsed(data.toggleDictation),
       "toggle prompting": parsed(data.togglePrompting),
       "open settings": parsed(data.openSettings),
-      "open gemini": parsed(data.openGemini),
+      "open chat": parsed(data.openChat),
     ]
   }
 
@@ -348,7 +348,7 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(
       data.selectedTranscriptionModel.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
     UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
-    UserDefaults.standard.set(data.selectedOpenGeminiModel.rawValue, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+    UserDefaults.standard.set(data.selectedChatModel.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
     UserDefaults.standard.set(
       data.selectedImprovementModel.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
 
@@ -374,8 +374,8 @@ class SettingsViewModel: ObservableObject {
     // Save screenshot in prompt mode setting
     UserDefaults.standard.set(data.screenshotInPromptMode, forKey: UserDefaultsKeys.screenshotInPromptMode)
 
-    // Save Gemini window: close on focus loss
-    UserDefaults.standard.set(data.geminiCloseOnFocusLoss, forKey: UserDefaultsKeys.geminiCloseOnFocusLoss)
+    // Save Chat window: close on focus loss
+    UserDefaults.standard.set(data.chatCloseOnFocusLoss, forKey: UserDefaultsKeys.chatCloseOnFocusLoss)
 
     // Save Settings window: close on focus loss
     UserDefaults.standard.set(data.settingsCloseOnFocusLoss, forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)
@@ -404,7 +404,7 @@ class SettingsViewModel: ObservableObject {
       stopMeeting: currentConfig.stopMeeting,
       openSettings: shortcuts["open settings"]!
         ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
-      openGemini: shortcuts["open gemini"]!
+      openChat: shortcuts["open chat"]!
         ?? ShortcutDefinition(key: .eight, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)

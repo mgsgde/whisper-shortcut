@@ -180,16 +180,16 @@ enum PromptModel: String, CaseIterable {
   }
 
   /// Loads the model selected for the chat window (Settings → Chat).
-  static func loadSelectedOpenGemini() -> PromptModel {
-    guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedOpenGeminiModel) else {
-      return SettingsDefaults.selectedOpenGeminiModel
+  static func loadSelectedChatModel() -> PromptModel {
+    guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedChatModel) else {
+      return SettingsDefaults.selectedChatModel
     }
     let migratedRaw = migrateLegacyPromptRawValue(raw)
     if migratedRaw != raw {
-      UserDefaults.standard.set(migratedRaw, forKey: UserDefaultsKeys.selectedOpenGeminiModel)
+      UserDefaults.standard.set(migratedRaw, forKey: UserDefaultsKeys.selectedChatModel)
     }
     guard let parsed = PromptModel(rawValue: migratedRaw) else {
-      return SettingsDefaults.selectedOpenGeminiModel
+      return SettingsDefaults.selectedChatModel
     }
     return migrateIfDeprecated(parsed)
   }
@@ -507,7 +507,7 @@ enum SettingsTab: String, CaseIterable {
   case general = "General"
   case speechToText = "Dictate"
   case speechToPrompt = "Dictate Prompt"
-  case openGemini = "Chat"
+  case chat = "Chat"
 }
 
 // MARK: - Live Meeting Chunk Interval Options
@@ -538,19 +538,19 @@ struct SettingsDefaults {
   static let togglePrompting = ""
   static let toggleMeeting = ""
   static let openSettings = ""
-  static let openGemini = ""
+  static let openChat = ""
 
   // MARK: - Toggle Shortcut Enable States
   static let toggleDictationEnabled = true
   static let togglePromptingEnabled = true
   static let toggleMeetingEnabled = true
   static let openSettingsEnabled = true
-  static let openGeminiEnabled = true
+  static let openChatEnabled = true
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
   static let selectedPromptModel = PromptModel.gemini31FlashLite
-  static let selectedOpenGeminiModel = PromptModel.gemini3Flash
-  static let geminiCloseOnFocusLoss = true
+  static let selectedChatModel = PromptModel.gemini3Flash
+  static let chatCloseOnFocusLoss = true
   static let settingsCloseOnFocusLoss = true
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
@@ -602,20 +602,20 @@ struct SettingsData {
   var togglePrompting: String = SettingsDefaults.togglePrompting
   var toggleMeeting: String = SettingsDefaults.toggleMeeting
   var openSettings: String = SettingsDefaults.openSettings
-  var openGemini: String = SettingsDefaults.openGemini
+  var openChat: String = SettingsDefaults.openChat
 
   // MARK: - Toggle Shortcut Enable States
   var toggleDictationEnabled: Bool = SettingsDefaults.toggleDictationEnabled
   var togglePromptingEnabled: Bool = SettingsDefaults.togglePromptingEnabled
   var toggleMeetingEnabled: Bool = SettingsDefaults.toggleMeetingEnabled
   var openSettingsEnabled: Bool = SettingsDefaults.openSettingsEnabled
-  var openGeminiEnabled: Bool = SettingsDefaults.openGeminiEnabled
+  var openChatEnabled: Bool = SettingsDefaults.openChatEnabled
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
   var selectedPromptModel: PromptModel = SettingsDefaults.selectedPromptModel
-  var selectedOpenGeminiModel: PromptModel = SettingsDefaults.selectedOpenGeminiModel
+  var selectedChatModel: PromptModel = SettingsDefaults.selectedChatModel
   var selectedImprovementModel: PromptModel = SettingsDefaults.selectedImprovementModel
-  var geminiCloseOnFocusLoss: Bool = SettingsDefaults.geminiCloseOnFocusLoss
+  var chatCloseOnFocusLoss: Bool = SettingsDefaults.chatCloseOnFocusLoss
   var settingsCloseOnFocusLoss: Bool = SettingsDefaults.settingsCloseOnFocusLoss
   var customPromptText: String = SettingsDefaults.customPromptText
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
@@ -657,7 +657,7 @@ enum SettingsFocusField: Hashable {
   case toggleDictation
   case togglePrompting
   case toggleSettings
-  case toggleGemini
+  case toggleChat
   case customPrompt
   case promptModeSystemPrompt
 }

@@ -5,7 +5,7 @@ protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
   func openSettings()
-  func openGemini()
+  func openChat()
 }
 
 // Configurable shortcuts using ShortcutConfigManager
@@ -15,7 +15,7 @@ class Shortcuts {
   private var toggleDictationKey: HotKey?
   private var togglePromptingKey: HotKey?
   private var openSettingsKey: HotKey?
-  private var openGeminiKey: HotKey?
+  private var openChatKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -67,12 +67,12 @@ class Shortcuts {
       }
     }
 
-    // Create Gemini window shortcut (only if enabled)
-    if config.openGemini.isEnabled {
-      openGeminiKey = HotKey(
-        key: config.openGemini.key, modifiers: config.openGemini.modifiers)
-      openGeminiKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.openGemini()
+    // Create chat window shortcut (only if enabled)
+    if config.openChat.isEnabled {
+      openChatKey = HotKey(
+        key: config.openChat.key, modifiers: config.openChat.modifiers)
+      openChatKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.openChat()
       }
     }
 
@@ -90,7 +90,7 @@ class Shortcuts {
     toggleDictationKey = nil
     togglePromptingKey = nil
     openSettingsKey = nil
-    openGeminiKey = nil
+    openChatKey = nil
   }
 
   deinit {

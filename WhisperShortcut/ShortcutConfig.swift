@@ -104,7 +104,7 @@ struct ShortcutConfig: Codable {
   var toggleMeeting: ShortcutDefinition
   var stopMeeting: ShortcutDefinition
   var openSettings: ShortcutDefinition
-  var openGemini: ShortcutDefinition
+  var openChat: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
@@ -114,7 +114,7 @@ struct ShortcutConfig: Codable {
     toggleMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
     stopMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
     openSettings: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
-    openGemini: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true)
+    openChat: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true)
   )
 
   /// Single source for the "Available keys" hint text used in all shortcut settings.
@@ -225,7 +225,7 @@ class ShortcutConfigManager {
     static let toggleMeetingKey = "shortcut_toggle_meeting"
     static let stopMeetingKey = "shortcut_stop_meeting"
     static let openSettingsKey = "shortcut_open_settings"
-    static let openGeminiKey = "shortcut_open_gemini"
+    static let openChatKey = "shortcut_open_gemini"
   }
 
   private let userDefaults = UserDefaults.standard
@@ -250,8 +250,8 @@ class ShortcutConfigManager {
     let openSettings = userDefaults.data(forKey: Constants.toggleMeetingKey) != nil
       ? (loadShortcut(for: Constants.openSettingsKey) ?? ShortcutConfig.default.openSettings)
       : ShortcutConfig.default.openSettings
-    let openGemini =
-      loadShortcut(for: Constants.openGeminiKey) ?? ShortcutConfig.default.openGemini
+    let openChat =
+      loadShortcut(for: Constants.openChatKey) ?? ShortcutConfig.default.openChat
     return ShortcutConfig(
       startRecording: startRecording,
       stopRecording: stopRecording,
@@ -260,7 +260,7 @@ class ShortcutConfigManager {
       toggleMeeting: toggleMeeting,
       stopMeeting: stopMeeting,
       openSettings: openSettings,
-      openGemini: openGemini
+      openChat: openChat
     )
   }
 
@@ -272,7 +272,7 @@ class ShortcutConfigManager {
     saveShortcut(config.toggleMeeting, for: Constants.toggleMeetingKey)
     saveShortcut(config.stopMeeting, for: Constants.stopMeetingKey)
     saveShortcut(config.openSettings, for: Constants.openSettingsKey)
-    saveShortcut(config.openGemini, for: Constants.openGeminiKey)
+    saveShortcut(config.openChat, for: Constants.openChatKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)
@@ -416,29 +416,29 @@ extension Notification.Name {
   static let rateLimitResolved = Notification.Name("rateLimitResolved")
   /// Posted when context file was updated (e.g. from Compare sheet) so General tab can reload
   static let contextFileDidUpdate = Notification.Name("contextFileDidUpdate")
-  /// Posted when user chooses Gemini → New Chat (menu or shortcut).
-  static let geminiNewChat = Notification.Name("geminiNewChat")
-  /// Posted when user chooses Gemini → Capture Screenshot (menu or shortcut).
-  static let geminiCaptureScreenshot = Notification.Name("geminiCaptureScreenshot")
-  /// Posted when user chooses Gemini → Clear Chat (menu or shortcut).
-  static let geminiClearChat = Notification.Name("geminiClearChat")
+  /// Posted when user chooses Chat → New Chat (menu or shortcut).
+  static let chatNewChat = Notification.Name("chatNewChat")
+  /// Posted when user chooses Chat → Capture Screenshot (menu or shortcut).
+  static let chatCaptureScreenshot = Notification.Name("chatCaptureScreenshot")
+  /// Posted when user chooses Chat → Clear Chat (menu or shortcut).
+  static let chatClearChat = Notification.Name("chatClearChat")
   /// Posted when user presses Cmd+W in Gemini chat window (close current tab).
-  static let geminiCloseTab = Notification.Name("geminiCloseTab")
-  /// Posted when user presses Cmd+Shift+T in the Gemini chat window — reopens the most recently closed tab.
-  static let geminiReopenLastClosedTab = Notification.Name("geminiReopenLastClosedTab")
+  static let chatCloseTab = Notification.Name("chatCloseTab")
+  /// Posted when user presses Cmd+Shift+T in the chat window — reopens the most recently closed tab.
+  static let chatReopenLastClosedTab = Notification.Name("chatReopenLastClosedTab")
   /// Posted when user presses Cmd+Up in Gemini chat window (scroll to top).
-  static let geminiScrollToTop = Notification.Name("geminiScrollToTop")
+  static let chatScrollToTop = Notification.Name("chatScrollToTop")
   /// Posted when user presses Cmd+Down in Gemini chat window (scroll to bottom).
-  static let geminiScrollToBottom = Notification.Name("geminiScrollToBottom")
-  static let geminiToggleSidebar = Notification.Name("geminiToggleSidebar")
-  /// Posted when the Gemini window is shown so the chat view can focus the message input field.
-  static let geminiFocusInput = Notification.Name("geminiFocusInput")
-  /// Posted to switch the Gemini window to Meeting view (e.g. when a live meeting starts).
-  static let geminiSwitchToMeeting = Notification.Name("geminiSwitchToMeeting")
-  /// Posted to switch the Gemini window to Chat view and resize to one third of the screen.
-  static let geminiSwitchToChat = Notification.Name("geminiSwitchToChat")
+  static let chatScrollToBottom = Notification.Name("chatScrollToBottom")
+  static let chatToggleSidebar = Notification.Name("chatToggleSidebar")
+  /// Posted when the chat window is shown so the chat view can focus the message input field.
+  static let chatFocusInput = Notification.Name("chatFocusInput")
+  /// Posted to switch the chat window to Meeting view (e.g. when a live meeting starts).
+  static let chatSwitchToMeeting = Notification.Name("chatSwitchToMeeting")
+  /// Posted to switch the chat window to Chat view and resize to one third of the screen.
+  static let chatSwitchToChat = Notification.Name("chatSwitchToChat")
   /// Posted to stop live meeting immediately (no name dialog).
-  static let geminiToggleLiveMeeting = Notification.Name("geminiToggleLiveMeeting")
+  static let chatToggleLiveMeeting = Notification.Name("chatToggleLiveMeeting")
   /// Posted when user confirms "End Meeting" with an optional name. userInfo["meetingName"] = String (default or custom).
-  static let geminiEndMeetingWithName = Notification.Name("geminiEndMeetingWithName")
+  static let chatEndMeetingWithName = Notification.Name("chatEndMeetingWithName")
 }

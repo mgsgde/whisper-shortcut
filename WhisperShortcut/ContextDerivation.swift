@@ -33,8 +33,8 @@ class ContextDerivation {
   private let dictationPromptEndMarker = "===SUGGESTED_DICTATION_PROMPT_END==="
   private let whisperGlossaryMarker = "===SUGGESTED_WHISPER_GLOSSARY_START==="
   private let whisperGlossaryEndMarker = "===SUGGESTED_WHISPER_GLOSSARY_END==="
-  private let geminiChatPromptMarker = "===SUGGESTED_GEMINI_CHAT_SYSTEM_PROMPT_START==="
-  private let geminiChatPromptEndMarker = "===SUGGESTED_GEMINI_CHAT_SYSTEM_PROMPT_END==="
+  private let chatPromptMarker = "===SUGGESTED_GEMINI_CHAT_SYSTEM_PROMPT_START==="
+  private let chatPromptEndMarker = "===SUGGESTED_GEMINI_CHAT_SYSTEM_PROMPT_END==="
   private let rationaleMarker = "===RATIONALE_START==="
   private let rationaleEndMarker = "===RATIONALE_END==="
   /// Sentinel: model emits this (and nothing else) when the data does not justify any change.
@@ -75,7 +75,7 @@ class ContextDerivation {
     let currentPromptModeSystemPrompt = store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentDictationPrompt = store.loadDictationPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentWhisperGlossary = store.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
-    let currentGeminiChatPrompt = store.loadSection(.geminiChat)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let currentGeminiChatPrompt = store.loadSection(.chat)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
     let loaded = try loadAndSampleLogs(focus: focus,
                                        currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
@@ -112,7 +112,7 @@ class ContextDerivation {
     case .dictation: return "transcription"
     case .whisperGlossary: return "transcription"
     case .promptMode: return "prompt"
-    case .geminiChat: return nil
+    case .chat: return nil
     }
   }
 
@@ -146,7 +146,7 @@ class ContextDerivation {
     }
 
     // Chat: use all modes combined as primary; secondary is current Chat prompt.
-    if focus == .geminiChat {
+    if focus == .chat {
       var allEntries: [InteractionLogEntry] = []
       for (_, entries) in entriesByMode {
         allEntries.append(contentsOf: entries)
@@ -201,7 +201,7 @@ class ContextDerivation {
       if let p = currentWhisperGlossary, !p.isEmpty { secondaryParts.append("Current Whisper Glossary (refine based on new data):\n\(p)") }
     case .promptMode:
       if let p = currentPromptModeSystemPrompt, !p.isEmpty { secondaryParts.append("Current Dictate Prompt system prompt (refine based on new data):\n\(p)") }
-    case .geminiChat:
+    case .chat:
       break  // Handled above
     }
 
@@ -410,7 +410,7 @@ class ContextDerivation {
       \(systemPromptEndMarker)
       """
 
-    case .geminiChat:
+    case .chat:
       return """
       You are analyzing a user's interaction history with a voice-to-text application called WhisperShortcut. \
       The interactions include dictation (transcription) and dictate prompt (voice instructions applied to selected text).
@@ -421,9 +421,9 @@ class ContextDerivation {
 
       You MUST wrap your entire output in these markers exactly as shown:
 
-      \(geminiChatPromptMarker)
+      \(chatPromptMarker)
       [your content here]
-      \(geminiChatPromptEndMarker)
+      \(chatPromptEndMarker)
 
       Write a system prompt following this structure (Persona → Task → Guardrails → Output):
       1. Persona: Helpful assistant for the user's chat. DO NOT include biographical facts (name, job title, employer, location, projects, industry). Instead, adapt vocabulary and assumed expertise level based on patterns in the data, without stating why.
@@ -459,7 +459,7 @@ class ContextDerivation {
       case .dictation: return currentDictationPrompt ?? ""
       case .whisperGlossary: return currentWhisperGlossary ?? ""
       case .promptMode: return currentPromptModeSystemPrompt ?? ""
-      case .geminiChat: return SystemPromptsStore.shared.loadSection(.geminiChat) ?? ""
+      case .chat: return SystemPromptsStore.shared.loadSection(.chat) ?? ""
       }
     }()
 
@@ -524,7 +524,7 @@ class ContextDerivation {
     case .dictation: return "suggested-dictation-prompt"
     case .whisperGlossary: return "suggested-whisper-glossary"
     case .promptMode: return "suggested-prompt-mode-system-prompt"
-    case .geminiChat: return "suggested-gemini-chat-system-prompt"
+    case .chat: return "suggested-gemini-chat-system-prompt"
     }
   }
 
@@ -542,7 +542,7 @@ class ContextDerivation {
        extractSection(from: analysisResult, startMarker: dictationPromptMarker, endMarker: dictationPromptEndMarker) == nil &&
        extractSection(from: analysisResult, startMarker: systemPromptMarker, endMarker: systemPromptEndMarker) == nil &&
        extractSection(from: analysisResult, startMarker: whisperGlossaryMarker, endMarker: whisperGlossaryEndMarker) == nil &&
-       extractSection(from: analysisResult, startMarker: geminiChatPromptMarker, endMarker: geminiChatPromptEndMarker) == nil {
+       extractSection(from: analysisResult, startMarker: chatPromptMarker, endMarker: chatPromptEndMarker) == nil {
       DebugLogger.log("USER-CONTEXT-DERIVATION: NO_CHANGE for \(focus) — no suggestion written")
       return
     }
@@ -574,8 +574,8 @@ class ContextDerivation {
       } else {
         DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for dictate prompt")
       }
-    case .geminiChat:
-      if let suggested = extractSection(from: analysisResult, startMarker: geminiChatPromptMarker, endMarker: geminiChatPromptEndMarker) {
+    case .chat:
+      if let suggested = extractSection(from: analysisResult, startMarker: chatPromptMarker, endMarker: chatPromptEndMarker) {
         let fileURL = contextDir.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
         try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
         DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Chat system prompt (\(suggested.count) chars)")
