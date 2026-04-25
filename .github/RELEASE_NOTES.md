@@ -1,4 +1,4 @@
-# WhisperShortcut 7.0.0
+# WhisperShortcut 7.1
 
 ## Installation
 
@@ -6,33 +6,22 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-### Chat and live meeting
+### Chat reliability and model integration
 
-- **Unified window**: Live meeting is merged into the main Chat experience; meeting sessions show an indicator in the sidebar, and redundant meeting-only window code was removed.
-- **Silence detection**: Shared silence-based behavior for Dictate and live meeting recording; Dictate gains silence detection and a meeting control in the composer toolbar.
-- **Reliability**: Fixes across live meeting and chat flows (including streaming, tool responses, and ordering).
+- **Streaming reliability**: Fixed an issue where empty placeholder chat messages could remain after cancellation.
+- **Integration hardening**: Improved chat tool argument handling and Google API retry/error behavior for more robust calendar, tasks, and Gmail execution.
+- **OAuth stability**: Improved Google auth session lifecycle handling and callback flow to avoid edge-case authorization failures.
 
-### Google account and Gemini tools
+### Naming and settings polish
 
-- **Calendar**: Gemini can use Google Calendar via chat tools; `/connect-calendar` and `/disconnect-calendar` slash commands; calendar event deletion support and improved API logging.
-- **Tasks**: Google Tasks integration with support for multiple lists, task deletion tool, and clearer disambiguation between calendar and tasks tools.
-- **Gmail**: Read-only Gmail integration in chat.
-- **Fixes**: URL-encoding for IDs, Gmail error logging, OAuth type renames, `delete_event` in system instruction, and Gemini request-shape fixes (`call_id` / `callId` handling).
+- **Provider-neutral naming**: Continued cleanup from Gemini-prefixed identifiers to Chat/provider-neutral naming.
+- **Settings UX**: API key fields are masked by default; chat sidebar defaults are improved for first-run clarity.
 
-### Settings and product naming
+### Meeting and rate-limit edge cases
 
-- **Settings layout**: Context settings tab removed; per-mode prompt editors added; default open-settings shortcut is now ⌘3 (was ⌘7).
-- **Naming**: “Open Gemini” is now **Chat**; “Prompt Mode” is now **Dictate Prompt**; Google Calendar connection copy is aligned with **Google Account** where appropriate.
-- **Removed**: Prompt Read Mode (`promptAndRead`), Chat Read Aloud, and legacy TTS selection UI; legacy Gemini 2.0 models migrated toward Gemini 3.1 Flash Lite.
-
-### Chat quality of life
-
-- Pin replaces archive; delete older chats; improved AI-generated titles; fixes for `<typed_by_user>` leaking into titles; better text selection in replies.
-
-### Other
-
-- CI: Dependabot Swift discovery fix; removed npm config for a non-existent website path.
+- **Meeting safety**: Renaming meetings now avoids destructive overwrite behavior when target files already exist.
+- **Rate-limit coordination**: Waiting logic now better respects extended coordinated backoff windows.
 
 ## Full changelog
 
-[Compare v6.12.0…v7.0.0](https://github.com/mgsgde/whisper-shortcut/compare/v6.12.0...v7.0.0)
+[Compare v7.0.0…v7.1](https://github.com/mgsgde/whisper-shortcut/compare/v7.0.0...v7.1)
