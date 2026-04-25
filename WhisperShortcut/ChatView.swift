@@ -416,13 +416,12 @@ class ChatViewModel: ObservableObject {
       let userMsg = ChatMessage(role: .user, content: content, attachedImageParts: attachedParts)
       appendMessage(userMsg, toSessionId: sessionId)
       var currentContents = buildContents()
+      let placeholderId = UUID()
+      var accumulated = ""
       do {
-        // Placeholder model message that we update as stream deltas arrive.
-        let placeholderId = UUID()
         let placeholder = ChatMessage(id: placeholderId, role: .model, content: "")
         appendMessage(placeholder, toSessionId: sessionId)
 
-        var accumulated = ""
         var finalSources: [GroundingSource] = []
         var finalSupports: [GroundingSupport] = []
 
@@ -515,6 +514,11 @@ class ChatViewModel: ObservableObject {
         }
       } catch is CancellationError {
         DebugLogger.log("CHAT: Send cancelled by user")
+        if accumulated.isEmpty {
+          await MainActor.run {
+            self.removeMessage(id: placeholderId, fromSessionId: sessionId)
+          }
+        }
       } catch {
         if sessionId == session.id { errorMessage = friendlyError(error) }
         DebugLogger.logError("CHAT: \(error.localizedDescription)")
@@ -748,6 +752,23 @@ class ChatViewModel: ObservableObject {
       messages = target.messages
     }
     refreshRecentSessions()
+  }
+
+  private func removeMessage(id: UUID, fromSessionId sessionId: UUID) {
+    let isCurrentSession = sessionId == session.id
+    var target: ChatSession
+    if isCurrentSession {
+      target = session
+    } else {
+      guard let s = store.session(by: sessionId) else { return }
+      target = s
+    }
+    target.messages.removeAll { $0.id == id }
+    store.save(target)
+    if isCurrentSession {
+      session = target
+      messages = target.messages
+    }
   }
 
   private func generateAITitle(sessionId: UUID) async {
