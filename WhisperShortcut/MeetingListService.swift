@@ -111,16 +111,20 @@ final class MeetingListService: ObservableObject {
     let newURL = dir.appendingPathComponent("\(newStem).txt")
     guard newURL != meeting.url else { return meeting }
     do {
-      if FileManager.default.fileExists(atPath: newURL.path) {
-        try FileManager.default.removeItem(at: newURL)
-      }
-      try FileManager.default.moveItem(at: meeting.url, to: newURL)
       let oldSummaryURL = Self.summaryURL(for: meeting)
       let newSummaryURL = newURL.deletingPathExtension().appendingPathExtension("summary.md")
+      if FileManager.default.fileExists(atPath: newURL.path) {
+        DebugLogger.logWarning("MEETING-LIBRARY: Rename target already exists: \(newURL.lastPathComponent)")
+        return nil
+      }
       if FileManager.default.fileExists(atPath: oldSummaryURL.path) {
         if FileManager.default.fileExists(atPath: newSummaryURL.path) {
-          try FileManager.default.removeItem(at: newSummaryURL)
+          DebugLogger.logWarning("MEETING-LIBRARY: Rename summary target already exists: \(newSummaryURL.lastPathComponent)")
+          return nil
         }
+      }
+      try FileManager.default.moveItem(at: meeting.url, to: newURL)
+      if FileManager.default.fileExists(atPath: oldSummaryURL.path) {
         try FileManager.default.moveItem(at: oldSummaryURL, to: newSummaryURL)
       }
       invalidateCache(for: meeting.url)

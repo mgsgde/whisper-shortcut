@@ -10,6 +10,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
   private(set) var accessToken: String?
   private var accessTokenExpiry: Date?
   private var pendingContinuation: CheckedContinuation<URL, Error>?
+  private var authSession: ASWebAuthenticationSession?
 
   private override init() {
     super.init()
@@ -39,6 +40,10 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
   // MARK: - Authorization
 
   func startAuthorization() async throws {
+    guard pendingContinuation == nil else {
+      throw OAuthError.authorizationInProgress
+    }
+
     let verifier = generateCodeVerifier()
     let challenge = codeChallengeS256(verifier: verifier)
 
@@ -63,25 +68,27 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
 
     let session = ASWebAuthenticationSession(url: authURL, callbackURLScheme: scheme) { [weak self] url, error in
       guard let self else { return }
-      if let error {
-        self.pendingContinuation?.resume(throwing: error)
-        self.pendingContinuation = nil
-        return
+      Task { @MainActor in
+        if let error {
+          self.finishAuthorization(with: .failure(error))
+          return
+        }
+        guard let url else {
+          self.finishAuthorization(with: .failure(OAuthError.noCallbackURL))
+          return
+        }
+        self.finishAuthorization(with: .success(url))
       }
-      guard let url else {
-        self.pendingContinuation?.resume(throwing: OAuthError.noCallbackURL)
-        self.pendingContinuation = nil
-        return
-      }
-      self.pendingContinuation?.resume(returning: url)
-      self.pendingContinuation = nil
     }
 
     session.presentationContextProvider = self
+    authSession = session
 
     callbackURL = try await withCheckedThrowingContinuation { continuation in
       self.pendingContinuation = continuation
-      session.start()
+      if !session.start() {
+        finishAuthorization(with: .failure(OAuthError.authorizationStartFailed))
+      }
     }
 
     guard let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
@@ -175,8 +182,19 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
   // MARK: - Redirect Handling
 
   func handleRedirect(url: URL) {
-    pendingContinuation?.resume(returning: url)
+    finishAuthorization(with: .success(url))
+  }
+
+  private func finishAuthorization(with result: Result<URL, Error>) {
+    guard let continuation = pendingContinuation else { return }
     pendingContinuation = nil
+    authSession = nil
+    switch result {
+    case .success(let url):
+      continuation.resume(returning: url)
+    case .failure(let error):
+      continuation.resume(throwing: error)
+    }
   }
 
   // MARK: - Helpers
@@ -220,6 +238,8 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
     case notConnected
     case refreshTokenRevoked
     case invalidResponse
+    case authorizationInProgress
+    case authorizationStartFailed
 
     var errorDescription: String? {
       switch self {
@@ -231,6 +251,8 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
       case .notConnected: return "Google is not connected. Connect it in Settings or use /connect-google."
       case .refreshTokenRevoked: return "Google access was revoked. Please connect again in Settings."
       case .invalidResponse: return "Invalid response from Google."
+      case .authorizationInProgress: return "Google authorization is already in progress."
+      case .authorizationStartFailed: return "Failed to start Google authorization."
       }
     }
   }

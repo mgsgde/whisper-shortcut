@@ -307,7 +307,7 @@ class SettingsViewModel: ObservableObject {
     case .toggleSettings:
       return name == "open settings"
     case .toggleChat:
-      return name == "open gemini"
+      return name == "open chat"
     default:
       return false
     }

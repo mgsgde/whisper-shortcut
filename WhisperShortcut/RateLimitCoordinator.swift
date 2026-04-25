@@ -30,8 +30,9 @@ actor RateLimitCoordinator {
 
     /// Wait if we're currently in a rate-limited period
     func waitIfNeeded() async {
-        let now = Date()
-        if pauseUntil > now {
+        while true {
+            let now = Date()
+            guard pauseUntil > now else { break }
             let waitTime = pauseUntil.timeIntervalSince(now)
             DebugLogger.log("\(logPrefix): Waiting \(String(format: "%.1f", waitTime))s before next request")
 
@@ -48,13 +49,13 @@ actor RateLimitCoordinator {
             }
 
             try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+        }
 
-            // Dismiss notification after wait (only once)
-            if notificationShown {
-                notificationShown = false
-                await MainActor.run {
-                    NotificationCenter.default.post(name: .rateLimitResolved, object: nil)
-                }
+        // Dismiss notification after all coordinated pauses have elapsed.
+        if notificationShown {
+            notificationShown = false
+            await MainActor.run {
+                NotificationCenter.default.post(name: .rateLimitResolved, object: nil)
             }
         }
     }

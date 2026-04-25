@@ -129,8 +129,11 @@ actor GoogleCalendarAPIClient {
       retryRequest.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
       let (retryData, retryResponse) = try await URLSession.shared.data(for: retryRequest)
 
-      guard let retryHTTP = retryResponse as? HTTPURLResponse, (200..<300).contains(retryHTTP.statusCode) else {
-        throw CalendarAPIError.requestFailed(httpResponse.statusCode)
+      guard let retryHTTP = retryResponse as? HTTPURLResponse else {
+        throw CalendarAPIError.invalidResponse
+      }
+      guard (200..<300).contains(retryHTTP.statusCode) else {
+        throw CalendarAPIError.requestFailed(retryHTTP.statusCode)
       }
       return retryData
     }

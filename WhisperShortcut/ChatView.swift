@@ -456,7 +456,7 @@ class ChatViewModel: ObservableObject {
               await MainActor.run {
                 self.updateStreamingMessage(
                   id: placeholderId, sessionId: sessionId,
-                  content: accumulated, sources: [], supports: [])
+                  content: accumulated, sources: [], supports: [], persist: false)
               }
             case .functionCall(let name, let args, let thoughtSignature):
               pendingCalls.append((name, args, thoughtSignature))
@@ -696,10 +696,11 @@ class ChatViewModel: ObservableObject {
   }
 
   /// Updates an existing model message in-place (used during streaming).
-  /// Persists to the store and, if it's the current session, refreshes the UI.
+  /// Refreshes the UI during streaming; persists only when requested to avoid
+  /// running full session-store normalization on every token.
   private func updateStreamingMessage(
     id: UUID, sessionId: UUID, content: String,
-    sources: [GroundingSource], supports: [GroundingSupport]
+    sources: [GroundingSource], supports: [GroundingSupport], persist: Bool = true
   ) {
     let isCurrentSession = sessionId == session.id
     var target: ChatSession
@@ -714,9 +715,9 @@ class ChatViewModel: ObservableObject {
     target.messages[idx].sources = sources
     target.messages[idx].groundingSupports = supports
     target.lastUpdated = Date()
-    // Persist throttled-ish: save on every update is fine for typical chat volumes;
-    // the alternative would be to save only on .finished, but crash recovery benefits from frequent saves.
-    store.save(target)
+    if persist {
+      store.save(target)
+    }
     if isCurrentSession {
       session = target
       messages = target.messages

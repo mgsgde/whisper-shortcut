@@ -39,7 +39,7 @@ struct SystemPromptSectionEditor: View {
         }
         .buttonStyle(.bordered)
         .disabled(!hasChanges)
-        .help("Discard unsaved changes and reload from file")
+        .help("Discard unsaved changes and restore the last saved text")
         .pointerCursorOnHover()
 
         Button(action: openFile) {

@@ -30,8 +30,9 @@ actor GoogleTasksAPIClient {
 
   func listTasks(taskListId: String = "@default", maxResults: Int = 20, showCompleted: Bool = false) async throws -> [[String: Any]] {
     let cappedMax = min(max(maxResults, 1), maxResultsCap)
+    let encodedList = encodedPathComponent(taskListId)
 
-    var components = URLComponents(string: "\(baseURL)/lists/\(taskListId)/tasks")!
+    var components = URLComponents(string: "\(baseURL)/lists/\(encodedList)/tasks")!
     components.queryItems = [
       URLQueryItem(name: "maxResults", value: String(cappedMax)),
       URLQueryItem(name: "showCompleted", value: String(showCompleted)),
@@ -65,7 +66,8 @@ actor GoogleTasksAPIClient {
   // MARK: - Create Task
 
   func createTask(title: String, notes: String? = nil, due: String? = nil, taskListId: String = "@default") async throws -> [String: Any] {
-    let url = URL(string: "\(baseURL)/lists/\(taskListId)/tasks")!
+    let encodedList = encodedPathComponent(taskListId)
+    let url = URL(string: "\(baseURL)/lists/\(encodedList)/tasks")!
 
     var body: [String: Any] = ["title": title]
     if let notes { body["notes"] = notes }
@@ -92,8 +94,8 @@ actor GoogleTasksAPIClient {
   // MARK: - Complete Task
 
   func completeTask(taskId: String, taskListId: String = "@default") async throws -> [String: Any] {
-    let encodedList = taskListId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskListId
-    let encodedTask = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
+    let encodedList = encodedPathComponent(taskListId)
+    let encodedTask = encodedPathComponent(taskId)
     let url = URL(string: "\(baseURL)/lists/\(encodedList)/tasks/\(encodedTask)")!
 
     let body: [String: Any] = ["status": "completed"]
@@ -110,8 +112,8 @@ actor GoogleTasksAPIClient {
   // MARK: - Delete Task
 
   func deleteTask(taskId: String, taskListId: String = "@default") async throws -> [String: Any] {
-    let encodedList = taskListId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskListId
-    let encodedTask = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
+    let encodedList = encodedPathComponent(taskListId)
+    let encodedTask = encodedPathComponent(taskId)
     let url = URL(string: "\(baseURL)/lists/\(encodedList)/tasks/\(encodedTask)")!
     _ = try await authorizedRequest(url: url, httpMethod: "DELETE")
     return ["ok": true, "task_id": taskId, "deleted": true]
@@ -144,8 +146,11 @@ actor GoogleTasksAPIClient {
       retryRequest.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
       let (retryData, retryResponse) = try await URLSession.shared.data(for: retryRequest)
 
-      guard let retryHTTP = retryResponse as? HTTPURLResponse, (200..<300).contains(retryHTTP.statusCode) else {
-        throw TasksAPIError.requestFailed(httpResponse.statusCode)
+      guard let retryHTTP = retryResponse as? HTTPURLResponse else {
+        throw TasksAPIError.invalidResponse
+      }
+      guard (200..<300).contains(retryHTTP.statusCode) else {
+        throw TasksAPIError.requestFailed(retryHTTP.statusCode)
       }
       return retryData
     }
@@ -161,6 +166,12 @@ actor GoogleTasksAPIClient {
     }
 
     return data
+  }
+
+  private func encodedPathComponent(_ value: String) -> String {
+    var allowed = CharacterSet.urlPathAllowed
+    allowed.remove(charactersIn: "/?#[]@!$&'()*+,;=")
+    return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
   }
 
   // MARK: - Validation

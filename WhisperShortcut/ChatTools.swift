@@ -258,6 +258,27 @@ enum ChatToolRegistry {
     return functionDeclarations
   }
 
+  private static func intArgument(_ args: [String: Any], _ key: String, default defaultValue: Int) -> Int {
+    if let value = args[key] as? Int { return value }
+    if let value = args[key] as? Double { return Int(value) }
+    if let value = args[key] as? NSNumber { return value.intValue }
+    if let value = args[key] as? String, let parsed = Int(value) { return parsed }
+    return defaultValue
+  }
+
+  private static func boolArgument(_ args: [String: Any], _ key: String, default defaultValue: Bool) -> Bool {
+    if let value = args[key] as? Bool { return value }
+    if let value = args[key] as? NSNumber { return value.boolValue }
+    if let value = args[key] as? String {
+      switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+      case "true", "yes", "1": return true
+      case "false", "no", "0": return false
+      default: break
+      }
+    }
+    return defaultValue
+  }
+
   @MainActor
   static func execute(name: String, args: [String: Any]) async -> [String: Any] {
     DebugLogger.log("GEMINI-CHAT-TOOL: execute name=\(name)")
@@ -290,8 +311,8 @@ enum ChatToolRegistry {
       guard GoogleAccountOAuthService.shared.isConnected else {
         return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
       }
-      let maxResults = args["max_results"] as? Int ?? 10
-      let hoursAhead = args["hours_ahead"] as? Int ?? 168
+      let maxResults = intArgument(args, "max_results", default: 10)
+      let hoursAhead = intArgument(args, "hours_ahead", default: 168)
       do {
         let events = try await GoogleCalendarAPIClient.shared.listUpcomingEvents(
           maxResults: maxResults, hoursAhead: hoursAhead)
@@ -358,8 +379,8 @@ enum ChatToolRegistry {
         return ["error": "Google account is not connected. Connect it in Settings."]
       }
       let taskListId = args["task_list_id"] as? String ?? "@default"
-      let maxResults = args["max_results"] as? Int ?? 20
-      let showCompleted = args["show_completed"] as? Bool ?? false
+      let maxResults = intArgument(args, "max_results", default: 20)
+      let showCompleted = boolArgument(args, "show_completed", default: false)
       do {
         let tasks = try await GoogleTasksAPIClient.shared.listTasks(
           taskListId: taskListId, maxResults: maxResults, showCompleted: showCompleted)
@@ -427,7 +448,7 @@ enum ChatToolRegistry {
         return ["error": "Google account is not connected. Connect it in Settings."]
       }
       let query = args["query"] as? String ?? ""
-      let maxResults = args["max_results"] as? Int ?? 10
+      let maxResults = intArgument(args, "max_results", default: 10)
       do {
         let messages = try await GmailAPIClient.shared.searchMessages(
           query: query, maxResults: maxResults)
