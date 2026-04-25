@@ -75,13 +75,13 @@ class ContextDerivation {
     let currentPromptModeSystemPrompt = store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentDictationPrompt = store.loadDictationPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
     let currentWhisperGlossary = store.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
-    let currentGeminiChatPrompt = store.loadSection(.chat)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let currentChatPrompt = store.loadSection(.chat)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
     let loaded = try loadAndSampleLogs(focus: focus,
                                        currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
                                        currentDictationPrompt: currentDictationPrompt,
                                        currentWhisperGlossary: currentWhisperGlossary,
-                                       currentGeminiChatPrompt: currentGeminiChatPrompt)
+                                       currentChatPrompt: currentChatPrompt)
 
     let hasPrimary = !loaded.primaryText.isEmpty
     if hasPrimary {
@@ -121,7 +121,7 @@ class ContextDerivation {
     currentPromptModeSystemPrompt: String?,
     currentDictationPrompt: String?,
     currentWhisperGlossary: String?,
-    currentGeminiChatPrompt: String? = nil
+    currentChatPrompt: String? = nil
   ) throws -> FocusedLoadResult {
     let maxPerMode = UserDefaults.standard.object(forKey: UserDefaultsKeys.contextMaxEntriesPerMode) as? Int
       ?? AppConstants.contextDefaultMaxEntriesPerMode
@@ -154,7 +154,7 @@ class ContextDerivation {
       allEntries.sort { $0.ts < $1.ts }
       let (primaryText, primaryEntryCount, primaryCharCount) = buildAggregatedText(from: allEntries, maxChars: maxChars)
       var secondaryParts: [String] = []
-      if let p = currentGeminiChatPrompt, !p.isEmpty {
+      if let p = currentChatPrompt, !p.isEmpty {
         secondaryParts.append("Current Chat system prompt (refine based on new data):\n\(p)")
       }
       let secondaryText = secondaryParts.joined(separator: "\n\n---\n\n")
