@@ -54,8 +54,15 @@ final class MeetingListService: ObservableObject {
       return
     }
 
-    let files = (try? FileManager.default.contentsOfDirectory(
-      at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: .skipsHiddenFiles)) ?? []
+    let files: [URL]
+    do {
+      files = try FileManager.default.contentsOfDirectory(
+        at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: .skipsHiddenFiles)
+    } catch {
+      DebugLogger.logError("MEETING-LIBRARY: Failed to read meetings directory: \(error.localizedDescription)")
+      meetings = []
+      return
+    }
 
     var result: [MeetingFileInfo] = []
     for fileURL in files {

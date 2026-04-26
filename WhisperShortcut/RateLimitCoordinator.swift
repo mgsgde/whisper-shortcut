@@ -48,7 +48,11 @@ actor RateLimitCoordinator {
                 }
             }
 
-            try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+            do {
+                try await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+            } catch {
+                break
+            }
         }
 
         // Dismiss notification after all coordinated pauses have elapsed.
@@ -71,8 +75,9 @@ actor RateLimitCoordinator {
             delay = retryAfter + 2.0
             DebugLogger.log("\(logPrefix): API requested \(retryAfter)s delay, using \(delay)s")
         } else {
-            // Exponential backoff: 30s, 60s, 120s, capped at 120s
-            delay = min(30.0 * pow(2.0, Double(consecutiveRateLimits - 1)), 120.0)
+            let initialBackoff: TimeInterval = 30
+            let maxBackoff: TimeInterval = 120
+            delay = min(initialBackoff * pow(2.0, Double(consecutiveRateLimits - 1)), maxBackoff)
             DebugLogger.log("\(logPrefix): No API delay, using exponential backoff: \(delay)s")
         }
 

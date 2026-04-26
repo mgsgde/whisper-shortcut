@@ -28,13 +28,17 @@ actor GmailAPIClient {
       return []
     }
 
-    var results: [[String: Any]] = []
     let candidates = Array(messages.prefix(cappedMax))
-    for msg in candidates {
-      guard let id = msg["id"] as? String else { continue }
-      if let detail = try? await getMessageSummary(messageId: id) {
-        results.append(detail)
+    let results: [[String: Any]] = await withTaskGroup(of: (Int, [String: Any]?).self) { group in
+      for (i, msg) in candidates.enumerated() {
+        guard let id = msg["id"] as? String else { continue }
+        group.addTask { (i, try? await self.getMessageSummary(messageId: id)) }
       }
+      var indexed: [(Int, [String: Any])] = []
+      for await (i, detail) in group {
+        if let detail { indexed.append((i, detail)) }
+      }
+      return indexed.sorted { $0.0 < $1.0 }.map { $0.1 }
     }
     let skipped = candidates.count - results.count
     if skipped > 0 {

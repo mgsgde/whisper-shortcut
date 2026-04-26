@@ -40,26 +40,8 @@ class SettingsViewModel: ObservableObject {
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
-    let promptModelDefault = SettingsDefaults.selectedPromptModel
-
-    // Load Prompt model preference (for Dictate Prompt); migrate removed 2.0 raw values to 2.5 equivalents.
-    if let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) {
-      let normalized = PromptModel.migrateLegacyPromptRawValue(savedModelString)
-      if normalized != savedModelString {
-        UserDefaults.standard.set(normalized, forKey: UserDefaultsKeys.selectedPromptModel)
-      }
-      if let savedModel = PromptModel(rawValue: normalized) {
-        let migrated = PromptModel.migrateIfDeprecated(savedModel)
-        data.selectedPromptModel = migrated
-        if migrated != savedModel {
-          UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
-        }
-      } else {
-        data.selectedPromptModel = promptModelDefault
-      }
-    } else {
-      data.selectedPromptModel = promptModelDefault
-    }
+    data.selectedPromptModel = Self.loadPromptModel(
+      key: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
 
     // System prompts are stored in UserContext/system-prompts.md (see SystemPromptsStore); not loaded from UserDefaults.
 
@@ -72,43 +54,10 @@ class SettingsViewModel: ObservableObject {
       data.whisperLanguage = SettingsDefaults.whisperLanguage
     }
 
-    // Load chat window model
-    if let savedChatModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedChatModel) {
-      let normalized = PromptModel.migrateLegacyPromptRawValue(savedChatModelString)
-      if normalized != savedChatModelString {
-        UserDefaults.standard.set(normalized, forKey: UserDefaultsKeys.selectedChatModel)
-      }
-      if let savedChatModel = PromptModel(rawValue: normalized) {
-        let migrated = PromptModel.migrateIfDeprecated(savedChatModel)
-        data.selectedChatModel = migrated
-        if migrated != savedChatModel {
-          UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
-        }
-      } else {
-        data.selectedChatModel = SettingsDefaults.selectedChatModel
-      }
-    } else {
-      data.selectedChatModel = SettingsDefaults.selectedChatModel
-    }
-
-    let improvementModelDefault = SettingsDefaults.selectedImprovementModel
-    if let savedImprovementModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel) {
-      let normalized = PromptModel.migrateLegacyPromptRawValue(savedImprovementModelString)
-      if normalized != savedImprovementModelString {
-        UserDefaults.standard.set(normalized, forKey: UserDefaultsKeys.selectedImprovementModel)
-      }
-      if let savedImprovementModel = PromptModel(rawValue: normalized) {
-        let migrated = PromptModel.migrateIfDeprecated(savedImprovementModel)
-        data.selectedImprovementModel = migrated
-        if migrated != savedImprovementModel {
-          UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
-        }
-      } else {
-        data.selectedImprovementModel = improvementModelDefault
-      }
-    } else {
-      data.selectedImprovementModel = improvementModelDefault
-    }
+    data.selectedChatModel = Self.loadPromptModel(
+      key: UserDefaultsKeys.selectedChatModel, default: SettingsDefaults.selectedChatModel)
+    data.selectedImprovementModel = Self.loadPromptModel(
+      key: UserDefaultsKeys.selectedImprovementModel, default: SettingsDefaults.selectedImprovementModel)
 
     // Load popup notifications setting
     let showPopupNotificationsExists =
@@ -313,6 +262,22 @@ class SettingsViewModel: ObservableObject {
     }
   }
 
+  // MARK: - Model Migration
+
+  private static func loadPromptModel(key: String, default fallback: PromptModel) -> PromptModel {
+    guard let raw = UserDefaults.standard.string(forKey: key) else { return fallback }
+    let normalized = PromptModel.migrateLegacyPromptRawValue(raw)
+    if normalized != raw {
+      UserDefaults.standard.set(normalized, forKey: key)
+    }
+    guard let model = PromptModel(rawValue: normalized) else { return fallback }
+    let migrated = PromptModel.migrateIfDeprecated(model)
+    if migrated != model {
+      UserDefaults.standard.set(migrated.rawValue, forKey: key)
+    }
+    return migrated
+  }
+
   // MARK: - Toggle Shortcut Parsing
   private func parseShortcuts() -> [String: ShortcutDefinition?] {
     let trim = CharacterSet.whitespacesAndNewlines
@@ -342,7 +307,9 @@ class SettingsViewModel: ObservableObject {
     }
 
     // Save Google API key
-    _ = KeychainManager.shared.saveGoogleAPIKey(data.googleAPIKey)
+    if !KeychainManager.shared.saveGoogleAPIKey(data.googleAPIKey) {
+      DebugLogger.logError("SETTINGS: Failed to save Google API key to Keychain")
+    }
 
     // Save model preferences
     UserDefaults.standard.set(
@@ -392,19 +359,19 @@ class SettingsViewModel: ObservableObject {
     let shortcuts = parseShortcuts()
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     let newConfig = ShortcutConfig(
-      startRecording: shortcuts["toggle dictation"]!
+      startRecording: shortcuts["toggle dictation"].flatMap { $0 }
         ?? ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
-      stopRecording: shortcuts["toggle dictation"]!
+      stopRecording: shortcuts["toggle dictation"].flatMap { $0 }
         ?? ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
-      startPrompting: shortcuts["toggle prompting"]!
+      startPrompting: shortcuts["toggle prompting"].flatMap { $0 }
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
-      stopPrompting: shortcuts["toggle prompting"]!
+      stopPrompting: shortcuts["toggle prompting"].flatMap { $0 }
         ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
       toggleMeeting: currentConfig.toggleMeeting,
       stopMeeting: currentConfig.stopMeeting,
-      openSettings: shortcuts["open settings"]!
+      openSettings: shortcuts["open settings"].flatMap { $0 }
         ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
-      openChat: shortcuts["open chat"]!
+      openChat: shortcuts["open chat"].flatMap { $0 }
         ?? ShortcutDefinition(key: .eight, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
