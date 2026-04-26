@@ -1,4 +1,4 @@
-# WhisperShortcut 7.2
+# WhisperShortcut 7.3
 
 ## Installation
 
@@ -6,15 +6,15 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-### Chat sidebar
+### Build and release reliability
 
-- **Date groups**: The chat sidebar now groups sessions by date; each group can be expanded or collapsed so you can scan history faster with less vertical clutter.
+- **Shared app metadata**: Both the standard and App Store targets now use the same `Info.plist`, keeping version numbers, bundle metadata, and Google OAuth callback configuration aligned.
+- **Release signing fix**: Removed a conflicting manually specified provisioning profile from the automatically signed release configuration, so GitHub release builds and App Store builds can both compile cleanly.
 
-### Build and dependencies
+### Release tooling
 
-- **Swift package resolution**: Normalized package resolution after dependency merges for more predictable, reproducible builds.
-- **Dependency updates**: Bumps for Swift Collections, Swift Jinja, Swift Argument Parser, Hugging Face Swift Transformers, and Google GTM Session Fetcher (via automated dependency PRs).
+- **Version command cleanup**: The release helper command now updates the single shared `WhisperShortcut/Info.plist`.
 
 ## Full changelog
 
-[Compare v7.1…v7.2](https://github.com/mgsgde/whisper-shortcut/compare/v7.1...v7.2)
+[Compare v7.2…v7.3](https://github.com/mgsgde/whisper-shortcut/compare/v7.2...v7.3)
