@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash /Users/mgsgde/whisper-shortcut-backend/whisper-shortcut/scripts/logs.sh -t 30m)",
+      "Bash(ps:*)",
+      "Bash(grep -v \"^$\")",
+      "Bash(bash scripts/rebuild-and-restart.sh 2>&1)",
+      "Bash(python3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(grep -r \"code.*block\\\\|backtick\\\\|\\\\`\\\\`\\\\`\" WhisperShortcut --include=\"*.swift\")",
+      "Bash(grep -ri \"latex\\\\|mathjax\\\\|katex\\\\|math\\\\|formula\\\\|\\\\\\\\|$\\\\|displaymath\" /Users/mgsgde/whisper-shortcut-backend/whisper-shortcut/WhisperShortcut --include=\"*.swift\")",
+      "Bash(grep:*)",
+      "Bash(ls /Users/mgsgde/whisper-shortcut-backend/whisper-shortcut/WhisperShortcut/*.swift)",
+      "Bash(/usr/bin/python3 -c \"import matplotlib; print\\('matplotlib', matplotlib.__version__\\)\" 2>&1)",
+      "Bash(bash /Users/mgsgde/whisper-shortcut-backend/whisper-shortcut/scripts/logs.sh -t 5m -f 'PYTHON-CHART')",
+      "Bash(swift:*)",
+      "Bash(bash scripts/logs.sh -t 2m -f 'PYTHON-CHART')",
+      "Bash(/usr/bin/python3 -c \"import sys; print\\(sys.executable\\)\")",
+      "Read(//Library/Frameworks/Python.framework/Versions/**)",
+      "Read(//Library/Frameworks/Python.framework/Versions/3.11/bin/**)",
+      "Read(//opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/bin/**)",
+      "Bash(bash scripts/logs.sh -t 1m -f 'GEMINI-CHAT')",
+      "Bash(bash scripts/logs.sh -t 1m -f 'FAILED_PRECONDITION')",
+      "Bash(ln -s ../.cursor/rules rules)",
+      "Bash(ln -s ../.cursor/commands commands)",
+      "Bash(mkdir -p skills)",
+      "Bash(ln -s ../../.cursor/skills/gemini-model-docs skills/gemini-model-docs)",
+      "Bash(ln -s ../../.cursor/skills/gemini-system-prompt-best-practices skills/gemini-system-prompt-best-practices)"
+    ]
+  }
+}

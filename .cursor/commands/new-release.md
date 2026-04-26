@@ -2,8 +2,8 @@
 
 ## Task
 
-1. **Bump version**: Increment CFBundleShortVersionString in Info.plist by 1
-2. **Bump bundle version**: Increment CFBundleVersion in Info.plist by 1
+1. **Bump version**: Increment CFBundleShortVersionString in `WhisperShortcut/Info.plist`
+2. **Bump bundle version**: Increment CFBundleVersion in `WhisperShortcut/Info.plist`
 3. **Create changelog**: Summarize changes since the last "update to version" commit
 4. **App Store description**: 1–3 short bullet points or 1–2 sentences for App Store
 5. **Create release notes**: Detailed release notes with all changes for GitHub Release
@@ -11,9 +11,9 @@
 
 ## Steps
 
-1. Read Info.plist and determine current versions
+1. Read `WhisperShortcut/Info.plist` and determine current versions
 2. **Get repository URL**: Extract git remote URL from `git remote get-url origin` and convert from SSH format (`git@github.com:user/repo.git`) to HTTPS format (`https://github.com/user/repo`)
-3. Increment versions by 1 and save
+3. Increment versions by 1 and save `WhisperShortcut/Info.plist`
 4. Analyze git log since last "update to version" commit
 5. Turn changes into App Store–formatted description (1–3 short bullet points)
 6. Create release notes (more detailed than App Store description, with all changes for GitHub Release) – **IMPORTANT**: Use the resolved repository URL for all links (releases link and changelog link); never use placeholders like `your-repo`

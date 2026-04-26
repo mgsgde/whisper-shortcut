@@ -7,7 +7,7 @@
         <key>CFBundleDisplayName</key>
         <string>WhisperShortcut</string>
         <key>CFBundleExecutable</key>
-        <string>WhisperShortcut</string>
+        <string>$(EXECUTABLE_NAME)</string>
         <key>CFBundleIdentifier</key>
         <string>com.magnusgoedde.whispershortcut</string>
         <key>CFBundleInfoDictionaryVersion</key>
