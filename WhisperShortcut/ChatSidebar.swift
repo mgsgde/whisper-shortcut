@@ -9,6 +9,7 @@ struct ChatSidebar: View {
   @State private var hoveredRowId: UUID? = nil
   @State private var renamingSessionId: UUID? = nil
   @State private var renameDraft: String = ""
+  @State private var collapsedGroups: Set<DateGroup> = []
 
   static let sidebarWidth: CGFloat = 220
 
@@ -68,9 +69,11 @@ struct ChatSidebar: View {
           }
 
           ForEach(Array(grouped.enumerated()), id: \.offset) { index, pair in
-            sectionHeader(pair.0.label, showDivider: !pinned.isEmpty || index > 0)
-            ForEach(pair.1, id: \.id) { session in
-              sidebarRow(session: session)
+            collapsibleSectionHeader(pair.0, showDivider: !pinned.isEmpty || index > 0)
+            if !collapsedGroups.contains(pair.0) {
+              ForEach(pair.1, id: \.id) { session in
+                sidebarRow(session: session)
+              }
             }
           }
         }
@@ -126,6 +129,42 @@ struct ChatSidebar: View {
         .padding(.top, showDivider ? 12 : 14)
         .padding(.bottom, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  private func collapsibleSectionHeader(_ group: DateGroup, showDivider: Bool = false) -> some View {
+    let isCollapsed = collapsedGroups.contains(group)
+    return VStack(spacing: 0) {
+      if showDivider {
+        Divider()
+          .padding(.horizontal, 10)
+          .padding(.top, 12)
+      }
+      HStack(spacing: 4) {
+        Text(group.label.uppercased())
+          .font(.system(size: 9, weight: .bold, design: .default))
+          .tracking(1.2)
+          .foregroundColor(ChatTheme.secondaryText.opacity(0.8))
+        Image(systemName: "chevron.right")
+          .font(.system(size: 7, weight: .bold))
+          .foregroundColor(ChatTheme.secondaryText.opacity(0.5))
+          .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+        Spacer()
+      }
+      .padding(.leading, 10)
+      .padding(.trailing, 12)
+      .padding(.top, showDivider ? 12 : 14)
+      .padding(.bottom, 6)
+      .contentShape(Rectangle())
+      .onTapGesture {
+        withAnimation(.easeInOut(duration: 0.15)) {
+          if isCollapsed {
+            collapsedGroups.remove(group)
+          } else {
+            collapsedGroups.insert(group)
+          }
+        }
+      }
     }
   }
 
