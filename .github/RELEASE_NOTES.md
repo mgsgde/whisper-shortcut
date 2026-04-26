@@ -1,4 +1,4 @@
-# WhisperShortcut 7.1
+# WhisperShortcut 7.2
 
 ## Installation
 
@@ -6,22 +6,15 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-### Chat reliability and model integration
+### Chat sidebar
 
-- **Streaming reliability**: Fixed an issue where empty placeholder chat messages could remain after cancellation.
-- **Integration hardening**: Improved chat tool argument handling and Google API retry/error behavior for more robust calendar, tasks, and Gmail execution.
-- **OAuth stability**: Improved Google auth session lifecycle handling and callback flow to avoid edge-case authorization failures.
+- **Date groups**: The chat sidebar now groups sessions by date; each group can be expanded or collapsed so you can scan history faster with less vertical clutter.
 
-### Naming and settings polish
+### Build and dependencies
 
-- **Provider-neutral naming**: Continued cleanup from Gemini-prefixed identifiers to Chat/provider-neutral naming.
-- **Settings UX**: API key fields are masked by default; chat sidebar defaults are improved for first-run clarity.
-
-### Meeting and rate-limit edge cases
-
-- **Meeting safety**: Renaming meetings now avoids destructive overwrite behavior when target files already exist.
-- **Rate-limit coordination**: Waiting logic now better respects extended coordinated backoff windows.
+- **Swift package resolution**: Normalized package resolution after dependency merges for more predictable, reproducible builds.
+- **Dependency updates**: Bumps for Swift Collections, Swift Jinja, Swift Argument Parser, Hugging Face Swift Transformers, and Google GTM Session Fetcher (via automated dependency PRs).
 
 ## Full changelog
 
-[Compare v7.0.0…v7.1](https://github.com/mgsgde/whisper-shortcut/compare/v7.0.0...v7.1)
+[Compare v7.1…v7.2](https://github.com/mgsgde/whisper-shortcut/compare/v7.1...v7.2)
