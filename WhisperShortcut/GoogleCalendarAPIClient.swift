@@ -87,6 +87,14 @@ actor GoogleCalendarAPIClient {
     if let id = json["id"] as? String { result["event_id"] = id }
     if let htmlLink = json["htmlLink"] as? String { result["html_link"] = htmlLink }
     if let summary = json["summary"] as? String { result["summary"] = summary }
+    if let start = json["start"] as? [String: Any], let startDT = start["dateTime"] as? String {
+      result["start"] = startDT
+    }
+    if let end = json["end"] as? [String: Any], let endDT = end["dateTime"] as? String {
+      result["end"] = endDT
+    }
+    if let location = json["location"] as? String { result["location"] = location }
+    if let description = json["description"] as? String { result["description"] = description }
     DebugLogger.logSuccess("GOOGLE-CALENDAR: created event id=\(result["event_id"] ?? "?")")
     return result
   }

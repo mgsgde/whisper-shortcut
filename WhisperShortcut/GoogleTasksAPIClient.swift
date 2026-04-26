@@ -88,6 +88,8 @@ actor GoogleTasksAPIClient {
     var result: [String: Any] = ["ok": true]
     if let id = json["id"] as? String { result["task_id"] = id }
     if let title = json["title"] as? String { result["title"] = title }
+    if let notes = json["notes"] as? String { result["notes"] = notes }
+    if let due = json["due"] as? String { result["due"] = due }
     return result
   }
 
