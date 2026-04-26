@@ -77,6 +77,7 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PP_UUID.provisionprofile
 
+          echo "PROVISIONING_PROFILE_SPECIFIER=$PP_NAME" >> $GITHUB_ENV
           echo "Installed provisioning profile: $PP_NAME ($PP_UUID)"
 
       - name: Build and archive
@@ -88,6 +89,7 @@ jobs:
             -archivePath $RUNNER_TEMP/WhisperShortcut.xcarchive \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
             DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }}
 
       - name: Export archive
