@@ -347,11 +347,18 @@ class ChatViewModel: ObservableObject {
       errorMessage = "Only \(remaining) of \(panel.urls.count) files attached (limit: \(Self.maxFileAttachments))."
     }
 
+    var failedNames: [String] = []
     for url in urls {
-      guard let data = try? Data(contentsOf: url) else { continue }
+      guard let data = try? Data(contentsOf: url) else {
+        failedNames.append(url.lastPathComponent)
+        continue
+      }
       let mimeType = Self.mimeType(for: url)
       pendingFileAttachments.append(PendingFile(data: data, mimeType: mimeType, filename: url.lastPathComponent))
       DebugLogger.log("GEMINI-CHAT: File attached: \(url.lastPathComponent) (\(mimeType), \(data.count) bytes)")
+    }
+    if !failedNames.isEmpty {
+      errorMessage = "Could not read: \(failedNames.joined(separator: ", "))"
     }
   }
 
@@ -397,21 +404,10 @@ class ChatViewModel: ObservableObject {
         Task { @MainActor in self.processNextQueued() }
       }
       let selectedModel = Self.openChatModel
+      guard await validateCredential(for: selectedModel) else { return }
+
       let provider = LLMProviderFactory.provider(for: selectedModel)
       let model = selectedModel.rawValue
-
-      // Validate credential: Grok needs xAI key, Gemini needs Google credential.
-      if selectedModel.provider == .grok {
-        guard KeychainManager.shared.hasValidXAIAPIKey() else {
-          errorMessage = "Add your xAI API key in Settings to use Grok models."
-          return
-        }
-      } else {
-        guard await GeminiCredentialProvider.shared.getCredential() != nil else {
-          errorMessage = "Add your Google API key in Settings or sign in with Google to use Chat."
-          return
-        }
-      }
 
       let userMsg = ChatMessage(role: .user, content: content, attachedImageParts: attachedParts)
       appendMessage(userMsg, toSessionId: sessionId)
@@ -424,21 +420,10 @@ class ChatViewModel: ObservableObject {
 
         var finalSources: [GroundingSource] = []
         var finalSupports: [GroundingSupport] = []
-
-        // Convert tool declarations to provider-agnostic format
-        let calendarConnected = await MainActor.run { GoogleAccountOAuthService.shared.isConnected }
-        let tools = ChatToolRegistry.allDeclarations(calendarConnected: calendarConnected).compactMap { decl -> LLMToolDeclaration? in
-          guard let name = decl["name"] as? String,
-                let desc = decl["description"] as? String,
-                let params = decl["parameters"] as? [String: Any] else { return nil }
-          return LLMToolDeclaration(name: name, description: desc, parameters: params)
-        }
-
-        // Function-call loop: if the model calls a local tool we execute it,
-        // append the call + response turns to `currentContents`, and re-stream.
-        // Hard cap to prevent runaway tool loops.
+        let tools = await buildToolDeclarations()
         let maxToolRounds = 5
         let useGrounding = selectedModel.supportsGrounding
+
         toolLoop: for round in 0..<(maxToolRounds + 1) {
           var pendingCalls: [(name: String, args: [String: Any], thoughtSignature: String?)] = []
           var sawFinished = false
@@ -466,42 +451,16 @@ class ChatViewModel: ObservableObject {
               sawFinished = true
             }
           }
-          if pendingCalls.isEmpty {
-            break toolLoop
-          }
+          if pendingCalls.isEmpty { break toolLoop }
           if round == maxToolRounds {
             DebugLogger.logWarning("CHAT: tool loop exceeded \(maxToolRounds) rounds — stopping")
             break toolLoop
           }
           _ = sawFinished
-          // Append model turn with the functionCall parts, then a user turn with
-          // matching functionResponse parts. This format is understood by both
-          // Gemini (natively) and Grok (via GrokChatProvider.convertContentsToMessages).
-          let callParts: [[String: Any]] = pendingCalls.map { call in
-            var part: [String: Any] = [
-              "functionCall": ["name": call.name, "args": call.args]
-            ]
-            if let sig = call.thoughtSignature {
-              part["thoughtSignature"] = sig
-            }
-            return part
-          }
-          currentContents.append(["role": "model", "parts": callParts])
-          var responseParts: [[String: Any]] = []
-          for call in pendingCalls {
-            let result = await ChatToolRegistry.execute(name: call.name, args: call.args)
-            responseParts.append([
-              "functionResponse": [
-                "name": call.name,
-                "response": result,
-              ]
-            ])
-          }
-          currentContents.append(["role": "user", "parts": responseParts])
-          DebugLogger.log("CHAT: executed \(pendingCalls.count) tool call(s), continuing stream")
+          let turns = await executeToolCalls(pendingCalls)
+          currentContents.append(contentsOf: turns)
         }
 
-        // Finalize placeholder with grounding metadata.
         await MainActor.run {
           self.updateStreamingMessage(
             id: placeholderId, sessionId: sessionId,
@@ -525,6 +484,51 @@ class ChatViewModel: ObservableObject {
       }
     }
     sendTasks[sessionId] = task
+  }
+
+  private func validateCredential(for model: PromptModel) async -> Bool {
+    if model.provider == .grok {
+      guard KeychainManager.shared.hasValidXAIAPIKey() else {
+        errorMessage = "Add your xAI API key in Settings to use Grok models."
+        return false
+      }
+    } else {
+      guard await GeminiCredentialProvider.shared.getCredential() != nil else {
+        errorMessage = "Add your Google API key in Settings or sign in with Google to use Chat."
+        return false
+      }
+    }
+    return true
+  }
+
+  private func buildToolDeclarations() async -> [LLMToolDeclaration] {
+    let calendarConnected = await MainActor.run { GoogleAccountOAuthService.shared.isConnected }
+    return ChatToolRegistry.allDeclarations(calendarConnected: calendarConnected).compactMap { decl in
+      guard let name = decl["name"] as? String,
+            let desc = decl["description"] as? String,
+            let params = decl["parameters"] as? [String: Any] else { return nil }
+      return LLMToolDeclaration(name: name, description: desc, parameters: params)
+    }
+  }
+
+  private func executeToolCalls(
+    _ calls: [(name: String, args: [String: Any], thoughtSignature: String?)]
+  ) async -> [[String: Any]] {
+    let callParts: [[String: Any]] = calls.map { call in
+      var part: [String: Any] = ["functionCall": ["name": call.name, "args": call.args]]
+      if let sig = call.thoughtSignature { part["thoughtSignature"] = sig }
+      return part
+    }
+    var responseParts: [[String: Any]] = []
+    for call in calls {
+      let result = await ChatToolRegistry.execute(name: call.name, args: call.args)
+      responseParts.append(["functionResponse": ["name": call.name, "response": result]])
+    }
+    DebugLogger.log("CHAT: executed \(calls.count) tool call(s), continuing stream")
+    return [
+      ["role": "model", "parts": callParts],
+      ["role": "user", "parts": responseParts],
+    ]
   }
 
   /// Auto-processes the next queued message once the current one finishes.
@@ -710,7 +714,14 @@ class ChatViewModel: ObservableObject {
       guard let s = store.session(by: sessionId) else { return }
       target = s
     }
-    guard let idx = target.messages.firstIndex(where: { $0.id == id }) else { return }
+    let idx: Int
+    if let last = target.messages.indices.last, target.messages[last].id == id {
+      idx = last
+    } else if let found = target.messages.firstIndex(where: { $0.id == id }) {
+      idx = found
+    } else {
+      return
+    }
     target.messages[idx].content = content
     target.messages[idx].sources = sources
     target.messages[idx].groundingSupports = supports

@@ -17,7 +17,9 @@ actor GoogleCalendarAPIClient {
     let timeMin = ISO8601DateFormatter().string(from: now)
     let timeMax = ISO8601DateFormatter().string(from: future)
 
-    var components = URLComponents(string: "\(baseURL)/calendars/primary/events")!
+    guard var components = URLComponents(string: "\(baseURL)/calendars/primary/events") else {
+      throw CalendarAPIError.invalidResponse
+    }
     components.queryItems = [
       URLQueryItem(name: "maxResults", value: String(cappedMax)),
       URLQueryItem(name: "timeMin", value: timeMin),
@@ -43,13 +45,16 @@ actor GoogleCalendarAPIClient {
       if let summary = item["summary"] as? String { event["summary"] = summary }
       if let htmlLink = item["htmlLink"] as? String { event["html_link"] = htmlLink }
       if let id = item["id"] as? String { event["event_id"] = id }
-      if let start = item["start"] as? [String: Any] {
-        event["start"] = start["dateTime"] as? String ?? start["date"] as? String ?? ""
+      if let start = item["start"] as? [String: Any],
+         let startStr = start["dateTime"] as? String ?? start["date"] as? String {
+        event["start"] = startStr
       }
-      if let end = item["end"] as? [String: Any] {
-        event["end"] = end["dateTime"] as? String ?? end["date"] as? String ?? ""
+      if let end = item["end"] as? [String: Any],
+         let endStr = end["dateTime"] as? String ?? end["date"] as? String {
+        event["end"] = endStr
       }
       if let location = item["location"] as? String { event["location"] = location }
+      if let description = item["description"] as? String { event["description"] = description }
       if let status = item["status"] as? String { event["status"] = status }
       return event
     }
@@ -66,7 +71,9 @@ actor GoogleCalendarAPIClient {
       throw CalendarAPIError.invalidDateFormat
     }
 
-    let url = URL(string: "\(baseURL)/calendars/primary/events")!
+    guard let url = URL(string: "\(baseURL)/calendars/primary/events") else {
+      throw CalendarAPIError.invalidResponse
+    }
 
     var body: [String: Any] = [
       "summary": summary,
@@ -104,7 +111,9 @@ actor GoogleCalendarAPIClient {
   func deleteEvent(eventId: String) async throws -> [String: Any] {
     DebugLogger.logNetwork("GOOGLE-CALENDAR: deleteEvent id=\(eventId)")
     let encoded = eventId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? eventId
-    let url = URL(string: "\(baseURL)/calendars/primary/events/\(encoded)")!
+    guard let url = URL(string: "\(baseURL)/calendars/primary/events/\(encoded)") else {
+      throw CalendarAPIError.invalidResponse
+    }
     _ = try await authorizedRequest(url: url, httpMethod: "DELETE")
     DebugLogger.logSuccess("GOOGLE-CALENDAR: deleted event id=\(eventId)")
     return ["ok": true, "event_id": eventId, "deleted": true]
