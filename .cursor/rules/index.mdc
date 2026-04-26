@@ -23,6 +23,7 @@ alwaysApply: true
 - **Tests**: Do not run tests from the agent; user runs them manually in Xcode.
 - **Commands are slash commands only**: In this project, "commands" are always **typed** by the user: a leading slash plus a keyword (e.g. `/stop`, `/new`, `/model`). Do not implement commands as hotkeys or keyboard shortcuts; use slash commands in the chat/input and reserve hotkeys for system shortcuts (e.g. menu bar actions).
 - **Language**: All user-facing and in-repository text must be in **English**. This includes: UI strings, confirmation dialogs, button labels, tooltips, section titles, code comments, default prompts and examples in code, and documentation. Do not add or leave German (or other non-English) text in the codebase.
+- **Plans**: Shared implementation plans and specs live in `plans/`. Read the relevant file in `plans/active/` before implementing plan-driven work, and do not duplicate plans under `.cursor/` or `.claude/`.
 
 ## 🗣️ Communication
 
