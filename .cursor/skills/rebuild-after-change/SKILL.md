@@ -17,6 +17,9 @@ From the project root:
 bash scripts/rebuild-and-restart.sh
 ```
 
+- Default: Debug build using the production API configuration.
+- Local API: `bash scripts/rebuild-and-restart.sh --development`.
+- App Store scheme: `bash scripts/rebuild-and-restart.sh --app-store`.
 - Run this **after** edits are done (not before).
 - If you made multiple edits in one turn, run it **once** at the end.
 - Do **not** skip the rebuild because the change "seems small"; the user expects a running app with the latest code.

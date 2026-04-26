@@ -22,7 +22,7 @@ When debugging or adding visibility: use **DebugLogger** only (never `print`/`NS
 | `logAudio()`   | Recording, playback, chunking  |
 | `logSpeech()`  | Transcription, prompt, TTS    |
 | `logError()`   | Errors and failures           |
-| `logDebug()`   | Detailed flow / internals     |
+| `logDebug()` or `log()` | Detailed flow / internals     |
 | `logInfo()`    | General info                  |
 | `logWarning()` | Warnings                      |
 | `logUI()`      | UI / menu / window events     |
@@ -42,7 +42,7 @@ DebugLogger.logError("API request failed: \(error.localizedDescription)")
 ## 2. Full debug flow (when finding a bug)
 
 1. **Add instrumentation** (see above) so the relevant path is visible in logs.
-2. **Rebuild**: `bash scripts/rebuild-and-restart.sh`
+2. **Rebuild**: `bash scripts/rebuild-and-restart.sh` (or `--development` when debugging a local API flow)
 3. **Give the developer a short plan**: numbered steps to reproduce (e.g. "1. Start app, 2. Trigger Speech-to-Prompt with shortcut X, 3. Say Y, 4. Wait for processing"). Ask them to do it and say when done.
 4. **After they reproduced**: use **view-logs-via-bash** (`bash scripts/logs.sh -t 5m` or `-f 'PROMPT-MODE'`), analyze logs, summarize findings and suggest fix or next step.
 

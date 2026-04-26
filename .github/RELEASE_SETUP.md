@@ -82,9 +82,10 @@ cat certificate_base64.txt
 |------------|-------------|---------|
 | `BUILD_CERTIFICATE_BASE64` | The base64-encoded .p12 certificate from Step 2 | (long base64 string) |
 | `P12_PASSWORD` | The password you set when exporting the .p12 file | `mySecurePassword123` |
+| `PROVISIONING_PROFILE_BASE64` | The base64-encoded Developer ID provisioning profile used by the release export | (long base64 string) |
 | `NOTARY_USERNAME` | Your Apple ID email address | `your.email@example.com` |
 | `NOTARY_PASSWORD` | The app-specific password from Step 3 | `abcd-efgh-ijkl-mnop` |
-| `TEAM_ID` | Your Apple Team ID | `Z59J7V26UT` |
+| `TEAM_ID` | Your Apple Team ID; must match `exportOptions-release.plist` | `Z59J7V26UT` |
 
 ### Optional Secret
 
@@ -92,13 +93,15 @@ cat certificate_base64.txt
 |------------|-------------|---------|
 | `KEYCHAIN_PASSWORD` | Password for temporary keychain (optional) | Auto-generated |
 
-## Step 5: Verify Your Team ID
+## Step 5: Verify Signing Metadata
 
-Your Team ID is already configured in the workflow as `Z59J7V26UT`. If you need to verify or change it:
+The release workflow reads the team ID from the `TEAM_ID` secret and exports the app using `exportOptions-release.plist`. If you need to verify or change the team:
 
 1. Go to [developer.apple.com/account](https://developer.apple.com/account)
 2. Sign in
 3. Your Team ID is displayed in the top right corner
+4. Confirm `TEAM_ID` in GitHub Secrets matches `exportOptions-release.plist`
+5. Confirm the provisioning profile name in `exportOptions-release.plist` matches the uploaded profile
 
 ## Step 6: Test the Workflow
 
@@ -129,6 +132,7 @@ Your Team ID is already configured in the workflow as `Z59J7V26UT`. If you need 
 
 - **"Scheme not found"**: Ensure the scheme name matches exactly: `WhisperShortcut`
 - **"Archive failed"**: Check that all dependencies are properly configured in Xcode
+- **"Provisioning profile not found"**: Confirm `PROVISIONING_PROFILE_BASE64` contains the expected Developer ID profile and that `exportOptions-release.plist` uses the same profile name
 
 ## Security Notes
 
@@ -150,6 +154,7 @@ Once set up, every time you push a tag starting with `v` (e.g., `v1.0.0`), the w
 To create a new release:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+bash scripts/create-release.sh
 ```
+
+The helper creates and pushes a `v*` tag from a clean working tree. The workflow then builds, signs, notarizes, creates a DMG, and uses `.github/RELEASE_NOTES.md` as the GitHub Release body.

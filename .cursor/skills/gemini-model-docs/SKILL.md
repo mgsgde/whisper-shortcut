@@ -32,7 +32,7 @@ TTS model IDs for the Gemini API are documented here:
 
 - **Speech generation (TTS)**: https://ai.google.dev/gemini-api/docs/speech-generation  
 
-You’ll find IDs such as `gemini-2.5-flash-tts` and `gemini-2.5-pro-tts`. The same base URL is referenced in code (e.g. `TranscriptionModels.swift`).
+You’ll find IDs such as `gemini-2.5-flash-preview-tts` and `gemini-2.5-pro-preview-tts` when preview TTS models are current. The same base URL is referenced in code (e.g. `SettingsConfiguration.swift`).
 
 **Optional**: [Cloud Text-to-Speech – Gemini TTS](https://cloud.google.com/text-to-speech/docs/gemini-tts) documents the same/similar TTS models for Cloud/Vertex; use for cross-check only.
 

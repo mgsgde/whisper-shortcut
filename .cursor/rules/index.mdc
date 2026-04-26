@@ -4,7 +4,7 @@ alwaysApply: true
 
 ## 📋 Project Overview
 
-**WhisperShortcut** is a macOS menu bar app for real-time audio transcription and AI voice workflows (Speech-to-Text, Speech-to-Prompt, Read Aloud, Prompt & Read). Xcode project, not SPM.
+**WhisperShortcut** is a macOS menu bar app for voice-first productivity: Dictate, Dictate Prompt, Read Aloud, Prompt & Read, AI Chat, Live Meeting transcription, Smart Improvement, local Whisper dictation, and Google account tools. Xcode project, not SPM.
 
 **Stack**: Swift 5.9+, Cocoa, AVFoundation, UserNotifications · **Target**: macOS 15.5+
 
@@ -12,7 +12,9 @@ alwaysApply: true
 
 - **State machine**: Single source of truth is `AppState` in `AppState.swift` (`idle`, `recording`, `processing`, `feedback`). Always transition via AppState; never manipulate UI or flags directly.
 - **Orchestration**: `MenuBarController` owns services and shortcuts; `SpeechService` holds the main logic (transcribe, executePrompt, executePromptWithVoiceResponse).
-- **Core services**: AudioRecorder, TTSService, AudioPlaybackService, ClipboardManager, KeychainManager, AudioChunkingService.
+- **Chat**: `LLMChatProvider` abstracts Gemini and Grok; `ChatTools` exposes controlled local and Google tools; slash commands are typed in the composer.
+- **Google integration**: `GoogleAccountOAuthService` provides Calendar, Tasks, and Gmail tokens; API clients are actors.
+- **Core services**: AudioRecorder, TTSService, AudioPlaybackService, ClipboardManager, KeychainManager, AudioChunkingService, LiveMeetingRecorder.
 - **Patterns**: Use `DebugLogger` only (no `print`/`NSLog`/`os_log`). UI updates on main thread (MainActor). Support cancellation in async work (`Task.checkCancellation()`, cancel methods). Typed errors + `SpeechErrorFormatter` for user messages.
 
 ## ⚡ Critical Rules
@@ -22,7 +24,7 @@ alwaysApply: true
 - **Logging in code**: Use only `DebugLogger` methods; never `print()`, `NSLog()`, or `os_log()`. For **viewing** logs use skill **view-logs-via-bash**. For **debugging or adding instrumentation** (and full flow: repro plan → analyze logs) use skill **debugging-workflow**.
 - **Tests**: Do not run tests from the agent; user runs them manually in Xcode.
 - **Commands are slash commands only**: In this project, "commands" are always **typed** by the user: a leading slash plus a keyword (e.g. `/stop`, `/new`, `/model`). Do not implement commands as hotkeys or keyboard shortcuts; use slash commands in the chat/input and reserve hotkeys for system shortcuts (e.g. menu bar actions).
-- **Language**: All user-facing and in-repository text must be in **English**. This includes: UI strings, confirmation dialogs, button labels, tooltips, section titles, code comments, default prompts and examples in code, and documentation. Do not add or leave German (or other non-English) text in the codebase.
+- **Language**: All user-facing text must be in **English**. This includes UI strings, confirmation dialogs, button labels, tooltips, section titles, default prompts, and examples shown to users. Prefer English for internal docs and comments too, but locale-specific examples and test data may use other languages when intentional.
 - **Plans**: Shared implementation plans and specs live in `plans/`. Read the relevant file in `plans/active/` before implementing plan-driven work, and do not duplicate plans under `.cursor/` or `.claude/`.
 
 ## 🗣️ Communication
@@ -32,8 +34,9 @@ alwaysApply: true
 ## 🚀 Run / Rebuild
 
 ```bash
-bash ./scripts/rebuild-and-restart.sh           # Local API (localhost)
-bash ./scripts/rebuild-and-restart.sh --production   # Production API
+bash ./scripts/rebuild-and-restart.sh                 # Debug build, production API
+bash ./scripts/rebuild-and-restart.sh --development   # Debug build, local API (localhost:8080)
+bash ./scripts/rebuild-and-restart.sh --app-store     # App Store scheme
 ```
 
 ## 🔗 Gemini API / models
@@ -44,11 +47,10 @@ When working with **Gemini models** (transcription, prompt mode, TTS, model IDs,
 - Always verify current model IDs using official docs and the **gemini-model-docs** skill.  
 - Regularly check the **Google AI Developers Forum** for outages, deprecations, and known issues: <https://discuss.ai.google.dev/c/gemini-api/4>
 
-## 📁 Data Directories (Sandbox vs Normal)
+## 📁 Data Directories
 
-App data (UserContext, interaction logs) can live in **two** places:
+WhisperShortcut uses one canonical app data location so sandboxed and non-sandboxed builds share the same files:
 
-- **Sandbox:** `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/`
-- **Normal:** `~/Library/Application Support/WhisperShortcut/`
+- `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/`
 
-Which one is used depends on whether the app runs sandboxed (e.g. App Store) or not. When debugging, resetting, or counting interaction logs, check **both** or the one that matches how the app is currently run. See `docs/data-directories.md` for details.
+When debugging, resetting, or counting interaction logs, check this canonical path. See `docs/data-directories.md` for details.

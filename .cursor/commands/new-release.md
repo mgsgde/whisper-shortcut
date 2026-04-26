@@ -7,7 +7,7 @@
 3. **Create changelog**: Summarize changes since the last "update to version" commit
 4. **App Store description**: 1–3 short bullet points or 1–2 sentences for App Store
 5. **Create release notes**: Detailed release notes with all changes for GitHub Release
-6. **GitHub release**: Create and push git tag to trigger pipeline (release is created automatically using release notes from `.github/RELEASE_NOTES.md`)
+6. **GitHub release**: Rebuild, commit only the release changes, push the current branch, then create and push a git tag to trigger the release workflow
 
 ## Steps
 
@@ -18,10 +18,12 @@
 5. Turn changes into App Store–formatted description (1–3 short bullet points)
 6. Create release notes (more detailed than App Store description, with all changes for GitHub Release) – **IMPORTANT**: Use the resolved repository URL for all links (releases link and changelog link); never use placeholders like `your-repo`
 7. Save release notes to `.github/RELEASE_NOTES.md` (used automatically by the workflow)
-8. Rebuild and start the app
-9. Git add and commit with "Update to version X.X" (commit message in English, same as App Store description in 1–3 bullet points) – **Important**: `.github/RELEASE_NOTES.md` must be included in the commit
-10. Create git tag (format: `v<Version>`, e.g. `v1.2.3`)
-11. Run git push (`git push origin main` and `git push origin <tag>`)
+8. Rebuild and start the app with `bash scripts/rebuild-and-restart.sh`; stop if the build fails
+9. Git add and commit only the files changed for this release command, with message `Update to version X.X` – **Important**: `WhisperShortcut/Info.plist` and `.github/RELEASE_NOTES.md` must be included in the commit
+10. Detect the current branch with `git branch --show-current`
+11. Push the current branch with `git push origin <current-branch>`
+12. Create git tag (format: `v<Version>`, e.g. `v1.2.3`) on the release commit
+13. Push the tag with `git push origin <tag>`
 
 ## Output
 
@@ -29,7 +31,7 @@
 - New bundle version (e.g. "123")
 - App Store description (1–3 short bullet points)
 - Release notes (detailed list of all changes for GitHub Release)
-- Confirmation of created tag and push
+- Confirmation of rebuilt app, commit, branch push, created tag, and tag push
 
 ## Release Notes Note
 

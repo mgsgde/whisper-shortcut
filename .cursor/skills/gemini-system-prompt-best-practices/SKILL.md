@@ -5,7 +5,7 @@ description: Applies official Google best practices when writing or editing Gemi
 
 # Gemini System Prompt Best Practices
 
-When writing or editing **system prompts** for Gemini (especially 2.0 Flash), apply these practices. They are derived from official Google documentation so model behavior stays predictable and output quality is high.
+When writing or editing **system prompts** for Gemini, apply these practices. They are derived from official Google documentation so model behavior stays predictable and output quality is high.
 
 ## When to Use This Skill
 
@@ -59,7 +59,7 @@ Build the system prompt in this order:
 For full, up-to-date guidance, prefer these sources:
 
 - **Prompt design (strategies)**: https://ai.google.dev/gemini-api/docs/prompting-strategies  
-- **Models (incl. Gemini 2.0 Flash)**: https://ai.google.dev/gemini-api/docs/models  
+- **Models**: https://ai.google.dev/gemini-api/docs/models
 - **Writing prompts (Google Cloud)**: https://docs.cloud.google.com/gemini/docs/discover/write-prompts  
 
 When in doubt, favor instructions that are **explicit**, **ordered**, and **bounded** (one task, clear output format, clear guardrails).

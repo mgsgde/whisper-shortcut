@@ -36,6 +36,7 @@ description: When the user wants to push, commit, or "save to git", first rebuil
    ```bash
    git push
    ```
+   If creating a release, push the branch first, then push the release tag.
 
 ## When to apply
 
@@ -54,4 +55,4 @@ description: When the user wants to push, commit, or "save to git", first rebuil
 
 ## Summary
 
-**Order:** Rebuild → (only on success) Commit (if needed) → Push. Never push without a successful build first. **Commit scope:** Only files changed in this conversation, unless the user asks to commit everything.
+**Order:** Rebuild → (only on success) Commit (if needed) → Push branch → Push release tag if applicable. Never push without a successful build first. **Commit scope:** Only files changed in this conversation, unless the user asks to commit everything.
