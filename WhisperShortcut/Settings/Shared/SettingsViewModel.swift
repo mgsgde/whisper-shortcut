@@ -112,6 +112,14 @@ class SettingsViewModel: ObservableObject {
       data.chatCloseOnFocusLoss = SettingsDefaults.chatCloseOnFocusLoss
     }
 
+    // Load chat command prefix
+    if let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.chatCommandPrefix),
+       let prefix = ChatCommandPrefix(rawValue: raw) {
+      data.chatCommandPrefix = prefix
+    } else {
+      data.chatCommandPrefix = SettingsDefaults.chatCommandPrefix
+    }
+
     // Load Settings window: close on focus loss
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.settingsCloseOnFocusLoss) != nil {
       data.settingsCloseOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)
@@ -336,6 +344,9 @@ class SettingsViewModel: ObservableObject {
 
     // Save Chat window: close on focus loss
     UserDefaults.standard.set(data.chatCloseOnFocusLoss, forKey: UserDefaultsKeys.chatCloseOnFocusLoss)
+
+    // Save chat command prefix
+    UserDefaults.standard.set(data.chatCommandPrefix.rawValue, forKey: UserDefaultsKeys.chatCommandPrefix)
 
     // Save Settings window: close on focus loss
     UserDefaults.standard.set(data.settingsCloseOnFocusLoss, forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)

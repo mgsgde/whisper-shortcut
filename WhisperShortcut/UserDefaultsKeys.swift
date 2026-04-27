@@ -6,6 +6,7 @@ enum UserDefaultsKeys {
   // MARK: - Chat Window Settings
   static let chatCloseOnFocusLoss = "geminiCloseOnFocusLoss"
   static let chatSidebarVisible = "geminiSidebarVisible"
+  static let chatCommandPrefix = "chatCommandPrefix"
 
   // MARK: - Settings Window
   static let settingsCloseOnFocusLoss = "settingsCloseOnFocusLoss"

@@ -106,49 +106,74 @@ class ChatViewModel: ObservableObject {
   func isSendingSession(_ id: UUID) -> Bool { sendingSessionIds.contains(id) }
   /// Maximum length for auto-generated session title from first user message.
   private static let maxSessionTitleLength = 50
-  /// Commands are slash-only (e.g. /new); do not use hotkeys/shortcuts for command actions.
-  private static let newChatCommand = "/new"
-  static let screenshotCommand = "/screenshot"
-  private static let settingsCommand = "/settings"
-  private static let pinCommand = "/pin"
-  private static let unpinCommand = "/unpin"
-  private static let modelCommand = "/model"
-  private static let grokCommand = "/grok"
-  private static let geminiCommand = "/gemini"
-  private static let connectGoogleCommand = "/connect-google"
-  private static let disconnectGoogleCommand = "/disconnect-google"
-  private static let meetingCommand = "/meeting"
 
-  /// All slash commands with descriptions for autocomplete.
-  static let commandSuggestions: [(command: String, description: String)] = [
-    ("/new", "Start a new chat (previous chat stays in history)"),
-    ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
-    ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
-    ("/gemini", "Switch to Gemini 3 Flash"),
-    ("/grok", "Switch to Grok 4"),
-    ("/settings", "Open Settings"),
-    ("/pin", "Toggle whether the window stays open when losing focus"),
-    ("/unpin", "Make the window close when losing focus"),
-    ("/connect-google", "Connect Google account (Calendar, Tasks, Gmail)"),
-    ("/disconnect-google", "Disconnect Google account"),
-    ("/meeting", "Start or stop live meeting recording"),
+  /// Canonical command names (without prefix). Combined with `commandPrefix` at runtime.
+  /// Use `command(_:)` to resolve a name to its full string (e.g. "new" → "/new" or ">new").
+  private static let newName = "new"
+  static let screenshotName = "screenshot"
+  private static let settingsName = "settings"
+  private static let pinName = "pin"
+  private static let unpinName = "unpin"
+  private static let modelName = "model"
+  private static let grokName = "grok"
+  private static let geminiName = "gemini"
+  private static let connectGoogleName = "connect-google"
+  private static let disconnectGoogleName = "disconnect-google"
+  private static let meetingName = "meeting"
+
+  /// User-configured command prefix (e.g. `/`, `>`). Read from settings each access so
+  /// changes in the Settings tab take effect without restarting.
+  var commandPrefix: String {
+    if let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.chatCommandPrefix),
+       let prefix = ChatCommandPrefix(rawValue: raw) {
+      return prefix.character
+    }
+    return SettingsDefaults.chatCommandPrefix.character
+  }
+
+  /// Resolves a canonical command name to its full prefixed string.
+  func command(_ name: String) -> String { commandPrefix + name }
+
+  /// Backwards-compatible accessors used throughout this view. Read prefix per call.
+  static var screenshotCommand: String {
+    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.chatCommandPrefix) ?? SettingsDefaults.chatCommandPrefix.rawValue
+    let prefix = ChatCommandPrefix(rawValue: raw)?.character ?? SettingsDefaults.chatCommandPrefix.character
+    return prefix + screenshotName
+  }
+
+  /// All commands (canonical name + description) for autocomplete and help.
+  /// `description` is rendered with the live prefix at display time.
+  static let commandCatalog: [(name: String, description: String)] = [
+    ("new", "Start a new chat (previous chat stays in history)"),
+    ("screenshot", "Add a screenshot to your next message (can add multiple)"),
+    ("model", "Switch chat model (e.g. {p}model 3.1 flash lite)"),
+    ("gemini", "Switch to Gemini 3 Flash"),
+    ("grok", "Switch to Grok 4"),
+    ("settings", "Open Settings"),
+    ("pin", "Toggle whether the window stays open when losing focus"),
+    ("unpin", "Make the window close when losing focus"),
+    ("connect-google", "Connect Google account (Calendar, Tasks, Gmail)"),
+    ("disconnect-google", "Disconnect Google account"),
+    ("meeting", "Start or stop live meeting recording"),
   ]
 
-  /// Commands to show in UI (excludes /new when single-chat mode).
+  /// All commands resolved with the current prefix.
   var commandSuggestionsForDisplay: [(command: String, description: String)] {
-    if singleChatOnly {
-      return Self.commandSuggestions.filter { $0.command != "/new" }
-    }
-    return Self.commandSuggestions
+    let prefix = commandPrefix
+    let entries = Self.commandCatalog
+      .filter { !singleChatOnly || $0.name != Self.newName }
+      .map { (command: prefix + $0.name, description: $0.description.replacingOccurrences(of: "{p}", with: prefix)) }
+    return entries
   }
 
   /// Returns commands whose command string matches the given prefix (e.g. "/" or "/sc").
   func suggestedCommands(for input: String) -> [String] {
-    let prefix = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    guard prefix.hasPrefix("/") else { return [] }
+    let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let cp = commandPrefix
+    guard trimmed.hasPrefix(cp) else { return [] }
     return commandSuggestionsForDisplay
       .map(\.command)
-      .filter { $0.lowercased().hasPrefix(prefix) || prefix.isEmpty }
+      .filter { $0.lowercased().hasPrefix(trimmed) || trimmed.isEmpty }
   }
 
   /// When non-nil, this provider supplies extra context (e.g. meeting summary + recent transcript) appended to the system instruction. Used by the Meeting Chat window.
@@ -242,27 +267,32 @@ class ChatViewModel: ObservableObject {
 
     // Bare slash commands — never carry attachments, never queue.
     if attachedParts.isEmpty && !finalContent.contains("<pasted_") {
-      if lower == Self.connectGoogleCommand {
+      if lower == command(Self.connectGoogleName) {
         await handleConnectGoogle()
         return
       }
-      if lower == Self.disconnectGoogleCommand {
+      if lower == command(Self.disconnectGoogleName) {
         handleDisconnectGoogle()
         return
       }
-      if lower == Self.meetingCommand {
+      if lower == command(Self.meetingName) {
         handleMeetingButtonTap()
         return
       }
-      if lower == Self.newChatCommand || lower == Self.screenshotCommand
-          || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
-          || lower == Self.grokCommand || lower == Self.geminiCommand {
-        if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
-        else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
-        else if lower == Self.pinCommand { togglePin() }
-        else if lower == Self.unpinCommand { unpin() }
-        else if lower == Self.grokCommand { switchToModel(.grok4) }
-        else if lower == Self.geminiCommand { switchToModel(.gemini3Flash) }
+      let newCmd = command(Self.newName)
+      let screenshotCmd = command(Self.screenshotName)
+      let settingsCmd = command(Self.settingsName)
+      let pinCmd = command(Self.pinName)
+      let unpinCmd = command(Self.unpinName)
+      let grokCmd = command(Self.grokName)
+      let geminiCmd = command(Self.geminiName)
+      if [newCmd, screenshotCmd, settingsCmd, pinCmd, unpinCmd, grokCmd, geminiCmd].contains(lower) {
+        if lower == newCmd { if !singleChatOnly { createNewSession() } }
+        else if lower == settingsCmd { SettingsManager.shared.showSettings() }
+        else if lower == pinCmd { togglePin() }
+        else if lower == unpinCmd { unpin() }
+        else if lower == grokCmd { switchToModel(.grok4) }
+        else if lower == geminiCmd { switchToModel(.gemini3Flash) }
         else { await captureScreenshot() }
         return
       }
@@ -549,44 +579,51 @@ class ChatViewModel: ObservableObject {
     let hasContent = !raw.isEmpty || !pendingScreenshots.isEmpty || !pendingFileAttachments.isEmpty || !pastedBlocks.isEmpty
     guard hasContent else { return }
 
+    let modelCmd = command(Self.modelName)
+
     // /model command (switch chat model with fuzzy matching)
-    if lower == Self.modelCommand || lower.hasPrefix(Self.modelCommand + " ") {
+    if lower == modelCmd || lower.hasPrefix(modelCmd + " ") {
       inputText = ""
-      let arg = lower == Self.modelCommand
+      let arg = lower == modelCmd
         ? ""
-        : String(raw.dropFirst(Self.modelCommand.count + 1)).trimmingCharacters(in: .whitespaces)
+        : String(raw.dropFirst(modelCmd.count + 1)).trimmingCharacters(in: .whitespaces)
       handleModelCommand(argument: arg)
       return
     }
 
     // Google account commands
-    if lower == Self.connectGoogleCommand {
+    if lower == command(Self.connectGoogleName) {
       inputText = ""
       await handleConnectGoogle()
       return
     }
-    if lower == Self.disconnectGoogleCommand {
+    if lower == command(Self.disconnectGoogleName) {
       inputText = ""
       handleDisconnectGoogle()
       return
     }
-    if lower == Self.meetingCommand {
+    if lower == command(Self.meetingName) {
       inputText = ""
       handleMeetingButtonTap()
       return
     }
 
     // Slash commands: always immediate, never queued
-    if lower == Self.newChatCommand || lower == Self.screenshotCommand
-        || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
-        || lower == Self.grokCommand || lower == Self.geminiCommand {
+    let newCmd = command(Self.newName)
+    let screenshotCmd = command(Self.screenshotName)
+    let settingsCmd = command(Self.settingsName)
+    let pinCmd = command(Self.pinName)
+    let unpinCmd = command(Self.unpinName)
+    let grokCmd = command(Self.grokName)
+    let geminiCmd = command(Self.geminiName)
+    if [newCmd, screenshotCmd, settingsCmd, pinCmd, unpinCmd, grokCmd, geminiCmd].contains(lower) {
       inputText = ""
-      if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
-      else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
-      else if lower == Self.pinCommand { togglePin() }
-      else if lower == Self.unpinCommand { unpin() }
-      else if lower == Self.grokCommand { switchToModel(.grok4) }
-      else if lower == Self.geminiCommand { switchToModel(.gemini3Flash) }
+      if lower == newCmd { if !singleChatOnly { createNewSession() } }
+      else if lower == settingsCmd { SettingsManager.shared.showSettings() }
+      else if lower == pinCmd { togglePin() }
+      else if lower == unpinCmd { unpin() }
+      else if lower == grokCmd { switchToModel(.grok4) }
+      else if lower == geminiCmd { switchToModel(.gemini3Flash) }
       else { await captureScreenshot() }
       return
     }
@@ -842,8 +879,9 @@ class ChatViewModel: ObservableObject {
     )
     switch outcome {
     case .usage(let cur):
+      let modelCmd = command(Self.modelName)
       appendModelMessage(
-        "Current model: **\(cur.displayName)**. Example: `/model 3.1 flash lite` or `/model 2.5 pro`."
+        "Current model: **\(cur.displayName)**. Example: `\(modelCmd) 3.1 flash lite` or `\(modelCmd) 2.5 pro`."
       )
     case .applied(let model):
       let migrated = PromptModel.migrateIfDeprecated(model)
@@ -1854,13 +1892,35 @@ struct ChatInputAreaView: View {
     // outgoing session id, then load the incoming session's draft (or clear).
   }
 
-  private static let knownSlashCommands: Set<String> = [
-    "/new", "/screenshot",
-    "/settings", "/pin", "/unpin",
-    "/grok", "/gemini",
-    "/connect-google", "/disconnect-google",
-    "/meeting"
+  /// Returns true if `word` looks like the user is typing a command (starts with the
+  /// configured prefix, and the next character is a letter or end-of-word).
+  /// The letter-check avoids false positives for `>` used as a Markdown blockquote
+  /// (`> text` should not trigger autocomplete; `>new` should).
+  private func isCommandTrigger(_ word: String) -> Bool {
+    let cp = viewModel.commandPrefix
+    guard word.hasPrefix(cp) else { return false }
+    let after = word.dropFirst(cp.count)
+    if after.isEmpty { return true }
+    return after.first?.isLetter == true
+  }
+
+  /// Recognized command names without prefix. Combined with the live prefix at runtime.
+  private static let knownCommandNames: Set<String> = [
+    "new", "screenshot",
+    "settings", "pin", "unpin",
+    "grok", "gemini",
+    "connect-google", "disconnect-google",
+    "meeting"
   ]
+
+  /// Returns true iff `lower` (already lowercased) matches one of the known commands
+  /// using the currently-configured prefix.
+  private func isKnownCommand(_ lower: String) -> Bool {
+    let cp = viewModel.commandPrefix
+    guard lower.hasPrefix(cp) else { return false }
+    let name = String(lower.dropFirst(cp.count))
+    return Self.knownCommandNames.contains(name)
+  }
 
   /// Sends the current composer contents. Recognized slash commands strip just
   /// the slash token (preserving any other attachments / text) and dispatch
@@ -1869,9 +1929,9 @@ struct ChatInputAreaView: View {
     let output = composer.serialize()
     let typed = output.typedText
     let lower = typed.lowercased()
-    let isModelCommand = lower == "/model" || lower.hasPrefix("/model ")
-    let isRecognizedSlashCommand =
-      Self.knownSlashCommands.contains(lower) || isModelCommand
+    let modelCmd = viewModel.command("model")
+    let isModelCommand = lower == modelCmd || lower.hasPrefix(modelCmd + " ")
+    let isRecognizedSlashCommand = isKnownCommand(lower) || isModelCommand
     if isRecognizedSlashCommand {
       if isModelCommand {
         // Strip the entire command line so multi-token args (e.g.
@@ -1896,12 +1956,13 @@ struct ChatInputAreaView: View {
   /// matched command without clearing the rest of the composer.
   private func handleTabComplete() -> Bool {
     let word = lastWord
-    guard word.hasPrefix("/"), !word.isEmpty else { return false }
+    let cp = viewModel.commandPrefix
+    guard word.hasPrefix(cp), !word.isEmpty else { return false }
     let matches = viewModel.suggestedCommands(for: word)
     guard let first = matches.first else { return false }
     // Commands that take an argument: complete inline so the user can type
     // the argument; do not dispatch yet.
-    let takesArgument = (first == "/model")
+    let takesArgument = (first == viewModel.command("model"))
     composer.removeTrailingWord()
     if takesArgument {
       composer.textView?.insertText(first + " ", replacementRange: NSRange(location: NSNotFound, length: 0))
@@ -1915,7 +1976,7 @@ struct ChatInputAreaView: View {
 
   private var commandSuggestionsOverlay: some View {
     Group {
-      if lastWord.hasPrefix("/") {
+      if isCommandTrigger(lastWord) {
         let suggestions = viewModel.commandSuggestionsForDisplay
           .filter { $0.command.lowercased().hasPrefix(lastWord.lowercased()) }
         if !suggestions.isEmpty {

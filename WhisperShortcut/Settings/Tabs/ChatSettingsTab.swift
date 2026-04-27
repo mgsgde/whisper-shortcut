@@ -137,6 +137,22 @@ struct ChatSettingsTab: View {
       .onChange(of: viewModel.data.chatCloseOnFocusLoss) { _ in
         Task { await viewModel.saveSettings() }
       }
+
+      VStack(alignment: .leading, spacing: 4) {
+        Picker("Command prefix:", selection: $viewModel.data.chatCommandPrefix) {
+          ForEach(ChatCommandPrefix.allCases, id: \.self) { prefix in
+            Text(prefix.displayName).tag(prefix)
+          }
+        }
+        .pickerStyle(.menu)
+        .frame(maxWidth: 260, alignment: .leading)
+        .onChange(of: viewModel.data.chatCommandPrefix) { _, _ in
+          Task { await viewModel.saveSettings() }
+        }
+        Text("Character that triggers in-chat commands (e.g. \(viewModel.data.chatCommandPrefix.character)new, \(viewModel.data.chatCommandPrefix.character)model). Default is /.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+      }
     }
   }
 
