@@ -6,27 +6,6 @@ enum ChatModelProvider: String, CaseIterable {
   case grok
 }
 
-// MARK: - Chat Command Prefix
-/// Prefix character used to invoke in-chat slash-style commands (e.g. `/new`, `>new`).
-/// Default is `slash` (`/`); other options exist for users on layouts where `/` is awkward.
-enum ChatCommandPrefix: String, CaseIterable {
-  case slash = "/"
-  case greaterThan = ">"
-  case colon = ":"
-  case bang = "!"
-
-  var character: String { rawValue }
-
-  var displayName: String {
-    switch self {
-    case .slash: return "/ (slash)"
-    case .greaterThan: return "> (greater-than)"
-    case .colon: return ": (colon)"
-    case .bang: return "! (exclamation)"
-    }
-  }
-}
-
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash (and sibling docs)
 // GA (stable IDs): gemini-2.5-flash, gemini-2.5-flash-lite. 2.0 removed. Preview: gemini-3-*.
@@ -567,7 +546,6 @@ struct SettingsDefaults {
   static let selectedChatModel = PromptModel.gemini3Flash
   static let chatCloseOnFocusLoss = true
   static let settingsCloseOnFocusLoss = true
-  static let chatCommandPrefix: ChatCommandPrefix = .slash
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
   
@@ -627,7 +605,6 @@ struct SettingsData {
   var selectedImprovementModel: PromptModel = SettingsDefaults.selectedImprovementModel
   var chatCloseOnFocusLoss: Bool = SettingsDefaults.chatCloseOnFocusLoss
   var settingsCloseOnFocusLoss: Bool = SettingsDefaults.settingsCloseOnFocusLoss
-  var chatCommandPrefix: ChatCommandPrefix = SettingsDefaults.chatCommandPrefix
   var customPromptText: String = SettingsDefaults.customPromptText
   var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
 
