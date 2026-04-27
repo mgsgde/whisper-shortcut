@@ -4,6 +4,7 @@ actor GmailAPIClient {
   static let shared = GmailAPIClient()
 
   private let baseURL = "https://gmail.googleapis.com/gmail/v1/users/me"
+  private let summaryFetchConcurrencyLimit = 8
 
   // MARK: - Search / List Messages
 
@@ -29,17 +30,9 @@ actor GmailAPIClient {
     }
 
     let candidates = Array(messages.prefix(cappedMax))
-    let results: [[String: Any]] = await withTaskGroup(of: (Int, [String: Any]?).self) { group in
-      for (i, msg) in candidates.enumerated() {
-        guard let id = msg["id"] as? String else { continue }
-        group.addTask { (i, try? await self.getMessageSummary(messageId: id)) }
-      }
-      var indexed: [(Int, [String: Any])] = []
-      for await (i, detail) in group {
-        if let detail { indexed.append((i, detail)) }
-      }
-      return indexed.sorted { $0.0 < $1.0 }.map { $0.1 }
-    }
+    let messageIDs = candidates.compactMap { $0["id"] as? String }
+    let indexedResults = await fetchMessageSummaries(ids: messageIDs)
+    let results = indexedResults.sorted { $0.0 < $1.0 }.map { $0.1 }
     let skipped = candidates.count - results.count
     if skipped > 0 {
       DebugLogger.logWarning("GMAIL: \(skipped) message(s) failed to fetch")
@@ -71,6 +64,31 @@ actor GmailAPIClient {
     }
 
     return parseMessage(json, includeBody: false)
+  }
+
+  private func fetchMessageSummaries(ids: [String]) async -> [(Int, [String: Any])] {
+    guard !ids.isEmpty else { return [] }
+    let batchSize = max(1, summaryFetchConcurrencyLimit)
+    var indexed: [(Int, [String: Any])] = []
+
+    for batchStart in stride(from: 0, to: ids.count, by: batchSize) {
+      let batchEnd = min(batchStart + batchSize, ids.count)
+      let batch = Array(ids[batchStart..<batchEnd])
+      let batchResults: [(Int, [String: Any])] = await withTaskGroup(of: (Int, [String: Any]?).self) { group in
+        for (offset, id) in batch.enumerated() {
+          let index = batchStart + offset
+          group.addTask { (index, try? await self.getMessageSummary(messageId: id)) }
+        }
+        var completed: [(Int, [String: Any])] = []
+        for await (index, detail) in group {
+          if let detail { completed.append((index, detail)) }
+        }
+        return completed
+      }
+      indexed.append(contentsOf: batchResults)
+    }
+
+    return indexed
   }
 
   private func parseMessage(_ json: [String: Any], includeBody: Bool) -> [String: Any] {

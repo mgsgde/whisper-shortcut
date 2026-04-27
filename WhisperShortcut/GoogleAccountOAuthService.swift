@@ -204,7 +204,9 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
     request.httpMethod = "POST"
     request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
 
-    let bodyString = body.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }
+    let bodyString = body.map {
+      "\(Self.formURLEncoded($0.key))=\(Self.formURLEncoded($0.value))"
+    }
       .joined(separator: "&")
     request.httpBody = bodyString.data(using: .utf8)
 
@@ -225,6 +227,13 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
     }
 
     return json
+  }
+
+  private static func formURLEncoded(_ value: String) -> String {
+    var allowed = CharacterSet.alphanumerics
+    allowed.insert(charactersIn: "-._* ")
+    let escaped = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    return escaped.replacingOccurrences(of: " ", with: "+")
   }
 
   // MARK: - Errors

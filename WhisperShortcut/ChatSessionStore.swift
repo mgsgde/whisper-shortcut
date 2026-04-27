@@ -434,6 +434,14 @@ class ChatSessionStore {
     return deleteIds.count
   }
 
+  func deleteAllSessions() {
+    let fm = FileManager.default
+    try? fm.removeItem(at: fileURL)
+    try? fm.removeItem(at: legacyFileURL)
+    cachedFile = nil
+    DebugLogger.log("GEMINI-CHAT: Deleted all sessions")
+  }
+
   /// Archives a session (sets archived = true). Removes from tab order.
   /// If it was the current session, switches to the next best non-archived session.
   func archiveSession(id: UUID) {

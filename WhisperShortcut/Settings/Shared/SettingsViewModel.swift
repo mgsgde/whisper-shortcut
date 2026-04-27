@@ -30,13 +30,6 @@ class SettingsViewModel: ObservableObject {
     data.toggleMeeting = currentConfig.toggleMeeting.isEnabled ? currentConfig.toggleMeeting.textDisplayString : ""
     data.openSettings = currentConfig.openSettings.isEnabled ? currentConfig.openSettings.textDisplayString : ""
     data.openChat = currentConfig.openChat.isEnabled ? currentConfig.openChat.textDisplayString : ""
-    // Load toggle shortcut enabled states
-    data.toggleDictationEnabled = currentConfig.startRecording.isEnabled
-    data.togglePromptingEnabled = currentConfig.startPrompting.isEnabled
-    data.toggleMeetingEnabled = currentConfig.toggleMeeting.isEnabled
-    data.openSettingsEnabled = currentConfig.openSettings.isEnabled
-    data.openChatEnabled = currentConfig.openChat.isEnabled
-
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
@@ -546,19 +539,31 @@ class SettingsViewModel: ObservableObject {
     }
   }
 
-  /// Deletes all UserDefaults and context data, then terminates the app so the user can relaunch with defaults.
-  /// API key (Keychain) and meeting transcripts (app data folder) are not touched.
+  /// Deletes all UserDefaults, context data, chat sessions, and meeting transcripts, then terminates
+  /// the app so the user can relaunch with defaults. API keys and Google OAuth tokens (Keychain) are preserved.
   func resetAllDataAndRestart() {
     do {
       try ContextLogger.shared.deleteAllContextData()
     } catch {
       DebugLogger.logError("RESET: Failed to delete context data: \(error.localizedDescription)")
     }
+
+    ChatSessionStore.shared.deleteAllSessions()
+
+    let fm = FileManager.default
+    let appSupport = AppSupportPaths.whisperShortcutApplicationSupportURL()
+    let meetingsDir = appSupport.appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+    try? fm.removeItem(at: meetingsDir)
+
+    let systemPromptsFile = appSupport.appendingPathComponent("UserContext")
+      .appendingPathComponent(SystemPromptsStore.fileName)
+    try? fm.removeItem(at: systemPromptsFile)
+
     let bundleID = Bundle.main.bundleIdentifier ?? ""
     UserDefaults.standard.removePersistentDomain(forName: bundleID)
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.shouldTerminate)
     UserDefaults.standard.synchronize()
-    DebugLogger.log("RESET: Cleared UserDefaults and context data; terminating app")
+    DebugLogger.log("RESET: Cleared all app data; terminating app")
     NSApplication.shared.terminate(nil)
   }
 

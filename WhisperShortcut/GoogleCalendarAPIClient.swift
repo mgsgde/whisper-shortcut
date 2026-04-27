@@ -110,7 +110,7 @@ actor GoogleCalendarAPIClient {
 
   func deleteEvent(eventId: String) async throws -> [String: Any] {
     DebugLogger.logNetwork("GOOGLE-CALENDAR: deleteEvent id=\(eventId)")
-    let encoded = eventId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? eventId
+    let encoded = encodedPathComponent(eventId)
     guard let url = URL(string: "\(baseURL)/calendars/primary/events/\(encoded)") else {
       throw CalendarAPIError.invalidResponse
     }
@@ -176,6 +176,12 @@ actor GoogleCalendarAPIClient {
     if formatter.date(from: string) != nil { return true }
     formatter.formatOptions = [.withInternetDateTime]
     return formatter.date(from: string) != nil
+  }
+
+  private func encodedPathComponent(_ value: String) -> String {
+    var allowed = CharacterSet.urlPathAllowed
+    allowed.remove(charactersIn: "/?#[]@!$&'()*+,;=")
+    return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
   }
 
   // MARK: - Errors

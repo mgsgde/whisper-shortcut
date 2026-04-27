@@ -540,12 +540,6 @@ struct SettingsDefaults {
   static let openSettings = ""
   static let openChat = ""
 
-  // MARK: - Toggle Shortcut Enable States
-  static let toggleDictationEnabled = true
-  static let togglePromptingEnabled = true
-  static let toggleMeetingEnabled = true
-  static let openSettingsEnabled = true
-  static let openChatEnabled = true
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
   static let selectedPromptModel = PromptModel.gemini31FlashLite
@@ -604,12 +598,6 @@ struct SettingsData {
   var openSettings: String = SettingsDefaults.openSettings
   var openChat: String = SettingsDefaults.openChat
 
-  // MARK: - Toggle Shortcut Enable States
-  var toggleDictationEnabled: Bool = SettingsDefaults.toggleDictationEnabled
-  var togglePromptingEnabled: Bool = SettingsDefaults.togglePromptingEnabled
-  var toggleMeetingEnabled: Bool = SettingsDefaults.toggleMeetingEnabled
-  var openSettingsEnabled: Bool = SettingsDefaults.openSettingsEnabled
-  var openChatEnabled: Bool = SettingsDefaults.openChatEnabled
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
   var selectedPromptModel: PromptModel = SettingsDefaults.selectedPromptModel

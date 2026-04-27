@@ -437,8 +437,12 @@ extension Notification.Name {
   static let chatSwitchToMeeting = Notification.Name("chatSwitchToMeeting")
   /// Posted to switch the chat window to Chat view and resize to one third of the screen.
   static let chatSwitchToChat = Notification.Name("chatSwitchToChat")
-  /// Posted to stop live meeting immediately (no name dialog).
-  static let chatToggleLiveMeeting = Notification.Name("chatToggleLiveMeeting")
+  /// Posted to start a fresh live meeting. Clears any prior meeting state first.
+  static let chatStartNewMeeting = Notification.Name("chatStartNewMeeting")
+  /// Posted to resume a previously stopped live meeting (keeps prior chunks/stem).
+  static let chatResumeMeeting = Notification.Name("chatResumeMeeting")
+  /// Posted to stop the currently active live meeting.
+  static let chatStopLiveMeeting = Notification.Name("chatStopLiveMeeting")
   /// Posted when user confirms "End Meeting" with an optional name. userInfo["meetingName"] = String (default or custom).
   static let chatEndMeetingWithName = Notification.Name("chatEndMeetingWithName")
 }

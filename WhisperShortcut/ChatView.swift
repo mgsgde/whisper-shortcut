@@ -251,7 +251,7 @@ class ChatViewModel: ObservableObject {
         return
       }
       if lower == Self.meetingCommand {
-        NotificationCenter.default.post(name: .chatToggleLiveMeeting, object: nil)
+        handleMeetingButtonTap()
         return
       }
       if lower == Self.newChatCommand || lower == Self.screenshotCommand
@@ -426,7 +426,6 @@ class ChatViewModel: ObservableObject {
 
         toolLoop: for round in 0..<(maxToolRounds + 1) {
           var pendingCalls: [(name: String, args: [String: Any], thoughtSignature: String?)] = []
-          var sawFinished = false
           let stream = provider.sendChatStream(
             model: model,
             contents: currentContents,
@@ -448,7 +447,6 @@ class ChatViewModel: ObservableObject {
             case .finished(let sources, let supports, _):
               finalSources = sources
               finalSupports = supports
-              sawFinished = true
             }
           }
           if pendingCalls.isEmpty { break toolLoop }
@@ -456,7 +454,6 @@ class ChatViewModel: ObservableObject {
             DebugLogger.logWarning("CHAT: tool loop exceeded \(maxToolRounds) rounds — stopping")
             break toolLoop
           }
-          _ = sawFinished
           let turns = await executeToolCalls(pendingCalls)
           currentContents.append(contentsOf: turns)
         }
@@ -575,7 +572,7 @@ class ChatViewModel: ObservableObject {
     }
     if lower == Self.meetingCommand {
       inputText = ""
-      NotificationCenter.default.post(name: .chatToggleLiveMeeting, object: nil)
+      handleMeetingButtonTap()
       return
     }
 
@@ -968,6 +965,21 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("SIDEBAR: Unpinned session \(id)")
   }
 
+  /// Translates a meeting-button tap into the right intent based on current session state:
+  /// stop the active meeting, resume a finished meeting, or start a fresh one.
+  func handleMeetingButtonTap() {
+    if isCurrentSessionTheActiveMeeting {
+      NotificationCenter.default.post(name: .chatStopLiveMeeting, object: nil)
+    } else if isMeetingActive {
+      // A meeting is running on a different session; treat as stop request
+      NotificationCenter.default.post(name: .chatStopLiveMeeting, object: nil)
+    } else if isCurrentSessionMeeting {
+      NotificationCenter.default.post(name: .chatResumeMeeting, object: nil)
+    } else {
+      NotificationCenter.default.post(name: .chatStartNewMeeting, object: nil)
+    }
+  }
+
   private func markCurrentSessionAsMeeting() {
     let stem = LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem
     session.isMeeting = true
@@ -1029,7 +1041,7 @@ class ChatViewModel: ObservableObject {
     // longer exists in the UI.
     if isMeetingActive && meetingSessionId == id {
       DebugLogger.log("SIDEBAR: Deleting active meeting session — stopping recorder first")
-      NotificationCenter.default.post(name: .chatToggleLiveMeeting, object: nil)
+      NotificationCenter.default.post(name: .chatStopLiveMeeting, object: nil)
       meetingSessionId = nil
     }
     store.deleteSession(id: id)
@@ -1044,7 +1056,7 @@ class ChatViewModel: ObservableObject {
        let mSession = store.allSessions().first(where: { $0.id == mid }),
        mSession.lastUpdated < date {
       DebugLogger.log("SIDEBAR: Bulk delete includes active meeting session — stopping recorder first")
-      NotificationCenter.default.post(name: .chatToggleLiveMeeting, object: nil)
+      NotificationCenter.default.post(name: .chatStopLiveMeeting, object: nil)
       meetingSessionId = nil
     }
     let count = store.deleteOlderSessions(than: date)
@@ -1634,7 +1646,10 @@ struct ChatView: View {
         Spacer()
 
         Button(action: {
-          NotificationCenter.default.post(name: .chatToggleLiveMeeting, object: nil)
+          NotificationCenter.default.post(
+            name: isRecording ? .chatStopLiveMeeting : .chatResumeMeeting,
+            object: nil
+          )
         }) {
           Text(isRecording ? "Stop" : "Resume")
             .font(.system(size: 11, weight: .medium))
@@ -2008,7 +2023,7 @@ struct ChatInputAreaView: View {
         .pointerCursorOnHover()
 
         Button(action: {
-          NotificationCenter.default.post(name: .chatToggleLiveMeeting, object: nil)
+          viewModel.handleMeetingButtonTap()
         }) {
           HStack(spacing: 4) {
             Image(systemName: viewModel.isMeetingActive ? "record.circle" : "record.circle")
