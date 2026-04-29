@@ -14,7 +14,7 @@ class MenuBarController: NSObject {
   // MARK: - Single Source of Truth
   private var appState: AppState = .idle {
     didSet {
-      
+      DebugLogger.logDebug("APPSTATE: \(oldValue) -> \(appState) (mainThread=\(Thread.isMainThread))")
       updateUI()
 
       // Auto-reset feedback states after their duration
