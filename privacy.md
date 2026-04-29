@@ -1,6 +1,6 @@
 # Privacy Policy for WhisperShortcut
 
-**Last updated:** April 26, 2026
+**Last updated:** April 29, 2026
 
 ## Overview
 
@@ -101,12 +101,19 @@ Google OAuth tokens are stored in Keychain. You can disconnect Google in Setting
 - Clipboard content except when needed for a user-triggered feature.
 - Email, calendar, or task data except when you explicitly use connected Google tools.
 
-## Data Storage And Security
+## Data Protection Mechanisms For Sensitive Data
 
-- App data is local to your macOS user account.
-- API keys and OAuth tokens are stored in macOS Keychain.
-- WhisperShortcut does not run a server that receives your app data.
-- Clipboard content remains under your control and is read only for workflows you trigger.
+We apply the following safeguards to sensitive data, including API keys, OAuth tokens, and Google Workspace data accessed through user-authorized scopes (Calendar, Tasks, Gmail):
+
+- **Encryption in transit:** All communication with Google APIs (Gemini, Calendar, Tasks, Gmail) and xAI APIs uses HTTPS with TLS 1.2 or higher. App Transport Security is enforced (`NSAllowsArbitraryLoads = false`), so the app does not accept insecure or downgraded connections.
+- **Credential protection at rest:** Google API keys, xAI API keys, and Google OAuth access and refresh tokens are stored exclusively in the **macOS Keychain**, which provides OS-level encryption and per-app access controls. They are never written to plain configuration files, logs, or any backend.
+- **Local data isolation:** App files (chat sessions, live meeting transcripts, interaction logs, preferences) are stored inside the app's macOS user container at `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/` and are protected by macOS user account and file permission controls.
+- **Least-privilege access:** WhisperShortcut requests only the minimum OAuth scopes required for the features you enable: `calendar.events`, `tasks`, and `gmail.readonly`. No additional scopes are requested in the background.
+- **User-controlled access and revocation:** You can disconnect your Google account at any time from in-app Settings or with the `/disconnect-google` chat command, which deletes the locally stored OAuth tokens. You can additionally revoke the app's access at any time in your [Google Account permissions](https://myaccount.google.com/permissions).
+- **Retention and deletion controls:** Temporary audio files are deleted after processing. Interaction logs older than 90 days are deleted automatically; only the last 30 days are read for Smart Improvement features. You can delete API keys, chat sessions, meeting transcripts, and interaction data at any time from in-app Settings.
+- **No server-side storage by WhisperShortcut:** WhisperShortcut does not operate a backend that receives, stores, or processes user content, API keys, or OAuth tokens. All credentials and user data remain on your device or are sent directly from your device to the third-party API provider you configured.
+- **No sale of personal data:** We do not sell, rent, or trade personal data to third parties.
+- **AI/ML training disclosure for Workspace APIs:** Data accessed from Google Workspace APIs (Calendar, Tasks, Gmail) through this app is used solely to provide the user-requested feature in that session and is **not used by WhisperShortcut to develop, improve, or train generalized AI/ML models**. Workspace data is not shared with third parties for AI/ML training. When such data is included in a request to a configured cloud AI provider (e.g. Google Gemini using your own API key) to produce the response you asked for, that provider's own terms and policies apply to its handling.
 
 ## Your Controls
 
