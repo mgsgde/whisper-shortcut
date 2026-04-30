@@ -1,4 +1,4 @@
-# WhisperShortcut 7.8
+# WhisperShortcut 7.9
 
 ## Installation
 
@@ -6,10 +6,10 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-### Reverted
+### Fixed
 
-- **Configurable command prefix removed**: The "Command prefix" setting introduced in 7.7 has been reverted. Chat commands always use `/` again (`/new`, `/model`, `/meeting`, …) — same behavior as 7.6 and earlier.
+- **Stuck "Recording" state after rapid restart**: Fixed a race condition where the app could get permanently stuck in the recording state if a new recording was started within ~100ms of the previous one ending (e.g. after a silent skip). The deferred AVAudioRecorder cleanup is now identity-checked so it never clobbers the recorder of a freshly started recording. Stop and Stop Dictate now reliably end the recording in this scenario.
 
 ## Full changelog
 
-[Compare v7.7…v7.8](https://github.com/mgsgde/whisper-shortcut/compare/v7.7...v7.8)
+[Compare v7.8…v7.9](https://github.com/mgsgde/whisper-shortcut/compare/v7.8...v7.9)

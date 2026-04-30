@@ -179,12 +179,20 @@ extension AudioRecorder: AVAudioRecorderDelegate {
   func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
     // Store URL before cleanup
     let url = recordingURL
-    
+
     // Delay cleanup to allow CoreAudio to finish I/O cycle and prevent "Abandoning I/O cycle" errors
-    // This gives CoreAudio time to complete its reconfiguration before we release the recorder
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-      self?.audioRecorder = nil
-      DebugLogger.logAudio("🎵 AUDIO: AudioRecorder cleaned up after delay")
+    // This gives CoreAudio time to complete its reconfiguration before we release the recorder.
+    // Identity-check before clearing: if a new recording was started during the 100ms window,
+    // self.audioRecorder will already point to the new instance — niling it would strand the
+    // new recording in a state where stopRecording() silently returns and the app gets stuck.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self, weak recorder] in
+      guard let self else { return }
+      if self.audioRecorder === recorder {
+        self.audioRecorder = nil
+        DebugLogger.logAudio("🎵 AUDIO: AudioRecorder cleaned up after delay")
+      } else {
+        DebugLogger.logAudio("🎵 AUDIO: Skipping deferred cleanup — recorder was replaced by a new recording")
+      }
     }
 
     if flag, let url = url {
