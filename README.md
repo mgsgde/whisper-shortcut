@@ -9,6 +9,7 @@ The app is local-first and bring-your-own-key. There is no backend or subscripti
 - Download the latest signed `.dmg` from [GitHub Releases](https://github.com/mgsgde/whisper-shortcut/releases).
 - The app is also available on the [Mac App Store](https://apps.apple.com/us/app/whispershortcut/id6749648401).
 - Demo video: [Watch on YouTube](https://youtu.be/ZaD2iSZ0Y2M).
+- Additional demo: [Watch on YouTube](https://www.youtube.com/watch?v=JTa4APF72cY).
 
 ## Features
 
