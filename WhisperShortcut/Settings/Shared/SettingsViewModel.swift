@@ -372,9 +372,6 @@ class SettingsViewModel: ObservableObject {
     // Notify about model change
     NotificationCenter.default.post(name: .modelChanged, object: data.selectedTranscriptionModel)
 
-    // Simulate save delay
-    try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
-
     data.isLoading = false
 
     return nil

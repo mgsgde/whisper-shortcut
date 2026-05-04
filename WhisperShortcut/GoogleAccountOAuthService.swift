@@ -11,6 +11,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
   private var accessTokenExpiry: Date?
   private var pendingContinuation: CheckedContinuation<URL, Error>?
   private var authSession: ASWebAuthenticationSession?
+  private var activeRefreshTask: Task<String, Error>?
 
   private override init() {
     super.init()
@@ -116,6 +117,8 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
 
     if let refreshToken = tokenResponse["refresh_token"] as? String {
       _ = KeychainManager.shared.saveGoogleCalendarRefreshToken(refreshToken)
+    } else {
+      DebugLogger.logError("GOOGLE-OAUTH: No refresh_token in token response — re-authorization may be required on next launch")
     }
 
     accessToken = tokenResponse["access_token"] as? String
@@ -166,7 +169,19 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
     if let token = accessToken, let expiry = accessTokenExpiry, Date() < expiry {
       return token
     }
-    return try await refreshAccessToken()
+    if let existing = activeRefreshTask {
+      return try await existing.value
+    }
+    let task = Task { try await refreshAccessToken() }
+    activeRefreshTask = task
+    do {
+      let token = try await task.value
+      activeRefreshTask = nil
+      return token
+    } catch {
+      activeRefreshTask = nil
+      throw error
+    }
   }
 
   // MARK: - Disconnect

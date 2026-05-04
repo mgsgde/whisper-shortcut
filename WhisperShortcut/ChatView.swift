@@ -368,7 +368,10 @@ class ChatViewModel: ObservableObject {
     case "jpg", "jpeg": return "image/jpeg"
     case "gif": return "image/gif"
     case "webp": return "image/webp"
-    default: return "image/png"
+    case "png": return "image/png"
+    case "txt", "text": return "text/plain"
+    case "json": return "application/json"
+    default: return "application/octet-stream"
     }
   }
 
@@ -678,11 +681,6 @@ class ChatViewModel: ObservableObject {
     return ["parts": [["text": text]]]
   }
 
-  /// Resolves the model ID for the chat window from UserDefaults (Settings > Chat), or subscription fixed model when on subscription.
-  private static func resolveOpenGeminiModel() -> String {
-    openChatModel.rawValue
-  }
-
   static var openChatModel: PromptModel {
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedChatModel)
       ?? SettingsDefaults.selectedChatModel.rawValue
@@ -918,7 +916,7 @@ class ChatViewModel: ObservableObject {
   }
 
   func closeTab(id: UUID) {
-    // Archive instead of delete — session moves to the Archive section in the sidebar
+    rememberClosed(id: id)
     store.archiveSession(id: id)
     if id == session.id {
       switchToCurrentStoreSession()
@@ -1139,7 +1137,7 @@ class ChatViewModel: ObservableObject {
     if let te = error as? TranscriptionError {
       switch te {
       case .invalidAPIKey, .incorrectAPIKey:
-        return "Invalid API key. Please check your Google API key in Settings."
+        return "Invalid API key. Please check your API key in Settings."
       case .rateLimited:
         return "Rate limit reached. Please wait a moment and try again."
       case .quotaExceeded:
@@ -1148,6 +1146,16 @@ class ChatViewModel: ObservableObject {
         return "Network error: \(msg)"
       default:
         return "Request failed. Please try again."
+      }
+    }
+    if let urlError = error as? URLError {
+      switch urlError.code {
+      case .notConnectedToInternet, .networkConnectionLost:
+        return "No internet connection. Please check your network and try again."
+      case .timedOut:
+        return "Request timed out. Please try again."
+      default:
+        return "Network error: \(urlError.localizedDescription)"
       }
     }
     return error.localizedDescription
@@ -2122,150 +2130,7 @@ struct ChatInputAreaView: View {
     }
   }
 
-  // (Legacy chip helpers removed — attachments are now inline in the composer.)
-  #if false
-  private func screenshotChip(data: Data, index: Int) -> some View {
-    let isFocused = focusedAttachment == .screenshot(index)
-    let label = viewModel.pendingScreenshots.count == 1 ? "Screenshot" : "Screenshot \(index + 1)"
-    return HStack(spacing: 5) {
-      if let nsImage = NSImage(data: data) {
-        Image(nsImage: nsImage)
-          .resizable()
-          .aspectRatio(contentMode: .fill)
-          .frame(width: 22, height: 16)
-          .clipped()
-          .clipShape(RoundedRectangle(cornerRadius: 3))
-          .onTapGesture { onTapScreenshotThumbnail(data) }
-          .help("Click to view full size")
-      } else {
-        Image(systemName: "camera.viewfinder")
-          .font(.caption)
-          .foregroundColor(ChatTheme.secondaryText)
-      }
-      Text(label)
-        .font(.caption)
-        .foregroundColor(ChatTheme.primaryText)
-      Button(action: { viewModel.removePendingScreenshot(at: index); inputFocused = true }) {
-        Image(systemName: "xmark")
-          .font(.system(size: 8, weight: .bold))
-          .foregroundColor(ChatTheme.secondaryText)
-      }
-      .buttonStyle(.plain)
-      .help("Remove screenshot")
-    }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 5)
-    .background(ChatTheme.windowBackground.opacity(0.6))
-    .clipShape(RoundedRectangle(cornerRadius: 8))
-    .overlay(
-      RoundedRectangle(cornerRadius: 8)
-        .strokeBorder(
-          isFocused ? Color.accentColor : ChatTheme.primaryText.opacity(ChatTheme.borderOpacity),
-          lineWidth: isFocused ? 1.5 : 1)
-    )
-    .focusable()
-    .focused($focusedAttachment, equals: .screenshot(index))
-    .onKeyPress(.deleteForward)  { viewModel.removePendingScreenshot(at: index); inputFocused = true; return .handled }
-    .onKeyPress(.delete)         { viewModel.removePendingScreenshot(at: index); inputFocused = true; return .handled }
-    .accessibilityLabel("\(label) attachment. Press Delete to remove.")
-  }
 
-  private var fileChip: some View {
-    let file = viewModel.pendingFileAttachments.first
-    let isFocused = focusedAttachment == .file
-    return HStack(spacing: 5) {
-      if let f = file, f.mimeType.hasPrefix("image/"), let img = NSImage(data: f.data) {
-        Image(nsImage: img)
-          .resizable()
-          .aspectRatio(contentMode: .fill)
-          .frame(width: 22, height: 16)
-          .clipped()
-          .clipShape(RoundedRectangle(cornerRadius: 3))
-      } else {
-        Image(systemName: file?.mimeType == "application/pdf" ? "doc.richtext" : "doc")
-          .font(.caption)
-          .foregroundColor(ChatTheme.secondaryText)
-      }
-      Text(file?.filename ?? "File")
-        .font(.caption)
-        .foregroundColor(ChatTheme.primaryText)
-        .lineLimit(1)
-        .frame(maxWidth: 120, alignment: .leading)
-      Button(action: { viewModel.clearPendingFiles(); inputFocused = true }) {
-        Image(systemName: "xmark")
-          .font(.system(size: 8, weight: .bold))
-          .foregroundColor(ChatTheme.secondaryText)
-      }
-      .buttonStyle(.plain)
-      .help("Remove attachment")
-    }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 5)
-    .background(ChatTheme.windowBackground.opacity(0.6))
-    .clipShape(RoundedRectangle(cornerRadius: 8))
-    .overlay(
-      RoundedRectangle(cornerRadius: 8)
-        .strokeBorder(
-          isFocused ? Color.accentColor : ChatTheme.primaryText.opacity(ChatTheme.borderOpacity),
-          lineWidth: isFocused ? 1.5 : 1)
-    )
-    .focusable()
-    .focused($focusedAttachment, equals: .file)
-    .onKeyPress(.deleteForward)  { viewModel.clearPendingFiles(); inputFocused = true; return .handled }
-    .onKeyPress(.delete)         { viewModel.clearPendingFiles(); inputFocused = true; return .handled }
-    .accessibilityLabel("File attachment \(file?.filename ?? ""). Press Delete to remove.")
-  }
-
-  private func pastedBlockChip(_ block: ChatViewModel.PastedBlock) -> some View {
-    let isFocused = focusedAttachment == .pastedBlock(block.id)
-    let chipLabel: String
-    let chipIcon: String
-    let removeHelp: String
-    let a11yLabel: String
-    switch block.kind {
-    case .shortcutSelection:
-      chipLabel = "Selection · \(block.lineCount) lines"
-      chipIcon = "text.cursor"
-      removeHelp = "Remove selection"
-      a11yLabel = "Text from selection, \(block.lineCount) lines. Press Delete to remove."
-    case .largePaste:
-      chipLabel = "Pasted · \(block.lineCount) lines"
-      chipIcon = "doc.plaintext"
-      removeHelp = "Remove pasted text"
-      a11yLabel = "Pasted content, \(block.lineCount) lines. Press Delete to remove."
-    }
-    return HStack(spacing: 5) {
-      Image(systemName: chipIcon)
-        .font(.caption)
-        .foregroundColor(ChatTheme.secondaryText)
-      Text(chipLabel)
-        .font(.caption)
-        .foregroundColor(ChatTheme.primaryText)
-      Button(action: { viewModel.removePastedBlock(id: block.id); inputFocused = true }) {
-        Image(systemName: "xmark")
-          .font(.system(size: 8, weight: .bold))
-          .foregroundColor(ChatTheme.secondaryText)
-      }
-      .buttonStyle(.plain)
-      .help(removeHelp)
-    }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 5)
-    .background(ChatTheme.windowBackground.opacity(0.6))
-    .clipShape(RoundedRectangle(cornerRadius: 8))
-    .overlay(
-      RoundedRectangle(cornerRadius: 8)
-        .strokeBorder(
-          isFocused ? Color.accentColor : ChatTheme.primaryText.opacity(ChatTheme.borderOpacity),
-          lineWidth: isFocused ? 1.5 : 1)
-    )
-    .focusable()
-    .focused($focusedAttachment, equals: .pastedBlock(block.id))
-    .onKeyPress(.deleteForward)  { viewModel.removePastedBlock(id: block.id); inputFocused = true; return .handled }
-    .onKeyPress(.delete)         { viewModel.removePastedBlock(id: block.id); inputFocused = true; return .handled }
-    .accessibilityLabel(a11yLabel)
-  }
-  #endif
 
 }
 
@@ -2779,8 +2644,9 @@ private struct ModelReplyView: View {
       .filter { !$0.isEmpty }
     guard !lines.isEmpty, lines.allSatisfy({ MarkdownParsing.parseBullet($0) != nil }) else { return nil }
     let opts = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-    return lines.map { line in
-      let rawContent = MarkdownParsing.parseBullet(line)!.trimmingCharacters(in: .whitespaces)
+    return lines.compactMap { line in
+      guard let parsed = MarkdownParsing.parseBullet(line) else { return nil }
+      let rawContent = parsed.trimmingCharacters(in: .whitespaces)
       let content = MarkdownParsing.renderLatexToUnicode(rawContent)
       var contentAttr = MarkdownParsing.inlineAttributedString(content, options: opts)
       contentAttr.font = .system(size: 16, weight: .regular)
@@ -2822,115 +2688,6 @@ private struct ModelReplyView: View {
     return attr
   }
 
-  private static func buildAttributedReply(
-    content: String,
-    sources: [GroundingSource],
-    groundingSupports: [GroundingSupport]
-  ) -> AttributedString {
-    let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-    if groundingSupports.isEmpty || sources.isEmpty {
-      return buildAttributedReplyContentOnly(content: content, options: options)
-    }
-    let paragraphs = ParagraphCitationBuilder.buildParagraphs(content: content, supports: groundingSupports, sourcesCount: sources.count)
-    var result = AttributedString()
-    let paragraphSeparator = AttributedString("\n\n")
-    for para in paragraphs {
-      let trimmed = para.text.trimmingCharacters(in: .whitespacesAndNewlines)
-      if trimmed.isEmpty { continue }
-      if !result.description.isEmpty { result.append(paragraphSeparator) }
-      if MarkdownParsing.isSeparatorParagraph(trimmed) {
-        var lineAttr = AttributedString(MarkdownParsing.separatorLineContent)
-        lineAttr.foregroundColor = ChatTheme.primaryText.opacity(0.4)
-        result.append(lineAttr)
-        continue
-      }
-      let attrText = buildAttributedReplyContentOnly(content: para.text, options: options)
-      result.append(attrText)
-      for idx in para.chunkIndices {
-        let oneBased = idx + 1
-        let marker = " [\(oneBased)]"
-        var markerAttr = AttributedString(marker)
-        markerAttr.font = .system(size: 14)
-        if let url = URL(string: sources[idx].uri) {
-          markerAttr.link = url
-        }
-        result.append(markerAttr)
-      }
-    }
-    return result.description.isEmpty
-      ? buildAttributedReplyContentOnly(content: content, options: options)
-      : result
-  }
-
-  private static func buildAttributedReplyContentOnly(content: String, options: AttributedString.MarkdownParsingOptions) -> AttributedString {
-    // Extract fenced code blocks before splitting
-    let (processed, codeBlocks) = CodeBlockExtractor.extract(from: content)
-    let paragraphs = MarkdownParsing.normalizeMarkdownParagraphBreaks(processed).components(separatedBy: "\n\n")
-    var result = AttributedString()
-    let separator = AttributedString("\n\n")
-    for (index, para) in paragraphs.enumerated() {
-      let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
-      if trimmed.isEmpty { continue }
-      if index > 0 { result.append(separator) }
-      if let idx = CodeBlockExtractor.placeholderIndex(trimmed), idx < codeBlocks.count {
-        let cb = codeBlocks[idx]
-        if cb.language == "markdown" && looksLikeStructuredAnswer(cb.code) {
-          let unwrapped = buildAttributedReplyContentOnly(content: cb.code, options: options)
-          result.append(unwrapped)
-          continue
-        }
-        let label = cb.language.map { "[\($0)] " } ?? ""
-        var attr = AttributedString("\(label)\(cb.code)")
-        attr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
-        result.append(attr)
-      } else if trimmed.hasPrefix(GeminiAPIClient.imageMarkerPrefix) && trimmed.hasSuffix(GeminiAPIClient.imageMarkerSuffix) {
-        // Inline image marker — skip in AttributedString fallback path (rendered in SwiftUI path)
-        var attr = AttributedString("[Image]")
-        attr.font = .system(size: 14, weight: .medium)
-        attr.foregroundColor = ChatTheme.primaryText.opacity(0.5)
-        result.append(attr)
-      } else if MarkdownParsing.isSeparatorParagraph(trimmed) {
-        var lineAttr = AttributedString(MarkdownParsing.separatorLineContent)
-        lineAttr.foregroundColor = ChatTheme.primaryText.opacity(0.4)
-        result.append(lineAttr)
-      } else if let (level, title) = MarkdownParsing.parseATXHeading(trimmed) {
-        let parts = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-        let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
-        var headingAttr = MarkdownParsing.inlineAttributedString(title, options: options)
-        headingAttr.font = MarkdownParsing.fontForHeadingLevel(level, baseSize: 16)
-        result.append(headingAttr)
-        if !bodyPart.isEmpty {
-          result.append(AttributedString("\n\n"))
-          var bodyAttr = MarkdownParsing.inlineAttributedString(bodyPart, options: options)
-          bodyAttr.font = .system(size: 16, weight: .regular)
-          result.append(bodyAttr)
-        }
-      } else if MarkdownParsing.looksLikeMarkdownTable(trimmed) {
-        var tableAttr = AttributedString(trimmed)
-        tableAttr.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
-        result.append(tableAttr)
-      } else if let bulletItems = parseBulletItems(trimmed) {
-        // Flatten bullet items into a single AttributedString for this legacy path
-        for (i, item) in bulletItems.enumerated() {
-          if i > 0 { result.append(AttributedString("\n")) }
-          var bullet = AttributedString("• ")
-          bullet.font = .system(size: 16, weight: .regular)
-          result.append(bullet)
-          result.append(item)
-        }
-      } else {
-        let latexProcessed = MarkdownParsing.renderLatexToUnicode(trimmed)
-        let fullOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
-        var attr = (try? AttributedString(markdown: latexProcessed, options: fullOptions)) ?? AttributedString(latexProcessed)
-        attr.font = .system(size: 16, weight: .regular)
-        result.append(attr)
-      }
-    }
-    if result.description.isEmpty {
-      return (try? AttributedString(markdown: content)) ?? AttributedString(content)
-    }
-    return result
-  }
 }
 
 // MARK: - Code Block View

@@ -171,6 +171,7 @@ private struct SessionsFile: Codable {
 
 // MARK: - Store
 
+@MainActor
 class ChatSessionStore {
   static let shared = ChatSessionStore()
 
@@ -229,11 +230,16 @@ class ChatSessionStore {
       return file
     }
 
-    if let data = try? Data(contentsOf: fileURL),
-       let file = try? JSONDecoder().decode(SessionsFile.self, from: data),
-       !file.sessions.isEmpty {
-      cachedFile = file
-      return file
+    if let data = try? Data(contentsOf: fileURL) {
+      do {
+        let file = try JSONDecoder().decode(SessionsFile.self, from: data)
+        if !file.sessions.isEmpty {
+          cachedFile = file
+          return file
+        }
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT: Failed to decode sessions file, starting fresh: \(error.localizedDescription)")
+      }
     }
 
     let defaultSession = ChatSession()
@@ -245,10 +251,10 @@ class ChatSessionStore {
   private func saveSessionsFile(_ file: SessionsFile) {
     var file = file
 
-    // Prune oldest sessions when the cap is exceeded, keeping the current session safe.
     if file.sessions.count > Self.maxSessionCount {
       let sorted = file.sessions.sorted { $0.lastUpdated > $1.lastUpdated }
-      let kept = Set(sorted.prefix(Self.maxSessionCount).map { $0.id })
+      var kept = Set(sorted.prefix(Self.maxSessionCount).map { $0.id })
+      kept.insert(file.currentSessionId)
       let removed = file.sessions.filter { !kept.contains($0.id) }.map { $0.id }
       file.sessions.removeAll { !kept.contains($0.id) }
       DebugLogger.log("GEMINI-CHAT: Pruned \(removed.count) old session(s) to stay within \(Self.maxSessionCount) limit")
@@ -286,11 +292,13 @@ class ChatSessionStore {
     debounceWorkItem?.cancel()
     let url = fileURL
     let dir = appSupportDir
-    let workItem = DispatchWorkItem { [weak self] in
-      guard self != nil else { return }
-      try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-      if let data = try? JSONEncoder().encode(file) {
-        try? data.write(to: url, options: .atomic)
+    let workItem = DispatchWorkItem {
+      do {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let data = try JSONEncoder().encode(file)
+        try data.write(to: url, options: .atomic)
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT: Disk write failed: \(error.localizedDescription)")
       }
     }
     debounceWorkItem = workItem
@@ -298,16 +306,18 @@ class ChatSessionStore {
   }
 
   /// Forces an immediate disk write of the current cached state (e.g. before app termination).
-  func flushToDisk() {
-    debounceWorkItem?.cancel()
-    guard let file = cachedFile else { return }
-    let url = fileURL
-    let dir = appSupportDir
-    diskWriteQueue.sync {
-      try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-      if let data = try? JSONEncoder().encode(file) {
-        try? data.write(to: url, options: .atomic)
-      }
+  nonisolated func flushToDisk() {
+    let file: SessionsFile? = DispatchQueue.main.sync { cachedFile }
+    guard let file else { return }
+    let url = DispatchQueue.main.sync { fileURL }
+    let dir = DispatchQueue.main.sync { appSupportDir }
+    DispatchQueue.main.sync { debounceWorkItem?.cancel() }
+    do {
+      try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      let data = try JSONEncoder().encode(file)
+      try data.write(to: url, options: .atomic)
+    } catch {
+      DebugLogger.logError("GEMINI-CHAT: Flush to disk failed: \(error.localizedDescription)")
     }
   }
 

@@ -279,6 +279,10 @@ enum ChatToolRegistry {
     return defaultValue
   }
 
+  private static let googleNotConnectedError: [String: Any] = [
+    "error": "Google is not connected. Connect it in Settings or use /connect-google."
+  ]
+
   @MainActor
   static func execute(name: String, args: [String: Any]) async -> [String: Any] {
     DebugLogger.log("GEMINI-CHAT-TOOL: execute name=\(name)")
@@ -308,9 +312,7 @@ enum ChatToolRegistry {
       return ["ok": true, "url": urlString]
 
     case "google_calendar_list_events":
-      guard GoogleAccountOAuthService.shared.isConnected else {
-        return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
-      }
+      guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       let maxResults = intArgument(args, "max_results", default: 10)
       let hoursAhead = intArgument(args, "hours_ahead", default: 168)
       do {
@@ -324,9 +326,7 @@ enum ChatToolRegistry {
       }
 
     case "google_calendar_create_event":
-      guard GoogleAccountOAuthService.shared.isConnected else {
-        return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
-      }
+      guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       guard let summary = args["summary"] as? String,
             let startISO = args["start_iso8601"] as? String,
             let endISO = args["end_iso8601"] as? String
@@ -348,9 +348,7 @@ enum ChatToolRegistry {
       }
 
     case "google_calendar_delete_event":
-      guard GoogleAccountOAuthService.shared.isConnected else {
-        return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
-      }
+      guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       guard let eventId = args["event_id"] as? String else {
         return ["error": "Missing required argument: event_id"]
       }
@@ -363,9 +361,7 @@ enum ChatToolRegistry {
       }
 
     case "google_tasks_list_tasklists":
-      guard GoogleAccountOAuthService.shared.isConnected else {
-        return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
-      }
+      guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       do {
         let lists = try await GoogleTasksAPIClient.shared.listTaskLists()
         return ["task_lists": lists, "count": lists.count]
@@ -375,9 +371,7 @@ enum ChatToolRegistry {
       }
 
     case "google_tasks_list":
-      guard GoogleAccountOAuthService.shared.isConnected else {
-        return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
-      }
+      guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       let taskListId = args["task_list_id"] as? String ?? "@default"
       let maxResults = intArgument(args, "max_results", default: 20)
       let showCompleted = boolArgument(args, "show_completed", default: false)
@@ -391,9 +385,7 @@ enum ChatToolRegistry {
       }
 
     case "google_tasks_create":
-      guard GoogleAccountOAuthService.shared.isConnected else {
-        return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
-      }
+      guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       guard let title = args["title"] as? String else {
         return ["error": "Missing required argument: title"]
       }
@@ -410,9 +402,7 @@ enum ChatToolRegistry {
       }
 
     case "google_tasks_complete":
-      guard GoogleAccountOAuthService.shared.isConnected else {
-        return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
-      }
+      guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       guard let taskId = args["task_id"] as? String else {
         return ["error": "Missing required argument: task_id"]
       }
@@ -427,9 +417,7 @@ enum ChatToolRegistry {
       }
 
     case "google_tasks_delete":
-      guard GoogleAccountOAuthService.shared.isConnected else {
-        return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
-      }
+      guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       guard let taskId = args["task_id"] as? String else {
         return ["error": "Missing required argument: task_id"]
       }
@@ -444,9 +432,7 @@ enum ChatToolRegistry {
       }
 
     case "gmail_search":
-      guard GoogleAccountOAuthService.shared.isConnected else {
-        return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
-      }
+      guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       let query = args["query"] as? String ?? ""
       let maxResults = intArgument(args, "max_results", default: 10)
       do {
@@ -459,9 +445,7 @@ enum ChatToolRegistry {
       }
 
     case "gmail_read":
-      guard GoogleAccountOAuthService.shared.isConnected else {
-        return ["error": "Google is not connected. Connect it in Settings or use /connect-google."]
-      }
+      guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       guard let messageId = args["message_id"] as? String else {
         return ["error": "Missing required argument: message_id"]
       }
