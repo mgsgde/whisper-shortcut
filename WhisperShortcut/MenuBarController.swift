@@ -1228,10 +1228,18 @@ class MenuBarController: NSObject {
 
       let transcriptionModel = TranscriptionModel.loadSelected()
       let modelDisplayName = await speechService.getTranscriptionModelInfo()
+      let backendTag: String
+      if transcriptionModel.isOffline {
+        backendTag = "whisper"
+      } else if transcriptionModel == .customWhisperAPI {
+        backendTag = "custom-whisper"
+      } else {
+        backendTag = "gemini"
+      }
       // Only persist audio for single-shot dictation, never for Live Meeting chunks.
       let audioRef: String? = duringMeeting ? nil : ContextLogger.shared.captureDictationAudio(
         from: audioURL,
-        backend: transcriptionModel.isOffline ? "whisper" : "gemini",
+        backend: backendTag,
         transcriptionModel: transcriptionModel.rawValue
       )
       ContextLogger.shared.logTranscription(

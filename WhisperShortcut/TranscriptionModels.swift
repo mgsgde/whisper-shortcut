@@ -27,6 +27,9 @@ enum TranscriptionModel: String, CaseIterable {
   case whisperMedium = "whisper-medium"
   case whisperLarge = "whisper-large"
 
+  // Custom Whisper API
+  case customWhisperAPI = "custom-whisper-api"
+
   var displayName: String {
     switch self {
     case .gemini25Flash:
@@ -51,6 +54,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Whisper Medium (Offline)"
     case .whisperLarge:
       return "Whisper Large (Offline)"
+    case .customWhisperAPI:
+      return "Custom Whisper API"
     }
   }
 
@@ -71,6 +76,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "" // Offline models don't use API endpoints
+    case .customWhisperAPI:
+      return "" // URL is configured by the user in Settings
     }
   }
 
@@ -78,7 +85,7 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini31FlashLite, .gemini25FlashLite, .gemini25Flash, .whisperBase:
       return true
-    case .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge:
+    case .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge, .customWhisperAPI:
       return false
     }
   }
@@ -94,6 +101,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Medium"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "Free (Offline)"
+    case .customWhisperAPI:
+      return "Custom"
     }
   }
 
@@ -121,6 +130,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "OpenAI Whisper Medium • Best quality • ~1.5GB • Offline"
     case .whisperLarge:
       return "OpenAI Whisper Large v3 • Highest quality • ~3GB • Offline"
+    case .customWhisperAPI:
+      return "Send audio to your own Whisper endpoint • OpenAI-compatible API"
     }
   }
   
@@ -128,13 +139,18 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .gemini31FlashLite:
       return true
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .customWhisperAPI:
       return false
     }
   }
-  
+
   var isOffline: Bool {
-    return !isGemini
+    switch self {
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
+      return true
+    default:
+      return false
+    }
   }
   
   var offlineModelType: OfflineModelType? {
@@ -198,9 +214,11 @@ enum TranscriptionModel: String, CaseIterable {
 
   /// Coarse capability tier used by Smart Improvement to decide whether re-listening to audio
   /// produced by another model can add information. Within Gemini, Pro > Flash > Flash-Lite.
-  /// Whisper is treated as its own (different) family.
+  /// Non-Gemini backends (offline Whisper, custom OpenAI-compatible endpoints) are treated as
+  /// separate families that Gemini can always informatively verify.
   enum AsymmetryClass: Int {
     case offlineWhisper
+    case customWhisperAPI
     case geminiFlashLite
     case geminiFlash
     case geminiPro
@@ -210,6 +228,8 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return .offlineWhisper
+    case .customWhisperAPI:
+      return .customWhisperAPI
     case .gemini25FlashLite, .gemini31FlashLite:
       return .geminiFlashLite
     case .gemini25Flash, .gemini3Flash:
@@ -220,12 +240,12 @@ enum TranscriptionModel: String, CaseIterable {
   }
 
   /// Returns true when Smart Improvement using `self` can plausibly add information by re-listening
-  /// to audio originally transcribed by `transcriptionModel`. Whisper audio always benefits from
-  /// Gemini verification (different family). Same-family Gemini verification only adds information
-  /// when `self` is strictly in a higher tier.
+  /// to audio originally transcribed by `transcriptionModel`. Audio from non-Gemini backends always
+  /// benefits from Gemini verification (different family). Same-family Gemini verification only adds
+  /// information when `self` is strictly in a higher tier.
   func canInformativelyVerify(audioFrom transcriptionModel: TranscriptionModel) -> Bool {
     switch transcriptionModel.asymmetryClass {
-    case .offlineWhisper:
+    case .offlineWhisper, .customWhisperAPI:
       return self.isGemini
     default:
       guard self.isGemini else { return false }
