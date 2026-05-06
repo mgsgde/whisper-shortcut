@@ -1,4 +1,4 @@
-# WhisperShortcut 7.9
+# WhisperShortcut 7.10
 
 ## Installation
 
@@ -8,8 +8,12 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ### Fixed
 
-- **Stuck "Recording" state after rapid restart**: Fixed a race condition where the app could get permanently stuck in the recording state if a new recording was started within ~100ms of the previous one ending (e.g. after a silent skip). The deferred AVAudioRecorder cleanup is now identity-checked so it never clobbers the recorder of a freshly started recording. Stop and Stop Dictate now reliably end the recording in this scenario.
+- **Code quality and reliability improvements across core systems**: Refined chat flows, session persistence, Google OAuth handling, and shared rate-limiting paths to improve stability and maintainability.
+
+### Docs
+
+- **README demo links cleaned up**: Consolidated demo video references for clearer onboarding and less duplication.
 
 ## Full changelog
 
-[Compare v7.8…v7.9](https://github.com/mgsgde/whisper-shortcut/compare/v7.8...v7.9)
+[Compare v7.9…v7.10](https://github.com/mgsgde/whisper-shortcut/compare/v7.9...v7.10)
