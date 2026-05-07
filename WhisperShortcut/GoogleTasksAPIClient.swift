@@ -90,6 +90,7 @@ actor GoogleTasksAPIClient {
     if let title = json["title"] as? String { result["title"] = title }
     if let notes = json["notes"] as? String { result["notes"] = notes }
     if let due = json["due"] as? String { result["due"] = due }
+    if let webViewLink = json["webViewLink"] as? String { result["web_view_link"] = webViewLink }
     return result
   }
 
