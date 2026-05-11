@@ -22,11 +22,35 @@ final class GrokChatProvider: LLMChatProvider {
     tools: [LLMToolDeclaration],
     useGrounding: Bool
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
+    if let attachmentError = Self.validateAttachments(in: contents) {
+      return AsyncThrowingStream { $0.finish(throwing: attachmentError) }
+    }
     if useGrounding {
       return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools)
     } else {
       return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools)
     }
+  }
+
+  /// xAI's Grok API only accepts image attachments. Reject PDFs and other
+  /// non-image MIME types up front with a clear message — otherwise xAI tries
+  /// to base64-decode them as images and returns "Invalid base64-encoded image."
+  private static func validateAttachments(in contents: [[String: Any]]) -> Error? {
+    var unsupported: Set<String> = []
+    for content in contents {
+      guard let parts = content["parts"] as? [[String: Any]] else { continue }
+      for part in parts {
+        guard let inlineData = part["inline_data"] as? [String: Any],
+              let mimeType = inlineData["mime_type"] as? String,
+              !mimeType.hasPrefix("image/") else { continue }
+        unsupported.insert(mimeType)
+      }
+    }
+    guard !unsupported.isEmpty else { return nil }
+    let types = unsupported.sorted().joined(separator: ", ")
+    return TranscriptionError.fileError(
+      "Grok only supports image attachments — \(types) isn't supported. Switch to a Gemini model to chat about PDFs and documents."
+    )
   }
 
   // MARK: - Responses API (with web_search + X search)

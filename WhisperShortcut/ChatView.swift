@@ -1144,6 +1144,8 @@ class ChatViewModel: ObservableObject {
         return "API quota exceeded. Please try again later."
       case .networkError(let msg):
         return "Network error: \(msg)"
+      case .fileError(let msg):
+        return msg
       default:
         return "Request failed. Please try again."
       }
