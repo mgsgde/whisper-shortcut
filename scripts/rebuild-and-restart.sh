@@ -42,6 +42,10 @@ echo "📚 Syncing bundled docs..."
 mkdir -p "$PROJECT_DIR/WhisperShortcut/Docs"
 cp "$PROJECT_DIR/README.md"               "$PROJECT_DIR/WhisperShortcut/Docs/README.md"
 cp "$PROJECT_DIR/docs/data-directories.md" "$PROJECT_DIR/WhisperShortcut/Docs/data-directories.md"
+# Root README uses repo-relative docs links. Inside WhisperShortcut/Docs/, these
+# docs are side-by-side, so rewrite links for the bundled copy.
+perl -0pi -e 's|\[`docs/data-directories\.md`\]\(docs/data-directories\.md\)|[`data-directories.md`](data-directories.md)|g; s|\(docs/data-directories\.md\)|\(data-directories.md\)|g' \
+  "$PROJECT_DIR/WhisperShortcut/Docs/README.md"
 
 # Build variant
 if [[ "$APP_STORE" == true ]]; then

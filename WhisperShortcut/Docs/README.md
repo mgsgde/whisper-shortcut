@@ -108,13 +108,13 @@ Core files:
 
 ## Data And Privacy
 
-WhisperShortcut stores settings, chat sessions, meeting transcripts, usage logs, and downloaded models on your Mac. API keys and OAuth refresh tokens are stored in Keychain.
+WhisperShortcut stores settings, chat sessions, meeting transcripts, usage logs, short-lived Smart Improvement audio samples, and downloaded models on your Mac. API keys, OAuth refresh tokens, and Trello tokens are stored in Keychain.
 
 WhisperShortcut uses one canonical app data location so sandboxed and non-sandboxed builds see the same files:
 
 `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/`
 
-See [`docs/data-directories.md`](docs/data-directories.md) for details.
+See [`data-directories.md`](data-directories.md) for details.
 
 ## License
 
