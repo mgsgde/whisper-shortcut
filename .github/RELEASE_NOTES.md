@@ -1,4 +1,4 @@
-# WhisperShortcut 7.11
+# WhisperShortcut 7.12
 
 ## Installation
 
@@ -8,21 +8,23 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ### Added
 
-- **Trello in chat**: Connect Trello with PKCE OAuth from the chat settings tab. New chat tools let the model list boards, lists, cards, and create cards directly from a chat session.
-- **Read Aloud on chat replies**: The Read Aloud button is back next to Copy on assistant messages.
+- **OpenAI as a first-class provider**: Add your OpenAI API key in **Settings → General** and pick OpenAI models for transcription, chat, and Dictate Prompt, the same way Gemini and Grok already work.
+  - **Transcription**: `gpt-4o-transcribe` and `gpt-4o-mini-transcribe` in the Dictate model picker.
+  - **Chat**: `gpt-5`, `gpt-5-mini`, and `gpt-4o-audio-preview` in the chat model picker, with full function calling for Calendar, Tasks, Gmail, and Trello.
+  - **Dictate Prompt**: `gpt-4o-audio-preview` accepts the recording directly via inline audio — no transcription detour — exactly like Gemini does today. The Dictation system prompt, screenshot context, and clipboard text are all forwarded.
+  - New `/openai` slash command in chat switches the active model to GPT-5, matching `/gemini` and `/grok`.
+- **Self-documentation in chat**: Two local chat tools (`list_whisper_shortcut_docs` and `read_whisper_shortcut_doc`) ground the model in the app's actual bundled README and data-directories docs. Asking the chat "how does WhisperShortcut work?", "where are my recordings stored?", or "what does the Dictate Prompt setting do?" now returns answers based on the real documentation instead of guesses.
 
-### Improved
+### Changed
 
-- **Smart Improvement audio verification**: The dictation and Whisper Glossary focuses now confirm or reject text-stage suggestions against the original audio. Verification only runs when the Smart Improvement model is strictly stronger than (or a different family from) the model that produced the clip; audio samples are wiped at the end of every run.
-- **Tighter Smart Improvement suggestions**: Recommendations now require evidence across multiple distinct interactions, with stricter generality and abstraction filters, so one-off quirks no longer rewrite your prompts.
-- **Faster Grok chat**: Dropped `x_search` from Grok's tool list (`web_search` alone is enough) and made the in-flight tool loop cancellation-aware, so stopping a stream or sending a new message aborts immediately instead of running the remaining tool calls.
-- **Calendar and Tasks links in replies**: Google Calendar event and Google Tasks responses now include the web link so the chat model can surface it directly in the reply.
-- **Read Aloud lifecycle hardening**: A stale playback completion can no longer reset state after the user has moved on, and Read Aloud now declines while another operation is processing instead of stomping the current state.
+- **"Custom Transcription API" → "Self-hosted Transcription Endpoint"**: The previously misleading "Custom" entry is reframed for users running their own OpenAI-compatible servers (faster-whisper-server, Cloudflare-fronted Whisper, etc.). Its configuration UI moves out of General settings and now appears under the Dictate model picker, only when the entry is selected. Persisted settings continue to resolve — no migration needed.
+- **Whisper Glossary and language forwarded to custom transcription endpoints**: When dictation is routed through OpenAI's hosted endpoint or your self-hosted endpoint, your Whisper Glossary is sent as the `prompt` bias hint and your language selection as the `language` parameter. The Dictation system prompt does not apply to OpenAI's transcription endpoint (it has no equivalent field).
 
 ### Fixed
 
-- **Clear error for non-image Grok attachments**: Attaching a PDF (or any non-image file) to a Grok chat now fails fast with an actionable message pointing to Gemini, instead of a confusing xAI 400 error.
+- **Misleading server-error message**: The "An error occurred on Google's servers" notification now reads "The AI provider returned an error" — it correctly covers Gemini, xAI, OpenAI, and self-hosted endpoints.
+- **OpenAI Dictate Prompt screenshot crash**: `gpt-4o-audio-preview` is audio-only and rejected screenshots with HTTP 400. The screenshot is now skipped automatically when the selected model can't accept images.
 
 ## Full changelog
 
-[Compare v7.10…v7.11](https://github.com/mgsgde/whisper-shortcut/compare/v7.10...v7.11)
+[Compare v7.11…v7.12](https://github.com/mgsgde/whisper-shortcut/compare/v7.11...v7.12)
