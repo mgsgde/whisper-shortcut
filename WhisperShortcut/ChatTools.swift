@@ -251,11 +251,145 @@ enum ChatToolRegistry {
     ],
   ]
 
-  static func allDeclarations(calendarConnected: Bool) -> [[String: Any]] {
+  static let trelloFunctionDeclarations: [[String: Any]] = [
+    [
+      "name": "trello_list_boards",
+      "description": "Lists the user's open Trello boards. Use this first to discover available boards and their IDs before operating on a specific board.",
+      "parameters": [
+        "type": "object",
+        "properties": [:] as [String: Any],
+      ],
+    ],
+    [
+      "name": "trello_list_lists",
+      "description": "Lists the open lists (columns) on a Trello board. Use this to discover list IDs before creating or moving cards. Call trello_list_boards first to find the board_id.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "board_id": [
+            "type": "string",
+            "description": "The Trello board ID (from trello_list_boards results).",
+          ],
+        ] as [String: Any],
+        "required": ["board_id"],
+      ],
+    ],
+    [
+      "name": "trello_list_cards",
+      "description": "Lists cards in a specific list or across an entire board. Provide either list_id or board_id.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "list_id": [
+            "type": "string",
+            "description": "The Trello list ID (from trello_list_lists). Preferred when known.",
+          ],
+          "board_id": [
+            "type": "string",
+            "description": "The Trello board ID. Used only when list_id is not provided — returns all cards on the board.",
+          ],
+          "max_results": [
+            "type": "integer",
+            "description": "Maximum number of cards to return (1-100, default 50).",
+          ],
+        ] as [String: Any],
+      ],
+    ],
+    [
+      "name": "trello_create_card",
+      "description": "Creates a new Trello card in the given list. REQUIRED: You MUST call trello_list_lists in the current conversation FIRST and use one of the list_id values it returned. Never guess, invent, or recall a list_id from memory — Trello list IDs are 24-char hex strings that you cannot derive. If unsure, call trello_list_boards then trello_list_lists. Confirm the list with the user before bulk-creating many cards.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "list_id": [
+            "type": "string",
+            "description": "The Trello list ID. MUST be a value returned by trello_list_lists earlier in THIS conversation. Do NOT guess or fabricate.",
+          ],
+          "name": [
+            "type": "string",
+            "description": "Title of the card.",
+          ],
+          "description": [
+            "type": "string",
+            "description": "Optional description (markdown allowed).",
+          ],
+          "due": [
+            "type": "string",
+            "description": "Optional due date in ISO 8601 format (e.g. 2026-04-23T18:00:00Z).",
+          ],
+        ] as [String: Any],
+        "required": ["list_id", "name"],
+      ],
+    ],
+    [
+      "name": "trello_move_card",
+      "description": "Moves a Trello card to a different list (e.g. from 'To do' to 'Doing'). REQUIRED: Both card_id and list_id MUST come from earlier trello_list_cards / trello_list_lists calls in THIS conversation — never guess or fabricate Trello IDs.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "card_id": [
+            "type": "string",
+            "description": "The card ID to move. MUST be a value returned by trello_list_cards earlier in this conversation.",
+          ],
+          "list_id": [
+            "type": "string",
+            "description": "The destination list ID. MUST be a value returned by trello_list_lists earlier in this conversation.",
+          ],
+        ] as [String: Any],
+        "required": ["card_id", "list_id"],
+      ],
+    ],
+    [
+      "name": "trello_update_card",
+      "description": "Updates fields of an existing Trello card. REQUIRED: card_id MUST be a value returned by trello_list_cards earlier in THIS conversation — never guess. At least one of name, description, or due must be provided.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "card_id": [
+            "type": "string",
+            "description": "The card ID to update. MUST be a value returned by trello_list_cards earlier in this conversation.",
+          ],
+          "name": [
+            "type": "string",
+            "description": "New title for the card.",
+          ],
+          "description": [
+            "type": "string",
+            "description": "New description for the card (markdown allowed).",
+          ],
+          "due": [
+            "type": "string",
+            "description": "New due date in ISO 8601 format, or empty string to clear it.",
+          ],
+        ] as [String: Any],
+        "required": ["card_id"],
+      ],
+    ],
+    [
+      "name": "trello_archive_card",
+      "description": "Archives a Trello card (Trello's equivalent of 'complete' — the card is reversibly closed). REQUIRED: card_id MUST be a value returned by trello_list_cards earlier in THIS conversation — never guess. Always confirm with the user before archiving.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "card_id": [
+            "type": "string",
+            "description": "The card ID to archive. MUST be a value returned by trello_list_cards earlier in this conversation.",
+          ],
+        ] as [String: Any],
+        "required": ["card_id"],
+      ],
+    ],
+  ]
+
+  static func allDeclarations(calendarConnected: Bool, trelloConnected: Bool) -> [[String: Any]] {
+    var decls = functionDeclarations
     if calendarConnected {
-      return functionDeclarations + calendarFunctionDeclarations + tasksFunctionDeclarations + gmailFunctionDeclarations
+      decls += calendarFunctionDeclarations + tasksFunctionDeclarations + gmailFunctionDeclarations
     }
-    return functionDeclarations
+    if trelloConnected {
+      decls += trelloFunctionDeclarations
+    }
+    return decls
   }
 
   private static func intArgument(_ args: [String: Any], _ key: String, default defaultValue: Int) -> Int {
@@ -281,6 +415,10 @@ enum ChatToolRegistry {
 
   private static let googleNotConnectedError: [String: Any] = [
     "error": "Google is not connected. Connect it in Settings or use /connect-google."
+  ]
+
+  private static let trelloNotConnectedError: [String: Any] = [
+    "error": "Trello is not connected. Connect it in Settings or use /connect-trello."
   ]
 
   @MainActor
@@ -454,6 +592,112 @@ enum ChatToolRegistry {
         return message
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: gmail read failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "trello_list_boards":
+      guard TrelloOAuthService.shared.isConnected else { return trelloNotConnectedError }
+      do {
+        let boards = try await TrelloAPIClient.shared.listBoards()
+        return ["boards": boards, "count": boards.count]
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_boards failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "trello_list_lists":
+      guard TrelloOAuthService.shared.isConnected else { return trelloNotConnectedError }
+      guard let boardId = args["board_id"] as? String else {
+        return ["error": "Missing required argument: board_id"]
+      }
+      do {
+        let lists = try await TrelloAPIClient.shared.listLists(boardId: boardId)
+        return ["lists": lists, "count": lists.count]
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_lists failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "trello_list_cards":
+      guard TrelloOAuthService.shared.isConnected else { return trelloNotConnectedError }
+      let listId = args["list_id"] as? String
+      let boardId = args["board_id"] as? String
+      let maxResults = intArgument(args, "max_results", default: 50)
+      guard listId != nil || boardId != nil else {
+        return ["error": "Missing argument: either list_id or board_id is required"]
+      }
+      do {
+        let cards = try await TrelloAPIClient.shared.listCards(
+          listId: listId, boardId: boardId, maxResults: maxResults)
+        return ["cards": cards, "count": cards.count]
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_cards failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "trello_create_card":
+      guard TrelloOAuthService.shared.isConnected else { return trelloNotConnectedError }
+      guard let listId = args["list_id"] as? String,
+            let cardName = args["name"] as? String
+      else {
+        return ["error": "Missing required arguments: list_id, name"]
+      }
+      let description = args["description"] as? String
+      let due = args["due"] as? String
+      do {
+        let result = try await TrelloAPIClient.shared.createCard(
+          listId: listId, name: cardName, description: description, due: due)
+        return result
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello create_card failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "trello_move_card":
+      guard TrelloOAuthService.shared.isConnected else { return trelloNotConnectedError }
+      guard let cardId = args["card_id"] as? String,
+            let listId = args["list_id"] as? String
+      else {
+        return ["error": "Missing required arguments: card_id, list_id"]
+      }
+      do {
+        let result = try await TrelloAPIClient.shared.moveCard(cardId: cardId, listId: listId)
+        return result
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello move_card failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "trello_update_card":
+      guard TrelloOAuthService.shared.isConnected else { return trelloNotConnectedError }
+      guard let cardId = args["card_id"] as? String else {
+        return ["error": "Missing required argument: card_id"]
+      }
+      let cardName = args["name"] as? String
+      let description = args["description"] as? String
+      let due = args["due"] as? String
+      if cardName == nil && description == nil && due == nil {
+        return ["error": "At least one of name, description, or due is required"]
+      }
+      do {
+        let result = try await TrelloAPIClient.shared.updateCard(
+          cardId: cardId, name: cardName, description: description, due: due)
+        return result
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello update_card failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "trello_archive_card":
+      guard TrelloOAuthService.shared.isConnected else { return trelloNotConnectedError }
+      guard let cardId = args["card_id"] as? String else {
+        return ["error": "Missing required argument: card_id"]
+      }
+      do {
+        let result = try await TrelloAPIClient.shared.archiveCard(cardId: cardId)
+        return result
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello archive_card failed: \(error.localizedDescription)")
         return ["error": error.localizedDescription]
       }
 

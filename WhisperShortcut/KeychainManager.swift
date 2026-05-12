@@ -21,6 +21,14 @@ protocol KeychainManaging {
   func getGoogleCalendarRefreshToken() -> String?
   func deleteGoogleCalendarRefreshToken() -> Bool
   func hasGoogleCalendarRefreshToken() -> Bool
+  func saveTrelloToken(_ token: String) -> Bool
+  func getTrelloToken() -> String?
+  func deleteTrelloToken() -> Bool
+  func hasTrelloToken() -> Bool
+  func saveTrelloAPIKey(_ apiKey: String) -> Bool
+  func getTrelloAPIKey() -> String?
+  func deleteTrelloAPIKey() -> Bool
+  func hasValidTrelloAPIKey() -> Bool
 }
 
 class KeychainManager: KeychainManaging {
@@ -33,12 +41,16 @@ class KeychainManager: KeychainManaging {
     static let googleAccountName = "google-api-key"
     static let xaiAccountName = "xai-api-key"
     static let googleCalendarRefreshTokenAccountName = "google-calendar-refresh-token"
+    static let trelloTokenAccountName = "trello-token"
+    static let trelloAPIKeyAccountName = "trello-api-key"
   }
 
   private var cachedAPIKey: String?
   private var cachedGoogleAPIKey: String?
   private var cachedXAIAPIKey: String?
   private var cachedGoogleCalendarRefreshToken: String?
+  private var cachedTrelloToken: String?
+  private var cachedTrelloAPIKey: String?
 
   private init() {}
 
@@ -202,5 +214,46 @@ class KeychainManager: KeychainManaging {
 
   func hasGoogleCalendarRefreshToken() -> Bool {
     return hasKey(accountName: Constants.googleCalendarRefreshTokenAccountName, cache: cachedGoogleCalendarRefreshToken)
+  }
+
+  // MARK: - Trello Token Management
+
+  func saveTrelloToken(_ token: String) -> Bool {
+    return saveKey(token, accountName: Constants.trelloTokenAccountName, cache: &cachedTrelloToken)
+  }
+
+  func getTrelloToken() -> String? {
+    return getKey(accountName: Constants.trelloTokenAccountName, cache: &cachedTrelloToken)
+  }
+
+  func deleteTrelloToken() -> Bool {
+    return deleteKey(accountName: Constants.trelloTokenAccountName, cache: &cachedTrelloToken)
+  }
+
+  func hasTrelloToken() -> Bool {
+    return hasKey(accountName: Constants.trelloTokenAccountName, cache: cachedTrelloToken)
+  }
+
+  // MARK: - Trello API Key Management
+  // The API key is the user's own Trello Power-Up key (from
+  // trello.com/power-ups/admin). It is *not* a Trello secret — Trello hands it
+  // out for any Power-Up the user creates — but we keep it in Keychain so it's
+  // not stored in plain UserDefaults.
+
+  func saveTrelloAPIKey(_ apiKey: String) -> Bool {
+    return saveKey(apiKey, accountName: Constants.trelloAPIKeyAccountName, cache: &cachedTrelloAPIKey)
+  }
+
+  func getTrelloAPIKey() -> String? {
+    return getKey(accountName: Constants.trelloAPIKeyAccountName, cache: &cachedTrelloAPIKey)
+  }
+
+  func deleteTrelloAPIKey() -> Bool {
+    return deleteKey(accountName: Constants.trelloAPIKeyAccountName, cache: &cachedTrelloAPIKey)
+  }
+
+  func hasValidTrelloAPIKey() -> Bool {
+    guard let key = getTrelloAPIKey() else { return false }
+    return !key.isEmpty
   }
 }

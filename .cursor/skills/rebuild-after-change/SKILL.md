@@ -20,6 +20,8 @@ bash scripts/rebuild-and-restart.sh
 - Default: Debug build using the production API configuration.
 - Local API: `bash scripts/rebuild-and-restart.sh --development`.
 - App Store scheme: `bash scripts/rebuild-and-restart.sh --app-store`.
+- Run the rebuild command directly and verify its real exit status. Do **not** pipe it through `tail`, `grep`, `tee`, or similar commands when using it as build verification, because pipelines can mask failures or hide important output.
+- If you need a shorter transcript, let the shell tool capture the command normally and summarize the relevant lines afterward.
 - Run this **after** edits are done (not before).
 - If you made multiple edits in one turn, run it **once** at the end.
 - Do **not** skip the rebuild because the change "seems small"; the user expects a running app with the latest code.

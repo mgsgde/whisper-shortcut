@@ -33,6 +33,10 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
+      TrelloConnectionSection()
+
+      SpacedSectionDivider()
+
       meetingChunkIntervalSection
 
       SpacedSectionDivider()

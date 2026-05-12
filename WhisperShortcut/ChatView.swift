@@ -117,6 +117,8 @@ class ChatViewModel: ObservableObject {
   private static let geminiCommand = "/gemini"
   private static let connectGoogleCommand = "/connect-google"
   private static let disconnectGoogleCommand = "/disconnect-google"
+  private static let connectTrelloCommand = "/connect-trello"
+  private static let disconnectTrelloCommand = "/disconnect-trello"
   private static let meetingCommand = "/meeting"
 
   /// All slash commands with descriptions for autocomplete.
@@ -131,6 +133,8 @@ class ChatViewModel: ObservableObject {
     ("/unpin", "Make the window close when losing focus"),
     ("/connect-google", "Connect Google account (Calendar, Tasks, Gmail)"),
     ("/disconnect-google", "Disconnect Google account"),
+    ("/connect-trello", "Connect Trello account (boards, lists, cards)"),
+    ("/disconnect-trello", "Disconnect Trello account"),
     ("/meeting", "Start or stop live meeting recording"),
   ]
 
@@ -248,6 +252,14 @@ class ChatViewModel: ObservableObject {
       }
       if lower == Self.disconnectGoogleCommand {
         handleDisconnectGoogle()
+        return
+      }
+      if lower == Self.connectTrelloCommand {
+        await handleConnectTrello()
+        return
+      }
+      if lower == Self.disconnectTrelloCommand {
+        handleDisconnectTrello()
         return
       }
       if lower == Self.meetingCommand {
@@ -424,8 +436,9 @@ class ChatViewModel: ObservableObject {
         var finalSources: [GroundingSource] = []
         var finalSupports: [GroundingSupport] = []
         let tools = await buildToolDeclarations()
-        let maxToolRounds = 5
+        let maxToolRounds = 8
         let useGrounding = selectedModel.supportsGrounding
+        var toolLoopExhausted = false
 
         toolLoop: for round in 0..<(maxToolRounds + 1) {
           var pendingCalls: [(name: String, args: [String: Any], thoughtSignature: String?)] = []
@@ -455,10 +468,21 @@ class ChatViewModel: ObservableObject {
           if pendingCalls.isEmpty { break toolLoop }
           if round == maxToolRounds {
             DebugLogger.logWarning("CHAT: tool loop exceeded \(maxToolRounds) rounds — stopping")
+            toolLoopExhausted = true
             break toolLoop
           }
           let turns = try await executeToolCalls(pendingCalls)
           currentContents.append(contentsOf: turns)
+        }
+
+        // Make sure the user sees *something* if the model produced no text.
+        // This happens e.g. when the tool loop exhausts mid-batch (lots of
+        // function calls, no narration) — the assistant bubble would otherwise
+        // be empty, hiding the failure.
+        if accumulated.isEmpty {
+          accumulated = toolLoopExhausted
+            ? "_I tried multiple tool calls but ran out of attempts before finishing. The model may have used invalid IDs — please try again with a more specific request._"
+            : "_(no response)_"
         }
 
         await MainActor.run {
@@ -503,7 +527,11 @@ class ChatViewModel: ObservableObject {
 
   private func buildToolDeclarations() async -> [LLMToolDeclaration] {
     let calendarConnected = await MainActor.run { GoogleAccountOAuthService.shared.isConnected }
-    return ChatToolRegistry.allDeclarations(calendarConnected: calendarConnected).compactMap { decl in
+    let trelloConnected = await MainActor.run { TrelloOAuthService.shared.isConnected }
+    return ChatToolRegistry.allDeclarations(
+      calendarConnected: calendarConnected,
+      trelloConnected: trelloConnected
+    ).compactMap { decl in
       guard let name = decl["name"] as? String,
             let desc = decl["description"] as? String,
             let params = decl["parameters"] as? [String: Any] else { return nil }
@@ -572,6 +600,17 @@ class ChatViewModel: ObservableObject {
     if lower == Self.disconnectGoogleCommand {
       inputText = ""
       handleDisconnectGoogle()
+      return
+    }
+    // Trello account commands
+    if lower == Self.connectTrelloCommand {
+      inputText = ""
+      await handleConnectTrello()
+      return
+    }
+    if lower == Self.disconnectTrelloCommand {
+      inputText = ""
+      handleDisconnectTrello()
       return
     }
     if lower == Self.meetingCommand {
@@ -890,6 +929,29 @@ class ChatViewModel: ObservableObject {
     appendModelMessage("Google disconnected.")
   }
 
+  @MainActor
+  private func handleConnectTrello() async {
+    if TrelloOAuthService.shared.isConnected {
+      appendModelMessage("Trello is already connected. Use `/disconnect-trello` to disconnect.")
+      return
+    }
+    // Trello's flow needs the user to copy a token from the browser back into
+    // the app, so we point them at Settings rather than trying to drive a
+    // multi-step paste flow from the chat composer.
+    SettingsManager.shared.showSettings()
+    appendModelMessage("Open the Chat tab in Settings to connect Trello (paste your Power-Up API key, then the token Trello shows after you click Allow).")
+  }
+
+  @MainActor
+  private func handleDisconnectTrello() {
+    guard TrelloOAuthService.shared.isConnected else {
+      appendModelMessage("Trello is not connected. Use `/connect-trello` to connect.")
+      return
+    }
+    TrelloOAuthService.shared.disconnect()
+    appendModelMessage("Trello disconnected.")
+  }
+
   // MARK: - Tab navigation
 
   private func refreshRecentSessions() {
@@ -1144,6 +1206,14 @@ class ChatViewModel: ObservableObject {
       case .quotaExceeded:
         return "API quota exceeded. Please try again later."
       case .networkError(let msg):
+        // Hide raw JSON for transient Gemini outages.
+        let lower = msg.lowercased()
+        if lower.contains("503") || lower.contains("unavailable") {
+          return "Gemini is temporarily unavailable. Please try again in a few seconds."
+        }
+        if lower.contains("502") || lower.contains("504") {
+          return "Gemini server error. Please try again in a few seconds."
+        }
         return "Network error: \(msg)"
       case .fileError(let msg):
         return msg
@@ -1870,6 +1940,7 @@ struct ChatInputAreaView: View {
     "/settings", "/pin", "/unpin",
     "/grok", "/gemini",
     "/connect-google", "/disconnect-google",
+    "/connect-trello", "/disconnect-trello",
     "/meeting"
   ]
 
