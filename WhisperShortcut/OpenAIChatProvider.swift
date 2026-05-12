@@ -1,8 +1,12 @@
 import Foundation
 
 /// OpenAI implementation of `LLMChatProvider`.
-/// Uses OpenAI's Chat Completions API (`/v1/chat/completions`) with streaming SSE.
-/// Reference: https://platform.openai.com/docs/api-reference/chat
+/// - When grounding is enabled, uses the Responses API (`/v1/responses`) with the hosted
+///   `web_search` tool. This mirrors the Grok provider's two-endpoint strategy.
+/// - Otherwise uses Chat Completions (`/v1/chat/completions`) with streaming SSE.
+/// References:
+///   - https://platform.openai.com/docs/api-reference/responses
+///   - https://platform.openai.com/docs/api-reference/chat
 final class OpenAIChatProvider: LLMChatProvider {
   static let shared = OpenAIChatProvider()
 
@@ -23,9 +27,170 @@ final class OpenAIChatProvider: LLMChatProvider {
     useGrounding: Bool
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     if useGrounding {
-      DebugLogger.log("OPENAI-CHAT-STREAM: grounding requested but not supported on Chat Completions; ignoring flag")
+      return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools)
     }
     return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools)
+  }
+
+  // MARK: - Responses API (with web_search)
+
+  /// Uses OpenAI's Responses API which supports the hosted `web_search` tool. SSE event format
+  /// matches xAI's (xAI's Responses API mirrors OpenAI's), so the parser here is structurally
+  /// identical to `GrokChatProvider.sendViaResponsesAPI`.
+  private func sendViaResponsesAPI(
+    model: String,
+    contents: [[String: Any]],
+    systemInstruction: [String: Any]?,
+    tools: [LLMToolDeclaration]
+  ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
+    AsyncThrowingStream { continuation in
+      let task = Task {
+        do {
+          guard let apiKey = KeychainManager.shared.getOpenAIAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines),
+                !apiKey.isEmpty else {
+            throw TranscriptionError.networkError("No OpenAI API key configured. Add your OpenAI API key in Settings to use OpenAI models.")
+          }
+
+          let endpoint = "https://api.openai.com/v1/responses"
+          guard let url = URL(string: endpoint) else {
+            throw TranscriptionError.networkError("Invalid OpenAI endpoint URL")
+          }
+
+          var request = URLRequest(url: url)
+          request.httpMethod = "POST"
+          request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+          request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+          request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+          request.timeoutInterval = 300
+
+          let input = Self.convertContentsToResponsesInput(contents)
+
+          let instructions: String? = {
+            guard let sys = systemInstruction,
+                  let parts = sys["parts"] as? [[String: Any]],
+                  let text = parts.first?["text"] as? String, !text.isEmpty else { return nil }
+            return text
+          }()
+
+          var body: [String: Any] = [
+            "model": model,
+            "input": input,
+            "stream": true,
+          ]
+          if let instructions = instructions {
+            body["instructions"] = instructions
+          }
+
+          var responsesTools: [[String: Any]] = [
+            ["type": "web_search"],
+          ]
+          for tool in tools {
+            responsesTools.append([
+              "type": "function",
+              "name": tool.name,
+              "description": tool.description,
+              "parameters": tool.parameters,
+            ])
+          }
+          body["tools"] = responsesTools
+
+          request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+          DebugLogger.logNetwork("OPENAI-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+\(tools.count)func")
+          let (bytes, response) = try await self.session.bytes(for: request)
+          guard let http = response as? HTTPURLResponse else {
+            throw TranscriptionError.networkError("Invalid response from OpenAI API")
+          }
+          if http.statusCode < 200 || http.statusCode >= 300 {
+            var errData = Data()
+            for try await b in bytes { errData.append(b) }
+            let text = String(data: errData, encoding: .utf8) ?? ""
+            DebugLogger.logError("OPENAI-RESPONSES: HTTP \(http.statusCode) body=\(text.prefix(500))")
+            if http.statusCode == 401 {
+              throw TranscriptionError.networkError("OpenAI API key is invalid. Check the key in Settings → General.")
+            }
+            if http.statusCode == 429 {
+              throw TranscriptionError.rateLimited(retryAfter: nil)
+            }
+            throw TranscriptionError.networkError("OpenAI API error HTTP \(http.statusCode): \(text.prefix(500))")
+          }
+
+          // Parse Responses API SSE stream. Event format: "event: <type>\ndata: <json>\n\n".
+          var pendingFunctionCalls: [(name: String, args: [String: Any], callId: String)] = []
+          var functionCallNames: [String: String] = [:]  // item_id → function name
+          var currentEventType: String?
+          var finishReason: String?
+
+          for try await line in bytes.lines {
+            try Task.checkCancellation()
+
+            if line.hasPrefix("event: ") {
+              currentEventType = String(line.dropFirst(7))
+              continue
+            }
+
+            guard line.hasPrefix("data: ") else { continue }
+            let payload = String(line.dropFirst(6))
+            guard let data = payload.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+
+            let eventType = currentEventType ?? obj["type"] as? String ?? ""
+            currentEventType = nil
+
+            switch eventType {
+            case "response.output_text.delta":
+              if let delta = obj["delta"] as? String, !delta.isEmpty {
+                continuation.yield(.textDelta(delta))
+              }
+
+            case "response.function_call_arguments.done":
+              let argsString = obj["arguments"] as? String ?? "{}"
+              let itemId = obj["item_id"] as? String ?? ""
+              if let existing = functionCallNames[itemId] {
+                let args: [String: Any]
+                if let d = argsString.data(using: .utf8),
+                   let parsed = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                  args = parsed
+                } else {
+                  args = [:]
+                }
+                pendingFunctionCalls.append((name: existing, args: args, callId: itemId))
+              }
+
+            case "response.output_item.added":
+              if let item = obj["item"] as? [String: Any],
+                 let type = item["type"] as? String, type == "function_call",
+                 let name = item["name"] as? String,
+                 let itemId = item["id"] as? String {
+                functionCallNames[itemId] = name
+                DebugLogger.logNetwork("OPENAI-RESPONSES: function_call added name=\(name) id=\(itemId)")
+              }
+
+            case "response.completed":
+              if let resp = obj["response"] as? [String: Any],
+                 let status = resp["status"] as? String {
+                finishReason = status == "completed" ? "stop" : status
+              }
+
+            default:
+              break
+            }
+          }
+
+          for call in pendingFunctionCalls {
+            DebugLogger.logNetwork("OPENAI-RESPONSES: functionCall name=\(call.name) callId=\(call.callId)")
+            continuation.yield(.functionCall(name: call.name, args: call.args, thoughtSignature: call.callId))
+          }
+
+          DebugLogger.logNetwork("OPENAI-RESPONSES: stream end, finishReason=\(finishReason ?? "nil")")
+          continuation.yield(.finished(sources: [], supports: [], finishReason: finishReason))
+          continuation.finish()
+        } catch {
+          continuation.finish(throwing: error)
+        }
+      }
+      continuation.onTermination = { @Sendable _ in task.cancel() }
+    }
   }
 
   // MARK: - Chat Completions
@@ -113,7 +278,10 @@ final class OpenAIChatProvider: LLMChatProvider {
             if http.statusCode == 401 {
               throw TranscriptionError.networkError("OpenAI API key is invalid. Check the key in Settings → General.")
             }
-            throw TranscriptionError.networkError("OpenAI API error HTTP \(http.statusCode): \(text)")
+            if http.statusCode == 429 {
+              throw TranscriptionError.rateLimited(retryAfter: nil)
+            }
+            throw TranscriptionError.networkError("OpenAI API error HTTP \(http.statusCode): \(text.prefix(500))")
           }
 
           // Parse SSE stream in Chat Completions format.
@@ -335,5 +503,96 @@ final class OpenAIChatProvider: LLMChatProvider {
       }
     }
     return messages
+  }
+
+  /// Converts Gemini-format `contents` to OpenAI Responses API `input` array.
+  /// The Responses API uses `{"type": "input_text"/"output_text", ...}` and
+  /// `{"type": "input_image", "image_url": "data:..."}` instead of the Chat Completions shape.
+  /// Function call / response history items become top-level `function_call` /
+  /// `function_call_output` items, matched by `call_id` positionally to the preceding turn.
+  static func convertContentsToResponsesInput(_ contents: [[String: Any]]) -> [[String: Any]] {
+    var input: [[String: Any]] = []
+    for content in contents {
+      guard let role = content["role"] as? String,
+            let parts = content["parts"] as? [[String: Any]] else { continue }
+
+      let functionCallParts = parts.filter { $0["functionCall"] != nil }
+      if !functionCallParts.isEmpty {
+        for part in functionCallParts {
+          guard let fc = part["functionCall"] as? [String: Any],
+                let name = fc["name"] as? String else { continue }
+          let args = fc["args"] as? [String: Any] ?? [:]
+          let argsJSON = (try? JSONSerialization.data(withJSONObject: args))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+          let callId = part["thoughtSignature"] as? String ?? "call_\(name)"
+          input.append([
+            "type": "function_call",
+            "id": callId,
+            "call_id": callId,
+            "name": name,
+            "arguments": argsJSON,
+          ])
+        }
+        continue
+      }
+
+      let functionResponseParts = parts.filter { $0["functionResponse"] != nil }
+      if !functionResponseParts.isEmpty {
+        var callIds: [String] = []
+        for item in input.reversed() {
+          if let type = item["type"] as? String, type == "function_call",
+             let cid = item["call_id"] as? String {
+            callIds.insert(cid, at: 0)
+          } else if !callIds.isEmpty {
+            break
+          }
+        }
+        for (idx, part) in functionResponseParts.enumerated() {
+          guard let fr = part["functionResponse"] as? [String: Any],
+                let name = fr["name"] as? String,
+                let resp = fr["response"] as? [String: Any] else { continue }
+          let respJSON = (try? JSONSerialization.data(withJSONObject: resp))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+          let callId = idx < callIds.count ? callIds[idx] : "call_\(name)"
+          input.append([
+            "type": "function_call_output",
+            "call_id": callId,
+            "output": respJSON,
+          ])
+        }
+        continue
+      }
+
+      let apiRole: String
+      switch role {
+      case "model": apiRole = "assistant"
+      case "user": apiRole = "user"
+      default: apiRole = role
+      }
+
+      var contentParts: [[String: Any]] = []
+      for part in parts {
+        if let text = part["text"] as? String, !text.isEmpty {
+          let textType = apiRole == "assistant" ? "output_text" : "input_text"
+          contentParts.append(["type": textType, "text": text])
+        } else if let inlineData = part["inline_data"] as? [String: Any],
+                  let mimeType = inlineData["mime_type"] as? String,
+                  let data = inlineData["data"] as? String,
+                  mimeType.hasPrefix("image/") {
+          contentParts.append([
+            "type": "input_image",
+            "image_url": "data:\(mimeType);base64,\(data)",
+          ])
+        }
+      }
+
+      if !contentParts.isEmpty {
+        input.append([
+          "role": apiRole,
+          "content": contentParts,
+        ])
+      }
+    }
+    return input
   }
 }

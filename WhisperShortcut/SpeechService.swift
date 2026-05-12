@@ -323,10 +323,7 @@ class SpeechService {
     }
 
     // Capture screenshot for prompt context if enabled (best-effort; continues without image on failure)
-    let screenshotEnabled = UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil
-      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
-      : SettingsDefaults.screenshotInPromptMode
-    let screenshotData: Data? = screenshotEnabled
+    let screenshotData: Data? = screenshotInPromptModeEnabled()
       ? await ChatWindowManager.shared.captureScreenForPromptMode()
       : nil
 
@@ -509,9 +506,7 @@ class SpeechService {
     // Optional screenshot context. gpt-4o-audio-preview is audio-only and rejects image_url
     // content parts with HTTP 400 ("This model does not support image_url content."), so we
     // skip the screenshot for that model regardless of the user's setting.
-    let screenshotEnabled = UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil
-      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
-      : SettingsDefaults.screenshotInPromptMode
+    let screenshotEnabled = screenshotInPromptModeEnabled()
     let modelAcceptsImages = model.supportsImageInput
     let screenshotData: Data? = (screenshotEnabled && modelAcceptsImages)
       ? await ChatWindowManager.shared.captureScreenForPromptMode()
@@ -552,6 +547,18 @@ class SpeechService {
       """
       userContent.append(["type": "text", "text": contextText])
     }
+    // OpenAI's Chat Completions API embeds audio inline (base64). Reject oversized audio up
+    // front with an actionable error — Gemini falls back to the Files API for >20 MB inputs,
+    // but OpenAI's audio-preview endpoint has no equivalent here, so the request would simply
+    // fail with a body-size error after a long upload.
+    let audioFileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int) ?? 0
+    if audioFileSize > AppConstants.maxFileSizeBytes {
+      let sizeMB = Double(audioFileSize) / 1_048_576.0
+      let limitMB = Double(AppConstants.maxFileSizeBytes) / 1_048_576.0
+      DebugLogger.logError("PROMPT-MODE-OPENAI: Audio too large (\(String(format: "%.1f", sizeMB)) MB > \(String(format: "%.1f", limitMB)) MB limit)")
+      throw TranscriptionError.fileError("Audio is too long for OpenAI Dictate Prompt (\(String(format: "%.1f", sizeMB)) MB > \(String(format: "%.1f", limitMB)) MB limit). Switch to a Gemini Dictate Prompt model for longer recordings.")
+    }
+
     let audioData: Data
     do {
       audioData = try Data(contentsOf: audioURL)
@@ -590,10 +597,26 @@ class SpeechService {
     request.timeoutInterval = Constants.resourceTimeout
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
+    // Auto-retry on 429 with exponential backoff, matching the Gemini path (which gets this
+    // for free via GeminiAPIClient.performRequest(withRetry: true)). Short rate-limit spikes
+    // are common on busy keys; surfacing them immediately to the user is unnecessary churn.
     let session = makeTranscriptionURLSession()
-    let (data, response) = try await session.data(for: request)
-    guard let http = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response from OpenAI API")
+    var data = Data()
+    var http: HTTPURLResponse!
+    for attempt in 1...Constants.maxRetryAttempts {
+      let (d, response) = try await session.data(for: request)
+      guard let h = response as? HTTPURLResponse else {
+        throw TranscriptionError.networkError("Invalid response from OpenAI API")
+      }
+      if h.statusCode == 429, attempt < Constants.maxRetryAttempts {
+        let delay = Constants.retryDelaySeconds * pow(2.0, Double(attempt - 1))
+        DebugLogger.logWarning("PROMPT-MODE-OPENAI: HTTP 429 (attempt \(attempt)/\(Constants.maxRetryAttempts)), retrying in \(String(format: "%.1f", delay))s")
+        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        continue
+      }
+      data = d
+      http = h
+      break
     }
     if http.statusCode < 200 || http.statusCode >= 300 {
       let bodyString = String(data: data, encoding: .utf8) ?? ""
@@ -756,10 +779,7 @@ class SpeechService {
     }
 
     // Capture screenshot for prompt context if enabled (best-effort; continues without image on failure)
-    let screenshotEnabled = UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil
-      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
-      : SettingsDefaults.screenshotInPromptMode
-    let screenshotData: Data? = screenshotEnabled
+    let screenshotData: Data? = screenshotInPromptModeEnabled()
       ? await ChatWindowManager.shared.captureScreenForPromptMode()
       : nil
 
@@ -1392,6 +1412,16 @@ class SpeechService {
   // MIME type, text extraction, and error parsing are now handled by GeminiAPIClient
 
   // MARK: - Prompt Mode Helpers
+
+  /// Reads the "include screenshot in Dictate Prompt" toggle, falling back to the
+  /// default when the user hasn't explicitly set it.
+  private func screenshotInPromptModeEnabled() -> Bool {
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil {
+      return UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
+    }
+    return SettingsDefaults.screenshotInPromptMode
+  }
+
   private func getClipboardContext() -> String? {
     guard let clipboardManager = clipboardManager else {
       DebugLogger.log("PROMPT-MODE: Clipboard manager is nil")
@@ -1419,23 +1449,6 @@ class SpeechService {
       return attributes[.size] as? Int64 ?? 0
     } catch {
       return 0
-    }
-  }
-  
-  private func validateAudioFile(at url: URL) throws {
-    try validateAudioFileFormat(at: url)
-    
-    let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-    guard let fileSize = attributes[.size] as? Int64 else {
-      throw TranscriptionError.fileError("Cannot read file size")
-    }
-
-    if fileSize == 0 {
-      throw TranscriptionError.emptyFile
-    }
-
-    if fileSize > AppConstants.maxFileSizeBytes {
-      throw TranscriptionError.fileTooLarge
     }
   }
   

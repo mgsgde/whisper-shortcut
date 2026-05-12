@@ -208,11 +208,15 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
-  /// Whether this model supports grounding/search (Gemini: google_search + url_context; Grok: web_search via Responses API).
-  /// OpenAI models route through Chat Completions without a built-in grounding tool for now.
+  /// Whether this model supports grounding/search.
+  /// - Gemini: `google_search` + `url_context` tools on the standard endpoint.
+  /// - Grok: `web_search` tool via the Responses API.
+  /// - OpenAI text chat models: `web_search` tool via the Responses API (gpt-5, gpt-5-mini).
+  /// - `gpt-4o-audio-preview` is audio-only and routes through Chat Completions only, so
+  ///   the Responses API path doesn't apply.
   var supportsGrounding: Bool {
     switch self {
-    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT4oAudio:
+    case .openaiGPT4oAudio:
       return false
     default:
       return true

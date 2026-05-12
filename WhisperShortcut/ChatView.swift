@@ -514,12 +514,20 @@ class ChatViewModel: ObservableObject {
   }
 
   private func validateCredential(for model: PromptModel) async -> Bool {
-    if model.provider == .grok {
+    switch model.provider {
+    case .grok:
       guard KeychainManager.shared.hasValidXAIAPIKey() else {
         errorMessage = "Add your xAI API key in Settings to use Grok models."
         return false
       }
-    } else {
+    case .openai:
+      let key = (KeychainManager.shared.getOpenAIAPIKey() ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !key.isEmpty else {
+        errorMessage = "Add your OpenAI API key in Settings to use OpenAI models."
+        return false
+      }
+    case .gemini:
       guard await GeminiCredentialProvider.shared.getCredential() != nil else {
         errorMessage = "Add your Google API key in Settings or sign in with Google to use Chat."
         return false

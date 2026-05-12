@@ -38,11 +38,22 @@ enum ChatModelCommandResolver {
 
     // Detect provider family first.
     let hasGrok = normalized.contains("grok")
+    // "gpt"/"openai"/"4o" pull the user toward OpenAI before the generic " 3 "
+    // branch can mis-route "gpt 3" to Gemini 3.
+    let hasOpenAI = !hasGrok && (
+      normalized.contains("openai") ||
+      normalized.contains("gpt") ||
+      normalized.contains("4o")
+    )
 
     // Detect version family (order matters).
     var candidates: [PromptModel]
     if hasGrok {
       candidates = [.grok4, .grok4Reasoning, .grok4Fast]
+    } else if hasOpenAI {
+      // openaiGPT4oAudio is Dictate-Prompt only (supportsTextChat=false), so
+      // the chat resolver returns only the text-capable OpenAI models.
+      candidates = [.openaiGPT5, .openaiGPT5Mini]
     } else if normalized.contains("3.1") {
       candidates = [.gemini31Pro, .gemini31FlashLite]
     } else if normalized.contains("2.5") {
@@ -61,6 +72,7 @@ enum ChatModelCommandResolver {
     let hasFast = normalized.contains("fast")
     let hasReasoning = normalized.contains("reason")
     let hasPro = padded.contains(" pro") || normalized.hasPrefix("pro")
+    let hasMini = normalized.contains("mini")
 
     if hasFast {
       let fasts = candidates.filter { isFast($0) }
@@ -77,12 +89,22 @@ enum ChatModelCommandResolver {
     } else if hasFlash {
       let flashesNoLite = candidates.filter { isFlash($0) && !isFlashLite($0) }
       if !flashesNoLite.isEmpty { candidates = flashesNoLite }
+    } else if hasMini {
+      let minis = candidates.filter { isMini($0) }
+      if !minis.isEmpty { candidates = minis }
     }
 
     // When "grok 4" matches all Grok models but no narrowing keyword was given,
     // pick the base model (non-reasoning, non-fast) as the sensible default.
     if hasGrok && !hasFast && !hasReasoning && candidates.count > 1 {
       let base = candidates.filter { !isFast($0) && !isReasoning($0) }
+      if base.count == 1 { candidates = base }
+    }
+
+    // Same idea for "openai"/"gpt" without a "mini" qualifier: prefer the base
+    // GPT-5 over GPT-5 Mini.
+    if hasOpenAI && !hasMini && candidates.count > 1 {
+      let base = candidates.filter { !isMini($0) }
       if base.count == 1 { candidates = base }
     }
 
@@ -132,6 +154,13 @@ enum ChatModelCommandResolver {
   private static func isReasoning(_ m: PromptModel) -> Bool {
     switch m {
     case .grok4Reasoning: return true
+    default: return false
+    }
+  }
+
+  private static func isMini(_ m: PromptModel) -> Bool {
+    switch m {
+    case .openaiGPT5Mini: return true
     default: return false
     }
   }
