@@ -122,12 +122,11 @@ class AutoPromptImprovementScheduler {
   }
 
   /// Maps each focus to the interaction `mode` field that counts as its primary signal. Mirrors ContextDerivation.primaryMode.
-  /// `chat` has no single primary mode and uses the total interaction count instead.
   private func primaryModeKey(for focus: GenerationKind) -> String? {
     switch focus {
     case .dictation, .whisperGlossary: return "transcription"
     case .promptMode: return "prompt"
-    case .chat: return nil
+    case .chat: return "geminiChat"
     }
   }
 
@@ -135,6 +134,9 @@ class AutoPromptImprovementScheduler {
     lastRunStartedAt = Date()
     // Discard any stale suggestion files from a previously crashed/aborted run before generating new ones.
     ContextLogger.shared.deleteAllSuggestedFiles()
+
+    let initialSamples = ContextLogger.shared.audioSampleURLs().count
+    DebugLogger.log("AUDIO-VERIFY: run(start) samplesOnDisk=\(initialSamples)")
 
     let derivation = ContextDerivation()
     let allFocuses: [GenerationKind] = [.dictation, .whisperGlossary, .promptMode, .chat]
@@ -189,6 +191,12 @@ class AutoPromptImprovementScheduler {
       for await result in group { collected.append(result) }
       return collected
     }
+
+    // Audio samples are read into memory by each focus before the request is sent, so once
+    // withTaskGroup has returned it is safe to wipe the directory. Honor the TTL contract:
+    // audio is not retained across Smart Improvement runs.
+    let deleted = ContextLogger.shared.clearAudioSamples()
+    DebugLogger.log("AUDIO-VERIFY: run(end) cleanup deleted=\(deleted)")
 
     let failedErrors = results.compactMap { $0.error }
     var pendingKinds: [GenerationKind] = []

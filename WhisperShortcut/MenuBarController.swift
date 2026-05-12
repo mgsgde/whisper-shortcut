@@ -1176,7 +1176,21 @@ class MenuBarController: NSObject {
     do {
       let result = try await speechService.transcribe(audioURL: audioURL)
       clipboardManager.copyToClipboard(text: result)
-      ContextLogger.shared.logTranscription(result: result, model: await speechService.getTranscriptionModelInfo())
+
+      let transcriptionModel = TranscriptionModel.loadSelected()
+      let modelDisplayName = await speechService.getTranscriptionModelInfo()
+      // Only persist audio for single-shot dictation, never for Live Meeting chunks.
+      let audioRef: String? = duringMeeting ? nil : ContextLogger.shared.captureDictationAudio(
+        from: audioURL,
+        backend: transcriptionModel.isOffline ? "whisper" : "gemini",
+        transcriptionModel: transcriptionModel.rawValue
+      )
+      ContextLogger.shared.logTranscription(
+        result: result,
+        model: modelDisplayName,
+        audioRef: audioRef,
+        transcriptionModel: transcriptionModel.rawValue
+      )
 
       await MainActor.run {
         self.autoPasteIfEnabled()

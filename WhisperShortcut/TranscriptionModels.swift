@@ -193,7 +193,46 @@ enum TranscriptionModel: String, CaseIterable {
     }
     return ModelManager.shared.isModelAvailable(offlineModelType)
   }
-  
+
+  // MARK: - Smart Improvement Audio Verification
+
+  /// Coarse capability tier used by Smart Improvement to decide whether re-listening to audio
+  /// produced by another model can add information. Within Gemini, Pro > Flash > Flash-Lite.
+  /// Whisper is treated as its own (different) family.
+  enum AsymmetryClass: Int {
+    case offlineWhisper
+    case geminiFlashLite
+    case geminiFlash
+    case geminiPro
+  }
+
+  var asymmetryClass: AsymmetryClass {
+    switch self {
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
+      return .offlineWhisper
+    case .gemini25FlashLite, .gemini31FlashLite:
+      return .geminiFlashLite
+    case .gemini25Flash, .gemini3Flash:
+      return .geminiFlash
+    case .gemini3Pro, .gemini31Pro:
+      return .geminiPro
+    }
+  }
+
+  /// Returns true when Smart Improvement using `self` can plausibly add information by re-listening
+  /// to audio originally transcribed by `transcriptionModel`. Whisper audio always benefits from
+  /// Gemini verification (different family). Same-family Gemini verification only adds information
+  /// when `self` is strictly in a higher tier.
+  func canInformativelyVerify(audioFrom transcriptionModel: TranscriptionModel) -> Bool {
+    switch transcriptionModel.asymmetryClass {
+    case .offlineWhisper:
+      return self.isGemini
+    default:
+      guard self.isGemini else { return false }
+      return self.asymmetryClass.rawValue > transcriptionModel.asymmetryClass.rawValue
+    }
+  }
+
 }
 
 // MARK: - Gemini Transcription Request Models

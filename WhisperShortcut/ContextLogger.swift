@@ -11,6 +11,11 @@ struct InteractionLogEntry: Codable {
   let modelResponse: String?
   let text: String?
   let voice: String?
+  /// Filename inside `UserContext/audio-samples/` if the dictation audio was retained for Smart Improvement.
+  let audioRef: String?
+  /// Stable rawValue of the TranscriptionModel used for this entry (e.g. "whisper-base", "gemini-2.5-flash").
+  /// Distinct from `model` (display name) so Smart Improvement can do model-asymmetry comparisons.
+  let transcriptionModel: String?
 }
 
 // MARK: - System Prompt History Entry
@@ -45,6 +50,8 @@ class ContextLogger {
   private let queue = DispatchQueue(label: "com.whisper-shortcut.contextlogger", qos: .utility)
   /// Directory name on disk; kept as "UserContext" for compatibility with existing installs.
   private let contextDirectoryName = "UserContext"
+  /// Subdirectory of UserContext holding short-lived dictation WAVs for Smart Improvement audio verification.
+  private let audioSamplesDirectoryName = "audio-samples"
   private let rotationDays = 90
   /// Maximum number of lines kept in history JSONL files that have no date-based rotation
   /// (system-prompts-history.jsonl, user-context-history.jsonl). Oldest lines are trimmed.
@@ -53,6 +60,10 @@ class ContextLogger {
   private lazy var contextDirectoryURL: URL = {
     AppSupportPaths.whisperShortcutApplicationSupportURL()
       .appendingPathComponent(contextDirectoryName)
+  }()
+
+  private lazy var audioSamplesDirectoryURL: URL = {
+    contextDirectoryURL.appendingPathComponent(audioSamplesDirectoryName)
   }()
 
   private init() {
@@ -94,7 +105,7 @@ class ContextLogger {
 
   // MARK: - Public Logging Methods
 
-  func logTranscription(result: String, model: String?) {
+  func logTranscription(result: String, model: String?, audioRef: String? = nil, transcriptionModel: String? = nil) {
     guard isLoggingEnabled else { return }
     let entry = InteractionLogEntry(
       ts: iso8601Now(),
@@ -105,7 +116,9 @@ class ContextLogger {
       userInstruction: nil,
       modelResponse: nil,
       text: nil,
-      voice: nil
+      voice: nil,
+      audioRef: audioRef,
+      transcriptionModel: transcriptionModel
     )
     writeEntry(entry)
   }
@@ -122,7 +135,9 @@ class ContextLogger {
       userInstruction: userInstruction,
       modelResponse: modelResponse,
       text: nil,
-      voice: nil
+      voice: nil,
+      audioRef: nil,
+      transcriptionModel: nil
     )
     writeEntry(entry)
   }
@@ -139,9 +154,89 @@ class ContextLogger {
       userInstruction: userMessage,
       modelResponse: modelResponse,
       text: nil,
-      voice: nil
+      voice: nil,
+      audioRef: nil,
+      transcriptionModel: nil
     )
     writeEntry(entry)
+  }
+
+  // MARK: - Audio Sample Capture (Smart Improvement verification)
+
+  /// Returns the absolute URL of the on-disk audio sample directory.
+  var audioSamplesDirectory: URL { audioSamplesDirectoryURL }
+
+  /// Lists all WAV files currently in the audio sample pool, oldest first.
+  func audioSampleURLs() -> [URL] {
+    let fm = FileManager.default
+    guard let contents = try? fm.contentsOfDirectory(at: audioSamplesDirectoryURL, includingPropertiesForKeys: nil) else { return [] }
+    return contents
+      .filter { $0.pathExtension.lowercased() == "wav" }
+      .sorted { $0.lastPathComponent < $1.lastPathComponent }
+  }
+
+  /// Copies the given dictation WAV into the audio sample pool. Returns the stored filename
+  /// (suitable for storing as `audioRef` on an InteractionLogEntry) or nil if disabled / failed.
+  /// Backend label is recorded only in the `AUDIO-VERIFY:` log line, not on disk.
+  /// Synchronous: callers can immediately reference the returned filename.
+  func captureDictationAudio(from sourceURL: URL, backend: String, transcriptionModel: String) -> String? {
+    guard isLoggingEnabled else {
+      DebugLogger.logAudio("AUDIO-VERIFY: capture(skip) reason=logging-disabled")
+      return nil
+    }
+    let fm = FileManager.default
+    do {
+      if !fm.fileExists(atPath: audioSamplesDirectoryURL.path) {
+        try fm.createDirectory(at: audioSamplesDirectoryURL, withIntermediateDirectories: true)
+      }
+      // Eviction before copy to honor the pool cap.
+      evictOldestAudioSamplesIfNeeded(reserving: 1)
+      let filename = audioSampleFilename()
+      let destURL = audioSamplesDirectoryURL.appendingPathComponent(filename)
+      try fm.copyItem(at: sourceURL, to: destURL)
+      let size = (try? fm.attributesOfItem(atPath: destURL.path)[.size] as? Int) ?? 0
+      DebugLogger.logAudio("AUDIO-VERIFY: capture(done) ref=\(filename) backend=\(backend) transcriptionModel=\(transcriptionModel) sizeBytes=\(size)")
+      return filename
+    } catch {
+      DebugLogger.logError("AUDIO-VERIFY: capture(error) reason=\(error.localizedDescription)")
+      return nil
+    }
+  }
+
+  /// Removes the entire audio sample pool. Returns the number of files deleted.
+  /// Called by Smart Improvement at the end of every run so audio is not retained across runs.
+  @discardableResult
+  func clearAudioSamples() -> Int {
+    let fm = FileManager.default
+    guard let contents = try? fm.contentsOfDirectory(at: audioSamplesDirectoryURL, includingPropertiesForKeys: nil) else { return 0 }
+    var deleted = 0
+    for url in contents {
+      if (try? fm.removeItem(at: url)) != nil { deleted += 1 }
+    }
+    return deleted
+  }
+
+  private func evictOldestAudioSamplesIfNeeded(reserving newSlots: Int) {
+    let urls = audioSampleURLs()
+    let capacity = AppConstants.audioSampleMaxFiles
+    let overflow = urls.count + newSlots - capacity
+    guard overflow > 0 else { return }
+    let toDelete = Array(urls.prefix(overflow))
+    let fm = FileManager.default
+    var deleted = 0
+    for url in toDelete {
+      if (try? fm.removeItem(at: url)) != nil { deleted += 1 }
+    }
+    DebugLogger.logAudio("AUDIO-VERIFY: pool-trim deleted=\(deleted) remaining=\(max(0, urls.count - deleted)) capacity=\(capacity)")
+  }
+
+  private func audioSampleFilename() -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyyMMdd'T'HHmmssSSS"
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    let stamp = formatter.string(from: Date())
+    let suffix = UUID().uuidString.prefix(6)
+    return "\(stamp)-\(suffix).wav"
   }
 
   // MARK: - Data Management

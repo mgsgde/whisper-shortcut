@@ -17,6 +17,16 @@ class ContextDerivation {
     return transcriptionModel.apiEndpoint
   }
 
+  /// The TranscriptionModel form of the currently selected Smart Improvement model, when it maps to one.
+  /// Used to decide per-entry whether re-listening to audio can plausibly add information.
+  private var analysisTranscriptionModel: TranscriptionModel? {
+    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
+      ?? SettingsDefaults.selectedImprovementModel.rawValue
+    let migratedRaw = PromptModel.migrateLegacyPromptRawValue(raw)
+    guard let model = PromptModel(rawValue: migratedRaw) else { return nil }
+    return model.asTranscriptionModel
+  }
+
   /// Result of focused load: primary (target mode) and secondary (current prompt + other modes capped).
   private struct FocusedLoadResult {
     let primaryText: String
@@ -44,9 +54,13 @@ class ContextDerivation {
   private var commonFooter: String {
     return """
 
-    PATTERN THRESHOLD (CRITICAL): Only modify the prompt based on RECURRING patterns — behaviors, corrections, terms, or style preferences that appear CONSISTENTLY across MULTIPLE DISTINCT primary interactions. Single occurrences, one-off quirks, isolated topics, or isolated words MUST be ignored, even if they look interesting or specific. A pattern qualifies only when it is supported by at least 3 distinct primary interactions. When in doubt, prefer NO_CHANGE over speculative rules.
+    EVIDENCE SOURCE (CRITICAL): Only labeled PRIMARY interactions can justify a change. Secondary/background context may help you understand the current prompt or choose wording, but it is NOT evidence for new behavior, terminology, corrections, or style rules. Never count the current prompt, other-mode context, or secondary entries toward evidence count.
 
-    GENERALITY FILTER (CRITICAL): Suggested prompts must remain generic, durable, and reusable. Do NOT add concrete tasks, temporary projects, personal facts, names, dates, one-off topics, current plans, specific entities, or transient context. Only add a rule if it would still be useful weeks from now across many future interactions.
+    PATTERN THRESHOLD (CRITICAL): Only modify the prompt based on RECURRING patterns — behaviors, corrections, terms, or style preferences that appear consistently across multiple distinct primary interactions. Single occurrences, one-off quirks, isolated topics, isolated words, or repeated content inside one interaction MUST be ignored, even if they look interesting or specific. A pattern qualifies only when it is supported by at least 3 distinct primary interactions. When in doubt, prefer NO_CHANGE over speculative rules.
+
+    GENERALITY FILTER (CRITICAL): Suggested prompts must remain durable and reusable. For behavioral system prompts, do NOT add concrete tasks, temporary projects, personal facts, names, dates, one-off topics, current plans, specific entities, or transient context. For dictation corrections, domain terms, and Whisper Glossary vocabulary, concrete terms are allowed ONLY when they are stable vocabulary signals supported by the pattern threshold; never add one-off names, temporary project details, dates, plans, or copied examples.
+
+    PRODUCT INVARIANTS: Do not remove core task, output-format, privacy, safety, tool/link, or "voice instruction is an edit command" rules merely because usage logs do not mention them. Usage data should refine preferences, recurring terminology, and recurring failure modes; product-invariant guardrails should remain unless primary evidence shows they are harmful or obsolete.
 
     ABSTRACTION REQUIREMENT: If repeated examples point to a broader behavior, express only the broader behavior. Never copy example content into the prompt. For example, repeated multi-step planning entries may justify "preserve action items as concise steps", but must not add the actual tasks, project names, people, tools, dates, or topics from those entries.
 
@@ -58,6 +72,7 @@ class ContextDerivation {
     \(rationaleMarker)
     - Change: [what changed vs. the current prompt]
       Evidence count: [N] distinct primary interactions
+      Evidence source: primary interactions only
       Evidence summary: [short description of the recurring pattern]
       Decision: KEEP
     \(rationaleEndMarker)
@@ -102,6 +117,8 @@ class ContextDerivation {
       DebugLogger.log("USER-CONTEXT-DERIVATION: No primary interactions; using secondary only (\(loaded.secondaryCharCount) chars)")
     }
 
+    let audioAttachments = collectAudioAttachmentsIfApplicable(focus: focus)
+
     let analysisResult = try await callGeminiForAnalysis(
       focus: focus,
       primaryText: loaded.primaryText,
@@ -109,12 +126,79 @@ class ContextDerivation {
       currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
       currentDictationPrompt: currentDictationPrompt,
       currentWhisperGlossary: currentWhisperGlossary,
+      audioAttachments: audioAttachments,
       credential: credential
     )
 
     try writeOutputFile(analysisResult: analysisResult, focus: focus)
 
     DebugLogger.logSuccess("USER-CONTEXT-DERIVATION: Context update completed focus=\(focus)")
+  }
+
+  // MARK: - Audio Verification Attachments
+
+  /// One audio clip prepared for verification, with the base64-encoded WAV bytes ready to attach.
+  private struct AudioAttachment {
+    let ref: String
+    let transcriptionModel: String
+    let base64WAV: String
+  }
+
+  /// For dictation and whisperGlossary focuses, snapshots up to `audioSamplesPerRun` recent dictation
+  /// WAVs whose original transcription model is strictly weaker than (or in a different family from)
+  /// the Smart Improvement model. Returns base64-encoded audio bytes plus metadata for prompt context.
+  /// Returns an empty array for non-audio focuses, when no usable clips exist, or when the asymmetry
+  /// rule eliminates every candidate.
+  private func collectAudioAttachmentsIfApplicable(focus: GenerationKind) -> [AudioAttachment] {
+    guard focus == .dictation || focus == .whisperGlossary else { return [] }
+
+    let allSamples = ContextLogger.shared.audioSampleURLs()
+    DebugLogger.log("AUDIO-VERIFY: focus=\(focus) samplesOnDisk=\(allSamples.count)")
+    guard !allSamples.isEmpty else { return [] }
+
+    guard let smartModel = analysisTranscriptionModel else {
+      DebugLogger.log("AUDIO-VERIFY: focus=\(focus) skip reason=smart-model-unknown")
+      return []
+    }
+
+    // Map ref → transcriptionModel from the JSONL logs in the eligibility window.
+    let logFiles = ContextLogger.shared.interactionLogFiles(lastDays: AppConstants.contextTier3Days)
+    var refToModel: [String: String] = [:]
+    let decoder = JSONDecoder()
+    for fileURL in logFiles {
+      guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+      for line in content.components(separatedBy: .newlines) where !line.isEmpty {
+        guard let data = line.data(using: .utf8),
+              let entry = try? decoder.decode(InteractionLogEntry.self, from: data) else { continue }
+        if let ref = entry.audioRef, let tm = entry.transcriptionModel {
+          refToModel[ref] = tm
+        }
+      }
+    }
+
+    // Walk newest-first, keep up to audioSamplesPerRun that pass asymmetry.
+    var picked: [AudioAttachment] = []
+    var skippedAsymmetry = 0
+    var skippedUnknownModel = 0
+    let cap = AppConstants.audioSamplesPerRun
+    for url in allSamples.reversed() {
+      if picked.count >= cap { break }
+      let ref = url.lastPathComponent
+      guard let modelRaw = refToModel[ref] else { skippedUnknownModel += 1; continue }
+      guard let originalModel = TranscriptionModel(rawValue: modelRaw) else { skippedUnknownModel += 1; continue }
+      let informative = smartModel.canInformativelyVerify(audioFrom: originalModel)
+      if !informative {
+        skippedAsymmetry += 1
+        DebugLogger.log("AUDIO-VERIFY: asymmetry ref=\(ref) transcriptionModel=\(modelRaw) smartModel=\(smartModel.rawValue) informative=false")
+        continue
+      }
+      guard let data = try? Data(contentsOf: url) else { continue }
+      picked.append(AudioAttachment(ref: ref, transcriptionModel: modelRaw, base64WAV: data.base64EncodedString()))
+      DebugLogger.log("AUDIO-VERIFY: asymmetry ref=\(ref) transcriptionModel=\(modelRaw) smartModel=\(smartModel.rawValue) informative=true")
+    }
+
+    DebugLogger.log("AUDIO-VERIFY: focus=\(focus) attach selectedClips=\(picked.count) skippedAsymmetry=\(skippedAsymmetry) skippedUnknownModel=\(skippedUnknownModel) capPerRun=\(cap)")
+    return picked
   }
 
   // MARK: - Log Loading & Sampling
@@ -181,7 +265,7 @@ class ContextDerivation {
     sampledPrimary.append(contentsOf: evenSample(tier2, max: budget2))
     sampledPrimary.append(contentsOf: evenSample(tier3, max: budget3))
     sampledPrimary.sort { $0.ts < $1.ts }
-    let (primaryText, primaryEntryCount, primaryCharCount) = buildAggregatedText(from: sampledPrimary, maxChars: maxChars)
+    let (primaryText, primaryEntryCount, primaryCharCount) = buildAggregatedText(from: sampledPrimary, maxChars: maxChars, labelPrefix: "primary")
 
     var secondaryParts: [String] = []
     switch focus {
@@ -201,7 +285,7 @@ class ContextDerivation {
       otherEntries.append(contentsOf: entries)
     }
     otherEntries.sort { $0.ts < $1.ts }
-    let (otherText, _, otherCharCount) = buildAggregatedText(from: otherEntries, maxChars: AppConstants.contextSecondaryOtherModesMaxChars)
+    let (otherText, _, _) = buildAggregatedText(from: otherEntries, maxChars: AppConstants.contextSecondaryOtherModesMaxChars, labelPrefix: "secondary")
     if !otherText.isEmpty {
       secondaryParts.append("Other modes (for context only):\n\(otherText)")
     }
@@ -216,14 +300,14 @@ class ContextDerivation {
     )
   }
 
-  private func buildAggregatedText(from entries: [InteractionLogEntry], maxChars: Int) -> (text: String, entryCount: Int, charCount: Int) {
+  private func buildAggregatedText(from entries: [InteractionLogEntry], maxChars: Int, labelPrefix: String? = nil) -> (text: String, entryCount: Int, charCount: Int) {
     // Caller passes entries oldest-first. Walk newest-first so the budget is spent on recent
     // entries when truncation is needed; then re-sort chronologically to honour the prompt's
     // "RECENCY: oldest first" contract.
     var kept: [(entry: InteractionLogEntry, text: String)] = []
     var totalChars = 0
     for entry in entries.reversed() {
-      var entryParts: [String] = ["mode: \(entry.mode)"]
+      var entryParts: [String] = ["ts: \(entry.ts)", "mode: \(entry.mode)"]
       if let result = entry.result { entryParts.append("result: \(String(result.prefix(maxFieldChars)))") }
       if let selectedText = entry.selectedText { entryParts.append("selectedText: \(String(selectedText.prefix(maxFieldChars)))") }
       if let userInstruction = entry.userInstruction { entryParts.append("userInstruction: \(String(userInstruction.prefix(maxFieldChars)))") }
@@ -235,9 +319,13 @@ class ContextDerivation {
       totalChars += entryText.count
     }
     kept.sort { $0.entry.ts < $1.entry.ts }
-    let parts = kept.map { $0.text }
+    let parts = kept.enumerated().map { index, item in
+      guard let labelPrefix else { return item.text }
+      return "entry: \(labelPrefix)-\(String(format: "%03d", index + 1)) | \(item.text)"
+    }
     let text = parts.joined(separator: "\n---\n")
-    return (text, parts.count, totalChars)
+    let charCount = parts.reduce(0) { $0 + $1.count }
+    return (text, parts.count, charCount)
   }
 
   private func evenSample(_ entries: [InteractionLogEntry], max count: Int) -> [InteractionLogEntry] {
@@ -256,8 +344,21 @@ class ContextDerivation {
 
   // MARK: - Gemini Analysis
 
-  private func systemPromptForFocus(_ focus: GenerationKind) -> String {
-    return rawSystemPromptForFocus(focus) + "\n" + commonFooter
+  private func systemPromptForFocus(_ focus: GenerationKind, audioAttached: Bool) -> String {
+    var prompt = rawSystemPromptForFocus(focus) + "\n" + commonFooter
+    if audioAttached {
+      prompt += "\n" + audioVerifierInstruction
+    }
+    return prompt
+  }
+
+  /// Appended to dictation and whisperGlossary system prompts when audio clips are attached.
+  /// Audio is strictly a verifier on top of text-stage candidates — never a new evidence source.
+  private var audioVerifierInstruction: String {
+    return """
+
+    AUDIO EVIDENCE (VERIFIER ONLY): One or more dictation audio clips have been attached to this request as separate `inline_data` parts after the text body. They originate from past dictations whose original transcription model is strictly weaker than (or in a different model family from) you. Treat audio strictly as a verifier on top of text-stage candidates: confirm a glossary term or correction only when at least one attached clip clearly contains the relevant signal; reject a candidate when the audio clearly does not contain it. Do NOT introduce new candidates, terms, or rules that exist only in the audio and not in the primary text interactions. Do NOT transcribe the audio. Do NOT mention the audio in your output — only in the rationale block if it changed a decision.
+    """
   }
 
   private func rawSystemPromptForFocus(_ focus: GenerationKind) -> String {
@@ -275,9 +376,10 @@ class ContextDerivation {
       Do not invent correction mappings or terminology that does not appear in the logs, and do not lift a term or correction from a single entry just because it looks plausible.
 
       Your task: generate a system prompt for speech-to-text transcription. It will be sent to a Gemini model that \
-      receives raw audio. Use primary data (transcription interactions) as the evidence source; use secondary data \
-      (current prompt, other modes) only for background and wording. If there are not enough recurring patterns in \
-      primary data, output NO_CHANGE.
+      receives raw audio. Preserve core transcription guardrails even if the logs do not mention them; use primary \
+      data (transcription interactions) only to justify personalized refinements such as recurring domain terms, \
+      corrections, languages, and style preferences. Use secondary data (current prompt, other modes) only for \
+      background and wording. If there are not enough recurring patterns in primary data, output NO_CHANGE.
 
       You MUST wrap your entire output in these markers exactly as shown:
 
@@ -335,15 +437,15 @@ class ContextDerivation {
 
       CRITICAL – Transcription "result" fields often contain recognition errors. Infer intended words (proper nouns, domain terms) from context.
 
-      Your task: produce ONLY a comma-separated list of domain terms and proper nouns (names, companies, technical terms) that appear RECURRINGLY in the data — i.e. across multiple distinct interactions. \
-      Do NOT include terms that appear only once, even if they look interesting; one-off proper nouns are not patterns. \
-      No sentences, no instructions, no explanations. Use primary data (transcription results) to extract terms; if a current glossary is in secondary context, merge and refine it (add newly-recurring terms, keep still-relevant ones, remove duplicates and terms no longer supported by recent data). \
+      Your task: produce ONLY a comma-separated list of stable vocabulary terms and proper nouns (names, companies, technical terms) that appear RECURRINGLY in primary data — i.e. across at least 3 distinct transcription interactions. \
+      Do NOT include terms that appear only once or only in the current glossary / secondary context, even if they look interesting; one-off proper nouns are not patterns. \
+      No sentences, no instructions, no explanations. Use primary data (transcription results) to extract terms; if a current glossary is in secondary context, use it only for merge/refinement wording (keep terms only when still supported by qualifying primary evidence, remove duplicates, remove stale or unsupported terms). \
       Maximum about 50 terms. Prefer the most frequent or impactful (names, project names, technical terms that are often misheard) — frequency across entries is the primary selection criterion.
 
       You MUST wrap your entire output in these markers exactly as shown:
 
       \(whisperGlossaryMarker)
-      Terms: Gödde, EnBW, BlockInfinity GmbH, Christoph Klaus, Repos, Branch, Commit
+      Terms: ExampleApp, Cloud API, SwiftUI, UserDefaults, Commit, Branch
       \(whisperGlossaryEndMarker)
 
       Format: one line starting with "Terms: " followed by comma-separated terms. No other lines between the markers.
@@ -363,8 +465,10 @@ class ContextDerivation {
 
       Your task: generate a system prompt for the "Dictate Prompt" mode. It will be set as the Gemini systemInstruction. \
       At runtime the model receives SELECTED TEXT (from clipboard) and VOICE INSTRUCTION (transcribed from audio). \
-      Output-format rules are appended at runtime — do NOT include them in your suggested prompt. \
-      Focus on behavioral instructions only.
+      Output-format rules are appended at runtime — do NOT duplicate them in your suggested prompt. \
+      Preserve core product behavior even if logs do not mention it: the voice instruction is an edit command applied \
+      to selected text, not dictation to append, and screenshots may be used as silent visual context when available. \
+      Focus new or changed rules on recurring behavior only.
 
       Use primary data (prompt interactions: selectedText → userInstruction → modelResponse) as the evidence source; \
       use secondary data only for background and wording. If there are not enough recurring patterns in primary data, \
@@ -380,11 +484,12 @@ class ContextDerivation {
 
       1. Persona: Text editing assistant that applies voice instructions to selected text.
 
-      2. Task: The user provides selected text and a voice instruction. Apply the instruction to that text.
+      2. Task: The user provides selected text and a voice instruction. Apply the instruction to that text. If a screenshot is provided, use it only as context for tone, app environment, and surrounding content; do not mention it.
 
       3. Behavioral rules (only those evidenced by the data):
          - Format and tone mirroring: match the format of the input (bullets, headings, prose, code) and its formality level.
          - Language preferences observed in the data (e.g., responds in same language as instruction, or always in a specific language).
+         - Guardrails for recurring failures, such as accidentally appending the spoken instruction instead of editing the selected text.
          - Domain-specific guidance if the data shows recurring patterns.
 
       If a current prompt is provided, refine it based on actual usage patterns — do not rewrite from scratch. \
@@ -412,11 +517,13 @@ class ContextDerivation {
     case .chat:
       return """
       You are analyzing a user's interaction history with a voice-to-text application called WhisperShortcut. \
-      The interactions include dictation (transcription) and dictate prompt (voice instructions applied to selected text).
+      Focus on "geminiChat" entries where the user chats with the app assistant. Dictation and Dictate Prompt entries \
+      are secondary context only.
 
       Your task: generate a system prompt for the "Chat" mode. This is the system instruction for the app's chat window — a general-purpose chat where the user can ask questions, get summaries, or request structured answers. \
-      Use the interaction data (all modes) to infer the user's RECURRING preferences: language, tone, broad domains (e.g. software, projects), and any style rules (e.g. "In short:", headings with emojis, bold for key terms) that show up consistently across multiple distinct interactions. \
+      Use primary chat data (userInstruction = user message, modelResponse = assistant reply) to infer the user's RECURRING preferences: language, tone, answer length, structure, copy-ready formatting, and broad domains/expertise level. \
       One-off requests, isolated topics, or single quirky outputs are NOT patterns — ignore them. A single chat about a niche topic, a single user message in an unusual tone, or a single specific word the user used MUST NOT influence the prompt. \
+      Preserve product-level chat rules from the current prompt, such as search/grounding policy, copy-ready code-block behavior, tool-link requirements, privacy guardrails, and source handling, unless primary chat evidence clearly shows a rule is harmful or obsolete. \
       If a current Chat prompt is provided, refine it based on recurring patterns in the data; do not rewrite from scratch unless the data strongly and consistently suggests a different direction.
 
       You MUST wrap your entire output in these markers exactly as shown:
@@ -427,7 +534,7 @@ class ContextDerivation {
 
       Write a system prompt following this structure (Persona → Task → Guardrails → Output):
       1. Persona: Helpful assistant for the user's chat. DO NOT include biographical facts (name, job title, employer, location, projects, industry). Instead, adapt vocabulary and assumed expertise level based on patterns in the data, without stating why.
-      2. Task: Answer questions naturally; for complex answers use "In short:" then details; use markdown headings with emojis where appropriate; use **bold** for key terms.
+      2. Task: Answer questions naturally. Include style rules such as "In short:", headings, emojis, bold key terms, brevity, or paste-ready formatting ONLY if supported by recurring primary chat evidence or already present as a useful product-level rule in the current prompt.
       3. Guardrails: Be helpful and accurate; match the user's language; do not invent information. Never reference or allude to any background context about the user in responses. Do not mention the user's profession, sector, projects, or personal details.
       4. Output: Clear, well-structured responses; no unnecessary meta-commentary.
 
@@ -443,6 +550,7 @@ class ContextDerivation {
     currentPromptModeSystemPrompt: String?,
     currentDictationPrompt: String?,
     currentWhisperGlossary: String?,
+    audioAttachments: [AudioAttachment],
     credential: GeminiCredential
   ) async throws -> String {
     let geminiClient = GeminiAPIClient()
@@ -450,7 +558,7 @@ class ContextDerivation {
     let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: endpoint, resolvedCredential: resolvedCredential)
     var request = try geminiClient.createRequest(endpoint: endpoint, credential: credentialForRequest)
 
-    let systemPrompt = systemPromptForFocus(focus)
+    let systemPrompt = systemPromptForFocus(focus, audioAttached: !audioAttachments.isEmpty)
 
     // Build a clearly sectioned user message so the model can locate the current prompt
     // separately from interaction data when deciding to refine vs. NO_CHANGE.
@@ -478,16 +586,30 @@ class ContextDerivation {
     if !secondaryText.isEmpty {
       userMessageParts.append("## Other-mode context (background only)\n\n\(secondaryText)")
     }
+    if !audioAttachments.isEmpty {
+      let inventory = audioAttachments.enumerated().map { index, att in
+        "  \(index + 1). ref=\(att.ref) originalTranscriptionModel=\(att.transcriptionModel)"
+      }.joined(separator: "\n")
+      userMessageParts.append("## Audio evidence (verifier only)\n\nThe following dictation audio clips are attached as `inline_data` parts after this text. They were originally transcribed by a strictly weaker or different-family model. Use them only to verify text-stage candidates; do not add new candidates from audio.\n\n\(inventory)")
+    }
 
     let userMessage = userMessageParts.joined(separator: "\n\n---\n\n")
     let systemInstruction = GeminiChatRequest.GeminiSystemInstruction(
       parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
     )
+    var userParts: [GeminiChatRequest.GeminiChatPart] = [
+      GeminiChatRequest.GeminiChatPart(text: userMessage, inlineData: nil, fileData: nil, url: nil)
+    ]
+    for attachment in audioAttachments {
+      userParts.append(GeminiChatRequest.GeminiChatPart(
+        text: nil,
+        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: "audio/wav", data: attachment.base64WAV),
+        fileData: nil,
+        url: nil
+      ))
+    }
     let contents = [
-      GeminiChatRequest.GeminiChatContent(
-        role: "user",
-        parts: [GeminiChatRequest.GeminiChatPart(text: userMessage, inlineData: nil, fileData: nil, url: nil)]
-      )
+      GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts)
     ]
     let chatRequest = GeminiChatRequest(
       contents: contents,

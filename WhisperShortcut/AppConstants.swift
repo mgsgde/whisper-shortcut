@@ -61,7 +61,7 @@ Copy-ready output (Whisper Shortcut chat UI):
 - Whenever the user is likely to copy text verbatim (email or message draft, translation, social post, meeting notes to paste elsewhere, letter body, JSON/YAML/config as a paste artifact, or similar), put ONLY that material inside a fenced code block whose language tag is exactly markdown (opening fence: three backticks + the word markdown). The app shows a copy affordance for that block.
 - Keep explanations, reasoning, steps, warnings, and alternatives outside the markdown fence. If there are multiple independent paste-ready pieces, use one markdown fence per piece, in order.
 - For actual source code or shell commands meant to run or compile, use the real language tag (python, swift, javascript, bash, etc.) instead of markdown.
-- If nothing is meant to be copied verbatim (pure Q&A or conceptual reply only), omit the markdown paste block.
+- If nothing is meant to be copied verbatim (pure Q&A, conceptual reply, or action confirmations like "task created" / "event created"), omit the markdown paste block.
 - Do not put triple-backtick fences inside the markdown paste block.
 
 When writing code blocks, always specify a language tag (e.g. ```python, ```swift, ```javascript, or ```markdown for paste-ready prose as above). Never use bare ``` without a language identifier.
@@ -210,11 +210,18 @@ Transcript:
   /// Max chars for "other modes" when building secondary payload in focused Generate with AI (per-tab).
   static let contextSecondaryOtherModesMaxChars: Int = 2000
 
+  // MARK: - Smart Improvement: Audio Verification
+  /// Maximum number of dictation audio WAVs kept on disk for Smart Improvement verification.
+  /// Pool is rotated on each capture and wiped after every Smart Improvement run.
+  static let audioSampleMaxFiles: Int = 20
+  /// Maximum audio clips attached to a single focus's Gemini request during Smart Improvement.
+  static let audioSamplesPerRun: Int = 6
+
   // MARK: - Smart Improvement: thresholds, cooldown, queue
   /// Minimum total interactions across all modes before Smart Improvement may run at all.
   static let smartImprovementMinTotalInteractions: Int = 10
   /// Minimum interactions in a focus's primary mode (last 30 days) for that focus to be analyzed.
-  static let smartImprovementMinPerFocusInteractions: Int = 5
+  static let smartImprovementMinPerFocusInteractions: Int = 20
   /// Lookback window for per-focus eligibility counts.
   static let smartImprovementEligibilityDays: Int = 30
   /// Minimum interval (seconds) between two manual Smart Improvement runs.
