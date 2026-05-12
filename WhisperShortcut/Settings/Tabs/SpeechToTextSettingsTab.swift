@@ -175,6 +175,10 @@ struct SpeechToTextSettingsTab: View {
           .foregroundColor(.secondary)
           .textSelection(.enabled)
       }
+
+      if viewModel.data.selectedTranscriptionModel == .customTranscriptionAPI {
+        CustomTranscriptionAPISection()
+      }
     }
   }
 

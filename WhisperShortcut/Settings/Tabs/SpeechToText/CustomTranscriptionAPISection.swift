@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-struct CustomWhisperAPISection: View {
+struct CustomTranscriptionAPISection: View {
   @State private var apiURL: String = ""
   @State private var bearerToken: String = ""
   @State private var isTokenVisible: Bool = false
@@ -17,8 +17,8 @@ struct CustomWhisperAPISection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Custom Whisper API",
-        subtitle: "Use your own OpenAI-compatible Whisper endpoint for transcription. Select \"Custom Whisper API\" in the Dictate tab to activate."
+        title: "Custom Transcription API",
+        subtitle: "Use your own OpenAI-compatible /v1/audio/transcriptions endpoint. Select \"Custom Transcription API\" in the Dictate tab to activate."
       )
 
       HStack(alignment: .center, spacing: 16) {
@@ -36,10 +36,10 @@ struct CustomWhisperAPISection: View {
         .frame(height: SettingsConstants.textFieldHeight)
         .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
         .onAppear {
-          apiURL = UserDefaults.standard.string(forKey: UserDefaultsKeys.customWhisperAPIURL) ?? ""
+          apiURL = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL) ?? ""
         }
         .onChange(of: apiURL) { _, newValue in
-          UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customWhisperAPIURL)
+          UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customTranscriptionAPIURL)
         }
 
         Spacer()
@@ -66,10 +66,10 @@ struct CustomWhisperAPISection: View {
         }
         .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
         .onAppear {
-          bearerToken = KeychainManager.shared.getCustomWhisperBearerToken() ?? ""
+          bearerToken = KeychainManager.shared.getCustomTranscriptionBearerToken() ?? ""
         }
         .onChange(of: bearerToken) { _, newValue in
-          _ = KeychainManager.shared.saveCustomWhisperBearerToken(newValue)
+          _ = KeychainManager.shared.saveCustomTranscriptionBearerToken(newValue)
         }
 
         Button(action: { isTokenVisible.toggle() }) {
@@ -98,7 +98,7 @@ struct CustomWhisperAPISection: View {
         Spacer()
       }
       .onAppear {
-        let stored = KeychainManager.shared.getCustomWhisperHeaders()
+        let stored = KeychainManager.shared.getCustomTranscriptionHeaders()
         customHeaders = stored.map { HeaderEntry(key: $0["key"] ?? "", value: $0["value"] ?? "") }
       }
 
@@ -143,7 +143,7 @@ struct CustomWhisperAPISection: View {
         }
       }
 
-      Text("Compatible with any OpenAI /v1/audio/transcriptions endpoint (OpenAI, self-hosted Whisper, etc.). Use custom headers for Cloudflare Access (CF-Access-Client-Id / CF-Access-Client-Secret) or other auth schemes.")
+      Text("Works with any OpenAI /v1/audio/transcriptions–compatible endpoint (OpenAI, self-hosted Whisper, faster-whisper-server, or any other compatible backend). Use custom headers for Cloudflare Access (CF-Access-Client-Id / CF-Access-Client-Secret) or other auth schemes.")
         .font(.caption)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -161,6 +161,6 @@ struct CustomWhisperAPISection: View {
 
   private func saveHeaders() {
     let toStore = customHeaders.map { ["key": $0.key, "value": $0.value] }
-    _ = KeychainManager.shared.saveCustomWhisperHeaders(toStore)
+    _ = KeychainManager.shared.saveCustomTranscriptionHeaders(toStore)
   }
 }

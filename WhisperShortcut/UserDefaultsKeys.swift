@@ -64,8 +64,8 @@ enum UserDefaultsKeys {
   static let improveFromUsageAutoRunInterval = "improveFromUsageAutoRunInterval"
   static let lastAutoImprovementRunDate = "lastAutoImprovementRunDate"
 
-  // MARK: - Custom Whisper API
-  static let customWhisperAPIURL = "customWhisperAPIURL"
+  // MARK: - Custom Transcription API
+  static let customTranscriptionAPIURL = "customTranscriptionAPIURL"
 
 }
 

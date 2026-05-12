@@ -27,8 +27,8 @@ enum TranscriptionModel: String, CaseIterable {
   case whisperMedium = "whisper-medium"
   case whisperLarge = "whisper-large"
 
-  // Custom Whisper API
-  case customWhisperAPI = "custom-whisper-api"
+  // Custom Transcription API (any OpenAI /v1/audio/transcriptions–compatible endpoint)
+  case customTranscriptionAPI = "custom-transcription-api"
 
   var displayName: String {
     switch self {
@@ -54,8 +54,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Whisper Medium (Offline)"
     case .whisperLarge:
       return "Whisper Large (Offline)"
-    case .customWhisperAPI:
-      return "Custom Whisper API"
+    case .customTranscriptionAPI:
+      return "Custom Transcription API"
     }
   }
 
@@ -76,7 +76,7 @@ enum TranscriptionModel: String, CaseIterable {
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "" // Offline models don't use API endpoints
-    case .customWhisperAPI:
+    case .customTranscriptionAPI:
       return "" // URL is configured by the user in Settings
     }
   }
@@ -85,7 +85,7 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini31FlashLite, .gemini25FlashLite, .gemini25Flash, .whisperBase:
       return true
-    case .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge, .customWhisperAPI:
+    case .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge, .customTranscriptionAPI:
       return false
     }
   }
@@ -101,7 +101,7 @@ enum TranscriptionModel: String, CaseIterable {
       return "Medium"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "Free (Offline)"
-    case .customWhisperAPI:
+    case .customTranscriptionAPI:
       return "Custom"
     }
   }
@@ -130,8 +130,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "OpenAI Whisper Medium • Best quality • ~1.5GB • Offline"
     case .whisperLarge:
       return "OpenAI Whisper Large v3 • Highest quality • ~3GB • Offline"
-    case .customWhisperAPI:
-      return "Send audio to your own Whisper endpoint • OpenAI-compatible API"
+    case .customTranscriptionAPI:
+      return "Send audio to your own OpenAI-compatible /v1/audio/transcriptions endpoint"
     }
   }
   
@@ -139,7 +139,7 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .gemini31FlashLite:
       return true
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .customWhisperAPI:
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .customTranscriptionAPI:
       return false
     }
   }
@@ -218,7 +218,7 @@ enum TranscriptionModel: String, CaseIterable {
   /// separate families that Gemini can always informatively verify.
   enum AsymmetryClass: Int {
     case offlineWhisper
-    case customWhisperAPI
+    case customTranscriptionAPI
     case geminiFlashLite
     case geminiFlash
     case geminiPro
@@ -228,8 +228,8 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return .offlineWhisper
-    case .customWhisperAPI:
-      return .customWhisperAPI
+    case .customTranscriptionAPI:
+      return .customTranscriptionAPI
     case .gemini25FlashLite, .gemini31FlashLite:
       return .geminiFlashLite
     case .gemini25Flash, .gemini3Flash:
@@ -245,7 +245,7 @@ enum TranscriptionModel: String, CaseIterable {
   /// information when `self` is strictly in a higher tier.
   func canInformativelyVerify(audioFrom transcriptionModel: TranscriptionModel) -> Bool {
     switch transcriptionModel.asymmetryClass {
-    case .offlineWhisper, .customWhisperAPI:
+    case .offlineWhisper, .customTranscriptionAPI:
       return self.isGemini
     default:
       guard self.isGemini else { return false }

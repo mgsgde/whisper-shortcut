@@ -1231,8 +1231,8 @@ class MenuBarController: NSObject {
       let backendTag: String
       if transcriptionModel.isOffline {
         backendTag = "whisper"
-      } else if transcriptionModel == .customWhisperAPI {
-        backendTag = "custom-whisper"
+      } else if transcriptionModel == .customTranscriptionAPI {
+        backendTag = "custom"
       } else {
         backendTag = "gemini"
       }

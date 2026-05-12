@@ -201,11 +201,11 @@ class SpeechService {
     }
 
     // Check if using custom Whisper API
-    if model == .customWhisperAPI {
+    if model == .customTranscriptionAPI {
       try validateAudioFileFormat(at: audioURL)
-      let result = try await transcribeWithCustomWhisperAPI(audioURL: audioURL)
+      let result = try await transcribeWithCustomTranscriptionAPI(audioURL: audioURL)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
-      DebugLogger.logSpeech("SPEED: [Custom Whisper API] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
+      DebugLogger.logSpeech("SPEED: [Custom Transcription API] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
     }
 
@@ -722,19 +722,19 @@ class SpeechService {
     return decoded
   }
 
-  // MARK: - Custom Whisper API Transcription
+  // MARK: - Custom Transcription API
 
-  private func transcribeWithCustomWhisperAPI(audioURL: URL) async throws -> String {
-    guard let endpointString = UserDefaults.standard.string(forKey: UserDefaultsKeys.customWhisperAPIURL),
+  private func transcribeWithCustomTranscriptionAPI(audioURL: URL) async throws -> String {
+    guard let endpointString = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL),
           !endpointString.isEmpty else {
-      throw TranscriptionError.networkError("Custom Whisper API URL is not configured. Set it in Settings → General.")
+      throw TranscriptionError.networkError("Custom Transcription API URL is not configured. Set it in Settings → General.")
     }
     guard let baseURL = URL(string: endpointString) else {
       throw TranscriptionError.invalidRequest
     }
 
     let bearerToken: String? = {
-      let t = keychainManager.getCustomWhisperBearerToken() ?? ""
+      let t = keychainManager.getCustomTranscriptionBearerToken() ?? ""
       return t.isEmpty ? nil : t
     }()
 
@@ -767,20 +767,20 @@ class SpeechService {
 
     for (attemptURL, fieldName) in attempts {
       do {
-        let result = try await sendCustomWhisperRequest(
+        let result = try await sendCustomTranscriptionRequest(
           url: attemptURL, fieldName: fieldName,
           audioData: audioData, fileExtension: fileExtension, mimeType: mimeType,
           bearerToken: bearerToken, session: session)
         return result
       } catch TranscriptionError.serverError(let code) where code == 404 || code == 422 {
-        DebugLogger.log("CUSTOM-WHISPER: \(code) on \(attemptURL.path) — trying next")
+        DebugLogger.log("CUSTOM-TRANSCRIPTION: \(code) on \(attemptURL.path) — trying next")
         lastError = TranscriptionError.serverError(code)
       }
     }
     throw lastError
   }
 
-  private func sendCustomWhisperRequest(
+  private func sendCustomTranscriptionRequest(
     url: URL, fieldName: String,
     audioData: Data, fileExtension: String, mimeType: String,
     bearerToken: String?, session: URLSession
@@ -796,7 +796,7 @@ class SpeechService {
       requestURL = comps.url ?? url
     }
 
-    DebugLogger.log("CUSTOM-WHISPER: POST \(loggableURL(requestURL)) (field: \(fieldName))")
+    DebugLogger.log("CUSTOM-TRANSCRIPTION: POST \(loggableURL(requestURL)) (field: \(fieldName))")
 
     let boundary = "Boundary-\(UUID().uuidString)"
     var body = Data()
@@ -816,7 +816,7 @@ class SpeechService {
     request.httpMethod = "POST"
     request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
     request.timeoutInterval = Constants.resourceTimeout
-    for header in keychainManager.getCustomWhisperHeaders() {
+    for header in keychainManager.getCustomTranscriptionHeaders() {
       if let k = header["key"], let v = header["value"], !k.isEmpty {
         request.setValue(v, forHTTPHeaderField: k)
       }
@@ -831,7 +831,7 @@ class SpeechService {
       throw TranscriptionError.networkError("Invalid response")
     }
 
-    DebugLogger.log("CUSTOM-WHISPER: HTTP \(httpResponse.statusCode)")
+    DebugLogger.log("CUSTOM-TRANSCRIPTION: HTTP \(httpResponse.statusCode)")
 
     switch httpResponse.statusCode {
     case 200: break
@@ -841,7 +841,7 @@ class SpeechService {
     case 429: throw TranscriptionError.rateLimited(retryAfter: nil)
     default:
       let bodyString = String(data: data, encoding: .utf8) ?? ""
-      DebugLogger.logError("CUSTOM-WHISPER: HTTP \(httpResponse.statusCode): \(bodyString.prefix(200))")
+      DebugLogger.logError("CUSTOM-TRANSCRIPTION: HTTP \(httpResponse.statusCode): \(bodyString.prefix(200))")
       throw TranscriptionError.serverError(httpResponse.statusCode)
     }
 
@@ -849,13 +849,13 @@ class SpeechService {
     if let parsed = try? JSONDecoder().decode(WhisperResponse.self, from: data) {
       let result = parsed.text.trimmingCharacters(in: .whitespacesAndNewlines)
       if !result.isEmpty {
-        DebugLogger.logSuccess("CUSTOM-WHISPER: \(result.count) chars")
+        DebugLogger.logSuccess("CUSTOM-TRANSCRIPTION: \(result.count) chars")
         return result
       }
     }
     if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
        !text.isEmpty {
-      DebugLogger.logSuccess("CUSTOM-WHISPER: \(text.count) chars (plain text)")
+      DebugLogger.logSuccess("CUSTOM-TRANSCRIPTION: \(text.count) chars (plain text)")
       return text
     }
     throw TranscriptionError.noSpeechDetected

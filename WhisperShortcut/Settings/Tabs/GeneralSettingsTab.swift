@@ -22,10 +22,6 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
-      CustomWhisperAPISection()
-
-      SpacedSectionDivider()
-
       KeyboardShortcutsSection(viewModel: viewModel, focusedField: $focusedField)
 
       SpacedSectionDivider()

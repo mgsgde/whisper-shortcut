@@ -29,10 +29,10 @@ protocol KeychainManaging {
   func getTrelloAPIKey() -> String?
   func deleteTrelloAPIKey() -> Bool
   func hasValidTrelloAPIKey() -> Bool
-  func saveCustomWhisperBearerToken(_ token: String) -> Bool
-  func getCustomWhisperBearerToken() -> String?
-  func saveCustomWhisperHeaders(_ headers: [[String: String]]) -> Bool
-  func getCustomWhisperHeaders() -> [[String: String]]
+  func saveCustomTranscriptionBearerToken(_ token: String) -> Bool
+  func getCustomTranscriptionBearerToken() -> String?
+  func saveCustomTranscriptionHeaders(_ headers: [[String: String]]) -> Bool
+  func getCustomTranscriptionHeaders() -> [[String: String]]
 }
 
 class KeychainManager: KeychainManaging {
@@ -47,8 +47,8 @@ class KeychainManager: KeychainManaging {
     static let googleCalendarRefreshTokenAccountName = "google-calendar-refresh-token"
     static let trelloTokenAccountName = "trello-token"
     static let trelloAPIKeyAccountName = "trello-api-key"
-    static let customWhisperBearerTokenAccountName = "custom-whisper-bearer-token"
-    static let customWhisperHeadersAccountName = "custom-whisper-headers"
+    static let customTranscriptionBearerTokenAccountName = "custom-transcription-bearer-token"
+    static let customTranscriptionHeadersAccountName = "custom-transcription-headers"
   }
 
   private var cachedAPIKey: String?
@@ -57,7 +57,7 @@ class KeychainManager: KeychainManaging {
   private var cachedGoogleCalendarRefreshToken: String?
   private var cachedTrelloToken: String?
   private var cachedTrelloAPIKey: String?
-  private var cachedCustomWhisperBearerToken: String?
+  private var cachedCustomTranscriptionBearerToken: String?
 
   private init() {}
 
@@ -264,28 +264,28 @@ class KeychainManager: KeychainManaging {
     return !key.isEmpty
   }
 
-  // MARK: - Custom Whisper API Credentials
+  // MARK: - Custom Transcription API Credentials
 
-  func saveCustomWhisperBearerToken(_ token: String) -> Bool {
-    return saveKey(token, accountName: Constants.customWhisperBearerTokenAccountName, cache: &cachedCustomWhisperBearerToken)
+  func saveCustomTranscriptionBearerToken(_ token: String) -> Bool {
+    return saveKey(token, accountName: Constants.customTranscriptionBearerTokenAccountName, cache: &cachedCustomTranscriptionBearerToken)
   }
 
-  func getCustomWhisperBearerToken() -> String? {
-    return getKey(accountName: Constants.customWhisperBearerTokenAccountName, cache: &cachedCustomWhisperBearerToken)
+  func getCustomTranscriptionBearerToken() -> String? {
+    return getKey(accountName: Constants.customTranscriptionBearerTokenAccountName, cache: &cachedCustomTranscriptionBearerToken)
   }
 
-  func saveCustomWhisperHeaders(_ headers: [[String: String]]) -> Bool {
+  func saveCustomTranscriptionHeaders(_ headers: [[String: String]]) -> Bool {
     guard let data = try? JSONEncoder().encode(headers),
           let jsonString = String(data: data, encoding: .utf8) else {
       return false
     }
     var dummy: String? = nil
-    return saveKey(jsonString, accountName: Constants.customWhisperHeadersAccountName, cache: &dummy)
+    return saveKey(jsonString, accountName: Constants.customTranscriptionHeadersAccountName, cache: &dummy)
   }
 
-  func getCustomWhisperHeaders() -> [[String: String]] {
+  func getCustomTranscriptionHeaders() -> [[String: String]] {
     var dummy: String? = nil
-    guard let jsonString = getKey(accountName: Constants.customWhisperHeadersAccountName, cache: &dummy),
+    guard let jsonString = getKey(accountName: Constants.customTranscriptionHeadersAccountName, cache: &dummy),
           let data = jsonString.data(using: .utf8),
           let headers = try? JSONDecoder().decode([[String: String]].self, from: data) else {
       return []
