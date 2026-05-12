@@ -381,8 +381,63 @@ enum ChatToolRegistry {
     ],
   ]
 
+  // MARK: - WhisperShortcut Self-Documentation Tools
+  //
+  // Lets the chat answer "meta" questions about WhisperShortcut itself
+  // (features, settings, shortcuts, data storage, etc.) by reading curated
+  // markdown docs that are mirrored from the repo into the app bundle by
+  // scripts/rebuild-and-restart.sh (see WhisperShortcut/Docs/).
+
+  /// Manifest of user-facing markdown docs bundled with the app.
+  /// Filenames must match files in WhisperShortcut/Docs/.
+  private static let availableDocs:
+    [(name: String, title: String, description: String, filename: String)] = [
+      (
+        name: "readme",
+        title: "README — Project Overview",
+        description:
+          "Top-level overview of WhisperShortcut: features (Dictate, Dictate Prompt, Read Aloud, Prompt & Read, Chat, Live Meeting, Smart Improvement, Google integrations), system requirements, download and install links, BYOK setup (Gemini / xAI API keys), supported macOS versions.",
+        filename: "README.md"
+      ),
+      (
+        name: "data-directories",
+        title: "Data Directories",
+        description:
+          "Where WhisperShortcut stores app data on macOS: Application Support directory layout, settings, logs, system prompts, chat sessions, meeting recordings, sandboxed vs. non-sandboxed builds.",
+        filename: "data-directories.md"
+      ),
+    ]
+
+  static let appDocsFunctionDeclarations: [[String: Any]] = [
+    [
+      "name": "list_whisper_shortcut_docs",
+      "description":
+        "Lists the documentation bundled with WhisperShortcut so you can answer questions about the app itself — its features, shortcuts, supported models, settings, data storage, requirements, installation, etc. ALWAYS call this first when the user asks 'How does WhisperShortcut work?', 'What can this app do?', 'How do I configure X?', 'Where are my recordings stored?', or any similar self-referential question. Returns {docs: [{name, title, description}], app_version, build_number}.",
+      "parameters": [
+        "type": "object",
+        "properties": [:] as [String: Any],
+      ],
+    ],
+    [
+      "name": "read_whisper_shortcut_doc",
+      "description":
+        "Returns the full markdown content of one WhisperShortcut documentation file listed by list_whisper_shortcut_docs. Use this to ground detailed answers about how WhisperShortcut works in its actual bundled documentation rather than guessing. Returns {name, title, content}.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "name": [
+            "type": "string",
+            "description":
+              "The doc identifier as returned by list_whisper_shortcut_docs (e.g. 'readme', 'data-directories').",
+          ],
+        ] as [String: Any],
+        "required": ["name"],
+      ],
+    ],
+  ]
+
   static func allDeclarations(calendarConnected: Bool, trelloConnected: Bool) -> [[String: Any]] {
-    var decls = functionDeclarations
+    var decls = functionDeclarations + appDocsFunctionDeclarations
     if calendarConnected {
       decls += calendarFunctionDeclarations + tasksFunctionDeclarations + gmailFunctionDeclarations
     }
@@ -700,6 +755,39 @@ enum ChatToolRegistry {
         DebugLogger.logError("GEMINI-CHAT-TOOL: trello archive_card failed: \(error.localizedDescription)")
         return ["error": error.localizedDescription]
       }
+
+    case "list_whisper_shortcut_docs":
+      let docsList: [[String: Any]] = availableDocs.map { doc in
+        ["name": doc.name, "title": doc.title, "description": doc.description]
+      }
+      DebugLogger.logSuccess("GEMINI-CHAT-TOOL: listed \(docsList.count) bundled docs")
+      return [
+        "docs": docsList,
+        "app_version": AppConstants.appVersion,
+        "build_number": AppConstants.appBuildNumber,
+      ]
+
+    case "read_whisper_shortcut_doc":
+      guard let docName = args["name"] as? String else {
+        return ["error": "Missing required argument: name"]
+      }
+      guard let doc = availableDocs.first(where: { $0.name == docName }) else {
+        let validNames = availableDocs.map { $0.name }.joined(separator: ", ")
+        return ["error": "Unknown doc '\(docName)'. Available: \(validNames)"]
+      }
+      let base = (doc.filename as NSString).deletingPathExtension
+      let ext = (doc.filename as NSString).pathExtension
+      let url =
+        Bundle.main.url(forResource: base, withExtension: ext, subdirectory: "Docs")
+        ?? Bundle.main.url(forResource: base, withExtension: ext)
+      guard let url, let content = try? String(contentsOf: url, encoding: .utf8) else {
+        DebugLogger.logError(
+          "GEMINI-CHAT-TOOL: doc '\(docName)' missing from bundle (\(doc.filename))")
+        return ["error": "Doc '\(docName)' is not bundled with this build of WhisperShortcut."]
+      }
+      DebugLogger.logSuccess(
+        "GEMINI-CHAT-TOOL: returned doc '\(docName)' (\(content.utf8.count) bytes)")
+      return ["name": doc.name, "title": doc.title, "content": content]
 
     default:
       return ["error": "Unknown tool: \(name)"]
