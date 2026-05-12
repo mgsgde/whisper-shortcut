@@ -58,8 +58,10 @@ final class OpenAIChatProvider: LLMChatProvider {
 
           // Build OpenAI-format messages from Gemini-format contents.
           // Reuses the same translator that GrokChatProvider uses, since both speak
-          // OpenAI Chat Completions.
-          var messages = Self.convertContentsToMessages(contents)
+          // OpenAI Chat Completions. gpt-4o-audio-preview is audio-only and rejects
+          // image_url parts (HTTP 400), so we drop images for that model.
+          let stripImages = (model == PromptModel.openaiGPT4oAudio.rawValue)
+          var messages = Self.convertContentsToMessages(contents, stripImages: stripImages)
 
           // Prepend system message if provided.
           if let sys = systemInstruction,
@@ -115,7 +117,10 @@ final class OpenAIChatProvider: LLMChatProvider {
           }
 
           // Parse SSE stream in Chat Completions format.
-          var pendingToolCalls: [String: (id: String, name: String, arguments: String)] = [:]
+          // Keyed by the delta's `index` so we preserve emission order regardless of how many
+          // parallel tool calls the model returns (a string-keyed dict with lexicographic sort
+          // would put "10" before "2").
+          var pendingToolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
           var finishReason: String?
 
           for try await line in bytes.lines {
@@ -143,20 +148,17 @@ final class OpenAIChatProvider: LLMChatProvider {
             if let toolCalls = delta["tool_calls"] as? [[String: Any]] {
               for tc in toolCalls {
                 let index = tc["index"] as? Int ?? 0
-                let key = "\(index)"
+                let key = index
                 let toolID = tc["id"] as? String
                 if let function = tc["function"] as? [String: Any] {
-                  if let name = function["name"] as? String {
-                    pendingToolCalls[key] = (id: toolID ?? pendingToolCalls[key]?.id ?? "call_\(key)", name: name, arguments: "")
-                  }
+                  let existing = pendingToolCalls[key]
+                  let updatedName = (function["name"] as? String) ?? existing?.name ?? ""
+                  let updatedId = toolID ?? existing?.id ?? "call_\(key)"
+                  var updatedArgs = existing?.arguments ?? ""
                   if let argChunk = function["arguments"] as? String {
-                    if var existing = pendingToolCalls[key] {
-                      existing.arguments += argChunk
-                      pendingToolCalls[key] = existing
-                    } else {
-                      pendingToolCalls[key] = (id: toolID ?? "call_\(key)", name: "", arguments: argChunk)
-                    }
+                    updatedArgs += argChunk
                   }
+                  pendingToolCalls[key] = (id: updatedId, name: updatedName, arguments: updatedArgs)
                 } else if let toolID = toolID, pendingToolCalls[key] == nil {
                   pendingToolCalls[key] = (id: toolID, name: "", arguments: "")
                 }
@@ -190,6 +192,28 @@ final class OpenAIChatProvider: LLMChatProvider {
     }
   }
 
+  // MARK: - Audio Format Helpers
+
+  /// Maps an audio file extension to OpenAI's `input_audio.format` value. Shared between
+  /// the chat path (this provider) and the Dictate Prompt path (`SpeechService`).
+  static func openAIAudioFormat(forExtension ext: String) -> String {
+    switch ext.lowercased() {
+    case "mp3", "mpga": return "mp3"
+    case "wav": return "wav"
+    default: return "wav"
+    }
+  }
+
+  /// Maps an audio MIME type to OpenAI's `input_audio.format` value. Used when converting
+  /// Gemini-style `inline_data` parts (which carry a MIME type, not an extension) into
+  /// OpenAI Chat Completions content parts.
+  static func openAIAudioFormat(forMimeType mime: String) -> String {
+    let lower = mime.lowercased()
+    if lower.contains("wav") { return "wav" }
+    if lower.contains("mp3") || lower.contains("mpeg") { return "mp3" }
+    return "wav"
+  }
+
   // MARK: - Format Conversion
 
   /// Converts Gemini-format `contents` to OpenAI Chat Completions `messages`.
@@ -198,7 +222,10 @@ final class OpenAIChatProvider: LLMChatProvider {
   /// Function call / function response turns are mapped to `assistant.tool_calls` and
   /// `role=tool` messages, with the `tool_call_id` carried via `thoughtSignature` when
   /// it was previously round-tripped through the stream.
-  static func convertContentsToMessages(_ contents: [[String: Any]]) -> [[String: Any]] {
+  ///
+  /// When `stripImages` is true, image parts are dropped silently — this is required for
+  /// audio-only models like `gpt-4o-audio-preview` that reject `image_url` with HTTP 400.
+  static func convertContentsToMessages(_ contents: [[String: Any]], stripImages: Bool = false) -> [[String: Any]] {
     var messages: [[String: Any]] = []
     // Track the most recent assistant turn's tool_call ids so the following tool-result turn
     // can match them positionally.
@@ -267,7 +294,8 @@ final class OpenAIChatProvider: LLMChatProvider {
       let hasMedia = parts.contains { part in
         if let inline = part["inline_data"] as? [String: Any],
            let mime = inline["mime_type"] as? String {
-          return mime.hasPrefix("image/") || mime.hasPrefix("audio/")
+          if mime.hasPrefix("image/") { return !stripImages }
+          if mime.hasPrefix("audio/") { return true }
         }
         return false
       }
@@ -281,25 +309,17 @@ final class OpenAIChatProvider: LLMChatProvider {
                     let mimeType = inlineData["mime_type"] as? String,
                     let data = inlineData["data"] as? String {
             if mimeType.hasPrefix("image/") {
+              if stripImages { continue }
               contentArray.append([
                 "type": "image_url",
                 "image_url": ["url": "data:\(mimeType);base64,\(data)"],
               ])
             } else if mimeType.hasPrefix("audio/") {
-              // Map MIME type → OpenAI audio format string.
-              let format: String
-              if mimeType.contains("wav") {
-                format = "wav"
-              } else if mimeType.contains("mp3") || mimeType.contains("mpeg") {
-                format = "mp3"
-              } else {
-                format = "wav"
-              }
               contentArray.append([
                 "type": "input_audio",
                 "input_audio": [
                   "data": data,
-                  "format": format,
+                  "format": openAIAudioFormat(forMimeType: mimeType),
                 ] as [String: Any],
               ])
             }

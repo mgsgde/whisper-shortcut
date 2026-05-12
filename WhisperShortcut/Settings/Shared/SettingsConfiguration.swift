@@ -151,7 +151,19 @@ enum PromptModel: String, CaseIterable {
       return true
     }
   }
-  
+
+  /// True for models that can power the text-based chat window. `gpt-4o-audio-preview`
+  /// requires `input_audio` content or audio output on every request and 400s on plain text,
+  /// so it's restricted to Dictate Prompt.
+  var supportsTextChat: Bool {
+    switch self {
+    case .openaiGPT4oAudio:
+      return false
+    default:
+      return true
+    }
+  }
+
   var supportsReasoning: Bool {
     return false
   }
@@ -212,9 +224,10 @@ enum PromptModel: String, CaseIterable {
     return provider == .gemini
   }
 
-  /// All models available for the chat window (all providers).
+  /// All models available for the chat window (all providers). Excludes audio-only
+  /// models such as `openaiGPT4oAudio`, which the OpenAI API rejects on text-only requests.
   static var chatModels: [PromptModel] {
-    return allCases
+    return allCases.filter { $0.supportsTextChat }
   }
 
   /// Models eligible for Dictate Prompt: every model that can accept inline audio directly.
@@ -222,11 +235,6 @@ enum PromptModel: String, CaseIterable {
   /// it via `input_audio` content parts. Grok and text-only OpenAI models are excluded.
   static var dictatePromptCapableModels: [PromptModel] {
     return allCases.filter { $0.supportsDirectAudioInput }
-  }
-
-  /// Deprecated alias kept for any callers still referencing the old name.
-  static var geminiOnlyModels: [PromptModel] {
-    return dictatePromptCapableModels
   }
 
   /// Migrates deprecated in-enum cases; identity today (2.0 removed — use `migrateLegacyPromptRawValue` for UserDefaults).
@@ -256,7 +264,8 @@ enum PromptModel: String, CaseIterable {
     guard let parsed = PromptModel(rawValue: migratedRaw) else {
       return SettingsDefaults.selectedChatModel
     }
-    return migrateIfDeprecated(parsed)
+    let resolved = migrateIfDeprecated(parsed)
+    return resolved.supportsTextChat ? resolved : SettingsDefaults.selectedChatModel
   }
 
   /// Loads the model selected for meeting summary (rolling and final). Settings → Live Meeting → Summary Model.

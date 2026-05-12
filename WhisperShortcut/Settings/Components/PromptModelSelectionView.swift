@@ -41,7 +41,7 @@ struct PromptModelSelectionView: View {
   }
 
   private var models: [PromptModel] {
-    availableModels ?? PromptModel.geminiOnlyModels
+    availableModels ?? PromptModel.dictatePromptCapableModels
   }
 
   /// Model to show as selected and for details: when in subscription with a fixed model, use that; otherwise use the binding.

@@ -36,7 +36,8 @@ cd "$PROJECT_DIR"
 # Sync user-facing markdown docs into the app bundle.
 # Source of truth lives at the repo root (and docs/); we mirror a curated subset
 # into WhisperShortcut/Docs/ so Xcode's file-system-synchronized group bundles
-# them and the chat's lookup_whisper_shortcut_docs tool can read them.
+# them and the chat's list_whisper_shortcut_docs / read_whisper_shortcut_doc
+# tools can read them.
 echo "📚 Syncing bundled docs..."
 mkdir -p "$PROJECT_DIR/WhisperShortcut/Docs"
 cp "$PROJECT_DIR/README.md"               "$PROJECT_DIR/WhisperShortcut/Docs/README.md"

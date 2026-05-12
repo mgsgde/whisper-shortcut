@@ -719,7 +719,6 @@ class ChatViewModel: ObservableObject {
     if let extra = meetingContext, !extra.isEmpty {
       text = "\(text)\n\n---\n\n[Meeting context for calibration only — do not reference directly]\n\(extra)"
     }
-    text += "\n\nSelf-knowledge: You have two local tools — list_whisper_shortcut_docs and read_whisper_shortcut_doc — that return bundled WhisperShortcut documentation. Use them whenever the user asks how this app works, what features or shortcuts it has, how to configure something, where data is stored, or any other question about WhisperShortcut itself. Always look up the bundled docs before answering meta-questions about the app; do not rely on prior knowledge or guess."
     if GoogleAccountOAuthService.shared.isConnected {
       text += "\n\nIMPORTANT — you have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks."
     }
@@ -1889,11 +1888,14 @@ struct ChatInputAreaView: View {
   private var hasContent: Bool { !composer.isEmpty }
 
   /// Current chat model for display (with migration); syncs with UserDefaults via @AppStorage.
+  /// Audio-only models (e.g. `openaiGPT4oAudio`) fall back to the default since they can't
+  /// power text chat.
   private var resolvedOpenGeminiModel: PromptModel {
     let migratedRaw = PromptModel.migrateLegacyPromptRawValue(selectedChatModelRaw)
-    return PromptModel(rawValue: migratedRaw)
+    let resolved = PromptModel(rawValue: migratedRaw)
       .map { PromptModel.migrateIfDeprecated($0) }
       ?? SettingsDefaults.selectedChatModel
+    return resolved.supportsTextChat ? resolved : SettingsDefaults.selectedChatModel
   }
 
 
@@ -2131,7 +2133,7 @@ struct ChatInputAreaView: View {
         Spacer()
 
         Menu {
-          ForEach(PromptModel.allCases, id: \.self) { model in
+          ForEach(PromptModel.chatModels, id: \.self) { model in
             Button(action: {
               selectedChatModelRaw = model.rawValue
             }) {

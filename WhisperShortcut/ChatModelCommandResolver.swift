@@ -20,9 +20,13 @@ enum ChatModelCommandResolver {
       return .usage(current: currentSelection)
     }
 
-    // Exact rawValue match wins (after migrating removed 2.0 IDs).
+    // Exact rawValue match wins (after migrating removed 2.0 IDs), but only
+    // for models eligible for chat — audio-only models live in Dictate Prompt.
     if let exact = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(q)) {
-      return .applied(model: PromptModel.migrateIfDeprecated(exact))
+      let migrated = PromptModel.migrateIfDeprecated(exact)
+      if PromptModel.chatModels.contains(migrated) {
+        return .applied(model: migrated)
+      }
     }
 
     // Normalize: lowercase, dashes → spaces, collapse whitespace.
@@ -48,7 +52,7 @@ enum ChatModelCommandResolver {
     } else if padded.contains(" 3 ") {
       candidates = [.gemini3Flash, .gemini3Pro]
     } else {
-      candidates = PromptModel.allCases
+      candidates = PromptModel.chatModels
     }
 
     // Keyword narrowing.

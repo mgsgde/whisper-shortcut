@@ -176,7 +176,9 @@ enum TranscriptionModel: String, CaseIterable {
     }
   }
 
-  /// True for models that send audio to OpenAI's hosted /v1/audio/transcriptions endpoint.
+  /// True for models that route through OpenAI's *hosted* /v1/audio/transcriptions endpoint
+  /// (i.e. user pays via their OpenAI API key). Does NOT include `.selfHostedTranscription`,
+  /// which uses the same OpenAI wire format but points at a user-controlled endpoint.
   var isOpenAI: Bool {
     switch self {
     case .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:

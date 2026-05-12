@@ -478,6 +478,23 @@ class SpeechService {
 
     DebugLogger.log("PROMPT-MODE-OPENAI: Starting execution model=\(model.rawValue)")
 
+    // Run transcription for history in parallel (mirrors the Gemini path). Uses the cheap
+    // gpt-4o-mini-transcribe so it doesn't require a Gemini key.
+    let transcriptionTask = Task<String, Never> {
+      do {
+        let text = try await transcribeWithOpenAI(
+          audioURL: audioURL,
+          modelID: "gpt-4o-mini-transcribe",
+          displayName: "OpenAI GPT-4o Mini Transcribe"
+        )
+        DebugLogger.log("PROMPT-MODE-OPENAI: Transcribed voice instruction for history: \"\(text.prefix(50))...\"")
+        return text
+      } catch {
+        DebugLogger.logWarning("PROMPT-MODE-OPENAI: Failed to transcribe instruction for history: \(error.localizedDescription)")
+        return "(voice instruction)"
+      }
+    }
+
     // Build system prompt (same composition as the Gemini path).
     var systemPrompt = SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
       .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -503,7 +520,20 @@ class SpeechService {
       DebugLogger.log("PROMPT-MODE-OPENAI: Screenshot dropped — \(model.rawValue) does not accept image input.")
     }
 
-    // Build OpenAI user message content parts.
+    // Convert prior conversation history (text-only) into OpenAI messages so the model
+    // sees multi-turn context, just like the Gemini path.
+    let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
+    let historyCount = historyContents.count / 2
+    if historyCount > 0 {
+      DebugLogger.log("PROMPT-MODE-OPENAI: Including \(historyCount) previous turns from conversation history")
+    }
+    let historyMessages: [[String: Any]] = historyContents.map { content in
+      let role = content.role == "model" ? "assistant" : "user"
+      let text = content.parts.compactMap { $0.text }.joined()
+      return ["role": role, "content": text]
+    }
+
+    // Build current-turn user message content parts.
     var userContent: [[String: Any]] = []
     if let screenshotData {
       userContent.append(["type": "text", "text": "Current screen:"])
@@ -522,14 +552,14 @@ class SpeechService {
       """
       userContent.append(["type": "text", "text": contextText])
     }
-    let audioData = try Data(contentsOf: audioURL)
-    let fileExtension = audioURL.pathExtension.lowercased()
-    let audioFormat: String
-    switch fileExtension {
-    case "mp3", "mpeg", "mpga": audioFormat = "mp3"
-    case "wav": audioFormat = "wav"
-    default: audioFormat = "wav"
+    let audioData: Data
+    do {
+      audioData = try Data(contentsOf: audioURL)
+    } catch {
+      throw TranscriptionError.networkError("Could not read audio file: \(error.localizedDescription)")
     }
+    let fileExtension = audioURL.pathExtension.lowercased()
+    let audioFormat = OpenAIChatProvider.openAIAudioFormat(forExtension: fileExtension)
     let base64Audio = audioData.base64EncodedString()
     userContent.append([
       "type": "input_audio",
@@ -539,13 +569,15 @@ class SpeechService {
       ] as [String: Any],
     ])
 
+    // Assemble messages: system → history → current user turn.
+    var messages: [[String: Any]] = [["role": "system", "content": systemPrompt]]
+    messages.append(contentsOf: historyMessages)
+    messages.append(["role": "user", "content": userContent])
+
     let body: [String: Any] = [
       "model": model.rawValue,
       "modalities": ["text"],
-      "messages": [
-        ["role": "system", "content": systemPrompt],
-        ["role": "user", "content": userContent],
-      ] as [Any],
+      "messages": messages,
     ]
 
     guard let endpointURL = URL(string: "https://api.openai.com/v1/chat/completions") else {
@@ -566,10 +598,14 @@ class SpeechService {
     if http.statusCode < 200 || http.statusCode >= 300 {
       let bodyString = String(data: data, encoding: .utf8) ?? ""
       DebugLogger.logError("PROMPT-MODE-OPENAI: HTTP \(http.statusCode): \(bodyString.prefix(500))")
-      if http.statusCode == 401 {
+      switch http.statusCode {
+      case 401:
         throw TranscriptionError.networkError("OpenAI API key is invalid. Check the key in Settings → General.")
+      case 429:
+        throw TranscriptionError.rateLimited(retryAfter: nil)
+      default:
+        throw TranscriptionError.serverError(http.statusCode)
       }
-      throw TranscriptionError.serverError(http.statusCode)
     }
 
     guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -592,13 +628,33 @@ class SpeechService {
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(rawText)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-OPENAI")
 
+    // Resolve the parallel transcription with a 10-second budget so logging never blocks
+    // the user (mirrors the Gemini path).
+    var historyTranscriptionResult: String?
+    await withTaskGroup(of: String?.self) { group in
+      group.addTask { await transcriptionTask.value }
+      group.addTask {
+        try? await Task.sleep(nanoseconds: 10_000_000_000)
+        return nil
+      }
+      for await value in group {
+        if historyTranscriptionResult == nil {
+          historyTranscriptionResult = value
+          group.cancelAll()
+        }
+      }
+    }
+    let userInstruction = historyTranscriptionResult ?? "(voice instruction)"
+    if historyTranscriptionResult == nil {
+      DebugLogger.logWarning("PROMPT-MODE-OPENAI: History transcription timed out, using placeholder")
+    }
     PromptConversationHistory.shared.append(
       mode: mode,
       selectedText: clipboardContext,
-      userInstruction: "(voice instruction)",
+      userInstruction: userInstruction,
       modelResponse: normalizedText
     )
-    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: "(voice instruction)", modelResponse: normalizedText)
+    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText)
 
     DebugLogger.logSuccess("PROMPT-MODE-OPENAI: Completed successfully (\(normalizedText.count) chars)")
     return normalizedText

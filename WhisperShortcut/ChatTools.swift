@@ -390,20 +390,23 @@ enum ChatToolRegistry {
 
   /// Manifest of user-facing markdown docs bundled with the app.
   /// Filenames must match files in WhisperShortcut/Docs/.
+  /// Keep descriptions short and stable; the model reads the full doc body via
+  /// `read_whisper_shortcut_doc`, so the description only needs to disambiguate which file
+  /// to read.
   private static let availableDocs:
     [(name: String, title: String, description: String, filename: String)] = [
       (
         name: "readme",
         title: "README — Project Overview",
         description:
-          "Top-level overview of WhisperShortcut: features (Dictate, Dictate Prompt, Read Aloud, Prompt & Read, Chat, Live Meeting, Smart Improvement, Google integrations), system requirements, download and install links, BYOK setup (Gemini / xAI API keys), supported macOS versions.",
+          "App overview, features, system requirements, install, and BYOK API key setup.",
         filename: "README.md"
       ),
       (
         name: "data-directories",
         title: "Data Directories",
         description:
-          "Where WhisperShortcut stores app data on macOS: Application Support directory layout, settings, logs, system prompts, chat sessions, meeting recordings, sandboxed vs. non-sandboxed builds.",
+          "Where WhisperShortcut stores app data on macOS (settings, logs, prompts, sessions, recordings).",
         filename: "data-directories.md"
       ),
     ]
