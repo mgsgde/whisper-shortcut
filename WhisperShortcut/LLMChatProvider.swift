@@ -59,6 +59,8 @@ enum LLMProviderFactory {
       return GeminiChatProvider.shared
     case .grok:
       return GrokChatProvider.shared
+    case .openai:
+      return OpenAIChatProvider.shared
     }
   }
 }

@@ -4,6 +4,7 @@ import Foundation
 enum ChatModelProvider: String, CaseIterable {
   case gemini
   case grok
+  case openai
 }
 
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
@@ -24,6 +25,14 @@ enum PromptModel: String, CaseIterable {
   case grok4 = "grok-4.20-0309-non-reasoning"
   case grok4Reasoning = "grok-4.20-0309-reasoning"
   case grok4Fast = "grok-4-1-fast-non-reasoning"
+
+  // OpenAI Models (chat + Dictate Prompt via Chat Completions API)
+  case openaiGPT5 = "gpt-5"
+  case openaiGPT5Mini = "gpt-5-mini"
+  /// Audio-input chat model. Accepts inline `input_audio` content parts, which makes it the
+  /// counterpart to Gemini for Dictate Prompt (the model "hears" the audio directly).
+  /// Reference: https://platform.openai.com/docs/guides/audio
+  case openaiGPT4oAudio = "gpt-4o-audio-preview"
   
   var displayName: String {
     switch self {
@@ -47,9 +56,15 @@ enum PromptModel: String, CaseIterable {
       return "Grok 4 Reasoning"
     case .grok4Fast:
       return "Grok 4 Fast"
+    case .openaiGPT5:
+      return "OpenAI GPT-5"
+    case .openaiGPT5Mini:
+      return "OpenAI GPT-5 Mini"
+    case .openaiGPT4oAudio:
+      return "OpenAI GPT-4o Audio"
     }
   }
-  
+
   var description: String {
     switch self {
     case .gemini25Flash:
@@ -72,6 +87,12 @@ enum PromptModel: String, CaseIterable {
       return "xAI's Grok 4 Reasoning • Extended thinking for complex tasks • Web + X search • Requires xAI API key"
     case .grok4Fast:
       return "xAI's Grok 4 Fast • Low-latency responses • Web + X search • Requires xAI API key"
+    case .openaiGPT5:
+      return "OpenAI's GPT-5 • Flagship reasoning + tool use • Text + images • Requires OpenAI API key"
+    case .openaiGPT5Mini:
+      return "OpenAI's GPT-5 Mini • Cheaper, faster GPT-5 variant • Text + images • Requires OpenAI API key"
+    case .openaiGPT4oAudio:
+      return "OpenAI's GPT-4o Audio Preview • Accepts inline audio for voice-driven prompts • Requires OpenAI API key"
     }
   }
   
@@ -90,6 +111,10 @@ enum PromptModel: String, CaseIterable {
       return "Medium"
     case .grok4Fast:
       return "Low"
+    case .openaiGPT5, .openaiGPT4oAudio:
+      return "Medium"
+    case .openaiGPT5Mini:
+      return "Low"
     }
   }
 
@@ -97,8 +122,22 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .grok4, .grok4Reasoning, .grok4Fast:
       return .grok
+    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT4oAudio:
+      return .openai
     default:
       return .gemini
+    }
+  }
+
+  /// True for the OpenAI audio-preview models that accept `input_audio` content parts in
+  /// Chat Completions requests — i.e. the OpenAI counterpart to Gemini's native audio handling
+  /// in Dictate Prompt.
+  var supportsDirectAudioInput: Bool {
+    switch self {
+    case .openaiGPT4oAudio:
+      return true
+    default:
+      return provider == .gemini
     }
   }
   
@@ -141,12 +180,20 @@ enum PromptModel: String, CaseIterable {
       return .gemini31FlashLite
     case .grok4, .grok4Reasoning, .grok4Fast:
       return nil // Grok models are text-only, no audio transcription
+    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT4oAudio:
+      return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
     }
   }
 
   /// Whether this model supports grounding/search (Gemini: google_search + url_context; Grok: web_search via Responses API).
+  /// OpenAI models route through Chat Completions without a built-in grounding tool for now.
   var supportsGrounding: Bool {
-    return true
+    switch self {
+    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT4oAudio:
+      return false
+    default:
+      return true
+    }
   }
 
   /// Whether this model supports code execution. Only Gemini models do.
@@ -159,9 +206,16 @@ enum PromptModel: String, CaseIterable {
     return allCases
   }
 
-  /// Only Gemini models (for dictate prompt, transcription, etc. where Gemini-specific features are required).
+  /// Models eligible for Dictate Prompt: every model that can accept inline audio directly.
+  /// Gemini handles audio natively across all variants; OpenAI's GPT-4o Audio Preview handles
+  /// it via `input_audio` content parts. Grok and text-only OpenAI models are excluded.
+  static var dictatePromptCapableModels: [PromptModel] {
+    return allCases.filter { $0.supportsDirectAudioInput }
+  }
+
+  /// Deprecated alias kept for any callers still referencing the old name.
   static var geminiOnlyModels: [PromptModel] {
-    return allCases.filter { $0.provider == .gemini }
+    return dictatePromptCapableModels
   }
 
   /// Migrates deprecated in-enum cases; identity today (2.0 removed — use `migrateLegacyPromptRawValue` for UserDefaults).

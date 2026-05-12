@@ -240,20 +240,24 @@ class SpeechService {
   private func performPrompt(audioURL: URL, mode: PromptMode) async throws -> String {
     // Get clipboard context
     let clipboardContext = getClipboardContext()
-    
+
     // Get selected model from settings based on mode
     let selectedPromptModel = getPromptModel(for: mode)
-    
-    // Prompt mode ALWAYS requires Gemini API key (no offline support yet)
-    // All PromptModel cases are Gemini models, so this should always be true
-    guard selectedPromptModel.isGemini else {
-      throw TranscriptionError.networkError("Prompt mode requires Gemini model")
+
+    guard selectedPromptModel.supportsDirectAudioInput else {
+      throw TranscriptionError.networkError("Selected Dictate Prompt model does not accept direct audio input. Pick a Gemini model or OpenAI's GPT-4o Audio.")
     }
-    
-    // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
+
     try validateAudioFileFormat(at: audioURL)
-    // Execute prompt with Gemini (it handles its own key validation)
-    return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode)
+
+    switch selectedPromptModel.provider {
+    case .gemini:
+      return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode)
+    case .openai:
+      return try await executePromptWithOpenAI(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
+    case .grok:
+      throw TranscriptionError.networkError("Grok does not support audio-input Dictate Prompt. Pick a Gemini model or OpenAI's GPT-4o Audio.")
+    }
   }
 
   // MARK: - Gemini Prompt Mode
@@ -452,6 +456,145 @@ class SpeechService {
 
     DebugLogger.logSuccess("PROMPT-MODE-GEMINI: Completed successfully")
 
+    return normalizedText
+  }
+
+  // MARK: - OpenAI Prompt Mode
+
+  /// Dictate Prompt via OpenAI's Chat Completions API with an inline `input_audio` content
+  /// part. Mirrors the Gemini flow: system prompt + optional screenshot + clipboard context +
+  /// audio, all in one request. Non-streaming, single-shot response.
+  /// Reference: https://platform.openai.com/docs/guides/audio
+  private func executePromptWithOpenAI(
+    audioURL: URL,
+    clipboardContext: String?,
+    mode: PromptMode,
+    model: PromptModel
+  ) async throws -> String {
+    guard let apiKey = keychainManager.getOpenAIAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !apiKey.isEmpty else {
+      throw TranscriptionError.networkError("No OpenAI API key configured. Add your OpenAI API key in Settings to use OpenAI's Dictate Prompt models.")
+    }
+
+    DebugLogger.log("PROMPT-MODE-OPENAI: Starting execution model=\(model.rawValue)")
+
+    // Build system prompt (same composition as the Gemini path).
+    var systemPrompt = SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    if systemPrompt.isEmpty {
+      systemPrompt = AppConstants.defaultPromptModeSystemPrompt
+      DebugLogger.log("PROMPT-MODE-OPENAI: Using base system prompt")
+    } else {
+      DebugLogger.log("PROMPT-MODE-OPENAI: Using custom system prompt")
+    }
+    systemPrompt += AppConstants.promptModeOutputRule
+
+    // Optional screenshot context.
+    let screenshotEnabled = UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil
+      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
+      : SettingsDefaults.screenshotInPromptMode
+    let screenshotData: Data? = screenshotEnabled
+      ? await ChatWindowManager.shared.captureScreenForPromptMode()
+      : nil
+
+    // Build OpenAI user message content parts.
+    var userContent: [[String: Any]] = []
+    if let screenshotData {
+      userContent.append(["type": "text", "text": "Current screen:"])
+      let base64 = screenshotData.base64EncodedString()
+      userContent.append([
+        "type": "image_url",
+        "image_url": ["url": "data:image/jpeg;base64,\(base64)"],
+      ])
+    }
+    if let context = clipboardContext {
+      DebugLogger.log("PROMPT-MODE-OPENAI: Adding clipboard context (length: \(context.count) chars)")
+      let contextText = """
+      SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):
+
+      \(context)
+      """
+      userContent.append(["type": "text", "text": contextText])
+    }
+    let audioData = try Data(contentsOf: audioURL)
+    let fileExtension = audioURL.pathExtension.lowercased()
+    let audioFormat: String
+    switch fileExtension {
+    case "mp3", "mpeg", "mpga": audioFormat = "mp3"
+    case "wav": audioFormat = "wav"
+    default: audioFormat = "wav"
+    }
+    let base64Audio = audioData.base64EncodedString()
+    userContent.append([
+      "type": "input_audio",
+      "input_audio": [
+        "data": base64Audio,
+        "format": audioFormat,
+      ] as [String: Any],
+    ])
+
+    let body: [String: Any] = [
+      "model": model.rawValue,
+      "modalities": ["text"],
+      "messages": [
+        ["role": "system", "content": systemPrompt],
+        ["role": "user", "content": userContent],
+      ] as [Any],
+    ]
+
+    guard let endpointURL = URL(string: "https://api.openai.com/v1/chat/completions") else {
+      throw TranscriptionError.networkError("Invalid OpenAI endpoint URL")
+    }
+    var request = URLRequest(url: endpointURL)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    request.timeoutInterval = Constants.resourceTimeout
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+    let session = makeTranscriptionURLSession()
+    let (data, response) = try await session.data(for: request)
+    guard let http = response as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response from OpenAI API")
+    }
+    if http.statusCode < 200 || http.statusCode >= 300 {
+      let bodyString = String(data: data, encoding: .utf8) ?? ""
+      DebugLogger.logError("PROMPT-MODE-OPENAI: HTTP \(http.statusCode): \(bodyString.prefix(500))")
+      if http.statusCode == 401 {
+        throw TranscriptionError.networkError("OpenAI API key is invalid. Check the key in Settings → General.")
+      }
+      throw TranscriptionError.serverError(http.statusCode)
+    }
+
+    guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let choices = json["choices"] as? [[String: Any]],
+          let firstChoice = choices.first,
+          let message = firstChoice["message"] as? [String: Any] else {
+      throw TranscriptionError.networkError("Unexpected OpenAI response shape")
+    }
+
+    // The audio-preview model returns plain string content for text-only output.
+    let rawText: String
+    if let str = message["content"] as? String {
+      rawText = str
+    } else if let arr = message["content"] as? [[String: Any]] {
+      rawText = arr.compactMap { $0["text"] as? String }.joined()
+    } else {
+      throw TranscriptionError.networkError("OpenAI returned no text content")
+    }
+
+    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(rawText)
+    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-OPENAI")
+
+    PromptConversationHistory.shared.append(
+      mode: mode,
+      selectedText: clipboardContext,
+      userInstruction: "(voice instruction)",
+      modelResponse: normalizedText
+    )
+    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: "(voice instruction)", modelResponse: normalizedText)
+
+    DebugLogger.logSuccess("PROMPT-MODE-OPENAI: Completed successfully (\(normalizedText.count) chars)")
     return normalizedText
   }
 

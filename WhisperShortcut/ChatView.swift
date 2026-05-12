@@ -115,6 +115,7 @@ class ChatViewModel: ObservableObject {
   private static let modelCommand = "/model"
   private static let grokCommand = "/grok"
   private static let geminiCommand = "/gemini"
+  private static let openaiCommand = "/openai"
   private static let connectGoogleCommand = "/connect-google"
   private static let disconnectGoogleCommand = "/disconnect-google"
   private static let connectTrelloCommand = "/connect-trello"
@@ -128,6 +129,7 @@ class ChatViewModel: ObservableObject {
     ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
     ("/gemini", "Switch to Gemini 3 Flash"),
     ("/grok", "Switch to Grok 4"),
+    ("/openai", "Switch to OpenAI GPT-5"),
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
@@ -268,13 +270,14 @@ class ChatViewModel: ObservableObject {
       }
       if lower == Self.newChatCommand || lower == Self.screenshotCommand
           || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
-          || lower == Self.grokCommand || lower == Self.geminiCommand {
+          || lower == Self.grokCommand || lower == Self.geminiCommand || lower == Self.openaiCommand {
         if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
         else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
         else if lower == Self.pinCommand { togglePin() }
         else if lower == Self.unpinCommand { unpin() }
         else if lower == Self.grokCommand { switchToModel(.grok4) }
         else if lower == Self.geminiCommand { switchToModel(.gemini3Flash) }
+        else if lower == Self.openaiCommand { switchToModel(.openaiGPT5) }
         else { await captureScreenshot() }
         return
       }
@@ -622,7 +625,7 @@ class ChatViewModel: ObservableObject {
     // Slash commands: always immediate, never queued
     if lower == Self.newChatCommand || lower == Self.screenshotCommand
         || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
-        || lower == Self.grokCommand || lower == Self.geminiCommand {
+        || lower == Self.grokCommand || lower == Self.geminiCommand || lower == Self.openaiCommand {
       inputText = ""
       if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
@@ -630,6 +633,7 @@ class ChatViewModel: ObservableObject {
       else if lower == Self.unpinCommand { unpin() }
       else if lower == Self.grokCommand { switchToModel(.grok4) }
       else if lower == Self.geminiCommand { switchToModel(.gemini3Flash) }
+      else if lower == Self.openaiCommand { switchToModel(.openaiGPT5) }
       else { await captureScreenshot() }
       return
     }
@@ -1938,7 +1942,7 @@ struct ChatInputAreaView: View {
   private static let knownSlashCommands: Set<String> = [
     "/new", "/screenshot",
     "/settings", "/pin", "/unpin",
-    "/grok", "/gemini",
+    "/grok", "/gemini", "/openai",
     "/connect-google", "/disconnect-google",
     "/connect-trello", "/disconnect-trello",
     "/meeting"
