@@ -200,6 +200,15 @@ class SpeechService {
       return result
     }
 
+    // Check if using custom Whisper API
+    if model == .customWhisperAPI {
+      try validateAudioFileFormat(at: audioURL)
+      let result = try await transcribeWithCustomWhisperAPI(audioURL: audioURL)
+      let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
+      DebugLogger.logSpeech("SPEED: [Custom Whisper API] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
+      return result
+    }
+
     // Should never reach here
     throw TranscriptionError.networkError("Unsupported transcription model")
   }
@@ -711,6 +720,168 @@ class SpeechService {
     }
     DebugLogger.logSuccess("TTS: Successfully generated audio (size: \(decoded.count) bytes)")
     return decoded
+  }
+
+  // MARK: - Custom Whisper API Transcription
+
+  private func transcribeWithCustomWhisperAPI(audioURL: URL) async throws -> String {
+    guard let endpointString = UserDefaults.standard.string(forKey: UserDefaultsKeys.customWhisperAPIURL),
+          !endpointString.isEmpty else {
+      throw TranscriptionError.networkError("Custom Whisper API URL is not configured. Set it in Settings → General.")
+    }
+    guard let baseURL = URL(string: endpointString) else {
+      throw TranscriptionError.invalidRequest
+    }
+
+    let bearerToken: String? = {
+      let t = keychainManager.getCustomWhisperBearerToken() ?? ""
+      return t.isEmpty ? nil : t
+    }()
+
+    let audioData = try Data(contentsOf: audioURL)
+    let fileExtension = audioURL.pathExtension.lowercased()
+    let mimeType = mimeTypeForAudioExtension(fileExtension)
+
+    let urlPath = baseURL.path
+    let isBaseURL = urlPath.isEmpty || urlPath == "/"
+    let base = endpointString.hasSuffix("/") ? String(endpointString.dropLast()) : endpointString
+
+    // Build list of (url, fieldName) attempts.
+    // For a bare host, try OpenAI layout first then whisper-asr-webservice.
+    // For a full path, use as-is with both field name conventions.
+    var attempts: [(URL, String)] = []
+    if isBaseURL {
+      if let u = URL(string: "\(base)/v1/audio/transcriptions") { attempts.append((u, "file")) }
+      if let u = URL(string: "\(base)/asr") { attempts.append((u, "audio_file")) }
+    } else {
+      attempts.append((baseURL, "file"))
+      attempts.append((baseURL, "audio_file"))
+    }
+
+    var lastError: Error = TranscriptionError.networkError("All request attempts failed")
+
+    let config = URLSessionConfiguration.default
+    config.timeoutIntervalForRequest = Constants.requestTimeout
+    config.timeoutIntervalForResource = Constants.resourceTimeout
+    let session = URLSession(configuration: config)
+
+    for (attemptURL, fieldName) in attempts {
+      do {
+        let result = try await sendCustomWhisperRequest(
+          url: attemptURL, fieldName: fieldName,
+          audioData: audioData, fileExtension: fileExtension, mimeType: mimeType,
+          bearerToken: bearerToken, session: session)
+        return result
+      } catch TranscriptionError.serverError(let code) where code == 404 || code == 422 {
+        DebugLogger.log("CUSTOM-WHISPER: \(code) on \(attemptURL.path) — trying next")
+        lastError = TranscriptionError.serverError(code)
+      }
+    }
+    throw lastError
+  }
+
+  private func sendCustomWhisperRequest(
+    url: URL, fieldName: String,
+    audioData: Data, fileExtension: String, mimeType: String,
+    bearerToken: String?, session: URLSession
+  ) async throws -> String {
+    var requestURL = url
+    if fieldName == "audio_file",
+       var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+      var items = comps.queryItems ?? []
+      if !items.contains(where: { $0.name == "output" }) {
+        items.append(URLQueryItem(name: "output", value: "json"))
+      }
+      comps.queryItems = items
+      requestURL = comps.url ?? url
+    }
+
+    DebugLogger.log("CUSTOM-WHISPER: POST \(loggableURL(requestURL)) (field: \(fieldName))")
+
+    let boundary = "Boundary-\(UUID().uuidString)"
+    var body = Data()
+
+    if fieldName == "file" {
+      body.append("--\(boundary)\r\n".data(using: .utf8)!)
+      body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\nwhisper-1\r\n".data(using: .utf8)!)
+    }
+    body.append("--\(boundary)\r\n".data(using: .utf8)!)
+    body.append(
+      "Content-Disposition: form-data; name=\"\(fieldName)\"; filename=\"audio.\(fileExtension)\"\r\nContent-Type: \(mimeType)\r\n\r\n"
+        .data(using: .utf8)!)
+    body.append(audioData)
+    body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
+    var request = URLRequest(url: requestURL)
+    request.httpMethod = "POST"
+    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+    request.timeoutInterval = Constants.resourceTimeout
+    for header in keychainManager.getCustomWhisperHeaders() {
+      if let k = header["key"], let v = header["value"], !k.isEmpty {
+        request.setValue(v, forHTTPHeaderField: k)
+      }
+    }
+    if let token = bearerToken {
+      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+    request.httpBody = body
+
+    let (data, response) = try await session.data(for: request)
+    guard let httpResponse = response as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response")
+    }
+
+    DebugLogger.log("CUSTOM-WHISPER: HTTP \(httpResponse.statusCode)")
+
+    switch httpResponse.statusCode {
+    case 200: break
+    case 401: throw TranscriptionError.invalidAPIKey
+    case 404: throw TranscriptionError.serverError(404)
+    case 422: throw TranscriptionError.serverError(422)
+    case 429: throw TranscriptionError.rateLimited(retryAfter: nil)
+    default:
+      let bodyString = String(data: data, encoding: .utf8) ?? ""
+      DebugLogger.logError("CUSTOM-WHISPER: HTTP \(httpResponse.statusCode): \(bodyString.prefix(200))")
+      throw TranscriptionError.serverError(httpResponse.statusCode)
+    }
+
+    struct WhisperResponse: Decodable { let text: String }
+    if let parsed = try? JSONDecoder().decode(WhisperResponse.self, from: data) {
+      let result = parsed.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !result.isEmpty {
+        DebugLogger.logSuccess("CUSTOM-WHISPER: \(result.count) chars")
+        return result
+      }
+    }
+    if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !text.isEmpty {
+      DebugLogger.logSuccess("CUSTOM-WHISPER: \(text.count) chars (plain text)")
+      return text
+    }
+    throw TranscriptionError.noSpeechDetected
+  }
+
+  private func loggableURL(_ url: URL) -> String {
+    guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+      return url.path
+    }
+    comps.query = nil
+    comps.fragment = nil
+    return comps.url?.absoluteString ?? url.path
+  }
+
+  private func mimeTypeForAudioExtension(_ ext: String) -> String {
+    switch ext {
+    case "mp3": return "audio/mpeg"
+    case "m4a": return "audio/mp4"
+    case "wav": return "audio/wav"
+    case "flac": return "audio/flac"
+    case "ogg": return "audio/ogg"
+    case "webm": return "audio/webm"
+    case "aiff", "aif": return "audio/aiff"
+    case "aac": return "audio/aac"
+    default: return "audio/mpeg"
+    }
   }
 
   // MARK: - Gemini API Helpers (delegated to GeminiAPIClient)

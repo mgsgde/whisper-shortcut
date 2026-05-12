@@ -29,6 +29,10 @@ protocol KeychainManaging {
   func getTrelloAPIKey() -> String?
   func deleteTrelloAPIKey() -> Bool
   func hasValidTrelloAPIKey() -> Bool
+  func saveCustomWhisperBearerToken(_ token: String) -> Bool
+  func getCustomWhisperBearerToken() -> String?
+  func saveCustomWhisperHeaders(_ headers: [[String: String]]) -> Bool
+  func getCustomWhisperHeaders() -> [[String: String]]
 }
 
 class KeychainManager: KeychainManaging {
@@ -43,6 +47,8 @@ class KeychainManager: KeychainManaging {
     static let googleCalendarRefreshTokenAccountName = "google-calendar-refresh-token"
     static let trelloTokenAccountName = "trello-token"
     static let trelloAPIKeyAccountName = "trello-api-key"
+    static let customWhisperBearerTokenAccountName = "custom-whisper-bearer-token"
+    static let customWhisperHeadersAccountName = "custom-whisper-headers"
   }
 
   private var cachedAPIKey: String?
@@ -51,6 +57,7 @@ class KeychainManager: KeychainManaging {
   private var cachedGoogleCalendarRefreshToken: String?
   private var cachedTrelloToken: String?
   private var cachedTrelloAPIKey: String?
+  private var cachedCustomWhisperBearerToken: String?
 
   private init() {}
 
@@ -255,5 +262,34 @@ class KeychainManager: KeychainManaging {
   func hasValidTrelloAPIKey() -> Bool {
     guard let key = getTrelloAPIKey() else { return false }
     return !key.isEmpty
+  }
+
+  // MARK: - Custom Whisper API Credentials
+
+  func saveCustomWhisperBearerToken(_ token: String) -> Bool {
+    return saveKey(token, accountName: Constants.customWhisperBearerTokenAccountName, cache: &cachedCustomWhisperBearerToken)
+  }
+
+  func getCustomWhisperBearerToken() -> String? {
+    return getKey(accountName: Constants.customWhisperBearerTokenAccountName, cache: &cachedCustomWhisperBearerToken)
+  }
+
+  func saveCustomWhisperHeaders(_ headers: [[String: String]]) -> Bool {
+    guard let data = try? JSONEncoder().encode(headers),
+          let jsonString = String(data: data, encoding: .utf8) else {
+      return false
+    }
+    var dummy: String? = nil
+    return saveKey(jsonString, accountName: Constants.customWhisperHeadersAccountName, cache: &dummy)
+  }
+
+  func getCustomWhisperHeaders() -> [[String: String]] {
+    var dummy: String? = nil
+    guard let jsonString = getKey(accountName: Constants.customWhisperHeadersAccountName, cache: &dummy),
+          let data = jsonString.data(using: .utf8),
+          let headers = try? JSONDecoder().decode([[String: String]].self, from: data) else {
+      return []
+    }
+    return headers
   }
 }
