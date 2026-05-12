@@ -252,7 +252,7 @@ class SpeechService {
 
     switch selectedPromptModel.provider {
     case .gemini:
-      return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode)
+      return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
     case .openai:
       return try await executePromptWithOpenAI(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
     case .grok:
@@ -261,7 +261,7 @@ class SpeechService {
   }
 
   // MARK: - Gemini Prompt Mode
-  private func executePromptWithGemini(audioURL: URL, clipboardContext: String?, mode: PromptMode) async throws -> String {
+  private func executePromptWithGemini(audioURL: URL, clipboardContext: String?, mode: PromptMode, model: PromptModel) async throws -> String {
     guard let credential = await credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
     }
@@ -280,16 +280,13 @@ class SpeechService {
       }
     }
 
-    // Get selected model from settings based on mode
-    let selectedPromptModel = getPromptModel(for: mode)
-
     // Convert to TranscriptionModel to get API endpoint
-    guard let transcriptionModel = selectedPromptModel.asTranscriptionModel else {
+    guard let transcriptionModel = model.asTranscriptionModel else {
       throw TranscriptionError.networkError("Selected model is not a Gemini model")
     }
 
     let endpoint = transcriptionModel.apiEndpoint
-    DebugLogger.log("PROMPT-MODE-GEMINI: Using model: \(selectedPromptModel.displayName) (\(selectedPromptModel.rawValue))")
+    DebugLogger.log("PROMPT-MODE-GEMINI: Using model: \(model.displayName) (\(model.rawValue))")
     DebugLogger.log("PROMPT-MODE-GEMINI: Using endpoint: \(endpoint)")
 
     // Get clipboard context
