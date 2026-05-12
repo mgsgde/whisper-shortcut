@@ -233,4 +233,10 @@ Transcript:
   /// Hard cap on messages sent per turn. Gemini 2.x has a 1–2M token context window;
   /// this only protects against pathologically long sessions.
   static let chatFullHistoryMaxMessages: Int = 400
+
+  // MARK: - Custom Transcription API
+  /// OpenAI's audio transcription endpoint, used as the default when Custom Transcription API
+  /// is selected but the endpoint URL is left empty.
+  /// Reference: https://platform.openai.com/docs/api-reference/audio/createTranscription
+  static let openAITranscriptionsEndpoint = "https://api.openai.com/v1/audio/transcriptions"
 }

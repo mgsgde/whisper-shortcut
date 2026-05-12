@@ -725,9 +725,13 @@ class SpeechService {
   // MARK: - Custom Transcription API
 
   private func transcribeWithCustomTranscriptionAPI(audioURL: URL) async throws -> String {
-    guard let endpointString = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL),
-          !endpointString.isEmpty else {
-      throw TranscriptionError.networkError("Custom Transcription API URL is not configured. Set it in Settings → General.")
+    let configuredEndpoint = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let endpointString: String
+    if configuredEndpoint.isEmpty {
+      endpointString = AppConstants.openAITranscriptionsEndpoint
+      DebugLogger.log("CUSTOM-TRANSCRIPTION: endpoint not configured — defaulting to OpenAI \(endpointString)")
+    } else {
+      endpointString = configuredEndpoint
     }
     guard let baseURL = URL(string: endpointString) else {
       throw TranscriptionError.invalidRequest

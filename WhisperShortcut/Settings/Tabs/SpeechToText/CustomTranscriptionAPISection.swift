@@ -18,7 +18,7 @@ struct CustomTranscriptionAPISection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Custom Transcription API",
-        subtitle: "Use your own OpenAI-compatible /v1/audio/transcriptions endpoint. Select \"Custom Transcription API\" in the Dictate tab to activate."
+        subtitle: "Use your own OpenAI-compatible /v1/audio/transcriptions endpoint."
       )
 
       HStack(alignment: .center, spacing: 16) {
@@ -27,19 +27,28 @@ struct CustomTranscriptionAPISection: View {
           .fontWeight(.medium)
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
 
-        TextField(
-          "https://api.openai.com/v1/audio/transcriptions",
-          text: $apiURL
-        )
-        .textFieldStyle(.roundedBorder)
-        .font(.system(.body, design: .monospaced))
-        .frame(height: SettingsConstants.textFieldHeight)
-        .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
-        .onAppear {
-          apiURL = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL) ?? ""
-        }
-        .onChange(of: apiURL) { _, newValue in
-          UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customTranscriptionAPIURL)
+        VStack(alignment: .leading, spacing: 4) {
+          TextField(
+            AppConstants.openAITranscriptionsEndpoint,
+            text: $apiURL
+          )
+          .textFieldStyle(.roundedBorder)
+          .font(.system(.body, design: .monospaced))
+          .frame(height: SettingsConstants.textFieldHeight)
+          .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
+          .onAppear {
+            apiURL = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL) ?? ""
+          }
+          .onChange(of: apiURL) { _, newValue in
+            UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customTranscriptionAPIURL)
+          }
+
+          HStack(spacing: 4) {
+            Text("Leave empty to use OpenAI's default endpoint.")
+            Link("Reference", destination: URL(string: "https://platform.openai.com/docs/api-reference/audio/createTranscription")!)
+          }
+          .font(.caption)
+          .foregroundColor(.secondary)
         }
 
         Spacer()
