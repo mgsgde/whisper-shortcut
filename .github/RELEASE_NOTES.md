@@ -1,4 +1,4 @@
-# WhisperShortcut 7.13
+# WhisperShortcut 7.14
 
 ## Installation
 
@@ -6,26 +6,22 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-### Added
+### Fixed
 
-- **Web Search for GPT-5 and GPT-5 Mini in chat**: OpenAI chat models now ground responses via OpenAI's hosted Web Search tool, matching how Gemini and Grok do it. Toggle it from the chat composer the same way as for the other providers.
-- **OpenAI Dictate Prompt remembers previous turns**: Voice instructions sent to `gpt-4o-audio-preview` now include the recent Dictate Prompt history, so follow-ups like "make it shorter" or "now in French" work the way they do with Gemini. Each instruction is also transcribed for the history view and for Smart Improvement.
+- **Recent chat edits are no longer lost on rebuild or external kill**: `pkill` (used by `scripts/rebuild-and-restart.sh` and most third-party tooling) sends `SIGTERM` by default, which previously terminated the app before `applicationWillTerminate` could run — meaning any chat session change still inside the 2-second debounce window was lost. The app now catches `SIGTERM` / `SIGINT` / `SIGHUP` and routes through a clean shutdown so the chat session store always flushes to disk first.
+- **Grok tool calls now stream reliably**: Three latent bugs in Grok's Chat Completions parsing — string-keyed tool-call ordering (which put `10` before `2`), argument accumulators getting wiped if `name` arrived mid-stream, and tool-call IDs not round-tripping back to the response turn — are all fixed. Parallel tool calls and tool-result matching now behave like the OpenAI path.
+- **Grok rate limits and bad API keys surface clearly**: The Grok Responses API and Chat Completions endpoints now map HTTP 401 to "API key is invalid" and HTTP 429 to a rate-limit (same as Gemini and OpenAI), instead of presenting both as opaque network errors. Rate-limit signals are now also picked up by the cross-request backoff coordinator.
+- **OpenAI Dictate Prompt text follow-ups give a clear error**: If you select an OpenAI model as your Dictate Prompt model and use the text-driven Prompt & Read flow, you now get an actionable "switch the Dictate Prompt model to Gemini in Settings" message instead of the misleading "not a Gemini model" error.
 
 ### Changed
 
-- **`⌘ + 1`-style shortcuts in the chat empty state**: The on-screen legend in an empty chat session now reads `⌘ + 1 Speech-to-Text` instead of the compact `⌘1`, so it's clearer that the modifier and the key are pressed together. The menu bar continues to use the native macOS glyph form.
-- **`/openai` defaults to GPT-5 Mini**: Typing `/openai` with no model argument now switches the chat to GPT-5 Mini — cheaper and faster as a baseline. You can still get the full model with `/openai gpt-5` or `/model gpt-5`.
-- **Transcription model names match chat model names**: Settings → Dictate now lists `GPT-4o Transcribe` and `GPT-4o Mini Transcribe` (dropping the redundant "OpenAI" prefix), consistent with the chat picker.
-- **Speech-to-Text settings spell out which backends use which prompt**: The "System prompt" and "Whisper Glossary" sections now state explicitly which transcription backends consume them — Gemini consumes the system prompt; offline Whisper and OpenAI Transcribe consume the glossary.
+- **Termination logging for diagnosing spontaneous restarts**: The app now logs every shutdown decision — launch PID/version, the signal that arrived (if any), the `applicationShouldTerminate` outcome, duplicate-instance exits — under the `APP-LIFECYCLE` category. Useful when troubleshooting unexpected restarts via `bash scripts/logs.sh -t 10m -f APP-LIFECYCLE`.
+- **Privacy and Terms updated**: Privacy and Terms documents have been refreshed to reflect the current provider lineup (Google Gemini, OpenAI, xAI) and data-handling behavior.
 
-### Fixed
+### Internal
 
-- **OpenAI chat asked for the wrong API key**: Selecting a GPT-5 model with no Gemini key showed "Add your Google API key…" instead of asking for an OpenAI key. The chat now checks the right credential per provider.
-- **`/model gpt 3` no longer routes to Gemini 3**: The fuzzy `/model` matcher now recognizes "openai", "gpt", and "4o" before falling back to generic version-number parsing, and supports a "mini" qualifier (so `/model gpt 5 mini` lands on GPT-5 Mini).
-- **OpenAI rate limits no longer surface as generic errors**: HTTP 429 from OpenAI Chat Completions is now treated as a rate-limit (same as Gemini), and the Dictate Prompt path retries briefly instead of failing immediately. Large embedded error payloads are also truncated before being shown.
-- **Parallel tool calls in OpenAI chat no longer mis-order**: When the model emits ≥10 parallel tool calls in a single turn, they are now sorted numerically (`2, 10`) instead of lexicographically (`10, 2`).
-- **OpenAI Dictate Prompt with oversized audio now fails clearly**: Audio above 20 MB is rejected up front with a clear message instead of timing out partway through the upload (OpenAI's Chat Completions has no Files-API fallback like Gemini does).
+- Internal refactors only: deduplicated the Responses-API request translator across the OpenAI and Grok providers, consolidated three near-identical `URLSession` factories into one shared session, and pulled the 10-second history-transcription timeout pattern into a single helper used by both the Gemini and OpenAI Dictate Prompt paths. No user-visible behavior change from these.
 
 ## Full changelog
 
-[Compare v7.12…v7.13](https://github.com/mgsgde/whisper-shortcut/compare/v7.12...v7.13)
+[Compare v7.13…v7.14](https://github.com/mgsgde/whisper-shortcut/compare/v7.13...v7.14)
