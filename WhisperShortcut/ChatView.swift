@@ -129,7 +129,7 @@ class ChatViewModel: ObservableObject {
     ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
     ("/gemini", "Switch to Gemini 3 Flash"),
     ("/grok", "Switch to Grok 4"),
-    ("/openai", "Switch to OpenAI GPT-5"),
+    ("/openai", "Switch to GPT-5 Mini"),
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),

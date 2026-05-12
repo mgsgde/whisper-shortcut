@@ -101,11 +101,12 @@ enum ChatModelCommandResolver {
       if base.count == 1 { candidates = base }
     }
 
-    // Same idea for "openai"/"gpt" without a "mini" qualifier: prefer the base
-    // GPT-5 over GPT-5 Mini.
+    // For "openai"/"gpt" without an explicit qualifier, default to GPT-5 Mini —
+    // it's the cheaper, faster baseline; users who want the larger model can ask
+    // for it explicitly via "/openai gpt-5" or "/model gpt-5".
     if hasOpenAI && !hasMini && candidates.count > 1 {
-      let base = candidates.filter { !isMini($0) }
-      if base.count == 1 { candidates = base }
+      let minis = candidates.filter { isMini($0) }
+      if minis.count == 1 { candidates = minis }
     }
 
     // Stable order based on PromptModel.allCases.
