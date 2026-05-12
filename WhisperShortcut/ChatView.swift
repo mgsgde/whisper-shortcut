@@ -457,7 +457,7 @@ class ChatViewModel: ObservableObject {
             DebugLogger.logWarning("CHAT: tool loop exceeded \(maxToolRounds) rounds — stopping")
             break toolLoop
           }
-          let turns = await executeToolCalls(pendingCalls)
+          let turns = try await executeToolCalls(pendingCalls)
           currentContents.append(contentsOf: turns)
         }
 
@@ -513,7 +513,7 @@ class ChatViewModel: ObservableObject {
 
   private func executeToolCalls(
     _ calls: [(name: String, args: [String: Any], thoughtSignature: String?)]
-  ) async -> [[String: Any]] {
+  ) async throws -> [[String: Any]] {
     let callParts: [[String: Any]] = calls.map { call in
       var part: [String: Any] = ["functionCall": ["name": call.name, "args": call.args]]
       if let sig = call.thoughtSignature { part["thoughtSignature"] = sig }
@@ -521,6 +521,7 @@ class ChatViewModel: ObservableObject {
     }
     var responseParts: [[String: Any]] = []
     for call in calls {
+      try Task.checkCancellation()
       let result = await ChatToolRegistry.execute(name: call.name, args: call.args)
       responseParts.append(["functionResponse": ["name": call.name, "response": result]])
     }

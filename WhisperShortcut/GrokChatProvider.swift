@@ -105,13 +105,12 @@ final class GrokChatProvider: LLMChatProvider {
             body["instructions"] = instructions
           }
 
-          // Tools: web_search + x_search + custom function tools.
-          // web_search searches the open web; x_search searches X.com posts.
-          // Responses API uses a flat tool format (name/description at top level),
-          // unlike Chat Completions which nests them under "function".
+          // Tools: web_search + custom function tools.
+          // Only web_search is enabled — x_search (X.com posts) was dropped because
+          // it added latency without improving factual grounding for typical chat
+          // questions and tended to surface opinion over fact.
           var responsesTools: [[String: Any]] = [
             ["type": "web_search"],
-            ["type": "x_search"],
           ]
           for tool in tools {
             responsesTools.append([
@@ -125,7 +124,7 @@ final class GrokChatProvider: LLMChatProvider {
 
           request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-          DebugLogger.logNetwork("GROK-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+x_search+\(tools.count)func")
+          DebugLogger.logNetwork("GROK-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+\(tools.count)func")
           let (bytes, response) = try await self.session.bytes(for: request)
           guard let http = response as? HTTPURLResponse else {
             throw TranscriptionError.networkError("Invalid response from xAI API")
