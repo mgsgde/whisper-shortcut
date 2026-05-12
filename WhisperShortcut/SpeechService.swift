@@ -485,7 +485,7 @@ class SpeechService {
         let text = try await transcribeWithOpenAI(
           audioURL: audioURL,
           modelID: "gpt-4o-mini-transcribe",
-          displayName: "OpenAI GPT-4o Mini Transcribe"
+          displayName: "GPT-4o Mini Transcribe"
         )
         DebugLogger.log("PROMPT-MODE-OPENAI: Transcribed voice instruction for history: \"\(text.prefix(50))...\"")
         return text

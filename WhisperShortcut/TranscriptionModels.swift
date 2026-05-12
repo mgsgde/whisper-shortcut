@@ -61,9 +61,9 @@ enum TranscriptionModel: String, CaseIterable {
     case .whisperLarge:
       return "Whisper Large (Offline)"
     case .openAIGPT4oTranscribe:
-      return "OpenAI GPT-4o Transcribe"
+      return "GPT-4o Transcribe"
     case .openAIGPT4oMiniTranscribe:
-      return "OpenAI GPT-4o Mini Transcribe"
+      return "GPT-4o Mini Transcribe"
     case .selfHostedTranscription:
       return "Self-hosted Transcription Endpoint"
     }
