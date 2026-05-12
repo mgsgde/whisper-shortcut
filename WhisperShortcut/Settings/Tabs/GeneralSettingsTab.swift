@@ -22,6 +22,10 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
+      OpenAIAPIKeySection(viewModel: viewModel)
+
+      SpacedSectionDivider()
+
       KeyboardShortcutsSection(viewModel: viewModel, focusedField: $focusedField)
 
       SpacedSectionDivider()

@@ -1231,8 +1231,10 @@ class MenuBarController: NSObject {
       let backendTag: String
       if transcriptionModel.isOffline {
         backendTag = "whisper"
-      } else if transcriptionModel == .customTranscriptionAPI {
-        backendTag = "custom"
+      } else if transcriptionModel.isOpenAI {
+        backendTag = "openai"
+      } else if transcriptionModel == .selfHostedTranscription {
+        backendTag = "self-hosted"
       } else {
         backendTag = "gemini"
       }

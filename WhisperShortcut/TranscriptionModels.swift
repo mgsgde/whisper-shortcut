@@ -27,8 +27,14 @@ enum TranscriptionModel: String, CaseIterable {
   case whisperMedium = "whisper-medium"
   case whisperLarge = "whisper-large"
 
-  // Custom Transcription API (any OpenAI /v1/audio/transcriptions–compatible endpoint)
-  case customTranscriptionAPI = "custom-transcription-api"
+  // OpenAI transcription models (cloud, OpenAI API key required)
+  case openAIGPT4oTranscribe = "openai-gpt-4o-transcribe"
+  case openAIGPT4oMiniTranscribe = "openai-gpt-4o-mini-transcribe"
+
+  // Self-hosted transcription endpoint (any OpenAI /v1/audio/transcriptions–compatible endpoint, e.g.
+  // faster-whisper-server, whisper-asr-webservice, or any proxy). Raw value kept stable from the
+  // original "Custom Transcription API" feature so existing UserDefaults selections still resolve.
+  case selfHostedTranscription = "custom-transcription-api"
 
   var displayName: String {
     switch self {
@@ -54,8 +60,12 @@ enum TranscriptionModel: String, CaseIterable {
       return "Whisper Medium (Offline)"
     case .whisperLarge:
       return "Whisper Large (Offline)"
-    case .customTranscriptionAPI:
-      return "Custom Transcription API"
+    case .openAIGPT4oTranscribe:
+      return "OpenAI GPT-4o Transcribe"
+    case .openAIGPT4oMiniTranscribe:
+      return "OpenAI GPT-4o Mini Transcribe"
+    case .selfHostedTranscription:
+      return "Self-hosted Transcription Endpoint"
     }
   }
 
@@ -76,8 +86,20 @@ enum TranscriptionModel: String, CaseIterable {
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "" // Offline models don't use API endpoints
-    case .customTranscriptionAPI:
+    case .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
+      return AppConstants.openAITranscriptionsEndpoint
+    case .selfHostedTranscription:
       return "" // URL is configured by the user in Settings
+    }
+  }
+
+  /// Upstream OpenAI model ID used as the `model` form field on POSTs to /v1/audio/transcriptions.
+  /// Nil for models that do not route through an OpenAI-compatible endpoint.
+  var openAIAPIModelID: String? {
+    switch self {
+    case .openAIGPT4oTranscribe: return "gpt-4o-transcribe"
+    case .openAIGPT4oMiniTranscribe: return "gpt-4o-mini-transcribe"
+    default: return nil
     }
   }
 
@@ -85,7 +107,8 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini31FlashLite, .gemini25FlashLite, .gemini25Flash, .whisperBase:
       return true
-    case .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge, .customTranscriptionAPI:
+    case .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge,
+         .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .selfHostedTranscription:
       return false
     }
   }
@@ -101,7 +124,11 @@ enum TranscriptionModel: String, CaseIterable {
       return "Medium"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "Free (Offline)"
-    case .customTranscriptionAPI:
+    case .openAIGPT4oTranscribe:
+      return "Medium"
+    case .openAIGPT4oMiniTranscribe:
+      return "Low"
+    case .selfHostedTranscription:
       return "Custom"
     }
   }
@@ -130,7 +157,11 @@ enum TranscriptionModel: String, CaseIterable {
       return "OpenAI Whisper Medium • Best quality • ~1.5GB • Offline"
     case .whisperLarge:
       return "OpenAI Whisper Large v3 • Highest quality • ~3GB • Offline"
-    case .customTranscriptionAPI:
+    case .openAIGPT4oTranscribe:
+      return "OpenAI's flagship audio transcription model • High accuracy • Cloud"
+    case .openAIGPT4oMiniTranscribe:
+      return "OpenAI's faster, cheaper transcription model • Cloud"
+    case .selfHostedTranscription:
       return "Send audio to your own OpenAI-compatible /v1/audio/transcriptions endpoint"
     }
   }
@@ -139,7 +170,18 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .gemini31FlashLite:
       return true
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .customTranscriptionAPI:
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
+         .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .selfHostedTranscription:
+      return false
+    }
+  }
+
+  /// True for models that send audio to OpenAI's hosted /v1/audio/transcriptions endpoint.
+  var isOpenAI: Bool {
+    switch self {
+    case .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
+      return true
+    default:
       return false
     }
   }
@@ -214,11 +256,12 @@ enum TranscriptionModel: String, CaseIterable {
 
   /// Coarse capability tier used by Smart Improvement to decide whether re-listening to audio
   /// produced by another model can add information. Within Gemini, Pro > Flash > Flash-Lite.
-  /// Non-Gemini backends (offline Whisper, custom OpenAI-compatible endpoints) are treated as
-  /// separate families that Gemini can always informatively verify.
+  /// Non-Gemini backends (offline Whisper, OpenAI cloud, self-hosted OpenAI-compatible endpoints)
+  /// are treated as separate families that Gemini can always informatively verify.
   enum AsymmetryClass: Int {
     case offlineWhisper
-    case customTranscriptionAPI
+    case openAIAudio
+    case selfHostedTranscription
     case geminiFlashLite
     case geminiFlash
     case geminiPro
@@ -228,8 +271,10 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return .offlineWhisper
-    case .customTranscriptionAPI:
-      return .customTranscriptionAPI
+    case .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
+      return .openAIAudio
+    case .selfHostedTranscription:
+      return .selfHostedTranscription
     case .gemini25FlashLite, .gemini31FlashLite:
       return .geminiFlashLite
     case .gemini25Flash, .gemini3Flash:
@@ -245,7 +290,7 @@ enum TranscriptionModel: String, CaseIterable {
   /// information when `self` is strictly in a higher tier.
   func canInformativelyVerify(audioFrom transcriptionModel: TranscriptionModel) -> Bool {
     switch transcriptionModel.asymmetryClass {
-    case .offlineWhisper, .customTranscriptionAPI:
+    case .offlineWhisper, .openAIAudio, .selfHostedTranscription:
       return self.isGemini
     default:
       guard self.isGemini else { return false }

@@ -156,6 +156,7 @@ struct SpeechToTextSettingsTab: View {
         title: "🎤 Transcription Model",
         selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
         geminiDisabled: !GeminiCredentialProvider.shared.hasCredential(),
+        openAIDisabled: !KeychainManager.shared.hasValidOpenAIAPIKey(),
         subscriptionMode: false,
         onModelChanged: {
           UserDefaults.standard.set(
@@ -176,8 +177,15 @@ struct SpeechToTextSettingsTab: View {
           .textSelection(.enabled)
       }
 
-      if viewModel.data.selectedTranscriptionModel == .customTranscriptionAPI {
-        CustomTranscriptionAPISection()
+      if viewModel.data.selectedTranscriptionModel.isOpenAI && !KeychainManager.shared.hasValidOpenAIAPIKey() {
+        Text("Add your OpenAI API key in the General tab to use the OpenAI transcription models.")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+      }
+
+      if viewModel.data.selectedTranscriptionModel == .selfHostedTranscription {
+        SelfHostedTranscriptionEndpointSection()
       }
     }
   }

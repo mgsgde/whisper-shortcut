@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-struct CustomTranscriptionAPISection: View {
+struct SelfHostedTranscriptionEndpointSection: View {
   @State private var apiURL: String = ""
   @State private var bearerToken: String = ""
   @State private var isTokenVisible: Bool = false
@@ -17,8 +17,8 @@ struct CustomTranscriptionAPISection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Custom Transcription API",
-        subtitle: "Use your own OpenAI-compatible /v1/audio/transcriptions endpoint."
+        title: "Self-hosted Transcription Endpoint",
+        subtitle: "For your own OpenAI-compatible /v1/audio/transcriptions server (faster-whisper-server, whisper-asr-webservice, or any proxy). If you want OpenAI's hosted models, use the OpenAI entries in the model picker instead."
       )
 
       HStack(alignment: .center, spacing: 16) {
@@ -29,7 +29,7 @@ struct CustomTranscriptionAPISection: View {
 
         VStack(alignment: .leading, spacing: 4) {
           TextField(
-            AppConstants.openAITranscriptionsEndpoint,
+            "https://your-whisper.example.com/v1/audio/transcriptions",
             text: $apiURL
           )
           .textFieldStyle(.roundedBorder)
@@ -43,12 +43,11 @@ struct CustomTranscriptionAPISection: View {
             UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customTranscriptionAPIURL)
           }
 
-          HStack(spacing: 4) {
-            Text("Leave empty to use OpenAI's default endpoint.")
-            Link("Reference", destination: URL(string: "https://platform.openai.com/docs/api-reference/audio/createTranscription")!)
+          if apiURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Text("Required. Dictation will fail until you set this.")
+              .font(.caption)
+              .foregroundColor(.orange)
           }
-          .font(.caption)
-          .foregroundColor(.secondary)
         }
 
         Spacer()

@@ -200,12 +200,21 @@ class SpeechService {
       return result
     }
 
-    // Check if using custom Whisper API
-    if model == .customTranscriptionAPI {
+    // OpenAI cloud transcription (gpt-4o-transcribe / gpt-4o-mini-transcribe)
+    if model.isOpenAI, let openAIModelID = model.openAIAPIModelID {
       try validateAudioFileFormat(at: audioURL)
-      let result = try await transcribeWithCustomTranscriptionAPI(audioURL: audioURL)
+      let result = try await transcribeWithOpenAI(audioURL: audioURL, modelID: openAIModelID, displayName: model.displayName)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
-      DebugLogger.logSpeech("SPEED: [Custom Transcription API] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
+      DebugLogger.logSpeech("SPEED: [\(model.displayName)] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
+      return result
+    }
+
+    // Self-hosted OpenAI-compatible endpoint
+    if model == .selfHostedTranscription {
+      try validateAudioFileFormat(at: audioURL)
+      let result = try await transcribeWithSelfHostedEndpoint(audioURL: audioURL)
+      let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
+      DebugLogger.logSpeech("SPEED: [Self-hosted Transcription] completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
     }
 
@@ -722,37 +731,59 @@ class SpeechService {
     return decoded
   }
 
-  // MARK: - Custom Transcription API
+  // MARK: - OpenAI Transcription (cloud)
 
-  private func transcribeWithCustomTranscriptionAPI(audioURL: URL) async throws -> String {
-    let configuredEndpoint = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    let endpointString: String
-    if configuredEndpoint.isEmpty {
-      endpointString = AppConstants.openAITranscriptionsEndpoint
-      DebugLogger.log("CUSTOM-TRANSCRIPTION: endpoint not configured — defaulting to OpenAI \(endpointString)")
-    } else {
-      endpointString = configuredEndpoint
+  private func transcribeWithOpenAI(audioURL: URL, modelID: String, displayName: String) async throws -> String {
+    let token = (keychainManager.getOpenAIAPIKey() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !token.isEmpty else {
+      throw TranscriptionError.networkError("OpenAI API key is missing — add it in Settings → General.")
     }
-    guard let baseURL = URL(string: endpointString) else {
+    guard let endpoint = URL(string: AppConstants.openAITranscriptionsEndpoint) else {
       throw TranscriptionError.invalidRequest
     }
 
-    let bearerToken: String? = {
-      let t = keychainManager.getCustomTranscriptionBearerToken() ?? ""
-      return t.isEmpty ? nil : t
-    }()
+    let audioData = try Data(contentsOf: audioURL)
+    let fileExtension = audioURL.pathExtension.lowercased()
+    let mimeType = mimeTypeForAudioExtension(fileExtension)
 
+    let session = makeTranscriptionURLSession()
+    return try await sendOpenAICompatibleTranscriptionRequest(
+      url: endpoint,
+      fieldName: "file",
+      modelID: modelID,
+      audioData: audioData,
+      fileExtension: fileExtension,
+      mimeType: mimeType,
+      bearerToken: token,
+      extraHeaders: [],
+      session: session,
+      logPrefix: "OPENAI-TRANSCRIPTION"
+    )
+  }
+
+  // MARK: - Self-hosted Transcription Endpoint
+
+  private func transcribeWithSelfHostedEndpoint(audioURL: URL) async throws -> String {
+    let configuredEndpoint = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard !configuredEndpoint.isEmpty else {
+      throw TranscriptionError.networkError("Self-hosted transcription endpoint URL is not configured. Set it in Settings → Dictate.")
+    }
+    guard let baseURL = URL(string: configuredEndpoint) else {
+      throw TranscriptionError.invalidRequest
+    }
+
+    let bearerToken = (keychainManager.getCustomTranscriptionBearerToken() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let extraHeaders = keychainManager.getCustomTranscriptionHeaders()
     let audioData = try Data(contentsOf: audioURL)
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = mimeTypeForAudioExtension(fileExtension)
 
     let urlPath = baseURL.path
     let isBaseURL = urlPath.isEmpty || urlPath == "/"
-    let base = endpointString.hasSuffix("/") ? String(endpointString.dropLast()) : endpointString
+    let base = configuredEndpoint.hasSuffix("/") ? String(configuredEndpoint.dropLast()) : configuredEndpoint
 
-    // Build list of (url, fieldName) attempts.
-    // For a bare host, try OpenAI layout first then whisper-asr-webservice.
-    // For a full path, use as-is with both field name conventions.
+    // For a bare host, try the OpenAI layout first, then fall back to whisper-asr-webservice.
+    // For a full path, try the same path with both field-name conventions.
     var attempts: [(URL, String)] = []
     if isBaseURL {
       if let u = URL(string: "\(base)/v1/audio/transcriptions") { attempts.append((u, "file")) }
@@ -763,31 +794,43 @@ class SpeechService {
     }
 
     var lastError: Error = TranscriptionError.networkError("All request attempts failed")
-
-    let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = Constants.requestTimeout
-    config.timeoutIntervalForResource = Constants.resourceTimeout
-    let session = URLSession(configuration: config)
+    let session = makeTranscriptionURLSession()
 
     for (attemptURL, fieldName) in attempts {
       do {
-        let result = try await sendCustomTranscriptionRequest(
-          url: attemptURL, fieldName: fieldName,
-          audioData: audioData, fileExtension: fileExtension, mimeType: mimeType,
-          bearerToken: bearerToken, session: session)
-        return result
+        return try await sendOpenAICompatibleTranscriptionRequest(
+          url: attemptURL,
+          fieldName: fieldName,
+          modelID: fieldName == "file" ? "whisper-1" : nil,
+          audioData: audioData,
+          fileExtension: fileExtension,
+          mimeType: mimeType,
+          bearerToken: bearerToken.isEmpty ? nil : bearerToken,
+          extraHeaders: extraHeaders,
+          session: session,
+          logPrefix: "SELF-HOSTED-TRANSCRIPTION"
+        )
       } catch TranscriptionError.serverError(let code) where code == 404 || code == 422 {
-        DebugLogger.log("CUSTOM-TRANSCRIPTION: \(code) on \(attemptURL.path) — trying next")
+        DebugLogger.log("SELF-HOSTED-TRANSCRIPTION: \(code) on \(attemptURL.path) — trying next")
         lastError = TranscriptionError.serverError(code)
       }
     }
     throw lastError
   }
 
-  private func sendCustomTranscriptionRequest(
+  // MARK: - OpenAI-Compatible Multipart Helper
+
+  /// Shared multipart POST for both the OpenAI cloud path and the self-hosted endpoint path.
+  /// Forwards Whisper Glossary as the `prompt` field and the language selection as the `language`
+  /// field whenever the OpenAI layout (`file`) is used. The whisper-asr-webservice layout
+  /// (`audio_file`) doesn't accept the same multipart fields, so those hints are skipped there.
+  private func sendOpenAICompatibleTranscriptionRequest(
     url: URL, fieldName: String,
+    modelID: String?,
     audioData: Data, fileExtension: String, mimeType: String,
-    bearerToken: String?, session: URLSession
+    bearerToken: String?, extraHeaders: [[String: String]],
+    session: URLSession,
+    logPrefix: String
   ) async throws -> String {
     var requestURL = url
     if fieldName == "audio_file",
@@ -800,17 +843,13 @@ class SpeechService {
       requestURL = comps.url ?? url
     }
 
-    // OpenAI /v1/audio/transcriptions accepts `prompt` (vocabulary bias hint, ~224 tokens) and
-    // `language` (ISO-639-1) as multipart fields. Reuse the Whisper Glossary as the prompt and
-    // the Whisper Language picker as the language code so the two settings keep working when
-    // dictation is routed through this endpoint instead of offline Whisper.
     let glossary = SystemPromptsStore.shared.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
     let glossaryHint: String? = glossary.isEmpty ? nil : glossary
     let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage)
     let savedLanguage = WhisperLanguage(rawValue: savedLanguageString ?? WhisperLanguage.auto.rawValue) ?? WhisperLanguage.auto
     let languageCode = savedLanguage.languageCode
 
-    DebugLogger.log("CUSTOM-TRANSCRIPTION: POST \(loggableURL(requestURL)) (field: \(fieldName), language: \(languageCode ?? "auto"), prompt: \(glossaryHint == nil ? "none" : "\(glossaryHint!.count) chars"))")
+    DebugLogger.log("\(logPrefix): POST \(loggableURL(requestURL)) (field: \(fieldName), model: \(modelID ?? "-"), language: \(languageCode ?? "auto"), prompt: \(glossaryHint == nil ? "none" : "\(glossaryHint!.count) chars"))")
 
     let boundary = "Boundary-\(UUID().uuidString)"
     var body = Data()
@@ -821,7 +860,9 @@ class SpeechService {
     }
 
     if fieldName == "file" {
-      appendField("model", "whisper-1")
+      if let modelID = modelID {
+        appendField("model", modelID)
+      }
       if let language = languageCode {
         appendField("language", language)
       }
@@ -840,7 +881,7 @@ class SpeechService {
     request.httpMethod = "POST"
     request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
     request.timeoutInterval = Constants.resourceTimeout
-    for header in keychainManager.getCustomTranscriptionHeaders() {
+    for header in extraHeaders {
       if let k = header["key"], let v = header["value"], !k.isEmpty {
         request.setValue(v, forHTTPHeaderField: k)
       }
@@ -855,7 +896,7 @@ class SpeechService {
       throw TranscriptionError.networkError("Invalid response")
     }
 
-    DebugLogger.log("CUSTOM-TRANSCRIPTION: HTTP \(httpResponse.statusCode)")
+    DebugLogger.log("\(logPrefix): HTTP \(httpResponse.statusCode)")
 
     switch httpResponse.statusCode {
     case 200: break
@@ -865,7 +906,7 @@ class SpeechService {
     case 429: throw TranscriptionError.rateLimited(retryAfter: nil)
     default:
       let bodyString = String(data: data, encoding: .utf8) ?? ""
-      DebugLogger.logError("CUSTOM-TRANSCRIPTION: HTTP \(httpResponse.statusCode): \(bodyString.prefix(200))")
+      DebugLogger.logError("\(logPrefix): HTTP \(httpResponse.statusCode): \(bodyString.prefix(200))")
       throw TranscriptionError.serverError(httpResponse.statusCode)
     }
 
@@ -873,16 +914,23 @@ class SpeechService {
     if let parsed = try? JSONDecoder().decode(WhisperResponse.self, from: data) {
       let result = parsed.text.trimmingCharacters(in: .whitespacesAndNewlines)
       if !result.isEmpty {
-        DebugLogger.logSuccess("CUSTOM-TRANSCRIPTION: \(result.count) chars")
+        DebugLogger.logSuccess("\(logPrefix): \(result.count) chars")
         return result
       }
     }
     if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
        !text.isEmpty {
-      DebugLogger.logSuccess("CUSTOM-TRANSCRIPTION: \(text.count) chars (plain text)")
+      DebugLogger.logSuccess("\(logPrefix): \(text.count) chars (plain text)")
       return text
     }
     throw TranscriptionError.noSpeechDetected
+  }
+
+  private func makeTranscriptionURLSession() -> URLSession {
+    let config = URLSessionConfiguration.default
+    config.timeoutIntervalForRequest = Constants.requestTimeout
+    config.timeoutIntervalForResource = Constants.resourceTimeout
+    return URLSession(configuration: config)
   }
 
   private func loggableURL(_ url: URL) -> String {

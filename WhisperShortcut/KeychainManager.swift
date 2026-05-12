@@ -17,6 +17,10 @@ protocol KeychainManaging {
   func getXAIAPIKey() -> String?
   func deleteXAIAPIKey() -> Bool
   func hasValidXAIAPIKey() -> Bool
+  func saveOpenAIAPIKey(_ apiKey: String) -> Bool
+  func getOpenAIAPIKey() -> String?
+  func deleteOpenAIAPIKey() -> Bool
+  func hasValidOpenAIAPIKey() -> Bool
   func saveGoogleCalendarRefreshToken(_ token: String) -> Bool
   func getGoogleCalendarRefreshToken() -> String?
   func deleteGoogleCalendarRefreshToken() -> Bool
@@ -44,6 +48,7 @@ class KeychainManager: KeychainManaging {
     static let accountName = "api-key"
     static let googleAccountName = "google-api-key"
     static let xaiAccountName = "xai-api-key"
+    static let openAIAccountName = "openai-api-key"
     static let googleCalendarRefreshTokenAccountName = "google-calendar-refresh-token"
     static let trelloTokenAccountName = "trello-token"
     static let trelloAPIKeyAccountName = "trello-api-key"
@@ -54,6 +59,7 @@ class KeychainManager: KeychainManaging {
   private var cachedAPIKey: String?
   private var cachedGoogleAPIKey: String?
   private var cachedXAIAPIKey: String?
+  private var cachedOpenAIAPIKey: String?
   private var cachedGoogleCalendarRefreshToken: String?
   private var cachedTrelloToken: String?
   private var cachedTrelloAPIKey: String?
@@ -202,6 +208,25 @@ class KeychainManager: KeychainManaging {
 
   func hasValidXAIAPIKey() -> Bool {
     guard let key = getXAIAPIKey() else { return false }
+    return !key.isEmpty
+  }
+
+  // MARK: - OpenAI API Key Management
+
+  func saveOpenAIAPIKey(_ apiKey: String) -> Bool {
+    return saveKey(apiKey, accountName: Constants.openAIAccountName, cache: &cachedOpenAIAPIKey)
+  }
+
+  func getOpenAIAPIKey() -> String? {
+    return getKey(accountName: Constants.openAIAccountName, cache: &cachedOpenAIAPIKey)
+  }
+
+  func deleteOpenAIAPIKey() -> Bool {
+    return deleteKey(accountName: Constants.openAIAccountName, cache: &cachedOpenAIAPIKey)
+  }
+
+  func hasValidOpenAIAPIKey() -> Bool {
+    guard let key = getOpenAIAPIKey() else { return false }
     return !key.isEmpty
   }
 
