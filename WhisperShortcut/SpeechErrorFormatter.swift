@@ -144,7 +144,7 @@ struct SpeechErrorFormatter {
       return """
         ❌ Server Error (\(code))
 
-        An error occurred on Google's servers.
+        The AI provider returned an error.
         Please try again later.
         """
 
@@ -152,7 +152,7 @@ struct SpeechErrorFormatter {
       return """
         🔄 Service Unavailable
 
-        Google's service is temporarily unavailable.
+        The AI provider is temporarily unavailable.
         Multiple retries were attempted automatically.
         Please wait a moment and try again.
         """

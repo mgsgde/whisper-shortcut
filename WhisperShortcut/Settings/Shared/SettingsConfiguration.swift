@@ -140,6 +140,17 @@ enum PromptModel: String, CaseIterable {
       return provider == .gemini
     }
   }
+
+  /// True for models whose chat endpoint accepts inline image content parts.
+  /// OpenAI's gpt-4o-audio-preview is audio-only and rejects `image_url` parts with HTTP 400.
+  var supportsImageInput: Bool {
+    switch self {
+    case .openaiGPT4oAudio:
+      return false
+    default:
+      return true
+    }
+  }
   
   var supportsReasoning: Bool {
     return false

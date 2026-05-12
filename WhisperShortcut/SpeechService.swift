@@ -489,13 +489,19 @@ class SpeechService {
     }
     systemPrompt += AppConstants.promptModeOutputRule
 
-    // Optional screenshot context.
+    // Optional screenshot context. gpt-4o-audio-preview is audio-only and rejects image_url
+    // content parts with HTTP 400 ("This model does not support image_url content."), so we
+    // skip the screenshot for that model regardless of the user's setting.
     let screenshotEnabled = UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil
       ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
       : SettingsDefaults.screenshotInPromptMode
-    let screenshotData: Data? = screenshotEnabled
+    let modelAcceptsImages = model.supportsImageInput
+    let screenshotData: Data? = (screenshotEnabled && modelAcceptsImages)
       ? await ChatWindowManager.shared.captureScreenForPromptMode()
       : nil
+    if screenshotEnabled && !modelAcceptsImages {
+      DebugLogger.log("PROMPT-MODE-OPENAI: Screenshot dropped — \(model.rawValue) does not accept image input.")
+    }
 
     // Build OpenAI user message content parts.
     var userContent: [[String: Any]] = []
