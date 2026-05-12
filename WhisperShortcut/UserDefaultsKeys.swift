@@ -18,10 +18,7 @@ enum UserDefaultsKeys {
   // MARK: - Prompt Settings
   static let customPromptText = "customPromptText"
   static let promptModeSystemPrompt = "promptModeSystemPrompt"
-  
-  // MARK: - Legacy Keys (for migration)
-  static let selectedTTSModel = "selectedTTSModel"
-  
+
   // MARK: - Whisper Settings
   static let whisperLanguage = "whisperLanguage"
   

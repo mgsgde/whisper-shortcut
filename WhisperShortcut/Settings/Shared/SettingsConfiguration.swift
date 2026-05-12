@@ -549,6 +549,12 @@ struct SettingsDefaults {
   static let customPromptText = ""
   static let promptModeSystemPrompt = ""
   
+  // MARK: - Read Aloud (Chat TTS)
+  /// Voice used by the Read Aloud button in chat replies. No settings UI — single source of truth.
+  static let readAloudVoice = "Charon"
+  /// TTS model used by the Read Aloud button. No settings UI — single source of truth.
+  static let readAloudModel: TTSModel = .gemini25FlashTTS
+
   // MARK: - Whisper Language Settings
   static let whisperLanguage = WhisperLanguage.auto
 

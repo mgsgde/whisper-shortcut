@@ -636,11 +636,6 @@ class SpeechService {
 
   // MARK: - Text-to-Speech Mode
 
-  /// Default voice used by Read Aloud (no settings UI; matches the prior default).
-  private static let defaultReadAloudVoice = "Charon"
-  /// Default TTS model used by Read Aloud (no settings UI; matches the prior default).
-  private static let defaultReadAloudModel: TTSModel = .gemini25FlashTTS
-
   func readTextAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
     let task = Task<Data, Error> {
       try await self.performTTS(text: text, voiceName: voiceName)
@@ -662,8 +657,8 @@ class SpeechService {
       throw TranscriptionError.networkError("Text is empty")
     }
 
-    let selectedVoice = voiceName ?? Self.defaultReadAloudVoice
-    let selectedTTSModel = Self.defaultReadAloudModel
+    let selectedVoice = voiceName ?? SettingsDefaults.readAloudVoice
+    let selectedTTSModel = SettingsDefaults.readAloudModel
 
     DebugLogger.log("TTS: Starting text-to-speech for text (length: \(trimmedText.count) chars) with voice: \(selectedVoice), model: \(selectedTTSModel.displayName)")
 

@@ -47,7 +47,6 @@ class MenuBarController: NSObject {
   private var currentTranscriptionAudioURL: URL?
   private var processedAudioURLs: Set<URL> = []
   private var currentTTSAudioURL: URL?
-  private var audioPlayer: AVAudioPlayer?
   private var audioEngine: AVAudioEngine?
   private var audioPlayerNode: AVAudioPlayerNode?
   private var timePitchNode: AVAudioUnitTimePitch?
@@ -328,7 +327,7 @@ class MenuBarController: NSObject {
         self.speechService.cancelTTS()
         self.stopTTSPlayback()
         self.transitionToIdleAndCleanup()
-      } else if self.audioPlayer?.isPlaying == true || self.audioEngine?.isRunning == true {
+      } else if self.audioEngine?.isRunning == true {
         self.stopTTSPlayback()
         self.appState = self.appState.finish()
         NotificationCenter.default.post(name: .ttsDidStop, object: nil)
@@ -348,12 +347,13 @@ class MenuBarController: NSObject {
         self.transitionToIdleAndCleanup()
         return
       }
-      if self.audioPlayer?.isPlaying == true || self.audioEngine?.isRunning == true {
+      if self.audioEngine?.isRunning == true {
         self.stopTTSPlayback()
         self.appState = self.appState.finish()
+        NotificationCenter.default.post(name: .ttsDidStop, object: nil)
         return
       }
-      self.performTTSWithText(text)
+      self.readAloud(text)
     }
   }
 
@@ -429,7 +429,7 @@ class MenuBarController: NSObject {
 
     // Show central Stop button only when something is active
     let isAnythingActive = appState.isBusy || isLiveMeetingActive
-      || audioPlayer?.isPlaying == true || audioEngine?.isRunning == true
+      || audioEngine?.isRunning == true
     menu.item(withTag: 111)?.isHidden = !isAnythingActive
     menu.item(withTag: 112)?.isHidden = !isAnythingActive
 
@@ -637,7 +637,7 @@ class MenuBarController: NSObject {
     }
 
     // TTS audio playback
-    if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
+    if audioEngine?.isRunning == true {
       stopTTSPlayback()
       appState = appState.finish()
       return
@@ -1404,6 +1404,7 @@ class MenuBarController: NSObject {
   /// Dismisses processing popup, optionally cleans up one audio URL and chunk statuses, then transitions to idle.
   private func transitionToIdleAndCleanup(cleanupAudioURL: URL? = nil, clearChunkStatuses: Bool = false) {
     PopupNotificationWindow.dismissProcessing()
+    let wasTTS = isTTSRunning
     if clearChunkStatuses {
       chunkStatuses = []
     }
@@ -1415,7 +1416,9 @@ class MenuBarController: NSObject {
       processedAudioURLs.remove(url)
     }
     appState = appState.finish()
-    NotificationCenter.default.post(name: .ttsDidStop, object: nil)
+    if wasTTS {
+      NotificationCenter.default.post(name: .ttsDidStop, object: nil)
+    }
   }
 
   /// Safely removes an audio file, logging any errors
@@ -1429,16 +1432,27 @@ class MenuBarController: NSObject {
     }
   }
   
-  private func performTTSWithText(_ text: String) {
+  /// Token for the in-flight TTS playback. Stale `scheduleBuffer` completions check
+  /// this against their captured token and no-op when the user has started a new playback.
+  private var currentPlaybackToken: UUID?
+
+  private func readAloud(_ text: String) {
     if isTTSRunning {
       speechService.cancelTTS()
       stopTTSPlayback()
       transitionToIdleAndCleanup()
       return
     }
-    if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
+    if audioEngine?.isRunning == true {
       stopTTSPlayback()
       appState = appState.finish()
+      NotificationCenter.default.post(name: .ttsDidStop, object: nil)
+      return
+    }
+    // Refuse Read Aloud while another operation is processing (transcription, prompt, etc.);
+    // overwriting AppState here would silently desync the in-flight Task.
+    if case .processing = appState {
+      DebugLogger.logWarning("TTS: ignoring Read Aloud — another operation is processing")
       return
     }
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1536,19 +1550,23 @@ class MenuBarController: NSObject {
 
       self.audioEngine = engine
       self.audioPlayerNode = playerNode
+      let token = UUID()
+      currentPlaybackToken = token
 
       try engine.start()
 
       playerNode.scheduleBuffer(buffer) {
         DebugLogger.log("TTS-PLAYBACK: Playback completed")
         Task { @MainActor in
+          // Discard stale completions from a buffer the user already stopped or replaced.
+          guard self.currentPlaybackToken == token else { return }
+          self.currentPlaybackToken = nil
           NotificationCenter.default.post(name: .ttsDidStop, object: nil)
           self.audioPlayerNode?.stop()
           self.audioEngine?.stop()
           self.audioEngine = nil
           self.audioPlayerNode = nil
           self.timePitchNode = nil
-          self.audioPlayer = nil
           self.currentTTSAudioURL = nil
           self.appState = self.appState.showSuccess("Audio playback completed")
           try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -1572,8 +1590,7 @@ class MenuBarController: NSObject {
 
   /// Stops all TTS audio playback and cleans up resources
   private func stopTTSPlayback() {
-    audioPlayer?.stop()
-    audioPlayer = nil
+    currentPlaybackToken = nil
     audioPlayerNode?.stop()
     audioEngine?.stop()
     audioEngine = nil
