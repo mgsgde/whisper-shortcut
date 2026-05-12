@@ -252,8 +252,10 @@ final class GrokChatProvider: LLMChatProvider {
           request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
           request.timeoutInterval = 300
 
-          // Build OpenAI-format messages from Gemini-format contents
-          var messages = Self.convertContentsToMessages(contents)
+          // Build OpenAI-format messages from Gemini-format contents.
+          // xAI's API is OpenAI-Chat-Completions-compatible, so this is the same
+          // translator OpenAIChatProvider uses.
+          var messages = OpenAIChatCompletionsConverter.messages(from: contents)
 
           // Prepend system message if provided
           if let sys = systemInstruction,
@@ -471,91 +473,4 @@ final class GrokChatProvider: LLMChatProvider {
     return input
   }
 
-  /// Converts Gemini-format `contents` (role/parts dicts) to OpenAI-format `messages`.
-  static func convertContentsToMessages(_ contents: [[String: Any]]) -> [[String: Any]] {
-    var messages: [[String: Any]] = []
-    for content in contents {
-      guard let role = content["role"] as? String,
-            let parts = content["parts"] as? [[String: Any]] else { continue }
-
-      let openAIRole: String
-      switch role {
-      case "model": openAIRole = "assistant"
-      case "user": openAIRole = "user"
-      default: openAIRole = role
-      }
-
-      // Check for function call parts (model turn with tool calls)
-      let functionCallParts = parts.filter { $0["functionCall"] != nil }
-      if !functionCallParts.isEmpty {
-        var toolCalls: [[String: Any]] = []
-        for (idx, part) in functionCallParts.enumerated() {
-          guard let fc = part["functionCall"] as? [String: Any],
-                let name = fc["name"] as? String else { continue }
-          let args = fc["args"] as? [String: Any] ?? [:]
-          let argsJSON = (try? JSONSerialization.data(withJSONObject: args))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-          toolCalls.append([
-            "id": "call_\(idx)",
-            "type": "function",
-            "function": [
-              "name": name,
-              "arguments": argsJSON,
-            ] as [String: Any],
-          ])
-        }
-        // Also include any text in the same turn
-        let textParts = parts.compactMap { $0["text"] as? String }.joined()
-        var msg: [String: Any] = ["role": "assistant", "tool_calls": toolCalls]
-        if !textParts.isEmpty { msg["content"] = textParts }
-        messages.append(msg)
-        continue
-      }
-
-      // Check for function response parts (user turn with tool results)
-      let functionResponseParts = parts.filter { $0["functionResponse"] != nil }
-      if !functionResponseParts.isEmpty {
-        for (idx, part) in functionResponseParts.enumerated() {
-          guard let fr = part["functionResponse"] as? [String: Any],
-                let resp = fr["response"] as? [String: Any] else { continue }
-          let respJSON = (try? JSONSerialization.data(withJSONObject: resp))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-          messages.append([
-            "role": "tool",
-            "tool_call_id": "call_\(idx)",
-            "content": respJSON,
-          ])
-        }
-        continue
-      }
-
-      // Regular text + image parts
-      let textParts = parts.compactMap { $0["text"] as? String }
-      let imageParts = parts.filter { $0["inline_data"] != nil }
-
-      if !imageParts.isEmpty {
-        // Multi-modal: use content array format
-        var contentArray: [[String: Any]] = []
-        for part in parts {
-          if let text = part["text"] as? String {
-            contentArray.append(["type": "text", "text": text])
-          } else if let inlineData = part["inline_data"] as? [String: Any],
-                    let mimeType = inlineData["mime_type"] as? String,
-                    let data = inlineData["data"] as? String {
-            contentArray.append([
-              "type": "image_url",
-              "image_url": ["url": "data:\(mimeType);base64,\(data)"],
-            ])
-          }
-        }
-        messages.append(["role": openAIRole, "content": contentArray])
-      } else {
-        let joined = textParts.joined()
-        if !joined.isEmpty {
-          messages.append(["role": openAIRole, "content": joined])
-        }
-      }
-    }
-    return messages
-  }
 }

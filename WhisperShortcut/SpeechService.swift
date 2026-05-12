@@ -39,10 +39,6 @@ class SpeechService {
   /// Delegate for receiving chunk progress updates during long audio transcription.
   weak var chunkProgressDelegate: ChunkProgressDelegate?
 
-  // MARK: - Transcription Mode Properties
-  private var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
-
-
   // MARK: - Task Tracking for Cancellation
   private var currentTranscriptionTask: Task<String, Error>?
   private var currentPromptTask: Task<String, Error>?
@@ -61,12 +57,13 @@ class SpeechService {
   }
 
   // MARK: - Transcription Mode Configuration
+  /// Notifies the service that the selected transcription model changed (the model itself
+  /// is persisted via UserDefaults; this is purely a hook for side effects like releasing
+  /// the offline Whisper model when the user switches to a cloud backend).
   func setModel(_ model: TranscriptionModel) {
-    let oldModel = self.selectedTranscriptionModel
-    self.selectedTranscriptionModel = model
-    
-    // If switching away from offline model, unload it to free memory
-    if oldModel.isOffline && !model.isOffline {
+    // `unloadModel()` is idempotent — no-op when nothing is loaded — so we don't need
+    // to track the previous selection just to decide whether to call it.
+    if !model.isOffline {
       Task {
         await LocalSpeechService.shared.unloadModel()
       }
@@ -75,10 +72,11 @@ class SpeechService {
 
   // MARK: - Model Information for Notifications
   func getTranscriptionModelInfo() async -> String {
-    if selectedTranscriptionModel.isOffline {
-      return await LocalSpeechService.shared.getCurrentModelInfo() ?? selectedTranscriptionModel.displayName
+    let model = TranscriptionModel.loadSelected()
+    if model.isOffline {
+      return await LocalSpeechService.shared.getCurrentModelInfo() ?? model.displayName
     }
-    return selectedTranscriptionModel.displayName
+    return model.displayName
   }
   
   func getPromptModelInfo() -> String {

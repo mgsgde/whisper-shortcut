@@ -222,11 +222,10 @@ final class OpenAIChatProvider: LLMChatProvider {
           request.timeoutInterval = 300
 
           // Build OpenAI-format messages from Gemini-format contents.
-          // Reuses the same translator that GrokChatProvider uses, since both speak
-          // OpenAI Chat Completions. gpt-4o-audio-preview is audio-only and rejects
-          // image_url parts (HTTP 400), so we drop images for that model.
+          // gpt-4o-audio-preview is audio-only and rejects image_url parts (HTTP 400),
+          // so we drop images for that model.
           let stripImages = (model == PromptModel.openaiGPT4oAudio.rawValue)
-          var messages = Self.convertContentsToMessages(contents, stripImages: stripImages)
+          var messages = OpenAIChatCompletionsConverter.messages(from: contents, stripImages: stripImages)
 
           // Prepend system message if provided.
           if let sys = systemInstruction,
@@ -383,127 +382,6 @@ final class OpenAIChatProvider: LLMChatProvider {
   }
 
   // MARK: - Format Conversion
-
-  /// Converts Gemini-format `contents` to OpenAI Chat Completions `messages`.
-  /// Handles text, image_url (via Gemini's `inline_data` with image/* mime types), and
-  /// input_audio (via Gemini's `inline_data` with audio/* mime types) content parts.
-  /// Function call / function response turns are mapped to `assistant.tool_calls` and
-  /// `role=tool` messages, with the `tool_call_id` carried via `thoughtSignature` when
-  /// it was previously round-tripped through the stream.
-  ///
-  /// When `stripImages` is true, image parts are dropped silently — this is required for
-  /// audio-only models like `gpt-4o-audio-preview` that reject `image_url` with HTTP 400.
-  static func convertContentsToMessages(_ contents: [[String: Any]], stripImages: Bool = false) -> [[String: Any]] {
-    var messages: [[String: Any]] = []
-    // Track the most recent assistant turn's tool_call ids so the following tool-result turn
-    // can match them positionally.
-    var lastToolCallIds: [String] = []
-
-    for content in contents {
-      guard let role = content["role"] as? String,
-            let parts = content["parts"] as? [[String: Any]] else { continue }
-
-      let openAIRole: String
-      switch role {
-      case "model": openAIRole = "assistant"
-      case "user": openAIRole = "user"
-      default: openAIRole = role
-      }
-
-      // Assistant turn that emitted function calls.
-      let functionCallParts = parts.filter { $0["functionCall"] != nil }
-      if !functionCallParts.isEmpty {
-        var toolCalls: [[String: Any]] = []
-        var toolCallIds: [String] = []
-        for (idx, part) in functionCallParts.enumerated() {
-          guard let fc = part["functionCall"] as? [String: Any],
-                let name = fc["name"] as? String else { continue }
-          let args = fc["args"] as? [String: Any] ?? [:]
-          let argsJSON = (try? JSONSerialization.data(withJSONObject: args))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-          let callId = part["thoughtSignature"] as? String ?? "call_\(idx)"
-          toolCalls.append([
-            "id": callId,
-            "type": "function",
-            "function": [
-              "name": name,
-              "arguments": argsJSON,
-            ] as [String: Any],
-          ])
-          toolCallIds.append(callId)
-        }
-        let textParts = parts.compactMap { $0["text"] as? String }.joined()
-        var msg: [String: Any] = ["role": "assistant", "tool_calls": toolCalls]
-        if !textParts.isEmpty { msg["content"] = textParts }
-        messages.append(msg)
-        lastToolCallIds = toolCallIds
-        continue
-      }
-
-      // Tool-result turn.
-      let functionResponseParts = parts.filter { $0["functionResponse"] != nil }
-      if !functionResponseParts.isEmpty {
-        for (idx, part) in functionResponseParts.enumerated() {
-          guard let fr = part["functionResponse"] as? [String: Any],
-                let resp = fr["response"] as? [String: Any] else { continue }
-          let respJSON = (try? JSONSerialization.data(withJSONObject: resp))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-          let toolCallId = idx < lastToolCallIds.count ? lastToolCallIds[idx] : "call_\(idx)"
-          messages.append([
-            "role": "tool",
-            "tool_call_id": toolCallId,
-            "content": respJSON,
-          ])
-        }
-        continue
-      }
-
-      // Regular text / image / audio parts.
-      let hasMedia = parts.contains { part in
-        if let inline = part["inline_data"] as? [String: Any],
-           let mime = inline["mime_type"] as? String {
-          if mime.hasPrefix("image/") { return !stripImages }
-          if mime.hasPrefix("audio/") { return true }
-        }
-        return false
-      }
-
-      if hasMedia {
-        var contentArray: [[String: Any]] = []
-        for part in parts {
-          if let text = part["text"] as? String, !text.isEmpty {
-            contentArray.append(["type": "text", "text": text])
-          } else if let inlineData = part["inline_data"] as? [String: Any],
-                    let mimeType = inlineData["mime_type"] as? String,
-                    let data = inlineData["data"] as? String {
-            if mimeType.hasPrefix("image/") {
-              if stripImages { continue }
-              contentArray.append([
-                "type": "image_url",
-                "image_url": ["url": "data:\(mimeType);base64,\(data)"],
-              ])
-            } else if mimeType.hasPrefix("audio/") {
-              contentArray.append([
-                "type": "input_audio",
-                "input_audio": [
-                  "data": data,
-                  "format": openAIAudioFormat(forMimeType: mimeType),
-                ] as [String: Any],
-              ])
-            }
-          }
-        }
-        messages.append(["role": openAIRole, "content": contentArray])
-      } else {
-        let textParts = parts.compactMap { $0["text"] as? String }
-        let joined = textParts.joined()
-        if !joined.isEmpty {
-          messages.append(["role": openAIRole, "content": joined])
-        }
-      }
-    }
-    return messages
-  }
 
   /// Converts Gemini-format `contents` to OpenAI Responses API `input` array.
   /// The Responses API uses `{"type": "input_text"/"output_text", ...}` and
