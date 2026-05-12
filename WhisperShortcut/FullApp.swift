@@ -11,7 +11,20 @@ private enum Constants {
 class FullAppDelegate: NSObject, NSApplicationDelegate {
   var menuBarController: MenuBarController?
 
+  /// POSIX signal handlers held for the lifetime of the app. Without these, a
+  /// default `pkill` / `kill` (which sends SIGTERM) terminates the process
+  /// immediately and `applicationWillTerminate` never runs — meaning
+  /// `ChatSessionStore.flushToDisk()` is skipped and recent chat edits are
+  /// lost. Catching the signal and routing through `NSApp.terminate` gives us
+  /// the same clean-shutdown path as a Cmd-Q quit.
+  private var signalSources: [DispatchSourceSignal] = []
+
   func applicationDidFinishLaunching(_ notification: Notification) {
+    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+    let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+    DebugLogger.log("APP-LIFECYCLE: launched pid=\(getpid()) version=\(version) build=\(build)")
+
+    installTerminationSignalHandlers()
 
     // Prevent macOS from automatically terminating this menu bar app when
     // the system is under memory/storage pressure or cleaning container caches.
@@ -67,17 +80,52 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     let shouldTerminate = UserDefaults.standard.bool(forKey: UserDefaultsKeys.shouldTerminate)
     if shouldTerminate {
       UserDefaults.standard.set(false, forKey: UserDefaultsKeys.shouldTerminate)  // Reset flag
+      DebugLogger.log("APP-LIFECYCLE: applicationShouldTerminate -> terminateNow (shouldTerminate flag set)")
       return .terminateNow
     }
 
     // LSUIElement apps should continue running in background
+    DebugLogger.log("APP-LIFECYCLE: applicationShouldTerminate -> terminateCancel (menu bar app stays alive)")
     return .terminateCancel
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    DebugLogger.log("APP-LIFECYCLE: applicationWillTerminate pid=\(getpid())")
     // Flush debounced session data before terminating
     ChatSessionStore.shared.flushToDisk()
     menuBarController?.cleanup()
+  }
+
+  /// Catches SIGTERM / SIGINT / SIGHUP so we know *why* the process died and
+  /// can flush session data before exiting. Without this, `pkill` (used by the
+  /// rebuild script and any third-party tooling) terminates the app without
+  /// running `applicationWillTerminate`.
+  private func installTerminationSignalHandlers() {
+    let toCatch: [(Int32, String)] = [
+      (SIGTERM, "SIGTERM"),
+      (SIGINT, "SIGINT"),
+      (SIGHUP, "SIGHUP"),
+    ]
+    for (sig, name) in toCatch {
+      // The default action for these signals is process termination. Ignore
+      // the default so the dispatch source can deliver the signal to us.
+      signal(sig, SIG_IGN)
+      let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+      source.setEventHandler { [weak self] in
+        DebugLogger.log("APP-LIFECYCLE: received \(name) (signal=\(sig)) — initiating clean shutdown")
+        UserDefaults.standard.set(true, forKey: UserDefaultsKeys.shouldTerminate)
+        // Synchronously persist the flag so a fast-following exit doesn't lose it
+        // (irrelevant for the current path but cheap insurance).
+        UserDefaults.standard.synchronize()
+        // Route through NSApp so applicationWillTerminate runs and the chat
+        // session store flushes. `nil` sender = signal handler, not a UI action.
+        NSApp.terminate(nil)
+        _ = self  // capture self to keep the delegate alive while the source fires
+      }
+      source.resume()
+      signalSources.append(source)
+    }
+    DebugLogger.log("APP-LIFECYCLE: termination signal handlers installed (SIGTERM, SIGINT, SIGHUP)")
   }
 
 
@@ -192,7 +240,7 @@ class FullWhisperShortcut {
     let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
 
     if runningApps.count > 1 {
-
+      DebugLogger.log("APP-LIFECYCLE: another instance already running (count=\(runningApps.count)) — exiting pid=\(getpid())")
       exit(0)
     }
 
