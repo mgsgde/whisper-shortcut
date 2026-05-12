@@ -139,6 +139,18 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
   }
 
   var displayString: String {
+    renderShortcut(separator: "")
+  }
+
+  /// Same as `displayString`, but joins modifiers and the key with " + " so the
+  /// keys read as a combination rather than one token (e.g. "⌘ + 1" instead of
+  /// "⌘1"). Used in help/legend text where the menu-bar's compact glyph
+  /// concatenation is harder to parse.
+  var displayStringWithSeparator: String {
+    renderShortcut(separator: " + ")
+  }
+
+  private func renderShortcut(separator: String) -> String {
     if !isEnabled {
       return "Disabled"
     }
@@ -152,7 +164,7 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
 
     parts.append(key.displayString)
 
-    return parts.joined()
+    return parts.joined(separator: separator)
   }
 
   var textDisplayString: String {

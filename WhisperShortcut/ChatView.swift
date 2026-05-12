@@ -1650,10 +1650,10 @@ struct ChatView: View {
     let suggestions = viewModel.commandSuggestionsForDisplay
     let config = ShortcutConfigManager.shared.loadConfiguration()
     let shortcuts: [(shortcut: String, description: String)] = [
-      (config.startRecording.displayString, "Speech-to-Text"),
-      (config.startPrompting.displayString, "Speech-to-Prompt"),
-      (config.openChat.displayString, "Chat"),
-      (config.openSettings.displayString, "Settings"),
+      (config.startRecording.displayStringWithSeparator, "Speech-to-Text"),
+      (config.startPrompting.displayStringWithSeparator, "Speech-to-Prompt"),
+      (config.openChat.displayStringWithSeparator, "Chat"),
+      (config.openSettings.displayStringWithSeparator, "Settings"),
     ]
     return VStack(alignment: .leading, spacing: 20) {
       VStack(alignment: .leading, spacing: 12) {
