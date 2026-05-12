@@ -1,5 +1,20 @@
 import Foundation
 
+// MARK: - TTS Playback
+
+/// Typed errors for TTS audio playback (used by MenuBarController.playTTSAudio).
+enum TTSPlaybackError: Error, LocalizedError {
+  case failedToCreateAudioFormat
+  case failedToCreateBuffer
+
+  var errorDescription: String? {
+    switch self {
+    case .failedToCreateAudioFormat: return "Failed to create audio format"
+    case .failedToCreateBuffer: return "Failed to create audio buffer"
+    }
+  }
+}
+
 // MARK: - Live Meeting Recorder
 
 /// Typed errors for live meeting recording (replaces NSError in LiveMeetingRecorder).

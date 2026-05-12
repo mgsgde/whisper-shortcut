@@ -633,7 +633,91 @@ class SpeechService {
 
     return normalizedText
   }
-  
+
+  // MARK: - Text-to-Speech Mode
+
+  /// Default voice used by Read Aloud (no settings UI; matches the prior default).
+  private static let defaultReadAloudVoice = "Charon"
+  /// Default TTS model used by Read Aloud (no settings UI; matches the prior default).
+  private static let defaultReadAloudModel: TTSModel = .gemini25FlashTTS
+
+  func readTextAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
+    let task = Task<Data, Error> {
+      try await self.performTTS(text: text, voiceName: voiceName)
+    }
+
+    currentTTSTask = task
+    defer { currentTTSTask = nil }
+
+    return try await task.value
+  }
+
+  private func performTTS(text: String, voiceName: String? = nil) async throws -> Data {
+    guard let credential = await credentialProvider.getCredential() else {
+      throw TranscriptionError.noGoogleAPIKey
+    }
+
+    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedText.isEmpty else {
+      throw TranscriptionError.networkError("Text is empty")
+    }
+
+    let selectedVoice = voiceName ?? Self.defaultReadAloudVoice
+    let selectedTTSModel = Self.defaultReadAloudModel
+
+    DebugLogger.log("TTS: Starting text-to-speech for text (length: \(trimmedText.count) chars) with voice: \(selectedVoice), model: \(selectedTTSModel.displayName)")
+
+    let chunker = TextChunker()
+    if chunker.needsChunking(trimmedText) {
+      DebugLogger.log("TTS: Using chunked synthesis (text length > \(AppConstants.ttsChunkSizeChars) chars)")
+      let chunkService = ChunkTTSService()
+      chunkService.progressDelegate = chunkProgressDelegate
+      return try await chunkService.synthesize(
+        text: trimmedText,
+        voiceName: selectedVoice,
+        credential: credential,
+        model: selectedTTSModel
+      )
+    } else {
+      DebugLogger.log("TTS: Using single-request synthesis (text length <= \(AppConstants.ttsChunkSizeChars) chars)")
+    }
+
+    let endpoint = selectedTTSModel.apiEndpoint
+    let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
+    let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
+
+    let ttsRequest = GeminiTTSRequest(
+      contents: [GeminiTTSRequest.GeminiTTSContent(parts: [GeminiTTSRequest.GeminiTTSPart(text: "Say the following: \(trimmedText)")])],
+      generationConfig: GeminiTTSRequest.GeminiTTSGenerationConfig(
+        responseModalities: ["AUDIO"],
+        speechConfig: GeminiTTSRequest.GeminiTTSSpeechConfig(
+          voiceConfig: GeminiTTSRequest.GeminiTTSVoiceConfig(
+            prebuiltVoiceConfig: GeminiTTSRequest.GeminiTTSPrebuiltVoiceConfig(voiceName: selectedVoice)
+          )
+        )
+      )
+    )
+    request.httpBody = try JSONEncoder().encode(ttsRequest)
+
+    DebugLogger.log("TTS: Making request to Gemini TTS API (text length: \(trimmedText.count) chars)")
+    let result = try await geminiClient.performRequest(
+      request,
+      responseType: GeminiChatResponse.self,
+      mode: "TTS",
+      withRetry: true
+    )
+
+    DebugLogger.log("TTS: Received response from Gemini TTS API")
+    guard let base64Audio = result.candidates.first?.content.parts.first(where: { $0.inlineData != nil })?.inlineData?.data,
+          let decoded = Data(base64Encoded: base64Audio) else {
+      DebugLogger.logError("TTS: Failed to decode base64 audio from response")
+      throw TranscriptionError.networkError("Failed to decode base64 audio data")
+    }
+    DebugLogger.logSuccess("TTS: Successfully generated audio (size: \(decoded.count) bytes)")
+    return decoded
+  }
+
   // MARK: - Gemini API Helpers (delegated to GeminiAPIClient)
 
   // MARK: - Gemini Transcription

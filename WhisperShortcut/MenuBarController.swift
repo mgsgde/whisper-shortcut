@@ -306,6 +306,55 @@ class MenuBarController: NSObject {
       name: .chatEndMeetingWithName,
       object: nil
     )
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(chatReadAloudWithNotification(_:)),
+      name: .chatReadAloud,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(chatReadAloudStopFromNotification),
+      name: .chatReadAloudStop,
+      object: nil
+    )
+  }
+
+  @objc private func chatReadAloudStopFromNotification() {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      if self.isTTSRunning {
+        self.speechService.cancelTTS()
+        self.stopTTSPlayback()
+        self.transitionToIdleAndCleanup()
+      } else if self.audioPlayer?.isPlaying == true || self.audioEngine?.isRunning == true {
+        self.stopTTSPlayback()
+        self.appState = self.appState.finish()
+        NotificationCenter.default.post(name: .ttsDidStop, object: nil)
+      }
+    }
+  }
+
+  @objc private func chatReadAloudWithNotification(_ notification: Notification) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      let text = (notification.userInfo?[Notification.Name.chatReadAloudTextKey] as? String)?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      guard !text.isEmpty else { return }
+      if self.isTTSRunning {
+        self.speechService.cancelTTS()
+        self.stopTTSPlayback()
+        self.transitionToIdleAndCleanup()
+        return
+      }
+      if self.audioPlayer?.isPlaying == true || self.audioEngine?.isRunning == true {
+        self.stopTTSPlayback()
+        self.appState = self.appState.finish()
+        return
+      }
+      self.performTTSWithText(text)
+    }
   }
 
   @objc private func endMeetingWithName(_ notification: Notification) {
@@ -1366,6 +1415,7 @@ class MenuBarController: NSObject {
       processedAudioURLs.remove(url)
     }
     appState = appState.finish()
+    NotificationCenter.default.post(name: .ttsDidStop, object: nil)
   }
 
   /// Safely removes an audio file, logging any errors
@@ -1379,6 +1429,147 @@ class MenuBarController: NSObject {
     }
   }
   
+  private func performTTSWithText(_ text: String) {
+    if isTTSRunning {
+      speechService.cancelTTS()
+      stopTTSPlayback()
+      transitionToIdleAndCleanup()
+      return
+    }
+    if audioPlayer?.isPlaying == true || audioEngine?.isRunning == true {
+      stopTTSPlayback()
+      appState = appState.finish()
+      return
+    }
+    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedText.isEmpty else { return }
+
+    appState = .processing(.ttsProcessing)
+    NotificationCenter.default.post(name: .ttsDidStart, object: nil)
+
+    Task {
+      do {
+        let audioData = try await speechService.readTextAloud(trimmedText)
+        await MainActor.run {
+          PopupNotificationWindow.dismissProcessing()
+          self.playTTSAudio(audioData: audioData)
+        }
+      } catch is CancellationError {
+        DebugLogger.log("CANCELLATION: TTS task was cancelled")
+        await MainActor.run {
+          self.transitionToIdleAndCleanup()
+        }
+      } catch {
+        DebugLogger.logError("TTS-ERROR: Failed to generate speech: \(error.localizedDescription)")
+        let userMessage: String
+        let shortTitle: String
+        if let chunkedError = error as? ChunkedTTSError,
+           case .allChunksFailed(let errors) = chunkedError,
+           let firstError = errors.first?.error as? TranscriptionError {
+          userMessage = SpeechErrorFormatter.format(firstError)
+          shortTitle = SpeechErrorFormatter.shortStatus(firstError)
+        } else if let transcriptionError = error as? TranscriptionError {
+          userMessage = SpeechErrorFormatter.format(transcriptionError)
+          shortTitle = SpeechErrorFormatter.shortStatus(transcriptionError)
+        } else {
+          userMessage = SpeechErrorFormatter.formatForUser(error)
+          shortTitle = SpeechErrorFormatter.shortStatusForUser(error)
+        }
+        await MainActor.run {
+          self.presentError(shortTitle: shortTitle, message: userMessage, dismissProcessingFirst: true)
+        }
+      }
+    }
+  }
+
+  private func playTTSAudio(audioData: Data) {
+    DebugLogger.log("TTS-PLAYBACK: Starting audio playback (data size: \(audioData.count) bytes)")
+
+    let sampleRate: Double = 24000
+    let channels: UInt32 = 1
+    let bitsPerChannel: UInt32 = 16
+
+    do {
+      guard let audioFormat = AVAudioFormat(
+        commonFormat: .pcmFormatInt16,
+        sampleRate: sampleRate,
+        channels: channels,
+        interleaved: false
+      ) else {
+        DebugLogger.logError("TTS-PLAYBACK: Failed to create audio format")
+        throw TTSPlaybackError.failedToCreateAudioFormat
+      }
+
+      let bytesPerFrame = Int(channels * (bitsPerChannel / 8))
+      let frameCount = audioData.count / bytesPerFrame
+
+      guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: AVAudioFrameCount(frameCount)) else {
+        DebugLogger.logError("TTS-PLAYBACK: Failed to create audio buffer")
+        throw TTSPlaybackError.failedToCreateBuffer
+      }
+
+      buffer.frameLength = AVAudioFrameCount(frameCount)
+      audioData.withUnsafeBytes { bytes in
+        guard let baseAddress = bytes.baseAddress else { return }
+        let int16Pointer = baseAddress.assumingMemoryBound(to: Int16.self)
+        if let channelData = buffer.int16ChannelData {
+          for i in 0..<frameCount {
+            channelData[0][i] = int16Pointer[i]
+          }
+        }
+      }
+
+      if let existingEngine = audioEngine {
+        existingEngine.stop()
+        audioEngine = nil
+      }
+      if let existingNode = audioPlayerNode {
+        existingNode.stop()
+        audioPlayerNode = nil
+      }
+
+      let engine = AVAudioEngine()
+      let playerNode = AVAudioPlayerNode()
+      engine.attach(playerNode)
+      engine.connect(playerNode, to: engine.mainMixerNode, format: buffer.format)
+      timePitchNode = nil
+
+      self.audioEngine = engine
+      self.audioPlayerNode = playerNode
+
+      try engine.start()
+
+      playerNode.scheduleBuffer(buffer) {
+        DebugLogger.log("TTS-PLAYBACK: Playback completed")
+        Task { @MainActor in
+          NotificationCenter.default.post(name: .ttsDidStop, object: nil)
+          self.audioPlayerNode?.stop()
+          self.audioEngine?.stop()
+          self.audioEngine = nil
+          self.audioPlayerNode = nil
+          self.timePitchNode = nil
+          self.audioPlayer = nil
+          self.currentTTSAudioURL = nil
+          self.appState = self.appState.showSuccess("Audio playback completed")
+          try? await Task.sleep(nanoseconds: 2_000_000_000)
+          if case .feedback = self.appState {
+            self.appState = self.appState.finish()
+          }
+        }
+      }
+      playerNode.play()
+      DebugLogger.logSuccess("TTS-PLAYBACK: Playback started")
+      appState = appState.showSuccess("Playing audio...")
+
+    } catch {
+      DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.localizedDescription)")
+      presentError(shortTitle: SpeechErrorFormatter.shortStatusForUser(error), message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
+      currentTTSAudioURL = nil
+      audioEngine = nil
+      audioPlayerNode = nil
+    }
+  }
+
   /// Stops all TTS audio playback and cleans up resources
   private func stopTTSPlayback() {
     audioPlayer?.stop()
