@@ -800,14 +800,34 @@ class SpeechService {
       requestURL = comps.url ?? url
     }
 
-    DebugLogger.log("CUSTOM-TRANSCRIPTION: POST \(loggableURL(requestURL)) (field: \(fieldName))")
+    // OpenAI /v1/audio/transcriptions accepts `prompt` (vocabulary bias hint, ~224 tokens) and
+    // `language` (ISO-639-1) as multipart fields. Reuse the Whisper Glossary as the prompt and
+    // the Whisper Language picker as the language code so the two settings keep working when
+    // dictation is routed through this endpoint instead of offline Whisper.
+    let glossary = SystemPromptsStore.shared.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
+    let glossaryHint: String? = glossary.isEmpty ? nil : glossary
+    let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage)
+    let savedLanguage = WhisperLanguage(rawValue: savedLanguageString ?? WhisperLanguage.auto.rawValue) ?? WhisperLanguage.auto
+    let languageCode = savedLanguage.languageCode
+
+    DebugLogger.log("CUSTOM-TRANSCRIPTION: POST \(loggableURL(requestURL)) (field: \(fieldName), language: \(languageCode ?? "auto"), prompt: \(glossaryHint == nil ? "none" : "\(glossaryHint!.count) chars"))")
 
     let boundary = "Boundary-\(UUID().uuidString)"
     var body = Data()
 
-    if fieldName == "file" {
+    func appendField(_ name: String, _ value: String) {
       body.append("--\(boundary)\r\n".data(using: .utf8)!)
-      body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\nwhisper-1\r\n".data(using: .utf8)!)
+      body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".data(using: .utf8)!)
+    }
+
+    if fieldName == "file" {
+      appendField("model", "whisper-1")
+      if let language = languageCode {
+        appendField("language", language)
+      }
+      if let prompt = glossaryHint {
+        appendField("prompt", prompt)
+      }
     }
     body.append("--\(boundary)\r\n".data(using: .utf8)!)
     body.append(

@@ -156,6 +156,11 @@ struct CustomTranscriptionAPISection: View {
         .font(.caption)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
+
+      Text("Note: the Dictation system prompt does not apply here — OpenAI's transcription endpoint accepts no system instruction. Your Whisper Glossary is forwarded as the `prompt` bias hint and your language selection as the `language` parameter.")
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 
