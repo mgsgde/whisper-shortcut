@@ -10,12 +10,7 @@ import Foundation
 final class OpenAIChatProvider: LLMChatProvider {
   static let shared = OpenAIChatProvider()
 
-  private let session: URLSession = {
-    let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = 60
-    config.timeoutIntervalForResource = 300
-    return URLSession(configuration: config)
-  }()
+  private var session: URLSession { LLMHTTPSession.shared }
 
   private init() {}
 
@@ -63,7 +58,7 @@ final class OpenAIChatProvider: LLMChatProvider {
           request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
           request.timeoutInterval = 300
 
-          let input = Self.convertContentsToResponsesInput(contents)
+          let input = OpenAIResponsesAPIConverter.input(from: contents)
 
           let instructions: String? = {
             guard let sys = systemInstruction,
@@ -381,96 +376,4 @@ final class OpenAIChatProvider: LLMChatProvider {
     return "wav"
   }
 
-  // MARK: - Format Conversion
-
-  /// Converts Gemini-format `contents` to OpenAI Responses API `input` array.
-  /// The Responses API uses `{"type": "input_text"/"output_text", ...}` and
-  /// `{"type": "input_image", "image_url": "data:..."}` instead of the Chat Completions shape.
-  /// Function call / response history items become top-level `function_call` /
-  /// `function_call_output` items, matched by `call_id` positionally to the preceding turn.
-  static func convertContentsToResponsesInput(_ contents: [[String: Any]]) -> [[String: Any]] {
-    var input: [[String: Any]] = []
-    for content in contents {
-      guard let role = content["role"] as? String,
-            let parts = content["parts"] as? [[String: Any]] else { continue }
-
-      let functionCallParts = parts.filter { $0["functionCall"] != nil }
-      if !functionCallParts.isEmpty {
-        for part in functionCallParts {
-          guard let fc = part["functionCall"] as? [String: Any],
-                let name = fc["name"] as? String else { continue }
-          let args = fc["args"] as? [String: Any] ?? [:]
-          let argsJSON = (try? JSONSerialization.data(withJSONObject: args))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-          let callId = part["thoughtSignature"] as? String ?? "call_\(name)"
-          input.append([
-            "type": "function_call",
-            "id": callId,
-            "call_id": callId,
-            "name": name,
-            "arguments": argsJSON,
-          ])
-        }
-        continue
-      }
-
-      let functionResponseParts = parts.filter { $0["functionResponse"] != nil }
-      if !functionResponseParts.isEmpty {
-        var callIds: [String] = []
-        for item in input.reversed() {
-          if let type = item["type"] as? String, type == "function_call",
-             let cid = item["call_id"] as? String {
-            callIds.insert(cid, at: 0)
-          } else if !callIds.isEmpty {
-            break
-          }
-        }
-        for (idx, part) in functionResponseParts.enumerated() {
-          guard let fr = part["functionResponse"] as? [String: Any],
-                let name = fr["name"] as? String,
-                let resp = fr["response"] as? [String: Any] else { continue }
-          let respJSON = (try? JSONSerialization.data(withJSONObject: resp))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-          let callId = idx < callIds.count ? callIds[idx] : "call_\(name)"
-          input.append([
-            "type": "function_call_output",
-            "call_id": callId,
-            "output": respJSON,
-          ])
-        }
-        continue
-      }
-
-      let apiRole: String
-      switch role {
-      case "model": apiRole = "assistant"
-      case "user": apiRole = "user"
-      default: apiRole = role
-      }
-
-      var contentParts: [[String: Any]] = []
-      for part in parts {
-        if let text = part["text"] as? String, !text.isEmpty {
-          let textType = apiRole == "assistant" ? "output_text" : "input_text"
-          contentParts.append(["type": textType, "text": text])
-        } else if let inlineData = part["inline_data"] as? [String: Any],
-                  let mimeType = inlineData["mime_type"] as? String,
-                  let data = inlineData["data"] as? String,
-                  mimeType.hasPrefix("image/") {
-          contentParts.append([
-            "type": "input_image",
-            "image_url": "data:\(mimeType);base64,\(data)",
-          ])
-        }
-      }
-
-      if !contentParts.isEmpty {
-        input.append([
-          "role": apiRole,
-          "content": contentParts,
-        ])
-      }
-    }
-    return input
-  }
 }

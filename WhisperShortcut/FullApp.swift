@@ -111,7 +111,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       // the default so the dispatch source can deliver the signal to us.
       signal(sig, SIG_IGN)
       let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
-      source.setEventHandler { [weak self] in
+      source.setEventHandler {
         DebugLogger.log("APP-LIFECYCLE: received \(name) (signal=\(sig)) — initiating clean shutdown")
         UserDefaults.standard.set(true, forKey: UserDefaultsKeys.shouldTerminate)
         // Synchronously persist the flag so a fast-following exit doesn't lose it
@@ -120,7 +120,6 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
         // Route through NSApp so applicationWillTerminate runs and the chat
         // session store flushes. `nil` sender = signal handler, not a UI action.
         NSApp.terminate(nil)
-        _ = self  // capture self to keep the delegate alive while the source fires
       }
       source.resume()
       signalSources.append(source)

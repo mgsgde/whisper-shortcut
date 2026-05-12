@@ -1,5 +1,19 @@
 import Foundation
 
+// MARK: - Shared URLSession
+
+/// Single URLSession reused by every LLM provider and the OpenAI-compatible transcription
+/// paths. URLSession is thread-safe and pools connections per host, so one instance is
+/// strictly better than each call site spinning up its own with identical config.
+enum LLMHTTPSession {
+  static let shared: URLSession = {
+    let config = URLSessionConfiguration.default
+    config.timeoutIntervalForRequest = 60
+    config.timeoutIntervalForResource = 300
+    return URLSession(configuration: config)
+  }()
+}
+
 // MARK: - Chat Stream Event (provider-agnostic)
 
 /// Events emitted while streaming a chat reply from any LLM provider.
@@ -197,5 +211,106 @@ enum OpenAIChatCompletionsConverter {
       }
     }
     return messages
+  }
+}
+
+// MARK: - OpenAI/xAI Responses API Converter (shared by OpenAI + Grok)
+
+/// Converts Gemini-format `contents` to the Responses API `input` array used by both
+/// OpenAI's `/v1/responses` and xAI's `/v1/responses`. The shape differs from Chat
+/// Completions:
+///   - Text content uses `{"type": "input_text"/"output_text", "text": "..."}`.
+///   - Images use `{"type": "input_image", "image_url": "data:..."}`.
+///   - Function calls become top-level `function_call` items.
+///   - Function responses become top-level `function_call_output` items, matched by
+///     `call_id` positionally against the preceding model turn's `function_call` items.
+///
+/// Tool-call IDs round-trip via `thoughtSignature` on the functionCall part when present;
+/// otherwise we fall back to a positional `call_<index>` to avoid name collisions when
+/// the same function is invoked twice in one turn.
+enum OpenAIResponsesAPIConverter {
+  static func input(from contents: [[String: Any]]) -> [[String: Any]] {
+    var input: [[String: Any]] = []
+    for content in contents {
+      guard let role = content["role"] as? String,
+            let parts = content["parts"] as? [[String: Any]] else { continue }
+
+      let functionCallParts = parts.filter { $0["functionCall"] != nil }
+      if !functionCallParts.isEmpty {
+        for (idx, part) in functionCallParts.enumerated() {
+          guard let fc = part["functionCall"] as? [String: Any],
+                let name = fc["name"] as? String else { continue }
+          let args = fc["args"] as? [String: Any] ?? [:]
+          let argsJSON = (try? JSONSerialization.data(withJSONObject: args))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+          let callId = part["thoughtSignature"] as? String ?? "call_\(idx)"
+          input.append([
+            "type": "function_call",
+            "id": callId,
+            "call_id": callId,
+            "name": name,
+            "arguments": argsJSON,
+          ])
+        }
+        continue
+      }
+
+      let functionResponseParts = parts.filter { $0["functionResponse"] != nil }
+      if !functionResponseParts.isEmpty {
+        var callIds: [String] = []
+        for item in input.reversed() {
+          if let type = item["type"] as? String, type == "function_call",
+             let cid = item["call_id"] as? String {
+            callIds.insert(cid, at: 0)
+          } else if !callIds.isEmpty {
+            break
+          }
+        }
+        for (idx, part) in functionResponseParts.enumerated() {
+          guard let fr = part["functionResponse"] as? [String: Any],
+                let resp = fr["response"] as? [String: Any] else { continue }
+          let respJSON = (try? JSONSerialization.data(withJSONObject: resp))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+          let callId = idx < callIds.count ? callIds[idx] : "call_\(idx)"
+          input.append([
+            "type": "function_call_output",
+            "call_id": callId,
+            "output": respJSON,
+          ])
+        }
+        continue
+      }
+
+      let apiRole: String
+      switch role {
+      case "model": apiRole = "assistant"
+      case "user": apiRole = "user"
+      default: apiRole = role
+      }
+
+      var contentParts: [[String: Any]] = []
+      for part in parts {
+        if let text = part["text"] as? String, !text.isEmpty {
+          let textType = apiRole == "assistant" ? "output_text" : "input_text"
+          contentParts.append(["type": textType, "text": text])
+        } else if let inlineData = part["inline_data"] as? [String: Any],
+                  let mimeType = inlineData["mime_type"] as? String,
+                  let data = inlineData["data"] as? String,
+                  mimeType.hasPrefix("image/") {
+          contentParts.append([
+            "type": "input_image",
+            "image_url": "data:\(mimeType);base64,\(data)",
+          ])
+        }
+      }
+
+      if !contentParts.isEmpty {
+        input.append([
+          "role": apiRole,
+          "content": contentParts,
+        ])
+      }
+    }
+    return input
   }
 }

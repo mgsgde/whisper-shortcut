@@ -6,12 +6,7 @@ import Foundation
 final class GrokChatProvider: LLMChatProvider {
   static let shared = GrokChatProvider()
 
-  private let session: URLSession = {
-    let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = 60
-    config.timeoutIntervalForResource = 300
-    return URLSession(configuration: config)
-  }()
+  private var session: URLSession { LLMHTTPSession.shared }
 
   private init() {}
 
@@ -82,8 +77,8 @@ final class GrokChatProvider: LLMChatProvider {
           request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
           request.timeoutInterval = 300
 
-          // Build Responses API input from Gemini-format contents
-          let input = Self.convertContentsToResponsesInput(contents, systemInstruction: systemInstruction)
+          // Build Responses API input from Gemini-format contents (shared with OpenAI).
+          let input = OpenAIResponsesAPIConverter.input(from: contents)
 
           // System instruction
           let instructions: String? = {
@@ -134,7 +129,13 @@ final class GrokChatProvider: LLMChatProvider {
             for try await b in bytes { errData.append(b) }
             let text = String(data: errData, encoding: .utf8) ?? ""
             DebugLogger.logError("GROK-RESPONSES: HTTP \(http.statusCode) body=\(text.prefix(500))")
-            throw TranscriptionError.networkError("xAI API error HTTP \(http.statusCode): \(text)")
+            if http.statusCode == 401 {
+              throw TranscriptionError.networkError("xAI API key is invalid. Check the key in Settings → Chat.")
+            }
+            if http.statusCode == 429 {
+              throw TranscriptionError.rateLimited(retryAfter: nil)
+            }
+            throw TranscriptionError.networkError("xAI API error HTTP \(http.statusCode): \(text.prefix(500))")
           }
 
           // Parse Responses API SSE stream.
@@ -300,11 +301,20 @@ final class GrokChatProvider: LLMChatProvider {
             for try await b in bytes { errData.append(b) }
             let text = String(data: errData, encoding: .utf8) ?? ""
             DebugLogger.logError("GROK-CHAT-STREAM: HTTP \(http.statusCode) body=\(text.prefix(500))")
-            throw TranscriptionError.networkError("xAI API error HTTP \(http.statusCode): \(text)")
+            if http.statusCode == 401 {
+              throw TranscriptionError.networkError("xAI API key is invalid. Check the key in Settings → Chat.")
+            }
+            if http.statusCode == 429 {
+              throw TranscriptionError.rateLimited(retryAfter: nil)
+            }
+            throw TranscriptionError.networkError("xAI API error HTTP \(http.statusCode): \(text.prefix(500))")
           }
 
           // Parse SSE stream in OpenAI Chat Completions format.
-          var pendingToolCalls: [String: (name: String, arguments: String)] = [:]
+          // Keyed by the delta's `index` (Int, not String) so emission order survives
+          // double-digit parallel tool calls — a string-keyed dict with lexicographic
+          // sort would put "10" before "2".
+          var pendingToolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
           var finishReason: String?
 
           for try await line in bytes.lines {
@@ -330,29 +340,32 @@ final class GrokChatProvider: LLMChatProvider {
               continuation.yield(.textDelta(content))
             }
 
-            // Tool calls (streamed incrementally)
+            // Tool calls (streamed incrementally). Merge name/args without clobbering
+            // any in-flight accumulator if `name` arrives mid-stream.
             if let toolCalls = delta["tool_calls"] as? [[String: Any]] {
               for tc in toolCalls {
                 let index = tc["index"] as? Int ?? 0
-                let key = "\(index)"
+                let toolID = tc["id"] as? String
                 if let function = tc["function"] as? [String: Any] {
-                  if let name = function["name"] as? String {
-                    pendingToolCalls[key] = (name: name, arguments: "")
-                  }
+                  let existing = pendingToolCalls[index]
+                  let updatedName = (function["name"] as? String) ?? existing?.name ?? ""
+                  let updatedId = toolID ?? existing?.id ?? "call_\(index)"
+                  var updatedArgs = existing?.arguments ?? ""
                   if let argChunk = function["arguments"] as? String {
-                    if var existing = pendingToolCalls[key] {
-                      existing.arguments += argChunk
-                      pendingToolCalls[key] = existing
-                    }
+                    updatedArgs += argChunk
                   }
+                  pendingToolCalls[index] = (id: updatedId, name: updatedName, arguments: updatedArgs)
+                } else if let toolID = toolID, pendingToolCalls[index] == nil {
+                  pendingToolCalls[index] = (id: toolID, name: "", arguments: "")
                 }
               }
             }
           }
 
-          // Emit collected tool calls
+          // Emit collected tool calls. Round-trip `tool_call.id` via `thoughtSignature`
+          // so the message-loop's tool-response turn preserves the link.
           for key in pendingToolCalls.keys.sorted() {
-            guard let tc = pendingToolCalls[key] else { continue }
+            guard let tc = pendingToolCalls[key], !tc.name.isEmpty else { continue }
             let args: [String: Any]
             if let data = tc.arguments.data(using: .utf8),
                let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -360,8 +373,8 @@ final class GrokChatProvider: LLMChatProvider {
             } else {
               args = [:]
             }
-            DebugLogger.logNetwork("GROK-CHAT-STREAM: functionCall name=\(tc.name)")
-            continuation.yield(.functionCall(name: tc.name, args: args, thoughtSignature: nil))
+            DebugLogger.logNetwork("GROK-CHAT-STREAM: functionCall name=\(tc.name) id=\(tc.id)")
+            continuation.yield(.functionCall(name: tc.name, args: args, thoughtSignature: tc.id))
           }
 
           DebugLogger.logNetwork("GROK-CHAT-STREAM: stream end, finishReason=\(finishReason ?? "nil")")
@@ -373,104 +386,6 @@ final class GrokChatProvider: LLMChatProvider {
       }
       continuation.onTermination = { @Sendable _ in task.cancel() }
     }
-  }
-
-  // MARK: - Format Conversion
-
-  /// Converts Gemini-format `contents` to Responses API `input` array.
-  /// The Responses API uses a different format from Chat Completions:
-  /// - Text content uses `{"type": "input_text"/"output_text", "text": "..."}`
-  /// - Images use `{"type": "input_image", "image_url": "data:..."}`
-  /// - Function call/response turns from history are skipped (Responses API
-  ///   manages tool calls internally via its own output items).
-  static func convertContentsToResponsesInput(_ contents: [[String: Any]], systemInstruction: [String: Any]?) -> [[String: Any]] {
-    var input: [[String: Any]] = []
-    for content in contents {
-      guard let role = content["role"] as? String,
-            let parts = content["parts"] as? [[String: Any]] else { continue }
-
-      // Function call turns (model → tool invocation): emit as Responses API function_call items
-      let functionCallParts = parts.filter { $0["functionCall"] != nil }
-      if !functionCallParts.isEmpty {
-        for part in functionCallParts {
-          guard let fc = part["functionCall"] as? [String: Any],
-                let name = fc["name"] as? String else { continue }
-          let args = fc["args"] as? [String: Any] ?? [:]
-          let argsJSON = (try? JSONSerialization.data(withJSONObject: args))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-          let callId = part["thoughtSignature"] as? String ?? "call_\(name)"
-          input.append([
-            "type": "function_call",
-            "id": callId,
-            "call_id": callId,
-            "name": name,
-            "arguments": argsJSON,
-          ])
-        }
-        continue
-      }
-
-      // Function response turns (tool result → model): emit as function_call_output items.
-      // Match call_ids from the preceding model turn's function_call items by position.
-      let functionResponseParts = parts.filter { $0["functionResponse"] != nil }
-      if !functionResponseParts.isEmpty {
-        // Find call_ids from the last emitted function_call items
-        var callIds: [String] = []
-        for item in input.reversed() {
-          if let type = item["type"] as? String, type == "function_call",
-             let cid = item["call_id"] as? String {
-            callIds.insert(cid, at: 0)
-          } else if !callIds.isEmpty {
-            break
-          }
-        }
-        for (idx, part) in functionResponseParts.enumerated() {
-          guard let fr = part["functionResponse"] as? [String: Any],
-                let name = fr["name"] as? String,
-                let resp = fr["response"] as? [String: Any] else { continue }
-          let respJSON = (try? JSONSerialization.data(withJSONObject: resp))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-          let callId = idx < callIds.count ? callIds[idx] : "call_\(name)"
-          input.append([
-            "type": "function_call_output",
-            "call_id": callId,
-            "output": respJSON,
-          ])
-        }
-        continue
-      }
-
-      let apiRole: String
-      switch role {
-      case "model": apiRole = "assistant"
-      case "user": apiRole = "user"
-      default: apiRole = role
-      }
-
-      // Build content array in Responses API format
-      var contentParts: [[String: Any]] = []
-      for part in parts {
-        if let text = part["text"] as? String, !text.isEmpty {
-          let textType = apiRole == "assistant" ? "output_text" : "input_text"
-          contentParts.append(["type": textType, "text": text])
-        } else if let inlineData = part["inline_data"] as? [String: Any],
-                  let mimeType = inlineData["mime_type"] as? String,
-                  let data = inlineData["data"] as? String {
-          contentParts.append([
-            "type": "input_image",
-            "image_url": "data:\(mimeType);base64,\(data)",
-          ])
-        }
-      }
-
-      if !contentParts.isEmpty {
-        input.append([
-          "role": apiRole,
-          "content": contentParts,
-        ])
-      }
-    }
-    return input
   }
 
 }

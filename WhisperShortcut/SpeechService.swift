@@ -11,10 +11,7 @@ enum PromptMode {
 private enum Constants {
   static let requestTimeout: TimeInterval = 60.0
   static let resourceTimeout: TimeInterval = 300.0
-  
-  // DEBUG: Set to true to force Files API usage even for small files (for testing)
-  static let debugForceFilesAPI = false
-    
+
   // Audio validation
   static let supportedAudioExtensions = ["wav", "mp3", "m4a", "flac", "ogg", "webm"]
 
@@ -87,9 +84,9 @@ class SpeechService {
   }
   
   // MARK: - Prompt Model Selection Helper
-  /// Gets the selected prompt model. When on subscription (proxy), always returns stable Gemini 2.5 Flash.
-  /// - Returns: The selected PromptModel based on UserDefaults or default; subscription uses stable model only
-  private func getPromptModel(for mode: PromptMode) -> PromptModel {
+  /// Reads the user's currently-selected Dictate Prompt model from UserDefaults,
+  /// applying the legacy-rawValue migration first.
+  private func getPromptModel() -> PromptModel {
     let defaultModel = SettingsDefaults.selectedPromptModel
     let modelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? defaultModel.rawValue
     let normalized = PromptModel.migrateLegacyPromptRawValue(modelString)
@@ -234,13 +231,36 @@ class SpeechService {
     return try await task.value
   }
 
+  // MARK: - Async Helpers
+
+  /// Awaits `task.value` but gives up after `timeoutSeconds`, returning `nil` instead
+  /// of blocking the caller. Used by the Dictate Prompt paths so the secondary
+  /// transcription-for-history call never holds up the user-visible response.
+  private func awaitWithTimeout<T>(_ task: Task<T, Never>, timeoutSeconds: Double) async -> T? {
+    var result: T?
+    await withTaskGroup(of: Optional<T>.self) { group in
+      group.addTask { await task.value }
+      group.addTask {
+        try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+        return nil
+      }
+      for await value in group {
+        if result == nil {
+          result = value
+          group.cancelAll()
+        }
+      }
+    }
+    return result
+  }
+
   // MARK: - Prompt Modes (Private Implementation)
   private func performPrompt(audioURL: URL, mode: PromptMode) async throws -> String {
     // Get clipboard context
     let clipboardContext = getClipboardContext()
 
     // Get selected model from settings based on mode
-    let selectedPromptModel = getPromptModel(for: mode)
+    let selectedPromptModel = getPromptModel()
 
     guard selectedPromptModel.supportsDirectAudioInput else {
       throw TranscriptionError.networkError("Selected Dictate Prompt model does not accept direct audio input. Pick a Gemini model or OpenAI's GPT-4o Audio.")
@@ -419,22 +439,8 @@ class SpeechService {
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
 
     // Append to conversation history (use transcription result from parallel task, with timeout so we never block)
-    let userInstruction: String
-    var historyTranscriptionResult: String?
-    await withTaskGroup(of: String?.self) { group in
-      group.addTask { await transcriptionTask.value }
-      group.addTask {
-        try? await Task.sleep(nanoseconds: 10_000_000_000)  // 10 seconds
-        return nil
-      }
-      for await value in group {
-        if historyTranscriptionResult == nil {
-          historyTranscriptionResult = value
-          group.cancelAll()
-        }
-      }
-    }
-    userInstruction = historyTranscriptionResult ?? "(voice instruction)"
+    let historyTranscriptionResult = await awaitWithTimeout(transcriptionTask, timeoutSeconds: 10)
+    let userInstruction = historyTranscriptionResult ?? "(voice instruction)"
     if historyTranscriptionResult == nil {
       DebugLogger.logWarning("PROMPT-MODE-GEMINI: History transcription timed out, using placeholder")
     }
@@ -648,20 +654,7 @@ class SpeechService {
 
     // Resolve the parallel transcription with a 10-second budget so logging never blocks
     // the user (mirrors the Gemini path).
-    var historyTranscriptionResult: String?
-    await withTaskGroup(of: String?.self) { group in
-      group.addTask { await transcriptionTask.value }
-      group.addTask {
-        try? await Task.sleep(nanoseconds: 10_000_000_000)
-        return nil
-      }
-      for await value in group {
-        if historyTranscriptionResult == nil {
-          historyTranscriptionResult = value
-          group.cancelAll()
-        }
-      }
-    }
+    let historyTranscriptionResult = await awaitWithTimeout(transcriptionTask, timeoutSeconds: 10)
     let userInstruction = historyTranscriptionResult ?? "(voice instruction)"
     if historyTranscriptionResult == nil {
       DebugLogger.logWarning("PROMPT-MODE-OPENAI: History transcription timed out, using placeholder")
@@ -732,15 +725,21 @@ class SpeechService {
   
   // MARK: - Text-based Prompt Mode (for TTS flow)
   func executePromptWithText(textCommand: String, selectedText: String?, mode: PromptMode = .togglePrompting) async throws -> String {
+    let selectedPromptModel = getPromptModel()
+
+    // The text path (used by Prompt & Read) is Gemini-only — the audio-input
+    // OpenAI/Grok models reach this path with no audio to send. Fail fast with
+    // an actionable message instead of the misleading "not a Gemini model" string.
+    guard selectedPromptModel.provider == .gemini else {
+      throw TranscriptionError.networkError("The text-based Prompt & Read flow currently requires a Gemini model. Switch the Dictate Prompt model to Gemini in Settings.")
+    }
+
     guard let credential = await credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
     }
 
     let hasSelectedText = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command (hasSelectedText: \(hasSelectedText))")
-
-    // Get selected model from settings based on mode
-    let selectedPromptModel = getPromptModel(for: mode)
 
     // Convert to TranscriptionModel to get API endpoint
     guard let transcriptionModel = selectedPromptModel.asTranscriptionModel else {
@@ -1146,11 +1145,12 @@ class SpeechService {
     throw TranscriptionError.noSpeechDetected
   }
 
+  /// Shared session used for OpenAI-compatible multipart transcription and the
+  /// OpenAI Dictate Prompt path. Reuses the same connection pool as the chat
+  /// providers (`LLMHTTPSession.shared`), which is configured with identical
+  /// 60s/300s timeouts.
   private func makeTranscriptionURLSession() -> URLSession {
-    let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = Constants.requestTimeout
-    config.timeoutIntervalForResource = Constants.resourceTimeout
-    return URLSession(configuration: config)
+    LLMHTTPSession.shared
   }
 
   private func loggableURL(_ url: URL) -> String {
@@ -1213,13 +1213,8 @@ class SpeechService {
       DebugLogger.log("GEMINI-TRANSCRIPTION: Using chunked transcription (duration > \(AppConstants.chunkingThresholdSeconds)s)")
       result = try await transcribeWithChunking(audioURL: audioURL, credential: credential, model: model, promptOverride: promptOverride)
     }
-    // For files >20MB, use Files API (resumable upload)
-    // For files ≤20MB, use inline base64
-    // DEBUG: Can force Files API usage via Constants.debugForceFilesAPI
-    else if Constants.debugForceFilesAPI {
-      DebugLogger.log("GEMINI-TRANSCRIPTION: DEBUG - Forcing Files API usage (debugForceFilesAPI = true)")
-      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential, model: model, promptOverride: promptOverride)
-    } else if audioSize > AppConstants.maxFileSizeBytes {
+    // For files >20MB, use Files API (resumable upload); inline base64 otherwise.
+    else if audioSize > AppConstants.maxFileSizeBytes {
       result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential, model: model, promptOverride: promptOverride)
     } else {
       result = try await transcribeWithGeminiInline(audioURL: audioURL, credential: credential, model: model, promptOverride: promptOverride)
