@@ -40,13 +40,45 @@ Reference file paths and line numbers so suggestions are verifiable.
 
 ### Suggested fixes
 
-Concrete, minimal, safe. Include small diff-style snippets where helpful.
+Concrete and safe. Don't artificially shrink the scope. If a fix is shaped like a refactor — extracting a duplicated helper, deleting dead code, collapsing two implementations into one, dropping a parameter no caller depends on — propose it whenever it makes the code **simpler today**.
 
-**Do NOT auto-commit or apply changes** unless the user explicitly asks in the same session.
+"Simpler today" means the diff **removes complexity**:
+
+- Removes duplicate code, dead code, or redundant state
+- Replaces two near-identical implementations with one canonical version
+- Drops a parameter, field, enum case, or function with no real users
+- Inlines a helper that's only called once and obscures the call site
+
+"Simpler today" does **not** mean adding abstractions for hypothetical flexibility:
+
+- Adding a new protocol/interface that wraps existing concrete code
+- Introducing a new file/type whose only job is to forward to another type
+- Splitting a clear linear function into N tiny helpers when the original reads top-to-bottom
+- "Framework-style" extraction that doesn't delete anything
+
+**Size doesn't disqualify a fix.** A 200-line consolidation that nets fewer lines and removes a duplication is a legitimate fix. A 5-line change that introduces a new layer without deleting anything is not.
+
+For each fix, briefly say *what it removes* (lines of duplication, a dead enum case, a parameter, etc.) so the user can judge it on the simplification bar.
+
+Include small diff-style snippets where helpful.
+
+## When the user follows up with "fix" / "fix all"
+
+If, in the same session, the user says "fix", "fix all", "apply these", etc., **actually apply all the simplification-shaped fixes** above — including the refactor-shaped ones. Don't pre-filter to "the small ones" or "the safe-looking ones." The simplification bar already gates them.
+
+Things you may still legitimately defer (call them out explicitly, don't silently skip):
+- Pure optimizations (caching, retry parity) — these *add* code for non-functional gains; skip unless requested or measured to matter
+- Behavior-changing rewrites unrelated to the reported issue
+- Changes that need user input (which of two competing patterns to keep)
+
+After applying fixes:
+- Rebuild (`bash scripts/rebuild-and-restart.sh`) before reporting completion
+- Do **not** commit unless the user explicitly asks
 
 ## Constraints
 
-- Suggestions only. Do not modify files.
+- For the analysis pass: suggestions only, do not modify files.
+- For the follow-up fix pass: see "When the user follows up with 'fix'" above.
 - Do NOT run Playwright. This command is code-focused, not UX.
 - Do NOT run Xcode tests; the user runs tests manually in Xcode.
 - If the user supplies an explicit flag, honor it — do not auto-detect on top.
