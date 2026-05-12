@@ -1,6 +1,6 @@
 # Terms of Service for WhisperShortcut
 
-**Last updated:** April 26, 2026
+**Last updated:** May 12, 2026
 
 ## Overview
 
@@ -9,9 +9,16 @@ WhisperShortcut is a macOS menu bar app for dictation, voice editing, AI chat, t
 ## Use of the App
 
 - You may use WhisperShortcut in accordance with its documentation and in compliance with applicable laws.
-- When using cloud features, you are also subject to the terms of the relevant provider, including Google Gemini, Google APIs, and xAI where applicable.
-- You are responsible for securing your API keys and connected accounts.
+- When using cloud features, you are also subject to the terms of the relevant provider, including Google Gemini, Google APIs, OpenAI, xAI, Trello/Atlassian, and any self-hosted endpoint provider where applicable.
+- You are responsible for securing your API keys, endpoint credentials, and connected accounts.
 - You are responsible for reviewing AI-generated output before relying on it, sharing it, or using it in important workflows.
+- You are responsible for reviewing actions that modify connected services, including calendar events, tasks, Trello cards, and any content sent to or returned from third-party providers.
+
+## Provider Keys And Connected Services
+
+WhisperShortcut is bring-your-own-key. Google Gemini, OpenAI, and xAI features use the API keys you provide, and any usage costs are billed by those providers according to their terms. If you configure a self-hosted transcription endpoint, you are responsible for operating that endpoint and for its data handling, security, logs, and availability.
+
+Optional Google account tools may access Calendar, Tasks, and Gmail only within the scopes you approve. Optional Trello tools may access boards, lists, and cards only after you provide your Trello Power-Up API key and user token. You can disconnect Google or Trello in Settings or with the relevant chat commands.
 
 ## Limitations
 

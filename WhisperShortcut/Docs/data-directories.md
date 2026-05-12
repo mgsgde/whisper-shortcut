@@ -10,7 +10,7 @@ WhisperShortcut stores user data locally on your Mac. The app intentionally uses
 
 This path is used for:
 
-- `UserContext/`: interaction logs, user context, system prompts, and prompt history.
+- `UserContext/`: interaction logs, user context, system prompts, prompt history, and short-lived Smart Improvement audio verification samples in `UserContext/audio-samples/`.
 - `Meetings/`: saved live meeting transcripts.
 - `WhisperKit/`: downloaded local Whisper models.
 - Chat/session data and other app support files.
@@ -28,4 +28,6 @@ Prefer the reset and delete actions in Settings when available. For manual clean
 3. Paste the canonical path above.
 4. Delete only the folder you intend to reset, such as `UserContext/` or `Meetings/`.
 
-API keys and Google OAuth refresh tokens are stored in macOS Keychain, not in this directory.
+API keys, Google OAuth refresh tokens, and Trello tokens are stored in macOS Keychain, not in this directory.
+
+Smart Improvement audio samples are only created when **Save usage data** is enabled. They are capped, used as verifier evidence for dictation-related suggestions, and deleted at the start of the next Smart Improvement run or when interaction data is deleted.
