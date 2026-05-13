@@ -261,6 +261,7 @@ struct ChatSidebar: View {
       } else {
         Button("Pin chat") { viewModel.pinSession(id: session.id) }
       }
+      Button("Copy chat") { viewModel.copyChatToClipboard(sessionId: session.id) }
       Divider()
       Button("Delete chat", role: .destructive) { viewModel.deleteSessionPermanently(id: session.id) }
       Button("Delete older chats", role: .destructive) { viewModel.deleteOlderSessions(than: session.lastUpdated) }

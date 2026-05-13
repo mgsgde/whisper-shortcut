@@ -10,9 +10,17 @@ class ChatViewModel: ObservableObject {
   @Published var messages: [ChatMessage] = []
   @Published var inputText: String = ""
   @Published private(set) var sendingSessionIds: Set<UUID> = []
+  /// Sessions whose in-flight request is being superseded by a new user message.
+  /// The cancel handler uses this to discard the partial assistant placeholder
+  /// entirely (otherwise partial text would persist between the old user message
+  /// and the replacement, polluting the next request's history).
+  private var supersedingSessionIds: Set<UUID> = []
   /// True when the currently visible session has an in-flight request.
   var isSending: Bool { sendingSessionIds.contains(session.id) }
   @Published var errorMessage: String? = nil
+  /// Transient non-error confirmation (e.g. "Chat copied"). Auto-dismissed after a short delay.
+  @Published var noticeMessage: String? = nil
+  private var noticeDismissTask: Task<Void, Never>? = nil
   @Published var pendingScreenshots: [Data] = []
   @Published var screenshotCaptureInProgress: Bool = false
   @Published var pendingFileAttachments: [PendingFile] = []
@@ -121,6 +129,7 @@ class ChatViewModel: ObservableObject {
   private static let connectTrelloCommand = "/connect-trello"
   private static let disconnectTrelloCommand = "/disconnect-trello"
   private static let meetingCommand = "/meeting"
+  private static let copyCommand = "/copy"
 
   /// All slash commands with descriptions for autocomplete.
   static let commandSuggestions: [(command: String, description: String)] = [
@@ -138,6 +147,7 @@ class ChatViewModel: ObservableObject {
     ("/connect-trello", "Connect Trello account (boards, lists, cards)"),
     ("/disconnect-trello", "Disconnect Trello account"),
     ("/meeting", "Start or stop live meeting recording"),
+    ("/copy", "Copy the entire chat history to clipboard as Markdown"),
   ]
 
   /// Commands to show in UI (excludes /new when single-chat mode).
@@ -229,7 +239,7 @@ class ChatViewModel: ObservableObject {
   }
 
   /// Maximum number of screenshots that can be attached to one message.
-  private static let maxPendingScreenshots = 5
+  private static let maxPendingScreenshots = 10
 
   /// Injected by the view so the VM can respect the in-composer screenshot count
   /// when the inline composer already holds the attachments (legacy `pendingScreenshots`
@@ -268,6 +278,10 @@ class ChatViewModel: ObservableObject {
         handleMeetingButtonTap()
         return
       }
+      if lower == Self.copyCommand {
+        copyChatToClipboard(sessionId: session.id)
+        return
+      }
       if lower == Self.newChatCommand || lower == Self.screenshotCommand
           || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
           || lower == Self.grokCommand || lower == Self.geminiCommand || lower == Self.openaiCommand {
@@ -288,8 +302,7 @@ class ChatViewModel: ObservableObject {
 
     errorMessage = nil
     if isSending {
-      messageQueue.append(QueuedChatMessage(content: finalContent, attachedParts: attachedParts))
-      DebugLogger.log("GEMINI-CHAT: Queued composed message, queue size: \(messageQueue.count)")
+      supersedeInFlight(with: QueuedChatMessage(content: finalContent, attachedParts: attachedParts))
       return
     }
     performSend(content: finalContent, attachedParts: attachedParts)
@@ -409,6 +422,66 @@ class ChatViewModel: ObservableObject {
     sendTasks[session.id]?.cancel()
   }
 
+  /// Copies the given session's full message history to the clipboard as Markdown.
+  /// Empty sessions and missing-session lookups produce a notice but no clipboard write.
+  func copyChatToClipboard(sessionId: UUID) {
+    guard let target = store.session(by: sessionId) else {
+      showNotice("Chat not found.")
+      return
+    }
+    guard !target.messages.isEmpty else {
+      showNotice("Chat is empty — nothing to copy.")
+      return
+    }
+    let markdown = Self.renderChatAsMarkdown(target)
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(markdown, forType: .string)
+    showNotice("Chat copied to clipboard (\(target.messages.count) messages).")
+    DebugLogger.log("GEMINI-CHAT: Copied chat (\(target.messages.count) messages, \(markdown.count) chars) to clipboard")
+  }
+
+  private func showNotice(_ text: String) {
+    noticeMessage = text
+    noticeDismissTask?.cancel()
+    noticeDismissTask = Task { [weak self] in
+      try? await Task.sleep(nanoseconds: 2_500_000_000)
+      guard !Task.isCancelled else { return }
+      await MainActor.run { self?.noticeMessage = nil }
+    }
+  }
+
+  private static func renderChatAsMarkdown(_ s: ChatSession) -> String {
+    let df = ISO8601DateFormatter()
+    df.formatOptions = [.withInternetDateTime]
+    var lines: [String] = []
+    let trimmedTitle = s.title?.trimmingCharacters(in: .whitespaces) ?? ""
+    let title = trimmedTitle.isEmpty ? "Chat" : trimmedTitle
+    lines.append("# \(title)")
+    lines.append("_\(df.string(from: s.lastUpdated))_")
+    lines.append("")
+    for msg in s.messages {
+      let header = msg.role == .user ? "## User" : "## Assistant"
+      lines.append(header)
+      let attachmentNote = msg.attachedImageParts.isEmpty
+        ? ""
+        : "_[\(msg.attachedImageParts.count) attachment(s)]_\n\n"
+      lines.append(attachmentNote + msg.content)
+      lines.append("")
+    }
+    return lines.joined(separator: "\n")
+  }
+
+  /// Cancels the in-flight send and queues `replacement` to run as soon as the
+  /// cancellation propagates. The old user message stays in history; the partial
+  /// assistant placeholder is dropped so the next request sees a clean turn order.
+  private func supersedeInFlight(with replacement: QueuedChatMessage) {
+    let sid = session.id
+    DebugLogger.log("GEMINI-CHAT: Superseding in-flight request with new message")
+    supersedingSessionIds.insert(sid)
+    messageQueue.insert(replacement, at: 0)
+    sendTasks[sid]?.cancel()
+  }
+
   // MARK: - Send helpers & Queue
 
   /// Core send: appends the user message, calls the API, and drains the next queued message on completion.
@@ -418,6 +491,7 @@ class ChatViewModel: ObservableObject {
       sendingSessionIds.insert(sessionId)
       defer {
         sendingSessionIds.remove(sessionId)
+        supersedingSessionIds.remove(sessionId)
         sendTasks.removeValue(forKey: sessionId)
         Task { @MainActor in self.processNextQueued() }
       }
@@ -499,8 +573,9 @@ class ChatViewModel: ObservableObject {
           Task { await generateAITitle(sessionId: sessionId) }
         }
       } catch is CancellationError {
-        DebugLogger.log("CHAT: Send cancelled by user")
-        if accumulated.isEmpty {
+        let superseded = await MainActor.run { self.supersedingSessionIds.contains(sessionId) }
+        DebugLogger.log("CHAT: Send cancelled (superseded=\(superseded))")
+        if accumulated.isEmpty || superseded {
           await MainActor.run {
             self.removeMessage(id: placeholderId, fromSessionId: sessionId)
           }
@@ -633,7 +708,8 @@ class ChatViewModel: ObservableObject {
     // Slash commands: always immediate, never queued
     if lower == Self.newChatCommand || lower == Self.screenshotCommand
         || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
-        || lower == Self.grokCommand || lower == Self.geminiCommand || lower == Self.openaiCommand {
+        || lower == Self.grokCommand || lower == Self.geminiCommand || lower == Self.openaiCommand
+        || lower == Self.copyCommand {
       inputText = ""
       if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
@@ -642,6 +718,7 @@ class ChatViewModel: ObservableObject {
       else if lower == Self.grokCommand { switchToModel(.grok4) }
       else if lower == Self.geminiCommand { switchToModel(.gemini3Flash) }
       else if lower == Self.openaiCommand { switchToModel(.openaiGPT5) }
+      else if lower == Self.copyCommand { copyChatToClipboard(sessionId: session.id) }
       else { await captureScreenshot() }
       return
     }
@@ -685,9 +762,7 @@ class ChatViewModel: ObservableObject {
     pendingFileAttachments = []
 
     if isSending {
-      // Queue for sequential processing while current message is in-flight
-      messageQueue.append(QueuedChatMessage(content: finalContent, attachedParts: attachedParts))
-      DebugLogger.log("GEMINI-CHAT: Queued message, queue size: \(messageQueue.count)")
+      supersedeInFlight(with: QueuedChatMessage(content: finalContent, attachedParts: attachedParts))
       return
     }
 
@@ -720,6 +795,10 @@ class ChatViewModel: ObservableObject {
     formatter.dateFormat = "EEEE, MMMM d, yyyy"
     formatter.locale = Locale(identifier: "en_US")
     text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
+    let commandsList = commandSuggestionsForDisplay
+      .map { "- `\($0.command)` — \($0.description)" }
+      .joined(separator: "\n")
+    text += "\n\nSlash commands available in this chat composer (when the user asks what commands exist, list these exactly — do not invent others):\n\(commandsList)"
     // Only inject live meeting context when the current chat IS the active meeting
     // session — otherwise switching to an unrelated chat would leak meeting content.
     let meetingContext = meetingContextProvider?()
@@ -1226,6 +1305,10 @@ class ChatViewModel: ObservableObject {
         if lower.contains("502") || lower.contains("504") {
           return "Gemini server error. Please try again in a few seconds."
         }
+        // Provider-specific, already user-actionable messages are shown verbatim.
+        if msg.hasPrefix("xAI ") || msg.hasPrefix("No xAI") {
+          return msg
+        }
         return "Network error: \(msg)"
       case .fileError(let msg):
         return msg
@@ -1349,6 +1432,9 @@ struct ChatView: View {
               }
             if let error = viewModel.errorMessage {
               errorBanner(error)
+            }
+            if let notice = viewModel.noticeMessage {
+              noticeBanner(notice)
             }
             ChatInputAreaView(viewModel: viewModel, onTapScreenshotThumbnail: { data in
               previewImageData = data
@@ -1556,6 +1642,7 @@ struct ChatView: View {
         renameDraft = session.title ?? ""
         renamingTabId = session.id
       }
+      Button("Copy Chat") { viewModel.copyChatToClipboard(sessionId: session.id) }
       Divider()
       Button("Close Tab") { viewModel.closeTab(id: session.id) }
       Button("Close Other Tabs") { viewModel.closeOtherTabs(keep: session.id) }
@@ -1823,6 +1910,30 @@ struct ChatView: View {
     .background(ChatTheme.windowBackground)
   }
 
+  private func noticeBanner(_ message: String) -> some View {
+    HStack(spacing: 8) {
+      Image(systemName: "checkmark.circle.fill")
+        .foregroundColor(.white)
+        .font(.footnote)
+      Text(message)
+        .font(.footnote)
+        .foregroundColor(.white)
+        .fixedSize(horizontal: false, vertical: true)
+        .textSelection(.enabled)
+      Spacer()
+      Button(action: { viewModel.noticeMessage = nil }) {
+        Image(systemName: "xmark")
+          .font(.footnote.bold())
+          .foregroundColor(.white.opacity(0.8))
+      }
+      .buttonStyle(.plain)
+      .pointerCursorOnHover()
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 8)
+    .background(Color.green.opacity(0.75))
+  }
+
   private func errorBanner(_ message: String) -> some View {
     HStack(spacing: 8) {
       Image(systemName: "exclamationmark.triangle.fill")
@@ -2069,22 +2180,6 @@ struct ChatInputAreaView: View {
 
       // Toolbar row below composer: action buttons left, model selector + send right
       HStack(spacing: 4) {
-        if !viewModel.singleChatOnly {
-          Button(action: { viewModel.createNewSession() }) {
-            HStack(spacing: 4) {
-              Image(systemName: "square.and.pencil").font(.caption)
-              Text("New chat").font(.caption)
-            }
-            .foregroundColor(ChatTheme.secondaryText)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .help("Start a new chat (previous chat stays in history)")
-          .pointerCursorOnHover()
-        }
-
         Button(action: { viewModel.attachFile() }) {
           HStack(spacing: 4) {
             Image(systemName: "paperclip").font(.caption)
@@ -2118,6 +2213,22 @@ struct ChatInputAreaView: View {
         .disabled(viewModel.screenshotCaptureInProgress || viewModel.isSending)
         .help("Capture screen without this window; image will be attached to your next message.")
         .pointerCursorOnHover()
+
+        if !viewModel.singleChatOnly {
+          Button(action: { viewModel.createNewSession() }) {
+            HStack(spacing: 4) {
+              Image(systemName: "square.and.pencil").font(.caption)
+              Text("New chat").font(.caption)
+            }
+            .foregroundColor(ChatTheme.secondaryText)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .help("Start a new chat (previous chat stays in history)")
+          .pointerCursorOnHover()
+        }
 
         Button(action: {
           viewModel.handleMeetingButtonTap()

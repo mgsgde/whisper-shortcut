@@ -133,7 +133,7 @@ final class GrokChatProvider: LLMChatProvider {
               throw TranscriptionError.networkError("xAI API key is invalid. Check the key in Settings → Chat.")
             }
             if http.statusCode == 429 {
-              throw TranscriptionError.rateLimited(retryAfter: nil)
+              throw Self.classifyXAI429(body: text)
             }
             throw TranscriptionError.networkError("xAI API error HTTP \(http.statusCode): \(text.prefix(500))")
           }
@@ -305,7 +305,7 @@ final class GrokChatProvider: LLMChatProvider {
               throw TranscriptionError.networkError("xAI API key is invalid. Check the key in Settings → Chat.")
             }
             if http.statusCode == 429 {
-              throw TranscriptionError.rateLimited(retryAfter: nil)
+              throw Self.classifyXAI429(body: text)
             }
             throw TranscriptionError.networkError("xAI API error HTTP \(http.statusCode): \(text.prefix(500))")
           }
@@ -388,4 +388,19 @@ final class GrokChatProvider: LLMChatProvider {
     }
   }
 
+  /// Maps an xAI HTTP 429 body to a specific error. xAI returns 429 both for transient
+  /// rate limits and for permanent "credits exhausted / monthly spending limit" — the
+  /// second is not solved by waiting, so it gets its own actionable message instead of
+  /// the generic `.rateLimited` (which would tell the user to "wait and try again").
+  private static func classifyXAI429(body: String) -> TranscriptionError {
+    let lower = body.lowercased()
+    let exhausted = lower.contains("some resource has been exhausted")
+      || lower.contains("monthly spending limit")
+      || lower.contains("available credits")
+    if exhausted {
+      return TranscriptionError.networkError(
+        "xAI account is out of credits or has reached its monthly spending limit. Top up or raise the limit at https://console.x.ai/ to continue.")
+    }
+    return TranscriptionError.rateLimited(retryAfter: nil)
+  }
 }

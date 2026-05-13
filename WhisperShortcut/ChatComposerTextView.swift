@@ -209,7 +209,7 @@ final class ChatComposerNSTextView: NSTextView {
 
 @MainActor
 final class GeminiComposerController: ObservableObject {
-  static let maxScreenshots = 5
+  static let maxScreenshots = 10
   static let maxFileAttachments = 5
 
   weak var textView: ChatComposerNSTextView?
