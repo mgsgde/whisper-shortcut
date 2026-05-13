@@ -464,7 +464,18 @@ class ChatViewModel: ObservableObject {
       lines.append(header)
       let attachmentNote = msg.attachedImageParts.isEmpty
         ? ""
-        : "_[\(msg.attachedImageParts.count) attachment(s)]_\n\n"
+        : msg.attachedImageParts
+            .map { part -> String in
+              let name = part.filename ?? "unnamed"
+              let mt = part.mimeType ?? ""
+              let kind: String
+              if mt.hasPrefix("image/") { kind = "image" }
+              else if mt == "application/pdf" { kind = "PDF" }
+              else if mt.isEmpty { kind = "file" }
+              else { kind = mt }
+              return "_[attachment: \(name) (\(kind))]_"
+            }
+            .joined(separator: "\n") + "\n\n"
       lines.append(attachmentNote + msg.content)
       lines.append("")
     }
@@ -798,7 +809,7 @@ class ChatViewModel: ObservableObject {
     let commandsList = commandSuggestionsForDisplay
       .map { "- `\($0.command)` — \($0.description)" }
       .joined(separator: "\n")
-    text += "\n\nSlash commands available in this chat composer (when the user asks what commands exist, list these exactly — do not invent others):\n\(commandsList)"
+    text += "\n\nAvailable slash commands in this chat:\n\(commandsList)"
     // Only inject live meeting context when the current chat IS the active meeting
     // session — otherwise switching to an unrelated chat would leak meeting content.
     let meetingContext = meetingContextProvider?()
@@ -2067,7 +2078,7 @@ struct ChatInputAreaView: View {
     "/grok", "/gemini", "/openai",
     "/connect-google", "/disconnect-google",
     "/connect-trello", "/disconnect-trello",
-    "/meeting"
+    "/meeting", "/copy"
   ]
 
   /// Sends the current composer contents. Recognized slash commands strip just

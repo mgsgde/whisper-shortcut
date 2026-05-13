@@ -394,6 +394,9 @@ final class GrokChatProvider: LLMChatProvider {
   /// the generic `.rateLimited` (which would tell the user to "wait and try again").
   private static func classifyXAI429(body: String) -> TranscriptionError {
     let lower = body.lowercased()
+    // Substring matches mirror xAI error wording observed in 2026-05; xAI may change
+    // these phrases without notice, in which case we silently fall back to the generic
+    // rate-limit message (the worst case is the current behaviour, not a new bug).
     let exhausted = lower.contains("some resource has been exhausted")
       || lower.contains("monthly spending limit")
       || lower.contains("available credits")
