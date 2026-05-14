@@ -83,6 +83,10 @@ After applying fixes:
 - Do NOT run Xcode tests; the user runs tests manually in Xcode.
 - If the user supplies an explicit flag, honor it — do not auto-detect on top.
 
+## Related commands
+
+- **`analyze-user-interactions`** — when the user wants improvements based on what they actually experienced (recurring "korrigiere" misbehaving, hallucinations, format drift, etc.), not on static code review. That command mines the local interaction JSONL + macOS log and proposes changes at the right level (`[prompt]` / `[default]` / `[code]` / `[logging]` / `[ui]`). Prefer it whenever the user references real usage ("works badly", "is not doing what I want", "find patterns").
+
 ## Example invocations
 
 - `analyze-code-quality` — auto-detect scope from recent commits.
