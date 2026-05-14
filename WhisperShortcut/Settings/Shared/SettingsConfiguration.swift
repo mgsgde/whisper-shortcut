@@ -620,7 +620,7 @@ struct SettingsDefaults {
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
-  static let selectedPromptModel = PromptModel.gemini31FlashLite
+  static let selectedPromptModel = PromptModel.gemini3Flash
   static let selectedChatModel = PromptModel.gemini3Flash
   static let chatCloseOnFocusLoss = true
   static let settingsCloseOnFocusLoss = true
