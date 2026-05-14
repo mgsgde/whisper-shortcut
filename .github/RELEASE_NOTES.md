@@ -1,4 +1,4 @@
-# WhisperShortcut 7.15
+# WhisperShortcut 7.16
 
 ## Installation
 
@@ -6,21 +6,20 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-### Added
-
-- **Copy a full chat as Markdown**: Use the new `/copy` slash command in the chat composer, or right-click any chat in the sidebar and choose **Copy chat**. The entire conversation lands on the clipboard as Markdown — ready to paste into a doc, email, or issue.
-- **Chat now knows its own commands**: When you ask the chat "what commands exist?", it answers with the exact set of slash commands available in this build (`/new`, `/screenshot`, `/copy`, `/connect-google`, `/connect-trello`, `/pin`, `/meeting`, …) instead of guessing from training memory.
-
 ### Changed
 
-- **Reordered composer toolbar**: The buttons under the chat composer now follow a more natural order — **Attach · Screenshot · New chat · Meeting**.
-- **More screenshots per message**: You can attach up to **10** screenshots to a single chat message (was 5).
-- **Smarter send-while-busy**: Sending a new message while one is still streaming now *replaces* the in-flight request instead of queueing behind it. No more surprise extra responses if you change your mind mid-stream.
+- **Dictate Prompt default model**: New installs and resets now default to **Gemini 3 Flash** (replacing Flash-Lite) for stronger adherence to nuanced edit instructions.
+- **Dictate Prompt behavior**: The system prompt now includes explicit **language preservation** and **minimal-edit** rules so the model keeps the source language unless you clearly ask for translation, and follows “only the correction” style requests instead of rewriting whole documents.
 
-### Fixed
+### Improved
 
-- **Clearer xAI (Grok) errors when credits run out**: An xAI account that is out of credits or has hit its monthly spending limit now produces a direct, actionable message ("top up or raise the limit at console.x.ai") instead of a generic rate-limit notice that just tells you to wait.
+- **Chat attachment display**: Assistant-visible context for attachments now includes **name and type** instead of a generic attachment count, so replies can reference what you actually sent.
+- **Slash command plumbing**: `/copy` is included in the internally recognized command set, and the prompt that lists available slash commands is simplified for more reliable answers when you ask what commands exist.
+
+### Notes
+
+- **Grok / xAI**: Comment-only clarification around 429 error string matching (no user-visible behavior change intended).
 
 ## Full changelog
 
-[Compare v7.14…v7.15](https://github.com/mgsgde/whisper-shortcut/compare/v7.14...v7.15)
+[Compare v7.15…v7.16](https://github.com/mgsgde/whisper-shortcut/compare/v7.15...v7.16)
