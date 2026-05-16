@@ -48,18 +48,12 @@ struct ResetSection: View {
 
   private func openDataFolderInFinder() {
     let url = AppSupportPaths.whisperShortcutApplicationSupportURL()
-    if !FileManager.default.fileExists(atPath: url.path) {
-      try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-    }
+    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     NSWorkspace.shared.open(url)
   }
 
-  /// Opens the daily log directory for the currently-running build. Resolves via the same
-  /// FileManager API as DebugLogger, so sandboxed and non-sandboxed builds each land in
-  /// their own correct folder automatically.
   private func openLogsFolderInFinder() {
-    let libraryDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
-    let url = libraryDir.appendingPathComponent("Logs/WhisperShortcut")
+    let url = AppSupportPaths.logsURL()
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     NSWorkspace.shared.open(url)
   }

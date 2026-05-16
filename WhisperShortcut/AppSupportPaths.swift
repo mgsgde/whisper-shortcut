@@ -35,4 +35,11 @@ enum AppSupportPaths {
   private static var isSandboxed: Bool {
     ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
   }
+
+  /// Returns the daily log directory used by `DebugLogger`. Resolves automatically to the
+  /// container path under sandbox and to `~/Library/Logs/WhisperShortcut` otherwise.
+  static func logsURL() -> URL {
+    let libraryDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+    return libraryDir.appendingPathComponent("Logs/WhisperShortcut")
+  }
 }

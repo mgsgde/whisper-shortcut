@@ -397,10 +397,7 @@ private class FileLogger {
   }
   
   init() {
-    // Use FileManager's standard API to get the Library directory (consistent with CrashLogger)
-    // In sandboxed apps, this returns the container's Library directory
-    let libraryDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
-    logDirectory = libraryDir.appendingPathComponent("Logs/WhisperShortcut")
+    logDirectory = AppSupportPaths.logsURL()
     
     // Create log directory if it doesn't exist
     try? FileManager.default.createDirectory(
