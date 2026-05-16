@@ -26,6 +26,14 @@ struct ResetSection: View {
         .help("Open app data folder in Finder")
         .pointerCursorOnHover()
 
+        Button(action: { openLogsFolderInFinder() }) {
+          Label("Show logs", systemImage: "doc.text.magnifyingglass")
+            .font(.callout)
+        }
+        .buttonStyle(.bordered)
+        .help("Open the daily log folder in Finder — useful when filing bug reports")
+        .pointerCursorOnHover()
+
         Button("Reset all to defaults", role: .destructive) {
           showResetToDefaultsConfirmation = true
         }
@@ -43,6 +51,16 @@ struct ResetSection: View {
     if !FileManager.default.fileExists(atPath: url.path) {
       try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     }
+    NSWorkspace.shared.open(url)
+  }
+
+  /// Opens the daily log directory for the currently-running build. Resolves via the same
+  /// FileManager API as DebugLogger, so sandboxed and non-sandboxed builds each land in
+  /// their own correct folder automatically.
+  private func openLogsFolderInFinder() {
+    let libraryDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+    let url = libraryDir.appendingPathComponent("Logs/WhisperShortcut")
+    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     NSWorkspace.shared.open(url)
   }
 }
