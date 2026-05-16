@@ -14,7 +14,7 @@ class AudioRecorder: NSObject {
 
   private var meteringTimer: Timer?
   private var peakPowerDuringRecording: Float = -160
-  private static let silenceThresholdDB: Float = -35
+  private static let silenceThresholdDB: Float = -45
 
   /// Whether the last completed recording contained only silence (no speech detected).
   private(set) var lastRecordingWasSilent: Bool = false

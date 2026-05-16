@@ -1732,11 +1732,28 @@ extension MenuBarController: AudioRecorderDelegate {
       self.processedAudioURLs.insert(audioURL)
 
       if self.audioRecorder.lastRecordingWasSilent {
-        DebugLogger.log("AUDIO: Skipping API call — recording was silent")
-        self.cleanupAudioFile(at: audioURL)
-        self.appState = self.appState.stopRecording()
-        self.appState = self.appState.finish()
-        return
+        // Only gate cloud-backed paths — offline Whisper has no API cost to protect against,
+        // and gating silently has caused real recordings to be dropped on low-gain mics.
+        let usesCloudAPI: Bool = {
+          switch recordingMode {
+          case .transcription: return !TranscriptionModel.loadSelected().isOffline
+          case .prompt, .liveMeeting: return true
+          }
+        }()
+
+        if usesCloudAPI {
+          DebugLogger.log("AUDIO: Skipping API call — recording was silent")
+          self.cleanupAudioFile(at: audioURL)
+          self.appState = self.appState.stopRecording()
+          self.appState = self.appState.finish()
+          PopupNotificationWindow.showInfo(
+            "Your recording sounded silent. Check that the right microphone is selected and speak a bit louder.",
+            title: "No speech detected"
+          )
+          return
+        } else {
+          DebugLogger.logWarning("AUDIO: Recording flagged silent, but proceeding with offline transcription")
+        }
       }
 
       if recordingMode == .transcription {
