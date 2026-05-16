@@ -1,4 +1,4 @@
-# WhisperShortcut 7.16
+# WhisperShortcut 7.17
 
 ## Installation
 
@@ -6,20 +6,15 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-### Changed
+### Fixed
 
-- **Dictate Prompt default model**: New installs and resets now default to **Gemini 3 Flash** (replacing Flash-Lite) for stronger adherence to nuanced edit instructions.
-- **Dictate Prompt behavior**: The system prompt now includes explicit **language preservation** and **minimal-edit** rules so the model keeps the source language unless you clearly ask for translation, and follows “only the correction” style requests instead of rewriting whole documents.
+- **Dictation silently returning to idle (#28)**: The silence detector introduced earlier could mis-flag real recordings on low-gain microphones, causing the app to jump straight from Recording to Idle with no feedback — most reliably reproduced with Whisper Small (Offline). The gate is now skipped entirely for offline Whisper (no API cost to protect against), so offline transcription always runs.
+- **Silent failures now explain themselves**: When a cloud recording is gated as silent, a "No speech detected" popup now appears with a hint to check microphone input, instead of silently returning to idle.
 
 ### Improved
 
-- **Chat attachment display**: Assistant-visible context for attachments now includes **name and type** instead of a generic attachment count, so replies can reference what you actually sent.
-- **Slash command plumbing**: `/copy` is included in the internally recognized command set, and the prompt that lists available slash commands is simplified for more reliable answers when you ask what commands exist.
-
-### Notes
-
-- **Grok / xAI**: Comment-only clarification around 429 error string matching (no user-visible behavior change intended).
+- **More forgiving silence threshold**: Lowered from -35 dB to -45 dB so quiet mics and softer voices no longer get mistakenly classified as silence.
 
 ## Full changelog
 
-[Compare v7.15…v7.16](https://github.com/mgsgde/whisper-shortcut/compare/v7.15...v7.16)
+[Compare v7.16…v7.17](https://github.com/mgsgde/whisper-shortcut/compare/v7.16...v7.17)
