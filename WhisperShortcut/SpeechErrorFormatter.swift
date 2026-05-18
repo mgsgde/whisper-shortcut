@@ -25,7 +25,7 @@ struct SpeechErrorFormatter {
         ❌ Authentication Error
 
         Your API key is invalid or has expired.
-        Please check your Google API key in Settings.
+        Please check the API key for the selected provider in Settings.
         """
 
     case .incorrectAPIKey:

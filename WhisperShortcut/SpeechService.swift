@@ -9,22 +9,19 @@ enum PromptMode {
 
 // MARK: - Constants
 private enum Constants {
-  static let requestTimeout: TimeInterval = 60.0
   static let resourceTimeout: TimeInterval = 300.0
 
-  // Audio validation
-  static let supportedAudioExtensions = ["wav", "mp3", "m4a", "flac", "ogg", "webm"]
-
-  // Timing delays
-  static let clipboardCopyDelay: UInt64 = 100_000_000  // 0.1 seconds in nanoseconds
-  
-  // Retry configuration
-  static let maxRetryAttempts = 2  // Maximum retry attempts per chunk (optimal balance)
-  static let retryDelaySeconds: TimeInterval = 1.5  // Shorter delay for better UX
+  // Retry budget for the OpenAI Dictate Prompt 429 backoff (1 attempt + 1 retry).
+  static let maxRetryAttempts = 2
+  static let retryDelaySeconds: TimeInterval = 1.5
 }
 
 // MARK: - Core Service
 class SpeechService {
+
+  /// Placeholder used in conversation history when the parallel voice-to-text transcription
+  /// fails or times out.
+  fileprivate static let voiceInstructionPlaceholder = "(voice instruction)"
 
   // MARK: - Shared Infrastructure
   private let keychainManager: KeychainManaging
@@ -77,10 +74,7 @@ class SpeechService {
   }
   
   func getPromptModelInfo() -> String {
-    let selectedPromptModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedPromptModel) ?? SettingsDefaults.selectedPromptModel.rawValue
-    let normalized = PromptModel.migrateLegacyPromptRawValue(selectedPromptModelString)
-    let selectedPromptModel = PromptModel(rawValue: normalized) ?? SettingsDefaults.selectedPromptModel
-    return selectedPromptModel.displayName
+    getPromptModel().displayName
   }
   
   // MARK: - Prompt Model Selection Helper
@@ -236,22 +230,22 @@ class SpeechService {
   /// Awaits `task.value` but gives up after `timeoutSeconds`, returning `nil` instead
   /// of blocking the caller. Used by the Dictate Prompt paths so the secondary
   /// transcription-for-history call never holds up the user-visible response.
+  /// On timeout the wrapped `task` is also cancelled so it does not keep running
+  /// in the background after the user-visible response has already returned.
   private func awaitWithTimeout<T>(_ task: Task<T, Never>, timeoutSeconds: Double) async -> T? {
-    var result: T?
-    await withTaskGroup(of: Optional<T>.self) { group in
+    await withTaskGroup(of: Optional<T>.self, returning: T?.self) { group in
       group.addTask { await task.value }
       group.addTask {
         try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
         return nil
       }
-      for await value in group {
-        if result == nil {
-          result = value
-          group.cancelAll()
-        }
+      let first = await group.next() ?? nil
+      group.cancelAll()
+      if first == nil {
+        task.cancel()
       }
+      return first
     }
-    return result
   }
 
   // MARK: - Prompt Modes (Private Implementation)
@@ -278,6 +272,107 @@ class SpeechService {
     }
   }
 
+  // MARK: - Gemini Dictate Prompt Helpers
+
+  /// Loads the user's Dictate Prompt system prompt (or the built-in default when empty)
+  /// and appends the strict output rule. Both Gemini prompt paths use this composition.
+  private func buildGeminiDictatePromptSystemPrompt(logPrefix: String) -> String {
+    let trimmed = SystemPromptsStore.shared
+      .loadDictatePromptSystemPrompt()
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let base: String
+    if trimmed.isEmpty {
+      base = AppConstants.defaultPromptModeSystemPrompt
+      DebugLogger.log("\(logPrefix): Using base system prompt")
+    } else {
+      base = trimmed
+      DebugLogger.log("\(logPrefix): Using custom system prompt")
+    }
+    return base + AppConstants.promptModeOutputRule
+  }
+
+  /// Returns the screenshot parts to prepend to a Dictate Prompt request when the
+  /// "include screenshot" setting is on and the model accepts images. Empty when
+  /// disabled, when the model is audio-only, or when the capture fails.
+  private func screenshotPromptParts(modelAcceptsImages: Bool = true) async -> [GeminiChatRequest.GeminiChatPart] {
+    guard screenshotInPromptModeEnabled(), modelAcceptsImages else { return [] }
+    guard let data = await ChatWindowManager.shared.captureScreenForPromptMode() else { return [] }
+    return [
+      GeminiChatRequest.GeminiChatPart(text: "Current screen:", inlineData: nil, fileData: nil, url: nil),
+      GeminiChatRequest.GeminiChatPart(
+        text: nil,
+        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: "image/jpeg", data: data.base64EncodedString()),
+        fileData: nil,
+        url: nil
+      ),
+    ]
+  }
+
+  /// Performs a Gemini Dictate Prompt request: prepends history, appends the caller-built
+  /// user-turn parts, attaches the system instruction, sends the request with retry, and
+  /// extracts + normalizes the text response.
+  private func performGeminiPromptRequest(
+    model: PromptModel,
+    mode: PromptMode,
+    userParts: [GeminiChatRequest.GeminiChatPart],
+    systemPrompt: String,
+    credential: GeminiCredential,
+    logPrefix: String
+  ) async throws -> String {
+    guard let transcriptionModel = model.asTranscriptionModel else {
+      throw TranscriptionError.networkError("Selected model is not a Gemini model")
+    }
+    let endpoint = transcriptionModel.apiEndpoint
+    DebugLogger.log("\(logPrefix): Using model: \(model.displayName) (\(model.rawValue))")
+    DebugLogger.log("\(logPrefix): Using endpoint: \(endpoint)")
+
+    let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
+    let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
+
+    let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
+    let historyCount = historyContents.count / 2
+    if historyCount > 0 {
+      DebugLogger.log("\(logPrefix): Including \(historyCount) previous turns from conversation history")
+    }
+    var contents: [GeminiChatRequest.GeminiChatContent] = historyContents
+    contents.append(GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts))
+
+    let systemInstruction = GeminiChatRequest.GeminiSystemInstruction(
+      parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
+    )
+    let chatRequest = GeminiChatRequest(
+      contents: contents,
+      systemInstruction: systemInstruction,
+      tools: nil,
+      generationConfig: nil,
+      model: nil
+    )
+    request.httpBody = try JSONEncoder().encode(chatRequest)
+
+    let result = try await geminiClient.performRequest(
+      request,
+      responseType: GeminiChatResponse.self,
+      mode: logPrefix,
+      withRetry: true
+    )
+
+    guard let firstCandidate = result.candidates.first else {
+      throw TranscriptionError.networkError("No candidates in Gemini response")
+    }
+
+    var textContent = ""
+    for part in firstCandidate.content.parts {
+      if let text = part.text {
+        textContent += text
+      }
+    }
+
+    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(textContent)
+    try TextProcessingUtility.validateSpeechText(normalizedText, mode: logPrefix)
+    return normalizedText
+  }
+
   // MARK: - Gemini Prompt Mode
   private func executePromptWithGemini(audioURL: URL, clipboardContext: String?, mode: PromptMode, model: PromptModel) async throws -> String {
     guard let credential = await credentialProvider.getCredential() else {
@@ -294,70 +389,15 @@ class SpeechService {
         return text
       } catch {
         DebugLogger.logWarning("PROMPT-MODE-GEMINI: Failed to transcribe instruction for history: \(error.localizedDescription)")
-        return "(voice instruction)"
+        return Self.voiceInstructionPlaceholder
       }
     }
 
-    // Convert to TranscriptionModel to get API endpoint
-    guard let transcriptionModel = model.asTranscriptionModel else {
-      throw TranscriptionError.networkError("Selected model is not a Gemini model")
-    }
+    DebugLogger.log("PROMPT-MODE-GEMINI: Clipboard context: \(clipboardContext != nil ? "present" : "none")")
 
-    let endpoint = transcriptionModel.apiEndpoint
-    DebugLogger.log("PROMPT-MODE-GEMINI: Using model: \(model.displayName) (\(model.rawValue))")
-    DebugLogger.log("PROMPT-MODE-GEMINI: Using endpoint: \(endpoint)")
-
-    // Get clipboard context
-    let hasContext = clipboardContext != nil
-    DebugLogger.log("PROMPT-MODE-GEMINI: Clipboard context: \(hasContext ? "present" : "none")")
-
-    // Build system prompt
-    let systemPromptBase = SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
-    var systemPrompt = systemPromptBase.trimmingCharacters(in: .whitespacesAndNewlines)
-    if systemPrompt.isEmpty {
-      systemPrompt = AppConstants.defaultPromptModeSystemPrompt
-      DebugLogger.log("PROMPT-MODE-GEMINI: Using base system prompt")
-    } else {
-      DebugLogger.log("PROMPT-MODE-GEMINI: Using custom system prompt")
-    }
-
-    // Always require raw output only (no meta), regardless of custom prompt
-    systemPrompt += AppConstants.promptModeOutputRule
-
-    let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
-    let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
-    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
-
-    // Build contents array - start with conversation history
-    let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
-    var contents: [GeminiChatRequest.GeminiChatContent] = historyContents
-
-    let historyCount = historyContents.count / 2  // Each turn = 2 messages (user + model)
-    if historyCount > 0 {
-      DebugLogger.log("PROMPT-MODE-GEMINI: Including \(historyCount) previous turns from conversation history")
-    }
-
-    // Capture screenshot for prompt context if enabled (best-effort; continues without image on failure)
-    let screenshotData: Data? = screenshotInPromptModeEnabled()
-      ? await ChatWindowManager.shared.captureScreenForPromptMode()
-      : nil
-
-    // Build current user message parts
     var userParts: [GeminiChatRequest.GeminiChatPart] = []
+    userParts.append(contentsOf: await screenshotPromptParts())
 
-    // Add screenshot as first part so Gemini has visual context
-    if let screenshotData {
-      let base64Screenshot = screenshotData.base64EncodedString()
-      userParts.append(GeminiChatRequest.GeminiChatPart(text: "Current screen:", inlineData: nil, fileData: nil, url: nil))
-      userParts.append(GeminiChatRequest.GeminiChatPart(
-        text: nil,
-        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: "image/jpeg", data: base64Screenshot),
-        fileData: nil,
-        url: nil
-      ))
-    }
-
-    // Add clipboard context FIRST (so Gemini knows the context before processing audio)
     if let context = clipboardContext {
       DebugLogger.log("PROMPT-MODE-GEMINI: Adding clipboard context to request (length: \(context.count) chars)")
       let contextText = """
@@ -370,13 +410,11 @@ class SpeechService {
       DebugLogger.log("PROMPT-MODE-GEMINI: No clipboard context to add")
     }
 
-    // Add audio input AFTER context (so Gemini processes audio with context in mind)
+    // Audio goes after context so the model has the surrounding intent before processing speech.
     let audioSize = getAudioFileSize(at: audioURL)
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = geminiClient.getMimeType(for: fileExtension)
-
     if audioSize > AppConstants.maxFileSizeBytes {
-      // Use Files API for large files
       let fileURI = try await geminiClient.uploadFile(audioURL: audioURL, credential: credential)
       userParts.append(GeminiChatRequest.GeminiChatPart(
         text: nil,
@@ -385,63 +423,27 @@ class SpeechService {
         url: nil
       ))
     } else {
-      // Use inline data for small files
       let audioData = try Data(contentsOf: audioURL)
-      let base64Audio = audioData.base64EncodedString()
       userParts.append(GeminiChatRequest.GeminiChatPart(
         text: nil,
-        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: mimeType, data: base64Audio),
+        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: mimeType, data: audioData.base64EncodedString()),
         fileData: nil,
         url: nil
       ))
     }
 
-    // Add current user message
-    contents.append(GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts))
-
-    // Build system instruction
-    let systemInstruction = GeminiChatRequest.GeminiSystemInstruction(
-      parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
+    let normalizedText = try await performGeminiPromptRequest(
+      model: model,
+      mode: mode,
+      userParts: userParts,
+      systemPrompt: buildGeminiDictatePromptSystemPrompt(logPrefix: "PROMPT-MODE-GEMINI"),
+      credential: credential,
+      logPrefix: "PROMPT-MODE-GEMINI"
     )
 
-    // Create request (no tools for prompt mode, no audio output needed)
-    let chatRequest = GeminiChatRequest(
-      contents: contents,
-      systemInstruction: systemInstruction,
-      tools: nil,
-      generationConfig: nil,
-      model: nil
-    )
-
-    request.httpBody = try JSONEncoder().encode(chatRequest)
-
-    // Make request
-    let result = try await geminiClient.performRequest(
-      request,
-      responseType: GeminiChatResponse.self,
-      mode: "PROMPT-MODE-GEMINI",
-      withRetry: true
-    )
-
-    guard let firstCandidate = result.candidates.first else {
-      throw TranscriptionError.networkError("No candidates in Gemini response")
-    }
-
-    // Extract text content
-    var textContent = ""
-    for part in firstCandidate.content.parts {
-      if let text = part.text {
-        textContent += text
-      }
-    }
-
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(textContent)
-    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
-
-    // Append to conversation history (use transcription result from parallel task, with timeout so we never block)
-    let historyTranscriptionResult = await awaitWithTimeout(transcriptionTask, timeoutSeconds: 10)
-    let userInstruction = historyTranscriptionResult ?? "(voice instruction)"
-    if historyTranscriptionResult == nil {
+    let historyResult = await awaitWithTimeout(transcriptionTask, timeoutSeconds: 10)
+    let userInstruction = historyResult ?? Self.voiceInstructionPlaceholder
+    if historyResult == nil {
       DebugLogger.logWarning("PROMPT-MODE-GEMINI: History transcription timed out, using placeholder")
     }
     PromptConversationHistory.shared.append(
@@ -453,7 +455,6 @@ class SpeechService {
     ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText)
 
     DebugLogger.logSuccess("PROMPT-MODE-GEMINI: Completed successfully")
-
     return normalizedText
   }
 
@@ -489,7 +490,7 @@ class SpeechService {
         return text
       } catch {
         DebugLogger.logWarning("PROMPT-MODE-OPENAI: Failed to transcribe instruction for history: \(error.localizedDescription)")
-        return "(voice instruction)"
+        return Self.voiceInstructionPlaceholder
       }
     }
 
@@ -601,30 +602,17 @@ class SpeechService {
     // Auto-retry on 429 with exponential backoff, matching the Gemini path (which gets this
     // for free via GeminiAPIClient.performRequest(withRetry: true)). Short rate-limit spikes
     // are common on busy keys; surfacing them immediately to the user is unnecessary churn.
-    let session = makeTranscriptionURLSession()
-    var data = Data()
-    var http: HTTPURLResponse!
-    for attempt in 1...Constants.maxRetryAttempts {
-      let (d, response) = try await session.data(for: request)
-      guard let h = response as? HTTPURLResponse else {
-        throw TranscriptionError.networkError("Invalid response from OpenAI API")
-      }
-      if h.statusCode == 429, attempt < Constants.maxRetryAttempts {
-        let delay = Constants.retryDelaySeconds * pow(2.0, Double(attempt - 1))
-        DebugLogger.logWarning("PROMPT-MODE-OPENAI: HTTP 429 (attempt \(attempt)/\(Constants.maxRetryAttempts)), retrying in \(String(format: "%.1f", delay))s")
-        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-        continue
-      }
-      data = d
-      http = h
-      break
-    }
+    let (data, http) = try await Self.performWithRetryOn429(
+      request: request,
+      session: makeTranscriptionURLSession(),
+      logPrefix: "PROMPT-MODE-OPENAI"
+    )
     if http.statusCode < 200 || http.statusCode >= 300 {
       let bodyString = String(data: data, encoding: .utf8) ?? ""
       DebugLogger.logError("PROMPT-MODE-OPENAI: HTTP \(http.statusCode): \(bodyString.prefix(500))")
       switch http.statusCode {
       case 401:
-        throw TranscriptionError.networkError("OpenAI API key is invalid. Check the key in Settings → General.")
+        throw TranscriptionError.invalidAPIKey
       case 429:
         throw TranscriptionError.rateLimited(retryAfter: nil)
       default:
@@ -655,7 +643,7 @@ class SpeechService {
     // Resolve the parallel transcription with a 10-second budget so logging never blocks
     // the user (mirrors the Gemini path).
     let historyTranscriptionResult = await awaitWithTimeout(transcriptionTask, timeoutSeconds: 10)
-    let userInstruction = historyTranscriptionResult ?? "(voice instruction)"
+    let userInstruction = historyTranscriptionResult ?? Self.voiceInstructionPlaceholder
     if historyTranscriptionResult == nil {
       DebugLogger.logWarning("PROMPT-MODE-OPENAI: History transcription timed out, using placeholder")
     }
@@ -740,59 +728,11 @@ class SpeechService {
 
     let hasSelectedText = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command (hasSelectedText: \(hasSelectedText))")
-
-    // Convert to TranscriptionModel to get API endpoint
-    guard let transcriptionModel = selectedPromptModel.asTranscriptionModel else {
-      throw TranscriptionError.networkError("Selected model is not a Gemini model")
-    }
-
-    let endpoint = transcriptionModel.apiEndpoint
     DebugLogger.log("PROMPT-MODE-TEXT: Using model: \(selectedPromptModel.displayName)")
 
-    // Build system prompt
-    let systemPromptBase = SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
-    var systemPrompt = systemPromptBase.trimmingCharacters(in: .whitespacesAndNewlines)
-    if systemPrompt.isEmpty {
-      systemPrompt = AppConstants.defaultPromptModeSystemPrompt
-    }
-
-    // Always require raw output only (no meta), regardless of custom prompt
-    systemPrompt += AppConstants.promptModeOutputRule
-
-    let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
-    let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
-    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
-
-    // Build contents array - start with conversation history
-    let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
-    var contents: [GeminiChatRequest.GeminiChatContent] = historyContents
-
-    let historyCount = historyContents.count / 2  // Each turn = 2 messages (user + model)
-    if historyCount > 0 {
-      DebugLogger.log("PROMPT-MODE-TEXT: Including \(historyCount) previous turns from conversation history")
-    }
-
-    // Capture screenshot for prompt context if enabled (best-effort; continues without image on failure)
-    let screenshotData: Data? = screenshotInPromptModeEnabled()
-      ? await ChatWindowManager.shared.captureScreenForPromptMode()
-      : nil
-
-    // Build current user message parts
     var userParts: [GeminiChatRequest.GeminiChatPart] = []
+    userParts.append(contentsOf: await screenshotPromptParts())
 
-    // Add screenshot as first part so Gemini has visual context
-    if let screenshotData {
-      let base64Screenshot = screenshotData.base64EncodedString()
-      userParts.append(GeminiChatRequest.GeminiChatPart(text: "Current screen:", inlineData: nil, fileData: nil, url: nil))
-      userParts.append(GeminiChatRequest.GeminiChatPart(
-        text: nil,
-        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: "image/jpeg", data: base64Screenshot),
-        fileData: nil,
-        url: nil
-      ))
-    }
-
-    // Add clipboard context if present (so Gemini knows what to apply the instruction to)
     if let text = selectedText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       let contextText = """
       SELECTED TEXT TO EDIT (your next message is an instruction that tells you how to edit this text — do not append that message to this text):
@@ -802,7 +742,6 @@ class SpeechService {
       userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
     }
 
-    // Add voice instruction
     let commandText = """
     VOICE INSTRUCTION\(hasSelectedText ? " (edit the selected text according to this command; do not transcribe and append)" : ""):
 
@@ -810,54 +749,15 @@ class SpeechService {
     """
     userParts.append(GeminiChatRequest.GeminiChatPart(text: commandText, inlineData: nil, fileData: nil, url: nil))
 
-    // Add current user message
-    contents.append(
-      GeminiChatRequest.GeminiChatContent(
-        role: "user",
-        parts: userParts
-      )
+    let normalizedText = try await performGeminiPromptRequest(
+      model: selectedPromptModel,
+      mode: mode,
+      userParts: userParts,
+      systemPrompt: buildGeminiDictatePromptSystemPrompt(logPrefix: "PROMPT-MODE-TEXT"),
+      credential: credential,
+      logPrefix: "PROMPT-MODE-TEXT"
     )
 
-    // Build system instruction
-    let systemInstruction = GeminiChatRequest.GeminiSystemInstruction(
-      parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
-    )
-
-    // Create request
-    let chatRequest = GeminiChatRequest(
-      contents: contents,
-      systemInstruction: systemInstruction,
-      tools: nil,
-      generationConfig: nil,
-      model: nil
-    )
-
-    request.httpBody = try JSONEncoder().encode(chatRequest)
-
-    // Make request
-    let result = try await geminiClient.performRequest(
-      request,
-      responseType: GeminiChatResponse.self,
-      mode: "PROMPT-MODE-TEXT",
-      withRetry: true
-    )
-
-    guard let firstCandidate = result.candidates.first else {
-      throw TranscriptionError.networkError("No candidates in Gemini response")
-    }
-
-    // Extract text content
-    var textContent = ""
-    for part in firstCandidate.content.parts {
-      if let text = part.text {
-        textContent += text
-      }
-    }
-
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(textContent)
-    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-TEXT")
-
-    // Append to conversation history for follow-up prompts
     PromptConversationHistory.shared.append(
       mode: mode,
       selectedText: selectedText,
@@ -867,7 +767,6 @@ class SpeechService {
     ContextLogger.shared.logPrompt(mode: mode, selectedText: selectedText, userInstruction: textCommand, modelResponse: normalizedText)
 
     DebugLogger.logSuccess("PROMPT-MODE-TEXT: Completed successfully")
-
     return normalizedText
   }
 
@@ -1153,6 +1052,35 @@ class SpeechService {
     LLMHTTPSession.shared
   }
 
+  /// POSTs `request` and retries once on HTTP 429 with exponential backoff. Returns the
+  /// final response (data + HTTPURLResponse) without interpreting the status code —
+  /// callers map non-2xx codes themselves. Mirrors the retry shape Gemini gets for free
+  /// via `GeminiAPIClient.performRequest(withRetry: true)`.
+  private static func performWithRetryOn429(
+    request: URLRequest,
+    session: URLSession,
+    logPrefix: String
+  ) async throws -> (Data, HTTPURLResponse) {
+    var lastResponse: (Data, HTTPURLResponse)?
+    for attempt in 1...Constants.maxRetryAttempts {
+      let (data, response) = try await session.data(for: request)
+      guard let http = response as? HTTPURLResponse else {
+        throw TranscriptionError.networkError("Invalid response from server")
+      }
+      lastResponse = (data, http)
+      if http.statusCode == 429, attempt < Constants.maxRetryAttempts {
+        let delay = Constants.retryDelaySeconds * pow(2.0, Double(attempt - 1))
+        DebugLogger.logWarning("\(logPrefix): HTTP 429 (attempt \(attempt)/\(Constants.maxRetryAttempts)), retrying in \(String(format: "%.1f", delay))s")
+        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        continue
+      }
+      return (data, http)
+    }
+    // Unreachable when `maxRetryAttempts >= 1` — the loop always returns or continues.
+    if let lastResponse { return lastResponse }
+    throw TranscriptionError.networkError("Exhausted retry attempts without a response")
+  }
+
   private func loggableURL(_ url: URL) -> String {
     guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
       return url.path
@@ -1329,8 +1257,11 @@ class SpeechService {
     let uploadTime = CFAbsoluteTimeGetCurrent() - uploadStartTime
     DebugLogger.logSpeech("SPEED: File upload took \(String(format: "%.3f", uploadTime))s (\(String(format: "%.0f", uploadTime * 1000))ms)")
 
-    // Step 2: Use file URI for transcription
-    let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, credential: credential, model: model, promptOverride: promptOverride)
+    // Step 2: Use file URI for transcription. Forward the original MIME type so the
+    // server doesn't misinterpret non-WAV uploads (e.g. mp3/m4a/flac) as WAV.
+    let fileExtension = audioURL.pathExtension.lowercased()
+    let mimeType = geminiClient.getMimeType(for: fileExtension)
+    let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, mimeType: mimeType, credential: credential, model: model, promptOverride: promptOverride)
     
     let filesAPIElapsedTime = CFAbsoluteTimeGetCurrent() - filesAPIStartTime
     DebugLogger.logSpeech("SPEED: Gemini Files API transcription total time: \(String(format: "%.3f", filesAPIElapsedTime))s (\(String(format: "%.0f", filesAPIElapsedTime * 1000))ms)")
@@ -1340,7 +1271,7 @@ class SpeechService {
   
   // File upload is now handled by GeminiAPIClient
   
-  private func transcribeWithGeminiFileURI(fileURI: String, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
+  private func transcribeWithGeminiFileURI(fileURI: String, mimeType: String, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
     let fileURIStartTime = CFAbsoluteTimeGetCurrent()
 
     // Get dictation system prompt
@@ -1366,7 +1297,7 @@ class SpeechService {
             GeminiTranscriptionRequest.GeminiTranscriptionPart(
               text: nil,
               inlineData: nil,
-              fileData: GeminiTranscriptionRequest.GeminiFileData(fileUri: fileURI, mimeType: "audio/wav")
+              fileData: GeminiTranscriptionRequest.GeminiFileData(fileUri: fileURI, mimeType: mimeType)
             )
           ]
         )
