@@ -249,11 +249,18 @@ class ShortcutConfigManager {
 
   // MARK: - Load/Save Configuration
   func loadConfiguration() -> ShortcutConfig {
-    // One-time migration: swap ⌘3/⌘4 so Screenshot=⌘3, Settings=⌘4.
+    // One-time migration: swap ⌘3/⌘4 so Screenshot=⌘3, Settings=⌘4 —
+    // but only for users who actually had the old default Settings=⌘3.
+    // Custom Settings shortcuts are left untouched.
     let swapMigrationKey = "shortcut_settings_screenshot_swap_v1"
     if !userDefaults.bool(forKey: swapMigrationKey) {
       saveShortcut(ShortcutConfig.default.screenshotCapture, for: Constants.screenshotCaptureKey)
-      saveShortcut(ShortcutConfig.default.openSettings, for: Constants.openSettingsKey)
+      let priorSettings = loadShortcut(for: Constants.openSettingsKey)
+      let hadDefaultSettingsShortcut =
+        priorSettings?.key == .three && priorSettings?.modifiers == [.command]
+      if priorSettings == nil || hadDefaultSettingsShortcut {
+        saveShortcut(ShortcutConfig.default.openSettings, for: Constants.openSettingsKey)
+      }
       userDefaults.set(true, forKey: swapMigrationKey)
     }
 

@@ -30,7 +30,8 @@
       "Bash(ln -s ../../.cursor/skills/gemini-system-prompt-best-practices skills/gemini-system-prompt-best-practices)",
       "Bash(bash scripts/logs.sh -t 3m -f 'GEMINI-CHAT')",
       "Bash(log show *)",
-      "Bash(/usr/bin/log stream *)"
+      "Bash(/usr/bin/log stream *)",
+      "Bash(git remote *)"
     ]
   }
 }

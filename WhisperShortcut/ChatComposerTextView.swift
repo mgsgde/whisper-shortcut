@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 // MARK: - Inline composer for Gemini Chat
 //
@@ -126,19 +127,33 @@ final class ChatComposerNSTextView: NSTextView {
   var onCancel: (() -> Void)?
   var onTabComplete: (() -> Bool)?
   var onLargePaste: ((String) -> Bool)?
+  /// Returns true if the data was accepted (attached). Returning false lets the
+  /// paste fall through to subsequent handlers (e.g. the plain-text path).
   var onImagePaste: ((Data) -> Bool)?
+  /// Returns true if at least one URL produced an attachment. Returning false
+  /// lets the paste fall through (e.g. the file path is inserted as text).
   var onFilePaste: (([URL]) -> Bool)?
   var onAttachmentClicked: ((ComposerTextAttachment) -> Void)?
   var placeholder: String = "Message Gemini…"
 
   override var acceptsFirstResponder: Bool { true }
 
-  /// Force-enable the Paste menu item so ⌘V is always dispatched to
-  /// `paste(_:)`, even when the pasteboard only contains image data (which
-  /// the default NSTextView would reject because `importsGraphics = false`).
+  /// Force-enable the Paste menu item so ⌘V is dispatched to `paste(_:)`
+  /// whenever the pasteboard has something we know how to handle — even when
+  /// it only contains image data (which the default NSTextView would reject
+  /// because `importsGraphics = false`). When the pasteboard is empty, fall
+  /// back to the default behavior so Paste isn't lit for no reason.
   override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
     if menuItem.action == #selector(NSText.paste(_:)) {
-      return true
+      let pb = NSPasteboard.general
+      let hasUsable =
+        pb.string(forType: .string) != nil
+          || pb.data(forType: .png) != nil
+          || pb.data(forType: .tiff) != nil
+          || pb.canReadObject(forClasses: [NSURL.self], options: [
+            .urlReadingFileURLsOnly: true
+          ])
+      return hasUsable
     }
     return super.validateMenuItem(menuItem)
   }
@@ -186,20 +201,25 @@ final class ChatComposerNSTextView: NSTextView {
 
     // 1) File URLs first — they also surface as .string (the file path), so
     //    checking string before URL would lose the attachment intent.
-    if let urls = pb.readObjects(forClasses: [NSURL.self], options: [
+    let fileURLs = (pb.readObjects(forClasses: [NSURL.self], options: [
       .urlReadingFileURLsOnly: true
-    ]) as? [URL], !urls.isEmpty {
-      if onFilePaste?(urls) == true { return }
-    }
-
-    // 2) Raw image data (native ⌘⇧⌃4 — no URL on the pasteboard, just bytes).
-    if let png = pb.data(forType: .png) {
-      if onImagePaste?(png) == true { return }
-    }
-    if let tiff = pb.data(forType: .tiff),
-       let bitmap = NSBitmapImageRep(data: tiff),
-       let png = bitmap.representation(using: .png, properties: [:]) {
-      if onImagePaste?(png) == true { return }
+    ]) as? [URL]) ?? []
+    if !fileURLs.isEmpty {
+      if onFilePaste?(fileURLs) == true { return }
+      // File URLs were present but rejected (cap hit, all unsupported, or
+      // unreadable). Skip the raw-image fallback — Finder typically also
+      // puts the file's icon thumbnail on the pasteboard, which would
+      // otherwise be attached as a "screenshot" and surprise the user.
+    } else {
+      // 2) Raw image data (native ⌘⇧⌃4 — no URL on the pasteboard, just bytes).
+      if let png = pb.data(forType: .png) {
+        if onImagePaste?(png) == true { return }
+      }
+      if let tiff = pb.data(forType: .tiff),
+         let bitmap = NSBitmapImageRep(data: tiff),
+         let png = bitmap.representation(using: .png, properties: [:]) {
+        if onImagePaste?(png) == true { return }
+      }
     }
 
     // 3) Plain text (existing behavior).
@@ -273,18 +293,24 @@ final class GeminiComposerController: ObservableObject {
 
   // MARK: Insertions
 
-  func insertScreenshot(_ data: Data) {
-    guard screenshotCount < Self.maxScreenshots else { return }
+  /// Returns false when the screenshot cap is already reached.
+  @discardableResult
+  func insertScreenshot(_ data: Data) -> Bool {
+    guard screenshotCount < Self.maxScreenshots else { return false }
     insertAttachment(ComposerTextAttachment(kind: .screenshot(data)))
+    return true
   }
 
   func insertPastedBlock(text: String, kind: ChatViewModel.PastedBlock.Kind) {
     insertAttachment(ComposerTextAttachment(kind: .pastedBlock(id: UUID(), content: text, kind: kind)))
   }
 
-  func insertFile(data: Data, mimeType: String, filename: String) {
-    guard fileAttachmentCount < Self.maxFileAttachments else { return }
+  /// Returns false when the file-attachment cap is already reached.
+  @discardableResult
+  func insertFile(data: Data, mimeType: String, filename: String) -> Bool {
+    guard fileAttachmentCount < Self.maxFileAttachments else { return false }
     insertAttachment(ComposerTextAttachment(kind: .file(data: data, mimeType: mimeType, filename: filename)))
+    return true
   }
 
   private func insertAttachment(_ attach: ComposerTextAttachment) {

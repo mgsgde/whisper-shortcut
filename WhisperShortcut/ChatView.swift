@@ -124,10 +124,6 @@ class ChatViewModel: ObservableObject {
   private static let grokCommand = "/grok"
   private static let geminiCommand = "/gemini"
   private static let openaiCommand = "/openai"
-  private static let connectGoogleCommand = "/connect-google"
-  private static let disconnectGoogleCommand = "/disconnect-google"
-  private static let connectTrelloCommand = "/connect-trello"
-  private static let disconnectTrelloCommand = "/disconnect-trello"
   private static let meetingCommand = "/meeting"
   private static let copyCommand = "/copy"
 
@@ -142,10 +138,6 @@ class ChatViewModel: ObservableObject {
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
-    ("/connect-google", "Connect Google account (Calendar, Tasks, Gmail)"),
-    ("/disconnect-google", "Disconnect Google account"),
-    ("/connect-trello", "Connect Trello account (boards, lists, cards)"),
-    ("/disconnect-trello", "Disconnect Trello account"),
     ("/meeting", "Start or stop live meeting recording"),
     ("/copy", "Copy the entire chat history to clipboard as Markdown"),
   ]
@@ -258,22 +250,6 @@ class ChatViewModel: ObservableObject {
 
     // Bare slash commands — never carry attachments, never queue.
     if attachedParts.isEmpty && !finalContent.contains("<pasted_") {
-      if lower == Self.connectGoogleCommand {
-        await handleConnectGoogle()
-        return
-      }
-      if lower == Self.disconnectGoogleCommand {
-        handleDisconnectGoogle()
-        return
-      }
-      if lower == Self.connectTrelloCommand {
-        await handleConnectTrello()
-        return
-      }
-      if lower == Self.disconnectTrelloCommand {
-        handleDisconnectTrello()
-        return
-      }
       if lower == Self.meetingCommand {
         handleMeetingButtonTap()
         return
@@ -688,28 +664,6 @@ class ChatViewModel: ObservableObject {
       return
     }
 
-    // Google account commands
-    if lower == Self.connectGoogleCommand {
-      inputText = ""
-      await handleConnectGoogle()
-      return
-    }
-    if lower == Self.disconnectGoogleCommand {
-      inputText = ""
-      handleDisconnectGoogle()
-      return
-    }
-    // Trello account commands
-    if lower == Self.connectTrelloCommand {
-      inputText = ""
-      await handleConnectTrello()
-      return
-    }
-    if lower == Self.disconnectTrelloCommand {
-      inputText = ""
-      handleDisconnectTrello()
-      return
-    }
     if lower == Self.meetingCommand {
       inputText = ""
       handleMeetingButtonTap()
@@ -1004,54 +958,6 @@ class ChatViewModel: ObservableObject {
     UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
     appendModelMessage("Model set to **\(migrated.displayName)**.")
     DebugLogger.log("GEMINI-CHAT: switchToModel \(migrated.displayName)")
-  }
-
-  @MainActor
-  private func handleConnectGoogle() async {
-    if GoogleAccountOAuthService.shared.isConnected {
-      appendModelMessage("Google is already connected. Use `/disconnect-google` to disconnect.")
-      return
-    }
-    appendModelMessage("Opening Google sign-in...")
-    do {
-      try await GoogleAccountOAuthService.shared.startAuthorization()
-      appendModelMessage("Google connected. You can now use Calendar, Tasks, and Gmail.")
-    } catch {
-      appendModelMessage("Failed to connect Google: \(error.localizedDescription)")
-    }
-  }
-
-  @MainActor
-  private func handleDisconnectGoogle() {
-    guard GoogleAccountOAuthService.shared.isConnected else {
-      appendModelMessage("Google is not connected. Use `/connect-google` to connect.")
-      return
-    }
-    GoogleAccountOAuthService.shared.disconnect()
-    appendModelMessage("Google disconnected.")
-  }
-
-  @MainActor
-  private func handleConnectTrello() async {
-    if TrelloOAuthService.shared.isConnected {
-      appendModelMessage("Trello is already connected. Use `/disconnect-trello` to disconnect.")
-      return
-    }
-    // Trello's flow needs the user to copy a token from the browser back into
-    // the app, so we point them at Settings rather than trying to drive a
-    // multi-step paste flow from the chat composer.
-    SettingsManager.shared.showSettings()
-    appendModelMessage("Open the Chat tab in Settings to connect Trello (paste your Power-Up API key, then the token Trello shows after you click Allow).")
-  }
-
-  @MainActor
-  private func handleDisconnectTrello() {
-    guard TrelloOAuthService.shared.isConnected else {
-      appendModelMessage("Trello is not connected. Use `/connect-trello` to connect.")
-      return
-    }
-    TrelloOAuthService.shared.disconnect()
-    appendModelMessage("Trello disconnected.")
   }
 
   // MARK: - Tab navigation
@@ -2077,8 +1983,6 @@ struct ChatInputAreaView: View {
     "/new", "/screenshot",
     "/settings", "/pin", "/unpin",
     "/grok", "/gemini", "/openai",
-    "/connect-google", "/disconnect-google",
-    "/connect-trello", "/disconnect-trello",
     "/meeting", "/copy"
   ]
 

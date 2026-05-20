@@ -170,6 +170,10 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Dictate Prompt", action: #selector(togglePrompting),
         shortcut: currentConfig.startPrompting, tag: 102))
+    menu.addItem(
+      createMenuItemWithShortcut(
+        "Screenshot", action: #selector(takeScreenshot),
+        shortcut: currentConfig.screenshotCapture, tag: 113))
     menu.addItem(NSMenuItem.separator())
 
     // Chat window
@@ -178,14 +182,9 @@ class MenuBarController: NSObject {
         "Chat", action: #selector(openChatWindow),
         shortcut: currentConfig.openChat, tag: 110))
 
-
     menu.addItem(NSMenuItem.separator())
 
-    // Screenshot, settings, quit
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Screenshot", action: #selector(takeScreenshot),
-        shortcut: currentConfig.screenshotCapture, tag: 113))
+    // Settings and quit
     menu.addItem(
       createMenuItemWithShortcut(
         "Settings...", action: #selector(openSettings),
