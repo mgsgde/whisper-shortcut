@@ -1092,7 +1092,7 @@ extension PopupNotificationWindow {
   }
 
   /// Show an informational popup (ℹ️ icon, auto-dismiss). Use for system messages that are neither success nor error.
-  static func showInfo(_ text: String, title: String = "Info") {
+  static func showInfo(_ text: String, title: String = "Info", customDisplayDuration: TimeInterval? = nil) {
     guard arePopupNotificationsEnabled else {
       return
     }
@@ -1101,7 +1101,8 @@ extension PopupNotificationWindow {
       title: title,
       text: text,
       isError: false,
-      isInfo: true
+      isInfo: true,
+      customDisplayDuration: customDisplayDuration
     )
 
     activePopups.insert(popup)

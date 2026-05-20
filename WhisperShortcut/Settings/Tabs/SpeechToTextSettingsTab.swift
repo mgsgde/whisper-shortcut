@@ -5,8 +5,6 @@ struct SpeechToTextSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @ObservedObject var modelManager = ModelManager.shared
-  @State private var successMessage: String?
-  @State private var showSuccess = false
   @State private var refreshTrigger = UUID() // Trigger to force view refresh
 
   var body: some View {
@@ -54,17 +52,6 @@ struct SpeechToTextSettingsTab: View {
 
       // Usage Instructions Section
       usageInstructionsSection
-    }
-    .alert("Success", isPresented: $showSuccess) {
-      Button("OK") {
-        showSuccess = false
-        successMessage = nil
-      }
-    } message: {
-      if let successMessage = successMessage {
-        Text(successMessage)
-          .textSelection(.enabled)
-      }
     }
   }
   
@@ -328,11 +315,17 @@ struct SpeechToTextSettingsTab: View {
         try await ModelManager.shared.downloadModel(modelType)
         await MainActor.run {
           DebugLogger.logSuccess("OFFLINE-UI: Successfully downloaded \(modelType.displayName)")
-          
-          // Show success message
-          successMessage = "\(modelType.displayName) was successfully downloaded.\n\nNote: The first execution may take longer as the model needs to be initialized. Subsequent prompts will be faster."
-          showSuccess = true
-          
+          // Use the same status-bar-level popup the rest of the app uses for
+          // dictation/prompt feedback. It sits above the Settings window
+          // regardless of focus/window-level/closeOnFocusLoss.
+          // 10s — longer than the 1s info default; this is a rare event with
+          // important first-run info, so the user needs time to read it.
+          PopupNotificationWindow.showInfo(
+            "\(modelType.displayName) was successfully downloaded. The first transcription may take a moment to initialize the model; subsequent ones will be faster.",
+            title: "Model Downloaded",
+            customDisplayDuration: 10
+          )
+
           // Give WhisperKit a moment to finish writing files
           Task {
             try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
