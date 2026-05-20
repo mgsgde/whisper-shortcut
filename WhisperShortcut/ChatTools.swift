@@ -472,11 +472,11 @@ enum ChatToolRegistry {
   }
 
   private static let googleNotConnectedError: [String: Any] = [
-    "error": "Google is not connected. Connect it in Settings or use /connect-google."
+    "error": "Google is not connected. Open Settings → Chat to connect."
   ]
 
   private static let trelloNotConnectedError: [String: Any] = [
-    "error": "Trello is not connected. Connect it in Settings or use /connect-trello."
+    "error": "Trello is not connected. Open Settings → Chat to connect."
   ]
 
   @MainActor

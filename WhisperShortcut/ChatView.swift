@@ -242,37 +242,10 @@ class ChatViewModel: ObservableObject {
   var composerFileCountProvider: () -> Int = { 0 }
 
   /// Sends a message whose content and attachments were already assembled by the inline
-  /// composer in document order. Handles slash commands via `typedText`, bypasses the
-  /// VM-side chip model, and otherwise queues / dispatches via `performSend`.
-  func sendComposed(typedText: String, finalContent: String, attachedParts: [AttachedImagePart]) async {
-    let raw = typedText.trimmingCharacters(in: .whitespacesAndNewlines)
-    let lower = raw.lowercased()
-
-    // Bare slash commands — never carry attachments, never queue.
-    if attachedParts.isEmpty && !finalContent.contains("<pasted_") {
-      if lower == Self.meetingCommand {
-        handleMeetingButtonTap()
-        return
-      }
-      if lower == Self.copyCommand {
-        copyChatToClipboard(sessionId: session.id)
-        return
-      }
-      if lower == Self.newChatCommand || lower == Self.screenshotCommand
-          || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
-          || lower == Self.grokCommand || lower == Self.geminiCommand || lower == Self.openaiCommand {
-        if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
-        else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
-        else if lower == Self.pinCommand { togglePin() }
-        else if lower == Self.unpinCommand { unpin() }
-        else if lower == Self.grokCommand { switchToModel(.grok4) }
-        else if lower == Self.geminiCommand { switchToModel(.gemini3Flash) }
-        else if lower == Self.openaiCommand { switchToModel(.openaiGPT5) }
-        else { await captureScreenshot() }
-        return
-      }
-    }
-
+  /// composer in document order. Slash commands are filtered out upstream by
+  /// `submitComposer`, so this path only sees real chat content; it queues /
+  /// supersedes / dispatches via `performSend`.
+  func sendComposed(finalContent: String, attachedParts: [AttachedImagePart]) async {
     let hasContent = !finalContent.isEmpty || !attachedParts.isEmpty
     guard hasContent else { return }
 
@@ -367,16 +340,8 @@ class ChatViewModel: ObservableObject {
   }
 
   private static func mimeType(for url: URL) -> String {
-    switch url.pathExtension.lowercased() {
-    case "pdf": return "application/pdf"
-    case "jpg", "jpeg": return "image/jpeg"
-    case "gif": return "image/gif"
-    case "webp": return "image/webp"
-    case "png": return "image/png"
-    case "txt", "text": return "text/plain"
-    case "json": return "application/json"
-    default: return "application/octet-stream"
-    }
+    UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
+      ?? "application/octet-stream"
   }
 
   func togglePin() {
@@ -1979,12 +1944,12 @@ struct ChatInputAreaView: View {
     // outgoing session id, then load the incoming session's draft (or clear).
   }
 
-  private static let knownSlashCommands: Set<String> = [
-    "/new", "/screenshot",
-    "/settings", "/pin", "/unpin",
-    "/grok", "/gemini", "/openai",
-    "/meeting", "/copy"
-  ]
+  /// Slash commands recognized by `submitComposer`. Derived from the canonical
+  /// `commandSuggestions` list so the autocomplete and the dispatcher can never
+  /// drift. `/model` is excluded because it takes an argument and is handled
+  /// separately (see `handleModelCommand`).
+  private static let knownSlashCommands: Set<String> =
+    Set(ChatViewModel.commandSuggestions.map(\.command).filter { $0 != "/model" })
 
   /// Sends the current composer contents. Recognized slash commands strip just
   /// the slash token (preserving any other attachments / text) and dispatch
@@ -2010,7 +1975,6 @@ struct ChatInputAreaView: View {
     composer.clearAll()
     Task {
       await viewModel.sendComposed(
-        typedText: typed,
         finalContent: output.finalContent,
         attachedParts: output.attachedParts)
     }

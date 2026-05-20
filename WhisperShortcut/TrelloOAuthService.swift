@@ -109,7 +109,7 @@ class TrelloOAuthService: ObservableObject {
       case .tokenStoreFailed:
         return "Could not save the Trello token to the Keychain."
       case .notConnected:
-        return "Trello is not connected. Connect it in Settings or use /connect-trello."
+        return "Trello is not connected. Open Settings → Chat to connect."
       }
     }
   }

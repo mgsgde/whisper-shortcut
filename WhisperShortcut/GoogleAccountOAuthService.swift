@@ -272,7 +272,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
       case .noAuthorizationCode: return "No authorization code in callback."
       case .tokenExchangeFailed(let msg): return "Token exchange failed: \(msg)"
       case .missingAccessToken: return "No access token in response."
-      case .notConnected: return "Google is not connected. Connect it in Settings or use /connect-google."
+      case .notConnected: return "Google is not connected. Open Settings → Chat to connect."
       case .refreshTokenRevoked: return "Google access was revoked. Please connect again in Settings."
       case .invalidResponse: return "Invalid response from Google."
       case .authorizationInProgress: return "Google authorization is already in progress."
