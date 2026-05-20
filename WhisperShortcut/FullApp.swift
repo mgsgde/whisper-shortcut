@@ -1,4 +1,5 @@
 import Cocoa
+import ServiceManagement
 import SwiftUI
 
 // MARK: - Constants
@@ -54,6 +55,20 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Initialize interaction logging default if not set (default: enabled; user can disable in Settings)
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil {
       UserDefaults.standard.set(true, forKey: UserDefaultsKeys.contextLoggingEnabled)
+    }
+
+    // First-run default: register for Launch at Login. The flag ensures a later
+    // explicit user opt-out is not silently re-enabled on the next launch.
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.hasAppliedLaunchAtLoginDefault) == nil {
+      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasAppliedLaunchAtLoginDefault)
+      if SMAppService.mainApp.status != .enabled {
+        do {
+          try SMAppService.mainApp.register()
+          DebugLogger.logInfo("LAUNCH: Registered for launch at login (first-run default)")
+        } catch {
+          DebugLogger.logError("LAUNCH: Failed first-run register for launch at login: \(error.localizedDescription)")
+        }
+      }
     }
 
     // Improve from usage auto-run: check if due and start daily timer

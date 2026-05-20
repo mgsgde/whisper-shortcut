@@ -40,6 +40,7 @@ enum UserDefaultsKeys {
   // MARK: - App State
   static let shouldTerminate = "shouldTerminate"
   static let hasUsedPromptFeature = "hasUsedPromptFeature"
+  static let hasAppliedLaunchAtLoginDefault = "hasAppliedLaunchAtLoginDefault"
   
   // MARK: - Review Prompter
   static let successfulOperationsCount = "successfulOperationsCount"
