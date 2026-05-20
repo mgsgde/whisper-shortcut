@@ -1752,6 +1752,7 @@ struct ChatView: View {
       (config.startPrompting.displayStringWithSeparator, "Speech-to-Prompt"),
       (config.openChat.displayStringWithSeparator, "Chat"),
       (config.openSettings.displayStringWithSeparator, "Settings"),
+      (config.screenshotCapture.displayStringWithSeparator, "Screenshot to Clipboard"),
     ]
     return VStack(alignment: .leading, spacing: 20) {
       VStack(alignment: .leading, spacing: 12) {

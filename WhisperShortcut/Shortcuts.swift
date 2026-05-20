@@ -6,6 +6,7 @@ protocol ShortcutDelegate: AnyObject {
   func togglePrompting()
   func openSettings()
   func openChat()
+  func takeScreenshot()
 }
 
 // Configurable shortcuts using ShortcutConfigManager
@@ -16,6 +17,7 @@ class Shortcuts {
   private var togglePromptingKey: HotKey?
   private var openSettingsKey: HotKey?
   private var openChatKey: HotKey?
+  private var screenshotCaptureKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -76,6 +78,15 @@ class Shortcuts {
       }
     }
 
+    // Create screenshot capture shortcut (only if enabled)
+    if config.screenshotCapture.isEnabled {
+      screenshotCaptureKey = HotKey(
+        key: config.screenshotCapture.key, modifiers: config.screenshotCapture.modifiers)
+      screenshotCaptureKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.takeScreenshot()
+      }
+    }
+
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -91,6 +102,7 @@ class Shortcuts {
     togglePromptingKey = nil
     openSettingsKey = nil
     openChatKey = nil
+    screenshotCaptureKey = nil
   }
 
   deinit {

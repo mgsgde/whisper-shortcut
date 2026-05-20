@@ -181,7 +181,11 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
-    // Settings and quit
+    // Screenshot, settings, quit
+    menu.addItem(
+      createMenuItemWithShortcut(
+        "Screenshot", action: #selector(takeScreenshot),
+        shortcut: currentConfig.screenshotCapture, tag: 113))
     menu.addItem(
       createMenuItemWithShortcut(
         "Settings...", action: #selector(openSettings),
@@ -1803,6 +1807,20 @@ extension MenuBarController: ShortcutDelegate {
   // togglePrompting is already implemented above
   // openSettings is already implemented above
   func openChat() { openChatWindowFromShortcut() }
+
+  @objc func takeScreenshot() {
+    DebugLogger.logUI("📷 SCREENSHOT: Launching interactive capture (clipboard)")
+    let task = Process()
+    task.launchPath = "/usr/sbin/screencapture"
+    // -i interactive (drag rectangle / space-bar for window), -c copy to clipboard,
+    // -o no shadow on window grabs. Mirrors what native ⌘⇧⌃4 does.
+    task.arguments = ["-i", "-c", "-o"]
+    do {
+      try task.run()
+    } catch {
+      DebugLogger.logError("SCREENSHOT: Failed to launch screencapture: \(error)")
+    }
+  }
 }
 
 // MARK: - ChunkProgressDelegate (Chunked Transcription Progress)

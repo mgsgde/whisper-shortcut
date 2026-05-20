@@ -105,6 +105,7 @@ struct ShortcutConfig: Codable {
   var stopMeeting: ShortcutDefinition
   var openSettings: ShortcutDefinition
   var openChat: ShortcutDefinition
+  var screenshotCapture: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
@@ -113,8 +114,9 @@ struct ShortcutConfig: Codable {
     stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
     toggleMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
     stopMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
-    openSettings: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
-    openChat: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true)
+    openSettings: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true),
+    openChat: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true),
+    screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true)
   )
 
   /// Single source for the "Available keys" hint text used in all shortcut settings.
@@ -238,6 +240,7 @@ class ShortcutConfigManager {
     static let stopMeetingKey = "shortcut_stop_meeting"
     static let openSettingsKey = "shortcut_open_settings"
     static let openChatKey = "shortcut_open_gemini"
+    static let screenshotCaptureKey = "shortcut_screenshot_capture"
   }
 
   private let userDefaults = UserDefaults.standard
@@ -246,6 +249,14 @@ class ShortcutConfigManager {
 
   // MARK: - Load/Save Configuration
   func loadConfiguration() -> ShortcutConfig {
+    // One-time migration: swap ⌘3/⌘4 so Screenshot=⌘3, Settings=⌘4.
+    let swapMigrationKey = "shortcut_settings_screenshot_swap_v1"
+    if !userDefaults.bool(forKey: swapMigrationKey) {
+      saveShortcut(ShortcutConfig.default.screenshotCapture, for: Constants.screenshotCaptureKey)
+      saveShortcut(ShortcutConfig.default.openSettings, for: Constants.openSettingsKey)
+      userDefaults.set(true, forKey: swapMigrationKey)
+    }
+
     let startRecording =
       loadShortcut(for: Constants.startRecordingKey) ?? ShortcutConfig.default.startRecording
     let stopRecording =
@@ -264,6 +275,8 @@ class ShortcutConfigManager {
       : ShortcutConfig.default.openSettings
     let openChat =
       loadShortcut(for: Constants.openChatKey) ?? ShortcutConfig.default.openChat
+    let screenshotCapture =
+      loadShortcut(for: Constants.screenshotCaptureKey) ?? ShortcutConfig.default.screenshotCapture
     return ShortcutConfig(
       startRecording: startRecording,
       stopRecording: stopRecording,
@@ -272,7 +285,8 @@ class ShortcutConfigManager {
       toggleMeeting: toggleMeeting,
       stopMeeting: stopMeeting,
       openSettings: openSettings,
-      openChat: openChat
+      openChat: openChat,
+      screenshotCapture: screenshotCapture
     )
   }
 
@@ -285,6 +299,7 @@ class ShortcutConfigManager {
     saveShortcut(config.stopMeeting, for: Constants.stopMeetingKey)
     saveShortcut(config.openSettings, for: Constants.openSettingsKey)
     saveShortcut(config.openChat, for: Constants.openChatKey)
+    saveShortcut(config.screenshotCapture, for: Constants.screenshotCaptureKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)

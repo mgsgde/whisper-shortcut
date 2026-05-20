@@ -30,6 +30,20 @@ struct KeyboardShortcutsSection: View {
         validateShortcut: viewModel.validateShortcut
       )
 
+      ShortcutInputRow(
+        label: "Screenshot to Clipboard:",
+        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.screenshotCapture),
+        text: $viewModel.data.screenshotCapture,
+        focusedField: .screenshotCapture,
+        currentFocus: $focusedField,
+        onShortcutChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
+        },
+        validateShortcut: viewModel.validateShortcut
+      )
+
       VStack(alignment: .leading, spacing: 8) {
         Text("Available keys:")
           .font(.callout)

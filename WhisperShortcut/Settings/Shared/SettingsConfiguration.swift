@@ -617,6 +617,7 @@ struct SettingsDefaults {
   static let toggleMeeting = ""
   static let openSettings = ""
   static let openChat = ""
+  static let screenshotCapture = ""
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
@@ -681,6 +682,7 @@ struct SettingsData {
   var toggleMeeting: String = SettingsDefaults.toggleMeeting
   var openSettings: String = SettingsDefaults.openSettings
   var openChat: String = SettingsDefaults.openChat
+  var screenshotCapture: String = SettingsDefaults.screenshotCapture
 
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
@@ -730,6 +732,7 @@ enum SettingsFocusField: Hashable {
   case togglePrompting
   case toggleSettings
   case toggleChat
+  case screenshotCapture
   case customPrompt
   case promptModeSystemPrompt
 }

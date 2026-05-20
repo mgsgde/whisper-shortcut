@@ -126,10 +126,22 @@ final class ChatComposerNSTextView: NSTextView {
   var onCancel: (() -> Void)?
   var onTabComplete: (() -> Bool)?
   var onLargePaste: ((String) -> Bool)?
+  var onImagePaste: ((Data) -> Bool)?
+  var onFilePaste: (([URL]) -> Bool)?
   var onAttachmentClicked: ((ComposerTextAttachment) -> Void)?
   var placeholder: String = "Message Gemini…"
 
   override var acceptsFirstResponder: Bool { true }
+
+  /// Force-enable the Paste menu item so ⌘V is always dispatched to
+  /// `paste(_:)`, even when the pasteboard only contains image data (which
+  /// the default NSTextView would reject because `importsGraphics = false`).
+  override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    if menuItem.action == #selector(NSText.paste(_:)) {
+      return true
+    }
+    return super.validateMenuItem(menuItem)
+  }
 
   override func draw(_ dirtyRect: NSRect) {
     super.draw(dirtyRect)
@@ -170,7 +182,28 @@ final class ChatComposerNSTextView: NSTextView {
   }
 
   override func paste(_ sender: Any?) {
-    if let str = NSPasteboard.general.string(forType: .string) {
+    let pb = NSPasteboard.general
+
+    // 1) File URLs first — they also surface as .string (the file path), so
+    //    checking string before URL would lose the attachment intent.
+    if let urls = pb.readObjects(forClasses: [NSURL.self], options: [
+      .urlReadingFileURLsOnly: true
+    ]) as? [URL], !urls.isEmpty {
+      if onFilePaste?(urls) == true { return }
+    }
+
+    // 2) Raw image data (native ⌘⇧⌃4 — no URL on the pasteboard, just bytes).
+    if let png = pb.data(forType: .png) {
+      if onImagePaste?(png) == true { return }
+    }
+    if let tiff = pb.data(forType: .tiff),
+       let bitmap = NSBitmapImageRep(data: tiff),
+       let png = bitmap.representation(using: .png, properties: [:]) {
+      if onImagePaste?(png) == true { return }
+    }
+
+    // 3) Plain text (existing behavior).
+    if let str = pb.string(forType: .string) {
       let lineCount = str.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
       if lineCount >= ChatViewModel.pasteThresholdLines
           || str.count >= ChatViewModel.pasteThresholdChars {
@@ -576,6 +609,34 @@ struct ChatComposerTextView: NSViewRepresentable {
       guard let c = controller else { return false }
       c.insertPastedBlock(text: str, kind: .largePaste)
       return true
+    }
+    tv.onImagePaste = { [weak controller] data in
+      guard let c = controller else { return false }
+      c.insertScreenshot(data)
+      return true
+    }
+    tv.onFilePaste = { [weak controller] urls in
+      guard let c = controller else { return false }
+      var handled = false
+      for url in urls {
+        guard let data = try? Data(contentsOf: url) else { continue }
+        let ext = url.pathExtension.lowercased()
+        if ["png", "jpg", "jpeg", "gif", "webp"].contains(ext) {
+          c.insertScreenshot(data)
+          handled = true
+        } else {
+          let mime: String
+          switch ext {
+          case "pdf": mime = "application/pdf"
+          case "txt", "text": mime = "text/plain"
+          case "json": mime = "application/json"
+          default: continue   // unsupported — fall through to .string path
+          }
+          c.insertFile(data: data, mimeType: mime, filename: url.lastPathComponent)
+          handled = true
+        }
+      }
+      return handled
     }
     tv.onAttachmentClicked = { attachment in
       if case .screenshot(let data) = attachment.kind {

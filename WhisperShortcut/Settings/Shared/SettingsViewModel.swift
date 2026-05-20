@@ -30,6 +30,7 @@ class SettingsViewModel: ObservableObject {
     data.toggleMeeting = currentConfig.toggleMeeting.isEnabled ? currentConfig.toggleMeeting.textDisplayString : ""
     data.openSettings = currentConfig.openSettings.isEnabled ? currentConfig.openSettings.textDisplayString : ""
     data.openChat = currentConfig.openChat.isEnabled ? currentConfig.openChat.textDisplayString : ""
+    data.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture.textDisplayString : ""
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
@@ -188,6 +189,10 @@ class SettingsViewModel: ObservableObject {
        ShortcutConfigManager.parseShortcut(from: data.openChat) == nil {
       return "Invalid open chat shortcut format"
     }
+    if !data.screenshotCapture.trimmingCharacters(in: trim).isEmpty,
+       ShortcutConfigManager.parseShortcut(from: data.screenshotCapture) == nil {
+      return "Invalid screenshot capture shortcut format"
+    }
     let shortcuts = parseShortcuts()
 
     // Check for duplicates
@@ -250,6 +255,8 @@ class SettingsViewModel: ObservableObject {
       return name == "open settings"
     case .toggleChat:
       return name == "open chat"
+    case .screenshotCapture:
+      return name == "screenshot capture"
     default:
       return false
     }
@@ -284,6 +291,7 @@ class SettingsViewModel: ObservableObject {
       "toggle prompting": parsed(data.togglePrompting),
       "open settings": parsed(data.openSettings),
       "open chat": parsed(data.openChat),
+      "screenshot capture": parsed(data.screenshotCapture),
     ]
   }
 
@@ -365,7 +373,9 @@ class SettingsViewModel: ObservableObject {
       openSettings: shortcuts["open settings"].flatMap { $0 }
         ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
       openChat: shortcuts["open chat"].flatMap { $0 }
-        ?? ShortcutDefinition(key: .eight, modifiers: [.command], isEnabled: false)
+        ?? ShortcutDefinition(key: .eight, modifiers: [.command], isEnabled: false),
+      screenshotCapture: shortcuts["screenshot capture"].flatMap { $0 }
+        ?? ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 
