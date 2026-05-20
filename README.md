@@ -59,7 +59,7 @@ Long recordings are split into chunks and processed in parallel.
 
 ### Chat
 
-Open the chat window from the menu bar or its configured shortcut. Chat sessions are stored locally and can use slash commands such as `/new`, `/model`, `/screenshot`, `/settings`, `/grok`, `/gemini`, `/connect-google`, `/disconnect-google`, and `/meeting`.
+Open the chat window from the menu bar or its configured shortcut. Chat sessions are stored locally and can use slash commands such as `/new`, `/model`, `/screenshot`, `/settings`, `/grok`, `/gemini`, `/openai`, `/meeting`, and `/copy`.
 
 Gemini models use your Google API key. Grok models use your xAI API key.
 
