@@ -638,28 +638,28 @@ struct ChatComposerTextView: NSViewRepresentable {
     }
     tv.onImagePaste = { [weak controller] data in
       guard let c = controller else { return false }
-      c.insertScreenshot(data)
-      return true
+      return c.insertScreenshot(data)
     }
     tv.onFilePaste = { [weak controller] urls in
       guard let c = controller else { return false }
+      // Gemini Files API rejects inline payloads above ~20 MB. Refuse to
+      // load anything larger into memory rather than risking OOM on a
+      // multi-GB drop.
+      let maxBytes: Int = 20 * 1024 * 1024
       var handled = false
       for url in urls {
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        if size > maxBytes { continue }
         guard let data = try? Data(contentsOf: url) else { continue }
         let ext = url.pathExtension.lowercased()
-        if ["png", "jpg", "jpeg", "gif", "webp"].contains(ext) {
-          c.insertScreenshot(data)
-          handled = true
+        let isImage = ["png", "jpg", "jpeg", "gif", "webp", "heic", "tiff"].contains(ext)
+        if isImage {
+          if c.insertScreenshot(data) { handled = true }
         } else {
-          let mime: String
-          switch ext {
-          case "pdf": mime = "application/pdf"
-          case "txt", "text": mime = "text/plain"
-          case "json": mime = "application/json"
-          default: continue   // unsupported — fall through to .string path
+          guard let mime = UTType(filenameExtension: ext)?.preferredMIMEType else { continue }
+          if c.insertFile(data: data, mimeType: mime, filename: url.lastPathComponent) {
+            handled = true
           }
-          c.insertFile(data: data, mimeType: mime, filename: url.lastPathComponent)
-          handled = true
         }
       }
       return handled

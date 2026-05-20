@@ -232,6 +232,10 @@ class SpeechService {
   /// transcription-for-history call never holds up the user-visible response.
   /// On timeout the wrapped `task` is also cancelled so it does not keep running
   /// in the background after the user-visible response has already returned.
+  ///
+  /// Caveat: if `T` is itself an `Optional`, a real `nil` result from `task` is
+  /// indistinguishable from a timeout. All current callers use `T = String`, so
+  /// this is latent; tighten the type constraint before reusing for optional Ts.
   private func awaitWithTimeout<T>(_ task: Task<T, Never>, timeoutSeconds: Double) async -> T? {
     await withTaskGroup(of: Optional<T>.self, returning: T?.self) { group in
       group.addTask { await task.value }
