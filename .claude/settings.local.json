@@ -31,7 +31,10 @@
       "Bash(bash scripts/logs.sh -t 3m -f 'GEMINI-CHAT')",
       "Bash(log show *)",
       "Bash(/usr/bin/log stream *)",
-      "Bash(git remote *)"
+      "Bash(git remote *)",
+      "Bash(git tag *)",
+      "Bash(find /Users/mgsgde/whisper-shortcut-private -name \"ChatView.swift\" -not -path \"*/node_modules/*\" 2>/dev/null)",
+      "Read(//Users/mgsgde/whisper-shortcut-private/**)"
     ]
   }
 }

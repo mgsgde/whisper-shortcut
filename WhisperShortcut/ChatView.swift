@@ -611,13 +611,13 @@ class ChatViewModel: ObservableObject {
     messageQueue.removeAll { $0.id == id }
   }
 
-  /// Sends the current message. Pass `userInput` when the view holds the text in local state to avoid re-renders on every keystroke.
-  /// If a message is already in-flight, the new message is queued and auto-sent when the current one finishes.
+  /// Dispatches a slash command. Callers (`submitComposer`, `handleTabComplete`)
+  /// pre-filter so this method only sees recognized commands; regular chat
+  /// content goes through `sendComposed`.
   func sendMessage(userInput: String? = nil) async {
     let raw = (userInput ?? inputText).trimmingCharacters(in: .whitespacesAndNewlines)
     let lower = raw.lowercased()
-    let hasContent = !raw.isEmpty || !pendingScreenshots.isEmpty || !pendingFileAttachments.isEmpty || !pastedBlocks.isEmpty
-    guard hasContent else { return }
+    guard !raw.isEmpty else { return }
 
     // /model command (switch chat model with fuzzy matching)
     if lower == Self.modelCommand || lower.hasPrefix(Self.modelCommand + " ") {
@@ -635,7 +635,6 @@ class ChatViewModel: ObservableObject {
       return
     }
 
-    // Slash commands: always immediate, never queued
     if lower == Self.newChatCommand || lower == Self.screenshotCommand
         || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
         || lower == Self.grokCommand || lower == Self.geminiCommand || lower == Self.openaiCommand
@@ -652,51 +651,6 @@ class ChatViewModel: ObservableObject {
       else { await captureScreenshot() }
       return
     }
-
-    // Build attachment parts before clearing input (needed for queue snapshot)
-    var attachedParts: [AttachedImagePart] = []
-    for file in pendingFileAttachments {
-      attachedParts.append(AttachedImagePart(data: file.data, mimeType: file.mimeType, filename: file.filename))
-    }
-    if !pendingScreenshots.isEmpty {
-      attachedParts += pendingScreenshots.enumerated().map { index, data in
-        let filename = pendingScreenshots.count == 1 ? "screenshot.png" : "screenshot \(index + 1).png"
-        return AttachedImagePart(data: data, mimeType: "image/png", filename: filename)
-      }
-    }
-    var parts: [String] = []
-    if !pastedBlocks.isEmpty {
-      let pastedSection = pastedBlocks
-        .map { block -> String in
-          switch block.kind {
-          case .largePaste:
-            return "<pasted_content>\n\(block.content)\n</pasted_content>"
-          case .shortcutSelection:
-            return "<pasted_selection>\n\(block.content)\n</pasted_selection>"
-          }
-        }
-        .joined(separator: "\n\n")
-      parts.append(pastedSection)
-    }
-    if !raw.isEmpty {
-      parts.append("<typed_by_user>\n\(raw)\n</typed_by_user>")
-    }
-    let finalContent = parts.joined(separator: "\n\n")
-    DebugLogger.log("GEMINI-CHAT: finalContent (first 300 chars): \(String(finalContent.prefix(300)))")
-
-    // Clear input and attachments immediately for responsive UX
-    inputText = ""
-    errorMessage = nil
-    pastedBlocks = []
-    pendingScreenshots = []
-    pendingFileAttachments = []
-
-    if isSending {
-      supersedeInFlight(with: QueuedChatMessage(content: finalContent, attachedParts: attachedParts))
-      return
-    }
-
-    performSend(content: finalContent, attachedParts: attachedParts)
   }
 
   func clearMessages() {
