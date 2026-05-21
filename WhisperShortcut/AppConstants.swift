@@ -222,8 +222,6 @@ Transcript:
   static let audioSamplesPerRun: Int = 6
 
   // MARK: - Smart Improvement: thresholds, cooldown, queue
-  /// Minimum total interactions across all modes before Smart Improvement may run at all.
-  static let smartImprovementMinTotalInteractions: Int = 10
   /// Minimum interactions in a focus's primary mode (last 30 days) for that focus to be analyzed.
   static let smartImprovementMinPerFocusInteractions: Int = 20
   /// Lookback window for per-focus eligibility counts.

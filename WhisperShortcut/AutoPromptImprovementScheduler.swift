@@ -12,24 +12,11 @@ class AutoPromptImprovementScheduler {
   func incrementDictationCountAndRunIfNeeded() {}
 
   /// Runs the improvement pipeline immediately (manual trigger from Settings or auto-run).
-  /// Ignores cooldown and interval. Requires credential and at least some interaction data.
+  /// Ignores cooldown and interval. Requires credential. Per-focus eligibility is enforced inside runImprovement.
   /// If a run is already in progress, enqueues this job and notifies the user.
-  /// - Parameter fromAutoRun: When true (e.g. launch/daily timer), no popup is shown when there is no interaction data; when false (user tapped "Improve from usage"), show error.
+  /// - Parameter fromAutoRun: When true (e.g. launch/daily timer), suppresses popups for "no eligible data"; when false (user tapped "Improve from usage"), shows them.
   func runImprovementNow(fromAutoRun: Bool = false) async {
     guard GeminiCredentialProvider.shared.hasCredential() else { return }
-
-    // Total-data gate: require enough overall interactions before running anything.
-    let counts = ContextLogger.shared.interactionCountsByMode(lastDays: AppConstants.smartImprovementEligibilityDays)
-    let totalInteractions = counts.values.reduce(0, +)
-    if totalInteractions < AppConstants.smartImprovementMinTotalInteractions {
-      if !fromAutoRun {
-        PopupNotificationWindow.showError(
-          "Not enough usage data yet (\(totalInteractions)/\(AppConstants.smartImprovementMinTotalInteractions)). Use dictation or dictate prompt a bit more, then try again.",
-          title: "Smart Improvement"
-        )
-      }
-      return
-    }
 
     // Cooldown gate: throttle manual triggers.
     if !fromAutoRun, let last = lastRunStartedAt {
@@ -63,7 +50,7 @@ class AutoPromptImprovementScheduler {
       "Smart Improvement started. You can switch tabs; we'll notify you when it's done.",
       title: "Smart Improvement"
     )
-    await runImprovement()
+    await runImprovement(fromAutoRun: fromAutoRun)
     DebugLogger.log("AUTO-IMPROVEMENT: Manual run finished")
     await processNextInQueue()
   }
@@ -106,7 +93,7 @@ class AutoPromptImprovementScheduler {
         "Smart Improvement started. You can switch tabs; we'll notify you when it's done.",
         title: "Smart Improvement"
       )
-      await runImprovement()
+      await runImprovement(fromAutoRun: false)
       DebugLogger.log("AUTO-IMPROVEMENT: Queued from-usage job finished")
     }
     await processNextInQueue()
@@ -130,7 +117,7 @@ class AutoPromptImprovementScheduler {
     }
   }
 
-  private func runImprovement() async {
+  private func runImprovement(fromAutoRun: Bool) async {
     lastRunStartedAt = Date()
     // Discard any stale suggestion files from a previously crashed/aborted run before generating new ones.
     ContextLogger.shared.deleteAllSuggestedFiles()
@@ -163,14 +150,15 @@ class AutoPromptImprovementScheduler {
     }
 
     if focuses.isEmpty {
-      DebugLogger.log("AUTO-IMPROVEMENT: No focuses eligible — skipping run")
-      await MainActor.run {
-        PopupNotificationWindow.showInfo(
-          "Not enough per-mode usage yet. Use the app a bit more and try again.",
-          title: "Smart Improvement"
-        )
+      DebugLogger.log("AUTO-IMPROVEMENT: No focuses eligible — skipping run (lastRun date not set so we retry next check)")
+      if !fromAutoRun {
+        await MainActor.run {
+          PopupNotificationWindow.showInfo(
+            "Not enough per-mode usage yet. Use the app a bit more and try again.",
+            title: "Smart Improvement"
+          )
+        }
       }
-      UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.lastAutoImprovementRunDate)
       return
     }
 
