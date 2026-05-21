@@ -57,7 +57,11 @@ enum ChatModelCommandResolver {
     } else if hasOpenAI {
       // openaiGPT4oAudio is Dictate-Prompt only (supportsTextChat=false), so
       // the chat resolver returns only the text-capable OpenAI models.
-      candidates = [.openaiGPT5, .openaiGPT5Mini]
+      if normalized.contains("5.5") {
+        candidates = [.openaiGPT55]
+      } else {
+        candidates = [.openaiGPT5, .openaiGPT5Mini, .openaiGPT55]
+      }
     } else if normalized.contains("3.1") {
       candidates = [.gemini31Pro, .gemini31FlashLite]
     } else if normalized.contains("2.5") {
@@ -98,19 +102,17 @@ enum ChatModelCommandResolver {
       if !minis.isEmpty { candidates = minis }
     }
 
-    // When "grok 4" matches all Grok models but no narrowing keyword was given,
-    // pick the base model (non-reasoning, non-fast) as the sensible default.
+    // When the user typed only the provider name (e.g. `/model grok`) with no narrowing
+    // keyword, pick that provider's canonical default. Source of truth lives on
+    // `ChatModelProvider.defaultChatModel` so this branch, the bare `/grok` `/gemini`
+    // `/openai` dispatch in ChatView, and the autocomplete hint never disagree.
     if hasGrok && !hasFast && !hasReasoning && candidates.count > 1 {
-      let base = candidates.filter { !isFast($0) && !isReasoning($0) }
-      if base.count == 1 { candidates = base }
+      let preferred = ChatModelProvider.grok.defaultChatModel
+      if candidates.contains(preferred) { candidates = [preferred] }
     }
-
-    // For "openai"/"gpt" without an explicit qualifier, default to GPT-5 Mini —
-    // it's the cheaper, faster baseline; users who want the larger model can ask
-    // for it explicitly via "/openai gpt-5" or "/model gpt-5".
     if hasOpenAI && !hasMini && candidates.count > 1 {
-      let minis = candidates.filter { isMini($0) }
-      if minis.count == 1 { candidates = minis }
+      let preferred = ChatModelProvider.openai.defaultChatModel
+      if candidates.contains(preferred) { candidates = [preferred] }
     }
 
     // Stable order based on PromptModel.allCases.

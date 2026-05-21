@@ -132,9 +132,9 @@ class ChatViewModel: ObservableObject {
     ("/new", "Start a new chat (previous chat stays in history)"),
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
     ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
-    ("/gemini", "Switch to Gemini 3 Flash"),
-    ("/grok", "Switch to Grok 4"),
-    ("/openai", "Switch to GPT-5 Mini"),
+    ("/gemini", "Switch to \(ChatModelProvider.gemini.defaultChatModel.displayName)"),
+    ("/grok",   "Switch to \(ChatModelProvider.grok.defaultChatModel.displayName)"),
+    ("/openai", "Switch to \(ChatModelProvider.openai.defaultChatModel.displayName)"),
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
@@ -644,9 +644,12 @@ class ChatViewModel: ObservableObject {
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else if lower == Self.pinCommand { togglePin() }
       else if lower == Self.unpinCommand { unpin() }
-      else if lower == Self.grokCommand { switchToModel(.grok4) }
-      else if lower == Self.geminiCommand { switchToModel(.gemini3Flash) }
-      else if lower == Self.openaiCommand { switchToModel(.openaiGPT5) }
+      // Bare provider commands read their target from ChatModelProvider.defaultChatModel —
+      // updating the default in one place propagates to both this dispatch and the
+      // /commandSuggestions hint above, and to ChatModelCommandResolver's no-qualifier branch.
+      else if lower == Self.grokCommand { switchToModel(ChatModelProvider.grok.defaultChatModel) }
+      else if lower == Self.geminiCommand { switchToModel(ChatModelProvider.gemini.defaultChatModel) }
+      else if lower == Self.openaiCommand { switchToModel(ChatModelProvider.openai.defaultChatModel) }
       else if lower == Self.copyCommand { copyChatToClipboard(sessionId: session.id) }
       else { await captureScreenshot() }
       return

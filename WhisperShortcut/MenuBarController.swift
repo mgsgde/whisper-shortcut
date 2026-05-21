@@ -185,10 +185,13 @@ class MenuBarController: NSObject {
     menu.addItem(NSMenuItem.separator())
 
     // Settings and quit
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Settings...", action: #selector(openSettings),
-        shortcut: currentConfig.openSettings, tag: 103))
+    let settingsItem = createMenuItemWithShortcut(
+      "Settings...", action: #selector(openSettings),
+      shortcut: currentConfig.openSettings, tag: 103)
+    // macOS auto-decorates "Settings…" items with a gear glyph; clear it so the
+    // menu doesn't reserve an icon column that misaligns the other rows.
+    settingsItem.image = nil
+    menu.addItem(settingsItem)
     menu.addItem(
       createMenuItem("Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q"))
 

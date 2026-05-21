@@ -5,6 +5,20 @@ enum ChatModelProvider: String, CaseIterable {
   case gemini
   case grok
   case openai
+
+  /// Model selected when the user invokes the bare provider slash-command
+  /// (`/gemini`, `/grok`, `/openai`) with no qualifier, AND when `/model <provider>`
+  /// is typed with no further narrowing keyword. Single source of truth so the
+  /// autocomplete hint, the bare-command dispatch in `ChatView`, and the
+  /// no-qualifier branch in `ChatModelCommandResolver` never drift apart —
+  /// they all read `defaultChatModel` from here.
+  var defaultChatModel: PromptModel {
+    switch self {
+    case .gemini: return .gemini35Flash
+    case .grok:   return .grok43
+    case .openai: return .openaiGPT55
+    }
+  }
 }
 
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok

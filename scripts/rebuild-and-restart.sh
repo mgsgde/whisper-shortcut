@@ -33,19 +33,14 @@ fi
 
 cd "$PROJECT_DIR"
 
-# Sync user-facing markdown docs into the app bundle.
-# Source of truth lives at the repo root (and docs/); we mirror a curated subset
-# into WhisperShortcut/Docs/ so Xcode's file-system-synchronized group bundles
-# them and the chat's list_whisper_shortcut_docs / read_whisper_shortcut_doc
-# tools can read them.
+# Sync the root README into the app bundle so Xcode's file-system-synchronized
+# group bundles it and the chat's list_whisper_shortcut_docs /
+# read_whisper_shortcut_doc tools can read it. The standalone docs/ tree was
+# removed in cf0dd3a (data-directories was inlined into privacy.md), so other
+# bundled docs under WhisperShortcut/Docs/ are now edited in place — no sync.
 echo "📚 Syncing bundled docs..."
 mkdir -p "$PROJECT_DIR/WhisperShortcut/Docs"
-cp "$PROJECT_DIR/README.md"               "$PROJECT_DIR/WhisperShortcut/Docs/README.md"
-cp "$PROJECT_DIR/docs/data-directories.md" "$PROJECT_DIR/WhisperShortcut/Docs/data-directories.md"
-# Root README uses repo-relative docs links. Inside WhisperShortcut/Docs/, these
-# docs are side-by-side, so rewrite links for the bundled copy.
-perl -0pi -e 's|\[`docs/data-directories\.md`\]\(docs/data-directories\.md\)|[`data-directories.md`](data-directories.md)|g; s|\(docs/data-directories\.md\)|\(data-directories.md\)|g' \
-  "$PROJECT_DIR/WhisperShortcut/Docs/README.md"
+cp "$PROJECT_DIR/README.md" "$PROJECT_DIR/WhisperShortcut/Docs/README.md"
 
 # Build variant
 if [[ "$APP_STORE" == true ]]; then
