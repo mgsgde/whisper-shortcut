@@ -302,27 +302,14 @@ class ChunkTranscriptionService {
                     contents: [
                         GeminiTranscriptionRequest.GeminiTranscriptionContent(
                             parts: [
-                                GeminiTranscriptionRequest.GeminiTranscriptionPart(
-                                    text: prompt.isEmpty
-                                        ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting."
-                                        : prompt,
-                                    inlineData: nil,
-                                    fileData: nil
-                                ),
-                                GeminiTranscriptionRequest.GeminiTranscriptionPart(
-                                    text: nil,
-                                    inlineData: GeminiTranscriptionRequest.GeminiInlineData(
-                                        mimeType: mimeType,
-                                        data: base64Audio
-                                    ),
-                                    fileData: nil
-                                )
+                                .text(prompt.isEmpty
+                                    ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting."
+                                    : prompt),
+                                .inline(mimeType: mimeType, data: base64Audio)
                             ]
                         )
                     ],
-                    generationConfig: GeminiTranscriptionRequest.GeminiTranscriptionGenerationConfig(
-                        thinkingConfig: GeminiTranscriptionRequest.GeminiThinkingConfig(thinkingBudget: 0)
-                    )
+                    generationConfig: .thinkingDisabled
                 )
 
                 request.httpBody = try JSONEncoder().encode(transcriptionRequest)

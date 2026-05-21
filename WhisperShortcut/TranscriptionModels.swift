@@ -337,21 +337,45 @@ struct GeminiTranscriptionRequest: Codable {
   /// reasoning overhead to a task that doesn't benefit from it. Ignored by 2.x models.
   struct GeminiTranscriptionGenerationConfig: Codable {
     let thinkingConfig: GeminiThinkingConfig?
+
+    static let thinkingDisabled = GeminiTranscriptionGenerationConfig(
+      thinkingConfig: GeminiThinkingConfig(thinkingBudget: 0)
+    )
   }
 
   struct GeminiThinkingConfig: Codable {
     let thinkingBudget: Int
   }
-  
+
   struct GeminiTranscriptionPart: Codable {
     let text: String?
     let inlineData: GeminiInlineData?
     let fileData: GeminiFileData?
-    
+
     enum CodingKeys: String, CodingKey {
       case text
       case inlineData = "inline_data"
       case fileData = "file_data"
+    }
+
+    static func text(_ s: String) -> GeminiTranscriptionPart {
+      GeminiTranscriptionPart(text: s, inlineData: nil, fileData: nil)
+    }
+
+    static func inline(mimeType: String, data: String) -> GeminiTranscriptionPart {
+      GeminiTranscriptionPart(
+        text: nil,
+        inlineData: GeminiInlineData(mimeType: mimeType, data: data),
+        fileData: nil
+      )
+    }
+
+    static func file(uri: String, mimeType: String) -> GeminiTranscriptionPart {
+      GeminiTranscriptionPart(
+        text: nil,
+        inlineData: nil,
+        fileData: GeminiFileData(fileUri: uri, mimeType: mimeType)
+      )
     }
   }
   

@@ -453,7 +453,11 @@ class GeminiAPIClient {
           // reasoning at the cost of 3–10s before the first streamed token. Flash tier
           // keeps thinking off (0) so the streaming UX stays responsive. Falls back to 0
           // for any model not enumerated in `PromptModel.geminiThinkingBudget`.
-          let thinkingBudget = PromptModel(rawValue: model)?.geminiThinkingBudget ?? 0
+          let promptModel = PromptModel(rawValue: model)
+          if promptModel == nil {
+            DebugLogger.logError("GEMINI-CHAT-STREAM: unknown model rawValue \(model), defaulting thinkingBudget to 0")
+          }
+          let thinkingBudget = promptModel?.geminiThinkingBudget ?? 0
           body["generationConfig"] = [
             "temperature": 0.7,
             "topP": 0.95,

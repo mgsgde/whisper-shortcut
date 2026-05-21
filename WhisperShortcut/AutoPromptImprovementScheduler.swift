@@ -109,7 +109,10 @@ class AutoPromptImprovementScheduler {
   }
 
   /// Maps each focus to the interaction `mode` field that counts as its primary signal. Mirrors ContextDerivation.primaryMode.
-  private func primaryModeKey(for focus: GenerationKind) -> String? {
+  /// Note: `.chat` returns `"geminiChat"` because all chat turns — Gemini, Grok, OpenAI — are
+  /// currently logged under that single mode key (see ContextLogger.logChat). If chat-mode
+  /// logging is ever split by provider, this mapping needs to sum the per-provider keys.
+  private func primaryModeKey(for focus: GenerationKind) -> String {
     switch focus {
     case .dictation, .whisperGlossary: return "transcription"
     case .promptMode: return "prompt"
@@ -118,7 +121,6 @@ class AutoPromptImprovementScheduler {
   }
 
   private func runImprovement(fromAutoRun: Bool) async {
-    lastRunStartedAt = Date()
     // Discard any stale suggestion files from a previously crashed/aborted run before generating new ones.
     ContextLogger.shared.deleteAllSuggestedFiles()
 
@@ -130,21 +132,13 @@ class AutoPromptImprovementScheduler {
 
     // Per-focus eligibility: skip focuses without enough primary-mode data in the lookback window.
     let counts = ContextLogger.shared.interactionCountsByMode(lastDays: AppConstants.smartImprovementEligibilityDays)
-    let total = counts.values.reduce(0, +)
     let minPerFocus = AppConstants.smartImprovementMinPerFocusInteractions
     let focuses: [GenerationKind] = allFocuses.filter { focus in
-      if let mode = primaryModeKey(for: focus) {
-        let n = counts[mode] ?? 0
-        if n < minPerFocus {
-          DebugLogger.log("AUTO-IMPROVEMENT: Skipping \(focus) — only \(n) entries for mode \(mode) (need \(minPerFocus))")
-          return false
-        }
-      } else {
-        // chat: gate on total instead of a single mode.
-        if total < minPerFocus {
-          DebugLogger.log("AUTO-IMPROVEMENT: Skipping \(focus) — only \(total) total entries (need \(minPerFocus))")
-          return false
-        }
+      let mode = primaryModeKey(for: focus)
+      let n = counts[mode] ?? 0
+      if n < minPerFocus {
+        DebugLogger.log("AUTO-IMPROVEMENT: Skipping \(focus) — only \(n) entries for mode \(mode) (need \(minPerFocus))")
+        return false
       }
       return true
     }
@@ -161,6 +155,10 @@ class AutoPromptImprovementScheduler {
       }
       return
     }
+
+    // Burn the session-cooldown only once eligibility passes and real work is about to start,
+    // otherwise a no-op early return above would block the next manual click for `smartImprovementCooldownSeconds`.
+    lastRunStartedAt = Date()
 
     typealias FocusResult = (focus: GenerationKind, error: Error?)
     let results: [FocusResult] = await withTaskGroup(of: FocusResult.self) { group in

@@ -1232,22 +1232,12 @@ class SpeechService {
       contents: [
         GeminiTranscriptionRequest.GeminiTranscriptionContent(
           parts: [
-            GeminiTranscriptionRequest.GeminiTranscriptionPart(
-              text: promptToUse.isEmpty ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting." : promptToUse,
-              inlineData: nil,
-              fileData: nil
-            ),
-            GeminiTranscriptionRequest.GeminiTranscriptionPart(
-              text: nil,
-              inlineData: GeminiTranscriptionRequest.GeminiInlineData(mimeType: mimeType, data: base64Audio),
-              fileData: nil
-            )
+            .text(promptToUse.isEmpty ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting." : promptToUse),
+            .inline(mimeType: mimeType, data: base64Audio)
           ]
         )
       ],
-      generationConfig: GeminiTranscriptionRequest.GeminiTranscriptionGenerationConfig(
-        thinkingConfig: GeminiTranscriptionRequest.GeminiThinkingConfig(thinkingBudget: 0)
-      )
+      generationConfig: .thinkingDisabled
     )
 
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
@@ -1318,22 +1308,12 @@ class SpeechService {
       contents: [
         GeminiTranscriptionRequest.GeminiTranscriptionContent(
           parts: [
-            GeminiTranscriptionRequest.GeminiTranscriptionPart(
-              text: promptToUse.isEmpty ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting." : promptToUse,
-              inlineData: nil,
-              fileData: nil
-            ),
-            GeminiTranscriptionRequest.GeminiTranscriptionPart(
-              text: nil,
-              inlineData: nil,
-              fileData: GeminiTranscriptionRequest.GeminiFileData(fileUri: fileURI, mimeType: mimeType)
-            )
+            .text(promptToUse.isEmpty ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting." : promptToUse),
+            .file(uri: fileURI, mimeType: mimeType)
           ]
         )
       ],
-      generationConfig: GeminiTranscriptionRequest.GeminiTranscriptionGenerationConfig(
-        thinkingConfig: GeminiTranscriptionRequest.GeminiThinkingConfig(thinkingBudget: 0)
-      )
+      generationConfig: .thinkingDisabled
     )
 
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
