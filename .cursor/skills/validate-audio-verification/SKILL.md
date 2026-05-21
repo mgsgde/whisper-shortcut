@@ -1,6 +1,6 @@
 ---
 name: validate-audio-verification
-description: Validate end-to-end that Smart Improvement audio verification is actually working — audio is captured for dictation, attached only when the asymmetry rule passes, used by the dictation and Whisper Glossary focuses, and cleaned up afterwards. Use when the user asks "is audio verification working?", after implementing or modifying the feature described in `plans/active/smart-improvement-audio-verification.md`, or when investigating why a glossary/dictation suggestion was or was not produced.
+description: Validate end-to-end that Smart Improvement audio verification is actually working — audio is captured for dictation, attached only when the asymmetry rule passes, used by the dictation and Whisper Glossary focuses, and cleaned up afterwards. Use when the user asks "is audio verification working?", after implementing or modifying the Smart Improvement audio verification feature, or when investigating why a glossary/dictation suggestion was or was not produced.
 ---
 
 # Validate Audio Verification
@@ -9,7 +9,7 @@ description: Validate end-to-end that Smart Improvement audio verification is ac
 
 Audio verification has many places where it can silently degrade to text-only behavior (master toggle off, asymmetry check fails, no matching clips, cleanup ran too early). To know it actually works, you must check **logs + on-disk state + interaction log entries** together, not any one of them in isolation.
 
-This skill is the inspection procedure. It does **not** add logging — that is part of the implementation plan (`plans/active/smart-improvement-audio-verification.md`). It assumes the `AUDIO-VERIFY:` logging contract from that plan is in place.
+This skill is the inspection procedure. It does **not** add logging — it assumes the `AUDIO-VERIFY:` logging contract is in place in `ContextDerivation.swift` and the dictation capture path.
 
 ---
 
@@ -123,14 +123,14 @@ When summarizing for the user:
 - Lead with the bottom line: "audio verification worked end-to-end" / "audio capture works but verification skipped because …" / "broken at step X."
 - Then a short table of the five questions and their answers.
 - Quote exact log lines (one per finding). Do not paraphrase.
-- If something is broken, identify which file and which step in `plans/active/smart-improvement-audio-verification.md` is implicated.
+- If something is broken, identify the file and step in the audio-verification flow (`ContextDerivation.swift`, dictation capture in `SpeechService.swift`) that is implicated.
 
 ---
 
 ## When to apply
 
 - User asks to verify, validate, or test that Smart Improvement audio verification is working.
-- After finishing implementation of `plans/active/smart-improvement-audio-verification.md` or any change to it.
+- After any change to the Smart Improvement audio verification flow.
 - When debugging why a Whisper Glossary or dictation system prompt suggestion did or did not appear, and audio verification is in play.
 
 ## When to skip

@@ -114,7 +114,7 @@ WhisperShortcut uses one canonical app data location so sandboxed and non-sandbo
 
 `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/`
 
-See [`docs/data-directories.md`](docs/data-directories.md) for details.
+See the App Data Location section in [`privacy.md`](privacy.md#app-data-location) for what each subfolder contains.
 
 ## License
 

@@ -57,13 +57,22 @@ Log retention and cleanup are managed by the app. You can delete interaction dat
 
 ## App Data Location
 
-WhisperShortcut uses one canonical local app data path for sandboxed and non-sandboxed builds:
+WhisperShortcut uses one canonical local app data path for sandboxed and non-sandboxed builds so switching between build variants does not split user data across two locations:
 
 ```text
 ~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/
 ```
 
-See [`docs/data-directories.md`](docs/data-directories.md) for details.
+This path is used for:
+
+- `UserContext/`: interaction logs, user context, system prompts, prompt history, and short-lived Smart Improvement audio verification samples in `UserContext/audio-samples/`.
+- `Meetings/`: saved live meeting transcripts.
+- `WhisperKit/`: downloaded local Whisper models.
+- Chat/session data and other app support files.
+
+App Store builds are sandboxed by macOS and naturally resolve Application Support inside the app container. Non-sandboxed development builds explicitly use the same container-style path.
+
+To manually reset data, quit WhisperShortcut, open the path above in Finder (Go > Go to Folder), and delete only the folder you intend to reset, such as `UserContext/` or `Meetings/`. Prefer the reset and delete actions in Settings when available.
 
 Older versions may have stored some meeting files in `~/Documents/WhisperShortcut/`.
 
