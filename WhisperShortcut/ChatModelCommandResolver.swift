@@ -102,15 +102,21 @@ enum ChatModelCommandResolver {
       if !minis.isEmpty { candidates = minis }
     }
 
-    // When the user typed only the provider name (e.g. `/model grok`) with no narrowing
-    // keyword, pick that provider's canonical default. Source of truth lives on
-    // `ChatModelProvider.defaultChatModel` so this branch, the bare `/grok` `/gemini`
-    // `/openai` dispatch in ChatView, and the autocomplete hint never disagree.
-    if hasGrok && !hasFast && !hasReasoning && candidates.count > 1 {
+    // When the user typed ONLY the provider name (e.g. `/model grok`, `/model openai`)
+    // with no version or variant, pick that provider's canonical default. Source of
+    // truth lives on `ChatModelProvider.defaultChatModel` so this branch, the bare
+    // `/grok` / `/gemini` / `/openai` dispatch in ChatView, and the autocomplete hint
+    // never disagree. If the user typed any qualifier (e.g. `/model grok 4.20`,
+    // `/model openai gpt-5`) we leave the candidate list alone so an explicit
+    // version doesn't get silently coerced to the family default.
+    let argumentIsExactProviderName: (String) -> Bool = { name in
+      q.lowercased() == name
+    }
+    if hasGrok && argumentIsExactProviderName("grok") && candidates.count > 1 {
       let preferred = ChatModelProvider.grok.defaultChatModel
       if candidates.contains(preferred) { candidates = [preferred] }
     }
-    if hasOpenAI && !hasMini && candidates.count > 1 {
+    if hasOpenAI && argumentIsExactProviderName("openai") && candidates.count > 1 {
       let preferred = ChatModelProvider.openai.defaultChatModel
       if candidates.contains(preferred) { candidates = [preferred] }
     }
