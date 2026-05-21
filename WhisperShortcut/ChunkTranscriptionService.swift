@@ -319,7 +319,10 @@ class ChunkTranscriptionService {
                                 )
                             ]
                         )
-                    ]
+                    ],
+                    generationConfig: GeminiTranscriptionRequest.GeminiTranscriptionGenerationConfig(
+                        thinkingConfig: GeminiTranscriptionRequest.GeminiThinkingConfig(thinkingBudget: 0)
+                    )
                 )
 
                 request.httpBody = try JSONEncoder().encode(transcriptionRequest)

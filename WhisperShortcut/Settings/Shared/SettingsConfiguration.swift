@@ -193,7 +193,25 @@ enum PromptModel: String, CaseIterable {
   var supportsReasoning: Bool {
     return false
   }
-  
+
+  /// Gemini-only: `thinkingConfig.thinkingBudget` to send on chat requests.
+  /// `0` disables thinking entirely (instant first token, faster streaming, weaker reasoning).
+  /// `-1` enables dynamic thinking (3–10s before first token, stronger reasoning).
+  /// Flash tier defaults to `0` because the streaming UX matters more than marginal quality gains.
+  /// Pro tier defaults to `-1` because users choosing Pro are opting into the quality/latency trade.
+  /// Non-Gemini models return `nil` (the field is ignored by other providers).
+  var geminiThinkingBudget: Int? {
+    switch self {
+    case .gemini25Pro, .gemini3Pro, .gemini31Pro:
+      return -1
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash:
+      return 0
+    case .grok4, .grok4Reasoning, .grok43,
+         .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
+      return nil
+    }
+  }
+
   var requiresTranscription: Bool {
     return false // Gemini models process audio directly
   }

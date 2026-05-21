@@ -326,10 +326,21 @@ enum TranscriptionModel: String, CaseIterable {
 // MARK: - Gemini Transcription Request Models
 struct GeminiTranscriptionRequest: Codable {
   let contents: [GeminiTranscriptionContent]
-
+  let generationConfig: GeminiTranscriptionGenerationConfig?
 
   struct GeminiTranscriptionContent: Codable {
     let parts: [GeminiTranscriptionPart]
+  }
+
+  /// Minimal `generationConfig` for transcription. Used today only to disable thinking on
+  /// Gemini 3.x models (`thinkingConfig.thinkingBudget = 0`), which otherwise add multi-second
+  /// reasoning overhead to a task that doesn't benefit from it. Ignored by 2.x models.
+  struct GeminiTranscriptionGenerationConfig: Codable {
+    let thinkingConfig: GeminiThinkingConfig?
+  }
+
+  struct GeminiThinkingConfig: Codable {
+    let thinkingBudget: Int
   }
   
   struct GeminiTranscriptionPart: Codable {

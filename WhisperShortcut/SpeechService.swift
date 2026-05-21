@@ -1244,9 +1244,12 @@ class SpeechService {
             )
           ]
         )
-      ]
+      ],
+      generationConfig: GeminiTranscriptionRequest.GeminiTranscriptionGenerationConfig(
+        thinkingConfig: GeminiTranscriptionRequest.GeminiThinkingConfig(thinkingBudget: 0)
+      )
     )
-    
+
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
     let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
     var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
@@ -1327,7 +1330,10 @@ class SpeechService {
             )
           ]
         )
-      ]
+      ],
+      generationConfig: GeminiTranscriptionRequest.GeminiTranscriptionGenerationConfig(
+        thinkingConfig: GeminiTranscriptionRequest.GeminiThinkingConfig(thinkingBudget: 0)
+      )
     )
 
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)

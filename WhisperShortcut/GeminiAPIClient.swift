@@ -449,13 +449,16 @@ class GeminiAPIClient {
           if let sys = systemInstruction {
             body["system_instruction"] = sys
           }
+          // Per-model thinking budget: Pro tier uses dynamic thinking (-1) for stronger
+          // reasoning at the cost of 3–10s before the first streamed token. Flash tier
+          // keeps thinking off (0) so the streaming UX stays responsive. Falls back to 0
+          // for any model not enumerated in `PromptModel.geminiThinkingBudget`.
+          let thinkingBudget = PromptModel(rawValue: model)?.geminiThinkingBudget ?? 0
           body["generationConfig"] = [
             "temperature": 0.7,
             "topP": 0.95,
             "maxOutputTokens": 8192,
-            // Disable thinking for chat: dynamic thinking (-1) delays the first
-            // output token by several seconds, defeating the visible-streaming UX.
-            "thinkingConfig": ["thinkingBudget": 0]
+            "thinkingConfig": ["thinkingBudget": thinkingBudget]
           ]
           body["safetySettings"] = [
             ["category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"],
