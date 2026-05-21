@@ -8,9 +8,12 @@ enum ChatModelProvider: String, CaseIterable {
 }
 
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
-// Current Gemini model IDs: https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash (and sibling docs)
-// GA (stable IDs): gemini-2.5-flash, gemini-2.5-flash-lite. 2.0 removed. Preview: gemini-3-*.
-// Grok model IDs: https://docs.x.ai/docs/models
+// Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
+// GA: gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro, gemini-3.1-flash-lite, gemini-3.5-flash.
+// Preview: gemini-3-flash-preview, gemini-3-pro-preview, gemini-3.1-pro-preview.
+// Grok model IDs: https://docs.x.ai/docs/models (grok-4-1-fast-non-reasoning was retired 2026-05-15
+// and silently redirects to grok-4.3; the case was removed — see migrateLegacyPromptRawValue).
+// OpenAI model IDs: https://platform.openai.com/docs/models.
 enum PromptModel: String, CaseIterable {
   // Gemini Models (multimodal, direct audio input)
   case gemini25Flash = "gemini-2.5-flash"
@@ -19,20 +22,23 @@ enum PromptModel: String, CaseIterable {
   case gemini3Flash = "gemini-3-flash-preview"
   case gemini3Pro = "gemini-3-pro-preview"
   case gemini31Pro = "gemini-3.1-pro-preview"
-  case gemini31FlashLite = "gemini-3.1-flash-lite-preview"
+  case gemini31FlashLite = "gemini-3.1-flash-lite"
+  case gemini35Flash = "gemini-3.5-flash"
 
   // Grok Models (xAI, OpenAI-compatible API, text + search for chat)
   case grok4 = "grok-4.20-0309-non-reasoning"
   case grok4Reasoning = "grok-4.20-0309-reasoning"
-  case grok4Fast = "grok-4-1-fast-non-reasoning"
+  case grok43 = "grok-4.3"
 
   // OpenAI Models (chat + Dictate Prompt via Chat Completions API)
   case openaiGPT5 = "gpt-5"
   case openaiGPT5Mini = "gpt-5-mini"
-  /// Audio-input chat model. Accepts inline `input_audio` content parts, which makes it the
-  /// counterpart to Gemini for Dictate Prompt (the model "hears" the audio directly).
+  case openaiGPT55 = "gpt-5.5"
+  /// Audio-input chat model (renamed by OpenAI from `gpt-4o-audio-preview` → `gpt-audio`).
+  /// Accepts inline `input_audio` content parts, which makes it the counterpart to Gemini for
+  /// Dictate Prompt (the model "hears" the audio directly).
   /// Reference: https://platform.openai.com/docs/guides/audio
-  case openaiGPT4oAudio = "gpt-4o-audio-preview"
+  case openaiGPT4oAudio = "gpt-audio"
   
   var displayName: String {
     switch self {
@@ -50,18 +56,22 @@ enum PromptModel: String, CaseIterable {
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
       return "Gemini 3.1 Flash-Lite"
+    case .gemini35Flash:
+      return "Gemini 3.5 Flash"
     case .grok4:
       return "Grok 4"
     case .grok4Reasoning:
       return "Grok 4 Reasoning"
-    case .grok4Fast:
-      return "Grok 4 Fast"
+    case .grok43:
+      return "Grok 4.3"
     case .openaiGPT5:
       return "OpenAI GPT-5"
     case .openaiGPT5Mini:
       return "OpenAI GPT-5 Mini"
+    case .openaiGPT55:
+      return "OpenAI GPT-5.5"
     case .openaiGPT4oAudio:
-      return "OpenAI GPT-4o Audio"
+      return "OpenAI GPT Audio"
     }
   }
 
@@ -81,18 +91,22 @@ enum PromptModel: String, CaseIterable {
       return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
     case .gemini31FlashLite:
       return "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Multimodal"
+    case .gemini35Flash:
+      return "Google's Gemini 3.5 Flash • Latest GA flagship Flash • Strong on agentic + coding tasks • Multimodal"
     case .grok4:
       return "xAI's Grok 4 • Frontier-class intelligence • Web + X search • Requires xAI API key"
     case .grok4Reasoning:
       return "xAI's Grok 4 Reasoning • Extended thinking for complex tasks • Web + X search • Requires xAI API key"
-    case .grok4Fast:
-      return "xAI's Grok 4 Fast • Low-latency responses • Web + X search • Requires xAI API key"
+    case .grok43:
+      return "xAI's Grok 4.3 • Flagship • Leading non-hallucination + agentic tool use • 1M context • Web + X search • Requires xAI API key"
     case .openaiGPT5:
       return "OpenAI's GPT-5 • Flagship reasoning + tool use • Text + images • Requires OpenAI API key"
     case .openaiGPT5Mini:
       return "OpenAI's GPT-5 Mini • Cheaper, faster GPT-5 variant • Text + images • Requires OpenAI API key"
+    case .openaiGPT55:
+      return "OpenAI's GPT-5.5 • Newest flagship (April 2026) • Text + images • Requires OpenAI API key"
     case .openaiGPT4oAudio:
-      return "OpenAI's GPT-4o Audio Preview • Accepts inline audio for voice-driven prompts • Requires OpenAI API key"
+      return "OpenAI's GPT Audio • Accepts inline audio for voice-driven prompts • Requires OpenAI API key"
     }
   }
   
@@ -103,15 +117,13 @@ enum PromptModel: String, CaseIterable {
   
   var costLevel: String {
     switch self {
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite:
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash:
       return "Low"
     case .gemini25Pro, .gemini3Pro, .gemini31Pro:
       return "Medium"
-    case .grok4, .grok4Reasoning:
+    case .grok4, .grok4Reasoning, .grok43:
       return "Medium"
-    case .grok4Fast:
-      return "Low"
-    case .openaiGPT5, .openaiGPT4oAudio:
+    case .openaiGPT5, .openaiGPT55, .openaiGPT4oAudio:
       return "Medium"
     case .openaiGPT5Mini:
       return "Low"
@@ -120,9 +132,9 @@ enum PromptModel: String, CaseIterable {
 
   var provider: ChatModelProvider {
     switch self {
-    case .grok4, .grok4Reasoning, .grok4Fast:
+    case .grok4, .grok4Reasoning, .grok43:
       return .grok
-    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT4oAudio:
+    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
       return .openai
     default:
       return .gemini
@@ -201,9 +213,11 @@ enum PromptModel: String, CaseIterable {
       return .gemini31Pro
     case .gemini31FlashLite:
       return .gemini31FlashLite
-    case .grok4, .grok4Reasoning, .grok4Fast:
+    case .gemini35Flash:
+      return .gemini35Flash
+    case .grok4, .grok4Reasoning, .grok43:
       return nil // Grok models are text-only, no audio transcription
-    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT4oAudio:
+    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
     }
   }
@@ -246,11 +260,21 @@ enum PromptModel: String, CaseIterable {
     model
   }
 
-  /// Maps removed `PromptModel` raw values so `PromptModel(rawValue:)` succeeds after enum case removal.
+  /// Maps removed/renamed `PromptModel` raw values so `PromptModel(rawValue:)` succeeds after
+  /// enum case removal or upstream model renames.
   static func migrateLegacyPromptRawValue(_ raw: String) -> String {
     switch raw {
     case "gemini-2.0-flash", "gemini-2.0-flash-lite":
       return Self.gemini31FlashLite.rawValue
+    case "gemini-3.1-flash-lite-preview":
+      // Same model — Google promoted -preview to GA.
+      return Self.gemini31FlashLite.rawValue
+    case "grok-4-1-fast-non-reasoning":
+      // Retired by xAI on 2026-05-15; the slug silently redirected to grok-4.3 (now in enum).
+      return Self.grok43.rawValue
+    case "gpt-4o-audio-preview":
+      // Renamed by OpenAI to `gpt-audio`; the case's rawValue now matches the new slug.
+      return Self.openaiGPT4oAudio.rawValue
     default:
       return raw
     }
@@ -621,8 +645,8 @@ struct SettingsDefaults {
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
-  static let selectedPromptModel = PromptModel.gemini3Flash
-  static let selectedChatModel = PromptModel.gemini3Flash
+  static let selectedPromptModel = PromptModel.gemini35Flash
+  static let selectedChatModel = PromptModel.gemini35Flash
   static let chatCloseOnFocusLoss = true
   static let settingsCloseOnFocusLoss = true
   static let customPromptText = ""
@@ -655,7 +679,7 @@ struct SettingsDefaults {
   // MARK: - Live Meeting Settings
   static let liveMeetingChunkInterval = LiveMeetingChunkInterval.sixtySeconds
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
-  static let selectedMeetingSummaryModel = PromptModel.gemini3Flash
+  static let selectedMeetingSummaryModel = PromptModel.gemini35Flash
 
   /// Smart Improvement default model.
   static let defaultSmartImprovementModel = PromptModel.gemini31Pro

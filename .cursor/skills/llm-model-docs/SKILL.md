@@ -118,7 +118,13 @@ When a model returns unexpected errors, or you suspect a deprecation/rename, che
 
 1. **Before changing a model ID**: open the provider's model index, confirm the new ID exists and its GA/Preview status, then update raw values in [SettingsConfiguration.swift](WhisperShortcut/Settings/Shared/SettingsConfiguration.swift), [TranscriptionModels.swift](WhisperShortcut/TranscriptionModels.swift), or [AppConstants.swift](WhisperShortcut/AppConstants.swift). Keep or add a comment pointing at the doc URL you used.
 2. **Before answering "does model X support Y?"**: WebFetch the per-model or guide page, quote the exact wording, and link the URL in your response.
-3. **After changes**: rebuild and restart the app (see the `rebuild-after-change` skill).
+3. **Verify with the live API, not just the docs.** Docs lag behind retirements and silent renames. Use the test scripts in `scripts/`:
+   - [scripts/test-gemini-models.sh](scripts/test-gemini-models.sh)
+   - [scripts/test-openai-models.sh](scripts/test-openai-models.sh)
+   - [scripts/test-grok-models.sh](scripts/test-grok-models.sh)
+   They read keys from `.env` at the repo root (mode 600, gitignored). Each script tests three buckets: `current` (must 200), `legacy` (Gemini/Grok: must still serve via redirect; OpenAI: must 404 to confirm retirement), and `candidate` (exploratory). Add a model to the right bucket whenever you make an enum change so future runs catch regressions.
+4. **Watch for silent redirects.** xAI redirects retired slugs to current ones with HTTP 200 but a different `model` field in the response. The Grok test script ([scripts/test-grok-models.sh](scripts/test-grok-models.sh)) compares response.model vs requested model — if they differ, it prints "redirected → X". When you see a redirect, the enum case is dead weight: remove it and add a `migrateLegacyPromptRawValue` mapping.
+5. **After code changes**: rebuild and restart the app (see the `rebuild-after-change` skill).
 
 ## Anti-patterns
 

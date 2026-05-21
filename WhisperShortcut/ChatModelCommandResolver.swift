@@ -49,7 +49,11 @@ enum ChatModelCommandResolver {
     // Detect version family (order matters).
     var candidates: [PromptModel]
     if hasGrok {
-      candidates = [.grok4, .grok4Reasoning, .grok4Fast]
+      if normalized.contains("4.3") {
+        candidates = [.grok43]
+      } else {
+        candidates = [.grok4, .grok4Reasoning, .grok43]
+      }
     } else if hasOpenAI {
       // openaiGPT4oAudio is Dictate-Prompt only (supportsTextChat=false), so
       // the chat resolver returns only the text-capable OpenAI models.
@@ -147,7 +151,7 @@ enum ChatModelCommandResolver {
 
   private static func isFast(_ m: PromptModel) -> Bool {
     switch m {
-    case .grok4Fast: return true
+    case .grok43: return true  // grok-4.3 is xAI's "fastest, most intelligent" since 2026-05-06.
     default: return false
     }
   }

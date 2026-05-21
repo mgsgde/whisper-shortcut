@@ -192,7 +192,15 @@ class SpeechService {
     // OpenAI cloud transcription (gpt-4o-transcribe / gpt-4o-mini-transcribe)
     if model.isOpenAI, let openAIModelID = model.openAIAPIModelID {
       try validateAudioFileFormat(at: audioURL)
-      let result = try await transcribeWithOpenAI(audioURL: audioURL, modelID: openAIModelID, displayName: model.displayName)
+      // gpt-4o-transcribe family accepts a full GPT-4o-style instruction via the `prompt`
+      // multipart field — pass the user's dictation prompt so OpenAI behaves like Gemini.
+      let dictationHint = (promptOverride ?? buildDictationPrompt()).trimmingCharacters(in: .whitespacesAndNewlines)
+      let result = try await transcribeWithOpenAI(
+        audioURL: audioURL,
+        modelID: openAIModelID,
+        displayName: model.displayName,
+        dictationHint: dictationHint.isEmpty ? nil : dictationHint
+      )
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: [\(model.displayName)] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -855,7 +863,7 @@ class SpeechService {
 
   // MARK: - OpenAI Transcription (cloud)
 
-  private func transcribeWithOpenAI(audioURL: URL, modelID: String, displayName: String) async throws -> String {
+  private func transcribeWithOpenAI(audioURL: URL, modelID: String, displayName: String, dictationHint: String? = nil) async throws -> String {
     let token = (keychainManager.getOpenAIAPIKey() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     guard !token.isEmpty else {
       throw TranscriptionError.networkError("OpenAI API key is missing — add it in Settings → General.")
@@ -879,7 +887,8 @@ class SpeechService {
       bearerToken: token,
       extraHeaders: [],
       session: session,
-      logPrefix: "OPENAI-TRANSCRIPTION"
+      logPrefix: "OPENAI-TRANSCRIPTION",
+      dictationHint: dictationHint
     )
   }
 
@@ -946,13 +955,18 @@ class SpeechService {
   /// Forwards Whisper Glossary as the `prompt` field and the language selection as the `language`
   /// field whenever the OpenAI layout (`file`) is used. The whisper-asr-webservice layout
   /// (`audio_file`) doesn't accept the same multipart fields, so those hints are skipped there.
+  /// `dictationHint` is a longer instruction string (e.g. the dictation system prompt) that
+  /// `gpt-4o-transcribe`/`gpt-4o-mini-transcribe` accept via the same `prompt` field —
+  /// OpenAI docs: "similarly to how you would prompt other GPT-4o models". When set, it is
+  /// prepended to the glossary. Callers must NOT pass it for `whisper-1` (224-token limit).
   private func sendOpenAICompatibleTranscriptionRequest(
     url: URL, fieldName: String,
     modelID: String?,
     audioData: Data, fileExtension: String, mimeType: String,
     bearerToken: String?, extraHeaders: [[String: String]],
     session: URLSession,
-    logPrefix: String
+    logPrefix: String,
+    dictationHint: String? = nil
   ) async throws -> String {
     var requestURL = url
     if fieldName == "audio_file",
@@ -966,12 +980,20 @@ class SpeechService {
     }
 
     let glossary = SystemPromptsStore.shared.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
-    let glossaryHint: String? = glossary.isEmpty ? nil : glossary
+    let trimmedDictationHint = (dictationHint ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let combinedPrompt: String? = {
+      switch (trimmedDictationHint.isEmpty, glossary.isEmpty) {
+      case (true, true): return nil
+      case (true, false): return glossary
+      case (false, true): return trimmedDictationHint
+      case (false, false): return trimmedDictationHint + "\n\n" + glossary
+      }
+    }()
     let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage)
     let savedLanguage = WhisperLanguage(rawValue: savedLanguageString ?? WhisperLanguage.auto.rawValue) ?? WhisperLanguage.auto
     let languageCode = savedLanguage.languageCode
 
-    DebugLogger.log("\(logPrefix): POST \(loggableURL(requestURL)) (field: \(fieldName), model: \(modelID ?? "-"), language: \(languageCode ?? "auto"), prompt: \(glossaryHint == nil ? "none" : "\(glossaryHint!.count) chars"))")
+    DebugLogger.log("\(logPrefix): POST \(loggableURL(requestURL)) (field: \(fieldName), model: \(modelID ?? "-"), language: \(languageCode ?? "auto"), prompt: \(combinedPrompt == nil ? "none" : "\(combinedPrompt!.count) chars\(trimmedDictationHint.isEmpty ? "" : " (dictation+glossary)")"))")
 
     let boundary = "Boundary-\(UUID().uuidString)"
     var body = Data()
@@ -988,7 +1010,7 @@ class SpeechService {
       if let language = languageCode {
         appendField("language", language)
       }
-      if let prompt = glossaryHint {
+      if let prompt = combinedPrompt {
         appendField("prompt", prompt)
       }
     }

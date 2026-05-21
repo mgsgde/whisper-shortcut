@@ -8,9 +8,9 @@
 import Foundation
 
 // MARK: - Transcription Model Enum
-// Current Gemini model IDs: https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash (and sibling docs)
-// GA (stable IDs, no -preview): gemini-2.5-flash, gemini-2.5-flash-lite. gemini-2.0-flash and gemini-2.0-flash-lite removed.
-// Preview (keep -preview): gemini-3-flash-preview, gemini-3-pro-preview, gemini-3.1-pro-preview, gemini-3.1-flash-lite-preview.
+// Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
+// GA (stable IDs, no -preview): gemini-2.5-flash, gemini-2.5-flash-lite, gemini-3.1-flash-lite, gemini-3.5-flash.
+// Preview (keep -preview): gemini-3-flash-preview, gemini-3-pro-preview, gemini-3.1-pro-preview.
 enum TranscriptionModel: String, CaseIterable {
   // Gemini models (online)
   case gemini25Flash = "gemini-2.5-flash"
@@ -18,7 +18,8 @@ enum TranscriptionModel: String, CaseIterable {
   case gemini3Flash = "gemini-3-flash-preview"
   case gemini3Pro = "gemini-3-pro-preview"
   case gemini31Pro = "gemini-3.1-pro-preview"
-  case gemini31FlashLite = "gemini-3.1-flash-lite-preview"
+  case gemini31FlashLite = "gemini-3.1-flash-lite"
+  case gemini35Flash = "gemini-3.5-flash"
   
   // Offline Whisper models
   case whisperTiny = "whisper-tiny"
@@ -50,6 +51,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
       return "Gemini 3.1 Flash-Lite"
+    case .gemini35Flash:
+      return "Gemini 3.5 Flash"
     case .whisperTiny:
       return "Whisper Tiny (Offline)"
     case .whisperBase:
@@ -83,7 +86,9 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini31Pro:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent"
     case .gemini31FlashLite:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent"
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
+    case .gemini35Flash:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "" // Offline models don't use API endpoints
     case .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
@@ -107,7 +112,7 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini31FlashLite, .gemini25FlashLite, .gemini25Flash, .whisperBase:
       return true
-    case .gemini3Flash, .gemini3Pro, .gemini31Pro, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge,
+    case .gemini3Flash, .gemini3Pro, .gemini31Pro, .gemini35Flash, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge,
          .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .selfHostedTranscription:
       return false
     }
@@ -118,7 +123,7 @@ enum TranscriptionModel: String, CaseIterable {
 
   var costLevel: String {
     switch self {
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite:
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash:
       return "Low"
     case .gemini3Pro, .gemini31Pro:
       return "Medium"
@@ -147,6 +152,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
     case .gemini31FlashLite:
       return "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Ideal for dictation"
+    case .gemini35Flash:
+      return "Google's Gemini 3.5 Flash • Latest GA flagship Flash • Strong on agentic/coding tasks"
     case .whisperTiny:
       return "OpenAI Whisper Tiny • Fastest • ~75MB • Offline"
     case .whisperBase:
@@ -168,7 +175,7 @@ enum TranscriptionModel: String, CaseIterable {
   
   var isGemini: Bool {
     switch self {
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .gemini31FlashLite:
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .gemini31FlashLite, .gemini35Flash:
       return true
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
          .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .selfHostedTranscription:
@@ -216,11 +223,11 @@ enum TranscriptionModel: String, CaseIterable {
     guard let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) else {
       return SettingsDefaults.selectedTranscriptionModel
     }
-    if savedModelString == "gemini-2.0-flash" || savedModelString == "gemini-2.0-flash-lite" {
-      UserDefaults.standard.set(TranscriptionModel.gemini31FlashLite.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
-      return .gemini31FlashLite
+    let migrated = migrateLegacyTranscriptionRawValue(savedModelString)
+    if migrated != savedModelString {
+      UserDefaults.standard.set(migrated, forKey: UserDefaultsKeys.selectedTranscriptionModel)
     }
-    if let savedModel = TranscriptionModel(rawValue: savedModelString) {
+    if let savedModel = TranscriptionModel(rawValue: migrated) {
       return savedModel
     }
     UserDefaults.standard.set(
@@ -234,14 +241,28 @@ enum TranscriptionModel: String, CaseIterable {
     guard let savedModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) else {
       return loadSelected()
     }
-    if savedModelString == "gemini-2.0-flash" || savedModelString == "gemini-2.0-flash-lite" {
-      UserDefaults.standard.set(TranscriptionModel.gemini31FlashLite.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
-      return .gemini31FlashLite
+    let migrated = migrateLegacyTranscriptionRawValue(savedModelString)
+    if migrated != savedModelString {
+      UserDefaults.standard.set(migrated, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
     }
-    if let savedModel = TranscriptionModel(rawValue: savedModelString) {
+    if let savedModel = TranscriptionModel(rawValue: migrated) {
       return savedModel
     }
     return loadSelected()
+  }
+
+  /// Maps retired/renamed transcription raw values to current ones so persisted
+  /// UserDefaults selections keep resolving after enum changes.
+  static func migrateLegacyTranscriptionRawValue(_ raw: String) -> String {
+    switch raw {
+    case "gemini-2.0-flash", "gemini-2.0-flash-lite":
+      return TranscriptionModel.gemini31FlashLite.rawValue
+    case "gemini-3.1-flash-lite-preview":
+      // GA replaced the -preview slug; same model, stable ID.
+      return TranscriptionModel.gemini31FlashLite.rawValue
+    default:
+      return raw
+    }
   }
 
   // MARK: - Model Availability
@@ -279,7 +300,7 @@ enum TranscriptionModel: String, CaseIterable {
       return .selfHostedTranscription
     case .gemini25FlashLite, .gemini31FlashLite:
       return .geminiFlashLite
-    case .gemini25Flash, .gemini3Flash:
+    case .gemini25Flash, .gemini3Flash, .gemini35Flash:
       return .geminiFlash
     case .gemini3Pro, .gemini31Pro:
       return .geminiPro
