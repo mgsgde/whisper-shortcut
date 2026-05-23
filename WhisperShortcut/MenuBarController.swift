@@ -146,6 +146,7 @@ class MenuBarController: NSObject {
 
   private func createMenu() -> NSMenu {
     let menu = NSMenu()
+    menu.showsStateColumn = false
 
     // Status item
     let statusMenuItem = NSMenuItem(title: appState.statusText, action: nil, keyEquivalent: "")
@@ -184,14 +185,14 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
-    // Settings and quit
-    let settingsItem = createMenuItemWithShortcut(
-      "Settings...", action: #selector(openSettings),
+    // Settings and quit.
+    // Use a neutral selector and clear image explicitly to avoid AppKit
+    // auto-decoration that can reserve an icon column for this row.
+    let configureItem = createMenuItemWithShortcut(
+      "Configure", action: #selector(openConfigurationPanel),
       shortcut: currentConfig.openSettings, tag: 103)
-    // macOS auto-decorates "Settings…" items with a gear glyph; clear it so the
-    // menu doesn't reserve an icon column that misaligns the other rows.
-    settingsItem.image = nil
-    menu.addItem(settingsItem)
+    configureItem.image = nil
+    menu.addItem(configureItem)
     menu.addItem(
       createMenuItem("Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q"))
 
@@ -680,6 +681,10 @@ class MenuBarController: NSObject {
 
   @objc func openSettings() {
     SettingsManager.shared.toggleSettings()
+  }
+
+  @objc func openConfigurationPanel() {
+    openSettings()
   }
 
   @objc func openChatWindow() {
@@ -2022,6 +2027,9 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
 
         cleanupAudioFile(at: audioURL)
 
+      } catch TranscriptionError.noSpeechDetected {
+        DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (no speech detected)")
+        cleanupAudioFile(at: audioURL)
       } catch {
         DebugLogger.logError("LIVE-MEETING: Chunk \(chunkIndex) transcription failed: \(error)")
         let isRateLimitOrQuota: Bool = {
