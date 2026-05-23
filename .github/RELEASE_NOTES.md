@@ -1,4 +1,4 @@
-# WhisperShortcut 7.24
+# WhisperShortcut 7.25
 
 ## Installation
 
@@ -6,20 +6,20 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-### Chat & Dictate Prompt
+### Smart Improvement & Dictation
 
-- **Pro models now actually think.** Gemini Pro chat models (Gemini 2.5 Pro, Gemini 3 Pro, Gemini 3.1 Pro) run with dynamic reasoning enabled — answers are noticeably stronger at the cost of a few seconds before the first streamed token. Flash models keep instant streaming as before.
-- **Refreshed default model lineup.** OpenAI chat defaults to GPT-5.5 and Grok defaults to Grok 4.3 — bringing both providers in line with their current flagship models.
-- **Bare `/gemini`, `/grok`, `/openai` commands** in chat now consistently use the same defaults the chat tab uses, so picking a provider without a model gives the same result everywhere.
+- **Smart Improvement scheduling was tightened.** First-run auto-triggering now starts as soon as enough interaction data is available, and cooldown handling no longer consumes cycles incorrectly.
+- **Auto-run UX is cleaner.** Background Smart Improvement runs no longer show a misleading "started" popup while still reporting meaningful result notifications.
+- **Empty transcriptions are handled explicitly.** No-speech chunks now produce a dedicated no-speech path instead of ambiguous empty-success behavior.
 
-### Transcription
+### Menu Bar
 
-- **Smarter Gemini transcription requests.** Thinking is now explicitly disabled for transcription, which doesn't benefit from reasoning. Same speed today, but protects against extra latency and cost as Google's models evolve.
+- **Settings row alignment was fixed.** Menu handling now avoids AppKit auto-decoration behavior that caused the gear icon/alignment issue in the status menu.
 
-### Misc
+### Dependencies
 
-- **Launch at Login is on by default** for new installs, so WhisperShortcut is ready right after you boot.
+- Merged dependency updates for `swift-collections`, `swift-jinja`, `gtm-session-fetcher`, and `swift-transformers`.
 
 ## Full changelog
 
-[Compare v7.23…v7.24](https://github.com/mgsgde/whisper-shortcut/compare/v7.23...v7.24)
+[Compare v7.24…v7.25](https://github.com/mgsgde/whisper-shortcut/compare/v7.24...v7.25)
