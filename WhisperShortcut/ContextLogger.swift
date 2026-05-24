@@ -123,13 +123,13 @@ class ContextLogger {
     writeEntry(entry)
   }
 
-  func logPrompt(mode: PromptMode, selectedText: String?, userInstruction: String, modelResponse: String) {
+  func logPrompt(mode: PromptMode, selectedText: String?, userInstruction: String, modelResponse: String, model: String? = nil) {
     guard isLoggingEnabled else { return }
     let modeString = "prompt"
     let entry = InteractionLogEntry(
       ts: iso8601Now(),
       mode: modeString,
-      model: nil,
+      model: model,
       result: nil,
       selectedText: selectedText,
       userInstruction: userInstruction,

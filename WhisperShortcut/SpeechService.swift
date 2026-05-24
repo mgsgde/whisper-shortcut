@@ -280,7 +280,7 @@ class SpeechService {
     case .openai:
       return try await executePromptWithOpenAI(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
     case .grok:
-      throw TranscriptionError.networkError("Grok does not support audio-input Dictate Prompt. Pick a Gemini model or OpenAI's GPT-4o Audio.")
+      preconditionFailure("Unreachable: no Grok model sets supportsDirectAudioInput=true, so the guard above always throws first.")
     }
   }
 
@@ -464,7 +464,7 @@ class SpeechService {
       userInstruction: userInstruction,
       modelResponse: normalizedText
     )
-    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText)
+    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText, model: model.rawValue)
 
     DebugLogger.logSuccess("PROMPT-MODE-GEMINI: Completed successfully")
     return normalizedText
@@ -665,7 +665,7 @@ class SpeechService {
       userInstruction: userInstruction,
       modelResponse: normalizedText
     )
-    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText)
+    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText, model: model.rawValue)
 
     DebugLogger.logSuccess("PROMPT-MODE-OPENAI: Completed successfully (\(normalizedText.count) chars)")
     return normalizedText
@@ -776,7 +776,7 @@ class SpeechService {
       userInstruction: textCommand,
       modelResponse: normalizedText
     )
-    ContextLogger.shared.logPrompt(mode: mode, selectedText: selectedText, userInstruction: textCommand, modelResponse: normalizedText)
+    ContextLogger.shared.logPrompt(mode: mode, selectedText: selectedText, userInstruction: textCommand, modelResponse: normalizedText, model: selectedPromptModel.rawValue)
 
     DebugLogger.logSuccess("PROMPT-MODE-TEXT: Completed successfully")
     return normalizedText
@@ -1057,10 +1057,12 @@ class SpeechService {
     struct WhisperResponse: Decodable { let text: String }
     if let parsed = try? JSONDecoder().decode(WhisperResponse.self, from: data) {
       let result = parsed.text.trimmingCharacters(in: .whitespacesAndNewlines)
-      if !result.isEmpty {
-        DebugLogger.logSuccess("\(logPrefix): \(result.count) chars")
-        return result
+      if result.isEmpty {
+        DebugLogger.log("\(logPrefix): empty transcription (no speech detected)")
+        throw TranscriptionError.noSpeechDetected
       }
+      DebugLogger.logSuccess("\(logPrefix): \(result.count) chars")
+      return result
     }
     if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
        !text.isEmpty {
