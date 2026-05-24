@@ -1,6 +1,6 @@
-# Analyze Code Quality
+# Review Code
 
-Analyze a focused scope of this repo for bugs, smells, and regression risk. Scope is auto-detected from recent git activity unless overridden.
+Qualitative review of a focused scope of this repo for bugs, smells, and regression risk. Scope is auto-detected from recent git activity unless overridden. This is a **review** (suggestions, no edits) by default; the user opts in to fixes with a follow-up.
 
 ## Scope resolution
 
@@ -77,7 +77,7 @@ After applying fixes:
 
 ## Constraints
 
-- For the analysis pass: suggestions only, do not modify files.
+- For the review pass: suggestions only, do not modify files.
 - For the follow-up fix pass: see "When the user follows up with 'fix'" above.
 - Do NOT run Playwright. This command is code-focused, not UX.
 - Do NOT run Xcode tests; the user runs tests manually in Xcode.
@@ -85,12 +85,13 @@ After applying fixes:
 
 ## Related commands
 
-- **`analyze-user-interactions`** — when the user wants improvements based on what they actually experienced (recurring "korrigiere" misbehaving, hallucinations, format drift, etc.), not on static code review. That command mines the local interaction JSONL + macOS log and proposes changes at the right level (`[prompt]` / `[default]` / `[code]` / `[logging]` / `[ui]`). Prefer it whenever the user references real usage ("works badly", "is not doing what I want", "find patterns").
+- **`/analyze-user-interactions`** — when the user wants improvements based on what they actually experienced (recurring "korrigiere" misbehaving, hallucinations, format drift, etc.), not on static code review. That command mines the local interaction JSONL + macOS log and proposes changes at the right level (`[prompt]` / `[default]` / `[code]` / `[logging]` / `[ui]`). Prefer it whenever the user references real usage ("works badly", "is not doing what I want", "find patterns").
+- **`/audit-llm-context`** — when the review target is the LLM-context files themselves (`.cursor/commands`, `.cursor/rules`, `.cursor/skills`, `CLAUDE.md`) rather than app source code.
 
 ## Example invocations
 
-- `analyze-code-quality` — auto-detect scope from recent commits.
-- `analyze-code-quality --path WhisperShortcut/ChatView.swift` — analyze the chat view and nearby collaborators.
-- `analyze-code-quality --path WhisperShortcut/Settings` — analyze Settings broadly.
-- `analyze-code-quality --since "3 weeks"` — widen the detection window.
-- `analyze-code-quality --whole-repo` — full Swift app and repo tooling scan.
+- `/review-code` — auto-detect scope from recent commits.
+- `/review-code --path WhisperShortcut/ChatView.swift` — review the chat view and nearby collaborators.
+- `/review-code --path WhisperShortcut/Settings` — review Settings broadly.
+- `/review-code --since "3 weeks"` — widen the detection window.
+- `/review-code --whole-repo` — full Swift app and repo tooling scan.

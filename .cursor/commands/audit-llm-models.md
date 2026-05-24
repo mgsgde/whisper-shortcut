@@ -1,6 +1,6 @@
-# Analyze LLM Models
+# Audit LLM Models
 
-Survey the current model lineups at OpenAI, Google Gemini, and xAI (Grok), compare them against what this repo uses today, and recommend concrete migrations — then **prove the recommendations work** by running the local test scripts. Use this when the user asks "are we on the latest models?", "what's new in LLMs?", "should we switch to X?", or simply runs `/analyze-llm-models`.
+Systematic audit of the current model lineups at OpenAI, Google Gemini, and xAI (Grok) — compare against what this repo uses today and recommend concrete migrations, then **prove the recommendations work** by running the local test scripts. Use this when the user asks "are we on the latest models?", "what's new in LLMs?", "should we switch to X?", or simply runs `/audit-llm-models`.
 
 The dual purpose: stay current (the user heard about Grok 4.3 from X.com instead of from us — don't let that happen again) and stay honest (training data is stale, so the recommendation MUST be verified against the live API before it ships).
 
@@ -88,11 +88,11 @@ Actually apply the recommended migrations:
 
 - **`llm-model-docs` skill** — the canonical curated list of where each provider documents their models, gotchas (whisper-1 224-token limit etc.), and the proactive-lineup-check workflow. Read it before this command does anything.
 - **`gemini-model-docs` skill** — Gemini-specific deep dive (TTS voices, Files API, multimodal).
-- **`new-release` skill** — bump the app version after model migrations ship.
+- **`/release`** — bump the app version after model migrations ship.
 
 ## Example invocations
 
-- `/analyze-llm-models` — full survey across all three providers.
-- `/analyze-llm-models --provider gemini` — focus on one provider.
-- `/analyze-llm-models --role transcription` — only look at transcription defaults and candidate Whisper / Gemini Flash-Lite / OpenAI transcribe alternatives.
-- `/analyze-llm-models migrate` — survey, then apply the recommendations (equivalent to running the command, reviewing, and saying "alles").
+- `/audit-llm-models` — full survey across all three providers.
+- `/audit-llm-models --provider gemini` — focus on one provider.
+- `/audit-llm-models --role transcription` — only look at transcription defaults and candidate Whisper / Gemini Flash-Lite / OpenAI transcribe alternatives.
+- `/audit-llm-models migrate` — survey, then apply the recommendations (equivalent to running the command, reviewing, and saying "alles").

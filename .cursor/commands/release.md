@@ -1,4 +1,6 @@
-# Update Version Command
+# Release
+
+Cut a new App Store / GitHub release: bump version, write App Store + GitHub release notes, rebuild, commit, push, tag.
 
 ## Task
 

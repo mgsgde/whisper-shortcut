@@ -49,7 +49,8 @@ Apply only the proposed changes the user names (or all if they say "all"). Follo
 
 ## Related commands / skills
 
-- **analyze-code-quality** — when the user wants a static code review instead of a usage-driven one. Use this command when the scope is "behavior the user actually experienced".
+- **`/review-code`** — when the user wants a static code review instead of a usage-driven one. Use this command when the scope is "behavior the user actually experienced".
+- **`/audit-llm-context`** — when the user wants to check the LLM-context files (commands, rules, skills, CLAUDE.md) themselves for staleness instead of app behavior.
 - **debugging-workflow** (skill) — switch to when a cluster points to a code bug and you need to add `DebugLogger` instrumentation + a repro plan.
 - **gemini-system-prompt-best-practices** (skill) — when the fix is a system-prompt change.
 - **gemini-model-docs** (skill) — when proposing a default-model change.
