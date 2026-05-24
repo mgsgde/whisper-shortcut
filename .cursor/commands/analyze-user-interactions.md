@@ -1,3 +1,8 @@
+---
+name: analyze-user-interactions
+description: Mine the local user-interaction JSONL logs to find systematic failures and propose improvements (system prompt, defaults, code, logging, or UI). Follows the procedure in .cursor/skills/analyze-user-interactions/SKILL.md.
+---
+
 # Analyze User Interactions
 
 Mine the local user-interaction logs to find systematic failures and propose improvements at the right level (system prompt, defaults, code, logging, or UI). Read **`.cursor/skills/analyze-user-interactions/SKILL.md`** and follow its procedure end-to-end.
@@ -17,7 +22,7 @@ Resolve scope in this order:
 
 1. **Establish scope** and print it.
 2. **Extract** records from `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/UserContext/interactions-*.jsonl`.
-3. **Cross-reference** the macOS log via `bash scripts/logs.sh -t <window> -f '<filter>'` for model attribution, latency, and errors. Required for `prompt` mode because the JSONL does not log the model.
+3. **Cross-reference** the macOS log via `bash scripts/logs.sh -t <window> -f '<filter>'` for latency and errors. Model attribution is in the JSONL `model` field for all three modes; only fall back to the log filter `PROMPT-MODE-GEMINI: Using model` for older `prompt` records that pre-date that field.
 4. **Classify** each interaction against the 6 checks in the skill: instruction honored, minimal-edit, language preserved, format preserved, no hallucinations, input integrity.
 5. **Cluster** failures. **Threshold: ≥2 examples per cluster** for a fix proposal. Single anecdotes are listed as "observed, insufficient data".
 6. **Report** — see output format below.
@@ -45,15 +50,15 @@ Logging holes, sample-size issues, missing cross-references — anything that ma
 
 ## When the user follows up with "fix" / "apply"
 
-Apply only the proposed changes the user names (or all if they say "all"). Follow the skill's link to `rebuild-after-change` and rebuild before reporting completion. Do not commit unless explicitly asked.
+Apply only the proposed changes the user names (or all if they say "all"). Rebuild via `bash scripts/rebuild-and-restart.sh` (per the always-applied rule in `.cursor/rules/index.mdc`) before reporting completion. Do not commit unless explicitly asked.
 
 ## Related commands / skills
 
 - **`/review-code`** — when the user wants a static code review instead of a usage-driven one. Use this command when the scope is "behavior the user actually experienced".
-- **`/audit-llm-context`** — when the user wants to check the LLM-context files (commands, rules, skills, CLAUDE.md) themselves for staleness instead of app behavior.
+- **`/audit-llm-context`** — when the user wants to check the LLM-context files (`.cursor/commands`, `.cursor/rules`, `.cursor/skills`) themselves for staleness instead of app behavior.
 - **debugging-workflow** (skill) — switch to when a cluster points to a code bug and you need to add `DebugLogger` instrumentation + a repro plan.
 - **gemini-system-prompt-best-practices** (skill) — when the fix is a system-prompt change.
-- **gemini-model-docs** (skill) — when proposing a default-model change.
+- **llm-model-docs** (skill) — when proposing a default-model change (covers Gemini canonically; `gemini-model-docs` is a TTS-only stub).
 
 ## Example invocations
 

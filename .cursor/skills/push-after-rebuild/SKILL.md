@@ -11,11 +11,7 @@ description: When the user wants to push, commit, or "save to git", first rebuil
 
 ## Flow (always in this order)
 
-1. **Rebuild**  
-   From project root:
-   ```bash
-   bash scripts/rebuild-and-restart.sh
-   ```
+1. **Rebuild** — follow the always-applied rebuild rule in `.cursor/rules/index.mdc`: run `bash scripts/rebuild-and-restart.sh` from the project root, directly (no `| tail`, `| grep`, `| tee`), and check the real exit status.
    - If the build **fails**: Stop. Inform the user and do **not** commit or push.
    - If the build **succeeds**: Proceed to step 2.
 

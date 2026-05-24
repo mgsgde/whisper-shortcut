@@ -77,13 +77,15 @@ The app uses these OpenAI endpoints today: `/v1/chat/completions`, `/v1/audio/tr
 
 ### Google Gemini API
 
-For Gemini-specific deep dives (Files API, TTS voices, IDs, GA vs Preview), see the dedicated skill **gemini-model-docs**. Headline URLs:
+This is the canonical Gemini reference for the repo. The `gemini-model-docs` stub only carries TTS-voice specifics.
 
-- **Models overview**: <https://ai.google.dev/gemini-api/docs/models>
+- **Models overview** (IDs, GA vs Preview, capabilities): <https://ai.google.dev/gemini-api/docs/models>
 - **API reference**: <https://ai.google.dev/api/models>
 - **Speech generation (TTS)**: <https://ai.google.dev/gemini-api/docs/speech-generation>
-- **Programmatic model list**: `GET https://generativelanguage.googleapis.com/v1beta/models`
+- **Programmatic model list**: `GET https://generativelanguage.googleapis.com/v1beta/models` — verify IDs/capabilities at runtime when docs feel ambiguous.
 - **Forum** (deprecation notices, outages): <https://discuss.ai.google.dev/c/gemini-api/4>
+
+Pick stable/GA IDs over dated preview IDs (e.g. prefer `gemini-2.5-flash` over `gemini-2.5-flash-preview-09-2025`) when both are listed. Endpoints in code: `TranscriptionModel.apiEndpoint`, `TTSModel.apiEndpoint`; base is `https://generativelanguage.googleapis.com/v1beta/models/{model-id}:generateContent`.
 
 The app uses the **Gemini API** (`generativelanguage.googleapis.com`), **not** Vertex AI — when reading Google docs, make sure you're on the `ai.google.dev` site, not `cloud.google.com/vertex-ai`.
 
@@ -124,7 +126,7 @@ When a model returns unexpected errors, or you suspect a deprecation/rename, che
    - [scripts/test-grok-models.sh](scripts/test-grok-models.sh)
    They read keys from `.env` at the repo root (mode 600, gitignored). Each script tests three buckets: `current` (must 200), `legacy` (Gemini/Grok: must still serve via redirect; OpenAI: must 404 to confirm retirement), and `candidate` (exploratory). Add a model to the right bucket whenever you make an enum change so future runs catch regressions.
 4. **Watch for silent redirects.** xAI redirects retired slugs to current ones with HTTP 200 but a different `model` field in the response. The Grok test script ([scripts/test-grok-models.sh](scripts/test-grok-models.sh)) compares response.model vs requested model — if they differ, it prints "redirected → X". When you see a redirect, the enum case is dead weight: remove it and add a `migrateLegacyPromptRawValue` mapping.
-5. **After code changes**: rebuild and restart the app (see the `rebuild-after-change` skill).
+5. **After code changes**: rebuild and restart via `bash scripts/rebuild-and-restart.sh` (per the always-applied rule in `.cursor/rules/index.mdc`).
 
 ## Anti-patterns
 

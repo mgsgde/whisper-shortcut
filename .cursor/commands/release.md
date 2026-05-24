@@ -1,3 +1,8 @@
+---
+name: release
+description: Cut a new App Store / GitHub release — bump version, write release notes, rebuild, commit, push, and tag. Use when the user asks to release, ship, or publish a new version.
+---
+
 # Release
 
 Cut a new App Store / GitHub release: bump version, write App Store + GitHub release notes, rebuild, commit, push, tag.

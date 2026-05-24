@@ -26,12 +26,12 @@ Three modes, each with its own schema:
 | Mode | Fields | Purpose |
 |---|---|---|
 | `transcription` | `result, transcriptionModel, model, audioRef, ts` | Dictate (speech-to-text) output |
-| `prompt` | `userInstruction, selectedText, modelResponse, ts` | Dictate Prompt edits |
+| `prompt` | `userInstruction, selectedText, modelResponse, model, ts` | Dictate Prompt edits |
 | `geminiChat` | `userInstruction, modelResponse, model, ts` | Chat replies |
 
 **Important caveats** when reading these files:
 
-- **`prompt` mode does NOT log the model used.** To know whether an interaction ran on Flash-Lite vs. Flash vs. Pro, cross-reference the macOS log (see below). This is itself a logging gap worth flagging.
+- `model` is logged for all three modes (`ContextLogger.swift:126` for prompt). Older `prompt` records written before this was wired up may have `model: null` — fall back to the macOS log filter `PROMPT-MODE-GEMINI: Using model` for those.
 - `selectedText` can accumulate paste-history if the user re-pastes results. Treat extremely long `selectedText` with repeated near-identical fragments as suspect input, not real user content.
 - `result` for `transcription` is **post-glossary-correction**, not raw STT output.
 - Files are append-only JSONL — one record per line.
@@ -113,7 +113,7 @@ Group failures with the same root cause. Threshold: **≥2 examples** before pro
 | Chat ignores grounding / search | Tool-use prompt or routing logic | `defaultChatSystemPrompt` / `ChatTools.swift` |
 | Repeated 429s / slow round-trips | Rate-limit handling / model choice | `RateLimitCoordinator.swift` / `SettingsDefaults` |
 | Same instruction recurs verbatim across days (e.g. "korrigiere" → 12×) | Candidate for a one-tap UI preset | Menu / Settings UI |
-| Same field missing from logs (e.g. `model` in `prompt`) | Logging gap | `ContextLogger.swift` |
+| Field missing from logs (genuine gap, not "older records") | Logging gap | `ContextLogger.swift` |
 | Glossary term consistently mis-transcribed | Add term to default glossary | `AppConstants.swift` (whisper glossary) or Smart Improvement run |
 
 ### Step 6 — Report
@@ -128,7 +128,7 @@ Produce a single structured report with:
    - `[code]` — code logic fix
    - `[logging]` — `ContextLogger` / `DebugLogger` gap
    - `[ui]` — UI / preset / shortcut suggestion
-4. **Gaps for confident analysis** — e.g. "model not logged in `prompt` mode; can't attribute failures by model until that's fixed."
+4. **Gaps for confident analysis** — e.g. "older `prompt` records have `model: null`; attribution before commit 8c029f4 relies on the macOS log filter."
 
 ---
 
@@ -147,6 +147,6 @@ Produce a single structured report with:
 
 - **debugging-workflow** — when a cluster points to a code bug, switch to that skill to add `DebugLogger` instrumentation and run a manual repro.
 - **gemini-system-prompt-best-practices** — when the fix is a system-prompt change, apply Google's official guidelines before editing.
-- **gemini-model-docs** — when proposing a default-model change, confirm the target model ID and GA/Preview status.
+- **llm-model-docs** — when proposing a default-model change, confirm the target model ID and GA/Preview status. (Gemini coverage is canonical here now; `gemini-model-docs` is a TTS-only stub.)
 - **view-logs-via-bash** — for filtering the macOS unified log by category (`PROMPT-MODE`, `GEMINI-CHAT`, `TRANSCRIPTION`).
-- **rebuild-after-change** — after applying any code/prompt change from this analysis.
+- After applying any code/prompt change from this analysis, rebuild via `bash scripts/rebuild-and-restart.sh` — see the always-applied rule in `.cursor/rules/index.mdc`.

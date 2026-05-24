@@ -1,3 +1,8 @@
+---
+name: audit-llm-models
+description: Audit OpenAI, Gemini, and xAI (Grok) model lineups against what this repo uses today, recommend concrete migrations, and prove them with the test scripts. Use for "are we on the latest models?", "what's new in LLMs?", "should we switch to X?".
+---
+
 # Audit LLM Models
 
 Systematic audit of the current model lineups at OpenAI, Google Gemini, and xAI (Grok) — compare against what this repo uses today and recommend concrete migrations, then **prove the recommendations work** by running the local test scripts. Use this when the user asks "are we on the latest models?", "what's new in LLMs?", "should we switch to X?", or simply runs `/audit-llm-models`.
@@ -87,7 +92,7 @@ Actually apply the recommended migrations:
 ## Related
 
 - **`llm-model-docs` skill** — the canonical curated list of where each provider documents their models, gotchas (whisper-1 224-token limit etc.), and the proactive-lineup-check workflow. Read it before this command does anything.
-- **`gemini-model-docs` skill** — Gemini-specific deep dive (TTS voices, Files API, multimodal).
+- **`gemini-model-docs` skill** — TTS-voice-only stub. For chat/transcription/programmatic listing, read `llm-model-docs` instead.
 - **`/release`** — bump the app version after model migrations ship.
 
 ## Example invocations

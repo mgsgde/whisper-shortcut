@@ -17,7 +17,7 @@ Every slash command follows **`{verb}-{topic}`**. The verb tells the agent _what
 
 | Command                                              | Skill                          | Verb     |
 | ---------------------------------------------------- | ------------------------------ | -------- |
-| `/audit-llm-context [--scope=…] [--fix-tier-1]`      | `audit-llm-context`            | audit    |
+| `/audit-llm-context [--scope=…] [--fix-tier-1] [--no-subagents]` | `audit-llm-context` | audit |
 | `/audit-llm-models [--provider …] [--role …] migrate` | `llm-model-docs` (+ `gemini-model-docs`) | audit    |
 | `/analyze-user-interactions [--mode …] [--since …]`  | `analyze-user-interactions`    | analyze  |
 | `/review-code [--path …] [--since …] [--whole-repo]` | —                              | review   |
@@ -32,11 +32,12 @@ These run automatically when their `description:` matches the user's intent — 
 | ------------------------------------------- | ------------------------------------------ |
 | `view-logs-via-bash`                        | Run `bash scripts/logs.sh` for log queries |
 | `debugging-workflow`                        | Add `DebugLogger` instrumentation + repro plan |
-| `rebuild-after-change`                      | Run `bash scripts/rebuild-and-restart.sh` after code changes |
 | `push-after-rebuild`                        | Rebuild then commit + push                 |
 | `llm-model-docs`                            | Canonical pointers to OpenAI / Gemini / xAI docs |
-| `gemini-model-docs`                         | Gemini-specific model lookup               |
+| `gemini-model-docs`                         | TTS-only Gemini stub (use `llm-model-docs` for everything else) |
 | `gemini-system-prompt-best-practices`       | Apply Google's prompt guidance when editing Gemini system prompts |
+
+Note: the rebuild rule lives in `.cursor/rules/index.mdc` with `alwaysApply: true`, so no separate `rebuild-after-change` skill is needed.
 
 ## Rules for new commands
 

@@ -37,13 +37,13 @@ bash scripts/logs.sh -t 30m -f 'AUDIO-VERIFY: capture'
 ```
 
 Expect one line per dictation. Acceptable outcomes:
-- `capture(done) ref=… backend=… transcriptionModel=… sizeBytes=…` — captured.
-- `capture(skip) reason=logging-disabled` — master toggle off (precondition failed; not a bug).
-- `capture(skip) reason=non-dictation-mode mode=…` — call site was not dictation (e.g. Dictate Prompt). Correct by design.
+- `capture(done) ref=… backend=… transcriptionModel=… sizeBytes=…` — captured (see `ContextLogger.swift:198`).
+- `capture(skip) reason=logging-disabled` — master toggle off (precondition failed; not a bug; `ContextLogger.swift:184`).
 
 Red flags:
-- `capture(error)` lines — investigate the reason.
+- `capture(error) reason=…` lines (`ContextLogger.swift:201`) — investigate the reason.
 - No `AUDIO-VERIFY: capture(...)` lines at all despite a dictation: the capture hook is not wired or is upstream of the dictation completion.
+- `pool-trim deleted=… remaining=… capacity=…` (`ContextLogger.swift:230`) — eviction firing when the per-pool cap is hit. Not a red flag, just informational.
 
 ### Q2. Are the WAV files actually on disk?
 
@@ -67,40 +67,39 @@ Read the newest interactions JSONL with the Read tool and look for the most rece
 ### Q4. Did Smart Improvement actually use the audio?
 
 ```bash
-bash scripts/logs.sh -t 30m -f 'AUDIO-VERIFY' | grep -E 'run\(start\)|focus=|asymmetry|attach|skip-attach|run\(end\)'
+bash scripts/logs.sh -t 30m -f 'AUDIO-VERIFY' | grep -E 'run\(start\)|focus=|asymmetry|run\(end\)'
 ```
 
-Expected sequence for one Smart Improvement run:
+Expected sequence for one Smart Improvement run (verified against `ContextDerivation.swift` and `AutoPromptImprovementScheduler.swift`):
 
-1. `run(start) samplesOnDisk=<n>` — n > 0 means there is audio to potentially use.
-2. For each of the two affected focuses (`dictation`, `glossary`):
-   - `focus=… text-candidates=<n>` — how many text-stage candidates exist.
-   - For each candidate with matching clips: one or more `asymmetry … informative=<true|false>` lines.
-   - Either `attach candidate=… selectedClips=<n>` or `skip-attach candidate=… reason=…`.
-   - `focus=… run(end) attachedTotal=<n>` — final count per focus.
-3. `run(end) totalAttached=<n>`.
+1. `run(start) samplesOnDisk=<n>` — n > 0 means there is audio to potentially use (`AutoPromptImprovementScheduler.swift:135`).
+2. For each of the two affected focuses (`dictation`, `glossary`), one block:
+   - `focus=<focus> samplesOnDisk=<n>` — how many samples were available to that focus (`ContextDerivation.swift:156`).
+   - Possibly `focus=<focus> skip reason=smart-model-unknown` (`ContextDerivation.swift:160`) — then no further per-focus output (skip path).
+   - Otherwise, for each candidate clip considered: `asymmetry ref=<ref> transcriptionModel=<m> smartModel=<sm> informative=<true|false>` (`ContextDerivation.swift:192,197`).
+   - End-of-focus summary: `focus=<focus> attach selectedClips=<n> skippedAsymmetry=<n> skippedUnknownModel=<n> capPerRun=<n>` (`ContextDerivation.swift:200`). `selectedClips=0` means nothing was attached for that focus.
+3. `run(end) cleanup deleted=<n>` — end of run + cleanup combined (`AutoPromptImprovementScheduler.swift:192`).
 
 How to interpret common patterns:
 
 | Pattern in logs | Meaning |
 |---|---|
-| `text-candidates=0` for both focuses | No text patterns reached threshold — audio is irrelevant by design. |
-| `asymmetry … informative=false reason=same-or-weaker` for all entries | Transcription model ≥ Smart Improvement model. Audio correctly suppressed. |
-| `asymmetry … informative=true reason=different-family` | Whisper-transcribed clip + Gemini SI. Verification proceeds. |
-| `skip-attach reason=no-eligible-clips` | Candidate found but no clip in the pool matches its term. Could be normal (no recent dictation containing the term) or a sampling bug. |
-| `skip-attach reason=cap-reached` | `audioSamplesPerRun` cap hit. Other candidates skipped — review whether the cap is too tight. |
-| `attach candidate=… selectedClips=2` | Happy path: audio went into the request. |
+| `focus=… selectedClips=0 skippedAsymmetry>0` for all focuses | Transcription model ≥ Smart Improvement model on every clip. Audio correctly suppressed. |
+| `asymmetry … informative=true` followed by `selectedClips>0` | Verification proceeded — happy path, audio went into the request. |
+| `focus=… skip reason=smart-model-unknown` | The Smart Improvement model wasn't recognized. Check `SettingsConfiguration` and the model raw values. |
+| `focus=… selectedClips=0 skippedAsymmetry=0 skippedUnknownModel=0` | No candidate clips at all — `samplesOnDisk` was 0 or no matching clip survived filtering. Could be normal (no recent dictation) or a sampling bug. |
+| `focus=… selectedClips=<cap> capPerRun=<same cap>` | `audioSamplesPerRun` cap hit. Other candidates skipped — review whether the cap is too tight. |
 
 ### Q5. Was the audio cleaned up afterwards?
 
 ```bash
-bash scripts/logs.sh -t 30m -f 'AUDIO-VERIFY: cleanup'
+bash scripts/logs.sh -t 30m -f 'AUDIO-VERIFY: run(end)'
 ls "$HOME/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/UserContext/audio-samples/" 2>/dev/null
 ```
 
-Expect one `cleanup(start)` / `cleanup(done) deleted=<n>` pair per Smart Improvement run. After the run the directory should be empty (or contain only WAVs captured *after* the run started — those are for the next run and are fine).
+Expect one `run(end) cleanup deleted=<n>` line per Smart Improvement run (`AutoPromptImprovementScheduler.swift:192`). After the run the directory should be empty (or contain only WAVs captured *after* the run started — those are for the next run and are fine).
 
-Red flag: cleanup line missing or directory not emptied — the TTL contract is broken.
+Red flag: `run(end)` line missing, or directory not emptied — the TTL contract is broken.
 
 ---
 

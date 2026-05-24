@@ -1,3 +1,8 @@
+---
+name: review-code
+description: Qualitative review of a focused scope of this repo for bugs, smells, and regression risk. Scope is auto-detected from recent git activity unless overridden via flags. Suggestions only by default; "fix" follows up to apply.
+---
+
 # Review Code
 
 Qualitative review of a focused scope of this repo for bugs, smells, and regression risk. Scope is auto-detected from recent git activity unless overridden. This is a **review** (suggestions, no edits) by default; the user opts in to fixes with a follow-up.
@@ -86,7 +91,7 @@ After applying fixes:
 ## Related commands
 
 - **`/analyze-user-interactions`** — when the user wants improvements based on what they actually experienced (recurring "korrigiere" misbehaving, hallucinations, format drift, etc.), not on static code review. That command mines the local interaction JSONL + macOS log and proposes changes at the right level (`[prompt]` / `[default]` / `[code]` / `[logging]` / `[ui]`). Prefer it whenever the user references real usage ("works badly", "is not doing what I want", "find patterns").
-- **`/audit-llm-context`** — when the review target is the LLM-context files themselves (`.cursor/commands`, `.cursor/rules`, `.cursor/skills`, `CLAUDE.md`) rather than app source code.
+- **`/audit-llm-context`** — when the review target is the LLM-context files themselves (`.cursor/commands`, `.cursor/rules`, `.cursor/skills`) rather than app source code.
 
 ## Example invocations
 
