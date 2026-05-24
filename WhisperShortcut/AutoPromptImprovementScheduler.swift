@@ -45,13 +45,20 @@ class AutoPromptImprovementScheduler {
     }
     isImprovementRunning = true
     defer { isImprovementRunning = false }
-    DebugLogger.log("AUTO-IMPROVEMENT: Manual run started")
-    PopupNotificationWindow.showInfo(
-      "Smart Improvement started. You can switch tabs; we'll notify you when it's done.",
-      title: "Smart Improvement"
-    )
+    let runLabel = fromAutoRun ? "Auto" : "Manual"
+    DebugLogger.log("AUTO-IMPROVEMENT: \(runLabel) run started")
+    // Auto-run is meant to feel like background work: skip the "Started" popup so the user
+    // isn't promised a completion notification that may not fire (e.g. when per-focus
+    // eligibility fails inside runImprovement). Result popups still fire when there's
+    // something to show; manual runs keep the start popup for responsiveness feedback.
+    if !fromAutoRun {
+      PopupNotificationWindow.showInfo(
+        "Smart Improvement started. You can switch tabs; we'll notify you when it's done.",
+        title: "Smart Improvement"
+      )
+    }
     await runImprovement(fromAutoRun: fromAutoRun)
-    DebugLogger.log("AUTO-IMPROVEMENT: Manual run finished")
+    DebugLogger.log("AUTO-IMPROVEMENT: \(runLabel) run finished")
     await processNextInQueue()
   }
 
