@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		BF00GSI22EEB2C0000C1DEA4 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = BF00GSI12EEB2C0000C1DEA4 /* GoogleSignIn */; };
 		BF31AC7C2EEB2B8200C1DEA3 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */; };
 		BF9918252F697163008AB3ED /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = BF99181E2F697163008AB3ED /* WhisperKit */; };
 		BF9918262F697163008AB3ED /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BF99181C2F697163008AB3ED /* HotKey */; };
@@ -53,7 +52,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BF00GSI22EEB2C0000C1DEA4 /* GoogleSignIn in Frameworks */,
 				BF31AC7C2EEB2B8200C1DEA3 /* WhisperKit in Frameworks */,
 				BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */,
 			);
@@ -118,7 +116,6 @@
 			packageProductDependencies = (
 				BFBC35F42E3E129600BAC747 /* HotKey */,
 				BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */,
-				BF00GSI12EEB2C0000C1DEA4 /* GoogleSignIn */,
 			);
 			productName = WhisperShortcut;
 			productReference = BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */;
@@ -179,7 +176,6 @@
 			packageReferences = (
 				BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */,
 				BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */,
-				BF00GSI02EEB2C0000C1DEA4 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BF3C90C72E3E0CC0001D325B /* Products */;
@@ -517,14 +513,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		BF00GSI02EEB2C0000C1DEA4 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 9.0.0;
-			};
-		};
 		BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/soffes/HotKey";
@@ -560,11 +548,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		BF00GSI12EEB2C0000C1DEA4 /* GoogleSignIn */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BF00GSI02EEB2C0000C1DEA4 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
-			productName = GoogleSignIn;
-		};
 		BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */;
