@@ -423,8 +423,9 @@ class MenuBarController: NSObject {
   /// when `appState.symbolName` is set (idle), otherwise the colored emoji from `appState.icon`.
   private func applyCurrentAppearance(to button: NSStatusBarButton) {
     if let symbolName = appState.symbolName {
-      // 16pt / .regular matches Apple's own menu bar icons (Wi-Fi, Spotlight, Control Center).
-      let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+      // 15pt is the safe ceiling for SF Symbols in the 22pt menu bar — taller glyphs
+      // (e.g. mic with its stand) clip against the bottom bezel at 16pt+.
+      let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
       let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: appState.tooltip)?
         .withSymbolConfiguration(config)
       image?.isTemplate = true

@@ -1,4 +1,4 @@
-# WhisperShortcut 7.27
+# WhisperShortcut 7.28
 
 ## Installation
 
@@ -6,12 +6,10 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-### Menu bar polish
+### Menu bar icon fix
 
-- **Native-looking menu bar icon.** The idle state now uses a system SF Symbol (`mic.fill`) rendered as a monochrome template image at 16pt, so the app blends in with Apple's own menu bar icons (Wi-Fi, Spotlight, Control Center) instead of standing out as a colored emoji.
-- **Recording, processing, and feedback states unchanged.** The colored status indicators you rely on for visual feedback (🔴 recording, ⏳ processing, ✅/❌ results) still appear as before — only the resting "ready" icon was updated.
-- **Smoother blinking.** Active states now pulse via opacity rather than swapping the title in and out, which avoids a brief reflow of neighboring menu bar items.
+- **Mic icon no longer clipped.** The idle menu bar icon was being rendered at 16pt, which left the bottom of the microphone stand clipped against the menu bar's bottom bezel. Dropped to 15pt — the safe ceiling for SF Symbols in the 22pt menu bar — so the full glyph is now visible.
 
 ## Full changelog
 
-[Compare v7.26…v7.27](https://github.com/mgsgde/whisper-shortcut/compare/v7.26...v7.27)
+[Compare v7.27…v7.28](https://github.com/mgsgde/whisper-shortcut/compare/v7.27...v7.28)
