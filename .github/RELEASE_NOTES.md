@@ -1,4 +1,4 @@
-# WhisperShortcut 7.26
+# WhisperShortcut 7.27
 
 ## Installation
 
@@ -6,19 +6,12 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-### Smart Improvement
+### Menu bar polish
 
-- **Quieter background runs.** The brief "Smart Improvement started" popup no longer appears for auto-runs that fire on their own — only meaningful result notifications show up now.
-
-### Dictation & Prompts
-
-- **Sharper default system prompts.** Default prompts for dictation and chat were tightened for more accurate transcription and fewer formatting surprises.
-- **Prompt-mode model now logged.** The model used for each prompt-mode call is recorded alongside the interaction, so quality issues can be attributed to the right model when reviewing local logs.
-
-### Under the hood
-
-- Audited the project's Cursor / Claude context files (`.cursor/commands`, `.cursor/rules`, `.cursor/skills`). Removed stale references, corrected service-name and path drift in the always-applied repo rule, reconciled the audio-verification skill's log-pattern table with the strings the app actually emits, and consolidated overlapping model-doc skills.
+- **Native-looking menu bar icon.** The idle state now uses a system SF Symbol (`mic.fill`) rendered as a monochrome template image at 16pt, so the app blends in with Apple's own menu bar icons (Wi-Fi, Spotlight, Control Center) instead of standing out as a colored emoji.
+- **Recording, processing, and feedback states unchanged.** The colored status indicators you rely on for visual feedback (🔴 recording, ⏳ processing, ✅/❌ results) still appear as before — only the resting "ready" icon was updated.
+- **Smoother blinking.** Active states now pulse via opacity rather than swapping the title in and out, which avoids a brief reflow of neighboring menu bar items.
 
 ## Full changelog
 
-[Compare v7.25…v7.26](https://github.com/mgsgde/whisper-shortcut/compare/v7.25...v7.26)
+[Compare v7.26…v7.27](https://github.com/mgsgde/whisper-shortcut/compare/v7.26...v7.27)

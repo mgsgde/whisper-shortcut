@@ -190,6 +190,16 @@ extension AppState {
     }
   }
 
+  /// SF Symbol used to render the menu bar status item as a template image.
+  /// Only set for the idle state so the app icon blends with native menu bar icons;
+  /// all other states fall back to the colored emoji from `icon` for visual feedback.
+  var symbolName: String? {
+    switch self {
+    case .idle: return "mic.fill"
+    default: return nil
+    }
+  }
+
   /// Current status text for menu
   var statusText: String {
     switch self {

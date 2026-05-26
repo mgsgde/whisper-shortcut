@@ -17,9 +17,9 @@
         <key>CFBundlePackageType</key>
         <string>APPL</string>
         <key>CFBundleShortVersionString</key>
-        <string>7.26</string>
+        <string>7.27</string>
         <key>CFBundleVersion</key>
-        <string>123</string>
+        <string>124</string>
         <key>LSMinimumSystemVersion</key>
         <string>15.5</string>
         <key>LSUIElement</key>
@@ -41,10 +41,10 @@
         <false />
         <key>NSSupportsSuddenTermination</key>
         <false />
-        <!-- Google Sign-In (SSO): Set GIDClientID to your OAuth 2.0 Client ID (macOS app) from Google Cloud Console. -->
+        <!-- Google OAuth (Calendar/Tasks/Gmail): macOS OAuth 2.0 client ID from Google Cloud Console. -->
         <key>GIDClientID</key>
         <string>797100884157-9m6p166qmss4rj9psi4qbmipig9ljkn2.apps.googleusercontent.com</string>
-        <!-- OAuth callback URL scheme: reversed client ID for Google Sign-In. -->
+        <!-- OAuth callback URL scheme: reversed client ID (Google macOS app convention). -->
         <key>CFBundleURLTypes</key>
         <array>
             <dict>

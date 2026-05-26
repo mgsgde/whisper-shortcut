@@ -135,7 +135,7 @@ class MenuBarController: NSObject {
 
     // Initial setup
     if let button = statusItem.button {
-      button.title = appState.icon
+      applyCurrentAppearance(to: button)
       button.toolTip = appState.tooltip
     }
 
@@ -407,7 +407,7 @@ class MenuBarController: NSObject {
 
   private func updateMenuBarIcon() {
     guard let button = statusItem?.button else { return }
-    button.title = appState.icon
+    applyCurrentAppearance(to: button)
 
     // Show detailed chunk progress in tooltip during processing
     if case .processing(.processingChunks(let statuses, _)) = appState {
@@ -416,6 +416,23 @@ class MenuBarController: NSObject {
       button.toolTip = "Transcribing [\(done)/\(statuses.count)] - \(active) active"
     } else {
       button.toolTip = appState.tooltip
+    }
+  }
+
+  /// Renders the current `appState` on the status item button: an SF Symbol template image
+  /// when `appState.symbolName` is set (idle), otherwise the colored emoji from `appState.icon`.
+  private func applyCurrentAppearance(to button: NSStatusBarButton) {
+    if let symbolName = appState.symbolName {
+      // 16pt / .regular matches Apple's own menu bar icons (Wi-Fi, Spotlight, Control Center).
+      let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+      let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: appState.tooltip)?
+        .withSymbolConfiguration(config)
+      image?.isTemplate = true
+      button.image = image
+      button.title = ""
+    } else {
+      button.image = nil
+      button.title = appState.icon
     }
   }
 
@@ -465,6 +482,7 @@ class MenuBarController: NSObject {
     
     // Handle special case when no credential and no offline model is configured
     if !hasCredential && !hasOfflineTranscriptionModel && !hasOfflinePromptModel, let button = statusItem?.button {
+      button.image = nil
       button.title = "⚠️"
       button.toolTip = "Add an API key or use an offline model - click to configure"
     }
@@ -489,15 +507,18 @@ class MenuBarController: NSObject {
     stopBlinking()
     blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
       guard let self = self, let button = self.statusItem?.button else { return }
-      button.title = button.title == self.appState.icon ? " " : self.appState.icon
+      button.alphaValue = button.alphaValue < 1.0 ? 1.0 : 0.35
     }
   }
 
   private func stopBlinking() {
     blinkTimer?.invalidate()
     blinkTimer = nil
-    // Restore correct icon
-    statusItem?.button?.title = appState.icon
+    // Restore correct icon at full opacity
+    if let button = statusItem?.button {
+      button.alphaValue = 1.0
+      applyCurrentAppearance(to: button)
+    }
   }
 
 
