@@ -1308,18 +1308,20 @@ class MenuBarController: NSObject {
       }
       
       cleanupAudioFile(at: audioURL)
-    } catch is CancellationError {
-      DebugLogger.log("CANCELLATION: Transcription task was cancelled")
-      await MainActor.run {
-        if duringMeeting {
-          self.activeMeetingSegment = nil
-          self.processedAudioURLs.remove(audioURL)
-        } else {
-          self.transitionToIdleAndCleanup(cleanupAudioURL: audioURL, clearChunkStatuses: true)
-        }
-      }
-      if duringMeeting { cleanupAudioFile(at: audioURL) }
     } catch {
+      if Self.isCancellation(error) {
+        DebugLogger.log("CANCELLATION: Transcription task was cancelled (\(type(of: error)))")
+        await MainActor.run {
+          if duringMeeting {
+            self.activeMeetingSegment = nil
+            self.processedAudioURLs.remove(audioURL)
+          } else {
+            self.transitionToIdleAndCleanup(cleanupAudioURL: audioURL, clearChunkStatuses: true)
+          }
+        }
+        if duringMeeting { cleanupAudioFile(at: audioURL) }
+        return
+      }
       let isStale: Bool = await MainActor.run {
         if !duringMeeting, self.currentTranscriptionAudioURL != audioURL {
           DebugLogger.log("CANCELLATION: Ignoring transcription error for stale audio URL \(audioURL.lastPathComponent)")
@@ -1374,18 +1376,20 @@ class MenuBarController: NSObject {
       }
       
       cleanupAudioFile(at: audioURL)
-    } catch is CancellationError {
-      DebugLogger.log("CANCELLATION: Prompt task was cancelled")
-      await MainActor.run {
-        if duringMeeting {
-          self.activeMeetingSegment = nil
-        } else {
-          self.appState = self.appState.finish()
-        }
-        self.processedAudioURLs.remove(audioURL)
-      }
-      cleanupAudioFile(at: audioURL)
     } catch {
+      if Self.isCancellation(error) {
+        DebugLogger.log("CANCELLATION: Prompt task was cancelled (\(type(of: error)))")
+        await MainActor.run {
+          if duringMeeting {
+            self.activeMeetingSegment = nil
+          } else {
+            self.appState = self.appState.finish()
+          }
+          self.processedAudioURLs.remove(audioURL)
+        }
+        cleanupAudioFile(at: audioURL)
+        return
+      }
       if duringMeeting {
         DebugLogger.logError("MEETING-SEGMENT: Prompt failed: \(error.localizedDescription)")
         await MainActor.run {
@@ -1401,6 +1405,17 @@ class MenuBarController: NSObject {
         }
       }
     }
+  }
+
+  /// True if the error represents a user-initiated cancellation — Swift's `CancellationError`,
+  /// `URLError(.cancelled)`, or the bridged `NSURLErrorCancelled`. Cancellation is a normal
+  /// operation and must never surface as an error popup with "Contact Support".
+  private static func isCancellation(_ error: Error) -> Bool {
+    if error is CancellationError { return true }
+    if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+    let nsError = error as NSError
+    if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled { return true }
+    return false
   }
 
   @objc private func apiKeyUpdated() {
@@ -1511,12 +1526,14 @@ class MenuBarController: NSObject {
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
         }
-      } catch is CancellationError {
-        DebugLogger.log("CANCELLATION: TTS task was cancelled")
-        await MainActor.run {
-          self.transitionToIdleAndCleanup()
-        }
       } catch {
+        if Self.isCancellation(error) {
+          DebugLogger.log("CANCELLATION: TTS task was cancelled (\(type(of: error)))")
+          await MainActor.run {
+            self.transitionToIdleAndCleanup()
+          }
+          return
+        }
         DebugLogger.logError("TTS-ERROR: Failed to generate speech: \(error.localizedDescription)")
         let userMessage: String
         let shortTitle: String

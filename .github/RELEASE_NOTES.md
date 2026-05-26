@@ -1,4 +1,4 @@
-# WhisperShortcut 7.28
+# WhisperShortcut 7.29
 
 ## Installation
 
@@ -6,10 +6,10 @@ Download the latest build from [Releases](https://github.com/mgsgde/whisper-shor
 
 ## Changes
 
-### Menu bar icon fix
+### Cancellation no longer looks like a crash
 
-- **Mic icon no longer clipped.** The idle menu bar icon was being rendered at 16pt, which left the bottom of the microphone stand clipped against the menu bar's bottom bezel. Dropped to 15pt — the safe ceiling for SF Symbols in the 22pt menu bar — so the full glyph is now visible.
+- **Cancelling a prompt, transcription, or read-aloud is now silent.** Previously, stopping an in-flight request mid-network-call could surface a "Prompt Error: cancelled" popup with a "Contact Support" button — even though the user just pressed stop. The app now recognises user-initiated cancellation in all its forms (Swift task cancellation, `URLError(.cancelled)`, and the bridged `NSURLErrorCancelled` from URLSession) and quietly returns to the idle state instead of showing an error.
 
 ## Full changelog
 
-[Compare v7.27…v7.28](https://github.com/mgsgde/whisper-shortcut/compare/v7.27...v7.28)
+[Compare v7.28…v7.29](https://github.com/mgsgde/whisper-shortcut/compare/v7.28...v7.29)
