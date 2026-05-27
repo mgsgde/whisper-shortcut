@@ -409,13 +409,14 @@ class MenuBarController: NSObject {
   /// when `appState.symbolName` is set (idle), otherwise the colored emoji from `appState.icon`.
   private func applyCurrentAppearance(to button: NSStatusBarButton) {
     if let symbolName = appState.symbolName {
-      // 15pt is the safe ceiling for SF Symbols in the 22pt menu bar — taller glyphs
-      // (e.g. mic with its stand) clip against the bottom bezel at 16pt+.
-      let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+      // mic.fill's stand made it clip against the menu bar bezel intermittently at 15pt.
+      // 14pt + scaleProportionallyDown lets AppKit fit any intrinsic image size into the bar.
+      let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
       let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: appState.tooltip)?
         .withSymbolConfiguration(config)
       image?.isTemplate = true
       button.image = image
+      button.imageScaling = .scaleProportionallyDown
       button.title = ""
     } else {
       button.image = nil
