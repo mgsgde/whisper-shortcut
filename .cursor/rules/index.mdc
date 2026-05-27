@@ -21,6 +21,7 @@ alwaysApply: true
 
 - **KISS**: Prefer the simplest, most robust solution.
 - **Rebuild after changes**: After making any code or project changes, the agent must run `bash scripts/rebuild-and-restart.sh` itself (do not only suggest it). Run it once at the end of the edits so the user can test immediately. Run the command directly and verify its real exit status; do not pipe it through `tail`, `grep`, `tee`, or similar output filters when using it as build verification.
+- **Trust the build, not the IDE diagnostics**: After `Edit`/`Write` on Swift files, SourceKit often surfaces transient cross-file errors like `Cannot find type 'X' in scope` or `No such module 'HotKey'` even though the actual `xcodebuild` succeeds. Treat these as indexer staleness — do not undo or chase them. Only the exit status of `bash scripts/rebuild-and-restart.sh` is authoritative.
 - **Logging in code**: Use only `DebugLogger` methods; never `print()`, `NSLog()`, or `os_log()`. For **viewing** logs use skill **view-logs-via-bash**. For **debugging or adding instrumentation** (and full flow: repro plan → analyze logs) use skill **debugging-workflow**.
 - **Tests**: Do not run tests from the agent; user runs them manually in Xcode.
 - **Commands are slash commands only**: In this project, "commands" are always **typed** by the user: a leading slash plus a keyword (e.g. `/stop`, `/new`, `/model`). Do not implement commands as hotkeys or keyboard shortcuts; use slash commands in the chat/input and reserve hotkeys for system shortcuts (e.g. menu bar actions).
