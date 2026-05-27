@@ -123,10 +123,13 @@ class SpeechService {
     let task = Task<String, Error> {
       try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride)
     }
-    
+
     currentTranscriptionTask = task
-    defer { currentTranscriptionTask = nil }
-    
+    // Only clear the slot if this call still owns it — a concurrent newer call may have
+    // overwritten `currentTranscriptionTask` while we were suspended on `task.value`; its
+    // own `defer` will handle the clear.
+    defer { if currentTranscriptionTask == task { currentTranscriptionTask = nil } }
+
     return try await task.value
   }
 
@@ -226,10 +229,11 @@ class SpeechService {
     let task = Task<String, Error> {
       try await self.performPrompt(audioURL: audioURL, mode: mode)
     }
-    
+
     currentPromptTask = task
-    defer { currentPromptTask = nil }
-    
+    // See `transcribe` for the identity-check rationale.
+    defer { if currentPromptTask == task { currentPromptTask = nil } }
+
     return try await task.value
   }
 
@@ -804,14 +808,14 @@ class SpeechService {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { throw TranscriptionError.networkError("Text is empty") }
 
-    let task = Task<Data, Error> { [weak self] () throws -> Data in
-      guard let self = self else { throw CancellationError() }
+    let task = Task<Data, Error> {
       let textForTTS = applySmartRewrite ? try await self.maybeRewriteForSpeech(trimmed) : trimmed
       try Task.checkCancellation()
       return try await self.performTTS(text: textForTTS, voiceName: voiceName)
     }
     currentTTSTask = task
-    defer { currentTTSTask = nil }
+    // See `transcribe` for the identity-check rationale.
+    defer { if currentTTSTask == task { currentTTSTask = nil } }
     return try await task.value
   }
 
@@ -885,10 +889,6 @@ class SpeechService {
     }
 
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmedText.isEmpty else {
-      throw TranscriptionError.networkError("Text is empty")
-    }
-
     let selectedVoice = voiceName ?? SettingsDefaults.readAloudVoice
     let selectedTTSModel = SettingsDefaults.readAloudModel
 

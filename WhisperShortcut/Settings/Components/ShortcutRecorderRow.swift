@@ -258,7 +258,12 @@ struct ShortcutRecorderRow: View {
     }
     isRecording = false
     transientMessage = nil
-    Self.activeRecorderCancel = nil
+    // Only clear the cross-row registry slot if we were actually the active recorder. A
+    // stale `onDisappear` from a row that was already replaced by a newer recorder would
+    // otherwise nil out the new owner's cancel, leaving two monitors live.
+    if wasRecording {
+      Self.activeRecorderCancel = nil
+    }
 
     // Re-arm global HotKeys. Skip if we weren't actually recording (e.g. onDisappear after
     // an already-finished capture) or if the caller is about to fire `shortcutsChanged`
@@ -332,7 +337,6 @@ struct ShortcutRecorderRow: View {
     }
 
     shortcut = newShortcut
-    transientMessage = nil
     // Rearm explicitly before `onChanged?()` so a failed save doesn't leave global hotkeys
     // permanently disarmed. `onChanged?()` will trigger `saveSettings → .shortcutsChanged`,
     // which rearms again with the new config — accepted as the cost of the safety net.

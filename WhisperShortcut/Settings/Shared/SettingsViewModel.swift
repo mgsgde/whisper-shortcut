@@ -360,11 +360,7 @@ class SettingsViewModel: ObservableObject {
     let factory = ShortcutConfig.default
     let newConfig = ShortcutConfig(
       startRecording: data.toggleDictation ?? disable(factory.startRecording),
-      stopRecording: data.toggleDictation ?? disable(factory.stopRecording),
       startPrompting: data.togglePrompting ?? disable(factory.startPrompting),
-      stopPrompting: data.togglePrompting ?? disable(factory.stopPrompting),
-      toggleMeeting: currentConfig.toggleMeeting,
-      stopMeeting: currentConfig.stopMeeting,
       openSettings: data.openSettings ?? disable(factory.openSettings),
       openChat: data.openChat ?? disable(factory.openChat),
       screenshotCapture: data.screenshotCapture ?? disable(factory.screenshotCapture),

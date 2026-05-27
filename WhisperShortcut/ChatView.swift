@@ -699,12 +699,10 @@ class ChatViewModel: ObservableObject {
     return ["parts": [["text": text]]]
   }
 
+  /// Current chat model with migration applied. Falls back to the default for audio-only
+  /// models (`supportsTextChat == false`) since they can't power a text chat request.
   static var openChatModel: PromptModel {
-    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedChatModel)
-      ?? SettingsDefaults.selectedChatModel.rawValue
-    let migratedRaw = PromptModel.migrateLegacyPromptRawValue(raw)
-    return PromptModel(rawValue: migratedRaw).map { PromptModel.migrateIfDeprecated($0) }
-      ?? SettingsDefaults.selectedChatModel
+    PromptModel.loadSelectedChatModel()
   }
 
   /// Display name for the current chat model (e.g. "Gemini 3 Flash") for the nav bar.
@@ -862,9 +860,7 @@ class ChatViewModel: ObservableObject {
         "Current model: **\(cur.displayName)**. Example: `/model 3.1 flash lite` or `/model 2.5 pro`."
       )
     case .applied(let model):
-      let migrated = PromptModel.migrateIfDeprecated(model)
-      UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
-      appendModelMessage("Model set to **\(migrated.displayName)**.")
+      switchToModel(model)
     case .ambiguous(let candidates):
       let list = candidates.map { "• **\($0.displayName)**" }.joined(separator: "\n")
       appendModelMessage("Multiple matches. Be more specific:\n\(list)")
@@ -874,12 +870,13 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: /model argument=\(argument) outcome=\(outcome)")
   }
 
-  /// Switches the chat model directly (used by /grok and /gemini shortcuts).
+  /// Persists the selected chat model and posts a confirmation message. The `model` is
+  /// expected to be already migrated (callers come from `ChatModelCommandResolver` or
+  /// `ChatModelProvider.X.defaultChatModel`, both of which yield current cases).
   private func switchToModel(_ model: PromptModel) {
-    let migrated = PromptModel.migrateIfDeprecated(model)
-    UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
-    appendModelMessage("Model set to **\(migrated.displayName)**.")
-    DebugLogger.log("GEMINI-CHAT: switchToModel \(migrated.displayName)")
+    UserDefaults.standard.set(model.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
+    appendModelMessage("Model set to **\(model.displayName)**.")
+    DebugLogger.log("GEMINI-CHAT: switchToModel \(model.displayName)")
   }
 
   // MARK: - Tab navigation

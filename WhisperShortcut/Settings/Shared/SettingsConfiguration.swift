@@ -288,6 +288,8 @@ enum PromptModel: String, CaseIterable {
   }
 
   /// Migrates deprecated in-enum cases; identity today (2.0 removed — use `migrateLegacyPromptRawValue` for UserDefaults).
+  /// Kept as a stable hook so the 8 callers across `ChatView`, `ChatModelCommandResolver`, and `SettingsViewModel`
+  /// don't need to be touched the next time an in-enum case is renamed.
   static func migrateIfDeprecated(_ model: PromptModel) -> PromptModel {
     model
   }
@@ -314,33 +316,41 @@ enum PromptModel: String, CaseIterable {
 
   /// Loads the model selected for the chat window (Settings → Chat).
   static func loadSelectedChatModel() -> PromptModel {
-    guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedChatModel) else {
-      return SettingsDefaults.selectedChatModel
-    }
-    let migratedRaw = migrateLegacyPromptRawValue(raw)
-    if migratedRaw != raw {
-      UserDefaults.standard.set(migratedRaw, forKey: UserDefaultsKeys.selectedChatModel)
-    }
-    guard let parsed = PromptModel(rawValue: migratedRaw) else {
-      return SettingsDefaults.selectedChatModel
-    }
-    let resolved = migrateIfDeprecated(parsed)
-    return resolved.supportsTextChat ? resolved : SettingsDefaults.selectedChatModel
+    loadPromptModel(
+      forKey: UserDefaultsKeys.selectedChatModel,
+      default: SettingsDefaults.selectedChatModel,
+      validate: { $0.supportsTextChat }
+    )
   }
 
   /// Loads the model selected for meeting summary (rolling and final). Settings → Live Meeting → Summary Model.
   static func loadSelectedMeetingSummary() -> PromptModel {
-    guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedMeetingSummaryModel) else {
-      return SettingsDefaults.selectedMeetingSummaryModel
+    loadPromptModel(
+      forKey: UserDefaultsKeys.selectedMeetingSummaryModel,
+      default: SettingsDefaults.selectedMeetingSummaryModel
+    )
+  }
+
+  /// Shared loader for any `PromptModel`-typed UserDefaults slot: reads the raw value, runs
+  /// the legacy-raw migration (persisting the rewritten value), parses to a `PromptModel`,
+  /// and applies the optional `validate` filter (e.g. "must support text chat"). Falls back
+  /// to `default` on any miss.
+  private static func loadPromptModel(
+    forKey key: String,
+    default fallback: PromptModel,
+    validate: (PromptModel) -> Bool = { _ in true }
+  ) -> PromptModel {
+    guard let raw = UserDefaults.standard.string(forKey: key) else {
+      return fallback
     }
     let migratedRaw = migrateLegacyPromptRawValue(raw)
     if migratedRaw != raw {
-      UserDefaults.standard.set(migratedRaw, forKey: UserDefaultsKeys.selectedMeetingSummaryModel)
+      UserDefaults.standard.set(migratedRaw, forKey: key)
     }
-    guard let parsed = PromptModel(rawValue: migratedRaw) else {
-      return SettingsDefaults.selectedMeetingSummaryModel
+    guard let parsed = PromptModel(rawValue: migratedRaw), validate(parsed) else {
+      return fallback
     }
-    return migrateIfDeprecated(parsed)
+    return parsed
   }
 }
 

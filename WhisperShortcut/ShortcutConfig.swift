@@ -98,13 +98,14 @@ extension NSEvent.ModifierFlags: @retroactive Codable {
 }
 
 // MARK: - Shortcut Configuration Models
+/// Persisted shortcut bindings. Each field maps to exactly one Carbon `HotKey` registered by
+/// `Shortcuts.swift`; toggling on/off is handled inside the delegate, so there is no separate
+/// "stop" binding. Previously this struct had `stopRecording` / `stopPrompting` / `toggleMeeting`
+/// / `stopMeeting` siblings — they were never read after the toggle redesign and have been
+/// dropped. Existing UserDefaults entries for those keys are left in place (harmless).
 struct ShortcutConfig: Codable {
   var startRecording: ShortcutDefinition
-  var stopRecording: ShortcutDefinition
   var startPrompting: ShortcutDefinition
-  var stopPrompting: ShortcutDefinition
-  var toggleMeeting: ShortcutDefinition
-  var stopMeeting: ShortcutDefinition
   var openSettings: ShortcutDefinition
   var openChat: ShortcutDefinition
   var screenshotCapture: ShortcutDefinition
@@ -112,17 +113,12 @@ struct ShortcutConfig: Codable {
 
   static let `default` = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
-    stopRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
     startPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
-    stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
-    toggleMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
-    stopMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
     openSettings: ShortcutDefinition(key: .zero, modifiers: [.command], isEnabled: true),
     openChat: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true),
     screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
     readAloud: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true)
   )
-
 }
 
 struct ShortcutDefinition: Codable, Equatable, Hashable {
@@ -280,11 +276,7 @@ class ShortcutConfigManager {
   // MARK: - Constants
   private enum Constants {
     static let startRecordingKey = "shortcut_start_recording"
-    static let stopRecordingKey = "shortcut_stop_recording"
     static let startPromptingKey = "shortcut_start_prompting"
-    static let stopPromptingKey = "shortcut_stop_prompting"
-    static let toggleMeetingKey = "shortcut_toggle_meeting"
-    static let stopMeetingKey = "shortcut_stop_meeting"
     static let openSettingsKey = "shortcut_open_settings"
     static let openChatKey = "shortcut_open_gemini"
     static let screenshotCaptureKey = "shortcut_screenshot_capture"
@@ -344,16 +336,8 @@ class ShortcutConfigManager {
 
     let startRecording =
       loadShortcut(for: Constants.startRecordingKey) ?? ShortcutConfig.default.startRecording
-    let stopRecording =
-      loadShortcut(for: Constants.stopRecordingKey) ?? ShortcutConfig.default.stopRecording
     let startPrompting =
       loadShortcut(for: Constants.startPromptingKey) ?? ShortcutConfig.default.startPrompting
-    let stopPrompting =
-      loadShortcut(for: Constants.stopPromptingKey) ?? ShortcutConfig.default.stopPrompting
-    let toggleMeeting =
-      loadShortcut(for: Constants.toggleMeetingKey) ?? ShortcutConfig.default.toggleMeeting
-    let stopMeeting =
-      loadShortcut(for: Constants.stopMeetingKey) ?? ShortcutConfig.default.stopMeeting
     let openSettings =
       loadShortcut(for: Constants.openSettingsKey) ?? ShortcutConfig.default.openSettings
     let openChat =
@@ -364,11 +348,7 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.readAloudKey) ?? ShortcutConfig.default.readAloud
     return ShortcutConfig(
       startRecording: startRecording,
-      stopRecording: stopRecording,
       startPrompting: startPrompting,
-      stopPrompting: stopPrompting,
-      toggleMeeting: toggleMeeting,
-      stopMeeting: stopMeeting,
       openSettings: openSettings,
       openChat: openChat,
       screenshotCapture: screenshotCapture,
@@ -378,11 +358,7 @@ class ShortcutConfigManager {
 
   func saveConfiguration(_ config: ShortcutConfig) {
     saveShortcut(config.startRecording, for: Constants.startRecordingKey)
-    saveShortcut(config.stopRecording, for: Constants.stopRecordingKey)
     saveShortcut(config.startPrompting, for: Constants.startPromptingKey)
-    saveShortcut(config.stopPrompting, for: Constants.stopPromptingKey)
-    saveShortcut(config.toggleMeeting, for: Constants.toggleMeetingKey)
-    saveShortcut(config.stopMeeting, for: Constants.stopMeetingKey)
     saveShortcut(config.openSettings, for: Constants.openSettingsKey)
     saveShortcut(config.openChat, for: Constants.openChatKey)
     saveShortcut(config.screenshotCapture, for: Constants.screenshotCaptureKey)
