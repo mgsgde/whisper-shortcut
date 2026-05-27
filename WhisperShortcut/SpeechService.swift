@@ -784,18 +784,23 @@ class SpeechService {
 
   // MARK: - Text-to-Speech Mode
 
-  /// Reads `text` aloud. When `applySmartRewrite` is true AND the user has the toggle on, the
-  /// text is first passed through a lightweight Gemini call that may rewrite it into a form
-  /// that is more pleasant to listen to (e.g. summarizes code, strips markdown formatting).
-  ///
-  /// Callers that already have prose intended for human reading (e.g. chat replies from an LLM)
-  /// should pass `applySmartRewrite: false` to skip the extra Gemini round-trip. The global
-  /// selection shortcut uses the default (true) because selections can be code/markdown/etc.
-  ///
-  /// The entire rewrite-then-TTS pipeline runs inside a single tracked `Task` stored on
+  /// Reads a user *selection* aloud. The text may be code, markdown, or log output, so it's
+  /// first passed through Smart Rewrite (when the user has it on) to produce something more
+  /// pleasant to listen to before TTS. Used by the global Read Aloud shortcut.
+  func readSelectionAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
+    try await runReadAloud(text, voiceName: voiceName, applySmartRewrite: true)
+  }
+
+  /// Reads LLM-generated *prose* aloud — already intended for human consumption, so the
+  /// Smart Rewrite pre-pass is skipped. Used by the chat reply read-aloud path.
+  func readProseAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
+    try await runReadAloud(text, voiceName: voiceName, applySmartRewrite: false)
+  }
+
+  /// Runs the optional rewrite-then-TTS pipeline inside a single tracked `Task` stored on
   /// `currentTTSTask` so `cancelTTS()` can abort during the rewrite phase too (otherwise the
   /// rewrite would complete and TTS would start playing after the user already pressed Stop).
-  func readAloud(_ text: String, voiceName: String? = nil, applySmartRewrite: Bool = true) async throws -> Data {
+  private func runReadAloud(_ text: String, voiceName: String?, applySmartRewrite: Bool) async throws -> Data {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { throw TranscriptionError.networkError("Text is empty") }
 

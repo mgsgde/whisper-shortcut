@@ -144,11 +144,6 @@ class ChunkTranscriptionService {
         // Merge transcripts
         let result = TranscriptMerger.merge(transcripts)
 
-        try Task.checkCancellation()
-        await MainActor.run {
-            progressDelegate?.mergingFinished()
-        }
-
         let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
         DebugLogger.log("CHUNK-SERVICE: Total transcription time: \(String(format: "%.2f", elapsedTime))s")
 

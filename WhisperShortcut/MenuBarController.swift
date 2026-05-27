@@ -1546,10 +1546,10 @@ class MenuBarController: NSObject {
         // Must check on the read-aloud task, not inside MainActor.run (different task context).
         guard !Task.isCancelled else {
           DebugLogger.log("CANCELLATION: Read Aloud producer finished after cancel — skipping playback")
-          // attemptReadAloudToggleOff already flipped state to idle when Stop fired, but late
-          // `mergingStarted` / `mergingFinished` callbacks may have re-entered a `.processing`
-          // state on top of that — without this, the menu bar would stay busy until the next
-          // user action, blocking every other shortcut.
+          // attemptReadAloudToggleOff already flipped state to idle when Stop fired, but a late
+          // `mergingStarted` callback may have re-entered a `.processing` state on top of that —
+          // without this, the menu bar would stay busy until the next user action, blocking
+          // every other shortcut.
           await MainActor.run { [weak self] in
             guard let self, self.isTTSRunning else { return }
             self.finishReadAloudSession(cancelNetworkWork: false, stopPlayback: false)
@@ -1601,11 +1601,8 @@ class MenuBarController: NSObject {
     if attemptReadAloudToggleOff() { return }
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedText.isEmpty else { return }
-    // Chat-reply path: the text is LLM-generated prose intended for human reading, so skip the
-    // Smart Rewrite Gemini call. The global-selection path keeps the default (true) because a
-    // selection can be code/markdown/log-output.
     beginReadAloudProcessing { [speechService] in
-      try await speechService.readAloud(trimmedText, applySmartRewrite: false)
+      try await speechService.readProseAloud(trimmedText)
     }
   }
 
@@ -1964,21 +1961,41 @@ extension MenuBarController: ShortcutDelegate {
     }
     guard AccessibilityPermissionManager.checkPermissionForPromptUsage() else { return }
 
+    // A blind delay isn't enough: some apps respond to Cmd+C slower than others, and a fixed
+    // wait either reads the stale clipboard (too short) or stalls Read Aloud (too long). Poll
+    // `NSPasteboard.changeCount` instead — as soon as the frontmost app finishes writing the
+    // copy, we read; if no change lands within the deadline, the selection didn't get copied
+    // (no focus, no selection, or no accessibility permission for the app being copied from).
+    let beforeChangeCount = NSPasteboard.general.changeCount
+    DebugLogger.log("READ-ALOUD: Posting synthetic Cmd+C; before changeCount = \(beforeChangeCount)")
     DispatchQueue.main.async { [weak self] in
-      guard let self = self else { return }
-      // Synthetic Cmd+C copies the user's selection into the clipboard so we can read it.
+      guard let self else { return }
       self.simulateCopyPaste()
-      // Give the frontmost app a beat to put the copied text on the pasteboard before we read.
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-        self?.performReadSelectedTextAloud()
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        let deadline = Date().addingTimeInterval(0.5)
+        while Date() < deadline {
+          try? await Task.sleep(for: .milliseconds(15))
+          if NSPasteboard.general.changeCount != beforeChangeCount {
+            DebugLogger.log("READ-ALOUD: Pasteboard changed after \(Int(Date().timeIntervalSince(deadline.addingTimeInterval(-0.5)) * 1000)) ms")
+            self.performReadSelectedTextAloud()
+            return
+          }
+        }
+        DebugLogger.logWarning("READ-ALOUD: Pasteboard never changed — Cmd+C did not land on a selection")
+        self.presentError(
+          shortTitle: "Read Aloud",
+          message: "No text selected. Highlight text first, then press the Read Aloud shortcut.",
+          dismissProcessingFirst: false
+        )
       }
     }
   }
 
   private func performReadSelectedTextAloud() {
-    if attemptReadAloudToggleOff() { return }
     guard let selectedText = clipboardManager.getCleanedClipboardText(),
           !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      DebugLogger.logWarning("READ-ALOUD: Pasteboard changed but text is empty after cleaning")
       presentError(
         shortTitle: "Read Aloud",
         message: "No text selected. Highlight text first, then press the Read Aloud shortcut.",
@@ -1987,7 +2004,7 @@ extension MenuBarController: ShortcutDelegate {
       return
     }
     beginReadAloudProcessing { [speechService] in
-      try await speechService.readAloud(selectedText)
+      try await speechService.readSelectionAloud(selectedText)
     }
   }
 }
@@ -2001,6 +2018,14 @@ extension MenuBarController: ChunkProgressDelegate {
     return chunkStatuses.enumerated().map { index, status in
       "\(index + 1):\(status.symbol)"
     }.joined(separator: " ")
+  }
+
+  /// Chunk context (`tts` / `transcription`) of the in-flight processing state. Falls back to
+  /// `.transcription` when not in `.processing` — only reached if a delegate callback lands
+  /// after teardown, where the safe default keeps captions readable.
+  private var currentChunkContext: AppState.ProcessingMode.ChunkContext {
+    if case .processing(let mode) = appState { return mode.chunkContext }
+    return .transcription
   }
 
   func chunkingStarted(totalChunks: Int) {
@@ -2036,7 +2061,7 @@ extension MenuBarController: ChunkProgressDelegate {
     // Mark chunk as active
     chunkStatuses[index] = .active
 
-    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
+    let context = currentChunkContext
     appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
     updateMenuBarIcon()
 
@@ -2064,7 +2089,7 @@ extension MenuBarController: ChunkProgressDelegate {
     // Mark chunk as completed
     chunkStatuses[index] = .completed
 
-    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
+    let context = currentChunkContext
     appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
     updateMenuBarIcon()
 
@@ -2097,7 +2122,7 @@ extension MenuBarController: ChunkProgressDelegate {
       // Mark as permanently failed
       chunkStatuses[index] = .failed
 
-      let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
+      let context = currentChunkContext
       appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
       updateMenuBarIcon()
 
@@ -2118,7 +2143,7 @@ extension MenuBarController: ChunkProgressDelegate {
     // Clear chunk statuses (no longer needed for display)
     chunkStatuses = []
 
-    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
+    let context = currentChunkContext
     appState = .processing(.merging(context: context))
     updateMenuBarIcon()
 
@@ -2138,18 +2163,6 @@ extension MenuBarController: ChunkProgressDelegate {
     }
 
     DebugLogger.log("CHUNK-PROGRESS: Merging \(isTTS ? "audio chunks" : "transcripts")...")
-  }
-
-  func mergingFinished() {
-    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
-    switch context {
-    case .tts:
-      appState = .processing(.ttsProcessing)
-    case .transcription:
-      appState = .processing(.transcribing)
-    }
-    updateMenuBarIcon()
-    DebugLogger.log("CHUNK-PROGRESS: Merging finished (TTS: \(context == .tts))")
   }
 }
 

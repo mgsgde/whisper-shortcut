@@ -333,10 +333,9 @@ struct ShortcutRecorderRow: View {
 
     shortcut = newShortcut
     transientMessage = nil
-    // Skip the rearm-on-stop: `onChanged?()` triggers `saveSettings → .shortcutsChanged`
-    // which rearms with the new config, so an interim rearm with the old config would
-    // be redundant and briefly reactivate the binding we just replaced.
-    // Rearm before save so a failed save doesn't leave global hotkeys permanently disarmed.
+    // Rearm explicitly before `onChanged?()` so a failed save doesn't leave global hotkeys
+    // permanently disarmed. `onChanged?()` will trigger `saveSettings → .shortcutsChanged`,
+    // which rearms again with the new config — accepted as the cost of the safety net.
     stopRecording(skipRearm: true)
     NotificationCenter.default.post(name: .shortcutRecordingStopped, object: nil)
     onChanged?()

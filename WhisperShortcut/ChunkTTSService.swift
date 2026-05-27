@@ -134,11 +134,6 @@ class ChunkTTSService {
         DebugLogger.log("TTS-CHUNK-SERVICE: Merging \(audioChunks.count) audio chunks")
         let mergedAudio = try AudioMerger.merge(audioChunks)
 
-        try Task.checkCancellation()
-        await MainActor.run {
-            progressDelegate?.mergingFinished()
-        }
-
         let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
         DebugLogger.logSuccess("TTS-CHUNK-SERVICE: Total synthesis completed in \(String(format: "%.2f", elapsedTime))s (merged audio: \(mergedAudio.count) bytes)")
 
