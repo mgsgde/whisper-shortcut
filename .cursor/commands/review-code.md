@@ -15,6 +15,7 @@ Resolve scope in this order:
    - `--path <path>` (e.g. `WhisperShortcut/ChatView.swift`, `WhisperShortcut/Settings`, `scripts`) → use that file or directory.
    - `--since <range>` (e.g. `2 weeks`, `10 commits`) → use that window instead of the default.
    - `--whole-repo` → scan the Swift app, scripts, release tooling, and docs.
+   - **Iteration count** — a bare integer (`/review-code 3`) or `--iterations N` means run **N full review → fix → rebuild cycles**. Default is 1. See "Iteration mode" below.
 2. **Auto-detection (default)** — run `git log --oneline --name-only` for the last ~20 commits or last 14 days (whichever is larger). Aggregate changed paths and pick the **top 1–2 files/directories** by change volume.
 3. **Fallback** — if changes are spread evenly (no clear winner), print the top candidates and **ask the user to pick**. Do not silently guess.
 
@@ -25,6 +26,17 @@ Resolve scope in this order:
 3. **Use project rules** — reference `@.cursor/rules/index.mdc` where relevant.
 4. **Risk-based deep dive** — prioritize: auth, data access, public APIs, parsers, concurrency, error paths, performance hotspots. Not every file line-by-line.
 5. **Extra attention to recent diffs** — within the detected scope, review the actual changes for regression risk, new smells, and inconsistencies with surrounding code.
+
+## Iteration mode
+
+When invoked with `/review-code N` (or `--iterations N`):
+
+1. Run the full cycle — auto-detect scope, print "Detected scope", produce findings, apply fixes (as if the user said "fix all"), then `bash scripts/rebuild-and-restart.sh`.
+2. Between cycles, **rotate scope to the next-most-changed source file** that hasn't been reviewed in this run. Skip files already reviewed in earlier cycles of the same invocation so each pass targets fresh ground. If the auto-detection would land on a just-reviewed file, drop to the next candidate.
+3. Repeat until N cycles are done or no fresh scope remains.
+4. Do **not** commit or cut a release between cycles unless the user asked for it explicitly. Hold all changes in the working tree and summarise at the end.
+
+An explicit `--path` combined with an iteration count keeps the same scope but does multiple review/fix passes on it — useful when one big file has more than one cycle's worth of cleanup.
 
 ## Output format
 
@@ -100,3 +112,5 @@ After applying fixes:
 - `/review-code --path WhisperShortcut/Settings` — review Settings broadly.
 - `/review-code --since "3 weeks"` — widen the detection window.
 - `/review-code --whole-repo` — full Swift app and repo tooling scan.
+- `/review-code 3` — three review → fix → rebuild cycles, rotating to a fresh top-churn file each time.
+- `/review-code --iterations 2 --path WhisperShortcut/MenuBarController.swift` — two passes on the same file.
