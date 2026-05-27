@@ -20,7 +20,7 @@ Every slash command follows **`{verb}-{topic}`**. The verb tells the agent _what
 | `/audit-llm-context [--scope=…] [--fix-tier-1] [--no-subagents]` | `audit-llm-context` | audit |
 | `/audit-llm-models [--provider …] [--role …] migrate` | `llm-model-docs` (+ `gemini-model-docs`) | audit    |
 | `/analyze-user-interactions [--mode …] [--since …]`  | `analyze-user-interactions`    | analyze  |
-| `/review-code [--path …] [--since …] [--whole-repo]` | —                              | review   |
+| `/review-code [N]`                                   | —                              | review   |
 | `/validate-audio-verification`                       | `validate-audio-verification`  | validate |
 | `/improve-context`                                   | —                              | workflow |
 | `/release`                                           | —                              | workflow |
