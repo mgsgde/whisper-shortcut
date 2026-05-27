@@ -34,6 +34,7 @@ class SettingsViewModel: ObservableObject {
     data.openSettings = currentConfig.openSettings.isEnabled ? currentConfig.openSettings : nil
     data.openChat = currentConfig.openChat.isEnabled ? currentConfig.openChat : nil
     data.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
+    data.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
@@ -107,6 +108,13 @@ class SettingsViewModel: ObservableObject {
       data.screenshotInPromptMode = UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
     } else {
       data.screenshotInPromptMode = SettingsDefaults.screenshotInPromptMode
+    }
+
+    // Load Read Aloud smart rewrite setting
+    if UserDefaults.standard.object(forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled) != nil {
+      data.readAloudSmartRewriteEnabled = UserDefaults.standard.bool(forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled)
+    } else {
+      data.readAloudSmartRewriteEnabled = SettingsDefaults.readAloudSmartRewriteEnabled
     }
 
     // Load Gemini window: close on focus loss
@@ -236,6 +244,8 @@ class SettingsViewModel: ObservableObject {
       return name == "open chat"
     case .screenshotCapture:
       return name == "screenshot capture"
+    case .readAloudShortcut:
+      return name == "read aloud"
     default:
       return false
     }
@@ -268,6 +278,7 @@ class SettingsViewModel: ObservableObject {
       "open settings": data.openSettings,
       "open chat": data.openChat,
       "screenshot capture": data.screenshotCapture,
+      "read aloud": data.readAloud,
     ]
   }
 
@@ -318,6 +329,9 @@ class SettingsViewModel: ObservableObject {
     // Save screenshot in prompt mode setting
     UserDefaults.standard.set(data.screenshotInPromptMode, forKey: UserDefaultsKeys.screenshotInPromptMode)
 
+    // Save Read Aloud smart rewrite setting
+    UserDefaults.standard.set(data.readAloudSmartRewriteEnabled, forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled)
+
     // Save Chat window: close on focus loss
     UserDefaults.standard.set(data.chatCloseOnFocusLoss, forKey: UserDefaultsKeys.chatCloseOnFocusLoss)
 
@@ -350,7 +364,8 @@ class SettingsViewModel: ObservableObject {
       stopMeeting: currentConfig.stopMeeting,
       openSettings: data.openSettings ?? disable(factory.openSettings),
       openChat: data.openChat ?? disable(factory.openChat),
-      screenshotCapture: data.screenshotCapture ?? disable(factory.screenshotCapture)
+      screenshotCapture: data.screenshotCapture ?? disable(factory.screenshotCapture),
+      readAloud: data.readAloud ?? disable(factory.readAloud)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 

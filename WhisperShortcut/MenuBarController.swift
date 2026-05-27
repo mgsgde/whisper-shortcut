@@ -175,6 +175,10 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Screenshot", action: #selector(takeScreenshot),
         shortcut: currentConfig.screenshotCapture, tag: 113))
+    menu.addItem(
+      createMenuItemWithShortcut(
+        "Read Aloud", action: #selector(readAloudFromMenu),
+        shortcut: currentConfig.readAloud, tag: 114))
     menu.addItem(NSMenuItem.separator())
 
     // Chat window
@@ -480,7 +484,15 @@ class MenuBarController: NSObject {
         || meetingAllowsActions && hasCredential
         || activeMeetingSegment == .prompt
     )
-    
+
+    // Read Aloud item: title toggles to Stop while a TTS phase is active or audio is playing.
+    let isReadAloudActive = isTTSRunning || audioEngine?.isRunning == true
+    updateMenuItem(
+      menu, tag: 114,
+      title: isReadAloudActive ? "Stop Read Aloud" : "Read Aloud",
+      enabled: hasCredential && (!appState.isBusy || isReadAloudActive)
+    )
+
     // Handle special case when no credential and no offline model is configured
     if !hasCredential && !hasOfflineTranscriptionModel && !hasOfflinePromptModel, let button = statusItem?.button {
       button.image = nil
@@ -1865,6 +1877,108 @@ extension MenuBarController: ShortcutDelegate {
       try task.run()
     } catch {
       DebugLogger.logError("SCREENSHOT: Failed to launch screencapture: \(error)")
+    }
+  }
+
+  /// HotKey entry point: copies the user's selection, then runs Read Aloud on it. Pressing the
+  /// shortcut again while a TTS phase is running cancels playback (mirrors the chat read-aloud
+  /// stop semantics).
+  func readAloud() { triggerReadSelectedTextAloud() }
+
+  /// Menu-item entry point: AppKit requires `@objc` for menu selectors. Same behavior as the
+  /// HotKey path.
+  @objc func readAloudFromMenu() { triggerReadSelectedTextAloud() }
+
+  private func triggerReadSelectedTextAloud() {
+    // Toggle off if TTS is synthesizing.
+    if isTTSRunning {
+      speechService.cancelTTS()
+      stopTTSPlayback()
+      transitionToIdleAndCleanup()
+      return
+    }
+    // Toggle off if audio is playing.
+    if audioEngine?.isRunning == true {
+      stopTTSPlayback()
+      appState = appState.finish()
+      NotificationCenter.default.post(name: .ttsDidStop, object: nil)
+      return
+    }
+    // Don't compete with another foreground operation; the user clearly didn't intend that.
+    if case .processing = appState {
+      DebugLogger.logWarning("READ-ALOUD-SHORTCUT: ignoring — another operation is processing")
+      return
+    }
+    if isLiveMeetingActive {
+      DebugLogger.logWarning("READ-ALOUD-SHORTCUT: ignoring during live meeting")
+      return
+    }
+    guard GeminiCredentialProvider.shared.hasCredential() else {
+      PopupNotificationWindow.showError(
+        "Add your Gemini API key in Settings (General) or sign in with Google to use Read Aloud.",
+        title: "API Key Required"
+      )
+      return
+    }
+    guard AccessibilityPermissionManager.checkPermissionForPromptUsage() else { return }
+
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self else { return }
+      // Synthetic Cmd+C copies the user's selection into the clipboard so we can read it.
+      self.simulateCopyPaste()
+      // Give the frontmost app a beat to put the copied text on the pasteboard before we read.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+        self?.performReadSelectedTextAloud()
+      }
+    }
+  }
+
+  private func performReadSelectedTextAloud() {
+    guard let selectedText = clipboardManager.getCleanedClipboardText(),
+          !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      presentError(
+        shortTitle: "Read Aloud",
+        message: "No text selected. Highlight text first, then press the Read Aloud shortcut.",
+        dismissProcessingFirst: false
+      )
+      return
+    }
+
+    appState = .processing(.ttsProcessing)
+    NotificationCenter.default.post(name: .ttsDidStart, object: nil)
+
+    Task {
+      do {
+        let audioData = try await speechService.readSelectedTextAloud(selectedText)
+        await MainActor.run {
+          PopupNotificationWindow.dismissProcessing()
+          self.playTTSAudio(audioData: audioData)
+        }
+      } catch {
+        if Self.isCancellation(error) {
+          DebugLogger.log("CANCELLATION: Read Aloud task was cancelled (\(type(of: error)))")
+          await MainActor.run { self.transitionToIdleAndCleanup() }
+          return
+        }
+        DebugLogger.logError("READ-ALOUD-ERROR: \(error.localizedDescription)")
+        let userMessage: String
+        let shortTitle: String
+        if let chunkedError = error as? ChunkedTTSError,
+           case .allChunksFailed(let errors) = chunkedError,
+           let firstError = errors.first?.error as? TranscriptionError {
+          userMessage = SpeechErrorFormatter.format(firstError)
+          shortTitle = SpeechErrorFormatter.shortStatus(firstError)
+        } else if let transcriptionError = error as? TranscriptionError {
+          userMessage = SpeechErrorFormatter.format(transcriptionError)
+          shortTitle = SpeechErrorFormatter.shortStatus(transcriptionError)
+        } else {
+          userMessage = SpeechErrorFormatter.formatForUser(error)
+          shortTitle = SpeechErrorFormatter.shortStatusForUser(error)
+        }
+        await MainActor.run {
+          self.presentError(shortTitle: shortTitle, message: userMessage, dismissProcessingFirst: true)
+        }
+      }
     }
   }
 }

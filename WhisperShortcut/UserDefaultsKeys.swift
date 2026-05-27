@@ -68,5 +68,9 @@ enum UserDefaultsKeys {
   // MARK: - Custom Transcription API
   static let customTranscriptionAPIURL = "customTranscriptionAPIURL"
 
+  // MARK: - Read Aloud
+  /// When true, selected text is run through a Gemini "rewrite for speech" pass before TTS.
+  /// Default: enabled. Stored under SettingsDefaults.readAloudSmartRewriteEnabled.
+  static let readAloudSmartRewriteEnabled = "readAloudSmartRewriteEnabled"
 }
 

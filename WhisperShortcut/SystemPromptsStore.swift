@@ -14,6 +14,7 @@ enum SystemPromptSection: String, CaseIterable {
   case whisperGlossary = "whisperGlossary"
   case promptMode = "promptMode"
   case chat = "geminiChat"
+  case readAloudRewrite = "readAloudRewrite"
 
   var fileHeader: String {
     switch self {
@@ -21,6 +22,7 @@ enum SystemPromptSection: String, CaseIterable {
     case .whisperGlossary: return "=== Whisper Glossary (Offline) ==="
     case .promptMode: return "=== Dictate Prompt ==="
     case .chat: return "=== Chat ==="
+    case .readAloudRewrite: return "=== Read Aloud Rewrite ==="
     }
   }
 
@@ -94,6 +96,12 @@ final class SystemPromptsStore {
   func loadWhisperGlossary() -> String {
     (loadSection(.whisperGlossary)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
       ?? AppConstants.defaultWhisperGlossary
+  }
+
+  /// Read Aloud rewrite prompt. Returns default if section missing or empty.
+  func loadReadAloudRewritePrompt() -> String {
+    (loadSection(.readAloudRewrite)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+      ?? AppConstants.defaultReadAloudRewritePrompt
   }
 
   /// Load full file content for the editor. Returns default formatted content if file missing (after migration attempt).
@@ -179,6 +187,7 @@ final class SystemPromptsStore {
       .whisperGlossary: AppConstants.defaultWhisperGlossary,
       .promptMode: AppConstants.defaultPromptModeSystemPrompt,
       .chat: AppConstants.defaultChatSystemPrompt,
+      .readAloudRewrite: AppConstants.defaultReadAloudRewritePrompt,
     ])
   }
 
@@ -228,6 +237,7 @@ final class SystemPromptsStore {
       .whisperGlossary: AppConstants.defaultWhisperGlossary,
       .promptMode: promptMode,
       .chat: AppConstants.defaultChatSystemPrompt,
+      .readAloudRewrite: AppConstants.defaultReadAloudRewritePrompt,
     ])
     do {
       try content.write(to: fileURL, atomically: true, encoding: .utf8)

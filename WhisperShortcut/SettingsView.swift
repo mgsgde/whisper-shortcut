@@ -82,6 +82,8 @@ struct SettingsView: View {
           SpeechToPromptSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .chat:
           ChatSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+        case .readAloud:
+          ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         }
       }
       .padding(.horizontal, 24)
@@ -101,6 +103,8 @@ struct SettingsView: View {
       return "text.bubble"
     case .chat:
       return "sparkles"
+    case .readAloud:
+      return "speaker.wave.2.fill"
     }
   }
 
@@ -114,6 +118,8 @@ struct SettingsView: View {
       return "Model, system prompt, and shortcut"
     case .chat:
       return "Model, system prompt, and live meeting settings"
+    case .readAloud:
+      return "Shortcut and smart-rewrite settings"
     }
   }
 

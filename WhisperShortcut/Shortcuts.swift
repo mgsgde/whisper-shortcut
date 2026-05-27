@@ -7,6 +7,7 @@ protocol ShortcutDelegate: AnyObject {
   func openSettings()
   func openChat()
   func takeScreenshot()
+  func readAloud()
 }
 
 // Configurable shortcuts using ShortcutConfigManager
@@ -18,6 +19,7 @@ class Shortcuts {
   private var openSettingsKey: HotKey?
   private var openChatKey: HotKey?
   private var screenshotCaptureKey: HotKey?
+  private var readAloudKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -87,6 +89,15 @@ class Shortcuts {
       }
     }
 
+    // Create Read Aloud shortcut (only if enabled)
+    if config.readAloud.isEnabled {
+      readAloudKey = HotKey(
+        key: config.readAloud.key, modifiers: config.readAloud.modifiers)
+      readAloudKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.readAloud()
+      }
+    }
+
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -103,6 +114,7 @@ class Shortcuts {
     openSettingsKey = nil
     openChatKey = nil
     screenshotCaptureKey = nil
+    readAloudKey = nil
   }
 
   deinit {

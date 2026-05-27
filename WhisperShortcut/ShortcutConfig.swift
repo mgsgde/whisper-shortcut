@@ -108,6 +108,7 @@ struct ShortcutConfig: Codable {
   var openSettings: ShortcutDefinition
   var openChat: ShortcutDefinition
   var screenshotCapture: ShortcutDefinition
+  var readAloud: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
@@ -116,9 +117,10 @@ struct ShortcutConfig: Codable {
     stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
     toggleMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
     stopMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
-    openSettings: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true),
+    openSettings: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
     openChat: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true),
-    screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true)
+    screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
+    readAloud: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true)
   )
 
 }
@@ -286,6 +288,7 @@ class ShortcutConfigManager {
     static let openSettingsKey = "shortcut_open_settings"
     static let openChatKey = "shortcut_open_gemini"
     static let screenshotCaptureKey = "shortcut_screenshot_capture"
+    static let readAloudKey = "shortcut_read_aloud"
   }
 
   private let userDefaults = UserDefaults.standard
@@ -309,6 +312,23 @@ class ShortcutConfigManager {
       userDefaults.set(true, forKey: swapMigrationKey)
     }
 
+    // One-time migration: Read Aloud is restored on ⌘4 and Settings moves to ⌘5.
+    // Only move Settings off ⌘4 for users who still had the previous ⌘4 default,
+    // so custom Settings shortcuts (e.g. someone bound ⌘8) are preserved.
+    let readAloudMigrationKey = "shortcut_read_aloud_v1"
+    if !userDefaults.bool(forKey: readAloudMigrationKey) {
+      let priorSettings = loadShortcut(for: Constants.openSettingsKey)
+      let hadDefaultSettingsOnFour =
+        priorSettings?.key == .four && priorSettings?.modifiers == [.command]
+      if priorSettings == nil || hadDefaultSettingsOnFour {
+        saveShortcut(ShortcutConfig.default.openSettings, for: Constants.openSettingsKey)
+      }
+      if loadShortcut(for: Constants.readAloudKey) == nil {
+        saveShortcut(ShortcutConfig.default.readAloud, for: Constants.readAloudKey)
+      }
+      userDefaults.set(true, forKey: readAloudMigrationKey)
+    }
+
     let startRecording =
       loadShortcut(for: Constants.startRecordingKey) ?? ShortcutConfig.default.startRecording
     let stopRecording =
@@ -329,6 +349,8 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.openChatKey) ?? ShortcutConfig.default.openChat
     let screenshotCapture =
       loadShortcut(for: Constants.screenshotCaptureKey) ?? ShortcutConfig.default.screenshotCapture
+    let readAloud =
+      loadShortcut(for: Constants.readAloudKey) ?? ShortcutConfig.default.readAloud
     return ShortcutConfig(
       startRecording: startRecording,
       stopRecording: stopRecording,
@@ -338,7 +360,8 @@ class ShortcutConfigManager {
       stopMeeting: stopMeeting,
       openSettings: openSettings,
       openChat: openChat,
-      screenshotCapture: screenshotCapture
+      screenshotCapture: screenshotCapture,
+      readAloud: readAloud
     )
   }
 
@@ -352,6 +375,7 @@ class ShortcutConfigManager {
     saveShortcut(config.openSettings, for: Constants.openSettingsKey)
     saveShortcut(config.openChat, for: Constants.openChatKey)
     saveShortcut(config.screenshotCapture, for: Constants.screenshotCaptureKey)
+    saveShortcut(config.readAloud, for: Constants.readAloudKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)

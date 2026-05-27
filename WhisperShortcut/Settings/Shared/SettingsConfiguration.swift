@@ -642,6 +642,7 @@ enum SettingsTab: String, CaseIterable {
   case speechToText = "Dictate"
   case speechToPrompt = "Dictate Prompt"
   case chat = "Chat"
+  case readAloud = "Read Aloud"
 }
 
 // MARK: - Live Meeting Chunk Interval Options
@@ -678,6 +679,7 @@ struct SettingsDefaults {
   static let openSettings: ShortcutDefinition? = nil
   static let openChat: ShortcutDefinition? = nil
   static let screenshotCapture: ShortcutDefinition? = nil
+  static let readAloud: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
@@ -693,6 +695,8 @@ struct SettingsDefaults {
   static let readAloudVoice = "Charon"
   /// TTS model used by the Read Aloud button. No settings UI — single source of truth.
   static let readAloudModel: TTSModel = .gemini25FlashTTS
+  /// When true, the global Read Aloud shortcut first runs a "rewrite for speech" pass before TTS.
+  static let readAloudSmartRewriteEnabled = true
 
   // MARK: - Whisper Language Settings
   static let whisperLanguage = WhisperLanguage.auto
@@ -743,6 +747,10 @@ struct SettingsData {
   var openSettings: ShortcutDefinition? = SettingsDefaults.openSettings
   var openChat: ShortcutDefinition? = SettingsDefaults.openChat
   var screenshotCapture: ShortcutDefinition? = SettingsDefaults.screenshotCapture
+  var readAloud: ShortcutDefinition? = SettingsDefaults.readAloud
+
+  // MARK: - Read Aloud
+  var readAloudSmartRewriteEnabled: Bool = SettingsDefaults.readAloudSmartRewriteEnabled
 
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
@@ -793,6 +801,7 @@ enum SettingsFocusField: Hashable {
   case toggleSettings
   case toggleChat
   case screenshotCapture
+  case readAloudShortcut
   case customPrompt
   case promptModeSystemPrompt
 }

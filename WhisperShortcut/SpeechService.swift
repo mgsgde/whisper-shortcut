@@ -784,6 +784,86 @@ class SpeechService {
 
   // MARK: - Text-to-Speech Mode
 
+  /// Reads user-selected text aloud. When the Smart Rewrite toggle is on (default), the text
+  /// is first passed through a lightweight Gemini call that may rewrite it into a form that
+  /// is more pleasant to listen to (e.g. summarizes code, strips markdown formatting); when
+  /// off, the original text is sent straight to TTS.
+  func readSelectedTextAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { throw TranscriptionError.networkError("Text is empty") }
+    let textForTTS = try await maybeRewriteForSpeech(trimmed)
+    return try await readTextAloud(textForTTS, voiceName: voiceName)
+  }
+
+  /// Runs the Smart Rewrite pass if enabled. Returns the original text on any failure or
+  /// when the user has disabled the feature — Read Aloud should still play in that case
+  /// rather than fail outright. Re-throws `CancellationError` so an in-flight TTS cancel
+  /// propagates correctly.
+  private func maybeRewriteForSpeech(_ text: String) async throws -> String {
+    let enabled: Bool = {
+      if UserDefaults.standard.object(forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled) == nil {
+        return SettingsDefaults.readAloudSmartRewriteEnabled
+      }
+      return UserDefaults.standard.bool(forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled)
+    }()
+    guard enabled else {
+      DebugLogger.log("READ-ALOUD-REWRITE: Disabled by user, using original text")
+      return text
+    }
+    do {
+      let rewritten = try await rewriteForSpeech(text)
+      DebugLogger.logSuccess("READ-ALOUD-REWRITE: Rewrote \(text.count) chars -> \(rewritten.count) chars")
+      return rewritten
+    } catch is CancellationError {
+      DebugLogger.log("READ-ALOUD-REWRITE: Cancelled")
+      throw CancellationError()
+    } catch {
+      DebugLogger.logWarning("READ-ALOUD-REWRITE: Rewrite failed (\(error.localizedDescription)); falling back to original text")
+      return text
+    }
+  }
+
+  /// Single-shot Gemini call that returns a speech-friendly version of `text`.
+  /// Uses `gemini-3.1-flash-lite` to keep the pre-TTS latency low.
+  private func rewriteForSpeech(_ text: String) async throws -> String {
+    guard let credential = await credentialProvider.getCredential() else {
+      throw TranscriptionError.noGoogleAPIKey
+    }
+    let systemPrompt = SystemPromptsStore.shared.loadReadAloudRewritePrompt()
+    let model = TranscriptionModel.gemini31FlashLite
+
+    let endpoint = model.apiEndpoint
+    let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
+    let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
+    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
+
+    let userParts: [GeminiChatRequest.GeminiChatPart] = [
+      GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil, url: nil)
+    ]
+    let chatRequest = GeminiChatRequest(
+      contents: [GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts)],
+      systemInstruction: GeminiChatRequest.GeminiSystemInstruction(
+        parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
+      ),
+      tools: nil,
+      generationConfig: nil,
+      model: nil
+    )
+    request.httpBody = try JSONEncoder().encode(chatRequest)
+
+    let response = try await geminiClient.performRequest(
+      request,
+      responseType: GeminiChatResponse.self,
+      mode: "READ-ALOUD-REWRITE",
+      withRetry: true
+    )
+    let combined = response.candidates.first?.content.parts.compactMap { $0.text }.joined() ?? ""
+    let cleaned = combined.trimmingCharacters(in: .whitespacesAndNewlines)
+    // If the model returns nothing useful, fall back to the original text — empty TTS would
+    // surface as a confusing "Text is empty" error to the user.
+    return cleaned.isEmpty ? text : cleaned
+  }
+
   func readTextAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
     let task = Task<Data, Error> {
       try await self.performTTS(text: text, voiceName: voiceName)

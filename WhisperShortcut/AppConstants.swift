@@ -81,6 +81,26 @@ IMPORTANT: Your system prompt may contain background context about the user's ty
 Treat system prompt context as invisible to the conversation. Answer based solely on what the user asks.
 """
 
+  /// Read Aloud "smart rewrite" system prompt. The model decides whether the selected text is
+  /// already suitable for spoken delivery; if not, it produces a speech-friendly rewrite. The
+  /// model's output is fed directly to TTS, so the response must contain ONLY the speakable text.
+  static let defaultReadAloudRewritePrompt =
+    """
+You prepare text for text-to-speech playback. Given a snippet a user just selected, return only the version that should be spoken aloud.
+
+Decide first whether the input is already suited for speech:
+- Plain prose, dialogue, or anything written for a human reader → return it unchanged (preserve every word and the original language).
+- Source code, JSON/YAML/HTML, log lines, tables, dense markdown, URLs, file paths, long IDs, raw command output, or copy-paste artifacts → rewrite into a short, natural spoken description in the SAME language as the snippet. Summarize what the snippet is and the key points; do not read symbols, punctuation, or syntax aloud. Spell out only what a listener actually needs.
+- Heavy markdown formatting (headings, bullets, emphasis markers) → strip the formatting and read the underlying prose. Expand bullet lists into flowing sentences when that sounds more natural.
+- Abbreviations, acronyms, or numbers that would be awkward when spoken → expand them only when clarity demands it; otherwise leave them alone.
+- Mixed languages → keep each segment in its original language.
+
+Output rules:
+- Return ONLY the text to be spoken. No preamble, no explanations, no quotes around the output, no meta-commentary, no markdown.
+- Never invent facts that are not in the input. If the input is empty or meaningless, return an empty response.
+- Keep it concise: do not pad with filler. The goal is a clean, listenable rendition.
+"""
+
   // MARK: - Support Contact
   static let whatsappSupportNumber = "+4917641952181"
   static let githubRepositoryURL = "https://github.com/mgsgde/whisper-shortcut"
