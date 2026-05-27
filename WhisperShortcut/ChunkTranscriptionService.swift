@@ -133,13 +133,21 @@ class ChunkTranscriptionService {
             prompt: prompt
         )
 
-        // Notify delegate about merging
+        // Don't flip the menu bar into `.merging` if Stop already fired: the cancel handler
+        // moved app state to `.idle`, and a late delegate call would re-enter a busy state
+        // on top of that, leaving the UI stuck.
+        try Task.checkCancellation()
         await MainActor.run {
             progressDelegate?.mergingStarted()
         }
 
         // Merge transcripts
         let result = TranscriptMerger.merge(transcripts)
+
+        try Task.checkCancellation()
+        await MainActor.run {
+            progressDelegate?.mergingFinished()
+        }
 
         let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
         DebugLogger.log("CHUNK-SERVICE: Total transcription time: \(String(format: "%.2f", elapsedTime))s")

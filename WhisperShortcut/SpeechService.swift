@@ -784,21 +784,24 @@ class SpeechService {
 
   // MARK: - Text-to-Speech Mode
 
-  /// Reads user-selected text aloud. When the Smart Rewrite toggle is on (default), the text
-  /// is first passed through a lightweight Gemini call that may rewrite it into a form that
-  /// is more pleasant to listen to (e.g. summarizes code, strips markdown formatting); when
-  /// off, the original text is sent straight to TTS.
+  /// Reads `text` aloud. When `applySmartRewrite` is true AND the user has the toggle on, the
+  /// text is first passed through a lightweight Gemini call that may rewrite it into a form
+  /// that is more pleasant to listen to (e.g. summarizes code, strips markdown formatting).
+  ///
+  /// Callers that already have prose intended for human reading (e.g. chat replies from an LLM)
+  /// should pass `applySmartRewrite: false` to skip the extra Gemini round-trip. The global
+  /// selection shortcut uses the default (true) because selections can be code/markdown/etc.
   ///
   /// The entire rewrite-then-TTS pipeline runs inside a single tracked `Task` stored on
   /// `currentTTSTask` so `cancelTTS()` can abort during the rewrite phase too (otherwise the
   /// rewrite would complete and TTS would start playing after the user already pressed Stop).
-  func readSelectedTextAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
+  func readAloud(_ text: String, voiceName: String? = nil, applySmartRewrite: Bool = true) async throws -> Data {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { throw TranscriptionError.networkError("Text is empty") }
 
     let task = Task<Data, Error> { [weak self] () throws -> Data in
       guard let self = self else { throw CancellationError() }
-      let textForTTS = try await self.maybeRewriteForSpeech(trimmed)
+      let textForTTS = applySmartRewrite ? try await self.maybeRewriteForSpeech(trimmed) : trimmed
       try Task.checkCancellation()
       return try await self.performTTS(text: textForTTS, voiceName: voiceName)
     }
@@ -869,17 +872,6 @@ class SpeechService {
     // If the model returns nothing useful, fall back to the original text — empty TTS would
     // surface as a confusing "Text is empty" error to the user.
     return cleaned.isEmpty ? text : cleaned
-  }
-
-  func readTextAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
-    let task = Task<Data, Error> {
-      try await self.performTTS(text: text, voiceName: voiceName)
-    }
-
-    currentTTSTask = task
-    defer { currentTTSTask = nil }
-
-    return try await task.value
   }
 
   private func performTTS(text: String, voiceName: String? = nil) async throws -> Data {

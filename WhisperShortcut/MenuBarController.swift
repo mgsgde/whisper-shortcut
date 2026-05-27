@@ -652,18 +652,9 @@ class MenuBarController: NSObject {
     // Live meeting (no active segment)
     if isLiveMeetingActive { stopLiveMeeting(); return }
 
-    // TTS processing
-    if isTTSRunning {
-      speechService.cancelTTS()
-      stopTTSPlayback()
-      transitionToIdleAndCleanup()
-      return
-    }
-
-    // TTS audio playback
-    if audioEngine?.isRunning == true {
-      stopTTSPlayback()
-      appState = appState.finish()
+    // Read Aloud: TTS network work and/or local playback
+    if isTTSRunning || audioEngine?.isRunning == true {
+      finishReadAloudSession(cancelNetworkWork: isTTSRunning)
       return
     }
 
@@ -1457,7 +1448,6 @@ class MenuBarController: NSObject {
   /// Dismisses processing popup, optionally cleans up one audio URL and chunk statuses, then transitions to idle.
   private func transitionToIdleAndCleanup(cleanupAudioURL: URL? = nil, clearChunkStatuses: Bool = false) {
     PopupNotificationWindow.dismissProcessing()
-    let wasTTS = isTTSRunning
     if clearChunkStatuses {
       chunkStatuses = []
     }
@@ -1468,6 +1458,7 @@ class MenuBarController: NSObject {
       cleanupAudioFile(at: url)
       processedAudioURLs.remove(url)
     }
+    let wasTTS = isTTSRunning
     appState = appState.finish()
     if wasTTS {
       NotificationCenter.default.post(name: .ttsDidStop, object: nil)
@@ -1494,21 +1485,44 @@ class MenuBarController: NSObject {
   /// stops a not-yet-started TTS from racing past a user-initiated Stop.
   private var currentReadAloudTask: Task<Void, Never>?
 
+  /// Tears down an active Read Aloud session and posts `ttsDidStop` so chat/menu UI reset.
+  private func finishReadAloudSession(
+    cancelNetworkWork: Bool = true,
+    stopPlayback: Bool = true,
+    transitionToIdle: Bool = true
+  ) {
+    // Capture BEFORE `transitionToIdleAndCleanup` flips `appState` to idle. It only posts
+    // `ttsDidStop` when leaving a TTS-synthesizing state (`isTTSRunning == true`); for the
+    // audio-playing path the prior state is `.feedback` and it won't post on its own.
+    let transitionWillPostStop = transitionToIdle && isTTSRunning
+    currentReadAloudTask?.cancel()
+    if cancelNetworkWork {
+      speechService.cancelTTS()
+    }
+    if stopPlayback {
+      stopTTSPlayback()
+    }
+    if transitionToIdle {
+      transitionToIdleAndCleanup()
+    }
+    // Post `ttsDidStop` exactly once. Skip when `transitionToIdleAndCleanup` already did
+    // (the synthesizing path); post explicitly otherwise — audio-playing toggle-off, or
+    // in-task catch paths that skip the transition entirely.
+    if !transitionWillPostStop {
+      NotificationCenter.default.post(name: .ttsDidStop, object: nil)
+    }
+  }
+
   /// Handles the "Read Aloud is already busy — treat this trigger as Stop" cases. Returns true
   /// when the trigger was consumed as a stop (caller should `return`), false when the caller
   /// should proceed to start a new Read Aloud.
   private func attemptReadAloudToggleOff() -> Bool {
     if isTTSRunning {
-      currentReadAloudTask?.cancel()
-      speechService.cancelTTS()
-      stopTTSPlayback()
-      transitionToIdleAndCleanup()
+      finishReadAloudSession()
       return true
     }
     if audioEngine?.isRunning == true {
-      stopTTSPlayback()
-      appState = appState.finish()
-      NotificationCenter.default.post(name: .ttsDidStop, object: nil)
+      finishReadAloudSession(cancelNetworkWork: false)
       return true
     }
     if case .processing = appState {
@@ -1529,6 +1543,19 @@ class MenuBarController: NSObject {
     currentReadAloudTask = Task { [weak self] in
       do {
         let audioData = try await producer()
+        // Must check on the read-aloud task, not inside MainActor.run (different task context).
+        guard !Task.isCancelled else {
+          DebugLogger.log("CANCELLATION: Read Aloud producer finished after cancel — skipping playback")
+          // attemptReadAloudToggleOff already flipped state to idle when Stop fired, but late
+          // `mergingStarted` / `mergingFinished` callbacks may have re-entered a `.processing`
+          // state on top of that — without this, the menu bar would stay busy until the next
+          // user action, blocking every other shortcut.
+          await MainActor.run { [weak self] in
+            guard let self, self.isTTSRunning else { return }
+            self.finishReadAloudSession(cancelNetworkWork: false, stopPlayback: false)
+          }
+          return
+        }
         await MainActor.run { [weak self] in
           guard let self else { return }
           PopupNotificationWindow.dismissProcessing()
@@ -1538,7 +1565,8 @@ class MenuBarController: NSObject {
         if Self.isCancellation(error) {
           DebugLogger.log("CANCELLATION: Read Aloud task was cancelled (\(type(of: error)))")
           await MainActor.run { [weak self] in
-            self?.transitionToIdleAndCleanup()
+            guard let self, self.isTTSRunning else { return }
+            self.finishReadAloudSession(cancelNetworkWork: false, stopPlayback: false)
           }
           return
         }
@@ -1558,12 +1586,14 @@ class MenuBarController: NSObject {
           shortTitle = SpeechErrorFormatter.shortStatusForUser(error)
         }
         await MainActor.run { [weak self] in
+          self?.finishReadAloudSession(cancelNetworkWork: false, stopPlayback: false, transitionToIdle: false)
           self?.presentError(shortTitle: shortTitle, message: userMessage, dismissProcessingFirst: true)
         }
       }
-      await MainActor.run { [weak self] in
-        self?.currentReadAloudTask = nil
-      }
+      // Intentionally don't nil-out `currentReadAloudTask` here: the next `beginReadAloudProcessing`
+      // call overwrites it, and `cancel()` on an already-finished Task is a no-op. Nilling it out
+      // through an awaited main-actor hop would race against a fresh Read Aloud trigger that may
+      // have already replaced this slot during the suspension.
     }
   }
 
@@ -1571,8 +1601,11 @@ class MenuBarController: NSObject {
     if attemptReadAloudToggleOff() { return }
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedText.isEmpty else { return }
+    // Chat-reply path: the text is LLM-generated prose intended for human reading, so skip the
+    // Smart Rewrite Gemini call. The global-selection path keeps the default (true) because a
+    // selection can be code/markdown/log-output.
     beginReadAloudProcessing { [speechService] in
-      try await speechService.readTextAloud(trimmedText)
+      try await speechService.readAloud(trimmedText, applySmartRewrite: false)
     }
   }
 
@@ -1584,8 +1617,14 @@ class MenuBarController: NSObject {
     let bitsPerChannel: UInt32 = 16
 
     do {
+      // Gemini TTS returns raw Int16 PCM (s16le, 24kHz, mono), but AVAudioUnitTimePitch
+      // (and other AVAudioUnit effects) require non-interleaved Float32 on their bus —
+      // connecting with an Int16 format raises an Objective-C NSException inside
+      // `engine.connect(...)` that does NOT bridge to Swift's try/catch, leaving the
+      // function silently abandoned and `appState` stuck on `.processing`. Convert up-front
+      // so the entire graph speaks Float32, whether or not the speed node is inserted.
       guard let audioFormat = AVAudioFormat(
-        commonFormat: .pcmFormatInt16,
+        commonFormat: .pcmFormatFloat32,
         sampleRate: sampleRate,
         channels: channels,
         interleaved: false
@@ -1603,12 +1642,13 @@ class MenuBarController: NSObject {
       }
 
       buffer.frameLength = AVAudioFrameCount(frameCount)
+      let int16ToFloat = 1.0 / Float(Int16.max)
       audioData.withUnsafeBytes { bytes in
         guard let baseAddress = bytes.baseAddress else { return }
         let int16Pointer = baseAddress.assumingMemoryBound(to: Int16.self)
-        if let channelData = buffer.int16ChannelData {
+        if let channelData = buffer.floatChannelData {
           for i in 0..<frameCount {
-            channelData[0][i] = int16Pointer[i]
+            channelData[0][i] = Float(int16Pointer[i]) * int16ToFloat
           }
         }
       }
@@ -1675,10 +1715,8 @@ class MenuBarController: NSObject {
 
     } catch {
       DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.localizedDescription)")
+      finishReadAloudSession(cancelNetworkWork: false, transitionToIdle: false)
       presentError(shortTitle: SpeechErrorFormatter.shortStatusForUser(error), message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
-      currentTTSAudioURL = nil
-      audioEngine = nil
-      audioPlayerNode = nil
     }
   }
 
@@ -1938,6 +1976,7 @@ extension MenuBarController: ShortcutDelegate {
   }
 
   private func performReadSelectedTextAloud() {
+    if attemptReadAloudToggleOff() { return }
     guard let selectedText = clipboardManager.getCleanedClipboardText(),
           !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       presentError(
@@ -1948,7 +1987,7 @@ extension MenuBarController: ShortcutDelegate {
       return
     }
     beginReadAloudProcessing { [speechService] in
-      try await speechService.readSelectedTextAloud(selectedText)
+      try await speechService.readAloud(selectedText)
     }
   }
 }
@@ -2099,6 +2138,18 @@ extension MenuBarController: ChunkProgressDelegate {
     }
 
     DebugLogger.log("CHUNK-PROGRESS: Merging \(isTTS ? "audio chunks" : "transcripts")...")
+  }
+
+  func mergingFinished() {
+    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
+    switch context {
+    case .tts:
+      appState = .processing(.ttsProcessing)
+    case .transcription:
+      appState = .processing(.transcribing)
+    }
+    updateMenuBarIcon()
+    DebugLogger.log("CHUNK-PROGRESS: Merging finished (TTS: \(context == .tts))")
   }
 }
 

@@ -124,7 +124,8 @@ enum AppState: Equatable {
         let active = statuses.filter { $0 == .active }.count
         let done = statuses.filter { $0 == .completed }.count
         return "⏳ \(active) processing, \(done)/\(statuses.count) done"
-      case .merging: return "🔗 Merging transcription..."
+      case .merging(let context):
+        return context == .tts ? "🔗 Merging audio..." : "🔗 Merging transcription..."
       }
     }
 
@@ -138,7 +139,10 @@ enum AppState: Equatable {
         let active = statuses.filter { $0 == .active }.count
         let done = statuses.filter { $0 == .completed }.count
         return "Transcribing [\(done)/\(statuses.count)] - \(active) active"
-      case .merging: return "All chunks complete - merging results..."
+      case .merging(let context):
+        return context == .tts
+          ? "All chunks complete - merging audio..."
+          : "All chunks complete - merging results..."
       }
     }
   }

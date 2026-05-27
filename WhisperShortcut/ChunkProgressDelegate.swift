@@ -63,6 +63,9 @@ protocol ChunkProgressDelegate: AnyObject {
 
     /// Called when all chunks are complete and merging begins.
     func mergingStarted()
+
+    /// Called when merging finishes and the pipeline continues (playback, clipboard, etc.).
+    func mergingFinished()
 }
 
 /// Default implementations for optional delegate methods.
@@ -72,4 +75,5 @@ extension ChunkProgressDelegate {
     func chunkingStarted(totalChunks: Int) {}
     func chunkStarted(index: Int) {}
     func mergingStarted() {}
+    func mergingFinished() {}
 }

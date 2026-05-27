@@ -122,7 +122,10 @@ class ChunkTTSService {
             model: model
         )
 
-        // Notify delegate about merging start
+        // Don't flip the menu bar into `.merging` if Stop already fired: the cancel handler
+        // moved app state to `.idle`, and a late `mergingStarted` on the main actor would
+        // re-enter a busy state on top of that, leaving the UI stuck.
+        try Task.checkCancellation()
         await MainActor.run {
             progressDelegate?.mergingStarted()
         }
@@ -130,6 +133,11 @@ class ChunkTTSService {
         // Merge audio chunks
         DebugLogger.log("TTS-CHUNK-SERVICE: Merging \(audioChunks.count) audio chunks")
         let mergedAudio = try AudioMerger.merge(audioChunks)
+
+        try Task.checkCancellation()
+        await MainActor.run {
+            progressDelegate?.mergingFinished()
+        }
 
         let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
         DebugLogger.logSuccess("TTS-CHUNK-SERVICE: Total synthesis completed in \(String(format: "%.2f", elapsedTime))s (merged audio: \(mergedAudio.count) bytes)")
