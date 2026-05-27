@@ -65,10 +65,39 @@ fi
 echo "✅ Build successful!"
 
 echo "🔄 Killing any running WhisperShortcut instances..."
-pkill -f WhisperShortcut || true
+# `pkill -f WhisperShortcut` ALSO matches this script's command line (it runs from a path
+# containing "WhisperShortcut"), and AppKit's SIGTERM handler can take several seconds to
+# flush. The original `pkill || true; sleep 1; open` could leave a stale instance running,
+# and `open` would just foreground it instead of launching the fresh build. Match by exact
+# executable name and verify termination before relaunching.
+kill_app() {
+  local NAME="$1"
+  local PIDS
+  PIDS=$(pgrep -x "$NAME" 2>/dev/null || true)
+  [[ -z "$PIDS" ]] && return 0
+  echo "  • SIGTERM → $NAME (pids: $PIDS)"
+  kill $PIDS 2>/dev/null || true
+  for _ in 1 2 3 4 5; do
+    sleep 1
+    PIDS=$(pgrep -x "$NAME" 2>/dev/null || true)
+    [[ -z "$PIDS" ]] && return 0
+  done
+  PIDS=$(pgrep -x "$NAME" 2>/dev/null || true)
+  if [[ -n "$PIDS" ]]; then
+    echo "  • ⚠️  Did not quit within 5s — SIGKILL → $PIDS"
+    kill -9 $PIDS 2>/dev/null || true
+    sleep 1
+  fi
+}
+kill_app WhisperShortcut
+kill_app WhisperShortcut-AppStore
 
-echo "⏳ Waiting for app to fully close..."
-sleep 1
+# Sanity check before launching — without this, `open` would silently foreground a leftover
+# instance (giving the illusion of a relaunch while we keep testing the stale build).
+if pgrep -x WhisperShortcut >/dev/null 2>&1 || pgrep -x WhisperShortcut-AppStore >/dev/null 2>&1; then
+  echo "❌ A WhisperShortcut instance is still alive after kill attempts — aborting so you don't test the stale build."
+  exit 1
+fi
 
 echo "🚀 Starting WhisperShortcut application (this build)..."
 open "$APP_PATH"

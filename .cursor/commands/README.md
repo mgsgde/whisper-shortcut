@@ -22,6 +22,7 @@ Every slash command follows **`{verb}-{topic}`**. The verb tells the agent _what
 | `/analyze-user-interactions [--mode …] [--since …]`  | `analyze-user-interactions`    | analyze  |
 | `/review-code [--path …] [--since …] [--whole-repo]` | —                              | review   |
 | `/validate-audio-verification`                       | `validate-audio-verification`  | validate |
+| `/improve-context`                                   | —                              | workflow |
 | `/release`                                           | —                              | workflow |
 
 ### Skills without a slash command (agent-invoked)
