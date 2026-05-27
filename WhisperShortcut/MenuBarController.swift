@@ -333,16 +333,9 @@ class MenuBarController: NSObject {
 
   @objc private func chatReadAloudStopFromNotification() {
     DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      if self.isTTSRunning {
-        self.speechService.cancelTTS()
-        self.stopTTSPlayback()
-        self.transitionToIdleAndCleanup()
-      } else if self.audioEngine?.isRunning == true {
-        self.stopTTSPlayback()
-        self.appState = self.appState.finish()
-        NotificationCenter.default.post(name: .ttsDidStop, object: nil)
-      }
+      // Stop-only callback: if nothing is playing we're already idle, so the false return
+      // from the helper is a harmless no-op.
+      _ = self?.attemptReadAloudToggleOff()
     }
   }
 
@@ -352,18 +345,7 @@ class MenuBarController: NSObject {
       let text = (notification.userInfo?[Notification.Name.chatReadAloudTextKey] as? String)?
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       guard !text.isEmpty else { return }
-      if self.isTTSRunning {
-        self.speechService.cancelTTS()
-        self.stopTTSPlayback()
-        self.transitionToIdleAndCleanup()
-        return
-      }
-      if self.audioEngine?.isRunning == true {
-        self.stopTTSPlayback()
-        self.appState = self.appState.finish()
-        NotificationCenter.default.post(name: .ttsDidStop, object: nil)
-        return
-      }
+      // `readAloud(_:)` runs the same toggle-off check internally, so we don't repeat it here.
       self.readAloud(text)
     }
   }
@@ -1506,47 +1488,60 @@ class MenuBarController: NSObject {
   /// this against their captured token and no-op when the user has started a new playback.
   private var currentPlaybackToken: UUID?
 
-  private func readAloud(_ text: String) {
+  /// Tracks the outer Read Aloud pipeline (rewrite + TTS + playback handoff). `speechService.cancelTTS()`
+  /// only aborts the inner TTS network call; cancelling this handle also kills the rewrite stage and
+  /// stops a not-yet-started TTS from racing past a user-initiated Stop.
+  private var currentReadAloudTask: Task<Void, Never>?
+
+  /// Handles the "Read Aloud is already busy — treat this trigger as Stop" cases. Returns true
+  /// when the trigger was consumed as a stop (caller should `return`), false when the caller
+  /// should proceed to start a new Read Aloud.
+  private func attemptReadAloudToggleOff() -> Bool {
     if isTTSRunning {
+      currentReadAloudTask?.cancel()
       speechService.cancelTTS()
       stopTTSPlayback()
       transitionToIdleAndCleanup()
-      return
+      return true
     }
     if audioEngine?.isRunning == true {
       stopTTSPlayback()
       appState = appState.finish()
       NotificationCenter.default.post(name: .ttsDidStop, object: nil)
-      return
+      return true
     }
-    // Refuse Read Aloud while another operation is processing (transcription, prompt, etc.);
-    // overwriting AppState here would silently desync the in-flight Task.
     if case .processing = appState {
-      DebugLogger.logWarning("TTS: ignoring Read Aloud — another operation is processing")
-      return
+      DebugLogger.logWarning("READ-ALOUD: ignoring — another operation is processing")
+      return true
     }
-    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmedText.isEmpty else { return }
+    return false
+  }
 
+  /// Drives the Read Aloud pipeline: sets app state, posts `ttsDidStart`, awaits the producer
+  /// (which may include the Smart Rewrite step), then either hands off to `playTTSAudio` or
+  /// surfaces a formatted error. The producer call runs inside `currentReadAloudTask` so a
+  /// subsequent Stop trigger can cancel it mid-flight.
+  private func beginReadAloudProcessing(producer: @escaping () async throws -> Data) {
     appState = .processing(.ttsProcessing)
     NotificationCenter.default.post(name: .ttsDidStart, object: nil)
 
-    Task {
+    currentReadAloudTask = Task { [weak self] in
       do {
-        let audioData = try await speechService.readTextAloud(trimmedText)
-        await MainActor.run {
+        let audioData = try await producer()
+        await MainActor.run { [weak self] in
+          guard let self else { return }
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
         }
       } catch {
         if Self.isCancellation(error) {
-          DebugLogger.log("CANCELLATION: TTS task was cancelled (\(type(of: error)))")
-          await MainActor.run {
-            self.transitionToIdleAndCleanup()
+          DebugLogger.log("CANCELLATION: Read Aloud task was cancelled (\(type(of: error)))")
+          await MainActor.run { [weak self] in
+            self?.transitionToIdleAndCleanup()
           }
           return
         }
-        DebugLogger.logError("TTS-ERROR: Failed to generate speech: \(error.localizedDescription)")
+        DebugLogger.logError("READ-ALOUD-ERROR: \(error.localizedDescription)")
         let userMessage: String
         let shortTitle: String
         if let chunkedError = error as? ChunkedTTSError,
@@ -1561,10 +1556,22 @@ class MenuBarController: NSObject {
           userMessage = SpeechErrorFormatter.formatForUser(error)
           shortTitle = SpeechErrorFormatter.shortStatusForUser(error)
         }
-        await MainActor.run {
-          self.presentError(shortTitle: shortTitle, message: userMessage, dismissProcessingFirst: true)
+        await MainActor.run { [weak self] in
+          self?.presentError(shortTitle: shortTitle, message: userMessage, dismissProcessingFirst: true)
         }
       }
+      await MainActor.run { [weak self] in
+        self?.currentReadAloudTask = nil
+      }
+    }
+  }
+
+  private func readAloud(_ text: String) {
+    if attemptReadAloudToggleOff() { return }
+    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedText.isEmpty else { return }
+    beginReadAloudProcessing { [speechService] in
+      try await speechService.readTextAloud(trimmedText)
     }
   }
 
@@ -1617,8 +1624,22 @@ class MenuBarController: NSObject {
       let engine = AVAudioEngine()
       let playerNode = AVAudioPlayerNode()
       engine.attach(playerNode)
-      engine.connect(playerNode, to: engine.mainMixerNode, format: buffer.format)
-      timePitchNode = nil
+
+      // Insert a time-pitch node when the user has picked a non-1× rate so the audio
+      // plays faster/slower without changing pitch. `rate` is a multiplier where
+      // 1.0 = normal (the API range is 1/32 ... 32, so our 0.75–2.0 picker is safe).
+      let configuredSpeed = ReadAloudPreferences.speed.rawValue
+      if configuredSpeed != 1.0 {
+        let timePitch = AVAudioUnitTimePitch()
+        timePitch.rate = Float(configuredSpeed)
+        engine.attach(timePitch)
+        engine.connect(playerNode, to: timePitch, format: buffer.format)
+        engine.connect(timePitch, to: engine.mainMixerNode, format: buffer.format)
+        timePitchNode = timePitch
+      } else {
+        engine.connect(playerNode, to: engine.mainMixerNode, format: buffer.format)
+        timePitchNode = nil
+      }
 
       self.audioEngine = engine
       self.audioPlayerNode = playerNode
@@ -1890,25 +1911,7 @@ extension MenuBarController: ShortcutDelegate {
   @objc func readAloudFromMenu() { triggerReadSelectedTextAloud() }
 
   private func triggerReadSelectedTextAloud() {
-    // Toggle off if TTS is synthesizing.
-    if isTTSRunning {
-      speechService.cancelTTS()
-      stopTTSPlayback()
-      transitionToIdleAndCleanup()
-      return
-    }
-    // Toggle off if audio is playing.
-    if audioEngine?.isRunning == true {
-      stopTTSPlayback()
-      appState = appState.finish()
-      NotificationCenter.default.post(name: .ttsDidStop, object: nil)
-      return
-    }
-    // Don't compete with another foreground operation; the user clearly didn't intend that.
-    if case .processing = appState {
-      DebugLogger.logWarning("READ-ALOUD-SHORTCUT: ignoring — another operation is processing")
-      return
-    }
+    if attemptReadAloudToggleOff() { return }
     if isLiveMeetingActive {
       DebugLogger.logWarning("READ-ALOUD-SHORTCUT: ignoring during live meeting")
       return
@@ -1943,42 +1946,8 @@ extension MenuBarController: ShortcutDelegate {
       )
       return
     }
-
-    appState = .processing(.ttsProcessing)
-    NotificationCenter.default.post(name: .ttsDidStart, object: nil)
-
-    Task {
-      do {
-        let audioData = try await speechService.readSelectedTextAloud(selectedText)
-        await MainActor.run {
-          PopupNotificationWindow.dismissProcessing()
-          self.playTTSAudio(audioData: audioData)
-        }
-      } catch {
-        if Self.isCancellation(error) {
-          DebugLogger.log("CANCELLATION: Read Aloud task was cancelled (\(type(of: error)))")
-          await MainActor.run { self.transitionToIdleAndCleanup() }
-          return
-        }
-        DebugLogger.logError("READ-ALOUD-ERROR: \(error.localizedDescription)")
-        let userMessage: String
-        let shortTitle: String
-        if let chunkedError = error as? ChunkedTTSError,
-           case .allChunksFailed(let errors) = chunkedError,
-           let firstError = errors.first?.error as? TranscriptionError {
-          userMessage = SpeechErrorFormatter.format(firstError)
-          shortTitle = SpeechErrorFormatter.shortStatus(firstError)
-        } else if let transcriptionError = error as? TranscriptionError {
-          userMessage = SpeechErrorFormatter.format(transcriptionError)
-          shortTitle = SpeechErrorFormatter.shortStatus(transcriptionError)
-        } else {
-          userMessage = SpeechErrorFormatter.formatForUser(error)
-          shortTitle = SpeechErrorFormatter.shortStatusForUser(error)
-        }
-        await MainActor.run {
-          self.presentError(shortTitle: shortTitle, message: userMessage, dismissProcessingFirst: true)
-        }
-      }
+    beginReadAloudProcessing { [speechService] in
+      try await speechService.readSelectedTextAloud(selectedText)
     }
   }
 }

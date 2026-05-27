@@ -42,6 +42,12 @@ struct ShortcutRecorderRow: View {
   @State private var pendingShortcut: ShortcutDefinition?
   @State private var pendingConflict: ShortcutConflict?
 
+  /// Stop-callback for the row currently in recording mode. Enforces "only one row records
+  /// at a time": when a second row enters recording, it asks the previous row to cancel its
+  /// own recording first. Without this, both rows install local NSEvent monitors and both
+  /// would write the next keystroke into their respective shortcut bindings.
+  private static var activeRecorderCancel: (() -> Void)?
+
   init(
     label: String,
     shortcut: Binding<ShortcutDefinition?>,
@@ -206,6 +212,11 @@ struct ShortcutRecorderRow: View {
 
   private func startRecording() {
     guard !isRecording else { return }
+    // If another row is already recording, ask it to stop first so its monitor is torn down
+    // before ours is installed — otherwise both rows would consume the same keystroke.
+    Self.activeRecorderCancel?()
+    Self.activeRecorderCancel = { stopRecording() }
+
     isRecording = true
     transientMessage = nil
     currentFocus = focusedField
@@ -232,7 +243,14 @@ struct ShortcutRecorderRow: View {
     }
   }
 
-  private func stopRecording() {
+  /// Tears down the local NSEvent monitor and exits recording mode.
+  ///
+  /// `skipRearm: true` is used on the success-capture path where the caller's `onChanged`
+  /// is about to trigger `saveSettings → .shortcutsChanged`, which re-arms global HotKeys
+  /// with the *new* config. Without this flag we'd post `.shortcutRecordingStopped` first
+  /// (re-arming with the *old* config), then immediately rearm again with the new config —
+  /// wasted work plus a brief window where the just-replaced binding is briefly live.
+  private func stopRecording(skipRearm: Bool = false) {
     let wasRecording = isRecording
     if let monitor = localMonitor {
       NSEvent.removeMonitor(monitor)
@@ -240,11 +258,12 @@ struct ShortcutRecorderRow: View {
     }
     isRecording = false
     transientMessage = nil
+    Self.activeRecorderCancel = nil
 
-    // Re-arm global HotKeys. Skip if we weren't actually recording (e.g.
-    // onDisappear after an already-finished capture), since the capture's
-    // saveSettings → shortcutsChanged path has already restored them.
-    if wasRecording {
+    // Re-arm global HotKeys. Skip if we weren't actually recording (e.g. onDisappear after
+    // an already-finished capture) or if the caller is about to fire `shortcutsChanged`
+    // itself (success-capture path).
+    if wasRecording && !skipRearm {
       NotificationCenter.default.post(name: .shortcutRecordingStopped, object: nil)
     }
   }
@@ -300,7 +319,10 @@ struct ShortcutRecorderRow: View {
 
     shortcut = newShortcut
     transientMessage = nil
-    stopRecording()
+    // Skip the rearm-on-stop: `onChanged?()` triggers `saveSettings → .shortcutsChanged`
+    // which rearms with the new config, so an interim rearm with the old config would
+    // be redundant and briefly reactivate the binding we just replaced.
+    stopRecording(skipRearm: true)
     onChanged?()
   }
 

@@ -645,6 +645,52 @@ enum SettingsTab: String, CaseIterable {
   case readAloud = "Read Aloud"
 }
 
+// MARK: - Read Aloud Playback Speed
+/// Discrete playback rates applied locally via `AVAudioUnitTimePitch`. The Gemini TTS
+/// API has no `speakingRate` parameter, so speed is post-processed during playback
+/// rather than asked of the model.
+enum ReadAloudSpeed: Double, CaseIterable {
+  case x075 = 0.75
+  case x100 = 1.0
+  case x125 = 1.25
+  case x150 = 1.5
+  case x175 = 1.75
+  case x200 = 2.0
+
+  var displayName: String {
+    switch self {
+    case .x075: return "0.75×"
+    case .x100: return "1×"
+    case .x125: return "1.25×"
+    case .x150: return "1.5×"
+    case .x175: return "1.75×"
+    case .x200: return "2×"
+    }
+  }
+
+  var isRecommended: Bool {
+    return self == SettingsDefaults.readAloudSpeed
+  }
+}
+
+// MARK: - Read Aloud Preferences (UserDefaults Accessors)
+/// Centralized read accessors for Read Aloud preferences so MenuBarController, SpeechService,
+/// and SettingsViewModel don't each have to coalesce-with-default the same UserDefaults keys.
+enum ReadAloudPreferences {
+  static var speed: ReadAloudSpeed {
+    guard UserDefaults.standard.object(forKey: UserDefaultsKeys.readAloudSpeed) != nil,
+          let saved = ReadAloudSpeed(rawValue: UserDefaults.standard.double(forKey: UserDefaultsKeys.readAloudSpeed))
+    else { return SettingsDefaults.readAloudSpeed }
+    return saved
+  }
+
+  static var smartRewriteEnabled: Bool {
+    guard UserDefaults.standard.object(forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled) != nil
+    else { return SettingsDefaults.readAloudSmartRewriteEnabled }
+    return UserDefaults.standard.bool(forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled)
+  }
+}
+
 // MARK: - Live Meeting Chunk Interval Options
 enum LiveMeetingChunkInterval: Double, CaseIterable {
   case fifteenSeconds = 15.0
@@ -697,6 +743,8 @@ struct SettingsDefaults {
   static let readAloudModel: TTSModel = .gemini25FlashTTS
   /// When true, the global Read Aloud shortcut first runs a "rewrite for speech" pass before TTS.
   static let readAloudSmartRewriteEnabled = true
+  /// Playback rate applied locally during TTS playback. Pitch is preserved.
+  static let readAloudSpeed: ReadAloudSpeed = .x100
 
   // MARK: - Whisper Language Settings
   static let whisperLanguage = WhisperLanguage.auto
@@ -751,6 +799,7 @@ struct SettingsData {
 
   // MARK: - Read Aloud
   var readAloudSmartRewriteEnabled: Bool = SettingsDefaults.readAloudSmartRewriteEnabled
+  var readAloudSpeed: ReadAloudSpeed = SettingsDefaults.readAloudSpeed
 
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel

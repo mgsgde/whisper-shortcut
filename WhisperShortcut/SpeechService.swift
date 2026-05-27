@@ -788,25 +788,31 @@ class SpeechService {
   /// is first passed through a lightweight Gemini call that may rewrite it into a form that
   /// is more pleasant to listen to (e.g. summarizes code, strips markdown formatting); when
   /// off, the original text is sent straight to TTS.
+  ///
+  /// The entire rewrite-then-TTS pipeline runs inside a single tracked `Task` stored on
+  /// `currentTTSTask` so `cancelTTS()` can abort during the rewrite phase too (otherwise the
+  /// rewrite would complete and TTS would start playing after the user already pressed Stop).
   func readSelectedTextAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { throw TranscriptionError.networkError("Text is empty") }
-    let textForTTS = try await maybeRewriteForSpeech(trimmed)
-    return try await readTextAloud(textForTTS, voiceName: voiceName)
+
+    let task = Task<Data, Error> { [weak self] () throws -> Data in
+      guard let self = self else { throw CancellationError() }
+      let textForTTS = try await self.maybeRewriteForSpeech(trimmed)
+      try Task.checkCancellation()
+      return try await self.performTTS(text: textForTTS, voiceName: voiceName)
+    }
+    currentTTSTask = task
+    defer { currentTTSTask = nil }
+    return try await task.value
   }
 
-  /// Runs the Smart Rewrite pass if enabled. Returns the original text on any failure or
-  /// when the user has disabled the feature — Read Aloud should still play in that case
-  /// rather than fail outright. Re-throws `CancellationError` so an in-flight TTS cancel
-  /// propagates correctly.
+  /// Runs the Smart Rewrite pass if enabled. Returns the original text on any non-cancellation
+  /// failure — Read Aloud should still play in that case rather than fail outright. A
+  /// cancellation (either Swift `CancellationError` or `URLError.cancelled` from the network
+  /// layer when the surrounding Task is cancelled) is rethrown so the caller aborts.
   private func maybeRewriteForSpeech(_ text: String) async throws -> String {
-    let enabled: Bool = {
-      if UserDefaults.standard.object(forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled) == nil {
-        return SettingsDefaults.readAloudSmartRewriteEnabled
-      }
-      return UserDefaults.standard.bool(forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled)
-    }()
-    guard enabled else {
+    guard ReadAloudPreferences.smartRewriteEnabled else {
       DebugLogger.log("READ-ALOUD-REWRITE: Disabled by user, using original text")
       return text
     }
@@ -814,10 +820,11 @@ class SpeechService {
       let rewritten = try await rewriteForSpeech(text)
       DebugLogger.logSuccess("READ-ALOUD-REWRITE: Rewrote \(text.count) chars -> \(rewritten.count) chars")
       return rewritten
-    } catch is CancellationError {
-      DebugLogger.log("READ-ALOUD-REWRITE: Cancelled")
-      throw CancellationError()
     } catch {
+      // If the surrounding Task got cancelled, propagate that regardless of which concrete
+      // error type bubbled up (URLSession surfaces cancellation as `URLError(.cancelled)`,
+      // not `CancellationError`).
+      try Task.checkCancellation()
       DebugLogger.logWarning("READ-ALOUD-REWRITE: Rewrite failed (\(error.localizedDescription)); falling back to original text")
       return text
     }

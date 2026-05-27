@@ -72,5 +72,7 @@ enum UserDefaultsKeys {
   /// When true, selected text is run through a Gemini "rewrite for speech" pass before TTS.
   /// Default: enabled. Stored under SettingsDefaults.readAloudSmartRewriteEnabled.
   static let readAloudSmartRewriteEnabled = "readAloudSmartRewriteEnabled"
+  /// Local playback rate for Read Aloud TTS. Stored as Double (e.g. 1.0, 1.25, 1.5).
+  static let readAloudSpeed = "readAloudSpeed"
 }
 

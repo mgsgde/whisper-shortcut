@@ -110,12 +110,9 @@ class SettingsViewModel: ObservableObject {
       data.screenshotInPromptMode = SettingsDefaults.screenshotInPromptMode
     }
 
-    // Load Read Aloud smart rewrite setting
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled) != nil {
-      data.readAloudSmartRewriteEnabled = UserDefaults.standard.bool(forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled)
-    } else {
-      data.readAloudSmartRewriteEnabled = SettingsDefaults.readAloudSmartRewriteEnabled
-    }
+    // Load Read Aloud preferences
+    data.readAloudSmartRewriteEnabled = ReadAloudPreferences.smartRewriteEnabled
+    data.readAloudSpeed = ReadAloudPreferences.speed
 
     // Load Gemini window: close on focus loss
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.chatCloseOnFocusLoss) != nil {
@@ -211,7 +208,7 @@ class SettingsViewModel: ObservableObject {
     return nil
   }
 
-  // MARK: - Real-time Shortcut Validation
+  // MARK: - Real-time Conflict Detection
   /// Returns the conflicting field + label when `candidate` is already bound to
   /// another slot; `nil` otherwise. Format validation is unnecessary because
   /// the recorder only produces structurally valid `ShortcutDefinition` values.
@@ -357,6 +354,9 @@ class SettingsViewModel: ObservableObject {
 
     // Save Read Aloud smart rewrite setting
     UserDefaults.standard.set(data.readAloudSmartRewriteEnabled, forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled)
+
+    // Save Read Aloud playback speed
+    UserDefaults.standard.set(data.readAloudSpeed.rawValue, forKey: UserDefaultsKeys.readAloudSpeed)
 
     // Save Chat window: close on focus loss
     UserDefaults.standard.set(data.chatCloseOnFocusLoss, forKey: UserDefaultsKeys.chatCloseOnFocusLoss)

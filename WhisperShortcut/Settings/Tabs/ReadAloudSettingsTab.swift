@@ -11,6 +11,10 @@ struct ReadAloudSettingsTab: View {
 
       SpacedSectionDivider()
 
+      playbackSpeedSection
+
+      SpacedSectionDivider()
+
       smartRewriteSection
 
       SpacedSectionDivider()
@@ -51,6 +55,45 @@ struct ReadAloudSettingsTab: View {
         findConflict: viewModel.findShortcutConflict,
         clearShortcut: viewModel.clearShortcut
       )
+    }
+  }
+
+  // MARK: - Playback Speed Section
+  @ViewBuilder
+  private var playbackSpeedSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "⏩ Playback Speed",
+        subtitle: "How fast the audio is played back. Pitch is preserved."
+      )
+
+      HStack(alignment: .center, spacing: 16) {
+        Text("Speed:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        Picker("", selection: $viewModel.data.readAloudSpeed) {
+          ForEach(ReadAloudSpeed.allCases, id: \.rawValue) { speed in
+            HStack {
+              Text(speed.displayName)
+              if speed.isRecommended {
+                Text("(Recommended)")
+                  .font(.caption)
+                  .foregroundColor(.secondary)
+              }
+            }
+            .tag(speed)
+          }
+        }
+        .pickerStyle(MenuPickerStyle())
+        .frame(width: 200)
+        .onChange(of: viewModel.data.readAloudSpeed) { _ in
+          Task { await viewModel.saveSettings() }
+        }
+
+        Spacer()
+      }
     }
   }
 
