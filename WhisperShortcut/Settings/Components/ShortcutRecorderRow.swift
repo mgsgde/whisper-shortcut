@@ -177,6 +177,11 @@ struct ShortcutRecorderRow: View {
     validationError = nil
     currentFocus = focusedField
 
+    // Tear down global HotKey registrations so Carbon doesn't grab the keystroke
+    // before our local monitor sees it (e.g. recording ⌘1 while ⌘1 is bound to
+    // Toggle Dictation would otherwise trigger dictation instead of capturing).
+    NotificationCenter.default.post(name: .shortcutRecordingStarted, object: nil)
+
     localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
       // Only intercept while still recording (handler stays installed between
       // events; we tear it down on capture/cancel).
@@ -195,12 +200,20 @@ struct ShortcutRecorderRow: View {
   }
 
   private func stopRecording() {
+    let wasRecording = isRecording
     if let monitor = localMonitor {
       NSEvent.removeMonitor(monitor)
       localMonitor = nil
     }
     isRecording = false
     transientMessage = nil
+
+    // Re-arm global HotKeys. Skip if we weren't actually recording (e.g.
+    // onDisappear after an already-finished capture), since the capture's
+    // saveSettings → shortcutsChanged path has already restored them.
+    if wasRecording {
+      NotificationCenter.default.post(name: .shortcutRecordingStopped, object: nil)
+    }
   }
 
   private func handleKeyDown(_ event: NSEvent) {

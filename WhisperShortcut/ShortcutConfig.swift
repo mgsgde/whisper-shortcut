@@ -117,7 +117,7 @@ struct ShortcutConfig: Codable {
     stopPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
     toggleMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
     stopMeeting: ShortcutDefinition(key: .m, modifiers: [.command, .shift], isEnabled: true),
-    openSettings: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
+    openSettings: ShortcutDefinition(key: .zero, modifiers: [.command], isEnabled: true),
     openChat: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true),
     screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
     readAloud: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true)
@@ -329,6 +329,19 @@ class ShortcutConfigManager {
       userDefaults.set(true, forKey: readAloudMigrationKey)
     }
 
+    // One-time migration: Settings default moves from ⌘5 to ⌘0.
+    // Only migrate users who still had the previous ⌘5 default; custom bindings stay.
+    let settingsZeroMigrationKey = "shortcut_settings_zero_v1"
+    if !userDefaults.bool(forKey: settingsZeroMigrationKey) {
+      let priorSettings = loadShortcut(for: Constants.openSettingsKey)
+      let hadDefaultSettingsOnFive =
+        priorSettings?.key == .five && priorSettings?.modifiers == [.command]
+      if priorSettings == nil || hadDefaultSettingsOnFive {
+        saveShortcut(ShortcutConfig.default.openSettings, for: Constants.openSettingsKey)
+      }
+      userDefaults.set(true, forKey: settingsZeroMigrationKey)
+    }
+
     let startRecording =
       loadShortcut(for: Constants.startRecordingKey) ?? ShortcutConfig.default.startRecording
     let stopRecording =
@@ -401,6 +414,14 @@ class ShortcutConfigManager {
 // MARK: - Notification Extension
 extension Notification.Name {
   static let shortcutsChanged = Notification.Name("shortcutsChanged")
+  /// Posted by `ShortcutRecorderRow` when recording begins. `Shortcuts` tears
+  /// down its Carbon `RegisterEventHotKey` registrations so the recorder's
+  /// `NSEvent` local monitor can actually observe the keystroke — otherwise
+  /// Carbon intercepts the event first and fires the global handler.
+  static let shortcutRecordingStarted = Notification.Name("shortcutRecordingStarted")
+  /// Posted when the recorder closes (success or cancel). `Shortcuts` recreates
+  /// the HotKey instances from the current config.
+  static let shortcutRecordingStopped = Notification.Name("shortcutRecordingStopped")
   static let modelChanged = Notification.Name("modelChanged")
   /// Posted when API is rate limited and waiting. userInfo contains "waitTime" (TimeInterval)
   static let rateLimitWaiting = Notification.Name("rateLimitWaiting")

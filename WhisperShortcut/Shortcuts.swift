@@ -33,6 +33,30 @@ class Shortcuts {
       name: .shortcutsChanged,
       object: nil
     )
+
+    // Pause/resume global hotkeys while the Settings recorder is open, so the
+    // recorder's NSEvent local monitor sees the keystroke instead of Carbon
+    // firing the global handler.
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(recordingStarted),
+      name: .shortcutRecordingStarted,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(recordingStopped),
+      name: .shortcutRecordingStopped,
+      object: nil
+    )
+  }
+
+  @objc private func recordingStarted(_ notification: Notification) {
+    cleanup()
+  }
+
+  @objc private func recordingStopped(_ notification: Notification) {
+    setupShortcuts(with: currentConfig)
   }
 
   func setup() {
