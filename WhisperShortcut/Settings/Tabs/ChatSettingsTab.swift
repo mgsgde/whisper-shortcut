@@ -233,7 +233,7 @@ struct ChatSettingsTab: View {
       VStack(alignment: .leading, spacing: 8) {
         Text("Use the shortcut or the menu bar item \"Chat\" to open the chat window.")
           .textSelection(.enabled)
-        Text("Type /meeting or use the Meeting shortcut to start/stop live meeting recording.")
+        Text("Type /meeting in chat to start/stop live meeting recording.")
           .textSelection(.enabled)
         Text("While recording, Gemini has access to the meeting transcript for context.")
           .textSelection(.enabled)

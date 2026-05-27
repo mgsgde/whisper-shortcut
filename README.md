@@ -2,7 +2,7 @@
 
 WhisperShortcut is a macOS menu bar app for voice-first productivity: dictation, voice editing, AI chat, text-to-speech, and live meeting transcription.
 
-The app is local-first and bring-your-own-key. There is no backend or subscription service in this repository. Cloud features use your Google Gemini API key and, optionally, your xAI API key for Grok chat models.
+The app is local-first and bring-your-own-key. There is no backend or subscription service in this repository. Cloud features use your Google Gemini API key and, optionally, an xAI API key (for Grok chat models) or an OpenAI API key (for GPT-5 chat and GPT Audio Dictate Prompt).
 
 ## Download
 
@@ -14,9 +14,9 @@ The app is local-first and bring-your-own-key. There is no backend or subscripti
 
 - **Dictate**: Record speech and copy the transcription to your clipboard. Use Gemini models online or local Whisper models offline.
 - **Dictate Prompt**: Speak an instruction that edits the current clipboard text, for example "make this shorter" or "translate this to English".
-- **Read Aloud**: Read clipboard text aloud with Gemini TTS voices.
+- **Read Aloud**: Press the shortcut on any selected text to copy it and read it aloud with Gemini TTS voices. An optional Smart Rewrite pass cleans up code or markdown before TTS, and playback speed is configurable.
 - **Prompt & Read**: Edit text with a spoken instruction, then read the result aloud automatically.
-- **Chat**: Use a persisted multi-session chat window with Gemini or Grok models, screenshots, image attachments, slash commands, and optional web grounding.
+- **Chat**: Use a persisted multi-session chat window with Gemini, Grok, or OpenAI models, screenshots, image attachments, slash commands, and optional web grounding.
 - **Google integrations**: Connect a Google account so chat can work with Calendar, Tasks, and Gmail through controlled local tools.
 - **Live Meeting**: Record meetings in chunks, transcribe them as they complete, keep an in-app transcript, and save meeting files locally.
 - **Smart Improvement**: Let the app improve system prompts and user context from usage logs or a spoken instruction.
@@ -27,6 +27,7 @@ The app is local-first and bring-your-own-key. There is no backend or subscripti
 - Xcode 16.0 or later for development
 - Google Gemini API key for cloud transcription, prompt workflows, chat, TTS, Smart Improvement, and live meetings
 - Optional xAI API key for Grok chat models
+- Optional OpenAI API key for GPT-5 chat models and the GPT Audio Dictate Prompt model
 - Optional Google account connection for Calendar, Tasks, and Gmail tools
 
 Offline Whisper dictation works without an API key after downloading a local model in Settings.
@@ -59,13 +60,13 @@ Long recordings are split into chunks and processed in parallel.
 
 ### Chat
 
-Open the chat window from the menu bar or its configured shortcut. Chat sessions are stored locally and can use slash commands such as `/new`, `/model`, `/screenshot`, `/settings`, `/grok`, `/gemini`, `/openai`, `/meeting`, and `/copy`.
+Open the chat window from the menu bar or its configured shortcut. Chat sessions are stored locally and can use slash commands such as `/new`, `/model`, `/screenshot`, `/settings`, `/gemini`, `/grok`, `/openai`, `/pin`, `/unpin`, `/meeting`, and `/copy`.
 
-Gemini models use your Google API key. Grok models use your xAI API key.
+Gemini models use your Google API key, Grok models use your xAI API key, and OpenAI models use your OpenAI API key.
 
 ### Live Meeting
 
-Use `/meeting` in chat or the Meeting shortcut to start and stop live meeting recording. Audio is rotated into chunks, transcribed, and appended to the meeting transcript. Saved transcripts live in the app's Application Support folder.
+Type `/meeting` in chat to start and stop live meeting recording. Audio is rotated into chunks, transcribed, and appended to the meeting transcript. Saved transcripts live in the app's Application Support folder.
 
 ## Build From Source
 
@@ -86,7 +87,7 @@ Useful scripts:
 - `scripts/rebuild-and-restart.sh`: Build Debug and restart the local app.
 - `scripts/logs.sh`: Stream or filter app logs.
 - `scripts/create-release.sh`: Create a tagged release.
-- `scripts/test-gemini-models.sh`: Check configured Gemini model availability.
+- `scripts/test-gemini-models.sh`, `scripts/test-grok-models.sh`, `scripts/test-openai-models.sh`: Check provider model availability and basic responses.
 
 ## Project Structure
 
