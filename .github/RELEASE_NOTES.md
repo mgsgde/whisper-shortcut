@@ -1,23 +1,23 @@
-# WhisperShortcut 7.30
+# WhisperShortcut 7.31
 
-## Read Aloud (new)
-- Select text anywhere and press the Read Aloud shortcut (default **⌘4**) to hear it spoken. Press again to stop — Stop also cancels an in-flight rewrite.
-- **Smart Rewrite** (optional, on by default): Gemini converts non-prose content like code, tables, and markdown into a speakable form before TTS; plain prose passes through unchanged.
-- **Playback speed**: 0.75× / 1× / 1.25× / 1.5× / 1.75× / 2×, applied locally with pitch preserved.
-- Editable rewrite prompt in the new **Read Aloud** settings tab.
-- The Settings shortcut moved from ⌘4 to ⌘5 to make room. Custom Settings shortcuts are untouched — only users who still had the default ⌘4 are migrated.
+Stability release focused on Read Aloud — the feature that shipped in 7.30 had a handful of edge cases that left the menu bar busy or surfaced a misleading "no text selected" error.
 
-## Shortcut Recording
-- Shortcuts are now captured by **pressing them**, not by typing key names. Works correctly on any keyboard layout — the recorder shows the letter printed on your physical keyboard.
-- **Conflict resolution**: recording a combo that's already bound no longer dead-ends with a red error. The recorder shows what's currently using the combo and offers a one-click **Reassign**.
-- Global hotkeys pause briefly while a row is recording so the combo you press is actually captured (and not fired as the other action).
+## Read Aloud fixes
+- **"No text selected" on apps that respond slowly to Cmd+C.** The shortcut used to wait a fixed 150 ms after the synthetic Cmd+C and then read the clipboard — too short for some apps, so it would fall back to a stale clipboard or an empty read. It now polls `NSPasteboard.changeCount` for up to 500 ms and only proceeds once the source app has actually written the selection.
+- **Long text and non-1× playback no longer get stuck.** Chunked TTS (long text) and non-1× speed playback could leave the menu bar in `.processing` until the next user action. Cancellation races on the chunk pipeline and a silent Objective-C exception in the audio-format setup were the culprits.
+- **Stop reliably tears down everything.** The stop path now cancels the rewrite stage, the network call, the audio engine, and the menu bar state through one unified teardown helper.
+- **Double-press during the wait window no longer orphans a task.** Pressing the shortcut twice in quick succession while the first press is still copying the selection is now recognized as "stop" instead of starting a second pipeline on top of the first.
 
-## Polish
-- Menu bar microphone glyph shrunk to 14pt so it no longer clips on small status bars.
+## Shortcut recorder
+- Shift-only combinations on printable keys are now rejected — macOS routes them to text input instead of the hotkey handler, so they would have silently failed to fire.
+
+## Behind the scenes
+- Internal refactor of the shortcut-config plumbing — no user-visible change.
+- `scripts/rebuild-and-restart.sh` now matches the app by exact executable name and verifies termination before relaunching, so a stale instance can't survive a rebuild.
 
 ## Installation
 Download the latest `.dmg` from [Releases](https://github.com/mgsgde/whisper-shortcut/releases).
 
 ## Full changelog
 
-[Compare v7.29…v7.30](https://github.com/mgsgde/whisper-shortcut/compare/v7.29...v7.30)
+[Compare v7.30…v7.31](https://github.com/mgsgde/whisper-shortcut/compare/v7.30...v7.31)
