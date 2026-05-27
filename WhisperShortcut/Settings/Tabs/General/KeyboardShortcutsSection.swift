@@ -19,7 +19,6 @@ struct KeyboardShortcutsSection: View {
       ShortcutRecorderRow(
         label: "Toggle Settings:",
         shortcut: $viewModel.data.openSettings,
-        defaultShortcut: ShortcutConfig.default.openSettings,
         focusedField: .toggleSettings,
         currentFocus: $focusedField,
         onChanged: {
@@ -34,7 +33,6 @@ struct KeyboardShortcutsSection: View {
       ShortcutRecorderRow(
         label: "Screenshot to Clipboard:",
         shortcut: $viewModel.data.screenshotCapture,
-        defaultShortcut: ShortcutConfig.default.screenshotCapture,
         focusedField: .screenshotCapture,
         currentFocus: $focusedField,
         onChanged: {

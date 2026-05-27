@@ -336,7 +336,9 @@ struct ShortcutRecorderRow: View {
     // Skip the rearm-on-stop: `onChanged?()` triggers `saveSettings → .shortcutsChanged`
     // which rearms with the new config, so an interim rearm with the old config would
     // be redundant and briefly reactivate the binding we just replaced.
+    // Rearm before save so a failed save doesn't leave global hotkeys permanently disarmed.
     stopRecording(skipRearm: true)
+    NotificationCenter.default.post(name: .shortcutRecordingStopped, object: nil)
     onChanged?()
   }
 
@@ -346,8 +348,7 @@ struct ShortcutRecorderRow: View {
     guard let pending = pendingShortcut, let conflict = pendingConflict else { return }
     clearShortcut?(conflict.field)
     shortcut = pending
-    pendingShortcut = nil
-    pendingConflict = nil
+    clearPending()
     onChanged?()
   }
 

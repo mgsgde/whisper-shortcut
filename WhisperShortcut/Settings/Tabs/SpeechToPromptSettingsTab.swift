@@ -50,7 +50,6 @@ struct SpeechToPromptSettingsTab: View {
       ShortcutRecorderRow(
         label: "Toggle Prompting:",
         shortcut: $viewModel.data.togglePrompting,
-        defaultShortcut: ShortcutConfig.default.startPrompting,
         focusedField: .togglePrompting,
         currentFocus: $focusedField,
         onChanged: {

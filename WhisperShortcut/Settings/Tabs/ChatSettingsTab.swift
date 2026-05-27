@@ -69,7 +69,6 @@ struct ChatSettingsTab: View {
       ShortcutRecorderRow(
         label: "Chat:",
         shortcut: $viewModel.data.openChat,
-        defaultShortcut: ShortcutConfig.default.openChat,
         focusedField: .toggleChat,
         currentFocus: $focusedField,
         onChanged: {

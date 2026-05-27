@@ -30,7 +30,6 @@ class SettingsViewModel: ObservableObject {
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     data.toggleDictation = currentConfig.startRecording.isEnabled ? currentConfig.startRecording : nil
     data.togglePrompting = currentConfig.startPrompting.isEnabled ? currentConfig.startPrompting : nil
-    data.toggleMeeting = currentConfig.toggleMeeting.isEnabled ? currentConfig.toggleMeeting : nil
     data.openSettings = currentConfig.openSettings.isEnabled ? currentConfig.openSettings : nil
     data.openChat = currentConfig.openChat.isEnabled ? currentConfig.openChat : nil
     data.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
@@ -182,16 +181,17 @@ class SettingsViewModel: ObservableObject {
     // Shortcuts are now captured via the recorder (NSEvent) and stored as
     // `ShortcutDefinition?` — no string parsing, no format validation. Only
     // duplicate detection across the enabled set is needed.
-    let shortcuts = currentShortcuts()
+    let enabledByLabel = Self.configurableShortcutSlots.compactMap { slot -> (String, ShortcutDefinition)? in
+      guard let shortcut = slot.read(data) else { return nil }
+      return (slot.label, shortcut)
+    }
 
-    let enabledShortcuts = shortcuts.values.compactMap { $0 }
+    let enabledShortcuts = enabledByLabel.map(\.1)
     let uniqueShortcuts = Set(enabledShortcuts)
     if enabledShortcuts.count != uniqueShortcuts.count {
       var shortcutCounts: [ShortcutDefinition: [String]] = [:]
-      for (name, shortcut) in shortcuts {
-        if let shortcut = shortcut {
-          shortcutCounts[shortcut, default: []].append(name)
-        }
+      for (label, shortcut) in enabledByLabel {
+        shortcutCounts[shortcut, default: []].append(label)
       }
 
       let duplicatedShortcuts = shortcutCounts.filter { $0.value.count > 1 }
@@ -215,15 +215,12 @@ class SettingsViewModel: ObservableObject {
   func findShortcutConflict(_ candidate: ShortcutDefinition, for field: SettingsFocusField)
     -> ShortcutConflict?
   {
-    let currentShortcuts = self.currentShortcuts()
-    for (name, existingShortcut) in currentShortcuts {
-      if let existingShortcut = existingShortcut,
-        existingShortcut == candidate,
-        !isSameField(name: name, field: field)
-      {
-        guard let conflictField = focusField(forShortcutName: name) else { continue }
-        return ShortcutConflict(field: conflictField, label: displayLabel(for: conflictField))
-      }
+    for slot in Self.configurableShortcutSlots {
+      guard slot.field != field,
+        let existingShortcut = slot.read(data),
+        existingShortcut == candidate
+      else { continue }
+      return ShortcutConflict(field: slot.field, label: slot.label)
     }
     return nil
   }
@@ -232,47 +229,42 @@ class SettingsViewModel: ObservableObject {
   /// without saving. The recorder's `onChanged` triggers a single `saveSettings`
   /// afterwards that captures both the cleared slot and the new binding.
   func clearShortcut(for field: SettingsFocusField) {
-    switch field {
-    case .toggleDictation: data.toggleDictation = nil
-    case .togglePrompting: data.togglePrompting = nil
-    case .toggleSettings: data.openSettings = nil
-    case .toggleChat: data.openChat = nil
-    case .screenshotCapture: data.screenshotCapture = nil
-    case .readAloudShortcut: data.readAloud = nil
-    default: break
+    guard let slot = Self.configurableShortcutSlots.first(where: { $0.field == field }) else {
+      assertionFailure("clearShortcut(for:): missing slot for \(field) — add it to configurableShortcutSlots")
+      return
     }
+    slot.write(&data, nil)
   }
 
-  private func isSameField(name: String, field: SettingsFocusField) -> Bool {
-    focusField(forShortcutName: name) == field
+  /// Single registry for user-configurable shortcuts — field, label, and data access
+  /// stay in one place so conflict detection, validation, and clear can't drift apart.
+  private struct ConfigurableShortcutSlot {
+    let field: SettingsFocusField
+    let label: String
+    let read: (SettingsData) -> ShortcutDefinition?
+    let write: (inout SettingsData, ShortcutDefinition?) -> Void
   }
 
-  /// Reverse map for the `currentShortcuts()` dictionary keys.
-  private func focusField(forShortcutName name: String) -> SettingsFocusField? {
-    switch name {
-    case "toggle dictation": return .toggleDictation
-    case "toggle prompting": return .togglePrompting
-    case "open settings": return .toggleSettings
-    case "open chat": return .toggleChat
-    case "screenshot capture": return .screenshotCapture
-    case "read aloud": return .readAloudShortcut
-    default: return nil
-    }
-  }
-
-  /// User-visible label for a focus field — used in the conflict caption
-  /// ("Currently used by …") and stays consistent across tabs.
-  private func displayLabel(for field: SettingsFocusField) -> String {
-    switch field {
-    case .toggleDictation: return "Toggle Dictation"
-    case .togglePrompting: return "Toggle Prompting"
-    case .toggleSettings: return "Toggle Settings"
-    case .toggleChat: return "Chat"
-    case .screenshotCapture: return "Screenshot to Clipboard"
-    case .readAloudShortcut: return "Read Aloud"
-    default: return ""
-    }
-  }
+  private static let configurableShortcutSlots: [ConfigurableShortcutSlot] = [
+    ConfigurableShortcutSlot(
+      field: .toggleDictation, label: "Toggle Dictation",
+      read: { $0.toggleDictation }, write: { $0.toggleDictation = $1 }),
+    ConfigurableShortcutSlot(
+      field: .togglePrompting, label: "Toggle Prompting",
+      read: { $0.togglePrompting }, write: { $0.togglePrompting = $1 }),
+    ConfigurableShortcutSlot(
+      field: .toggleSettings, label: "Toggle Settings",
+      read: { $0.openSettings }, write: { $0.openSettings = $1 }),
+    ConfigurableShortcutSlot(
+      field: .toggleChat, label: "Chat",
+      read: { $0.openChat }, write: { $0.openChat = $1 }),
+    ConfigurableShortcutSlot(
+      field: .screenshotCapture, label: "Screenshot to Clipboard",
+      read: { $0.screenshotCapture }, write: { $0.screenshotCapture = $1 }),
+    ConfigurableShortcutSlot(
+      field: .readAloudShortcut, label: "Read Aloud",
+      read: { $0.readAloud }, write: { $0.readAloud = $1 }),
+  ]
 
   // MARK: - Model Migration
 
@@ -288,21 +280,6 @@ class SettingsViewModel: ObservableObject {
       UserDefaults.standard.set(migrated.rawValue, forKey: key)
     }
     return migrated
-  }
-
-  // MARK: - Current shortcut snapshot
-  /// Returns the named user-facing shortcuts as currently bound in `data`.
-  /// Used by both `validateSettings()` (duplicate detection) and
-  /// `findShortcutConflict(_:for:)` (conflict detection on the recorded value).
-  private func currentShortcuts() -> [String: ShortcutDefinition?] {
-    return [
-      "toggle dictation": data.toggleDictation,
-      "toggle prompting": data.togglePrompting,
-      "open settings": data.openSettings,
-      "open chat": data.openChat,
-      "screenshot capture": data.screenshotCapture,
-      "read aloud": data.readAloud,
-    ]
   }
 
   // MARK: - Save Settings

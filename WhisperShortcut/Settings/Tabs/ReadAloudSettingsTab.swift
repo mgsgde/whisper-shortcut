@@ -44,7 +44,6 @@ struct ReadAloudSettingsTab: View {
       ShortcutRecorderRow(
         label: "Read Aloud:",
         shortcut: $viewModel.data.readAloud,
-        defaultShortcut: ShortcutConfig.default.readAloud,
         focusedField: .readAloudShortcut,
         currentFocus: $focusedField,
         onChanged: {

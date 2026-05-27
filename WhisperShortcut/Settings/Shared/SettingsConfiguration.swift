@@ -721,7 +721,6 @@ struct SettingsDefaults {
   /// populates it from the persisted `ShortcutConfig`.
   static let toggleDictation: ShortcutDefinition? = nil
   static let togglePrompting: ShortcutDefinition? = nil
-  static let toggleMeeting: ShortcutDefinition? = nil
   static let openSettings: ShortcutDefinition? = nil
   static let openChat: ShortcutDefinition? = nil
   static let screenshotCapture: ShortcutDefinition? = nil
@@ -791,7 +790,6 @@ struct SettingsData {
   // MARK: - Toggle Shortcut Settings
   var toggleDictation: ShortcutDefinition? = SettingsDefaults.toggleDictation
   var togglePrompting: ShortcutDefinition? = SettingsDefaults.togglePrompting
-  var toggleMeeting: ShortcutDefinition? = SettingsDefaults.toggleMeeting
   var openSettings: ShortcutDefinition? = SettingsDefaults.openSettings
   var openChat: ShortcutDefinition? = SettingsDefaults.openChat
   var screenshotCapture: ShortcutDefinition? = SettingsDefaults.screenshotCapture

@@ -354,10 +354,8 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.toggleMeetingKey) ?? ShortcutConfig.default.toggleMeeting
     let stopMeeting =
       loadShortcut(for: Constants.stopMeetingKey) ?? ShortcutConfig.default.stopMeeting
-    // Migration: if Meeting shortcut was never saved, use default Settings (⌘3) to avoid conflict with Meeting (⌘5)
-    let openSettings = userDefaults.data(forKey: Constants.toggleMeetingKey) != nil
-      ? (loadShortcut(for: Constants.openSettingsKey) ?? ShortcutConfig.default.openSettings)
-      : ShortcutConfig.default.openSettings
+    let openSettings =
+      loadShortcut(for: Constants.openSettingsKey) ?? ShortcutConfig.default.openSettings
     let openChat =
       loadShortcut(for: Constants.openChatKey) ?? ShortcutConfig.default.openChat
     let screenshotCapture =
