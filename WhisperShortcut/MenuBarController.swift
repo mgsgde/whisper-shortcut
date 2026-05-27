@@ -2045,8 +2045,8 @@ extension MenuBarController: ChunkProgressDelegate {
     chunkStatuses = Array(repeating: .pending, count: totalChunks)
 
     // Derive TTS vs transcription from current appState (we're still in .ttsProcessing or .transcribing)
-    let isTTS: Bool = { if case .processing(let mode) = appState { return mode.isTTSContext } else { return false } }()
-    let context: AppState.ProcessingMode.ChunkContext = isTTS ? .tts : .transcription
+    let context = currentChunkContext
+    let isTTS = context == .tts
 
     appState = .processing(.splitting(context: context))
     updateMenuBarIcon()

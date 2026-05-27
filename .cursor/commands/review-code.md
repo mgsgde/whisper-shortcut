@@ -16,8 +16,9 @@ Resolve scope in this order:
    - `--since <range>` (e.g. `2 weeks`, `10 commits`) → use that window instead of the default.
    - `--whole-repo` → scan the Swift app, scripts, release tooling, and docs.
    - **Iteration count** — a bare integer (`/review-code 3`) or `--iterations N` means run **N full review → fix → rebuild cycles**. Default is 1. See "Iteration mode" below.
-2. **Auto-detection (default)** — run `git log --oneline --name-only` for the last ~20 commits or last 14 days (whichever is larger). Aggregate changed paths and pick the **top 1–2 files/directories** by change volume.
-3. **Fallback** — if changes are spread evenly (no clear winner), print the top candidates and **ask the user to pick**. Do not silently guess.
+2. **Auto-detection (default, single run)** — run `git log --oneline --name-only` for the last ~20 commits or last 14 days (whichever is larger). Aggregate changed paths and pick the **top 1–2 files/directories** by change volume.
+3. **Auto-detection (iteration mode)** — use an **expanding time window** per cycle (see "Iteration mode" below). Within that window, rank changed paths and pick the **top 1–2 files/directories** not yet reviewed in this invocation.
+4. **Fallback** — if changes are spread evenly (no clear winner), print the top candidates and **ask the user to pick**. Do not silently guess.
 
 ## Steps
 
@@ -29,14 +30,44 @@ Resolve scope in this order:
 
 ## Iteration mode
 
-When invoked with `/review-code N` (or `--iterations N`):
+When invoked with `/review-code N` (or `--iterations N`), scope advances by **expanding time window** (variant A). Each cycle re-scans a wider slice of recent git history; overlap with earlier cycles is expected and tolerated.
 
-1. Run the full cycle — auto-detect scope, print "Detected scope", produce findings, apply fixes (as if the user said "fix all"), then `bash scripts/rebuild-and-restart.sh`.
-2. Between cycles, **rotate scope to the next-most-changed source file** that hasn't been reviewed in this run. Skip files already reviewed in earlier cycles of the same invocation so each pass targets fresh ground. If the auto-detection would land on a just-reviewed file, drop to the next candidate.
-3. Repeat until N cycles are done or no fresh scope remains.
-4. Do **not** commit or cut a release between cycles unless the user asked for it explicitly. Hold all changes in the working tree and summarise at the end.
+### Expanding window schedule
 
-An explicit `--path` combined with an iteration count keeps the same scope but does multiple review/fix passes on it — useful when one big file has more than one cycle's worth of cleanup.
+| Cycle | Time window (`git log --since=…`) |
+|-------|-----------------------------------|
+| 1 | last 6 hours |
+| 2 | last 24 hours |
+| 3 | last 3 days |
+| 4 | last 1 week |
+| 5 | last 2 weeks |
+| 6+ | last 4 weeks (cap) |
+
+Within each window, aggregate changed paths and pick the **top 1–2 files/directories** by change volume. If the top candidate was already reviewed in an earlier cycle of this run, drop to the **next-most-changed** unreviewed file so each pass still targets fresh ground when possible.
+
+### Per-cycle flow
+
+1. Resolve scope from the current cycle's window (unless `--path` pins scope — see below).
+2. Print "Detected scope" — include cycle number, time window, commit count, and top changed files.
+3. Produce findings; apply fixes (as if the user said "fix all").
+4. Rebuild: `bash scripts/rebuild-and-restart.sh`.
+5. Repeat until N cycles are done.
+
+### Overlap and re-review
+
+Because windows expand, later cycles may re-touch files and diffs from earlier cycles. That is fine:
+
+- Issues **already fixed** in a prior cycle of this run → mark **✅ already fixed**; do not re-apply.
+- Issues **still open** or **newly visible** in the wider window → report and fix normally.
+- Pre-existing `[area]` issues outside the changed diff may surface on a later pass — treat as new findings for that cycle.
+
+### Overrides in iteration mode
+
+- **`--path`** — keep the same path for every cycle; window expansion still informs which diffs to prioritize inside that path, but do not rotate to other files. Useful when one big file has more than one cycle's worth of cleanup.
+- **`--since`** — use that fixed window for **all** cycles instead of the expanding schedule (explicit override wins).
+- **`--whole-repo`** — scan the whole repo each cycle; use the current cycle's window only to rank where to deep-dive first.
+
+Do **not** commit or cut a release between cycles unless the user asked for it explicitly. Hold all changes in the working tree and summarise at the end.
 
 ## Output format
 
@@ -112,5 +143,5 @@ After applying fixes:
 - `/review-code --path WhisperShortcut/Settings` — review Settings broadly.
 - `/review-code --since "3 weeks"` — widen the detection window.
 - `/review-code --whole-repo` — full Swift app and repo tooling scan.
-- `/review-code 3` — three review → fix → rebuild cycles, rotating to a fresh top-churn file each time.
+- `/review-code 3` — three review → fix → rebuild cycles with expanding windows (6h → 24h → 3d), rotating to the next unreviewed top-churn file within each window.
 - `/review-code --iterations 2 --path WhisperShortcut/MenuBarController.swift` — two passes on the same file.

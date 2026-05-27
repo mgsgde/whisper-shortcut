@@ -179,12 +179,6 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
     return parts.joined(separator: separator)
   }
 
-  var isConflicting: Bool {
-    // Check for common conflicts
-    let conflictKeys: [Key] = [.escape]
-    return conflictKeys.contains(key) && modifiers.isEmpty
-  }
-
   // MARK: - Codable Implementation
   enum CodingKeys: String, CodingKey {
     case key

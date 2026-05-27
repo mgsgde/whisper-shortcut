@@ -37,8 +37,8 @@ class SettingsViewModel: ObservableObject {
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
-    data.selectedPromptModel = Self.loadPromptModel(
-      key: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
+    data.selectedPromptModel = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
 
     // System prompts are stored in UserContext/system-prompts.md (see SystemPromptsStore); not loaded from UserDefaults.
 
@@ -51,10 +51,10 @@ class SettingsViewModel: ObservableObject {
       data.whisperLanguage = SettingsDefaults.whisperLanguage
     }
 
-    data.selectedChatModel = Self.loadPromptModel(
-      key: UserDefaultsKeys.selectedChatModel, default: SettingsDefaults.selectedChatModel)
-    data.selectedImprovementModel = Self.loadPromptModel(
-      key: UserDefaultsKeys.selectedImprovementModel, default: SettingsDefaults.selectedImprovementModel)
+    data.selectedChatModel = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedChatModel, default: SettingsDefaults.selectedChatModel)
+    data.selectedImprovementModel = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedImprovementModel, default: SettingsDefaults.selectedImprovementModel)
 
     // Load popup notifications setting
     let showPopupNotificationsExists =
@@ -144,23 +144,9 @@ class SettingsViewModel: ObservableObject {
       data.selectedTranscriptionModelForMeetings = TranscriptionModel.loadSelected()
     }
 
-    if let savedSummaryModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedMeetingSummaryModel) {
-      let normalized = PromptModel.migrateLegacyPromptRawValue(savedSummaryModelString)
-      if normalized != savedSummaryModelString {
-        UserDefaults.standard.set(normalized, forKey: UserDefaultsKeys.selectedMeetingSummaryModel)
-      }
-      if let savedSummaryModel = PromptModel(rawValue: normalized) {
-        let migrated = PromptModel.migrateIfDeprecated(savedSummaryModel)
-        data.selectedMeetingSummaryModel = migrated
-        if migrated != savedSummaryModel {
-          UserDefaults.standard.set(migrated.rawValue, forKey: UserDefaultsKeys.selectedMeetingSummaryModel)
-        }
-      } else {
-        data.selectedMeetingSummaryModel = SettingsDefaults.selectedMeetingSummaryModel
-      }
-    } else {
-      data.selectedMeetingSummaryModel = SettingsDefaults.selectedMeetingSummaryModel
-    }
+    data.selectedMeetingSummaryModel = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedMeetingSummaryModel,
+      default: SettingsDefaults.selectedMeetingSummaryModel)
 
     // Load Google API key
     data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
@@ -265,22 +251,6 @@ class SettingsViewModel: ObservableObject {
       field: .readAloudShortcut, label: "Read Aloud",
       read: { $0.readAloud }, write: { $0.readAloud = $1 }),
   ]
-
-  // MARK: - Model Migration
-
-  private static func loadPromptModel(key: String, default fallback: PromptModel) -> PromptModel {
-    guard let raw = UserDefaults.standard.string(forKey: key) else { return fallback }
-    let normalized = PromptModel.migrateLegacyPromptRawValue(raw)
-    if normalized != raw {
-      UserDefaults.standard.set(normalized, forKey: key)
-    }
-    guard let model = PromptModel(rawValue: normalized) else { return fallback }
-    let migrated = PromptModel.migrateIfDeprecated(model)
-    if migrated != model {
-      UserDefaults.standard.set(migrated.rawValue, forKey: key)
-    }
-    return migrated
-  }
 
   // MARK: - Save Settings
   func saveSettings() async -> String? {

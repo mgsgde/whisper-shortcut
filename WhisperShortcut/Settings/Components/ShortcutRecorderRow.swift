@@ -245,11 +245,11 @@ struct ShortcutRecorderRow: View {
 
   /// Tears down the local NSEvent monitor and exits recording mode.
   ///
-  /// `skipRearm: true` is used on the success-capture path where the caller's `onChanged`
-  /// is about to trigger `saveSettings → .shortcutsChanged`, which re-arms global HotKeys
-  /// with the *new* config. Without this flag we'd post `.shortcutRecordingStopped` first
-  /// (re-arming with the *old* config), then immediately rearm again with the new config —
-  /// wasted work plus a brief window where the just-replaced binding is briefly live.
+  /// `skipRearm: true` is used by the pending-conflict path: rearm is deferred until the
+  /// user picks Reassign or Cancel, at which point `reassign()` / `clearPending()` post
+  /// `.shortcutRecordingStopped` themselves. Callers on the success-capture path leave it
+  /// at the default so global HotKeys are rearmed before the async save fires
+  /// `.shortcutsChanged`, ensuring a failed save can't leave hotkeys permanently disarmed.
   private func stopRecording(skipRearm: Bool = false) {
     let wasRecording = isRecording
     if let monitor = localMonitor {
@@ -337,11 +337,11 @@ struct ShortcutRecorderRow: View {
     }
 
     shortcut = newShortcut
-    // Rearm explicitly before `onChanged?()` so a failed save doesn't leave global hotkeys
-    // permanently disarmed. `onChanged?()` will trigger `saveSettings → .shortcutsChanged`,
-    // which rearms again with the new config — accepted as the cost of the safety net.
-    stopRecording(skipRearm: true)
-    NotificationCenter.default.post(name: .shortcutRecordingStopped, object: nil)
+    // `stopRecording()` posts `.shortcutRecordingStopped` and rearms global HotKeys before
+    // the async save fires `.shortcutsChanged`, so a failed save can't leave hotkeys
+    // permanently disarmed. The double rearm (old config → new config) is accepted as the
+    // cost of the safety net.
+    stopRecording()
     onChanged?()
   }
 

@@ -333,9 +333,12 @@ enum PromptModel: String, CaseIterable {
 
   /// Shared loader for any `PromptModel`-typed UserDefaults slot: reads the raw value, runs
   /// the legacy-raw migration (persisting the rewritten value), parses to a `PromptModel`,
-  /// and applies the optional `validate` filter (e.g. "must support text chat"). Falls back
-  /// to `default` on any miss.
-  private static func loadPromptModel(
+  /// applies the in-enum `migrateIfDeprecated` hook (persisting if it changed), and applies
+  /// the optional `validate` filter (e.g. "must support text chat"). Falls back to `default`
+  /// on any miss. Single source of truth for "read a PromptModel slot from UserDefaults" —
+  /// `SettingsViewModel.loadCurrentSettings`, `loadSelectedChatModel`, and
+  /// `loadSelectedMeetingSummary` all route through here.
+  static func loadPromptModel(
     forKey key: String,
     default fallback: PromptModel,
     validate: (PromptModel) -> Bool = { _ in true }
@@ -350,7 +353,11 @@ enum PromptModel: String, CaseIterable {
     guard let parsed = PromptModel(rawValue: migratedRaw), validate(parsed) else {
       return fallback
     }
-    return parsed
+    let resolved = migrateIfDeprecated(parsed)
+    if resolved.rawValue != migratedRaw {
+      UserDefaults.standard.set(resolved.rawValue, forKey: key)
+    }
+    return resolved
   }
 }
 
