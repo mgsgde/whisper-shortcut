@@ -212,42 +212,68 @@ class SettingsViewModel: ObservableObject {
   }
 
   // MARK: - Real-time Shortcut Validation
-  /// Called by the recorder when a new shortcut is captured. Only does
-  /// conflict detection against the other currently-bound fields; format
-  /// validation is unnecessary because the recorder only produces structurally
-  /// valid `ShortcutDefinition` values.
-  func validateShortcut(_ candidate: ShortcutDefinition?, for field: SettingsFocusField) -> String? {
-    guard let candidate = candidate else { return nil }
-
+  /// Returns the conflicting field + label when `candidate` is already bound to
+  /// another slot; `nil` otherwise. Format validation is unnecessary because
+  /// the recorder only produces structurally valid `ShortcutDefinition` values.
+  func findShortcutConflict(_ candidate: ShortcutDefinition, for field: SettingsFocusField)
+    -> ShortcutConflict?
+  {
     let currentShortcuts = self.currentShortcuts()
     for (name, existingShortcut) in currentShortcuts {
       if let existingShortcut = existingShortcut,
         existingShortcut == candidate,
         !isSameField(name: name, field: field)
       {
-        return "Already used by \(name)"
+        guard let conflictField = focusField(forShortcutName: name) else { continue }
+        return ShortcutConflict(field: conflictField, label: displayLabel(for: conflictField))
       }
     }
-
     return nil
   }
 
-  private func isSameField(name: String, field: SettingsFocusField) -> Bool {
+  /// Used by the recorder's "Reassign" action — clears the conflicting slot
+  /// without saving. The recorder's `onChanged` triggers a single `saveSettings`
+  /// afterwards that captures both the cleared slot and the new binding.
+  func clearShortcut(for field: SettingsFocusField) {
     switch field {
-    case .toggleDictation:
-      return name == "toggle dictation"
-    case .togglePrompting:
-      return name == "toggle prompting"
-    case .toggleSettings:
-      return name == "open settings"
-    case .toggleChat:
-      return name == "open chat"
-    case .screenshotCapture:
-      return name == "screenshot capture"
-    case .readAloudShortcut:
-      return name == "read aloud"
-    default:
-      return false
+    case .toggleDictation: data.toggleDictation = nil
+    case .togglePrompting: data.togglePrompting = nil
+    case .toggleSettings: data.openSettings = nil
+    case .toggleChat: data.openChat = nil
+    case .screenshotCapture: data.screenshotCapture = nil
+    case .readAloudShortcut: data.readAloud = nil
+    default: break
+    }
+  }
+
+  private func isSameField(name: String, field: SettingsFocusField) -> Bool {
+    focusField(forShortcutName: name) == field
+  }
+
+  /// Reverse map for the `currentShortcuts()` dictionary keys.
+  private func focusField(forShortcutName name: String) -> SettingsFocusField? {
+    switch name {
+    case "toggle dictation": return .toggleDictation
+    case "toggle prompting": return .togglePrompting
+    case "open settings": return .toggleSettings
+    case "open chat": return .toggleChat
+    case "screenshot capture": return .screenshotCapture
+    case "read aloud": return .readAloudShortcut
+    default: return nil
+    }
+  }
+
+  /// User-visible label for a focus field — used in the conflict caption
+  /// ("Currently used by …") and stays consistent across tabs.
+  private func displayLabel(for field: SettingsFocusField) -> String {
+    switch field {
+    case .toggleDictation: return "Toggle Dictation"
+    case .togglePrompting: return "Toggle Prompting"
+    case .toggleSettings: return "Toggle Settings"
+    case .toggleChat: return "Chat"
+    case .screenshotCapture: return "Screenshot to Clipboard"
+    case .readAloudShortcut: return "Read Aloud"
+    default: return ""
     }
   }
 
@@ -270,7 +296,7 @@ class SettingsViewModel: ObservableObject {
   // MARK: - Current shortcut snapshot
   /// Returns the named user-facing shortcuts as currently bound in `data`.
   /// Used by both `validateSettings()` (duplicate detection) and
-  /// `validateShortcut(_:for:)` (conflict detection on the recorded value).
+  /// `findShortcutConflict(_:for:)` (conflict detection on the recorded value).
   private func currentShortcuts() -> [String: ShortcutDefinition?] {
     return [
       "toggle dictation": data.toggleDictation,

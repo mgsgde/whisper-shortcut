@@ -805,3 +805,13 @@ enum SettingsFocusField: Hashable {
   case customPrompt
   case promptModeSystemPrompt
 }
+
+// MARK: - Shortcut Conflict Descriptor
+/// Returned by the recorder's conflict-detection callback when the captured
+/// shortcut is already bound to another field. The recorder uses `field` to
+/// know which slot to clear on reassign, and `label` to render the
+/// "Currently used by …" caption + "Reassign from …" button text.
+struct ShortcutConflict: Equatable {
+  let field: SettingsFocusField
+  let label: String
+}

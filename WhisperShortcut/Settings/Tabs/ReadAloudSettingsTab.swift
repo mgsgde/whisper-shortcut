@@ -48,7 +48,8 @@ struct ReadAloudSettingsTab: View {
             await viewModel.saveSettings()
           }
         },
-        validate: viewModel.validateShortcut
+        findConflict: viewModel.findShortcutConflict,
+        clearShortcut: viewModel.clearShortcut
       )
     }
   }

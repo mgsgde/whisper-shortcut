@@ -18,6 +18,9 @@ import SwiftUI
 /// - Escape (with no modifiers) cancels recording.
 /// - Unsupported keycodes (no matching `HotKey.Key`) show an inline error and
 ///   keep the recorder open.
+/// - When the captured shortcut conflicts with another binding, the row enters
+///   a "pending conflict" state and offers an explicit "Reassign from X" button
+///   rather than dead-ending the user with a red error.
 struct ShortcutRecorderRow: View {
   let label: String
   @Binding var shortcut: ShortcutDefinition?
@@ -25,12 +28,19 @@ struct ShortcutRecorderRow: View {
   let focusedField: SettingsFocusField
   @FocusState.Binding var currentFocus: SettingsFocusField?
   let onChanged: (() -> Void)?
-  let validate: ((ShortcutDefinition?, SettingsFocusField) -> String?)?
+  /// Returns `nil` if the candidate doesn't conflict, otherwise the field and
+  /// user-visible label of the existing binding that owns this combo.
+  let findConflict: ((ShortcutDefinition, SettingsFocusField) -> ShortcutConflict?)?
+  /// Clears the binding for the given field (no save — recorder's `onChanged`
+  /// triggers a single save afterwards that captures both the cleared slot and
+  /// the new assignment).
+  let clearShortcut: ((SettingsFocusField) -> Void)?
 
   @State private var isRecording = false
   @State private var localMonitor: Any?
-  @State private var validationError: String?
   @State private var transientMessage: String?
+  @State private var pendingShortcut: ShortcutDefinition?
+  @State private var pendingConflict: ShortcutConflict?
 
   init(
     label: String,
@@ -39,7 +49,8 @@ struct ShortcutRecorderRow: View {
     focusedField: SettingsFocusField,
     currentFocus: FocusState<SettingsFocusField?>.Binding,
     onChanged: (() -> Void)? = nil,
-    validate: ((ShortcutDefinition?, SettingsFocusField) -> String?)? = nil
+    findConflict: ((ShortcutDefinition, SettingsFocusField) -> ShortcutConflict?)? = nil,
+    clearShortcut: ((SettingsFocusField) -> Void)? = nil
   ) {
     self.label = label
     self._shortcut = shortcut
@@ -47,7 +58,8 @@ struct ShortcutRecorderRow: View {
     self.focusedField = focusedField
     self._currentFocus = currentFocus
     self.onChanged = onChanged
-    self.validate = validate
+    self.findConflict = findConflict
+    self.clearShortcut = clearShortcut
   }
 
   var body: some View {
@@ -65,31 +77,25 @@ struct ShortcutRecorderRow: View {
         Spacer()
       }
 
-      // Inline message: either a transient hint ("⌘/⌥/⌃/⇧ required") or a
-      // validation error. Transient takes precedence while recording.
-      if let message = transientMessage ?? validationError {
-        HStack {
-          Spacer()
-            .frame(width: SettingsConstants.labelWidth)
-
-          HStack(spacing: 4) {
-            Image(systemName: "exclamationmark.triangle.fill")
-              .font(.caption2)
-              .foregroundColor(.red.opacity(0.8))
-
-            Text(message)
-              .font(.caption)
-              .foregroundColor(.secondary)
-          }
-          .frame(maxWidth: SettingsConstants.shortcutMaxWidth, alignment: .leading)
-
-          Spacer()
-        }
-        .padding(.top, 2)
+      // Inline message below the row: conflict warning, modifier-required hint,
+      // or unsupported-key hint. Mutually exclusive — conflict takes precedence.
+      if let conflict = pendingConflict {
+        captionRow(
+          icon: "exclamationmark.triangle.fill",
+          iconColor: .orange,
+          text: "Currently used by \(conflict.label)"
+        )
+      } else if let message = transientMessage {
+        captionRow(
+          icon: "exclamationmark.triangle.fill",
+          iconColor: .red.opacity(0.8),
+          text: message
+        )
       }
     }
     .onDisappear {
       stopRecording()
+      clearPending()
     }
   }
 
@@ -104,16 +110,13 @@ struct ShortcutRecorderRow: View {
           .frame(height: SettingsConstants.textFieldHeight)
           .overlay(
             RoundedRectangle(cornerRadius: 6)
-              .stroke(
-                borderColor,
-                lineWidth: isRecording ? 1.5 : 1
-              )
+              .stroke(borderColor, lineWidth: (isRecording || pendingConflict != nil) ? 1.5 : 1)
           )
 
         HStack {
           Text(currentDisplayText)
             .font(.system(.body, design: .monospaced))
-            .foregroundColor(isRecording ? .secondary : .primary)
+            .foregroundColor(textColor)
             .padding(.leading, 10)
             .padding(.trailing, 6)
           Spacer()
@@ -122,50 +125,81 @@ struct ShortcutRecorderRow: View {
       .frame(minWidth: 140)
       .focused($currentFocus, equals: focusedField)
       .onTapGesture {
-        if !isRecording { startRecording() }
+        if !isRecording, pendingConflict == nil { startRecording() }
       }
 
-      Button(isRecording ? "Cancel" : "Record") {
-        if isRecording {
-          stopRecording()
-        } else {
-          startRecording()
-        }
-      }
-      .buttonStyle(.bordered)
-      .controlSize(.small)
-
-      if !isRecording, shortcut != nil {
-        Button {
-          shortcut = nil
-          validationError = validate?(nil, focusedField)
-          if validationError == nil {
-            onChanged?()
+      if pendingConflict != nil {
+        Button("Reassign") { reassign() }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.small)
+        Button("Cancel") { clearPending() }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+      } else {
+        Button(isRecording ? "Cancel" : "Record") {
+          if isRecording {
+            stopRecording()
+          } else {
+            startRecording()
           }
-        } label: {
-          Image(systemName: "xmark.circle.fill")
-            .foregroundColor(.secondary)
         }
-        .buttonStyle(.plain)
-        .help("Clear shortcut")
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+
+        if !isRecording, shortcut != nil {
+          Button {
+            shortcut = nil
+            onChanged?()
+          } label: {
+            Image(systemName: "xmark.circle.fill")
+              .foregroundColor(.secondary)
+          }
+          .buttonStyle(.plain)
+          .help("Clear shortcut")
+        }
       }
     }
   }
 
+  @ViewBuilder
+  private func captionRow(icon: String, iconColor: Color, text: String) -> some View {
+    HStack {
+      Spacer()
+        .frame(width: SettingsConstants.labelWidth)
+
+      HStack(spacing: 4) {
+        Image(systemName: icon)
+          .font(.caption2)
+          .foregroundColor(iconColor)
+
+        Text(text)
+          .font(.caption)
+          .foregroundColor(.secondary)
+      }
+      .frame(maxWidth: SettingsConstants.shortcutMaxWidth, alignment: .leading)
+
+      Spacer()
+    }
+    .padding(.top, 2)
+  }
+
   private var currentDisplayText: String {
-    if isRecording {
-      return "Press a key…"
-    }
-    if let s = shortcut, s.isEnabled {
-      return s.displayString
-    }
+    if let pending = pendingShortcut { return pending.displayString }
+    if isRecording { return "Press a key…" }
+    if let s = shortcut, s.isEnabled { return s.displayString }
     return "Not set"
   }
 
   private var borderColor: Color {
-    if validationError != nil { return Color.red.opacity(0.7) }
+    if pendingConflict != nil { return Color.orange.opacity(0.8) }
     if isRecording { return Color.accentColor }
     return Color.clear
+  }
+
+  private var textColor: Color {
+    if pendingConflict != nil { return .secondary }
+    if isRecording { return .secondary }
+    return .primary
   }
 
   // MARK: - Recording lifecycle
@@ -174,7 +208,6 @@ struct ShortcutRecorderRow: View {
     guard !isRecording else { return }
     isRecording = true
     transientMessage = nil
-    validationError = nil
     currentFocus = focusedField
 
     // Tear down global HotKey registrations so Carbon doesn't grab the keystroke
@@ -255,18 +288,35 @@ struct ShortcutRecorderRow: View {
       displayCharacter: captured
     )
 
-    // Run external validation (e.g. duplicate detection).
-    if let error = validate?(newShortcut, focusedField) {
-      validationError = error
+    // Conflict path: hold the capture in pending state and offer a reassign
+    // action instead of silently failing or destructively reassigning.
+    if let conflict = findConflict?(newShortcut, focusedField) {
+      pendingShortcut = newShortcut
+      pendingConflict = conflict
       transientMessage = nil
       stopRecording()
       return
     }
 
     shortcut = newShortcut
-    validationError = nil
     transientMessage = nil
     stopRecording()
     onChanged?()
+  }
+
+  // MARK: - Conflict resolution
+
+  private func reassign() {
+    guard let pending = pendingShortcut, let conflict = pendingConflict else { return }
+    clearShortcut?(conflict.field)
+    shortcut = pending
+    pendingShortcut = nil
+    pendingConflict = nil
+    onChanged?()
+  }
+
+  private func clearPending() {
+    pendingShortcut = nil
+    pendingConflict = nil
   }
 }
