@@ -13,8 +13,11 @@ import SwiftUI
 /// "Y" on US-QWERTY).
 ///
 /// Rules:
-/// - At least one of ⌘ / ⌥ / ⌃ / ⇧ is required, except for F1–F12 which may be
-///   modifier-less.
+/// - Non-F-keys need at least one of ⌘ / ⌥ / ⌃. Shift alone is rejected because
+///   macOS routes `Shift + printable` to text input rather than to Carbon's
+///   hotkey handler (binding `Shift+<` would just type `>`); accepting it
+///   would silently produce a binding that never fires.
+/// - F1–F12 can be bound with any modifier set, including no modifier at all.
 /// - Escape (with no modifiers) cancels recording.
 /// - Unsupported keycodes (no matching `HotKey.Key`) show an inline error and
 ///   keep the recorder open.
@@ -24,7 +27,6 @@ import SwiftUI
 struct ShortcutRecorderRow: View {
   let label: String
   @Binding var shortcut: ShortcutDefinition?
-  let defaultShortcut: ShortcutDefinition
   let focusedField: SettingsFocusField
   @FocusState.Binding var currentFocus: SettingsFocusField?
   let onChanged: (() -> Void)?
@@ -51,7 +53,6 @@ struct ShortcutRecorderRow: View {
   init(
     label: String,
     shortcut: Binding<ShortcutDefinition?>,
-    defaultShortcut: ShortcutDefinition,
     focusedField: SettingsFocusField,
     currentFocus: FocusState<SettingsFocusField?>.Binding,
     onChanged: (() -> Void)? = nil,
@@ -60,7 +61,6 @@ struct ShortcutRecorderRow: View {
   ) {
     self.label = label
     self._shortcut = shortcut
-    self.defaultShortcut = defaultShortcut
     self.focusedField = focusedField
     self._currentFocus = currentFocus
     self.onChanged = onChanged
@@ -286,7 +286,13 @@ struct ShortcutRecorderRow: View {
       return
     }
 
-    // Modifier rule: at least one ⌘/⌥/⌃/⇧, except F1–F12.
+    // Modifier rule for global Carbon hotkeys:
+    // - F1–F12 are free of modifier requirements (not used in text input).
+    // - Everything else needs at least one of ⌘/⌥/⌃. Shift alone is rejected:
+    //   macOS routes Shift+<printable> to text input instead of the hotkey
+    //   handler (Shift+a = "A", Shift+< = ">"), so Carbon never fires those
+    //   bindings. Accepting them in the recorder would silently produce
+    //   shortcuts that never trigger.
     let isFunctionKey: Bool = {
       switch resolvedKey {
       case .f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10, .f11, .f12:
@@ -295,8 +301,14 @@ struct ShortcutRecorderRow: View {
         return false
       }
     }()
-    if mods.isEmpty, !isFunctionKey {
-      transientMessage = "At least ⌘/⌥/⌃/⇧ required"
+    let commandModifiers = mods.intersection([.command, .option, .control])
+    if !isFunctionKey, commandModifiers.isEmpty {
+      if mods.isEmpty {
+        transientMessage = "At least ⌘/⌥/⌃ required"
+      } else {
+        // Shift only — macOS won't route this to a global hotkey.
+        transientMessage = "Shift alone won't fire — add ⌘/⌥/⌃"
+      }
       return
     }
 
@@ -313,7 +325,9 @@ struct ShortcutRecorderRow: View {
       pendingShortcut = newShortcut
       pendingConflict = conflict
       transientMessage = nil
-      stopRecording()
+      // Keep global hotkeys disarmed until the user Reassigns (save → shortcutsChanged)
+      // or Cancel (clearPending → shortcutRecordingStopped).
+      stopRecording(skipRearm: true)
       return
     }
 
@@ -338,7 +352,11 @@ struct ShortcutRecorderRow: View {
   }
 
   private func clearPending() {
+    let hadPending = pendingConflict != nil
     pendingShortcut = nil
     pendingConflict = nil
+    if hadPending {
+      NotificationCenter.default.post(name: .shortcutRecordingStopped, object: nil)
+    }
   }
 }
