@@ -1,4 +1,6 @@
 import AppKit
+import Carbon
+import Carbon.HIToolbox
 import Foundation
 import HotKey
 
@@ -119,25 +121,29 @@ struct ShortcutConfig: Codable {
     screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true)
   )
 
-  /// Single source for the "Available keys" hint text used in all shortcut settings.
-  static let availableKeysHint =
-    "command • option • control • shift • a-z • 0-9 • f1-f12 • escape • space • up • down • left • right • comma • period"
-
-  /// Placeholder for shortcut text fields (e.g. "e.g., command+3"). Use with default so changing defaults updates the UI.
-  static func examplePlaceholder(for definition: ShortcutDefinition) -> String {
-    "e.g., \(definition.textDisplayString)"
-  }
 }
 
 struct ShortcutDefinition: Codable, Equatable, Hashable {
   let key: Key
   let modifiers: NSEvent.ModifierFlags
   let isEnabled: Bool
+  /// User-visible character for the user's current keyboard layout, captured at
+  /// record time from `event.charactersIgnoringModifiers`. Persisted so the UI
+  /// shows e.g. "Z" on a German layout for the same carbon keycode that is "Y"
+  /// on US. `nil` for legacy stored shortcuts (pre-recorder) — falls back to
+  /// the layout-independent `key.displayString` in `renderShortcut(separator:)`.
+  let displayCharacter: String?
 
-  init(key: Key, modifiers: NSEvent.ModifierFlags, isEnabled: Bool = true) {
+  init(
+    key: Key,
+    modifiers: NSEvent.ModifierFlags,
+    isEnabled: Bool = true,
+    displayCharacter: String? = nil
+  ) {
     self.key = key
     self.modifiers = modifiers
     self.isEnabled = isEnabled
+    self.displayCharacter = displayCharacter
   }
 
   var displayString: String {
@@ -164,26 +170,15 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
     if modifiers.contains(.control) { parts.append("⌃") }
     if modifiers.contains(.shift) { parts.append("⇧") }
 
-    parts.append(key.displayString)
-
-    return parts.joined(separator: separator)
-  }
-
-  var textDisplayString: String {
-    if !isEnabled {
-      return "Disabled"
+    if let ch = displayCharacter, !ch.isEmpty {
+      parts.append(ch.uppercased())
+    } else if let layoutChar = Self.layoutAwareCharacter(forCarbonKeyCode: key.carbonKeyCode) {
+      parts.append(layoutChar.uppercased())
+    } else {
+      parts.append(key.displayString)
     }
 
-    var parts: [String] = []
-
-    if modifiers.contains(.command) { parts.append("command") }
-    if modifiers.contains(.option) { parts.append("option") }
-    if modifiers.contains(.control) { parts.append("control") }
-    if modifiers.contains(.shift) { parts.append("shift") }
-
-    parts.append(key.displayString.lowercased())
-
-    return parts.joined(separator: "+")
+    return parts.joined(separator: separator)
   }
 
   var isConflicting: Bool {
@@ -197,6 +192,7 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
     case key
     case modifiers
     case isEnabled
+    case displayCharacter
   }
 
   init(from decoder: Decoder) throws {
@@ -204,6 +200,7 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
     key = try container.decode(Key.self, forKey: .key)
     modifiers = try container.decode(NSEvent.ModifierFlags.self, forKey: .modifiers)
     isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+    displayCharacter = try container.decodeIfPresent(String.self, forKey: .displayCharacter)
   }
 
   func encode(to encoder: Encoder) throws {
@@ -211,9 +208,13 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
     try container.encode(key, forKey: .key)
     try container.encode(modifiers, forKey: .modifiers)
     try container.encode(isEnabled, forKey: .isEnabled)
+    try container.encodeIfPresent(displayCharacter, forKey: .displayCharacter)
   }
 
   // MARK: - Equatable Implementation
+  /// Equality ignores `displayCharacter` — it's a UI hint, not part of identity.
+  /// Two shortcuts with the same carbon keycode + modifiers + enabled state are
+  /// the same shortcut regardless of which layout's letter was captured.
   static func == (lhs: ShortcutDefinition, rhs: ShortcutDefinition) -> Bool {
     return lhs.key == rhs.key && lhs.modifiers == rhs.modifiers && lhs.isEnabled == rhs.isEnabled
   }
@@ -223,6 +224,50 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
     hasher.combine(key.carbonKeyCode)
     hasher.combine(modifiers.rawValue)
     hasher.combine(isEnabled)
+  }
+
+  // MARK: - Layout-aware character lookup
+  /// Translates a Carbon virtual key code to the character produced by the
+  /// user's *current* keyboard layout (no modifiers). Used as a fallback when a
+  /// legacy stored shortcut has no `displayCharacter`. Returns `nil` for
+  /// non-printable keys (arrows, function keys, etc.) — caller should fall back
+  /// to `Key.displayString` in that case.
+  fileprivate static func layoutAwareCharacter(forCarbonKeyCode keyCode: UInt32) -> String? {
+    guard let inputSource = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue() else {
+      return nil
+    }
+    guard let layoutDataPtr = TISGetInputSourceProperty(inputSource, kTISPropertyUnicodeKeyLayoutData)
+    else {
+      return nil
+    }
+    let layoutData = Unmanaged<CFData>.fromOpaque(layoutDataPtr).takeUnretainedValue() as Data
+
+    var deadKeyState: UInt32 = 0
+    var actualLength = 0
+    var chars = [UniChar](repeating: 0, count: 4)
+
+    let status = layoutData.withUnsafeBytes { rawBuf -> OSStatus in
+      guard let base = rawBuf.baseAddress else { return -1 }
+      let layoutPtr = base.assumingMemoryBound(to: UCKeyboardLayout.self)
+      return UCKeyTranslate(
+        layoutPtr,
+        UInt16(keyCode),
+        UInt16(kUCKeyActionDisplay),
+        0,  // modifiers (Carbon-style); 0 = no modifiers
+        UInt32(LMGetKbdType()),
+        UInt32(kUCKeyTranslateNoDeadKeysBit),
+        &deadKeyState,
+        chars.count,
+        &actualLength,
+        &chars
+      )
+    }
+    guard status == noErr, actualLength > 0 else { return nil }
+    let result = String(utf16CodeUnits: chars, count: actualLength)
+    // Only return printable, non-whitespace single characters; otherwise let
+    // the caller use Key.displayString (which handles arrows / F-keys / space).
+    let trimmed = result.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : result
   }
 }
 
@@ -326,117 +371,6 @@ class ShortcutConfigManager {
     if let data = try? JSONEncoder().encode(shortcut) {
       userDefaults.set(data, forKey: key)
     }
-  }
-
-  // MARK: - String-based parsing (for UI)
-  static func parseShortcut(from string: String) -> ShortcutDefinition? {
-    let cleanString = string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-
-    // Handle empty input
-    if cleanString.isEmpty {
-
-      return nil
-    }
-
-    // Parse text-based shortcuts like "command+option+r" or "ctrl shift t"
-    let parts = cleanString.components(
-      separatedBy: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "+")))
-
-    var modifiers: NSEvent.ModifierFlags = []
-    var key: Key?
-
-    for part in parts {
-      switch part {
-      // Modifiers
-      case "command", "cmd", "⌘":
-        modifiers.insert(.command)
-      case "option", "alt", "⌥":
-        modifiers.insert(.option)
-      case "control", "ctrl", "⌃":
-        modifiers.insert(.control)
-      case "shift", "⇧":
-        modifiers.insert(.shift)
-
-      // Letters
-      case "a": key = .a
-      case "b": key = .b
-      case "c": key = .c
-      case "d": key = .d
-      case "e": key = .e
-      case "f": key = .f
-      case "g": key = .g
-      case "h": key = .h
-      case "i": key = .i
-      case "j": key = .j
-      case "k": key = .k
-      case "l": key = .l
-      case "m": key = .m
-      case "n": key = .n
-      case "o": key = .o
-      case "p": key = .p
-      case "q": key = .q
-      case "r": key = .r
-      case "s": key = .s
-      case "t": key = .t
-      case "u": key = .u
-      case "v": key = .v
-      case "w": key = .w
-      case "x": key = .x
-      case "y": key = .y
-      case "z": key = .z
-
-      // Numbers
-      case "0": key = .zero
-      case "1": key = .one
-      case "2": key = .two
-      case "3": key = .three
-      case "4": key = .four
-      case "5": key = .five
-      case "6": key = .six
-      case "7": key = .seven
-      case "8": key = .eight
-      case "9": key = .nine
-
-      // Special keys
-      case "escape", "esc", "⎋": key = .escape
-      case "space", " ": key = .space
-      case "comma", ",": key = .comma
-      case "period", ".": key = .period
-
-      // Function keys
-      case "f1": key = .f1
-      case "f2": key = .f2
-      case "f3": key = .f3
-      case "f4": key = .f4
-      case "f5": key = .f5
-      case "f6": key = .f6
-      case "f7": key = .f7
-      case "f8": key = .f8
-      case "f9": key = .f9
-      case "f10": key = .f10
-      case "f11": key = .f11
-      case "f12": key = .f12
-
-      // Navigation keys
-      case "uparrow", "up", "↑": key = .upArrow
-      case "downarrow", "down", "↓": key = .downArrow
-      case "leftarrow", "left", "←": key = .leftArrow
-      case "rightarrow", "right", "→": key = .rightArrow
-
-      default:
-        // Skip empty parts
-        if !part.isEmpty {
-
-        }
-      }
-    }
-
-    guard let key = key else {
-
-      return nil
-    }
-
-    return ShortcutDefinition(key: key, modifiers: modifiers)
   }
 }
 

@@ -64,37 +64,19 @@ struct SpeechToTextSettingsTab: View {
         subtitle: "Start/Stop Dictation with one shortcut"
       )
 
-      ShortcutInputRow(
+      ShortcutRecorderRow(
         label: "Toggle Dictation:",
-        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.startRecording),
-        text: $viewModel.data.toggleDictation,
+        shortcut: $viewModel.data.toggleDictation,
+        defaultShortcut: ShortcutConfig.default.startRecording,
         focusedField: .toggleDictation,
         currentFocus: $focusedField,
-        onShortcutChanged: {
+        onChanged: {
           Task {
             await viewModel.saveSettings()
           }
         },
-        validateShortcut: viewModel.validateShortcut
+        validate: viewModel.validateShortcut
       )
-
-      // Available Keys Information
-      VStack(alignment: .leading, spacing: 8) {
-        Text("Available keys:")
-          .font(.callout)
-          .fontWeight(.semibold)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
-
-        Text(
-          ShortcutConfig.availableKeysHint
-        )
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .textSelection(.enabled)
-        .fixedSize(horizontal: false, vertical: true)
-      }
-      .textSelection(.enabled)
     }
   }
 

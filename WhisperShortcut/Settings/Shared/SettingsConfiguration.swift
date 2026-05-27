@@ -668,12 +668,16 @@ struct SettingsDefaults {
   static let launchAtLogin = false
 
   // MARK: - Toggle Shortcut Settings
-  static let toggleDictation = ""
-  static let togglePrompting = ""
-  static let toggleMeeting = ""
-  static let openSettings = ""
-  static let openChat = ""
-  static let screenshotCapture = ""
+  /// All shortcut defaults are `nil` here — the actual factory defaults live in
+  /// `ShortcutConfig.default`. `nil` in `SettingsData` means "no shortcut /
+  /// disabled" until the user records one or `SettingsViewModel.load()`
+  /// populates it from the persisted `ShortcutConfig`.
+  static let toggleDictation: ShortcutDefinition? = nil
+  static let togglePrompting: ShortcutDefinition? = nil
+  static let toggleMeeting: ShortcutDefinition? = nil
+  static let openSettings: ShortcutDefinition? = nil
+  static let openChat: ShortcutDefinition? = nil
+  static let screenshotCapture: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
@@ -733,12 +737,12 @@ struct SettingsData {
   var launchAtLogin: Bool = SettingsDefaults.launchAtLogin
 
   // MARK: - Toggle Shortcut Settings
-  var toggleDictation: String = SettingsDefaults.toggleDictation
-  var togglePrompting: String = SettingsDefaults.togglePrompting
-  var toggleMeeting: String = SettingsDefaults.toggleMeeting
-  var openSettings: String = SettingsDefaults.openSettings
-  var openChat: String = SettingsDefaults.openChat
-  var screenshotCapture: String = SettingsDefaults.screenshotCapture
+  var toggleDictation: ShortcutDefinition? = SettingsDefaults.toggleDictation
+  var togglePrompting: ShortcutDefinition? = SettingsDefaults.togglePrompting
+  var toggleMeeting: ShortcutDefinition? = SettingsDefaults.toggleMeeting
+  var openSettings: ShortcutDefinition? = SettingsDefaults.openSettings
+  var openChat: ShortcutDefinition? = SettingsDefaults.openChat
+  var screenshotCapture: ShortcutDefinition? = SettingsDefaults.screenshotCapture
 
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel

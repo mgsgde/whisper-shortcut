@@ -16,48 +16,33 @@ struct KeyboardShortcutsSection: View {
         subtitle: "Configure keyboard shortcuts for various features"
       )
 
-      ShortcutInputRow(
+      ShortcutRecorderRow(
         label: "Toggle Settings:",
-        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.openSettings),
-        text: $viewModel.data.openSettings,
+        shortcut: $viewModel.data.openSettings,
+        defaultShortcut: ShortcutConfig.default.openSettings,
         focusedField: .toggleSettings,
         currentFocus: $focusedField,
-        onShortcutChanged: {
+        onChanged: {
           Task {
             await viewModel.saveSettings()
           }
         },
-        validateShortcut: viewModel.validateShortcut
+        validate: viewModel.validateShortcut
       )
 
-      ShortcutInputRow(
+      ShortcutRecorderRow(
         label: "Screenshot to Clipboard:",
-        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.screenshotCapture),
-        text: $viewModel.data.screenshotCapture,
+        shortcut: $viewModel.data.screenshotCapture,
+        defaultShortcut: ShortcutConfig.default.screenshotCapture,
         focusedField: .screenshotCapture,
         currentFocus: $focusedField,
-        onShortcutChanged: {
+        onChanged: {
           Task {
             await viewModel.saveSettings()
           }
         },
-        validateShortcut: viewModel.validateShortcut
+        validate: viewModel.validateShortcut
       )
-
-      VStack(alignment: .leading, spacing: 8) {
-        Text("Available keys:")
-          .font(.callout)
-          .fontWeight(.semibold)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
-
-        Text(ShortcutConfig.availableKeysHint)
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .textSelection(.enabled)
-        .fixedSize(horizontal: false, vertical: true)
-      }
-      .textSelection(.enabled)
     }
   }
 }

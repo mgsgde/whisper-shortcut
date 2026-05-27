@@ -47,37 +47,19 @@ struct SpeechToPromptSettingsTab: View {
         subtitle: "Configure shortcut for toggle prompting mode"
       )
 
-      ShortcutInputRow(
+      ShortcutRecorderRow(
         label: "Toggle Prompting:",
-        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.startPrompting),
-        text: $viewModel.data.togglePrompting,
+        shortcut: $viewModel.data.togglePrompting,
+        defaultShortcut: ShortcutConfig.default.startPrompting,
         focusedField: .togglePrompting,
         currentFocus: $focusedField,
-        onShortcutChanged: {
+        onChanged: {
           Task {
             await viewModel.saveSettings()
           }
         },
-        validateShortcut: viewModel.validateShortcut
+        validate: viewModel.validateShortcut
       )
-
-      // Available Keys Information
-      VStack(alignment: .leading, spacing: 8) {
-        Text("Available keys:")
-          .font(.callout)
-          .fontWeight(.semibold)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
-
-        Text(
-          ShortcutConfig.availableKeysHint
-        )
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .textSelection(.enabled)
-        .fixedSize(horizontal: false, vertical: true)
-      }
-      .textSelection(.enabled)
     }
   }
   

@@ -66,36 +66,19 @@ struct ChatSettingsTab: View {
         subtitle: "Open the chat window"
       )
 
-      ShortcutInputRow(
+      ShortcutRecorderRow(
         label: "Chat:",
-        placeholder: ShortcutConfig.examplePlaceholder(for: ShortcutConfig.default.openChat),
-        text: $viewModel.data.openChat,
+        shortcut: $viewModel.data.openChat,
+        defaultShortcut: ShortcutConfig.default.openChat,
         focusedField: .toggleChat,
         currentFocus: $focusedField,
-        onShortcutChanged: {
+        onChanged: {
           Task {
             await viewModel.saveSettings()
           }
         },
-        validateShortcut: viewModel.validateShortcut
+        validate: viewModel.validateShortcut
       )
-
-      VStack(alignment: .leading, spacing: 8) {
-        Text("Available keys:")
-          .font(.callout)
-          .fontWeight(.semibold)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
-
-        Text(
-          ShortcutConfig.availableKeysHint
-        )
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .textSelection(.enabled)
-        .fixedSize(horizontal: false, vertical: true)
-      }
-      .textSelection(.enabled)
     }
   }
 

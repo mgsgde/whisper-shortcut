@@ -23,14 +23,17 @@ class SettingsViewModel: ObservableObject {
   }
 
   private func loadCurrentSettings() {
-    // Load toggle shortcuts configuration
+    // Load toggle shortcuts configuration. `nil` in SettingsData means "no
+    // shortcut / disabled"; the recorder treats nil as "Not set". A disabled
+    // (`isEnabled == false`) persisted shortcut maps to `nil` so the UI
+    // doesn't surface a phantom binding.
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
-    data.toggleDictation = currentConfig.startRecording.isEnabled ? currentConfig.startRecording.textDisplayString : ""
-    data.togglePrompting = currentConfig.startPrompting.isEnabled ? currentConfig.startPrompting.textDisplayString : ""
-    data.toggleMeeting = currentConfig.toggleMeeting.isEnabled ? currentConfig.toggleMeeting.textDisplayString : ""
-    data.openSettings = currentConfig.openSettings.isEnabled ? currentConfig.openSettings.textDisplayString : ""
-    data.openChat = currentConfig.openChat.isEnabled ? currentConfig.openChat.textDisplayString : ""
-    data.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture.textDisplayString : ""
+    data.toggleDictation = currentConfig.startRecording.isEnabled ? currentConfig.startRecording : nil
+    data.togglePrompting = currentConfig.startPrompting.isEnabled ? currentConfig.startPrompting : nil
+    data.toggleMeeting = currentConfig.toggleMeeting.isEnabled ? currentConfig.toggleMeeting : nil
+    data.openSettings = currentConfig.openSettings.isEnabled ? currentConfig.openSettings : nil
+    data.openChat = currentConfig.openChat.isEnabled ? currentConfig.openChat : nil
+    data.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
@@ -171,35 +174,14 @@ class SettingsViewModel: ObservableObject {
     // Transcription model is always allowed to be saved (including Gemini without API key)
     // so state stays consistent; Dictate is disabled at runtime when Gemini is selected and no key is set.
 
-    // Validate shortcut parsing: non-empty text must parse successfully
-    let trim = CharacterSet.whitespacesAndNewlines
-    if !data.toggleDictation.trimmingCharacters(in: trim).isEmpty,
-       ShortcutConfigManager.parseShortcut(from: data.toggleDictation) == nil {
-      return "Invalid toggle dictation shortcut format"
-    }
-    if !data.togglePrompting.trimmingCharacters(in: trim).isEmpty,
-       ShortcutConfigManager.parseShortcut(from: data.togglePrompting) == nil {
-      return "Invalid toggle prompting shortcut format"
-    }
-    if !data.openSettings.trimmingCharacters(in: trim).isEmpty,
-       ShortcutConfigManager.parseShortcut(from: data.openSettings) == nil {
-      return "Invalid open settings shortcut format"
-    }
-    if !data.openChat.trimmingCharacters(in: trim).isEmpty,
-       ShortcutConfigManager.parseShortcut(from: data.openChat) == nil {
-      return "Invalid open chat shortcut format"
-    }
-    if !data.screenshotCapture.trimmingCharacters(in: trim).isEmpty,
-       ShortcutConfigManager.parseShortcut(from: data.screenshotCapture) == nil {
-      return "Invalid screenshot capture shortcut format"
-    }
-    let shortcuts = parseShortcuts()
+    // Shortcuts are now captured via the recorder (NSEvent) and stored as
+    // `ShortcutDefinition?` — no string parsing, no format validation. Only
+    // duplicate detection across the enabled set is needed.
+    let shortcuts = currentShortcuts()
 
-    // Check for duplicates
     let enabledShortcuts = shortcuts.values.compactMap { $0 }
     let uniqueShortcuts = Set(enabledShortcuts)
     if enabledShortcuts.count != uniqueShortcuts.count {
-      // Find which shortcuts are duplicated
       var shortcutCounts: [ShortcutDefinition: [String]] = [:]
       for (name, shortcut) in shortcuts {
         if let shortcut = shortcut {
@@ -222,20 +204,17 @@ class SettingsViewModel: ObservableObject {
   }
 
   // MARK: - Real-time Shortcut Validation
-  func validateShortcut(_ shortcutText: String, for field: SettingsFocusField) -> String? {
-    // Parse the shortcut
-    guard let shortcut = ShortcutConfigManager.parseShortcut(from: shortcutText) else {
-      if !shortcutText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        return "Invalid shortcut format"
-      }
-      return nil
-    }
+  /// Called by the recorder when a new shortcut is captured. Only does
+  /// conflict detection against the other currently-bound fields; format
+  /// validation is unnecessary because the recorder only produces structurally
+  /// valid `ShortcutDefinition` values.
+  func validateShortcut(_ candidate: ShortcutDefinition?, for field: SettingsFocusField) -> String? {
+    guard let candidate = candidate else { return nil }
 
-    // Check if this shortcut is already used by another field
-    let currentShortcuts = parseShortcuts()
+    let currentShortcuts = self.currentShortcuts()
     for (name, existingShortcut) in currentShortcuts {
       if let existingShortcut = existingShortcut,
-        existingShortcut == shortcut,
+        existingShortcut == candidate,
         !isSameField(name: name, field: field)
       {
         return "Already used by \(name)"
@@ -278,20 +257,17 @@ class SettingsViewModel: ObservableObject {
     return migrated
   }
 
-  // MARK: - Toggle Shortcut Parsing
-  private func parseShortcuts() -> [String: ShortcutDefinition?] {
-    let trim = CharacterSet.whitespacesAndNewlines
-    func parsed(_ text: String) -> ShortcutDefinition? {
-      let t = text.trimmingCharacters(in: trim)
-      if t.isEmpty { return nil }
-      return ShortcutConfigManager.parseShortcut(from: t)
-    }
+  // MARK: - Current shortcut snapshot
+  /// Returns the named user-facing shortcuts as currently bound in `data`.
+  /// Used by both `validateSettings()` (duplicate detection) and
+  /// `validateShortcut(_:for:)` (conflict detection on the recorded value).
+  private func currentShortcuts() -> [String: ShortcutDefinition?] {
     return [
-      "toggle dictation": parsed(data.toggleDictation),
-      "toggle prompting": parsed(data.togglePrompting),
-      "open settings": parsed(data.openSettings),
-      "open chat": parsed(data.openChat),
-      "screenshot capture": parsed(data.screenshotCapture),
+      "toggle dictation": data.toggleDictation,
+      "toggle prompting": data.togglePrompting,
+      "open settings": data.openSettings,
+      "open chat": data.openChat,
+      "screenshot capture": data.screenshotCapture,
     ]
   }
 
@@ -356,26 +332,25 @@ class SettingsViewModel: ObservableObject {
 
     // Save Proxy API settings (Phase 1 – latency testing)
 
-    // Save toggle shortcuts (keep existing toggleMeeting/stopMeeting from config — no longer configurable in UI)
-    let shortcuts = parseShortcuts()
+    // Save toggle shortcuts. `nil` in SettingsData means "user cleared this
+    // shortcut" — we persist a disabled placeholder using the matching
+    // factory default's keycode so the stored shape stays stable. Existing
+    // toggleMeeting/stopMeeting are passed through (not exposed in UI).
     let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
+    func disable(_ template: ShortcutDefinition) -> ShortcutDefinition {
+      ShortcutDefinition(key: template.key, modifiers: template.modifiers, isEnabled: false)
+    }
+    let factory = ShortcutConfig.default
     let newConfig = ShortcutConfig(
-      startRecording: shortcuts["toggle dictation"].flatMap { $0 }
-        ?? ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
-      stopRecording: shortcuts["toggle dictation"].flatMap { $0 }
-        ?? ShortcutDefinition(key: .e, modifiers: [.command, .shift], isEnabled: false),
-      startPrompting: shortcuts["toggle prompting"].flatMap { $0 }
-        ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
-      stopPrompting: shortcuts["toggle prompting"].flatMap { $0 }
-        ?? ShortcutDefinition(key: .d, modifiers: [.command, .shift], isEnabled: false),
+      startRecording: data.toggleDictation ?? disable(factory.startRecording),
+      stopRecording: data.toggleDictation ?? disable(factory.stopRecording),
+      startPrompting: data.togglePrompting ?? disable(factory.startPrompting),
+      stopPrompting: data.togglePrompting ?? disable(factory.stopPrompting),
       toggleMeeting: currentConfig.toggleMeeting,
       stopMeeting: currentConfig.stopMeeting,
-      openSettings: shortcuts["open settings"].flatMap { $0 }
-        ?? ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: false),
-      openChat: shortcuts["open chat"].flatMap { $0 }
-        ?? ShortcutDefinition(key: .eight, modifiers: [.command], isEnabled: false),
-      screenshotCapture: shortcuts["screenshot capture"].flatMap { $0 }
-        ?? ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: false)
+      openSettings: data.openSettings ?? disable(factory.openSettings),
+      openChat: data.openChat ?? disable(factory.openChat),
+      screenshotCapture: data.screenshotCapture ?? disable(factory.screenshotCapture)
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 
