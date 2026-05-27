@@ -46,7 +46,6 @@ class MenuBarController: NSObject {
   // MARK: - State Tracking (Prevent Race Conditions)
   private var currentTranscriptionAudioURL: URL?
   private var processedAudioURLs: Set<URL> = []
-  private var currentTTSAudioURL: URL?
   private var audioEngine: AVAudioEngine?
   private var audioPlayerNode: AVAudioPlayerNode?
   private var timePitchNode: AVAudioUnitTimePitch?
@@ -1698,7 +1697,6 @@ class MenuBarController: NSObject {
           self.audioEngine = nil
           self.audioPlayerNode = nil
           self.timePitchNode = nil
-          self.currentTTSAudioURL = nil
           self.appState = self.appState.showSuccess("Audio playback completed")
           try? await Task.sleep(nanoseconds: 2_000_000_000)
           if case .feedback = self.appState {
@@ -1725,8 +1723,6 @@ class MenuBarController: NSObject {
     audioEngine = nil
     audioPlayerNode = nil
     timePitchNode = nil
-    cleanupAudioFile(at: currentTTSAudioURL)
-    currentTTSAudioURL = nil
   }
   
   private func simulateCopyPaste() {
@@ -1973,16 +1969,28 @@ extension MenuBarController: ShortcutDelegate {
       self.simulateCopyPaste()
       Task { @MainActor [weak self] in
         guard let self else { return }
-        let deadline = Date().addingTimeInterval(0.5)
+        let start = Date()
+        let deadline = start.addingTimeInterval(0.5)
         while Date() < deadline {
           try? await Task.sleep(for: .milliseconds(15))
           if NSPasteboard.general.changeCount != beforeChangeCount {
-            DebugLogger.log("READ-ALOUD: Pasteboard changed after \(Int(Date().timeIntervalSince(deadline.addingTimeInterval(-0.5)) * 1000)) ms")
+            let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
+            DebugLogger.log("READ-ALOUD: Pasteboard changed after \(elapsedMs) ms")
+            // The user may have triggered another operation during the poll window; only
+            // proceed if we're still idle.
+            guard case .idle = self.appState else {
+              DebugLogger.logWarning("READ-ALOUD: Poll completed but state is no longer idle — abandoning")
+              return
+            }
             self.performReadSelectedTextAloud()
             return
           }
         }
         DebugLogger.logWarning("READ-ALOUD: Pasteboard never changed — Cmd+C did not land on a selection")
+        guard case .idle = self.appState else {
+          DebugLogger.logWarning("READ-ALOUD: Poll timed out but state is no longer idle — skipping error popup")
+          return
+        }
         self.presentError(
           shortTitle: "Read Aloud",
           message: "No text selected. Highlight text first, then press the Read Aloud shortcut.",
@@ -1993,6 +2001,10 @@ extension MenuBarController: ShortcutDelegate {
   }
 
   private func performReadSelectedTextAloud() {
+    // Re-check toggle-off: between the poll-window dispatch and now, the user may have
+    // pressed the shortcut again, which would otherwise double-fire `beginReadAloudProcessing`
+    // and orphan the first task.
+    if attemptReadAloudToggleOff() { return }
     guard let selectedText = clipboardManager.getCleanedClipboardText(),
           !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       DebugLogger.logWarning("READ-ALOUD: Pasteboard changed but text is empty after cleaning")
