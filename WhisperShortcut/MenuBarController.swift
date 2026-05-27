@@ -139,7 +139,9 @@ class MenuBarController: NSObject {
     }
 
     // Create menu
-    statusItem.menu = createMenu()
+    let menu = createMenu()
+    menu.delegate = self
+    statusItem.menu = menu
     updateUI()
   }
 
@@ -1273,7 +1275,7 @@ class MenuBarController: NSObject {
         self.autoPasteIfEnabled()
       }
 
-      reviewPrompter.recordSuccessfulOperation(window: statusItem?.button?.window)
+      await reviewPrompter.recordSuccessfulOperation()
 
       let modelInfo = await self.speechService.getTranscriptionModelInfo()
       
@@ -1347,7 +1349,7 @@ class MenuBarController: NSObject {
         self.autoPasteIfEnabled()
       }
 
-      reviewPrompter.recordSuccessfulOperation(window: statusItem?.button?.window)
+      await reviewPrompter.recordSuccessfulOperation()
 
       await MainActor.run {
         let modelInfo = self.speechService.getPromptModelInfo()
@@ -1415,7 +1417,9 @@ class MenuBarController: NSObject {
       currentConfig = newConfig
       DispatchQueue.main.async {
         // Recreate menu with updated shortcuts
-        self.statusItem?.menu = self.createMenu()
+        let menu = self.createMenu()
+        menu.delegate = self
+        self.statusItem?.menu = menu
         self.updateUI()
       }
     }
@@ -1559,6 +1563,7 @@ class MenuBarController: NSObject {
           guard let self else { return }
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
+          self.reviewPrompter.recordSuccessfulOperation()
         }
       } catch {
         if Self.isCancellation(error) {
@@ -2283,5 +2288,15 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
       // Show error but don't stop the session
       PopupNotificationWindow.showError(SpeechErrorFormatter.formatForUser(error), title: "Live Meeting")
     }
+  }
+}
+
+// MARK: - NSMenuDelegate
+extension MenuBarController: NSMenuDelegate {
+  /// Fires a previously-armed review/support prompt when the user is focused on this app
+  /// rather than the one they were dictating into. ReviewPrompter no-ops when nothing
+  /// is pending.
+  func menuWillOpen(_ menu: NSMenu) {
+    ReviewPrompter.shared.showPendingPromptIfNeeded()
   }
 }

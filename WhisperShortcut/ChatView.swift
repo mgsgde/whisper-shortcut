@@ -524,6 +524,7 @@ class ChatViewModel: ObservableObject {
         if let s = store.session(by: sessionId), s.messages.count == 2 {
           Task { await generateAITitle(sessionId: sessionId) }
         }
+        await MainActor.run { ReviewPrompter.shared.recordSuccessfulOperation() }
       } catch is CancellationError {
         let superseded = await MainActor.run { self.supersedingSessionIds.contains(sessionId) }
         DebugLogger.log("CHAT: Send cancelled (superseded=\(superseded))")
