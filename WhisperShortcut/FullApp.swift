@@ -41,11 +41,18 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     // Microphone permission will be requested automatically when recording starts
 
-    // Show settings if no credential configured
+    // First-launch onboarding: if the user hasn't completed the Welcome tour, show it.
+    // Otherwise fall back to the legacy "open Settings if no key" safety net so users
+    // who somehow bypassed the tour still land in a configuration screen.
     Task {
       await MainActor.run {
-        if !GeminiCredentialProvider.shared.hasCredential() {
-          DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
+          let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
+          if !hasCompletedOnboarding {
+            WelcomeWindowController.shared.show()
+          } else if !GeminiCredentialProvider.shared.hasCredential()
+                    && !KeychainManager.shared.hasValidOpenAIAPIKey()
+                    && !KeychainManager.shared.hasValidXAIAPIKey() {
             SettingsManager.shared.showSettings()
           }
         }

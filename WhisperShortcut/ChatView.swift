@@ -280,8 +280,9 @@ class ChatViewModel: ObservableObject {
     } else {
       errorMessage = "Screen capture failed. Opening Screen Recording settings..."
       DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil, opening Screen Recording settings")
-      if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-        NSWorkspace.shared.open(url)
+      SettingsManager.shared.showSettings()
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        NotificationCenter.default.post(name: .openPrivacyPermissionsTab, object: nil)
       }
     }
   }

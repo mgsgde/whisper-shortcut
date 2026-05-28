@@ -33,12 +33,22 @@ class AccessibilityPermissionManager {
       """
     alert.alertStyle = .informational
     alert.addButton(withTitle: "Open Settings")
+    alert.addButton(withTitle: "Open Permissions in Settings")
     alert.addButton(withTitle: "Not Now")
 
     let response = alert.runModal()
 
     if response == .alertFirstButtonReturn {
       openAccessibilitySettings()
+    } else if response == .alertSecondButtonReturn {
+      openWhisperShortcutPrivacyTab()
+    }
+  }
+
+  private static func openWhisperShortcutPrivacyTab() {
+    SettingsManager.shared.showSettings()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+      NotificationCenter.default.post(name: .openPrivacyPermissionsTab, object: nil)
     }
   }
 

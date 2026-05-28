@@ -30,6 +30,12 @@ struct SettingsView: View {
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
       setupFloatingWindow()
     }
+    .onReceive(NotificationCenter.default.publisher(for: .privacyTabRequestSwitchToGeneral)) { _ in
+      selectedTab = .general
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .openPrivacyPermissionsTab)) { _ in
+      selectedTab = .privacy
+    }
   }
 
   // MARK: - Sidebar
@@ -86,6 +92,8 @@ struct SettingsView: View {
           ChatSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .readAloud:
           ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+        case .privacy:
+          PrivacyPermissionsTab(viewModel: viewModel)
         }
       }
       .padding(.horizontal, 24)
@@ -109,6 +117,8 @@ struct SettingsView: View {
       return "sparkles"
     case .readAloud:
       return "speaker.wave.2.fill"
+    case .privacy:
+      return "lock.shield"
     }
   }
 
@@ -126,6 +136,8 @@ struct SettingsView: View {
       return "Model, system prompt, and live meeting settings"
     case .readAloud:
       return "Shortcut and smart-rewrite settings"
+    case .privacy:
+      return "Permissions, API keys, and what data leaves your Mac"
     }
   }
 

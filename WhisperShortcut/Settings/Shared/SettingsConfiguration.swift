@@ -662,6 +662,7 @@ enum SettingsTab: String, CaseIterable {
   case screenshot = "Screenshot"
   case readAloud = "Read Aloud"
   case chat = "Chat"
+  case privacy = "Privacy & Permissions"
 }
 
 // MARK: - Read Aloud Playback Speed
