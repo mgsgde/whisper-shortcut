@@ -249,10 +249,15 @@ final class ChatComposerNSTextView: NSTextView {
     }
     let adjusted = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
     let index = lm.characterIndex(for: adjusted, in: tc, fractionOfDistanceBetweenInsertionPoints: nil)
-    if index < (textStorage?.length ?? 0),
-       let a = textStorage?.attribute(.attachment, at: index, effectiveRange: nil) as? ComposerTextAttachment {
-      onAttachmentClicked?(a)
-      return
+    // The chip is a single wide glyph; clicking its right half makes
+    // characterIndex return the index *after* the attachment, so also probe the
+    // preceding character before falling through to normal cursor placement.
+    let length = textStorage?.length ?? 0
+    for probe in [index, index - 1] where probe >= 0 && probe < length {
+      if let a = textStorage?.attribute(.attachment, at: probe, effectiveRange: nil) as? ComposerTextAttachment {
+        onAttachmentClicked?(a)
+        return
+      }
     }
     super.mouseDown(with: event)
   }

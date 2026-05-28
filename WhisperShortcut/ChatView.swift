@@ -236,17 +236,12 @@ class ChatViewModel: ObservableObject {
   }
 
   private func switchToCurrentStoreSession() {
-    let a = CFAbsoluteTimeGetCurrent()
     session = store.load()
-    let b = CFAbsoluteTimeGetCurrent()
     currentSessionId = session.id
     messages = session.messages
-    let c = CFAbsoluteTimeGetCurrent()
     errorMessage = nil
     pendingScreenshots = []
     refreshRecentSessions()
-    let d = CFAbsoluteTimeGetCurrent()
-    DebugLogger.log("PERF loadCurrent: storeLoad=\(Int((b - a) * 1000))ms setMessages=\(Int((c - b) * 1000))ms refreshRecent=\(Int((d - c) * 1000))ms")
   }
 
   /// Maximum number of screenshots that can be attached to one message.
@@ -972,12 +967,8 @@ class ChatViewModel: ObservableObject {
   func switchToSession(id: UUID) {
     DebugLogger.log("SIDEBAR: switchToSession id=\(id) current=\(session.id) same=\(id == session.id)")
     guard id != session.id else { return }
-    let t0 = CFAbsoluteTimeGetCurrent()
     store.switchToSession(id: id)
-    let t1 = CFAbsoluteTimeGetCurrent()
     switchToCurrentStoreSession()
-    let t2 = CFAbsoluteTimeGetCurrent()
-    DebugLogger.log("PERF switchToSession: storeSwitch=\(Int((t1 - t0) * 1000))ms loadCurrent=\(Int((t2 - t1) * 1000))ms total=\(Int((t2 - t0) * 1000))ms msgs=\(messages.count)")
     DebugLogger.log("SIDEBAR: switchToSession done → now on \(session.id)")
   }
 
@@ -2625,13 +2616,10 @@ private struct ModelReplyView: View {
     }
     let key = String(hasher.finalize()) as NSString
     if let box = segmentCache.object(forKey: key) {
-      DebugLogger.log("PERF parse HIT: \(content.count) chars")
       return box.segments
     }
-    let ps = CFAbsoluteTimeGetCurrent()
     let blocks = buildReplyBlocks(content: content, sources: sources, groundingSupports: groundingSupports)
     let segments = mergedSegments(from: blocks)
-    DebugLogger.log("PERF parse MISS: \(content.count) chars in \(Int((CFAbsoluteTimeGetCurrent() - ps) * 1000))ms")
     segmentCache.setObject(ModelReplySegmentBox(segments), forKey: key)
     return segments
   }

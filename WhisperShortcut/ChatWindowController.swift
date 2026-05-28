@@ -160,6 +160,10 @@ extension ChatWindowController: NSWindowDelegate {
   func windowDidResignKey(_ notification: Notification) {
     // Don't close while a modal sheet/panel (e.g. file picker) is active
     if NSApp.modalWindow != nil { return }
+    // Don't close while an attached sheet (e.g. the screenshot preview) is up —
+    // presenting a SwiftUI .sheet resigns the parent's key status, and closing
+    // the parent here would orphan the sheet (grayed out, stuck behind the window).
+    if window?.attachedSheet != nil { return }
     // Don't close during the shortcut copy → show → prefill sequence
     if Date() < suppressCloseUntil { return }
     let closeOnFocusLoss: Bool
