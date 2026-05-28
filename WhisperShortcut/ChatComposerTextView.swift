@@ -248,13 +248,17 @@ final class ChatComposerNSTextView: NSTextView {
       super.mouseDown(with: event); return
     }
     let adjusted = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
-    let index = lm.characterIndex(for: adjusted, in: tc, fractionOfDistanceBetweenInsertionPoints: nil)
-    // The chip is a single wide glyph; clicking its right half makes
-    // characterIndex return the index *after* the attachment, so also probe the
-    // preceding character before falling through to normal cursor placement.
-    let length = textStorage?.length ?? 0
-    for probe in [index, index - 1] where probe >= 0 && probe < length {
-      if let a = textStorage?.attribute(.attachment, at: probe, effectiveRange: nil) as? ComposerTextAttachment {
+    // glyphIndex returns the *nearest* glyph even for clicks in empty space, so
+    // verify the point actually falls inside that glyph's rect before treating
+    // it as a chip click — otherwise clicking blank input area next to a chip
+    // would wrongly open the attachment.
+    var partial: CGFloat = 0
+    let glyphIndex = lm.glyphIndex(for: adjusted, in: tc, fractionOfDistanceThroughGlyph: &partial)
+    let glyphRect = lm.boundingRect(forGlyphRange: NSRange(location: glyphIndex, length: 1), in: tc)
+    if glyphRect.contains(adjusted) {
+      let charIndex = lm.characterIndexForGlyph(at: glyphIndex)
+      if charIndex < (textStorage?.length ?? 0),
+         let a = textStorage?.attribute(.attachment, at: charIndex, effectiveRange: nil) as? ComposerTextAttachment {
         onAttachmentClicked?(a)
         return
       }
