@@ -15,9 +15,6 @@ struct PrivacyPermissionsTab: View {
   @State private var hasGeminiKey: Bool = false
   @State private var hasOpenAIKey: Bool = false
   @State private var hasXAIKey: Bool = false
-  @State private var showPrivacyPolicy: Bool = false
-
-  private let refreshTimer = Timer.publish(every: 2.0, on: .main, in: .common).autoconnect()
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -61,7 +58,7 @@ struct PrivacyPermissionsTab: View {
           description: "Optional. Lets you attach screenshots to chat messages.",
           required: false,
           status: screenStatus,
-          actions: defaultActions(for: .screenRecording)
+          actions: screenActions
         )
       }
 
@@ -93,14 +90,14 @@ struct PrivacyPermissionsTab: View {
           configured: hasXAIKey
         )
       }
+
+      SpacedSectionDivider()
+
+      SupportFeedbackSection(viewModel: viewModel)
     }
     .onAppear { refresh() }
-    .onReceive(refreshTimer) { _ in refresh() }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       refresh()
-    }
-    .sheet(isPresented: $showPrivacyPolicy) {
-      PrivacyPolicySheet(onDismiss: { showPrivacyPolicy = false })
     }
   }
 
@@ -121,7 +118,9 @@ struct PrivacyPermissionsTab: View {
       }
       HStack(spacing: 12) {
         Button {
-          showPrivacyPolicy = true
+          if let url = URL(string: AppConstants.privacyPolicyURL) {
+            NSWorkspace.shared.open(url)
+          }
         } label: {
           Label("View full privacy policy", systemImage: "doc.text")
             .font(.callout)
@@ -323,6 +322,32 @@ struct PrivacyPermissionsTab: View {
     )
   }
 
+  private var screenActions: AnyView {
+    AnyView(
+      HStack(spacing: 8) {
+        if screenStatus == .notDetermined {
+          Button {
+            PermissionStatusChecker.requestScreenRecordingAccess()
+            refresh()
+          } label: {
+            Label("Grant", systemImage: "rectangle.inset.filled.and.person.filled")
+              .font(.callout)
+          }
+          .buttonStyle(.borderedProminent)
+          .pointerCursorOnHover()
+        }
+        Button {
+          PermissionStatusChecker.openSystemSettings(for: .screenRecording)
+        } label: {
+          Label("Open System Settings", systemImage: "arrow.up.right.square")
+            .font(.callout)
+        }
+        .buttonStyle(.bordered)
+        .pointerCursorOnHover()
+      }
+    )
+  }
+
   private func defaultActions(for kind: PermissionKind) -> AnyView {
     AnyView(
       Button {
@@ -367,45 +392,4 @@ extension Notification.Name {
   /// failure in ChatView) to open the Settings window and switch to the Privacy &
   /// Permissions tab. `SettingsView` observes this and updates `selectedTab`.
   static let openPrivacyPermissionsTab = Notification.Name("WhisperShortcut.openPrivacyPermissionsTab")
-}
-
-struct PrivacyPolicySheet: View {
-  let onDismiss: () -> Void
-  @State private var content: String = "Loading…"
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      HStack {
-        Text("Privacy Policy")
-          .font(.title2)
-          .fontWeight(.semibold)
-        Spacer()
-        Button("Done", action: onDismiss)
-          .keyboardShortcut(.defaultAction)
-          .pointerCursorOnHover()
-      }
-      .padding(.horizontal, 20)
-      .padding(.top, 20)
-      .padding(.bottom, 12)
-      Divider()
-      ScrollView {
-        Text(content)
-          .font(.callout)
-          .textSelection(.enabled)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(20)
-      }
-    }
-    .frame(minWidth: 560, idealWidth: 600, minHeight: 480, idealHeight: 560)
-    .onAppear { loadContent() }
-  }
-
-  private func loadContent() {
-    if let url = Bundle.main.url(forResource: "PRIVACY", withExtension: "md"),
-       let text = try? String(contentsOf: url, encoding: .utf8) {
-      content = text
-      return
-    }
-    content = PrivacyCopy.fallbackPolicy
-  }
 }

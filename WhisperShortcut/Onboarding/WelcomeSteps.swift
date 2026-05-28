@@ -26,8 +26,6 @@ struct WelcomeIntroStep: View {
 }
 
 struct WelcomePrivacyStep: View {
-  @State private var showPolicy: Bool = false
-
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
       HStack(spacing: 12) {
@@ -66,21 +64,33 @@ struct WelcomePrivacyStep: View {
           .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
       )
 
-      Button {
-        showPolicy = true
-      } label: {
-        Label("View full privacy policy", systemImage: "doc.text")
-          .font(.callout)
+      HStack(spacing: 12) {
+        Button {
+          if let url = URL(string: AppConstants.privacyPolicyURL) {
+            NSWorkspace.shared.open(url)
+          }
+        } label: {
+          Label("View full privacy policy", systemImage: "doc.text")
+            .font(.callout)
+        }
+        .buttonStyle(.bordered)
+        .pointerCursorOnHover()
+
+        Button {
+          if let url = URL(string: AppConstants.githubRepositoryURL) {
+            NSWorkspace.shared.open(url)
+          }
+        } label: {
+          Label("View on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+            .font(.callout)
+        }
+        .buttonStyle(.bordered)
+        .pointerCursorOnHover()
       }
-      .buttonStyle(.bordered)
-      .pointerCursorOnHover()
 
       Spacer()
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    .sheet(isPresented: $showPolicy) {
-      PrivacyPolicySheet(onDismiss: { showPolicy = false })
-    }
   }
 }
 
@@ -394,6 +404,120 @@ struct WelcomeAccessibilityStep: View {
         .font(.caption)
         .foregroundStyle(.secondary)
         .padding(.top, 4)
+
+      Spacer()
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+  }
+}
+
+struct WelcomeScreenRecordingStep: View {
+  @Binding var status: PermissionStatus
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 20) {
+      HStack(spacing: 12) {
+        Image(systemName: "rectangle.inset.filled.and.person.filled")
+          .font(.system(size: 32))
+          .foregroundStyle(.tint)
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Screen Recording access")
+            .font(.title2)
+            .fontWeight(.semibold)
+          Text("Optional — only needed to attach screenshots to chat.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+        WelcomePermissionBadge(status: status)
+      }
+
+      Text("With Screen Recording enabled, you can capture your screen and attach it to a chat message. macOS asks for this the first time you grant it — you may need to relaunch the app afterwards.")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      HStack(spacing: 12) {
+        if status == .granted {
+          Label("Screen Recording access granted.", systemImage: "checkmark.circle.fill")
+            .foregroundStyle(.green)
+        } else {
+          Button {
+            PermissionStatusChecker.requestScreenRecordingAccess()
+            status = PermissionStatusChecker.status(for: .screenRecording)
+          } label: {
+            Label("Grant Screen Recording", systemImage: "rectangle.inset.filled.and.person.filled")
+              .font(.callout)
+          }
+          .buttonStyle(.borderedProminent)
+          .pointerCursorOnHover()
+          Button {
+            PermissionStatusChecker.openSystemSettings(for: .screenRecording)
+          } label: {
+            Label("Open System Settings", systemImage: "arrow.up.right.square")
+              .font(.callout)
+          }
+          .buttonStyle(.bordered)
+          .pointerCursorOnHover()
+        }
+      }
+
+      Text("You can skip this — everything except screenshot attachments works without it.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.top, 4)
+
+      Spacer()
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+  }
+}
+
+struct WelcomeSmartImprovementStep: View {
+  @Binding var saveUsageData: Bool
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 20) {
+      HStack(spacing: 12) {
+        Image(systemName: "sparkles")
+          .font(.system(size: 32))
+          .foregroundStyle(.tint)
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Smart Improvement")
+            .font(.title2)
+            .fontWeight(.semibold)
+          Text("Optional — refines your prompts over time.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+      }
+
+      Text("To do this, WhisperShortcut stores your interaction logs (dictation, Dictate Prompt, and chat) locally, and periodically sends them to your configured AI provider to suggest better prompts. Nothing goes to us or any third party — only to the provider you already use.")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      Toggle(isOn: $saveUsageData) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Save usage data for Smart Improvement")
+            .font(.callout)
+            .fontWeight(.medium)
+          Text("You can change this any time in Settings → General.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+      }
+      .toggleStyle(.switch)
+      .padding(14)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        RoundedRectangle(cornerRadius: 10)
+          .fill(Color(nsColor: .controlBackgroundColor))
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 10)
+          .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+      )
 
       Spacer()
     }

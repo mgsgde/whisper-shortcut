@@ -79,4 +79,12 @@ enum PermissionStatusChecker {
       }
     }
   }
+
+  /// Triggers the native macOS Screen Recording consent prompt the first time it's called
+  /// (when status is not-yet-determined). Once denied, macOS no longer prompts and the user
+  /// must enable access in System Settings — callers should offer that as a fallback.
+  @discardableResult
+  static func requestScreenRecordingAccess() -> Bool {
+    return CGRequestScreenCaptureAccess()
+  }
 }

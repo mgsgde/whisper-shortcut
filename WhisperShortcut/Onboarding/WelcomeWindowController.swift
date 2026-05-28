@@ -16,8 +16,7 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     window.contentViewController = hosting
     window.isReleasedWhenClosed = false
     window.center()
-    window.level = .floating
-    window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+    window.collectionBehavior = [.fullScreenAuxiliary]
     super.init(window: window)
     window.delegate = self
   }

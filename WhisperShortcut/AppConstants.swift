@@ -104,6 +104,7 @@ Output rules:
   // MARK: - Support Contact
   static let whatsappSupportNumber = "+4917641952181"
   static let githubRepositoryURL = "https://github.com/mgsgde/whisper-shortcut"
+  static let privacyPolicyURL = "https://whispershortcut.com/privacy"
   /// Tip link: compare Gemini models (speed, intelligence, pricing).
   static let geminiModelsComparisonURL = "https://mgsgde.github.io/gemini-models/"
 

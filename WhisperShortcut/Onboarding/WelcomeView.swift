@@ -7,6 +7,8 @@ enum WelcomeStep: Int, CaseIterable {
   case apiKeys
   case microphone
   case accessibility
+  case screenRecording
+  case smartImprovement
   case done
 
   var indexLabel: String {
@@ -21,8 +23,8 @@ struct WelcomeView: View {
   @State private var hasXAIKey: Bool = KeychainManager.shared.hasValidXAIAPIKey()
   @State private var micStatus: PermissionStatus = PermissionStatusChecker.status(for: .microphone)
   @State private var axStatus: PermissionStatus = PermissionStatusChecker.status(for: .accessibility)
-
-  private let refreshTimer = Timer.publish(every: 2.0, on: .main, in: .common).autoconnect()
+  @State private var screenStatus: PermissionStatus = PermissionStatusChecker.status(for: .screenRecording)
+  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = true
 
   var body: some View {
     VStack(spacing: 0) {
@@ -42,6 +44,10 @@ struct WelcomeView: View {
           WelcomeMicStep(status: $micStatus)
         case .accessibility:
           WelcomeAccessibilityStep(status: $axStatus)
+        case .screenRecording:
+          WelcomeScreenRecordingStep(status: $screenStatus)
+        case .smartImprovement:
+          WelcomeSmartImprovementStep(saveUsageData: $saveUsageData)
         case .done:
           WelcomeDoneStep()
         }
@@ -58,7 +64,6 @@ struct WelcomeView: View {
     .frame(minWidth: 720, minHeight: 540)
     .background(Color(nsColor: .windowBackgroundColor))
     .onAppear { refreshState() }
-    .onReceive(refreshTimer) { _ in refreshState() }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       refreshState()
     }
@@ -103,7 +108,7 @@ struct WelcomeView: View {
   }
 
   private var canSkip: Bool {
-    step == .accessibility
+    step == .accessibility || step == .screenRecording
   }
 
   private var nextButtonTitle: String {
@@ -145,5 +150,6 @@ struct WelcomeView: View {
     hasXAIKey = KeychainManager.shared.hasValidXAIAPIKey()
     micStatus = PermissionStatusChecker.status(for: .microphone)
     axStatus = PermissionStatusChecker.status(for: .accessibility)
+    screenStatus = PermissionStatusChecker.status(for: .screenRecording)
   }
 }

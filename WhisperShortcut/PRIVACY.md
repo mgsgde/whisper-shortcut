@@ -4,7 +4,11 @@ WhisperShortcut runs entirely on your Mac. We do not operate a server.
 
 ## What we collect
 
-Nothing. The app has no telemetry, no analytics, and no third-party tracking SDKs.
+Nothing leaves your Mac for us. The app has no telemetry, no analytics SDKs, and no third-party tracking. We do not operate a server.
+
+## Smart Improvement (optional, your choice)
+
+When **Save usage data** is enabled, your interaction logs (dictation, Dictate Prompt, and chat) are stored locally and periodically sent to the AI provider you configured so the app can suggest better prompts. This goes only to your chosen provider — never to us or any third party. You can turn it off during setup or in Settings → General.
 
 ## What you send (controlled by you)
 
