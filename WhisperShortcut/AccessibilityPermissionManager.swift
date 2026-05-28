@@ -7,8 +7,7 @@ class AccessibilityPermissionManager {
 
   /// Checks if the app has accessibility permissions
   static func hasAccessibilityPermission() -> Bool {
-    let hasPermission = AXIsProcessTrusted()
-    return hasPermission
+    AXIsProcessTrusted()
   }
 
   /// Shows a single, elegant dialog for accessibility permission
@@ -38,20 +37,7 @@ class AccessibilityPermissionManager {
     let response = alert.runModal()
 
     if response == .alertFirstButtonReturn {
-      openAccessibilitySettings()
-    }
-  }
-
-  /// Opens System Settings to the Accessibility section (no additional dialogs)
-  private static func openAccessibilitySettings() {
-    // Try the modern URL first (macOS 13+)
-    if let url = URL(
-      string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-    {
-      NSWorkspace.shared.open(url)
-    } else {
-      // Fallback for older systems
-      NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Preferences.app"))
+      PermissionStatusChecker.openSystemSettings(for: .accessibility)
     }
   }
 

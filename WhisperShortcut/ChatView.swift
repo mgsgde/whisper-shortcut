@@ -236,12 +236,17 @@ class ChatViewModel: ObservableObject {
   }
 
   private func switchToCurrentStoreSession() {
+    let a = CFAbsoluteTimeGetCurrent()
     session = store.load()
+    let b = CFAbsoluteTimeGetCurrent()
     currentSessionId = session.id
     messages = session.messages
+    let c = CFAbsoluteTimeGetCurrent()
     errorMessage = nil
     pendingScreenshots = []
     refreshRecentSessions()
+    let d = CFAbsoluteTimeGetCurrent()
+    DebugLogger.log("PERF loadCurrent: storeLoad=\(Int((b - a) * 1000))ms setMessages=\(Int((c - b) * 1000))ms refreshRecent=\(Int((d - c) * 1000))ms")
   }
 
   /// Maximum number of screenshots that can be attached to one message.
@@ -706,6 +711,19 @@ class ChatViewModel: ObservableObject {
     return rawContent.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
+  /// Extracts a clean title from an LLM title response: the first non-empty line, stripped of
+  /// surrounding whitespace and quote characters.
+  static func cleanTitleResponse(_ raw: String) -> String {
+    raw
+      .components(separatedBy: .newlines)
+      .map {
+        $0.trimmingCharacters(in: .whitespaces)
+          .replacingOccurrences(of: "\"", with: "")
+          .replacingOccurrences(of: "'", with: "")
+      }
+      .first { !$0.isEmpty } ?? ""
+  }
+
   /// Builds the system instruction: current date, base chat prompt, plus optional meeting context (summary + recent transcript).
   private func buildSystemInstruction() -> [String: Any] {
     var text = SystemPromptsStore.shared.loadChatSystemPrompt()
@@ -843,14 +861,7 @@ class ChatViewModel: ObservableObject {
     do {
       let raw = try await apiClient.generateText(
         model: "gemini-2.5-flash-lite", prompt: prompt, credential: credential)
-      let title = raw
-        .components(separatedBy: .newlines)
-        .map {
-          $0.trimmingCharacters(in: .whitespaces)
-            .replacingOccurrences(of: "\"", with: "")
-            .replacingOccurrences(of: "'", with: "")
-        }
-        .first { !$0.isEmpty } ?? ""
+      let title = Self.cleanTitleResponse(raw)
       guard !title.isEmpty else { return }
       guard var updated = store.session(by: sessionId) else { return }
       updated.title = String(title.prefix(Self.maxSessionTitleLength))
@@ -881,14 +892,7 @@ class ChatViewModel: ObservableObject {
     do {
       let raw = try await apiClient.generateText(
         model: "gemini-2.5-flash-lite", prompt: prompt, credential: credential)
-      let title = raw
-        .components(separatedBy: .newlines)
-        .map {
-          $0.trimmingCharacters(in: .whitespaces)
-            .replacingOccurrences(of: "\"", with: "")
-            .replacingOccurrences(of: "'", with: "")
-        }
-        .first { !$0.isEmpty } ?? ""
+      let title = Self.cleanTitleResponse(raw)
       guard !title.isEmpty else { return }
       guard var updated = store.session(by: target.id), (updated.title?.isEmpty ?? true) else { return }
       updated.title = String(title.prefix(Self.maxSessionTitleLength))
@@ -968,8 +972,12 @@ class ChatViewModel: ObservableObject {
   func switchToSession(id: UUID) {
     DebugLogger.log("SIDEBAR: switchToSession id=\(id) current=\(session.id) same=\(id == session.id)")
     guard id != session.id else { return }
+    let t0 = CFAbsoluteTimeGetCurrent()
     store.switchToSession(id: id)
+    let t1 = CFAbsoluteTimeGetCurrent()
     switchToCurrentStoreSession()
+    let t2 = CFAbsoluteTimeGetCurrent()
+    DebugLogger.log("PERF switchToSession: storeSwitch=\(Int((t1 - t0) * 1000))ms loadCurrent=\(Int((t2 - t1) * 1000))ms total=\(Int((t2 - t0) * 1000))ms msgs=\(messages.count)")
     DebugLogger.log("SIDEBAR: switchToSession done → now on \(session.id)")
   }
 
@@ -1693,7 +1701,7 @@ struct ChatView: View {
     let widthBucket = (containerWidth / 50).rounded(.down) * 50
     return ScrollViewReader { proxy in
       ScrollView {
-        VStack(alignment: .leading, spacing: 24) {
+        LazyVStack(alignment: .leading, spacing: 24) {
           Color.clear.frame(height: 1).id("listTop")
           if viewModel.messages.isEmpty && !viewModel.isSending {
             emptyStateCommandHints
@@ -2584,14 +2592,52 @@ private enum ModelReplyRenderSegment {
   case image(Data)
 }
 
+/// Boxes parsed reply segments so they can be stored in an NSCache (class-only values).
+private final class ModelReplySegmentBox {
+  let segments: [ModelReplyRenderSegment]
+  init(_ segments: [ModelReplyRenderSegment]) { self.segments = segments }
+}
+
 private struct ModelReplyView: View {
   let content: String
   let sources: [GroundingSource]
   let groundingSupports: [GroundingSupport]
 
+  /// Markdown parsing (buildReplyBlocks + mergedSegments) is expensive and would otherwise run on
+  /// every SwiftUI render of every assistant message — so switching chats re-parses the whole
+  /// conversation synchronously on the main thread. Memoize by content + grounding so repeated
+  /// renders and chat switches reuse the parsed result.
+  private static let segmentCache = NSCache<NSString, ModelReplySegmentBox>()
+
+  private static func cachedSegments(
+    content: String, sources: [GroundingSource], groundingSupports: [GroundingSupport]
+  ) -> [ModelReplyRenderSegment] {
+    var hasher = Hasher()
+    hasher.combine(content)
+    for s in sources {
+      hasher.combine(s.uri)
+      hasher.combine(s.title)
+    }
+    for g in groundingSupports {
+      hasher.combine(g.startIndex)
+      hasher.combine(g.endIndex)
+      hasher.combine(g.groundingChunkIndices)
+    }
+    let key = String(hasher.finalize()) as NSString
+    if let box = segmentCache.object(forKey: key) {
+      DebugLogger.log("PERF parse HIT: \(content.count) chars")
+      return box.segments
+    }
+    let ps = CFAbsoluteTimeGetCurrent()
+    let blocks = buildReplyBlocks(content: content, sources: sources, groundingSupports: groundingSupports)
+    let segments = mergedSegments(from: blocks)
+    DebugLogger.log("PERF parse MISS: \(content.count) chars in \(Int((CFAbsoluteTimeGetCurrent() - ps) * 1000))ms")
+    segmentCache.setObject(ModelReplySegmentBox(segments), forKey: key)
+    return segments
+  }
+
   var body: some View {
-    let blocks = Self.buildReplyBlocks(content: content, sources: sources, groundingSupports: groundingSupports)
-    let segments = Self.mergedSegments(from: blocks)
+    let segments = Self.cachedSegments(content: content, sources: sources, groundingSupports: groundingSupports)
     return VStack(alignment: .leading, spacing: 18) {
       ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
         switch segment {

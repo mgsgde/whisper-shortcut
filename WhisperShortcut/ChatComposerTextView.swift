@@ -665,8 +665,13 @@ struct ChatComposerTextView: NSViewRepresentable {
       return handled
     }
     tv.onAttachmentClicked = { attachment in
-      if case .screenshot(let data) = attachment.kind {
+      switch attachment.kind {
+      case .screenshot(let data):
         self.onClickScreenshot(data)
+      case .file(let data, let mime, _) where mime.hasPrefix("image/"):
+        self.onClickScreenshot(data)
+      default:
+        break
       }
     }
 

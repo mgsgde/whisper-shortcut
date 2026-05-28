@@ -10,6 +10,4 @@ enum PrivacyCopy {
     "Smart Improvement is optional: when on, your usage logs are sent to your chosen provider to refine prompts — never to us or anyone else. You control it during setup and in Settings.",
     "Open source — you can audit the code.",
   ]
-
-  static let contactEmail = "mgsgde@gmail.com"
 }

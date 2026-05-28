@@ -62,6 +62,8 @@ enum ChatModelCommandResolver {
       } else {
         candidates = [.openaiGPT5, .openaiGPT5Mini, .openaiGPT55]
       }
+    } else if normalized.contains("3.5") {
+      candidates = [.gemini35Flash]
     } else if normalized.contains("3.1") {
       candidates = [.gemini31Pro, .gemini31FlashLite]
     } else if normalized.contains("2.5") {
@@ -143,7 +145,7 @@ enum ChatModelCommandResolver {
 
   private static func isFlash(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite: return true
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash: return true
     default: return false
     }
   }

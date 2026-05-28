@@ -190,10 +190,6 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
-  var supportsReasoning: Bool {
-    return false
-  }
-
   /// Gemini-only: `thinkingConfig.thinkingBudget` to send on chat requests.
   /// `0` disables thinking entirely (instant first token, faster streaming, weaker reasoning).
   /// `-1` enables dynamic thinking (3–10s before first token, stronger reasoning).
@@ -212,10 +208,6 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
-  var requiresTranscription: Bool {
-    return false // Gemini models process audio directly
-  }
-  
   var isGemini: Bool {
     return provider == .gemini
   }
@@ -223,11 +215,7 @@ enum PromptModel: String, CaseIterable {
   var isOffline: Bool {
     return false // Prompt mode doesn't support offline models yet
   }
-  
-  var supportsNativeAudioOutput: Bool {
-    return false
-  }
-  
+
   // Convert to TranscriptionModel for API endpoint access (for Gemini models)
   var asTranscriptionModel: TranscriptionModel? {
     switch self {
@@ -267,11 +255,6 @@ enum PromptModel: String, CaseIterable {
     default:
       return true
     }
-  }
-
-  /// Whether this model supports code execution. Only Gemini models do.
-  var supportsCodeExecution: Bool {
-    return provider == .gemini
   }
 
   /// All models available for the chat window (all providers). Excludes audio-only

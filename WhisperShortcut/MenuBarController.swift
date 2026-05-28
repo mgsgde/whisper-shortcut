@@ -2042,10 +2042,11 @@ extension MenuBarController: ShortcutDelegate {
           DebugLogger.logWarning("READ-ALOUD: Poll timed out but state is no longer idle — skipping error popup")
           return
         }
-        self.presentError(
-          shortTitle: "Read Aloud",
-          message: "No text selected. Highlight text first, then press the Read Aloud shortcut.",
-          dismissProcessingFirst: false
+        // No selection is normal usage, not an error — show a brief info popup
+        // without an error state or "Contact Support" button.
+        PopupNotificationWindow.showInfo(
+          "No text selected. Highlight text first, then press the Read Aloud shortcut.",
+          title: "Read Aloud"
         )
       }
     }
@@ -2059,10 +2060,9 @@ extension MenuBarController: ShortcutDelegate {
     guard let selectedText = clipboardManager.getCleanedClipboardText(),
           !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       DebugLogger.logWarning("READ-ALOUD: Pasteboard changed but text is empty after cleaning")
-      presentError(
-        shortTitle: "Read Aloud",
-        message: "No text selected. Highlight text first, then press the Read Aloud shortcut.",
-        dismissProcessingFirst: false
+      PopupNotificationWindow.showInfo(
+        "No text selected. Highlight text first, then press the Read Aloud shortcut.",
+        title: "Read Aloud"
       )
       return
     }
