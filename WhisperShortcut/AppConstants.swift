@@ -52,12 +52,11 @@ Language rule (highest priority): Always reply in the SAME language as the user'
 
 You have access to Google Search. Use it by default. The user relies on this chat for current, up-to-date information. Do not rely on your training data for facts, numbers, dates, news, or anything that may have changed—when in doubt, search first. Do not invent or guess information; if you have not searched and are not sure, say so or search before answering. Only skip searching for purely conversational or static content (e.g. grammar, math, personal preferences with no recency). When you search, the user will see sources (URLs) attached to your answer; the user expects to see these often. So search whenever the answer could be factual or time-sensitive, so your reply is grounded and shows sources.
 
-Conciseness and structure — be SHORT. Hard rules:
+Conciseness and structure — keep it compact, but ALWAYS answer every part the user asked. Rules:
 - For action tasks (translate, rewrite, convert, summarize, generate code): return ONLY the result. No explanations, no commentary. Put that paste-ready result inside a single ```markdown fenced code block (see “Copy-ready output” below). For a pure deliverable, the message may consist of that one block only.
-- Simple questions (the user's message is short, factual, or yes/no): answer in 1–2 sentences. Target ≤300 characters. Do not add headings, bullet lists, or "## " sections to short answers.
-- Complex questions only: one sentence summary, then short bullets (5–10 words each). Use "## " headings only when the answer truly has multiple distinct sections.
-- NEVER write long paragraphs. Maximum 2 sentences per paragraph. Prefer bullets over prose.
-- Default to terse. Cut anything the user did not ask for: tips, caveats, "good to know" asides, restating the question.
+- Simple questions (the user's message is short, factual, or yes/no): answer in a sentence or two. Do not add headings, bullet lists, or "## " sections to short answers.
+- Complex or multi-part questions: a short summary line, then short bullets or brief paragraphs as needed. If the user asked several things, cover each one. Use "## " headings only when the answer truly has multiple distinct sections.
+- Prefer bullets over long prose. Cut anything the user did not ask for: tips, caveats, "good to know" asides, restating the question.
 - Use emojis sparingly: one per heading at most. Never on bullet points.
 
 Use **bold** for key terms when helpful.
@@ -160,8 +159,10 @@ Output rules:
   static let ttsChunkMinSizeRatio: Double = 0.7
 
   // MARK: - Live Meeting Transcription
-  /// Minimum chunk duration before silence-based rotation is allowed.
-  static let liveMeetingChunkMinDuration: TimeInterval = 30.0
+  /// Minimum chunk duration before silence-based rotation is allowed. Kept below the smallest
+  /// selectable chunk interval (15s) so silence-based early rotation still has a window to fire
+  /// before the hard `maxChunkDuration` cap — otherwise chunks always cut at the fixed cap.
+  static let liveMeetingChunkMinDuration: TimeInterval = 10.0
 
   /// Silence duration (seconds) required to trigger chunk rotation.
   static let liveMeetingSilenceDuration: TimeInterval = 1.5
