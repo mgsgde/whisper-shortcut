@@ -1947,8 +1947,7 @@ struct ChatView: View {
 
   private var meetingSummaryView: some View {
     let liveSummary = LiveMeetingTranscriptStore.shared.summary
-    let diskSummary = liveSummary.isEmpty ? viewModel.loadMeetingSummaryFromDisk() : nil
-    let text = !liveSummary.isEmpty ? liveSummary : diskSummary
+    let text = liveSummary.isEmpty ? viewModel.loadMeetingSummaryFromDisk() : liveSummary
     return ScrollView {
       VStack(alignment: .leading, spacing: 12) {
         if let text, !text.isEmpty {

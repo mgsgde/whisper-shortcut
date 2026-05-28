@@ -333,10 +333,15 @@ enum PromptModel: String, CaseIterable {
     if migratedRaw != raw {
       UserDefaults.standard.set(migratedRaw, forKey: key)
     }
-    guard let parsed = PromptModel(rawValue: migratedRaw), validate(parsed) else {
+    guard let parsed = PromptModel(rawValue: migratedRaw) else {
       return fallback
     }
+    // Validate the post-migration model — `migrateIfDeprecated` may map to a different case,
+    // and the caller's filter (e.g. "must support text chat") must hold for what we return.
     let resolved = migrateIfDeprecated(parsed)
+    guard validate(resolved) else {
+      return fallback
+    }
     if resolved.rawValue != migratedRaw {
       UserDefaults.standard.set(resolved.rawValue, forKey: key)
     }

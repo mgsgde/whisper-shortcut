@@ -2035,12 +2035,18 @@ extension MenuBarController: ShortcutDelegate {
         }
         // No selection is normal usage, not an error — show a brief info popup
         // without an error state or "Contact Support" button.
-        PopupNotificationWindow.showInfo(
-          "No text selected. Highlight text first, then press the Read Aloud shortcut.",
-          title: "Read Aloud"
-        )
+        self.showNoTextSelectedForReadAloud()
       }
     }
+  }
+
+  /// Brief info popup shown when Read Aloud finds no selection. Not an error state (no
+  /// "Contact Support" button) — pressing the shortcut without selecting text is normal.
+  private func showNoTextSelectedForReadAloud() {
+    PopupNotificationWindow.showInfo(
+      "No text selected. Highlight text first, then press the Read Aloud shortcut.",
+      title: "Read Aloud"
+    )
   }
 
   private func performReadSelectedTextAloud() {
@@ -2051,10 +2057,7 @@ extension MenuBarController: ShortcutDelegate {
     guard let selectedText = clipboardManager.getCleanedClipboardText(),
           !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       DebugLogger.logWarning("READ-ALOUD: Pasteboard changed but text is empty after cleaning")
-      PopupNotificationWindow.showInfo(
-        "No text selected. Highlight text first, then press the Read Aloud shortcut.",
-        title: "Read Aloud"
-      )
+      showNoTextSelectedForReadAloud()
       return
     }
     beginReadAloudProcessing { [speechService] in
