@@ -183,6 +183,8 @@ class ChatSessionStore {
   /// Sessions older than this many days have their attached image binaries stripped from the in-memory
   /// cache to avoid holding screenshots for stale conversations indefinitely.
   private static let imageRetentionDays: Double = 7
+  /// Archived (non-pinned) sessions whose lastUpdated is older than this many days are permanently deleted.
+  private static let archivedRetentionDays: Double = 30
 
   private var cachedFile: SessionsFile?
   private let diskWriteQueue = DispatchQueue(label: "com.whispershortcut.session.io", qos: .utility)
@@ -232,8 +234,12 @@ class ChatSessionStore {
 
     if let data = try? Data(contentsOf: fileURL) {
       do {
-        let file = try JSONDecoder().decode(SessionsFile.self, from: data)
+        var file = try JSONDecoder().decode(SessionsFile.self, from: data)
         if !file.sessions.isEmpty {
+          if purgeExpiredArchivedSessions(&file) {
+            saveSessionsFile(file)
+            return cachedFile ?? file
+          }
           cachedFile = file
           return file
         }
@@ -248,17 +254,43 @@ class ChatSessionStore {
     return file
   }
 
+  /// Permanently deletes archived, non-pinned, non-meeting sessions whose lastUpdated is older than
+  /// `archivedRetentionDays`. The current session is never removed. Returns true if any were deleted.
+  @discardableResult
+  private func purgeExpiredArchivedSessions(_ file: inout SessionsFile) -> Bool {
+    let cutoff = Date().addingTimeInterval(-Self.archivedRetentionDays * 86400)
+    let expired = file.sessions.filter {
+      $0.archived && !$0.pinned && !$0.isMeeting && $0.id != file.currentSessionId && $0.lastUpdated < cutoff
+    }
+    guard !expired.isEmpty else { return false }
+    let expiredIds = Set(expired.map { $0.id })
+    file.sessions.removeAll { expiredIds.contains($0.id) }
+    file.tabOrder?.removeAll { expiredIds.contains($0) }
+    DebugLogger.log("GEMINI-CHAT: Auto-deleted \(expiredIds.count) archived session(s) older than \(Int(Self.archivedRetentionDays)) days")
+    return true
+  }
+
   private func saveSessionsFile(_ file: SessionsFile) {
     var file = file
 
     if file.sessions.count > Self.maxSessionCount {
-      let sorted = file.sessions.sorted { $0.lastUpdated > $1.lastUpdated }
-      var kept = Set(sorted.prefix(Self.maxSessionCount).map { $0.id })
+      // Meetings, pinned chats, and the current session are never pruned. Remaining slots are
+      // filled with the most-recently-updated prunable sessions; the rest are dropped.
+      var kept = Set(file.sessions.filter { $0.isMeeting || $0.pinned }.map { $0.id })
       kept.insert(file.currentSessionId)
-      let removed = file.sessions.filter { !kept.contains($0.id) }.map { $0.id }
-      file.sessions.removeAll { !kept.contains($0.id) }
-      DebugLogger.log("GEMINI-CHAT: Pruned \(removed.count) old session(s) to stay within \(Self.maxSessionCount) limit")
+      let prunable = file.sessions
+        .filter { !kept.contains($0.id) }
+        .sorted { $0.lastUpdated > $1.lastUpdated }
+      let remainingSlots = max(0, Self.maxSessionCount - kept.count)
+      kept.formUnion(prunable.prefix(remainingSlots).map { $0.id })
+      let removedCount = file.sessions.count - kept.count
+      if removedCount > 0 {
+        file.sessions.removeAll { !kept.contains($0.id) }
+        DebugLogger.log("GEMINI-CHAT: Pruned \(removedCount) old session(s) to stay within \(Self.maxSessionCount) limit")
+      }
     }
+
+    purgeExpiredArchivedSessions(&file)
 
     // Strip image binaries from sessions older than imageRetentionDays before caching in memory.
     // The current session always keeps its images for display.
@@ -426,24 +458,6 @@ class ChatSessionStore {
     saveSessionsFile(file)
   }
 
-  /// Deletes all non-pinned sessions whose lastUpdated is strictly older than the given date.
-  /// Returns the number of deleted sessions.
-  @discardableResult
-  func deleteOlderSessions(than date: Date) -> Int {
-    var file = loadFile()
-    let toDelete = file.sessions.filter { !$0.pinned && $0.lastUpdated < date }
-    guard !toDelete.isEmpty else { return 0 }
-    let deleteIds = Set(toDelete.map { $0.id })
-    file.sessions.removeAll { deleteIds.contains($0.id) }
-    file.tabOrder?.removeAll { deleteIds.contains($0) }
-    if deleteIds.contains(file.currentSessionId) {
-      switchToNextBestSession(in: &file)
-    }
-    saveSessionsFile(file)
-    DebugLogger.log("GEMINI-CHAT: Deleted \(deleteIds.count) older session(s)")
-    return deleteIds.count
-  }
-
   func deleteAllSessions() {
     let fm = FileManager.default
     try? fm.removeItem(at: fileURL)
@@ -466,12 +480,12 @@ class ChatSessionStore {
     saveSessionsFile(file)
   }
 
-  /// Archives all non-archived sessions whose lastUpdated is strictly older than the given date.
+  /// Archives all non-archived, non-pinned, non-meeting sessions whose lastUpdated is strictly older than the given date.
   func archiveOlderSessions(than date: Date) {
     var file = loadFile()
     var archivedIds: [UUID] = []
     for i in file.sessions.indices {
-      if !file.sessions[i].archived && file.sessions[i].lastUpdated < date {
+      if !file.sessions[i].archived && !file.sessions[i].pinned && !file.sessions[i].isMeeting && file.sessions[i].lastUpdated < date {
         file.sessions[i].archived = true
         archivedIds.append(file.sessions[i].id)
       }

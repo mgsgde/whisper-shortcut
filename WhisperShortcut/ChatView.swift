@@ -971,6 +971,150 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("SIDEBAR: Unpinned session \(id)")
   }
 
+  // MARK: - Search
+
+  /// A single hit from searching chats and meeting transcripts.
+  struct ChatSearchResult: Identifiable {
+    enum Kind { case chat, meeting }
+    let id: UUID
+    let kind: Kind
+    /// Session to open on tap. Nil for an orphan meeting transcript whose session was pruned.
+    let sessionId: UUID?
+    /// Transcript file, used to reveal an orphan meeting in Finder.
+    let meetingURL: URL?
+    let title: String
+    let snippet: String
+    let date: Date
+    let score: Int
+    var isMeeting: Bool { kind == .meeting }
+  }
+
+  private static let maxSearchResults = 50
+
+  /// Searches every chat session (title + message text) and meeting transcript (.txt content),
+  /// returning results ranked by relevance (term-occurrence score) then recency. Multi-word
+  /// queries use AND semantics. A blank query returns an empty list.
+  func search(_ rawQuery: String) -> [ChatSearchResult] {
+    let terms = rawQuery.lowercased()
+      .split(whereSeparator: { $0.isWhitespace })
+      .map(String.init)
+    guard !terms.isEmpty else { return [] }
+
+    let meetingService = MeetingListService.shared
+    meetingService.refresh()
+    let meetingsByStem = Dictionary(
+      meetingService.meetings.map { ($0.meetingId, $0) },
+      uniquingKeysWith: { first, _ in first })
+
+    var results: [ChatSearchResult] = []
+    var coveredStems = Set<String>()
+
+    for session in store.allSessions() {
+      var parts: [String] = []
+      if let t = session.title { parts.append(t) }
+      parts.append(contentsOf: session.messages.map { $0.content })
+
+      var meetingURL: URL? = nil
+      if session.isMeeting, let stem = session.meetingStem, let meeting = meetingsByStem[stem] {
+        coveredStems.insert(stem)
+        meetingURL = meeting.url
+        parts.append(meetingService.chunks(for: meeting).map { $0.text }.joined(separator: "\n"))
+      }
+
+      let haystack = parts.joined(separator: "\n").lowercased()
+      guard terms.allSatisfy({ haystack.contains($0) }) else { continue }
+
+      let title = Self.searchDisplayTitle(for: session)
+      results.append(ChatSearchResult(
+        id: session.id,
+        kind: session.isMeeting ? .meeting : .chat,
+        sessionId: session.id,
+        meetingURL: meetingURL,
+        title: title,
+        snippet: Self.searchSnippet(from: parts, terms: terms, fallback: title),
+        date: session.lastUpdated,
+        score: Self.searchScore(haystack: haystack, title: title.lowercased(), terms: terms)))
+    }
+
+    // Orphan transcripts: file exists but its session was pruned from the 50-session cap.
+    for meeting in meetingService.meetings where !coveredStems.contains(meeting.meetingId) {
+      let transcript = meetingService.chunks(for: meeting).map { $0.text }.joined(separator: "\n")
+      let haystack = (meeting.displayLabel + "\n" + transcript).lowercased()
+      guard terms.allSatisfy({ haystack.contains($0) }) else { continue }
+      results.append(ChatSearchResult(
+        id: UUID(),
+        kind: .meeting,
+        sessionId: nil,
+        meetingURL: meeting.url,
+        title: meeting.displayLabel,
+        snippet: Self.searchSnippet(from: [transcript], terms: terms, fallback: meeting.displayLabel),
+        date: meeting.date,
+        score: Self.searchScore(haystack: haystack, title: meeting.displayLabel.lowercased(), terms: terms)))
+    }
+
+    results.sort { $0.score != $1.score ? $0.score > $1.score : $0.date > $1.date }
+    return Array(results.prefix(Self.maxSearchResults))
+  }
+
+  /// Reveals a meeting transcript file in Finder (fallback for orphan transcripts with no session).
+  func revealMeetingInFinder(url: URL) {
+    NSWorkspace.shared.activateFileViewerSelecting([url])
+  }
+
+  /// Mirrors the sidebar's row-title logic for use in search results.
+  private static func searchDisplayTitle(for session: ChatSession) -> String {
+    if let t = session.title, !t.isEmpty {
+      let stripped = unwrapUserMessageTypedByUser(t)
+      let base = stripped.isEmpty ? t : stripped
+      return base.replacingOccurrences(of: "\n", with: " ")
+    }
+    if let firstContent = session.messages.first(where: { $0.role == .user })?.content {
+      let cleaned = contentForSessionTitle(firstContent)
+      if !cleaned.isEmpty {
+        return String(cleaned.prefix(60)).replacingOccurrences(of: "\n", with: " ")
+      }
+    }
+    return session.isMeeting ? "Meeting" : "New chat"
+  }
+
+  /// Relevance score: total term occurrences across the (lowercased) haystack, plus a bonus
+  /// for each term that also appears in the (lowercased) title.
+  private static func searchScore(haystack: String, title: String, terms: [String]) -> Int {
+    var score = 0
+    for term in terms {
+      var idx = haystack.startIndex
+      while let r = haystack.range(of: term, range: idx..<haystack.endIndex) {
+        score += 1
+        idx = r.upperBound
+      }
+      if title.contains(term) { score += 5 }
+    }
+    return score
+  }
+
+  /// Builds a one-line snippet centered on the first matching term, with ellipses for elided context.
+  private static func searchSnippet(from parts: [String], terms: [String], fallback: String) -> String {
+    let flat = parts.joined(separator: " • ")
+      .replacingOccurrences(of: "\n", with: " ")
+      .replacingOccurrences(of: "\r", with: " ")
+    var hit: Range<String.Index>? = nil
+    for term in terms {
+      if let r = flat.range(of: term, options: .caseInsensitive),
+         hit == nil || r.lowerBound < hit!.lowerBound {
+        hit = r
+      }
+    }
+    guard let match = hit else {
+      return String(fallback.trimmingCharacters(in: .whitespacesAndNewlines).prefix(100))
+    }
+    let start = flat.index(match.lowerBound, offsetBy: -40, limitedBy: flat.startIndex) ?? flat.startIndex
+    let end = flat.index(match.lowerBound, offsetBy: 80, limitedBy: flat.endIndex) ?? flat.endIndex
+    var s = String(flat[start..<end]).trimmingCharacters(in: .whitespaces)
+    if start != flat.startIndex { s = "…" + s }
+    if end != flat.endIndex { s += "…" }
+    return s
+  }
+
   /// Translates a meeting-button tap into the right intent based on current session state:
   /// stop the active meeting, resume a finished meeting, or start a fresh one.
   func handleMeetingButtonTap() {
@@ -1054,21 +1198,6 @@ class ChatViewModel: ObservableObject {
     if id == session.id { switchToCurrentStoreSession() }
     else { refreshRecentSessions() }
     DebugLogger.log("SIDEBAR: Permanently deleted session \(id)")
-  }
-
-  func deleteOlderSessions(than date: Date) {
-    // Stop the active meeting if its owning session will be deleted by this call.
-    if isMeetingActive, let mid = meetingSessionId,
-       let mSession = store.allSessions().first(where: { $0.id == mid }),
-       mSession.lastUpdated < date {
-      DebugLogger.log("SIDEBAR: Bulk delete includes active meeting session — stopping recorder first")
-      NotificationCenter.default.post(name: .chatStopLiveMeeting, object: nil)
-      meetingSessionId = nil
-    }
-    let count = store.deleteOlderSessions(than: date)
-    if store.load().id != session.id { switchToCurrentStoreSession() }
-    else { refreshRecentSessions() }
-    DebugLogger.log("SIDEBAR: Deleted \(count) sessions older than \(date)")
   }
 
   /// Drag-reorders the tab strip so the session with `id` lands at `targetIndex`.

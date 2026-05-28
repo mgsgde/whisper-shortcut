@@ -10,8 +10,20 @@ struct ChatSidebar: View {
   @State private var renamingSessionId: UUID? = nil
   @State private var renameDraft: String = ""
   @State private var collapsedGroups: Set<DateGroup> = []
+  @State private var meetingsCollapsed = false
+  @State private var archivedCollapsed = true
+  @FocusState private var renameFieldFocused: Bool
+
+  @State private var searchQuery: String = ""
+  @State private var searchResults: [ChatViewModel.ChatSearchResult] = []
+  @State private var hoveredResultId: UUID? = nil
+  @State private var searchTask: Task<Void, Never>? = nil
 
   static let sidebarWidth: CGFloat = 220
+
+  private var isSearching: Bool {
+    !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
 
   private enum DateGroup: CaseIterable {
     case today, yesterday, previous7Days, previous30Days, older
@@ -54,11 +66,28 @@ struct ChatSidebar: View {
     VStack(spacing: 0) {
       sidebarHeader
       Divider()
-      ScrollView(.vertical, showsIndicators: true) {
+      searchField
+      if isSearching {
+        searchResultsView
+      } else {
+        sessionsScrollView
+      }
+    }
+    .frame(width: Self.sidebarWidth)
+    .background(ChatTheme.controlBackground)
+    .onChange(of: searchQuery) { _ in scheduleSearch() }
+  }
+
+  private var sessionsScrollView: some View {
+    ScrollView(.vertical, showsIndicators: true) {
         VStack(spacing: 0) {
           let all = viewModel.allSessionsList
-          let pinned = all.filter { $0.pinned }.sorted { $0.lastUpdated > $1.lastUpdated }
-          let unpinned = all.filter { !$0.pinned }
+          let active = all.filter { !$0.archived }
+          let archived = all.filter { $0.archived }
+          let pinned = active.filter { $0.pinned }.sorted { $0.lastUpdated > $1.lastUpdated }
+          let rest = active.filter { !$0.pinned }
+          let meetings = rest.filter { $0.isMeeting }.sorted { $0.lastUpdated > $1.lastUpdated }
+          let unpinned = rest.filter { !$0.isMeeting }
           let grouped = groupedSessions(unpinned)
 
           if !pinned.isEmpty {
@@ -76,13 +105,149 @@ struct ChatSidebar: View {
               }
             }
           }
+
+          if !meetings.isEmpty {
+            collapsibleHeader(
+              "Meetings",
+              isCollapsed: meetingsCollapsed,
+              showDivider: !pinned.isEmpty || !grouped.isEmpty
+            ) {
+              withAnimation(.easeInOut(duration: 0.15)) { meetingsCollapsed.toggle() }
+            }
+            if !meetingsCollapsed {
+              ForEach(meetings, id: \.id) { session in
+                sidebarRow(session: session)
+              }
+            }
+          }
+
+          if !archived.isEmpty {
+            collapsibleHeader(
+              "Archived",
+              isCollapsed: archivedCollapsed,
+              showDivider: !pinned.isEmpty || !grouped.isEmpty || !meetings.isEmpty
+            ) {
+              withAnimation(.easeInOut(duration: 0.15)) { archivedCollapsed.toggle() }
+            }
+            if !archivedCollapsed {
+              ForEach(archived, id: \.id) { session in
+                sidebarRow(session: session, isArchived: true)
+              }
+            }
+          }
         }
         .padding(.leading, 10)
         .padding(.bottom, 8)
       }
+  }
+
+  // MARK: - Search
+
+  private var searchField: some View {
+    HStack(spacing: 6) {
+      Image(systemName: "magnifyingglass")
+        .font(.system(size: 11))
+        .foregroundColor(ChatTheme.secondaryText.opacity(0.7))
+      TextField("Search chats & meetings", text: $searchQuery)
+        .textFieldStyle(.plain)
+        .font(.system(size: 12))
+        .foregroundColor(ChatTheme.primaryText)
+      if !searchQuery.isEmpty {
+        Button(action: { searchQuery = ""; searchResults = [] }) {
+          Image(systemName: "xmark.circle.fill")
+            .font(.system(size: 11))
+            .foregroundColor(ChatTheme.secondaryText.opacity(0.6))
+        }
+        .buttonStyle(.plain)
+        .help("Clear search")
+      }
     }
-    .frame(width: Self.sidebarWidth)
-    .background(ChatTheme.controlBackground)
+    .padding(.horizontal, 8)
+    .padding(.vertical, 6)
+    .background(RoundedRectangle(cornerRadius: 8).fill(ChatTheme.windowBackground))
+    .padding(.horizontal, 10)
+    .padding(.vertical, 8)
+  }
+
+  private var searchResultsView: some View {
+    ScrollView(.vertical, showsIndicators: true) {
+      if searchResults.isEmpty {
+        Text("No results")
+          .font(.system(size: 12))
+          .foregroundColor(ChatTheme.secondaryText)
+          .frame(maxWidth: .infinity, alignment: .center)
+          .padding(.top, 24)
+      } else {
+        VStack(spacing: 0) {
+          ForEach(searchResults) { result in
+            searchResultRow(result)
+          }
+        }
+        .padding(.bottom, 8)
+      }
+    }
+  }
+
+  private func searchResultRow(_ result: ChatViewModel.ChatSearchResult) -> some View {
+    let isHovered = hoveredResultId == result.id
+    return HStack(alignment: .top, spacing: 6) {
+      Image(systemName: result.isMeeting ? "mic.circle.fill" : "bubble.left")
+        .font(.system(size: 11))
+        .foregroundColor(ChatTheme.secondaryText.opacity(0.6))
+        .padding(.top, 2)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(result.title)
+          .font(.system(size: 13))
+          .foregroundColor(ChatTheme.primaryText)
+          .lineLimit(1)
+          .truncationMode(.tail)
+        if !result.snippet.isEmpty {
+          Text(result.snippet)
+            .font(.system(size: 11))
+            .foregroundColor(ChatTheme.secondaryText)
+            .lineLimit(2)
+        }
+      }
+      Spacer(minLength: 4)
+      if result.sessionId == nil {
+        Image(systemName: "arrow.up.forward.square")
+          .font(.system(size: 10))
+          .foregroundColor(ChatTheme.secondaryText.opacity(0.5))
+          .padding(.top, 2)
+          .help("Reveal transcript in Finder")
+      }
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 7)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(isHovered ? ChatTheme.windowBackground.opacity(0.5) : Color.clear)
+    .contentShape(Rectangle())
+    .onHover { over in hoveredResultId = over ? result.id : nil }
+    .onTapGesture { openResult(result) }
+  }
+
+  private func scheduleSearch() {
+    searchTask?.cancel()
+    let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else {
+      searchResults = []
+      return
+    }
+    searchTask = Task { @MainActor in
+      try? await Task.sleep(nanoseconds: 200_000_000)
+      guard !Task.isCancelled else { return }
+      searchResults = viewModel.search(query)
+    }
+  }
+
+  private func openResult(_ result: ChatViewModel.ChatSearchResult) {
+    if let sessionId = result.sessionId {
+      viewModel.switchToSession(id: sessionId)
+      searchQuery = ""
+      searchResults = []
+    } else if let url = result.meetingURL {
+      viewModel.revealMeetingInFinder(url: url)
+    }
   }
 
   // MARK: - Header
@@ -133,15 +298,28 @@ struct ChatSidebar: View {
   }
 
   private func collapsibleSectionHeader(_ group: DateGroup, showDivider: Bool = false) -> some View {
-    let isCollapsed = collapsedGroups.contains(group)
-    return VStack(spacing: 0) {
+    collapsibleHeader(group.label, isCollapsed: collapsedGroups.contains(group), showDivider: showDivider) {
+      withAnimation(.easeInOut(duration: 0.15)) {
+        if collapsedGroups.contains(group) {
+          collapsedGroups.remove(group)
+        } else {
+          collapsedGroups.insert(group)
+        }
+      }
+    }
+  }
+
+  private func collapsibleHeader(
+    _ label: String, isCollapsed: Bool, showDivider: Bool, toggle: @escaping () -> Void
+  ) -> some View {
+    VStack(spacing: 0) {
       if showDivider {
         Divider()
           .padding(.horizontal, 10)
           .padding(.top, 12)
       }
       HStack(spacing: 4) {
-        Text(group.label.uppercased())
+        Text(label.uppercased())
           .font(.system(size: 9, weight: .bold, design: .default))
           .tracking(1.2)
           .foregroundColor(ChatTheme.secondaryText.opacity(0.8))
@@ -156,21 +334,26 @@ struct ChatSidebar: View {
       .padding(.top, showDivider ? 12 : 14)
       .padding(.bottom, 6)
       .contentShape(Rectangle())
-      .onTapGesture {
-        withAnimation(.easeInOut(duration: 0.15)) {
-          if isCollapsed {
-            collapsedGroups.remove(group)
-          } else {
-            collapsedGroups.insert(group)
-          }
-        }
-      }
+      .onTapGesture { toggle() }
     }
   }
 
   // MARK: - Row
 
-  private func sidebarRow(session: ChatSession) -> some View {
+  private func beginRename(_ session: ChatSession) {
+    if let id = renamingSessionId, id != session.id { commitRename() }
+    renameDraft = session.title ?? ""
+    renamingSessionId = session.id
+  }
+
+  /// Saves the in-progress rename (if any) and exits edit mode. Idempotent.
+  private func commitRename() {
+    guard let id = renamingSessionId else { return }
+    viewModel.renameSession(id: id, to: renameDraft)
+    renamingSessionId = nil
+  }
+
+  private func sidebarRow(session: ChatSession, isArchived: Bool = false) -> some View {
     let isActive = session.id == viewModel.currentSessionId
     let isHovered = hoveredRowId == session.id
     let isPinned = session.pinned
@@ -202,14 +385,17 @@ struct ChatSidebar: View {
       }
 
       if isRenaming {
-        TextField("Title", text: $renameDraft, onCommit: {
-          viewModel.renameSession(id: session.id, to: renameDraft)
-          renamingSessionId = nil
-        })
+        TextField("Title", text: $renameDraft, onCommit: { commitRename() })
         .font(.system(size: 13))
         .textFieldStyle(.plain)
         .padding(.leading, 10)
         .padding(.vertical, 6)
+        .focused($renameFieldFocused)
+        .onAppear { renameFieldFocused = true }
+        .onChange(of: renameFieldFocused) { focused in
+          // Clicking away (another chat, the composer, etc.) ends the rename and saves it.
+          if !focused && renamingSessionId == session.id { commitRename() }
+        }
         .onExitCommand { renamingSessionId = nil }
       } else {
         HStack(spacing: 6) {
@@ -244,27 +430,41 @@ struct ChatSidebar: View {
     .background(rowBg)
     .contentShape(Rectangle())
     .onTapGesture(count: 2) {
-      renameDraft = session.title ?? ""
-      renamingSessionId = session.id
+      beginRename(session)
     }
     .onTapGesture(count: 1) {
-      viewModel.switchToSession(id: session.id)
+      commitRename()
+      if isArchived {
+        viewModel.restoreSession(id: session.id)
+        viewModel.switchToSession(id: session.id)
+      } else {
+        viewModel.switchToSession(id: session.id)
+      }
     }
     .onHover { over in hoveredRowId = over ? session.id : nil }
     .contextMenu {
-      Button("Rename\u{2026}") {
-        renameDraft = session.title ?? ""
-        renamingSessionId = session.id
-      }
-      if isPinned {
-        Button("Unpin chat") { viewModel.unpinSession(id: session.id) }
+      if isArchived {
+        Button("Restore chat") {
+          viewModel.restoreSession(id: session.id)
+          viewModel.switchToSession(id: session.id)
+        }
+        Button("Copy chat") { viewModel.copyChatToClipboard(sessionId: session.id) }
+        Divider()
+        Button("Delete chat", role: .destructive) { viewModel.deleteSessionPermanently(id: session.id) }
       } else {
-        Button("Pin chat") { viewModel.pinSession(id: session.id) }
+        Button("Rename\u{2026}") { beginRename(session) }
+        if isPinned {
+          Button("Unpin chat") { viewModel.unpinSession(id: session.id) }
+        } else {
+          Button("Pin chat") { viewModel.pinSession(id: session.id) }
+        }
+        Button("Copy chat") { viewModel.copyChatToClipboard(sessionId: session.id) }
+        Divider()
+        Button("Archive chat") { viewModel.archiveSession(id: session.id) }
+        Button("Archive older chats") { viewModel.archiveOlderSessions(than: session.lastUpdated) }
+        Divider()
+        Button("Delete chat", role: .destructive) { viewModel.deleteSessionPermanently(id: session.id) }
       }
-      Button("Copy chat") { viewModel.copyChatToClipboard(sessionId: session.id) }
-      Divider()
-      Button("Delete chat", role: .destructive) { viewModel.deleteSessionPermanently(id: session.id) }
-      Button("Delete older chats", role: .destructive) { viewModel.deleteOlderSessions(than: session.lastUpdated) }
     }
   }
 }
