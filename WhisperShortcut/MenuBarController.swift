@@ -1925,16 +1925,58 @@ extension MenuBarController: ShortcutDelegate {
   func openChat() { openChatWindowFromShortcut() }
 
   @objc func takeScreenshot() {
-    DebugLogger.logUI("📷 SCREENSHOT: Launching interactive capture (clipboard)")
-    let task = Process()
-    task.launchPath = "/usr/sbin/screencapture"
-    // -i interactive (drag rectangle / space-bar for window), -c copy to clipboard,
-    // -o no shadow on window grabs. Mirrors what native ⌘⇧⌃4 does.
-    task.arguments = ["-i", "-c", "-o"]
-    do {
-      try task.run()
-    } catch {
-      DebugLogger.logError("SCREENSHOT: Failed to launch screencapture: \(error)")
+    // When save-to-folder is enabled, capture to a temp file so we can both set the
+    // clipboard and persist a PNG. Otherwise keep the lighter clipboard-only path.
+    guard ScreenshotSaveLocation.isEnabled else {
+      DebugLogger.logUI("📷 SCREENSHOT: Launching interactive capture (clipboard)")
+      let task = Process()
+      task.launchPath = "/usr/sbin/screencapture"
+      // -i interactive (drag rectangle / space-bar for window), -c copy to clipboard,
+      // -o no shadow on window grabs. Mirrors what native ⌘⇧⌃4 does.
+      task.arguments = ["-i", "-c", "-o"]
+      do {
+        try task.run()
+      } catch {
+        DebugLogger.logError("SCREENSHOT: Failed to launch screencapture: \(error)")
+      }
+      return
+    }
+    captureScreenshotToClipboardAndFile()
+  }
+
+  /// Interactive capture that writes to a temp PNG, then copies the image to the clipboard
+  /// and persists it into the user-selected folder. A cancelled selection writes no file.
+  private func captureScreenshotToClipboardAndFile() {
+    let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("whispershortcut-\(UUID().uuidString).png")
+    DebugLogger.logUI("📷 SCREENSHOT: Launching interactive capture (clipboard + save)")
+    DispatchQueue.global(qos: .userInitiated).async {
+      let task = Process()
+      task.launchPath = "/usr/sbin/screencapture"
+      task.arguments = ["-i", "-o", tempURL.path]
+      do {
+        try task.run()
+        task.waitUntilExit()
+      } catch {
+        DebugLogger.logError("SCREENSHOT: Failed to launch screencapture: \(error)")
+        return
+      }
+
+      guard FileManager.default.fileExists(atPath: tempURL.path),
+        let data = try? Data(contentsOf: tempURL)
+      else {
+        DebugLogger.log("SCREENSHOT: No capture file (selection cancelled)")
+        return
+      }
+
+      DispatchQueue.main.async {
+        if let image = NSImage(data: data) {
+          NSPasteboard.general.clearContents()
+          NSPasteboard.general.writeObjects([image])
+        }
+        ScreenshotSaveLocation.save(data)
+        try? FileManager.default.removeItem(at: tempURL)
+      }
     }
   }
 

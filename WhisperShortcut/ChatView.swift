@@ -117,6 +117,7 @@ class ChatViewModel: ObservableObject {
   /// Commands are slash-only (e.g. /new); do not use hotkeys/shortcuts for command actions.
   private static let newChatCommand = "/new"
   static let screenshotCommand = "/screenshot"
+  private static let attachCommand = "/attach"
   private static let settingsCommand = "/settings"
   private static let pinCommand = "/pin"
   private static let unpinCommand = "/unpin"
@@ -131,6 +132,7 @@ class ChatViewModel: ObservableObject {
   static let commandSuggestions: [(command: String, description: String)] = [
     ("/new", "Start a new chat (previous chat stays in history)"),
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
+    ("/attach", "Open the file picker to attach files (PDF, images, text)"),
     ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
     ("/gemini", "Switch to \(ChatModelProvider.gemini.defaultChatModel.displayName)"),
     ("/grok",   "Switch to \(ChatModelProvider.grok.defaultChatModel.displayName)"),
@@ -272,6 +274,9 @@ class ChatViewModel: ObservableObject {
     if let data = data {
       pendingScreenshots.append(data)
       DebugLogger.log("GEMINI-CHAT: Screenshot \(pendingScreenshots.count) attached to next message")
+      if ScreenshotSaveLocation.isEnabled {
+        ScreenshotSaveLocation.save(data)
+      }
     } else {
       errorMessage = "Screen capture failed. Opening Screen Recording settings..."
       DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil, opening Screen Recording settings")
@@ -310,7 +315,17 @@ class ChatViewModel: ObservableObject {
     panel.canChooseDirectories = false
     panel.allowedContentTypes = [.pdf, .png, .jpeg, .gif, .webP, .plainText]
     panel.message = "Select files to attach to your next message"
+    // C2: reopen wherever we last attached from; first time fall back to the screenshot folder.
+    if let lastPath = UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAttachDirectoryPath) {
+      panel.directoryURL = URL(fileURLWithPath: lastPath)
+    } else if let screenshotFolder = ScreenshotSaveLocation.resolveFolderURL() {
+      panel.directoryURL = screenshotFolder
+    }
     guard panel.runModal() == .OK else { return }
+
+    if let attachedDir = panel.urls.first?.deletingLastPathComponent().path {
+      UserDefaults.standard.set(attachedDir, forKey: UserDefaultsKeys.lastAttachDirectoryPath)
+    }
 
     let currentFileCount = pendingFileAttachments.count + composerFileCountProvider()
     let remaining = Self.maxFileAttachments - currentFileCount
@@ -637,11 +652,13 @@ class ChatViewModel: ObservableObject {
     }
 
     if lower == Self.newChatCommand || lower == Self.screenshotCommand
+        || lower == Self.attachCommand
         || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
         || lower == Self.grokCommand || lower == Self.geminiCommand || lower == Self.openaiCommand
         || lower == Self.copyCommand {
       inputText = ""
       if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
+      else if lower == Self.attachCommand { attachFile() }
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else if lower == Self.pinCommand { togglePin() }
       else if lower == Self.unpinCommand { unpin() }

@@ -36,7 +36,16 @@ enum UserDefaultsKeys {
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = "screenshotInPromptMode"
-  
+  /// When true, captured screenshots (⌘3 and the in-chat button) are also written
+  /// as PNG files into the user-selected folder, in addition to the clipboard.
+  static let screenshotSaveEnabled = "screenshotSaveEnabled"
+  /// Security-scoped bookmark (Data) for the folder screenshots are saved into.
+  static let screenshotSaveBookmark = "screenshotSaveBookmark"
+  /// Human-readable path of the screenshot save folder, for display in Settings.
+  static let screenshotSaveFolderDisplayPath = "screenshotSaveFolderDisplayPath"
+  /// Last directory the chat Attach picker landed on; reopened next time (see C2 behavior).
+  static let lastAttachDirectoryPath = "lastAttachDirectoryPath"
+
   // MARK: - App State
   static let shouldTerminate = "shouldTerminate"
   static let hasUsedPromptFeature = "hasUsedPromptFeature"

@@ -659,6 +659,7 @@ enum SettingsTab: String, CaseIterable {
   case general = "General"
   case speechToText = "Dictate"
   case speechToPrompt = "Dictate Prompt"
+  case screenshot = "Screenshot"
   case readAloud = "Read Aloud"
   case chat = "Chat"
 }
@@ -780,6 +781,7 @@ struct SettingsDefaults {
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = true
+  static let screenshotSaveEnabled = false
 
   // MARK: - Live Meeting Settings
   static let liveMeetingChunkInterval = LiveMeetingChunkInterval.sixtySeconds
@@ -844,6 +846,9 @@ struct SettingsData {
 
   // MARK: - Screenshot Settings
   var screenshotInPromptMode: Bool = SettingsDefaults.screenshotInPromptMode
+  var screenshotSaveEnabled: Bool = SettingsDefaults.screenshotSaveEnabled
+  /// Display-only; the security-scoped bookmark itself is owned by ScreenshotSaveLocation.
+  var screenshotSaveFolderDisplayPath: String = ""
 
   // MARK: - Live Meeting Settings
   var liveMeetingChunkInterval: LiveMeetingChunkInterval = SettingsDefaults.liveMeetingChunkInterval

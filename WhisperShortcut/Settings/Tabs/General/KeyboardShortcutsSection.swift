@@ -29,20 +29,6 @@ struct KeyboardShortcutsSection: View {
         findConflict: viewModel.findShortcutConflict,
         clearShortcut: viewModel.clearShortcut
       )
-
-      ShortcutRecorderRow(
-        label: "Screenshot to Clipboard:",
-        shortcut: $viewModel.data.screenshotCapture,
-        focusedField: .screenshotCapture,
-        currentFocus: $focusedField,
-        onChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        },
-        findConflict: viewModel.findShortcutConflict,
-        clearShortcut: viewModel.clearShortcut
-      )
     }
   }
 }

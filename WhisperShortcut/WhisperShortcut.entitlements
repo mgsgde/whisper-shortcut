@@ -13,8 +13,8 @@
 		<key>com.apple.security.network.client</key>
 		<true />
 
-		<!-- User selected file access (for potential file operations) -->
-		<key>com.apple.security.files.user-selected.read-only</key>
+		<!-- User selected file access: read for Attach, write for saving screenshots to a chosen folder -->
+		<key>com.apple.security.files.user-selected.read-write</key>
 		<true />
 	</dict>
 </plist>

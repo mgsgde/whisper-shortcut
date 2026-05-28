@@ -109,6 +109,10 @@ class SettingsViewModel: ObservableObject {
       data.screenshotInPromptMode = SettingsDefaults.screenshotInPromptMode
     }
 
+    // Load screenshot save-to-folder settings
+    data.screenshotSaveEnabled = ScreenshotSaveLocation.isEnabled
+    data.screenshotSaveFolderDisplayPath = ScreenshotSaveLocation.displayPath
+
     // Load Read Aloud preferences
     data.readAloudSmartRewriteEnabled = ReadAloudPreferences.smartRewriteEnabled
     data.readAloudSpeed = ReadAloudPreferences.speed
@@ -298,6 +302,10 @@ class SettingsViewModel: ObservableObject {
 
     // Save screenshot in prompt mode setting
     UserDefaults.standard.set(data.screenshotInPromptMode, forKey: UserDefaultsKeys.screenshotInPromptMode)
+
+    // Save screenshot save-to-folder toggle (the folder bookmark is written by ScreenshotSaveLocation
+    // when the user picks a folder, not here)
+    UserDefaults.standard.set(data.screenshotSaveEnabled, forKey: UserDefaultsKeys.screenshotSaveEnabled)
 
     // Save Read Aloud smart rewrite setting
     UserDefaults.standard.set(data.readAloudSmartRewriteEnabled, forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled)
