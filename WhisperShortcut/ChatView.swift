@@ -88,7 +88,6 @@ class ChatViewModel: ObservableObject {
   }
 
   @Published private(set) var recentSessions: [ChatSession] = []
-  @Published private(set) var archivedSessionsList: [ChatSession] = []
   @Published private(set) var allSessionsList: [ChatSession] = []
   @Published private(set) var currentSessionId: UUID = UUID()
   @Published private(set) var isMeetingActive: Bool = false
@@ -175,7 +174,6 @@ class ChatViewModel: ObservableObject {
     currentSessionId = session.id
     messages = session.messages
     recentSessions = store.recentSessions(limit: 20)
-    archivedSessionsList = store.archivedSessions()
     allSessionsList = store.allSessions()
     isMeetingActive = LiveMeetingTranscriptStore.shared.isSessionActive
     meetingCancellable = LiveMeetingTranscriptStore.shared.$isSessionActive
@@ -954,7 +952,6 @@ class ChatViewModel: ObservableObject {
 
   private func refreshRecentSessions() {
     recentSessions = store.recentSessions(limit: 20)
-    archivedSessionsList = store.archivedSessions()
     allSessionsList = store.allSessions()
   }
 
@@ -1121,13 +1118,16 @@ class ChatViewModel: ObservableObject {
       let base = stripped.isEmpty ? t : stripped
       return base.replacingOccurrences(of: "\n", with: " ")
     }
+    // Meetings stay "Meeting" until their summary-based title is generated, so the row
+    // never shows whatever question the user happened to ask first.
+    if session.isMeeting { return "Meeting" }
     if let firstContent = session.messages.first(where: { $0.role == .user })?.content {
       let cleaned = contentForSessionTitle(firstContent)
       if !cleaned.isEmpty {
         return String(cleaned.prefix(60)).replacingOccurrences(of: "\n", with: " ")
       }
     }
-    return session.isMeeting ? "Meeting" : "New chat"
+    return "New chat"
   }
 
   /// Relevance score: total term occurrences across the (lowercased) haystack, plus a bonus
@@ -1221,7 +1221,7 @@ class ChatViewModel: ObservableObject {
     } else {
       refreshRecentSessions()
     }
-    DebugLogger.log("SIDEBAR: archiveSession done. recentSessions=\(recentSessions.count) archived=\(archivedSessionsList.count) currentSession=\(session.id)")
+    DebugLogger.log("SIDEBAR: archiveSession done. recentSessions=\(recentSessions.count) currentSession=\(session.id)")
   }
 
   func archiveOlderSessions(than date: Date) {
@@ -1235,7 +1235,7 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("SIDEBAR: restoreSession id=\(id) currentSession=\(session.id)")
     store.restoreSession(id: id)
     refreshRecentSessions()
-    DebugLogger.log("SIDEBAR: restoreSession done. recentSessions=\(recentSessions.count) archived=\(archivedSessionsList.count)")
+    DebugLogger.log("SIDEBAR: restoreSession done. recentSessions=\(recentSessions.count)")
   }
 
   func deleteSessionPermanently(id: UUID) {

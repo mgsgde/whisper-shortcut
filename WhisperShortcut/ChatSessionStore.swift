@@ -397,11 +397,6 @@ class ChatSessionStore {
     return Array((manual + rest).prefix(limit))
   }
 
-  /// Returns all archived sessions sorted by lastUpdated descending.
-  func archivedSessions() -> [ChatSession] {
-    loadFile().sessions.filter { $0.archived }.sorted { $0.lastUpdated > $1.lastUpdated }
-  }
-
   /// Returns all sessions (active + archived) for sidebar display, sorted by lastUpdated descending.
   func allSessions() -> [ChatSession] {
     loadFile().sessions.sorted { $0.lastUpdated > $1.lastUpdated }

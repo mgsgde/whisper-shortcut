@@ -153,7 +153,7 @@ struct ChatSidebar: View {
         .font(.system(size: 12))
         .foregroundColor(ChatTheme.primaryText)
       if !searchQuery.isEmpty {
-        Button(action: { searchQuery = ""; searchResults = [] }) {
+        Button(action: { searchQuery = "" }) {
           Image(systemName: "xmark.circle.fill")
             .font(.system(size: 11))
             .foregroundColor(ChatTheme.secondaryText.opacity(0.6))
@@ -357,21 +357,7 @@ struct ChatSidebar: View {
     let isActive = session.id == viewModel.currentSessionId
     let isHovered = hoveredRowId == session.id
     let isPinned = session.pinned
-    let rawTitle: String = {
-      if let t = session.title, !t.isEmpty {
-        let stripped = unwrapUserMessageTypedByUser(t)
-        return stripped.isEmpty ? t : stripped
-      }
-      // Meetings stay "Meeting" until their summary-based title is generated, so the row
-      // never shows whatever question the user happened to ask first.
-      if session.isMeeting { return "Meeting" }
-      if let firstContent = session.messages.first(where: { $0.role == .user })?.content {
-        let cleaned = ChatViewModel.contentForSessionTitle(firstContent)
-        if !cleaned.isEmpty { return String(cleaned.prefix(60)) }
-      }
-      return "New chat"
-    }()
-    let title = rawTitle.replacingOccurrences(of: "\n", with: " ")
+    let title = ChatViewModel.displayTitle(for: session)
 
     let rowBg: Color = isActive
       ? ChatTheme.windowBackground

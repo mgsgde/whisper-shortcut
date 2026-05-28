@@ -520,14 +520,20 @@ class MenuBarController: NSObject {
 
 
   // MARK: - Actions (Simplified Logic)
+  /// Stops the recorder after a short delay so the spoken tail (the last word or two before
+  /// the shortcut fires) is captured instead of clipped. Used by every recording-stop path.
+  private func stopRecordingAfterTailDelay() {
+    DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
+      self?.audioRecorder.stopRecording()
+    }
+  }
+
   @objc private func toggleTranscription() {
     // During live meeting: run dictation as a parallel segment
     if isLiveMeetingActive {
       if activeMeetingSegment == .dictation {
         DebugLogger.log("MEETING-SEGMENT: Stopping dictation segment")
-        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-          self?.audioRecorder.stopRecording()
-        }
+        stopRecordingAfterTailDelay()
         return
       }
       if activeMeetingSegment != nil {
@@ -566,9 +572,7 @@ class MenuBarController: NSObject {
     
     switch appState.recordingMode {
     case .transcription:
-      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-        self?.audioRecorder.stopRecording()
-      }
+      stopRecordingAfterTailDelay()
     case .none:
       let hasCredential = GeminiCredentialProvider.shared.hasCredential()
       let selectedModel = TranscriptionModel.loadSelected()
@@ -593,9 +597,7 @@ class MenuBarController: NSObject {
     if isLiveMeetingActive {
       if activeMeetingSegment == .prompt {
         DebugLogger.log("MEETING-SEGMENT: Stopping prompt segment")
-        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-          self?.audioRecorder.stopRecording()
-        }
+        stopRecordingAfterTailDelay()
         return
       }
       if activeMeetingSegment != nil {
@@ -622,9 +624,7 @@ class MenuBarController: NSObject {
     
     switch appState.recordingMode {
     case .prompt:
-      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-        self?.audioRecorder.stopRecording()
-      }
+      stopRecordingAfterTailDelay()
     case .none:
       let hasCredential = GeminiCredentialProvider.shared.hasCredential()
 
@@ -682,9 +682,7 @@ class MenuBarController: NSObject {
 
     // Recording states — stop the recorder (audio tail delay like the individual toggles)
     if appState.isRecording {
-      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-        self?.audioRecorder.stopRecording()
-      }
+      stopRecordingAfterTailDelay()
     }
   }
 
