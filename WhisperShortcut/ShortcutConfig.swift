@@ -426,6 +426,8 @@ extension Notification.Name {
   static let chatStopLiveMeeting = Notification.Name("chatStopLiveMeeting")
   /// Posted when user confirms "End Meeting" with an optional name. userInfo["meetingName"] = String (default or custom).
   static let chatEndMeetingWithName = Notification.Name("chatEndMeetingWithName")
+  /// Posted after a meeting's final summary is written to disk. userInfo: ["stem": String, "summary": String].
+  static let chatMeetingSummaryReady = Notification.Name("chatMeetingSummaryReady")
   /// Posted when user taps Read Aloud under a chat reply. userInfo key: chatReadAloudTextKey (String).
   static let chatReadAloud = Notification.Name("chatReadAloud")
   /// Posted when user taps Stop on the Read Aloud button while TTS is active.

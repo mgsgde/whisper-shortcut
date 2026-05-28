@@ -96,6 +96,7 @@ class ChatViewModel: ObservableObject {
   var isCurrentSessionMeeting: Bool { session.isMeeting }
   var isCurrentSessionTheActiveMeeting: Bool { isMeetingActive && meetingSessionId == session.id }
   private var meetingCancellable: AnyCancellable?
+  private var summaryCancellable: AnyCancellable?
 
   /// In-memory ring buffer of recently closed sessions for Cmd+Shift+T undo.
   /// Only sessions that had at least one message are stored — empty tabs are
@@ -202,6 +203,19 @@ class ChatViewModel: ObservableObject {
           self.meetingSessionId = nil
         }
       }
+
+    // When a meeting's final summary is ready, title its chat from that summary.
+    // Only the main sidebar view model handles this (not the meeting window's).
+    if !singleChatOnly {
+      summaryCancellable = NotificationCenter.default.publisher(for: .chatMeetingSummaryReady)
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] note in
+          guard let self,
+                let stem = note.userInfo?["stem"] as? String,
+                let summary = note.userInfo?["summary"] as? String else { return }
+          Task { await self.generateMeetingTitle(stem: stem, summary: summary) }
+        }
+    }
   }
 
   func createNewSession() {
@@ -537,7 +551,7 @@ class ChatViewModel: ObservableObject {
         }
         let result = (text: accumulated, sources: finalSources, supports: finalSupports)
         ContextLogger.shared.logChat(userMessage: content, modelResponse: result.text, model: model)
-        if let s = store.session(by: sessionId), s.messages.count == 2 {
+        if let s = store.session(by: sessionId), s.messages.count == 2, !s.isMeeting {
           Task { await generateAITitle(sessionId: sessionId) }
         }
         await MainActor.run { ReviewPrompter.shared.recordSuccessfulOperation() }
@@ -851,6 +865,44 @@ class ChatViewModel: ObservableObject {
     }
   }
 
+  /// Titles a meeting chat from its final summary. Only sets the title if the session is still
+  /// untitled, so a manual rename is never overwritten.
+  private func generateMeetingTitle(stem: String, summary: String) async {
+    guard let target = store.allSessions().first(where: { $0.isMeeting && $0.meetingStem == stem }),
+          (target.title?.isEmpty ?? true) else { return }
+    let summaryText = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !summaryText.isEmpty else { return }
+    guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
+    let prompt = """
+      Give this meeting a short title (2–4 words) that captures its main topic. \
+      Reply with only the title on a single line — no quotes, no punctuation, no explanation.
+
+      Meeting summary:
+      \(String(summaryText.prefix(1200)))
+      """
+    do {
+      let raw = try await apiClient.generateText(
+        model: "gemini-2.5-flash-lite", prompt: prompt, credential: credential)
+      let title = raw
+        .components(separatedBy: .newlines)
+        .map {
+          $0.trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "\"", with: "")
+            .replacingOccurrences(of: "'", with: "")
+        }
+        .first { !$0.isEmpty } ?? ""
+      guard !title.isEmpty else { return }
+      guard var updated = store.session(by: target.id), (updated.title?.isEmpty ?? true) else { return }
+      updated.title = String(title.prefix(Self.maxSessionTitleLength))
+      store.save(updated)
+      if updated.id == session.id { session.title = updated.title }
+      refreshRecentSessions()
+      DebugLogger.log("GEMINI-CHAT: Meeting title generated for \(target.id): \(title)")
+    } catch {
+      DebugLogger.log("GEMINI-CHAT: Meeting title generation failed: \(error.localizedDescription)")
+    }
+  }
+
   // MARK: - Local model messages (slash commands)
 
   /// Appends a model message directly to the chat (used for local command responses).
@@ -1025,7 +1077,7 @@ class ChatViewModel: ObservableObject {
       let haystack = parts.joined(separator: "\n").lowercased()
       guard terms.allSatisfy({ haystack.contains($0) }) else { continue }
 
-      let title = Self.searchDisplayTitle(for: session)
+      let title = Self.displayTitle(for: session)
       results.append(ChatSearchResult(
         id: session.id,
         kind: session.isMeeting ? .meeting : .chat,
@@ -1062,8 +1114,8 @@ class ChatViewModel: ObservableObject {
     NSWorkspace.shared.activateFileViewerSelecting([url])
   }
 
-  /// Mirrors the sidebar's row-title logic for use in search results.
-  private static func searchDisplayTitle(for session: ChatSession) -> String {
+  /// Canonical display title for a session row (sidebar + search results).
+  static func displayTitle(for session: ChatSession) -> String {
     if let t = session.title, !t.isEmpty {
       let stripped = unwrapUserMessageTypedByUser(t)
       let base = stripped.isEmpty ? t : stripped
@@ -1545,7 +1597,7 @@ struct ChatView: View {
   private func tabOverflowMenu(sessions: [ChatSession]) -> some View {
     Menu {
       ForEach(sessions.reversed(), id: \.id) { session in
-        let title = session.title.flatMap { $0.isEmpty ? nil : $0 } ?? "New chat"
+        let title = session.title.flatMap { $0.isEmpty ? nil : $0 } ?? (session.isMeeting ? "Meeting" : "New chat")
         Button {
           viewModel.switchToSession(id: session.id)
         } label: {
@@ -1575,7 +1627,7 @@ struct ChatView: View {
   private func sessionTab(session: ChatSession, width: CGFloat) -> some View {
     let isActive = session.id == viewModel.currentSessionId
     let isProcessing = viewModel.isSendingSession(session.id)
-    let title = session.title.flatMap { $0.isEmpty ? nil : $0 } ?? "New chat"
+    let title = session.title.flatMap { $0.isEmpty ? nil : $0 } ?? (session.isMeeting ? "Meeting" : "New chat")
 
     return Button(action: { viewModel.switchToSession(id: session.id) }) {
       HStack(spacing: 5) {

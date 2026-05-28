@@ -969,6 +969,12 @@ class MenuBarController: NSObject {
           if !trimmed.isEmpty {
             MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
             DebugLogger.log("LIVE-MEETING: Summary saved to .summary.md")
+            let stem = transcriptURL.deletingPathExtension().lastPathComponent
+            await MainActor.run {
+              NotificationCenter.default.post(
+                name: .chatMeetingSummaryReady, object: nil,
+                userInfo: ["stem": stem, "summary": trimmed])
+            }
           }
         } catch {
           DebugLogger.logError("LIVE-MEETING: Generate summary failed: \(error.localizedDescription)")

@@ -362,6 +362,9 @@ struct ChatSidebar: View {
         let stripped = unwrapUserMessageTypedByUser(t)
         return stripped.isEmpty ? t : stripped
       }
+      // Meetings stay "Meeting" until their summary-based title is generated, so the row
+      // never shows whatever question the user happened to ask first.
+      if session.isMeeting { return "Meeting" }
       if let firstContent = session.messages.first(where: { $0.role == .user })?.content {
         let cleaned = ChatViewModel.contentForSessionTitle(firstContent)
         if !cleaned.isEmpty { return String(cleaned.prefix(60)) }
