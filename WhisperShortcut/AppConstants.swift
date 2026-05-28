@@ -160,9 +160,6 @@ Output rules:
   static let ttsChunkMinSizeRatio: Double = 0.7
 
   // MARK: - Live Meeting Transcription
-  /// Maximum chunk duration (fallback when no silence detected).
-  static let liveMeetingChunkIntervalDefault: TimeInterval = 90.0
-
   /// Minimum chunk duration before silence-based rotation is allowed.
   static let liveMeetingChunkMinDuration: TimeInterval = 30.0
 

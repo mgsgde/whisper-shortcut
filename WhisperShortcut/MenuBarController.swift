@@ -777,7 +777,7 @@ class MenuBarController: NSObject {
 
     // Load chunk interval from settings
     let savedInterval = UserDefaults.standard.double(forKey: UserDefaultsKeys.liveMeetingChunkInterval)
-    let chunkInterval: TimeInterval = savedInterval > 0 ? savedInterval : AppConstants.liveMeetingChunkIntervalDefault
+    let chunkInterval: TimeInterval = savedInterval > 0 ? savedInterval : SettingsDefaults.liveMeetingChunkInterval.rawValue
 
     // Compute resume offset so new chunks continue from where the previous recording
     // left off, keeping transcript timestamps monotonic.

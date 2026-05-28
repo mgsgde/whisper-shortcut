@@ -32,7 +32,7 @@ Run `git log --oneline --name-only --since="<window>"` for the cycle's window (s
 ### Time window per cycle
 
 | Cycle | `git log --since=…` |
-|-------|---------------------|
+| ----- | ------------------- |
 | 1     | last 24 hours       |
 | 2     | last 3 days         |
 | 3     | last 1 week         |
@@ -61,12 +61,12 @@ Single-pass `/review-code` uses cycle 1's window. Overlap across cycles is expec
 - State that's redundant with other state → drop one
 - Comments that just narrate the code → delete (per project rule)
 
-Treat the simplification pass as **mandatory**, not optional flavor. Even healthy code usually has *something* worth removing.
+Treat the simplification pass as **mandatory**, not optional flavor. Even healthy code usually has _something_ worth removing.
 
 ## Per-cycle flow
 
 1. **Print "Detected scope"** — cycle number (when N > 1), time window, commit count, top changed files. The user should be able to cancel before you continue.
-2. **Orient broadly within scope** — read changed files *and* their neighbors, entry points, and relevant tests so findings are grounded in context. Don't review a file in isolation.
+2. **Orient broadly within scope** — read changed files _and_ their neighbors, entry points, and relevant tests so findings are grounded in context. Don't review a file in isolation.
 3. **Use project rules** — reference `@.cursor/rules/index.mdc` where relevant (logging via `DebugLogger`, KISS, English-only user-facing text, main-thread UI, etc.).
 4. **Risk-based deep dive** — prioritize auth, data access, public APIs, parsers, concurrency, error paths, and recently churned hot spots. Don't line-by-line every file.
 5. **Extra attention to recent diffs** — scrutinize the actual changes for regression risk and inconsistencies with surrounding code.
@@ -124,7 +124,7 @@ Concrete and safe. Propose refactor-shaped fixes when they make the code **simpl
 
 **Size doesn't disqualify a fix.** A 200-line consolidation that nets fewer lines and removes a duplication is legitimate. A 5-line change that adds a new layer without deleting anything is not.
 
-For each fix, briefly say *what it removes* (lines of duplication, a dead enum case, a parameter, etc.) so the user can judge it on the simplification bar.
+For each fix, briefly say _what it removes_ (lines of duplication, a dead enum case, a parameter, etc.) so the user can judge it on the simplification bar.
 
 Include small diff-style snippets where helpful.
 
@@ -136,7 +136,7 @@ Iteration mode (`/review-code N`) behaves as if "fix all" was said after every c
 
 Things you may still legitimately defer (call them out explicitly, don't silently skip):
 
-- Pure optimizations (caching, retry parity) — these *add* code for non-functional gains; skip unless requested or measured to matter
+- Pure optimizations (caching, retry parity) — these _add_ code for non-functional gains; skip unless requested or measured to matter
 - Behavior-changing rewrites unrelated to the reported issue
 - Changes that need user input (which of two competing patterns to keep)
 

@@ -289,12 +289,7 @@ class ShortcutConfigManager {
     let swapMigrationKey = "shortcut_settings_screenshot_swap_v1"
     if !userDefaults.bool(forKey: swapMigrationKey) {
       saveShortcut(ShortcutConfig.default.screenshotCapture, for: Constants.screenshotCaptureKey)
-      let priorSettings = loadShortcut(for: Constants.openSettingsKey)
-      let hadDefaultSettingsShortcut =
-        priorSettings?.key == .three && priorSettings?.modifiers == [.command]
-      if priorSettings == nil || hadDefaultSettingsShortcut {
-        saveShortcut(ShortcutConfig.default.openSettings, for: Constants.openSettingsKey)
-      }
+      resetSettingsIfStillOnOldDefault(oldKey: .three)
       userDefaults.set(true, forKey: swapMigrationKey)
     }
 
@@ -303,12 +298,7 @@ class ShortcutConfigManager {
     // so custom Settings shortcuts (e.g. someone bound ⌘8) are preserved.
     let readAloudMigrationKey = "shortcut_read_aloud_v1"
     if !userDefaults.bool(forKey: readAloudMigrationKey) {
-      let priorSettings = loadShortcut(for: Constants.openSettingsKey)
-      let hadDefaultSettingsOnFour =
-        priorSettings?.key == .four && priorSettings?.modifiers == [.command]
-      if priorSettings == nil || hadDefaultSettingsOnFour {
-        saveShortcut(ShortcutConfig.default.openSettings, for: Constants.openSettingsKey)
-      }
+      resetSettingsIfStillOnOldDefault(oldKey: .four)
       if loadShortcut(for: Constants.readAloudKey) == nil {
         saveShortcut(ShortcutConfig.default.readAloud, for: Constants.readAloudKey)
       }
@@ -319,12 +309,7 @@ class ShortcutConfigManager {
     // Only migrate users who still had the previous ⌘5 default; custom bindings stay.
     let settingsZeroMigrationKey = "shortcut_settings_zero_v1"
     if !userDefaults.bool(forKey: settingsZeroMigrationKey) {
-      let priorSettings = loadShortcut(for: Constants.openSettingsKey)
-      let hadDefaultSettingsOnFive =
-        priorSettings?.key == .five && priorSettings?.modifiers == [.command]
-      if priorSettings == nil || hadDefaultSettingsOnFive {
-        saveShortcut(ShortcutConfig.default.openSettings, for: Constants.openSettingsKey)
-      }
+      resetSettingsIfStillOnOldDefault(oldKey: .five)
       userDefaults.set(true, forKey: settingsZeroMigrationKey)
     }
 
@@ -363,6 +348,16 @@ class ShortcutConfigManager {
   }
 
   // MARK: - Private Helper Methods
+  /// Resets the Settings binding to the current default, but only when the user is still on a
+  /// previously shipped default (`oldKey`+⌘) or has no binding — custom bindings are preserved.
+  private func resetSettingsIfStillOnOldDefault(oldKey: Key) {
+    let prior = loadShortcut(for: Constants.openSettingsKey)
+    let onOldDefault = prior?.key == oldKey && prior?.modifiers == [.command]
+    if prior == nil || onOldDefault {
+      saveShortcut(ShortcutConfig.default.openSettings, for: Constants.openSettingsKey)
+    }
+  }
+
   private func loadShortcut(for key: String) -> ShortcutDefinition? {
     guard let data = userDefaults.data(forKey: key),
       let shortcut = try? JSONDecoder().decode(ShortcutDefinition.self, from: data)

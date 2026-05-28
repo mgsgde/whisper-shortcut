@@ -96,6 +96,9 @@ class ChatViewModel: ObservableObject {
   var isCurrentSessionTheActiveMeeting: Bool { isMeetingActive && meetingSessionId == session.id }
   private var meetingCancellable: AnyCancellable?
   private var summaryCancellable: AnyCancellable?
+  /// Meeting stems we've already attempted to backfill a title for this app run, so a missing or
+  /// failed summary doesn't trigger a fresh API call every time the meeting is viewed.
+  private var attemptedMeetingTitleStems: Set<String> = []
 
   /// In-memory ring buffer of recently closed sessions for Cmd+Shift+T undo.
   /// Only sessions that had at least one message are stored — empty tabs are
@@ -214,6 +217,8 @@ class ChatViewModel: ObservableObject {
           Task { await self.generateMeetingTitle(stem: stem, summary: summary) }
         }
     }
+
+    backfillMeetingTitleIfNeeded()
   }
 
   func createNewSession() {
@@ -242,6 +247,7 @@ class ChatViewModel: ObservableObject {
     errorMessage = nil
     pendingScreenshots = []
     refreshRecentSessions()
+    backfillMeetingTitleIfNeeded()
   }
 
   /// Maximum number of screenshots that can be attached to one message.
@@ -867,6 +873,23 @@ class ChatViewModel: ObservableObject {
     } catch {
       DebugLogger.log("GEMINI-CHAT: AI title generation failed, keeping fallback: \(error.localizedDescription)")
     }
+  }
+
+  /// Recovers a meeting title that the live `.chatMeetingSummaryReady` notification missed (e.g. no
+  /// chat window was open when the summary finished). If the current session is an untitled meeting
+  /// whose summary is already on disk, generate the title now — at most once per stem per app run so
+  /// a missing or failed summary doesn't re-fire an API call on every view.
+  private func backfillMeetingTitleIfNeeded() {
+    guard !singleChatOnly,
+          session.isMeeting,
+          (session.title?.isEmpty ?? true),
+          let stem = session.meetingStem,
+          !attemptedMeetingTitleStems.contains(stem),
+          let summary = loadMeetingSummaryFromDisk(),
+          !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else { return }
+    attemptedMeetingTitleStems.insert(stem)
+    Task { await generateMeetingTitle(stem: stem, summary: summary) }
   }
 
   /// Titles a meeting chat from its final summary. Only sets the title if the session is still
@@ -1854,6 +1877,7 @@ struct ChatView: View {
                 .padding(.vertical, 5)
                 .background(meetingTab == tab ? ChatTheme.windowBackground : Color.clear)
                 .cornerRadius(4)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
           }

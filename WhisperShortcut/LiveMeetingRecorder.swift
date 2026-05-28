@@ -92,7 +92,7 @@ class LiveMeetingRecorder: NSObject {
   // MARK: - Initialization
 
   init(
-    maxChunkDuration: TimeInterval = AppConstants.liveMeetingChunkIntervalDefault,
+    maxChunkDuration: TimeInterval = SettingsDefaults.liveMeetingChunkInterval.rawValue,
     minChunkDuration: TimeInterval = AppConstants.liveMeetingChunkMinDuration,
     silenceDuration: TimeInterval = AppConstants.liveMeetingSilenceDuration,
     silenceThresholdDB: Float = AppConstants.liveMeetingSilenceThresholdDB,

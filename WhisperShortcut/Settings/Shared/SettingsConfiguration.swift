@@ -768,7 +768,7 @@ struct SettingsDefaults {
   static let screenshotSaveEnabled = false
 
   // MARK: - Live Meeting Settings
-  static let liveMeetingChunkInterval = LiveMeetingChunkInterval.sixtySeconds
+  static let liveMeetingChunkInterval = LiveMeetingChunkInterval.thirtySeconds
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
   static let selectedMeetingSummaryModel = PromptModel.gemini35Flash
 

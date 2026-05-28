@@ -57,13 +57,8 @@ class SettingsViewModel: ObservableObject {
       forKey: UserDefaultsKeys.selectedImprovementModel, default: SettingsDefaults.selectedImprovementModel)
 
     // Load popup notifications setting
-    let showPopupNotificationsExists =
-      UserDefaults.standard.object(forKey: UserDefaultsKeys.showPopupNotifications) != nil
-    if showPopupNotificationsExists {
-      data.showPopupNotifications = UserDefaults.standard.bool(forKey: UserDefaultsKeys.showPopupNotifications)
-    } else {
-      data.showPopupNotifications = SettingsDefaults.showPopupNotifications
-    }
+    data.showPopupNotifications = UserDefaults.standard.bool(
+      forKey: UserDefaultsKeys.showPopupNotifications, default: SettingsDefaults.showPopupNotifications)
     
     // Load notification position
     if let savedPositionString = UserDefaults.standard.string(forKey: UserDefaultsKeys.notificationPosition),
@@ -96,18 +91,12 @@ class SettingsViewModel: ObservableObject {
     data.confirmAboveDuration = ConfirmAboveDuration.loadFromUserDefaults()
 
     // Load auto-paste setting
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.autoPasteAfterDictation) != nil {
-      data.autoPasteAfterDictation = UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoPasteAfterDictation)
-    } else {
-      data.autoPasteAfterDictation = SettingsDefaults.autoPasteAfterDictation
-    }
+    data.autoPasteAfterDictation = UserDefaults.standard.bool(
+      forKey: UserDefaultsKeys.autoPasteAfterDictation, default: SettingsDefaults.autoPasteAfterDictation)
 
     // Load screenshot in prompt mode setting
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil {
-      data.screenshotInPromptMode = UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
-    } else {
-      data.screenshotInPromptMode = SettingsDefaults.screenshotInPromptMode
-    }
+    data.screenshotInPromptMode = UserDefaults.standard.bool(
+      forKey: UserDefaultsKeys.screenshotInPromptMode, default: SettingsDefaults.screenshotInPromptMode)
 
     // Load screenshot save-to-folder settings
     data.screenshotSaveEnabled = ScreenshotSaveLocation.isEnabled
@@ -118,18 +107,12 @@ class SettingsViewModel: ObservableObject {
     data.readAloudSpeed = ReadAloudPreferences.speed
 
     // Load Gemini window: close on focus loss
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.chatCloseOnFocusLoss) != nil {
-      data.chatCloseOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.chatCloseOnFocusLoss)
-    } else {
-      data.chatCloseOnFocusLoss = SettingsDefaults.chatCloseOnFocusLoss
-    }
+    data.chatCloseOnFocusLoss = UserDefaults.standard.bool(
+      forKey: UserDefaultsKeys.chatCloseOnFocusLoss, default: SettingsDefaults.chatCloseOnFocusLoss)
 
     // Load Settings window: close on focus loss
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.settingsCloseOnFocusLoss) != nil {
-      data.settingsCloseOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)
-    } else {
-      data.settingsCloseOnFocusLoss = SettingsDefaults.settingsCloseOnFocusLoss
-    }
+    data.settingsCloseOnFocusLoss = UserDefaults.standard.bool(
+      forKey: UserDefaultsKeys.settingsCloseOnFocusLoss, default: SettingsDefaults.settingsCloseOnFocusLoss)
 
     // Load Live Meeting settings
     if let savedIntervalValue = UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingChunkInterval) as? Double,
@@ -539,4 +522,11 @@ class SettingsViewModel: ObservableObject {
     NSApplication.shared.terminate(nil)
   }
 
+}
+
+private extension UserDefaults {
+  /// Returns the stored bool for `key`, or `defaultValue` when the key was never written.
+  func bool(forKey key: String, default defaultValue: Bool) -> Bool {
+    object(forKey: key) != nil ? bool(forKey: key) : defaultValue
+  }
 }
