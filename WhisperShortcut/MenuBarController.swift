@@ -608,7 +608,7 @@ class MenuBarController: NSObject {
       if hasCredential {
         if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return }
         DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
-        simulateCopyPaste()
+        simulateCopy()
         activeMeetingSegment = .prompt
         audioRecorder.startRecording()
       }
@@ -632,7 +632,7 @@ class MenuBarController: NSObject {
         if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
           return
         }
-        simulateCopyPaste()
+        simulateCopy()
         appState = appState.startRecording(.prompt)
         audioRecorder.startRecording()
       }
@@ -1734,34 +1734,25 @@ class MenuBarController: NSObject {
     timePitchNode = nil
   }
   
-  private func simulateCopyPaste() {
-    // Use a private event source so modifier keys physically held (e.g. Option from the
-    // global shortcut) do not leak into the synthetic Cmd+C and turn it into Cmd+Option+C.
-    let source = CGEventSource(stateID: .privateState)
-    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true)
-    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
-
-    cmdDown?.flags = .maskCommand
-    cmdUp?.flags = .maskCommand
-
-    cmdDown?.post(tap: .cghidEventTap)
-    cmdUp?.post(tap: .cghidEventTap)
+  /// Posts a synthetic ⌘+<key> chord (key-down then key-up) through a Quartz event tap.
+  /// `sourceState` differs by use: copy uses `.privateState` so modifier keys physically held
+  /// during the global shortcut (e.g. Option) don't leak into the chord and turn ⌘C into
+  /// ⌘⌥C; paste uses `.hidSystemState` so ⌘V is delivered to the frontmost app.
+  private func postCommandKey(_ virtualKey: CGKeyCode, sourceState: CGEventSourceStateID) {
+    let source = CGEventSource(stateID: sourceState)
+    let down = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: true)
+    let up = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: false)
+    down?.flags = .maskCommand
+    up?.flags = .maskCommand
+    down?.post(tap: .cghidEventTap)
+    up?.post(tap: .cghidEventTap)
   }
 
-  /// Simulates Cmd+V paste keystroke to paste clipboard contents at cursor position
-  private func simulatePaste() {
-    // Use HID system state so Cmd+V is delivered to the frontmost app
-    let source = CGEventSource(stateID: .hidSystemState)
-    // Virtual key 0x09 is 'V'
-    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true)
-    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false)
+  /// Simulates ⌘C to copy the current selection (virtual key 0x08 = 'C').
+  private func simulateCopy() { postCommandKey(0x08, sourceState: .privateState) }
 
-    cmdDown?.flags = .maskCommand
-    cmdUp?.flags = .maskCommand
-
-    cmdDown?.post(tap: .cghidEventTap)
-    cmdUp?.post(tap: .cghidEventTap)
-  }
+  /// Simulates ⌘V to paste clipboard contents at the cursor (virtual key 0x09 = 'V').
+  private func simulatePaste() { postCommandKey(0x09, sourceState: .hidSystemState) }
 
   /// Performs auto-paste if enabled in settings
   private func autoPasteIfEnabled() {
@@ -2017,7 +2008,7 @@ extension MenuBarController: ShortcutDelegate {
     DebugLogger.log("READ-ALOUD: Posting synthetic Cmd+C; before changeCount = \(beforeChangeCount)")
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
-      self.simulateCopyPaste()
+      self.simulateCopy()
       Task { @MainActor [weak self] in
         guard let self else { return }
         let start = Date()

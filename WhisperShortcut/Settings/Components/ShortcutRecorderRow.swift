@@ -203,8 +203,7 @@ struct ShortcutRecorderRow: View {
   }
 
   private var textColor: Color {
-    if pendingConflict != nil { return .secondary }
-    if isRecording { return .secondary }
+    if pendingConflict != nil || isRecording { return .secondary }
     return .primary
   }
 

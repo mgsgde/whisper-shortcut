@@ -330,7 +330,6 @@ class SettingsViewModel: ObservableObject {
     // Save toggle shortcuts. `nil` in SettingsData means "user cleared this
     // shortcut" — we persist a disabled placeholder using the matching
     // factory default's keycode so the stored shape stays stable.
-    let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
     func disable(_ template: ShortcutDefinition) -> ShortcutDefinition {
       ShortcutDefinition(key: template.key, modifiers: template.modifiers, isEnabled: false)
     }

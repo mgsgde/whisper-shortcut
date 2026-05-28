@@ -2093,8 +2093,6 @@ struct ChatInputAreaView: View {
       }
       viewModel.pastedBlocks = []
     }
-    // Per-session composer drafts: save the current document under the
-    // outgoing session id, then load the incoming session's draft (or clear).
   }
 
   /// Slash commands recognized by `submitComposer`. Derived from the canonical

@@ -283,19 +283,18 @@ final class GeminiComposerController: ObservableObject {
   // MARK: Queries
 
   var screenshotCount: Int {
-    guard let storage = textView?.textStorage else { return 0 }
-    var count = 0
-    storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length), options: []) { val, _, _ in
-      if let a = val as? ComposerTextAttachment, case .screenshot = a.kind { count += 1 }
-    }
-    return count
+    countAttachments { if case .screenshot = $0 { return true }; return false }
   }
 
   var fileAttachmentCount: Int {
+    countAttachments { if case .file = $0 { return true }; return false }
+  }
+
+  private func countAttachments(where predicate: (ComposerAttachmentKind) -> Bool) -> Int {
     guard let storage = textView?.textStorage else { return 0 }
     var count = 0
     storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length), options: []) { val, _, _ in
-      if let a = val as? ComposerTextAttachment, case .file = a.kind { count += 1 }
+      if let a = val as? ComposerTextAttachment, predicate(a.kind) { count += 1 }
     }
     return count
   }
@@ -343,26 +342,6 @@ final class GeminiComposerController: ObservableObject {
     var typing = baseAttrs
     typing.removeValue(forKey: .attachment as NSAttributedString.Key)
     tv.typingAttributes = typing
-    tv.didChangeText()
-    tv.needsDisplay = true
-    refreshState()
-  }
-
-  private func removeAllScreenshots() {
-    removeAttachments { if case .screenshot = $0 { return true }; return false }
-  }
-  private func removeAllFileAttachments() {
-    removeAttachments { if case .file = $0 { return true }; return false }
-  }
-  private func removeAttachments(where predicate: (ComposerAttachmentKind) -> Bool) {
-    guard let tv = textView, let storage = tv.textStorage else { return }
-    var rangesToRemove: [NSRange] = []
-    storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length), options: []) { val, range, _ in
-      if let a = val as? ComposerTextAttachment, predicate(a.kind) {
-        rangesToRemove.append(range)
-      }
-    }
-    for r in rangesToRemove.reversed() { storage.deleteCharacters(in: r) }
     tv.didChangeText()
     tv.needsDisplay = true
     refreshState()
@@ -634,10 +613,7 @@ struct ChatComposerTextView: NSViewRepresentable {
     tv.autoresizingMask = [.width]
     tv.delegate = context.coordinator
 
-    tv.onSubmit = { [weak controller] in
-      _ = controller
-      DispatchQueue.main.async { self.onSubmit() }
-    }
+    tv.onSubmit = { DispatchQueue.main.async { self.onSubmit() } }
     tv.onCancel = { DispatchQueue.main.async { self.onCancel() } }
     tv.onTabComplete = { self.onTabComplete() }
     tv.onLargePaste = { [weak controller] str in
