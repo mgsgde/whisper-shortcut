@@ -1,21 +1,23 @@
-# WhisperShortcut 7.33
+# WhisperShortcut 7.34
 
 ## What's new
-- **Settings sidebar reorder.** Read Aloud now sits above Chat, matching the menu-bar order (Dictate ⌘1 → Dictate Prompt ⌘2 → Read Aloud ⌘4 → Chat ⌥Space). Before, Chat was wedged between Dictate Prompt and Read Aloud, which read inconsistent next to the menu.
-- **Review prompt no longer steals focus.** When you've used the app enough to be asked for a rating, it now waits for you to open the menu bar instead of popping up mid-dictation. App Store builds use the native macOS rating prompt; GitHub builds show a one-time "support me on the App Store" note after enough successful operations.
+- **Privacy & permissions onboarding.** A new welcome flow walks you through the permissions WhisperShortcut needs — microphone, accessibility, and (for screenshots) screen recording — and explains the optional Smart Improvement step. A dedicated Privacy & Permissions tab in Settings shows the live status of each permission at a glance, and the privacy policy is now linked from a hosted page.
+- **Save screenshots to a folder.** A new Screenshot settings tab lets you keep every capture in a folder of your choice (in addition to the clipboard). The new `/attach` chat command pulls a file straight into the composer.
+- **Smarter chat sidebar.** Search your chats, jump to a dedicated Meetings section, and let older conversations archive automatically so the list stays tidy. Renaming chats is more reliable, and meeting chats are now titled from their summary instead of the first thing you said.
 
 ## Fixes
-- Cleared the "or the Meeting shortcut" hint from the Chat settings tab — there is no such shortcut; live meetings are started via `/meeting` in chat.
+- Clicking an attachment chip in the chat composer now reliably opens its preview — including clicks that land on the right half of the chip — and no longer fires when you click the empty input area beside it.
+- The chat window no longer closes itself (and orphans the screenshot preview sheet) when a sheet takes focus.
+
+## Performance
+- Chat rendering is noticeably faster: parsed message content is memoized, so switching chats and re-rendering long conversations no longer re-parses everything on the main thread.
 
 ## Behind the scenes
-- Three-cycle code-review pass over the most-changed files: consolidated three near-identical `loadPromptModel` helpers into a single canonical one, simplified the shortcut-recorder success path, dropped an unused `ShortcutDefinition.isConflicting`, and reused the new `currentChunkContext` helper in `chunkingStarted`.
-- Reset the review-prompt counter on app-version bumps so users get re-asked after meaningful updates.
-- Docs refreshed (README, install.sh, in-app text): OpenAI is now mentioned alongside Gemini and Grok, the Read Aloud description matches actual behavior (selection capture + Smart Rewrite + speed control), the slash-commands list adds `/pin` and `/unpin`, and stale shortcut hints (`⌘⌥R`, "Meeting shortcut") are gone.
-- `/review-code` slash command rewritten: drops flags in favor of two simple forms (`/review-code` for one pass, `/review-code N` for N review→fix→rebuild cycles); explicitly equal-weighted on bugs *and* simplification opportunities; iteration mode now aborts on a failed rebuild instead of advancing on broken state. LLM-context tooling only — no user-facing effect.
+- Three-cycle code-review pass over the most-changed files: removed dead attachment-removal helpers and a redundant config read, deduplicated the composer's attachment counters, consolidated the synthetic ⌘C / ⌘V key simulation into a single helper (and fixed a misleading `simulateCopyPaste` name that only copied), and trimmed stale comments and leftover perf logging.
 
 ## Installation
 Download the latest `.dmg` from [Releases](https://github.com/mgsgde/whisper-shortcut/releases).
 
 ## Full changelog
 
-[Compare v7.32…v7.33](https://github.com/mgsgde/whisper-shortcut/compare/v7.32...v7.33)
+[Compare v7.33…v7.34](https://github.com/mgsgde/whisper-shortcut/compare/v7.33...v7.34)
