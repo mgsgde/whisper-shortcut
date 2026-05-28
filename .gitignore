@@ -139,3 +139,5 @@ developer-id-cert.p12
 
 # Claude Code: project settings are committed; local overrides are personal
 .claude/settings.local.json
+# Claude Code: agent worktrees are local scratch space
+.claude/worktrees/
