@@ -130,7 +130,8 @@ class ChatViewModel: ObservableObject {
 
   /// Model-switch slash commands, generated from `PromptModel` so adding a model auto-adds its
   /// alias. Grouped by provider: the provider-default alias (`/gemini`, `/grok`, `/gpt`) first,
-  /// then each of that provider's chat models by its `shortAlias` (`/g3f`, `/grok43`, `/gpt55`, …).
+  /// then each of that provider's *non-default* chat models by its `shortAlias` (`/gemini3flash`,
+  /// `/gemini25pro`, `/grok4`, …); the default model is reached via the bare provider command.
   /// Single source for autocomplete, tab-completion, `knownSlashCommands`, dispatch, and the
   /// system-prompt command list — so none can drift. `/openai` is NOT here: it's a silent,
   /// dispatch-only alias for `/gpt` (see `modelCommandLookup`).
@@ -139,7 +140,9 @@ class ChatViewModel: ObservableObject {
     for provider in ChatModelProvider.allCases {
       let def = provider.defaultChatModel
       out.append(("/\(provider.commandAlias)", def, "Switch to \(def.displayName)"))
-      for model in PromptModel.chatModels where model.provider == provider {
+      // Skip the per-model alias for the provider's default — the bare `/gemini` etc. already
+      // targets it, so generating `/gemini35flash` too would be a redundant duplicate command.
+      for model in PromptModel.chatModels where model.provider == provider && model != def {
         out.append(("/\(model.shortAlias)", model, "Switch to \(model.displayName)"))
       }
     }
@@ -154,32 +157,54 @@ class ChatViewModel: ObservableObject {
     return dict
   }()
 
-  /// All slash commands with descriptions for autocomplete. The model-switch commands are
-  /// spliced in from `modelCommands` (after `/model`) so they stay in sync with `PromptModel`.
-  static let commandSuggestions: [(command: String, description: String)] = {
-    var list: [(command: String, description: String)] = [
-      ("/new", "Start a new chat (previous chat stays in history)"),
-      ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
-      ("/attach", "Open the file picker to attach files (PDF, images, text)"),
-      ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
-    ]
-    list += modelCommands.map { ($0.command, $0.description) }
-    list += [
-      ("/settings", "Open Settings"),
-      ("/pin", "Toggle whether the window stays open when losing focus"),
-      ("/unpin", "Make the window close when losing focus"),
-      ("/meeting", "Start or stop live meeting recording"),
-      ("/copy", "Copy the entire chat history to clipboard as Markdown"),
-    ]
-    return list
-  }()
+  /// Non-model commands shown before / after the model-switch block. Kept separate so the model
+  /// block can be re-sorted by recency for display without disturbing these fixed slots.
+  static let commandsBeforeModels: [(command: String, description: String)] = [
+    ("/new", "Start a new chat (previous chat stays in history)"),
+    ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
+    ("/attach", "Open the file picker to attach files (PDF, images, text)"),
+    ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
+  ]
+  static let commandsAfterModels: [(command: String, description: String)] = [
+    ("/settings", "Open Settings"),
+    ("/pin", "Toggle whether the window stays open when losing focus"),
+    ("/unpin", "Make the window close when losing focus"),
+    ("/meeting", "Start or stop live meeting recording"),
+    ("/copy", "Copy the entire chat history to clipboard as Markdown"),
+  ]
 
-  /// Commands to show in UI (excludes /new when single-chat mode).
+  /// All slash commands in canonical (provider-grouped) order. Used where order is irrelevant —
+  /// `knownSlashCommands` (a set) and the system-prompt command list. The on-screen autocomplete
+  /// uses `commandSuggestionsForDisplay`, which re-sorts the model block by recency.
+  static let commandSuggestions: [(command: String, description: String)] =
+    commandsBeforeModels + modelCommands.map { ($0.command, $0.description) } + commandsAfterModels
+
+  /// Model-switch commands for display, ordered most-recently-used first (see `recordModelUse`).
+  /// The currently active model is omitted entirely — re-selecting it is a no-op — so the top row
+  /// is the most-recently-used *other* model (one Enter away from toggling back). Never-used models
+  /// keep the canonical provider-grouped order at the bottom.
+  func recentlyOrderedModelCommands() -> [(command: String, description: String)] {
+    let recency = Self.loadModelRecency()
+    let current = PromptModel.loadSelectedChatModel()
+    let rank: (PromptModel) -> Int = { recency.firstIndex(of: $0.rawValue) ?? Int.max }
+    return Self.modelCommands
+      .filter { $0.model != current }
+      .enumerated()
+      .sorted { a, b in
+        let ra = rank(a.element.model), rb = rank(b.element.model)
+        return ra != rb ? ra < rb : a.offset < b.offset
+      }
+      .map { ($0.element.command, $0.element.description) }
+  }
+
+  /// Commands to show in UI: fixed commands around a recency-sorted model block (and excludes
+  /// /new in single-chat mode).
   var commandSuggestionsForDisplay: [(command: String, description: String)] {
+    var list = Self.commandsBeforeModels + recentlyOrderedModelCommands() + Self.commandsAfterModels
     if singleChatOnly {
-      return Self.commandSuggestions.filter { $0.command != "/new" }
+      list = list.filter { $0.command != "/new" }
     }
-    return Self.commandSuggestions
+    return list
   }
 
   /// Returns commands whose command string matches the given prefix (e.g. "/" or "/sc").
@@ -714,7 +739,7 @@ class ChatViewModel: ObservableObject {
     }
 
     // Model-switch commands (provider-default aliases /gemini /grok /gpt, the per-model short
-    // aliases /g3f /grok43 /gpt55 …, and the silent /openai alias). Generated from PromptModel,
+    // aliases /gemini3flash /gemini25pro /grok4 …, and the silent /openai alias). Generated from PromptModel,
     // so this one lookup covers every model without per-command branches.
     if let model = Self.modelCommandLookup[lower] {
       inputText = ""
@@ -1007,8 +1032,22 @@ class ChatViewModel: ObservableObject {
   /// `ChatModelProvider.X.defaultChatModel`, both of which yield current cases).
   private func switchToModel(_ model: PromptModel) {
     UserDefaults.standard.set(model.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
+    Self.recordModelUse(model)
     appendModelMessage("Model set to **\(model.displayName)**.")
     DebugLogger.log("GEMINI-CHAT: switchToModel \(model.displayName)")
+  }
+
+  /// Recently-used chat models, most recent first (PromptModel rawValues). See `chatModelRecency`.
+  static func loadModelRecency() -> [String] {
+    UserDefaults.standard.stringArray(forKey: UserDefaultsKeys.chatModelRecency) ?? []
+  }
+
+  /// Records `model` as the most recently used chat model, moving it to the front of the recency
+  /// list. Capped at the number of chat models so the list can't grow unbounded.
+  static func recordModelUse(_ model: PromptModel) {
+    var recency = loadModelRecency().filter { $0 != model.rawValue }
+    recency.insert(model.rawValue, at: 0)
+    UserDefaults.standard.set(Array(recency.prefix(PromptModel.chatModels.count)), forKey: UserDefaultsKeys.chatModelRecency)
   }
 
   // MARK: - Tab navigation
@@ -2409,6 +2448,7 @@ struct ChatInputAreaView: View {
           ForEach(PromptModel.chatModels, id: \.self) { model in
             Button(action: {
               selectedChatModelRaw = model.rawValue
+              ChatViewModel.recordModelUse(model) // keep autocomplete recency in sync with the picker
             }) {
               Text(model.displayName)
             }

@@ -7,7 +7,7 @@ enum ChatModelProvider: String, CaseIterable {
   case openai
 
   /// Model selected when the user invokes the bare provider slash-command
-  /// (`/gemini`, `/grok`, `/openai`) with no qualifier, AND when `/model <provider>`
+  /// (`/gemini`, `/grok`, `/gpt`) with no qualifier, AND when `/model <provider>`
   /// is typed with no further narrowing keyword. Single source of truth so the
   /// autocomplete hint, the bare-command dispatch in `ChatView`, and the
   /// no-qualifier branch in `ChatModelCommandResolver` never drift apart —
@@ -17,6 +17,17 @@ enum ChatModelProvider: String, CaseIterable {
     case .gemini: return .gemini35Flash
     case .grok:   return .grok43
     case .openai: return .openaiGPT55
+    }
+  }
+
+  /// Slash-command alias for the bare provider command (without the leading "/"), e.g. `/gemini`.
+  /// Named after the model brand for consistency: Gemini / Grok / GPT (not the company "openai").
+  /// `/openai` is kept as a silent alias in `ChatView` for muscle memory; see `modelCommandLookup`.
+  var commandAlias: String {
+    switch self {
+    case .gemini: return "gemini"
+    case .grok:   return "grok"
+    case .openai: return "gpt"
     }
   }
 }
@@ -85,6 +96,33 @@ enum PromptModel: String, CaseIterable {
       return "OpenAI GPT-5.5"
     case .openaiGPT4oAudio:
       return "OpenAI GPT Audio"
+    }
+  }
+
+  /// Slash-command alias (without the leading "/") for quick model switching in chat,
+  /// e.g. `/gemini3flash`. Provider-prefixed and spelled out (NOT cryptic codes) so the whole
+  /// family groups under the bare provider command — typing `/gemini` surfaces every Gemini
+  /// variant in the suggestion list, then ↑/↓ + Enter picks one. `ChatViewModel.modelCommands`
+  /// generates one command per chat model from this, so adding a model auto-adds its alias to
+  /// autocomplete, tab-completion, dispatch, and the system-prompt command list.
+  /// MUST stay unique across all cases and must not collide with non-model commands (/new, /pin, …).
+  /// May extend a provider-default alias (gemini / grok / gpt) as a prefix — that's intended.
+  var shortAlias: String {
+    switch self {
+    case .gemini25Flash:     return "gemini25flash"
+    case .gemini25FlashLite: return "gemini25flashlite"
+    case .gemini25Pro:       return "gemini25pro"
+    case .gemini3Flash:      return "gemini3flash"
+    case .gemini31Pro:       return "gemini31pro"
+    case .gemini31FlashLite: return "gemini31flashlite"
+    case .gemini35Flash:     return "gemini35flash"
+    case .grok4:             return "grok4"
+    case .grok4Reasoning:    return "grok4reasoning"
+    case .grok43:            return "grok43"
+    case .openaiGPT5:        return "gpt5"
+    case .openaiGPT5Mini:    return "gpt5mini"
+    case .openaiGPT55:       return "gpt55"
+    case .openaiGPT4oAudio:  return "gptaudio" // audio-only; excluded from chatModels, never surfaced
     }
   }
 

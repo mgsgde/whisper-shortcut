@@ -14,6 +14,9 @@ enum UserDefaultsKeys {
   static let selectedTranscriptionModel = "selectedTranscriptionModel"
   static let selectedPromptModel = "selectedPromptModel"
   static let selectedChatModel = "selectedOpenGeminiModel"
+  /// Most-recently-used chat models (array of PromptModel rawValues, most recent first).
+  /// Drives the recency ordering of the model-switch commands in chat autocomplete.
+  static let chatModelRecency = "chatModelRecency"
 
   // MARK: - Prompt Settings
   static let customPromptText = "customPromptText"

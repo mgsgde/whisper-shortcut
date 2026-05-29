@@ -107,7 +107,7 @@ enum ChatModelCommandResolver {
     // When the user typed ONLY the provider name (e.g. `/model grok`, `/model openai`)
     // with no version or variant, pick that provider's canonical default. Source of
     // truth lives on `ChatModelProvider.defaultChatModel` so this branch, the bare
-    // `/grok` / `/gemini` / `/openai` dispatch in ChatView, and the autocomplete hint
+    // `/gemini` / `/grok` / `/gpt` dispatch in ChatView, and the autocomplete hint
     // never disagree. If the user typed any qualifier (e.g. `/model grok 4.20`,
     // `/model openai gpt-5`) we leave the candidate list alone so an explicit
     // version doesn't get silently coerced to the family default.

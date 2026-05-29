@@ -126,6 +126,9 @@ final class ChatComposerNSTextView: NSTextView {
   var onSubmit: (() -> Void)?
   var onCancel: (() -> Void)?
   var onTabComplete: (() -> Bool)?
+  /// Called for ↑/↓ with the direction (-1 up, +1 down). Returns true when the suggestion overlay
+  /// consumed the key (so caret movement is suppressed); false → normal text navigation.
+  var onMoveSelection: ((Int) -> Bool)?
   var onLargePaste: ((String) -> Bool)?
   /// Returns true if the data was accepted (attached). Returning false lets the
   /// paste fall through to subsequent handlers (e.g. the plain-text path).
@@ -194,6 +197,16 @@ final class ChatComposerNSTextView: NSTextView {
   override func insertTab(_ sender: Any?) {
     if onTabComplete?() == true { return }
     super.insertTab(sender)
+  }
+
+  override func moveUp(_ sender: Any?) {
+    if onMoveSelection?(-1) == true { return }
+    super.moveUp(sender)
+  }
+
+  override func moveDown(_ sender: Any?) {
+    if onMoveSelection?(1) == true { return }
+    super.moveDown(sender)
   }
 
   override func paste(_ sender: Any?) {
@@ -566,6 +579,8 @@ struct ChatComposerTextView: NSViewRepresentable {
   var onCancel: () -> Void
   /// Return true if tab was consumed for slash-command completion.
   var onTabComplete: () -> Bool
+  /// ↑/↓ navigation through the slash-command overlay. Arg: -1 up / +1 down. Return true if consumed.
+  var onMoveSelection: (Int) -> Bool
   var onClickScreenshot: (Data) -> Void
 
   func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -616,6 +631,7 @@ struct ChatComposerTextView: NSViewRepresentable {
     tv.onSubmit = { DispatchQueue.main.async { self.onSubmit() } }
     tv.onCancel = { DispatchQueue.main.async { self.onCancel() } }
     tv.onTabComplete = { self.onTabComplete() }
+    tv.onMoveSelection = { self.onMoveSelection($0) }
     tv.onLargePaste = { [weak controller] str in
       guard let c = controller else { return false }
       c.insertPastedBlock(text: str, kind: .largePaste)
