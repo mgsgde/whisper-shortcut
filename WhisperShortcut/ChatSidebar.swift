@@ -335,25 +335,23 @@ struct ChatSidebar: View {
     .padding(.top, 8)
     .padding(.bottom, 4)
     .contentShape(Rectangle())
-    .onTapGesture {
-      withAnimation(.easeInOut(duration: 0.15)) {
-        if collapsedMeetingGroups.contains(group) {
-          collapsedMeetingGroups.remove(group)
-        } else {
-          collapsedMeetingGroups.insert(group)
-        }
-      }
-    }
+    .onTapGesture { toggleCollapse(group, in: &collapsedMeetingGroups) }
   }
 
   private func collapsibleSectionHeader(_ group: DateGroup, showDivider: Bool = false) -> some View {
     collapsibleHeader(group.label, isCollapsed: collapsedGroups.contains(group), showDivider: showDivider) {
-      withAnimation(.easeInOut(duration: 0.15)) {
-        if collapsedGroups.contains(group) {
-          collapsedGroups.remove(group)
-        } else {
-          collapsedGroups.insert(group)
-        }
+      toggleCollapse(group, in: &collapsedGroups)
+    }
+  }
+
+  /// Animated toggle of a date group's collapsed state, shared by the chat date headers
+  /// and the meeting date sub-headers (each passes its own backing set).
+  private func toggleCollapse(_ group: DateGroup, in set: inout Set<DateGroup>) {
+    withAnimation(.easeInOut(duration: 0.15)) {
+      if set.contains(group) {
+        set.remove(group)
+      } else {
+        set.insert(group)
       }
     }
   }
