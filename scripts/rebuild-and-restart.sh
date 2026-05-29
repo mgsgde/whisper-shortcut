@@ -33,27 +33,12 @@ fi
 
 cd "$PROJECT_DIR"
 
-# Code signing: keep the app's signature stable across rebuilds so macOS keychain
-# "Always Allow" grants persist (an ad-hoc / linker-signed binary changes its hash
-# every build, which invalidates the keychain ACL and re-prompts for every API key).
-#
-# Strategy: if a local Apple Development identity exists, sign with it; otherwise fall
-# back to ad-hoc (the previous behaviour) so cloners without an Apple account can still
-# build. An explicit WS_SIGN_IDENTITY override wins if set.
-#   - WS_SIGN_IDENTITY="-"            → force ad-hoc
-#   - WS_SIGN_IDENTITY="Apple Dev..." → force a specific identity
+# Stable signature → keychain "Always Allow" and mic/TCC grants survive rebuilds.
+# No Apple Development identity (e.g. cloners without an account) → fall back to ad-hoc.
 SIGN_ARGS=()
-SIGN_IDENTITY="${WS_SIGN_IDENTITY:-}"
-if [[ -z "$SIGN_IDENTITY" ]]; then
-  SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
-    | grep -m1 "Apple Development" | sed -E 's/.*"(.*)".*/\1/')
-fi
-if [[ -n "$SIGN_IDENTITY" && "$SIGN_IDENTITY" != "-" ]]; then
-  echo "🔏 Signing with: $SIGN_IDENTITY"
-  SIGN_ARGS=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGNING_ALLOWED=YES)
-else
-  echo "🔏 No Apple Development identity found — using ad-hoc signing (keychain will re-prompt on rebuilds)."
-fi
+IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 "Apple Development" | sed -E 's/.*"(.*)".*/\1/')
+[[ -n "$IDENTITY" ]] && SIGN_ARGS=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$IDENTITY" CODE_SIGNING_ALLOWED=YES)
+echo "🔏 Signing: ${IDENTITY:-ad-hoc (keychain re-prompts on rebuilds)}"
 
 # Sync the root README into the app bundle so Xcode's file-system-synchronized
 # group bundles it and the chat's list_whisper_shortcut_docs /
