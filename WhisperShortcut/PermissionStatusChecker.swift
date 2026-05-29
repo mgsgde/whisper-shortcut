@@ -87,4 +87,18 @@ enum PermissionStatusChecker {
   static func requestScreenRecordingAccess() -> Bool {
     return CGRequestScreenCaptureAccess()
   }
+
+  /// Triggers the native macOS Accessibility consent prompt via the `kAXTrustedCheckOptionPrompt`
+  /// option. Beyond prompting, this is the ONLY way to make macOS pre-register WhisperShortcut in
+  /// the Accessibility list in System Settings (greyed-out), so the user only has to flip the
+  /// switch instead of manually adding the app with "+". Returns the *current* trust state, which
+  /// is almost always `false` on the first call because granting happens asynchronously in
+  /// System Settings. Like Screen Recording, macOS suppresses the prompt after a prior denial —
+  /// callers should fall back to deep-linking into System Settings in that case.
+  @discardableResult
+  static func requestAccessibilityAccess() -> Bool {
+    let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+    let options = [promptKey: true] as CFDictionary
+    return AXIsProcessTrustedWithOptions(options)
+  }
 }

@@ -52,6 +52,10 @@ enum UserDefaultsKeys {
   // MARK: - App State
   static let shouldTerminate = "shouldTerminate"
   static let hasUsedPromptFeature = "hasUsedPromptFeature"
+  /// Whether we've already shown the native macOS Accessibility prompt (which also pre-registers
+  /// the app in System Settings). macOS suppresses the prompt after a prior denial, so once this
+  /// is set we deep-link into System Settings instead of re-prompting.
+  static let hasShownAccessibilityPrompt = "hasShownAccessibilityPrompt"
   static let hasAppliedLaunchAtLoginDefault = "hasAppliedLaunchAtLoginDefault"
   static let hasCompletedOnboarding = "hasCompletedOnboarding"
   

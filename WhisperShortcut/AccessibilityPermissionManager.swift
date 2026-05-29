@@ -5,9 +5,19 @@ import Foundation
 /// Manages accessibility permissions and user guidance for WhisperShortcut
 class AccessibilityPermissionManager {
 
-  /// Checks if the app has accessibility permissions
+  /// Checks if the app has accessibility permissions (pure check, never prompts).
   static func hasAccessibilityPermission() -> Bool {
     AXIsProcessTrusted()
+  }
+
+  /// Triggers the native macOS Accessibility prompt. This also pre-registers WhisperShortcut in
+  /// the Accessibility list in System Settings, so the user only has to flip the switch instead of
+  /// manually adding the app via "+". macOS won't re-show the prompt after a denial, so we record
+  /// that it ran and fall back to a deep-link dialog on later attempts.
+  @discardableResult
+  static func requestAccessibilityPermission() -> Bool {
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasShownAccessibilityPrompt)
+    return PermissionStatusChecker.requestAccessibilityAccess()
   }
 
   /// Shows a single, elegant dialog for accessibility permission
@@ -52,14 +62,18 @@ class AccessibilityPermissionManager {
     // Mark that the user has tried the prompt feature (for future reference)
     markPromptFeatureUsed()
 
-    let hasPermission = hasAccessibilityPermission()
-
-    if !hasPermission {
-      // Show dialog immediately when user actually needs the permission
-      showAccessibilityPermissionDialog()
-      return false
+    if hasAccessibilityPermission() {
+      return true
     }
 
-    return true
+    // First time the permission is needed: fire the native macOS prompt, which also pre-registers
+    // WhisperShortcut in the Accessibility list (greyed-out) so the user only flips a switch.
+    // After a prior denial macOS won't re-prompt, so fall back to our deep-link dialog.
+    if UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasShownAccessibilityPrompt) {
+      showAccessibilityPermissionDialog()
+    } else {
+      requestAccessibilityPermission()
+    }
+    return false
   }
 }

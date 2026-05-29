@@ -375,7 +375,7 @@ struct WelcomeAccessibilityStep: View {
         WelcomePermissionBadge(status: status)
       }
 
-      Text("With Accessibility enabled, WhisperShortcut can paste your transcribed text into whatever app you're using. macOS doesn't allow apps to grant this themselves — you'll need to flip the switch in System Settings.")
+      Text("With Accessibility enabled, WhisperShortcut can paste your transcribed text into whatever app you're using. Grant it below — macOS pre-adds WhisperShortcut to the list, so you only have to flip the switch under Privacy → Accessibility.")
         .font(.callout)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -383,17 +383,21 @@ struct WelcomeAccessibilityStep: View {
       HStack(spacing: 12) {
         if status != .granted {
           Button {
+            AccessibilityPermissionManager.requestAccessibilityPermission()
+          } label: {
+            Label("Grant Accessibility", systemImage: "accessibility")
+              .font(.callout)
+          }
+          .buttonStyle(.borderedProminent)
+          .pointerCursorOnHover()
+          Button {
             PermissionStatusChecker.openSystemSettings(for: .accessibility)
           } label: {
             Label("Open System Settings", systemImage: "arrow.up.right.square")
               .font(.callout)
           }
-          .buttonStyle(.borderedProminent)
+          .buttonStyle(.bordered)
           .pointerCursorOnHover()
-          Text("Then toggle WhisperShortcut under Privacy → Accessibility.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
         } else {
           Label("Accessibility access granted.", systemImage: "checkmark.circle.fill")
             .foregroundStyle(.green)
