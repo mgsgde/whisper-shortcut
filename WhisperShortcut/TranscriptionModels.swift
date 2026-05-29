@@ -10,13 +10,14 @@ import Foundation
 // MARK: - Transcription Model Enum
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
 // GA (stable IDs, no -preview): gemini-2.5-flash, gemini-2.5-flash-lite, gemini-3.1-flash-lite, gemini-3.5-flash.
-// Preview (keep -preview): gemini-3-flash-preview, gemini-3-pro-preview, gemini-3.1-pro-preview.
+// Preview (keep -preview): gemini-3-flash-preview, gemini-3.1-pro-preview.
+// gemini-3-pro-preview was shut down 2026-03-09 (now returns 404) and was removed; persisted
+// selections forward to gemini-3.1-pro-preview via migrateLegacyTranscriptionRawValue.
 enum TranscriptionModel: String, CaseIterable {
   // Gemini models (online)
   case gemini25Flash = "gemini-2.5-flash"
   case gemini25FlashLite = "gemini-2.5-flash-lite"
   case gemini3Flash = "gemini-3-flash-preview"
-  case gemini3Pro = "gemini-3-pro-preview"
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite"
   case gemini35Flash = "gemini-3.5-flash"
@@ -32,6 +33,9 @@ enum TranscriptionModel: String, CaseIterable {
   case openAIGPT4oTranscribe = "openai-gpt-4o-transcribe"
   case openAIGPT4oMiniTranscribe = "openai-gpt-4o-mini-transcribe"
 
+  // xAI Grok transcription (cloud, xAI API key required) — POST /v1/stt, multipart, model=grok-stt.
+  case xaiTranscribe = "grok-stt"
+
   // Self-hosted transcription endpoint (any OpenAI /v1/audio/transcriptions–compatible endpoint, e.g.
   // faster-whisper-server, whisper-asr-webservice, or any proxy). Raw value kept stable from the
   // original "Custom Transcription API" feature so existing UserDefaults selections still resolve.
@@ -45,8 +49,6 @@ enum TranscriptionModel: String, CaseIterable {
       return "Gemini 2.5 Flash-Lite"
     case .gemini3Flash:
       return "Gemini 3 Flash"
-    case .gemini3Pro:
-      return "Gemini 3 Pro"
     case .gemini31Pro:
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
@@ -67,6 +69,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "GPT-4o Transcribe"
     case .openAIGPT4oMiniTranscribe:
       return "GPT-4o Mini Transcribe"
+    case .xaiTranscribe:
+      return "Grok Speech-to-Text"
     case .selfHostedTranscription:
       return "Self-hosted Transcription Endpoint"
     }
@@ -81,8 +85,6 @@ enum TranscriptionModel: String, CaseIterable {
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
     case .gemini3Flash:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent"
-    case .gemini3Pro:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent"
     case .gemini31Pro:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent"
     case .gemini31FlashLite:
@@ -93,6 +95,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "" // Offline models don't use API endpoints
     case .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
       return AppConstants.openAITranscriptionsEndpoint
+    case .xaiTranscribe:
+      return AppConstants.xaiSTTEndpoint
     case .selfHostedTranscription:
       return "" // URL is configured by the user in Settings
     }
@@ -112,8 +116,8 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini31FlashLite, .gemini25FlashLite, .gemini25Flash, .whisperBase:
       return true
-    case .gemini3Flash, .gemini3Pro, .gemini31Pro, .gemini35Flash, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge,
-         .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .selfHostedTranscription:
+    case .gemini3Flash, .gemini31Pro, .gemini35Flash, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge,
+         .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe, .selfHostedTranscription:
       return false
     }
   }
@@ -125,13 +129,15 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash:
       return "Low"
-    case .gemini3Pro, .gemini31Pro:
+    case .gemini31Pro:
       return "Medium"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "Free (Offline)"
     case .openAIGPT4oTranscribe:
       return "Medium"
     case .openAIGPT4oMiniTranscribe:
+      return "Low"
+    case .xaiTranscribe:
       return "Low"
     case .selfHostedTranscription:
       return "Custom"
@@ -146,8 +152,6 @@ enum TranscriptionModel: String, CaseIterable {
       return "Google's Gemini 2.5 Flash-Lite model • Fastest latency • Cost-efficient"
     case .gemini3Flash:
       return "Google's Gemini 3 Flash model • Latest 3-series • Pro-level intelligence at Flash speed"
-    case .gemini3Pro:
-      return "Google's Gemini 3 Pro model • Best quality and reasoning • Multimodal"
     case .gemini31Pro:
       return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
     case .gemini31FlashLite:
@@ -168,6 +172,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "OpenAI's flagship audio transcription model • High accuracy • Cloud"
     case .openAIGPT4oMiniTranscribe:
       return "OpenAI's faster, cheaper transcription model • Cloud"
+    case .xaiTranscribe:
+      return "xAI's Grok Speech-to-Text • Cloud • Requires xAI API key"
     case .selfHostedTranscription:
       return "Send audio to your own OpenAI-compatible /v1/audio/transcriptions endpoint"
     }
@@ -175,10 +181,20 @@ enum TranscriptionModel: String, CaseIterable {
   
   var isGemini: Bool {
     switch self {
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini3Pro, .gemini31Pro, .gemini31FlashLite, .gemini35Flash:
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31Pro, .gemini31FlashLite, .gemini35Flash:
       return true
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .selfHostedTranscription:
+         .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe, .selfHostedTranscription:
+      return false
+    }
+  }
+
+  /// True for models that route through xAI's hosted /v1/stt endpoint (user pays via xAI API key).
+  var isXAI: Bool {
+    switch self {
+    case .xaiTranscribe:
+      return true
+    default:
       return false
     }
   }
@@ -260,6 +276,9 @@ enum TranscriptionModel: String, CaseIterable {
     case "gemini-3.1-flash-lite-preview":
       // GA replaced the -preview slug; same model, stable ID.
       return TranscriptionModel.gemini31FlashLite.rawValue
+    case "gemini-3-pro-preview":
+      // Shut down by Google 2026-03-09 (now returns 404); forward to the current Pro preview.
+      return TranscriptionModel.gemini31Pro.rawValue
     default:
       return raw
     }
@@ -284,6 +303,7 @@ enum TranscriptionModel: String, CaseIterable {
   enum AsymmetryClass: Int {
     case offlineWhisper
     case openAIAudio
+    case xaiAudio
     case selfHostedTranscription
     case geminiFlashLite
     case geminiFlash
@@ -296,13 +316,15 @@ enum TranscriptionModel: String, CaseIterable {
       return .offlineWhisper
     case .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
       return .openAIAudio
+    case .xaiTranscribe:
+      return .xaiAudio
     case .selfHostedTranscription:
       return .selfHostedTranscription
     case .gemini25FlashLite, .gemini31FlashLite:
       return .geminiFlashLite
     case .gemini25Flash, .gemini3Flash, .gemini35Flash:
       return .geminiFlash
-    case .gemini3Pro, .gemini31Pro:
+    case .gemini31Pro:
       return .geminiPro
     }
   }
@@ -313,7 +335,7 @@ enum TranscriptionModel: String, CaseIterable {
   /// information when `self` is strictly in a higher tier.
   func canInformativelyVerify(audioFrom transcriptionModel: TranscriptionModel) -> Bool {
     switch transcriptionModel.asymmetryClass {
-    case .offlineWhisper, .openAIAudio, .selfHostedTranscription:
+    case .offlineWhisper, .openAIAudio, .xaiAudio, .selfHostedTranscription:
       return self.isGemini
     default:
       guard self.isGemini else { return false }

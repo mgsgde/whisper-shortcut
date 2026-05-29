@@ -47,6 +47,7 @@ struct GoogleAPIKeySection: View {
         .onChange(of: viewModel.data.googleAPIKey) { _, newValue in
           Task {
             _ = KeychainManager.shared.saveGoogleAPIKey(newValue)
+            ModelSelectionReconciler.reconcileAll()
           }
         }
 

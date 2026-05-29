@@ -50,10 +50,22 @@ struct ChatSidebar: View {
   }
 
   private func groupedSessions(_ sessions: [ChatSession]) -> [(DateGroup, [ChatSession])] {
-    let sorted = sessions.sorted { $0.lastUpdated > $1.lastUpdated }
+    grouped(sessions) { $0.lastUpdated }
+  }
+
+  /// Groups meetings by when the meeting actually took place (parsed from `meetingStem`),
+  /// falling back to `lastUpdated` for sessions whose stem can't be parsed.
+  private func groupedMeetings(_ sessions: [ChatSession]) -> [(DateGroup, [ChatSession])] {
+    grouped(sessions) { session in
+      session.meetingStem.flatMap(MeetingListService.date(fromStem:)) ?? session.lastUpdated
+    }
+  }
+
+  private func grouped(_ sessions: [ChatSession], by date: (ChatSession) -> Date) -> [(DateGroup, [ChatSession])] {
+    let sorted = sessions.sorted { date($0) > date($1) }
     var groups: [DateGroup: [ChatSession]] = [:]
     for session in sorted {
-      let group = dateGroup(for: session.lastUpdated)
+      let group = dateGroup(for: date(session))
       groups[group, default: []].append(session)
     }
     return DateGroup.allCases.compactMap { group in
@@ -115,8 +127,11 @@ struct ChatSidebar: View {
               withAnimation(.easeInOut(duration: 0.15)) { meetingsCollapsed.toggle() }
             }
             if !meetingsCollapsed {
-              ForEach(meetings, id: \.id) { session in
-                sidebarRow(session: session)
+              ForEach(Array(groupedMeetings(meetings).enumerated()), id: \.offset) { _, pair in
+                meetingDateSubHeader(pair.0.label)
+                ForEach(pair.1, id: \.id) { session in
+                  sidebarRow(session: session)
+                }
               }
             }
           }
@@ -295,6 +310,20 @@ struct ChatSidebar: View {
         .padding(.bottom, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+  }
+
+  /// Lighter, indented date label used to group meetings under the "Meetings" header.
+  /// Non-collapsible on purpose so it doesn't share `collapsedGroups` state with the chat date groups.
+  private func meetingDateSubHeader(_ label: String) -> some View {
+    Text(label.uppercased())
+      .font(.system(size: 8.5, weight: .semibold, design: .default))
+      .tracking(1.0)
+      .foregroundColor(ChatTheme.secondaryText.opacity(0.6))
+      .padding(.leading, 18)
+      .padding(.trailing, 12)
+      .padding(.top, 8)
+      .padding(.bottom, 4)
+      .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   private func collapsibleSectionHeader(_ group: DateGroup, showDivider: Bool = false) -> some View {

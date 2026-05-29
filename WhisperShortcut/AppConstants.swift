@@ -271,4 +271,7 @@ Transcript:
   /// `output_format.codec` is `pcm` at `sample_rate` 24000.
   /// Reference: https://docs.x.ai/developers/model-capabilities/audio/text-to-speech
   static let xaiTTSEndpoint = "https://api.x.ai/v1/tts"
+  /// xAI (Grok) speech-to-text endpoint. Multipart POST: model=grok-stt, language, format=json, file=@ (file last).
+  /// Reference: https://docs.x.ai/developers/model-capabilities/audio/speech-to-text
+  static let xaiSTTEndpoint = "https://api.x.ai/v1/stt"
 }

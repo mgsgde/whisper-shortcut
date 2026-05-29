@@ -38,6 +38,7 @@ struct XAIAPIKeySection: View {
         }
         .onChange(of: xaiAPIKey) { _, newValue in
           _ = KeychainManager.shared.saveXAIAPIKey(newValue)
+          ModelSelectionReconciler.reconcileAll()
         }
 
         Button(action: { isKeyVisible.toggle() }) {

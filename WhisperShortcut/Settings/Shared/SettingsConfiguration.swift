@@ -24,7 +24,9 @@ enum ChatModelProvider: String, CaseIterable {
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
 // GA: gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro, gemini-3.1-flash-lite, gemini-3.5-flash.
-// Preview: gemini-3-flash-preview, gemini-3-pro-preview, gemini-3.1-pro-preview.
+// Preview: gemini-3-flash-preview, gemini-3.1-pro-preview.
+// gemini-3-pro-preview was shut down 2026-03-09 (404) and removed; persisted values forward to
+// gemini-3.1-pro-preview via migrateLegacyPromptRawValue.
 // Grok model IDs: https://docs.x.ai/docs/models (grok-4-1-fast-non-reasoning was retired 2026-05-15
 // and silently redirects to grok-4.3; the case was removed — see migrateLegacyPromptRawValue).
 // OpenAI model IDs: https://platform.openai.com/docs/models.
@@ -34,7 +36,6 @@ enum PromptModel: String, CaseIterable {
   case gemini25FlashLite = "gemini-2.5-flash-lite"
   case gemini25Pro = "gemini-2.5-pro"
   case gemini3Flash = "gemini-3-flash-preview"
-  case gemini3Pro = "gemini-3-pro-preview"
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite"
   case gemini35Flash = "gemini-3.5-flash"
@@ -64,8 +65,6 @@ enum PromptModel: String, CaseIterable {
       return "Gemini 2.5 Pro"
     case .gemini3Flash:
       return "Gemini 3 Flash"
-    case .gemini3Pro:
-      return "Gemini 3 Pro"
     case .gemini31Pro:
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
@@ -99,8 +98,6 @@ enum PromptModel: String, CaseIterable {
       return "Google's Gemini 2.5 Pro model • Strong reasoning and instruction following • Stable (GA)"
     case .gemini3Flash:
       return "Google's Gemini 3 Flash model • Latest 3-series • Pro-level intelligence at Flash speed • Multimodal"
-    case .gemini3Pro:
-      return "Google's Gemini 3 Pro model • Best quality and reasoning • Multimodal"
     case .gemini31Pro:
       return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
     case .gemini31FlashLite:
@@ -133,7 +130,7 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash:
       return "Low"
-    case .gemini25Pro, .gemini3Pro, .gemini31Pro:
+    case .gemini25Pro, .gemini31Pro:
       return "Medium"
     case .grok4, .grok4Reasoning, .grok43:
       return "Medium"
@@ -198,7 +195,7 @@ enum PromptModel: String, CaseIterable {
   /// Non-Gemini models return `nil` (the field is ignored by other providers).
   var geminiThinkingBudget: Int? {
     switch self {
-    case .gemini25Pro, .gemini3Pro, .gemini31Pro:
+    case .gemini25Pro, .gemini31Pro:
       return -1
     case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash:
       return 0
@@ -227,8 +224,6 @@ enum PromptModel: String, CaseIterable {
       return nil // 2.5 Pro not used for transcription in this app
     case .gemini3Flash:
       return .gemini3Flash
-    case .gemini3Pro:
-      return .gemini3Pro
     case .gemini31Pro:
       return .gemini31Pro
     case .gemini31FlashLite:
@@ -292,6 +287,9 @@ enum PromptModel: String, CaseIterable {
     case "gpt-4o-audio-preview":
       // Renamed by OpenAI to `gpt-audio`; the case's rawValue now matches the new slug.
       return Self.openaiGPT4oAudio.rawValue
+    case "gemini-3-pro-preview":
+      // Shut down by Google 2026-03-09 (now returns 404); forward to the current Pro preview.
+      return Self.gemini31Pro.rawValue
     default:
       return raw
     }
@@ -374,6 +372,9 @@ enum TTSProvider {
 //   OpenAI — https://platform.openai.com/docs/guides/text-to-speech (/v1/audio/speech)
 //   xAI    — https://docs.x.ai/developers/model-capabilities/audio/text-to-speech (/v1/tts)
 enum TTSModel: String, CaseIterable {
+  // gemini-3.1-flash-tts-preview is Google's named replacement for the 2.5 TTS previews
+  // (which shut down 2026-10-16). Verified live via scripts/test-gemini-models.sh.
+  case gemini31FlashTTS = "gemini-3.1-flash-tts-preview"
   case gemini25FlashTTS = "gemini-2.5-flash-preview-tts"
   case gemini25ProTTS = "gemini-2.5-pro-preview-tts"
   case openAIGpt4oMiniTTS = "gpt-4o-mini-tts"
@@ -381,7 +382,7 @@ enum TTSModel: String, CaseIterable {
 
   var provider: TTSProvider {
     switch self {
-    case .gemini25FlashTTS, .gemini25ProTTS: return .gemini
+    case .gemini31FlashTTS, .gemini25FlashTTS, .gemini25ProTTS: return .gemini
     case .openAIGpt4oMiniTTS: return .openai
     case .grokVoiceTTS: return .xai
     }
@@ -389,6 +390,7 @@ enum TTSModel: String, CaseIterable {
 
   var displayName: String {
     switch self {
+    case .gemini31FlashTTS: return "Gemini 3.1 Flash TTS"
     case .gemini25FlashTTS: return "Gemini 2.5 Flash TTS"
     case .gemini25ProTTS: return "Gemini 2.5 Pro TTS"
     case .openAIGpt4oMiniTTS: return "GPT-4o mini TTS"
@@ -398,8 +400,10 @@ enum TTSModel: String, CaseIterable {
 
   var description: String {
     switch self {
+    case .gemini31FlashTTS:
+      return "Google's Gemini 3.1 Flash TTS • Latest preview • Fast and efficient • Recommended"
     case .gemini25FlashTTS:
-      return "Google's Gemini 2.5 Flash TTS model • Fast and efficient • Recommended"
+      return "Google's Gemini 2.5 Flash TTS model • Fast and efficient"
     case .gemini25ProTTS:
       return "Google's Gemini 2.5 Pro TTS model • Higher quality • Better voice synthesis"
     case .openAIGpt4oMiniTTS:
@@ -437,7 +441,7 @@ enum TTSModel: String, CaseIterable {
   }
 
   var isRecommended: Bool {
-    return self == .gemini25FlashTTS
+    return self == .gemini31FlashTTS
   }
 
   var costLevel: String {
@@ -446,7 +450,7 @@ enum TTSModel: String, CaseIterable {
 
   /// Models grouped for display in the Read Aloud picker (provider order: Gemini, OpenAI, xAI).
   static let readAloudModels: [TTSModel] = [
-    .gemini25FlashTTS, .gemini25ProTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS,
+    .gemini31FlashTTS, .gemini25FlashTTS, .gemini25ProTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS,
   ]
 
   /// Maps any persisted raw values that have since been renamed onto current cases.
@@ -826,7 +830,7 @@ struct SettingsDefaults {
   static let readAloudVoice = "Charon"
   /// Default Read Aloud TTS model when the user hasn't picked one. User selection is persisted
   /// under `UserDefaultsKeys.selectedReadAloudModel` and read via `ReadAloudPreferences.model`.
-  static let readAloudModel: TTSModel = .gemini25FlashTTS
+  static let readAloudModel: TTSModel = .gemini31FlashTTS
   /// When true, the global Read Aloud shortcut first runs a "rewrite for speech" pass before TTS.
   static let readAloudSmartRewriteEnabled = true
   /// Playback rate applied locally during TTS playback. Pitch is preserved.
@@ -892,6 +896,7 @@ struct SettingsData {
   var selectedPromptModel: PromptModel = SettingsDefaults.selectedPromptModel
   var selectedChatModel: PromptModel = SettingsDefaults.selectedChatModel
   var selectedImprovementModel: PromptModel = SettingsDefaults.selectedImprovementModel
+  var selectedReadAloudModel: TTSModel = SettingsDefaults.readAloudModel
   var chatCloseOnFocusLoss: Bool = SettingsDefaults.chatCloseOnFocusLoss
   var settingsCloseOnFocusLoss: Bool = SettingsDefaults.settingsCloseOnFocusLoss
   var customPromptText: String = SettingsDefaults.customPromptText

@@ -126,6 +126,7 @@ struct SpeechToTextSettingsTab: View {
         selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
         geminiDisabled: !GeminiCredentialProvider.shared.hasCredential(),
         openAIDisabled: !KeychainManager.shared.hasValidOpenAIAPIKey(),
+        xaiDisabled: !KeychainManager.shared.hasValidXAIAPIKey(),
         subscriptionMode: false,
         onModelChanged: {
           UserDefaults.standard.set(

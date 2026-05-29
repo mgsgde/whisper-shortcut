@@ -209,6 +209,20 @@ class SpeechService {
       return result
     }
 
+    // xAI Grok hosted transcription (/v1/stt)
+    if model.isXAI {
+      try validateAudioFileFormat(at: audioURL)
+      let dictationHint = (promptOverride ?? buildDictationPrompt()).trimmingCharacters(in: .whitespacesAndNewlines)
+      let result = try await transcribeWithXAI(
+        audioURL: audioURL,
+        displayName: model.displayName,
+        dictationHint: dictationHint.isEmpty ? nil : dictationHint
+      )
+      let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
+      DebugLogger.logSpeech("SPEED: [\(model.displayName)] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
+      return result
+    }
+
     // Self-hosted OpenAI-compatible endpoint
     if model == .selfHostedTranscription {
       try validateAudioFileFormat(at: audioURL)
@@ -883,51 +897,67 @@ class SpeechService {
     return cleaned.isEmpty ? text : cleaned
   }
 
+  /// Multi-provider Read Aloud. Dispatches by the selected model's provider. All three providers
+  /// emit raw PCM (s16le 24kHz mono), which is exactly what `MenuBarController.playTTSAudio`
+  /// expects, so the returned `Data` is provider-independent.
   private func performTTS(text: String, voiceName: String? = nil) async throws -> Data {
-    guard let credential = await credentialProvider.getCredential() else {
-      throw TranscriptionError.noGoogleAPIKey
-    }
-
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    let selectedVoice = voiceName ?? SettingsDefaults.readAloudVoice
-    let selectedTTSModel = SettingsDefaults.readAloudModel
+    let model = ReadAloudPreferences.model
+    // No voice picker in the UI: nil → each provider's default voice (a name its API accepts).
+    let voice = voiceName ?? model.defaultVoice
 
-    DebugLogger.log("TTS: Starting text-to-speech for text (length: \(trimmedText.count) chars) with voice: \(selectedVoice), model: \(selectedTTSModel.displayName)")
+    DebugLogger.log("TTS: Starting text-to-speech (length: \(trimmedText.count) chars, voice: \(voice), model: \(model.displayName), provider: \(model.provider.displayName))")
 
-    let chunker = TextChunker()
-    if chunker.needsChunking(trimmedText) {
-      DebugLogger.log("TTS: Using chunked synthesis (text length > \(AppConstants.ttsChunkSizeChars) chars)")
-      let chunkService = ChunkTTSService()
-      chunkService.progressDelegate = chunkProgressDelegate
-      return try await chunkService.synthesize(
-        text: trimmedText,
-        voiceName: selectedVoice,
-        credential: credential,
-        model: selectedTTSModel
-      )
-    } else {
-      DebugLogger.log("TTS: Using single-request synthesis (text length <= \(AppConstants.ttsChunkSizeChars) chars)")
+    // ChunkTTSService handles splitting, parallelism, retry/rate-limit coordination, and
+    // merging. Every provider returns raw PCM (s16le 24kHz mono), so the merged result feeds
+    // `playTTSAudio` unchanged — we only supply a per-chunk synthesizer for the chosen provider.
+    let synthesizeChunk: (String) async throws -> Data
+    switch model.provider {
+    case .gemini:
+      guard let credential = await credentialProvider.getCredential() else {
+        throw TranscriptionError.noGoogleAPIKey
+      }
+      synthesizeChunk = { [weak self] chunkText in
+        guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
+        return try await self.synthesizeGeminiTTSChunk(text: chunkText, voice: voice, model: model, credential: credential)
+      }
+    case .openai:
+      synthesizeChunk = { [weak self] chunkText in
+        guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
+        return try await self.synthesizeOpenAITTS(text: chunkText, voice: voice, model: model)
+      }
+    case .xai:
+      synthesizeChunk = { [weak self] chunkText in
+        guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
+        return try await self.synthesizeXAITTS(text: chunkText, voice: voice, model: model)
+      }
     }
 
-    let endpoint = selectedTTSModel.apiEndpoint
+    let chunkService = ChunkTTSService()
+    chunkService.progressDelegate = chunkProgressDelegate
+    return try await chunkService.synthesize(text: trimmedText, model: model, synthesizeText: synthesizeChunk)
+  }
+
+  // MARK: - Gemini TTS (Generative Language API) — synthesizes one chunk per call.
+  private func synthesizeGeminiTTSChunk(text: String, voice: String, model: TTSModel, credential: GeminiCredential) async throws -> Data {
+    let endpoint = model.apiEndpoint
     let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
     let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
     var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
 
     let ttsRequest = GeminiTTSRequest(
-      contents: [GeminiTTSRequest.GeminiTTSContent(parts: [GeminiTTSRequest.GeminiTTSPart(text: "Say the following: \(trimmedText)")])],
+      contents: [GeminiTTSRequest.GeminiTTSContent(parts: [GeminiTTSRequest.GeminiTTSPart(text: "Say the following: \(text)")])],
       generationConfig: GeminiTTSRequest.GeminiTTSGenerationConfig(
         responseModalities: ["AUDIO"],
         speechConfig: GeminiTTSRequest.GeminiTTSSpeechConfig(
           voiceConfig: GeminiTTSRequest.GeminiTTSVoiceConfig(
-            prebuiltVoiceConfig: GeminiTTSRequest.GeminiTTSPrebuiltVoiceConfig(voiceName: selectedVoice)
+            prebuiltVoiceConfig: GeminiTTSRequest.GeminiTTSPrebuiltVoiceConfig(voiceName: voice)
           )
         )
       )
     )
     request.httpBody = try JSONEncoder().encode(ttsRequest)
 
-    DebugLogger.log("TTS: Making request to Gemini TTS API (text length: \(trimmedText.count) chars)")
     let result = try await geminiClient.performRequest(
       request,
       responseType: GeminiChatResponse.self,
@@ -935,14 +965,69 @@ class SpeechService {
       withRetry: true
     )
 
-    DebugLogger.log("TTS: Received response from Gemini TTS API")
     guard let base64Audio = result.candidates.first?.content.parts.first(where: { $0.inlineData != nil })?.inlineData?.data,
           let decoded = Data(base64Encoded: base64Audio) else {
-      DebugLogger.logError("TTS: Failed to decode base64 audio from response")
+      DebugLogger.logError("TTS: Failed to decode base64 audio from Gemini response")
       throw TranscriptionError.networkError("Failed to decode base64 audio data")
     }
-    DebugLogger.logSuccess("TTS: Successfully generated audio (size: \(decoded.count) bytes)")
     return decoded
+  }
+
+  /// OpenAI TTS — `response_format:"pcm"` returns raw s16le 24kHz mono PCM (no header).
+  private func synthesizeOpenAITTS(text: String, voice: String, model: TTSModel) async throws -> Data {
+    let token = (keychainManager.getOpenAIAPIKey() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !token.isEmpty else {
+      throw TranscriptionError.networkError("OpenAI API key is missing — add it in Settings → General.")
+    }
+    guard let url = URL(string: AppConstants.openAISpeechEndpoint) else { throw TranscriptionError.invalidRequest }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    let body: [String: Any] = [
+      "model": model.rawValue,
+      "input": text,
+      "voice": voice,
+      "response_format": "pcm",
+    ]
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+    let (data, http) = try await Self.performWithRetryOn429(
+      request: request, session: makeTranscriptionURLSession(), logPrefix: "TTS-OPENAI")
+    guard http.statusCode == 200 else {
+      let bodyText = String(data: data, encoding: .utf8)?.prefix(200) ?? ""
+      throw TranscriptionError.networkError("OpenAI TTS failed (HTTP \(http.statusCode)): \(bodyText)")
+    }
+    return data
+  }
+
+  /// xAI Grok TTS — `output_format:{codec:"pcm",sample_rate:24000}` returns raw s16le 24kHz mono PCM.
+  /// The model id is implied by the endpoint; sending a `model` field returns "Invalid request format".
+  private func synthesizeXAITTS(text: String, voice: String, model: TTSModel) async throws -> Data {
+    let token = (keychainManager.getXAIAPIKey() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !token.isEmpty else {
+      throw TranscriptionError.networkError("xAI API key is missing — add it in Settings → General.")
+    }
+    guard let url = URL(string: AppConstants.xaiTTSEndpoint) else { throw TranscriptionError.invalidRequest }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    let body: [String: Any] = [
+      "text": text,
+      "voice_id": voice,
+      "language": "auto",
+      "output_format": ["codec": "pcm", "sample_rate": 24000] as [String: Any],
+    ]
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+    let (data, http) = try await Self.performWithRetryOn429(
+      request: request, session: makeTranscriptionURLSession(), logPrefix: "TTS-XAI")
+    guard http.statusCode == 200 else {
+      let bodyText = String(data: data, encoding: .utf8)?.prefix(200) ?? ""
+      throw TranscriptionError.networkError("xAI TTS failed (HTTP \(http.statusCode)): \(bodyText)")
+    }
+    return data
   }
 
   // MARK: - OpenAI Transcription (cloud)
@@ -972,6 +1057,40 @@ class SpeechService {
       extraHeaders: [],
       session: session,
       logPrefix: "OPENAI-TRANSCRIPTION",
+      dictationHint: dictationHint
+    )
+  }
+
+  // MARK: - xAI Grok Transcription (cloud, /v1/stt)
+
+  /// Transcribes audio via xAI's hosted Speech-to-Text endpoint. The wire format is the same
+  /// OpenAI-style multipart (`model`/`language`/`file`) the OpenAI path uses, and xAI ignores the
+  /// extra `prompt` field gracefully — verified live — so we reuse the shared helper.
+  private func transcribeWithXAI(audioURL: URL, displayName: String, dictationHint: String? = nil) async throws -> String {
+    let token = (keychainManager.getXAIAPIKey() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !token.isEmpty else {
+      throw TranscriptionError.networkError("xAI API key is missing — add it in Settings → General.")
+    }
+    guard let endpoint = URL(string: AppConstants.xaiSTTEndpoint) else {
+      throw TranscriptionError.invalidRequest
+    }
+
+    let audioData = try Data(contentsOf: audioURL)
+    let fileExtension = audioURL.pathExtension.lowercased()
+    let mimeType = mimeTypeForAudioExtension(fileExtension)
+
+    let session = makeTranscriptionURLSession()
+    return try await sendOpenAICompatibleTranscriptionRequest(
+      url: endpoint,
+      fieldName: "file",
+      modelID: "grok-stt",
+      audioData: audioData,
+      fileExtension: fileExtension,
+      mimeType: mimeType,
+      bearerToken: token,
+      extraHeaders: [],
+      session: session,
+      logPrefix: "XAI-TRANSCRIPTION",
       dictationHint: dictationHint
     )
   }

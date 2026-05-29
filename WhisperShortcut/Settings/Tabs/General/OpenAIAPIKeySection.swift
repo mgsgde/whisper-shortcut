@@ -38,6 +38,7 @@ struct OpenAIAPIKeySection: View {
         }
         .onChange(of: openAIAPIKey) { _, newValue in
           _ = KeychainManager.shared.saveOpenAIAPIKey(newValue)
+          ModelSelectionReconciler.reconcileAll()
         }
 
         Button(action: { isKeyVisible.toggle() }) {

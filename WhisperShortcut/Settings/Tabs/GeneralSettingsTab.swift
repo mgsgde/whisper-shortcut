@@ -225,7 +225,7 @@ struct GeneralSettingsTab: View {
         let improvementSubscriptionMode = false
         PromptModelSelectionView(
           title: "Model for Smart Improvement",
-          subtitle: "Used for Smart Improvement (Improve from usage).",
+          subtitle: "Used for Smart Improvement (Improve from usage). Pick any provider you have a key for.",
           showSectionHeader: false,
           selectedModel: Binding(
             get: { viewModel.data.selectedImprovementModel },
@@ -235,6 +235,9 @@ struct GeneralSettingsTab: View {
               viewModel.data = d
             }
           ),
+          // Smart Improvement is a text task — offer every text-chat model (Gemini / OpenAI / xAI),
+          // not just the audio-capable Dictate-Prompt subset.
+          availableModels: PromptModel.chatModels,
           subscriptionMode: improvementSubscriptionMode,
           onModelChanged: {
             UserDefaults.standard.set(

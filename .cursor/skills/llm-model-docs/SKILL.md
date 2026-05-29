@@ -80,6 +80,7 @@ The app uses these OpenAI endpoints today: `/v1/chat/completions`, `/v1/audio/tr
 This is the canonical Gemini reference for the repo, covering chat, transcription, and TTS.
 
 - **Models overview** (IDs, GA vs Preview, capabilities): <https://ai.google.dev/gemini-api/docs/models>
+- **Deprecations / shutdown schedule**: <https://ai.google.dev/gemini-api/docs/deprecations>
 - **API reference**: <https://ai.google.dev/api/models>
 - **Speech generation (TTS)**: <https://ai.google.dev/gemini-api/docs/speech-generation> — the TTS voice catalogue and the `gemini-2.5-*-preview-tts` style IDs live here.
 - **Programmatic model list**: `GET https://generativelanguage.googleapis.com/v1beta/models` — verify IDs/capabilities at runtime when docs feel ambiguous.
@@ -127,6 +128,7 @@ When a model returns unexpected errors, or you suspect a deprecation/rename, che
    They read keys from `.env` at the repo root (mode 600, gitignored). Each script tests three buckets: `current` (must 200), `legacy` (Gemini/Grok: must still serve via redirect; OpenAI: must 404 to confirm retirement), and `candidate` (exploratory). Add a model to the right bucket whenever you make an enum change so future runs catch regressions.
 4. **Watch for silent redirects.** xAI redirects retired slugs to current ones with HTTP 200 but a different `model` field in the response. The Grok test script ([scripts/test-grok-models.sh](scripts/test-grok-models.sh)) compares response.model vs requested model — if they differ, it prints "redirected → X". When you see a redirect, the enum case is dead weight: remove it and add a `migrateLegacyPromptRawValue` mapping.
 5. **After code changes**: rebuild and restart via `bash scripts/rebuild-and-restart.sh` (per the always-applied rule in `.cursor/rules/index.mdc`).
+6. **If one provider's script fails uniformly, diagnose credentials first.** When every line for that provider shares the same HTTP code (e.g. all Gemini `400`), run one probe `curl` and read `error.message` before blaming model IDs. Common Gemini cases: `API key expired` / `API_KEY_INVALID` (renew in AI Studio, update `.env`) vs per-model `404` (retired slug — see [deprecations](https://ai.google.dev/gemini-api/docs/deprecations)). Report OpenAI, Grok, and Gemini pass/fail **separately** so the user does not think all providers failed.
 
 ## Anti-patterns
 

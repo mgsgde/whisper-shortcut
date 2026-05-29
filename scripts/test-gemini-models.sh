@@ -26,7 +26,6 @@ declare -a CURRENT_TEXT_MODELS=(
   "gemini-2.5-flash-lite"
   "gemini-2.5-pro"
   "gemini-3-flash-preview"
-  "gemini-3-pro-preview"
   "gemini-3.1-pro-preview"
   "gemini-3.1-flash-lite"
   "gemini-3.5-flash"
@@ -36,6 +35,11 @@ declare -a CURRENT_TEXT_MODELS=(
 # and migrateLegacyPromptRawValue but no longer use in fresh selections.
 declare -a LEGACY_TEXT_MODELS=(
   "gemini-3.1-flash-lite-preview"
+)
+
+# Retired by Google — still in enum until migrate; must 404 (see ai.google.dev/gemini-api/docs/deprecations).
+declare -a LEGACY_RETIRED_TEXT_MODELS=(
+  "gemini-3-pro-preview"
 )
 
 # Migration candidates surfaced by the models index (ai.google.dev/gemini-api/docs/models).
@@ -85,6 +89,30 @@ echo "=== Gemini text-generation legacy slugs (migrate-only, must still serve fo
 for m in "${LEGACY_TEXT_MODELS[@]}"; do test_text_model "$m" "legacy"; done
 
 echo ""
+echo "=== Gemini text-generation retired slugs (must 404 — confirms shutdown; enum cleanup pending) ==="
+test_legacy_retired_text_model() {
+  local model="$1"
+  printf "%-35s [%s] " "$model" "legacy-retired"
+  local response http_code
+  response=$(curl -sS -w "\n%{http_code}" -X POST "${BASE}/${model}:generateContent" \
+    -H "x-goog-api-key: $API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "$BODY" 2>/dev/null) || true
+  http_code=$(echo "$response" | tail -n1)
+  if [[ "$http_code" == "404" ]]; then
+    echo "OK (correctly removed by Google; add migrateLegacy* mapping when enum case is removed)"
+    ((PASS++)) || true
+  elif [[ "$http_code" == "200" ]]; then
+    echo "UNEXPECTED 200 — Google un-retired this slug; move back to current and reconsider migration"
+    ((FAIL++)) || true
+  else
+    echo "UNEXPECTED HTTP $http_code — investigate"
+    ((FAIL++)) || true
+  fi
+}
+for m in "${LEGACY_RETIRED_TEXT_MODELS[@]}"; do test_legacy_retired_text_model "$m"; done
+
+echo ""
 echo "=== Gemini text-generation candidates (migration targets) ==="
 for m in "${CANDIDATE_TEXT_MODELS[@]}"; do test_text_model "$m" "candidate"; done
 
@@ -92,11 +120,11 @@ for m in "${CANDIDATE_TEXT_MODELS[@]}"; do test_text_model "$m" "candidate"; don
 echo ""
 echo "=== Gemini TTS models ==="
 declare -a CURRENT_TTS=(
+  "gemini-3.1-flash-tts-preview"
   "gemini-2.5-flash-preview-tts"
   "gemini-2.5-pro-preview-tts"
 )
 declare -a CANDIDATE_TTS=(
-  "gemini-3.1-flash-tts-preview"
 )
 TTS_BODY='{"contents":[{"parts":[{"text":"Say the following: Hello"}]}],"generationConfig":{"responseModalities":["AUDIO"],"speechConfig":{"voiceConfig":{"prebuiltVoiceConfig":{"voiceName":"Charon"}}}}}'
 

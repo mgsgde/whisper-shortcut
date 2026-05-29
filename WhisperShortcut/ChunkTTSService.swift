@@ -24,6 +24,10 @@ enum ChunkedTTSError: Error, LocalizedError {
 
 /// Service for synthesizing long texts by splitting into chunks
 /// and processing them in parallel with retry logic.
+///
+/// Provider-agnostic: the caller injects a `synthesizeText` closure that turns one text
+/// segment into raw PCM (s16le, 24 kHz, mono). Retry, global rate-limit coordination, and
+/// audio merging are handled here, so Gemini / OpenAI / xAI all share this path.
 class ChunkTTSService {
     // MARK: - Properties
 
@@ -39,9 +43,6 @@ class ChunkTTSService {
     /// Text chunker for splitting text.
     private let chunker: TextChunker
 
-    /// Gemini API client for making requests.
-    private let geminiClient: GeminiAPIClient
-
     /// Coordinator for global rate limiting across all chunks.
     private let rateLimitCoordinator = RateLimitCoordinator(logPrefix: "TTS-RATE-LIMIT")
 
@@ -49,13 +50,11 @@ class ChunkTTSService {
 
     init(
         maxRetries: Int = 5,  // Increased from 3 to handle rate limiting with proper delays
-        retryDelay: TimeInterval = 1.5,
-        geminiClient: GeminiAPIClient? = nil
+        retryDelay: TimeInterval = 1.5
     ) {
         self.maxRetries = maxRetries
         self.retryDelay = retryDelay
         self.chunker = TextChunker()
-        self.geminiClient = geminiClient ?? GeminiAPIClient()
     }
 
     // MARK: - Public API
@@ -63,19 +62,18 @@ class ChunkTTSService {
     /// Synthesize text to speech using chunking if needed.
     /// - Parameters:
     ///   - text: The text to synthesize
-    ///   - voiceName: Voice name to use
-    ///   - credential: Gemini API credential (API key)
-    ///   - model: TTS model to use
-    /// - Returns: Synthesized audio data
+    ///   - model: TTS model to use (for logging only; the request is built by `synthesizeText`)
+    ///   - synthesizeText: Provider-specific closure that synthesizes one text segment to raw
+    ///     PCM. It should throw `TranscriptionError` (e.g. `.rateLimited`) so retry/backoff works.
+    /// - Returns: Synthesized audio data (merged PCM)
     func synthesize(
         text: String,
-        voiceName: String,
-        credential: GeminiCredential,
-        model: TTSModel
+        model: TTSModel,
+        synthesizeText: @escaping (String) async throws -> Data
     ) async throws -> Data {
         let startTime = CFAbsoluteTimeGetCurrent()
-        
-        DebugLogger.log("TTS-CHUNK-SERVICE: Starting synthesis (text length: \(text.count) chars, voice: \(voiceName), model: \(model.displayName))")
+
+        DebugLogger.log("TTS-CHUNK-SERVICE: Starting synthesis (text length: \(text.count) chars, model: \(model.displayName))")
 
         // Split text into chunks
         let chunks: [TextChunk]
@@ -101,12 +99,10 @@ class ChunkTTSService {
         // If only one chunk, process directly
         if chunks.count == 1 {
             DebugLogger.log("TTS-CHUNK-SERVICE: Single chunk, processing directly")
-            let result = try await synthesizeChunk(
+            let result = try await processChunk(
                 chunk: chunks[0],
-                voiceName: voiceName,
-                credential: credential,
-                model: model,
-                totalChunks: 1
+                totalChunks: 1,
+                synthesizeText: synthesizeText
             )
             let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
             DebugLogger.logSuccess("TTS-CHUNK-SERVICE: Single chunk synthesis completed in \(String(format: "%.2f", elapsedTime))s (\(result.data.count) bytes)")
@@ -117,9 +113,7 @@ class ChunkTTSService {
         DebugLogger.log("TTS-CHUNK-SERVICE: Starting parallel synthesis of \(chunks.count) chunks")
         let audioChunks = try await synthesizeParallel(
             chunks: chunks,
-            voiceName: voiceName,
-            credential: credential,
-            model: model
+            synthesizeText: synthesizeText
         )
 
         // Don't flip the menu bar into `.merging` if Stop already fired: the cancel handler
@@ -144,9 +138,7 @@ class ChunkTTSService {
 
     private func synthesizeParallel(
         chunks: [TextChunk],
-        voiceName: String,
-        credential: GeminiCredential,
-        model: TTSModel
+        synthesizeText: @escaping (String) async throws -> Data
     ) async throws -> [AudioChunkData] {
         let totalChunks = chunks.count
 
@@ -166,12 +158,10 @@ class ChunkTTSService {
                     }
 
                     do {
-                        let audioData = try await self.synthesizeChunk(
+                        let audioData = try await self.processChunk(
                             chunk: chunk,
-                            voiceName: voiceName,
-                            credential: credential,
-                            model: model,
-                            totalChunks: totalChunks
+                            totalChunks: totalChunks,
+                            synthesizeText: synthesizeText
                         )
                         return .success(audioData)
                     } catch {
@@ -203,7 +193,7 @@ class ChunkTTSService {
 
                         DebugLogger.logError("TTS-CHUNK-SERVICE: Chunk \(chunkError.index + 1)/\(totalChunks) failed: \(chunkError.error.localizedDescription)")
 
-                        // Notify delegate that chunk failed (no retry at this level - retries happen in synthesizeChunk)
+                        // Notify delegate that chunk failed (no retry at this level - retries happen in processChunk)
                         await MainActor.run {
                             progressDelegate?.chunkFailed(index: chunkError.index, error: chunkError.error, willRetry: false)
                             progressDelegate?.chunkProgressUpdated(completed: completed, total: totalChunks)
@@ -245,12 +235,10 @@ class ChunkTTSService {
 
     // MARK: - Single Chunk Processing
 
-    private func synthesizeChunk(
+    private func processChunk(
         chunk: TextChunk,
-        voiceName: String,
-        credential: GeminiCredential,
-        model: TTSModel,
-        totalChunks: Int
+        totalChunks: Int,
+        synthesizeText: @escaping (String) async throws -> Data
     ) async throws -> AudioChunkData {
         var lastError: Error?
 
@@ -272,40 +260,10 @@ class ChunkTTSService {
                     }
                 }
 
-                let endpoint = model.apiEndpoint
-                let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
-                let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
-                var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
-
-                let ttsRequest = GeminiTTSRequest(
-                    contents: [GeminiTTSRequest.GeminiTTSContent(parts: [GeminiTTSRequest.GeminiTTSPart(text: "Say the following: \(chunk.text)")])],
-                    generationConfig: GeminiTTSRequest.GeminiTTSGenerationConfig(
-                        responseModalities: ["AUDIO"],
-                        speechConfig: GeminiTTSRequest.GeminiTTSSpeechConfig(
-                            voiceConfig: GeminiTTSRequest.GeminiTTSVoiceConfig(
-                                prebuiltVoiceConfig: GeminiTTSRequest.GeminiTTSPrebuiltVoiceConfig(voiceName: voiceName)
-                            )
-                        )
-                    )
-                )
-                request.httpBody = try JSONEncoder().encode(ttsRequest)
-
                 DebugLogger.logDebug("TTS-CHUNK-SERVICE: Making API request for chunk \(chunk.index) (text length: \(chunk.text.count) chars)")
-                let result = try await geminiClient.performRequest(
-                    request,
-                    responseType: GeminiChatResponse.self,
-                    mode: "TTS-CHUNK-\(chunk.index)",
-                    withRetry: false
-                )
 
-                DebugLogger.logDebug("TTS-CHUNK-SERVICE: Received response for chunk \(chunk.index)")
-                guard let base64Audio = result.candidates.first?.content.parts.first(where: { $0.inlineData != nil })?.inlineData?.data,
-                      let decoded = Data(base64Encoded: base64Audio) else {
-                    DebugLogger.logError("TTS-CHUNK-SERVICE: Failed to decode base64 audio data for chunk \(chunk.index)")
-                    throw TranscriptionError.networkError("Failed to decode base64 audio data")
-                }
-                // Gemini TTS returns raw PCM (s16le 24kHz mono); no WAV header to strip
-                let audioData = decoded
+                // Provider-specific synthesis (returns raw PCM s16le 24kHz mono — no WAV header).
+                let audioData = try await synthesizeText(chunk.text)
 
                 await rateLimitCoordinator.reportSuccess()
                 DebugLogger.logSuccess("TTS-CHUNK-SERVICE: Chunk \(chunk.index) synthesized successfully (\(audioData.count) bytes, \(String(format: "%.2f", Double(audioData.count) / 24000.0 / 2.0))s estimated duration)")
@@ -390,4 +348,3 @@ private actor ResultAccumulator {
         return errors
     }
 }
-

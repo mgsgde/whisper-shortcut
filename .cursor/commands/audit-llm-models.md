@@ -24,6 +24,7 @@ The throughline is honesty: training data is stale, so every currency recommenda
 2. **Pull the current model index from each provider.** Use WebFetch first; if it returns 403 / hallucinates / is JS-rendered, fall back to WebSearch with the current year. URLs are documented in the **llm-model-docs** skill — read that skill if you have not already in this session.
    - **OpenAI**: <https://platform.openai.com/docs/models> + per-model pages on developers.openai.com. Also list available IDs programmatically: `GET https://api.openai.com/v1/models` with `Authorization: Bearer $OPENAI_API_KEY`.
    - **Gemini**: <https://ai.google.dev/gemini-api/docs/models> + programmatic list `GET https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY`.
+   - **Gemini deprecations** (shutdown dates, replacements): <https://ai.google.dev/gemini-api/docs/deprecations> — cross-check every enum slug still in `current` against this table before recommending “no change.”
    - **xAI**: <https://docs.x.ai/docs/models> + release notes <https://docs.x.ai/docs/release-notes> + retirement notices.
    - Cross-reference with provider status pages and forums if anything looks off.
 
@@ -54,6 +55,8 @@ The throughline is honesty: training data is stale, so every currency recommenda
    ./scripts/test-grok-models.sh
    ```
    Each prints `OK` / `FAIL` for three buckets: `current` (must serve), `legacy` (migration safety net — Gemini/Grok must still redirect with 200; OpenAI legacy must 404 to prove retirement), `candidate` (exploratory). If a model you want to recommend isn't in `candidate` yet, **add it there first**, re-run the script, and only recommend it if the script reports OK. Watch for xAI's silent redirects: `grok-test.sh` compares response.model vs requested model and prints `redirected → X` when they differ — that's a signal the slug is dead weight.
+   - **Partial Gemini failure:** If most `[current]` lines are OK and one slug returns **404**, treat it as a **retired enum case** (check deprecations), not a key problem. After removal, move the slug to `LEGACY_RETIRED` in `test-gemini-models.sh` with **must 404** (same pattern as OpenAI `LEGACY_CHAT_MODELS`), or add it there until the enum case is removed.
+   - **Uniform Gemini failure:** If every Gemini line fails with the same HTTP code, probe one request and read `error.message` (expired key vs outage) before reporting model failures. Report each provider's script result separately.
 
 5. **Make the recommendations.** Each one must include the exact replacement model ID, the doc URL where you confirmed it, the test-script line that proves it works against the user's API key, and what code change implements it.
 

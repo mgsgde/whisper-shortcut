@@ -94,5 +94,7 @@ enum UserDefaultsKeys {
   static let readAloudSmartRewriteEnabled = "readAloudSmartRewriteEnabled"
   /// Local playback rate for Read Aloud TTS. Stored as Double (e.g. 1.0, 1.25, 1.5).
   static let readAloudSpeed = "readAloudSpeed"
+  /// Selected Read Aloud TTS model raw value (Gemini / OpenAI / xAI). See TTSModel.
+  static let selectedReadAloudModel = "selectedReadAloudModel"
 }
 

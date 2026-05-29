@@ -27,6 +27,13 @@ class ContextDerivation {
     return model.asTranscriptionModel
   }
 
+  /// The user's selected Smart Improvement model (any provider), or the default.
+  private var selectedImprovementModel: PromptModel {
+    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
+      ?? SettingsDefaults.selectedImprovementModel.rawValue
+    return PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw)) ?? SettingsDefaults.selectedImprovementModel
+  }
+
   /// Result of focused load: primary (target mode) and secondary (current prompt + other modes capped).
   private struct FocusedLoadResult {
     let primaryText: String
@@ -92,11 +99,8 @@ class ContextDerivation {
   /// Analyzes interaction logs and derives the output for the given focus (one section only).
   /// Throws if no Gemini credential (API key) or if the Gemini request fails.
   func updateFromLogs(focus: GenerationKind) async throws {
-    guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
-      throw TranscriptionError.noGoogleAPIKey
-    }
-
-    DebugLogger.log("USER-CONTEXT-DERIVATION: Starting context update focus=\(focus)")
+    let model = selectedImprovementModel
+    DebugLogger.log("USER-CONTEXT-DERIVATION: Starting context update focus=\(focus) model=\(model.displayName) provider=\(model.provider)")
 
     let store = SystemPromptsStore.shared
     let currentPromptModeSystemPrompt = store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
@@ -117,18 +121,38 @@ class ContextDerivation {
       DebugLogger.log("USER-CONTEXT-DERIVATION: No primary interactions; using secondary only (\(loaded.secondaryCharCount) chars)")
     }
 
-    let audioAttachments = collectAudioAttachmentsIfApplicable(focus: focus)
-
-    let analysisResult = try await callGeminiForAnalysis(
-      focus: focus,
-      primaryText: loaded.primaryText,
-      secondaryText: loaded.secondaryText,
-      currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
-      currentDictationPrompt: currentDictationPrompt,
-      currentWhisperGlossary: currentWhisperGlossary,
-      audioAttachments: audioAttachments,
-      credential: credential
-    )
+    // Provider dispatch. Gemini keeps the audio-verification path (it can re-listen to dictation
+    // audio originally transcribed by a weaker/different model). OpenAI and xAI run a text-only
+    // analysis — their Smart Improvement models aren't audio-capable here, and prompt improvement
+    // is fundamentally a text task. This is what lets a single non-Gemini key power the feature.
+    let analysisResult: String
+    switch model.provider {
+    case .gemini:
+      guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
+        throw TranscriptionError.noGoogleAPIKey
+      }
+      let audioAttachments = collectAudioAttachmentsIfApplicable(focus: focus)
+      analysisResult = try await callGeminiForAnalysis(
+        focus: focus,
+        primaryText: loaded.primaryText,
+        secondaryText: loaded.secondaryText,
+        currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
+        currentDictationPrompt: currentDictationPrompt,
+        currentWhisperGlossary: currentWhisperGlossary,
+        audioAttachments: audioAttachments,
+        credential: credential
+      )
+    case .openai, .grok:
+      analysisResult = try await callTextModelForAnalysis(
+        focus: focus,
+        primaryText: loaded.primaryText,
+        secondaryText: loaded.secondaryText,
+        currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
+        currentDictationPrompt: currentDictationPrompt,
+        currentWhisperGlossary: currentWhisperGlossary,
+        model: model
+      )
+    }
 
     try writeOutputFile(analysisResult: analysisResult, focus: focus)
 
@@ -559,41 +583,15 @@ class ContextDerivation {
     var request = try geminiClient.createRequest(endpoint: endpoint, credential: credentialForRequest)
 
     let systemPrompt = systemPromptForFocus(focus, audioAttached: !audioAttachments.isEmpty)
-
-    // Build a clearly sectioned user message so the model can locate the current prompt
-    // separately from interaction data when deciding to refine vs. NO_CHANGE.
-    let currentPrompt: String = {
-      switch focus {
-      case .dictation: return currentDictationPrompt ?? ""
-      case .whisperGlossary: return currentWhisperGlossary ?? ""
-      case .promptMode: return currentPromptModeSystemPrompt ?? ""
-      case .chat: return SystemPromptsStore.shared.loadSection(.chat) ?? ""
-      }
-    }()
-
-    var userMessageParts: [String] = []
-    if !currentPrompt.isEmpty {
-      userMessageParts.append("## Current prompt (refine this; output NO_CHANGE if no improvement is justified)\n\n\(currentPrompt)")
-    } else {
-      userMessageParts.append("## Current prompt\n\n(none — generate a fresh prompt based on the data below)")
-    }
-    if !primaryText.isEmpty {
-      let modeLabel = Self.primaryMode(for: focus) ?? "primary"
-      userMessageParts.append("## Primary interactions – mode: \(modeLabel) (chronological, recent entries weighted)\n\n\(primaryText)")
-    } else {
-      userMessageParts.append("## Primary interactions\n\n(none for the target mode)")
-    }
-    if !secondaryText.isEmpty {
-      userMessageParts.append("## Other-mode context (background only)\n\n\(secondaryText)")
-    }
-    if !audioAttachments.isEmpty {
-      let inventory = audioAttachments.enumerated().map { index, att in
-        "  \(index + 1). ref=\(att.ref) originalTranscriptionModel=\(att.transcriptionModel)"
-      }.joined(separator: "\n")
-      userMessageParts.append("## Audio evidence (verifier only)\n\nThe following dictation audio clips are attached as `inline_data` parts after this text. They were originally transcribed by a strictly weaker or different-family model. Use them only to verify text-stage candidates; do not add new candidates from audio.\n\n\(inventory)")
-    }
-
-    let userMessage = userMessageParts.joined(separator: "\n\n---\n\n")
+    let userMessage = buildAnalysisUserMessage(
+      focus: focus,
+      primaryText: primaryText,
+      secondaryText: secondaryText,
+      currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
+      currentDictationPrompt: currentDictationPrompt,
+      currentWhisperGlossary: currentWhisperGlossary,
+      audioAttachments: audioAttachments
+    )
     let systemInstruction = GeminiChatRequest.GeminiSystemInstruction(
       parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
     )
@@ -634,6 +632,110 @@ class ContextDerivation {
     var textContent = ""
     for part in firstCandidate.content.parts {
       if let text = part.text { textContent += text }
+    }
+    return textContent
+  }
+
+  /// Builds the sectioned user message (current prompt + primary/secondary interactions + optional
+  /// audio inventory). Shared by the Gemini and text-only analysis paths so the prompt the model
+  /// sees is identical regardless of provider.
+  private func buildAnalysisUserMessage(
+    focus: GenerationKind,
+    primaryText: String,
+    secondaryText: String,
+    currentPromptModeSystemPrompt: String?,
+    currentDictationPrompt: String?,
+    currentWhisperGlossary: String?,
+    audioAttachments: [AudioAttachment]
+  ) -> String {
+    let currentPrompt: String = {
+      switch focus {
+      case .dictation: return currentDictationPrompt ?? ""
+      case .whisperGlossary: return currentWhisperGlossary ?? ""
+      case .promptMode: return currentPromptModeSystemPrompt ?? ""
+      case .chat: return SystemPromptsStore.shared.loadSection(.chat) ?? ""
+      }
+    }()
+
+    var userMessageParts: [String] = []
+    if !currentPrompt.isEmpty {
+      userMessageParts.append("## Current prompt (refine this; output NO_CHANGE if no improvement is justified)\n\n\(currentPrompt)")
+    } else {
+      userMessageParts.append("## Current prompt\n\n(none — generate a fresh prompt based on the data below)")
+    }
+    if !primaryText.isEmpty {
+      let modeLabel = Self.primaryMode(for: focus) ?? "primary"
+      userMessageParts.append("## Primary interactions – mode: \(modeLabel) (chronological, recent entries weighted)\n\n\(primaryText)")
+    } else {
+      userMessageParts.append("## Primary interactions\n\n(none for the target mode)")
+    }
+    if !secondaryText.isEmpty {
+      userMessageParts.append("## Other-mode context (background only)\n\n\(secondaryText)")
+    }
+    if !audioAttachments.isEmpty {
+      let inventory = audioAttachments.enumerated().map { index, att in
+        "  \(index + 1). ref=\(att.ref) originalTranscriptionModel=\(att.transcriptionModel)"
+      }.joined(separator: "\n")
+      userMessageParts.append("## Audio evidence (verifier only)\n\nThe following dictation audio clips are attached as `inline_data` parts after this text. They were originally transcribed by a strictly weaker or different-family model. Use them only to verify text-stage candidates; do not add new candidates from audio.\n\n\(inventory)")
+    }
+
+    return userMessageParts.joined(separator: "\n\n---\n\n")
+  }
+
+  /// Provider-agnostic, text-only analysis for OpenAI / xAI Smart Improvement models. Mirrors the
+  /// Gemini path's prompt construction but sends no audio (these models aren't audio-capable here)
+  /// and routes through `LLMProviderFactory`, accumulating the streamed reply into one string.
+  private func callTextModelForAnalysis(
+    focus: GenerationKind,
+    primaryText: String,
+    secondaryText: String,
+    currentPromptModeSystemPrompt: String?,
+    currentDictationPrompt: String?,
+    currentWhisperGlossary: String?,
+    model: PromptModel
+  ) async throws -> String {
+    switch model.provider {
+    case .openai:
+      guard KeychainManager.shared.hasValidOpenAIAPIKey() else {
+        throw TranscriptionError.networkError("OpenAI API key is missing — add it in Settings → General.")
+      }
+    case .grok:
+      guard KeychainManager.shared.hasValidXAIAPIKey() else {
+        throw TranscriptionError.networkError("xAI API key is missing — add it in Settings → General.")
+      }
+    case .gemini:
+      break
+    }
+
+    let systemPrompt = systemPromptForFocus(focus, audioAttached: false)
+    let userMessage = buildAnalysisUserMessage(
+      focus: focus,
+      primaryText: primaryText,
+      secondaryText: secondaryText,
+      currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
+      currentDictationPrompt: currentDictationPrompt,
+      currentWhisperGlossary: currentWhisperGlossary,
+      audioAttachments: []
+    )
+
+    let provider = LLMProviderFactory.provider(for: model)
+    let contents: [[String: Any]] = [["role": "user", "parts": [["text": userMessage]]]]
+    let systemInstruction: [String: Any] = ["parts": [["text": systemPrompt]]]
+
+    let stream = provider.sendChatStream(
+      model: model.rawValue,
+      contents: contents,
+      systemInstruction: systemInstruction,
+      tools: [],
+      useGrounding: false
+    )
+
+    var textContent = ""
+    for try await event in stream {
+      if case .textDelta(let delta) = event { textContent += delta }
+    }
+    if textContent.isEmpty {
+      throw TranscriptionError.networkError("Empty analysis response from \(model.displayName)")
     }
     return textContent
   }

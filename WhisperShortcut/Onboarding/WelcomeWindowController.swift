@@ -33,10 +33,13 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
 
   func finish() {
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
+    // Keys may have just been entered during onboarding — adapt model selections to them.
+    ModelSelectionReconciler.reconcileAll()
     window?.close()
   }
 
   func windowWillClose(_ notification: Notification) {
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
+    ModelSelectionReconciler.reconcileAll()
   }
 }

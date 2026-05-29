@@ -71,7 +71,7 @@ enum ChatModelCommandResolver {
     } else if normalized.contains("2.0") || padded.contains(" 2 ") {
       candidates = [.gemini25Flash]
     } else if padded.contains(" 3 ") {
-      candidates = [.gemini3Flash, .gemini3Pro]
+      candidates = [.gemini3Flash]
     } else {
       candidates = PromptModel.chatModels
     }
@@ -152,7 +152,7 @@ enum ChatModelCommandResolver {
 
   private static func isPro(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini25Pro, .gemini3Pro, .gemini31Pro: return true
+    case .gemini25Pro, .gemini31Pro: return true
     default: return false
     }
   }

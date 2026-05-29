@@ -39,6 +39,14 @@ final class MeetingListService: ObservableObject {
 
   private init() {}
 
+  /// Parses the meeting date from a session's `meetingStem` / `meetingId`
+  /// (e.g. "Meeting-2025-03-04-143000"). Returns nil if the stem isn't in the expected format.
+  static func date(fromStem stem: String) -> Date? {
+    guard stem.hasPrefix("Meeting-") else { return nil }
+    let timestamp = String(stem.dropFirst("Meeting-".count))
+    return timestampFilenameFormatter.date(from: timestamp)
+  }
+
   /// Maximum characters for context sent to Gemini. Full transcript is still scrollable in UI.
   static let contextMaxChars = 60_000
 

@@ -23,6 +23,10 @@ class SettingsViewModel: ObservableObject {
   }
 
   private func loadCurrentSettings() {
+    // Adapt persisted selections to the keys present before reading them into `data`, so the
+    // settings UI shows each feature on a provider the user actually has a key for.
+    ModelSelectionReconciler.reconcileAll()
+
     // Load toggle shortcuts configuration. `nil` in SettingsData means "no
     // shortcut / disabled"; the recorder treats nil as "Not set". A disabled
     // (`isEnabled == false`) persisted shortcut maps to `nil` so the UI
@@ -105,6 +109,12 @@ class SettingsViewModel: ObservableObject {
     // Load Read Aloud preferences
     data.readAloudSmartRewriteEnabled = ReadAloudPreferences.smartRewriteEnabled
     data.readAloudSpeed = ReadAloudPreferences.speed
+    if let savedReadAloudModelRaw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudModel),
+       let savedReadAloudModel = TTSModel(rawValue: savedReadAloudModelRaw) {
+      data.selectedReadAloudModel = savedReadAloudModel
+    } else {
+      data.selectedReadAloudModel = SettingsDefaults.readAloudModel
+    }
 
     // Load Gemini window: close on focus loss
     data.chatCloseOnFocusLoss = UserDefaults.standard.bool(
@@ -295,6 +305,9 @@ class SettingsViewModel: ObservableObject {
 
     // Save Read Aloud playback speed
     UserDefaults.standard.set(data.readAloudSpeed.rawValue, forKey: UserDefaultsKeys.readAloudSpeed)
+
+    // Save Read Aloud TTS model
+    UserDefaults.standard.set(data.selectedReadAloudModel.rawValue, forKey: UserDefaultsKeys.selectedReadAloudModel)
 
     // Save Chat window: close on focus loss
     UserDefaults.standard.set(data.chatCloseOnFocusLoss, forKey: UserDefaultsKeys.chatCloseOnFocusLoss)

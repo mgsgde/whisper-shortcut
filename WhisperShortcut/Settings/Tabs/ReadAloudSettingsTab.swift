@@ -11,6 +11,10 @@ struct ReadAloudSettingsTab: View {
 
       SpacedSectionDivider()
 
+      modelSection
+
+      SpacedSectionDivider()
+
       playbackSpeedSection
 
       SpacedSectionDivider()
@@ -55,6 +59,20 @@ struct ReadAloudSettingsTab: View {
         clearShortcut: viewModel.clearShortcut
       )
     }
+  }
+
+  // MARK: - Voice Model Section
+  @ViewBuilder
+  private var modelSection: some View {
+    TTSModelSelectionView(
+      selectedModel: $viewModel.data.selectedReadAloudModel,
+      onModelChanged: {
+        UserDefaults.standard.set(
+          viewModel.data.selectedReadAloudModel.rawValue,
+          forKey: UserDefaultsKeys.selectedReadAloudModel)
+        Task { await viewModel.saveSettings() }
+      }
+    )
   }
 
   // MARK: - Playback Speed Section
@@ -136,7 +154,7 @@ struct ReadAloudSettingsTab: View {
           .textSelection(.enabled)
         Text("Press the shortcut again to stop playback.")
           .textSelection(.enabled)
-        Text("Requires a Gemini API key (Settings → General) or sign in with Google.")
+        Text("Requires an API key for the selected voice model's provider (Settings → General). Gemini also works via sign in with Google.")
           .textSelection(.enabled)
       }
       .font(.callout)

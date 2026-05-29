@@ -34,6 +34,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Setup Edit menu for text editing commands
     setupEditMenu()
 
+    // Adapt per-feature model selections to the API keys actually present, so a user with a single
+    // provider's key gets that provider's models by default across every feature.
+    ModelSelectionReconciler.reconcileAll()
+
     // Initialize the full menu bar controller
     menuBarController = MenuBarController()
 

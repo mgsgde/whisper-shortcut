@@ -96,6 +96,7 @@ Useful scripts:
 - `scripts/`: Local development and release helper scripts.
 - `.github/workflows/release.yml`: GitHub Actions workflow for signed, notarized release builds.
 - `plans/`: Shared implementation plans and specs.
+- `.cursor/`: Cursor agent commands, skills, and rules (see `.cursor/commands/README.md`).
 
 Core files:
 

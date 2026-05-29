@@ -10,6 +10,8 @@ struct ModelSelectionView: View {
   let geminiDisabled: Bool
   /// When true, OpenAI cloud transcription models are shown as disabled (e.g. when no OpenAI API key is set).
   let openAIDisabled: Bool
+  /// When true, xAI (Grok) transcription models are shown as disabled (e.g. when no xAI API key is set).
+  let xaiDisabled: Bool
   /// When true, user is on subscription (proxy); only Gemini models are fixed; offline Whisper models remain selectable.
   let subscriptionMode: Bool
 
@@ -19,6 +21,7 @@ struct ModelSelectionView: View {
     models: [TranscriptionModel] = TranscriptionModel.allCases,
     geminiDisabled: Bool = false,
     openAIDisabled: Bool = false,
+    xaiDisabled: Bool = false,
     subscriptionMode: Bool = false,
     onModelChanged: (() -> Void)? = nil
   ) {
@@ -27,6 +30,7 @@ struct ModelSelectionView: View {
     self.models = models
     self.geminiDisabled = geminiDisabled
     self.openAIDisabled = openAIDisabled
+    self.xaiDisabled = xaiDisabled
     self.subscriptionMode = subscriptionMode
     self.onModelChanged = onModelChanged
   }
@@ -50,7 +54,7 @@ struct ModelSelectionView: View {
 
       LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
         ForEach(models, id: \.self) { model in
-          let isDisabled = (geminiDisabled && model.isGemini) || (openAIDisabled && model.isOpenAI)
+          let isDisabled = (geminiDisabled && model.isGemini) || (openAIDisabled && model.isOpenAI) || (xaiDisabled && model.isXAI)
           ZStack {
             Rectangle()
               .fill(selectedTranscriptionModel == model ? Color.accentColor : Color.clear)
