@@ -147,6 +147,6 @@ Produce a single structured report with:
 
 - **debugging-workflow** — when a cluster points to a code bug, switch to that skill to add `DebugLogger` instrumentation and run a manual repro.
 - **gemini-system-prompt-best-practices** — when the fix is a system-prompt change, apply Google's official guidelines before editing.
-- **llm-model-docs** — when proposing a default-model change, confirm the target model ID and GA/Preview status. (Gemini coverage is canonical here now; `gemini-model-docs` is a TTS-only stub.)
+- **llm-model-docs** — when proposing a default-model change, confirm the target model ID and GA/Preview status.
 - **view-logs-via-bash** — for filtering the macOS unified log by category (`PROMPT-MODE`, `GEMINI-CHAT`, `TRANSCRIPTION`).
 - After applying any code/prompt change from this analysis, rebuild via `bash scripts/rebuild-and-restart.sh` — see the always-applied rule in `.cursor/rules/index.mdc`.

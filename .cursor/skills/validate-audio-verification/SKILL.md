@@ -107,7 +107,7 @@ Red flag: `run(end)` line missing, or directory not emptied — the TTL contract
 
 When you want to actively verify (not just inspect a past run), follow this exact recipe:
 
-1. Confirm settings: "Save usage data" on; Smart Improvement model = something strictly stronger than the transcription model (e.g. transcription = Gemini 2.5 Flash Lite, Smart Improvement = Gemini 3 Pro Preview). Without asymmetry the test only validates the skip path.
+1. Confirm settings: "Save usage data" on; Smart Improvement model = something strictly stronger than the transcription model (e.g. transcription = Gemini 2.5 Flash Lite, Smart Improvement = Gemini 3.1 Pro Preview). Without asymmetry the test only validates the skip path.
 2. Ask the user to do **5+ dictations** including at least one with a tricky proper noun (e.g. "Kubernetes" or another technical term they actually use). Mixing in one Whisper-offline dictation is great for testing the different-family branch.
 3. Ask the user to trigger Smart Improvement manually.
 4. Run the five Q1–Q5 checks above in order.

@@ -58,8 +58,7 @@ Build the system prompt in this order:
 
 For full, up-to-date guidance, prefer these sources:
 
-- **Prompt design (strategies)**: https://ai.google.dev/gemini-api/docs/prompting-strategies  
+- **Prompt design & writing strategies**: https://ai.google.dev/gemini-api/docs/prompting-strategies
 - **Models**: https://ai.google.dev/gemini-api/docs/models
-- **Writing prompts**: https://ai.google.dev/gemini-api/docs/prompting-strategies  
 
 When in doubt, favor instructions that are **explicit**, **ordered**, and **bounded** (one task, clear output format, clear guardrails).

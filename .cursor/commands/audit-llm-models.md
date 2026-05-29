@@ -32,7 +32,7 @@ The throughline is honesty: training data is stale, so every currency recommenda
 
    | Feature | OpenAI | Gemini | xAI (Grok) | Default today |
    |---------|--------|--------|------------|---------------|
-   | Read Aloud (TTS) | `gpt-4o-mini-tts` ✅ | `gemini-2.5-flash-preview-tts` ✅ (current) | `grok-voice-tts-1.0` ⚠️ verify access | Gemini |
+   | Read Aloud (TTS) | `gpt-4o-mini-tts` ✅ | `gemini-3.1-flash-tts-preview` ✅ (current) | `grok-voice-tts-1.0` ⚠️ verify access | Gemini |
 
    In each provider cell record one of: **offered** (enum already has a case → note the ID), **available-but-missing** (provider ships a capable model the app doesn't offer yet → coverage gap, name the ID), or **none** (provider has no model for this role → not a gap, just note it). Mark the cell `✅`/`gap`/`—` accordingly.
 
@@ -118,7 +118,6 @@ Actually apply the recommended migrations:
 ## Related
 
 - **`llm-model-docs` skill** — the canonical curated list of where each provider documents their models, gotchas (whisper-1 224-token limit etc.), and the proactive-lineup-check workflow. Read it before this command does anything.
-- **`gemini-model-docs` skill** — TTS-voice-only stub. For chat/transcription/programmatic listing, read `llm-model-docs` instead.
 - **`/release`** — bump the app version after model migrations ship.
 
 ## Example invocations

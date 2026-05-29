@@ -58,7 +58,7 @@ Apply only the proposed changes the user names (or all if they say "all"). Rebui
 - **`/audit-llm-context`** — when the user wants to check the LLM-context files (`.cursor/commands`, `.cursor/rules`, `.cursor/skills`) themselves for staleness instead of app behavior.
 - **debugging-workflow** (skill) — switch to when a cluster points to a code bug and you need to add `DebugLogger` instrumentation + a repro plan.
 - **gemini-system-prompt-best-practices** (skill) — when the fix is a system-prompt change.
-- **llm-model-docs** (skill) — when proposing a default-model change (covers Gemini canonically; `gemini-model-docs` is a TTS-only stub).
+- **llm-model-docs** (skill) — when proposing a default-model change (covers Gemini canonically).
 
 ## Example invocations
 

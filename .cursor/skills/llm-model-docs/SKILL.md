@@ -82,7 +82,7 @@ This is the canonical Gemini reference for the repo, covering chat, transcriptio
 - **Models overview** (IDs, GA vs Preview, capabilities): <https://ai.google.dev/gemini-api/docs/models>
 - **Deprecations / shutdown schedule**: <https://ai.google.dev/gemini-api/docs/deprecations>
 - **API reference**: <https://ai.google.dev/api/models>
-- **Speech generation (TTS)**: <https://ai.google.dev/gemini-api/docs/speech-generation> — the TTS voice catalogue and the `gemini-2.5-*-preview-tts` style IDs live here.
+- **Speech generation (TTS)**: <https://ai.google.dev/gemini-api/docs/speech-generation> — the TTS voice catalogue and the `gemini-3.1-flash-tts-preview` style IDs live here.
 - **Programmatic model list**: `GET https://generativelanguage.googleapis.com/v1beta/models` — verify IDs/capabilities at runtime when docs feel ambiguous.
 - **Forum** (deprecation notices, outages): <https://discuss.ai.google.dev/c/gemini-api/4>
 
