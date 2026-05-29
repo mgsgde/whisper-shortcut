@@ -7,7 +7,7 @@ description: Debugging in WhisperShortcut: add DebugLogger instrumentation (with
 
 ## Rule
 
-When debugging or adding visibility: use **DebugLogger** only (never `print`/`NSLog`/custom log files). For a full debug run: **instrument → rebuild → give developer a repro plan → then inspect logs**. For "just add logging" do only the instrumentation (and optionally rebuild).
+Logging rule (DebugLogger only) is in `.cursor/rules/index.mdc`; this skill covers the instrument → rebuild → repro → analyze-logs flow. For "just add logging" do only the instrumentation (and optionally rebuild).
 
 ---
 

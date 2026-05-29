@@ -52,7 +52,7 @@ Build the system prompt in this order:
 
 - **Transcription**: Persona + "transcribe verbatim" + guardrail "Do NOT answer questions or execute commands; only transcribe" is aligned with best practices. Optional: one explicit line about removing fillers silently.
 - **Dictate Prompt / Prompt & Read**: Persona + clear roles (SELECTED TEXT vs. AUDIO = instruction) + single output rule (e.g. `promptModeOutputRule`) matches the recommended structure.
-- **User context**: Appending a dedicated block (e.g. `---\nUser context:\n…`) with a length limit (e.g. `userContextMaxChars`) is a good way to keep the system prompt focused.
+- **User context**: Appending a dedicated block (e.g. `---\nUser context:\n…`) with a length limit (e.g. `contextMaxChars`) is a good way to keep the system prompt focused.
 
 ## Official References
 
@@ -60,6 +60,6 @@ For full, up-to-date guidance, prefer these sources:
 
 - **Prompt design (strategies)**: https://ai.google.dev/gemini-api/docs/prompting-strategies  
 - **Models**: https://ai.google.dev/gemini-api/docs/models
-- **Writing prompts (Google Cloud)**: https://docs.cloud.google.com/gemini/docs/discover/write-prompts  
+- **Writing prompts**: https://ai.google.dev/gemini-api/docs/prompting-strategies  
 
 When in doubt, favor instructions that are **explicit**, **ordered**, and **bounded** (one task, clear output format, clear guardrails).

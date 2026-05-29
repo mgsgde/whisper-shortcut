@@ -22,7 +22,7 @@ Resolve scope in this order:
 
 1. **Establish scope** and print it.
 2. **Extract** records from `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/UserContext/interactions-*.jsonl`.
-3. **Cross-reference** the macOS log via `bash scripts/logs.sh -t <window> -f '<filter>'` for latency and errors. Model attribution is in the JSONL `model` field for all three modes; only fall back to the log filter `PROMPT-MODE-GEMINI: Using model` for older `prompt` records that pre-date that field.
+3. **Cross-reference** the macOS log via `bash scripts/logs.sh -t <window> -f '<filter>'` for latency and errors. Model attribution is in the JSONL `model` field for all three modes; only fall back to the log filter `PROMPT-MODE-GEMINI: Starting execution` for older `prompt` records that pre-date that field (the `Using model` suffix is assembled at runtime via `logPrefix`, so a literal source grep won't find it).
 4. **Classify** each interaction against the 6 checks in the skill: instruction honored, minimal-edit, language preserved, format preserved, no hallucinations, input integrity.
 5. **Cluster** failures. **Threshold: ≥2 examples per cluster** for a fix proposal. Single anecdotes are listed as "observed, insufficient data".
 6. **Report** — see output format below.

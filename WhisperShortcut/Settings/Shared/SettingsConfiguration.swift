@@ -349,47 +349,118 @@ enum PromptModel: String, CaseIterable {
   }
 }
 
+// MARK: - TTS Provider
+/// Which backend a `TTSModel` talks to. Each provider uses a different endpoint, auth, and
+/// request/response shape, but all are configured to return raw PCM (s16le, 24 kHz, mono) so
+/// the shared playback path (`AudioMerger` / `playTTSAudio`) stays provider-agnostic.
+enum TTSProvider {
+  case gemini
+  case openai
+  case xai
+
+  var displayName: String {
+    switch self {
+    case .gemini: return "Google Gemini"
+    case .openai: return "OpenAI"
+    case .xai: return "xAI (Grok)"
+    }
+  }
+}
+
 // MARK: - TTS Model Enum (for Text-to-Speech)
-// Gemini TTS via Generative Language API (generateContent), not Cloud TTS.
-// Docs: https://ai.google.dev/gemini-api/docs/speech-generation
+// Multi-provider Read Aloud. All models are configured to return raw PCM 24kHz mono 16-bit.
+// Docs:
+//   Gemini — https://ai.google.dev/gemini-api/docs/speech-generation (generateContent, not Cloud TTS)
+//   OpenAI — https://platform.openai.com/docs/guides/text-to-speech (/v1/audio/speech)
+//   xAI    — https://docs.x.ai/developers/model-capabilities/audio/text-to-speech (/v1/tts)
 enum TTSModel: String, CaseIterable {
   case gemini25FlashTTS = "gemini-2.5-flash-preview-tts"
   case gemini25ProTTS = "gemini-2.5-pro-preview-tts"
-  
-  var displayName: String {
+  case openAIGpt4oMiniTTS = "gpt-4o-mini-tts"
+  case grokVoiceTTS = "grok-voice-tts-1.0"
+
+  var provider: TTSProvider {
     switch self {
-    case .gemini25FlashTTS:
-      return "Gemini 2.5 Flash TTS"
-    case .gemini25ProTTS:
-      return "Gemini 2.5 Pro TTS"
+    case .gemini25FlashTTS, .gemini25ProTTS: return .gemini
+    case .openAIGpt4oMiniTTS: return .openai
+    case .grokVoiceTTS: return .xai
     }
   }
-  
+
+  var displayName: String {
+    switch self {
+    case .gemini25FlashTTS: return "Gemini 2.5 Flash TTS"
+    case .gemini25ProTTS: return "Gemini 2.5 Pro TTS"
+    case .openAIGpt4oMiniTTS: return "GPT-4o mini TTS"
+    case .grokVoiceTTS: return "Grok Voice TTS"
+    }
+  }
+
   var description: String {
     switch self {
     case .gemini25FlashTTS:
       return "Google's Gemini 2.5 Flash TTS model • Fast and efficient • Recommended"
     case .gemini25ProTTS:
       return "Google's Gemini 2.5 Pro TTS model • Higher quality • Better voice synthesis"
+    case .openAIGpt4oMiniTTS:
+      return "OpenAI's GPT-4o mini TTS • Natural, steerable speech • Needs an OpenAI API key"
+    case .grokVoiceTTS:
+      return "xAI's Grok Voice TTS • Expressive multilingual speech • Needs an xAI API key"
     }
   }
-  
-  /// Generative Language API endpoint (same API key as transcription). Model in path.
-  /// https://ai.google.dev/gemini-api/docs/speech-generation
+
+  /// API endpoint for this model's provider. For Gemini the model id is in the path; for
+  /// OpenAI and xAI it is passed in the request body.
   var apiEndpoint: String {
-    return "https://generativelanguage.googleapis.com/v1beta/models/\(rawValue):generateContent"
+    switch provider {
+    case .gemini:
+      return "https://generativelanguage.googleapis.com/v1beta/models/\(rawValue):generateContent"
+    case .openai:
+      return AppConstants.openAISpeechEndpoint
+    case .xai:
+      return AppConstants.xaiTTSEndpoint
+    }
   }
 
   var modelName: String {
     return self.rawValue
   }
-  
+
+  /// Default voice when the caller doesn't specify one. Each provider has its own voice
+  /// catalogue, so "Charon" (Gemini) is not valid for OpenAI/xAI and vice versa.
+  var defaultVoice: String {
+    switch provider {
+    case .gemini: return "Charon"
+    case .openai: return "alloy"
+    case .xai: return "eve"
+    }
+  }
+
   var isRecommended: Bool {
     return self == .gemini25FlashTTS
   }
-  
+
   var costLevel: String {
     return "Low"
+  }
+
+  /// Models grouped for display in the Read Aloud picker (provider order: Gemini, OpenAI, xAI).
+  static let readAloudModels: [TTSModel] = [
+    .gemini25FlashTTS, .gemini25ProTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS,
+  ]
+
+  /// Maps any persisted raw values that have since been renamed onto current cases.
+  /// No renames yet; kept so the loader has a single migration seam (mirrors PromptModel).
+  static func migrateLegacyReadAloudRawValue(_ raw: String) -> String {
+    return raw
+  }
+
+  /// Reads the user's Read Aloud model selection from UserDefaults, applying legacy
+  /// migration and falling back to `fallback` for unknown values.
+  static func loadReadAloudModel(forKey key: String, default fallback: TTSModel) -> TTSModel {
+    let migratedRaw = migrateLegacyReadAloudRawValue(
+      UserDefaults.standard.string(forKey: key) ?? fallback.rawValue)
+    return TTSModel(rawValue: migratedRaw) ?? fallback
   }
 }
 
@@ -697,6 +768,12 @@ enum ReadAloudPreferences {
     else { return SettingsDefaults.readAloudSmartRewriteEnabled }
     return UserDefaults.standard.bool(forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled)
   }
+
+  /// The user's selected Read Aloud TTS model (across Gemini / OpenAI / xAI), or the default.
+  static var model: TTSModel {
+    TTSModel.loadReadAloudModel(
+      forKey: UserDefaultsKeys.selectedReadAloudModel, default: SettingsDefaults.readAloudModel)
+  }
 }
 
 // MARK: - Live Meeting Chunk Interval Options
@@ -744,9 +821,11 @@ struct SettingsDefaults {
   static let promptModeSystemPrompt = ""
   
   // MARK: - Read Aloud (Chat TTS)
-  /// Voice used by the Read Aloud button in chat replies. No settings UI — single source of truth.
+  /// Voice used by the Read Aloud button. Per-model voice is derived from `TTSModel.defaultVoice`;
+  /// this remains the Gemini default for any caller that still references it directly.
   static let readAloudVoice = "Charon"
-  /// TTS model used by the Read Aloud button. No settings UI — single source of truth.
+  /// Default Read Aloud TTS model when the user hasn't picked one. User selection is persisted
+  /// under `UserDefaultsKeys.selectedReadAloudModel` and read via `ReadAloudPreferences.model`.
   static let readAloudModel: TTSModel = .gemini25FlashTTS
   /// When true, the global Read Aloud shortcut first runs a "rewrite for speech" pass before TTS.
   static let readAloudSmartRewriteEnabled = true

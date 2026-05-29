@@ -26,7 +26,7 @@ In those areas, do the **lineup check** (next section) before finishing the task
 
 When you touch one of the code areas listed above, run this short check before finishing:
 
-1. **Enumerate what we use today.** In [SettingsConfiguration.swift](WhisperShortcut/Settings/Shared/SettingsConfiguration.swift), the `SettingsDefaults` struct is the single source of truth for default selections (e.g. `selectedTranscriptionModel`, `selectedPromptModel`, `selectedChatModel`, `selectedMeetingSummaryModel`, `defaultSmartImprovementModel`, `readAloudModel`). The full per-provider enum is in [SettingsConfiguration.swift](WhisperShortcut/Settings/Shared/SettingsConfiguration.swift) (`PromptModel`) and [TranscriptionModels.swift](WhisperShortcut/TranscriptionModels.swift) (`TranscriptionModel`, `TTSModel`).
+1. **Enumerate what we use today.** In [SettingsConfiguration.swift](WhisperShortcut/Settings/Shared/SettingsConfiguration.swift), the `SettingsDefaults` struct is the single source of truth for default selections (e.g. `selectedTranscriptionModel`, `selectedPromptModel`, `selectedChatModel`, `selectedMeetingSummaryModel`, `defaultSmartImprovementModel`, `readAloudModel`). The full per-provider enum is in [SettingsConfiguration.swift](WhisperShortcut/Settings/Shared/SettingsConfiguration.swift) (`PromptModel`, `TTSModel`) and [TranscriptionModels.swift](WhisperShortcut/TranscriptionModels.swift) (`TranscriptionModel`).
 2. **Fetch the current model index** for each provider whose model appears in defaults or in the enum (see URLs below).
 3. **Compare**: for each role (transcription, dictate-prompt, chat, meeting-summary, smart-improvement, TTS), is the default still the best current GA model? Are any enum cases pointing at deprecated/retired IDs?
 4. **Surface findings to the user.** Format: "We default to X for role Y. Provider has shipped newer GA model Z — recommended switch / cosmetic update / no change needed." Don't just silently migrate — let the user decide. The user explicitly said: *"ich möchte, dass du ab und zu mal schaust, was für neuere Models es gibt … und dann entsprechend Vorschläge machst, falls wir veraltete Models verwenden"*.
@@ -77,17 +77,17 @@ The app uses these OpenAI endpoints today: `/v1/chat/completions`, `/v1/audio/tr
 
 ### Google Gemini API
 
-This is the canonical Gemini reference for the repo. The `gemini-model-docs` stub only carries TTS-voice specifics.
+This is the canonical Gemini reference for the repo, covering chat, transcription, and TTS.
 
 - **Models overview** (IDs, GA vs Preview, capabilities): <https://ai.google.dev/gemini-api/docs/models>
 - **API reference**: <https://ai.google.dev/api/models>
-- **Speech generation (TTS)**: <https://ai.google.dev/gemini-api/docs/speech-generation>
+- **Speech generation (TTS)**: <https://ai.google.dev/gemini-api/docs/speech-generation> — the TTS voice catalogue and the `gemini-2.5-*-preview-tts` style IDs live here.
 - **Programmatic model list**: `GET https://generativelanguage.googleapis.com/v1beta/models` — verify IDs/capabilities at runtime when docs feel ambiguous.
 - **Forum** (deprecation notices, outages): <https://discuss.ai.google.dev/c/gemini-api/4>
 
-Pick stable/GA IDs over dated preview IDs (e.g. prefer `gemini-2.5-flash` over `gemini-2.5-flash-preview-09-2025`) when both are listed. Endpoints in code: `TranscriptionModel.apiEndpoint`, `TTSModel.apiEndpoint`; base is `https://generativelanguage.googleapis.com/v1beta/models/{model-id}:generateContent`.
+Pick stable/GA IDs over dated preview IDs (e.g. prefer `gemini-3.5-flash` over a dated `gemini-3.5-flash-preview-*` variant) when both are listed. Endpoints in code: `TranscriptionModel.apiEndpoint`, `TTSModel.apiEndpoint`; base is `https://generativelanguage.googleapis.com/v1beta/models/{model-id}:generateContent`.
 
-The app uses the **Gemini API** (`generativelanguage.googleapis.com`), **not** Vertex AI — when reading Google docs, make sure you're on the `ai.google.dev` site, not `cloud.google.com/vertex-ai`.
+The app uses the **Gemini API** (`generativelanguage.googleapis.com`), **not** Vertex AI — when reading Google docs, make sure you're on the `ai.google.dev` site, not `cloud.google.com/vertex-ai`. Cloud Text-to-Speech (`cloud.google.com/text-to-speech/docs/gemini-tts`) documents the same/similar TTS models for Cloud/Vertex; use it only as a cross-check.
 
 ### xAI (Grok)
 

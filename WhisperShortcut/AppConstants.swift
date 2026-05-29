@@ -261,4 +261,14 @@ Transcript:
   /// is selected but the endpoint URL is left empty.
   /// Reference: https://platform.openai.com/docs/api-reference/audio/createTranscription
   static let openAITranscriptionsEndpoint = "https://api.openai.com/v1/audio/transcriptions"
+
+  // MARK: - Text-to-Speech (Read Aloud) Endpoints
+  /// OpenAI text-to-speech endpoint (gpt-4o-mini-tts). Returns raw PCM when
+  /// `response_format` is `pcm` (s16le, 24 kHz, mono).
+  /// Reference: https://platform.openai.com/docs/api-reference/audio/createSpeech
+  static let openAISpeechEndpoint = "https://api.openai.com/v1/audio/speech"
+  /// xAI (Grok) text-to-speech endpoint (grok-voice-tts-1.0). Returns raw PCM when
+  /// `output_format.codec` is `pcm` at `sample_rate` 24000.
+  /// Reference: https://docs.x.ai/developers/model-capabilities/audio/text-to-speech
+  static let xaiTTSEndpoint = "https://api.x.ai/v1/tts"
 }

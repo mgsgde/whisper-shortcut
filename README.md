@@ -2,7 +2,7 @@
 
 WhisperShortcut is a macOS menu bar app for voice-first productivity: dictation, voice editing, AI chat, text-to-speech, and live meeting transcription.
 
-The app is local-first and bring-your-own-key. There is no backend or subscription service in this repository. Cloud features use your Google Gemini API key and, optionally, an xAI API key (for Grok chat models) or an OpenAI API key (for GPT-5 chat and GPT Audio Dictate Prompt).
+The app is local-first and bring-your-own-key. There is no backend or subscription service in this repository. Cloud features use your Google Gemini API key and, optionally, an xAI API key (for Grok chat models) or an OpenAI API key (for GPT-5.x chat, OpenAI transcription, and GPT Audio Dictate Prompt).
 
 ## Download
 
@@ -12,7 +12,7 @@ The app is local-first and bring-your-own-key. There is no backend or subscripti
 
 ## Features
 
-- **Dictate**: Record speech and copy the transcription to your clipboard. Use Gemini models online or local Whisper models offline.
+- **Dictate**: Record speech and copy the transcription to your clipboard. Use Gemini or OpenAI cloud models, a self-hosted transcription endpoint, or local Whisper models offline.
 - **Dictate Prompt**: Speak an instruction that edits the current clipboard text, for example "make this shorter" or "translate this to English".
 - **Read Aloud**: Press the shortcut on any selected text to copy it and read it aloud with Gemini TTS voices. An optional Smart Rewrite pass cleans up code or markdown before TTS, and playback speed is configurable.
 - **Prompt & Read**: Edit text with a spoken instruction, then read the result aloud automatically.
@@ -27,7 +27,7 @@ The app is local-first and bring-your-own-key. There is no backend or subscripti
 - Xcode 16.0 or later for development
 - Google Gemini API key for cloud transcription, prompt workflows, chat, TTS, Smart Improvement, and live meetings
 - Optional xAI API key for Grok chat models
-- Optional OpenAI API key for GPT-5 chat models and the GPT Audio Dictate Prompt model
+- Optional OpenAI API key for GPT-5.x chat, OpenAI transcription (GPT-4o Transcribe), and GPT Audio Dictate Prompt
 - Optional Google account connection for Calendar, Tasks, and Gmail tools
 
 Offline Whisper dictation works without an API key after downloading a local model in Settings.
@@ -45,7 +45,7 @@ Offline Whisper dictation works without an API key after downloading a local mod
 ### Dictation
 
 1. Configure a Dictate shortcut in Settings.
-2. Choose a Gemini or Whisper transcription model.
+2. Choose a Gemini, OpenAI, self-hosted, or Whisper transcription model.
 3. Press the shortcut, speak, then stop recording.
 4. The transcription is copied to the clipboard, and can optionally be pasted automatically.
 
@@ -60,7 +60,7 @@ Long recordings are split into chunks and processed in parallel.
 
 ### Chat
 
-Open the chat window from the menu bar or its configured shortcut. Chat sessions are stored locally and can use slash commands such as `/new`, `/model`, `/screenshot`, `/settings`, `/gemini`, `/grok`, `/openai`, `/pin`, `/unpin`, `/meeting`, and `/copy`.
+Open the chat window from the menu bar or its configured shortcut. Chat sessions are stored locally and can use slash commands such as `/new`, `/model`, `/screenshot`, `/attach`, `/settings`, `/gemini`, `/grok`, `/openai`, `/pin`, `/unpin`, `/meeting`, and `/copy`.
 
 Gemini models use your Google API key, Grok models use your xAI API key, and OpenAI models use your OpenAI API key.
 
@@ -96,15 +96,16 @@ Useful scripts:
 - `scripts/`: Local development and release helper scripts.
 - `.github/workflows/release.yml`: GitHub Actions workflow for signed, notarized release builds.
 - `plans/`: Shared implementation plans and specs.
+- `.cursor/`: Cursor agent commands, skills, and rules (see `.cursor/commands/README.md`).
 
 Core files:
 
 - `AppState.swift`: Central app state machine.
 - `MenuBarController.swift`: Main app orchestrator.
-- `SpeechService.swift`: Dictation and prompt workflow logic.
+- `SpeechService.swift`: Dictation, prompt, and Read Aloud logic.
 - `ChatView.swift`: Chat UI and view model.
-- `ChatTools.swift`: Local tool registry for chat integrations.
-- `TranscriptionModels.swift`: Gemini and Whisper transcription model definitions.
+- `ChatTools.swift`: `ChatToolRegistry` and local/Google chat tools.
+- `TranscriptionModels.swift`: Gemini, OpenAI, Whisper, and self-hosted transcription models.
 - `Settings/`: Settings UI, defaults, and persistence.
 
 ## Data And Privacy

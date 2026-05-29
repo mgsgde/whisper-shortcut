@@ -31,7 +31,7 @@ Three modes, each with its own schema:
 
 **Important caveats** when reading these files:
 
-- `model` is logged for all three modes (`ContextLogger.swift:126` for prompt). Older `prompt` records written before this was wired up may have `model: null` — fall back to the macOS log filter `PROMPT-MODE-GEMINI: Using model` for those.
+- `model` is logged for all three modes (`logPrompt` in `ContextLogger.swift` for prompt). Older `prompt` records written before this was wired up may have `model: null` — fall back to the macOS log filter `PROMPT-MODE-GEMINI: Starting execution` for those (the `Using model` suffix is built at runtime via `logPrefix`, so a literal source grep won't find it).
 - `selectedText` can accumulate paste-history if the user re-pastes results. Treat extremely long `selectedText` with repeated near-identical fragments as suspect input, not real user content.
 - `result` for `transcription` is **post-glossary-correction**, not raw STT output.
 - Files are append-only JSONL — one record per line.
@@ -40,7 +40,7 @@ Three modes, each with its own schema:
 Use `bash scripts/logs.sh` (never `log show` directly — it's slower and has different defaults):
 
 ```bash
-bash scripts/logs.sh -t 7d -f 'PROMPT-MODE-GEMINI: Using model'    # which model per prompt call
+bash scripts/logs.sh -t 7d -f 'PROMPT-MODE-GEMINI: Starting execution'    # which prompt call ran (model in the JSONL `model` field)
 bash scripts/logs.sh -t 7d -f 'Round-trip'                          # latency
 bash scripts/logs.sh -t 7d -f '❌'                                  # error markers
 bash scripts/logs.sh -t 7d -f 'GEMINI-CHAT'                         # chat traffic

@@ -37,13 +37,13 @@ bash scripts/logs.sh -t 30m -f 'AUDIO-VERIFY: capture'
 ```
 
 Expect one line per dictation. Acceptable outcomes:
-- `capture(done) ref=… backend=… transcriptionModel=… sizeBytes=…` — captured (see `ContextLogger.swift:198`).
-- `capture(skip) reason=logging-disabled` — master toggle off (precondition failed; not a bug; `ContextLogger.swift:184`).
+- `capture(done) ref=… backend=… transcriptionModel=… sizeBytes=…` — captured (marker `AUDIO-VERIFY: capture(done)` in `ContextLogger.swift`).
+- `capture(skip) reason=logging-disabled` — master toggle off (precondition failed; not a bug; marker `AUDIO-VERIFY: capture(skip)` in `ContextLogger.swift`).
 
 Red flags:
-- `capture(error) reason=…` lines (`ContextLogger.swift:201`) — investigate the reason.
+- `capture(error) reason=…` lines (marker `AUDIO-VERIFY: capture(error)` in `ContextLogger.swift`) — investigate the reason.
 - No `AUDIO-VERIFY: capture(...)` lines at all despite a dictation: the capture hook is not wired or is upstream of the dictation completion.
-- `pool-trim deleted=… remaining=… capacity=…` (`ContextLogger.swift:230`) — eviction firing when the per-pool cap is hit. Not a red flag, just informational.
+- `pool-trim deleted=… remaining=… capacity=…` (marker `AUDIO-VERIFY: pool-trim` in `ContextLogger.swift`) — eviction firing when the per-pool cap is hit. Not a red flag, just informational.
 
 ### Q2. Are the WAV files actually on disk?
 
@@ -72,13 +72,13 @@ bash scripts/logs.sh -t 30m -f 'AUDIO-VERIFY' | grep -E 'run\(start\)|focus=|asy
 
 Expected sequence for one Smart Improvement run (verified against `ContextDerivation.swift` and `AutoPromptImprovementScheduler.swift`):
 
-1. `run(start) samplesOnDisk=<n>` — n > 0 means there is audio to potentially use (`AutoPromptImprovementScheduler.swift:135`).
+1. `run(start) samplesOnDisk=<n>` — n > 0 means there is audio to potentially use (marker `AUDIO-VERIFY: run(start)` in `AutoPromptImprovementScheduler.swift`).
 2. For each of the two affected focuses (`dictation`, `glossary`), one block:
-   - `focus=<focus> samplesOnDisk=<n>` — how many samples were available to that focus (`ContextDerivation.swift:156`).
-   - Possibly `focus=<focus> skip reason=smart-model-unknown` (`ContextDerivation.swift:160`) — then no further per-focus output (skip path).
-   - Otherwise, for each candidate clip considered: `asymmetry ref=<ref> transcriptionModel=<m> smartModel=<sm> informative=<true|false>` (`ContextDerivation.swift:192,197`).
-   - End-of-focus summary: `focus=<focus> attach selectedClips=<n> skippedAsymmetry=<n> skippedUnknownModel=<n> capPerRun=<n>` (`ContextDerivation.swift:200`). `selectedClips=0` means nothing was attached for that focus.
-3. `run(end) cleanup deleted=<n>` — end of run + cleanup combined (`AutoPromptImprovementScheduler.swift:192`).
+   - `focus=<focus> samplesOnDisk=<n>` — how many samples were available to that focus (marker `AUDIO-VERIFY: focus=… samplesOnDisk=` in `ContextDerivation.swift`).
+   - Possibly `focus=<focus> skip reason=smart-model-unknown` (marker `AUDIO-VERIFY: focus=… skip reason=smart-model-unknown` in `ContextDerivation.swift`) — then no further per-focus output (skip path).
+   - Otherwise, for each candidate clip considered: `asymmetry ref=<ref> transcriptionModel=<m> smartModel=<sm> informative=<true|false>` (marker `AUDIO-VERIFY: focus=… asymmetry ref=` in `ContextDerivation.swift`).
+   - End-of-focus summary: `focus=<focus> attach selectedClips=<n> skippedAsymmetry=<n> skippedUnknownModel=<n> capPerRun=<n>` (marker `AUDIO-VERIFY: focus=… attach selectedClips=` in `ContextDerivation.swift`). `selectedClips=0` means nothing was attached for that focus.
+3. `run(end) cleanup deleted=<n>` — end of run + cleanup combined (marker `AUDIO-VERIFY: run(end)` in `AutoPromptImprovementScheduler.swift`).
 
 How to interpret common patterns:
 
@@ -97,7 +97,7 @@ bash scripts/logs.sh -t 30m -f 'AUDIO-VERIFY: run(end)'
 ls "$HOME/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/UserContext/audio-samples/" 2>/dev/null
 ```
 
-Expect one `run(end) cleanup deleted=<n>` line per Smart Improvement run (`AutoPromptImprovementScheduler.swift:192`). After the run the directory should be empty (or contain only WAVs captured *after* the run started — those are for the next run and are fine).
+Expect one `run(end) cleanup deleted=<n>` line per Smart Improvement run (marker `AUDIO-VERIFY: run(end)` in `AutoPromptImprovementScheduler.swift`). After the run the directory should be empty (or contain only WAVs captured *after* the run started — those are for the next run and are fine).
 
 Red flag: `run(end)` line missing, or directory not emptied — the TTL contract is broken.
 
