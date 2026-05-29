@@ -9,6 +9,12 @@ actor TrelloAPIClient {
 
   private let baseURL = "https://api.trello.com/1"
 
+  /// Guards against accidental duplicate card creates: maps a (listId|name)
+  /// key to the card created for it and when. A repeated identical create
+  /// within `dedupWindow` returns the existing card instead of POSTing again.
+  private var recentCreates: [String: (id: String, at: Date)] = [:]
+  private let dedupWindow: TimeInterval = 60
+
   // MARK: - List Boards
 
   /// Boards the user is a member of (active, not closed).
@@ -101,6 +107,15 @@ actor TrelloAPIClient {
 
   func createCard(listId: String, name: String, description: String? = nil, due: String? = nil) async throws -> [String: Any] {
     DebugLogger.logNetwork("TRELLO: createCard listId=\(listId) name=\(name)")
+
+    let dedupKey = "\(listId)|\(name)"
+    let now = Date()
+    if let recent = recentCreates[dedupKey], now.timeIntervalSince(recent.at) < dedupWindow {
+      DebugLogger.logWarning(
+        "TRELLO: duplicate createCard suppressed for '\(name)' — identical to card \(recent.id) created \(Int(now.timeIntervalSince(recent.at)))s ago")
+      return ["ok": true, "card_id": recent.id, "name": name, "deduplicated": true]
+    }
+
     var components = URLComponents(string: "\(baseURL)/cards")!
     var items: [URLQueryItem] = [
       URLQueryItem(name: "idList", value: listId),
@@ -121,6 +136,10 @@ actor TrelloAPIClient {
     if let n = json["name"] as? String { result["name"] = n }
     if let url = json["shortUrl"] as? String ?? json["url"] as? String { result["url"] = url }
     if let due = json["due"] as? String { result["due"] = due }
+    if let id = result["card_id"] as? String {
+      recentCreates = recentCreates.filter { now.timeIntervalSince($0.value.at) < dedupWindow }
+      recentCreates[dedupKey] = (id, now)
+    }
     DebugLogger.logSuccess("TRELLO: createCard ok id=\(result["card_id"] ?? "?")")
     return result
   }

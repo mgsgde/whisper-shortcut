@@ -108,14 +108,52 @@ enum ChatToolRegistry {
       ],
     ],
     [
-      "name": "google_calendar_delete_event",
-      "description": "Deletes a calendar event by its event_id (from google_calendar_list_events results). Always confirm with the user before deleting.",
+      "name": "google_calendar_update_event",
+      "description": "Updates an existing calendar event IN PLACE by its event_id. PREFER this over deleting and re-creating whenever you need to change the time, title, location, or description of an event that already exists — updating never produces duplicates. Only the fields you pass are changed; omitted fields stay as they are. Use the event_id exactly as returned by a previous list/create call (verbatim) — never base64-encode, shorten, or otherwise transform it.",
       "parameters": [
         "type": "object",
         "properties": [
           "event_id": [
             "type": "string",
-            "description": "The ID of the event to delete (from google_calendar_list_events results).",
+            "description": "The exact ID of the event to update, copied verbatim from a previous google_calendar_list_events or google_calendar_create_event result.",
+          ],
+          "summary": [
+            "type": "string",
+            "description": "New title/summary (omit to keep unchanged).",
+          ],
+          "start_iso8601": [
+            "type": "string",
+            "description": "New start time in ISO 8601 (e.g. 2026-04-22T15:00:00+02:00). Omit to keep unchanged.",
+          ],
+          "end_iso8601": [
+            "type": "string",
+            "description": "New end time in ISO 8601 (e.g. 2026-04-22T15:30:00+02:00). Omit to keep unchanged.",
+          ],
+          "time_zone": [
+            "type": "string",
+            "description": "IANA time zone identifier (e.g. Europe/Berlin). Defaults to the user's local time zone if omitted.",
+          ],
+          "location": [
+            "type": "string",
+            "description": "New location (omit to keep unchanged).",
+          ],
+          "description": [
+            "type": "string",
+            "description": "New description/notes (omit to keep unchanged).",
+          ],
+        ] as [String: Any],
+        "required": ["event_id"],
+      ],
+    ],
+    [
+      "name": "google_calendar_delete_event",
+      "description": "Deletes a calendar event by its event_id (from google_calendar_list_events results). To CHANGE an existing event (time, title, etc.), use google_calendar_update_event instead — do NOT delete and re-create, which leaves duplicates if the delete fails. Use the event_id exactly as returned (verbatim); never base64-encode or otherwise transform it. Always confirm with the user before deleting.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "event_id": [
+            "type": "string",
+            "description": "The ID of the event to delete, copied verbatim from a google_calendar_list_events result.",
           ],
         ] as [String: Any],
         "required": ["event_id"],
@@ -540,6 +578,27 @@ enum ChatToolRegistry {
         return result
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: calendar create failed: \(error.localizedDescription)")
+        return ["error": error.localizedDescription]
+      }
+
+    case "google_calendar_update_event":
+      guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
+      guard let eventId = args["event_id"] as? String else {
+        return ["error": "Missing required argument: event_id"]
+      }
+      do {
+        let result = try await GoogleCalendarAPIClient.shared.updateEvent(
+          eventId: eventId,
+          summary: args["summary"] as? String,
+          startISO: args["start_iso8601"] as? String,
+          endISO: args["end_iso8601"] as? String,
+          timeZone: args["time_zone"] as? String,
+          location: args["location"] as? String,
+          description: args["description"] as? String)
+        DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar update ok, id=\(result["event_id"] ?? "?")")
+        return result
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar update failed: \(error.localizedDescription)")
         return ["error": error.localizedDescription]
       }
 

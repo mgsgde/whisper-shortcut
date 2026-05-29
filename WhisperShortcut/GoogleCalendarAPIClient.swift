@@ -6,6 +6,12 @@ actor GoogleCalendarAPIClient {
   private let baseURL = "https://www.googleapis.com/calendar/v3"
   private let maxResultsCap = 50
 
+  /// Guards against accidental duplicate creates: maps a (summary|start|end)
+  /// key to the event created for it and when. A repeated identical create
+  /// within `dedupWindow` returns the existing event instead of POSTing again.
+  private var recentCreates: [String: (id: String, at: Date)] = [:]
+  private let dedupWindow: TimeInterval = 60
+
   // MARK: - List Events
 
   func listUpcomingEvents(maxResults: Int = 10, hoursAhead: Int = 168) async throws -> [[String: Any]] {
@@ -71,6 +77,14 @@ actor GoogleCalendarAPIClient {
       throw CalendarAPIError.invalidDateFormat
     }
 
+    let dedupKey = "\(summary)|\(startISO)|\(endISO)"
+    let now = Date()
+    if let recent = recentCreates[dedupKey], now.timeIntervalSince(recent.at) < dedupWindow {
+      DebugLogger.logWarning(
+        "GOOGLE-CALENDAR: duplicate create suppressed for '\(summary)' — identical to event \(recent.id) created \(Int(now.timeIntervalSince(recent.at)))s ago")
+      return ["ok": true, "event_id": recent.id, "summary": summary, "deduplicated": true]
+    }
+
     guard let url = URL(string: "\(baseURL)/calendars/primary/events") else {
       throw CalendarAPIError.invalidResponse
     }
@@ -102,7 +116,62 @@ actor GoogleCalendarAPIClient {
     }
     if let location = json["location"] as? String { result["location"] = location }
     if let description = json["description"] as? String { result["description"] = description }
+    if let id = result["event_id"] as? String {
+      recentCreates = recentCreates.filter { now.timeIntervalSince($0.value.at) < dedupWindow }
+      recentCreates[dedupKey] = (id, now)
+    }
     DebugLogger.logSuccess("GOOGLE-CALENDAR: created event id=\(result["event_id"] ?? "?")")
+    return result
+  }
+
+  // MARK: - Update Event
+
+  func updateEvent(eventId: String, summary: String? = nil, startISO: String? = nil,
+                   endISO: String? = nil, timeZone: String? = nil,
+                   location: String? = nil, description: String? = nil) async throws -> [String: Any] {
+    DebugLogger.logNetwork("GOOGLE-CALENDAR: updateEvent id=\(eventId)")
+    let tz = timeZone ?? TimeZone.current.identifier
+
+    var body: [String: Any] = [:]
+    if let summary { body["summary"] = summary }
+    if let startISO {
+      guard isValidISO8601(startISO) else { throw CalendarAPIError.invalidDateFormat }
+      body["start"] = ["dateTime": startISO, "timeZone": tz]
+    }
+    if let endISO {
+      guard isValidISO8601(endISO) else { throw CalendarAPIError.invalidDateFormat }
+      body["end"] = ["dateTime": endISO, "timeZone": tz]
+    }
+    if let location { body["location"] = location }
+    if let description { body["description"] = description }
+    guard !body.isEmpty else { throw CalendarAPIError.noFieldsToUpdate }
+
+    let encoded = encodedPathComponent(eventId)
+    guard let url = URL(string: "\(baseURL)/calendars/primary/events/\(encoded)") else {
+      throw CalendarAPIError.invalidResponse
+    }
+
+    let bodyData = try JSONSerialization.data(withJSONObject: body)
+    // PATCH updates only the supplied fields, leaving the rest of the event intact.
+    let data = try await authorizedRequest(url: url, httpMethod: "PATCH", body: bodyData)
+
+    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw CalendarAPIError.invalidResponse
+    }
+
+    var result: [String: Any] = ["ok": true]
+    if let id = json["id"] as? String { result["event_id"] = id }
+    if let htmlLink = json["htmlLink"] as? String { result["html_link"] = htmlLink }
+    if let summary = json["summary"] as? String { result["summary"] = summary }
+    if let start = json["start"] as? [String: Any], let startDT = start["dateTime"] as? String {
+      result["start"] = startDT
+    }
+    if let end = json["end"] as? [String: Any], let endDT = end["dateTime"] as? String {
+      result["end"] = endDT
+    }
+    if let location = json["location"] as? String { result["location"] = location }
+    if let description = json["description"] as? String { result["description"] = description }
+    DebugLogger.logSuccess("GOOGLE-CALENDAR: updated event id=\(result["event_id"] ?? "?")")
     return result
   }
 
@@ -192,6 +261,7 @@ actor GoogleCalendarAPIClient {
     case requestFailed(Int)
     case apiError(String)
     case invalidDateFormat
+    case noFieldsToUpdate
 
     var errorDescription: String? {
       switch self {
@@ -200,6 +270,7 @@ actor GoogleCalendarAPIClient {
       case .requestFailed(let code): return "Calendar API request failed with status \(code)."
       case .apiError(let msg): return "Calendar API error: \(msg)"
       case .invalidDateFormat: return "Invalid date format. Use ISO 8601 (e.g. 2026-04-22T15:00:00+02:00)."
+      case .noFieldsToUpdate: return "No fields to update. Provide at least one of: summary, start, end, location, description."
       }
     }
   }

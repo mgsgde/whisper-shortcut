@@ -125,27 +125,54 @@ class ChatViewModel: ObservableObject {
   private static let pinCommand = "/pin"
   private static let unpinCommand = "/unpin"
   private static let modelCommand = "/model"
-  private static let grokCommand = "/grok"
-  private static let geminiCommand = "/gemini"
-  private static let openaiCommand = "/openai"
   private static let meetingCommand = "/meeting"
   private static let copyCommand = "/copy"
 
-  /// All slash commands with descriptions for autocomplete.
-  static let commandSuggestions: [(command: String, description: String)] = [
-    ("/new", "Start a new chat (previous chat stays in history)"),
-    ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
-    ("/attach", "Open the file picker to attach files (PDF, images, text)"),
-    ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
-    ("/gemini", "Switch to \(ChatModelProvider.gemini.defaultChatModel.displayName)"),
-    ("/grok",   "Switch to \(ChatModelProvider.grok.defaultChatModel.displayName)"),
-    ("/openai", "Switch to \(ChatModelProvider.openai.defaultChatModel.displayName)"),
-    ("/settings", "Open Settings"),
-    ("/pin", "Toggle whether the window stays open when losing focus"),
-    ("/unpin", "Make the window close when losing focus"),
-    ("/meeting", "Start or stop live meeting recording"),
-    ("/copy", "Copy the entire chat history to clipboard as Markdown"),
-  ]
+  /// Model-switch slash commands, generated from `PromptModel` so adding a model auto-adds its
+  /// alias. Grouped by provider: the provider-default alias (`/gemini`, `/grok`, `/gpt`) first,
+  /// then each of that provider's chat models by its `shortAlias` (`/g3f`, `/grok43`, `/gpt55`, …).
+  /// Single source for autocomplete, tab-completion, `knownSlashCommands`, dispatch, and the
+  /// system-prompt command list — so none can drift. `/openai` is NOT here: it's a silent,
+  /// dispatch-only alias for `/gpt` (see `modelCommandLookup`).
+  static let modelCommands: [(command: String, model: PromptModel, description: String)] = {
+    var out: [(command: String, model: PromptModel, description: String)] = []
+    for provider in ChatModelProvider.allCases {
+      let def = provider.defaultChatModel
+      out.append(("/\(provider.commandAlias)", def, "Switch to \(def.displayName)"))
+      for model in PromptModel.chatModels where model.provider == provider {
+        out.append(("/\(model.shortAlias)", model, "Switch to \(model.displayName)"))
+      }
+    }
+    return out
+  }()
+
+  /// Maps every model-switch command (lowercased) to its target model, including the silent
+  /// `/openai` alias for `/gpt`. Drives the generic model-switch dispatch in `sendMessage`.
+  static let modelCommandLookup: [String: PromptModel] = {
+    var dict = Dictionary(uniqueKeysWithValues: modelCommands.map { ($0.command, $0.model) })
+    dict["/openai"] = ChatModelProvider.openai.defaultChatModel // silent alias for /gpt
+    return dict
+  }()
+
+  /// All slash commands with descriptions for autocomplete. The model-switch commands are
+  /// spliced in from `modelCommands` (after `/model`) so they stay in sync with `PromptModel`.
+  static let commandSuggestions: [(command: String, description: String)] = {
+    var list: [(command: String, description: String)] = [
+      ("/new", "Start a new chat (previous chat stays in history)"),
+      ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
+      ("/attach", "Open the file picker to attach files (PDF, images, text)"),
+      ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
+    ]
+    list += modelCommands.map { ($0.command, $0.description) }
+    list += [
+      ("/settings", "Open Settings"),
+      ("/pin", "Toggle whether the window stays open when losing focus"),
+      ("/unpin", "Make the window close when losing focus"),
+      ("/meeting", "Start or stop live meeting recording"),
+      ("/copy", "Copy the entire chat history to clipboard as Markdown"),
+    ]
+    return list
+  }()
 
   /// Commands to show in UI (excludes /new when single-chat mode).
   var commandSuggestionsForDisplay: [(command: String, description: String)] {
@@ -623,7 +650,9 @@ class ChatViewModel: ObservableObject {
     var responseParts: [[String: Any]] = []
     for call in calls {
       try Task.checkCancellation()
+      DebugLogger.log("CHAT-TOOL-CALL: \(call.name) args=\(Self.compactDescription(call.args))")
       let result = await ChatToolRegistry.execute(name: call.name, args: call.args)
+      DebugLogger.log("CHAT-TOOL-RESULT: \(call.name) -> \(Self.compactDescription(result))")
       responseParts.append(["functionResponse": ["name": call.name, "response": result]])
     }
     DebugLogger.log("CHAT: executed \(calls.count) tool call(s), continuing stream")
@@ -631,6 +660,20 @@ class ChatViewModel: ObservableObject {
       ["role": "model", "parts": callParts],
       ["role": "user", "parts": responseParts],
     ]
+  }
+
+  /// Compact, length-capped JSON string for logging tool-call args/results
+  /// without flooding the log. Lets us see exactly what the model passed and
+  /// got back (e.g. the precise event_id), which plain name-only logging hid.
+  private static func compactDescription(_ value: [String: Any], maxLength: Int = 600) -> String {
+    let raw: String
+    if let data = try? JSONSerialization.data(withJSONObject: value),
+       let json = String(data: data, encoding: .utf8) {
+      raw = json
+    } else {
+      raw = String(describing: value)
+    }
+    return raw.count > maxLength ? String(raw.prefix(maxLength)) + "…(\(raw.count) chars)" : raw
   }
 
   /// Auto-processes the next queued message once the current one finishes.
@@ -670,10 +713,18 @@ class ChatViewModel: ObservableObject {
       return
     }
 
+    // Model-switch commands (provider-default aliases /gemini /grok /gpt, the per-model short
+    // aliases /g3f /grok43 /gpt55 …, and the silent /openai alias). Generated from PromptModel,
+    // so this one lookup covers every model without per-command branches.
+    if let model = Self.modelCommandLookup[lower] {
+      inputText = ""
+      switchToModel(model)
+      return
+    }
+
     if lower == Self.newChatCommand || lower == Self.screenshotCommand
         || lower == Self.attachCommand
         || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
-        || lower == Self.grokCommand || lower == Self.geminiCommand || lower == Self.openaiCommand
         || lower == Self.copyCommand {
       inputText = ""
       if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
@@ -681,12 +732,6 @@ class ChatViewModel: ObservableObject {
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else if lower == Self.pinCommand { togglePin() }
       else if lower == Self.unpinCommand { unpin() }
-      // Bare provider commands read their target from ChatModelProvider.defaultChatModel —
-      // updating the default in one place propagates to both this dispatch and the
-      // /commandSuggestions hint above, and to ChatModelCommandResolver's no-qualifier branch.
-      else if lower == Self.grokCommand { switchToModel(ChatModelProvider.grok.defaultChatModel) }
-      else if lower == Self.geminiCommand { switchToModel(ChatModelProvider.gemini.defaultChatModel) }
-      else if lower == Self.openaiCommand { switchToModel(ChatModelProvider.openai.defaultChatModel) }
       else if lower == Self.copyCommand { copyChatToClipboard(sessionId: session.id) }
       else { await captureScreenshot() }
       return
@@ -2042,6 +2087,9 @@ struct ChatInputAreaView: View {
   var onTapScreenshotThumbnail: (Data) -> Void
 
   @StateObject private var composer = GeminiComposerController()
+  /// Highlighted row in the slash-command suggestion overlay (↑/↓ navigation, Enter/Tab to select).
+  /// Reset to 0 whenever the typed slash word changes (see `body`'s `onChange`).
+  @State private var selectedSuggestionIndex = 0
   @AppStorage(UserDefaultsKeys.chatCloseOnFocusLoss) private var closeOnFocusLoss: Bool = SettingsDefaults.chatCloseOnFocusLoss
   @AppStorage(UserDefaultsKeys.selectedChatModel) private var selectedChatModelRaw: String = SettingsDefaults.selectedChatModel.rawValue
 
@@ -2078,6 +2126,9 @@ struct ChatInputAreaView: View {
       commandSuggestionsOverlay
       inputBar
     }
+    // Re-home the highlight whenever the typed slash word changes, so filtering the
+    // suggestion list never leaves the selection pointing at a now-hidden row.
+    .onChange(of: lastWord) { selectedSuggestionIndex = 0 }
     .onAppear {
       viewModel.composerScreenshotCountProvider = { [weak composer] in composer?.screenshotCount ?? 0 }
       viewModel.composerFileCountProvider = { [weak composer] in composer?.fileAttachmentCount ?? 0 }
@@ -2120,11 +2171,56 @@ struct ChatInputAreaView: View {
   /// separately (see `handleModelCommand`).
   private static let knownSlashCommands: Set<String> =
     Set(ChatViewModel.commandSuggestions.map(\.command).filter { $0 != "/model" })
+      .union(ChatViewModel.modelCommandLookup.keys) // adds the silent /openai alias (not in commandSuggestions)
 
-  /// Sends the current composer contents. Recognized slash commands strip just
-  /// the slash token (preserving any other attachments / text) and dispatch
-  /// through the legacy `sendMessage`. Everything else is sent in document order.
+  /// Slash-command suggestions matching the word the caret sits on (empty unless that
+  /// word starts with "/"). Single source for the overlay's rows and for ↑/↓ navigation,
+  /// Tab, and Enter selection, so the highlighted row and the dispatched command always agree.
+  private var filteredCommandSuggestions: [(command: String, description: String)] {
+    guard lastWord.hasPrefix("/") else { return [] }
+    let prefix = lastWord.lowercased()
+    return viewModel.commandSuggestionsForDisplay.filter { $0.command.lowercased().hasPrefix(prefix) }
+  }
+
+  /// The command for the currently highlighted suggestion row, or nil when the overlay isn't
+  /// showing. `selectedSuggestionIndex` is clamped here so a stale index can never crash.
+  private func highlightedSuggestionCommand() -> String? {
+    let list = filteredCommandSuggestions
+    guard !list.isEmpty else { return nil }
+    return list[max(0, min(selectedSuggestionIndex, list.count - 1))].command
+  }
+
+  /// Moves the suggestion highlight by `delta` (wrapping top↔bottom). Returns true only when the
+  /// overlay is showing — that's the signal the composer uses to decide whether ↑/↓ should drive
+  /// the menu (true) or fall through to normal caret movement (false).
+  private func moveSuggestionSelection(by delta: Int) -> Bool {
+    let count = filteredCommandSuggestions.count
+    guard count > 0 else { return false }
+    selectedSuggestionIndex = ((selectedSuggestionIndex + delta) % count + count) % count
+    return true
+  }
+
+  /// Applies a chosen suggestion: `/model` completes inline (so the user can type its argument);
+  /// every other command strips the slash token and dispatches. Shared by Tab and Enter.
+  private func selectCommand(_ command: String) {
+    composer.removeTrailingWord()
+    if command == "/model" {
+      composer.textView?.insertText(command + " ", replacementRange: NSRange(location: NSNotFound, length: 0))
+    } else {
+      Task { await viewModel.sendMessage(userInput: command) }
+    }
+    selectedSuggestionIndex = 0
+  }
+
+  /// Sends the current composer contents. When the suggestion overlay is showing, Enter selects
+  /// the highlighted command instead. Otherwise recognized slash commands strip just the slash
+  /// token (preserving any other attachments / text) and dispatch through the legacy `sendMessage`;
+  /// everything else is sent in document order.
   private func submitComposer() {
+    if let command = highlightedSuggestionCommand() {
+      selectCommand(command)
+      return
+    }
     let output = composer.serialize()
     let typed = output.typedText
     let lower = typed.lowercased()
@@ -2150,22 +2246,11 @@ struct ChatInputAreaView: View {
     }
   }
 
-  /// Tab key in composer: complete a slash-command prefix and dispatch the
-  /// matched command without clearing the rest of the composer.
+  /// Tab key in composer: complete/dispatch the highlighted suggestion without clearing the
+  /// rest of the composer.
   private func handleTabComplete() -> Bool {
-    let word = lastWord
-    guard word.hasPrefix("/"), !word.isEmpty else { return false }
-    let matches = viewModel.suggestedCommands(for: word)
-    guard let first = matches.first else { return false }
-    // Commands that take an argument: complete inline so the user can type
-    // the argument; do not dispatch yet.
-    let takesArgument = (first == "/model")
-    composer.removeTrailingWord()
-    if takesArgument {
-      composer.textView?.insertText(first + " ", replacementRange: NSRange(location: NSNotFound, length: 0))
-      return true
-    }
-    Task { await viewModel.sendMessage(userInput: first) }
+    guard let command = highlightedSuggestionCommand() else { return false }
+    selectCommand(command)
     return true
   }
 
@@ -2174,29 +2259,47 @@ struct ChatInputAreaView: View {
   private var commandSuggestionsOverlay: some View {
     Group {
       if lastWord.hasPrefix("/") {
-        let suggestions = viewModel.commandSuggestionsForDisplay
-          .filter { $0.command.lowercased().hasPrefix(lastWord.lowercased()) }
+        let suggestions = filteredCommandSuggestions
         if !suggestions.isEmpty {
-          VStack(alignment: .leading, spacing: 0) {
-            ForEach(suggestions, id: \.command) { item in
-              HStack(alignment: .top, spacing: 8) {
-                Text(item.command)
-                  .font(.system(.body, design: .monospaced))
-                  .fontWeight(.medium)
-                  .foregroundColor(ChatTheme.primaryText)
-                Text(item.description)
-                  .font(.caption)
-                  .foregroundColor(ChatTheme.secondaryText)
-                  .lineLimit(2)
+          let highlight = max(0, min(selectedSuggestionIndex, suggestions.count - 1))
+          ScrollViewReader { proxy in
+            ScrollView {
+              VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(suggestions.enumerated()), id: \.element.command) { index, item in
+                  HStack(alignment: .top, spacing: 8) {
+                    Text(item.command)
+                      .font(.system(.body, design: .monospaced))
+                      .fontWeight(.medium)
+                      .foregroundColor(ChatTheme.primaryText)
+                    Text(item.description)
+                      .font(.caption)
+                      .foregroundColor(ChatTheme.secondaryText)
+                      .lineLimit(2)
+                  }
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .padding(.horizontal, 12)
+                  .padding(.vertical, 8)
+                  .background(
+                    RoundedRectangle(cornerRadius: 6)
+                      .fill(index == highlight ? ChatTheme.primaryText.opacity(0.10) : Color.clear)
+                  )
+                  .padding(.horizontal, 4)
+                  .id(item.command)
+                }
               }
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .padding(.horizontal, 12)
-              .padding(.vertical, 8)
+              .padding(.vertical, 6)
+            }
+            .frame(maxHeight: 260)
+            // Keep the highlighted row visible as ↑/↓ moves through a long list.
+            .onChange(of: selectedSuggestionIndex) { _ in
+              let i = max(0, min(selectedSuggestionIndex, suggestions.count - 1))
+              withAnimation(.easeOut(duration: 0.1)) {
+                proxy.scrollTo(suggestions[i].command, anchor: .center)
+              }
             }
           }
           .allowsHitTesting(false)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.vertical, 6)
           .background(ChatTheme.controlBackground)
           .overlay(
             RoundedRectangle(cornerRadius: 8)
@@ -2224,6 +2327,7 @@ struct ChatInputAreaView: View {
           if viewModel.isSending { viewModel.cancelSend() }
         },
         onTabComplete: { handleTabComplete() },
+        onMoveSelection: { delta in moveSuggestionSelection(by: delta) },
         onClickScreenshot: { data in onTapScreenshotThumbnail(data) }
       )
       .frame(height: inputHeight)

@@ -12,7 +12,7 @@ alwaysApply: true
 
 - **State machine**: Single source of truth is `AppState` in `AppState.swift` (`idle`, `recording`, `processing`, `feedback`). Always transition via AppState; never manipulate UI or flags directly.
 - **Orchestration**: `MenuBarController` owns services and shortcuts; `SpeechService` holds the main logic (transcribe, executePrompt, readSelectionAloud/readProseAloud).
-- **Chat**: `LLMChatProvider` abstracts Gemini, Grok, and OpenAI; `ChatToolRegistry` exposes controlled local, Google, and Trello tools (gated on connection); slash commands are typed in the composer.
+- **Chat**: `LLMChatProvider` abstracts Gemini, Grok, and OpenAI; `ChatToolRegistry` exposes controlled local, Google, and Trello tools (gated on connection); slash commands are typed in the composer. When the user mentions "the chat", "an interaction", or "the logs", they mean this in-app AI Chat and the app's own logs (skill **view-logs-via-bash**) — not any external MCP integration available to the agent.
 - **Google integration**: `GoogleAccountOAuthService` provides Calendar, Tasks, and Gmail tokens; API clients are actors.
 - **Trello integration**: `TrelloOAuthService` provides board access; `TrelloAPIClient` backs the `trello_*` chat tools (board/list/card read + create/move/update/archive).
 - **Core services**: AudioRecorder, ChunkTTSService, AudioChunker, AudioMerger, ClipboardManager, KeychainManager, LiveMeetingRecorder.
