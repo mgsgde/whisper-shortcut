@@ -58,7 +58,12 @@ struct PrivacyPermissionsTab: View {
           description: "Optional. Lets you attach screenshots to chat messages.",
           required: false,
           status: screenStatus,
-          actions: screenActions
+          actions: screenActions,
+          // macOS caches the Screen Recording grant per process, so a running app keeps
+          // showing the old status after you enable it — only a relaunch picks up the change.
+          hint: screenStatus == .granted
+            ? nil
+            : "Just enabled it in System Settings? macOS only reflects the change after a relaunch — use “Quit & Reopen” below."
         )
       }
 
@@ -172,7 +177,8 @@ struct PrivacyPermissionsTab: View {
     description: String,
     required: Bool,
     status: PermissionStatus,
-    actions: AnyView
+    actions: AnyView,
+    hint: String? = nil
   ) -> some View {
     HStack(alignment: .top, spacing: 16) {
       VStack(alignment: .leading, spacing: 4) {
@@ -205,6 +211,18 @@ struct PrivacyPermissionsTab: View {
           .font(.caption)
           .foregroundColor(.secondary)
           .fixedSize(horizontal: false, vertical: true)
+        if let hint = hint {
+          HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "info.circle")
+              .font(.caption)
+              .foregroundStyle(.yellow)
+            Text(hint)
+              .font(.caption)
+              .foregroundColor(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          .padding(.top, 2)
+        }
       }
       Spacer(minLength: 8)
       actions
@@ -336,6 +354,18 @@ struct PrivacyPermissionsTab: View {
           .buttonStyle(.borderedProminent)
           .pointerCursorOnHover()
         }
+        // A running process keeps seeing the pre-grant Screen Recording status until it's
+        // relaunched, so offer a one-click restart to pick up a freshly granted permission.
+        if screenStatus != .granted {
+          Button {
+            relaunchApp()
+          } label: {
+            Label("Quit & Reopen", systemImage: "arrow.clockwise")
+              .font(.callout)
+          }
+          .buttonStyle(.bordered)
+          .pointerCursorOnHover()
+        }
         Button {
           PermissionStatusChecker.openSystemSettings(for: .screenRecording)
         } label: {
@@ -379,6 +409,29 @@ struct PrivacyPermissionsTab: View {
   private func relaunchWelcomeTour() {
     SettingsManager.shared.closeSettings()
     WelcomeWindowController.shared.show()
+  }
+
+  /// Relaunches the app so a freshly granted Screen Recording permission takes effect.
+  /// Spawns a detached shell that waits for this process to exit before reopening the
+  /// bundle — launching while we're still running would trip the single-instance guard
+  /// in FullWhisperShortcut.main() and the new instance would immediately exit.
+  private func relaunchApp() {
+    let pid = ProcessInfo.processInfo.processIdentifier
+    let bundlePath = Bundle.main.bundlePath
+    let task = Process()
+    task.launchPath = "/bin/sh"
+    task.arguments = [
+      "-c",
+      "while kill -0 \(pid) 2>/dev/null; do sleep 0.2; done; open \"\(bundlePath)\"",
+    ]
+    do {
+      try task.run()
+    } catch {
+      DebugLogger.logError("RELAUNCH: Failed to spawn relaunch helper: \(error)")
+      return
+    }
+    DebugLogger.log("RELAUNCH: Terminating for Screen Recording permission refresh")
+    NSApplication.shared.terminate(nil)
   }
 }
 
