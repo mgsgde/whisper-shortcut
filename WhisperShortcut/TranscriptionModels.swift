@@ -199,6 +199,37 @@ enum TranscriptionModel: String, CaseIterable {
     }
   }
 
+  /// Whether the user currently has what this transcription model needs to run: the matching
+  /// provider API key (Gemini / OpenAI / xAI), a downloaded offline Whisper model, or a configured
+  /// self-hosted endpoint. Drives menu enablement so dictation works with any single provider key.
+  var hasRequiredCredential: Bool {
+    if isOffline { return isOfflineModelAvailable() }
+    if isGemini { return GeminiCredentialProvider.shared.hasCredential() }
+    if isOpenAI { return KeychainManager.shared.hasValidOpenAIAPIKey() }
+    if isXAI { return KeychainManager.shared.hasValidXAIAPIKey() }
+    // Self-hosted: usable once the user has configured an endpoint URL.
+    let url = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return !url.isEmpty
+  }
+
+  /// Actionable message shown when this transcription model can't run for lack of a credential.
+  var apiKeyRequiredMessage: String {
+    if isGemini {
+      return "Add your Gemini API key in Settings (General tab) to use dictation. For offline use, download a Whisper model in Speech-to-Text settings."
+    }
+    if isOpenAI {
+      return "Add your OpenAI API key in Settings (General tab) to use dictation, or pick a different transcription model in Dictate settings."
+    }
+    if isXAI {
+      return "Add your xAI API key in Settings (General tab) to use dictation, or pick a different transcription model in Dictate settings."
+    }
+    if self == .selfHostedTranscription {
+      return "Configure your self-hosted transcription endpoint in Dictate settings, or pick a different model."
+    }
+    return "Download the selected Whisper model in Speech-to-Text settings, or pick a different transcription model."
+  }
+
   /// True for models that route through OpenAI's *hosted* /v1/audio/transcriptions endpoint
   /// (i.e. user pays via their OpenAI API key). Does NOT include `.selfHostedTranscription`,
   /// which uses the same OpenAI wire format but points at a user-controlled endpoint.

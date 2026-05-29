@@ -428,14 +428,19 @@ class MenuBarController: NSObject {
   private func updateMenuItems() {
     guard let menu = statusItem?.menu else { return }
 
-    let hasCredential = GeminiCredentialProvider.shared.hasCredential()
-
-    // Check for offline transcription models
+    // Per-feature credential checks: each feature is enabled when the user has a key for the
+    // provider of its *selected* model (or an offline/self-hosted transcription option). This is
+    // what lets a single provider key (Gemini / OpenAI / xAI) drive every feature.
     let selectedTranscriptionModel = TranscriptionModel.loadSelected()
     let hasOfflineTranscriptionModel = selectedTranscriptionModel.isOfflineModelAvailable()
-    
-    // Prompt mode always requires API key (no offline support)
-    let hasOfflinePromptModel = false
+    let canTranscribe = selectedTranscriptionModel.hasRequiredCredential
+    let canPrompt = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedPromptModel,
+      default: SettingsDefaults.selectedPromptModel).hasRequiredCredential
+    let canReadAloud = ReadAloudPreferences.model.hasRequiredCredential
+    let hasAnyKey = GeminiCredentialProvider.shared.hasCredential()
+      || KeychainManager.shared.hasValidOpenAIAPIKey()
+      || KeychainManager.shared.hasValidXAIAPIKey()
 
     // Update status
     menu.item(withTag: 100)?.title = appState.statusText
@@ -454,18 +459,18 @@ class MenuBarController: NSObject {
       menu, tag: 101,
       title: (appState.recordingMode == .transcription || activeMeetingSegment == .dictation)
         ? "Stop Dictate" : "Dictate",
-      enabled: appState.canStartTranscription(hasAPIKey: hasCredential, hasOfflineModel: hasOfflineTranscriptionModel)
+      enabled: appState.canStartTranscription(hasAPIKey: canTranscribe, hasOfflineModel: false)
         || appState.recordingMode == .transcription
-        || meetingAllowsActions && (hasCredential || hasOfflineTranscriptionModel)
+        || meetingAllowsActions && canTranscribe
         || activeMeetingSegment == .dictation)
 
     updateMenuItem(
       menu, tag: 102,
       title: (appState.recordingMode == .prompt || activeMeetingSegment == .prompt)
         ? "Stop Dictate Prompt" : "Dictate Prompt",
-      enabled: appState.canStartPrompting(hasAPIKey: hasCredential, hasOfflineModel: hasOfflinePromptModel)
+      enabled: appState.canStartPrompting(hasAPIKey: canPrompt, hasOfflineModel: false)
         || appState.recordingMode == .prompt
-        || meetingAllowsActions && hasCredential
+        || meetingAllowsActions && canPrompt
         || activeMeetingSegment == .prompt
     )
 
@@ -474,11 +479,11 @@ class MenuBarController: NSObject {
     updateMenuItem(
       menu, tag: 114,
       title: isReadAloudActive ? "Stop Read Aloud" : "Read Aloud",
-      enabled: hasCredential && (!appState.isBusy || isReadAloudActive)
+      enabled: canReadAloud && (!appState.isBusy || isReadAloudActive)
     )
 
-    // Handle special case when no credential and no offline model is configured
-    if !hasCredential && !hasOfflineTranscriptionModel && !hasOfflinePromptModel, let button = statusItem?.button {
+    // Handle special case when no API key (any provider) and no offline model is configured
+    if !hasAnyKey && !hasOfflineTranscriptionModel, let button = statusItem?.button {
       button.image = nil
       button.title = "⚠️"
       button.toolTip = "Add an API key or use an offline model - click to configure"
@@ -540,16 +545,14 @@ class MenuBarController: NSObject {
         DebugLogger.logWarning("MEETING-SEGMENT: Another segment already active, ignoring dictation")
         return
       }
-      let hasCredential = GeminiCredentialProvider.shared.hasCredential()
       let selectedModel = TranscriptionModel.loadSelected()
-      let hasOfflineModel = selectedModel.isOfflineModelAvailable()
-      if hasCredential || hasOfflineModel {
+      if selectedModel.hasRequiredCredential {
         DebugLogger.log("MEETING-SEGMENT: Starting dictation segment during meeting")
         activeMeetingSegment = .dictation
         audioRecorder.startRecording()
       } else {
         PopupNotificationWindow.showError(
-          "Add your Gemini API key in Settings (General tab) to use dictation. For offline use, download a Whisper model in Speech-to-Text settings.",
+          selectedModel.apiKeyRequiredMessage,
           title: "API Key Required"
         )
       }
@@ -574,16 +577,13 @@ class MenuBarController: NSObject {
     case .transcription:
       stopRecordingAfterTailDelay()
     case .none:
-      let hasCredential = GeminiCredentialProvider.shared.hasCredential()
       let selectedModel = TranscriptionModel.loadSelected()
-      let hasOfflineModel = selectedModel.isOfflineModelAvailable()
-
-      if appState.canStartTranscription(hasAPIKey: hasCredential, hasOfflineModel: hasOfflineModel) {
+      if appState.canStartTranscription(hasAPIKey: selectedModel.hasRequiredCredential, hasOfflineModel: false) {
         appState = appState.startRecording(.transcription)
         audioRecorder.startRecording()
       } else {
         PopupNotificationWindow.showError(
-          "Add your Gemini API key in Settings (General tab) to use dictation. For offline use, download a Whisper model in Speech-to-Text settings.",
+          selectedModel.apiKeyRequiredMessage,
           title: "API Key Required"
         )
       }
@@ -604,13 +604,16 @@ class MenuBarController: NSObject {
         DebugLogger.logWarning("MEETING-SEGMENT: Another segment already active, ignoring prompt")
         return
       }
-      let hasCredential = GeminiCredentialProvider.shared.hasCredential()
-      if hasCredential {
+      let promptModel = PromptModel.loadPromptModel(
+        forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
+      if promptModel.hasRequiredCredential {
         if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return }
         DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
         simulateCopy()
         activeMeetingSegment = .prompt
         audioRecorder.startRecording()
+      } else {
+        PopupNotificationWindow.showError(promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
       }
       return
     }
@@ -626,15 +629,18 @@ class MenuBarController: NSObject {
     case .prompt:
       stopRecordingAfterTailDelay()
     case .none:
-      let hasCredential = GeminiCredentialProvider.shared.hasCredential()
-
-      if appState.canStartPrompting(hasAPIKey: hasCredential, hasOfflineModel: false) {
+      let promptModel = PromptModel.loadPromptModel(
+        forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
+      if appState.canStartPrompting(hasAPIKey: promptModel.hasRequiredCredential, hasOfflineModel: false) {
         if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
           return
         }
         simulateCopy()
         appState = appState.startRecording(.prompt)
         audioRecorder.startRecording()
+      } else {
+        PopupNotificationWindow.showError(
+          promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
       }
     default:
       break
@@ -742,9 +748,10 @@ class MenuBarController: NSObject {
   }
 
   private func startLiveMeeting(resuming: Bool) {
-    guard GeminiCredentialProvider.shared.hasCredential() else {
+    let meetingModel = TranscriptionModel.loadSelectedForMeeting()
+    guard meetingModel.hasRequiredCredential else {
       PopupNotificationWindow.showError(
-        "Add your Gemini API key in Settings (General tab) to use live meeting transcription.",
+        meetingModel.apiKeyRequiredMessage,
         title: "API Key Required"
       )
       return
@@ -2003,9 +2010,10 @@ extension MenuBarController: ShortcutDelegate {
       DebugLogger.logWarning("READ-ALOUD-SHORTCUT: ignoring during live meeting")
       return
     }
-    guard GeminiCredentialProvider.shared.hasCredential() else {
+    let readAloudModel = ReadAloudPreferences.model
+    guard readAloudModel.hasRequiredCredential else {
       PopupNotificationWindow.showError(
-        "Add your Gemini API key in Settings (General) or sign in with Google to use Read Aloud.",
+        readAloudModel.apiKeyRequiredMessage,
         title: "API Key Required"
       )
       return

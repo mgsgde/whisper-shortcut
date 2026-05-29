@@ -201,7 +201,6 @@ class SpeechService {
       let result = try await transcribeWithOpenAI(
         audioURL: audioURL,
         modelID: openAIModelID,
-        displayName: model.displayName,
         dictationHint: dictationHint.isEmpty ? nil : dictationHint
       )
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
@@ -215,7 +214,6 @@ class SpeechService {
       let dictationHint = (promptOverride ?? buildDictationPrompt()).trimmingCharacters(in: .whitespacesAndNewlines)
       let result = try await transcribeWithXAI(
         audioURL: audioURL,
-        displayName: model.displayName,
         dictationHint: dictationHint.isEmpty ? nil : dictationHint
       )
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
@@ -513,8 +511,7 @@ class SpeechService {
       do {
         let text = try await transcribeWithOpenAI(
           audioURL: audioURL,
-          modelID: "gpt-4o-mini-transcribe",
-          displayName: "GPT-4o Mini Transcribe"
+          modelID: "gpt-4o-mini-transcribe"
         )
         DebugLogger.log("PROMPT-MODE-OPENAI: Transcribed voice instruction for history: \"\(text.prefix(50))...\"")
         return text
@@ -1032,7 +1029,7 @@ class SpeechService {
 
   // MARK: - OpenAI Transcription (cloud)
 
-  private func transcribeWithOpenAI(audioURL: URL, modelID: String, displayName: String, dictationHint: String? = nil) async throws -> String {
+  private func transcribeWithOpenAI(audioURL: URL, modelID: String, dictationHint: String? = nil) async throws -> String {
     let token = (keychainManager.getOpenAIAPIKey() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     guard !token.isEmpty else {
       throw TranscriptionError.networkError("OpenAI API key is missing — add it in Settings → General.")
@@ -1066,7 +1063,7 @@ class SpeechService {
   /// Transcribes audio via xAI's hosted Speech-to-Text endpoint. The wire format is the same
   /// OpenAI-style multipart (`model`/`language`/`file`) the OpenAI path uses, and xAI ignores the
   /// extra `prompt` field gracefully — verified live — so we reuse the shared helper.
-  private func transcribeWithXAI(audioURL: URL, displayName: String, dictationHint: String? = nil) async throws -> String {
+  private func transcribeWithXAI(audioURL: URL, dictationHint: String? = nil) async throws -> String {
     let token = (keychainManager.getXAIAPIKey() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     guard !token.isEmpty else {
       throw TranscriptionError.networkError("xAI API key is missing — add it in Settings → General.")

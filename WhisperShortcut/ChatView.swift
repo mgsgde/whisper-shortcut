@@ -845,7 +845,6 @@ class ChatViewModel: ObservableObject {
   }
 
   private func generateAITitle(sessionId: UUID) async {
-    guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
     guard let target = store.session(by: sessionId),
           target.messages.count >= 2,
           target.messages[0].role == .user,
@@ -859,19 +858,30 @@ class ChatViewModel: ObservableObject {
       User: \(userText)
       Assistant: \(modelText)
       """
+    // overwriteExisting: replaces the first-message fallback title set in appendMessage.
+    await generateAndApplyTitle(targetId: sessionId, prompt: prompt, overwriteExisting: true, logLabel: "AI")
+  }
+
+  /// Generates a short title via the title model and applies it to `targetId`. With
+  /// `overwriteExisting` false the title is only set while the session is still untitled, so a
+  /// manual rename (or a competing generator) is never clobbered. Shared by the chat and
+  /// meeting title paths so the model id, length cap, and UI sync stay in one place.
+  private func generateAndApplyTitle(targetId: UUID, prompt: String, overwriteExisting: Bool, logLabel: String) async {
+    guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
     do {
       let raw = try await apiClient.generateText(
-        model: "gemini-2.5-flash-lite", prompt: prompt, credential: credential)
+        model: TranscriptionModel.gemini31FlashLite.rawValue, prompt: prompt, credential: credential)
       let title = Self.cleanTitleResponse(raw)
       guard !title.isEmpty else { return }
-      guard var updated = store.session(by: sessionId) else { return }
+      guard var updated = store.session(by: targetId) else { return }
+      if !overwriteExisting, !(updated.title?.isEmpty ?? true) { return }
       updated.title = String(title.prefix(Self.maxSessionTitleLength))
       store.save(updated)
-      if sessionId == session.id { session.title = updated.title }
+      if updated.id == session.id { session.title = updated.title }
       refreshRecentSessions()
-      DebugLogger.log("GEMINI-CHAT: AI title generated for \(sessionId): \(title)")
+      DebugLogger.log("GEMINI-CHAT: \(logLabel) title generated for \(targetId): \(title)")
     } catch {
-      DebugLogger.log("GEMINI-CHAT: AI title generation failed, keeping fallback: \(error.localizedDescription)")
+      DebugLogger.log("GEMINI-CHAT: \(logLabel) title generation failed: \(error.localizedDescription)")
     }
   }
 
@@ -899,7 +909,6 @@ class ChatViewModel: ObservableObject {
           (target.title?.isEmpty ?? true) else { return }
     let summaryText = summary.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !summaryText.isEmpty else { return }
-    guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
     let prompt = """
       Give this meeting a short title (2–4 words) that captures its main topic. \
       Reply with only the title on a single line — no quotes, no punctuation, no explanation.
@@ -907,20 +916,7 @@ class ChatViewModel: ObservableObject {
       Meeting summary:
       \(String(summaryText.prefix(1200)))
       """
-    do {
-      let raw = try await apiClient.generateText(
-        model: "gemini-2.5-flash-lite", prompt: prompt, credential: credential)
-      let title = Self.cleanTitleResponse(raw)
-      guard !title.isEmpty else { return }
-      guard var updated = store.session(by: target.id), (updated.title?.isEmpty ?? true) else { return }
-      updated.title = String(title.prefix(Self.maxSessionTitleLength))
-      store.save(updated)
-      if updated.id == session.id { session.title = updated.title }
-      refreshRecentSessions()
-      DebugLogger.log("GEMINI-CHAT: Meeting title generated for \(target.id): \(title)")
-    } catch {
-      DebugLogger.log("GEMINI-CHAT: Meeting title generation failed: \(error.localizedDescription)")
-    }
+    await generateAndApplyTitle(targetId: target.id, prompt: prompt, overwriteExisting: false, logLabel: "Meeting")
   }
 
   // MARK: - Local model messages (slash commands)

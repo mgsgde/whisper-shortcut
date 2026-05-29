@@ -164,6 +164,25 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
+  /// Whether the user has the API key this model's provider needs. Used to gate features
+  /// (Dictate Prompt, chat, Smart Improvement) so a single provider key is enough.
+  var hasRequiredCredential: Bool {
+    switch provider {
+    case .gemini: return GeminiCredentialProvider.shared.hasCredential()
+    case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
+    case .grok: return KeychainManager.shared.hasValidXAIAPIKey()
+    }
+  }
+
+  /// Actionable message when this model can't run Dictate Prompt for lack of a credential.
+  var apiKeyRequiredMessageForDictatePrompt: String {
+    switch provider {
+    case .gemini: return "Add your Gemini API key in Settings (General tab) to use Dictate Prompt."
+    case .openai: return "Add your OpenAI API key in Settings (General tab) to use Dictate Prompt."
+    case .grok: return "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings."
+    }
+  }
+
   /// True for models whose chat endpoint accepts inline image content parts.
   /// OpenAI's gpt-4o-audio-preview is audio-only and rejects `image_url` parts with HTTP 400.
   var supportsImageInput: Bool {
@@ -437,6 +456,25 @@ enum TTSModel: String, CaseIterable {
     case .gemini: return "Charon"
     case .openai: return "alloy"
     case .xai: return "eve"
+    }
+  }
+
+  /// Whether the user has the API key this TTS model's provider needs. Gates Read Aloud so a
+  /// single provider key is enough.
+  var hasRequiredCredential: Bool {
+    switch provider {
+    case .gemini: return GeminiCredentialProvider.shared.hasCredential()
+    case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
+    case .xai: return KeychainManager.shared.hasValidXAIAPIKey()
+    }
+  }
+
+  /// Actionable message when this TTS model can't run Read Aloud for lack of a credential.
+  var apiKeyRequiredMessage: String {
+    switch provider {
+    case .gemini: return "Add your Gemini API key in Settings (General) or sign in with Google to use Read Aloud."
+    case .openai: return "Add your OpenAI API key in Settings (General tab) to use Read Aloud, or pick a different voice model."
+    case .xai: return "Add your xAI API key in Settings (General tab) to use Read Aloud, or pick a different voice model."
     }
   }
 

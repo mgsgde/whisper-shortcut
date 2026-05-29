@@ -8,23 +8,13 @@ class ContextDerivation {
   private let maxFieldChars = 1000
   /// API endpoint from the selected Smart Improvement / Generate with AI model; falls back to default (Gemini 3 Flash) if unset or invalid. Subscription uses stable Gemini 2.5 Flash.
   private var analysisEndpoint: String {
-    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
-      ?? SettingsDefaults.selectedImprovementModel.rawValue
-    let migratedRaw = PromptModel.migrateLegacyPromptRawValue(raw)
-    guard let model = PromptModel(rawValue: migratedRaw), let transcriptionModel = model.asTranscriptionModel else {
-      return AppConstants.contextDerivationEndpoint
-    }
-    return transcriptionModel.apiEndpoint
+    analysisTranscriptionModel?.apiEndpoint ?? AppConstants.contextDerivationEndpoint
   }
 
   /// The TranscriptionModel form of the currently selected Smart Improvement model, when it maps to one.
   /// Used to decide per-entry whether re-listening to audio can plausibly add information.
   private var analysisTranscriptionModel: TranscriptionModel? {
-    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
-      ?? SettingsDefaults.selectedImprovementModel.rawValue
-    let migratedRaw = PromptModel.migrateLegacyPromptRawValue(raw)
-    guard let model = PromptModel(rawValue: migratedRaw) else { return nil }
-    return model.asTranscriptionModel
+    selectedImprovementModel.asTranscriptionModel
   }
 
   /// The user's selected Smart Improvement model (any provider), or the default.
@@ -752,6 +742,16 @@ class ContextDerivation {
     }
   }
 
+  /// Start/end markers wrapping the suggestion block the model emits for a given focus.
+  private func markers(for focus: GenerationKind) -> (start: String, end: String) {
+    switch focus {
+    case .dictation: return (dictationPromptMarker, dictationPromptEndMarker)
+    case .whisperGlossary: return (whisperGlossaryMarker, whisperGlossaryEndMarker)
+    case .promptMode: return (systemPromptMarker, systemPromptEndMarker)
+    case .chat: return (chatPromptMarker, chatPromptEndMarker)
+    }
+  }
+
   private func writeRationaleIfPresent(_ analysisResult: String, focus: GenerationKind) {
     guard let rationale = extractSection(from: analysisResult, startMarker: rationaleMarker, endMarker: rationaleEndMarker) else { return }
     let url = ContextLogger.shared.directoryURL.appendingPathComponent(suggestionBaseName(for: focus) + "-rationale.txt")
@@ -759,54 +759,24 @@ class ContextDerivation {
   }
 
   private func writeOutputFile(analysisResult: String, focus: GenerationKind) throws {
-    let contextDir = ContextLogger.shared.directoryURL
+    let (startMarker, endMarker) = markers(for: focus)
+    let suggested = extractSection(from: analysisResult, startMarker: startMarker, endMarker: endMarker)
 
     // NO_CHANGE: model decided no improvement is justified — write nothing.
-    if analysisResult.contains(noChangeSentinel) &&
-       extractSection(from: analysisResult, startMarker: dictationPromptMarker, endMarker: dictationPromptEndMarker) == nil &&
-       extractSection(from: analysisResult, startMarker: systemPromptMarker, endMarker: systemPromptEndMarker) == nil &&
-       extractSection(from: analysisResult, startMarker: whisperGlossaryMarker, endMarker: whisperGlossaryEndMarker) == nil &&
-       extractSection(from: analysisResult, startMarker: chatPromptMarker, endMarker: chatPromptEndMarker) == nil {
+    if analysisResult.contains(noChangeSentinel) && suggested == nil {
       DebugLogger.log("USER-CONTEXT-DERIVATION: NO_CHANGE for \(focus) — no suggestion written")
       return
     }
 
     writeRationaleIfPresent(analysisResult, focus: focus)
 
-    switch focus {
-    case .dictation:
-      if let suggested = extractSection(from: analysisResult, startMarker: dictationPromptMarker, endMarker: dictationPromptEndMarker) {
-        let fileURL = contextDir.appendingPathComponent("suggested-dictation-prompt.txt")
-        try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
-        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested dictation prompt (\(suggested.count) chars)")
-      } else {
-        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for dictation prompt")
-      }
-    case .whisperGlossary:
-      if let suggested = extractSection(from: analysisResult, startMarker: whisperGlossaryMarker, endMarker: whisperGlossaryEndMarker) {
-        let fileURL = contextDir.appendingPathComponent("suggested-whisper-glossary.txt")
-        try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
-        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Whisper Glossary (\(suggested.count) chars)")
-      } else {
-        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for Whisper Glossary")
-      }
-    case .promptMode:
-      if let suggested = extractSection(from: analysisResult, startMarker: systemPromptMarker, endMarker: systemPromptEndMarker) {
-        let fileURL = contextDir.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
-        try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
-        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Dictate Prompt system prompt (\(suggested.count) chars)")
-      } else {
-        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for dictate prompt")
-      }
-    case .chat:
-      if let suggested = extractSection(from: analysisResult, startMarker: chatPromptMarker, endMarker: chatPromptEndMarker) {
-        let fileURL = contextDir.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
-        try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
-        DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested Chat system prompt (\(suggested.count) chars)")
-      } else {
-        DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in Gemini response for Chat prompt")
-      }
+    guard let suggested else {
+      DebugLogger.logWarning("USER-CONTEXT-DERIVATION: Markers not found in response for \(focus)")
+      return
     }
+    let fileURL = ContextLogger.shared.directoryURL.appendingPathComponent(suggestionBaseName(for: focus) + ".txt")
+    try suggested.write(to: fileURL, atomically: true, encoding: .utf8)
+    DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested \(focus) (\(suggested.count) chars)")
   }
 
   private func extractSection(from text: String, startMarker: String, endMarker: String) -> String? {
