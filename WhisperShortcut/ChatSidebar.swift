@@ -10,6 +10,7 @@ struct ChatSidebar: View {
   @State private var renamingSessionId: UUID? = nil
   @State private var renameDraft: String = ""
   @State private var collapsedGroups: Set<DateGroup> = []
+  @State private var collapsedMeetingGroups: Set<DateGroup> = []
   @State private var meetingsCollapsed = false
   @State private var archivedCollapsed = true
   @FocusState private var renameFieldFocused: Bool
@@ -128,9 +129,11 @@ struct ChatSidebar: View {
             }
             if !meetingsCollapsed {
               ForEach(Array(groupedMeetings(meetings).enumerated()), id: \.offset) { _, pair in
-                meetingDateSubHeader(pair.0.label)
-                ForEach(pair.1, id: \.id) { session in
-                  sidebarRow(session: session)
+                meetingDateSubHeader(pair.0)
+                if !collapsedMeetingGroups.contains(pair.0) {
+                  ForEach(pair.1, id: \.id) { session in
+                    sidebarRow(session: session)
+                  }
                 }
               }
             }
@@ -312,18 +315,35 @@ struct ChatSidebar: View {
     }
   }
 
-  /// Lighter, indented date label used to group meetings under the "Meetings" header.
-  /// Non-collapsible on purpose so it doesn't share `collapsedGroups` state with the chat date groups.
-  private func meetingDateSubHeader(_ label: String) -> some View {
-    Text(label.uppercased())
-      .font(.system(size: 8.5, weight: .semibold, design: .default))
-      .tracking(1.0)
-      .foregroundColor(ChatTheme.secondaryText.opacity(0.6))
-      .padding(.leading, 18)
-      .padding(.trailing, 12)
-      .padding(.top, 8)
-      .padding(.bottom, 4)
-      .frame(maxWidth: .infinity, alignment: .leading)
+  /// Lighter, indented, collapsible date sub-header grouping meetings under the "Meetings" header.
+  /// Uses its own `collapsedMeetingGroups` state so it never shares collapse state with the chat date groups.
+  private func meetingDateSubHeader(_ group: DateGroup) -> some View {
+    let isCollapsed = collapsedMeetingGroups.contains(group)
+    return HStack(spacing: 4) {
+      Text(group.label.uppercased())
+        .font(.system(size: 8.5, weight: .semibold, design: .default))
+        .tracking(1.0)
+        .foregroundColor(ChatTheme.secondaryText.opacity(0.6))
+      Image(systemName: "chevron.right")
+        .font(.system(size: 6, weight: .bold))
+        .foregroundColor(ChatTheme.secondaryText.opacity(0.4))
+        .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+      Spacer()
+    }
+    .padding(.leading, 18)
+    .padding(.trailing, 12)
+    .padding(.top, 8)
+    .padding(.bottom, 4)
+    .contentShape(Rectangle())
+    .onTapGesture {
+      withAnimation(.easeInOut(duration: 0.15)) {
+        if collapsedMeetingGroups.contains(group) {
+          collapsedMeetingGroups.remove(group)
+        } else {
+          collapsedMeetingGroups.insert(group)
+        }
+      }
+    }
   }
 
   private func collapsibleSectionHeader(_ group: DateGroup, showDivider: Bool = false) -> some View {
