@@ -33,6 +33,28 @@ fi
 
 cd "$PROJECT_DIR"
 
+# Code signing: keep the app's signature stable across rebuilds so macOS keychain
+# "Always Allow" grants persist (an ad-hoc / linker-signed binary changes its hash
+# every build, which invalidates the keychain ACL and re-prompts for every API key).
+#
+# Strategy: if a local Apple Development identity exists, sign with it; otherwise fall
+# back to ad-hoc (the previous behaviour) so cloners without an Apple account can still
+# build. An explicit WS_SIGN_IDENTITY override wins if set.
+#   - WS_SIGN_IDENTITY="-"            → force ad-hoc
+#   - WS_SIGN_IDENTITY="Apple Dev..." → force a specific identity
+SIGN_ARGS=()
+SIGN_IDENTITY="${WS_SIGN_IDENTITY:-}"
+if [[ -z "$SIGN_IDENTITY" ]]; then
+  SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
+    | grep -m1 "Apple Development" | sed -E 's/.*"(.*)".*/\1/')
+fi
+if [[ -n "$SIGN_IDENTITY" && "$SIGN_IDENTITY" != "-" ]]; then
+  echo "🔏 Signing with: $SIGN_IDENTITY"
+  SIGN_ARGS=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGNING_ALLOWED=YES)
+else
+  echo "🔏 No Apple Development identity found — using ad-hoc signing (keychain will re-prompt on rebuilds)."
+fi
+
 # Sync the root README into the app bundle so Xcode's file-system-synchronized
 # group bundles it and the chat's list_whisper_shortcut_docs /
 # read_whisper_shortcut_doc tools can read it. The standalone docs/ tree was
@@ -54,11 +76,13 @@ if [[ "$APP_STORE" == true ]]; then
   fi
   xcodebuild -project WhisperShortcut.xcodeproj -scheme "$SCHEME" -configuration Debug \
     -derivedDataPath "$DERIVED_DATA" \
+    "${SIGN_ARGS[@]}" \
     build
 else
   echo "🔨 Building WhisperShortcut (configuration: Debug)..."
   xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -configuration Debug \
     -derivedDataPath "$DERIVED_DATA" \
+    "${SIGN_ARGS[@]}" \
     build
 fi
 
