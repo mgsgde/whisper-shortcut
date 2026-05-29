@@ -53,7 +53,7 @@ class ContextDerivation {
 
     EVIDENCE SOURCE (CRITICAL): Only labeled PRIMARY interactions can justify a change. Secondary/background context may help you understand the current prompt or choose wording, but it is NOT evidence for new behavior, terminology, corrections, or style rules. Never count the current prompt, other-mode context, or secondary entries toward evidence count.
 
-    PATTERN THRESHOLD (CRITICAL): Only modify the prompt based on RECURRING patterns — behaviors, corrections, terms, or style preferences that appear consistently across multiple distinct primary interactions. Single occurrences, one-off quirks, isolated topics, isolated words, or repeated content inside one interaction MUST be ignored, even if they look interesting or specific. A pattern qualifies only when it is supported by at least 3 distinct primary interactions. When in doubt, prefer NO_CHANGE over speculative rules.
+    PATTERN THRESHOLD (CRITICAL): Only modify the prompt based on RECURRING patterns — behaviors, corrections, terms, or style preferences that appear consistently across multiple distinct primary interactions. Single occurrences, one-off quirks, isolated topics, isolated words, or repeated content inside one interaction MUST be ignored, even if they look interesting or specific. A pattern qualifies only when it is supported by at least 2 distinct primary interactions. When in doubt, prefer NO_CHANGE over speculative rules.
 
     GENERALITY FILTER (CRITICAL): Suggested prompts must remain durable and reusable. For behavioral system prompts, do NOT add concrete tasks, temporary projects, personal facts, names, dates, one-off topics, current plans, specific entities, or transient context. For dictation corrections, domain terms, and Whisper Glossary vocabulary, concrete terms are allowed ONLY when they are stable vocabulary signals supported by the pattern threshold; never add one-off names, temporary project details, dates, plans, or copied examples.
 
@@ -74,7 +74,7 @@ class ContextDerivation {
       Decision: KEEP
     \(rationaleEndMarker)
 
-    Only use Decision: KEEP when Evidence count is 3 or higher. If any candidate change has Evidence count below 3, drop that candidate entirely. If no candidate change reaches Evidence count 3, output ONLY `\(noChangeSentinel)` and nothing else — no suggestion block, no rationale. Do not include DROP decisions in the final output.
+    Only use Decision: KEEP when Evidence count is 2 or higher. If any candidate change has Evidence count below 2, drop that candidate entirely. If no candidate change reaches Evidence count 2, output ONLY `\(noChangeSentinel)` and nothing else — no suggestion block, no rationale. Do not include DROP decisions in the final output.
 
     NO-CHANGE OPTION: If the interaction data does not meaningfully diverge from the current prompt (no new recurring patterns, no obsolete rules to remove, no useful refinement), output ONLY the line `\(noChangeSentinel)` and nothing else — no suggestion block, no rationale. Prefer NO_CHANGE over cosmetic edits, edits driven by single observations, or changes supported only by secondary/background context.
 
@@ -451,7 +451,7 @@ class ContextDerivation {
 
       CRITICAL – Transcription "result" fields often contain recognition errors. Infer intended words (proper nouns, domain terms) from context.
 
-      Your task: produce ONLY a comma-separated list of stable vocabulary terms and proper nouns (names, companies, technical terms) that appear RECURRINGLY in primary data — i.e. across at least 3 distinct transcription interactions. \
+      Your task: produce ONLY a comma-separated list of stable vocabulary terms and proper nouns (names, companies, technical terms) that appear RECURRINGLY in primary data — i.e. across at least 2 distinct transcription interactions. \
       Do NOT include terms that appear only once or only in the current glossary / secondary context, even if they look interesting; one-off proper nouns are not patterns. \
       No sentences, no instructions, no explanations. Use primary data (transcription results) to extract terms; if a current glossary is in secondary context, use it only for merge/refinement wording (keep terms only when still supported by qualifying primary evidence, remove duplicates, remove stale or unsupported terms). \
       Maximum about 50 terms. Prefer the most frequent or impactful (names, project names, technical terms that are often misheard) — frequency across entries is the primary selection criterion.
