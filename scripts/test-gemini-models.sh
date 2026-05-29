@@ -121,10 +121,12 @@ echo ""
 echo "=== Gemini TTS models ==="
 declare -a CURRENT_TTS=(
   "gemini-3.1-flash-tts-preview"
+)
+# Migrate-only — removed from the TTSModel enum (forward to 3.1 Flash TTS via
+# migrateLegacyReadAloudRawValue). Should still serve until Google's 2026-10-16 shutdown.
+declare -a CANDIDATE_TTS=(
   "gemini-2.5-flash-preview-tts"
   "gemini-2.5-pro-preview-tts"
-)
-declare -a CANDIDATE_TTS=(
 )
 TTS_BODY='{"contents":[{"parts":[{"text":"Say the following: Hello"}]}],"generationConfig":{"responseModalities":["AUDIO"],"speechConfig":{"voiceConfig":{"prebuiltVoiceConfig":{"voiceName":"Charon"}}}}}'
 

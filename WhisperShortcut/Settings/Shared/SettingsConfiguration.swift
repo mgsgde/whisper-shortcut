@@ -391,17 +391,16 @@ enum TTSProvider {
 //   OpenAI — https://platform.openai.com/docs/guides/text-to-speech (/v1/audio/speech)
 //   xAI    — https://docs.x.ai/developers/model-capabilities/audio/text-to-speech (/v1/tts)
 enum TTSModel: String, CaseIterable {
-  // gemini-3.1-flash-tts-preview is Google's named replacement for the 2.5 TTS previews
-  // (which shut down 2026-10-16). Verified live via scripts/test-gemini-models.sh.
+  // Google's only current Gemini TTS model. It replaced the 2.5 Flash/Pro TTS previews (shut down
+  // 2026-10-16); persisted selections of those forward here via migrateLegacyReadAloudRawValue.
+  // Verified live via scripts/test-gemini-models.sh.
   case gemini31FlashTTS = "gemini-3.1-flash-tts-preview"
-  case gemini25FlashTTS = "gemini-2.5-flash-preview-tts"
-  case gemini25ProTTS = "gemini-2.5-pro-preview-tts"
   case openAIGpt4oMiniTTS = "gpt-4o-mini-tts"
   case grokVoiceTTS = "grok-voice-tts-1.0"
 
   var provider: TTSProvider {
     switch self {
-    case .gemini31FlashTTS, .gemini25FlashTTS, .gemini25ProTTS: return .gemini
+    case .gemini31FlashTTS: return .gemini
     case .openAIGpt4oMiniTTS: return .openai
     case .grokVoiceTTS: return .xai
     }
@@ -410,8 +409,6 @@ enum TTSModel: String, CaseIterable {
   var displayName: String {
     switch self {
     case .gemini31FlashTTS: return "Gemini 3.1 Flash TTS"
-    case .gemini25FlashTTS: return "Gemini 2.5 Flash TTS"
-    case .gemini25ProTTS: return "Gemini 2.5 Pro TTS"
     case .openAIGpt4oMiniTTS: return "GPT-4o mini TTS"
     case .grokVoiceTTS: return "Grok Voice TTS"
     }
@@ -421,10 +418,6 @@ enum TTSModel: String, CaseIterable {
     switch self {
     case .gemini31FlashTTS:
       return "Google's Gemini 3.1 Flash TTS • Latest preview • Fast and efficient • Recommended"
-    case .gemini25FlashTTS:
-      return "Google's Gemini 2.5 Flash TTS model • Fast and efficient"
-    case .gemini25ProTTS:
-      return "Google's Gemini 2.5 Pro TTS model • Higher quality • Better voice synthesis"
     case .openAIGpt4oMiniTTS:
       return "OpenAI's GPT-4o mini TTS • Natural, steerable speech • Needs an OpenAI API key"
     case .grokVoiceTTS:
@@ -488,13 +481,18 @@ enum TTSModel: String, CaseIterable {
 
   /// Models grouped for display in the Read Aloud picker (provider order: Gemini, OpenAI, xAI).
   static let readAloudModels: [TTSModel] = [
-    .gemini31FlashTTS, .gemini25FlashTTS, .gemini25ProTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS,
+    .gemini31FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS,
   ]
 
-  /// Maps any persisted raw values that have since been renamed onto current cases.
-  /// No renames yet; kept so the loader has a single migration seam (mirrors PromptModel).
+  /// Maps removed/renamed persisted raw values onto current cases.
   static func migrateLegacyReadAloudRawValue(_ raw: String) -> String {
-    return raw
+    switch raw {
+    case "gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts":
+      // Both 2.5 TTS previews shut down 2026-10-16; Gemini 3.1 Flash TTS is Google's replacement.
+      return TTSModel.gemini31FlashTTS.rawValue
+    default:
+      return raw
+    }
   }
 
   /// Reads the user's Read Aloud model selection from UserDefaults, applying legacy

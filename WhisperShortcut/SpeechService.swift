@@ -853,41 +853,33 @@ class SpeechService {
     }
   }
 
-  /// Single-shot Gemini call that returns a speech-friendly version of `text`.
-  /// Uses `gemini-3.1-flash-lite` to keep the pre-TTS latency low.
+  /// Single-shot "rewrite for speech" pass, provider-agnostic. Routes through the user's selected
+  /// chat model (which `ModelSelectionReconciler` keeps on a provider that has a key), so Smart
+  /// Rewrite works for Gemini / OpenAI / xAI alike — not just Gemini. Throws if no provider key is
+  /// available; the caller (`maybeRewriteForSpeech`) then falls back to the original text.
   private func rewriteForSpeech(_ text: String) async throws -> String {
-    guard let credential = await credentialProvider.getCredential() else {
+    let model = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedChatModel, default: SettingsDefaults.selectedChatModel)
+    guard model.hasRequiredCredential else {
       throw TranscriptionError.noGoogleAPIKey
     }
     let systemPrompt = SystemPromptsStore.shared.loadReadAloudRewritePrompt()
-    let model = TranscriptionModel.gemini31FlashLite
+    let provider = LLMProviderFactory.provider(for: model)
+    let contents: [[String: Any]] = [["role": "user", "parts": [["text": text]]]]
+    let systemInstruction: [String: Any]? = systemPrompt.isEmpty
+      ? nil : ["parts": [["text": systemPrompt]]]
 
-    let endpoint = model.apiEndpoint
-    let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
-    let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
-    var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
-
-    let userParts: [GeminiChatRequest.GeminiChatPart] = [
-      GeminiChatRequest.GeminiChatPart(text: text, inlineData: nil, fileData: nil, url: nil)
-    ]
-    let chatRequest = GeminiChatRequest(
-      contents: [GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts)],
-      systemInstruction: GeminiChatRequest.GeminiSystemInstruction(
-        parts: [GeminiChatRequest.GeminiSystemPart(text: systemPrompt)]
-      ),
-      tools: nil,
-      generationConfig: nil,
-      model: nil
+    let stream = provider.sendChatStream(
+      model: model.rawValue,
+      contents: contents,
+      systemInstruction: systemInstruction,
+      tools: [],
+      useGrounding: false
     )
-    request.httpBody = try JSONEncoder().encode(chatRequest)
-
-    let response = try await geminiClient.performRequest(
-      request,
-      responseType: GeminiChatResponse.self,
-      mode: "READ-ALOUD-REWRITE",
-      withRetry: true
-    )
-    let combined = response.candidates.first?.content.parts.compactMap { $0.text }.joined() ?? ""
+    var combined = ""
+    for try await event in stream {
+      if case .textDelta(let delta) = event { combined += delta }
+    }
     let cleaned = combined.trimmingCharacters(in: .whitespacesAndNewlines)
     // If the model returns nothing useful, fall back to the original text — empty TTS would
     // surface as a confusing "Text is empty" error to the user.
