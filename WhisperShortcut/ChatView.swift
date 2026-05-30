@@ -207,15 +207,6 @@ class ChatViewModel: ObservableObject {
     return list
   }
 
-  /// Returns commands whose command string matches the given prefix (e.g. "/" or "/sc").
-  func suggestedCommands(for input: String) -> [String] {
-    let prefix = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    guard prefix.hasPrefix("/") else { return [] }
-    return commandSuggestionsForDisplay
-      .map(\.command)
-      .filter { $0.lowercased().hasPrefix(prefix) || prefix.isEmpty }
-  }
-
   /// When non-nil, this provider supplies extra context (e.g. meeting summary + recent transcript) appended to the system instruction. Used by the Meeting Chat window.
   private let meetingContextProvider: (() -> String?)?
   /// When true, exactly one chat per meeting: no tabs, no /new, no "New chat" button.
@@ -2183,8 +2174,15 @@ struct ChatInputAreaView: View {
       inputBar
     }
     // Re-home the highlight whenever the typed slash word changes, so filtering the
-    // suggestion list never leaves the selection pointing at a now-hidden row.
-    .onChange(of: lastWord) { selectedSuggestionIndex = 0 }
+    // suggestion list never leaves the selection pointing at a now-hidden row. Prefer an
+    // exact command match so typing a full command (e.g. "/gpt5", "/gpt") + Enter dispatches
+    // *that* command, not the recency-top prefix sibling. No exact match (e.g. bare "/") →
+    // top row, preserving the one-Enter recency toggle. ↑/↓ override this afterward.
+    .onChange(of: lastWord) {
+      let list = filteredCommandSuggestions
+      let typed = lastWord.lowercased()
+      selectedSuggestionIndex = list.firstIndex { $0.command.lowercased() == typed } ?? 0
+    }
     .onAppear {
       viewModel.composerScreenshotCountProvider = { [weak composer] in composer?.screenshotCount ?? 0 }
       viewModel.composerFileCountProvider = { [weak composer] in composer?.fileAttachmentCount ?? 0 }

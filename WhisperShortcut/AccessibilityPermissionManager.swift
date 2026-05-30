@@ -56,8 +56,8 @@ class AccessibilityPermissionManager {
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasUsedPromptFeature)
   }
 
-  /// Checks permission when user tries to use prompt feature
-  /// This is now the ONLY place where accessibility permission is requested
+  /// Checks permission when user tries to use the prompt feature, prompting / deep-linking
+  /// to System Settings if it's missing.
   static func checkPermissionForPromptUsage() -> Bool {
     // Mark that the user has tried the prompt feature (for future reference)
     markPromptFeatureUsed()
