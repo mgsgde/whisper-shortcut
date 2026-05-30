@@ -127,6 +127,7 @@ class ChatViewModel: ObservableObject {
   private static let modelCommand = "/model"
   private static let meetingCommand = "/meeting"
   private static let copyCommand = "/copy"
+  static let thinkCommand = "/think"
 
   /// Model-switch slash commands, generated from `PromptModel` so adding a model auto-adds its
   /// alias. Grouped by provider: the provider-default alias (`/gemini`, `/grok`, `/gpt`) first,
@@ -166,6 +167,7 @@ class ChatViewModel: ObservableObject {
     ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
   ]
   static let commandsAfterModels: [(command: String, description: String)] = [
+    ("/think", "Set reasoning depth for this chat: minimal | low | medium | high | default"),
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
@@ -514,6 +516,23 @@ class ChatViewModel: ObservableObject {
   // MARK: - Send helpers & Queue
 
   /// Core send: appends the user message, calls the API, and drains the next queued message on completion.
+  /// Gemini 3.x models occasionally leak their raw reasoning-channel delimiter tokens
+  /// (`start_thought` / `end_thought`) into the visible answer instead of routing them to a
+  /// separate thought part — see the thinkingLevel fix in `PromptModel.geminiThinkingConfig`.
+  /// This is a belt-and-suspenders strip so the user never sees them even if Gemini regresses.
+  /// Runs on the *cumulative* streamed text, so a token split across stream chunks is still caught.
+  /// Harmless for OpenAI/Grok, which never emit these tokens.
+  static func stripLeakedThoughtTokens(_ text: String) -> String {
+    var cleaned = text
+    for marker in ["start_thought", "end_thought"] {
+      cleaned = cleaned.replacingOccurrences(of: marker, with: "")
+    }
+    // The markers normally sit at the very start; drop the whitespace they leave behind there.
+    // Leading whitespace is never meaningful in a chat answer, so this is safe.
+    while let first = cleaned.first, first == " " || first == "\n" { cleaned.removeFirst() }
+    return cleaned
+  }
+
   private func performSend(content: String, attachedParts: [AttachedImagePart]) {
     let sessionId = session.id
     let task = Task {
@@ -555,12 +574,13 @@ class ChatViewModel: ObservableObject {
             contents: currentContents,
             systemInstruction: self.buildSystemInstruction(),
             tools: tools,
-            useGrounding: useGrounding)
+            useGrounding: useGrounding,
+            thinkingLevel: session.thinkingLevel)
           for try await event in stream {
             try Task.checkCancellation()
             switch event {
             case .textDelta(let delta):
-              accumulated += delta
+              accumulated = Self.stripLeakedThoughtTokens(accumulated + delta)
               await MainActor.run {
                 self.updateStreamingMessage(
                   id: placeholderId, sessionId: sessionId,
@@ -734,6 +754,16 @@ class ChatViewModel: ObservableObject {
     if lower == Self.meetingCommand {
       inputText = ""
       handleMeetingButtonTap()
+      return
+    }
+
+    // /think command (set per-session reasoning depth, persisted across restarts)
+    if lower == Self.thinkCommand || lower.hasPrefix(Self.thinkCommand + " ") {
+      inputText = ""
+      let arg = lower == Self.thinkCommand
+        ? ""
+        : String(lower.dropFirst(Self.thinkCommand.count + 1)).trimmingCharacters(in: .whitespaces)
+      handleThinkCommand(argument: arg)
       return
     }
 
@@ -1034,6 +1064,30 @@ class ChatViewModel: ObservableObject {
     Self.recordModelUse(model)
     appendModelMessage("Model set to **\(model.displayName)**.")
     DebugLogger.log("GEMINI-CHAT: switchToModel \(model.displayName)")
+  }
+
+  /// Handles the /think command. Sets this session's reasoning depth (persisted across restarts)
+  /// and posts a confirmation. Bare `/think` reports the current level and usage. The level maps
+  /// per provider in each `LLMChatProvider` (see `ThinkingLevel`).
+  @MainActor
+  private func handleThinkCommand(argument: String) {
+    let valid = "minimal | low | medium | high | default"
+    guard !argument.isEmpty else {
+      appendModelMessage(
+        "Reasoning depth for this chat: **\(session.thinkingLevel.rawValue)**. Set with `/think <level>` — \(valid)."
+      )
+      return
+    }
+    guard let level = ThinkingLevel(rawValue: argument) else {
+      appendModelMessage("Unknown reasoning depth \"\(argument)\". Use one of: \(valid).")
+      return
+    }
+    session.thinkingLevel = level  // persisted by appendModelMessage's store.save(session)
+    let note = level == .default
+      ? "Reasoning depth reset to the model's **default** for this chat."
+      : "Reasoning depth set to **\(level.rawValue)** for this chat. Higher = more thorough but slower and pricier."
+    appendModelMessage(note)
+    DebugLogger.log("GEMINI-CHAT: /think level=\(level.rawValue) session=\(session.id)")
   }
 
   /// Recently-used chat models, most recent first (PromptModel rawValues). See `chatModelRecency`.
@@ -2224,7 +2278,7 @@ struct ChatInputAreaView: View {
   /// drift. `/model` is excluded because it takes an argument and is handled
   /// separately (see `handleModelCommand`).
   private static let knownSlashCommands: Set<String> =
-    Set(ChatViewModel.commandSuggestions.map(\.command).filter { $0 != "/model" })
+    Set(ChatViewModel.commandSuggestions.map(\.command).filter { $0 != "/model" && $0 != "/think" })
       .union(ChatViewModel.modelCommandLookup.keys) // adds the silent /openai alias (not in commandSuggestions)
 
   /// Slash-command suggestions matching the word the caret sits on (empty unless that
@@ -2258,7 +2312,7 @@ struct ChatInputAreaView: View {
   /// every other command strips the slash token and dispatches. Shared by Tab and Enter.
   private func selectCommand(_ command: String) {
     composer.removeTrailingWord()
-    if command == "/model" {
+    if command == "/model" || command == "/think" {
       composer.textView?.insertText(command + " ", replacementRange: NSRange(location: NSNotFound, length: 0))
     } else {
       Task { await viewModel.sendMessage(userInput: command) }
@@ -2279,10 +2333,11 @@ struct ChatInputAreaView: View {
     let typed = output.typedText
     let lower = typed.lowercased()
     let isModelCommand = lower == "/model" || lower.hasPrefix("/model ")
+    let isThinkCommand = lower == "/think" || lower.hasPrefix("/think ")
     let isRecognizedSlashCommand =
-      Self.knownSlashCommands.contains(lower) || isModelCommand
+      Self.knownSlashCommands.contains(lower) || isModelCommand || isThinkCommand
     if isRecognizedSlashCommand {
-      if isModelCommand {
+      if isModelCommand || isThinkCommand {
         // Strip the entire command line so multi-token args (e.g.
         // "/model 3.1 flash lite") don't leave residue in the composer.
         composer.removeTrailingPlainText(suffix: typed)

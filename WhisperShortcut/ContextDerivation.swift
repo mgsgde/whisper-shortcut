@@ -712,12 +712,16 @@ class ContextDerivation {
     let contents: [[String: Any]] = [["role": "user", "parts": [["text": userMessage]]]]
     let systemInstruction: [String: Any] = ["parts": [["text": systemPrompt]]]
 
+    // Pure analysis transform: disable built-in code_execution so Gemini returns only the
+    // requested text, never code/tool output that would corrupt the derived suggestion.
     let stream = provider.sendChatStream(
       model: model.rawValue,
       contents: contents,
       systemInstruction: systemInstruction,
       tools: [],
-      useGrounding: false
+      useGrounding: false,
+      thinkingLevel: .default,
+      disableBuiltInTools: true
     )
 
     var textContent = ""

@@ -29,6 +29,51 @@ enum ChatStreamEvent {
   case finished(sources: [GroundingSource], supports: [GroundingSupport], finishReason: String?)
 }
 
+// MARK: - Thinking Level (provider-agnostic)
+
+/// User-facing reasoning/thinking intensity, settable per chat session via the `/think` command
+/// and persisted on `ChatSession`. Each provider maps it to its native knob:
+///   - Gemini 3.x → `generationConfig.thinkingConfig.thinkingLevel`
+///   - Gemini 2.5 → `generationConfig.thinkingConfig.thinkingBudget` (coarse: minimal→0, else dynamic)
+///   - OpenAI / Grok → `reasoning_effort` (Chat Completions) or `reasoning.effort` (Responses API)
+///
+/// `.default` means "don't override — use the model's built-in per-model config". All field names
+/// and accepted values below were verified live against each provider's API (see
+/// reference_provider_endpoints_verified memory).
+enum ThinkingLevel: String, Codable, CaseIterable {
+  case `default`
+  case minimal
+  case low
+  case medium
+  case high
+
+  /// OpenAI `reasoning_effort` / Responses `reasoning.effort`, or nil to omit (model default).
+  /// gpt-5.5 rejects `minimal` (allowed: none/low/medium/high), so map minimal → `none` (the floor).
+  var openAIReasoningEffort: String? {
+    switch self {
+    case .default: return nil
+    case .minimal: return "none"
+    case .low: return "low"
+    case .medium: return "medium"
+    case .high: return "high"
+    }
+  }
+
+  /// Grok `reasoning_effort` / Responses `reasoning.effort`, or nil to omit. Grok accepts all four
+  /// levels natively (verified: minimal/low/medium/high/none all 200).
+  var grokReasoningEffort: String? {
+    switch self {
+    case .default: return nil
+    default: return rawValue
+    }
+  }
+
+  /// Gemini 3.x `thinkingLevel` value (minimal/low/medium/high), or nil to use the model default.
+  var geminiThinkingLevel: String? {
+    self == .default ? nil : rawValue
+  }
+}
+
 // MARK: - Tool Declaration (provider-agnostic)
 
 /// A tool/function declaration that can be sent to any LLM provider.
@@ -54,13 +99,44 @@ protocol LLMChatProvider {
   ///   - systemInstruction: System instruction dict in Gemini format, or nil.
   ///   - tools: Tool declarations for function calling.
   ///   - useGrounding: Whether to enable web search grounding (Gemini-only; ignored by others).
+  ///   - thinkingLevel: Per-session reasoning intensity (set via `/think`). `.default` uses the
+  ///     model's built-in config; each provider maps the other levels to its native knob.
+  ///   - disableBuiltInTools: When true, the provider sends no built-in tools (e.g. Gemini's
+  ///     `code_execution`). Pure text transforms (Read Aloud rewrite, Smart Improvement) set
+  ///     this so the model returns only prose, never code/tool output. Ignored by providers
+  ///     that don't auto-enable built-in tools (OpenAI, Grok).
   func sendChatStream(
     model: String,
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    useGrounding: Bool
+    useGrounding: Bool,
+    thinkingLevel: ThinkingLevel,
+    disableBuiltInTools: Bool
   ) -> AsyncThrowingStream<ChatStreamEvent, Error>
+}
+
+extension LLMChatProvider {
+  /// Convenience overload preserving the previous call shape (no `disableBuiltInTools`).
+  /// Built-in tools stay enabled — the chat default — and `thinkingLevel` defaults to the
+  /// model's built-in config. Distinct arity from the requirement, so there is no ambiguity.
+  func sendChatStream(
+    model: String,
+    contents: [[String: Any]],
+    systemInstruction: [String: Any]?,
+    tools: [LLMToolDeclaration],
+    useGrounding: Bool,
+    thinkingLevel: ThinkingLevel = .default
+  ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
+    sendChatStream(
+      model: model,
+      contents: contents,
+      systemInstruction: systemInstruction,
+      tools: tools,
+      useGrounding: useGrounding,
+      thinkingLevel: thinkingLevel,
+      disableBuiltInTools: false)
+  }
 }
 
 // MARK: - Provider Factory

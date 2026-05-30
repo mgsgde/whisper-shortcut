@@ -415,7 +415,9 @@ class GeminiAPIClient {
     credential: GeminiCredential,
     useGrounding: Bool = false,
     systemInstruction: [String: Any]? = nil,
-    functionDeclarations: [[String: Any]] = []
+    functionDeclarations: [[String: Any]] = [],
+    thinkingLevel: ThinkingLevel = .default,
+    disableBuiltInTools: Bool = false
   ) -> AsyncThrowingStream<GeminiStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
@@ -434,9 +436,14 @@ class GeminiAPIClient {
           }
           // Custom function declarations take precedence: when tools are defined,
           // Gemini's built-in code_execution can conflict on some model versions,
-          // so we only include it when no custom tools are provided.
+          // so we only include it when no custom tools are provided. Pure text
+          // transforms (Read Aloud rewrite, Smart Improvement) pass
+          // `disableBuiltInTools` so the model never runs code and pollutes the
+          // reply with executable_code / code_execution_result parts.
           if functionDeclarations.isEmpty {
-            tools.append(["code_execution": [:]])
+            if !disableBuiltInTools {
+              tools.append(["code_execution": [:]])
+            }
           } else {
             tools.append(["function_declarations": functionDeclarations])
             // Gemini 3 Flash rejects built-in tools (google_search/url_context)
@@ -445,25 +452,43 @@ class GeminiAPIClient {
               "include_server_side_tool_invocations": true
             ]
           }
-          body["tools"] = tools
+          if !tools.isEmpty {
+            body["tools"] = tools
+          }
           if let sys = systemInstruction {
             body["system_instruction"] = sys
           }
-          // Per-model thinking budget: Pro tier uses dynamic thinking (-1) for stronger
-          // reasoning at the cost of 3–10s before the first streamed token. Flash tier
-          // keeps thinking off (0) so the streaming UX stays responsive. Falls back to 0
-          // for any model not enumerated in `PromptModel.geminiThinkingBudget`.
+          // Per-model thinking config. Gemini 3.x uses `thinkingLevel` (Pro→high, Flash→minimal);
+          // 2.5 uses `thinkingBudget` (Pro→-1 dynamic, Flash→0 off). Sending `thinkingBudget` to a
+          // 3.x model is the wrong knob and can make it leak raw `start_thought` tokens into the
+          // reply — see `PromptModel.geminiThinkingConfig`. Unknown models get no thinkingConfig
+          // (the model's own default applies).
           let promptModel = PromptModel(rawValue: model)
           if promptModel == nil {
-            DebugLogger.logError("GEMINI-CHAT-STREAM: unknown model rawValue \(model), defaulting thinkingBudget to 0")
+            DebugLogger.logError("GEMINI-CHAT-STREAM: unknown model rawValue \(model), omitting thinkingConfig")
           }
-          let thinkingBudget = promptModel?.geminiThinkingBudget ?? 0
-          body["generationConfig"] = [
+          var generationConfig: [String: Any] = [
             "temperature": 0.7,
             "topP": 0.95,
-            "maxOutputTokens": 8192,
-            "thinkingConfig": ["thinkingBudget": thinkingBudget]
+            "maxOutputTokens": 8192
           ]
+          // Start from the model's built-in config, then apply a per-session `/think` override.
+          // We reuse the default config's shape to know which knob this model uses: a 3.x model
+          // carries `thinkingLevel` (override the level directly); a 2.5 model carries
+          // `thinkingBudget` (no granular levels, so map minimal→0 off, anything higher→-1 dynamic).
+          var thinkingConfig = promptModel?.geminiThinkingConfig
+          if thinkingLevel != .default, var cfg = thinkingConfig {
+            if cfg["thinkingLevel"] != nil, let level = thinkingLevel.geminiThinkingLevel {
+              cfg["thinkingLevel"] = level
+            } else if cfg["thinkingBudget"] != nil {
+              cfg["thinkingBudget"] = (thinkingLevel == .minimal) ? 0 : -1
+            }
+            thinkingConfig = cfg
+          }
+          if let thinkingConfig {
+            generationConfig["thinkingConfig"] = thinkingConfig
+          }
+          body["generationConfig"] = generationConfig
           body["safetySettings"] = [
             ["category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"],
             ["category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"],
@@ -877,6 +902,8 @@ class GeminiAPIClient {
     var hadCodeParts = false
     var imageCount = 0
     for part in parts {
+      // Skip the model's internal reasoning — thought parts are never shown to the user.
+      if part.thought == true { continue }
       if let partText = part.text {
         text += partText
       }

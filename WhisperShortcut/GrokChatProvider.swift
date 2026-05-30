@@ -15,15 +15,17 @@ final class GrokChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    useGrounding: Bool
+    useGrounding: Bool,
+    thinkingLevel: ThinkingLevel,
+    disableBuiltInTools: Bool  // Grok doesn't auto-enable built-in tools here; ignored.
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     if let attachmentError = Self.validateAttachments(in: contents) {
       return AsyncThrowingStream { $0.finish(throwing: attachmentError) }
     }
     if useGrounding {
-      return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools)
+      return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel)
     } else {
-      return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools)
+      return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel)
     }
   }
 
@@ -56,7 +58,8 @@ final class GrokChatProvider: LLMChatProvider {
     model: String,
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
-    tools: [LLMToolDeclaration]
+    tools: [LLMToolDeclaration],
+    thinkingLevel: ThinkingLevel
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
@@ -117,9 +120,14 @@ final class GrokChatProvider: LLMChatProvider {
           }
           body["tools"] = responsesTools
 
+          // Per-session `/think` override → Responses API nested `reasoning.effort`.
+          if let effort = thinkingLevel.grokReasoningEffort {
+            body["reasoning"] = ["effort": effort]
+          }
+
           request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-          DebugLogger.logNetwork("GROK-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+\(tools.count)func")
+          DebugLogger.logNetwork("GROK-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+\(tools.count)func effort=\(thinkingLevel.grokReasoningEffort ?? "default")")
           let (bytes, response) = try await self.session.bytes(for: request)
           guard let http = response as? HTTPURLResponse else {
             throw TranscriptionError.networkError("Invalid response from xAI API")
@@ -232,7 +240,8 @@ final class GrokChatProvider: LLMChatProvider {
     model: String,
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
-    tools: [LLMToolDeclaration]
+    tools: [LLMToolDeclaration],
+    thinkingLevel: ThinkingLevel
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
@@ -289,9 +298,14 @@ final class GrokChatProvider: LLMChatProvider {
             body["tools"] = openAITools
           }
 
+          // Per-session `/think` override → Chat Completions top-level `reasoning_effort`.
+          if let effort = thinkingLevel.grokReasoningEffort {
+            body["reasoning_effort"] = effort
+          }
+
           request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-          DebugLogger.logNetwork("GROK-CHAT-STREAM: POST \(endpoint) model=\(model)")
+          DebugLogger.logNetwork("GROK-CHAT-STREAM: POST \(endpoint) model=\(model) effort=\(thinkingLevel.grokReasoningEffort ?? "default")")
           let (bytes, response) = try await self.session.bytes(for: request)
           guard let http = response as? HTTPURLResponse else {
             throw TranscriptionError.networkError("Invalid response from xAI API")

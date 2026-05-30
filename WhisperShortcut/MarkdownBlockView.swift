@@ -125,7 +125,10 @@ enum MarkdownParsing {
   /// Renders inline Markdown (bold, italic, code, links) within a single line as an `AttributedString`.
   static func inlineAttributedString(_ content: String, options: AttributedString.MarkdownParsingOptions? = nil) -> AttributedString {
     let opts = options ?? AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-    return (try? AttributedString(markdown: content, options: opts)) ?? AttributedString(content)
+    // Convert LaTeX formulas to Unicode so every inline path (headings, bullets, body) benefits.
+    // Idempotent: renderLatexToUnicode early-outs when no `$`/`\` markers are present.
+    let processed = renderLatexToUnicode(content)
+    return (try? AttributedString(markdown: processed, options: opts)) ?? AttributedString(processed)
   }
 
   // MARK: - LaTeX to Unicode

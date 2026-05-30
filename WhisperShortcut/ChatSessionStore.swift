@@ -129,8 +129,11 @@ struct ChatSession: Codable {
   var pinned: Bool
   var isMeeting: Bool
   var meetingStem: String?
+  /// Per-session reasoning intensity set via `/think`. `.default` keeps each model's built-in
+  /// thinking config; other levels override it per provider. Persisted so it survives restarts.
+  var thinkingLevel: ThinkingLevel
 
-  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil) {
+  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil, thinkingLevel: ThinkingLevel = .default) {
     self.id = id
     self.lastUpdated = lastUpdated
     self.messages = messages
@@ -139,10 +142,11 @@ struct ChatSession: Codable {
     self.pinned = pinned
     self.isMeeting = isMeeting
     self.meetingStem = meetingStem
+    self.thinkingLevel = thinkingLevel
   }
 
   private enum CodingKeys: String, CodingKey {
-    case id, lastUpdated, messages, title, archived, pinned, isMeeting, meetingStem
+    case id, lastUpdated, messages, title, archived, pinned, isMeeting, meetingStem, thinkingLevel
   }
 
   init(from decoder: Decoder) throws {
@@ -155,6 +159,7 @@ struct ChatSession: Codable {
     pinned = try c.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
     isMeeting = try c.decodeIfPresent(Bool.self, forKey: .isMeeting) ?? false
     meetingStem = try c.decodeIfPresent(String.self, forKey: .meetingStem)
+    thinkingLevel = try c.decodeIfPresent(ThinkingLevel.self, forKey: .thinkingLevel) ?? .default
   }
 }
 

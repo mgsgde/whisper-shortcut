@@ -14,7 +14,9 @@ final class GeminiChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    useGrounding: Bool
+    useGrounding: Bool,
+    thinkingLevel: ThinkingLevel,
+    disableBuiltInTools: Bool
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
@@ -35,7 +37,9 @@ final class GeminiChatProvider: LLMChatProvider {
             credential: credential,
             useGrounding: useGrounding,
             systemInstruction: systemInstruction,
-            functionDeclarations: geminiFuncDecls)
+            functionDeclarations: geminiFuncDecls,
+            thinkingLevel: thinkingLevel,
+            disableBuiltInTools: disableBuiltInTools)
           for try await event in stream {
             try Task.checkCancellation()
             // GeminiAPIClient.GeminiStreamEvent → top-level ChatStreamEvent
