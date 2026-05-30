@@ -527,7 +527,9 @@ class ChatViewModel: ObservableObject {
     let sessionId = session.id
     let task = Task {
       sendingSessionIds.insert(sessionId)
+      DebugLogger.log("CHAT-SEND: start session=\(sessionId)")
       defer {
+        DebugLogger.log("CHAT-SEND: teardown session=\(sessionId)")
         sendingSessionIds.remove(sessionId)
         supersedingSessionIds.remove(sessionId)
         sendTasks.removeValue(forKey: sessionId)
@@ -600,11 +602,17 @@ class ChatViewModel: ObservableObject {
             : "_(no response)_"
         }
 
+        // Final swap: streaming bubble (no sources) -> finalized message WITH grounding
+        // sources. This one-shot content change is the layout-heaviest moment of a send;
+        // if the next render wedges the main thread, "final UI update committed" will be
+        // absent from the log while "finalizing" is the last line — pinpointing the hang.
+        DebugLogger.log("CHAT-SEND: finalizing message sources=\(finalSources.count) supports=\(finalSupports.count) contentLen=\(accumulated.count) session=\(sessionId)")
         await MainActor.run {
           self.updateStreamingMessage(
             id: placeholderId, sessionId: sessionId,
             content: accumulated, sources: finalSources, supports: finalSupports)
         }
+        DebugLogger.log("CHAT-SEND: final UI update committed session=\(sessionId)")
         let result = (text: accumulated, sources: finalSources, supports: finalSupports)
         ContextLogger.shared.logChat(userMessage: content, modelResponse: result.text, model: model)
         if let s = store.session(by: sessionId), s.messages.count == 2, !s.isMeeting {
@@ -1828,10 +1836,6 @@ struct ChatView: View {
               }
             }
           }
-          if viewModel.isSending {
-            TypingIndicatorView()
-              .id("typing")
-          }
           Color.clear.frame(height: 1).id("listBottom")
         }
         .frame(maxWidth: 720)
@@ -1840,6 +1844,19 @@ struct ChatView: View {
         .padding(.top, 16)
         .padding(.bottom, 28)
         .id(widthBucket)
+      }
+      // Typing indicator lives OUTSIDE the LazyVStack as a floating overlay so its
+      // 60fps TimelineView clock invalidates only its own subtree, not the whole
+      // message list. Inside the list it forced a full LazyVStack/GeometryReader
+      // re-layout every frame, which could wedge the main thread when a large
+      // grounded reply was finalized (sources appended in one shot). See TypingIndicatorView.
+      .overlay(alignment: .bottomLeading) {
+        if viewModel.isSending {
+          TypingIndicatorView()
+            .padding(.horizontal, 24)
+            .padding(.bottom, 12)
+            .allowsHitTesting(false)
+        }
       }
       .onAppear {
         scrollActions.scrollToTop = { scrollToTop(proxy: proxy) }

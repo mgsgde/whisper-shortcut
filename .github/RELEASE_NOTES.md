@@ -1,4 +1,4 @@
-# WhisperShortcut 7.37
+# WhisperShortcut 7.38
 
 ## Installation
 
@@ -6,17 +6,17 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ## What's New
 
-### Switch chat models in a keystroke
+### Fixed a chat freeze on grounded replies
 
-Changing the chat model used to mean typing the full `/model gemini 3 flash`. Now every model has its own short slash command, and the picker is fully keyboard-driven:
+When a chat answer finished with web sources and citations, the app could spike the CPU and become unresponsive, requiring a force-quit.
 
-- **One command per model** — `/gemini`, `/grok`, `/gpt` switch to each provider's default, and readable per-model commands like `/gemini3flash`, `/gemini25pro`, or `/grok4` jump straight to a specific variant. Type `/gem` to see all Gemini variants at once.
-- **Arrow-key navigation** — use ↑/↓ to move through the suggestion list and **Enter** to pick (Tab still works too). Long lists scroll to keep the highlighted row in view.
-- **Most-recently-used ordering** — your recently used models float to the top, and the model you're already on is hidden, so the top suggestion is always a one-Enter toggle back to your previous model.
+The cause: the animated "typing" indicator was being re-laid-out 60 times a second together with the *entire* message list. The moment a large grounded reply was finalized (lots of sources, long text), that combination could wedge the main thread.
+
+The typing indicator now animates independently of the message list, so finalizing even very large answers stays instant. Verified against replies far heavier than the ones that used to hang (14 sources, 33 citations, 4,700+ characters) — all commit in milliseconds.
 
 ### Reliability
 
-- Fixed chat creating duplicate Calendar events and Trello cards in some cases; tool-call arguments and results are now logged for easier debugging.
-- Smart Improvement now acts on a pattern after 2 distinct interactions instead of 3, so suggestions surface sooner.
+- Added diagnostics around chat sends so any future hang in this area is immediately identifiable in the logs.
+- Accessibility setup is smoother: the app now pre-registers itself in System Settings via the native prompt, making it more reliable to grant Accessibility permission.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.36...v7.37
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.37...v7.38
