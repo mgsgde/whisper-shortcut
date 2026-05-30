@@ -15,6 +15,10 @@ struct ReadAloudSettingsTab: View {
 
       SpacedSectionDivider()
 
+      voiceSection
+
+      SpacedSectionDivider()
+
       playbackSpeedSection
 
       SpacedSectionDivider()
@@ -73,6 +77,52 @@ struct ReadAloudSettingsTab: View {
         Task { await viewModel.saveSettings() }
       }
     )
+  }
+
+  // MARK: - Voice Section
+  /// Voice picker for the currently-selected provider. The catalogue and stored selection both
+  /// switch with the provider, so each provider keeps its own chosen voice.
+  @ViewBuilder
+  private var voiceSection: some View {
+    let model = viewModel.data.selectedReadAloudModel
+    let provider = model.provider
+    let voices = model.availableVoices
+    let voiceSelection = Binding<String>(
+      get: {
+        let stored = viewModel.data.readAloudVoice(for: provider)
+        // Show the provider default when nothing is stored or the stored id is no longer offered.
+        return voices.contains(where: { $0.id == stored }) ? stored : model.defaultVoice
+      },
+      set: { newValue in
+        viewModel.data.setReadAloudVoice(newValue, for: provider)
+        UserDefaults.standard.set(newValue, forKey: provider.voiceUserDefaultsKey)
+        Task { await viewModel.saveSettings() }
+      }
+    )
+
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "🎙️ Voice",
+        subtitle: "The specific voice \(provider.displayName) uses. Each provider has its own set."
+      )
+
+      HStack(alignment: .center, spacing: 16) {
+        Text("Voice:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        Picker("", selection: voiceSelection) {
+          ForEach(voices) { voice in
+            Text(voice.displayName).tag(voice.id)
+          }
+        }
+        .pickerStyle(MenuPickerStyle())
+        .frame(width: 320)
+
+        Spacer()
+      }
+    }
   }
 
   // MARK: - Playback Speed Section

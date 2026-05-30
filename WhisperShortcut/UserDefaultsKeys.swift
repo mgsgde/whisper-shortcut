@@ -103,5 +103,11 @@ enum UserDefaultsKeys {
   static let readAloudSpeed = "readAloudSpeed"
   /// Selected Read Aloud TTS model raw value (Gemini / OpenAI / xAI). See TTSModel.
   static let selectedReadAloudModel = "selectedReadAloudModel"
+  /// Selected Read Aloud voice per provider. Stored separately so switching providers and back
+  /// keeps each provider's chosen voice. Empty/unknown → that provider's default voice.
+  /// See TTSProvider.voices / ReadAloudPreferences.voice(for:).
+  static let selectedReadAloudVoiceGemini = "selectedReadAloudVoiceGemini"
+  static let selectedReadAloudVoiceOpenAI = "selectedReadAloudVoiceOpenAI"
+  static let selectedReadAloudVoiceXAI = "selectedReadAloudVoiceXAI"
 }
 

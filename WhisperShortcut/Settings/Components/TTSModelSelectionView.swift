@@ -13,7 +13,7 @@ struct TTSModelSelectionView: View {
 
   init(
     title: String = "🗣️ Voice Model",
-    subtitle: String = "Which provider generates the spoken audio. Each provider uses its own default voice.",
+    subtitle: String = "Which provider generates the spoken audio. Pick the specific voice below.",
     selectedModel: Binding<TTSModel>,
     models: [TTSModel] = TTSModel.allCases,
     onModelChanged: (() -> Void)? = nil

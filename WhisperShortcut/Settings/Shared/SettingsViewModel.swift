@@ -115,6 +115,10 @@ class SettingsViewModel: ObservableObject {
     } else {
       data.selectedReadAloudModel = SettingsDefaults.readAloudModel
     }
+    // Per-provider Read Aloud voice ("" → that provider's default voice).
+    data.readAloudVoiceGemini = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoiceGemini) ?? ""
+    data.readAloudVoiceOpenAI = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoiceOpenAI) ?? ""
+    data.readAloudVoiceXAI = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoiceXAI) ?? ""
 
     // Load Gemini window: close on focus loss
     data.chatCloseOnFocusLoss = UserDefaults.standard.bool(
@@ -308,6 +312,11 @@ class SettingsViewModel: ObservableObject {
 
     // Save Read Aloud TTS model
     UserDefaults.standard.set(data.selectedReadAloudModel.rawValue, forKey: UserDefaultsKeys.selectedReadAloudModel)
+
+    // Save per-provider Read Aloud voices
+    UserDefaults.standard.set(data.readAloudVoiceGemini, forKey: UserDefaultsKeys.selectedReadAloudVoiceGemini)
+    UserDefaults.standard.set(data.readAloudVoiceOpenAI, forKey: UserDefaultsKeys.selectedReadAloudVoiceOpenAI)
+    UserDefaults.standard.set(data.readAloudVoiceXAI, forKey: UserDefaultsKeys.selectedReadAloudVoiceXAI)
 
     // Save Chat window: close on focus loss
     UserDefaults.standard.set(data.chatCloseOnFocusLoss, forKey: UserDefaultsKeys.chatCloseOnFocusLoss)

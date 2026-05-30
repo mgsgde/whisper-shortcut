@@ -869,12 +869,17 @@ class SpeechService {
     let systemInstruction: [String: Any]? = systemPrompt.isEmpty
       ? nil : ["parts": [["text": systemPrompt]]]
 
+    // Pure text transform: no tools, no grounding, and crucially no built-in code_execution —
+    // otherwise the model can run code and leak executable_code / code_execution_result parts
+    // (or the system prompt itself) into the reply, which would then be read aloud.
     let stream = provider.sendChatStream(
       model: model.rawValue,
       contents: contents,
       systemInstruction: systemInstruction,
       tools: [],
-      useGrounding: false
+      useGrounding: false,
+      thinkingLevel: .default,
+      disableBuiltInTools: true
     )
     var combined = ""
     for try await event in stream {
@@ -892,8 +897,9 @@ class SpeechService {
   private func performTTS(text: String, voiceName: String? = nil) async throws -> Data {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     let model = ReadAloudPreferences.model
-    // No voice picker in the UI: nil → each provider's default voice (a name its API accepts).
-    let voice = voiceName ?? model.defaultVoice
+    // Caller override (nil for the Read Aloud shortcut) → the user's picked voice for this
+    // provider, falling back to the provider's default when none is set.
+    let voice = voiceName ?? ReadAloudPreferences.voice(for: model)
 
     DebugLogger.log("TTS: Starting text-to-speech (length: \(trimmedText.count) chars, voice: \(voice), model: \(model.displayName), provider: \(model.provider.displayName))")
 

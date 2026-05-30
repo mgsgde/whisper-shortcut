@@ -244,18 +244,31 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
-  /// Gemini-only: `thinkingConfig.thinkingBudget` to send on chat requests.
-  /// `0` disables thinking entirely (instant first token, faster streaming, weaker reasoning).
-  /// `-1` enables dynamic thinking (3–10s before first token, stronger reasoning).
-  /// Flash tier defaults to `0` because the streaming UX matters more than marginal quality gains.
-  /// Pro tier defaults to `-1` because users choosing Pro are opting into the quality/latency trade.
+  /// Gemini-only: the `thinkingConfig` dict to send on chat requests.
+  ///
+  /// Gemini 3.x models use `thinkingLevel` (`minimal`/`low`/`medium`/`high`). `thinkingBudget`
+  /// is NOT honored on 3.x — passing it is silently accepted but can make the model leak its raw
+  /// reasoning-channel delimiter tokens (e.g. `start_thought`) into the visible answer. Flash/Lite
+  /// tiers use `minimal` (fast first token, streaming UX); Pro uses `high` (quality over latency).
+  ///
+  /// Gemini 2.5 models still use `thinkingBudget`: `0` disables thinking (Flash), `-1` enables
+  /// dynamic thinking (Pro).
+  ///
   /// Non-Gemini models return `nil` (the field is ignored by other providers).
-  var geminiThinkingBudget: Int? {
+  /// Docs: https://ai.google.dev/gemini-api/docs/thinking (3.x: thinkingLevel, not thinkingBudget).
+  var geminiThinkingConfig: [String: Any]? {
     switch self {
-    case .gemini25Pro, .gemini31Pro:
-      return -1
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash:
-      return 0
+    // Gemini 3.x — thinkingLevel
+    case .gemini31Pro:
+      return ["thinkingLevel": "high"]
+    case .gemini3Flash, .gemini31FlashLite, .gemini35Flash:
+      return ["thinkingLevel": "minimal"]
+    // Gemini 2.5 — thinkingBudget
+    case .gemini25Pro:
+      return ["thinkingBudget": -1]
+    case .gemini25Flash, .gemini25FlashLite:
+      return ["thinkingBudget": 0]
+    // Non-Gemini — ignored by other providers
     case .grok4, .grok4Reasoning, .grok43,
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
       return nil
@@ -420,6 +433,133 @@ enum TTSProvider {
     case .xai: return "xAI (Grok)"
     }
   }
+
+  /// UserDefaults key under which this provider's selected Read Aloud voice is persisted.
+  /// Voice is stored per provider (not per model) so switching providers and back keeps each
+  /// provider's chosen voice.
+  var voiceUserDefaultsKey: String {
+    switch self {
+    case .gemini: return UserDefaultsKeys.selectedReadAloudVoiceGemini
+    case .openai: return UserDefaultsKeys.selectedReadAloudVoiceOpenAI
+    case .xai: return UserDefaultsKeys.selectedReadAloudVoiceXAI
+    }
+  }
+
+  /// The voice catalogue this provider's TTS API accepts, ordered male → female → neutral
+  /// (stable within each group). Voice ids are provider-specific (a Gemini voice name is not
+  /// valid for OpenAI/xAI and vice versa). Live-verified 2026-05-30 against each provider's docs.
+  var voices: [TTSVoice] {
+    let raw: [TTSVoice]
+    switch self {
+    case .gemini: raw = TTSVoice.geminiVoices
+    case .openai: raw = TTSVoice.openAIVoices
+    case .xai: raw = TTSVoice.xaiVoices
+    }
+    // Stable sort by gender: Swift's sort isn't guaranteed stable, so tie-break on original index.
+    return raw.enumerated()
+      .sorted { lhs, rhs in
+        let lRank = TTSVoice.genderRank(lhs.element.gender)
+        let rRank = TTSVoice.genderRank(rhs.element.gender)
+        return lRank != rRank ? lRank < rRank : lhs.offset < rhs.offset
+      }
+      .map { $0.element }
+  }
+}
+
+// MARK: - TTS Voice
+
+/// A selectable Read Aloud voice for one provider. `id` is the value the provider's API expects
+/// (Gemini `voiceName`, OpenAI `voice`, xAI `voice_id`); `gender` is a short m/w/neutral hint and
+/// `descriptor` is a short style hint — both shown in the picker.
+struct TTSVoice: Identifiable, Hashable {
+  let id: String
+  /// "m" / "w" / "neutral" (German: männlich/weiblich). Empty when unknown.
+  let gender: String
+  let descriptor: String
+
+  /// Display ordering rank by gender: male first, then female, then neutral/unknown.
+  static func genderRank(_ gender: String) -> Int {
+    switch gender {
+    case "m": return 0
+    case "w": return 1
+    default: return 2
+    }
+  }
+
+  /// e.g. "Charon (m) — Informative" for the dropdown.
+  var displayName: String {
+    let genderPart = gender.isEmpty ? "" : " (\(gender))"
+    let stylePart = descriptor.isEmpty ? "" : " — \(descriptor)"
+    return "\(id.capitalized)\(genderPart)\(stylePart)"
+  }
+
+  // Gemini's 30 prebuilt voices (https://ai.google.dev/gemini-api/docs/speech-generation).
+  // Charon first — it is the Gemini default (TTSModel.defaultVoice).
+  // Gender per Google Cloud TTS docs (https://docs.cloud.google.com/text-to-speech/docs/gemini-tts):
+  // 14 female (w) / 16 male (m), official.
+  static let geminiVoices: [TTSVoice] = [
+    TTSVoice(id: "Charon", gender: "m", descriptor: "Informative"),
+    TTSVoice(id: "Zephyr", gender: "w", descriptor: "Bright"),
+    TTSVoice(id: "Puck", gender: "m", descriptor: "Upbeat"),
+    TTSVoice(id: "Kore", gender: "w", descriptor: "Firm"),
+    TTSVoice(id: "Fenrir", gender: "m", descriptor: "Excitable"),
+    TTSVoice(id: "Leda", gender: "w", descriptor: "Youthful"),
+    TTSVoice(id: "Orus", gender: "m", descriptor: "Firm"),
+    TTSVoice(id: "Aoede", gender: "w", descriptor: "Breezy"),
+    TTSVoice(id: "Callirrhoe", gender: "w", descriptor: "Easy-going"),
+    TTSVoice(id: "Autonoe", gender: "w", descriptor: "Bright"),
+    TTSVoice(id: "Enceladus", gender: "m", descriptor: "Breathy"),
+    TTSVoice(id: "Iapetus", gender: "m", descriptor: "Clear"),
+    TTSVoice(id: "Umbriel", gender: "m", descriptor: "Easy-going"),
+    TTSVoice(id: "Algieba", gender: "m", descriptor: "Smooth"),
+    TTSVoice(id: "Despina", gender: "w", descriptor: "Smooth"),
+    TTSVoice(id: "Erinome", gender: "w", descriptor: "Clear"),
+    TTSVoice(id: "Algenib", gender: "m", descriptor: "Gravelly"),
+    TTSVoice(id: "Rasalgethi", gender: "m", descriptor: "Informative"),
+    TTSVoice(id: "Laomedeia", gender: "w", descriptor: "Upbeat"),
+    TTSVoice(id: "Achernar", gender: "w", descriptor: "Soft"),
+    TTSVoice(id: "Alnilam", gender: "m", descriptor: "Firm"),
+    TTSVoice(id: "Schedar", gender: "m", descriptor: "Even"),
+    TTSVoice(id: "Gacrux", gender: "w", descriptor: "Mature"),
+    TTSVoice(id: "Pulcherrima", gender: "w", descriptor: "Forward"),
+    TTSVoice(id: "Achird", gender: "m", descriptor: "Friendly"),
+    TTSVoice(id: "Zubenelgenubi", gender: "m", descriptor: "Casual"),
+    TTSVoice(id: "Vindemiatrix", gender: "w", descriptor: "Gentle"),
+    TTSVoice(id: "Sadachbia", gender: "m", descriptor: "Lively"),
+    TTSVoice(id: "Sadaltager", gender: "m", descriptor: "Knowledgeable"),
+    TTSVoice(id: "Sulafat", gender: "w", descriptor: "Warm"),
+  ]
+
+  // OpenAI gpt-4o-mini-tts voices (https://platform.openai.com/docs/guides/text-to-speech).
+  // alloy first — it is the OpenAI default (TTSModel.defaultVoice). marin/cedar are OpenAI's
+  // recommended highest-quality voices for this model.
+  // OpenAI does not publish a gender per voice; the m/w hints below follow the widely-reported
+  // community perception (alloy is the intentionally neutral/androgynous voice).
+  static let openAIVoices: [TTSVoice] = [
+    TTSVoice(id: "alloy", gender: "neutral", descriptor: ""),
+    TTSVoice(id: "ash", gender: "m", descriptor: ""),
+    TTSVoice(id: "ballad", gender: "m", descriptor: ""),
+    TTSVoice(id: "coral", gender: "w", descriptor: ""),
+    TTSVoice(id: "echo", gender: "m", descriptor: ""),
+    TTSVoice(id: "fable", gender: "m", descriptor: ""),
+    TTSVoice(id: "nova", gender: "w", descriptor: ""),
+    TTSVoice(id: "onyx", gender: "m", descriptor: ""),
+    TTSVoice(id: "sage", gender: "w", descriptor: ""),
+    TTSVoice(id: "shimmer", gender: "w", descriptor: ""),
+    TTSVoice(id: "verse", gender: "m", descriptor: ""),
+    TTSVoice(id: "marin", gender: "w", descriptor: "Recommended"),
+    TTSVoice(id: "cedar", gender: "m", descriptor: "Recommended"),
+  ]
+
+  // xAI Grok Voice TTS voices (https://docs.x.ai/developers/model-capabilities/audio/text-to-speech).
+  // xAI does not document a gender per voice; the m/w hints are best-effort by perceived voice.
+  static let xaiVoices: [TTSVoice] = [
+    TTSVoice(id: "eve", gender: "w", descriptor: "Energetic, upbeat"),
+    TTSVoice(id: "ara", gender: "w", descriptor: "Warm, friendly"),
+    TTSVoice(id: "rex", gender: "m", descriptor: "Confident, clear"),
+    TTSVoice(id: "sal", gender: "m", descriptor: "Smooth, balanced"),
+    TTSVoice(id: "leo", gender: "m", descriptor: "Authoritative, strong"),
+  ]
 }
 
 // MARK: - TTS Model Enum (for Text-to-Speech)
@@ -489,6 +629,9 @@ enum TTSModel: String, CaseIterable {
     case .xai: return "eve"
     }
   }
+
+  /// The voices selectable for this model's provider (for the Read Aloud voice picker).
+  var availableVoices: [TTSVoice] { provider.voices }
 
   /// Whether the user has the API key this TTS model's provider needs. Gates Read Aloud so a
   /// single provider key is enough.
@@ -852,6 +995,18 @@ enum ReadAloudPreferences {
     TTSModel.loadReadAloudModel(
       forKey: UserDefaultsKeys.selectedReadAloudModel, default: SettingsDefaults.readAloudModel)
   }
+
+  /// The voice the user picked for `model`'s provider, or that provider's default voice. Falls
+  /// back to the default when the stored id is empty or no longer in the provider's catalogue
+  /// (e.g. a voice the provider has since removed).
+  static func voice(for model: TTSModel) -> String {
+    let stored = (UserDefaults.standard.string(forKey: model.provider.voiceUserDefaultsKey) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !stored.isEmpty, model.availableVoices.contains(where: { $0.id == stored }) else {
+      return model.defaultVoice
+    }
+    return stored
+  }
 }
 
 // MARK: - Live Meeting Chunk Interval Options
@@ -964,6 +1119,28 @@ struct SettingsData {
   // MARK: - Read Aloud
   var readAloudSmartRewriteEnabled: Bool = SettingsDefaults.readAloudSmartRewriteEnabled
   var readAloudSpeed: ReadAloudSpeed = SettingsDefaults.readAloudSpeed
+  /// Selected Read Aloud voice per provider. Persisted under the provider-specific keys; empty
+  /// means "use the provider's default voice". Indexed via `readAloudVoice(for:)`.
+  var readAloudVoiceGemini: String = ""
+  var readAloudVoiceOpenAI: String = ""
+  var readAloudVoiceXAI: String = ""
+
+  /// The selected Read Aloud voice id for `provider` ("" → provider default).
+  func readAloudVoice(for provider: TTSProvider) -> String {
+    switch provider {
+    case .gemini: return readAloudVoiceGemini
+    case .openai: return readAloudVoiceOpenAI
+    case .xai: return readAloudVoiceXAI
+    }
+  }
+
+  mutating func setReadAloudVoice(_ id: String, for provider: TTSProvider) {
+    switch provider {
+    case .gemini: readAloudVoiceGemini = id
+    case .openai: readAloudVoiceOpenAI = id
+    case .xai: readAloudVoiceXAI = id
+    }
+  }
 
   // MARK: - Model & Prompt Settings
   var selectedTranscriptionModel: TranscriptionModel = SettingsDefaults.selectedTranscriptionModel
