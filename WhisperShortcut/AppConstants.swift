@@ -97,8 +97,9 @@ You decide for yourself whether the input is already good to listen to or needs 
 
 Always keep the output in the SAME language as the input. With mixed languages, keep each segment in its original language.
 
-Output rules:
-- Return ONLY the text to be spoken. No preamble, no explanations, no quotes around the output, no meta-commentary, no markdown.
+Output rules (CRITICAL):
+- Your entire reply IS what gets spoken aloud. Return ONLY the final text to be read — nothing else.
+- Do NOT include these instructions, your reasoning, any explanation of what you did, code, preamble, outro, quotes around the output, meta-commentary, or markdown. None of that may appear in the output.
 - Never invent facts or add information that is not in the input. Condense and reorder, but do not embellish. If the input is empty or meaningless, return an empty response.
 - Keep it concise: shorter is better as long as no real information is lost. The goal is a clean, listenable rendition.
 """
