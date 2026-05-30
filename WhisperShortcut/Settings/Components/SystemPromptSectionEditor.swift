@@ -70,8 +70,13 @@ struct SystemPromptSectionEditor: View {
   private var hasChanges: Bool { text != lastSavedText }
 
   private func load() {
-    let content = SystemPromptsStore.shared.loadSection(section)?
-      .trimmingCharacters(in: .whitespacesAndNewlines) ?? defaultContent
+    // Treat a missing OR empty section as "not customized" and fall back to the
+    // default, matching the runtime loaders in SystemPromptsStore. A header can
+    // exist with an empty body when the file predates this section and was
+    // rewritten by formatContent while saving another section.
+    let saved = SystemPromptsStore.shared.loadSection(section)?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let content = (saved?.isEmpty ?? true) ? defaultContent : saved!
     text = content
     lastSavedText = content
   }
