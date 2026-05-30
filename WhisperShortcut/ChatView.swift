@@ -2806,7 +2806,7 @@ private struct CodeBlockExtractor {
 
 // MARK: - Model Reply View
 
-/// One selectable prose region, or a non-text block (tables/code/images stay separate so layout stays correct).
+/// One prose region, or a non-text block (tables/code/images stay separate so layout stays correct).
 private enum ModelReplyRenderSegment {
   case prose(AttributedString)
   case table(ParsedTable)
@@ -2880,6 +2880,8 @@ private struct ModelReplyView: View {
         }
       }
     }
+    // Safe to select again: citation markers are now plain text (no inline `.link`,
+    // no per-run font), so SelectionOverlay no longer hits the setFont: hang. See citationMarker.
     .textSelection(.enabled)
     .padding(.horizontal, 16)
     .padding(.vertical, 14)
@@ -2990,6 +2992,15 @@ private struct ModelReplyView: View {
     }
   }
 
+  /// A citation marker like " [3]" as PLAIN text — deliberately NO `.link` and NO per-run
+  /// font. An inline `.link` run (or a per-run font that differs from the body font) inside a
+  /// `.textSelection(.enabled)` Text drives SwiftUI's macOS `SelectionOverlay` into a
+  /// non-terminating `setFont:` / `_effectiveFontDidChangeTo:` loop (100% CPU hang). The
+  /// clickable source still lives in `sourcesView`'s chip row, so nothing is lost.
+  private static func citationMarker(_ oneBased: Int) -> AttributedString {
+    AttributedString(" [\(oneBased)]")
+  }
+
   private static func buildReplyBlocks(
     content: String,
     sources: [GroundingSource],
@@ -3017,11 +3028,7 @@ private struct ModelReplyView: View {
           var items = bulletItems
           var lastItem = items.removeLast()
           for idx in para.chunkIndices where idx < sources.count {
-            let oneBased = idx + 1
-            var markerAttr = AttributedString(" [\(oneBased)]")
-            markerAttr.font = .system(size: 14)
-            if let url = URL(string: sources[idx].uri) { markerAttr.link = url }
-            lastItem.append(markerAttr)
+            lastItem.append(citationMarker(idx + 1))
           }
           items.append(lastItem)
           blocks.append(.bulletList(items))
@@ -3030,11 +3037,7 @@ private struct ModelReplyView: View {
         // Heading followed by bullets — heading gets citations, bullets rendered separately
         var headingAttr = buildSingleParagraphAttributed(headingPart, options: options)
         for idx in para.chunkIndices where idx < sources.count {
-          let oneBased = idx + 1
-          var markerAttr = AttributedString(" [\(oneBased)]")
-          markerAttr.font = .system(size: 14)
-          if let url = URL(string: sources[idx].uri) { markerAttr.link = url }
-          headingAttr.append(markerAttr)
+          headingAttr.append(citationMarker(idx + 1))
         }
         blocks.append(.text(headingAttr))
         if let items = parseBulletItems(bulletPart) {
@@ -3045,11 +3048,7 @@ private struct ModelReplyView: View {
       } else {
         var attrText = buildSingleParagraphAttributed(trimmed, options: options)
         for idx in para.chunkIndices where idx < sources.count {
-          let oneBased = idx + 1
-          var markerAttr = AttributedString(" [\(oneBased)]")
-          markerAttr.font = .system(size: 14)
-          if let url = URL(string: sources[idx].uri) { markerAttr.link = url }
-          attrText.append(markerAttr)
+          attrText.append(citationMarker(idx + 1))
         }
         blocks.append(.text(attrText))
       }
