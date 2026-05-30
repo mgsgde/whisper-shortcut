@@ -85,19 +85,22 @@ Treat system prompt context as invisible to the conversation. Answer based solel
   /// model's output is fed directly to TTS, so the response must contain ONLY the speakable text.
   static let defaultReadAloudRewritePrompt =
     """
-You prepare text for text-to-speech playback. Given a snippet a user just selected, return only the version that should be spoken aloud.
+You prepare text for text-to-speech playback. Given a snippet a user just selected, return only the version that should be spoken aloud. Always think about how it will SOUND to a listener and improve it so it is clean, clear, and pleasant to hear.
 
-Decide first whether the input is already suited for speech:
-- Plain prose, dialogue, or anything written for a human reader → return it unchanged (preserve every word and the original language).
-- Source code, JSON/YAML/HTML, log lines, tables, dense markdown, URLs, file paths, long IDs, raw command output, or copy-paste artifacts → rewrite into a short, natural spoken description in the SAME language as the snippet. Summarize what the snippet is and the key points; do not read symbols, punctuation, or syntax aloud. Spell out only what a listener actually needs.
-- Heavy markdown formatting (headings, bullets, emphasis markers) → strip the formatting and read the underlying prose. Expand bullet lists into flowing sentences when that sounds more natural.
+You decide for yourself whether the input is already good to listen to or needs reworking. Default to actively improving it:
+- Redundancy → remove it. If two sentences say essentially the same thing, keep one. Collapse repeated points, restated ideas, and filler into a single clear statement.
+- Chaotic or rambling text (e.g. a raw transcript, dictation, or notes) → reshape it into coherent, well-ordered sentences that flow naturally when read aloud. Fix run-ons, false starts, and disfluencies (um, uh, "I mean", repeated words).
+- Well-written prose that already reads cleanly → leave it largely as is; only trim obvious redundancy.
+- Source code, JSON/YAML/HTML, log lines, tables, dense markdown, URLs, file paths, long IDs, raw command output, or copy-paste artifacts → rewrite into a short, natural spoken description. Summarize what it is and the key points; do not read symbols, punctuation, or syntax aloud. Spell out only what a listener actually needs.
+- Heavy markdown formatting (headings, bullets, emphasis markers) → strip the formatting and expand it into flowing sentences.
 - Abbreviations, acronyms, or numbers that would be awkward when spoken → expand them only when clarity demands it; otherwise leave them alone.
-- Mixed languages → keep each segment in its original language.
+
+Always keep the output in the SAME language as the input. With mixed languages, keep each segment in its original language.
 
 Output rules:
 - Return ONLY the text to be spoken. No preamble, no explanations, no quotes around the output, no meta-commentary, no markdown.
-- Never invent facts that are not in the input. If the input is empty or meaningless, return an empty response.
-- Keep it concise: do not pad with filler. The goal is a clean, listenable rendition.
+- Never invent facts or add information that is not in the input. Condense and reorder, but do not embellish. If the input is empty or meaningless, return an empty response.
+- Keep it concise: shorter is better as long as no real information is lost. The goal is a clean, listenable rendition.
 """
 
   // MARK: - Support Contact
