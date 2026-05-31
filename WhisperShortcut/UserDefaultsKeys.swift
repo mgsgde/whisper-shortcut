@@ -34,11 +34,6 @@ enum UserDefaultsKeys {
   // MARK: - Recording Safeguards
   static let confirmAboveDurationSeconds = "confirmAboveDurationSeconds"
 
-  // MARK: - Recording Behavior
-  /// When true, background media playback is paused (via the system play/pause key)
-  /// while a recording is active and resumed when it stops. See MediaPlaybackController.
-  static let pauseMediaDuringRecording = "pauseMediaDuringRecording"
-
   // MARK: - Auto-Paste Settings
   static let autoPasteAfterDictation = "autoPasteAfterDictation"
 

@@ -46,10 +46,6 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
-      RecordingBehaviorSection(viewModel: viewModel)
-
-      SpacedSectionDivider()
-
       ClipboardBehaviorSection(viewModel: viewModel)
 
       SpacedSectionDivider()

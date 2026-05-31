@@ -98,10 +98,6 @@ class SettingsViewModel: ObservableObject {
     data.autoPasteAfterDictation = UserDefaults.standard.bool(
       forKey: UserDefaultsKeys.autoPasteAfterDictation, default: SettingsDefaults.autoPasteAfterDictation)
 
-    // Load pause-media-during-recording setting
-    data.pauseMediaDuringRecording = UserDefaults.standard.bool(
-      forKey: UserDefaultsKeys.pauseMediaDuringRecording, default: SettingsDefaults.pauseMediaDuringRecording)
-
     // Load screenshot in prompt mode setting
     data.screenshotInPromptMode = UserDefaults.standard.bool(
       forKey: UserDefaultsKeys.screenshotInPromptMode, default: SettingsDefaults.screenshotInPromptMode)
@@ -297,9 +293,6 @@ class SettingsViewModel: ObservableObject {
 
     // Save auto-paste setting
     UserDefaults.standard.set(data.autoPasteAfterDictation, forKey: UserDefaultsKeys.autoPasteAfterDictation)
-
-    // Save pause-media-during-recording setting
-    UserDefaults.standard.set(data.pauseMediaDuringRecording, forKey: UserDefaultsKeys.pauseMediaDuringRecording)
 
     // Save screenshot in prompt mode setting
     UserDefaults.standard.set(data.screenshotInPromptMode, forKey: UserDefaultsKeys.screenshotInPromptMode)
@@ -550,7 +543,7 @@ class SettingsViewModel: ObservableObject {
 
 }
 
-private extension UserDefaults {
+extension UserDefaults {
   /// Returns the stored bool for `key`, or `defaultValue` when the key was never written.
   func bool(forKey key: String, default defaultValue: Bool) -> Bool {
     object(forKey: key) != nil ? bool(forKey: key) : defaultValue

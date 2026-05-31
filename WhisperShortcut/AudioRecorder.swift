@@ -16,9 +16,6 @@ class AudioRecorder: NSObject {
   private var peakPowerDuringRecording: Float = -160
   private static let silenceThresholdDB: Float = -45
 
-  /// Optionally pauses background media playback while recording (opt-in setting).
-  private let mediaPlayback = MediaPlaybackController()
-
   /// Whether the last completed recording contained only silence (no speech detected).
   private(set) var lastRecordingWasSilent: Bool = false
 
@@ -128,8 +125,6 @@ class AudioRecorder: NSObject {
         meteringTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
           self?.sampleMetering()
         }
-        // Pause background music/video for the duration of the recording (opt-in).
-        mediaPlayback.pauseForRecordingIfEnabled()
       }
       if !success {
         meteringTimer?.invalidate()
@@ -157,9 +152,6 @@ class AudioRecorder: NSObject {
     meteringTimer?.invalidate()
     meteringTimer = nil
 
-    // Resume any media we paused when recording started, regardless of recorder state below.
-    mediaPlayback.resumeAfterRecordingIfNeeded()
-
     guard let recorder = audioRecorder, recorder.isRecording else { return }
 
     lastRecordingWasSilent = peakPowerDuringRecording < Self.silenceThresholdDB
@@ -171,8 +163,6 @@ class AudioRecorder: NSObject {
   func cleanup() {
     meteringTimer?.invalidate()
     meteringTimer = nil
-    // Safety net: resume media if a recording is torn down without a normal stop.
-    mediaPlayback.resumeAfterRecordingIfNeeded()
     audioRecorder?.stop()
     audioRecorder = nil
 
