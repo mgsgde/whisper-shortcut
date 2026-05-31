@@ -109,12 +109,9 @@ class SettingsViewModel: ObservableObject {
     // Load Read Aloud preferences
     data.readAloudSmartRewriteEnabled = ReadAloudPreferences.smartRewriteEnabled
     data.readAloudSpeed = ReadAloudPreferences.speed
-    if let savedReadAloudModelRaw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudModel),
-       let savedReadAloudModel = TTSModel(rawValue: savedReadAloudModelRaw) {
-      data.selectedReadAloudModel = savedReadAloudModel
-    } else {
-      data.selectedReadAloudModel = SettingsDefaults.readAloudModel
-    }
+    data.selectedReadAloudModel = TTSModel.loadReadAloudModel(
+      forKey: UserDefaultsKeys.selectedReadAloudModel,
+      default: SettingsDefaults.readAloudModel)
     // Per-provider Read Aloud voice ("" → that provider's default voice).
     data.readAloudVoiceGemini = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoiceGemini) ?? ""
     data.readAloudVoiceOpenAI = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoiceOpenAI) ?? ""

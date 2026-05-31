@@ -46,6 +46,7 @@ class MenuBarController: NSObject {
   // MARK: - State Tracking (Prevent Race Conditions)
   private var currentTranscriptionAudioURL: URL?
   private var processedAudioURLs: Set<URL> = []
+  private var currentTTSAudioURL: URL?
   private var audioEngine: AVAudioEngine?
   private var audioPlayerNode: AVAudioPlayerNode?
   private var timePitchNode: AVAudioUnitTimePitch?
@@ -67,7 +68,6 @@ class MenuBarController: NSObject {
   private var liveMeetingAwaitingFinalChunk: Bool = false
   private var liveMeetingTranscriptURL: URL?
   private var liveMeetingPendingChunks: Int = 0
-  private var liveMeetingSessionStartTime: Date?
   private var liveMeetingSafeguardTimer: Timer?
   /// ID of the last chunk included in the rolling summary. Robust against chunk trimming.
   private var liveMeetingLastSummarizedChunkID: UUID? = nil
@@ -139,9 +139,7 @@ class MenuBarController: NSObject {
     }
 
     // Create menu
-    let menu = createMenu()
-    menu.delegate = self
-    statusItem.menu = menu
+    statusItem.menu = createMenu()
     updateUI()
   }
 
@@ -428,9 +426,6 @@ class MenuBarController: NSObject {
   private func updateMenuItems() {
     guard let menu = statusItem?.menu else { return }
 
-    // Per-feature credential checks: each feature is enabled when the user has a key for the
-    // provider of its *selected* model (or an offline/self-hosted transcription option). This is
-    // what lets a single provider key (Gemini / OpenAI / xAI) drive every feature.
     let selectedTranscriptionModel = TranscriptionModel.loadSelected()
     let hasOfflineTranscriptionModel = selectedTranscriptionModel.isOfflineModelAvailable()
     let canTranscribe = selectedTranscriptionModel.hasRequiredCredential
@@ -525,20 +520,14 @@ class MenuBarController: NSObject {
 
 
   // MARK: - Actions (Simplified Logic)
-  /// Stops the recorder after a short delay so the spoken tail (the last word or two before
-  /// the shortcut fires) is captured instead of clipped. Used by every recording-stop path.
-  private func stopRecordingAfterTailDelay() {
-    DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-      self?.audioRecorder.stopRecording()
-    }
-  }
-
   @objc private func toggleTranscription() {
     // During live meeting: run dictation as a parallel segment
     if isLiveMeetingActive {
       if activeMeetingSegment == .dictation {
         DebugLogger.log("MEETING-SEGMENT: Stopping dictation segment")
-        stopRecordingAfterTailDelay()
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
+          self?.audioRecorder.stopRecording()
+        }
         return
       }
       if activeMeetingSegment != nil {
@@ -546,7 +535,8 @@ class MenuBarController: NSObject {
         return
       }
       let selectedModel = TranscriptionModel.loadSelected()
-      if selectedModel.hasRequiredCredential {
+      let hasOfflineModel = selectedModel.isOfflineModelAvailable()
+      if selectedModel.hasRequiredCredential || hasOfflineModel {
         DebugLogger.log("MEETING-SEGMENT: Starting dictation segment during meeting")
         activeMeetingSegment = .dictation
         audioRecorder.startRecording()
@@ -568,17 +558,20 @@ class MenuBarController: NSObject {
       }
     }()
     if isTranscriptionProcessing {
-      speechService.cancelTranscription()
-      transitionToIdleAndCleanup(cleanupAudioURL: currentTranscriptionAudioURL)
+      cancelInFlightTranscription()
       return
     }
     
     switch appState.recordingMode {
     case .transcription:
-      stopRecordingAfterTailDelay()
+      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
+        self?.audioRecorder.stopRecording()
+      }
     case .none:
       let selectedModel = TranscriptionModel.loadSelected()
-      if appState.canStartTranscription(hasAPIKey: selectedModel.hasRequiredCredential, hasOfflineModel: false) {
+      let hasOfflineModel = selectedModel.isOfflineModelAvailable()
+
+      if appState.canStartTranscription(hasAPIKey: selectedModel.hasRequiredCredential, hasOfflineModel: hasOfflineModel) {
         appState = appState.startRecording(.transcription)
         audioRecorder.startRecording()
       } else {
@@ -597,7 +590,9 @@ class MenuBarController: NSObject {
     if isLiveMeetingActive {
       if activeMeetingSegment == .prompt {
         DebugLogger.log("MEETING-SEGMENT: Stopping prompt segment")
-        stopRecordingAfterTailDelay()
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
+          self?.audioRecorder.stopRecording()
+        }
         return
       }
       if activeMeetingSegment != nil {
@@ -609,7 +604,7 @@ class MenuBarController: NSObject {
       if promptModel.hasRequiredCredential {
         if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return }
         DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
-        simulateCopy()
+        simulateCopyPaste()
         activeMeetingSegment = .prompt
         audioRecorder.startRecording()
       } else {
@@ -627,7 +622,9 @@ class MenuBarController: NSObject {
     
     switch appState.recordingMode {
     case .prompt:
-      stopRecordingAfterTailDelay()
+      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
+        self?.audioRecorder.stopRecording()
+      }
     case .none:
       let promptModel = PromptModel.loadPromptModel(
         forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
@@ -635,12 +632,11 @@ class MenuBarController: NSObject {
         if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
           return
         }
-        simulateCopy()
+        simulateCopyPaste()
         appState = appState.startRecording(.prompt)
         audioRecorder.startRecording()
       } else {
-        PopupNotificationWindow.showError(
-          promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
+        PopupNotificationWindow.showError(promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
       }
     default:
       break
@@ -674,8 +670,7 @@ class MenuBarController: NSObject {
       }
     }()
     if isTranscriptionProcessing {
-      speechService.cancelTranscription()
-      transitionToIdleAndCleanup(cleanupAudioURL: currentTranscriptionAudioURL)
+      cancelInFlightTranscription()
       return
     }
 
@@ -688,8 +683,17 @@ class MenuBarController: NSObject {
 
     // Recording states — stop the recorder (audio tail delay like the individual toggles)
     if appState.isRecording {
-      stopRecordingAfterTailDelay()
+      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
+        self?.audioRecorder.stopRecording()
+      }
     }
+  }
+
+  /// Cancels a running transcription (including chunk pipelines) and performs
+  /// the shared cleanup transition.
+  private func cancelInFlightTranscription() {
+    speechService.cancelTranscription()
+    transitionToIdleAndCleanup(cleanupAudioURL: currentTranscriptionAudioURL)
   }
 
   @objc func openSettings() {
@@ -807,7 +811,6 @@ class MenuBarController: NSObject {
     liveMeetingFinalized = false
     liveMeetingAwaitingFinalChunk = false
     liveMeetingPendingChunks = 0
-    liveMeetingSessionStartTime = Date()
     liveMeetingDidShowRateLimitAlert = false
     appState = .recording(.liveMeeting)
     if resuming && !existingChunks.isEmpty {
@@ -974,12 +977,6 @@ class MenuBarController: NSObject {
           if !trimmed.isEmpty {
             MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
             DebugLogger.log("LIVE-MEETING: Summary saved to .summary.md")
-            let stem = transcriptURL.deletingPathExtension().lastPathComponent
-            await MainActor.run {
-              NotificationCenter.default.post(
-                name: .chatMeetingSummaryReady, object: nil,
-                userInfo: ["stem": stem, "summary": trimmed])
-            }
           }
         } catch {
           DebugLogger.logError("LIVE-MEETING: Generate summary failed: \(error.localizedDescription)")
@@ -1286,7 +1283,9 @@ class MenuBarController: NSObject {
         self.autoPasteIfEnabled()
       }
 
-      await reviewPrompter.recordSuccessfulOperation()
+      await MainActor.run { [weak self] in
+        self?.reviewPrompter.recordSuccessfulOperation()
+      }
 
       let modelInfo = await self.speechService.getTranscriptionModelInfo()
       
@@ -1360,7 +1359,9 @@ class MenuBarController: NSObject {
         self.autoPasteIfEnabled()
       }
 
-      await reviewPrompter.recordSuccessfulOperation()
+      await MainActor.run { [weak self] in
+        self?.reviewPrompter.recordSuccessfulOperation()
+      }
 
       await MainActor.run {
         let modelInfo = self.speechService.getPromptModelInfo()
@@ -1428,9 +1429,7 @@ class MenuBarController: NSObject {
       currentConfig = newConfig
       DispatchQueue.main.async {
         // Recreate menu with updated shortcuts
-        let menu = self.createMenu()
-        menu.delegate = self
-        self.statusItem?.menu = menu
+        self.statusItem?.menu = self.createMenu()
         self.updateUI()
       }
     }
@@ -1560,10 +1559,10 @@ class MenuBarController: NSObject {
         // Must check on the read-aloud task, not inside MainActor.run (different task context).
         guard !Task.isCancelled else {
           DebugLogger.log("CANCELLATION: Read Aloud producer finished after cancel — skipping playback")
-          // attemptReadAloudToggleOff already flipped state to idle when Stop fired, but a late
-          // `mergingStarted` callback may have re-entered a `.processing` state on top of that —
-          // without this, the menu bar would stay busy until the next user action, blocking
-          // every other shortcut.
+          // attemptReadAloudToggleOff already flipped state to idle when Stop fired, but late
+          // `mergingStarted` / `mergingFinished` callbacks may have re-entered a `.processing`
+          // state on top of that — without this, the menu bar would stay busy until the next
+          // user action, blocking every other shortcut.
           await MainActor.run { [weak self] in
             guard let self, self.isTTSRunning else { return }
             self.finishReadAloudSession(cancelNetworkWork: false, stopPlayback: false)
@@ -1574,7 +1573,6 @@ class MenuBarController: NSObject {
           guard let self else { return }
           PopupNotificationWindow.dismissProcessing()
           self.playTTSAudio(audioData: audioData)
-          self.reviewPrompter.recordSuccessfulOperation()
         }
       } catch {
         if Self.isCancellation(error) {
@@ -1616,6 +1614,9 @@ class MenuBarController: NSObject {
     if attemptReadAloudToggleOff() { return }
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedText.isEmpty else { return }
+    // Chat-reply path: the text is LLM-generated prose intended for human reading, so skip the
+    // Smart Rewrite Gemini call. The global-selection path keeps the default (true) because a
+    // selection can be code/markdown/log-output.
     beginReadAloudProcessing { [speechService] in
       try await speechService.readProseAloud(trimmedText)
     }
@@ -1713,6 +1714,7 @@ class MenuBarController: NSObject {
           self.audioEngine = nil
           self.audioPlayerNode = nil
           self.timePitchNode = nil
+          self.currentTTSAudioURL = nil
           self.appState = self.appState.showSuccess("Audio playback completed")
           try? await Task.sleep(nanoseconds: 2_000_000_000)
           if case .feedback = self.appState {
@@ -1739,27 +1741,38 @@ class MenuBarController: NSObject {
     audioEngine = nil
     audioPlayerNode = nil
     timePitchNode = nil
+    cleanupAudioFile(at: currentTTSAudioURL)
+    currentTTSAudioURL = nil
   }
   
-  /// Posts a synthetic ⌘+<key> chord (key-down then key-up) through a Quartz event tap.
-  /// `sourceState` differs by use: copy uses `.privateState` so modifier keys physically held
-  /// during the global shortcut (e.g. Option) don't leak into the chord and turn ⌘C into
-  /// ⌘⌥C; paste uses `.hidSystemState` so ⌘V is delivered to the frontmost app.
-  private func postCommandKey(_ virtualKey: CGKeyCode, sourceState: CGEventSourceStateID) {
-    let source = CGEventSource(stateID: sourceState)
-    let down = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: true)
-    let up = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: false)
-    down?.flags = .maskCommand
-    up?.flags = .maskCommand
-    down?.post(tap: .cghidEventTap)
-    up?.post(tap: .cghidEventTap)
+  private func simulateCopyPaste() {
+    // Use a private event source so modifier keys physically held (e.g. Option from the
+    // global shortcut) do not leak into the synthetic Cmd+C and turn it into Cmd+Option+C.
+    let source = CGEventSource(stateID: .privateState)
+    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true)
+    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
+
+    cmdDown?.flags = .maskCommand
+    cmdUp?.flags = .maskCommand
+
+    cmdDown?.post(tap: .cghidEventTap)
+    cmdUp?.post(tap: .cghidEventTap)
   }
 
-  /// Simulates ⌘C to copy the current selection (virtual key 0x08 = 'C').
-  private func simulateCopy() { postCommandKey(0x08, sourceState: .privateState) }
+  /// Simulates Cmd+V paste keystroke to paste clipboard contents at cursor position
+  private func simulatePaste() {
+    // Use HID system state so Cmd+V is delivered to the frontmost app
+    let source = CGEventSource(stateID: .hidSystemState)
+    // Virtual key 0x09 is 'V'
+    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true)
+    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false)
 
-  /// Simulates ⌘V to paste clipboard contents at the cursor (virtual key 0x09 = 'V').
-  private func simulatePaste() { postCommandKey(0x09, sourceState: .hidSystemState) }
+    cmdDown?.flags = .maskCommand
+    cmdUp?.flags = .maskCommand
+
+    cmdDown?.post(tap: .cghidEventTap)
+    cmdUp?.post(tap: .cghidEventTap)
+  }
 
   /// Performs auto-paste if enabled in settings
   private func autoPasteIfEnabled() {
@@ -1927,72 +1940,17 @@ extension MenuBarController: ShortcutDelegate {
   func openChat() { openChatWindowFromShortcut() }
 
   @objc func takeScreenshot() {
-    // Always capture to a temp PNG (not screencapture's own `-c`) so we get a definitive
-    // success signal: a file means the capture worked, no file means it didn't. We then
-    // copy the image to the clipboard ourselves and, when enabled, persist it to the
-    // user-selected folder. Without this we can't tell a successful capture apart from a
-    // silent failure — which is exactly what happens when Screen Recording permission is
-    // missing: screencapture launches fine (no thrown error) but produces nothing.
-    let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
-      .appendingPathComponent("whispershortcut-\(UUID().uuidString).png")
-    let saveToFolder = ScreenshotSaveLocation.isEnabled
-    DebugLogger.logUI("📷 SCREENSHOT: Launching interactive capture (save=\(saveToFolder))")
-    DispatchQueue.global(qos: .userInitiated).async {
-      let task = Process()
-      task.launchPath = "/usr/sbin/screencapture"
-      // -i interactive (drag rectangle / space-bar for window), -o no shadow on window grabs.
-      task.arguments = ["-i", "-o", tempURL.path]
-      do {
-        try task.run()
-        task.waitUntilExit()
-      } catch {
-        DebugLogger.logError("SCREENSHOT: Failed to launch screencapture: \(error)")
-        return
-      }
-
-      guard FileManager.default.fileExists(atPath: tempURL.path),
-        let data = try? Data(contentsOf: tempURL)
-      else {
-        // No file: either the user cancelled the selection, or Screen Recording permission
-        // is missing (screencapture then produces nothing). CGPreflightScreenCaptureAccess()
-        // lets us tell the two apart so we only nag when permission is the real problem.
-        DispatchQueue.main.async {
-          if PermissionStatusChecker.status(for: .screenRecording) != .granted {
-            DebugLogger.logWarning("SCREENSHOT: No capture file and no Screen Recording permission")
-            Self.showScreenRecordingPermissionError()
-          } else {
-            DebugLogger.log("SCREENSHOT: No capture file (selection cancelled)")
-          }
-        }
-        return
-      }
-
-      DispatchQueue.main.async {
-        if let image = NSImage(data: data) {
-          NSPasteboard.general.clearContents()
-          NSPasteboard.general.writeObjects([image])
-        }
-        if saveToFolder {
-          ScreenshotSaveLocation.save(data)
-        }
-        try? FileManager.default.removeItem(at: tempURL)
-      }
+    DebugLogger.logUI("📷 SCREENSHOT: Launching interactive capture (clipboard)")
+    let task = Process()
+    task.launchPath = "/usr/sbin/screencapture"
+    // -i interactive (drag rectangle / space-bar for window), -c copy to clipboard,
+    // -o no shadow on window grabs. Mirrors what native ⌘⇧⌃4 does.
+    task.arguments = ["-i", "-c", "-o"]
+    do {
+      try task.run()
+    } catch {
+      DebugLogger.logError("SCREENSHOT: Failed to launch screencapture: \(error)")
     }
-  }
-
-  /// Surfaces the missing Screen Recording permission to the user. The global screenshot
-  /// shortcut otherwise fails silently. Triggers the native consent prompt the first time
-  /// (which registers the app in System Settings and offers a direct "Open System Settings"
-  /// button) and always shows a popup so there is visible feedback afterwards too.
-  private static func showScreenRecordingPermissionError() {
-    PermissionStatusChecker.requestScreenRecordingAccess()
-    PopupNotificationWindow.showError(
-      "WhisperShortcut needs Screen Recording permission to capture screenshots. Enable it in System Settings → Privacy & Security → Screen Recording, then relaunch the app.",
-      title: "Screen Recording Permission Needed",
-      retryAction: {
-        PermissionStatusChecker.openSystemSettings(for: .screenRecording)
-      }
-    )
   }
 
   /// HotKey entry point: copies the user's selection, then runs Read Aloud on it. Pressing the
@@ -2020,65 +1978,25 @@ extension MenuBarController: ShortcutDelegate {
     }
     guard AccessibilityPermissionManager.checkPermissionForPromptUsage() else { return }
 
-    // A blind delay isn't enough: some apps respond to Cmd+C slower than others, and a fixed
-    // wait either reads the stale clipboard (too short) or stalls Read Aloud (too long). Poll
-    // `NSPasteboard.changeCount` instead — as soon as the frontmost app finishes writing the
-    // copy, we read; if no change lands within the deadline, the selection didn't get copied
-    // (no focus, no selection, or no accessibility permission for the app being copied from).
-    let beforeChangeCount = NSPasteboard.general.changeCount
-    DebugLogger.log("READ-ALOUD: Posting synthetic Cmd+C; before changeCount = \(beforeChangeCount)")
     DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      self.simulateCopy()
-      Task { @MainActor [weak self] in
-        guard let self else { return }
-        let start = Date()
-        let deadline = start.addingTimeInterval(0.5)
-        while Date() < deadline {
-          try? await Task.sleep(for: .milliseconds(15))
-          if NSPasteboard.general.changeCount != beforeChangeCount {
-            let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
-            DebugLogger.log("READ-ALOUD: Pasteboard changed after \(elapsedMs) ms")
-            // The user may have triggered another operation during the poll window; only
-            // proceed if we're still idle.
-            guard case .idle = self.appState else {
-              DebugLogger.logWarning("READ-ALOUD: Poll completed but state is no longer idle — abandoning")
-              return
-            }
-            self.performReadSelectedTextAloud()
-            return
-          }
-        }
-        DebugLogger.logWarning("READ-ALOUD: Pasteboard never changed — Cmd+C did not land on a selection")
-        guard case .idle = self.appState else {
-          DebugLogger.logWarning("READ-ALOUD: Poll timed out but state is no longer idle — skipping error popup")
-          return
-        }
-        // No selection is normal usage, not an error — show a brief info popup
-        // without an error state or "Contact Support" button.
-        self.showNoTextSelectedForReadAloud()
+      guard let self = self else { return }
+      // Synthetic Cmd+C copies the user's selection into the clipboard so we can read it.
+      self.simulateCopyPaste()
+      // Give the frontmost app a beat to put the copied text on the pasteboard before we read.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+        self?.performReadSelectedTextAloud()
       }
     }
   }
 
-  /// Brief info popup shown when Read Aloud finds no selection. Not an error state (no
-  /// "Contact Support" button) — pressing the shortcut without selecting text is normal.
-  private func showNoTextSelectedForReadAloud() {
-    PopupNotificationWindow.showInfo(
-      "No text selected. Highlight text first, then press the Read Aloud shortcut.",
-      title: "Read Aloud"
-    )
-  }
-
   private func performReadSelectedTextAloud() {
-    // Re-check toggle-off: between the poll-window dispatch and now, the user may have
-    // pressed the shortcut again, which would otherwise double-fire `beginReadAloudProcessing`
-    // and orphan the first task.
-    if attemptReadAloudToggleOff() { return }
     guard let selectedText = clipboardManager.getCleanedClipboardText(),
           !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      DebugLogger.logWarning("READ-ALOUD: Pasteboard changed but text is empty after cleaning")
-      showNoTextSelectedForReadAloud()
+      presentError(
+        shortTitle: "Read Aloud",
+        message: "No text selected. Highlight text first, then press the Read Aloud shortcut.",
+        dismissProcessingFirst: false
+      )
       return
     }
     beginReadAloudProcessing { [speechService] in
@@ -2098,21 +2016,13 @@ extension MenuBarController: ChunkProgressDelegate {
     }.joined(separator: " ")
   }
 
-  /// Chunk context (`tts` / `transcription`) of the in-flight processing state. Falls back to
-  /// `.transcription` when not in `.processing` — only reached if a delegate callback lands
-  /// after teardown, where the safe default keeps captions readable.
-  private var currentChunkContext: AppState.ProcessingMode.ChunkContext {
-    if case .processing(let mode) = appState { return mode.chunkContext }
-    return .transcription
-  }
-
   func chunkingStarted(totalChunks: Int) {
     // Initialize all chunks as pending
     chunkStatuses = Array(repeating: .pending, count: totalChunks)
 
     // Derive TTS vs transcription from current appState (we're still in .ttsProcessing or .transcribing)
-    let context = currentChunkContext
-    let isTTS = context == .tts
+    let isTTS: Bool = { if case .processing(let mode) = appState { return mode.isTTSContext } else { return false } }()
+    let context: AppState.ProcessingMode.ChunkContext = isTTS ? .tts : .transcription
 
     appState = .processing(.splitting(context: context))
     updateMenuBarIcon()
@@ -2139,7 +2049,7 @@ extension MenuBarController: ChunkProgressDelegate {
     // Mark chunk as active
     chunkStatuses[index] = .active
 
-    let context = currentChunkContext
+    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
     appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
     updateMenuBarIcon()
 
@@ -2167,7 +2077,7 @@ extension MenuBarController: ChunkProgressDelegate {
     // Mark chunk as completed
     chunkStatuses[index] = .completed
 
-    let context = currentChunkContext
+    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
     appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
     updateMenuBarIcon()
 
@@ -2200,7 +2110,7 @@ extension MenuBarController: ChunkProgressDelegate {
       // Mark as permanently failed
       chunkStatuses[index] = .failed
 
-      let context = currentChunkContext
+      let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
       appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
       updateMenuBarIcon()
 
@@ -2221,7 +2131,7 @@ extension MenuBarController: ChunkProgressDelegate {
     // Clear chunk statuses (no longer needed for display)
     chunkStatuses = []
 
-    let context = currentChunkContext
+    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
     appState = .processing(.merging(context: context))
     updateMenuBarIcon()
 
@@ -2241,6 +2151,18 @@ extension MenuBarController: ChunkProgressDelegate {
     }
 
     DebugLogger.log("CHUNK-PROGRESS: Merging \(isTTS ? "audio chunks" : "transcripts")...")
+  }
+
+  func mergingFinished() {
+    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
+    switch context {
+    case .tts:
+      appState = .processing(.ttsProcessing)
+    case .transcription:
+      appState = .processing(.transcribing)
+    }
+    updateMenuBarIcon()
+    DebugLogger.log("CHUNK-PROGRESS: Merging finished (TTS: \(context == .tts))")
   }
 }
 
@@ -2349,15 +2271,5 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
       // Show error but don't stop the session
       PopupNotificationWindow.showError(SpeechErrorFormatter.formatForUser(error), title: "Live Meeting")
     }
-  }
-}
-
-// MARK: - NSMenuDelegate
-extension MenuBarController: NSMenuDelegate {
-  /// Fires a previously-armed review/support prompt when the user is focused on this app
-  /// rather than the one they were dictating into. ReviewPrompter no-ops when nothing
-  /// is pending.
-  func menuWillOpen(_ menu: NSMenu) {
-    ReviewPrompter.shared.showPendingPromptIfNeeded()
   }
 }

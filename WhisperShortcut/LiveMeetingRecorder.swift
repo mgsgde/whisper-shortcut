@@ -378,13 +378,21 @@ extension LiveMeetingRecorder: AVAudioRecorderDelegate {
 
           if fileSize > 0 {
             DebugLogger.log("LIVE-MEETING: Final chunk recorded successfully (\(fileSize) bytes)")
-            delegate?.liveMeetingRecorder(
-              didFinishChunk: url,
-              chunkIndex: chunkIndex,
-              startTime: max(0, currentChunkStartTime),
-              isSilent: peakPowerDuringChunk < silenceThresholdDB,
-              isFinal: true
-            )
+            // AVAudioRecorderDelegate may call this off the main thread; the non-final path
+            // (above) hops to main before touching the delegate, so do the same here — the
+            // handler mutates main-thread-only live-meeting state.
+            let finalChunkIndex = chunkIndex
+            let finalStartTime = max(0, currentChunkStartTime)
+            let finalIsSilent = peakPowerDuringChunk < silenceThresholdDB
+            DispatchQueue.main.async { [weak self] in
+              self?.delegate?.liveMeetingRecorder(
+                didFinishChunk: url,
+                chunkIndex: finalChunkIndex,
+                startTime: finalStartTime,
+                isSilent: finalIsSilent,
+                isFinal: true
+              )
+            }
           } else {
             DebugLogger.logWarning("LIVE-MEETING: Final chunk is empty, skipping")
             try? FileManager.default.removeItem(at: url)

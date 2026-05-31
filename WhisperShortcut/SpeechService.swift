@@ -23,6 +23,9 @@ class SpeechService {
   /// fails or times out.
   fileprivate static let voiceInstructionPlaceholder = "(voice instruction)"
 
+  /// Fallback transcription instruction used when the user hasn't supplied a custom prompt.
+  private static let defaultTranscriptionInstruction = "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting."
+
   // MARK: - Shared Infrastructure
   private let keychainManager: KeychainManaging
   private let credentialProvider: GeminiCredentialProviding
@@ -296,15 +299,18 @@ class SpeechService {
     case .openai:
       return try await executePromptWithOpenAI(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
     case .grok:
-      preconditionFailure("Unreachable: no Grok model sets supportsDirectAudioInput=true, so the guard above always throws first.")
+      // Defensive: the supportsDirectAudioInput guard above already excludes Grok, but throw
+      // rather than crash the menu-bar app if a future model/provider change reaches here.
+      throw TranscriptionError.networkError("Grok can't process audio directly. Pick a Gemini model or OpenAI's GPT-4o Audio for Dictate Prompt.")
     }
   }
 
   // MARK: - Gemini Dictate Prompt Helpers
 
   /// Loads the user's Dictate Prompt system prompt (or the built-in default when empty)
-  /// and appends the strict output rule. Both Gemini prompt paths use this composition.
-  private func buildGeminiDictatePromptSystemPrompt(logPrefix: String) -> String {
+  /// and appends the strict output rule. All Dictate Prompt paths (Gemini, OpenAI, text)
+  /// use this composition.
+  private func buildDictatePromptSystemPrompt(logPrefix: String) -> String {
     let trimmed = SystemPromptsStore.shared
       .loadDictatePromptSystemPrompt()
       .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -420,6 +426,9 @@ class SpeechService {
         return Self.voiceInstructionPlaceholder
       }
     }
+    // If the main request throws before we await the task below, cancel the parallel
+    // transcription so it doesn't keep burning a second API call in the background.
+    defer { transcriptionTask.cancel() }
 
     DebugLogger.log("PROMPT-MODE-GEMINI: Clipboard context: \(clipboardContext != nil ? "present" : "none")")
 
@@ -464,7 +473,7 @@ class SpeechService {
       model: model,
       mode: mode,
       userParts: userParts,
-      systemPrompt: buildGeminiDictatePromptSystemPrompt(logPrefix: "PROMPT-MODE-GEMINI"),
+      systemPrompt: buildDictatePromptSystemPrompt(logPrefix: "PROMPT-MODE-GEMINI"),
       credential: credential,
       logPrefix: "PROMPT-MODE-GEMINI"
     )
@@ -520,17 +529,11 @@ class SpeechService {
         return Self.voiceInstructionPlaceholder
       }
     }
+    // If the main request throws before we await the task below, cancel the parallel
+    // transcription so it doesn't keep burning a second API call in the background.
+    defer { transcriptionTask.cancel() }
 
-    // Build system prompt (same composition as the Gemini path).
-    var systemPrompt = SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-    if systemPrompt.isEmpty {
-      systemPrompt = AppConstants.defaultPromptModeSystemPrompt
-      DebugLogger.log("PROMPT-MODE-OPENAI: Using base system prompt")
-    } else {
-      DebugLogger.log("PROMPT-MODE-OPENAI: Using custom system prompt")
-    }
-    systemPrompt += AppConstants.promptModeOutputRule
+    let systemPrompt = buildDictatePromptSystemPrompt(logPrefix: "PROMPT-MODE-OPENAI")
 
     // Optional screenshot context. gpt-4o-audio-preview is audio-only and rejects image_url
     // content parts with HTTP 400 ("This model does not support image_url content."), so we
@@ -780,7 +783,7 @@ class SpeechService {
       model: selectedPromptModel,
       mode: mode,
       userParts: userParts,
-      systemPrompt: buildGeminiDictatePromptSystemPrompt(logPrefix: "PROMPT-MODE-TEXT"),
+      systemPrompt: buildDictatePromptSystemPrompt(logPrefix: "PROMPT-MODE-TEXT"),
       credential: credential,
       logPrefix: "PROMPT-MODE-TEXT"
     )
@@ -1432,7 +1435,7 @@ class SpeechService {
       contents: [
         GeminiTranscriptionRequest.GeminiTranscriptionContent(
           parts: [
-            .text(promptToUse.isEmpty ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting." : promptToUse),
+            .text(promptToUse.isEmpty ? Self.defaultTranscriptionInstruction : promptToUse),
             .inline(mimeType: mimeType, data: base64Audio)
           ]
         )
@@ -1508,7 +1511,7 @@ class SpeechService {
       contents: [
         GeminiTranscriptionRequest.GeminiTranscriptionContent(
           parts: [
-            .text(promptToUse.isEmpty ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting." : promptToUse),
+            .text(promptToUse.isEmpty ? Self.defaultTranscriptionInstruction : promptToUse),
             .file(uri: fileURI, mimeType: mimeType)
           ]
         )

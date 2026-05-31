@@ -781,7 +781,13 @@ class ChatViewModel: ObservableObject {
         || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
         || lower == Self.copyCommand {
       inputText = ""
-      if lower == Self.newChatCommand { if !singleChatOnly { createNewSession() } }
+      if lower == Self.newChatCommand {
+        if singleChatOnly {
+          appendModelMessage("`/new` is unavailable in this window because it is bound to a single chat session.")
+        } else {
+          createNewSession()
+        }
+      }
       else if lower == Self.attachCommand { attachFile() }
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else if lower == Self.pinCommand { togglePin() }
@@ -1747,36 +1753,6 @@ struct ChatView: View {
 
     }
     .frame(height: 52)
-  }
-
-  private func tabOverflowMenu(sessions: [ChatSession]) -> some View {
-    Menu {
-      ForEach(sessions.reversed(), id: \.id) { session in
-        let title = session.title.flatMap { $0.isEmpty ? nil : $0 } ?? (session.isMeeting ? "Meeting" : "New chat")
-        Button {
-          viewModel.switchToSession(id: session.id)
-        } label: {
-          if session.id == viewModel.currentSessionId {
-            Label(title, systemImage: "checkmark")
-          } else {
-            Text(title)
-          }
-        }
-      }
-      Divider()
-      Button("Reopen Closed Tab") { viewModel.reopenLastClosedTab() }
-        .keyboardShortcut("t", modifiers: [.command, .shift])
-    } label: {
-      Image(systemName: "chevron.down")
-        .font(.system(size: 11, weight: .medium))
-        .foregroundColor(ChatTheme.secondaryText)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
-    }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .help("All tabs")
-    .pointerCursorOnHover()
   }
 
   private func sessionTab(session: ChatSession, width: CGFloat) -> some View {
@@ -2984,12 +2960,6 @@ private struct ModelReplyView: View {
     }
     flushProse()
     return segments
-  }
-
-  private static func contentHasTable(_ content: String) -> Bool {
-    content.components(separatedBy: "\n\n").contains {
-      MarkdownParsing.looksLikeMarkdownTable($0.trimmingCharacters(in: .whitespacesAndNewlines))
-    }
   }
 
   /// A citation marker like " [3]" as PLAIN text — deliberately NO `.link` and NO per-run

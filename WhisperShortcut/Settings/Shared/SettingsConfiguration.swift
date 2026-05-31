@@ -194,12 +194,8 @@ enum PromptModel: String, CaseIterable {
   /// Chat Completions requests — i.e. the OpenAI counterpart to Gemini's native audio handling
   /// in Dictate Prompt.
   var supportsDirectAudioInput: Bool {
-    switch self {
-    case .openaiGPT4oAudio:
-      return true
-    default:
-      return provider == .gemini
-    }
+    // Any Gemini model handles audio natively; on OpenAI only the gpt-audio model does.
+    provider == .gemini || self == .openaiGPT4oAudio
   }
 
   /// Whether the user has the API key this model's provider needs. Used to gate features
@@ -679,8 +675,12 @@ enum TTSModel: String, CaseIterable {
   /// Reads the user's Read Aloud model selection from UserDefaults, applying legacy
   /// migration and falling back to `fallback` for unknown values.
   static func loadReadAloudModel(forKey key: String, default fallback: TTSModel) -> TTSModel {
-    let migratedRaw = migrateLegacyReadAloudRawValue(
-      UserDefaults.standard.string(forKey: key) ?? fallback.rawValue)
+    let storedRaw = UserDefaults.standard.string(forKey: key)
+    let raw = storedRaw ?? fallback.rawValue
+    let migratedRaw = migrateLegacyReadAloudRawValue(raw)
+    if let storedRaw, migratedRaw != storedRaw {
+      UserDefaults.standard.set(migratedRaw, forKey: key)
+    }
     return TTSModel(rawValue: migratedRaw) ?? fallback
   }
 }
@@ -1050,9 +1050,7 @@ struct SettingsDefaults {
   static let selectedChatModel = PromptModel.gemini35Flash
   static let chatCloseOnFocusLoss = true
   static let settingsCloseOnFocusLoss = true
-  static let customPromptText = ""
-  static let promptModeSystemPrompt = ""
-  
+
   // MARK: - Read Aloud (Chat TTS)
   /// Voice used by the Read Aloud button. Per-model voice is derived from `TTSModel.defaultVoice`;
   /// this remains the Gemini default for any caller that still references it directly.
@@ -1150,8 +1148,6 @@ struct SettingsData {
   var selectedReadAloudModel: TTSModel = SettingsDefaults.readAloudModel
   var chatCloseOnFocusLoss: Bool = SettingsDefaults.chatCloseOnFocusLoss
   var settingsCloseOnFocusLoss: Bool = SettingsDefaults.settingsCloseOnFocusLoss
-  var customPromptText: String = SettingsDefaults.customPromptText
-  var promptModeSystemPrompt: String = SettingsDefaults.promptModeSystemPrompt
 
   // MARK: - Whisper Language Settings
   var whisperLanguage: WhisperLanguage = SettingsDefaults.whisperLanguage
