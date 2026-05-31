@@ -1072,6 +1072,11 @@ struct SettingsDefaults {
   // MARK: - Recording Safeguards
   static let confirmAboveDuration = ConfirmAboveDuration.fiveMinutes
 
+  // MARK: - Recording Behavior
+  /// Off by default: pausing media uses a toggle key, so it can briefly start playback
+  /// if nothing was playing when recording began. Opt-in keeps that surprise out of the box.
+  static let pauseMediaDuringRecording = false
+
   // MARK: - Auto-Paste Settings
   static let autoPasteAfterDictation = true
 
@@ -1154,6 +1159,9 @@ struct SettingsData {
 
   // MARK: - Recording Safeguards
   var confirmAboveDuration: ConfirmAboveDuration = SettingsDefaults.confirmAboveDuration
+
+  // MARK: - Recording Behavior
+  var pauseMediaDuringRecording: Bool = SettingsDefaults.pauseMediaDuringRecording
 
   // MARK: - Auto-Paste Settings
   var autoPasteAfterDictation: Bool = SettingsDefaults.autoPasteAfterDictation
