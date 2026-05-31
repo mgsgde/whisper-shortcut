@@ -129,6 +129,12 @@ class ChatViewModel: ObservableObject {
   private static let copyCommand = "/copy"
   static let thinkCommand = "/think"
 
+  /// Slash commands that take an inline argument (e.g. `/model 3.1 flash`, `/think high`).
+  /// The autocomplete completes them inline instead of dispatching, and the composer strips
+  /// the whole line (not just the token) so multi-word args leave no residue. Single source so
+  /// the three call sites in `ChatInputAreaView` can't drift.
+  static let argumentCommands: Set<String> = [modelCommand, thinkCommand]
+
   /// Model-switch slash commands, generated from `PromptModel` so adding a model auto-adds its
   /// alias. Grouped by provider: the provider-default alias (`/gemini`, `/grok`, `/gpt`) first,
   /// then each of that provider's *non-default* chat models by its `shortAlias` (`/gemini3flash`,
@@ -2251,10 +2257,10 @@ struct ChatInputAreaView: View {
 
   /// Slash commands recognized by `submitComposer`. Derived from the canonical
   /// `commandSuggestions` list so the autocomplete and the dispatcher can never
-  /// drift. `/model` is excluded because it takes an argument and is handled
-  /// separately (see `handleModelCommand`).
+  /// drift. Argument-taking commands (`/model`, `/think`) are excluded because they
+  /// complete inline and dispatch separately (see `ChatViewModel.argumentCommands`).
   private static let knownSlashCommands: Set<String> =
-    Set(ChatViewModel.commandSuggestions.map(\.command).filter { $0 != "/model" && $0 != "/think" })
+    Set(ChatViewModel.commandSuggestions.map(\.command).filter { !ChatViewModel.argumentCommands.contains($0) })
       .union(ChatViewModel.modelCommandLookup.keys) // adds the silent /openai alias (not in commandSuggestions)
 
   /// Slash-command suggestions matching the word the caret sits on (empty unless that
@@ -2284,11 +2290,11 @@ struct ChatInputAreaView: View {
     return true
   }
 
-  /// Applies a chosen suggestion: `/model` completes inline (so the user can type its argument);
-  /// every other command strips the slash token and dispatches. Shared by Tab and Enter.
+  /// Applies a chosen suggestion: argument-taking commands complete inline (so the user can type
+  /// the argument); every other command strips the slash token and dispatches. Shared by Tab and Enter.
   private func selectCommand(_ command: String) {
     composer.removeTrailingWord()
-    if command == "/model" || command == "/think" {
+    if ChatViewModel.argumentCommands.contains(command) {
       composer.textView?.insertText(command + " ", replacementRange: NSRange(location: NSNotFound, length: 0))
     } else {
       Task { await viewModel.sendMessage(userInput: command) }
@@ -2308,12 +2314,11 @@ struct ChatInputAreaView: View {
     let output = composer.serialize()
     let typed = output.typedText
     let lower = typed.lowercased()
-    let isModelCommand = lower == "/model" || lower.hasPrefix("/model ")
-    let isThinkCommand = lower == "/think" || lower.hasPrefix("/think ")
+    let isArgumentCommand = ChatViewModel.argumentCommands.contains { lower == $0 || lower.hasPrefix($0 + " ") }
     let isRecognizedSlashCommand =
-      Self.knownSlashCommands.contains(lower) || isModelCommand || isThinkCommand
+      Self.knownSlashCommands.contains(lower) || isArgumentCommand
     if isRecognizedSlashCommand {
-      if isModelCommand || isThinkCommand {
+      if isArgumentCommand {
         // Strip the entire command line so multi-token args (e.g.
         // "/model 3.1 flash lite") don't leave residue in the composer.
         composer.removeTrailingPlainText(suffix: typed)
