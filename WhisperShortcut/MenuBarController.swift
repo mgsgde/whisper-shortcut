@@ -46,7 +46,6 @@ class MenuBarController: NSObject {
   // MARK: - State Tracking (Prevent Race Conditions)
   private var currentTranscriptionAudioURL: URL?
   private var processedAudioURLs: Set<URL> = []
-  private var currentTTSAudioURL: URL?
   private var audioEngine: AVAudioEngine?
   private var audioPlayerNode: AVAudioPlayerNode?
   private var timePitchNode: AVAudioUnitTimePitch?
@@ -138,8 +137,10 @@ class MenuBarController: NSObject {
       button.toolTip = appState.tooltip
     }
 
-    // Create menu
-    statusItem.menu = createMenu()
+    // Create menu. The delegate fires pending review/support prompts on open (menuWillOpen).
+    let menu = createMenu()
+    menu.delegate = self
+    statusItem.menu = menu
     updateUI()
   }
 
@@ -604,7 +605,7 @@ class MenuBarController: NSObject {
       if promptModel.hasRequiredCredential {
         if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return }
         DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
-        simulateCopyPaste()
+        simulateCopy()
         activeMeetingSegment = .prompt
         audioRecorder.startRecording()
       } else {
@@ -632,7 +633,7 @@ class MenuBarController: NSObject {
         if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
           return
         }
-        simulateCopyPaste()
+        simulateCopy()
         appState = appState.startRecording(.prompt)
         audioRecorder.startRecording()
       } else {
@@ -977,6 +978,15 @@ class MenuBarController: NSObject {
           if !trimmed.isEmpty {
             MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
             DebugLogger.log("LIVE-MEETING: Summary saved to .summary.md")
+            // Push the fresh summary to the chat sidebar so it can derive a meeting title live
+            // (ChatView subscribes to .chatMeetingSummaryReady; without this it relies on the
+            // slower backfill recovery path).
+            let stem = transcriptURL.deletingPathExtension().lastPathComponent
+            await MainActor.run {
+              NotificationCenter.default.post(
+                name: .chatMeetingSummaryReady, object: nil,
+                userInfo: ["stem": stem, "summary": trimmed])
+            }
           }
         } catch {
           DebugLogger.logError("LIVE-MEETING: Generate summary failed: \(error.localizedDescription)")
@@ -1428,8 +1438,10 @@ class MenuBarController: NSObject {
     if let newConfig = notification.object as? ShortcutConfig {
       currentConfig = newConfig
       DispatchQueue.main.async {
-        // Recreate menu with updated shortcuts
-        self.statusItem?.menu = self.createMenu()
+        // Recreate menu with updated shortcuts; keep the delegate so review prompts still fire.
+        let menu = self.createMenu()
+        menu.delegate = self
+        self.statusItem?.menu = menu
         self.updateUI()
       }
     }
@@ -1559,10 +1571,10 @@ class MenuBarController: NSObject {
         // Must check on the read-aloud task, not inside MainActor.run (different task context).
         guard !Task.isCancelled else {
           DebugLogger.log("CANCELLATION: Read Aloud producer finished after cancel — skipping playback")
-          // attemptReadAloudToggleOff already flipped state to idle when Stop fired, but late
-          // `mergingStarted` / `mergingFinished` callbacks may have re-entered a `.processing`
-          // state on top of that — without this, the menu bar would stay busy until the next
-          // user action, blocking every other shortcut.
+          // attemptReadAloudToggleOff already flipped state to idle when Stop fired, but a late
+          // `mergingStarted` callback may have re-entered a `.processing` state on top of that —
+          // without this, the menu bar would stay busy until the next user action, blocking
+          // every other shortcut.
           await MainActor.run { [weak self] in
             guard let self, self.isTTSRunning else { return }
             self.finishReadAloudSession(cancelNetworkWork: false, stopPlayback: false)
@@ -1714,7 +1726,6 @@ class MenuBarController: NSObject {
           self.audioEngine = nil
           self.audioPlayerNode = nil
           self.timePitchNode = nil
-          self.currentTTSAudioURL = nil
           self.appState = self.appState.showSuccess("Audio playback completed")
           try? await Task.sleep(nanoseconds: 2_000_000_000)
           if case .feedback = self.appState {
@@ -1741,11 +1752,10 @@ class MenuBarController: NSObject {
     audioEngine = nil
     audioPlayerNode = nil
     timePitchNode = nil
-    cleanupAudioFile(at: currentTTSAudioURL)
-    currentTTSAudioURL = nil
   }
   
-  private func simulateCopyPaste() {
+  /// Simulates Cmd+C to copy the current selection to the clipboard (virtual key 0x08 = 'C').
+  private func simulateCopy() {
     // Use a private event source so modifier keys physically held (e.g. Option from the
     // global shortcut) do not leak into the synthetic Cmd+C and turn it into Cmd+Option+C.
     let source = CGEventSource(stateID: .privateState)
@@ -1940,17 +1950,72 @@ extension MenuBarController: ShortcutDelegate {
   func openChat() { openChatWindowFromShortcut() }
 
   @objc func takeScreenshot() {
-    DebugLogger.logUI("📷 SCREENSHOT: Launching interactive capture (clipboard)")
-    let task = Process()
-    task.launchPath = "/usr/sbin/screencapture"
-    // -i interactive (drag rectangle / space-bar for window), -c copy to clipboard,
-    // -o no shadow on window grabs. Mirrors what native ⌘⇧⌃4 does.
-    task.arguments = ["-i", "-c", "-o"]
-    do {
-      try task.run()
-    } catch {
-      DebugLogger.logError("SCREENSHOT: Failed to launch screencapture: \(error)")
+    // Always capture to a temp PNG (not screencapture's own `-c`) so we get a definitive
+    // success signal: a file means the capture worked, no file means it didn't. We then
+    // copy the image to the clipboard ourselves and, when enabled, persist it to the
+    // user-selected folder. Without this we can't tell a successful capture apart from a
+    // silent failure — which is exactly what happens when Screen Recording permission is
+    // missing: screencapture launches fine (no thrown error) but produces nothing.
+    let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("whispershortcut-\(UUID().uuidString).png")
+    let saveToFolder = ScreenshotSaveLocation.isEnabled
+    DebugLogger.logUI("📷 SCREENSHOT: Launching interactive capture (save=\(saveToFolder))")
+    DispatchQueue.global(qos: .userInitiated).async {
+      let task = Process()
+      task.launchPath = "/usr/sbin/screencapture"
+      // -i interactive (drag rectangle / space-bar for window), -o no shadow on window grabs.
+      task.arguments = ["-i", "-o", tempURL.path]
+      do {
+        try task.run()
+        task.waitUntilExit()
+      } catch {
+        DebugLogger.logError("SCREENSHOT: Failed to launch screencapture: \(error)")
+        return
+      }
+
+      guard FileManager.default.fileExists(atPath: tempURL.path),
+        let data = try? Data(contentsOf: tempURL)
+      else {
+        // No file: either the user cancelled the selection, or Screen Recording permission
+        // is missing (screencapture then produces nothing). PermissionStatusChecker lets us
+        // tell the two apart so we only nag when permission is the real problem.
+        DispatchQueue.main.async {
+          if PermissionStatusChecker.status(for: .screenRecording) != .granted {
+            DebugLogger.logWarning("SCREENSHOT: No capture file and no Screen Recording permission")
+            Self.showScreenRecordingPermissionError()
+          } else {
+            DebugLogger.log("SCREENSHOT: No capture file (selection cancelled)")
+          }
+        }
+        return
+      }
+
+      DispatchQueue.main.async {
+        if let image = NSImage(data: data) {
+          NSPasteboard.general.clearContents()
+          NSPasteboard.general.writeObjects([image])
+        }
+        if saveToFolder {
+          ScreenshotSaveLocation.save(data)
+        }
+        try? FileManager.default.removeItem(at: tempURL)
+      }
     }
+  }
+
+  /// Surfaces the missing Screen Recording permission to the user. The global screenshot
+  /// shortcut otherwise fails silently. Triggers the native consent prompt the first time
+  /// (which registers the app in System Settings and offers a direct "Open System Settings"
+  /// button) and always shows a popup so there is visible feedback afterwards too.
+  private static func showScreenRecordingPermissionError() {
+    PermissionStatusChecker.requestScreenRecordingAccess()
+    PopupNotificationWindow.showError(
+      "WhisperShortcut needs Screen Recording permission to capture screenshots. Enable it in System Settings → Privacy & Security → Screen Recording, then relaunch the app.",
+      title: "Screen Recording Permission Needed",
+      retryAction: {
+        PermissionStatusChecker.openSystemSettings(for: .screenRecording)
+      }
+    )
   }
 
   /// HotKey entry point: copies the user's selection, then runs Read Aloud on it. Pressing the
@@ -1981,7 +2046,7 @@ extension MenuBarController: ShortcutDelegate {
     DispatchQueue.main.async { [weak self] in
       guard let self = self else { return }
       // Synthetic Cmd+C copies the user's selection into the clipboard so we can read it.
-      self.simulateCopyPaste()
+      self.simulateCopy()
       // Give the frontmost app a beat to put the copied text on the pasteboard before we read.
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
         self?.performReadSelectedTextAloud()
@@ -1990,12 +2055,16 @@ extension MenuBarController: ShortcutDelegate {
   }
 
   private func performReadSelectedTextAloud() {
+    // Re-check toggle-off: the 0.15s delay above gives the user a window to press the shortcut
+    // again, which would otherwise double-fire beginReadAloudProcessing and orphan the first task.
+    if attemptReadAloudToggleOff() { return }
     guard let selectedText = clipboardManager.getCleanedClipboardText(),
           !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      presentError(
-        shortTitle: "Read Aloud",
-        message: "No text selected. Highlight text first, then press the Read Aloud shortcut.",
-        dismissProcessingFirst: false
+      // No selection is normal usage, not an error — show a brief info popup (no error state,
+      // no "Contact Support" button).
+      PopupNotificationWindow.showInfo(
+        "No text selected. Highlight text first, then press the Read Aloud shortcut.",
+        title: "Read Aloud"
       )
       return
     }
@@ -2152,18 +2221,6 @@ extension MenuBarController: ChunkProgressDelegate {
 
     DebugLogger.log("CHUNK-PROGRESS: Merging \(isTTS ? "audio chunks" : "transcripts")...")
   }
-
-  func mergingFinished() {
-    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
-    switch context {
-    case .tts:
-      appState = .processing(.ttsProcessing)
-    case .transcription:
-      appState = .processing(.transcribing)
-    }
-    updateMenuBarIcon()
-    DebugLogger.log("CHUNK-PROGRESS: Merging finished (TTS: \(context == .tts))")
-  }
 }
 
 // MARK: - LiveMeetingRecorderDelegate
@@ -2271,5 +2328,15 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
       // Show error but don't stop the session
       PopupNotificationWindow.showError(SpeechErrorFormatter.formatForUser(error), title: "Live Meeting")
     }
+  }
+}
+
+// MARK: - NSMenuDelegate
+extension MenuBarController: NSMenuDelegate {
+  /// Fires a previously-armed review/support prompt when the user opens the menu (i.e. is
+  /// focused on this app rather than the one they were dictating into). No-ops when nothing
+  /// is pending.
+  func menuWillOpen(_ menu: NSMenu) {
+    ReviewPrompter.shared.showPendingPromptIfNeeded()
   }
 }
