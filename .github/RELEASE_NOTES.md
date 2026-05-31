@@ -1,4 +1,4 @@
-# WhisperShortcut 7.43
+# WhisperShortcut 7.44
 
 ## Installation
 
@@ -6,10 +6,10 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ## What's New
 
-### 🎵 Pause background media while recording
+### Removed: "Pause media while recording"
 
-- A new optional setting under **Settings → General → Recording Behavior** pauses whatever is playing (Music, Spotify, browser videos, …) when you start a recording and resumes it automatically when you stop — so background audio no longer bleeds into your dictation.
-- Works with any media player because it uses the system play/pause key, and it does **not** interrupt active calls in Teams, Zoom, or Meet.
-- Off by default; enabling it requires Accessibility permission. Because the play/pause key is a toggle, it may briefly start playback if nothing was playing when you begin recording.
+- The experimental *Pause media* setting briefly introduced in 7.43 has been removed. It relied on the system play/pause key, which is a toggle, and since macOS 15.4 third-party apps can no longer detect whether media is actually playing. As a result it could accidentally **start** a paused video when you began a recording — the opposite of what it should do. There is no reliable, sandbox-safe way to fix this for arbitrary players, so the feature has been withdrawn.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.42...v7.43
+> Note: Release 7.43 has been retired; please use 7.44 instead.
+
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.42...v7.44
