@@ -2473,7 +2473,7 @@ struct ChatInputAreaView: View {
           viewModel.handleMeetingButtonTap()
         }) {
           HStack(spacing: 4) {
-            Image(systemName: viewModel.isMeetingActive ? "record.circle" : "record.circle")
+            Image(systemName: "record.circle")
               .font(.caption)
               .foregroundColor(viewModel.isMeetingActive ? .red : ChatTheme.secondaryText)
             Text(viewModel.isMeetingActive ? "Stop meeting" : "Meeting")

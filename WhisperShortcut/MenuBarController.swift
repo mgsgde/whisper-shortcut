@@ -521,14 +521,20 @@ class MenuBarController: NSObject {
 
 
   // MARK: - Actions (Simplified Logic)
+  /// Stops the recorder after a short delay so the spoken tail (the last word or two before
+  /// the shortcut fires) is captured instead of clipped. Used by every recording-stop path.
+  private func stopRecordingAfterTailDelay() {
+    DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
+      self?.audioRecorder.stopRecording()
+    }
+  }
+
   @objc private func toggleTranscription() {
     // During live meeting: run dictation as a parallel segment
     if isLiveMeetingActive {
       if activeMeetingSegment == .dictation {
         DebugLogger.log("MEETING-SEGMENT: Stopping dictation segment")
-        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-          self?.audioRecorder.stopRecording()
-        }
+        stopRecordingAfterTailDelay()
         return
       }
       if activeMeetingSegment != nil {
@@ -551,13 +557,6 @@ class MenuBarController: NSObject {
     }
 
     // Check if currently processing transcription (incl. chunk phases for long audio) - if so, cancel it
-    let isTranscriptionProcessing: Bool = {
-      guard case .processing(let mode) = appState, !mode.isTTSContext else { return false }
-      switch mode {
-      case .transcribing, .splitting, .processingChunks, .merging: return true
-      case .prompting, .ttsProcessing: return false
-      }
-    }()
     if isTranscriptionProcessing {
       cancelInFlightTranscription()
       return
@@ -565,9 +564,7 @@ class MenuBarController: NSObject {
     
     switch appState.recordingMode {
     case .transcription:
-      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-        self?.audioRecorder.stopRecording()
-      }
+      stopRecordingAfterTailDelay()
     case .none:
       let selectedModel = TranscriptionModel.loadSelected()
       let hasOfflineModel = selectedModel.isOfflineModelAvailable()
@@ -591,9 +588,7 @@ class MenuBarController: NSObject {
     if isLiveMeetingActive {
       if activeMeetingSegment == .prompt {
         DebugLogger.log("MEETING-SEGMENT: Stopping prompt segment")
-        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-          self?.audioRecorder.stopRecording()
-        }
+        stopRecordingAfterTailDelay()
         return
       }
       if activeMeetingSegment != nil {
@@ -623,9 +618,7 @@ class MenuBarController: NSObject {
     
     switch appState.recordingMode {
     case .prompt:
-      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-        self?.audioRecorder.stopRecording()
-      }
+      stopRecordingAfterTailDelay()
     case .none:
       let promptModel = PromptModel.loadPromptModel(
         forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
@@ -663,13 +656,6 @@ class MenuBarController: NSObject {
     }
 
     // Transcription processing
-    let isTranscriptionProcessing: Bool = {
-      guard case .processing(let mode) = appState, !mode.isTTSContext else { return false }
-      switch mode {
-      case .transcribing, .splitting, .processingChunks, .merging: return true
-      default: return false
-      }
-    }()
     if isTranscriptionProcessing {
       cancelInFlightTranscription()
       return
@@ -684,9 +670,7 @@ class MenuBarController: NSObject {
 
     // Recording states — stop the recorder (audio tail delay like the individual toggles)
     if appState.isRecording {
-      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-        self?.audioRecorder.stopRecording()
-      }
+      stopRecordingAfterTailDelay()
     }
   }
 
@@ -695,6 +679,17 @@ class MenuBarController: NSObject {
   private func cancelInFlightTranscription() {
     speechService.cancelTranscription()
     transitionToIdleAndCleanup(cleanupAudioURL: currentTranscriptionAudioURL)
+  }
+
+  /// True when any transcription pipeline phase is active (single request or chunked).
+  private var isTranscriptionProcessing: Bool {
+    guard case .processing(let mode) = appState, !mode.isTTSContext else { return false }
+    switch mode {
+    case .transcribing, .splitting, .processingChunks, .merging:
+      return true
+    case .prompting, .ttsProcessing:
+      return false
+    }
   }
 
   @objc func openSettings() {
@@ -2043,29 +2038,63 @@ extension MenuBarController: ShortcutDelegate {
     }
     guard AccessibilityPermissionManager.checkPermissionForPromptUsage() else { return }
 
+    // A blind delay isn't enough: some apps respond to Cmd+C slower than others, and a fixed
+    // wait either reads the stale clipboard (too short) or stalls Read Aloud (too long). Poll
+    // `NSPasteboard.changeCount` instead — as soon as the frontmost app finishes writing the
+    // copy, we read; if no change lands within the deadline, the selection didn't get copied
+    // (no focus, no selection, or no accessibility permission for the app being copied from).
+    let beforeChangeCount = NSPasteboard.general.changeCount
+    DebugLogger.log("READ-ALOUD: Posting synthetic Cmd+C; before changeCount = \(beforeChangeCount)")
     DispatchQueue.main.async { [weak self] in
       guard let self = self else { return }
-      // Synthetic Cmd+C copies the user's selection into the clipboard so we can read it.
       self.simulateCopy()
-      // Give the frontmost app a beat to put the copied text on the pasteboard before we read.
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-        self?.performReadSelectedTextAloud()
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        let start = Date()
+        let deadline = start.addingTimeInterval(0.5)
+        while Date() < deadline {
+          try? await Task.sleep(for: .milliseconds(15))
+          if NSPasteboard.general.changeCount != beforeChangeCount {
+            let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
+            DebugLogger.log("READ-ALOUD: Pasteboard changed after \(elapsedMs) ms")
+            // The user may have triggered another operation during the poll window; only
+            // proceed if we're still idle.
+            guard case .idle = self.appState else {
+              DebugLogger.logWarning("READ-ALOUD: Poll completed but state is no longer idle — abandoning")
+              return
+            }
+            self.performReadSelectedTextAloud()
+            return
+          }
+        }
+        DebugLogger.logWarning("READ-ALOUD: Pasteboard never changed — Cmd+C did not land on a selection")
+        guard case .idle = self.appState else {
+          DebugLogger.logWarning("READ-ALOUD: Poll timed out but state is no longer idle — skipping info popup")
+          return
+        }
+        showNoTextSelectedForReadAloud()
       }
     }
   }
 
+  /// Brief info popup shown when Read Aloud finds no selection. Not an error state (no
+  /// "Contact Support" button) — pressing the shortcut without selecting text is normal.
+  private func showNoTextSelectedForReadAloud() {
+    PopupNotificationWindow.showInfo(
+      "No text selected. Highlight text first, then press the Read Aloud shortcut.",
+      title: "Read Aloud"
+    )
+  }
+
   private func performReadSelectedTextAloud() {
-    // Re-check toggle-off: the 0.15s delay above gives the user a window to press the shortcut
-    // again, which would otherwise double-fire beginReadAloudProcessing and orphan the first task.
+    // Re-check toggle-off: between the poll-window dispatch and now, the user may have
+    // pressed the shortcut again, which would otherwise double-fire `beginReadAloudProcessing`
+    // and orphan the first task.
     if attemptReadAloudToggleOff() { return }
     guard let selectedText = clipboardManager.getCleanedClipboardText(),
           !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      // No selection is normal usage, not an error — show a brief info popup (no error state,
-      // no "Contact Support" button).
-      PopupNotificationWindow.showInfo(
-        "No text selected. Highlight text first, then press the Read Aloud shortcut.",
-        title: "Read Aloud"
-      )
+      DebugLogger.logWarning("READ-ALOUD: Pasteboard changed but text is empty after cleaning")
+      showNoTextSelectedForReadAloud()
       return
     }
     beginReadAloudProcessing { [speechService] in
@@ -2085,13 +2114,21 @@ extension MenuBarController: ChunkProgressDelegate {
     }.joined(separator: " ")
   }
 
+  /// Chunk context (`tts` / `transcription`) of the in-flight processing state. Falls back to
+  /// `.transcription` when not in `.processing` — only reached if a delegate callback lands
+  /// after teardown, where the safe default keeps captions readable.
+  private var currentChunkContext: AppState.ProcessingMode.ChunkContext {
+    if case .processing(let mode) = appState { return mode.chunkContext }
+    return .transcription
+  }
+
   func chunkingStarted(totalChunks: Int) {
     // Initialize all chunks as pending
     chunkStatuses = Array(repeating: .pending, count: totalChunks)
 
     // Derive TTS vs transcription from current appState (we're still in .ttsProcessing or .transcribing)
-    let isTTS: Bool = { if case .processing(let mode) = appState { return mode.isTTSContext } else { return false } }()
-    let context: AppState.ProcessingMode.ChunkContext = isTTS ? .tts : .transcription
+    let context = currentChunkContext
+    let isTTS = context == .tts
 
     appState = .processing(.splitting(context: context))
     updateMenuBarIcon()
@@ -2118,7 +2155,7 @@ extension MenuBarController: ChunkProgressDelegate {
     // Mark chunk as active
     chunkStatuses[index] = .active
 
-    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
+    let context = currentChunkContext
     appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
     updateMenuBarIcon()
 
@@ -2146,7 +2183,7 @@ extension MenuBarController: ChunkProgressDelegate {
     // Mark chunk as completed
     chunkStatuses[index] = .completed
 
-    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
+    let context = currentChunkContext
     appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
     updateMenuBarIcon()
 
@@ -2164,6 +2201,8 @@ extension MenuBarController: ChunkProgressDelegate {
 
   func chunkFailed(index: Int, error: Error, willRetry: Bool) {
     guard index >= 0 && index < chunkStatuses.count else { return }
+    let context = currentChunkContext
+    let isTTS = context == .tts
 
     if willRetry {
       // Keep as active (will be re-started via chunkStarted)
@@ -2172,21 +2211,20 @@ extension MenuBarController: ChunkProgressDelegate {
       // Update popup to show retry status
       let statusGrid = generateStatusGrid()
       PopupNotificationWindow.updateProcessing(
-        title: "Processing Audio",
+        title: isTTS ? "Synthesizing Speech" : "Processing Audio",
         message: "\(statusGrid)\nRetrying chunk \(index + 1)..."
       )
     } else {
       // Mark as permanently failed
       chunkStatuses[index] = .failed
 
-      let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
       appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
       updateMenuBarIcon()
 
       // Update processing popup
       let statusGrid = generateStatusGrid()
       PopupNotificationWindow.updateProcessing(
-        title: "Processing Audio",
+        title: isTTS ? "Synthesizing Speech" : "Processing Audio",
         message: statusGrid
       )
 
@@ -2200,7 +2238,7 @@ extension MenuBarController: ChunkProgressDelegate {
     // Clear chunk statuses (no longer needed for display)
     chunkStatuses = []
 
-    let context: AppState.ProcessingMode.ChunkContext = { if case .processing(let mode) = appState { return mode.chunkContext } else { return .transcription } }()
+    let context = currentChunkContext
     appState = .processing(.merging(context: context))
     updateMenuBarIcon()
 

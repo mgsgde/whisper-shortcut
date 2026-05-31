@@ -1052,9 +1052,6 @@ struct SettingsDefaults {
   static let settingsCloseOnFocusLoss = true
 
   // MARK: - Read Aloud (Chat TTS)
-  /// Voice used by the Read Aloud button. Per-model voice is derived from `TTSModel.defaultVoice`;
-  /// this remains the Gemini default for any caller that still references it directly.
-  static let readAloudVoice = "Charon"
   /// Default Read Aloud TTS model when the user hasn't picked one. User selection is persisted
   /// under `UserDefaultsKeys.selectedReadAloudModel` and read via `ReadAloudPreferences.model`.
   static let readAloudModel: TTSModel = .gemini31FlashTTS
@@ -1090,9 +1087,6 @@ struct SettingsDefaults {
   /// Smart Improvement default model.
   static let defaultSmartImprovementModel = PromptModel.gemini31Pro
   static let selectedImprovementModel = PromptModel.gemini31Pro
-
-  // proxyAPIBaseURL removed — no backend proxy; all requests go direct to Gemini API
-  static var proxyAPIBaseURL: String { "" }
 
   // MARK: - UI State
   static let errorMessage = ""
@@ -1192,8 +1186,6 @@ enum SettingsFocusField: Hashable {
   case toggleChat
   case screenshotCapture
   case readAloudShortcut
-  case customPrompt
-  case promptModeSystemPrompt
 }
 
 // MARK: - Shortcut Conflict Descriptor
