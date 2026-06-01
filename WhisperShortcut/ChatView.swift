@@ -752,7 +752,7 @@ class ChatViewModel: ObservableObject {
       inputText = ""
       let arg = lower == Self.modelCommand
         ? ""
-        : String(raw.dropFirst(Self.modelCommand.count + 1)).trimmingCharacters(in: .whitespaces)
+        : String(lower.dropFirst(Self.modelCommand.count + 1)).trimmingCharacters(in: .whitespaces)
       handleModelCommand(argument: arg)
       return
     }

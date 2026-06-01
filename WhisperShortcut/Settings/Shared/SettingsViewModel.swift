@@ -73,23 +73,11 @@ class SettingsViewModel: ObservableObject {
       data.notificationPosition = SettingsDefaults.notificationPosition
     }
     
-    // Load notification duration
-    let savedDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.notificationDuration)
-    if savedDuration > 0 {
-      data.notificationDuration = NotificationDuration(rawValue: savedDuration)
-        ?? SettingsDefaults.notificationDuration
-    } else {
-      data.notificationDuration = SettingsDefaults.notificationDuration
-    }
-    
-    // Load error notification duration
-    let savedErrorDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.errorNotificationDuration)
-    if savedErrorDuration > 0 {
-      data.errorNotificationDuration = NotificationDuration(rawValue: savedErrorDuration)
-        ?? SettingsDefaults.errorNotificationDuration
-    } else {
-      data.errorNotificationDuration = SettingsDefaults.errorNotificationDuration
-    }
+    // Load notification durations
+    data.notificationDuration = NotificationDuration.loadFromUserDefaults(
+      forKey: UserDefaultsKeys.notificationDuration, default: SettingsDefaults.notificationDuration)
+    data.errorNotificationDuration = NotificationDuration.loadFromUserDefaults(
+      forKey: UserDefaultsKeys.errorNotificationDuration, default: SettingsDefaults.errorNotificationDuration)
 
     // Load recording safeguard: confirm above duration (0 = never)
     data.confirmAboveDuration = ConfirmAboveDuration.loadFromUserDefaults()
@@ -149,9 +137,6 @@ class SettingsViewModel: ObservableObject {
     // Load Google API key
     data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
 
-    // Load Proxy API settings (Phase 1 – latency testing)
-
-    
     // Load Launch at Login state
     data.launchAtLogin = SMAppService.mainApp.status == .enabled
   }
@@ -326,8 +311,6 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.set(data.liveMeetingSafeguardDuration.rawValue, forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)
     UserDefaults.standard.set(data.selectedTranscriptionModelForMeetings.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
     UserDefaults.standard.set(data.selectedMeetingSummaryModel.rawValue, forKey: UserDefaultsKeys.selectedMeetingSummaryModel)
-
-    // Save Proxy API settings (Phase 1 – latency testing)
 
     // Save toggle shortcuts. `nil` in SettingsData means "user cleared this
     // shortcut" — we persist a disabled placeholder using the matching

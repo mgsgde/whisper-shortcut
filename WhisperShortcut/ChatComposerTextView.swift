@@ -646,7 +646,7 @@ struct ChatComposerTextView: NSViewRepresentable {
       // Gemini Files API rejects inline payloads above ~20 MB. Refuse to
       // load anything larger into memory rather than risking OOM on a
       // multi-GB drop.
-      let maxBytes: Int = 20 * 1024 * 1024
+      let maxBytes = AppConstants.maxFileSizeBytes
       var handled = false
       for url in urls {
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0

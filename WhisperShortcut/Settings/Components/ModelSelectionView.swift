@@ -99,7 +99,7 @@ struct ModelSelectionView: View {
           Text(selectedTranscriptionModel.costLevel)
             .font(.callout)
             .fontWeight(.semibold)
-            .foregroundColor(costLevelColor(for: selectedTranscriptionModel.costLevel))
+            .foregroundColor(SettingsConstants.costLevelColor(for: selectedTranscriptionModel.costLevel))
         }
 
         if selectedTranscriptionModel.isRecommended {
@@ -140,19 +140,4 @@ struct ModelSelectionView: View {
     }
   }
 
-  // MARK: - Helper Functions
-  private func costLevelColor(for costLevel: String) -> Color {
-    switch costLevel {
-    case "Minimal":
-      return .green
-    case "Low":
-      return .green
-    case "Medium":
-      return .orange
-    case "High":
-      return .red
-    default:
-      return .secondary
-    }
-  }
 }

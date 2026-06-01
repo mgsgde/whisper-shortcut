@@ -408,6 +408,26 @@ class SpeechService {
   }
 
   // MARK: - Gemini Prompt Mode
+  /// Spawns a parallel `Task` that transcribes the recording for the chat-history record,
+  /// running alongside the main Dictate Prompt request so it adds no latency. Failures fall back
+  /// to `voiceInstructionPlaceholder` instead of throwing. Callers `defer { .cancel() }` it so the
+  /// second API call is dropped if the main request throws first.
+  private func transcribeForHistoryInParallel(
+    logPrefix: String,
+    _ transcribe: @escaping () async throws -> String
+  ) -> Task<String, Never> {
+    Task<String, Never> {
+      do {
+        let text = try await transcribe()
+        DebugLogger.log("\(logPrefix): Transcribed voice instruction for history: \"\(text.prefix(50))...\"")
+        return text
+      } catch {
+        DebugLogger.logWarning("\(logPrefix): Failed to transcribe instruction for history: \(error.localizedDescription)")
+        return Self.voiceInstructionPlaceholder
+      }
+    }
+  }
+
   private func executePromptWithGemini(audioURL: URL, clipboardContext: String?, mode: PromptMode, model: PromptModel) async throws -> String {
     guard let credential = await credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
@@ -416,15 +436,8 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution")
 
     // Run transcription for history in parallel with main prompt (no extra latency)
-    let transcriptionTask = Task<String, Never> {
-      do {
-        let text = try await transcribeAudioForHistory(audioURL: audioURL, credential: credential)
-        DebugLogger.log("PROMPT-MODE-GEMINI: Transcribed voice instruction for history: \"\(text.prefix(50))...\"")
-        return text
-      } catch {
-        DebugLogger.logWarning("PROMPT-MODE-GEMINI: Failed to transcribe instruction for history: \(error.localizedDescription)")
-        return Self.voiceInstructionPlaceholder
-      }
+    let transcriptionTask = transcribeForHistoryInParallel(logPrefix: "PROMPT-MODE-GEMINI") {
+      try await self.transcribeAudioForHistory(audioURL: audioURL, credential: credential)
     }
     // If the main request throws before we await the task below, cancel the parallel
     // transcription so it doesn't keep burning a second API call in the background.
@@ -516,18 +529,8 @@ class SpeechService {
 
     // Run transcription for history in parallel (mirrors the Gemini path). Uses the cheap
     // gpt-4o-mini-transcribe so it doesn't require a Gemini key.
-    let transcriptionTask = Task<String, Never> {
-      do {
-        let text = try await transcribeWithOpenAI(
-          audioURL: audioURL,
-          modelID: "gpt-4o-mini-transcribe"
-        )
-        DebugLogger.log("PROMPT-MODE-OPENAI: Transcribed voice instruction for history: \"\(text.prefix(50))...\"")
-        return text
-      } catch {
-        DebugLogger.logWarning("PROMPT-MODE-OPENAI: Failed to transcribe instruction for history: \(error.localizedDescription)")
-        return Self.voiceInstructionPlaceholder
-      }
+    let transcriptionTask = transcribeForHistoryInParallel(logPrefix: "PROMPT-MODE-OPENAI") {
+      try await self.transcribeWithOpenAI(audioURL: audioURL, modelID: "gpt-4o-mini-transcribe")
     }
     // If the main request throws before we await the task below, cancel the parallel
     // transcription so it doesn't keep burning a second API call in the background.

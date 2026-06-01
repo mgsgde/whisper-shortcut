@@ -90,7 +90,9 @@ enum ChatModelCommandResolver {
     } else if hasReasoning {
       let reasonings = candidates.filter { isReasoning($0) }
       if !reasonings.isEmpty { candidates = reasonings }
-    } else if hasFlash && hasLite {
+    } else if hasLite {
+      // "lite" (with or without "flash") narrows to the FlashLite variant; must precede the
+      // plain `hasFlash` branch so "flash lite" doesn't get coerced to non-lite Flash.
       let lites = candidates.filter { isFlashLite($0) }
       if !lites.isEmpty { candidates = lites }
     } else if hasPro {

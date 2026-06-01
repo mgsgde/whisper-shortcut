@@ -120,23 +120,17 @@ class AudioRecorder: NSObject {
       peakPowerDuringRecording = -160
       lastRecordingWasSilent = false
 
-      let success = audioRecorder?.record() ?? false
-      if success {
-        meteringTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-          self?.sampleMetering()
-        }
-      }
-      if !success {
-        meteringTimer?.invalidate()
-        meteringTimer = nil
+      guard audioRecorder?.record() ?? false else {
         throw NSError(
           domain: Constants.errorDomain, code: Constants.recordingFailedCode,
           userInfo: [
             NSLocalizedDescriptionKey: "Failed to start recording"
           ])
       }
+      meteringTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+        self?.sampleMetering()
+      }
     } catch {
-
       delegate?.audioRecorderDidFailWithError(error)
     }
   }

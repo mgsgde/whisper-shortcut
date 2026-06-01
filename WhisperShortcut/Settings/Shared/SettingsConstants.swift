@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import SwiftUI
 
 /// Shared constants for all Settings views.
 enum SettingsConstants {
@@ -26,4 +27,19 @@ enum SettingsConstants {
   static let cornerRadius: CGFloat = 8
   static let textEditorHeight: CGFloat = 240
   static let sectionDividerHeight: CGFloat = 1  // Height for section divider lines
+
+  // Badge color for a model's cost-level string. Shared by every model picker so the
+  // Minimal/Low/Medium/High palette stays consistent in one place.
+  static func costLevelColor(for costLevel: String) -> Color {
+    switch costLevel {
+    case "Minimal", "Low":
+      return .green
+    case "Medium":
+      return .orange
+    case "High":
+      return .red
+    default:
+      return .secondary
+    }
+  }
 }

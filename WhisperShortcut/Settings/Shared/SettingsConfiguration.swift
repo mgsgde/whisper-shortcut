@@ -753,6 +753,13 @@ enum NotificationDuration: Double, CaseIterable {
   var isRecommended: Bool {
     return self == SettingsDefaults.notificationDuration
   }
+
+  /// Loads the duration stored under `key`, falling back to `fallback` when unset or invalid.
+  static func loadFromUserDefaults(forKey key: String, default fallback: NotificationDuration) -> NotificationDuration {
+    let saved = UserDefaults.standard.double(forKey: key)
+    guard saved > 0 else { return fallback }
+    return NotificationDuration(rawValue: saved) ?? fallback
+  }
 }
 
 // MARK: - Confirm Above Duration (Recording Safeguard)
@@ -1084,8 +1091,6 @@ struct SettingsDefaults {
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
   static let selectedMeetingSummaryModel = PromptModel.gemini35Flash
 
-  /// Smart Improvement default model.
-  static let defaultSmartImprovementModel = PromptModel.gemini31Pro
   static let selectedImprovementModel = PromptModel.gemini31Pro
 
   // MARK: - UI State

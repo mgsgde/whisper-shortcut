@@ -141,7 +141,7 @@ struct PromptModelSelectionView: View {
           Text(displayModel.costLevel)
             .font(.callout)
             .fontWeight(.semibold)
-            .foregroundColor(costLevelColor(for: displayModel.costLevel))
+            .foregroundColor(SettingsConstants.costLevelColor(for: displayModel.costLevel))
         }
 
         if displayModel.isRecommended {
@@ -171,20 +171,5 @@ struct PromptModelSelectionView: View {
     }
   }
 
-  // MARK: - Helper Functions
-  private func costLevelColor(for costLevel: String) -> Color {
-    switch costLevel {
-    case "Minimal":
-      return .green
-    case "Low":
-      return .green
-    case "Medium":
-      return .orange
-    case "High":
-      return .red
-    default:
-      return .secondary
-    }
-  }
 }
 

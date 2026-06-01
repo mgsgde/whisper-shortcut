@@ -123,7 +123,7 @@ Output rules (CRITICAL):
 
   // MARK: - File Size Limits
   static let maxFileSizeBytes = 20 * 1024 * 1024  // 20MB - optimal for Gemini's file size limits
-  static let maxFileSizeDisplay = "25MB"  // Display string for error messages
+  static let maxFileSizeDisplay = "20MB"  // Display string for error messages; must match maxFileSizeBytes
   
   // MARK: - Text Validation
   static let minimumTextLength = 1  // Allow single character responses like "Yes", "OK", etc.

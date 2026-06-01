@@ -88,7 +88,7 @@ struct TTSModelSelectionView: View {
           Text(selectedModel.costLevel)
             .font(.callout)
             .fontWeight(.semibold)
-            .foregroundColor(costLevelColor(for: selectedModel.costLevel))
+            .foregroundColor(SettingsConstants.costLevelColor(for: selectedModel.costLevel))
         }
 
         if selectedModel.isRecommended {
@@ -114,19 +114,6 @@ struct TTSModelSelectionView: View {
           }
         }
       }
-    }
-  }
-
-  private func costLevelColor(for costLevel: String) -> Color {
-    switch costLevel {
-    case "Minimal", "Low":
-      return .green
-    case "Medium":
-      return .orange
-    case "High":
-      return .red
-    default:
-      return .secondary
     }
   }
 }
