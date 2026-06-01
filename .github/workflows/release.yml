@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -201,7 +201,7 @@ jobs:
           fi
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ env.DMG_PATH }}
           name: Release ${{ steps.get_version.outputs.version }}
