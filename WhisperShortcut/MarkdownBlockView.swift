@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Shared Markdown Parsing Utilities
 
@@ -34,6 +35,20 @@ enum MarkdownParsing {
     case 5: return .system(size: baseSize - 1, weight: .semibold)
     case 6: return .system(size: baseSize - 2, weight: .semibold)
     default: return .system(size: baseSize, weight: .bold)
+    }
+  }
+
+  /// AppKit twin of `fontForHeadingLevel` — same sizes/weights as `NSFont`, used when rendering prose
+  /// in an `NSTextView` (where SwiftUI `Font` cannot be read back). Keep the two in sync.
+  static func nsHeadingMetrics(_ level: Int, baseSize: CGFloat = 16) -> (size: CGFloat, weight: NSFont.Weight) {
+    switch level {
+    case 1: return (baseSize + 7, .bold)
+    case 2: return (baseSize + 4, .bold)
+    case 3: return (baseSize + 2, .semibold)
+    case 4: return (baseSize, .semibold)
+    case 5: return (baseSize - 1, .semibold)
+    case 6: return (baseSize - 2, .semibold)
+    default: return (baseSize, .bold)
     }
   }
 
