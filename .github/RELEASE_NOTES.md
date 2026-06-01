@@ -1,4 +1,4 @@
-# WhisperShortcut 7.44
+# WhisperShortcut 7.45
 
 ## Installation
 
@@ -6,10 +6,12 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ## What's New
 
-### Removed: "Pause media while recording"
+### Fixed: chat freeze on long, streaming answers
 
-- The experimental *Pause media* setting briefly introduced in 7.43 has been removed. It relied on the system play/pause key, which is a toggle, and since macOS 15.4 third-party apps can no longer detect whether media is actually playing. As a result it could accidentally **start** a paused video when you began a recording — the opposite of what it should do. There is no reliable, sandbox-safe way to fix this for arbitrary players, so the feature has been withdrawn.
+- Fixed a bug where the chat could lock up at 100% CPU — the answer would stop updating with the stop button stuck on and a `…` spinner that never finished. It was most reliably triggered by **switching chats while a long, formatted reply was still streaming**. The selectable-text overlay AppKit puts over a streaming answer could enter an endless layout loop and wedge the main thread, which also left the message stuck in its "generating" state. Finished answers stay fully selectable and copyable.
 
-> Note: Release 7.43 has been retired; please use 7.44 instead.
+### Changed: more attachments per message
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.42...v7.44
+- You can now attach up to **10** files (images, PDFs, etc.) per chat message, up from 5.
+
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.44...v7.45
