@@ -1507,9 +1507,13 @@ class ChatViewModel: ObservableObject {
     let toSend = messages.count > maxMessages
       ? Array(messages.suffix(maxMessages))
       : messages
-    return toSend.enumerated().map { index, msg in
-      let isLastUserWithImages = index == toSend.count - 1 && msg.role == .user && !msg.attachedImageParts.isEmpty
-      if isLastUserWithImages {
+    // Re-send each user message's attached images on every turn, not just the
+    // final one. Otherwise an image is visible to the model only on the turn it
+    // was attached and is stripped to text afterwards — so a follow-up like
+    // "look at the screenshot" sees no image at all. All providers (Gemini,
+    // OpenAI, Grok) convert inline_data on any message, so this is safe.
+    return toSend.map { msg in
+      if msg.role == .user && !msg.attachedImageParts.isEmpty {
         var parts: [[String: Any]] = msg.attachedImageParts.map { part in
           ["inline_data": ["mime_type": part.mimeType ?? "image/png", "data": part.data.base64EncodedString()]]
         }
