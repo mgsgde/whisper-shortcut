@@ -1,8 +1,8 @@
 # WhisperShortcut
 
-WhisperShortcut is a macOS menu bar app for voice-first productivity: dictation, voice editing, AI chat, text-to-speech, and live meeting transcription.
+WhisperShortcut is a macOS menu bar app for voice-first productivity: dictation, voice editing, AI chat, text-to-speech, screenshots, live meeting transcription, and Smart Improvement. Local Whisper dictation works offline.
 
-The app is local-first and bring-your-own-key. There is no backend or subscription service in this repository. Cloud features use your Google Gemini API key and, optionally, an xAI API key (for Grok chat models) or an OpenAI API key (for GPT-5.x chat, OpenAI transcription, and GPT Audio Dictate Prompt).
+The app is local-first and bring-your-own-key. There is no backend or subscription service in this repository. Cloud features use your Google Gemini API key and, optionally, an xAI API key (for Grok chat and TTS) or an OpenAI API key (for GPT-5.x chat, OpenAI transcription, GPT Audio Dictate Prompt, and OpenAI TTS).
 
 ## Download
 
@@ -12,23 +12,25 @@ The app is local-first and bring-your-own-key. There is no backend or subscripti
 
 ## Features
 
-- **Dictate**: Record speech and copy the transcription to your clipboard. Use Gemini or OpenAI cloud models, a self-hosted transcription endpoint, or local Whisper models offline.
-- **Dictate Prompt**: Speak an instruction that edits the current clipboard text, for example "make this shorter" or "translate this to English".
-- **Read Aloud**: Press the shortcut on any selected text to copy it and read it aloud with Gemini TTS voices. An optional Smart Rewrite pass cleans up code or markdown before TTS, and playback speed is configurable.
-- **Prompt & Read**: Edit text with a spoken instruction, then read the result aloud automatically.
-- **Chat**: Use a persisted multi-session chat window with Gemini, Grok, or OpenAI models, screenshots, image attachments, slash commands, and optional web grounding.
+- **Dictate**: Record speech and copy the transcription to your clipboard. Use Gemini or OpenAI cloud models, a self-hosted transcription endpoint, or local Whisper models offline. Long recordings are split into chunks and processed in parallel.
+- **Dictate Prompt**: Speak an instruction that edits the current clipboard text, for example "make this shorter" or "translate this to English". Supports Gemini and OpenAI audio-input models; optional screenshots can be included with the prompt.
+- **Read Aloud**: Press the shortcut on any selected text to copy it and read it aloud with Gemini, OpenAI, or xAI TTS voices. An optional Smart Rewrite pass cleans up code or markdown before TTS, and playback speed is configurable.
+- **Screenshot**: Capture the screen from the menu bar and optionally attach it to Dictate Prompt or chat, or save captures to a folder.
+- **Chat**: Use a persisted multi-session chat window with Gemini, Grok, or OpenAI models, screenshots, image attachments, slash commands, optional web grounding, and per-session reasoning depth.
 - **Google integrations**: Connect a Google account so chat can work with Calendar, Tasks, and Gmail through controlled local tools.
+- **Trello integration**: Connect Trello so chat can list boards, lists, and cards and create, move, update, or archive cards.
 - **Live Meeting**: Record meetings in chunks, transcribe them as they complete, keep an in-app transcript, and save meeting files locally.
-- **Smart Improvement**: Let the app improve system prompts and user context from usage logs or a spoken instruction.
+- **Smart Improvement**: Let the app improve system prompts, user context, and the Whisper glossary from usage logs or a spoken instruction.
 
 ## Requirements
 
 - macOS 15.5 or later
 - Xcode 16.0 or later for development
-- Google Gemini API key for cloud transcription, prompt workflows, chat, TTS, Smart Improvement, and live meetings
-- Optional xAI API key for Grok chat models
-- Optional OpenAI API key for GPT-5.x chat, OpenAI transcription (GPT-4o Transcribe), and GPT Audio Dictate Prompt
+- Google Gemini API key for cloud transcription, Dictate Prompt, chat, TTS, Smart Improvement, and live meetings
+- Optional xAI API key for Grok chat models and Grok Voice TTS
+- Optional OpenAI API key for GPT-5.x chat, OpenAI transcription (GPT-4o Transcribe), GPT Audio Dictate Prompt, and GPT-4o mini TTS
 - Optional Google account connection for Calendar, Tasks, and Gmail tools
+- Optional Trello Power-Up API key and token for board, list, and card tools
 
 Offline Whisper dictation works without an API key after downloading a local model in Settings.
 
@@ -42,14 +44,25 @@ Offline Whisper dictation works without an API key after downloading a local mod
 
 ## Common Workflows
 
+Default menu bar shortcuts (all configurable in Settings → General):
+
+| Action | Default shortcut |
+| --- | --- |
+| Dictate | ⌘1 |
+| Dictate Prompt | ⌘2 |
+| Screenshot | ⌘3 |
+| Read Aloud | ⌘4 |
+| Chat | ⌥Space |
+| Settings | ⌘0 |
+
+Press **Stop** in the menu bar (or use the active mode's shortcut again) to cancel recording, TTS playback, or in-flight processing.
+
 ### Dictation
 
-1. Configure a Dictate shortcut in Settings.
+1. Configure a Dictate shortcut in Settings → Dictate.
 2. Choose a Gemini, OpenAI, self-hosted, or Whisper transcription model.
 3. Press the shortcut, speak, then stop recording.
-4. The transcription is copied to the clipboard, and can optionally be pasted automatically.
-
-Long recordings are split into chunks and processed in parallel.
+4. The transcription is copied to the clipboard and can optionally be pasted automatically.
 
 ### Dictate Prompt
 
@@ -58,15 +71,47 @@ Long recordings are split into chunks and processed in parallel.
 3. Speak an instruction, such as "turn this into bullet points".
 4. The edited result is copied to the clipboard.
 
+Optional: capture a screenshot (⌘3 or chat `/screenshot`) before or during the prompt when screenshot-in-prompt mode is enabled.
+
+### Read Aloud
+
+1. Select text in any app.
+2. Press the Read Aloud shortcut.
+3. The selection is copied and read aloud with your chosen TTS model and voice.
+
+Use Settings → Read Aloud to pick the TTS provider, voice, Smart Rewrite, and playback speed. Chat replies can also be read aloud from the message actions.
+
+### Screenshot
+
+Press the Screenshot shortcut to capture the screen. Captures can be attached to the next Dictate Prompt or chat message, or saved to a folder when that option is enabled in Settings → Screenshot.
+
 ### Chat
 
-Open the chat window from the menu bar or its configured shortcut. Chat sessions are stored locally and can use slash commands such as `/new`, `/model`, `/screenshot`, `/attach`, `/settings`, `/gemini`, `/grok`, `/openai`, `/pin`, `/unpin`, `/meeting`, and `/copy`.
+Open the chat window from the menu bar or its configured shortcut. Chat sessions are stored locally.
 
-Gemini models use your Google API key, Grok models use your xAI API key, and OpenAI models use your OpenAI API key.
+Core slash commands:
+
+- `/new` — start a new chat
+- `/screenshot` — attach a screenshot to your next message
+- `/attach` — open the file picker for PDFs, images, or text
+- `/model` — switch model (e.g. `/model 3.5 flash`)
+- `/think` — set reasoning depth for this chat (`minimal`, `low`, `medium`, `high`, or `default`)
+- `/settings` — open Settings
+- `/pin` / `/unpin` — keep the window open or close on focus loss
+- `/meeting` — start or stop live meeting recording
+- `/copy` — copy the chat history as Markdown
+
+Model shortcuts include `/gemini`, `/grok`, `/gpt`, `/openai`, and per-model aliases such as `/gemini35flash`. Gemini models use your Google API key, Grok models use your xAI API key, and OpenAI models use your OpenAI API key.
+
+Connect Google or Trello in Settings → Chat to unlock the corresponding chat tools.
 
 ### Live Meeting
 
 Type `/meeting` in chat to start and stop live meeting recording. Audio is rotated into chunks, transcribed, and appended to the meeting transcript. Saved transcripts live in the app's Application Support folder.
+
+### Smart Improvement
+
+In Settings → General, enable **Save usage data** if you want the app to learn from your interactions. Then use **Improve from usage** or **Generate with AI** to review suggested updates to system prompts, user context, or the Whisper glossary before accepting them.
 
 ## Build From Source
 
@@ -84,7 +129,7 @@ bash scripts/rebuild-and-restart.sh
 
 Useful scripts:
 
-- `scripts/rebuild-and-restart.sh`: Build Debug and restart the local app.
+- `scripts/rebuild-and-restart.sh`: Build Debug, sync bundled docs, and restart the local app.
 - `scripts/logs.sh`: Stream or filter app logs.
 - `scripts/create-release.sh`: Create a tagged release.
 - `scripts/test-gemini-models.sh`, `scripts/test-grok-models.sh`, `scripts/test-openai-models.sh`: Check provider model availability and basic responses.
@@ -92,6 +137,7 @@ Useful scripts:
 ## Project Structure
 
 - `WhisperShortcut/`: Swift source for the macOS app.
+- `WhisperShortcut/Docs/`: User-facing markdown bundled with the app (mirrored from the repo README and data-directory docs on rebuild).
 - `WhisperShortcut.xcodeproj/`: Xcode project and shared schemes.
 - `scripts/`: Local development and release helper scripts.
 - `.github/workflows/release.yml`: GitHub Actions workflow for signed, notarized release builds.
@@ -102,9 +148,9 @@ Core files:
 
 - `AppState.swift`: Central app state machine.
 - `MenuBarController.swift`: Main app orchestrator.
-- `SpeechService.swift`: Dictation, prompt, and Read Aloud logic.
+- `SpeechService.swift`: Dictation, Dictate Prompt, and Read Aloud logic.
 - `ChatView.swift`: Chat UI and view model.
-- `ChatTools.swift`: `ChatToolRegistry` and local/Google chat tools.
+- `ChatTools.swift`: `ChatToolRegistry` and local, Google, and Trello chat tools.
 - `TranscriptionModels.swift`: Gemini, OpenAI, Whisper, and self-hosted transcription models.
 - `Settings/`: Settings UI, defaults, and persistence.
 
