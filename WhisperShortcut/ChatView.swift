@@ -3065,9 +3065,13 @@ private struct ModelReplyView: View {
         }
       }
     }
-    // Safe to select again: citation markers are now plain text (no inline `.link`,
-    // no per-run font), so SelectionOverlay no longer hits the setFont: hang. See citationMarker.
-    .textSelection(.enabled)
+    // DELIBERATELY no SwiftUI `.textSelection(.enabled)` here. That modifier installs macOS's
+    // `SelectionOverlay`, which loops forever in `setFont:` / `_invalidateEffectiveFont` (a 100% CPU
+    // main-thread hang) whenever the selectable `Text` carries per-run markdown fonts — e.g. a
+    // streaming reply full of bold/headings, most reliably tipped over by switching chats mid-stream.
+    // Prose selection is provided instead by `SelectableProseText` (a real NSTextView that is immune
+    // to this bug); tables and still-streaming text are simply not selectable, an acceptable trade for
+    // removing the entire hang class from the reply view. See `citationMarker` for the related case.
     .padding(.horizontal, 16)
     .padding(.vertical, 14)
     .frame(maxWidth: .infinity, alignment: .leading)
