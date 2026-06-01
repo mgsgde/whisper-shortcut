@@ -2976,6 +2976,14 @@ private struct ModelReplyView: View {
     AttributedString(" [\(oneBased)]")
   }
 
+  /// Appends citation markers for every in-range chunk index. `sourcesCount` bounds the indices so
+  /// we never reference a source that doesn't exist.
+  private static func appendCitations(to attr: inout AttributedString, indices: [Int], sourcesCount: Int) {
+    for idx in indices where idx < sourcesCount {
+      attr.append(citationMarker(idx + 1))
+    }
+  }
+
   private static func buildReplyBlocks(
     content: String,
     sources: [GroundingSource],
@@ -3002,18 +3010,14 @@ private struct ModelReplyView: View {
         } else {
           var items = bulletItems
           var lastItem = items.removeLast()
-          for idx in para.chunkIndices where idx < sources.count {
-            lastItem.append(citationMarker(idx + 1))
-          }
+          appendCitations(to: &lastItem, indices: para.chunkIndices, sourcesCount: sources.count)
           items.append(lastItem)
           blocks.append(.bulletList(items))
         }
       } else if let (headingPart, bulletPart) = splitHeadingAndBullets(trimmed) {
         // Heading followed by bullets — heading gets citations, bullets rendered separately
         var headingAttr = buildSingleParagraphAttributed(headingPart, options: options)
-        for idx in para.chunkIndices where idx < sources.count {
-          headingAttr.append(citationMarker(idx + 1))
-        }
+        appendCitations(to: &headingAttr, indices: para.chunkIndices, sourcesCount: sources.count)
         blocks.append(.text(headingAttr))
         if let items = parseBulletItems(bulletPart) {
           blocks.append(.bulletList(items))
@@ -3022,9 +3026,7 @@ private struct ModelReplyView: View {
         }
       } else {
         var attrText = buildSingleParagraphAttributed(trimmed, options: options)
-        for idx in para.chunkIndices where idx < sources.count {
-          attrText.append(citationMarker(idx + 1))
-        }
+        appendCitations(to: &attrText, indices: para.chunkIndices, sourcesCount: sources.count)
         blocks.append(.text(attrText))
       }
     }
