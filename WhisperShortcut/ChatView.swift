@@ -377,8 +377,10 @@ class ChatViewModel: ObservableObject {
     inputText = ""
   }
 
-  /// Maximum number of file attachments (images, PDFs, etc.) per message.
-  private static let maxFileAttachments = 5
+  /// Maximum number of file attachments (images, PDFs, etc.) per message. Self-imposed, not a
+  /// provider limit — Gemini/OpenAI/xAI all accept far more per request (hundreds+). Kept at 10 to
+  /// match `maxPendingScreenshots` and to bound request size / token cost.
+  private static let maxFileAttachments = 10
 
   func attachFile() {
     let panel = NSOpenPanel()
