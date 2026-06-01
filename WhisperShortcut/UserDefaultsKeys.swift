@@ -6,6 +6,10 @@ enum UserDefaultsKeys {
   // MARK: - Chat Window Settings
   static let chatCloseOnFocusLoss = "geminiCloseOnFocusLoss"
   static let chatSidebarVisible = "geminiSidebarVisible"
+  /// Per-session reading position: maps session UUID → id of the message kept at the top of the
+  /// chat scroll view. Stored as [String: String]. Lets the scroll position survive window
+  /// hide/show (incl. the cross-screen resize that recreates the list), tab switches, and relaunch.
+  static let chatScrollAnchors = "chatScrollAnchors"
 
   // MARK: - Settings Window
   static let settingsCloseOnFocusLoss = "settingsCloseOnFocusLoss"

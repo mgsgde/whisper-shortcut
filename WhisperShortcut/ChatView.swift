@@ -229,6 +229,7 @@ class ChatViewModel: ObservableObject {
     messages = session.messages
     recentSessions = store.recentSessions(limit: 20)
     allSessionsList = store.allSessions()
+    loadScrollAnchors()
     isMeetingActive = LiveMeetingTranscriptStore.shared.isSessionActive
     meetingCancellable = LiveMeetingTranscriptStore.shared.$isSessionActive
       .receive(on: DispatchQueue.main)
@@ -1115,6 +1116,35 @@ class ChatViewModel: ObservableObject {
     UserDefaults.standard.set(Array(recency.prefix(PromptModel.chatModels.count)), forKey: UserDefaultsKeys.chatModelRecency)
   }
 
+  // MARK: - Scroll Position Persistence
+
+  /// Per-session id of the message pinned to the top of the chat scroll view. Survives window
+  /// hide/show (incl. the cross-screen resize that recreates the list — see `.id(widthBucket)`),
+  /// tab switches, and relaunch. Keyed by session UUID; pruned to live sessions on load.
+  private var scrollAnchors: [UUID: UUID] = [:]
+
+  private func loadScrollAnchors() {
+    let raw = UserDefaults.standard.dictionary(forKey: UserDefaultsKeys.chatScrollAnchors) as? [String: String] ?? [:]
+    let liveIds = Set(store.allSessions().map(\.id))
+    scrollAnchors = raw.reduce(into: [:]) { acc, pair in
+      guard let sessionId = UUID(uuidString: pair.key),
+            let messageId = UUID(uuidString: pair.value),
+            liveIds.contains(sessionId) else { return }
+      acc[sessionId] = messageId
+    }
+  }
+
+  /// The saved top message for `sessionId`, if any.
+  func scrollAnchor(for sessionId: UUID) -> UUID? { scrollAnchors[sessionId] }
+
+  /// Stores (or clears, when `messageId` is nil) the top message for `sessionId`.
+  func setScrollAnchor(_ messageId: UUID?, for sessionId: UUID) {
+    guard scrollAnchors[sessionId] != messageId else { return }
+    scrollAnchors[sessionId] = messageId
+    let raw = Dictionary(uniqueKeysWithValues: scrollAnchors.map { ($0.key.uuidString, $0.value.uuidString) })
+    UserDefaults.standard.set(raw, forKey: UserDefaultsKeys.chatScrollAnchors)
+  }
+
   // MARK: - Tab navigation
 
   private func refreshRecentSessions() {
@@ -1582,6 +1612,14 @@ struct ChatView: View {
   /// Image data to show in the full-size preview sheet (from pending screenshot or from a sent message thumbnail).
   @State private var previewImageData: Data? = nil
   @State private var scrollActions = ChatScrollActions()
+  /// Id of the message kept at the top of the chat scroll view. Bound to `.scrollPosition` so the
+  /// reading position survives the LazyVStack recreation a window resize/screen-move triggers (see
+  /// `.id(widthBucket)`), tab switches, and relaunch. Persisted per session via the view model.
+  @State private var scrolledMessageID: UUID? = nil
+  /// Suppresses persisting the scroll anchor while we re-apply it programmatically (during a
+  /// width-bucket recreation or a tab switch), so the transient reset-to-top doesn't clobber the
+  /// saved position before we restore it.
+  @State private var suppressAnchorSave: Bool = false
   @State private var hoveredTabId: UUID? = nil
   /// Session id currently being renamed via the context-menu alert.
   @State private var renamingTabId: UUID? = nil
@@ -1836,7 +1874,14 @@ struct ChatView: View {
             emptyStateCommandHints
           }
           ForEach(viewModel.messages) { message in
-            MessageBubbleView(message: message, onTapAttachedImage: { previewImageData = $0 })
+            MessageBubbleView(
+              message: message,
+              // Streaming = the last model message while a send is in flight. During
+              // streaming we render prose with lightweight SwiftUI `Text`; the heavy
+              // self-sizing NSTextView (SelectableProseText) only renders once the
+              // message is final, to avoid per-token layout thrash wedging the main thread.
+              isStreaming: viewModel.isSending && message.id == viewModel.messages.last?.id,
+              onTapAttachedImage: { previewImageData = $0 })
               .id(message.id)
           }
           ForEach(viewModel.messageQueue) { queued in
@@ -1865,6 +1910,7 @@ struct ChatView: View {
           }
           Color.clear.frame(height: 1).id("listBottom")
         }
+        .scrollTargetLayout()
         .frame(maxWidth: 720)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 24)
@@ -1872,6 +1918,7 @@ struct ChatView: View {
         .padding(.bottom, 28)
         .id(widthBucket)
       }
+      .scrollPosition(id: $scrolledMessageID, anchor: .top)
       // Typing indicator lives OUTSIDE the LazyVStack as a floating overlay so its
       // 60fps TimelineView clock invalidates only its own subtree, not the whole
       // message list. Inside the list it forced a full LazyVStack/GeometryReader
@@ -1888,14 +1935,40 @@ struct ChatView: View {
       .onAppear {
         scrollActions.scrollToTop = { scrollToTop(proxy: proxy) }
         scrollActions.scrollToBottom = { scrollToBottom(proxy: proxy) }
-        // Scroll to bottom when the chat view first appears so the user sees the latest messages.
-        // We do not scroll when new messages arrive — the user stays where they are.
-        scrollToBottom(proxy: proxy)
+        // Restore this session's saved reading position, or scroll to the latest messages if there
+        // is none. We never auto-scroll when new messages arrive — the user stays where they are.
+        restoreSavedScroll(proxy: proxy)
       }
       .task {
-        // Layout is not ready on first frame; repeat once so the scroll position sticks.
+        // Layout is not ready on first frame; re-apply once so the restored position sticks.
         try? await Task.sleep(for: .milliseconds(400))
-        scrollToBottom(proxy: proxy)
+        restoreSavedScroll(proxy: proxy)
+      }
+      .onChange(of: scrolledMessageID) { _, newValue in
+        // Persist as the user scrolls (the binding only changes when the top message changes).
+        if !suppressAnchorSave { saveScrollAnchorIfValid(newValue) }
+      }
+      .onChange(of: widthBucket) { _, _ in
+        // The LazyVStack is rebuilt with a new identity on width-bucket change (resize / screen
+        // move — see `.id(widthBucket)`), which resets the scroll to the top. Re-assert the saved
+        // position once the new content has laid out. `scrolledMessageID` still holds the
+        // pre-reset value here, so capture it before the reset clobbers it.
+        guard let target = scrolledMessageID else { return }
+        suppressAnchorSave = true
+        DispatchQueue.main.async {
+          scrolledMessageID = target
+          proxy.scrollTo(target, anchor: .top)
+          suppressAnchorSave = false
+        }
+      }
+      .onChange(of: viewModel.currentSessionId) { _, _ in
+        // Switching tabs swaps the whole message list; restore the new session's position after
+        // the swap settles so scrollPosition's own reset doesn't fight us.
+        suppressAnchorSave = true
+        DispatchQueue.main.async {
+          restoreSavedScroll(proxy: proxy)
+          suppressAnchorSave = false
+        }
       }
       .focusable()
       .focusEffectDisabled()
@@ -1973,6 +2046,28 @@ struct ChatView: View {
         proxy.scrollTo(viewModel.isSending ? "typing" : "listBottom", anchor: .bottom)
       }
     }
+  }
+
+  /// Restores the session's saved top message, or scrolls to the latest messages when there is
+  /// none (or the saved message no longer exists). Sets the `scrollPosition` binding and nudges
+  /// the proxy so the position holds across the list recreation a resize/screen-move causes.
+  private func restoreSavedScroll(proxy: ScrollViewProxy) {
+    let sessionId = viewModel.currentSessionId
+    if let saved = viewModel.scrollAnchor(for: sessionId),
+       viewModel.messages.contains(where: { $0.id == saved }) {
+      scrolledMessageID = saved
+      proxy.scrollTo(saved, anchor: .top)
+    } else {
+      scrolledMessageID = nil
+      scrollToBottom(proxy: proxy)
+    }
+  }
+
+  /// Persists the current top message as the session's reading position. Ignores nil and ids that
+  /// aren't in the current session (transient values during a tab swap).
+  private func saveScrollAnchorIfValid(_ messageId: UUID?) {
+    guard let messageId, viewModel.messages.contains(where: { $0.id == messageId }) else { return }
+    viewModel.setScrollAnchor(messageId, for: viewModel.currentSessionId)
   }
 
   // MARK: - Error Banner
@@ -2801,10 +2896,113 @@ private final class ModelReplySegmentBox {
   init(_ segments: [ModelReplyRenderSegment]) { self.segments = segments }
 }
 
+/// Carries the intended AppKit font metrics (size + weight) for prose runs whose SwiftUI `.font`
+/// would otherwise be lost when we render the prose in an `NSTextView` (SwiftUI `Font` does not
+/// bridge to `NSFont`). Stamped on headings and the heading rule line; everything else falls back
+/// to the 16-pt body font. A plain Hashable struct so it survives in the segment NSCache.
+private struct ProseFontMetrics: Hashable, Sendable {
+  let size: CGFloat
+  let weight: CGFloat
+}
+
+private enum ProseFontHint: AttributedStringKey {
+  typealias Value = ProseFontMetrics
+  static let name = "chat.proseFontHint"
+}
+
+/// Renders a prose `AttributedString` in a read-only `NSTextView` so the text stays selectable AND
+/// markdown links stay clickable (with a pointing-hand cursor). SwiftUI's `Text` can do one or the
+/// other but not both: `.textSelection(.enabled)` makes its overlay swallow link clicks. AppKit's
+/// text view handles selection and links natively, sidestepping that limitation.
+private struct SelectableProseText: NSViewRepresentable {
+  let attributed: AttributedString
+  private let nsAttributed: NSAttributedString
+
+  init(attributed: AttributedString) {
+    self.attributed = attributed
+    self.nsAttributed = ModelReplyView.makeProseNSAttributedString(attributed)
+  }
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
+
+  func makeNSView(context: Context) -> NSTextView {
+    // Build an explicit TextKit 1 stack. `NSTextView()`'s default initializer opts into TextKit 2,
+    // whose viewport-based layout misplaces or blanks glyphs when a LazyVStack recycles the view on
+    // scroll (text drifting to the far-right window edge or vanishing entirely). TextKit 1 lays the
+    // whole document out up front, so a reused view always redraws at the correct position.
+    let textContainer = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+    textContainer.lineFragmentPadding = 0
+    textContainer.widthTracksTextView = true
+    let layoutManager = NSLayoutManager()
+    layoutManager.addTextContainer(textContainer)
+    let textStorage = NSTextStorage()
+    textStorage.addLayoutManager(layoutManager)
+
+    let tv = NSTextView(frame: .zero, textContainer: textContainer)
+    tv.isEditable = false
+    tv.isSelectable = true
+    tv.drawsBackground = false
+    tv.backgroundColor = .clear
+    tv.textContainerInset = .zero
+    tv.isVerticallyResizable = true
+    tv.isHorizontallyResizable = false
+    tv.autoresizingMask = [.width]
+    // Match the previous SwiftUI look: blue link, no underline, hand cursor on hover.
+    tv.linkTextAttributes = [
+      .foregroundColor: NSColor.linkColor,
+      .cursor: NSCursor.pointingHand,
+      .underlineStyle: 0,
+    ]
+    tv.delegate = context.coordinator
+    tv.textStorage?.setAttributedString(nsAttributed)
+    return tv
+  }
+
+  func updateNSView(_ tv: NSTextView, context: Context) {
+    if tv.textStorage?.isEqual(to: nsAttributed) != true {
+      tv.textStorage?.setAttributedString(nsAttributed)
+    }
+  }
+
+  func sizeThatFits(_ proposal: ProposedViewSize, nsView tv: NSTextView, context: Context) -> CGSize? {
+    guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
+    // Measure in a throwaway TextKit stack so the live view's layout is never mutated as a side
+    // effect — the previous in-place frame/containerSize hack is what corrupted a reused view's
+    // width on scroll. The live text view sizes itself via widthTracksTextView once SwiftUI sets
+    // the frame width we return here.
+    return CGSize(width: width, height: Self.measuredHeight(nsAttributed, width: width))
+  }
+
+  private static func measuredHeight(_ ns: NSAttributedString, width: CGFloat) -> CGFloat {
+    let textStorage = NSTextStorage(attributedString: ns)
+    let textContainer = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
+    textContainer.lineFragmentPadding = 0
+    let layoutManager = NSLayoutManager()
+    layoutManager.addTextContainer(textContainer)
+    textStorage.addLayoutManager(layoutManager)
+    layoutManager.ensureLayout(for: textContainer)
+    return ceil(layoutManager.usedRect(for: textContainer).height)
+  }
+
+  final class Coordinator: NSObject, NSTextViewDelegate {
+    func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+      let url: URL? = (link as? URL) ?? (link as? String).flatMap(URL.init(string:))
+      guard let url else { return false }
+      NSWorkspace.shared.open(url)
+      return true
+    }
+  }
+}
+
 private struct ModelReplyView: View {
   let content: String
   let sources: [GroundingSource]
   let groundingSupports: [GroundingSupport]
+  /// While true (message still streaming), prose renders as lightweight SwiftUI `Text`.
+  /// The self-sizing NSTextView (SelectableProseText) does a full layout pass on every
+  /// `updateNSView`; doing that per streamed token wedges the main thread, so we defer it
+  /// until the message is final. See MessageBubbleView call site.
+  var isStreaming: Bool = false
 
   /// Markdown parsing (buildReplyBlocks + mergedSegments) is expensive and would otherwise run on
   /// every SwiftUI render of every assistant message — so switching chats re-parses the whole
@@ -2842,10 +3040,16 @@ private struct ModelReplyView: View {
       ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
         switch segment {
         case .prose(let attrStr):
-          Text(attrStr)
-            .font(.system(size: 16))
-            .lineSpacing(8)
-            .foregroundColor(ChatTheme.primaryText)
+          if isStreaming {
+            // Lightweight, fast to re-render every token. Loses clickable links while
+            // streaming, but links matter only on the finished, readable message.
+            Text(attrStr)
+              .font(.system(size: 16))
+              .lineSpacing(8)
+              .foregroundColor(ChatTheme.primaryText)
+          } else {
+            SelectableProseText(attributed: attrStr)
+          }
         case .table(let parsed):
           MarkdownTableView(headers: parsed.headers, rows: parsed.rows)
         case .codeBlock(let code, let language):
@@ -2891,8 +3095,70 @@ private struct ModelReplyView: View {
   private static func appendHeadingRuleLine(to prose: inout AttributedString) {
     var dashes = AttributedString(MarkdownParsing.separatorLineContent)
     dashes.font = .system(size: 10, weight: .light)
+    dashes[ProseFontHint.self] = ProseFontMetrics(size: 10, weight: NSFont.Weight.light.rawValue)
     dashes.foregroundColor = ChatTheme.primaryText.opacity(0.14)
     prose.append(dashes)
+  }
+
+  /// Translates a prose `AttributedString` (built for SwiftUI) into an `NSAttributedString` for the
+  /// selectable text view. SwiftUI fonts/colors do not bridge to AppKit, so we rebuild each run's
+  /// `NSFont`/`NSColor` from the attributes we can still read: the `ProseFontHint` (headings, rule
+  /// line), the markdown `inlinePresentationIntent` (bold/italic/code/strikethrough), the SwiftUI
+  /// `foregroundColor`, and the `link` URL. Body runs fall back to the 16-pt system font / soft white.
+  static func makeProseNSAttributedString(_ attr: AttributedString) -> NSAttributedString {
+    let baseSize: CGFloat = 16
+    let defaultColor = NSColor(ChatTheme.primaryText)
+    let result = NSMutableAttributedString()
+
+    for run in attr.runs {
+      let text = String(attr[run.range].characters)
+      if text.isEmpty { continue }
+
+      var size = baseSize
+      var weight: NSFont.Weight = .regular
+      if let hint = run[ProseFontHint.self] {
+        size = hint.size
+        weight = NSFont.Weight(hint.weight)
+      }
+
+      let intent = run.inlinePresentationIntent ?? []
+      var traits: NSFontDescriptor.SymbolicTraits = []
+      if intent.contains(.stronglyEmphasized) { weight = .bold; traits.insert(.bold) }
+      if intent.contains(.emphasized) { traits.insert(.italic) }
+
+      let font: NSFont
+      if intent.contains(.code) {
+        font = NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+      } else {
+        var f = NSFont.systemFont(ofSize: size, weight: weight)
+        if !traits.isEmpty,
+           let descriptor = f.fontDescriptor.withSymbolicTraits(traits) as NSFontDescriptor?,
+           let traited = NSFont(descriptor: descriptor, size: size) {
+          f = traited
+        }
+        font = f
+      }
+
+      var attrs: [NSAttributedString.Key: Any] = [.font: font]
+      if let url = run.link {
+        attrs[.link] = url  // .foregroundColor is supplied by the view's linkTextAttributes
+      } else if let color = run.foregroundColor {
+        attrs[.foregroundColor] = NSColor(color)
+      } else {
+        attrs[.foregroundColor] = defaultColor
+      }
+      if intent.contains(.strikethrough) {
+        attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+      }
+
+      result.append(NSAttributedString(string: text, attributes: attrs))
+    }
+
+    // Match SwiftUI `.lineSpacing(8)`.
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.lineSpacing = 8
+    result.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: result.length))
+    return result
   }
 
   /// Merges consecutive `.text`, `.bulletList`, and `.separator` blocks into one `AttributedString` so
@@ -3143,6 +3409,8 @@ private struct ModelReplyView: View {
       let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
       var headingAttr = MarkdownParsing.inlineAttributedString(title, options: options)
       headingAttr.font = MarkdownParsing.fontForHeadingLevel(level, baseSize: 16)
+      let headingMetrics = MarkdownParsing.nsHeadingMetrics(level, baseSize: 16)
+      headingAttr[ProseFontHint.self] = ProseFontMetrics(size: headingMetrics.size, weight: headingMetrics.weight.rawValue)
       if !bodyPart.isEmpty {
         headingAttr.append(AttributedString("\n\n"))
         var bodyAttr = MarkdownParsing.inlineAttributedString(bodyPart, options: options)
@@ -3368,6 +3636,7 @@ func parseUserMessagePastedXML(_ content: String) -> (sections: [UserMessagePast
 
 private struct MessageBubbleView: View {
   let message: ChatMessage
+  var isStreaming: Bool = false
   var onTapAttachedImage: ((Data) -> Void)? = nil
 
   var isUser: Bool { message.role == .user }
@@ -3438,7 +3707,8 @@ private struct MessageBubbleView: View {
       ModelReplyView(
         content: message.content,
         sources: message.sources,
-        groundingSupports: message.groundingSupports)
+        groundingSupports: message.groundingSupports,
+        isStreaming: isStreaming)
     }
   }
 
