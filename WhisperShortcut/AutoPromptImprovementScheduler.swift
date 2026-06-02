@@ -131,6 +131,9 @@ class AutoPromptImprovementScheduler {
     // Discard any stale suggestion files from a previously crashed/aborted run before generating new ones.
     ContextLogger.shared.deleteAllSuggestedFiles()
 
+    // Prune audio older than the retention window so this run only considers in-window clips. Audio
+    // is otherwise retained across runs (content-aware selection may need terms from older dictations).
+    ContextLogger.shared.pruneExpiredAudioSamples()
     let initialSamples = ContextLogger.shared.audioSampleURLs().count
     DebugLogger.log("AUDIO-VERIFY: run(start) samplesOnDisk=\(initialSamples)")
 
@@ -185,11 +188,10 @@ class AutoPromptImprovementScheduler {
       return collected
     }
 
-    // Audio samples are read into memory by each focus before the request is sent, so once
-    // withTaskGroup has returned it is safe to wipe the directory. Honor the TTL contract:
-    // audio is not retained across Smart Improvement runs.
-    let deleted = ContextLogger.shared.clearAudioSamples()
-    DebugLogger.log("AUDIO-VERIFY: run(end) cleanup deleted=\(deleted)")
+    // Audio is RETAINED across runs (pruned by age at run start) so candidate terms in older
+    // dictations stay verifiable in future runs. We no longer wipe the pool here.
+    let retained = ContextLogger.shared.audioSampleURLs().count
+    DebugLogger.log("AUDIO-VERIFY: run(end) retainedSamples=\(retained)")
 
     let failedErrors = results.compactMap { $0.error }
     var pendingKinds: [GenerationKind] = []

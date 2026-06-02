@@ -16,6 +16,9 @@ struct InteractionLogEntry: Codable {
   /// Stable rawValue of the TranscriptionModel used for this entry (e.g. "whisper-base", "gemini-2.5-flash").
   /// Distinct from `model` (display name) so Smart Improvement can do model-asymmetry comparisons.
   let transcriptionModel: String?
+  /// Whether a screenshot was attached to a `prompt`-mode request. Lets analysis distinguish
+  /// screenshot-grounded output from fabrication when `selectedText` is empty. Nil for other modes.
+  let hadScreenshot: Bool?
 }
 
 // MARK: - System Prompt History Entry
@@ -118,12 +121,13 @@ class ContextLogger {
       text: nil,
       voice: nil,
       audioRef: audioRef,
-      transcriptionModel: transcriptionModel
+      transcriptionModel: transcriptionModel,
+      hadScreenshot: nil
     )
     writeEntry(entry)
   }
 
-  func logPrompt(mode: PromptMode, selectedText: String?, userInstruction: String, modelResponse: String, model: String? = nil) {
+  func logPrompt(mode: PromptMode, selectedText: String?, userInstruction: String, modelResponse: String, model: String? = nil, hadScreenshot: Bool? = nil) {
     guard isLoggingEnabled else { return }
     let modeString = "prompt"
     let entry = InteractionLogEntry(
@@ -137,7 +141,8 @@ class ContextLogger {
       text: nil,
       voice: nil,
       audioRef: nil,
-      transcriptionModel: nil
+      transcriptionModel: nil,
+      hadScreenshot: hadScreenshot
     )
     writeEntry(entry)
   }
@@ -156,7 +161,8 @@ class ContextLogger {
       text: nil,
       voice: nil,
       audioRef: nil,
-      transcriptionModel: nil
+      transcriptionModel: nil,
+      hadScreenshot: nil
     )
     writeEntry(entry)
   }
@@ -204,7 +210,8 @@ class ContextLogger {
   }
 
   /// Removes the entire audio sample pool. Returns the number of files deleted.
-  /// Called by Smart Improvement at the end of every run so audio is not retained across runs.
+  /// Used when wiping all data; Smart Improvement no longer calls this — audio is now retained across
+  /// runs and bounded by age (see `pruneExpiredAudioSamples`).
   @discardableResult
   func clearAudioSamples() -> Int {
     let fm = FileManager.default
@@ -212,6 +219,30 @@ class ContextLogger {
     var deleted = 0
     for url in contents {
       if (try? fm.removeItem(at: url)) != nil { deleted += 1 }
+    }
+    return deleted
+  }
+
+  /// Deletes audio samples older than `audioSampleRetentionDays`, using the capture timestamp encoded
+  /// in each filename (UTC, format `yyyyMMdd'T'HHmmssSSS-XXXXXX.wav`). Audio is retained across Smart
+  /// Improvement runs so terms from older dictations stay verifiable; this keeps the pool bounded by
+  /// age. Files whose name can't be parsed are kept. Returns the number of files deleted.
+  @discardableResult
+  func pruneExpiredAudioSamples() -> Int {
+    let fm = FileManager.default
+    let cutoff = Date().addingTimeInterval(-Double(AppConstants.audioSampleRetentionDays) * 86_400)
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyyMMdd'T'HHmmssSSS"
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    let urls = audioSampleURLs()
+    var deleted = 0
+    for url in urls {
+      let stamp = url.deletingPathExtension().lastPathComponent.components(separatedBy: "-").first ?? ""
+      guard let captured = formatter.date(from: stamp) else { continue }  // unknown format → keep
+      if captured < cutoff, (try? fm.removeItem(at: url)) != nil { deleted += 1 }
+    }
+    if deleted > 0 {
+      DebugLogger.logAudio("AUDIO-VERIFY: prune-age deleted=\(deleted) remaining=\(max(0, urls.count - deleted)) olderThanDays=\(AppConstants.audioSampleRetentionDays)")
     }
     return deleted
   }

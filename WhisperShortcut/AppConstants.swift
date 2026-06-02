@@ -241,11 +241,28 @@ Transcript:
   static let contextSecondaryOtherModesMaxChars: Int = 2000
 
   // MARK: - Smart Improvement: Audio Verification
-  /// Maximum number of dictation audio WAVs kept on disk for Smart Improvement verification.
-  /// Pool is rotated on each capture and wiped after every Smart Improvement run.
-  static let audioSampleMaxFiles: Int = 20
-  /// Maximum audio clips attached to a single focus's Gemini request during Smart Improvement.
-  static let audioSamplesPerRun: Int = 6
+  /// Hard safety cap on dictation audio WAVs kept on disk. Audio is RETAINED ACROSS RUNS (pruned by
+  /// age, see `audioSampleRetentionDays`) so candidate terms that appear only in older dictations can
+  /// still be verified; this cap only guards against unbounded disk growth, not normal rotation.
+  static let audioSampleMaxFiles: Int = 500
+  /// Audio older than this many days is pruned at the start of each Smart Improvement run. Matches the
+  /// text-analysis window (`contextTier3Days`) so audio and text cover the same period.
+  static let audioSampleRetentionDays: Int = 30
+  /// Maximum audio clips attached to a single focus's Gemini request during Smart Improvement. Clips
+  /// are chosen content-aware: one representative clip per recurring candidate term (newest first),
+  /// then topped up with the newest clips for freshness.
+  static let audioSamplesPerRun: Int = 12
+  /// A vocabulary term must appear in at least this many DISTINCT dictation transcripts to become an
+  /// audio-verification candidate (filters one-off words).
+  static let audioCandidateMinFrequency: Int = 2
+  /// A term appearing in at least this fraction of the user's own dictation transcripts is treated as
+  /// an ambient/function word (in whatever language they dictate) and excluded as a candidate. This is
+  /// how stop-words are derived from data instead of a hardcoded per-language list — keeping candidate
+  /// extraction generic across all users.
+  static let audioCandidateAmbientDocRatio: Double = 0.5
+  /// Maximum number of candidate terms (most distinctive-looking first) considered for content-aware
+  /// audio selection per run.
+  static let audioCandidateMaxTerms: Int = 30
 
   // MARK: - Smart Improvement: thresholds, cooldown, queue
   /// Minimum interactions in a focus's primary mode (last 30 days) for that focus to be analyzed.

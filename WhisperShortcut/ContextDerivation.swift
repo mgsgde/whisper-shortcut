@@ -152,9 +152,12 @@ class ContextDerivation {
   // MARK: - Audio Verification Attachments
 
   /// One audio clip prepared for verification, with the base64-encoded WAV bytes ready to attach.
+  /// `candidateTerm` is the recurring vocabulary term whose transcript this clip was selected to
+  /// verify (nil when the clip was added purely as a recency top-up).
   private struct AudioAttachment {
     let ref: String
     let transcriptionModel: String
+    let candidateTerm: String?
     let base64WAV: String
   }
 
@@ -175,44 +178,128 @@ class ContextDerivation {
       return []
     }
 
-    // Map ref → transcriptionModel from the JSONL logs in the eligibility window.
+    // Map ref → transcriptionModel and ref → transcribed text from the JSONL logs in the window.
     let logFiles = ContextLogger.shared.interactionLogFiles(lastDays: AppConstants.contextTier3Days)
     var refToModel: [String: String] = [:]
+    var refToText: [String: String] = [:]
     let decoder = JSONDecoder()
     for fileURL in logFiles {
       guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
       for line in content.components(separatedBy: .newlines) where !line.isEmpty {
         guard let data = line.data(using: .utf8),
               let entry = try? decoder.decode(InteractionLogEntry.self, from: data) else { continue }
-        if let ref = entry.audioRef, let tm = entry.transcriptionModel {
-          refToModel[ref] = tm
-        }
+        guard let ref = entry.audioRef else { continue }
+        if let tm = entry.transcriptionModel { refToModel[ref] = tm }
+        if let result = entry.result { refToText[ref] = result }
       }
     }
 
-    // Walk newest-first, keep up to audioSamplesPerRun that pass asymmetry.
-    var picked: [AudioAttachment] = []
+    // Classify every on-disk clip once: eligible = known model that passes the asymmetry rule.
+    var eligibleRefs = Set<String>()
     var skippedAsymmetry = 0
     var skippedUnknownModel = 0
-    let cap = AppConstants.audioSamplesPerRun
-    for url in allSamples.reversed() {
-      if picked.count >= cap { break }
+    for url in allSamples {
       let ref = url.lastPathComponent
-      guard let modelRaw = refToModel[ref] else { skippedUnknownModel += 1; continue }
-      guard let originalModel = TranscriptionModel(rawValue: modelRaw) else { skippedUnknownModel += 1; continue }
-      let informative = smartModel.canInformativelyVerify(audioFrom: originalModel)
-      if !informative {
-        skippedAsymmetry += 1
-        DebugLogger.log("AUDIO-VERIFY: asymmetry ref=\(ref) transcriptionModel=\(modelRaw) smartModel=\(smartModel.rawValue) informative=false")
+      guard let modelRaw = refToModel[ref], let originalModel = TranscriptionModel(rawValue: modelRaw) else {
+        skippedUnknownModel += 1
         continue
       }
-      guard let data = try? Data(contentsOf: url) else { continue }
-      picked.append(AudioAttachment(ref: ref, transcriptionModel: modelRaw, base64WAV: data.base64EncodedString()))
-      DebugLogger.log("AUDIO-VERIFY: asymmetry ref=\(ref) transcriptionModel=\(modelRaw) smartModel=\(smartModel.rawValue) informative=true")
+      if smartModel.canInformativelyVerify(audioFrom: originalModel) {
+        eligibleRefs.insert(ref)
+      } else {
+        skippedAsymmetry += 1
+        DebugLogger.log("AUDIO-VERIFY: focus=\(focus) asymmetry ref=\(ref) transcriptionModel=\(modelRaw) smartModel=\(smartModel.rawValue) informative=false")
+      }
     }
 
-    DebugLogger.log("AUDIO-VERIFY: focus=\(focus) attach selectedClips=\(picked.count) skippedAsymmetry=\(skippedAsymmetry) skippedUnknownModel=\(skippedUnknownModel) capPerRun=\(cap)")
+    // Content-aware selection: one representative clip per recurring candidate term (newest clip that
+    // contains it), then top up with the newest clips so recent dictations are always covered. This is
+    // what lets a term mis-heard across the whole history (e.g. "Claude" → "Cloud") get its audio in
+    // front of the verifier, instead of only whatever the 6 newest clips happened to be.
+    let candidates = candidateTermsForVerification(refToText: refToText)
+    DebugLogger.log("AUDIO-VERIFY: focus=\(focus) candidateTerms=\(candidates.count) top=[\(candidates.prefix(15).joined(separator: ", "))]")
+
+    let cap = AppConstants.audioSamplesPerRun
+    let newestFirst = allSamples.reversed().map { ($0, $0.lastPathComponent) }
+    var picked: [AudioAttachment] = []
+    var usedRefs = Set<String>()
+
+    func attach(url: URL, ref: String, term: String?) {
+      guard picked.count < cap, !usedRefs.contains(ref), eligibleRefs.contains(ref),
+            let modelRaw = refToModel[ref], let data = try? Data(contentsOf: url) else { return }
+      usedRefs.insert(ref)
+      picked.append(AudioAttachment(ref: ref, transcriptionModel: modelRaw, candidateTerm: term, base64WAV: data.base64EncodedString()))
+      DebugLogger.log("AUDIO-VERIFY: focus=\(focus) asymmetry ref=\(ref) transcriptionModel=\(modelRaw) smartModel=\(smartModel.rawValue) informative=true term=\(term ?? "—")")
+    }
+
+    for term in candidates {
+      if picked.count >= cap { break }
+      if let (url, ref) = newestFirst.first(where: { _, ref in
+        eligibleRefs.contains(ref) && !usedRefs.contains(ref)
+          && (refToText[ref]?.range(of: term, options: [.caseInsensitive, .diacriticInsensitive]) != nil)
+      }) {
+        attach(url: url, ref: ref, term: term)
+      }
+    }
+    for (url, ref) in newestFirst {
+      if picked.count >= cap { break }
+      attach(url: url, ref: ref, term: nil)
+    }
+
+    DebugLogger.log("AUDIO-VERIFY: focus=\(focus) attach selectedClips=\(picked.count) skippedAsymmetry=\(skippedAsymmetry) skippedUnknownModel=\(skippedUnknownModel) capPerRun=\(cap) candidateTerms=\(candidates.count)")
     return picked
+  }
+
+  /// Recurring, distinctive vocabulary from dictation transcripts — the terms most worth confirming
+  /// against audio (proper nouns, tech/foreign words that weak STT mis-hears). Most distinctive-looking
+  /// recurring terms first.
+  ///
+  /// Stop-words are DERIVED FROM THE DATA, never hardcoded: a token that appears in a large fraction of
+  /// the user's own transcripts is that user's ambient/function-word vocabulary — in whatever language
+  /// they dictate — and is excluded. This keeps the feature generic across users and languages; there
+  /// is no baked-in word list for any one language.
+  private func candidateTermsForVerification(refToText: [String: String]) -> [String] {
+    let totalDocs = refToText.count
+    guard totalDocs > 0 else { return [] }
+
+    var docFreq: [String: Int] = [:]     // lowercased term → distinct-transcript count
+    var display: [String: String] = [:]  // lowercased → first-seen original casing
+    for text in refToText.values {
+      var seen = Set<String>()
+      for token in text.components(separatedBy: CharacterSet.letters.inverted) where token.count >= 3 {
+        let lower = token.lowercased()
+        if !seen.insert(lower).inserted { continue }
+        docFreq[lower, default: 0] += 1
+        if display[lower] == nil { display[lower] = token }
+      }
+    }
+
+    // Tokens in this many distinct transcripts or more are ambient/function words → excluded.
+    // Ratio-based so it adapts to corpus size; floored just above the min so a tiny corpus still yields
+    // candidates rather than excluding everything.
+    let ambientCutoff = max(AppConstants.audioCandidateMinFrequency + 1,
+                            Int((Double(totalDocs) * AppConstants.audioCandidateAmbientDocRatio).rounded(.up)))
+
+    return docFreq
+      .filter { _, freq in freq >= AppConstants.audioCandidateMinFrequency && freq < ambientCutoff }
+      .sorted { a, b in
+        // Distinctive-looking terms (proper-noun casing, CamelCase, acronyms, digits) first, then by
+        // recurrence, then alphabetical for stability. The shape cue is language-agnostic.
+        let sa = Self.hasDistinctiveShape(display[a.key] ?? a.key)
+        let sb = Self.hasDistinctiveShape(display[b.key] ?? b.key)
+        if sa != sb { return sa }
+        if a.value != b.value { return a.value > b.value }
+        return a.key < b.key
+      }
+      .prefix(AppConstants.audioCandidateMaxTerms)
+      .compactMap { display[$0.key] }
+  }
+
+  /// Language-agnostic structural cue that a token is a name/term rather than a plain word: contains an
+  /// uppercase letter (proper-noun initial or internal CamelCase / acronym) or a digit. Used only to
+  /// RANK candidates, never to exclude them — scripts without letter case just fall back to frequency.
+  private static func hasDistinctiveShape(_ token: String) -> Bool {
+    token.contains { $0.isUppercase || $0.isNumber }
   }
 
   // MARK: - Log Loading & Sampling
@@ -372,6 +459,8 @@ class ContextDerivation {
     return """
 
     AUDIO EVIDENCE (VERIFIER ONLY): One or more dictation audio clips have been attached to this request as separate `inline_data` parts after the text body. They originate from past dictations whose original transcription model is strictly weaker than (or in a different model family from) you. Treat audio strictly as a verifier on top of text-stage candidates: confirm a glossary term or correction only when at least one attached clip clearly contains the relevant signal; reject a candidate when the audio clearly does not contain it. Do NOT introduce new candidates, terms, or rules that exist only in the audio and not in the primary text interactions. Do NOT transcribe the audio. Do NOT mention the audio in your output — only in the rationale block if it changed a decision.
+
+    MIS-TRANSCRIPTION CHECK: A text-stage candidate may itself be a recognition error — the transcript shows one word but the audio clearly and repeatedly says a different known term or name (for example a product, tool, or brand name). When the attached audio unambiguously contains the intended word across the recurring occurrences, propose the corrected term: for the Whisper Glossary, add the correctly-spelled term; for the dictation prompt, add a "heard → intended" correction. Treat this as correcting a candidate already present in the usage data — not as inventing a new one — and still require the recurring pattern (at least 2 distinct interactions) before suggesting it.
     """
   }
 
@@ -664,9 +753,10 @@ class ContextDerivation {
     }
     if !audioAttachments.isEmpty {
       let inventory = audioAttachments.enumerated().map { index, att in
-        "  \(index + 1). ref=\(att.ref) originalTranscriptionModel=\(att.transcriptionModel)"
+        let termNote = att.candidateTerm.map { " — selected to verify candidate term: \"\($0)\"" } ?? " — recent dictation (general check)"
+        return "  \(index + 1). ref=\(att.ref) originalTranscriptionModel=\(att.transcriptionModel)\(termNote)"
       }.joined(separator: "\n")
-      userMessageParts.append("## Audio evidence (verifier only)\n\nThe following dictation audio clips are attached as `inline_data` parts after this text. They were originally transcribed by a strictly weaker or different-family model. Use them only to verify text-stage candidates; do not add new candidates from audio.\n\n\(inventory)")
+      userMessageParts.append("## Audio evidence (verifier only)\n\nThe following dictation audio clips are attached as `inline_data` parts after this text. They were originally transcribed by a strictly weaker or different-family model. Each clip was chosen because its transcript contains a recurring candidate term from the primary text (noted per clip). Listen to confirm the term — or, if the audio clearly says a different known word/name than the transcript, flag the mis-transcription. Use audio only to verify or correct text-stage candidates; do not add new candidates that appear only in audio.\n\n\(inventory)")
     }
 
     return userMessageParts.joined(separator: "\n\n---\n\n")
