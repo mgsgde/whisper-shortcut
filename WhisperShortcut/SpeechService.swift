@@ -446,7 +446,9 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE-GEMINI: Clipboard context: \(clipboardContext != nil ? "present" : "none")")
 
     var userParts: [GeminiChatRequest.GeminiChatPart] = []
-    userParts.append(contentsOf: await screenshotPromptParts())
+    let screenshotParts = await screenshotPromptParts()
+    let hadScreenshot = !screenshotParts.isEmpty
+    userParts.append(contentsOf: screenshotParts)
 
     if let context = clipboardContext {
       DebugLogger.log("PROMPT-MODE-GEMINI: Adding clipboard context to request (length: \(context.count) chars)")
@@ -502,7 +504,7 @@ class SpeechService {
       userInstruction: userInstruction,
       modelResponse: normalizedText
     )
-    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText, model: model.rawValue)
+    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText, model: model.rawValue, hadScreenshot: hadScreenshot)
 
     DebugLogger.logSuccess("PROMPT-MODE-GEMINI: Completed successfully")
     return normalizedText
@@ -686,7 +688,7 @@ class SpeechService {
       userInstruction: userInstruction,
       modelResponse: normalizedText
     )
-    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText, model: model.rawValue)
+    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText, model: model.rawValue, hadScreenshot: screenshotData != nil)
 
     DebugLogger.logSuccess("PROMPT-MODE-OPENAI: Completed successfully (\(normalizedText.count) chars)")
     return normalizedText
@@ -764,7 +766,9 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE-TEXT: Using model: \(selectedPromptModel.displayName)")
 
     var userParts: [GeminiChatRequest.GeminiChatPart] = []
-    userParts.append(contentsOf: await screenshotPromptParts())
+    let screenshotParts = await screenshotPromptParts()
+    let hadScreenshot = !screenshotParts.isEmpty
+    userParts.append(contentsOf: screenshotParts)
 
     if let text = selectedText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       let contextText = """
@@ -797,7 +801,7 @@ class SpeechService {
       userInstruction: textCommand,
       modelResponse: normalizedText
     )
-    ContextLogger.shared.logPrompt(mode: mode, selectedText: selectedText, userInstruction: textCommand, modelResponse: normalizedText, model: selectedPromptModel.rawValue)
+    ContextLogger.shared.logPrompt(mode: mode, selectedText: selectedText, userInstruction: textCommand, modelResponse: normalizedText, model: selectedPromptModel.rawValue, hadScreenshot: hadScreenshot)
 
     DebugLogger.logSuccess("PROMPT-MODE-TEXT: Completed successfully")
     return normalizedText

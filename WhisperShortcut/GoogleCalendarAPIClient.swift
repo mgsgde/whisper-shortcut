@@ -183,7 +183,17 @@ actor GoogleCalendarAPIClient {
     guard let url = URL(string: "\(baseURL)/calendars/primary/events/\(encoded)") else {
       throw CalendarAPIError.invalidResponse
     }
-    _ = try await authorizedRequest(url: url, httpMethod: "DELETE")
+    do {
+      _ = try await authorizedRequest(url: url, httpMethod: "DELETE")
+    } catch CalendarAPIError.notFound {
+      // The event is already gone or the id is wrong. Return actionable guidance so the
+      // model lists events to get valid ids instead of blindly retrying the same delete.
+      DebugLogger.logWarning("GOOGLE-CALENDAR: deleteEvent got 404 for id=\(eventId)")
+      return [
+        "error": "Event not found (404). It may already be deleted, or the event_id is wrong. Call google_calendar_list_events to get current event IDs, then retry the delete with a valid id.",
+        "event_id": eventId,
+      ]
+    }
     DebugLogger.logSuccess("GOOGLE-CALENDAR: deleted event id=\(eventId)")
     return ["ok": true, "event_id": eventId, "deleted": true]
   }
@@ -225,6 +235,10 @@ actor GoogleCalendarAPIClient {
     }
 
     if !(200..<300).contains(httpResponse.statusCode) {
+      if httpResponse.statusCode == 404 {
+        DebugLogger.logError("GOOGLE-CALENDAR: API error 404: event/resource not found")
+        throw CalendarAPIError.notFound
+      }
       if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
          let error = json["error"] as? [String: Any],
          let message = error["message"] as? String {
@@ -262,6 +276,7 @@ actor GoogleCalendarAPIClient {
     case apiError(String)
     case invalidDateFormat
     case noFieldsToUpdate
+    case notFound
 
     var errorDescription: String? {
       switch self {
@@ -271,6 +286,7 @@ actor GoogleCalendarAPIClient {
       case .apiError(let msg): return "Calendar API error: \(msg)"
       case .invalidDateFormat: return "Invalid date format. Use ISO 8601 (e.g. 2026-04-22T15:00:00+02:00)."
       case .noFieldsToUpdate: return "No fields to update. Provide at least one of: summary, start, end, location, description."
+      case .notFound: return "Calendar event not found (it may have been deleted, or the event_id is wrong)."
       }
     }
   }

@@ -292,19 +292,25 @@ class GeminiAPIClient {
         DebugLogger.log("\(mode)-RETRY: Cancelled on attempt \(attempt)")
         throw CancellationError()
       } catch let error as URLError {
-        // Log detailed network error information
+        // User-initiated cancellations (pressing the shortcut again, starting a new
+        // request) surface as URLError.cancelled. They are normal control flow, not
+        // failures, so handle them first and log at debug — this keeps the on-disk
+        // errors log free of benign -999 entries that would otherwise mask real errors.
+        if error.code == .cancelled {
+          DebugLogger.log("\(mode)-RETRY: Request cancelled by user")
+          throw CancellationError()
+        }
+        // Log detailed network error information. Redact the API key from the failing
+        // URL so it never reaches the on-disk error log or the unified log.
         DebugLogger.logError("\(mode)-NETWORK-ERROR: URLError code: \(error.code.rawValue), description: \(error.localizedDescription)")
         if let failingURL = error.userInfo["NSErrorFailingURLStringKey"] as? String {
-          DebugLogger.logError("\(mode)-NETWORK-ERROR: Failing URL: \(failingURL)")
+          DebugLogger.logError("\(mode)-NETWORK-ERROR: Failing URL: \(Self.redactingAPIKey(failingURL))")
         }
         if let underlyingError = error.userInfo["NSUnderlyingErrorKey"] as? Error {
           DebugLogger.logError("\(mode)-NETWORK-ERROR: Underlying error: \(underlyingError.localizedDescription)")
         }
-        
-        if error.code == .cancelled {
-          DebugLogger.log("\(mode)-RETRY: Request cancelled by user")
-          throw CancellationError()
-        } else if error.code == .timedOut {
+
+        if error.code == .timedOut {
           DebugLogger.logError("\(mode)-NETWORK-ERROR: Request timed out")
           throw error.localizedDescription.contains("request")
             ? TranscriptionError.requestTimeout
@@ -507,7 +513,12 @@ class GeminiAPIClient {
             for try await b in bytes { errData.append(b) }
             let text = String(data: errData, encoding: .utf8) ?? ""
             DebugLogger.logError("GEMINI-CHAT-STREAM: HTTP \(http.statusCode) body=\(text.prefix(500))")
-            throw TranscriptionError.networkError("HTTP \(http.statusCode): \(text)")
+            // Map the body to a specific TranscriptionError (e.g. an expired/invalid key
+            // becomes .invalidAPIKey/.incorrectAPIKey) so the user sees an actionable
+            // message instead of a raw "HTTP 400: {…}" network error. Fall back to the
+            // generic network error only if mapping fails.
+            let mapped = (try? self.parseErrorResponse(data: errData, statusCode: http.statusCode))
+            throw mapped ?? TranscriptionError.networkError("HTTP \(http.statusCode): \(text)")
           }
 
           var aggregatedSources: [GroundingSource] = []
@@ -930,6 +941,18 @@ class GeminiAPIClient {
     return text
   }
   
+  /// Replaces the value of any `key` query parameter with `REDACTED` so API keys
+  /// never reach the logs. Returns the input unchanged if it isn't a parseable URL.
+  static func redactingAPIKey(_ urlString: String) -> String {
+    guard var comps = URLComponents(string: urlString), let items = comps.queryItems else {
+      return urlString
+    }
+    comps.queryItems = items.map { item in
+      item.name.lowercased() == "key" ? URLQueryItem(name: item.name, value: "REDACTED") : item
+    }
+    return comps.url?.absoluteString ?? urlString
+  }
+
   /// Parses Gemini error responses into TranscriptionError
   func parseErrorResponse(data: Data, statusCode: Int) throws -> TranscriptionError {
     if statusCode == 402 {

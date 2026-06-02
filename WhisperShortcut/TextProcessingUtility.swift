@@ -105,7 +105,13 @@ enum TextProcessingUtility {
     // Debug logging to see what Whisper actually returned
     DebugLogger.log("VALIDATION: Received text from \(mode) (length: \(trimmedText.count)): '\(trimmedText)'")
     
-    if trimmedText.isEmpty || trimmedText.count < AppConstants.minimumTextLength {
+    // An empty result means the model heard nothing intelligible (silence, accidental
+    // trigger). Surface that as "no speech detected" rather than the misleading "text too
+    // short" — with minimumTextLength == 1, empty is in practice the only trigger anyway.
+    if trimmedText.isEmpty {
+      throw TranscriptionError.noSpeechDetected
+    }
+    if trimmedText.count < AppConstants.minimumTextLength {
       throw TranscriptionError.textTooShort
     }
     

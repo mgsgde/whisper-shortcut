@@ -56,8 +56,14 @@ enum ScreenshotSaveLocation {
       }
       return url
     } catch {
+      // A bookmark that can no longer be resolved (folder deleted/moved, or the bookmark
+      // was invalidated by an app update or signing change) will keep failing on every
+      // save. Clear it so `hasFolder` reflects reality and Settings/onboarding can prompt
+      // the user to re-select a folder, instead of silently dropping every screenshot.
       DebugLogger.logError(
-        "SCREENSHOT: Failed to resolve save folder bookmark: \(error.localizedDescription)")
+        "SCREENSHOT: Save folder bookmark could not be resolved (\(error.localizedDescription)). Clearing it — the user must re-select the folder in Settings.")
+      UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.screenshotSaveBookmark)
+      UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.screenshotSaveFolderDisplayPath)
       return nil
     }
   }
