@@ -1417,7 +1417,7 @@ class SpeechService {
     let chunkService = ChunkTranscriptionService(geminiClient: geminiClient)
     chunkService.progressDelegate = chunkProgressDelegate
 
-    let prompt = appendGlossaryHint(to: promptOverride ?? buildDictationPrompt())
+    let prompt = geminiTranscriptionInstruction(promptOverride: promptOverride)
 
     return try await chunkService.transcribe(
       fileURL: audioURL,
@@ -1449,19 +1449,16 @@ class SpeechService {
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = geminiClient.getMimeType(for: fileExtension)
 
-    // Get dictation system prompt
-    let promptToUse = promptOverride ?? buildDictationPrompt()
-    
-    DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
-    
+    // Build the transcription instruction (dictation prompt or default, plus the Glossary).
+    let instruction = geminiTranscriptionInstruction(promptOverride: promptOverride)
+
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(instruction.prefix(100))...")
+
     // Create request with dynamic endpoint based on selected model
     let endpoint = model.apiEndpoint
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(model.displayName) (\(model.rawValue))")
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
 
-    // Build request using Codable struct. The vocabulary Glossary (when set) is appended so
-    // Gemini gets the same expected-term conditioning that offline Whisper receives natively.
-    let instruction = appendGlossaryHint(to: promptToUse.isEmpty ? Self.defaultTranscriptionInstruction : promptToUse)
     let transcriptionRequest = GeminiTranscriptionRequest(
       contents: [
         GeminiTranscriptionRequest.GeminiTranscriptionContent(
@@ -1527,19 +1524,16 @@ class SpeechService {
   private func transcribeWithGeminiFileURI(fileURI: String, mimeType: String, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
     let fileURIStartTime = CFAbsoluteTimeGetCurrent()
 
-    // Get dictation system prompt
-    let promptToUse = promptOverride ?? buildDictationPrompt()
-    
-    DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(promptToUse.prefix(100))...")
-    
+    // Build the transcription instruction (dictation prompt or default, plus the Glossary).
+    let instruction = geminiTranscriptionInstruction(promptOverride: promptOverride)
+
+    DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(instruction.prefix(100))...")
+
     // Create request with dynamic endpoint based on selected model
     let endpoint = model.apiEndpoint
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(model.displayName) (\(model.rawValue))")
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
 
-    // Build request using Codable struct. The vocabulary Glossary (when set) is appended so
-    // Gemini gets the same expected-term conditioning that offline Whisper receives natively.
-    let instruction = appendGlossaryHint(to: promptToUse.isEmpty ? Self.defaultTranscriptionInstruction : promptToUse)
     let transcriptionRequest = GeminiTranscriptionRequest(
       contents: [
         GeminiTranscriptionRequest.GeminiTranscriptionContent(
