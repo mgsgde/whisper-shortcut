@@ -10,10 +10,12 @@ struct ChatSidebar: View {
   @State private var renamingSessionId: UUID? = nil
   @State private var renameDraft: String = ""
   @State private var collapsedGroups: Set<DateGroup> = []
-  @State private var collapsedMeetingGroups: Set<DateGroup> = []
-  @State private var meetingsCollapsed = false
   @State private var archivedCollapsed = true
   @FocusState private var renameFieldFocused: Bool
+
+  /// When true, the browse list and search results are scoped to meetings only
+  /// (toggled by the mic button in the search field).
+  @State private var meetingFilterActive = false
 
   @State private var searchQuery: String = ""
   @State private var searchResults: [ChatViewModel.ChatSearchResult] = []
@@ -21,6 +23,15 @@ struct ChatSidebar: View {
   @State private var searchTask: Task<Void, Never>? = nil
 
   static let sidebarWidth: CGFloat = 220
+
+  init(viewModel: ChatViewModel, sidebarVisible: Binding<Bool>) {
+    self._viewModel = ObservedObject(wrappedValue: viewModel)
+    self._sidebarVisible = sidebarVisible
+    // Default state on first open: keep only the most recent date section
+    // expanded; every other date group starts collapsed (Meetings & Archived
+    // default to collapsed via their own @State above).
+    self._collapsedGroups = State(initialValue: Self.defaultCollapsedGroups(for: viewModel.allSessionsList))
+  }
 
   private var isSearching: Bool {
     !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -40,7 +51,7 @@ struct ChatSidebar: View {
     }
   }
 
-  private func dateGroup(for date: Date) -> DateGroup {
+  private static func dateGroup(for date: Date) -> DateGroup {
     let cal = Calendar.current
     if cal.isDateInToday(date) { return .today }
     if cal.isDateInYesterday(date) { return .yesterday }
@@ -50,23 +61,37 @@ struct ChatSidebar: View {
     return .older
   }
 
-  private func groupedSessions(_ sessions: [ChatSession]) -> [(DateGroup, [ChatSession])] {
-    grouped(sessions) { $0.lastUpdated }
+  /// The set of date groups to collapse by default on first open: every group
+  /// except the most recent one that actually contains chats. Mirrors how the
+  /// body filters/orders sessions so the expanded group matches the first one
+  /// rendered. Collapses everything if there are no ungrouped chats.
+  private static func defaultCollapsedGroups(for sessions: [ChatSession]) -> Set<DateGroup> {
+    let present = Set(
+      sessions
+        .filter { !$0.archived && !$0.pinned && !$0.isMeeting }
+        .map { dateGroup(for: $0.lastUpdated) }
+    )
+    guard let mostRecent = DateGroup.allCases.first(where: { present.contains($0) }) else {
+      return Set(DateGroup.allCases)
+    }
+    return Set(DateGroup.allCases).subtracting([mostRecent])
   }
 
-  /// Groups meetings by when the meeting actually took place (parsed from `meetingStem`),
-  /// falling back to `lastUpdated` for sessions whose stem can't be parsed.
-  private func groupedMeetings(_ sessions: [ChatSession]) -> [(DateGroup, [ChatSession])] {
-    grouped(sessions) { session in
-      session.meetingStem.flatMap(MeetingListService.date(fromStem:)) ?? session.lastUpdated
+  /// Date a session sorts and groups by. Meetings now live inline among the chats, so
+  /// they bucket by when the meeting actually took place (parsed from `meetingStem`),
+  /// falling back to `lastUpdated`; everything else uses `lastUpdated`.
+  private func sortDate(_ session: ChatSession) -> Date {
+    if session.isMeeting {
+      return session.meetingStem.flatMap(MeetingListService.date(fromStem:)) ?? session.lastUpdated
     }
+    return session.lastUpdated
   }
 
   private func grouped(_ sessions: [ChatSession], by date: (ChatSession) -> Date) -> [(DateGroup, [ChatSession])] {
     let sorted = sessions.sorted { date($0) > date($1) }
     var groups: [DateGroup: [ChatSession]] = [:]
     for session in sorted {
-      let group = dateGroup(for: date(session))
+      let group = Self.dateGroup(for: date(session))
       groups[group, default: []].append(session)
     }
     return DateGroup.allCases.compactMap { group in
@@ -89,19 +114,30 @@ struct ChatSidebar: View {
     .frame(width: Self.sidebarWidth)
     .background(ChatTheme.controlBackground)
     .onChange(of: searchQuery) { _ in scheduleSearch() }
+    .onChange(of: meetingFilterActive) { _ in if isSearching { scheduleSearch() } }
   }
 
   private var sessionsScrollView: some View {
     ScrollView(.vertical, showsIndicators: true) {
         VStack(spacing: 0) {
           let all = viewModel.allSessionsList
-          let active = all.filter { !$0.archived }
-          let archived = all.filter { $0.archived }
+          // Meeting filter (mic toggle) scopes the whole list, including the archived section.
+          let pool = meetingFilterActive ? all.filter { $0.isMeeting } : all
+          let active = pool.filter { !$0.archived }
+          let archived = pool.filter { $0.archived }
           let pinned = active.filter { $0.pinned }.sorted { $0.lastUpdated > $1.lastUpdated }
           let rest = active.filter { !$0.pinned }
-          let meetings = rest.filter { $0.isMeeting }.sorted { $0.lastUpdated > $1.lastUpdated }
-          let unpinned = rest.filter { !$0.isMeeting }
-          let grouped = groupedSessions(unpinned)
+          // Meetings are no longer a separate section — they sit inline in the date
+          // groups (still recognizable by their mic icon), bucketed by sortDate.
+          let grouped = grouped(rest, by: sortDate)
+
+          if meetingFilterActive && active.isEmpty && archived.isEmpty {
+            Text("No meetings yet")
+              .font(.system(size: 12))
+              .foregroundColor(ChatTheme.secondaryText)
+              .frame(maxWidth: .infinity, alignment: .center)
+              .padding(.top, 24)
+          }
 
           if !pinned.isEmpty {
             sectionHeader("Pinned")
@@ -119,31 +155,11 @@ struct ChatSidebar: View {
             }
           }
 
-          if !meetings.isEmpty {
-            collapsibleHeader(
-              "Meetings",
-              isCollapsed: meetingsCollapsed,
-              showDivider: !pinned.isEmpty || !grouped.isEmpty
-            ) {
-              withAnimation(.easeInOut(duration: 0.15)) { meetingsCollapsed.toggle() }
-            }
-            if !meetingsCollapsed {
-              ForEach(Array(groupedMeetings(meetings).enumerated()), id: \.offset) { _, pair in
-                meetingDateSubHeader(pair.0)
-                if !collapsedMeetingGroups.contains(pair.0) {
-                  ForEach(pair.1, id: \.id) { session in
-                    sidebarRow(session: session)
-                  }
-                }
-              }
-            }
-          }
-
           if !archived.isEmpty {
             collapsibleHeader(
               "Archived",
               isCollapsed: archivedCollapsed,
-              showDivider: !pinned.isEmpty || !grouped.isEmpty || !meetings.isEmpty
+              showDivider: !pinned.isEmpty || !grouped.isEmpty
             ) {
               withAnimation(.easeInOut(duration: 0.15)) { archivedCollapsed.toggle() }
             }
@@ -166,7 +182,7 @@ struct ChatSidebar: View {
       Image(systemName: "magnifyingglass")
         .font(.system(size: 11))
         .foregroundColor(ChatTheme.secondaryText.opacity(0.7))
-      TextField("Search chats & meetings", text: $searchQuery)
+      TextField(meetingFilterActive ? "Search meetings" : "Search chats & meetings", text: $searchQuery)
         .textFieldStyle(.plain)
         .font(.system(size: 12))
         .foregroundColor(ChatTheme.primaryText)
@@ -179,6 +195,13 @@ struct ChatSidebar: View {
         .buttonStyle(.plain)
         .help("Clear search")
       }
+      Button(action: { meetingFilterActive.toggle() }) {
+        Image(systemName: "mic.fill")
+          .font(.system(size: 11))
+          .foregroundColor(meetingFilterActive ? Color.accentColor : ChatTheme.secondaryText.opacity(0.6))
+      }
+      .buttonStyle(.plain)
+      .help(meetingFilterActive ? "Showing meetings only — click to show all" : "Show meetings only")
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 6)
@@ -254,7 +277,8 @@ struct ChatSidebar: View {
     searchTask = Task { @MainActor in
       try? await Task.sleep(nanoseconds: 200_000_000)
       guard !Task.isCancelled else { return }
-      searchResults = viewModel.search(query)
+      let results = viewModel.search(query)
+      searchResults = meetingFilterActive ? results.filter { $0.isMeeting } : results
     }
   }
 
@@ -313,29 +337,6 @@ struct ChatSidebar: View {
         .padding(.bottom, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-  }
-
-  /// Lighter, indented, collapsible date sub-header grouping meetings under the "Meetings" header.
-  /// Uses its own `collapsedMeetingGroups` state so it never shares collapse state with the chat date groups.
-  private func meetingDateSubHeader(_ group: DateGroup) -> some View {
-    let isCollapsed = collapsedMeetingGroups.contains(group)
-    return HStack(spacing: 4) {
-      Text(group.label.uppercased())
-        .font(.system(size: 8.5, weight: .semibold, design: .default))
-        .tracking(1.0)
-        .foregroundColor(ChatTheme.secondaryText.opacity(0.6))
-      Image(systemName: "chevron.right")
-        .font(.system(size: 6, weight: .bold))
-        .foregroundColor(ChatTheme.secondaryText.opacity(0.4))
-        .rotationEffect(.degrees(isCollapsed ? 0 : 90))
-      Spacer()
-    }
-    .padding(.leading, 18)
-    .padding(.trailing, 12)
-    .padding(.top, 8)
-    .padding(.bottom, 4)
-    .contentShape(Rectangle())
-    .onTapGesture { toggleCollapse(group, in: &collapsedMeetingGroups) }
   }
 
   private func collapsibleSectionHeader(_ group: DateGroup, showDivider: Bool = false) -> some View {
@@ -413,6 +414,20 @@ struct ChatSidebar: View {
     let isRenaming = renamingSessionId == session.id
     let isMeetingLive = session.isMeeting && viewModel.isMeetingActive && viewModel.meetingSessionId == session.id
 
+    // The hover button moves the chat one step toward removal, so it's never an
+    // irreversible action by accident: pinned → unpin, active → archive,
+    // archived → delete permanently. Each step gets its own icon so the action is
+    // obvious from the glyph.
+    let hoverAction: (icon: String, help: String, perform: () -> Void) = {
+      if isArchived {
+        return ("xmark", "Delete permanently", { viewModel.deleteSessionPermanently(id: session.id) })
+      } else if isPinned {
+        return ("pin.slash", "Unpin", { viewModel.unpinSession(id: session.id) })
+      } else {
+        return ("archivebox", "Archive", { viewModel.archiveSession(id: session.id) })
+      }
+    }()
+
     return HStack(spacing: 0) {
       if isActive {
         Rectangle()
@@ -453,12 +468,13 @@ struct ChatSidebar: View {
       Spacer(minLength: 4)
 
       if isHovered && !isRenaming {
-        Button(action: { viewModel.deleteSessionPermanently(id: session.id) }) {
-          Image(systemName: "xmark")
-            .font(.system(size: 9, weight: .medium))
+        Button(action: hoverAction.perform) {
+          Image(systemName: hoverAction.icon)
+            .font(.system(size: 10, weight: .medium))
             .foregroundColor(ChatTheme.secondaryText.opacity(0.6))
         }
         .buttonStyle(.plain)
+        .help(hoverAction.help)
         .padding(.trailing, 8)
       }
     }
