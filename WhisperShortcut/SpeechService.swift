@@ -99,13 +99,18 @@ class SpeechService {
 
   /// Appends the user's vocabulary Glossary (when non-empty) to a transcription instruction.
   /// Instructable cloud models (Gemini, OpenAI, xAI) lack offline Whisper's native conditioning
-  /// channel, so the expected-term list is surfaced inline in the prompt instead. Mirrors the
-  /// dictation+glossary combination used on the OpenAI path. Returns `base` unchanged when the
-  /// Glossary is empty.
+  /// channel, so the expected-term list is surfaced inline in the prompt — wrapped in an explicit
+  /// instruction so the model actually biases toward these spellings. A bare term list is too weak
+  /// a signal for Flash-tier models, especially for near-homophones (e.g. "Claude" vs "Cloud").
+  /// Returns `base` unchanged when the Glossary is empty.
   private func appendGlossaryHint(to base: String) -> String {
     let glossary = SystemPromptsStore.shared.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
     guard !glossary.isEmpty else { return base }
-    return base.isEmpty ? glossary : base + "\n\n" + glossary
+    let block = "Known vocabulary — these names and terms may appear in the audio. "
+      + "When you hear one of them, transcribe it with exactly this spelling and capitalization; "
+      + "do not substitute a more common, similar-sounding word.\n" + glossary
+    DebugLogger.log("GLOSSARY: conditioning transcription with \(glossary.count) chars: \(glossary.prefix(200))")
+    return base.isEmpty ? block : base + "\n\n" + block
   }
 
   /// The full transcription instruction shared by every Gemini sub-path (inline, Files API, and
