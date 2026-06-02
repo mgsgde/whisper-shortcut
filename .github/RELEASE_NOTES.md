@@ -1,4 +1,4 @@
-# WhisperShortcut 7.46
+# WhisperShortcut 7.47
 
 ## Installation
 
@@ -6,20 +6,13 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ## What's New
 
-### Smarter dictation that learns from your own voice
+### Your Glossary now works with every transcription model
 
-- **Smart Improvement now verifies words against your dictation audio.** When a name or technical term keeps getting mis-transcribed (a distinctive word heard as a more common one), the app re-listens to your own recordings and corrects it — adding the right term to your transcription prompt or glossary automatically.
-- Audio is kept for up to 30 days and matched against the recurring terms in your dictations, so corrections work across your whole history, not just your most recent recordings.
+- **The vocabulary Glossary now improves cloud transcription too** — not just offline Whisper. The hard-to-spell names, jargon, and product names you list are sent to Gemini, OpenAI Transcribe, and xAI Grok as well, so they get spelled right far more often.
+- Clearer Speech-to-Text settings: the section is now simply called **Glossary**, and the labels explain the split — the *system prompt* controls *how* to transcribe (filler words, punctuation, formatting), while the *Glossary* holds the *terms* to get right.
 
-### Chat improvements
+### More reliable titles and suggestions
 
-- **Attached images stay in context** across the entire conversation — refer back to a screenshot you sent earlier and the assistant still sees it.
-- **Tidier sidebar** with a cleaner hover control and inline meetings (filtered by microphone).
-- **Faster, cheaper repeat replies** through provider prompt caching.
+- **Chat titles and "Improve from usage" suggestions are more robust.** They now use each provider's structured (JSON) output instead of parsing free-form text, so there are fewer malformed or empty results — on Gemini, OpenAI, and xAI alike.
 
-### Reliability & broader language support
-
-- Reliability fixes from real usage analysis: API keys are reliably redacted from logs, error messages are clearer, and recovery from failures is more robust.
-- The default prompts no longer assume a specific language or profession, so the app works equally well in any language and for any kind of user.
-
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.45...v7.46
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.46...v7.47
