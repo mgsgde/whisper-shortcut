@@ -584,7 +584,11 @@ class ChatViewModel: ObservableObject {
             systemInstruction: self.buildSystemInstruction(),
             tools: tools,
             useGrounding: useGrounding,
-            thinkingLevel: session.thinkingLevel)
+            thinkingLevel: session.thinkingLevel,
+            disableBuiltInTools: false,
+            // Stable per-session key → provider prompt-cache hits across turns
+            // (OpenAI prompt_cache_key, Grok x-grok-conv-id). Gemini ignores it.
+            cacheKey: sessionId.uuidString)
           for try await event in stream {
             try Task.checkCancellation()
             switch event {
@@ -1507,6 +1511,7 @@ class ChatViewModel: ObservableObject {
     let toSend = messages.count > maxMessages
       ? Array(messages.suffix(maxMessages))
       : messages
+    logImagePayloadMeasurement(toSend)
     // Re-send each user message's attached images on every turn, not just the
     // final one. Otherwise an image is visible to the model only on the turn it
     // was attached and is stripped to text afterwards — so a follow-up like
@@ -1524,6 +1529,39 @@ class ChatViewModel: ObservableObject {
       }
       return ["role": msg.role.rawValue, "parts": [["text": msg.content]]]
     }
+  }
+
+  /// Measures the image payload re-sent on this turn (images are sent in full on *every*
+  /// turn — see `buildContents`). Logs the total plus the portion carried by user turns
+  /// older than the last `AppConstants.chatRecentImageTurns` turns: that `savablePerTurn`
+  /// figure is what an "images only for the recent N turns" policy would drop from each
+  /// request, and is the number to watch before deciding whether the cap is worth it.
+  /// Pure measurement — it changes nothing about what gets sent.
+  private func logImagePayloadMeasurement(_ toSend: [ChatMessage]) {
+    let userTurnIdx = toSend.indices.filter { toSend[$0].role == .user }
+    guard !userTurnIdx.isEmpty else { return }
+    let window = AppConstants.chatRecentImageTurns
+    let recentTurns = Set(userTurnIdx.suffix(window))
+
+    var imgTurns = 0, images = 0, bytes = 0
+    var staleTurns = 0, staleImages = 0, staleBytes = 0
+    for i in userTurnIdx {
+      let parts = toSend[i].attachedImageParts
+      guard !parts.isEmpty else { continue }
+      let turnBytes = parts.reduce(0) { $0 + $1.data.count }
+      imgTurns += 1; images += parts.count; bytes += turnBytes
+      if !recentTurns.contains(i) {
+        staleTurns += 1; staleImages += parts.count; staleBytes += turnBytes
+      }
+    }
+    guard images > 0 else { return }
+
+    // Decoded bytes; the base64 wire payload is ~4/3 of this.
+    func mb(_ b: Int) -> String { String(format: "%.1fMB", Double(b) / 1_048_576) }
+    DebugLogger.logNetwork(
+      "CHAT-IMG-MEASURE: msgsSent=\(toSend.count) imgTurns=\(imgTurns) images=\(images) "
+        + "imgBytes=\(mb(bytes)) wire≈\(mb(bytes * 4 / 3)) | window=\(window)turns "
+        + "staleTurns=\(staleTurns) staleImages=\(staleImages) savablePerTurn=\(mb(staleBytes))")
   }
 
   private func friendlyError(_ error: Error) -> String {

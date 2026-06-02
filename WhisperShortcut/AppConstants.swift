@@ -262,6 +262,13 @@ Transcript:
   /// this only protects against pathologically long sessions.
   static let chatFullHistoryMaxMessages: Int = 400
 
+  /// Candidate window (in user turns) for a future "images only for the recent N turns"
+  /// policy. Currently used ONLY by the image-payload measurement logged in
+  /// `ChatView.buildContents` (the `CHAT-IMG-MEASURE` line) — behavior is unchanged, every
+  /// user turn still re-sends its images in full. Read `savablePerTurn` from that log to
+  /// decide whether/where to cap before enabling enforcement.
+  static let chatRecentImageTurns: Int = 2
+
   // MARK: - Custom Transcription API
   /// OpenAI's audio transcription endpoint, used as the default when Custom Transcription API
   /// is selected but the endpoint URL is left empty.

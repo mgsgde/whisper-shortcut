@@ -16,7 +16,8 @@ final class GeminiChatProvider: LLMChatProvider {
     tools: [LLMToolDeclaration],
     useGrounding: Bool,
     thinkingLevel: ThinkingLevel,
-    disableBuiltInTools: Bool
+    disableBuiltInTools: Bool,
+    cacheKey: String?  // Gemini caches implicitly (no per-request key); ignored.
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {

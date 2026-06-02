@@ -885,7 +885,8 @@ class SpeechService {
       tools: [],
       useGrounding: false,
       thinkingLevel: .default,
-      disableBuiltInTools: true
+      disableBuiltInTools: true,
+      cacheKey: nil  // one-shot rewrite transform, no conversation continuity
     )
     var combined = ""
     for try await event in stream {

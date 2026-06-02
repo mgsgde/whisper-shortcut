@@ -105,6 +105,10 @@ protocol LLMChatProvider {
   ///     `code_execution`). Pure text transforms (Read Aloud rewrite, Smart Improvement) set
   ///     this so the model returns only prose, never code/tool output. Ignored by providers
   ///     that don't auto-enable built-in tools (OpenAI, Grok).
+  ///   - cacheKey: Stable per-conversation identifier used to improve provider prompt-cache
+  ///     hit rates — OpenAI maps it to the `prompt_cache_key` body field, Grok to the
+  ///     `x-grok-conv-id` HTTP header. Pass `nil` for one-shot transforms with no conversation
+  ///     continuity. Gemini caches implicitly and ignores it.
   func sendChatStream(
     model: String,
     contents: [[String: Any]],
@@ -112,14 +116,16 @@ protocol LLMChatProvider {
     tools: [LLMToolDeclaration],
     useGrounding: Bool,
     thinkingLevel: ThinkingLevel,
-    disableBuiltInTools: Bool
+    disableBuiltInTools: Bool,
+    cacheKey: String?
   ) -> AsyncThrowingStream<ChatStreamEvent, Error>
 }
 
 extension LLMChatProvider {
-  /// Convenience overload preserving the previous call shape (no `disableBuiltInTools`).
-  /// Built-in tools stay enabled — the chat default — and `thinkingLevel` defaults to the
-  /// model's built-in config. Distinct arity from the requirement, so there is no ambiguity.
+  /// Convenience overload preserving the previous call shape (no `disableBuiltInTools`,
+  /// no `cacheKey`). Built-in tools stay enabled — the chat default — `thinkingLevel`
+  /// defaults to the model's built-in config, and no prompt-cache key is sent. Distinct
+  /// arity from the requirement, so there is no ambiguity.
   func sendChatStream(
     model: String,
     contents: [[String: Any]],
@@ -135,7 +141,8 @@ extension LLMChatProvider {
       tools: tools,
       useGrounding: useGrounding,
       thinkingLevel: thinkingLevel,
-      disableBuiltInTools: false)
+      disableBuiltInTools: false,
+      cacheKey: nil)
   }
 }
 

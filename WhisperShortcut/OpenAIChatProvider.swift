@@ -21,12 +21,13 @@ final class OpenAIChatProvider: LLMChatProvider {
     tools: [LLMToolDeclaration],
     useGrounding: Bool,
     thinkingLevel: ThinkingLevel,
-    disableBuiltInTools: Bool  // OpenAI doesn't auto-enable built-in tools here; ignored.
+    disableBuiltInTools: Bool,  // OpenAI doesn't auto-enable built-in tools here; ignored.
+    cacheKey: String?
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     if useGrounding {
-      return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel)
+      return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel, cacheKey: cacheKey)
     }
-    return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel)
+    return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel, cacheKey: cacheKey)
   }
 
   // MARK: - Responses API (with web_search)
@@ -39,7 +40,8 @@ final class OpenAIChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    thinkingLevel: ThinkingLevel
+    thinkingLevel: ThinkingLevel,
+    cacheKey: String?
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
@@ -77,6 +79,11 @@ final class OpenAIChatProvider: LLMChatProvider {
           ]
           if let instructions = instructions {
             body["instructions"] = instructions
+          }
+          // Stable per-conversation routing hint → higher prompt-cache hit rate. Caching is
+          // automatic regardless; this just keeps same-prefix turns landing on the same backend.
+          if let cacheKey = cacheKey {
+            body["prompt_cache_key"] = cacheKey
           }
 
           var responsesTools: [[String: Any]] = [
@@ -203,7 +210,8 @@ final class OpenAIChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    thinkingLevel: ThinkingLevel
+    thinkingLevel: ThinkingLevel,
+    cacheKey: String?
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
@@ -243,6 +251,12 @@ final class OpenAIChatProvider: LLMChatProvider {
             "messages": messages,
             "stream": true,
           ]
+
+          // Stable per-conversation routing hint → higher prompt-cache hit rate. Caching is
+          // automatic regardless; this just keeps same-prefix turns landing on the same backend.
+          if let cacheKey = cacheKey {
+            body["prompt_cache_key"] = cacheKey
+          }
 
           // gpt-4o-audio-preview requires both text and audio modalities to be declared
           // when audio content is present in the input. We always declare ["text"] for chat

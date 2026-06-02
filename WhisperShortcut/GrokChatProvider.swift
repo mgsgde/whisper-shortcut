@@ -17,15 +17,16 @@ final class GrokChatProvider: LLMChatProvider {
     tools: [LLMToolDeclaration],
     useGrounding: Bool,
     thinkingLevel: ThinkingLevel,
-    disableBuiltInTools: Bool  // Grok doesn't auto-enable built-in tools here; ignored.
+    disableBuiltInTools: Bool,  // Grok doesn't auto-enable built-in tools here; ignored.
+    cacheKey: String?
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     if let attachmentError = Self.validateAttachments(in: contents) {
       return AsyncThrowingStream { $0.finish(throwing: attachmentError) }
     }
     if useGrounding {
-      return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel)
+      return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel, cacheKey: cacheKey)
     } else {
-      return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel)
+      return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel, cacheKey: cacheKey)
     }
   }
 
@@ -59,7 +60,8 @@ final class GrokChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    thinkingLevel: ThinkingLevel
+    thinkingLevel: ThinkingLevel,
+    cacheKey: String?
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
@@ -79,6 +81,11 @@ final class GrokChatProvider: LLMChatProvider {
           request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
           request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
           request.timeoutInterval = 300
+          // Per-conversation hint xAI uses to maximize prompt-cache hit rate (docs:
+          // "Use x-grok-conv-id to maximize cache hit rates"). Caching itself is automatic.
+          if let cacheKey = cacheKey {
+            request.setValue(cacheKey, forHTTPHeaderField: "x-grok-conv-id")
+          }
 
           // Build Responses API input from Gemini-format contents (shared with OpenAI).
           let input = OpenAIResponsesAPIConverter.input(from: contents)
@@ -241,7 +248,8 @@ final class GrokChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    thinkingLevel: ThinkingLevel
+    thinkingLevel: ThinkingLevel,
+    cacheKey: String?
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
@@ -261,6 +269,11 @@ final class GrokChatProvider: LLMChatProvider {
           request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
           request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
           request.timeoutInterval = 300
+          // Per-conversation hint xAI uses to maximize prompt-cache hit rate (docs:
+          // "Use x-grok-conv-id to maximize cache hit rates"). Caching itself is automatic.
+          if let cacheKey = cacheKey {
+            request.setValue(cacheKey, forHTTPHeaderField: "x-grok-conv-id")
+          }
 
           // Build OpenAI-format messages from Gemini-format contents.
           // xAI's API is OpenAI-Chat-Completions-compatible, so this is the same

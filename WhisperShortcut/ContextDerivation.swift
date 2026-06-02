@@ -721,7 +721,8 @@ class ContextDerivation {
       tools: [],
       useGrounding: false,
       thinkingLevel: .default,
-      disableBuiltInTools: true
+      disableBuiltInTools: true,
+      cacheKey: nil  // one-shot analysis transform, no conversation continuity
     )
 
     var textContent = ""
