@@ -657,6 +657,41 @@ class GeminiAPIClient {
     return extractText(from: response)
   }
 
+  /// Non-streaming structured generation: constrains the model to `schema` via
+  /// `generationConfig.responseSchema` + `responseMimeType:"application/json"` and returns the
+  /// parsed top-level JSON object. `schema` is the canonical JSON Schema (Gemini accepts the
+  /// OpenAPI-3.0 subset directly; it must NOT contain `additionalProperties`). Used by
+  /// `GeminiChatProvider.generateStructured` and the chat/meeting title path.
+  func generateStructured(
+    model: String,
+    contents: [[String: Any]],
+    systemInstruction: [String: Any]?,
+    schema: [String: Any],
+    credential: GeminiCredential
+  ) async throws -> [String: Any] {
+    let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
+    var request = try createRequest(endpoint: endpoint, credential: credential)
+    var body: [String: Any] = [
+      "contents": contents,
+      "generationConfig": [
+        "responseMimeType": "application/json",
+        "responseSchema": schema,
+      ] as [String: Any],
+    ]
+    if let systemInstruction = systemInstruction {
+      body["system_instruction"] = systemInstruction
+    }
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    let response: GeminiResponse = try await performRequest(
+      request, responseType: GeminiResponse.self, mode: "GEMINI-STRUCTURED", withRetry: false)
+    let text = extractText(from: response)
+    guard let data = text.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw TranscriptionError.networkError("Gemini structured response was not valid JSON: \(text.prefix(200))")
+    }
+    return obj
+  }
+
   /// Updates a rolling meeting summary by merging new transcript content into the existing summary.
   func updateRollingSummary(
     model: String,

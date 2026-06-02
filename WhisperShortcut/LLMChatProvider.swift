@@ -119,6 +119,26 @@ protocol LLMChatProvider {
     disableBuiltInTools: Bool,
     cacheKey: String?
   ) -> AsyncThrowingStream<ChatStreamEvent, Error>
+
+  /// Generates a single, non-streaming JSON object constrained to `schema` (a JSON Schema dict).
+  /// For internal "machine-read" tasks (chat titles, log analysis) where free-text + regex parsing
+  /// is fragile — the model cannot return anything that violates the schema. Each provider maps it
+  /// to its native structured-output mechanism:
+  ///   - Gemini: `generationConfig.responseMimeType="application/json"` + `responseSchema`
+  ///   - OpenAI / Grok: `response_format={type:"json_schema", json_schema:{name, strict, schema}}`
+  ///
+  /// `schema` is the *canonical* schema (`type`/`properties`/`required`/`enum`/`description`); the
+  /// OpenAI/Grok paths adapt it for strict mode via `StructuredOutputSchema.strictified`. `schemaName`
+  /// labels the schema for the OpenAI/Grok APIs (Gemini ignores it). Returns the parsed top-level
+  /// object; throws on network error or if the model's output is not valid JSON.
+  func generateStructured(
+    model: String,
+    contents: [[String: Any]],
+    systemInstruction: [String: Any]?,
+    schema: [String: Any],
+    schemaName: String,
+    thinkingLevel: ThinkingLevel
+  ) async throws -> [String: Any]
 }
 
 extension LLMChatProvider {
@@ -143,6 +163,114 @@ extension LLMChatProvider {
       thinkingLevel: thinkingLevel,
       disableBuiltInTools: false,
       cacheKey: nil)
+  }
+}
+
+// MARK: - Structured Output Schema Adapter
+
+enum StructuredOutputSchema {
+  /// Adapts a canonical JSON Schema to OpenAI/xAI **strict** `json_schema` rules: every object node
+  /// gets `additionalProperties: false` and a `required` array listing all of its property keys
+  /// (strict mode demands both). Recurses into nested `properties` and array `items`. Gemini uses the
+  /// canonical schema unchanged — it rejects `additionalProperties`, so this adapter is applied only
+  /// on the OpenAI/Grok paths.
+  static func strictified(_ schema: [String: Any]) -> [String: Any] {
+    var node = schema
+    if (node["type"] as? String) == "object", let props = node["properties"] as? [String: Any] {
+      var newProps: [String: Any] = [:]
+      for (key, value) in props {
+        newProps[key] = (value as? [String: Any]).map(strictified) ?? value
+      }
+      node["properties"] = newProps
+      node["required"] = props.keys.sorted()
+      node["additionalProperties"] = false
+    }
+    if (node["type"] as? String) == "array", let items = node["items"] as? [String: Any] {
+      node["items"] = strictified(items)
+    }
+    return node
+  }
+}
+
+// MARK: - OpenAI-Compatible Structured Output (shared by OpenAI + Grok)
+
+/// Non-streaming Chat Completions call constrained to a JSON Schema via strict `json_schema`
+/// `response_format`. Shared by `OpenAIChatProvider` and `GrokChatProvider` — both post to
+/// OpenAI-Chat-Completions-compatible endpoints, so the request/response shape is identical; only
+/// the endpoint, key, and reasoning-effort knob differ.
+enum OpenAICompatibleStructured {
+  static func generate(
+    endpoint: String,
+    apiKey: String,
+    model: String,
+    contents: [[String: Any]],
+    systemInstruction: [String: Any]?,
+    schema: [String: Any],
+    schemaName: String,
+    reasoningEffort: String?,
+    session: URLSession,
+    logTag: String
+  ) async throws -> [String: Any] {
+    guard let url = URL(string: endpoint) else {
+      throw TranscriptionError.networkError("Invalid \(logTag) endpoint URL")
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    request.timeoutInterval = 120
+
+    var messages = OpenAIChatCompletionsConverter.messages(from: contents)
+    if let sys = systemInstruction,
+       let parts = sys["parts"] as? [[String: Any]],
+       let text = parts.first?["text"] as? String, !text.isEmpty {
+      messages.insert(["role": "system", "content": text], at: 0)
+    }
+
+    var body: [String: Any] = [
+      "model": model,
+      "messages": messages,
+      "stream": false,
+      "response_format": [
+        "type": "json_schema",
+        "json_schema": [
+          "name": schemaName,
+          "strict": true,
+          "schema": StructuredOutputSchema.strictified(schema),
+        ] as [String: Any],
+      ] as [String: Any],
+    ]
+    if let reasoningEffort = reasoningEffort {
+      body["reasoning_effort"] = reasoningEffort
+    }
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+    DebugLogger.logNetwork("\(logTag)-STRUCTURED: POST \(endpoint) model=\(model) schema=\(schemaName)")
+    let (data, response) = try await session.data(for: request)
+    guard let http = response as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response from \(logTag) API")
+    }
+    if http.statusCode < 200 || http.statusCode >= 300 {
+      let text = String(data: data, encoding: .utf8) ?? ""
+      DebugLogger.logError("\(logTag)-STRUCTURED: HTTP \(http.statusCode) body=\(text.prefix(500))")
+      if http.statusCode == 401 {
+        throw TranscriptionError.networkError("\(logTag) API key is invalid. Check the key in Settings.")
+      }
+      if http.statusCode == 429 {
+        throw TranscriptionError.rateLimited(retryAfter: nil)
+      }
+      throw TranscriptionError.networkError("\(logTag) API error HTTP \(http.statusCode): \(text.prefix(500))")
+    }
+
+    guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let choices = obj["choices"] as? [[String: Any]],
+          let message = choices.first?["message"] as? [String: Any],
+          let content = message["content"] as? String,
+          let contentData = content.data(using: .utf8),
+          let parsed = try? JSONSerialization.jsonObject(with: contentData) as? [String: Any] else {
+      throw TranscriptionError.networkError("\(logTag) structured response was not valid JSON")
+    }
+    return parsed
   }
 }
 

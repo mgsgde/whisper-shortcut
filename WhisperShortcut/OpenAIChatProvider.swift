@@ -382,6 +382,33 @@ final class OpenAIChatProvider: LLMChatProvider {
     }
   }
 
+  // MARK: - Structured Output
+
+  func generateStructured(
+    model: String,
+    contents: [[String: Any]],
+    systemInstruction: [String: Any]?,
+    schema: [String: Any],
+    schemaName: String,
+    thinkingLevel: ThinkingLevel
+  ) async throws -> [String: Any] {
+    guard let apiKey = KeychainManager.shared.getOpenAIAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !apiKey.isEmpty else {
+      throw TranscriptionError.networkError("No OpenAI API key configured. Add your OpenAI API key in Settings to use OpenAI models.")
+    }
+    return try await OpenAICompatibleStructured.generate(
+      endpoint: "https://api.openai.com/v1/chat/completions",
+      apiKey: apiKey,
+      model: model,
+      contents: contents,
+      systemInstruction: systemInstruction,
+      schema: schema,
+      schemaName: schemaName,
+      reasoningEffort: thinkingLevel.openAIReasoningEffort,
+      session: session,
+      logTag: "OPENAI")
+  }
+
   // MARK: - Audio Format Helpers
 
   /// Maps an audio file extension to OpenAI's `input_audio.format` value. Shared between

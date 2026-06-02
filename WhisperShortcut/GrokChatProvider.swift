@@ -415,6 +415,32 @@ final class GrokChatProvider: LLMChatProvider {
     }
   }
 
+  // MARK: - Structured Output
+
+  func generateStructured(
+    model: String,
+    contents: [[String: Any]],
+    systemInstruction: [String: Any]?,
+    schema: [String: Any],
+    schemaName: String,
+    thinkingLevel: ThinkingLevel
+  ) async throws -> [String: Any] {
+    guard let apiKey = KeychainManager.shared.getXAIAPIKey(), !apiKey.isEmpty else {
+      throw TranscriptionError.networkError("No xAI API key configured. Add your xAI API key in Settings to use Grok models.")
+    }
+    return try await OpenAICompatibleStructured.generate(
+      endpoint: "https://api.x.ai/v1/chat/completions",
+      apiKey: apiKey,
+      model: model,
+      contents: contents,
+      systemInstruction: systemInstruction,
+      schema: schema,
+      schemaName: schemaName,
+      reasoningEffort: thinkingLevel.grokReasoningEffort,
+      session: session,
+      logTag: "GROK")
+  }
+
   /// Maps an xAI HTTP 429 body to a specific error. xAI returns 429 both for transient
   /// rate limits and for permanent "credits exhausted / monthly spending limit" — the
   /// second is not solved by waiting, so it gets its own actionable message instead of

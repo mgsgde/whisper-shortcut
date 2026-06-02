@@ -987,9 +987,25 @@ class ChatViewModel: ObservableObject {
   private func generateAndApplyTitle(targetId: UUID, prompt: String, overwriteExisting: Bool, logLabel: String) async {
     guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
     do {
-      let raw = try await apiClient.generateText(
-        model: TranscriptionModel.gemini31FlashLite.rawValue, prompt: prompt, credential: credential)
-      let title = Self.cleanTitleResponse(raw)
+      // Structured output: the model must return {"title": "..."} — no free-text parsing or
+      // stray quotes/markdown to strip. `cleanTitleResponse` stays as a light safety net.
+      let titleSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+          "title": [
+            "type": "string",
+            "description": "A short 2–3 word title capturing the core topic. No quotes, no trailing punctuation, no explanation.",
+          ] as [String: Any],
+        ] as [String: Any],
+        "required": ["title"],
+      ]
+      let obj = try await apiClient.generateStructured(
+        model: TranscriptionModel.gemini31FlashLite.rawValue,
+        contents: [["role": "user", "parts": [["text": prompt]]]],
+        systemInstruction: nil,
+        schema: titleSchema,
+        credential: credential)
+      let title = Self.cleanTitleResponse((obj["title"] as? String) ?? "")
       guard !title.isEmpty else { return }
       guard var updated = store.session(by: targetId) else { return }
       if !overwriteExisting, !(updated.title?.isEmpty ?? true) { return }
