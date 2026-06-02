@@ -33,17 +33,17 @@ struct SpeechToTextSettingsTab: View {
       // Dictation system prompt editor
       SystemPromptSectionEditor(
         title: "System prompt",
-        subtitle: "Instructions sent to the transcription model. Used by Gemini transcription models; ignored by OpenAI Transcribe and offline Whisper (their APIs don't accept a system prompt).",
+        subtitle: "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, OpenAI Transcribe and xAI Grok; ignored by offline Whisper (its API accepts no instructions — only the Glossary below). Keep specific terms out of here; put them in the Glossary.",
         section: .dictation,
         defaultContent: AppConstants.defaultTranscriptionSystemPrompt
       )
 
       SpacedSectionDivider()
 
-      // Whisper Glossary editor
+      // Glossary editor
       SystemPromptSectionEditor(
-        title: "Whisper Glossary",
-        subtitle: "Comma-separated vocabulary list used as a conditioning prompt for offline Whisper and OpenAI Transcribe models. Not used by Gemini transcription. Leave empty for no conditioning.",
+        title: "Glossary",
+        subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider: a conditioning prompt for offline Whisper, appended to the instructions for Gemini, OpenAI Transcribe and xAI Grok. Leave empty for no conditioning.",
         section: .whisperGlossary,
         defaultContent: AppConstants.defaultWhisperGlossary
       )

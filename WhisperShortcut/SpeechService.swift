@@ -97,6 +97,27 @@ class SpeechService {
       .trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
+  /// Appends the user's vocabulary Glossary (when non-empty) to a transcription instruction.
+  /// Instructable cloud models (Gemini, OpenAI, xAI) lack offline Whisper's native conditioning
+  /// channel, so the expected-term list is surfaced inline in the prompt instead. Mirrors the
+  /// dictation+glossary combination used on the OpenAI path. Returns `base` unchanged when the
+  /// Glossary is empty.
+  private func appendGlossaryHint(to base: String) -> String {
+    let glossary = SystemPromptsStore.shared.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !glossary.isEmpty else { return base }
+    return base.isEmpty ? glossary : base + "\n\n" + glossary
+  }
+
+  /// The full transcription instruction shared by every Gemini sub-path (inline, Files API, and
+  /// chunking): the user's dictation prompt — or the built-in default when unset — with the
+  /// vocabulary Glossary appended. Substituting the default *before* appending the Glossary keeps
+  /// all three paths identical; previously the chunking path appended the Glossary to an empty
+  /// base, sending a bare word-list with no transcription instruction when only a Glossary was set.
+  private func geminiTranscriptionInstruction(promptOverride: String?) -> String {
+    let base = promptOverride ?? buildDictationPrompt()
+    return appendGlossaryHint(to: base.isEmpty ? Self.defaultTranscriptionInstruction : base)
+  }
+
 
   // MARK: - Cancellation Methods
   func cancelTranscription() {
@@ -1396,7 +1417,7 @@ class SpeechService {
     let chunkService = ChunkTranscriptionService(geminiClient: geminiClient)
     chunkService.progressDelegate = chunkProgressDelegate
 
-    let prompt = promptOverride ?? buildDictationPrompt()
+    let prompt = appendGlossaryHint(to: promptOverride ?? buildDictationPrompt())
 
     return try await chunkService.transcribe(
       fileURL: audioURL,
@@ -1438,12 +1459,14 @@ class SpeechService {
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(model.displayName) (\(model.rawValue))")
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
 
-    // Build request using Codable struct
+    // Build request using Codable struct. The vocabulary Glossary (when set) is appended so
+    // Gemini gets the same expected-term conditioning that offline Whisper receives natively.
+    let instruction = appendGlossaryHint(to: promptToUse.isEmpty ? Self.defaultTranscriptionInstruction : promptToUse)
     let transcriptionRequest = GeminiTranscriptionRequest(
       contents: [
         GeminiTranscriptionRequest.GeminiTranscriptionContent(
           parts: [
-            .text(promptToUse.isEmpty ? Self.defaultTranscriptionInstruction : promptToUse),
+            .text(instruction),
             .inline(mimeType: mimeType, data: base64Audio)
           ]
         )
@@ -1514,12 +1537,14 @@ class SpeechService {
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using model: \(model.displayName) (\(model.rawValue))")
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using endpoint: \(endpoint)")
 
-    // Build request using Codable struct
+    // Build request using Codable struct. The vocabulary Glossary (when set) is appended so
+    // Gemini gets the same expected-term conditioning that offline Whisper receives natively.
+    let instruction = appendGlossaryHint(to: promptToUse.isEmpty ? Self.defaultTranscriptionInstruction : promptToUse)
     let transcriptionRequest = GeminiTranscriptionRequest(
       contents: [
         GeminiTranscriptionRequest.GeminiTranscriptionContent(
           parts: [
-            .text(promptToUse.isEmpty ? Self.defaultTranscriptionInstruction : promptToUse),
+            .text(instruction),
             .file(uri: fileURI, mimeType: mimeType)
           ]
         )
