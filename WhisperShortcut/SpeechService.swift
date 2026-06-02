@@ -772,67 +772,6 @@ class SpeechService {
     return text.trimmingCharacters(in: .whitespacesAndNewlines)
   }
   
-  // MARK: - Text-based Prompt Mode (for TTS flow)
-  func executePromptWithText(textCommand: String, selectedText: String?, mode: PromptMode = .togglePrompting) async throws -> String {
-    let selectedPromptModel = getPromptModel()
-
-    // The text path (used by Prompt & Read) is Gemini-only — the audio-input
-    // OpenAI/Grok models reach this path with no audio to send. Fail fast with
-    // an actionable message instead of the misleading "not a Gemini model" string.
-    guard selectedPromptModel.provider == .gemini else {
-      throw TranscriptionError.networkError("The text-based Prompt & Read flow currently requires a Gemini model. Switch the Dictate Prompt model to Gemini in Settings.")
-    }
-
-    guard let credential = await credentialProvider.getCredential() else {
-      throw TranscriptionError.noGoogleAPIKey
-    }
-
-    let hasSelectedText = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-    DebugLogger.log("PROMPT-MODE-TEXT: Starting execution with text command (hasSelectedText: \(hasSelectedText))")
-    DebugLogger.log("PROMPT-MODE-TEXT: Using model: \(selectedPromptModel.displayName)")
-
-    var userParts: [GeminiChatRequest.GeminiChatPart] = []
-    let screenshotParts = await screenshotPromptParts()
-    let hadScreenshot = !screenshotParts.isEmpty
-    userParts.append(contentsOf: screenshotParts)
-
-    if let text = selectedText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      let contextText = """
-      SELECTED TEXT TO EDIT (your next message is an instruction that tells you how to edit this text — do not append that message to this text):
-
-      \(text)
-      """
-      userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
-    }
-
-    let commandText = """
-    VOICE INSTRUCTION\(hasSelectedText ? " (edit the selected text according to this command; do not transcribe and append)" : ""):
-
-    \(textCommand)
-    """
-    userParts.append(GeminiChatRequest.GeminiChatPart(text: commandText, inlineData: nil, fileData: nil, url: nil))
-
-    let normalizedText = try await performGeminiPromptRequest(
-      model: selectedPromptModel,
-      mode: mode,
-      userParts: userParts,
-      systemPrompt: buildDictatePromptSystemPrompt(logPrefix: "PROMPT-MODE-TEXT"),
-      credential: credential,
-      logPrefix: "PROMPT-MODE-TEXT"
-    )
-
-    PromptConversationHistory.shared.append(
-      mode: mode,
-      selectedText: selectedText,
-      userInstruction: textCommand,
-      modelResponse: normalizedText
-    )
-    ContextLogger.shared.logPrompt(mode: mode, selectedText: selectedText, userInstruction: textCommand, modelResponse: normalizedText, model: selectedPromptModel.rawValue, hadScreenshot: hadScreenshot)
-
-    DebugLogger.logSuccess("PROMPT-MODE-TEXT: Completed successfully")
-    return normalizedText
-  }
-
   // MARK: - Text-to-Speech Mode
 
   /// Reads a user *selection* aloud. The text may be code, markdown, or log output, so it's
