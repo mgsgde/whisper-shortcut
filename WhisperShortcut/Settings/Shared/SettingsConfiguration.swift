@@ -51,6 +51,15 @@ enum PromptModel: String, CaseIterable {
   case gemini31FlashLite = "gemini-3.1-flash-lite"
   case gemini35Flash = "gemini-3.5-flash"
 
+  // Gemini native image generation/editing ("Nano Banana"). Prompt (+ optional input image) →
+  // image out, via a dedicated non-streaming `:generateContent` call with `responseModalities`
+  // IMAGE (see `GeminiAPIClient.generateImageContent` / `GeminiChatProvider`). Not a text-chat,
+  // tools, grounding, or thinking model — selecting it turns the chat into an image generator.
+  case geminiImage = "gemini-3.1-flash-image"
+  // Premium tier of the same capability: studio quality, up to 4K, better text rendering.
+  // No free tier (roughly $0.13–0.24 per image) — the user picks it deliberately for quality.
+  case geminiImagePro = "gemini-3-pro-image"
+
   // Grok Models (xAI, OpenAI-compatible API, text + search for chat)
   case grok4 = "grok-4.20-0309-non-reasoning"
   case grok4Reasoning = "grok-4.20-0309-reasoning"
@@ -82,6 +91,10 @@ enum PromptModel: String, CaseIterable {
       return "Gemini 3.1 Flash-Lite"
     case .gemini35Flash:
       return "Gemini 3.5 Flash"
+    case .geminiImage:
+      return "Gemini Image (Nano Banana)"
+    case .geminiImagePro:
+      return "Gemini Image Pro (Nano Banana Pro)"
     case .grok4:
       return "Grok 4"
     case .grok4Reasoning:
@@ -116,6 +129,8 @@ enum PromptModel: String, CaseIterable {
     case .gemini31Pro:       return "gemini31pro"
     case .gemini31FlashLite: return "gemini31flashlite"
     case .gemini35Flash:     return "gemini35flash"
+    case .geminiImage:       return "geminiimage"
+    case .geminiImagePro:    return "geminiimagepro"
     case .grok4:             return "grok4"
     case .grok4Reasoning:    return "grok4reasoning"
     case .grok43:            return "grok43"
@@ -142,6 +157,10 @@ enum PromptModel: String, CaseIterable {
       return "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Multimodal"
     case .gemini35Flash:
       return "Google's Gemini 3.5 Flash • Latest GA flagship Flash • Strong on agentic + coding tasks • Multimodal"
+    case .geminiImage:
+      return "Google's Gemini Image (Nano Banana) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key"
+    case .geminiImagePro:
+      return "Google's Gemini Image Pro (Nano Banana Pro) • Studio-quality image generation/editing up to 4K • Best text rendering • Paid (no free tier) • Requires Gemini API key"
     case .grok4:
       return "xAI's Grok 4 • Frontier-class intelligence • Web + X search • Requires xAI API key"
     case .grok4Reasoning:
@@ -166,9 +185,9 @@ enum PromptModel: String, CaseIterable {
   
   var costLevel: String {
     switch self {
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash:
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash, .geminiImage:
       return "Low"
-    case .gemini25Pro, .gemini31Pro:
+    case .gemini25Pro, .gemini31Pro, .geminiImagePro:
       return "Medium"
     case .grok4, .grok4Reasoning, .grok43:
       return "Medium"
@@ -195,7 +214,23 @@ enum PromptModel: String, CaseIterable {
   /// in Dictate Prompt.
   var supportsDirectAudioInput: Bool {
     // Any Gemini model handles audio natively; on OpenAI only the gpt-audio model does.
-    provider == .gemini || self == .openaiGPT4oAudio
+    // The image-generation model is the Gemini exception — it only produces images, not audio,
+    // so it must never appear in `dictatePromptCapableModels`.
+    (provider == .gemini && !generatesImages) || self == .openaiGPT4oAudio
+  }
+
+  /// True for native image-generation models (Gemini "Nano Banana"). These route through a
+  /// dedicated non-streaming `:generateContent` call with `responseModalities: ["TEXT","IMAGE"]`
+  /// (see `GeminiAPIClient.generateImageContent` / `GeminiChatProvider`) instead of the text chat
+  /// stream, and don't support tools, grounding, thinking, or streaming. They still accept an
+  /// input image (for editing), so `supportsImageInput` stays true.
+  var generatesImages: Bool {
+    switch self {
+    case .geminiImage, .geminiImagePro:
+      return true
+    default:
+      return false
+    }
   }
 
   /// Whether the user has the API key this model's provider needs. Used to gate features
@@ -264,6 +299,9 @@ enum PromptModel: String, CaseIterable {
       return ["thinkingBudget": -1]
     case .gemini25Flash, .gemini25FlashLite:
       return ["thinkingBudget": 0]
+    // Image-generation models — no thinking knob.
+    case .geminiImage, .geminiImagePro:
+      return nil
     // Non-Gemini — ignored by other providers
     case .grok4, .grok4Reasoning, .grok43,
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
@@ -296,6 +334,8 @@ enum PromptModel: String, CaseIterable {
       return .gemini31FlashLite
     case .gemini35Flash:
       return .gemini35Flash
+    case .geminiImage, .geminiImagePro:
+      return nil // image-generation models; not transcription models
     case .grok4, .grok4Reasoning, .grok43:
       return nil // Grok models are text-only, no audio transcription
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
@@ -311,7 +351,8 @@ enum PromptModel: String, CaseIterable {
   ///   the Responses API path doesn't apply.
   var supportsGrounding: Bool {
     switch self {
-    case .openaiGPT4oAudio:
+    case .openaiGPT4oAudio, .geminiImage, .geminiImagePro:
+      // Audio-only and image-generation models have no web-search/grounding path.
       return false
     default:
       return true

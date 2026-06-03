@@ -692,6 +692,44 @@ class GeminiAPIClient {
     return obj
   }
 
+  /// Native image generation/editing ("Nano Banana") via a single non-streaming `:generateContent`
+  /// call. Setting `responseModalities: ["TEXT","IMAGE"]` makes the model return image parts, which
+  /// `extractText(from:)` embeds as `⟦GEMINI_IMG:…⟧` markers in the returned string — the chat view
+  /// then renders them inline (`ChatView.extractInlineImageData`). These models don't support tools,
+  /// grounding, thinking, or SSE streaming, so none of those are sent. Any input image to edit rides
+  /// along inside `contents` as an `inline_data` part (built by `ChatView.buildContents`).
+  func generateImageContent(
+    model: String,
+    contents: [[String: Any]],
+    credential: GeminiCredential
+  ) async throws -> String {
+    let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
+    var request = try createRequest(endpoint: endpoint, credential: credential)
+    request.timeoutInterval = Constants.resourceTimeout
+    let body: [String: Any] = [
+      "contents": contents,
+      // No maxOutputTokens: image tokens are large and an 8k cap would truncate the picture.
+      "generationConfig": ["responseModalities": ["TEXT", "IMAGE"]] as [String: Any],
+      "safetySettings": [
+        ["category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"],
+        ["category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"],
+        ["category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"],
+        ["category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"],
+      ],
+    ]
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    DebugLogger.logNetwork("GEMINI-IMAGE: POST \(Self.redactingAPIKey(endpoint)) model=\(model) (responseModalities=TEXT,IMAGE)")
+    let response: GeminiResponse = try await performRequest(
+      request, responseType: GeminiResponse.self, mode: "GEMINI-IMAGE", withRetry: false)
+    let text = extractText(from: response)
+    if !text.contains(Self.imageMarkerPrefix) {
+      // The model returned only text (e.g. a refusal or a "describe what you want" reply). Surface
+      // the text as-is; the caller shows it like any other assistant message.
+      DebugLogger.logNetwork("GEMINI-IMAGE: response contained no image part (text-only reply)")
+    }
+    return text
+  }
+
   /// Updates a rolling meeting summary by merging new transcript content into the existing summary.
   func updateRollingSummary(
     model: String,

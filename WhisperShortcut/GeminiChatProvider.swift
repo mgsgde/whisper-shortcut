@@ -25,6 +25,21 @@ final class GeminiChatProvider: LLMChatProvider {
           guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
             throw TranscriptionError.networkError("No Gemini credential available. Add your Google API key in Settings or sign in with Google.")
           }
+          // Native image-generation models ("Nano Banana") don't stream and ignore
+          // tools/grounding/thinking — route them through a single :generateContent call with
+          // responseModalities IMAGE. The returned text carries any image as a ⟦GEMINI_IMG:…⟧
+          // marker (rendered inline by ChatView). Yield it as one delta, then finish.
+          if PromptModel(rawValue: model)?.generatesImages == true {
+            let text = try await self.apiClient.generateImageContent(
+              model: model, contents: contents, credential: credential)
+            try Task.checkCancellation()
+            if !text.isEmpty {
+              continuation.yield(.textDelta(text))
+            }
+            continuation.yield(.finished(sources: [], supports: [], finishReason: "STOP"))
+            continuation.finish()
+            return
+          }
           let geminiFuncDecls = tools.map { tool -> [String: Any] in
             [
               "name": tool.name,

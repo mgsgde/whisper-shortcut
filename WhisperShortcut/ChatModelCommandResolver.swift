@@ -46,9 +46,19 @@ enum ChatModelCommandResolver {
       normalized.contains("4o")
     )
 
+    // Native image generation (Nano Banana) — match before the version branches so "image"
+    // or "nano banana" routes to the image model regardless of any "3.1"/"flash" it contains.
+    // Guarded by !grok/!openai so a hypothetical "gpt image" wouldn't get hijacked.
+    let wantsImage = !hasGrok && !hasOpenAI
+      && (normalized.contains("image") || normalized.contains("nano banana"))
+
     // Detect version family (order matters).
     var candidates: [PromptModel]
-    if hasGrok {
+    if wantsImage {
+      // Both image tiers; the "pro" keyword narrowing below picks Nano Banana Pro,
+      // and a bare "image"/"nano banana" defaults to the free Flash tier further down.
+      candidates = [.geminiImage, .geminiImagePro]
+    } else if hasGrok {
       if normalized.contains("4.3") {
         candidates = [.grok43]
       } else {
@@ -122,6 +132,11 @@ enum ChatModelCommandResolver {
       let preferred = ChatModelProvider.openai.defaultChatModel
       if candidates.contains(preferred) { candidates = [preferred] }
     }
+    // Same idea for the image family: a bare "image" / "nano banana" (no "pro" qualifier)
+    // picks the free Flash tier; "image pro" was already narrowed to Pro above.
+    if (lowered == "image" || lowered == "nano banana") && candidates.count > 1 {
+      if candidates.contains(.geminiImage) { candidates = [.geminiImage] }
+    }
 
     // Stable order based on PromptModel.allCases.
     let order = PromptModel.allCases
@@ -147,14 +162,15 @@ enum ChatModelCommandResolver {
 
   private static func isFlash(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash: return true
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash,
+         .geminiImage: return true  // "flash image" → the Flash-tier image model
     default: return false
     }
   }
 
   private static func isPro(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini25Pro, .gemini31Pro: return true
+    case .gemini25Pro, .gemini31Pro, .geminiImagePro: return true
     default: return false
     }
   }

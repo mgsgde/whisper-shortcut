@@ -1534,17 +1534,48 @@ class ChatViewModel: ObservableObject {
     // "look at the screenshot" sees no image at all. All providers (Gemini,
     // OpenAI, Grok) convert inline_data on any message, so this is safe.
     return toSend.map { msg in
+      // Assistant turns that generated an image carry a ⟦GEMINI_IMG:…⟧ marker with the full
+      // base64 inline. Strip it to a short placeholder before re-sending as history: the blob
+      // would otherwise bloat every subsequent request and is useless to the model as text.
+      let text = msg.role == .model
+        ? Self.stripGeneratedImageMarkers(msg.content)
+        : msg.content
       if msg.role == .user && !msg.attachedImageParts.isEmpty {
         var parts: [[String: Any]] = msg.attachedImageParts.map { part in
           ["inline_data": ["mime_type": part.mimeType ?? "image/png", "data": part.data.base64EncodedString()]]
         }
-        if !msg.content.isEmpty {
-          parts.append(["text": msg.content])
+        if !text.isEmpty {
+          parts.append(["text": text])
         }
         return ["role": msg.role.rawValue, "parts": parts]
       }
-      return ["role": msg.role.rawValue, "parts": [["text": msg.content]]]
+      return ["role": msg.role.rawValue, "parts": [["text": text]]]
     }
+  }
+
+  /// Replaces each embedded `⟦GEMINI_IMG:…⟧` marker (a generated image's full base64) with a short
+  /// `[generated image]` placeholder. Used by `buildContents` so a prior turn's image isn't re-sent
+  /// as multi-megabyte text on every following request. Render-time still reads the original marker
+  /// from the stored message content — only the wire copy sent back to the model is trimmed.
+  static func stripGeneratedImageMarkers(_ content: String) -> String {
+    let prefix = GeminiAPIClient.imageMarkerPrefix
+    guard content.contains(prefix) else { return content }
+    let suffix = GeminiAPIClient.imageMarkerSuffix
+    var result = ""
+    var rest = Substring(content)
+    while let start = rest.range(of: prefix) {
+      result += rest[rest.startIndex..<start.lowerBound]
+      if let end = rest.range(of: suffix, range: start.upperBound..<rest.endIndex) {
+        result += "[generated image]"
+        rest = rest[end.upperBound...]
+      } else {
+        // Unterminated marker (shouldn't happen) — keep the remainder verbatim and stop.
+        result += rest[start.lowerBound...]
+        return result
+      }
+    }
+    result += rest
+    return result.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   /// Measures the image payload re-sent on this turn (images are sent in full on *every*
