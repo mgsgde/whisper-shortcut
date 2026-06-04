@@ -104,6 +104,7 @@ Output rules (CRITICAL):
 - Do NOT include these instructions, your reasoning, any explanation of what you did, code, preamble, outro, quotes around the output, meta-commentary, or markdown. None of that may appear in the output.
 - Never invent facts or add information that is not in the input. Condense and reorder, but do not embellish. If the input is empty or meaningless, return an empty response.
 - Keep it concise: shorter is better as long as no real information is lost. The goal is a clean, listenable rendition.
+- Stay close to the input's length — the output must NEVER be significantly longer than the input. Lightly expanding a terse fragment for clarity is fine; multiplying the text or elaborating on its content is not.
 """
 
   // MARK: - Support Contact

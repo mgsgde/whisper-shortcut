@@ -612,7 +612,22 @@ class ChatViewModel: ObservableObject {
             toolLoopExhausted = true
             break toolLoop
           }
-          let turns = try await executeToolCalls(pendingCalls)
+          let (turns, imageMarkers) = try await executeToolCalls(pendingCalls)
+          // Generated images go straight into the streaming bubble: the image shows up the
+          // moment the tool finishes, and the model's follow-up narration streams below it.
+          // The marker becomes part of the persisted message content (rendered inline);
+          // buildContents strips it again before re-sending history.
+          if !imageMarkers.isEmpty {
+            let joined = imageMarkers.joined(separator: "\n\n")
+            // Trailing break: the model's follow-up narration streams directly onto
+            // `accumulated`, and a glued `…⟧Text` paragraph wouldn't render as an image.
+            accumulated = (accumulated.isEmpty ? joined : accumulated + "\n\n" + joined) + "\n\n"
+            await MainActor.run {
+              self.updateStreamingMessage(
+                id: placeholderId, sessionId: sessionId,
+                content: accumulated, sources: [], supports: [], persist: false)
+            }
+          }
           currentContents.append(contentsOf: turns)
         }
 
@@ -638,7 +653,11 @@ class ChatViewModel: ObservableObject {
         }
         DebugLogger.log("CHAT-SEND: final UI update committed session=\(sessionId)")
         let result = (text: accumulated, sources: finalSources, supports: finalSupports)
-        ContextLogger.shared.logChat(userMessage: content, modelResponse: result.text, model: model)
+        // Strip generated-image markers (multi-MB base64) before the interaction log.
+        ContextLogger.shared.logChat(
+          userMessage: content,
+          modelResponse: Self.stripGeneratedImageMarkers(result.text),
+          model: model)
         if let s = store.session(by: sessionId), s.messages.count == 2, !s.isMeeting {
           Task { await generateAITitle(sessionId: sessionId) }
         }
@@ -685,9 +704,13 @@ class ChatViewModel: ObservableObject {
   private func buildToolDeclarations() async -> [LLMToolDeclaration] {
     let calendarConnected = await MainActor.run { GoogleAccountOAuthService.shared.isConnected }
     let trelloConnected = await MainActor.run { TrelloOAuthService.shared.isConnected }
+    // Image generation renders via the Gemini image model regardless of the chat model,
+    // so the tool is offered exactly when a Gemini credential exists.
+    let imageGenerationAvailable = GeminiCredentialProvider.shared.hasCredential()
     return ChatToolRegistry.allDeclarations(
       calendarConnected: calendarConnected,
-      trelloConnected: trelloConnected
+      trelloConnected: trelloConnected,
+      imageGenerationAvailable: imageGenerationAvailable
     ).compactMap { decl in
       guard let name = decl["name"] as? String,
             let desc = decl["description"] as? String,
@@ -698,25 +721,107 @@ class ChatViewModel: ObservableObject {
 
   private func executeToolCalls(
     _ calls: [(name: String, args: [String: Any], thoughtSignature: String?)]
-  ) async throws -> [[String: Any]] {
+  ) async throws -> (turns: [[String: Any]], imageMarkers: [String]) {
     let callParts: [[String: Any]] = calls.map { call in
       var part: [String: Any] = ["functionCall": ["name": call.name, "args": call.args]]
       if let sig = call.thoughtSignature { part["thoughtSignature"] = sig }
       return part
     }
     var responseParts: [[String: Any]] = []
+    // ⟦GEMINI_IMG:…⟧ markers produced by generate_image. They go straight into the chat
+    // bubble (via performSend), NOT back through the model — the functionResponse only
+    // carries a short status, so megabytes of base64 never enter the model's context.
+    var imageMarkers: [String] = []
     for call in calls {
       try Task.checkCancellation()
       DebugLogger.log("CHAT-TOOL-CALL: \(call.name) args=\(Self.compactDescription(call.args))")
-      let result = await ChatToolRegistry.execute(name: call.name, args: call.args)
+      let result: [String: Any]
+      if call.name == ChatToolRegistry.generateImageToolName {
+        // Intercepted here (not in ChatToolRegistry): needs the session's attached images
+        // and must hand the generated image to the UI rather than into the tool response.
+        let outcome = await executeGenerateImageTool(args: call.args)
+        result = outcome.response
+        imageMarkers.append(contentsOf: outcome.markers)
+      } else {
+        result = await ChatToolRegistry.execute(name: call.name, args: call.args)
+      }
       DebugLogger.log("CHAT-TOOL-RESULT: \(call.name) -> \(Self.compactDescription(result))")
       responseParts.append(["functionResponse": ["name": call.name, "response": result]])
     }
     DebugLogger.log("CHAT: executed \(calls.count) tool call(s), continuing stream")
-    return [
+    let turns: [[String: Any]] = [
       ["role": "model", "parts": callParts],
       ["role": "user", "parts": responseParts],
     ]
+    return (turns, imageMarkers)
+  }
+
+  /// Executes the `generate_image` tool: builds a one-turn request for the Gemini image model
+  /// (optionally including the user's most recently attached images for editing), runs it, and
+  /// splits the result into UI-bound image markers and a short, model-bound status payload.
+  private func executeGenerateImageTool(
+    args: [String: Any]
+  ) async -> (response: [String: Any], markers: [String]) {
+    guard let prompt = (args["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !prompt.isEmpty else {
+      return (["error": "Missing required argument: prompt"], [])
+    }
+    var parts: [[String: Any]] = []
+    if ChatToolRegistry.boolArgument(args, "use_attached_image", default: false) {
+      let attached = messages.last(where: { $0.role == .user && !$0.attachedImageParts.isEmpty })?
+        .attachedImageParts ?? []
+      if attached.isEmpty {
+        return (["error": "No attached image found in this conversation. Generate from the prompt alone (use_attached_image=false) or ask the user to attach one."], [])
+      }
+      parts = attached.map { part in
+        ["inline_data": ["mime_type": part.mimeType ?? "image/png", "data": part.data.base64EncodedString()]]
+      }
+    }
+    parts.append(["text": prompt])
+    do {
+      let text = try await GeminiChatProvider.shared.generateImage(
+        contents: [["role": "user", "parts": parts]])
+      let (markers, narration) = Self.splitGeneratedImageMarkers(text)
+      guard !markers.isEmpty else {
+        // Image model replied with text only (refusal/clarification) — relay that to the model.
+        return (["status": "no_image_returned", "image_model_reply": String(narration.prefix(500))], [])
+      }
+      var response: [String: Any] = [
+        "status": "success",
+        "detail":
+          "The generated image is already displayed to the user in the chat. Briefly confirm what was created — do not attempt to reproduce, link, or re-describe the image in detail.",
+      ]
+      if !narration.isEmpty { response["image_model_note"] = String(narration.prefix(300)) }
+      return (response, markers)
+    } catch {
+      DebugLogger.logError("CHAT-TOOL: generate_image failed: \(error.localizedDescription)")
+      return (["error": error.localizedDescription], [])
+    }
+  }
+
+  /// Splits content into its ⟦GEMINI_IMG:…⟧ markers and the remaining (non-image) text.
+  static func splitGeneratedImageMarkers(_ content: String) -> (markers: [String], text: String) {
+    let prefix = GeminiAPIClient.imageMarkerPrefix
+    let suffix = GeminiAPIClient.imageMarkerSuffix
+    guard content.contains(prefix) else {
+      return ([], content.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+    var markers: [String] = []
+    var text = ""
+    var rest = Substring(content)
+    while let start = rest.range(of: prefix) {
+      text += rest[rest.startIndex..<start.lowerBound]
+      guard let end = rest.range(of: suffix, range: start.upperBound..<rest.endIndex) else {
+        // Unterminated marker (shouldn't happen) — keep the remainder as text.
+        text += rest[start.lowerBound...]
+        rest = rest[rest.endIndex...]
+        break
+      }
+      markers.append(String(rest[start.lowerBound..<end.upperBound]))
+      rest = rest[end.upperBound...]
+    }
+    text += rest
+    return (markers, text.trimmingCharacters(in: .whitespacesAndNewlines))
   }
 
   /// Compact, length-capped JSON string for logging tool-call args/results
@@ -864,6 +969,10 @@ class ChatViewModel: ObservableObject {
     if GoogleAccountOAuthService.shared.isConnected {
       text += "\n\nIMPORTANT — you have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks."
     }
+    // Mirrors the gating in buildToolDeclarations: the tool exists iff a Gemini credential does.
+    if GeminiCredentialProvider.shared.hasCredential() {
+      text += "\n\nIMAGE GENERATION: You can create and edit real images via the `generate_image` tool. When the user asks you to draw, create, render, visualize, edit, or annotate an image, ALWAYS call generate_image — never approximate with ASCII art, SVG, or code blocks. To annotate or edit an image the user attached, pass use_attached_image=true with a precise instruction. The finished image appears in the chat automatically."
+    }
     return ["parts": [["text": text]]]
   }
 
@@ -968,7 +1077,8 @@ class ChatViewModel: ObservableObject {
           target.messages[0].role == .user,
           target.messages[1].role == .model else { return }
     let userText = String(target.messages[0].content.prefix(400))
-    let modelText = String(target.messages[1].content.prefix(400))
+    // Strip image markers first — otherwise an image-led reply feeds base64 to the title model.
+    let modelText = String(Self.stripGeneratedImageMarkers(target.messages[1].content).prefix(400))
     let prompt = """
       Give this conversation a short title (2–3 words) that captures its core topic. \
       Reply with only the title on a single line — no quotes, no punctuation, no explanation.
@@ -3360,7 +3470,26 @@ private struct ModelReplyView: View {
     for para in paragraphs {
       let trimmed = para.text.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
-      if MarkdownParsing.isSeparatorParagraph(trimmed) {
+      if let pieces = Self.splitImageMarkerPieces(trimmed) {
+        // Generated image(s) — previously only the content-only builder knew about markers,
+        // so a grounded reply (sources ⇒ this builder) rendered the raw base64 as text.
+        // Citations attach to the last text piece; an image-only paragraph drops them.
+        let lastTextIdx = pieces.lastIndex {
+          if case .text = $0 { return true } else { return false }
+        }
+        for (i, piece) in pieces.enumerated() {
+          switch piece {
+          case .image(let data):
+            blocks.append(.image(data))
+          case .text(let text):
+            var attr = buildSingleParagraphAttributed(text, options: options)
+            if i == lastTextIdx {
+              appendCitations(to: &attr, indices: para.chunkIndices, sourcesCount: sources.count)
+            }
+            blocks.append(.text(attr))
+          }
+        }
+      } else if MarkdownParsing.isSeparatorParagraph(trimmed) {
         blocks.append(.separator)
       } else if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
         blocks.append(.table(parsed))
@@ -3386,9 +3515,20 @@ private struct ModelReplyView: View {
           blocks.append(.text(buildSingleParagraphAttributed(bulletPart, options: options)))
         }
       } else {
-        var attrText = buildSingleParagraphAttributed(trimmed, options: options)
-        appendCitations(to: &attrText, indices: para.chunkIndices, sourcesCount: sources.count)
-        blocks.append(.text(attrText))
+        // A model may glue several `**…:**` sections into one \n\n-paragraph with no
+        // separators. Split them here (after citation offsets are already resolved, so
+        // alignment is unaffected) and attach the paragraph's citations to the last part.
+        let subParts = MarkdownParsing.splitInlineSectionHeadings(trimmed)
+          .components(separatedBy: "\n\n")
+          .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+          .filter { !$0.isEmpty }
+        for (i, sub) in subParts.enumerated() {
+          var attrText = buildSingleParagraphAttributed(sub, options: options)
+          if i == subParts.count - 1 {
+            appendCitations(to: &attrText, indices: para.chunkIndices, sourcesCount: sources.count)
+          }
+          blocks.append(.text(attrText))
+        }
       }
     }
     return blocks.isEmpty ? [.text(AttributedString(content))] : blocks
@@ -3412,8 +3552,15 @@ private struct ModelReplyView: View {
         } else {
           blocks.append(.codeBlock(cb.code, cb.language))
         }
-      } else if let imageData = Self.extractInlineImageData(trimmed) {
-        blocks.append(.image(imageData))
+      } else if let pieces = Self.splitImageMarkerPieces(trimmed) {
+        for piece in pieces {
+          switch piece {
+          case .image(let data):
+            blocks.append(.image(data))
+          case .text(let text):
+            blocks.append(.text(buildSingleParagraphAttributed(text, options: options)))
+          }
+        }
       } else if MarkdownParsing.isSeparatorParagraph(trimmed) {
         blocks.append(.separator)
       } else if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
@@ -3456,6 +3603,45 @@ private struct ModelReplyView: View {
     let lines = code.components(separatedBy: "\n")
     let headingCount = lines.filter { $0.hasPrefix("#") }.count
     return headingCount >= 2
+  }
+
+  /// One ordered piece of a paragraph that mixes ⟦GEMINI_IMG:…⟧ markers with prose.
+  private enum ImageMarkerPiece {
+    case image(Data)
+    case text(String)
+  }
+
+  /// Order-preserving split of a paragraph containing ⟦GEMINI_IMG:…⟧ markers. Streaming can
+  /// glue the model's narration directly onto a marker (`…⟧Ich habe…`), so markers must be
+  /// recognized anywhere in a paragraph — not only when they make up the whole paragraph.
+  /// Returns nil when the paragraph has no marker (caller falls through to normal handling).
+  /// A marker whose base64 fails to decode is dropped (logged) rather than dumped as raw text.
+  private static func splitImageMarkerPieces(_ trimmed: String) -> [ImageMarkerPiece]? {
+    let prefix = GeminiAPIClient.imageMarkerPrefix
+    let suffix = GeminiAPIClient.imageMarkerSuffix
+    guard trimmed.contains(prefix) else { return nil }
+    var pieces: [ImageMarkerPiece] = []
+    var rest = Substring(trimmed)
+    while let start = rest.range(of: prefix) {
+      let before = rest[rest.startIndex..<start.lowerBound]
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      if !before.isEmpty { pieces.append(.text(before)) }
+      guard let end = rest.range(of: suffix, range: start.upperBound..<rest.endIndex) else {
+        // Unterminated marker (e.g. truncated stream) — drop it instead of dumping base64.
+        DebugLogger.logWarning("BLOCKS: dropped unterminated image marker (\(rest.count) chars)")
+        return pieces
+      }
+      let marker = String(rest[start.lowerBound..<end.upperBound])
+      if let data = extractInlineImageData(marker) {
+        pieces.append(.image(data))
+      } else {
+        DebugLogger.logWarning("BLOCKS: image marker failed base64 decode (\(marker.count) chars)")
+      }
+      rest = rest[end.upperBound...]
+    }
+    let tail = rest.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !tail.isEmpty { pieces.append(.text(tail)) }
+    return pieces
   }
 
   /// Checks if a paragraph is a Gemini inline image marker and returns the decoded image data.

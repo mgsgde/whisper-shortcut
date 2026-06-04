@@ -833,8 +833,13 @@ class SpeechService {
   /// Rewrite works for Gemini / OpenAI / xAI alike — not just Gemini. Throws if no provider key is
   /// available; the caller (`maybeRewriteForSpeech`) then falls back to the original text.
   private func rewriteForSpeech(_ text: String) async throws -> String {
+    // Exclude image-generation models (Nano Banana): their request path drops systemInstruction
+    // entirely (see GeminiChatProvider), so the rewrite prompt never reaches the model and it
+    // answers like a chat assistant — wildly expanding the text. Fall back to the default text
+    // model instead; it shares the Gemini credential the image model already requires.
     let model = PromptModel.loadPromptModel(
-      forKey: UserDefaultsKeys.selectedChatModel, default: SettingsDefaults.selectedChatModel)
+      forKey: UserDefaultsKeys.selectedChatModel, default: SettingsDefaults.selectedChatModel,
+      validate: { !$0.generatesImages })
     guard model.hasRequiredCredential else {
       throw TranscriptionError.noGoogleAPIKey
     }

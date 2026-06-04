@@ -112,10 +112,33 @@ enum MarkdownParsing {
     return ParsedTable(headers: dataRows[0], rows: Array(dataRows.dropFirst()))
   }
 
+  /// Inserts a paragraph break before — and a space after — a bold section header
+  /// (`**…:**`) that a model glued directly onto surrounding text with no separator,
+  /// e.g. `…frei befahrbar.**Die Sperrung …:**Die Vollsperrung…`. Restricted to bold
+  /// spans that end in `:` (a section-label signal) so ordinary mid-sentence emphasis
+  /// is left alone. Idempotent: only fires where the header touches a non-space char,
+  /// so already-separated headers and re-runs are no-ops.
+  static func splitInlineSectionHeadings(_ content: String) -> String {
+    // 1. Paragraph break before a header glued to preceding text.
+    let withBreaks = regexReplace(
+      content,
+      pattern: "(\\S)(\\*\\*[^*\\n]+:\\*\\*)",
+      template: "$1\n\n$2"
+    )
+    // 2. Space after a header glued to the following body text.
+    return regexReplace(
+      withBreaks,
+      pattern: "(\\*\\*[^*\\n]+:\\*\\*)(\\S)",
+      template: "$1 $2"
+    )
+  }
+
   /// Inserts blank lines so bold section headers and bullet lists are never collapsed
   /// into the preceding paragraph (a common Gemini output pattern).
   static func normalizeMarkdownParagraphBreaks(_ content: String) -> String {
-    let lines = content.components(separatedBy: "\n")
+    // Split inline section headers first; the line-based pass below only catches
+    // headers that already sit at a line start.
+    let lines = splitInlineSectionHeadings(content).components(separatedBy: "\n")
     var result: [String] = []
     for (i, line) in lines.enumerated() {
       let trimmedLine = line.trimmingCharacters(in: .whitespaces)

@@ -55,6 +55,38 @@ enum ChatToolRegistry {
     ],
   ]
 
+  /// Name of the image-generation tool; ChatView intercepts this one in `executeToolCalls`
+  /// (it needs chat-session context — the user's attached images — and routes the resulting
+  /// image into the UI instead of back through the model).
+  static let generateImageToolName = "generate_image"
+
+  /// Image generation/editing ("Nano Banana"). Declared only when a Gemini credential exists,
+  /// since the backend always renders via the Gemini image model — regardless of which
+  /// provider's chat model calls the tool.
+  static let imageFunctionDeclarations: [[String: Any]] = [
+    [
+      "name": generateImageToolName,
+      "description":
+        "Generates a new image, or edits/annotates an image the user attached, using a dedicated image-generation model. Use whenever the user asks to draw, create, render, visualize, edit, or annotate a picture, map, diagram, or illustration. The finished image is automatically displayed in the chat. NEVER attempt to draw with ASCII art or code blocks — call this tool instead.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "prompt": [
+            "type": "string",
+            "description":
+              "Detailed instruction for the image model, in the user's language. For edits, describe precisely what to change or add (e.g. 'Add a red location pin at the corner of X and Y street on this map'). Include all relevant context from the conversation — the image model sees ONLY this prompt (plus the attached image, if requested).",
+          ],
+          "use_attached_image": [
+            "type": "boolean",
+            "description":
+              "Set true to edit/annotate the image(s) the user most recently attached in this conversation (screenshot, photo). Omit or set false to generate a fresh image from the prompt alone.",
+          ],
+        ] as [String: Any],
+        "required": ["prompt"],
+      ],
+    ]
+  ]
+
   static let calendarFunctionDeclarations: [[String: Any]] = [
     [
       "name": "google_calendar_list_events",
@@ -477,8 +509,13 @@ enum ChatToolRegistry {
     ],
   ]
 
-  static func allDeclarations(calendarConnected: Bool, trelloConnected: Bool) -> [[String: Any]] {
+  static func allDeclarations(
+    calendarConnected: Bool, trelloConnected: Bool, imageGenerationAvailable: Bool
+  ) -> [[String: Any]] {
     var decls = functionDeclarations + appDocsFunctionDeclarations
+    if imageGenerationAvailable {
+      decls += imageFunctionDeclarations
+    }
     if calendarConnected {
       decls += calendarFunctionDeclarations + tasksFunctionDeclarations + gmailFunctionDeclarations
     }
@@ -496,7 +533,8 @@ enum ChatToolRegistry {
     return defaultValue
   }
 
-  private static func boolArgument(_ args: [String: Any], _ key: String, default defaultValue: Bool) -> Bool {
+  // Internal (not private): ChatView's generate_image interception reuses it for its args.
+  static func boolArgument(_ args: [String: Any], _ key: String, default defaultValue: Bool) -> Bool {
     if let value = args[key] as? Bool { return value }
     if let value = args[key] as? NSNumber { return value.boolValue }
     if let value = args[key] as? String {

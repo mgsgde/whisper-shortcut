@@ -77,6 +77,19 @@ final class GeminiChatProvider: LLMChatProvider {
     }
   }
 
+  /// Backend for the `generate_image` chat tool: one-shot Nano Banana call with pre-built
+  /// contents (prompt + optional input images as inline_data). Resolves the Gemini credential
+  /// itself, so ANY provider's chat model can trigger the tool. Returns text whose images are
+  /// embedded as ⟦GEMINI_IMG:…⟧ markers.
+  func generateImage(contents: [[String: Any]]) async throws -> String {
+    guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
+      throw TranscriptionError.networkError(
+        "No Gemini credential available. Add your Google API key in Settings or sign in with Google.")
+    }
+    return try await apiClient.generateImageContent(
+      model: PromptModel.geminiImage.rawValue, contents: contents, credential: credential)
+  }
+
   func generateStructured(
     model: String,
     contents: [[String: Any]],
