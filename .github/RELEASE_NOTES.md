@@ -1,4 +1,4 @@
-# WhisperShortcut 7.49
+# WhisperShortcut 7.50
 
 ## Installation
 
@@ -6,25 +6,22 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ## What's New
 
-### AI Chat: generate images in the conversation
+### Chat with generated images: cleaner and faster
 
-- **Ask the assistant to create images** (Gemini image generation, including Nano Banana and Pro). Generated images appear inline in the chat.
-- **`generate_image` tool** so the model can call image generation when it fits the task (e.g. diagrams or illustrations from your prompt).
+- **Copying a whole chat no longer includes raw image data** — generated images are replaced with a short placeholder in every copy, search, and read-aloud flow.
+- **Smoother streaming after an image is generated** — decoded images are cached, so the reply text streams without re-decoding the image on every word.
+- **Read Aloud skips generated images** instead of announcing them.
 
-### Chat reliability and performance
+### Chat reliability
 
-- **Smoother scrolling in long chats** — scroll position no longer triggers a full chat refresh every frame; reading position is saved with a short debounce.
-- **Fewer freezes at 100% CPU** when scrolling or after sending messages — fixes `SelectionOverlay` loops on tables, clears scroll anchors before list updates, and caches prose layout height.
-- **Retry** on your last user message to resend the same prompt and attachments after removing the failed or unwanted reply.
-- **Copy user message** now includes pasted selection/content blocks, not only the typed text.
-- **Quit no longer deadlocks** when saving chat sessions (`flushToDisk` on the main thread).
+- **Queued messages stay in their chat** — sending a follow-up while a reply is streaming and then switching tabs no longer delivers the queued message to the wrong conversation.
+- **Stopped replies survive a restart** — pressing Stop mid-reply now saves the partial text, so it's still there after quitting and relaunching.
+- **`/model image`-style commands** resolve directly to the image model (Flash tier) instead of asking you to disambiguate.
 
-### Read Aloud
+### Under the hood
 
-- **Menu bar shows a speaking indicator** while Read Aloud playback is active (same visual feedback as other busy states).
+- **Faster failure on Gemini server errors** — the retry logic no longer waits through a pointless final 32-second backoff, and extended retries for 500/503 errors now actually run.
+- **Shared connection pool** for all Gemini requests (chat, transcription, analysis) instead of separate ones per component.
+- Removed ~190 lines of dead and duplicated code (unused views, identity helpers, duplicated error mapping, leftover debug logging).
 
-### Other
-
-- Removed unused **Prompt & Read** code path.
-
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.48...v7.49
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.49...v7.50
