@@ -50,7 +50,7 @@ enum ChatModelCommandResolver {
     // or "nano banana" routes to the image model regardless of any "3.1"/"flash" it contains.
     // Guarded by !grok/!openai so a hypothetical "gpt image" wouldn't get hijacked.
     let wantsImage = !hasGrok && !hasOpenAI
-      && (normalized.contains("image") || normalized.contains("nano banana"))
+      && (padded.contains(" image ") || normalized.contains("nano banana"))
 
     // Detect version family (order matters).
     var candidates: [PromptModel]

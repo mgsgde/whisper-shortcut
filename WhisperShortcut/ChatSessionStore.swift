@@ -297,15 +297,20 @@ class ChatSessionStore {
     purgeExpiredArchivedSessions(&file)
 
     // Strip image binaries from sessions older than imageRetentionDays before caching in memory.
+    // This covers both attached image parts and generated-image markers embedded in message text.
     // The current session always keeps its images for display.
     let cutoff = Date().addingTimeInterval(-Self.imageRetentionDays * 86400)
     file.sessions = file.sessions.map { session in
       guard session.id != file.currentSessionId, session.lastUpdated < cutoff else { return session }
       var stripped = session
       stripped.messages = session.messages.map { msg in
-        guard !msg.attachedImageParts.isEmpty else { return msg }
+        let contentWithoutMarkers = GeminiAPIClient.stripImageMarkers(msg.content)
+        let needsAttachmentStrip = !msg.attachedImageParts.isEmpty
+        let needsContentStrip = contentWithoutMarkers != msg.content
+        guard needsAttachmentStrip || needsContentStrip else { return msg }
         var m = msg
-        m.attachedImageParts = []
+        if needsAttachmentStrip { m.attachedImageParts = [] }
+        if needsContentStrip { m.content = contentWithoutMarkers }
         return m
       }
       return stripped

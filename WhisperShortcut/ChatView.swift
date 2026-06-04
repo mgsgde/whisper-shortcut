@@ -3,33 +3,6 @@ import AppKit
 import Combine
 import UniformTypeIdentifiers
 
-private enum GeminiImageMarkerScanner {
-  static func containsMarker(_ content: String) -> Bool {
-    content.contains(GeminiAPIClient.imageMarkerPrefix)
-  }
-
-  static func walk(
-    _ content: String,
-    onText: (Substring) -> Void,
-    onMarker: (Substring) -> Void,
-    onUnterminatedMarker: (Substring) -> Void
-  ) {
-    let prefix = GeminiAPIClient.imageMarkerPrefix
-    let suffix = GeminiAPIClient.imageMarkerSuffix
-    var rest = Substring(content)
-    while let start = rest.range(of: prefix) {
-      onText(rest[rest.startIndex..<start.lowerBound])
-      guard let end = rest.range(of: suffix, range: start.upperBound..<rest.endIndex) else {
-        onUnterminatedMarker(rest[start.lowerBound...])
-        return
-      }
-      onMarker(rest[start.lowerBound..<end.upperBound])
-      rest = rest[end.upperBound...]
-    }
-    onText(rest)
-  }
-}
-
 // MARK: - ViewModel
 
 @MainActor
@@ -672,7 +645,7 @@ class ChatViewModel: ObservableObject {
             toolLoopExhausted = true
             break toolLoop
           }
-          let (turns, imageMarkers) = try await executeToolCalls(pendingCalls)
+          let (turns, imageMarkers) = try await executeToolCalls(pendingCalls, sessionId: sessionId)
           // Generated images go straight into the streaming bubble: the image shows up the
           // moment the tool finishes, and the model's follow-up narration streams below it.
           // The marker becomes part of the persisted message content (rendered inline);
@@ -780,7 +753,8 @@ class ChatViewModel: ObservableObject {
   }
 
   private func executeToolCalls(
-    _ calls: [(name: String, args: [String: Any], thoughtSignature: String?)]
+    _ calls: [(name: String, args: [String: Any], thoughtSignature: String?)],
+    sessionId: UUID
   ) async throws -> (turns: [[String: Any]], imageMarkers: [String]) {
     let callParts: [[String: Any]] = calls.map { call in
       var part: [String: Any] = ["functionCall": ["name": call.name, "args": call.args]]
@@ -799,7 +773,7 @@ class ChatViewModel: ObservableObject {
       if call.name == ChatToolRegistry.generateImageToolName {
         // Intercepted here (not in ChatToolRegistry): needs the session's attached images
         // and must hand the generated image to the UI rather than into the tool response.
-        let outcome = await executeGenerateImageTool(args: call.args)
+        let outcome = await executeGenerateImageTool(args: call.args, sessionId: sessionId)
         result = outcome.response
         imageMarkers.append(contentsOf: outcome.markers)
       } else {
@@ -820,7 +794,8 @@ class ChatViewModel: ObservableObject {
   /// (optionally including the user's most recently attached images for editing), runs it, and
   /// splits the result into UI-bound image markers and a short, model-bound status payload.
   private func executeGenerateImageTool(
-    args: [String: Any]
+    args: [String: Any],
+    sessionId: UUID
   ) async -> (response: [String: Any], markers: [String]) {
     guard let prompt = (args["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
           !prompt.isEmpty else {
@@ -828,7 +803,8 @@ class ChatViewModel: ObservableObject {
     }
     var parts: [[String: Any]] = []
     if ChatToolRegistry.boolArgument(args, "use_attached_image", default: false) {
-      let attached = messages.last(where: { $0.role == .user && !$0.attachedImageParts.isEmpty })?
+      let attached = store.session(by: sessionId)?
+        .messages.last(where: { $0.role == .user && !$0.attachedImageParts.isEmpty })?
         .attachedImageParts ?? []
       if attached.isEmpty {
         return (["error": "No attached image found in this conversation. Generate from the prompt alone (use_attached_image=false) or ask the user to attach one."], [])
@@ -861,12 +837,12 @@ class ChatViewModel: ObservableObject {
 
   /// Splits content into its ⟦GEMINI_IMG:…⟧ markers and the remaining (non-image) text.
   static func splitGeneratedImageMarkers(_ content: String) -> (markers: [String], text: String) {
-    guard GeminiImageMarkerScanner.containsMarker(content) else {
+    guard GeminiAPIClient.containsImageMarker(in: content) else {
       return ([], content.trimmingCharacters(in: .whitespacesAndNewlines))
     }
     var markers: [String] = []
     var text = ""
-    GeminiImageMarkerScanner.walk(
+    GeminiAPIClient.walkImageMarkers(
       content,
       onText: { text += $0 },
       onMarker: { markers.append(String($0)) },
@@ -1463,7 +1439,7 @@ class ChatViewModel: ObservableObject {
     for session in store.allSessions() {
       var parts: [String] = []
       if let t = session.title { parts.append(t) }
-      parts.append(contentsOf: session.messages.map { $0.content })
+      parts.append(contentsOf: session.messages.map { GeminiAPIClient.stripImageMarkers($0.content) })
 
       var meetingURL: URL? = nil
       if session.isMeeting, let stem = session.meetingStem, let meeting = meetingsByStem[stem] {
@@ -1740,21 +1716,7 @@ class ChatViewModel: ObservableObject {
   /// as multi-megabyte text on every following request. Render-time still reads the original marker
   /// from the stored message content — only the wire copy sent back to the model is trimmed.
   static func stripGeneratedImageMarkers(_ content: String) -> String {
-    guard GeminiImageMarkerScanner.containsMarker(content) else { return content }
-    var result = ""
-    var hadUnterminatedMarker = false
-    GeminiImageMarkerScanner.walk(
-      content,
-      onText: { result += $0 },
-      onMarker: { _ in result += "[generated image]" },
-      // Unterminated marker (shouldn't happen) — keep the remainder verbatim.
-      onUnterminatedMarker: {
-        hadUnterminatedMarker = true
-        result += $0
-      }
-    )
-    if hadUnterminatedMarker { return result }
-    return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    GeminiAPIClient.stripImageMarkers(content)
   }
 
   /// Measures the image payload re-sent on this turn (images are sent in full on *every*
@@ -3118,7 +3080,7 @@ private enum ReplyContentBlock {
   case table(ParsedTable)
   case separator
   case codeBlock(String, String?) // code content, optional language
-  case image(Data) // inline image data (e.g. from Gemini image generation)
+  case image(NSImage) // inline image (e.g. from Gemini image generation)
 }
 
 // MARK: - Code Block Extraction
@@ -3175,7 +3137,7 @@ private enum ModelReplyRenderSegment {
   case prose(AttributedString)
   case table(ParsedTable)
   case codeBlock(String, String?)
-  case image(Data)
+  case image(NSImage)
 }
 
 /// Boxes parsed reply segments so they can be stored in an NSCache (class-only values).
@@ -3356,14 +3318,12 @@ private struct ModelReplyView: View {
           MarkdownTableView(headers: parsed.headers, rows: parsed.rows)
         case .codeBlock(let code, let language):
           CodeBlockView(code: code, language: language)
-        case .image(let imageData):
-          if let nsImage = NSImage(data: imageData) {
-            Image(nsImage: nsImage)
-              .resizable()
-              .scaledToFit()
-              .frame(maxWidth: .infinity)
-              .clipShape(RoundedRectangle(cornerRadius: 8))
-          }
+        case .image(let image):
+          Image(nsImage: image)
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
       }
     }
@@ -3493,9 +3453,9 @@ private struct ModelReplyView: View {
       case .codeBlock(let code, let language):
         flushProse()
         segments.append(.codeBlock(code, language))
-      case .image(let data):
+      case .image(let image):
         flushProse()
-        segments.append(.image(data))
+        segments.append(.image(image))
       case .separator:
         if hasProse {
           prose.append(AttributedString("\n\n"))
@@ -3580,8 +3540,8 @@ private struct ModelReplyView: View {
         }
         for (i, piece) in pieces.enumerated() {
           switch piece {
-          case .image(let data):
-            blocks.append(.image(data))
+          case .image(let image):
+            blocks.append(.image(image))
           case .text(let text):
             var attr = buildSingleParagraphAttributed(text, options: options)
             if i == lastTextIdx {
@@ -3656,8 +3616,8 @@ private struct ModelReplyView: View {
       } else if let pieces = Self.splitImageMarkerPieces(trimmed) {
         for piece in pieces {
           switch piece {
-          case .image(let data):
-            blocks.append(.image(data))
+          case .image(let image):
+            blocks.append(.image(image))
           case .text(let text):
             blocks.append(.text(buildSingleParagraphAttributed(text, options: options)))
           }
@@ -3708,7 +3668,7 @@ private struct ModelReplyView: View {
 
   /// One ordered piece of a paragraph that mixes ⟦GEMINI_IMG:…⟧ markers with prose.
   private enum ImageMarkerPiece {
-    case image(Data)
+    case image(NSImage)
     case text(String)
   }
 
@@ -3718,9 +3678,9 @@ private struct ModelReplyView: View {
   /// Returns nil when the paragraph has no marker (caller falls through to normal handling).
   /// A marker whose base64 fails to decode is dropped (logged) rather than dumped as raw text.
   private static func splitImageMarkerPieces(_ trimmed: String) -> [ImageMarkerPiece]? {
-    guard GeminiImageMarkerScanner.containsMarker(trimmed) else { return nil }
+    guard GeminiAPIClient.containsImageMarker(in: trimmed) else { return nil }
     var pieces: [ImageMarkerPiece] = []
-    GeminiImageMarkerScanner.walk(
+    GeminiAPIClient.walkImageMarkers(
       trimmed,
       onText: { segment in
         let before = segment.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3728,8 +3688,8 @@ private struct ModelReplyView: View {
       },
       onMarker: { markerSegment in
         let marker = String(markerSegment)
-        if let data = extractInlineImageData(marker) {
-          pieces.append(.image(data))
+        if let data = GeminiAPIClient.decodeImageMarkerData(marker), let image = NSImage(data: data) {
+          pieces.append(.image(image))
         } else {
           DebugLogger.logWarning("BLOCKS: image marker failed base64 decode (\(marker.count) chars)")
         }
@@ -3740,20 +3700,6 @@ private struct ModelReplyView: View {
       }
     )
     return pieces
-  }
-
-  /// Checks if a paragraph is a Gemini inline image marker and returns the decoded image data.
-  private static func extractInlineImageData(_ trimmed: String) -> Data? {
-    let prefix = GeminiAPIClient.imageMarkerPrefix
-    let suffix = GeminiAPIClient.imageMarkerSuffix
-    guard trimmed.hasPrefix(prefix), trimmed.hasSuffix(suffix) else { return nil }
-    // Format: ⟦GEMINI_IMG:base64data:mimetype⟧
-    let inner = String(trimmed.dropFirst(prefix.count).dropLast(suffix.count))
-    // Split on last ":" to separate base64 from mimetype (base64 may contain "+" but not ":")
-    guard let lastColon = inner.lastIndex(of: ":") else { return nil }
-    let base64 = String(inner[inner.startIndex..<lastColon])
-    guard !base64.isEmpty else { return nil }
-    return Data(base64Encoded: base64)
   }
 
   /// Parses a paragraph block that consists entirely of bullet/numbered-list lines.
@@ -4150,12 +4096,13 @@ private struct MessageBubbleView: View {
 
   /// Read Aloud and Copy action row for assistant replies; hidden when content is empty.
   private var assistantCopyButtonRow: some View {
-    let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+    let sanitized = ChatViewModel.stripGeneratedImageMarkers(message.content)
+    let trimmed = sanitized.trimmingCharacters(in: .whitespacesAndNewlines)
     return Group {
       if !trimmed.isEmpty {
         HStack(spacing: 8) {
-          ReadAloudButtonView(messageContent: message.content)
-          CopyReplyButtonView(messageContent: message.content)
+          ReadAloudButtonView(messageContent: sanitized)
+          CopyReplyButtonView(messageContent: sanitized)
         }
         .padding(.top, 6)
       }

@@ -973,6 +973,58 @@ class GeminiAPIClient {
   static let imageMarkerPrefix = "⟦GEMINI_IMG:"
   static let imageMarkerSuffix = "⟧"
 
+  static func containsImageMarker(in content: String) -> Bool {
+    content.contains(imageMarkerPrefix)
+  }
+
+  static func walkImageMarkers(
+    _ content: String,
+    onText: (Substring) -> Void,
+    onMarker: (Substring) -> Void,
+    onUnterminatedMarker: (Substring) -> Void
+  ) {
+    var rest = Substring(content)
+    while let start = rest.range(of: imageMarkerPrefix) {
+      onText(rest[rest.startIndex..<start.lowerBound])
+      guard let end = rest.range(of: imageMarkerSuffix, range: start.upperBound..<rest.endIndex) else {
+        onUnterminatedMarker(rest[start.lowerBound...])
+        return
+      }
+      onMarker(rest[start.lowerBound..<end.upperBound])
+      rest = rest[end.upperBound...]
+    }
+    onText(rest)
+  }
+
+  /// Replaces inline image markers with a short placeholder so marker base64 never enters
+  /// clipboard/search/TTS pipelines.
+  static func stripImageMarkers(_ content: String, placeholder: String = "[generated image]") -> String {
+    guard containsImageMarker(in: content) else { return content }
+    var result = ""
+    var hadUnterminatedMarker = false
+    walkImageMarkers(
+      content,
+      onText: { result += $0 },
+      onMarker: { _ in result += placeholder },
+      onUnterminatedMarker: {
+        hadUnterminatedMarker = true
+        result += $0
+      }
+    )
+    if hadUnterminatedMarker { return result }
+    return result.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// Decodes the base64 payload from a single `⟦GEMINI_IMG:...⟧` marker.
+  static func decodeImageMarkerData(_ marker: String) -> Data? {
+    guard marker.hasPrefix(imageMarkerPrefix), marker.hasSuffix(imageMarkerSuffix) else { return nil }
+    let inner = String(marker.dropFirst(imageMarkerPrefix.count).dropLast(imageMarkerSuffix.count))
+    guard let lastColon = inner.lastIndex(of: ":") else { return nil }
+    let base64 = String(inner[inner.startIndex..<lastColon])
+    guard !base64.isEmpty else { return nil }
+    return Data(base64Encoded: base64)
+  }
+
   func extractText(from response: GeminiResponse) -> String {
     guard let candidate = response.candidates.first,
           let content = candidate.content,
