@@ -1513,7 +1513,7 @@ class MenuBarController: NSObject {
   ) {
     // Capture BEFORE `transitionToIdleAndCleanup` flips `appState` to idle. It only posts
     // `ttsDidStop` when leaving a TTS-synthesizing state (`isTTSRunning == true`); for the
-    // audio-playing path the prior state is `.feedback` and it won't post on its own.
+    // audio-playing path the prior state is `.speaking` and it won't post on its own.
     let transitionWillPostStop = transitionToIdle && isTTSRunning
     currentReadAloudTask?.cancel()
     if cancelNetworkWork {
@@ -1721,16 +1721,17 @@ class MenuBarController: NSObject {
           self.audioEngine = nil
           self.audioPlayerNode = nil
           self.timePitchNode = nil
-          self.appState = self.appState.showSuccess("Audio playback completed")
-          try? await Task.sleep(nanoseconds: 2_000_000_000)
-          if case .feedback = self.appState {
-            self.appState = self.appState.finish()
+          // Only flip to completion feedback while still `.speaking` — the user may have
+          // started a recording during playback, whose state must not be clobbered.
+          // The feedback state auto-resets to idle via the `appState` didSet.
+          if case .speaking = self.appState {
+            self.appState = self.appState.showSuccess("Audio playback completed")
           }
         }
       }
       playerNode.play()
       DebugLogger.logSuccess("TTS-PLAYBACK: Playback started")
-      appState = appState.showSuccess("Playing audio...")
+      appState = .speaking
 
     } catch {
       DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.localizedDescription)")

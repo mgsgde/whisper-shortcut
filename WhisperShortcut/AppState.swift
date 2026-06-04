@@ -14,6 +14,8 @@ enum AppState: Equatable {
   case idle
   case recording(RecordingMode)
   case processing(ProcessingMode)
+  /// Read Aloud audio is actively playing through the speakers.
+  case speaking
   case feedback(FeedbackMode)
 
   // MARK: - Recording States
@@ -190,6 +192,7 @@ extension AppState {
     case .idle: return "🎙️"
     case .recording(let mode): return mode.icon
     case .processing(let mode): return mode.icon
+    case .speaking: return "🔊"
     case .feedback(let mode): return mode.icon
     }
   }
@@ -210,6 +213,7 @@ extension AppState {
     case .idle: return "Ready to record"
     case .recording(let mode): return mode.statusText
     case .processing(let mode): return mode.statusText
+    case .speaking: return "🔊 Speaking..."
     case .feedback(let mode): return mode.statusText
     }
   }
@@ -220,6 +224,7 @@ extension AppState {
     case .idle: return "WhisperShortcut - Click to record"
     case .recording(let mode): return mode.tooltip
     case .processing(let mode): return mode.tooltip
+    case .speaking: return "Reading aloud... Click menu to stop"
     case .feedback(let mode): return mode.tooltip
     }
   }
@@ -232,10 +237,12 @@ extension AppState {
     }
   }
 
-  /// Whether the app is busy (cannot start new recordings)
+  /// Whether the app is busy (cannot start new recordings).
+  /// `.speaking` is intentionally not busy: a new recording may start while audio plays
+  /// (same as the previous behavior, where playback left the state on idle).
   var isBusy: Bool {
     switch self {
-    case .idle, .feedback: return false
+    case .idle, .speaking, .feedback: return false
     default: return true
     }
   }
@@ -324,6 +331,7 @@ extension AppState: CustomStringConvertible {
     case .idle: return "idle"
     case .recording(let mode): return "recording(\(mode))"
     case .processing(let mode): return "processing(\(mode))"
+    case .speaking: return "speaking"
     case .feedback(let mode): return "feedback(\(mode))"
     }
   }
