@@ -3993,9 +3993,12 @@ private struct MessageBubbleView: View {
     }
   }
 
+  /// Copies pasted/selection blocks plus the typed text, in display order.
   private var userCopyButtonRow: some View {
     let parsed = parseUserMessagePastedXML(message.content)
-    let text = parsed.userText.trimmingCharacters(in: .whitespacesAndNewlines)
+    var parts = parsed.sections.map { $0.body.trimmingCharacters(in: .whitespacesAndNewlines) }
+    parts.append(parsed.userText.trimmingCharacters(in: .whitespacesAndNewlines))
+    let text = parts.filter { !$0.isEmpty }.joined(separator: "\n\n")
     return Group {
       if !text.isEmpty {
         HStack(spacing: 8) {
