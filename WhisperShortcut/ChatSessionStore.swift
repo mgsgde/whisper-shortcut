@@ -194,7 +194,6 @@ class ChatSessionStore {
   private var cachedFile: SessionsFile?
   private let diskWriteQueue = DispatchQueue(label: "com.whispershortcut.session.io", qos: .utility)
   /// Debounce disk writes: coalesce rapid saves into a single write after a short delay.
-  private var pendingSave: SessionsFile?
   private var debounceWorkItem: DispatchWorkItem?
   private static let saveDebounceSeconds: Double = 2.0
   /// Maximum messages kept per session on disk. Older messages are trimmed.

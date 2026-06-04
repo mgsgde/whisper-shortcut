@@ -3,6 +3,33 @@ import AppKit
 import Combine
 import UniformTypeIdentifiers
 
+private enum GeminiImageMarkerScanner {
+  static func containsMarker(_ content: String) -> Bool {
+    content.contains(GeminiAPIClient.imageMarkerPrefix)
+  }
+
+  static func walk(
+    _ content: String,
+    onText: (Substring) -> Void,
+    onMarker: (Substring) -> Void,
+    onUnterminatedMarker: (Substring) -> Void
+  ) {
+    let prefix = GeminiAPIClient.imageMarkerPrefix
+    let suffix = GeminiAPIClient.imageMarkerSuffix
+    var rest = Substring(content)
+    while let start = rest.range(of: prefix) {
+      onText(rest[rest.startIndex..<start.lowerBound])
+      guard let end = rest.range(of: suffix, range: start.upperBound..<rest.endIndex) else {
+        onUnterminatedMarker(rest[start.lowerBound...])
+        return
+      }
+      onMarker(rest[start.lowerBound..<end.upperBound])
+      rest = rest[end.upperBound...]
+    }
+    onText(rest)
+  }
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -339,6 +366,10 @@ class ChatViewModel: ObservableObject {
   func retryMessage(id: UUID) {
     guard !isSending else {
       showNotice("Wait for the current response to finish (or press Stop).")
+      return
+    }
+    guard messageQueue.isEmpty else {
+      showNotice("Retry is unavailable while queued messages are pending. Remove them first.")
       return
     }
     let sessionId = session.id
@@ -830,26 +861,18 @@ class ChatViewModel: ObservableObject {
 
   /// Splits content into its ⟦GEMINI_IMG:…⟧ markers and the remaining (non-image) text.
   static func splitGeneratedImageMarkers(_ content: String) -> (markers: [String], text: String) {
-    let prefix = GeminiAPIClient.imageMarkerPrefix
-    let suffix = GeminiAPIClient.imageMarkerSuffix
-    guard content.contains(prefix) else {
+    guard GeminiImageMarkerScanner.containsMarker(content) else {
       return ([], content.trimmingCharacters(in: .whitespacesAndNewlines))
     }
     var markers: [String] = []
     var text = ""
-    var rest = Substring(content)
-    while let start = rest.range(of: prefix) {
-      text += rest[rest.startIndex..<start.lowerBound]
-      guard let end = rest.range(of: suffix, range: start.upperBound..<rest.endIndex) else {
-        // Unterminated marker (shouldn't happen) — keep the remainder as text.
-        text += rest[start.lowerBound...]
-        rest = rest[rest.endIndex...]
-        break
-      }
-      markers.append(String(rest[start.lowerBound..<end.upperBound]))
-      rest = rest[end.upperBound...]
-    }
-    text += rest
+    GeminiImageMarkerScanner.walk(
+      content,
+      onText: { text += $0 },
+      onMarker: { markers.append(String($0)) },
+      // Unterminated marker (shouldn't happen) — keep the remainder as text.
+      onUnterminatedMarker: { text += $0 }
+    )
     return (markers, text.trimmingCharacters(in: .whitespacesAndNewlines))
   }
 
@@ -1717,23 +1740,20 @@ class ChatViewModel: ObservableObject {
   /// as multi-megabyte text on every following request. Render-time still reads the original marker
   /// from the stored message content — only the wire copy sent back to the model is trimmed.
   static func stripGeneratedImageMarkers(_ content: String) -> String {
-    let prefix = GeminiAPIClient.imageMarkerPrefix
-    guard content.contains(prefix) else { return content }
-    let suffix = GeminiAPIClient.imageMarkerSuffix
+    guard GeminiImageMarkerScanner.containsMarker(content) else { return content }
     var result = ""
-    var rest = Substring(content)
-    while let start = rest.range(of: prefix) {
-      result += rest[rest.startIndex..<start.lowerBound]
-      if let end = rest.range(of: suffix, range: start.upperBound..<rest.endIndex) {
-        result += "[generated image]"
-        rest = rest[end.upperBound...]
-      } else {
-        // Unterminated marker (shouldn't happen) — keep the remainder verbatim and stop.
-        result += rest[start.lowerBound...]
-        return result
+    var hadUnterminatedMarker = false
+    GeminiImageMarkerScanner.walk(
+      content,
+      onText: { result += $0 },
+      onMarker: { _ in result += "[generated image]" },
+      // Unterminated marker (shouldn't happen) — keep the remainder verbatim.
+      onUnterminatedMarker: {
+        hadUnterminatedMarker = true
+        result += $0
       }
-    }
-    result += rest
+    )
+    if hadUnterminatedMarker { return result }
     return result.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
@@ -3698,30 +3718,27 @@ private struct ModelReplyView: View {
   /// Returns nil when the paragraph has no marker (caller falls through to normal handling).
   /// A marker whose base64 fails to decode is dropped (logged) rather than dumped as raw text.
   private static func splitImageMarkerPieces(_ trimmed: String) -> [ImageMarkerPiece]? {
-    let prefix = GeminiAPIClient.imageMarkerPrefix
-    let suffix = GeminiAPIClient.imageMarkerSuffix
-    guard trimmed.contains(prefix) else { return nil }
+    guard GeminiImageMarkerScanner.containsMarker(trimmed) else { return nil }
     var pieces: [ImageMarkerPiece] = []
-    var rest = Substring(trimmed)
-    while let start = rest.range(of: prefix) {
-      let before = rest[rest.startIndex..<start.lowerBound]
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-      if !before.isEmpty { pieces.append(.text(before)) }
-      guard let end = rest.range(of: suffix, range: start.upperBound..<rest.endIndex) else {
+    GeminiImageMarkerScanner.walk(
+      trimmed,
+      onText: { segment in
+        let before = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !before.isEmpty { pieces.append(.text(before)) }
+      },
+      onMarker: { markerSegment in
+        let marker = String(markerSegment)
+        if let data = extractInlineImageData(marker) {
+          pieces.append(.image(data))
+        } else {
+          DebugLogger.logWarning("BLOCKS: image marker failed base64 decode (\(marker.count) chars)")
+        }
+      },
+      onUnterminatedMarker: { trailing in
         // Unterminated marker (e.g. truncated stream) — drop it instead of dumping base64.
-        DebugLogger.logWarning("BLOCKS: dropped unterminated image marker (\(rest.count) chars)")
-        return pieces
+        DebugLogger.logWarning("BLOCKS: dropped unterminated image marker (\(trailing.count) chars)")
       }
-      let marker = String(rest[start.lowerBound..<end.upperBound])
-      if let data = extractInlineImageData(marker) {
-        pieces.append(.image(data))
-      } else {
-        DebugLogger.logWarning("BLOCKS: image marker failed base64 decode (\(marker.count) chars)")
-      }
-      rest = rest[end.upperBound...]
-    }
-    let tail = rest.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !tail.isEmpty { pieces.append(.text(tail)) }
+    )
     return pieces
   }
 
