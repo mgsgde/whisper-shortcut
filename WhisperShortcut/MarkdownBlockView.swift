@@ -337,7 +337,11 @@ struct MarkdownTableView: View {
         }
       }
     }
-    .textSelection(.enabled)
+    // DELIBERATELY not selectable: `.textSelection(.enabled)` on a container whose Texts carry
+    // per-run mixed fonts (semibold headers / **bold** cells) installs macOS's `SelectionOverlay`,
+    // which can loop in `_invalidateEffectiveFont` and wedge the main thread at 100% CPU — the
+    // same bug documented on the chat prose path (see MessageBubbleView). The comment there
+    // already promises "tables ... are simply not selectable"; this makes the code match it.
     .clipShape(RoundedRectangle(cornerRadius: 8))
     .overlay(
       RoundedRectangle(cornerRadius: 8)

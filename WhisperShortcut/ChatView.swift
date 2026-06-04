@@ -8,6 +8,9 @@ import UniformTypeIdentifiers
 @MainActor
 class ChatViewModel: ObservableObject {
   @Published var messages: [ChatMessage] = []
+  /// Bumped when the visible list mutates so `ChatView` clears its local `.scrollPosition`
+  /// binding (see `clearScrollAnchorForListMutation()`). Not used for scroll offset storage.
+  @Published private(set) var scrollAnchorClearCount: UInt = 0
   @Published var inputText: String = ""
   @Published private(set) var sendingSessionIds: Set<UUID> = []
   /// Sessions whose in-flight request is being superseded by a new user message.
@@ -327,6 +330,32 @@ class ChatViewModel: ObservableObject {
       return
     }
     performSend(content: finalContent, attachedParts: attachedParts)
+  }
+
+  /// Re-sends the user message identified by `id`: the message and everything after it
+  /// (the model's response) are removed from the session, then the same content and
+  /// attachments are dispatched as a fresh send. Only offered on the last user message,
+  /// so nothing the user still cares about gets truncated.
+  func retryMessage(id: UUID) {
+    guard !isSending else {
+      showNotice("Wait for the current response to finish (or press Stop).")
+      return
+    }
+    let sessionId = session.id
+    guard let index = session.messages.firstIndex(where: { $0.id == id }),
+          session.messages[index].role == .user else { return }
+    let original = session.messages[index]
+    var target = session
+    target.messages.removeSubrange(index...)
+    target.lastUpdated = Date()
+    store.save(target)
+    clearScrollAnchorForListMutation()
+    session = target
+    messages = target.messages
+    errorMessage = nil
+    DebugLogger.log(
+      "CHAT: Retry message (contentLen=\(original.content.count), attachments=\(original.attachedImageParts.count)) session=\(sessionId)")
+    performSend(content: original.content, attachedParts: original.attachedImageParts)
   }
 
   func captureScreenshot() async {
@@ -1018,9 +1047,25 @@ class ChatViewModel: ObservableObject {
       store.save(target)
     }
     if isCurrentSession {
+      clearScrollAnchorForListMutation()
       session = target
       messages = target.messages
     }
+  }
+
+  /// Clears the `.scrollPosition` anchor before mutating the visible message list.
+  ///
+  /// With a non-nil anchor id, every mutation of `messages` makes the lazy list re-anchor by
+  /// resolving that id during layout (`LazySubviewPlacements.makeIDPlacementContextIfNeeded`).
+  /// In long sessions that layout pass can fail to converge and wedge the main thread at
+  /// 100% CPU inside a single transaction (observed 2026-06-04: app froze right after
+  /// CHAT-SEND; a `sample` showed every frame resolving the scrollPosition matchingID).
+  /// Clearing the binding removes the id-anchoring work entirely: the scroll offset is
+  /// preserved by the ScrollView's default behavior and the persisted reading position
+  /// (`scrollAnchors`) is untouched — it repopulates on the next user scroll.
+  private func clearScrollAnchorForListMutation() {
+    scrollAnchorClearCount &+= 1
+    DebugLogger.logUI("CHAT-SCROLL: clearing scrollPosition anchor before list mutation (count=\(scrollAnchorClearCount))")
   }
 
   /// Appends a message to the session identified by `sessionId`.
@@ -1048,6 +1093,9 @@ class ChatViewModel: ObservableObject {
     store.save(target)
 
     if isCurrentSession {
+      DebugLogger.logUI(
+        "CHAT-LIST: append role=\(message.role) count=\(target.messages.count) session=\(sessionId)")
+      clearScrollAnchorForListMutation()
       session = target
       messages = target.messages
     }
@@ -1066,6 +1114,7 @@ class ChatViewModel: ObservableObject {
     target.messages.removeAll { $0.id == id }
     store.save(target)
     if isCurrentSession {
+      clearScrollAnchorForListMutation()
       session = target
       messages = target.messages
     }
@@ -1813,10 +1862,10 @@ struct ChatView: View {
   /// Image data to show in the full-size preview sheet (from pending screenshot or from a sent message thumbnail).
   @State private var previewImageData: Data? = nil
   @State private var scrollActions = ChatScrollActions()
-  /// Id of the message kept at the top of the chat scroll view. Bound to `.scrollPosition` so the
-  /// reading position survives the LazyVStack recreation a window resize/screen-move triggers (see
-  /// `.id(widthBucket)`), tab switches, and relaunch. Persisted per session via the view model.
-  @State private var scrolledMessageID: UUID? = nil
+  /// Local `.scrollPosition` binding only — not on the view model so per-frame scroll updates
+  /// do not `@Published`-refresh the whole chat. Cleared when `scrollAnchorClearCount` bumps.
+  @State private var scrollPositionID: UUID? = nil
+  @State private var scrollAnchorPersistTask: Task<Void, Never>? = nil
   /// Suppresses persisting the scroll anchor while we re-apply it programmatically (during a
   /// width-bucket recreation or a tab switch), so the transient reset-to-top doesn't clobber the
   /// saved position before we restore it.
@@ -2067,6 +2116,7 @@ struct ChatView: View {
   private func messageList(scrollActions: ChatScrollActions, containerWidth: CGFloat) -> some View {
     /// Rounded to 50pt steps so resize doesn't constantly recreate the list (preserves scroll position for small moves).
     let widthBucket = (containerWidth / 50).rounded(.down) * 50
+    let lastUserMessageId = viewModel.messages.last(where: { $0.role == .user })?.id
     return ScrollViewReader { proxy in
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 24) {
@@ -2082,7 +2132,9 @@ struct ChatView: View {
               // self-sizing NSTextView (SelectableProseText) only renders once the
               // message is final, to avoid per-token layout thrash wedging the main thread.
               isStreaming: viewModel.isSending && message.id == viewModel.messages.last?.id,
-              onTapAttachedImage: { previewImageData = $0 })
+              onTapAttachedImage: { previewImageData = $0 },
+              onRetry: message.id == lastUserMessageId
+                ? { viewModel.retryMessage(id: message.id) } : nil)
               .id(message.id)
           }
           ForEach(viewModel.messageQueue) { queued in
@@ -2119,7 +2171,7 @@ struct ChatView: View {
         .padding(.bottom, 28)
         .id(widthBucket)
       }
-      .scrollPosition(id: $scrolledMessageID, anchor: .top)
+      .scrollPosition(id: $scrollPositionID, anchor: .top)
       // Typing indicator lives OUTSIDE the LazyVStack as a floating overlay so its
       // 60fps TimelineView clock invalidates only its own subtree, not the whole
       // message list. Inside the list it forced a full LazyVStack/GeometryReader
@@ -2145,19 +2197,21 @@ struct ChatView: View {
         try? await Task.sleep(for: .milliseconds(400))
         restoreSavedScroll(proxy: proxy)
       }
-      .onChange(of: scrolledMessageID) { _, newValue in
-        // Persist as the user scrolls (the binding only changes when the top message changes).
-        if !suppressAnchorSave { saveScrollAnchorIfValid(newValue) }
+      .onChange(of: scrollPositionID) { _, newValue in
+        scheduleScrollAnchorPersist(newValue)
+      }
+      .onChange(of: viewModel.scrollAnchorClearCount) { _, _ in
+        scrollPositionID = nil
       }
       .onChange(of: widthBucket) { _, _ in
         // The LazyVStack is rebuilt with a new identity on width-bucket change (resize / screen
         // move — see `.id(widthBucket)`), which resets the scroll to the top. Re-assert the saved
-        // position once the new content has laid out. `scrolledMessageID` still holds the
+        // position once the new content has laid out. `scrollPositionID` still holds the
         // pre-reset value here, so capture it before the reset clobbers it.
-        guard let target = scrolledMessageID else { return }
+        guard let target = scrollPositionID else { return }
         suppressAnchorSave = true
         DispatchQueue.main.async {
-          scrolledMessageID = target
+          scrollPositionID = target
           proxy.scrollTo(target, anchor: .top)
           suppressAnchorSave = false
         }
@@ -2256,11 +2310,24 @@ struct ChatView: View {
     let sessionId = viewModel.currentSessionId
     if let saved = viewModel.scrollAnchor(for: sessionId),
        viewModel.messages.contains(where: { $0.id == saved }) {
-      scrolledMessageID = saved
+      DebugLogger.logUI("CHAT-SCROLL: restoring saved anchor \(saved.uuidString) session=\(sessionId)")
+      scrollPositionID = saved
       proxy.scrollTo(saved, anchor: .top)
     } else {
-      scrolledMessageID = nil
+      scrollPositionID = nil
       scrollToBottom(proxy: proxy)
+    }
+  }
+
+  /// Debounces UserDefaults persistence while scrolling so per-frame `scrollPosition` updates
+  /// do not write on every layout pass.
+  private func scheduleScrollAnchorPersist(_ messageId: UUID?) {
+    guard !suppressAnchorSave else { return }
+    scrollAnchorPersistTask?.cancel()
+    scrollAnchorPersistTask = Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(250))
+      guard !Task.isCancelled else { return }
+      saveScrollAnchorIfValid(messageId)
     }
   }
 
@@ -3167,11 +3234,25 @@ private struct SelectableProseText: NSViewRepresentable {
 
   func sizeThatFits(_ proposal: ProposedViewSize, nsView tv: NSTextView, context: Context) -> CGSize? {
     guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
-    // Measure in a throwaway TextKit stack so the live view's layout is never mutated as a side
-    // effect — the previous in-place frame/containerSize hack is what corrupted a reused view's
-    // width on scroll. The live text view sizes itself via widthTracksTextView once SwiftUI sets
-    // the frame width we return here.
-    return CGSize(width: width, height: Self.measuredHeight(nsAttributed, width: width))
+    let height = Self.cachedHeight(for: nsAttributed, width: width)
+    return CGSize(width: width, height: height)
+  }
+
+  private static let proseHeightCache = NSCache<NSString, NSNumber>()
+
+  private static func cachedHeight(for ns: NSAttributedString, width: CGFloat) -> CGFloat {
+    let key = cacheKey(ns: ns, width: width)
+    if let boxed = proseHeightCache.object(forKey: key) {
+      return CGFloat(boxed.doubleValue)
+    }
+    let height = measuredHeight(ns, width: width)
+    proseHeightCache.setObject(NSNumber(value: height), forKey: key)
+    return height
+  }
+
+  private static func cacheKey(ns: NSAttributedString, width: CGFloat) -> NSString {
+    let widthKey = Int(width.rounded())
+    return "\(widthKey)_\(ns.length)_\(ns.hash)" as NSString
   }
 
   private static func measuredHeight(_ ns: NSAttributedString, width: CGFloat) -> CGFloat {
@@ -3757,7 +3838,6 @@ private struct CodeBlockView: View {
         Text(code)
           .font(.system(size: 13, design: .monospaced))
           .foregroundColor(ChatTheme.primaryText.opacity(0.9))
-          .textSelection(.enabled)
           .padding(14)
       }
     }
@@ -3800,6 +3880,41 @@ private struct CopyReplyButtonView: View {
     .pointerCursorOnHover()
     .help("Copy this reply to the clipboard")
     .accessibilityLabel("Copy this reply to the clipboard")
+  }
+}
+
+// MARK: - Retry Button (under the last user message)
+
+/// Re-sends the message (same text and attachments) and regenerates the response.
+private struct RetryButtonView: View {
+  let action: () -> Void
+  @State private var isHovered = false
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 5) {
+        Image(systemName: "arrow.clockwise")
+          .font(.system(size: 12))
+        Text("Retry")
+          .font(.caption)
+      }
+      .foregroundColor(isHovered ? ChatTheme.primaryText : ChatTheme.secondaryText)
+      .padding(.horizontal, 10)
+      .padding(.vertical, 6)
+      .frame(minHeight: 28)
+      .contentShape(Rectangle())
+      .background(
+        RoundedRectangle(cornerRadius: 6)
+          .fill(isHovered ? ChatTheme.controlBackground.opacity(0.9) : ChatTheme.controlBackground.opacity(0.5))
+      )
+    }
+    .buttonStyle(.plain)
+    .onHover { inside in
+      isHovered = inside
+    }
+    .pointerCursorOnHover()
+    .help("Send this message again and regenerate the response")
+    .accessibilityLabel("Retry this message")
   }
 }
 
@@ -3919,6 +4034,8 @@ private struct MessageBubbleView: View {
   let message: ChatMessage
   var isStreaming: Bool = false
   var onTapAttachedImage: ((Data) -> Void)? = nil
+  /// Non-nil only on the last user message: re-sends it and regenerates the response.
+  var onRetry: (() -> Void)? = nil
 
   var isUser: Bool { message.role == .user }
 
@@ -3960,7 +4077,6 @@ private struct MessageBubbleView: View {
           Text(parsed.userText)
             .font(.system(size: 16))
             .foregroundColor(ChatTheme.primaryText)
-            .textSelection(.enabled)
         }
         if !message.attachedImageParts.isEmpty {
           Text(message.attachedImageParts.count == 1
@@ -3993,16 +4109,22 @@ private struct MessageBubbleView: View {
     }
   }
 
-  /// Copies pasted/selection blocks plus the typed text, in display order.
+  /// Retry (last user message only) and Copy. Copy joins pasted/selection blocks plus
+  /// the typed text, in display order; it is hidden for attachment-only messages.
   private var userCopyButtonRow: some View {
     let parsed = parseUserMessagePastedXML(message.content)
     var parts = parsed.sections.map { $0.body.trimmingCharacters(in: .whitespacesAndNewlines) }
     parts.append(parsed.userText.trimmingCharacters(in: .whitespacesAndNewlines))
     let text = parts.filter { !$0.isEmpty }.joined(separator: "\n\n")
     return Group {
-      if !text.isEmpty {
+      if !text.isEmpty || onRetry != nil {
         HStack(spacing: 8) {
-          CopyReplyButtonView(messageContent: text)
+          if let onRetry {
+            RetryButtonView(action: onRetry)
+          }
+          if !text.isEmpty {
+            CopyReplyButtonView(messageContent: text)
+          }
         }
         .padding(.top, 4)
       }

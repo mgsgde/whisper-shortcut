@@ -344,11 +344,21 @@ class ChatSessionStore {
 
   /// Forces an immediate disk write of the current cached state (e.g. before app termination).
   nonisolated func flushToDisk() {
-    let file: SessionsFile? = DispatchQueue.main.sync { cachedFile }
+    // `applicationWillTerminate` calls this ON the main thread, and `DispatchQueue.main.sync`
+    // from the main thread is an instant deadlock trap (EXC_BREAKPOINT in
+    // __DISPATCH_WAIT_FOR_QUEUE__ — the crash formerly seen on every app quit, which also
+    // meant this flush never actually ran). Hop to main only when we aren't already there.
+    func mainSync<T>(_ body: @MainActor () -> T) -> T {
+      if Thread.isMainThread {
+        return MainActor.assumeIsolated(body)
+      }
+      return DispatchQueue.main.sync { body() }
+    }
+    let file: SessionsFile? = mainSync { cachedFile }
     guard let file else { return }
-    let url = DispatchQueue.main.sync { fileURL }
-    let dir = DispatchQueue.main.sync { appSupportDir }
-    DispatchQueue.main.sync { debounceWorkItem?.cancel() }
+    let url = mainSync { fileURL }
+    let dir = mainSync { appSupportDir }
+    mainSync { debounceWorkItem?.cancel() }
     do {
       try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
       let data = try JSONEncoder().encode(file)
