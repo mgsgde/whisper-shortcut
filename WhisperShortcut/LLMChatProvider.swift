@@ -141,31 +141,6 @@ protocol LLMChatProvider {
   ) async throws -> [String: Any]
 }
 
-extension LLMChatProvider {
-  /// Convenience overload preserving the previous call shape (no `disableBuiltInTools`,
-  /// no `cacheKey`). Built-in tools stay enabled — the chat default — `thinkingLevel`
-  /// defaults to the model's built-in config, and no prompt-cache key is sent. Distinct
-  /// arity from the requirement, so there is no ambiguity.
-  func sendChatStream(
-    model: String,
-    contents: [[String: Any]],
-    systemInstruction: [String: Any]?,
-    tools: [LLMToolDeclaration],
-    useGrounding: Bool,
-    thinkingLevel: ThinkingLevel = .default
-  ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-    sendChatStream(
-      model: model,
-      contents: contents,
-      systemInstruction: systemInstruction,
-      tools: tools,
-      useGrounding: useGrounding,
-      thinkingLevel: thinkingLevel,
-      disableBuiltInTools: false,
-      cacheKey: nil)
-  }
-}
-
 // MARK: - Structured Output Schema Adapter
 
 enum StructuredOutputSchema {

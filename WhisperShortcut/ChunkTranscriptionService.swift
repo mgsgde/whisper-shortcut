@@ -296,9 +296,7 @@ class ChunkTranscriptionService {
                 let mimeType = geminiClient.getMimeType(for: fileExtension)
 
                 let endpoint = model.apiEndpoint
-                let (resolvedEndpoint, resolvedCredential) = GeminiAPIClient.resolveGenerateContentEndpoint(directEndpoint: endpoint, credential: credential)
-                let credentialForRequest = await GeminiAPIClient.resolveCredentialForRequest(endpoint: resolvedEndpoint, resolvedCredential: resolvedCredential)
-                var request = try geminiClient.createRequest(endpoint: resolvedEndpoint, credential: credentialForRequest)
+                var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
                 request.timeoutInterval = Self.chunkResourceTimeout
 
                 let transcriptionRequest = GeminiTranscriptionRequest(

@@ -26,12 +26,6 @@ struct GeminiErrorResponse: Codable {
         let status: String?
     }
 
-    /// Extracts the retry delay in seconds from the message text.
-    /// Parses patterns like "Please retry in 55.764008118s." from the message.
-    func extractRetryDelay() -> TimeInterval? {
-        return Self.parseRetryDelayFromMessage(error.message)
-    }
-
     /// Parses "Please retry in X.Xs" from an error message string
     static func parseRetryDelayFromMessage(_ message: String) -> TimeInterval? {
         // Pattern: "Please retry in 55.764008118s." or "retry in 30s"
@@ -60,7 +54,6 @@ class GeminiAPIClient {
   
   // MARK: - Constants
   private enum Constants {
-    static let requestTimeout: TimeInterval = 60.0
     static let resourceTimeout: TimeInterval = 300.0
     static let maxRetryAttempts = 5  // Handle rate limiting and transient 503s
     static let maxServerErrorRetryAttempts = 6  // Extra attempts for 503/500 server errors
@@ -72,11 +65,10 @@ class GeminiAPIClient {
   private let session: URLSession
   
   // MARK: - Initialization
+  /// Defaults to `LLMHTTPSession.shared` (same 60s/300s timeouts) so the many GeminiAPIClient
+  /// instances across the app share one connection pool instead of each spawning their own.
   init(session: URLSession? = nil) {
-    let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = Constants.requestTimeout
-    config.timeoutIntervalForResource = Constants.resourceTimeout
-    self.session = session ?? URLSession(configuration: config)
+    self.session = session ?? LLMHTTPSession.shared
   }
   
   // MARK: - Request Creation
@@ -120,17 +112,6 @@ class GeminiAPIClient {
     try createRequest(endpoint: endpoint, credential: .apiKey(apiKey))
   }
 
-  // MARK: - Endpoint Resolution
-  /// Returns the direct endpoint and credential (no proxy).
-  static func resolveGenerateContentEndpoint(directEndpoint: String, credential: GeminiCredential) -> (endpoint: String, credential: GeminiCredential?) {
-    return (directEndpoint, credential)
-  }
-
-  /// Returns the resolved credential for the request.
-  static func resolveCredentialForRequest(endpoint: String, resolvedCredential: GeminiCredential?) async -> GeminiCredential? {
-    return resolvedCredential
-  }
-  
   // MARK: - Request Execution
   /// Generic helper to perform Gemini API requests with error handling and retry logic
   func performRequest<T: Decodable>(
@@ -142,7 +123,11 @@ class GeminiAPIClient {
     var lastError: Error?
     var maxAttempts = withRetry ? Constants.maxRetryAttempts : 1
 
-    for attempt in 1...maxAttempts {
+    // While-loop (not `for attempt in 1...maxAttempts`): the range form snapshots the bound at
+    // entry, so the server-error bump of `maxAttempts` below would never actually add attempts.
+    var attempt = 0
+    while attempt < maxAttempts {
+      attempt += 1
       do {
         if attempt > 1 {
           DebugLogger.log("\(mode)-RETRY: Attempt \(attempt)/\(maxAttempts)")
@@ -195,65 +180,20 @@ class GeminiAPIClient {
           }
         }
 
-        // Log raw response for debugging (especially for TTS) - BEFORE decoding
+        // TTS responses: reject empty bodies and log a compact shape summary before decoding.
         if mode == "TTS" {
-          DebugLogger.log("TTS: Starting response analysis...")
-          // Check if data is valid
           guard data.count > 0 else {
             DebugLogger.logError("TTS: Response data is empty")
             throw TranscriptionError.networkError("Empty response from TTS API")
           }
-          
-          // Try to parse as JSON first to validate structure
-          do {
-            let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            if let jsonObject = jsonObject {
-              DebugLogger.log("TTS: Response is valid JSON with keys: \(jsonObject.keys.joined(separator: ", "))")
-              
-              if let candidates = jsonObject["candidates"] as? [[String: Any]], let firstCandidate = candidates.first {
-                DebugLogger.log("TTS: Found \(candidates.count) candidate(s), first candidate keys: \(firstCandidate.keys.joined(separator: ", "))")
-                
-                if let content = firstCandidate["content"] as? [String: Any] {
-                  DebugLogger.log("TTS: Content keys: \(content.keys.joined(separator: ", "))")
-                  
-                  if let parts = content["parts"] as? [[String: Any]], let firstPart = parts.first {
-                    DebugLogger.log("TTS: Found \(parts.count) part(s), first part keys: \(firstPart.keys.joined(separator: ", "))")
-                    
-                    if let inlineData = firstPart["inlineData"] as? [String: Any] {
-                      DebugLogger.log("TTS: ✅ inlineData found with keys: \(inlineData.keys.joined(separator: ", "))")
-                      if let mimeType = inlineData["mimeType"] as? String {
-                        DebugLogger.log("TTS: MIME type: \(mimeType)")
-                      }
-                      if let dataString = inlineData["data"] as? String {
-                        DebugLogger.log("TTS: Base64 data length: \(dataString.count) chars (approx \(dataString.count * 3 / 4) bytes when decoded)")
-                      } else {
-                        DebugLogger.logError("TTS: inlineData exists but 'data' field is missing or wrong type")
-                      }
-                    } else {
-                      DebugLogger.logError("TTS: ❌ No inlineData found in first part")
-                      // Log what we actually have
-                      for (key, value) in firstPart {
-                        DebugLogger.log("TTS: Part has key '\(key)' with type: \(type(of: value))")
-                      }
-                    }
-                  } else {
-                    DebugLogger.logError("TTS: No parts found in content")
-                  }
-                } else {
-                  DebugLogger.logError("TTS: No content found in candidate")
-                }
-              } else {
-                DebugLogger.logError("TTS: No candidates found in response")
-              }
-            } else {
-              DebugLogger.logError("TTS: Response is not a dictionary")
-            }
-          } catch {
-            DebugLogger.logError("TTS: Failed to parse JSON: \(error.localizedDescription)")
-            // Try to log first 500 chars anyway
-            if let jsonString = String(data: data.prefix(500), encoding: .utf8) {
-              DebugLogger.log("TTS: First 500 bytes as string: \(jsonString)")
-            }
+          if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+             let candidates = json["candidates"] as? [[String: Any]],
+             let parts = (candidates.first?["content"] as? [String: Any])?["parts"] as? [[String: Any]] {
+            let inline = parts.first?["inlineData"] as? [String: Any]
+            let base64Len = (inline?["data"] as? String)?.count ?? 0
+            DebugLogger.log("TTS: response candidates=\(candidates.count) parts=\(parts.count) inlineData=\(inline != nil ? "yes (\(base64Len) chars)" : "MISSING")")
+          } else {
+            DebugLogger.logError("TTS: response JSON missing candidates/content/parts — body: \(String(data: data.prefix(300), encoding: .utf8) ?? "<binary>")")
           }
         }
         
@@ -648,7 +588,7 @@ class GeminiAPIClient {
   func generateText(model: String, prompt: String, credential: GeminiCredential) async throws -> String {
     let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
     var request = try createRequest(endpoint: endpoint, credential: credential)
-    var body: [String: Any] = [
+    let body: [String: Any] = [
       "contents": [["role": "user", "parts": [["text": prompt]]]]
     ]
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -1001,17 +941,12 @@ class GeminiAPIClient {
   static func stripImageMarkers(_ content: String, placeholder: String = "[generated image]") -> String {
     guard containsImageMarker(in: content) else { return content }
     var result = ""
-    var hadUnterminatedMarker = false
     walkImageMarkers(
       content,
       onText: { result += $0 },
       onMarker: { _ in result += placeholder },
-      onUnterminatedMarker: {
-        hadUnterminatedMarker = true
-        result += $0
-      }
+      onUnterminatedMarker: { result += $0 }
     )
-    if hadUnterminatedMarker { return result }
     return result.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
@@ -1093,17 +1028,27 @@ class GeminiAPIClient {
       return .rateLimited(retryAfter: nil, topUpURL: topUpURL)
     }
 
-    var retryAfter: TimeInterval? = nil
-
+    // Extract message/status via the typed model, falling back to manual JSON parsing;
+    // the mapping below is shared by both paths.
+    var message: String?
+    var status = ""
     if let errorResponse = try? JSONDecoder().decode(GeminiErrorResponse.self, from: data) {
-      retryAfter = errorResponse.extractRetryDelay()
-      if let retryAfter = retryAfter {
+      message = errorResponse.error.message
+      status = errorResponse.error.status ?? ""
+    } else if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = json["error"] as? [String: Any],
+              let msg = error["message"] as? String {
+      message = msg
+      status = error["status"] as? String ?? ""
+    }
+
+    var retryAfter: TimeInterval? = nil
+    if let message {
+      DebugLogger.log("GEMINI-ERROR: status=\(status) message=\(message)")
+      retryAfter = GeminiErrorResponse.parseRetryDelayFromMessage(message)
+      if let retryAfter {
         DebugLogger.log("GEMINI-ERROR: Found retryDelay: \(retryAfter)s")
       }
-
-      let message = errorResponse.error.message
-      let status = errorResponse.error.status ?? ""
-      DebugLogger.log("GEMINI-ERROR: status=\(status) message=\(message)")
 
       // Map common Gemini errors to TranscriptionError
       let lowerMessage = message.lowercased()
@@ -1111,39 +1056,6 @@ class GeminiAPIClient {
         return statusCode == 401 ? .invalidAPIKey : .incorrectAPIKey
       }
       // 400 FAILED_PRECONDITION often means "enable billing" (e.g. free tier not available in region or for preview models)
-      if statusCode == 400 && (status == "FAILED_PRECONDITION" || lowerMessage.contains("billing") || lowerMessage.contains("free tier") || lowerMessage.contains("payment")) {
-        return .billingRequired
-      }
-      if lowerMessage.contains("quota") || lowerMessage.contains("exceeded") {
-        return .quotaExceeded(retryAfter: retryAfter)
-      }
-      if lowerMessage.contains("rate limit") {
-        return .rateLimited(retryAfter: retryAfter, topUpURL: nil)
-      }
-      if statusCode == 404 && (lowerMessage.contains("no longer available") || lowerMessage.contains("deprecated")) {
-        return .modelDeprecated
-      }
-      if statusCode == 400 && (lowerMessage.contains("allowlist") || lowerMessage.contains("audio output") || lowerMessage.contains("voice output") || lowerMessage.contains("requires an api key")) {
-        return .voiceRequiresAPIKey
-      }
-    } else if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let error = json["error"] as? [String: Any],
-              let message = error["message"] as? String {
-      // Fallback to manual JSON parsing
-      let status = error["status"] as? String ?? ""
-      DebugLogger.log("GEMINI-ERROR: status=\(status) message=\(message)")
-
-      // Try to extract retry delay from the message text
-      let fallbackRetryAfter = GeminiErrorResponse.parseRetryDelayFromMessage(message)
-      if let fallbackRetryAfter = fallbackRetryAfter {
-        DebugLogger.log("GEMINI-ERROR: Found retryDelay in message: \(fallbackRetryAfter)s")
-        retryAfter = fallbackRetryAfter
-      }
-
-      let lowerMessage = message.lowercased()
-      if lowerMessage.contains("api key") || lowerMessage.contains("authentication") {
-        return statusCode == 401 ? .invalidAPIKey : .incorrectAPIKey
-      }
       if statusCode == 400 && (status == "FAILED_PRECONDITION" || lowerMessage.contains("billing") || lowerMessage.contains("free tier") || lowerMessage.contains("payment")) {
         return .billingRequired
       }

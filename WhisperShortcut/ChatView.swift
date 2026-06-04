@@ -59,6 +59,9 @@ class ChatViewModel: ObservableObject {
 
   struct QueuedChatMessage: Identifiable {
     let id: UUID = UUID()
+    /// Session the message was typed in — it is sent there even if the user
+    /// switches tabs before the queue drains.
+    let sessionId: UUID
     let content: String
     let attachedParts: [AttachedImagePart]
 
@@ -326,7 +329,9 @@ class ChatViewModel: ObservableObject {
 
     errorMessage = nil
     if isSending {
-      supersedeInFlight(with: QueuedChatMessage(content: finalContent, attachedParts: attachedParts))
+      supersedeInFlight(
+        with: QueuedChatMessage(
+          sessionId: session.id, content: finalContent, attachedParts: attachedParts))
       return
     }
     performSend(content: finalContent, attachedParts: attachedParts)
@@ -341,7 +346,7 @@ class ChatViewModel: ObservableObject {
       showNotice("Wait for the current response to finish (or press Stop).")
       return
     }
-    guard messageQueue.isEmpty else {
+    guard !messageQueue.contains(where: { $0.sessionId == session.id }) else {
       showNotice("Retry is unavailable while queued messages are pending. Remove them first.")
       return
     }
@@ -538,7 +543,9 @@ class ChatViewModel: ObservableObject {
               return "_[attachment: \(name) (\(kind))]_"
             }
             .joined(separator: "\n") + "\n\n"
-      lines.append(attachmentNote + msg.content)
+      // Strip ⟦GEMINI_IMG:…⟧ markers — without this, copying a chat that contains a
+      // generated image dumps multi-MB base64 onto the clipboard.
+      lines.append(attachmentNote + GeminiAPIClient.stripImageMarkers(msg.content))
       lines.append("")
     }
     return lines.joined(separator: "\n")
@@ -575,8 +582,10 @@ class ChatViewModel: ObservableObject {
     return cleaned
   }
 
-  private func performSend(content: String, attachedParts: [AttachedImagePart]) {
-    let sessionId = session.id
+  private func performSend(
+    content: String, attachedParts: [AttachedImagePart], toSessionId: UUID? = nil
+  ) {
+    let sessionId = toSessionId ?? session.id
     let task = Task {
       sendingSessionIds.insert(sessionId)
       DebugLogger.log("CHAT-SEND: start session=\(sessionId)")
@@ -595,7 +604,10 @@ class ChatViewModel: ObservableObject {
 
       let userMsg = ChatMessage(role: .user, content: content, attachedImageParts: attachedParts)
       appendMessage(userMsg, toSessionId: sessionId)
-      var currentContents = buildContents()
+      var currentContents = buildContents(forSessionId: sessionId)
+      let thinkingLevel = sessionId == session.id
+        ? session.thinkingLevel
+        : (store.session(by: sessionId)?.thinkingLevel ?? .default)
       let placeholderId = UUID()
       var accumulated = ""
       do {
@@ -617,7 +629,7 @@ class ChatViewModel: ObservableObject {
             systemInstruction: self.buildSystemInstruction(),
             tools: tools,
             useGrounding: useGrounding,
-            thinkingLevel: session.thinkingLevel,
+            thinkingLevel: thinkingLevel,
             disableBuiltInTools: false,
             // Stable per-session key → provider prompt-cache hits across turns
             // (OpenAI prompt_cache_key, Grok x-grok-conv-id). Gemini ignores it.
@@ -689,7 +701,7 @@ class ChatViewModel: ObservableObject {
         // Strip generated-image markers (multi-MB base64) before the interaction log.
         ContextLogger.shared.logChat(
           userMessage: content,
-          modelResponse: Self.stripGeneratedImageMarkers(result.text),
+          modelResponse: GeminiAPIClient.stripImageMarkers(result.text),
           model: model)
         if let s = store.session(by: sessionId), s.messages.count == 2, !s.isMeeting {
           Task { await generateAITitle(sessionId: sessionId) }
@@ -701,6 +713,15 @@ class ChatViewModel: ObservableObject {
         if accumulated.isEmpty || superseded {
           await MainActor.run {
             self.removeMessage(id: placeholderId, fromSessionId: sessionId)
+          }
+        } else {
+          // The kept partial text only ever reached the store with `persist: false`
+          // (per-token updates); save it so a quit right after Stop doesn't restore
+          // an empty assistant bubble.
+          await MainActor.run {
+            self.updateStreamingMessage(
+              id: placeholderId, sessionId: sessionId,
+              content: accumulated, sources: [], supports: [])
           }
         }
       } catch {
@@ -867,11 +888,13 @@ class ChatViewModel: ObservableObject {
   }
 
   /// Auto-processes the next queued message once the current one finishes.
+  /// Sends into the session the message was queued for — NOT the currently
+  /// visible one, which may have changed while the previous send ran.
   private func processNextQueued() {
-    guard !messageQueue.isEmpty, !isSending else { return }
-    let next = messageQueue.removeFirst()
+    guard let next = messageQueue.first, !isSendingSession(next.sessionId) else { return }
+    messageQueue.removeFirst()
     DebugLogger.log("GEMINI-CHAT: Processing next queued message, \(messageQueue.count) remaining")
-    performSend(content: next.content, attachedParts: next.attachedParts)
+    performSend(content: next.content, attachedParts: next.attachedParts, toSessionId: next.sessionId)
   }
 
   /// Removes a queued message by ID (called from the pending bubble's delete button).
@@ -1062,9 +1085,10 @@ class ChatViewModel: ObservableObject {
   /// Clearing the binding removes the id-anchoring work entirely: the scroll offset is
   /// preserved by the ScrollView's default behavior and the persisted reading position
   /// (`scrollAnchors`) is untouched — it repopulates on the next user scroll.
+  /// No logging here: this runs on every streamed token (via `updateStreamingMessage`),
+  /// so a per-call log line would flood the log thousands of times per reply.
   private func clearScrollAnchorForListMutation() {
     scrollAnchorClearCount &+= 1
-    DebugLogger.logUI("CHAT-SCROLL: clearing scrollPosition anchor before list mutation (count=\(scrollAnchorClearCount))")
   }
 
   /// Appends a message to the session identified by `sessionId`.
@@ -1126,7 +1150,7 @@ class ChatViewModel: ObservableObject {
           target.messages[1].role == .model else { return }
     let userText = String(target.messages[0].content.prefix(400))
     // Strip image markers first — otherwise an image-led reply feeds base64 to the title model.
-    let modelText = String(Self.stripGeneratedImageMarkers(target.messages[1].content).prefix(400))
+    let modelText = String(GeminiAPIClient.stripImageMarkers(target.messages[1].content).prefix(400))
     let prompt = """
       Give this conversation a short title (2–3 words) that captures its core topic. \
       Reply with only the title on a single line — no quotes, no punctuation, no explanation.
@@ -1678,13 +1702,18 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: Closed \(toClose.count) tab(s) right of \(anchorId)")
   }
 
-  private func buildContents() -> [[String: Any]] {
+  private func buildContents(forSessionId sessionId: UUID) -> [[String: Any]] {
+    // Queued sends can target a session that is no longer the visible one,
+    // so the history must come from the target session — not `messages`.
+    let history = sessionId == session.id
+      ? messages
+      : (store.session(by: sessionId)?.messages ?? [])
     // Send the full conversation history. Gemini 2.x has a 1M–2M token context window,
     // so truncation is only a safeguard against pathological sessions.
     let maxMessages = AppConstants.chatFullHistoryMaxMessages
-    let toSend = messages.count > maxMessages
-      ? Array(messages.suffix(maxMessages))
-      : messages
+    let toSend = history.count > maxMessages
+      ? Array(history.suffix(maxMessages))
+      : history
     logImagePayloadMeasurement(toSend)
     // Re-send each user message's attached images on every turn, not just the
     // final one. Otherwise an image is visible to the model only on the turn it
@@ -1696,7 +1725,7 @@ class ChatViewModel: ObservableObject {
       // base64 inline. Strip it to a short placeholder before re-sending as history: the blob
       // would otherwise bloat every subsequent request and is useless to the model as text.
       let text = msg.role == .model
-        ? Self.stripGeneratedImageMarkers(msg.content)
+        ? GeminiAPIClient.stripImageMarkers(msg.content)
         : msg.content
       if msg.role == .user && !msg.attachedImageParts.isEmpty {
         var parts: [[String: Any]] = msg.attachedImageParts.map { part in
@@ -1709,14 +1738,6 @@ class ChatViewModel: ObservableObject {
       }
       return ["role": msg.role.rawValue, "parts": [["text": text]]]
     }
-  }
-
-  /// Replaces each embedded `⟦GEMINI_IMG:…⟧` marker (a generated image's full base64) with a short
-  /// `[generated image]` placeholder. Used by `buildContents` so a prior turn's image isn't re-sent
-  /// as multi-megabyte text on every following request. Render-time still reads the original marker
-  /// from the stored message content — only the wire copy sent back to the model is trimmed.
-  static func stripGeneratedImageMarkers(_ content: String) -> String {
-    GeminiAPIClient.stripImageMarkers(content)
   }
 
   /// Measures the image payload re-sent on this turn (images are sent in full on *every*
@@ -2119,7 +2140,7 @@ struct ChatView: View {
                 ? { viewModel.retryMessage(id: message.id) } : nil)
               .id(message.id)
           }
-          ForEach(viewModel.messageQueue) { queued in
+          ForEach(viewModel.messageQueue.filter { $0.sessionId == viewModel.currentSessionId }) { queued in
             HStack(alignment: .top, spacing: 6) {
               Spacer()
               VStack(alignment: .trailing, spacing: 4) {
@@ -2863,9 +2884,10 @@ struct ChatInputAreaView: View {
         .fixedSize()
         .help("Select model")
 
-        // Queue count indicator
-        if viewModel.isSending && !viewModel.messageQueue.isEmpty {
-          Text("\(viewModel.messageQueue.count) queued")
+        // Queue count indicator (current session's queue only)
+        let queuedHere = viewModel.messageQueue.filter { $0.sessionId == viewModel.currentSessionId }.count
+        if viewModel.isSending && queuedHere > 0 {
+          Text("\(queuedHere) queued")
             .font(.caption2)
             .foregroundColor(ChatTheme.secondaryText)
         }
@@ -3233,8 +3255,20 @@ private struct SelectableProseText: NSViewRepresentable {
   }
 
   private static func cacheKey(ns: NSAttributedString, width: CGFloat) -> NSString {
-    let widthKey = Int(width.rounded())
-    return "\(widthKey)_\(ns.length)_\(ns.hash)" as NSString
+    // `NSAttributedString.hash` covers the characters only, so the key must also fold in
+    // the font runs: the same text as a 20-pt heading vs. 16-pt body would otherwise share
+    // a key and return a stale (wrong) height.
+    var hasher = Hasher()
+    hasher.combine(Int(width.rounded()))
+    hasher.combine(ns.string)
+    ns.enumerateAttribute(.font, in: NSRange(location: 0, length: ns.length)) { value, range, _ in
+      hasher.combine(range.location)
+      if let font = value as? NSFont {
+        hasher.combine(font.fontName)
+        hasher.combine(font.pointSize)
+      }
+    }
+    return String(hasher.finalize()) as NSString
   }
 
   private static func measuredHeight(_ ns: NSAttributedString, width: CGFloat) -> CGFloat {
@@ -3672,6 +3706,12 @@ private struct ModelReplyView: View {
     case text(String)
   }
 
+  /// Decoded marker images keyed by marker hash. While the post-image narration streams,
+  /// every token invalidates the segment cache and re-parses the paragraph — without this,
+  /// each re-parse base64-decodes the multi-MB marker and re-inits an NSImage on the main
+  /// thread, per token.
+  private static let markerImageCache = NSCache<NSString, NSImage>()
+
   /// Order-preserving split of a paragraph containing ⟦GEMINI_IMG:…⟧ markers. Streaming can
   /// glue the model's narration directly onto a marker (`…⟧Ich habe…`), so markers must be
   /// recognized anywhere in a paragraph — not only when they make up the whole paragraph.
@@ -3687,11 +3727,15 @@ private struct ModelReplyView: View {
         if !before.isEmpty { pieces.append(.text(before)) }
       },
       onMarker: { markerSegment in
-        let marker = String(markerSegment)
-        if let data = GeminiAPIClient.decodeImageMarkerData(marker), let image = NSImage(data: data) {
+        let key = "\(markerSegment.count)_\(markerSegment.hashValue)" as NSString
+        if let cached = markerImageCache.object(forKey: key) {
+          pieces.append(.image(cached))
+        } else if let data = GeminiAPIClient.decodeImageMarkerData(String(markerSegment)),
+                  let image = NSImage(data: data) {
+          markerImageCache.setObject(image, forKey: key)
           pieces.append(.image(image))
         } else {
-          DebugLogger.logWarning("BLOCKS: image marker failed base64 decode (\(marker.count) chars)")
+          DebugLogger.logWarning("BLOCKS: image marker failed base64 decode (\(markerSegment.count) chars)")
         }
       },
       onUnterminatedMarker: { trailing in
@@ -3812,13 +3856,15 @@ private struct CodeBlockView: View {
 // MARK: - Copy Reply Button (under model replies)
 
 private struct CopyReplyButtonView: View {
-  let messageContent: String
+  /// Resolved on click, not per render — for image-bearing replies the marker strip
+  /// rebuilds a multi-MB string, which must not run on every streaming re-render.
+  let text: () -> String
   @State private var isHovered = false
 
   var body: some View {
     Button {
       NSPasteboard.general.clearContents()
-      NSPasteboard.general.setString(messageContent, forType: .string)
+      NSPasteboard.general.setString(text(), forType: .string)
     } label: {
       HStack(spacing: 5) {
         Image(systemName: "doc.on.doc")
@@ -3884,7 +3930,8 @@ private struct RetryButtonView: View {
 // MARK: - Read Aloud Button (under model replies)
 
 private struct ReadAloudButtonView: View {
-  let messageContent: String
+  /// Resolved on click, not per render — see `CopyReplyButtonView.text`.
+  let text: () -> String
   @State private var isHovered = false
   @State private var isTTSActive = false
 
@@ -3896,7 +3943,7 @@ private struct ReadAloudButtonView: View {
         NotificationCenter.default.post(
           name: .chatReadAloud,
           object: nil,
-          userInfo: [Notification.Name.chatReadAloudTextKey: messageContent]
+          userInfo: [Notification.Name.chatReadAloudTextKey: text()]
         )
       }
     } label: {
@@ -4086,7 +4133,7 @@ private struct MessageBubbleView: View {
             RetryButtonView(action: onRetry)
           }
           if !text.isEmpty {
-            CopyReplyButtonView(messageContent: text)
+            CopyReplyButtonView(text: { text })
           }
         }
         .padding(.top, 4)
@@ -4095,14 +4142,21 @@ private struct MessageBubbleView: View {
   }
 
   /// Read Aloud and Copy action row for assistant replies; hidden when content is empty.
+  /// Visibility uses only cheap scans; the multi-MB marker strip runs once per click inside
+  /// the buttons, not on every render of a streaming bubble.
   private var assistantCopyButtonRow: some View {
-    let sanitized = ChatViewModel.stripGeneratedImageMarkers(message.content)
-    let trimmed = sanitized.trimmingCharacters(in: .whitespacesAndNewlines)
+    let hasMarker = GeminiAPIClient.containsImageMarker(in: message.content)
+    let visible = hasMarker
+      || !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     return Group {
-      if !trimmed.isEmpty {
+      if visible {
         HStack(spacing: 8) {
-          ReadAloudButtonView(messageContent: sanitized)
-          CopyReplyButtonView(messageContent: sanitized)
+          // Empty placeholder for TTS so an image-led reply doesn't read "generated image"
+          // out loud; the read-aloud handler ignores empty text.
+          ReadAloudButtonView(text: {
+            GeminiAPIClient.stripImageMarkers(message.content, placeholder: "")
+          })
+          CopyReplyButtonView(text: { GeminiAPIClient.stripImageMarkers(message.content) })
         }
         .padding(.top, 6)
       }

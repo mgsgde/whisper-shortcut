@@ -132,10 +132,11 @@ enum ChatModelCommandResolver {
       let preferred = ChatModelProvider.openai.defaultChatModel
       if candidates.contains(preferred) { candidates = [preferred] }
     }
-    // Same idea for the image family: a bare "image" / "nano banana" (no "pro" qualifier)
-    // picks the free Flash tier; "image pro" was already narrowed to Pro above.
-    if (lowered == "image" || lowered == "nano banana") && candidates.count > 1 {
-      if candidates.contains(.geminiImage) { candidates = [.geminiImage] }
+    // Same idea for the image family: an image request without a "pro" qualifier
+    // ("image", "nano banana", "gemini image", …) picks the free Flash tier;
+    // "image pro" / "nano banana pro" were already narrowed to Pro above.
+    if wantsImage && candidates.count > 1, candidates.contains(.geminiImage) {
+      candidates = [.geminiImage]
     }
 
     // Stable order based on PromptModel.allCases.

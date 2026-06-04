@@ -347,26 +347,16 @@ class ChatSessionStore {
   }
 
   /// Forces an immediate disk write of the current cached state (e.g. before app termination).
-  nonisolated func flushToDisk() {
-    // `applicationWillTerminate` calls this ON the main thread, and `DispatchQueue.main.sync`
-    // from the main thread is an instant deadlock trap (EXC_BREAKPOINT in
-    // __DISPATCH_WAIT_FOR_QUEUE__ — the crash formerly seen on every app quit, which also
-    // meant this flush never actually ran). Hop to main only when we aren't already there.
-    func mainSync<T>(_ body: @MainActor () -> T) -> T {
-      if Thread.isMainThread {
-        return MainActor.assumeIsolated(body)
-      }
-      return DispatchQueue.main.sync { body() }
-    }
-    let file: SessionsFile? = mainSync { cachedFile }
-    guard let file else { return }
-    let url = mainSync { fileURL }
-    let dir = mainSync { appSupportDir }
-    mainSync { debounceWorkItem?.cancel() }
+  /// Only called from `applicationWillTerminate`, which is MainActor (NSApplicationDelegate),
+  /// so this is an ordinary member — no cross-thread hops. (An earlier `nonisolated` version
+  /// used `DispatchQueue.main.sync`, which deadlocked on every quit.)
+  func flushToDisk() {
+    guard let file = cachedFile else { return }
+    debounceWorkItem?.cancel()
     do {
-      try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      try FileManager.default.createDirectory(at: appSupportDir, withIntermediateDirectories: true)
       let data = try JSONEncoder().encode(file)
-      try data.write(to: url, options: .atomic)
+      try data.write(to: fileURL, options: .atomic)
     } catch {
       DebugLogger.logError("GEMINI-CHAT: Flush to disk failed: \(error.localizedDescription)")
     }
