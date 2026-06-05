@@ -1131,7 +1131,9 @@ class SpeechService {
   /// `dictationHint` is a longer instruction string (e.g. the dictation system prompt) that
   /// `gpt-4o-transcribe`/`gpt-4o-mini-transcribe` accept via the same `prompt` field —
   /// OpenAI docs: "similarly to how you would prompt other GPT-4o models". When set, it is
-  /// prepended to the glossary. Callers must NOT pass it for `whisper-1` (224-token limit).
+  /// combined with the glossary: instruction-wrapped for instructable models (gpt-4o-transcribe
+  /// family, grok-stt), bare for whisper-1 priming. Callers must NOT pass `dictationHint` for
+  /// `whisper-1` (224-token limit).
   private func sendOpenAICompatibleTranscriptionRequest(
     url: URL, fieldName: String,
     modelID: String?,
@@ -1154,13 +1156,23 @@ class SpeechService {
 
     let glossary = SystemPromptsStore.shared.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedDictationHint = (dictationHint ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    // Whisper-style backends (whisper-1, whisper-asr-webservice) treat `prompt` as raw priming
+    // text: a bare term list IS the native conditioning format, and an instruction sentence
+    // would pollute the priming. Instructable STT models (gpt-4o-transcribe family, grok-stt)
+    // follow instructions in `prompt`, so they get the same explicit Glossary instruction block
+    // as the Gemini paths — a bare list is too weak a signal there (see appendGlossaryHint).
+    let isWhisperStyle = modelID == "whisper-1" || fieldName == "audio_file"
     let combinedPrompt: String? = {
-      switch (trimmedDictationHint.isEmpty, glossary.isEmpty) {
-      case (true, true): return nil
-      case (true, false): return glossary
-      case (false, true): return trimmedDictationHint
-      case (false, false): return trimmedDictationHint + "\n\n" + glossary
+      if isWhisperStyle {
+        switch (trimmedDictationHint.isEmpty, glossary.isEmpty) {
+        case (true, true): return nil
+        case (true, false): return glossary
+        case (false, true): return trimmedDictationHint
+        case (false, false): return trimmedDictationHint + "\n\n" + glossary
+        }
       }
+      let combined = appendGlossaryHint(to: trimmedDictationHint)
+      return combined.isEmpty ? nil : combined
     }()
     let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage)
     let savedLanguage = WhisperLanguage(rawValue: savedLanguageString ?? WhisperLanguage.auto.rawValue) ?? WhisperLanguage.auto
