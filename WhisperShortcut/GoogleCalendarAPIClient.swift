@@ -14,14 +14,16 @@ actor GoogleCalendarAPIClient {
 
   // MARK: - List Events
 
-  func listUpcomingEvents(maxResults: Int = 10, hoursAhead: Int = 168) async throws -> [[String: Any]] {
-    DebugLogger.logNetwork("GOOGLE-CALENDAR: listUpcomingEvents maxResults=\(maxResults) hoursAhead=\(hoursAhead)")
+  func listEvents(maxResults: Int = 10, hoursAhead: Int = 168, hoursBack: Int = 0) async throws -> [[String: Any]] {
+    DebugLogger.logNetwork("GOOGLE-CALENDAR: listEvents maxResults=\(maxResults) hoursAhead=\(hoursAhead) hoursBack=\(hoursBack)")
     let cappedMax = min(max(maxResults, 1), maxResultsCap)
     let now = Date()
-    let future = now.addingTimeInterval(TimeInterval(hoursAhead * 3600))
+    let past = now.addingTimeInterval(-TimeInterval(max(hoursBack, 0) * 3600))
+    let future = now.addingTimeInterval(TimeInterval(max(hoursAhead, 0) * 3600))
 
-    let timeMin = ISO8601DateFormatter().string(from: now)
-    let timeMax = ISO8601DateFormatter().string(from: future)
+    let formatter = ISO8601DateFormatter()
+    let timeMin = formatter.string(from: past)
+    let timeMax = formatter.string(from: future)
 
     guard var components = URLComponents(string: "\(baseURL)/calendars/primary/events") else {
       throw CalendarAPIError.invalidResponse
@@ -64,7 +66,7 @@ actor GoogleCalendarAPIClient {
       if let status = item["status"] as? String { event["status"] = status }
       return event
     }
-    DebugLogger.logNetwork("GOOGLE-CALENDAR: listUpcomingEvents returned \(mapped.count) events")
+    DebugLogger.logNetwork("GOOGLE-CALENDAR: listEvents returned \(mapped.count) events")
     return mapped
   }
 
@@ -73,7 +75,10 @@ actor GoogleCalendarAPIClient {
   func createEvent(summary: String, startISO: String, endISO: String, timeZone: String,
                    location: String? = nil, description: String? = nil) async throws -> [String: Any] {
     DebugLogger.logNetwork("GOOGLE-CALENDAR: createEvent summary=\(summary) start=\(startISO) end=\(endISO)")
-    guard isValidISO8601(startISO), isValidISO8601(endISO) else {
+    // Coerce common near-ISO shapes (missing offset, space instead of `T`, no seconds) into a
+    // strict offset-bearing string rather than rejecting — the model occasionally omits the zone.
+    guard let startISO = normalizeToISO8601(startISO, timeZone: timeZone),
+          let endISO = normalizeToISO8601(endISO, timeZone: timeZone) else {
       throw CalendarAPIError.invalidDateFormat
     }
 
@@ -135,12 +140,12 @@ actor GoogleCalendarAPIClient {
     var body: [String: Any] = [:]
     if let summary { body["summary"] = summary }
     if let startISO {
-      guard isValidISO8601(startISO) else { throw CalendarAPIError.invalidDateFormat }
-      body["start"] = ["dateTime": startISO, "timeZone": tz]
+      guard let normalized = normalizeToISO8601(startISO, timeZone: tz) else { throw CalendarAPIError.invalidDateFormat }
+      body["start"] = ["dateTime": normalized, "timeZone": tz]
     }
     if let endISO {
-      guard isValidISO8601(endISO) else { throw CalendarAPIError.invalidDateFormat }
-      body["end"] = ["dateTime": endISO, "timeZone": tz]
+      guard let normalized = normalizeToISO8601(endISO, timeZone: tz) else { throw CalendarAPIError.invalidDateFormat }
+      body["end"] = ["dateTime": normalized, "timeZone": tz]
     }
     if let location { body["location"] = location }
     if let description { body["description"] = description }
@@ -259,6 +264,40 @@ actor GoogleCalendarAPIClient {
     if formatter.date(from: string) != nil { return true }
     formatter.formatOptions = [.withInternetDateTime]
     return formatter.date(from: string) != nil
+  }
+
+  /// Best-effort coercion of a model-supplied date/time string into a strict, offset-bearing
+  /// ISO-8601 string. Accepts an already-valid string verbatim; otherwise interprets common
+  /// near-ISO shapes — missing timezone offset, a space instead of `T`, no seconds, or date-only —
+  /// in `timeZone` and re-emits a proper offset. Returns nil only when nothing matches, so the
+  /// caller still fails cleanly on genuine garbage. This is what stops a slightly-off date (the
+  /// model dropping the offset) from hard-failing a create/update with "Invalid date format".
+  private func normalizeToISO8601(_ raw: String, timeZone: String) -> String? {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+    if isValidISO8601(trimmed) { return trimmed }
+
+    let tz = TimeZone(identifier: timeZone) ?? .current
+    let parser = DateFormatter()
+    parser.locale = Locale(identifier: "en_US_POSIX")
+    parser.timeZone = tz
+    let patterns = [
+      "yyyy-MM-dd'T'HH:mm:ss",
+      "yyyy-MM-dd'T'HH:mm",
+      "yyyy-MM-dd HH:mm:ss",
+      "yyyy-MM-dd HH:mm",
+      "yyyy-MM-dd",
+    ]
+    for pattern in patterns {
+      parser.dateFormat = pattern
+      if let date = parser.date(from: trimmed) {
+        let out = ISO8601DateFormatter()
+        out.timeZone = tz
+        out.formatOptions = [.withInternetDateTime]
+        return out.string(from: date)
+      }
+    }
+    return nil
   }
 
   private func encodedPathComponent(_ value: String) -> String {

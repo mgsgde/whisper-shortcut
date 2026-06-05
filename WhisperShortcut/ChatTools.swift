@@ -90,7 +90,7 @@ enum ChatToolRegistry {
   static let calendarFunctionDeclarations: [[String: Any]] = [
     [
       "name": "google_calendar_list_events",
-      "description": "Lists upcoming calendar events (meetings, appointments) from Google Calendar. Use ONLY for scheduled events with specific start/end times. Do NOT use for tasks or to-dos — use google_tasks_list instead.",
+      "description": "Lists calendar events (meetings, appointments) from Google Calendar. By default lists upcoming events starting from now; events that already started or ended are NOT included unless you pass hours_back. Use ONLY for scheduled events with specific start/end times. Do NOT use for tasks or to-dos — use google_tasks_list instead.",
       "parameters": [
         "type": "object",
         "properties": [
@@ -101,6 +101,10 @@ enum ChatToolRegistry {
           "hours_ahead": [
             "type": "integer",
             "description": "How many hours ahead to look (default 168 = 1 week).",
+          ],
+          "hours_back": [
+            "type": "integer",
+            "description": "How many hours into the past to look (default 0). Set this (e.g. 12 or 24) when the user refers to an event earlier today or in the past — for example to delete, rename, or reschedule an event that already started or ended.",
           ],
         ] as [String: Any],
       ],
@@ -587,9 +591,10 @@ enum ChatToolRegistry {
       guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       let maxResults = intArgument(args, "max_results", default: 10)
       let hoursAhead = intArgument(args, "hours_ahead", default: 168)
+      let hoursBack = intArgument(args, "hours_back", default: 0)
       do {
-        let events = try await GoogleCalendarAPIClient.shared.listUpcomingEvents(
-          maxResults: maxResults, hoursAhead: hoursAhead)
+        let events = try await GoogleCalendarAPIClient.shared.listEvents(
+          maxResults: maxResults, hoursAhead: hoursAhead, hoursBack: hoursBack)
         DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar list returned \(events.count) events")
         return ["events": events, "count": events.count]
       } catch {
