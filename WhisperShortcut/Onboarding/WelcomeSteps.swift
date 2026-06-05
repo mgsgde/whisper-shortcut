@@ -105,7 +105,7 @@ struct WelcomeAPIKeysStep: View {
         Text("Add at least one API key")
           .font(.title2)
           .fontWeight(.semibold)
-        Text("You need a key from at least one AI provider. Keys are stored in the macOS Keychain and only sent in requests to that provider.")
+        Text("You need a key from at least one AI provider — any single key unlocks every feature. Keys are stored in the macOS Keychain and only sent in requests to that provider.")
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -118,7 +118,6 @@ struct WelcomeAPIKeysStep: View {
             placeholder: "AIza…",
             linkTitle: "aistudio.google.com/api-keys",
             linkURL: URL(string: "https://aistudio.google.com/api-keys")!,
-            description: "Used for transcription, Dictate Prompt, and chat with Gemini models.",
             isConfigured: $hasGeminiKey,
             load: { KeychainManager.shared.getGoogleAPIKey() ?? "" },
             save: { KeychainManager.shared.saveGoogleAPIKey($0) },
@@ -129,7 +128,6 @@ struct WelcomeAPIKeysStep: View {
             placeholder: "sk-…",
             linkTitle: "platform.openai.com/api-keys",
             linkURL: URL(string: "https://platform.openai.com/api-keys")!,
-            description: "Used for chat and Dictate Prompt with GPT models.",
             isConfigured: $hasOpenAIKey,
             load: { KeychainManager.shared.getOpenAIAPIKey() ?? "" },
             save: { KeychainManager.shared.saveOpenAIAPIKey($0) },
@@ -140,7 +138,7 @@ struct WelcomeAPIKeysStep: View {
             placeholder: "xai-…",
             linkTitle: "console.x.ai",
             linkURL: URL(string: "https://console.x.ai")!,
-            description: "Used for chat with Grok models.",
+            description: "Dictate Prompt is not available with Grok.",
             isConfigured: $hasXAIKey,
             load: { KeychainManager.shared.getXAIAPIKey() ?? "" },
             save: { KeychainManager.shared.saveXAIAPIKey($0) },
@@ -169,7 +167,7 @@ struct OnboardingAPIKeyRow: View {
   let placeholder: String
   let linkTitle: String
   let linkURL: URL
-  let description: String
+  var description: String? = nil
   @Binding var isConfigured: Bool
   let load: () -> String
   let save: (String) -> Bool
@@ -203,10 +201,12 @@ struct OnboardingAPIKeyRow: View {
           .pointerCursorOnHover()
       }
 
-      Text(description)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+      if let description {
+        Text(description)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
 
       HStack(spacing: 8) {
         ZStack {
@@ -290,190 +290,199 @@ struct OnboardingAPIKeyRow: View {
   }
 }
 
-struct WelcomeMicStep: View {
-  @Binding var status: PermissionStatus
+struct WelcomePermissionsStep: View {
+  @Binding var micStatus: PermissionStatus
+  @Binding var axStatus: PermissionStatus
+  @Binding var screenStatus: PermissionStatus
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 20) {
-      HStack(spacing: 12) {
-        Image(systemName: "mic.fill")
-          .font(.system(size: 32))
-          .foregroundStyle(.tint)
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Microphone access")
-            .font(.title2)
-            .fontWeight(.semibold)
-          Text("Required to record what you say.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
-        Spacer()
-        WelcomePermissionBadge(status: status)
+    VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 4) {
+        Text("macOS permissions")
+          .font(.title2)
+          .fontWeight(.semibold)
+        Text("Microphone access is required for dictation. The other two are optional — grant them now or any time later in Settings → Privacy & Permissions.")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
 
-      Text("Audio is sent only to the provider you chose, then deleted. Click below — macOS will ask you to allow microphone access.")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
-      HStack(spacing: 12) {
-        if status == .notDetermined {
-          Button {
-            PermissionStatusChecker.requestMicrophoneAccess { granted in
-              status = granted ? .granted : .denied
+      ScrollView {
+        VStack(spacing: 14) {
+          OnboardingPermissionRow(
+            icon: "mic.fill",
+            title: "Microphone",
+            required: true,
+            description: "Records what you say. Audio is sent only to the provider you chose, then deleted.",
+            status: micStatus,
+            kind: .microphone
+          ) {
+            if micStatus == .notDetermined {
+              Button {
+                PermissionStatusChecker.requestMicrophoneAccess { granted in
+                  micStatus = granted ? .granted : .denied
+                }
+              } label: {
+                Label("Grant Microphone Access", systemImage: "mic")
+                  .font(.callout)
+              }
+              .buttonStyle(.borderedProminent)
+              .pointerCursorOnHover()
             }
-          } label: {
-            Label("Grant Microphone Access", systemImage: "mic")
-              .font(.callout)
+            if micStatus == .denied {
+              Text("Enable WhisperShortcut under Privacy → Microphone.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
           }
-          .buttonStyle(.borderedProminent)
-          .pointerCursorOnHover()
-        }
-        if status == .denied {
-          Button {
-            PermissionStatusChecker.openSystemSettings(for: .microphone)
-          } label: {
-            Label("Open System Settings", systemImage: "arrow.up.right.square")
-              .font(.callout)
+
+          OnboardingPermissionRow(
+            icon: "accessibility",
+            title: "Accessibility",
+            required: false,
+            description: "Auto-pastes transcribed text into the app you're using. macOS pre-adds WhisperShortcut to the list — just flip the switch under Privacy → Accessibility. Without it, dictation still works; you just won't get automatic paste-into-app.",
+            status: axStatus,
+            kind: .accessibility
+          ) {
+            if axStatus != .granted {
+              Button {
+                AccessibilityPermissionManager.requestAccessibilityPermission()
+              } label: {
+                Label("Grant Accessibility", systemImage: "accessibility")
+                  .font(.callout)
+              }
+              .buttonStyle(.bordered)
+              .pointerCursorOnHover()
+            }
           }
-          .buttonStyle(.borderedProminent)
-          .pointerCursorOnHover()
-          Text("If denied previously, enable WhisperShortcut under Privacy → Microphone.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+
+          OnboardingPermissionRow(
+            icon: "rectangle.inset.filled.and.person.filled",
+            title: "Screen Recording",
+            required: false,
+            description: "Enables screenshot attachments in chat and screen context in Dictate Prompt. You may need to relaunch the app after granting. Everything except screenshot attachments works without it.",
+            status: screenStatus,
+            kind: .screenRecording
+          ) {
+            if screenStatus != .granted {
+              Button {
+                let granted = PermissionStatusChecker.requestScreenRecordingAccess()
+                screenStatus = PermissionStatusChecker.status(for: .screenRecording)
+                if !granted {
+                  // CGRequestScreenCaptureAccess() only shows the native consent prompt on
+                  // the very first request. Once macOS has any record of a decision it
+                  // returns silently with no dialog, so the click feels dead (especially
+                  // when macOS already registered the app from an earlier launch). Re-check
+                  // shortly after and deep-link into System Settings if we still aren't
+                  // granted, so the button always produces a visible next step.
+                  DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    let current = PermissionStatusChecker.status(for: .screenRecording)
+                    screenStatus = current
+                    if current != .granted {
+                      PermissionStatusChecker.openSystemSettings(for: .screenRecording)
+                    }
+                  }
+                }
+              } label: {
+                Label("Grant Screen Recording", systemImage: "rectangle.inset.filled.and.person.filled")
+                  .font(.callout)
+              }
+              .buttonStyle(.bordered)
+              .pointerCursorOnHover()
+            }
+          }
         }
-        if status == .granted {
-          Label("Microphone access granted.", systemImage: "checkmark.circle.fill")
-            .foregroundStyle(.green)
-        }
+        .padding(.bottom, 8)
       }
-      Spacer()
+
+      if micStatus == .granted {
+        Label("Ready to continue.", systemImage: "checkmark.circle.fill")
+          .font(.caption)
+          .foregroundStyle(.green)
+      } else {
+        Label("Grant microphone access to continue.", systemImage: "exclamationmark.circle")
+          .font(.caption)
+          .foregroundStyle(.orange)
+      }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }
 }
 
-struct WelcomeAccessibilityStep: View {
-  @Binding var status: PermissionStatus
+struct OnboardingPermissionRow<Actions: View>: View {
+  let icon: String
+  let title: String
+  let required: Bool
+  let description: String
+  let status: PermissionStatus
+  let kind: PermissionKind
+  @ViewBuilder let actions: () -> Actions
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 20) {
-      HStack(spacing: 12) {
-        Image(systemName: "accessibility")
-          .font(.system(size: 32))
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 8) {
+        Image(systemName: icon)
+          .font(.system(size: 18))
           .foregroundStyle(.tint)
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Accessibility access")
-            .font(.title2)
-            .fontWeight(.semibold)
-          Text("Optional — only needed for auto-paste into other apps.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
+          .frame(width: 26)
+        Text(title)
+          .font(.callout)
+          .fontWeight(.semibold)
+        requirementTag
         Spacer()
         WelcomePermissionBadge(status: status)
       }
 
-      Text("With Accessibility enabled, WhisperShortcut can paste your transcribed text into whatever app you're using. Grant it below — macOS pre-adds WhisperShortcut to the list, so you only have to flip the switch under Privacy → Accessibility.")
-        .font(.callout)
+      Text(description)
+        .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
 
-      HStack(spacing: 12) {
-        if status != .granted {
-          Button {
-            AccessibilityPermissionManager.requestAccessibilityPermission()
-          } label: {
-            Label("Grant Accessibility", systemImage: "accessibility")
-              .font(.callout)
-          }
-          .buttonStyle(.borderedProminent)
-          .pointerCursorOnHover()
-          Button {
-            PermissionStatusChecker.openSystemSettings(for: .accessibility)
-          } label: {
-            Label("Open System Settings", systemImage: "arrow.up.right.square")
-              .font(.callout)
-          }
-          .buttonStyle(.bordered)
-          .pointerCursorOnHover()
-        } else {
-          Label("Accessibility access granted.", systemImage: "checkmark.circle.fill")
-            .foregroundStyle(.green)
-        }
+      HStack(spacing: 8) {
+        actions()
+        settingsButton
       }
-
-      Text("You can skip this — dictation still works, you just won't get automatic paste-into-app.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.top, 4)
-
-      Spacer()
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: 10)
+        .fill(Color(nsColor: .controlBackgroundColor))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 10)
+        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+    )
   }
-}
 
-struct WelcomeScreenRecordingStep: View {
-  @Binding var status: PermissionStatus
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 20) {
-      HStack(spacing: 12) {
-        Image(systemName: "rectangle.inset.filled.and.person.filled")
-          .font(.system(size: 32))
-          .foregroundStyle(.tint)
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Screen Recording access")
-            .font(.title2)
-            .fontWeight(.semibold)
-          Text("Optional — needed for screenshots in chat and screen context in Dictate Prompt.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
-        Spacer()
-        WelcomePermissionBadge(status: status)
-      }
-
-      Text("With Screen Recording enabled, you can capture your screen and attach it to a chat message, and Dictate Prompt can optionally include a screenshot of your current screen as additional context. macOS asks for this the first time you grant it — you may need to relaunch the app afterwards.")
+  /// Always visible so the user can review or change the permission in System
+  /// Settings at any time — prominent when the permission was denied, since
+  /// System Settings is then the only way to grant it.
+  @ViewBuilder
+  private var settingsButton: some View {
+    let button = Button {
+      PermissionStatusChecker.openSystemSettings(for: kind)
+    } label: {
+      Label("Open System Settings", systemImage: "arrow.up.right.square")
         .font(.callout)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
-      HStack(spacing: 12) {
-        if status == .granted {
-          Label("Screen Recording access granted.", systemImage: "checkmark.circle.fill")
-            .foregroundStyle(.green)
-        } else {
-          Button {
-            PermissionStatusChecker.requestScreenRecordingAccess()
-            status = PermissionStatusChecker.status(for: .screenRecording)
-          } label: {
-            Label("Grant Screen Recording", systemImage: "rectangle.inset.filled.and.person.filled")
-              .font(.callout)
-          }
-          .buttonStyle(.borderedProminent)
-          .pointerCursorOnHover()
-          Button {
-            PermissionStatusChecker.openSystemSettings(for: .screenRecording)
-          } label: {
-            Label("Open System Settings", systemImage: "arrow.up.right.square")
-              .font(.callout)
-          }
-          .buttonStyle(.bordered)
-          .pointerCursorOnHover()
-        }
-      }
-
-      Text("You can skip this — everything except screenshot attachments works without it.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.top, 4)
-
-      Spacer()
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    if status == .denied {
+      button.buttonStyle(.borderedProminent).pointerCursorOnHover()
+    } else {
+      button.buttonStyle(.bordered).pointerCursorOnHover()
+    }
+  }
+
+  private var requirementTag: some View {
+    Text(required ? "Required" : "Optional")
+      .font(.caption2)
+      .fontWeight(.medium)
+      .padding(.horizontal, 6)
+      .padding(.vertical, 2)
+      .background((required ? Color.accentColor : Color.gray).opacity(0.15))
+      .foregroundColor(required ? .accentColor : .secondary)
+      .clipShape(Capsule())
   }
 }
 
@@ -530,8 +539,45 @@ struct WelcomeSmartImprovementStep: View {
 }
 
 struct WelcomeDoneStep: View {
+  private struct FeatureHint: Identifiable {
+    let shortcut: String
+    let name: String
+    let detail: String
+    var id: String { name }
+  }
+
+  private let shortcuts = ShortcutConfigManager.shared.loadConfiguration()
+
   private var dictationShortcut: String {
-    ShortcutConfigManager.shared.loadConfiguration().startRecording.displayStringWithSeparator
+    shortcuts.startRecording.displayStringWithSeparator
+  }
+
+  /// Dictation is the hero CTA above; these are the secondary features worth
+  /// discovering. Disabled shortcuts are hidden rather than shown as "Disabled".
+  private var moreFeatures: [FeatureHint] {
+    var hints: [FeatureHint] = []
+    if shortcuts.startPrompting.isEnabled {
+      hints.append(
+        FeatureHint(
+          shortcut: shortcuts.startPrompting.displayString,
+          name: "Dictate Prompt",
+          detail: "select text, speak an instruction — the selection is rewritten in place"))
+    }
+    if shortcuts.openChat.isEnabled {
+      hints.append(
+        FeatureHint(
+          shortcut: shortcuts.openChat.displayString,
+          name: "Chat",
+          detail: "a full conversation window, with screenshots"))
+    }
+    if shortcuts.readAloud.isEnabled {
+      hints.append(
+        FeatureHint(
+          shortcut: shortcuts.readAloud.displayString,
+          name: "Read Aloud",
+          detail: "select text anywhere and hear it spoken"))
+    }
+    return hints
   }
 
   var body: some View {
@@ -548,6 +594,36 @@ struct WelcomeDoneStep: View {
           .foregroundStyle(.secondary)
           .multilineTextAlignment(.center)
       }
+
+      if !moreFeatures.isEmpty {
+        VStack(alignment: .leading, spacing: 10) {
+          Text("Also try:")
+            .font(.callout)
+            .fontWeight(.semibold)
+          ForEach(moreFeatures) { hint in
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+              Text(hint.shortcut)
+                .font(.system(.callout, design: .monospaced))
+                .frame(minWidth: 44, alignment: .leading)
+              Text("\(Text(hint.name).fontWeight(.medium)) — \(hint.detail)")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+          }
+        }
+        .padding(16)
+        .frame(maxWidth: 540, alignment: .leading)
+        .background(
+          RoundedRectangle(cornerRadius: 10)
+            .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 10)
+            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
+      }
+
       Text("You can revisit this tour any time from Settings → Privacy & Permissions.")
         .font(.callout)
         .foregroundStyle(.secondary)

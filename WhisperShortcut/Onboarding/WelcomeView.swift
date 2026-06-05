@@ -5,9 +5,7 @@ enum WelcomeStep: Int, CaseIterable {
   case intro
   case privacy
   case apiKeys
-  case microphone
-  case accessibility
-  case screenRecording
+  case permissions
   case smartImprovement
   case done
 
@@ -17,7 +15,12 @@ enum WelcomeStep: Int, CaseIterable {
 }
 
 struct WelcomeView: View {
+  /// Key codes (layout-independent, NSEvent.keyCode).
+  private static let keyCodeLeftArrow: UInt16 = 123
+  private static let keyCodeRightArrow: UInt16 = 124
+
   @State private var step: WelcomeStep = .intro
+  @State private var keyDownMonitor: Any?
   @State private var hasGeminiKey: Bool = KeychainManager.shared.hasValidGoogleAPIKey()
   @State private var hasOpenAIKey: Bool = KeychainManager.shared.hasValidOpenAIAPIKey()
   @State private var hasXAIKey: Bool = KeychainManager.shared.hasValidXAIAPIKey()
@@ -40,12 +43,12 @@ struct WelcomeView: View {
             hasOpenAIKey: $hasOpenAIKey,
             hasXAIKey: $hasXAIKey
           )
-        case .microphone:
-          WelcomeMicStep(status: $micStatus)
-        case .accessibility:
-          WelcomeAccessibilityStep(status: $axStatus)
-        case .screenRecording:
-          WelcomeScreenRecordingStep(status: $screenStatus)
+        case .permissions:
+          WelcomePermissionsStep(
+            micStatus: $micStatus,
+            axStatus: $axStatus,
+            screenStatus: $screenStatus
+          )
         case .smartImprovement:
           WelcomeSmartImprovementStep(saveUsageData: $saveUsageData)
         case .done:
@@ -63,19 +66,54 @@ struct WelcomeView: View {
     }
     .frame(minWidth: 720, minHeight: 540)
     .background(Color(nsColor: .windowBackgroundColor))
-    .onAppear { refreshState() }
+    .onAppear {
+      refreshState()
+      installArrowKeyMonitor()
+    }
+    .onDisappear { removeArrowKeyMonitor() }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       refreshState()
     }
   }
 
+  /// Left/right arrows step backward/forward through the onboarding steps.
+  /// Skipped while a text field is being edited so arrows keep moving the cursor.
+  private func installArrowKeyMonitor() {
+    guard keyDownMonitor == nil else { return }
+    keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+      guard let window = event.window, window.isKeyWindow,
+        window === WelcomeWindowController.shared.window,
+        !(window.firstResponder is NSTextView)
+      else { return event }
+      // Arrow keys always carry .numericPad/.function — only real modifiers should opt out.
+      let modifiers = event.modifierFlags
+        .intersection(.deviceIndependentFlagsMask)
+        .subtracting([.numericPad, .function])
+      guard modifiers.isEmpty else { return event }
+      switch event.keyCode {
+      case Self.keyCodeLeftArrow:
+        goBack()
+        return nil
+      case Self.keyCodeRightArrow:
+        // Navigation only: respect step gating and never trigger Finish.
+        guard canAdvance, step != .done else { return nil }
+        advance()
+        return nil
+      default:
+        return event
+      }
+    }
+  }
+
+  private func removeArrowKeyMonitor() {
+    if let monitor = keyDownMonitor {
+      NSEvent.removeMonitor(monitor)
+      keyDownMonitor = nil
+    }
+  }
+
   private var footerBar: some View {
     HStack(spacing: 12) {
-      if canSkip {
-        Button("Skip", action: advance)
-          .buttonStyle(.borderless)
-          .pointerCursorOnHover()
-      }
       Spacer()
       stepIndicator
       Spacer()
@@ -107,22 +145,16 @@ struct WelcomeView: View {
     }
   }
 
-  private var canSkip: Bool {
-    step == .accessibility || step == .screenRecording
-  }
-
   private var nextButtonTitle: String {
-    switch step {
-    case .done: return "Finish"
-    case .accessibility: return "Continue"
-    default: return "Continue"
-    }
+    step == .done ? "Finish" : "Continue"
   }
 
   private var canAdvance: Bool {
     switch step {
     case .apiKeys:
       return hasGeminiKey || hasOpenAIKey || hasXAIKey
+    case .permissions:
+      return micStatus == .granted
     default:
       return true
     }
