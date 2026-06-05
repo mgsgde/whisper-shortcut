@@ -369,8 +369,7 @@ class GeminiAPIClient {
       let task = Task {
         do {
           let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):streamGenerateContent?alt=sse"
-          let credentialForRequest: GeminiCredential? = credential
-          var request = try self.createRequest(endpoint: endpoint, credential: credentialForRequest)
+          var request = try self.createRequest(endpoint: endpoint, credential: credential)
           request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
           request.timeoutInterval = Constants.resourceTimeout
 
