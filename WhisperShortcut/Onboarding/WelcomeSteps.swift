@@ -428,7 +428,7 @@ struct WelcomeScreenRecordingStep: View {
           Text("Screen Recording access")
             .font(.title2)
             .fontWeight(.semibold)
-          Text("Optional — only needed to attach screenshots to chat.")
+          Text("Optional — needed for screenshots in chat and screen context in Dictate Prompt.")
             .font(.callout)
             .foregroundStyle(.secondary)
         }
@@ -436,7 +436,7 @@ struct WelcomeScreenRecordingStep: View {
         WelcomePermissionBadge(status: status)
       }
 
-      Text("With Screen Recording enabled, you can capture your screen and attach it to a chat message. macOS asks for this the first time you grant it — you may need to relaunch the app afterwards.")
+      Text("With Screen Recording enabled, you can capture your screen and attach it to a chat message, and Dictate Prompt can optionally include a screenshot of your current screen as additional context. macOS asks for this the first time you grant it — you may need to relaunch the app afterwards.")
         .font(.callout)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)

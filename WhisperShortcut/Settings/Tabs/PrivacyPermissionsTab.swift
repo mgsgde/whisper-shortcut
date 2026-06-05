@@ -55,7 +55,8 @@ struct PrivacyPermissionsTab: View {
         Divider()
         permissionRow(
           name: "Screen Recording",
-          description: "Optional. Lets you attach screenshots to chat messages.",
+          description:
+            "Optional. Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests.",
           required: false,
           status: screenStatus,
           actions: defaultActions(for: .screenRecording),
