@@ -74,9 +74,12 @@ class ContextDerivation {
       rationale = (obj["rationale"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// True when the model declined to change the prompt (explicit `no_change`, or `suggest` with
-    /// an empty suggestion — treated as no-change so we never write an empty file).
-    var isNoChange: Bool { decision != "suggest" || suggestion.isEmpty }
+    /// True when the model declined to change the prompt: explicit `no_change`, an empty
+    /// suggestion, or the literal marker-era sentinel "NO_CHANGE" (a model following older
+    /// phrasing in the prompts) — all treated as no-change so a junk file is never written.
+    var isNoChange: Bool {
+      decision != "suggest" || suggestion.isEmpty || suggestion.uppercased() == "NO_CHANGE"
+    }
   }
 
   /// Common footer appended to every focus system prompt: rationale requirement, NO_CHANGE option, data-as-data hint.
@@ -296,7 +299,10 @@ class ContextDerivation {
     var display: [String: String] = [:]  // lowercased → first-seen original casing
     for text in refToText.values {
       var seen = Set<String>()
-      for token in text.components(separatedBy: CharacterSet.letters.inverted) where token.count >= 3 {
+      // Alphanumeric tokens so digit-bearing tech terms ("GPT5", "M4Pro") survive — the digit cue
+      // in `hasDistinctiveShape` relies on this. Pure numbers (years, counts) are noise; skip them.
+      for token in text.components(separatedBy: CharacterSet.alphanumerics.inverted)
+      where token.count >= 3 && !token.allSatisfy(\.isNumber) {
         let lower = token.lowercased()
         if !seen.insert(lower).inserted { continue }
         docFreq[lower, default: 0] += 1
@@ -512,7 +518,7 @@ class ContextDerivation {
       receives raw audio. Preserve core transcription guardrails even if the logs do not mention them; use primary \
       data (transcription interactions) only to justify personalized refinements such as recurring domain terms, \
       corrections, languages, and style preferences. Use secondary data (current prompt, other modes) only for \
-      background and wording. If there are not enough recurring patterns in primary data, output NO_CHANGE.
+      background and wording. If there are not enough recurring patterns in primary data, return decision "no_change".
 
       Put the suggested system prompt in the `suggestion` field of your JSON response (set `decision` to "suggest"; use "no_change" if the data does not justify a change).
 
@@ -601,7 +607,7 @@ class ContextDerivation {
 
       Use primary data (prompt interactions: selectedText → userInstruction → modelResponse) as the evidence source; \
       use secondary data only for background and wording. If there are not enough recurring patterns in primary data, \
-      output NO_CHANGE.
+      return decision "no_change".
 
       Put the suggested system prompt in the `suggestion` field of your JSON response (set `decision` to "suggest"; use "no_change" if the data does not justify a change).
 
@@ -748,7 +754,7 @@ class ContextDerivation {
 
     var userMessageParts: [String] = []
     if !currentPrompt.isEmpty {
-      userMessageParts.append("## Current prompt (refine this; output NO_CHANGE if no improvement is justified)\n\n\(currentPrompt)")
+      userMessageParts.append("## Current prompt (refine this; return decision \"no_change\" if no improvement is justified)\n\n\(currentPrompt)")
     } else {
       userMessageParts.append("## Current prompt\n\n(none — generate a fresh prompt based on the data below)")
     }

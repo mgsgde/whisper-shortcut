@@ -230,7 +230,7 @@ Transcript:
   static let contextDefaultMaxEntriesPerMode: Int = 15
   static let contextDefaultMaxTotalChars: Int = 25_000
 
-/// Tiered sampling: 50% from last 7 days, 30% from days 8–14, 20% from days 15–30.
+  /// Tiered sampling: 50% from last 7 days, 30% from days 8–14, 20% from days 15–30.
   static let contextTier1Days: Int = 7
   static let contextTier1Ratio: Double = 0.50
   static let contextTier2Days: Int = 14
