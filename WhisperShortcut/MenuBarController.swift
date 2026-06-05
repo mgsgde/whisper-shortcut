@@ -171,6 +171,20 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Dictate Prompt", action: #selector(togglePrompting),
         shortcut: currentConfig.startPrompting, tag: 102))
+    // One-tap Dictate Prompt presets: run a fixed instruction on the current selection
+    // (copy → edit → paste) without dictating. Grouped in a submenu to keep the menu tidy.
+    let presetsItem = NSMenuItem(title: "Edit Selection", action: nil, keyEquivalent: "")
+    presetsItem.tag = 115
+    let presetsMenu = NSMenu()
+    for preset in Self.promptPresets {
+      let item = NSMenuItem(
+        title: preset.label, action: #selector(runPromptPreset(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = preset.instruction
+      presetsMenu.addItem(item)
+    }
+    presetsItem.submenu = presetsMenu
+    menu.addItem(presetsItem)
     menu.addItem(
       createMenuItemWithShortcut(
         "Screenshot", action: #selector(takeScreenshot),
@@ -634,6 +648,121 @@ class MenuBarController: NSObject {
       }
     default:
       break
+    }
+  }
+
+  // MARK: - Dictate Prompt Presets (one-tap)
+
+  /// Built-in one-tap presets: a fixed instruction applied to the current selection
+  /// (copy → edit → paste) with no dictation. Seeded from the two most common Dictate Prompt
+  /// instructions in real usage (grammar correction and translate-to-English). Instructions are
+  /// phrased in English; the Dictate Prompt system prompt preserves the selected text's own
+  /// language for non-translation edits.
+  static let promptPresets: [(label: String, instruction: String)] = [
+    ("Correct Selection", "Fix spelling and grammar."),
+    ("Translate Selection → English", "Translate to English."),
+  ]
+
+  /// Menu action: the chosen preset's instruction rides on `representedObject`.
+  @objc private func runPromptPreset(_ sender: NSMenuItem) {
+    guard let instruction = sender.representedObject as? String else { return }
+    triggerPromptPreset(instruction: instruction)
+  }
+
+  /// Captures the current selection via synthetic Cmd+C, then runs the preset once the
+  /// clipboard actually updates. Mirrors Read Aloud's pasteboard-changeCount poll so we never
+  /// act on a stale clipboard or stall on a slow app.
+  private func triggerPromptPreset(instruction: String) {
+    if isLiveMeetingActive {
+      DebugLogger.logWarning("PROMPT-PRESET: ignoring during live meeting")
+      return
+    }
+    guard case .idle = appState else {
+      DebugLogger.logWarning("PROMPT-PRESET: busy (state not idle) — ignoring")
+      return
+    }
+    let promptModel = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
+    guard promptModel.provider == .gemini else {
+      PopupNotificationWindow.showError(
+        "One-tap presets need a Gemini Dictate Prompt model. Open Settings → Dictate Prompt and pick a Gemini model.",
+        title: "Gemini Model Required")
+      return
+    }
+    guard promptModel.hasRequiredCredential else {
+      PopupNotificationWindow.showError(
+        promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
+      return
+    }
+    guard AccessibilityPermissionManager.checkPermissionForPromptUsage() else { return }
+
+    let beforeChangeCount = NSPasteboard.general.changeCount
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self else { return }
+      self.simulateCopy()
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        let deadline = Date().addingTimeInterval(0.5)
+        while Date() < deadline {
+          try? await Task.sleep(for: .milliseconds(15))
+          if NSPasteboard.general.changeCount != beforeChangeCount {
+            guard case .idle = self.appState else {
+              DebugLogger.logWarning("PROMPT-PRESET: state changed during poll — abandoning")
+              return
+            }
+            self.performPromptPreset(instruction: instruction)
+            return
+          }
+        }
+        DebugLogger.logWarning("PROMPT-PRESET: Cmd+C did not land on a selection")
+        guard case .idle = self.appState else { return }
+        PopupNotificationWindow.showInfo(
+          "No text selected. Highlight text first, then choose a preset.", title: "Dictate Prompt")
+      }
+    }
+  }
+
+  /// Runs the preset's fixed instruction against the freshly-copied selection, then copies the
+  /// result back and auto-pastes (if enabled) — mirroring `performPrompting`'s result handling.
+  /// Cancellation flows through `speechService.cancelPrompt()` (Stop button / Dictate Prompt
+  /// shortcut) because `executeTextPrompt` reuses `currentPromptTask`.
+  private func performPromptPreset(instruction: String) {
+    guard let selectedText = clipboardManager.getCleanedClipboardText(),
+          !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      DebugLogger.logWarning("PROMPT-PRESET: clipboard empty after cleaning")
+      PopupNotificationWindow.showInfo(
+        "No text selected. Highlight text first, then choose a preset.", title: "Dictate Prompt")
+      return
+    }
+    appState = .processing(.prompting)
+    Task { [weak self] in
+      guard let self else { return }
+      do {
+        let result = try await self.speechService.executeTextPrompt(
+          instruction: instruction, selectedText: selectedText, mode: .togglePrompting)
+        self.clipboardManager.copyToClipboard(text: result)
+        await MainActor.run { [weak self] in
+          guard let self else { return }
+          self.autoPasteIfEnabled()
+          self.reviewPrompter.recordSuccessfulOperation()
+          let modelInfo = self.speechService.getPromptModelInfo()
+          PopupNotificationWindow.showPromptResponse(result, modelInfo: modelInfo)
+          self.appState = self.appState.showSuccess("AI response copied to clipboard")
+        }
+      } catch {
+        await MainActor.run { [weak self] in
+          guard let self else { return }
+          if Self.isCancellation(error) {
+            DebugLogger.log("CANCELLATION: Prompt preset cancelled (\(type(of: error)))")
+            self.appState = self.appState.finish()
+            return
+          }
+          DebugLogger.logError("PROMPT-PRESET: failed: \(error.localizedDescription)")
+          self.appState = self.appState.finish()
+          PopupNotificationWindow.showError(
+            SpeechErrorFormatter.formatForUser(error), title: "Dictate Prompt Error")
+        }
+      }
     }
   }
 

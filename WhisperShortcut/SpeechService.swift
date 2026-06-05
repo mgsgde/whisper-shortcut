@@ -278,6 +278,22 @@ class SpeechService {
     return try await task.value
   }
 
+  /// One-tap preset variant of `executePrompt`: applies a FIXED text instruction
+  /// (e.g. "Fix spelling and grammar") to `selectedText` instead of a dictated/audio
+  /// instruction. Reuses `currentPromptTask` so the existing Stop / cancel paths
+  /// (`cancelPrompt`) work unchanged. Gemini-only — the prompt model must be a Gemini
+  /// model, since this is a pure text-instruction path with no audio.
+  func executeTextPrompt(instruction: String, selectedText: String, mode: PromptMode = .togglePrompting) async throws -> String {
+    let task = Task<String, Error> {
+      try await self.performTextPrompt(instruction: instruction, selectedText: selectedText, mode: mode)
+    }
+
+    currentPromptTask = task
+    defer { if currentPromptTask == task { currentPromptTask = nil } }
+
+    return try await task.value
+  }
+
   // MARK: - Async Helpers
 
   /// Awaits `task.value` but gives up after `timeoutSeconds`, returning `nil` instead
@@ -531,6 +547,58 @@ class SpeechService {
     ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText, model: model.rawValue, hadScreenshot: hadScreenshot)
 
     DebugLogger.logSuccess("PROMPT-MODE-GEMINI: Completed successfully")
+    return normalizedText
+  }
+
+  // MARK: - Text Prompt (One-Tap Presets)
+
+  /// Text-instruction Dictate Prompt used by one-tap presets. Builds the same user turn as
+  /// the Gemini audio path — clipboard context followed by the instruction — except the
+  /// instruction is a literal string rather than transcribed audio, so there is no parallel
+  /// history-transcription. Appends to conversation history and logs identically to the audio
+  /// path so presets and dictated prompts share one continuous history.
+  private func performTextPrompt(instruction: String, selectedText: String, mode: PromptMode) async throws -> String {
+    let model = getPromptModel()
+    guard model.provider == .gemini else {
+      throw TranscriptionError.networkError(
+        "One-tap presets require a Gemini Dictate Prompt model. Open Settings → Dictate Prompt and pick a Gemini model.")
+    }
+    guard let credential = await credentialProvider.getCredential() else {
+      throw TranscriptionError.noGoogleAPIKey
+    }
+
+    DebugLogger.log("PROMPT-MODE-PRESET: Starting execution instruction=\"\(instruction)\"")
+
+    let contextText = """
+    SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):
+
+    \(selectedText)
+    """
+    let userParts: [GeminiChatRequest.GeminiChatPart] = [
+      GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil),
+      GeminiChatRequest.GeminiChatPart(text: "VOICE INSTRUCTION: \(instruction)", inlineData: nil, fileData: nil, url: nil),
+    ]
+
+    let normalizedText = try await performGeminiPromptRequest(
+      model: model,
+      mode: mode,
+      userParts: userParts,
+      systemPrompt: buildDictatePromptSystemPrompt(logPrefix: "PROMPT-MODE-PRESET"),
+      credential: credential,
+      logPrefix: "PROMPT-MODE-PRESET"
+    )
+
+    PromptConversationHistory.shared.append(
+      mode: mode,
+      selectedText: selectedText,
+      userInstruction: instruction,
+      modelResponse: normalizedText
+    )
+    ContextLogger.shared.logPrompt(
+      mode: mode, selectedText: selectedText, userInstruction: instruction,
+      modelResponse: normalizedText, model: model.rawValue, hadScreenshot: false)
+
+    DebugLogger.logSuccess("PROMPT-MODE-PRESET: Completed successfully")
     return normalizedText
   }
 
