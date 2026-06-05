@@ -150,6 +150,11 @@ class ContextLogger {
   /// Logs one chat turn (user message + model response) when "Save usage data" is enabled.
   func logChat(userMessage: String, modelResponse: String, model: String?) {
     guard isLoggingEnabled else { return }
+    // Generated-image responses embed the full base64 JPEG inline as a ⟦GEMINI_IMG:…⟧
+    // marker (~1 MB+ each). Replace it with a short placeholder before writing so the JSONL
+    // log never persists image bytes or balloons to megabytes — mirrors the strip ChatView
+    // already does before copy/TTS.
+    let sanitizedResponse = GeminiAPIClient.stripImageMarkers(modelResponse, placeholder: "[generated image]")
     let entry = InteractionLogEntry(
       ts: iso8601Now(),
       mode: "geminiChat",
@@ -157,7 +162,7 @@ class ContextLogger {
       result: nil,
       selectedText: nil,
       userInstruction: userMessage,
-      modelResponse: modelResponse,
+      modelResponse: sanitizedResponse,
       text: nil,
       voice: nil,
       audioRef: nil,

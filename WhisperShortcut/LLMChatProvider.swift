@@ -423,6 +423,16 @@ enum OpenAIResponsesAPIConverter {
 
       let functionCallParts = parts.filter { $0["functionCall"] != nil }
       if !functionCallParts.isEmpty {
+        // Narration the model emitted alongside the calls (mixed Gemini-style model turn):
+        // echo it as an assistant message item before the function_call items, mirroring how
+        // the Responses API itself interleaves message and function_call output items.
+        let narration = parts.compactMap { $0["text"] as? String }.joined()
+        if !narration.isEmpty {
+          input.append([
+            "role": "assistant",
+            "content": [["type": "output_text", "text": narration]],
+          ])
+        }
         for (idx, part) in functionCallParts.enumerated() {
           guard let fc = part["functionCall"] as? [String: Any],
                 let name = fc["name"] as? String else { continue }

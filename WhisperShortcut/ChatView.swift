@@ -609,7 +609,12 @@ class ChatViewModel: ObservableObject {
         ? session.thinkingLevel
         : (store.session(by: sessionId)?.thinkingLevel ?? .default)
       let placeholderId = UUID()
-      var accumulated = ""
+      // Reply accumulation is split in two so the per-token work below never re-scans marker
+      // bytes: `markerPrefix` holds finalized content including ⟦GEMINI_IMG:…⟧ markers
+      // (multi-MB base64), `streamed` only the model text since the last marker fold. The
+      // displayed/persisted reply is always `markerPrefix + streamed`.
+      var markerPrefix = ""
+      var streamed = ""
       do {
         let placeholder = ChatMessage(id: placeholderId, role: .model, content: "")
         appendMessage(placeholder, toSessionId: sessionId)
@@ -623,6 +628,9 @@ class ChatViewModel: ObservableObject {
 
         toolLoop: for round in 0..<(maxToolRounds + 1) {
           var pendingCalls: [(name: String, args: [String: Any], thoughtSignature: String?)] = []
+          // Narration the model emits in THIS round; echoed back in the model turn that carries
+          // the round's function calls so the re-sent history is faithful (see executeToolCalls).
+          var roundText = ""
           let stream = provider.sendChatStream(
             model: model,
             contents: currentContents,
@@ -638,12 +646,11 @@ class ChatViewModel: ObservableObject {
             try Task.checkCancellation()
             switch event {
             case .textDelta(let delta):
-              accumulated = Self.stripLeakedThoughtTokens(accumulated + delta)
-              await MainActor.run {
-                self.updateStreamingMessage(
-                  id: placeholderId, sessionId: sessionId,
-                  content: accumulated, sources: [], supports: [], persist: false)
-              }
+              roundText += delta
+              streamed = Self.stripLeakedThoughtTokens(streamed + delta)
+              self.updateStreamingMessage(
+                id: placeholderId, sessionId: sessionId,
+                content: markerPrefix + streamed, sources: [], supports: [], persist: false)
             case .functionCall(let name, let args, let thoughtSignature):
               pendingCalls.append((name, args, thoughtSignature))
             case .finished(let sources, let supports, _):
@@ -657,21 +664,22 @@ class ChatViewModel: ObservableObject {
             toolLoopExhausted = true
             break toolLoop
           }
-          let (turns, imageMarkers) = try await executeToolCalls(pendingCalls, sessionId: sessionId)
+          let (turns, imageMarkers) = try await executeToolCalls(
+            pendingCalls, narration: Self.stripLeakedThoughtTokens(roundText), sessionId: sessionId)
           // Generated images go straight into the streaming bubble: the image shows up the
           // moment the tool finishes, and the model's follow-up narration streams below it.
           // The marker becomes part of the persisted message content (rendered inline);
           // buildContents strips it again before re-sending history.
           if !imageMarkers.isEmpty {
             let joined = imageMarkers.joined(separator: "\n\n")
-            // Trailing break: the model's follow-up narration streams directly onto
-            // `accumulated`, and a glued `…⟧Text` paragraph wouldn't render as an image.
-            accumulated = (accumulated.isEmpty ? joined : accumulated + "\n\n" + joined) + "\n\n"
-            await MainActor.run {
-              self.updateStreamingMessage(
-                id: placeholderId, sessionId: sessionId,
-                content: accumulated, sources: [], supports: [], persist: false)
-            }
+            // Trailing break: the model's follow-up narration streams directly after the
+            // marker block, and a glued `…⟧Text` paragraph wouldn't render as an image.
+            let current = markerPrefix + streamed
+            markerPrefix = (current.isEmpty ? joined : current + "\n\n" + joined) + "\n\n"
+            streamed = ""
+            self.updateStreamingMessage(
+              id: placeholderId, sessionId: sessionId,
+              content: markerPrefix, sources: [], supports: [], persist: false)
           }
           currentContents.append(contentsOf: turns)
         }
@@ -680,8 +688,9 @@ class ChatViewModel: ObservableObject {
         // This happens e.g. when the tool loop exhausts mid-batch (lots of
         // function calls, no narration) — the assistant bubble would otherwise
         // be empty, hiding the failure.
-        if accumulated.isEmpty {
-          accumulated = toolLoopExhausted
+        var reply = markerPrefix + streamed
+        if reply.isEmpty {
+          reply = toolLoopExhausted
             ? "_I tried multiple tool calls but ran out of attempts before finishing. The model may have used invalid IDs — please try again with a more specific request._"
             : "_(no response)_"
         }
@@ -690,14 +699,14 @@ class ChatViewModel: ObservableObject {
         // sources. This one-shot content change is the layout-heaviest moment of a send;
         // if the next render wedges the main thread, "final UI update committed" will be
         // absent from the log while "finalizing" is the last line — pinpointing the hang.
-        DebugLogger.log("CHAT-SEND: finalizing message sources=\(finalSources.count) supports=\(finalSupports.count) contentLen=\(accumulated.count) session=\(sessionId)")
+        DebugLogger.log("CHAT-SEND: finalizing message sources=\(finalSources.count) supports=\(finalSupports.count) contentLen=\(reply.count) session=\(sessionId)")
         await MainActor.run {
           self.updateStreamingMessage(
             id: placeholderId, sessionId: sessionId,
-            content: accumulated, sources: finalSources, supports: finalSupports)
+            content: reply, sources: finalSources, supports: finalSupports)
         }
         DebugLogger.log("CHAT-SEND: final UI update committed session=\(sessionId)")
-        let result = (text: accumulated, sources: finalSources, supports: finalSupports)
+        let result = (text: reply, sources: finalSources, supports: finalSupports)
         // Strip generated-image markers (multi-MB base64) before the interaction log.
         ContextLogger.shared.logChat(
           userMessage: content,
@@ -710,7 +719,8 @@ class ChatViewModel: ObservableObject {
       } catch is CancellationError {
         let superseded = await MainActor.run { self.supersedingSessionIds.contains(sessionId) }
         DebugLogger.log("CHAT: Send cancelled (superseded=\(superseded))")
-        if accumulated.isEmpty || superseded {
+        let partial = markerPrefix + streamed
+        if partial.isEmpty || superseded {
           await MainActor.run {
             self.removeMessage(id: placeholderId, fromSessionId: sessionId)
           }
@@ -721,7 +731,7 @@ class ChatViewModel: ObservableObject {
           await MainActor.run {
             self.updateStreamingMessage(
               id: placeholderId, sessionId: sessionId,
-              content: accumulated, sources: [], supports: [])
+              content: partial, sources: [], supports: [])
           }
         }
       } catch {
@@ -775,12 +785,20 @@ class ChatViewModel: ObservableObject {
 
   private func executeToolCalls(
     _ calls: [(name: String, args: [String: Any], thoughtSignature: String?)],
+    narration: String,
     sessionId: UUID
   ) async throws -> (turns: [[String: Any]], imageMarkers: [String]) {
-    let callParts: [[String: Any]] = calls.map { call in
+    var callParts: [[String: Any]] = calls.map { call in
       var part: [String: Any] = ["functionCall": ["name": call.name, "args": call.args]]
       if let sig = call.thoughtSignature { part["thoughtSignature"] = sig }
       return part
+    }
+    // Echo the narration the model emitted alongside the calls: the function-calling contract
+    // (Gemini docs; the Responses/Chat Completions converters mirror it) expects the model turn
+    // re-sent as received. Without it the model can't see what it already told the user
+    // mid-loop and may repeat itself across rounds.
+    if !narration.isEmpty {
+      callParts.insert(["text": narration], at: 0)
     }
     var responseParts: [[String: Any]] = []
     // ⟦GEMINI_IMG:…⟧ markers produced by generate_image. They go straight into the chat
@@ -824,9 +842,11 @@ class ChatViewModel: ObservableObject {
     }
     var parts: [[String: Any]] = []
     if ChatToolRegistry.boolArgument(args, "use_attached_image", default: false) {
-      let attached = store.session(by: sessionId)?
+      // attachedImageParts can also hold PDFs/text files; the image model only accepts images.
+      let attached = (store.session(by: sessionId)?
         .messages.last(where: { $0.role == .user && !$0.attachedImageParts.isEmpty })?
-        .attachedImageParts ?? []
+        .attachedImageParts ?? [])
+        .filter { ($0.mimeType ?? "image/png").hasPrefix("image/") }
       if attached.isEmpty {
         return (["error": "No attached image found in this conversation. Generate from the prompt alone (use_attached_image=false) or ask the user to attach one."], [])
       }
@@ -3094,7 +3114,7 @@ private struct FlowLayout: Layout {
   }
 }
 
-// MARK: - Markdown Table / Block types (shared via MarkdownBlockView.swift)
+// MARK: - Markdown Table / Block types (shared via MarkdownParsing.swift)
 
 private enum ReplyContentBlock {
   case text(AttributedString)
@@ -3626,7 +3646,11 @@ private struct ModelReplyView: View {
         }
       }
     }
-    return blocks.isEmpty ? [.text(AttributedString(content))] : blocks
+    // Strip markers in the fallback too: a message whose only marker failed to decode would
+    // otherwise dump the raw multi-MB base64 into the UI as text.
+    return blocks.isEmpty
+      ? [.text(AttributedString(GeminiAPIClient.stripImageMarkers(content)))]
+      : blocks
   }
 
   private static func buildContentOnlyBlocks(
@@ -3677,7 +3701,11 @@ private struct ModelReplyView: View {
         blocks.append(.text(buildSingleParagraphAttributed(trimmed, options: options)))
       }
     }
-    return blocks.isEmpty ? [.text(AttributedString(content))] : blocks
+    // Strip markers in the fallback too: a message whose only marker failed to decode would
+    // otherwise dump the raw multi-MB base64 into the UI as text.
+    return blocks.isEmpty
+      ? [.text(AttributedString(GeminiAPIClient.stripImageMarkers(content)))]
+      : blocks
   }
 
   /// Splits a paragraph that has non-bullet text followed by bullet lines.
