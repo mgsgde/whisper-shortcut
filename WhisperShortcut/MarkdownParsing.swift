@@ -25,31 +25,31 @@ enum MarkdownParsing {
     return nil
   }
 
-  /// Returns the font for a heading level, scaled relative to `baseSize` (chat = 16, summary = 14).
-  static func fontForHeadingLevel(_ level: Int, baseSize: CGFloat = 16) -> Font {
+  /// Single source of truth for heading sizes/weights; the SwiftUI and AppKit accessors
+  /// below both derive from it so they can never drift apart.
+  private static func headingMetrics(_ level: Int, baseSize: CGFloat) -> (size: CGFloat, bold: Bool) {
     switch level {
-    case 1: return .system(size: baseSize + 7, weight: .bold)
-    case 2: return .system(size: baseSize + 4, weight: .bold)
-    case 3: return .system(size: baseSize + 2, weight: .semibold)
-    case 4: return .system(size: baseSize, weight: .semibold)
-    case 5: return .system(size: baseSize - 1, weight: .semibold)
-    case 6: return .system(size: baseSize - 2, weight: .semibold)
-    default: return .system(size: baseSize, weight: .bold)
+    case 1: return (baseSize + 7, true)
+    case 2: return (baseSize + 4, true)
+    case 3: return (baseSize + 2, false)
+    case 4: return (baseSize, false)
+    case 5: return (baseSize - 1, false)
+    case 6: return (baseSize - 2, false)
+    default: return (baseSize, true)
     }
   }
 
-  /// AppKit twin of `fontForHeadingLevel` — same sizes/weights as `NSFont`, used when rendering prose
-  /// in an `NSTextView` (where SwiftUI `Font` cannot be read back). Keep the two in sync.
+  /// Returns the font for a heading level, scaled relative to `baseSize` (chat = 16, summary = 14).
+  static func fontForHeadingLevel(_ level: Int, baseSize: CGFloat = 16) -> Font {
+    let m = headingMetrics(level, baseSize: baseSize)
+    return .system(size: m.size, weight: m.bold ? .bold : .semibold)
+  }
+
+  /// AppKit twin of `fontForHeadingLevel`, used when rendering prose in an `NSTextView`
+  /// (where SwiftUI `Font` cannot be read back).
   static func nsHeadingMetrics(_ level: Int, baseSize: CGFloat = 16) -> (size: CGFloat, weight: NSFont.Weight) {
-    switch level {
-    case 1: return (baseSize + 7, .bold)
-    case 2: return (baseSize + 4, .bold)
-    case 3: return (baseSize + 2, .semibold)
-    case 4: return (baseSize, .semibold)
-    case 5: return (baseSize - 1, .semibold)
-    case 6: return (baseSize - 2, .semibold)
-    default: return (baseSize, .bold)
-    }
+    let m = headingMetrics(level, baseSize: baseSize)
+    return (m.size, m.bold ? .bold : .semibold)
   }
 
   /// Returns the bullet content if the line is a list item (`- `, `* `, or `1. `); otherwise nil.
@@ -119,16 +119,18 @@ enum MarkdownParsing {
   /// is left alone. Idempotent: only fires where the header touches a non-space char,
   /// so already-separated headers and re-runs are no-ops.
   static func splitInlineSectionHeadings(_ content: String) -> String {
+    // Boundary classes exclude `*` so a bold-italic `***…:***` run is never split apart
+    // (a bare `\S` would match its leading/trailing asterisk).
     // 1. Paragraph break before a header glued to preceding text.
     let withBreaks = regexReplace(
       content,
-      pattern: "(\\S)(\\*\\*[^*\\n]+:\\*\\*)",
+      pattern: "([^\\s*])(\\*\\*[^*\\n]+:\\*\\*)",
       template: "$1\n\n$2"
     )
     // 2. Space after a header glued to the following body text.
     return regexReplace(
       withBreaks,
-      pattern: "(\\*\\*[^*\\n]+:\\*\\*)(\\S)",
+      pattern: "(\\*\\*[^*\\n]+:\\*\\*)([^\\s*])",
       template: "$1 $2"
     )
   }
