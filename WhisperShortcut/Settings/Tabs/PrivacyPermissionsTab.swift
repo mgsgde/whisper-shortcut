@@ -72,27 +72,20 @@ struct PrivacyPermissionsTab: View {
 
       SectionHeader(
         title: "Provider API Keys",
-        subtitle: "Stored in the macOS Keychain. Configure in the General tab."
+        subtitle:
+          "Any single key unlocks every feature. Stored in the macOS Keychain. Configure in the General tab."
       )
 
       Spacer().frame(height: 12)
 
       VStack(spacing: 14) {
-        apiKeyRow(
-          provider: "Google Gemini",
-          description: "Used for transcription, Dictate Prompt, and chat with Gemini models.",
-          configured: hasGeminiKey
-        )
+        apiKeyRow(provider: "Google Gemini", configured: hasGeminiKey)
         Divider()
-        apiKeyRow(
-          provider: "OpenAI",
-          description: "Used for chat and Dictate Prompt with GPT models.",
-          configured: hasOpenAIKey
-        )
+        apiKeyRow(provider: "OpenAI", configured: hasOpenAIKey)
         Divider()
         apiKeyRow(
           provider: "xAI (Grok)",
-          description: "Used for chat with Grok models.",
+          description: "Dictate Prompt is not available with Grok.",
           configured: hasXAIKey
         )
       }
@@ -233,7 +226,9 @@ struct PrivacyPermissionsTab: View {
   // MARK: - API Key Row
 
   @ViewBuilder
-  private func apiKeyRow(provider: String, description: String, configured: Bool) -> some View {
+  private func apiKeyRow(provider: String, description: String? = nil, configured: Bool)
+    -> some View
+  {
     HStack(alignment: .top, spacing: 16) {
       VStack(alignment: .leading, spacing: 4) {
         HStack(spacing: 8) {
@@ -242,10 +237,12 @@ struct PrivacyPermissionsTab: View {
             .fontWeight(.semibold)
           apiKeyBadge(configured: configured)
         }
-        Text(description)
-          .font(.caption)
-          .foregroundColor(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+        if let description {
+          Text(description)
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
       Spacer(minLength: 8)
       Button(action: openGeneralTab) {

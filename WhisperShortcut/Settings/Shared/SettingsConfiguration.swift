@@ -312,10 +312,6 @@ enum PromptModel: String, CaseIterable {
   var isGemini: Bool {
     return provider == .gemini
   }
-  
-  var isOffline: Bool {
-    return false // Prompt mode doesn't support offline models yet
-  }
 
   // Convert to TranscriptionModel for API endpoint access (for Gemini models)
   var asTranscriptionModel: TranscriptionModel? {
@@ -653,10 +649,6 @@ enum TTSModel: String, CaseIterable {
     }
   }
 
-  var modelName: String {
-    return self.rawValue
-  }
-
   /// Default voice when the caller doesn't specify one. Each provider has its own voice
   /// catalogue, so "Charon" (Gemini) is not valid for OpenAI/xAI and vice versa.
   var defaultVoice: String {
@@ -689,8 +681,9 @@ enum TTSModel: String, CaseIterable {
     }
   }
 
+  /// Recommended is aligned with default; single source of truth in SettingsDefaults.
   var isRecommended: Bool {
-    return self == .gemini31FlashTTS
+    return self == SettingsDefaults.readAloudModel
   }
 
   var costLevel: String {
