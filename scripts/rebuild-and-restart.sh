@@ -7,7 +7,7 @@
 # Usage:
 #   bash scripts/rebuild-and-restart.sh                        # Default build, production API
 #   bash scripts/rebuild-and-restart.sh --app-store            # App Store build
-#   bash scripts/rebuild-and-restart.sh --development          # Local API (localhost:8080)
+#   bash scripts/rebuild-and-restart.sh --development          # currently a no-op (flag parsed but unused; no scheme/endpoint switch)
 
 set -e  # Exit on any error
 

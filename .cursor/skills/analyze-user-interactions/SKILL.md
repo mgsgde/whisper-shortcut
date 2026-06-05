@@ -111,7 +111,7 @@ Group failures with the same root cause. Threshold: **≥2 examples** before pro
 | Format markers leak (bullet stays when "full sentence" requested, etc.) | Add format-preservation rule | `AppConstants.swift` |
 | `selectedText` looks accumulated / contains paste history | Clipboard accumulation bug | `SpeechService.swift`, clipboard handling |
 | Chat ignores grounding / search | Tool-use prompt or routing logic | `defaultChatSystemPrompt` / `ChatTools.swift` |
-| Repeated 429s / slow round-trips | Rate-limit handling / model choice | `RateLimitCoordinator.swift` / `SettingsDefaults` |
+| Repeated 429s / slow round-trips | Rate-limit handling / model choice | `RateLimitCoordinator.swift`, per-provider chat providers (e.g. `GrokChatProvider.swift`) / `SettingsDefaults` |
 | Same instruction recurs verbatim across days (e.g. "korrigiere" → 12×) | Candidate for a one-tap UI preset | Menu / Settings UI |
 | Field missing from logs (genuine gap, not "older records") | Logging gap | `ContextLogger.swift` |
 | Glossary term consistently mis-transcribed | Add term to default glossary | `AppConstants.swift` (whisper glossary) or Smart Improvement run |

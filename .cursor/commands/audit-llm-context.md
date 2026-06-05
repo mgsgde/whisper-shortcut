@@ -5,7 +5,7 @@ description: Systematically reviews all LLM-context files (.cursor/commands/, .c
 
 # Audit LLM-Context Files
 
-Run a thorough review of every markdown file that gets loaded into LLM prompts: cursor commands, cursor rules, and cursor skills (symlinked into `.claude/skills/`). This repo's project-wide rule lives in `.cursor/rules/index.mdc` (`alwaysApply: true`) — there is no `CLAUDE.md` at the repo root. Goal: find files that have silently rotted (broken references, function pointers at wrong lines, factual drift, redundancy across files).
+Run a thorough review of every markdown file that gets loaded into LLM prompts: cursor commands, cursor rules, and cursor skills (symlinked into `.claude/skills/`). This repo's project-wide rule lives in `.cursor/rules/index.mdc` (`alwaysApply: true`); the root `CLAUDE.md` just `@`-includes it. Goal: find files that have silently rotted (broken references, function pointers at wrong lines, factual drift, redundancy across files).
 
 See the full method in `.cursor/skills/audit-llm-context/SKILL.md` — that is the canonical playbook. This command is the user-facing entry point.
 

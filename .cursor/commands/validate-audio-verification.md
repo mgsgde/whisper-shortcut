@@ -1,6 +1,6 @@
 ---
 name: validate-audio-verification
-description: Validate end-to-end that Smart Improvement audio verification is actually working — audio is captured for dictation, attached only when the asymmetry rule passes, used by the dictation and Whisper Glossary focuses, and cleaned up afterwards.
+description: Validate end-to-end that Smart Improvement audio verification is actually working — audio is captured for dictation, attached only when the asymmetry rule passes, used by the dictation and Whisper Glossary focuses, and retained across runs (pruned by age).
 ---
 
 # Validate Audio Verification
@@ -10,7 +10,7 @@ User-facing entry point for the Smart Improvement audio-verification inspection 
 ## When to invoke
 
 - The user asks "is audio verification working?" or "did Smart Improvement use audio this run?".
-- Immediately after implementing or modifying anything in the Smart Improvement audio-verification path (`ContextDerivation.swift`, dictation capture, asymmetry rule, cleanup).
+- Immediately after implementing or modifying anything in the Smart Improvement audio-verification path (`ContextDerivation.swift`, dictation capture, asymmetry rule, retention/age-pruning).
 - When investigating why a glossary or dictation suggestion was — or was not — produced.
 
 ## How to run
@@ -21,7 +21,7 @@ Walk the skill's five validation questions in order:
 2. Was the asymmetry rule evaluated, and what did it decide?
 3. Was the captured audio actually attached to the Smart Improvement request?
 4. Was it received by the dictation / Whisper Glossary focuses?
-5. Was the audio cleaned up afterwards?
+5. Is the audio retained correctly afterwards (kept for future runs, pruned by age — an *empty* directory is the red flag)?
 
 Each question maps to one specific log filter or on-disk check — see the skill for the exact commands.
 

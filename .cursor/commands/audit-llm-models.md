@@ -10,7 +10,7 @@ Systematic audit of the current model lineups at OpenAI, Google Gemini, and xAI 
 This command audits along **two axes**:
 
 1. **Currency** — for each feature, is the default still the newest GA model that fits the role? (stay current: the user heard about Grok 4.3 from X.com instead of from us — don't let that happen again.)
-2. **Provider coverage** — for each feature, does the app offer a usable model from *every* provider that has one? The goal: **a user who supplies only one provider's API key can still use every feature of the app.** Any feature that is single-provider (e.g. Read Aloud TTS is Gemini-only) is a coverage gap — flag it, and if a competing provider ships a capable model, recommend adding it.
+2. **Provider coverage** — for each feature, does the app offer a usable model from *every* provider that has one? The goal: **a user who supplies only one provider's API key can still use every feature of the app.** Any feature that is single-provider (e.g. a role where only one provider currently ships a capable model) is a coverage gap — flag it, and if a competing provider ships a capable model, recommend adding it.
 
 The throughline is honesty: training data is stale, so every currency recommendation AND every "provider X now has a capable model for this role" coverage claim MUST be verified against the live API before it ships.
 

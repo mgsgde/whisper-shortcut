@@ -29,13 +29,15 @@ Cut a new App Store / GitHub release: bump version, write App Store + GitHub rel
 9. Git add and commit only the files changed for this release command, with message `Update to version X.X` – **Important**: `WhisperShortcut/Info.plist` and `.github/RELEASE_NOTES.md` must be included in the commit
 10. Detect the current branch with `git branch --show-current`
 11. Push the current branch with `git push origin <current-branch>`
-12. Create git tag (format: `v<Version>`, e.g. `v1.2.3`) on the release commit
+12. Create git tag (format: `v<Version>`, e.g. `v7.51`) on the release commit
 13. Push the tag with `git push origin <tag>`
+
+> **Note:** `scripts/create-release.sh` is an *interactive* human helper that does only the read-version → tag → push portion (with confirmation prompts). This command runs the full release flow non-interactively (bump, notes, commit, rebuild, tag), so it creates and pushes the tag directly rather than calling that script.
 
 ## Output
 
-- New version (e.g. "1.2.3")
-- New bundle version (e.g. "123")
+- New version (e.g. "7.51")
+- New bundle version (e.g. "149")
 - App Store "What's New in This Version" text (1–3 short bullet points, English) — copy-paste-ready for the App Store Connect "What's New in This Version" field
 - Release notes (detailed list of all changes for GitHub Release)
 - Confirmation of rebuilt app, commit, branch push, created tag, and tag push

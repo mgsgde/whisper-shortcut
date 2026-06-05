@@ -18,7 +18,7 @@ The Skills/Rules/Commands ecosystem moves fast (new frontmatter fields, deprecat
 Also re-read locally:
 
 - `.cursor/rules/*.mdc` frontmatter (`alwaysApply`, `globs`, `description`) — these are Cursor-only and have no Claude equivalent.
-- `.cursor/rules/index.mdc` for project-specific conventions (rebuild rule, slash-command-only policy, English-only UI strings, data directory paths). This is the always-applied repo rule — there is no `CLAUDE.md` at the repo root.
+- `.cursor/rules/index.mdc` for project-specific conventions (rebuild rule, slash-command-only policy, English-only UI strings, data directory paths). This is the always-applied repo rule — the root `CLAUDE.md` just `@`-includes it.
 - `.cursor/commands/README.md` for the verb taxonomy this repo follows.
 
 **From the fetched docs, extract and pin in working memory:**
@@ -34,14 +34,14 @@ Then proceed to the audit. Findings about "Claude-only feature in a portable ski
 **Always review:**
 
 - `.cursor/commands/*.md` — Cursor slash commands (naming convention in `.cursor/commands/README.md`).
-- `.cursor/rules/*.mdc` — Cursor project rules (`.cursor/rules/index.mdc` with `alwaysApply: true` is the project's repo-level rule; there is no `CLAUDE.md` at the repo root).
+- `.cursor/rules/*.mdc` — Cursor project rules (`.cursor/rules/index.mdc` with `alwaysApply: true` is the project's repo-level rule; the root `CLAUDE.md` just `@`-includes it).
 - `.cursor/skills/*/SKILL.md` — Skill playbooks. (`.claude/skills` is a symlink to `../.cursor/skills`, so one edit propagates to both surfaces.)
 
 **If the user gives a `--scope` flag**, narrow accordingly (e.g. `--scope=skills`, `--scope=rules`, `--scope=commands`).
 
 ## Method
 
-Dispatch **parallel subagents** if your tool supports them (Claude Code: `Agent` tool with `subagent_type: general-purpose`; in Cursor, sequence the per-group reviews instead since Cursor has no equivalent dispatcher). One reviewer per group: commands, rules, skills. The orchestrator (this skill) then synthesizes a cross-cutting view. Why parallel: reading every file in the main context bloats it and slows synthesis; per-group reviews fit comfortably in a single subagent.
+Dispatch **parallel subagents** if your tool supports them (Claude Code: `Agent` tool with `subagent_type: general-purpose`; in Cursor, sequence the per-group reviews instead since Cursor has no equivalent dispatcher). If the user passed `--no-subagents`, skip dispatch entirely and run the per-group reviews inline in the main context (useful with a narrow `--scope=`). One reviewer per group: commands, rules, skills. The orchestrator (this skill) then synthesizes a cross-cutting view. Why parallel: reading every file in the main context bloats it and slows synthesis; per-group reviews fit comfortably in a single subagent.
 
 **Each subagent must receive the fetched-doc summary from Step 0** in its prompt — otherwise it will fall back on potentially stale training data when judging frontmatter and conventions.
 
@@ -144,3 +144,4 @@ End with a one-line ask: "Want me to apply Tier 1 now? Tier 2 needs decisions on
 - `/audit-llm-context --scope=rules` — only `.cursor/rules/`.
 - `/audit-llm-context --scope=commands` — only `.cursor/commands/`.
 - `/audit-llm-context --fix-tier-1` — audit then auto-apply only Tier 1 fixes (broken refs).
+- `/audit-llm-context --no-subagents` — run the per-group reviews inline instead of dispatching subagents (best with a narrow `--scope=`).
