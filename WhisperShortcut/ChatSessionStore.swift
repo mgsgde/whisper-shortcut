@@ -328,19 +328,23 @@ class ChatSessionStore {
     scheduleDiskWrite(file)
   }
 
+  /// Encodes and atomically writes `file`. Must run on `diskWriteQueue` so debounced and
+  /// flush writes never interleave (an in-flight stale write landing after a newer one).
+  private func writeNow(_ file: SessionsFile, label: String) {
+    do {
+      try FileManager.default.createDirectory(at: appSupportDir, withIntermediateDirectories: true)
+      let data = try JSONEncoder().encode(file)
+      try data.write(to: fileURL, options: .atomic)
+    } catch {
+      DebugLogger.logError("GEMINI-CHAT: \(label) failed: \(error.localizedDescription)")
+    }
+  }
+
   /// Debounced disk write: coalesces rapid saves into a single write after a short delay.
   private func scheduleDiskWrite(_ file: SessionsFile) {
     debounceWorkItem?.cancel()
-    let url = fileURL
-    let dir = appSupportDir
-    let workItem = DispatchWorkItem {
-      do {
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let data = try JSONEncoder().encode(file)
-        try data.write(to: url, options: .atomic)
-      } catch {
-        DebugLogger.logError("GEMINI-CHAT: Disk write failed: \(error.localizedDescription)")
-      }
+    let workItem = DispatchWorkItem { [self] in
+      writeNow(file, label: "Disk write")
     }
     debounceWorkItem = workItem
     diskWriteQueue.asyncAfter(deadline: .now() + Self.saveDebounceSeconds, execute: workItem)
@@ -348,18 +352,15 @@ class ChatSessionStore {
 
   /// Forces an immediate disk write of the current cached state (e.g. before app termination).
   /// Only called from `applicationWillTerminate`, which is MainActor (NSApplicationDelegate),
-  /// so this is an ordinary member — no cross-thread hops. (An earlier `nonisolated` version
-  /// used `DispatchQueue.main.sync`, which deadlocked on every quit.)
+  /// so this is an ordinary member. The write runs via `diskWriteQueue.sync` so it serializes
+  /// behind a debounced write that may already be executing — `cancel()` can't stop a running
+  /// work item, and its stale snapshot must not land after this fresh one. (Don't replace the
+  /// sync with `DispatchQueue.main.sync` anywhere in this path — an earlier `nonisolated`
+  /// version did and deadlocked on every quit.)
   func flushToDisk() {
     guard let file = cachedFile else { return }
     debounceWorkItem?.cancel()
-    do {
-      try FileManager.default.createDirectory(at: appSupportDir, withIntermediateDirectories: true)
-      let data = try JSONEncoder().encode(file)
-      try data.write(to: fileURL, options: .atomic)
-    } catch {
-      DebugLogger.logError("GEMINI-CHAT: Flush to disk failed: \(error.localizedDescription)")
-    }
+    diskWriteQueue.sync { writeNow(file, label: "Flush to disk") }
   }
 
   // MARK: - Load / Save
