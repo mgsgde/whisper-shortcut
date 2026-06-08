@@ -369,8 +369,7 @@ class GeminiAPIClient {
       let task = Task {
         do {
           let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):streamGenerateContent?alt=sse"
-          let credentialForRequest: GeminiCredential? = credential
-          var request = try self.createRequest(endpoint: endpoint, credential: credentialForRequest)
+          var request = try self.createRequest(endpoint: endpoint, credential: credential)
           request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
           request.timeoutInterval = Constants.resourceTimeout
 
@@ -635,7 +634,7 @@ class GeminiAPIClient {
   /// Native image generation/editing ("Nano Banana") via a single non-streaming `:generateContent`
   /// call. Setting `responseModalities: ["TEXT","IMAGE"]` makes the model return image parts, which
   /// `extractText(from:)` embeds as `⟦GEMINI_IMG:…⟧` markers in the returned string — the chat view
-  /// then renders them inline (`ChatView.extractInlineImageData`). These models don't support tools,
+  /// then renders them inline (`ChatView.splitImageMarkerPieces`). These models don't support tools,
   /// grounding, thinking, or SSE streaming, so none of those are sent. Any input image to edit rides
   /// along inside `contents` as an `inline_data` part (built by `ChatView.buildContents`).
   func generateImageContent(
@@ -945,7 +944,9 @@ class GeminiAPIClient {
       content,
       onText: { result += $0 },
       onMarker: { _ in result += placeholder },
-      onUnterminatedMarker: { result += $0 }
+      // A truncated stream can end mid-marker; collapse it to the placeholder too so the
+      // raw `⟦GEMINI_IMG:<base64>` remainder never leaks into clipboard/search/TTS.
+      onUnterminatedMarker: { _ in result += placeholder }
     )
     return result.trimmingCharacters(in: .whitespacesAndNewlines)
   }

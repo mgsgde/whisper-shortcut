@@ -352,10 +352,9 @@ class SpeechService {
   }
 
   /// Returns the screenshot parts to prepend to a Dictate Prompt request when the
-  /// "include screenshot" setting is on and the model accepts images. Empty when
-  /// disabled, when the model is audio-only, or when the capture fails.
-  private func screenshotPromptParts(modelAcceptsImages: Bool = true) async -> [GeminiChatRequest.GeminiChatPart] {
-    guard screenshotInPromptModeEnabled(), modelAcceptsImages else { return [] }
+  /// "include screenshot" setting is on. Empty when disabled or when the capture fails.
+  private func screenshotPromptParts() async -> [GeminiChatRequest.GeminiChatPart] {
+    guard screenshotInPromptModeEnabled() else { return [] }
     guard let data = await ChatWindowManager.shared.captureScreenForPromptMode() else { return [] }
     return [
       GeminiChatRequest.GeminiChatPart(text: "Current screen:", inlineData: nil, fileData: nil, url: nil),
@@ -773,27 +772,27 @@ class SpeechService {
   /// Reads a user *selection* aloud. The text may be code, markdown, or log output, so it's
   /// first passed through Smart Rewrite (when the user has it on) to produce something more
   /// pleasant to listen to before TTS. Used by the global Read Aloud shortcut.
-  func readSelectionAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
-    try await runReadAloud(text, voiceName: voiceName, applySmartRewrite: true)
+  func readSelectionAloud(_ text: String) async throws -> Data {
+    try await runReadAloud(text, applySmartRewrite: true)
   }
 
   /// Reads LLM-generated *prose* aloud — already intended for human consumption, so the
   /// Smart Rewrite pre-pass is skipped. Used by the chat reply read-aloud path.
-  func readProseAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
-    try await runReadAloud(text, voiceName: voiceName, applySmartRewrite: false)
+  func readProseAloud(_ text: String) async throws -> Data {
+    try await runReadAloud(text, applySmartRewrite: false)
   }
 
   /// Runs the optional rewrite-then-TTS pipeline inside a single tracked `Task` stored on
   /// `currentTTSTask` so `cancelTTS()` can abort during the rewrite phase too (otherwise the
   /// rewrite would complete and TTS would start playing after the user already pressed Stop).
-  private func runReadAloud(_ text: String, voiceName: String?, applySmartRewrite: Bool) async throws -> Data {
+  private func runReadAloud(_ text: String, applySmartRewrite: Bool) async throws -> Data {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { throw TranscriptionError.networkError("Text is empty") }
 
     let task = Task<Data, Error> {
       let textForTTS = applySmartRewrite ? try await self.maybeRewriteForSpeech(trimmed) : trimmed
       try Task.checkCancellation()
-      return try await self.performTTS(text: textForTTS, voiceName: voiceName)
+      return try await self.performTTS(text: textForTTS)
     }
     currentTTSTask = task
     // See `transcribe` for the identity-check rationale.
@@ -871,12 +870,11 @@ class SpeechService {
   /// Multi-provider Read Aloud. Dispatches by the selected model's provider. All three providers
   /// emit raw PCM (s16le 24kHz mono), which is exactly what `MenuBarController.playTTSAudio`
   /// expects, so the returned `Data` is provider-independent.
-  private func performTTS(text: String, voiceName: String? = nil) async throws -> Data {
+  private func performTTS(text: String) async throws -> Data {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     let model = ReadAloudPreferences.model
-    // Caller override (nil for the Read Aloud shortcut) → the user's picked voice for this
-    // provider, falling back to the provider's default when none is set.
-    let voice = voiceName ?? ReadAloudPreferences.voice(for: model)
+    // The user's picked voice for this provider, falling back to the provider's default.
+    let voice = ReadAloudPreferences.voice(for: model)
 
     DebugLogger.log("TTS: Starting text-to-speech (length: \(trimmedText.count) chars, voice: \(voice), model: \(model.displayName), provider: \(model.provider.displayName))")
 

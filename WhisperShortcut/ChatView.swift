@@ -639,11 +639,9 @@ class ChatViewModel: ObservableObject {
             switch event {
             case .textDelta(let delta):
               accumulated = Self.stripLeakedThoughtTokens(accumulated + delta)
-              await MainActor.run {
-                self.updateStreamingMessage(
-                  id: placeholderId, sessionId: sessionId,
-                  content: accumulated, sources: [], supports: [], persist: false)
-              }
+              self.updateStreamingMessage(
+                id: placeholderId, sessionId: sessionId,
+                content: accumulated, sources: [], supports: [], persist: false)
             case .functionCall(let name, let args, let thoughtSignature):
               pendingCalls.append((name, args, thoughtSignature))
             case .finished(let sources, let supports, _):
@@ -667,11 +665,9 @@ class ChatViewModel: ObservableObject {
             // Trailing break: the model's follow-up narration streams directly onto
             // `accumulated`, and a glued `…⟧Text` paragraph wouldn't render as an image.
             accumulated = (accumulated.isEmpty ? joined : accumulated + "\n\n" + joined) + "\n\n"
-            await MainActor.run {
-              self.updateStreamingMessage(
-                id: placeholderId, sessionId: sessionId,
-                content: accumulated, sources: [], supports: [], persist: false)
-            }
+            self.updateStreamingMessage(
+              id: placeholderId, sessionId: sessionId,
+              content: accumulated, sources: [], supports: [], persist: false)
           }
           currentContents.append(contentsOf: turns)
         }
@@ -691,11 +687,9 @@ class ChatViewModel: ObservableObject {
         // if the next render wedges the main thread, "final UI update committed" will be
         // absent from the log while "finalizing" is the last line — pinpointing the hang.
         DebugLogger.log("CHAT-SEND: finalizing message sources=\(finalSources.count) supports=\(finalSupports.count) contentLen=\(accumulated.count) session=\(sessionId)")
-        await MainActor.run {
-          self.updateStreamingMessage(
-            id: placeholderId, sessionId: sessionId,
-            content: accumulated, sources: finalSources, supports: finalSupports)
-        }
+        self.updateStreamingMessage(
+          id: placeholderId, sessionId: sessionId,
+          content: accumulated, sources: finalSources, supports: finalSupports)
         DebugLogger.log("CHAT-SEND: final UI update committed session=\(sessionId)")
         let result = (text: accumulated, sources: finalSources, supports: finalSupports)
         // Strip generated-image markers (multi-MB base64) before the interaction log.
@@ -706,25 +700,31 @@ class ChatViewModel: ObservableObject {
         if let s = store.session(by: sessionId), s.messages.count == 2, !s.isMeeting {
           Task { await generateAITitle(sessionId: sessionId) }
         }
-        await MainActor.run { ReviewPrompter.shared.recordSuccessfulOperation() }
+        ReviewPrompter.shared.recordSuccessfulOperation()
       } catch is CancellationError {
-        let superseded = await MainActor.run { self.supersedingSessionIds.contains(sessionId) }
+        let superseded = self.supersedingSessionIds.contains(sessionId)
         DebugLogger.log("CHAT: Send cancelled (superseded=\(superseded))")
         if accumulated.isEmpty || superseded {
-          await MainActor.run {
-            self.removeMessage(id: placeholderId, fromSessionId: sessionId)
-          }
+          self.removeMessage(id: placeholderId, fromSessionId: sessionId)
         } else {
           // The kept partial text only ever reached the store with `persist: false`
           // (per-token updates); save it so a quit right after Stop doesn't restore
           // an empty assistant bubble.
-          await MainActor.run {
-            self.updateStreamingMessage(
-              id: placeholderId, sessionId: sessionId,
-              content: accumulated, sources: [], supports: [])
-          }
+          self.updateStreamingMessage(
+            id: placeholderId, sessionId: sessionId,
+            content: accumulated, sources: [], supports: [])
         }
       } catch {
+        // Drop the empty placeholder (or persist partial text) so a failed send never leaves
+        // an orphaned empty assistant bubble — mirrors the cancellation path above. Matters most
+        // for background sessions, whose error isn't surfaced via `errorMessage`.
+        if accumulated.isEmpty {
+          self.removeMessage(id: placeholderId, fromSessionId: sessionId)
+        } else {
+          self.updateStreamingMessage(
+            id: placeholderId, sessionId: sessionId,
+            content: accumulated, sources: [], supports: [])
+        }
         if sessionId == session.id { errorMessage = friendlyError(error) }
         DebugLogger.logError("CHAT: \(error.localizedDescription)")
       }
@@ -891,8 +891,11 @@ class ChatViewModel: ObservableObject {
   /// Sends into the session the message was queued for — NOT the currently
   /// visible one, which may have changed while the previous send ran.
   private func processNextQueued() {
-    guard let next = messageQueue.first, !isSendingSession(next.sessionId) else { return }
-    messageQueue.removeFirst()
+    // Drain the first queued message whose session is idle — not strictly the head. With
+    // multiple sessions queued, a busy session at the head must not block a later message
+    // bound for an idle one (per-session order is still preserved).
+    guard let idx = messageQueue.firstIndex(where: { !isSendingSession($0.sessionId) }) else { return }
+    let next = messageQueue.remove(at: idx)
     DebugLogger.log("GEMINI-CHAT: Processing next queued message, \(messageQueue.count) remaining")
     performSend(content: next.content, attachedParts: next.attachedParts, toSessionId: next.sessionId)
   }
@@ -1243,6 +1246,7 @@ class ChatViewModel: ObservableObject {
     let msg = ChatMessage(role: .model, content: content)
     messages.append(msg)
     session.messages = messages
+    session.lastUpdated = Date()
     store.save(session)
   }
 

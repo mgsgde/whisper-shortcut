@@ -14,7 +14,7 @@ enum ChatModelProvider: String, CaseIterable {
   /// they all read `defaultChatModel` from here.
   var defaultChatModel: PromptModel {
     switch self {
-    case .gemini: return .gemini35Flash
+    case .gemini: return .gemini3Flash
     case .grok:   return .grok43
     case .openai: return .openaiGPT55
     }
@@ -1095,7 +1095,7 @@ struct SettingsDefaults {
   // MARK: - Model & Prompt Settings
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
   static let selectedPromptModel = PromptModel.gemini35Flash
-  static let selectedChatModel = PromptModel.gemini35Flash
+  static let selectedChatModel = PromptModel.gemini3Flash
   static let chatCloseOnFocusLoss = true
   static let settingsCloseOnFocusLoss = true
 

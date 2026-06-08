@@ -99,16 +99,14 @@ enum ModelSelectionReconciler {
     guard current.isGemini || current.isOpenAI || current.isXAI else { return }
     let currentProvider: ChatModelProvider = current.isGemini ? .gemini : (current.isOpenAI ? .openai : .grok)
     if hasKey(currentProvider) { return }
-    for provider in providerPreference where hasKey(provider) {
-      let replacement: TranscriptionModel
-      switch provider {
-      case .gemini: replacement = .gemini31FlashLite
-      case .openai: replacement = .openAIGPT4oMiniTranscribe
-      case .grok: replacement = .xaiTranscribe
-      }
-      UserDefaults.standard.set(replacement.rawValue, forKey: key)
-      DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue)")
-      return
+    guard let provider = providerPreference.first(where: { hasKey($0) }) else { return }
+    let replacement: TranscriptionModel
+    switch provider {
+    case .gemini: replacement = .gemini31FlashLite
+    case .openai: replacement = .openAIGPT4oMiniTranscribe
+    case .grok: replacement = .xaiTranscribe
     }
+    UserDefaults.standard.set(replacement.rawValue, forKey: key)
+    DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue)")
   }
 }

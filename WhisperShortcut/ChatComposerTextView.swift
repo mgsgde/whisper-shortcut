@@ -285,7 +285,10 @@ final class ChatComposerNSTextView: NSTextView {
 @MainActor
 final class GeminiComposerController: ObservableObject {
   static let maxScreenshots = 10
-  static let maxFileAttachments = 5
+  // Must match `ChatView.maxFileAttachments` (10): the attach panel budgets against that
+  // value and funnels approved files through `insertFile`, so a lower cap here silently
+  // dropped files 6–10.
+  static let maxFileAttachments = 10
 
   weak var textView: ChatComposerNSTextView?
 

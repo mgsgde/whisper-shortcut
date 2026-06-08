@@ -2,7 +2,7 @@
 //  TranscriptionModels.swift
 //  WhisperShortcut
 //
-//  Data models for transcription API interactions (Gemini)
+//  Data models for transcription API interactions (Gemini, OpenAI, xAI, self-hosted, offline Whisper)
 //
 
 import Foundation
