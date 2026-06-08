@@ -17,11 +17,6 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Data Loading
 
-  /// Loads a string from UserDefaults or returns the default.
-  private func loadString(key: String, default defaultValue: String) -> String {
-    UserDefaults.standard.string(forKey: key) ?? defaultValue
-  }
-
   private func loadCurrentSettings() {
     // Adapt persisted selections to the keys present before reading them into `data`, so the
     // settings UI shows each feature on a provider the user actually has a key for.
@@ -123,12 +118,10 @@ class SettingsViewModel: ObservableObject {
     
     data.liveMeetingSafeguardDuration = MeetingSafeguardDuration.loadFromUserDefaults()
 
-    if let savedMeetingModelString = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings),
-       let savedMeetingModel = TranscriptionModel(rawValue: savedMeetingModelString) {
-      data.selectedTranscriptionModelForMeetings = savedMeetingModel
-    } else {
-      data.selectedTranscriptionModelForMeetings = TranscriptionModel.loadSelected()
-    }
+    // Routes through the canonical loader so a legacy/renamed meetings value is migrated
+    // (the hand-rolled `TranscriptionModel(rawValue:)` here used to skip that and silently
+    // fall back to the Dictate model instead of forwarding to the replacement).
+    data.selectedTranscriptionModelForMeetings = TranscriptionModel.loadSelectedForMeeting()
 
     data.selectedMeetingSummaryModel = PromptModel.loadPromptModel(
       forKey: UserDefaultsKeys.selectedMeetingSummaryModel,
