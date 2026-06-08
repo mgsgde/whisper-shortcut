@@ -588,7 +588,15 @@ class ChatViewModel: ObservableObject {
     let sessionId = toSessionId ?? session.id
     let task = Task {
       sendingSessionIds.insert(sessionId)
-      DebugLogger.log("CHAT-SEND: start session=\(sessionId)")
+      // Freeze-relevant state snapshot: a hang during send/stream wedges the main thread and
+      // silences later logs, so capture the conditions here while we still can. The watchdog
+      // (MainThreadWatchdog) then samples the stack if the main thread stops responding.
+      let sessionMsgCount = (sessionId == session.id ? messages.count : (store.session(by: sessionId)?.messages.count ?? -1))
+      let attachedBytes = attachedParts.reduce(0) { $0 + $1.data.count }
+      DebugLogger.log(
+        "CHAT-SEND: start session=\(sessionId) msgs=\(sessionMsgCount) contentChars=\(content.count) "
+        + "attachedImages=\(attachedParts.count) attachedBytes=\(attachedBytes) "
+        + "inFlightSessions=\(sendingSessionIds.count) queued=\(messageQueue.count)")
       defer {
         DebugLogger.log("CHAT-SEND: teardown session=\(sessionId)")
         sendingSessionIds.remove(sessionId)

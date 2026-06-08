@@ -25,6 +25,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
     DebugLogger.log("APP-LIFECYCLE: launched pid=\(getpid()) version=\(version) build=\(build)")
 
+    // Catch silent main-thread freezes: this samples our own process when the main thread
+    // stops responding, so the next hang leaves a stack in the Logs dir instead of nothing.
+    MainThreadWatchdog.shared.start()
+
     installTerminationSignalHandlers()
 
     // Prevent macOS from automatically terminating this menu bar app when
