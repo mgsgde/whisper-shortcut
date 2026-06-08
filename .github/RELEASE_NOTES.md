@@ -1,4 +1,4 @@
-# WhisperShortcut 7.50
+# WhisperShortcut 7.51
 
 ## Installation
 
@@ -6,22 +6,33 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ## What's New
 
-### Chat with generated images: cleaner and faster
+### Stability
 
-- **Copying a whole chat no longer includes raw image data** — generated images are replaced with a short placeholder in every copy, search, and read-aloud flow.
-- **Smoother streaming after an image is generated** — decoded images are cached, so the reply text streams without re-decoding the image on every word.
-- **Read Aloud skips generated images** instead of announcing them.
+- **Chat freeze hardening** — streaming replies that contain a generated image no longer re-process multi-megabyte image data on every token, and chat session writes are serialized on a dedicated disk queue. Both reduce the chance of the UI locking up during long conversations.
+- **Automatic hang diagnostics** — a new main-thread watchdog detects if the app ever stops responding and automatically writes a diagnostic snapshot to the log folder, so freezes can be pinned down instead of guessed at.
 
-### Chat reliability
+### Chat & tools
 
-- **Queued messages stay in their chat** — sending a follow-up while a reply is streaming and then switching tabs no longer delivers the queued message to the wrong conversation.
-- **Stopped replies survive a restart** — pressing Stop mid-reply now saves the partial text, so it's still there after quitting and relaunching.
-- **`/model image`-style commands** resolve directly to the image model (Flash tier) instead of asking you to disambiguate.
+- More reliable streaming, tool-call narration, and image-marker handling in chat.
+- Generated-image attachments are now filtered to actual image types only.
+
+### Google Calendar
+
+- Calendar lookups can include past events, and dates supplied by the model are normalized for more accurate event creation.
+
+### Transcription
+
+- Instructable speech-to-text models now receive your glossary as a proper instruction block for better term recognition.
+
+### Onboarding & Settings
+
+- Streamlined first-run experience: the permissions step is combined and the guidance is clearer.
+- Simplified API-key handling in Settings and removed unused model options.
+- Clearer Screen Recording permission copy mentioning the Dictate Prompt screen context.
 
 ### Under the hood
 
-- **Faster failure on Gemini server errors** — the retry logic no longer waits through a pointless final 32-second backoff, and extended retries for 500/503 errors now actually run.
-- **Shared connection pool** for all Gemini requests (chat, transcription, analysis) instead of separate ones per component.
-- Removed ~190 lines of dead and duplicated code (unused views, identity helpers, duplicated error mapping, leftover debug logging).
+- Tightened Smart Improvement context derivation and term extraction.
+- Internal cleanups (model-selection reconciler, settings view model, file renames) and a dependency bump (swift-argument-parser 1.8.1).
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.49...v7.50
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.50...v7.51
