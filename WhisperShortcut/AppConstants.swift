@@ -184,6 +184,12 @@ Output rules (CRITICAL):
   /// Subfolder name for live meeting transcripts (under canonical Application Support).
   static let liveMeetingTranscriptDirectory: String = "Meetings"
 
+  /// Number of new transcript chunks that must accumulate before the rolling-summary update
+  /// fires. Trades off freshness against cost: lower = more frequent summary refreshes (more
+  /// API calls); higher = staler live summary. 4 ≈ one update per ~2–4 minutes at typical
+  /// chunk cadence.
+  static let liveMeetingRollingSummaryChunkThreshold: Int = 4
+
   /// Transcription prompt for live meeting chunks with speaker diarization.
   static let liveMeetingDiarizationPrompt =
     """

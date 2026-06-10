@@ -638,11 +638,15 @@ class MenuBarController: NSObject {
   }
 
   @objc private func stopCurrentOperation() {
-    // Active meeting segment: stop the segment first, keep meeting running
+    // Active meeting segment: stop the segment first, keep meeting running.
+    // `activeMeetingSegment` stays set so the async `audioRecorderDidFinishRecording`
+    // delegate routes the captured audio through the segment-processing path
+    // (`performTranscription`/`performPrompting`) instead of falling through to the
+    // .liveMeeting arm that drops the audio. `stopRecordingAfterTailDelay` preserves
+    // the spoken tail, matching `toggleTranscription`/`togglePrompting`.
     if activeMeetingSegment != nil {
       DebugLogger.log("MEETING-SEGMENT: Stopping active segment via Stop button")
-      audioRecorder.stopRecording()
-      activeMeetingSegment = nil
+      stopRecordingAfterTailDelay()
       return
     }
 
@@ -934,8 +938,7 @@ class MenuBarController: NSObject {
     appState = appState.finish()
 
     if let transcriptURL = transcriptURLForPostProcessing {
-      let store = LiveMeetingTranscriptStore.shared
-      let chunksSnapshot = store.chunks
+      let chunksSnapshot = LiveMeetingTranscriptStore.shared.chunks
       Task {
         let transcriptText = chunksSnapshot.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n\n")
         guard !transcriptText.isEmpty else { return }
@@ -1100,11 +1103,11 @@ class MenuBarController: NSObject {
     return String(format: "[%02d:%02d]", minutes, seconds)
   }
 
-  /// If at least 4 new chunks since last summary, kick off a rolling summary update (async).
+  /// Once `liveMeetingRollingSummaryChunkThreshold` new chunks have arrived since the last
+  /// summary update, kick off a rolling summary refresh (async).
   private func triggerRollingSummaryUpdateIfNeeded() {
-    let threshold = 4
     liveMeetingChunksSinceSummary += 1
-    guard liveMeetingChunksSinceSummary >= threshold else { return }
+    guard liveMeetingChunksSinceSummary >= AppConstants.liveMeetingRollingSummaryChunkThreshold else { return }
 
     let store = LiveMeetingTranscriptStore.shared
     let result = store.chunkTexts(afterID: liveMeetingLastSummarizedChunkID)
@@ -2279,15 +2282,14 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
       liveMeetingAwaitingFinalChunk = false
     }
 
-    liveMeetingPendingChunks += 1
-
     if isSilent {
       DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (silent audio)")
       cleanupAudioFile(at: audioURL)
-      liveMeetingPendingChunks -= 1
       maybeFinishAfterChunkCompletion()
       return
     }
+
+    liveMeetingPendingChunks += 1
 
     Task {
 
