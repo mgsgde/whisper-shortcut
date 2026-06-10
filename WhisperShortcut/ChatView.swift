@@ -129,6 +129,23 @@ class ChatViewModel: ObservableObject {
   /// In-flight send tasks keyed by session ID — multiple sessions can be sending simultaneously.
   private var sendTasks: [UUID: Task<Void, Never>] = [:]
 
+  /// Coalesces per-token streaming UI commits into ≤30fps batches. Without this, a fast stream
+  /// pumps `messages` reassignments at the provider's token rate, triggering a full `LazyVStack`
+  /// diff per token — historically the cause of the main-thread wedge the
+  /// `clearScrollAnchorForListMutation` workaround was added to mitigate. Keyed by session so
+  /// concurrent sends throttle independently.
+  private struct PendingStreamingUpdate {
+    let messageId: UUID
+    let content: String
+    let sources: [GroundingSource]
+    let supports: [GroundingSupport]
+  }
+  private var pendingStreamingUpdates: [UUID: PendingStreamingUpdate] = [:]
+  private var streamingFlushTasks: [UUID: Task<Void, Never>] = [:]
+  /// ~30fps. Fast enough that streaming still feels live, slow enough to keep per-frame
+  /// layout work bounded even on a 100+ token/sec stream.
+  private static let streamingFlushIntervalNs: UInt64 = 33_000_000
+
   /// Returns true if the given session has an in-flight request (for tab spinner).
   func isSendingSession(_ id: UUID) -> Bool { sendingSessionIds.contains(id) }
   /// Maximum length for auto-generated session title from first user message.
@@ -617,6 +634,9 @@ class ChatViewModel: ObservableObject {
         sendingSessionIds.remove(sessionId)
         supersedingSessionIds.remove(sessionId)
         sendTasks.removeValue(forKey: sessionId)
+        // Belt-and-suspenders: the generic catch path doesn't cancel pending throttle state,
+        // so clear it here so a stale flush can't fire into a session that's already done.
+        self.cancelPendingStreamingUpdate(sessionId: sessionId)
         // `ChatViewModel` is `@MainActor`, so this Task inherits MainActor — no explicit hop needed.
         self.processNextQueued()
       }
@@ -672,9 +692,9 @@ class ChatViewModel: ObservableObject {
             case .textDelta(let delta):
               roundText += delta
               streamed = Self.stripLeakedThoughtTokens(streamed + delta)
-              self.updateStreamingMessage(
+              self.enqueueStreamingUpdate(
                 id: placeholderId, sessionId: sessionId,
-                content: markerPrefix + streamed, sources: [], supports: [], persist: false)
+                content: markerPrefix + streamed, sources: [], supports: [])
             case .functionCall(let name, let args, let thoughtSignature):
               pendingCalls.append((name, args, thoughtSignature))
             case .finished(let sources, let supports, _):
@@ -701,6 +721,7 @@ class ChatViewModel: ObservableObject {
             let current = markerPrefix + streamed
             markerPrefix = (current.isEmpty ? joined : current + "\n\n" + joined) + "\n\n"
             streamed = ""
+            self.cancelPendingStreamingUpdate(sessionId: sessionId)
             self.updateStreamingMessage(
               id: placeholderId, sessionId: sessionId,
               content: markerPrefix, sources: [], supports: [], persist: false)
@@ -724,6 +745,7 @@ class ChatViewModel: ObservableObject {
         // if the next render wedges the main thread, "final UI update committed" will be
         // absent from the log while "finalizing" is the last line — pinpointing the hang.
         DebugLogger.log("CHAT-SEND: finalizing message sources=\(finalSources.count) supports=\(finalSupports.count) contentLen=\(reply.count) session=\(sessionId)")
+        self.cancelPendingStreamingUpdate(sessionId: sessionId)
         self.updateStreamingMessage(
           id: placeholderId, sessionId: sessionId,
           content: reply, sources: finalSources, supports: finalSupports)
@@ -741,6 +763,7 @@ class ChatViewModel: ObservableObject {
       } catch is CancellationError {
         let superseded = self.supersedingSessionIds.contains(sessionId)
         DebugLogger.log("CHAT: Send cancelled (superseded=\(superseded))")
+        self.cancelPendingStreamingUpdate(sessionId: sessionId)
         let partial = markerPrefix + streamed
         if partial.isEmpty || superseded {
           self.removeMessage(id: placeholderId, fromSessionId: sessionId)
@@ -1111,6 +1134,46 @@ class ChatViewModel: ObservableObject {
       session = target
       messages = target.messages
     }
+  }
+
+  /// Schedules a coalesced UI update for the streaming bubble. Multiple calls within the flush
+  /// window collapse to a single commit of the most recent state — see `pendingStreamingUpdates`
+  /// doc for the why. Per-call updates still reach the API client (history is built from the
+  /// fully-streamed text), so coalescing only affects render frequency, not correctness.
+  private func enqueueStreamingUpdate(
+    id: UUID, sessionId: UUID, content: String,
+    sources: [GroundingSource], supports: [GroundingSupport]
+  ) {
+    pendingStreamingUpdates[sessionId] = PendingStreamingUpdate(
+      messageId: id, content: content, sources: sources, supports: supports)
+    guard streamingFlushTasks[sessionId] == nil else { return }
+    streamingFlushTasks[sessionId] = Task { @MainActor [weak self] in
+      try? await Task.sleep(nanoseconds: Self.streamingFlushIntervalNs)
+      if Task.isCancelled { return }
+      self?.flushPendingStreamingUpdate(sessionId: sessionId)
+    }
+  }
+
+  /// Applies any pending streaming update for `sessionId` immediately. Called by the throttle
+  /// task at flush time; never called directly (terminal paths use
+  /// `cancelPendingStreamingUpdate` and commit their own final content).
+  private func flushPendingStreamingUpdate(sessionId: UUID) {
+    streamingFlushTasks[sessionId] = nil
+    guard let pending = pendingStreamingUpdates.removeValue(forKey: sessionId) else { return }
+    updateStreamingMessage(
+      id: pending.messageId, sessionId: sessionId,
+      content: pending.content, sources: pending.sources,
+      supports: pending.supports, persist: false)
+  }
+
+  /// Drops any queued streaming flush for `sessionId` without applying it. Terminal callers
+  /// (finalization, image-marker fold, cancellation, teardown) commit their own content
+  /// directly afterwards — letting a stale pending flush fire later would overwrite the final
+  /// committed state with intermediate token text.
+  private func cancelPendingStreamingUpdate(sessionId: UUID) {
+    streamingFlushTasks[sessionId]?.cancel()
+    streamingFlushTasks[sessionId] = nil
+    pendingStreamingUpdates[sessionId] = nil
   }
 
   /// Clears the `.scrollPosition` anchor before mutating the visible message list.
