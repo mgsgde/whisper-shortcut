@@ -281,7 +281,11 @@ class ChatViewModel: ObservableObject {
           guard let self,
                 let stem = note.userInfo?["stem"] as? String,
                 let summary = note.userInfo?["summary"] as? String else { return }
-          Task { await self.generateMeetingTitle(stem: stem, summary: summary) }
+          Task {
+            guard let target = self.store.allSessions().first(where: { $0.isMeeting && $0.meetingStem == stem }),
+                  (target.title?.isEmpty ?? true) else { return }
+            await self.generateMeetingTitle(targetId: target.id, summary: summary)
+          }
         }
     }
 
@@ -1218,12 +1222,14 @@ class ChatViewModel: ObservableObject {
         ] as [String: Any],
         "required": ["title"],
       ]
-      let obj = try await apiClient.generateStructured(
-        model: TranscriptionModel.gemini31FlashLite.rawValue,
-        contents: [["role": "user", "parts": [["text": prompt]]]],
-        systemInstruction: nil,
-        schema: titleSchema,
-        credential: credential)
+      let obj = try await MeetingListService.withRetry(label: "TITLE-\(logLabel.uppercased())") {
+        try await apiClient.generateStructured(
+          model: TranscriptionModel.gemini31FlashLite.rawValue,
+          contents: [["role": "user", "parts": [["text": prompt]]]],
+          systemInstruction: nil,
+          schema: titleSchema,
+          credential: credential)
+      }
       let title = Self.cleanTitleResponse((obj["title"] as? String) ?? "")
       guard !title.isEmpty else { return }
       guard var updated = store.session(by: targetId) else { return }
@@ -1257,14 +1263,6 @@ class ChatViewModel: ObservableObject {
     let targetId = session.id
     store.save(session)  // ensure it's persisted so generateAndApplyTitle can load it
     Task { await generateMeetingTitle(targetId: targetId, summary: summary) }
-  }
-
-  /// Titles a meeting chat from its final summary. Only sets the title if the session is still
-  /// untitled, so a manual rename is never overwritten.
-  private func generateMeetingTitle(stem: String, summary: String) async {
-    guard let target = store.allSessions().first(where: { $0.isMeeting && $0.meetingStem == stem }),
-          (target.title?.isEmpty ?? true) else { return }
-    await generateMeetingTitle(targetId: target.id, summary: summary)
   }
 
   /// Titles a meeting chat (by session id) from its summary, unless it's already titled.

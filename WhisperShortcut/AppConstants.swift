@@ -236,6 +236,12 @@ Transcript:
     """
   }
 
+  /// Speaker-consolidation prompt for a full meeting transcript (provider-agnostic — used by
+  /// whichever provider owns the selected meeting-summary model).
+  static func meetingConsolidationPrompt(transcript: String) -> String {
+    liveMeetingSpeakerConsolidationPrompt + "\n" + transcript
+  }
+
   /// Rolling (live) summary prompt: builds a fresh summary from a segment, or refines an existing one.
   static func meetingRollingSummaryPrompt(currentSummary: String, newTranscriptText: String) -> String {
     if currentSummary.isEmpty {
@@ -274,7 +280,7 @@ Transcript:
   }
 
   // MARK: - Context Derivation
-  /// Fallback Gemini API endpoint when the selected Smart Improvement model is invalid. Default model is Gemini 3 Flash.
+  /// Fallback Gemini API endpoint when the selected Smart Improvement model is invalid. Default model is Gemini 3 Flash Preview.
   static let contextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent"
 
   /// Maximum character length for context when appended to the system prompt.

@@ -47,7 +47,7 @@ final class MeetingListService: ObservableObject {
     return timestampFilenameFormatter.date(from: timestamp)
   }
 
-  /// Maximum characters for context sent to Gemini. Full transcript is still scrollable in UI.
+  /// Maximum characters for context sent to the selected provider. Full transcript is still scrollable in UI.
   static let contextMaxChars = 60_000
 
   // MARK: - List
@@ -245,33 +245,31 @@ final class MeetingListService: ObservableObject {
   //
   // Meeting summary, rolling summary, and speaker consolidation all route to whichever provider owns
   // the selected meeting-summary model — so a Grok/OpenAI model no longer gets sent to the Gemini
-  // endpoint (which fails). Each call retries transient errors via `withTranscriptionRetry`.
+  // endpoint (which fails). Each call retries transient errors via `withRetry`.
 
   /// Final post-meeting summary for the given transcript + model.
   static func generateSummaryText(transcript: String, model: PromptModel) async throws -> String {
-    let provider = LLMProviderFactory.provider(for: model)
-    return try await withTranscriptionRetry(label: "MEETING-SUMMARY") {
-      try await provider.generateText(model: model.rawValue, prompt: AppConstants.meetingSummaryPrompt(transcript: transcript))
-    }
+    try await generate(prompt: AppConstants.meetingSummaryPrompt(transcript: transcript), model: model, label: "MEETING-SUMMARY")
   }
 
   /// Rolling (live) summary update for the given model.
   static func updateRollingSummary(currentSummary: String, newText: String, model: PromptModel) async throws -> String {
-    let provider = LLMProviderFactory.provider(for: model)
-    return try await withTranscriptionRetry(label: "MEETING-ROLLING-SUMMARY") {
-      try await provider.generateText(
-        model: model.rawValue,
-        prompt: AppConstants.meetingRollingSummaryPrompt(currentSummary: currentSummary, newTranscriptText: newText))
-    }
+    try await generate(
+      prompt: AppConstants.meetingRollingSummaryPrompt(currentSummary: currentSummary, newTranscriptText: newText),
+      model: model,
+      label: "MEETING-ROLLING-SUMMARY")
   }
 
   /// Consolidates speaker labels across the full transcript for the given model.
   static func consolidateSpeakerLabels(transcript: String, model: PromptModel) async throws -> String {
+    try await generate(prompt: AppConstants.meetingConsolidationPrompt(transcript: transcript), model: model, label: "MEETING-CONSOLIDATE")
+  }
+
+  /// Shared "route prompt → provider, with transient-error retry" helper for meeting-summary work.
+  private static func generate(prompt: String, model: PromptModel, label: String) async throws -> String {
     let provider = LLMProviderFactory.provider(for: model)
-    return try await withTranscriptionRetry(label: "MEETING-CONSOLIDATE") {
-      try await provider.generateText(
-        model: model.rawValue,
-        prompt: AppConstants.liveMeetingSpeakerConsolidationPrompt + "\n" + transcript)
+    return try await withRetry(label: label) {
+      try await provider.generateText(model: model.rawValue, prompt: prompt)
     }
   }
 
@@ -292,8 +290,8 @@ final class MeetingListService: ObservableObject {
 
   /// Runs an async throwing API op, retrying on transient (retryable) `TranscriptionError`s with
   /// exponential backoff (2s, 4s, …). Non-retryable errors — or exhausting `maxAttempts` — re-throw.
-  /// Used so a single transient Gemini 503 doesn't permanently lose a meeting summary.
-  static func withTranscriptionRetry<T>(
+  /// Used so a single transient Gemini 503 doesn't permanently lose a meeting summary or title.
+  static func withRetry<T>(
     maxAttempts: Int = 4,
     label: String,
     _ op: () async throws -> T

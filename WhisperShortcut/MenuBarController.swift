@@ -1128,7 +1128,10 @@ class MenuBarController: NSObject {
   /// Merges new transcript into the rolling summary (via the selected model's provider) and updates the store. Call from a Task.
   private func runRollingSummaryUpdate(currentSummary: String, newText: String, previousLastID: UUID?) async {
     let model = PromptModel.loadSelectedMeetingSummary()
-    guard model.hasRequiredCredential else { return }
+    guard model.hasRequiredCredential else {
+      DebugLogger.logWarning("LIVE-MEETING-SUMMARY: No credential for \(model.rawValue) — skipping rolling summary update")
+      return
+    }
     do {
       let updated = try await MeetingListService.updateRollingSummary(
         currentSummary: currentSummary, newText: newText, model: model)
