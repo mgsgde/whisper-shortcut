@@ -13,9 +13,20 @@
 		BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BFBC35F42E3E129600BAC747 /* HotKey */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		BFF939922FD94F7C001F505E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BF3C90BE2E3E0CC0001D325B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BF99181B2F697163008AB3ED;
+			remoteInfo = "WhisperShortcut-AppStore";
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhisperShortcut.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "WhisperShortcut-AppStore.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		BFF9398E2FD94F7C001F505E /* WhisperShortcutTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WhisperShortcutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -45,6 +56,16 @@
 			path = WhisperShortcut;
 			sourceTree = "<group>";
 		};
+		BFF939822FD94EA4001F505E /* WhisperShortcutTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = WhisperShortcutTests;
+			sourceTree = "<group>";
+		};
+		BFF9398F2FD94F7C001F505E /* WhisperShortcutTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = WhisperShortcutTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +87,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BFF9398B2FD94F7C001F505E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -73,6 +101,8 @@
 			isa = PBXGroup;
 			children = (
 				BF3C90C82E3E0CC0001D325B /* WhisperShortcut */,
+				BFF939822FD94EA4001F505E /* WhisperShortcutTests */,
+				BFF9398F2FD94F7C001F505E /* WhisperShortcutTests */,
 				BFBC35F32E3E129600BAC747 /* Frameworks */,
 				BF3C90C72E3E0CC0001D325B /* Products */,
 			);
@@ -83,6 +113,7 @@
 			children = (
 				BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */,
 				BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */,
+				BFF9398E2FD94F7C001F505E /* WhisperShortcutTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -145,6 +176,29 @@
 			productReference = BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */;
 			productType = "com.apple.product-type.application";
 		};
+		BFF9398D2FD94F7C001F505E /* WhisperShortcutTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BFF939942FD94F7C001F505E /* Build configuration list for PBXNativeTarget "WhisperShortcutTests" */;
+			buildPhases = (
+				BFF9398A2FD94F7C001F505E /* Sources */,
+				BFF9398B2FD94F7C001F505E /* Frameworks */,
+				BFF9398C2FD94F7C001F505E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BFF939932FD94F7C001F505E /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				BFF9398F2FD94F7C001F505E /* WhisperShortcutTests */,
+			);
+			name = WhisperShortcutTests;
+			packageProductDependencies = (
+			);
+			productName = WhisperShortcutTests;
+			productReference = BFF9398E2FD94F7C001F505E /* WhisperShortcutTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -152,7 +206,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1640;
+				LastSwiftUpdateCheck = 2650;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					BF3C90C52E3E0CC0001D325B = {
@@ -161,6 +215,10 @@
 					BF99181B2F697163008AB3ED = {
 						CreatedOnToolsVersion = 16.4;
 						DevelopmentTeam = Z59J7V26UT;
+					};
+					BFF9398D2FD94F7C001F505E = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = BF99181B2F697163008AB3ED;
 					};
 				};
 			};
@@ -184,6 +242,7 @@
 			targets = (
 				BF3C90C52E3E0CC0001D325B /* WhisperShortcut */,
 				BF99181B2F697163008AB3ED /* WhisperShortcut-AppStore */,
+				BFF9398D2FD94F7C001F505E /* WhisperShortcutTests */,
 			);
 		};
 /* End PBXProject section */
@@ -197,6 +256,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		BF9918272F697163008AB3ED /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BFF9398C2FD94F7C001F505E /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -220,7 +286,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BFF9398A2FD94F7C001F505E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		BFF939932FD94F7C001F505E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BF99181B2F697163008AB3ED /* WhisperShortcut-AppStore */;
+			targetProxy = BFF939922FD94F7C001F505E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		BF3C90E62E3E0CC2001D325B /* Debug */ = {
@@ -480,6 +561,50 @@
 			};
 			name = Release;
 		};
+		BFF939952FD94F7C001F505E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Z59J7V26UT;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcut.WhisperShortcutTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WhisperShortcut-AppStore.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/WhisperShortcut-AppStore";
+			};
+			name = Debug;
+		};
+		BFF939962FD94F7C001F505E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Z59J7V26UT;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcut.WhisperShortcutTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WhisperShortcut-AppStore.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/WhisperShortcut-AppStore";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -506,6 +631,15 @@
 			buildConfigurations = (
 				BF9918292F697163008AB3ED /* Debug */,
 				BF99182A2F697163008AB3ED /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BFF939942FD94F7C001F505E /* Build configuration list for PBXNativeTarget "WhisperShortcutTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BFF939952FD94F7C001F505E /* Debug */,
+				BFF939962FD94F7C001F505E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

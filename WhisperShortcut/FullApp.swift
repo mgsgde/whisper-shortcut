@@ -264,11 +264,14 @@ class FullWhisperShortcut {
   static func main() {
     // Full implementation using all components
 
-    // Check for multiple instances to prevent double menu bar icons
+    // Check for multiple instances to prevent double menu bar icons.
+    // Skipped under XCTest/Swift Testing so a running production instance
+    // doesn't make the test host exit before the runner can attach.
     let bundleID = Bundle.main.bundleIdentifier ?? Constants.defaultBundleID
     let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+    let isUnderTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
-    if runningApps.count > 1 {
+    if runningApps.count > 1 && !isUnderTest {
       DebugLogger.log("APP-LIFECYCLE: another instance already running (count=\(runningApps.count)) — exiting pid=\(getpid())")
       exit(0)
     }
