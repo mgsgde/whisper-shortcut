@@ -1,4 +1,4 @@
-# WhisperShortcut 7.52
+# WhisperShortcut 7.53
 
 ## Installation
 
@@ -6,14 +6,18 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ## What's New
 
+### Chat
+
+- **Smoother message list.** Sending a message or resizing the chat window no longer briefly clears the visible message list. A redundant layout workaround that forced the list to rebuild on every width change has been removed.
+
 ### Meeting summaries & titles
 
-- **Meeting summaries now work with every provider.** Previously, if your selected meeting-summary model was an OpenAI or xAI (Grok) model, the summary, rolling summary, and speaker consolidation were still sent to Google's Gemini endpoint and failed — leaving the meeting with no summary and a poorly chosen title. These now route to whichever provider owns the selected model (Gemini, OpenAI, or Grok).
-- **Automatic summary recovery.** If a meeting ended without a summary, opening its Summary tab now regenerates it on the spot and derives a proper title from it.
-- **More reliable meeting titles.** Titles are applied directly to the open meeting, fixing cases where a title silently failed to attach and the meeting stayed on its first-message fallback name.
+- **More reliable meeting titles.** Title generation now retries on temporary provider errors (e.g. HTTP 503), so a brief API hiccup during recovery is less likely to leave a meeting stuck with a generic "Meeting" name.
+- **Cleaner summary pipeline.** Consolidated duplicate meeting-summary helpers and improved logging when credentials are missing.
 
-### Stability
+### Under the hood
 
-- **Transient-error retry for summaries.** Summary generation now retries on temporary server errors (e.g. HTTP 503) with backoff, so a brief provider hiccup no longer permanently loses a summary.
+- Chat view model cleanup: removed unnecessary main-thread hops and replaced a scroll-anchor counter hack with a clearer signal.
+- Added live LLM provider roundtrip tests (Gemini, OpenAI, Grok) for development — each skips cleanly when its API key is not configured.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.51...v7.52
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.52...v7.53

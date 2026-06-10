@@ -1,0 +1,30 @@
+{
+  "configurations" : [
+    {
+      "id" : "CE155C70-74C5-47FF-A443-3D5899BC888C",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : false,
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:WhisperShortcut.xcodeproj",
+      "identifier" : "BF99181B2F697163008AB3ED",
+      "name" : "WhisperShortcut-AppStore"
+    }
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:WhisperShortcut.xcodeproj",
+        "identifier" : "BFF9398D2FD94F7C001F505E",
+        "name" : "WhisperShortcutTests"
+      }
+    }
+  ],
+  "version" : 1
+}
