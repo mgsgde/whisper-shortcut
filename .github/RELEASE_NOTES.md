@@ -1,4 +1,4 @@
-# WhisperShortcut 7.57
+# WhisperShortcut 7.58
 
 ## Installation
 
@@ -8,10 +8,11 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ### Transcription
 
-- **Faster transcription for long recordings.** Audio splitting and upload now run in parallel: chunks start uploading the instant they're carved out, instead of waiting for the entire file to be split first. Saves several seconds on recordings longer than a couple of minutes; scales with length.
+- **Snappier dictation when you pause before pressing Stop.** The 200 ms tail-capture delay is now skipped automatically when the microphone has been quiet for the last ~400 ms — there's no tail to catch, so you get your result that much sooner.
+- **One less duration probe per long recording.** The audio-duration lookup is shared between the chunking decision and the splitter, instead of being run twice.
 
-### AI Chat
+### Fixes
 
-- **Smoother send on long sessions.** Internal cleanup of the streaming pipeline: fewer redundant UI invalidations per send, shared error/cancel path so partial replies are never lost when a stream ends abruptly.
+- Fixed a small leak where each silently-rejected recording was kept in an in-memory tracking set forever.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.56...v7.57
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.57...v7.58

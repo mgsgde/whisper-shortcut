@@ -115,13 +115,21 @@ class AudioChunker {
     /// Split an audio file into overlapping chunks, streaming each chunk as soon as it
     /// finishes exporting. Pipelines with the caller's transcription stage: while we're
     /// exporting chunk N+1, the caller can already be uploading chunks 0..N.
-    /// - Parameter fileURL: URL of the source audio file
+    /// - Parameters:
+    ///   - fileURL: URL of the source audio file
+    ///   - precomputedDuration: Total duration in seconds if the caller already loaded it
+    ///     (e.g., for a chunking-vs-inline decision). Skips a redundant `asset.load(.duration)`.
     /// - Returns: An `AudioChunkStream` bundling the exact expected count with an
     ///   `AsyncThrowingStream<AudioChunk, Error>` that yields one chunk per successful export.
-    func splitAudioStream(fileURL: URL) async throws -> AudioChunkStream {
+    func splitAudioStream(fileURL: URL, precomputedDuration: TimeInterval? = nil) async throws -> AudioChunkStream {
         let asset = AVURLAsset(url: fileURL)
-        let duration = try await asset.load(.duration)
-        let totalDuration = CMTimeGetSeconds(duration)
+        let totalDuration: TimeInterval
+        if let precomputedDuration {
+            totalDuration = precomputedDuration
+        } else {
+            let duration = try await asset.load(.duration)
+            totalDuration = CMTimeGetSeconds(duration)
+        }
 
         // Single-chunk fast path: no real splitting, just yield the source URL once.
         if totalDuration <= chunkDuration + overlapDuration {

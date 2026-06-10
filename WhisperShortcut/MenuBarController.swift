@@ -523,7 +523,14 @@ class MenuBarController: NSObject {
   // MARK: - Actions (Simplified Logic)
   /// Stops the recorder after a short delay so the spoken tail (the last word or two before
   /// the shortcut fires) is captured instead of clipped. Used by every recording-stop path.
+  /// Skips the delay entirely when the last ~400 ms of audio was below the silence threshold
+  /// — there's no tail to catch, and the user gets the result that much sooner.
   private func stopRecordingAfterTailDelay() {
+    if audioRecorder.hasRecentlyBeenSilent {
+      DebugLogger.logAudio("AUDIO: Skipping tail-capture delay — recent audio was silent")
+      audioRecorder.stopRecording()
+      return
+    }
     DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
       self?.audioRecorder.stopRecording()
     }
@@ -1888,6 +1895,9 @@ extension MenuBarController: AudioRecorderDelegate {
 
         if usesCloudAPI {
           DebugLogger.log("AUDIO: Skipping API call — recording was silent")
+          // Mirror the explicit-remove pattern used by every other early-return path; without
+          // this line the URL stayed in `processedAudioURLs` forever for each silent recording.
+          self.processedAudioURLs.remove(audioURL)
           self.cleanupAudioFile(at: audioURL)
           self.appState = self.appState.stopRecording()
           self.appState = self.appState.finish()

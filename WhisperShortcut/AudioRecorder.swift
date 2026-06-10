@@ -16,8 +16,23 @@ class AudioRecorder: NSObject {
   private var peakPowerDuringRecording: Float = -160
   private static let silenceThresholdDB: Float = -45
 
+  /// Rolling pair of the two most recent meter samples (older, newer). At the 0.2s metering
+  /// rate this covers roughly the last 400 ms — enough to tell if the user paused before
+  /// pressing Stop, so the caller can skip the tail-capture delay.
+  private var lastTwoMeterSamples: (Float, Float) = (-160, -160)
+  private var meterSampleCount: Int = 0
+
   /// Whether the last completed recording contained only silence (no speech detected).
   private(set) var lastRecordingWasSilent: Bool = false
+
+  /// True when at least 2 meter samples have landed and both were below the silence
+  /// threshold — i.e., the user wasn't speaking in the moment before pressing Stop.
+  /// Callers use this to skip the audio-tail capture delay when there's no tail to catch.
+  var hasRecentlyBeenSilent: Bool {
+    meterSampleCount >= 2
+      && lastTwoMeterSamples.0 < Self.silenceThresholdDB
+      && lastTwoMeterSamples.1 < Self.silenceThresholdDB
+  }
 
   // MARK: - Constants
   private enum Constants {
@@ -118,6 +133,8 @@ class AudioRecorder: NSObject {
       audioRecorder?.delegate = self
       audioRecorder?.isMeteringEnabled = true
       peakPowerDuringRecording = -160
+      lastTwoMeterSamples = (-160, -160)
+      meterSampleCount = 0
       lastRecordingWasSilent = false
 
       guard audioRecorder?.record() ?? false else {
@@ -140,6 +157,8 @@ class AudioRecorder: NSObject {
     recorder.updateMeters()
     let power = recorder.averagePower(forChannel: 0)
     if power > peakPowerDuringRecording { peakPowerDuringRecording = power }
+    lastTwoMeterSamples = (lastTwoMeterSamples.1, power)
+    meterSampleCount += 1
   }
 
   func stopRecording() {

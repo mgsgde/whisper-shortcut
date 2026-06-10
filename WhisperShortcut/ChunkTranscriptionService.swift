@@ -89,12 +89,16 @@ class ChunkTranscriptionService {
     /// "wait for all chunks to be split before any upload" delay on long recordings.
     /// - Parameters:
     ///   - fileURL: URL of the audio file
+    ///   - audioDuration: Pre-loaded duration in seconds (the caller already needed it for
+    ///     the chunking-vs-inline decision). Forwarded to `splitAudioStream` to skip a
+    ///     duplicate `asset.load(.duration)`.
     ///   - credential: Gemini API credential (API key)
     ///   - model: Transcription model to use
     ///   - prompt: Custom transcription prompt
     /// - Returns: Transcribed text
     func transcribe(
         fileURL: URL,
+        audioDuration: TimeInterval,
         credential: GeminiCredential,
         model: TranscriptionModel,
         prompt: String
@@ -103,7 +107,7 @@ class ChunkTranscriptionService {
 
         let chunkStream: AudioChunkStream
         do {
-            chunkStream = try await chunker.splitAudioStream(fileURL: fileURL)
+            chunkStream = try await chunker.splitAudioStream(fileURL: fileURL, precomputedDuration: audioDuration)
         } catch {
             throw ChunkedTranscriptionError.chunkingFailed(error)
         }

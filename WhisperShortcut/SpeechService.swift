@@ -1352,7 +1352,7 @@ class SpeechService {
     // Use chunking for long audio (>45s by default)
     if audioDuration > AppConstants.chunkingThresholdSeconds {
       DebugLogger.log("GEMINI-TRANSCRIPTION: Using chunked transcription (duration > \(AppConstants.chunkingThresholdSeconds)s)")
-      result = try await transcribeWithChunking(audioURL: audioURL, credential: credential, model: model, promptOverride: promptOverride)
+      result = try await transcribeWithChunking(audioURL: audioURL, audioDuration: audioDuration, credential: credential, model: model, promptOverride: promptOverride)
     }
     // For files >20MB, use Files API (resumable upload); inline base64 otherwise.
     else if audioSize > AppConstants.maxFileSizeBytes {
@@ -1368,7 +1368,7 @@ class SpeechService {
   }
 
   // MARK: - Chunked Transcription
-  private func transcribeWithChunking(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
+  private func transcribeWithChunking(audioURL: URL, audioDuration: TimeInterval, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
     let chunkService = ChunkTranscriptionService(geminiClient: geminiClient)
     chunkService.progressDelegate = chunkProgressDelegate
 
@@ -1376,6 +1376,7 @@ class SpeechService {
 
     return try await chunkService.transcribe(
       fileURL: audioURL,
+      audioDuration: audioDuration,
       credential: credential,
       model: model,
       prompt: prompt
