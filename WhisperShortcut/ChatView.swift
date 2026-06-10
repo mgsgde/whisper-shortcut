@@ -109,9 +109,9 @@ class ChatViewModel: ObservableObject {
   /// Meeting stems we've already attempted to recover a missing summary for this app run, so opening
   /// the Summary tab repeatedly doesn't re-fire generation when the transcript truly has no summary.
   private var attemptedMeetingSummaryStems: Set<String> = []
-  /// Bumped after `recoverMeetingSummaryIfNeeded` writes a fresh `.summary.md` to disk so the Summary
-  /// tab re-renders and re-reads via `loadMeetingSummaryFromDisk()`. We don't cache the recovered text
-  /// in memory — disk is the source of truth and the file is tiny.
+  /// Invalidation tick — intentionally never read. `recoverMeetingSummaryIfNeeded` bumps it after
+  /// writing a fresh `.summary.md` so SwiftUI re-evaluates `meetingSummaryView`, which then re-reads
+  /// `endedMeetingSummary` from disk. Disk is the source of truth and the file is tiny.
   @Published private(set) var summaryRevision: UInt = 0
   /// True while a missing meeting summary is being regenerated, so the Summary tab can show progress.
   @Published private(set) var isRecoveringMeetingSummary: Bool = false
@@ -283,8 +283,8 @@ class ChatViewModel: ObservableObject {
                 let stem = note.userInfo?["stem"] as? String,
                 let summary = note.userInfo?["summary"] as? String else { return }
           Task {
-            // No title-empty precheck here — `generateMeetingTitle` reads the latest title
-            // post-network via `generateAndApplyTitle`, which is the race-resistant check.
+            // No title-empty precheck here — `generateMeetingTitle` already early-returns when the
+            // title is non-empty, and `generateAndApplyTitle` re-checks post-network before writing.
             guard let targetId = self.store.allSessions().first(where: { $0.isMeeting && $0.meetingStem == stem })?.id else { return }
             await self.generateMeetingTitle(targetId: targetId, summary: summary)
           }
@@ -617,7 +617,8 @@ class ChatViewModel: ObservableObject {
         sendingSessionIds.remove(sessionId)
         supersedingSessionIds.remove(sessionId)
         sendTasks.removeValue(forKey: sessionId)
-        Task { @MainActor in self.processNextQueued() }
+        // `ChatViewModel` is `@MainActor`, so this Task inherits MainActor — no explicit hop needed.
+        self.processNextQueued()
       }
       let selectedModel = Self.openChatModel
       guard await validateCredential(for: selectedModel) else { return }
@@ -1260,8 +1261,9 @@ class ChatViewModel: ObservableObject {
   /// Titles `self.session` from `summary`. Used by the backfill and recovery paths to avoid the
   /// `allSessions()` stem match used by the live `.chatMeetingSummaryReady` path, which can miss
   /// the just-opened session and leave the meeting stuck on its first-message fallback title.
-  /// The save here covers the case where `session.title` was set in memory (fallback title) but
-  /// not yet persisted, so `generateAndApplyTitle`'s `store.session(by:)` reads the same row.
+  /// The save here is a safety net: ensure the session row exists in the store before the async
+  /// title generator reads it via `store.session(by:)`. Both callers gate on an empty in-memory
+  /// title, so we're persisting an untitled row.
   private func titleOpenMeetingFromSummary(_ summary: String) {
     let targetId = session.id
     store.save(session)
@@ -2522,7 +2524,7 @@ struct ChatView: View {
     // `LiveMeetingTranscriptStore.shared.summary` is the singleton's *current* rolling summary —
     // it belongs to whichever meeting is recording right now, not necessarily the one this tab is
     // viewing. Only show it when this tab IS the active meeting; otherwise fall through to the
-    // disk-backed (or just-recovered) ended-meeting summary.
+    // disk-backed ended-meeting summary (the recovery path writes to disk too).
     let liveSummary = LiveMeetingTranscriptStore.shared.summary
     let text: String? = viewModel.isCurrentSessionTheActiveMeeting && !liveSummary.isEmpty
       ? liveSummary
