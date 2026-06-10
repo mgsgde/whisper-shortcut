@@ -1,4 +1,4 @@
-# WhisperShortcut 7.51
+# WhisperShortcut 7.52
 
 ## Installation
 
@@ -6,33 +6,14 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ## What's New
 
+### Meeting summaries & titles
+
+- **Meeting summaries now work with every provider.** Previously, if your selected meeting-summary model was an OpenAI or xAI (Grok) model, the summary, rolling summary, and speaker consolidation were still sent to Google's Gemini endpoint and failed — leaving the meeting with no summary and a poorly chosen title. These now route to whichever provider owns the selected model (Gemini, OpenAI, or Grok).
+- **Automatic summary recovery.** If a meeting ended without a summary, opening its Summary tab now regenerates it on the spot and derives a proper title from it.
+- **More reliable meeting titles.** Titles are applied directly to the open meeting, fixing cases where a title silently failed to attach and the meeting stayed on its first-message fallback name.
+
 ### Stability
 
-- **Chat freeze hardening** — streaming replies that contain a generated image no longer re-process multi-megabyte image data on every token, and chat session writes are serialized on a dedicated disk queue. Both reduce the chance of the UI locking up during long conversations.
-- **Automatic hang diagnostics** — a new main-thread watchdog detects if the app ever stops responding and automatically writes a diagnostic snapshot to the log folder, so freezes can be pinned down instead of guessed at.
+- **Transient-error retry for summaries.** Summary generation now retries on temporary server errors (e.g. HTTP 503) with backoff, so a brief provider hiccup no longer permanently loses a summary.
 
-### Chat & tools
-
-- More reliable streaming, tool-call narration, and image-marker handling in chat.
-- Generated-image attachments are now filtered to actual image types only.
-
-### Google Calendar
-
-- Calendar lookups can include past events, and dates supplied by the model are normalized for more accurate event creation.
-
-### Transcription
-
-- Instructable speech-to-text models now receive your glossary as a proper instruction block for better term recognition.
-
-### Onboarding & Settings
-
-- Streamlined first-run experience: the permissions step is combined and the guidance is clearer.
-- Simplified API-key handling in Settings and removed unused model options.
-- Clearer Screen Recording permission copy mentioning the Dictate Prompt screen context.
-
-### Under the hood
-
-- Tightened Smart Improvement context derivation and term extraction.
-- Internal cleanups (model-selection reconciler, settings view model, file renames) and a dependency bump (swift-argument-parser 1.8.1).
-
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.50...v7.51
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.51...v7.52

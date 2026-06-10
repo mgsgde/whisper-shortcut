@@ -939,14 +939,16 @@ class MenuBarController: NSObject {
       Task {
         let transcriptText = chunksSnapshot.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n\n")
         guard !transcriptText.isEmpty else { return }
-        guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
-        let model = PromptModel.loadSelectedMeetingSummary().rawValue
-        let api = GeminiAPIClient()
+        let model = PromptModel.loadSelectedMeetingSummary()
+        guard model.hasRequiredCredential else {
+          DebugLogger.logWarning("LIVE-MEETING: No credential for \(model.rawValue) — skipping post-processing")
+          return
+        }
 
         // Post-processing: consolidate speaker labels across the full transcript
         var finalTranscript = transcriptText
         do {
-          let consolidated = try await api.consolidateSpeakerLabels(transcript: transcriptText, model: model, credential: credential)
+          let consolidated = try await MeetingListService.consolidateSpeakerLabels(transcript: transcriptText, model: model)
           let trimmed = consolidated.trimmingCharacters(in: .whitespacesAndNewlines)
           if !trimmed.isEmpty {
             finalTranscript = trimmed
@@ -968,7 +970,7 @@ class MenuBarController: NSObject {
           textForSummary = String(textForSummary.suffix(MeetingListService.contextMaxChars))
         }
         do {
-          let summary = try await api.generateMeetingSummary(transcript: textForSummary, model: model, credential: credential)
+          let summary = try await MeetingListService.generateSummaryText(transcript: textForSummary, model: model)
           let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
           if !trimmed.isEmpty {
             MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
@@ -1123,17 +1125,13 @@ class MenuBarController: NSObject {
     }
   }
 
-  /// Calls Gemini to merge new transcript into the rolling summary and updates the store. Call from a Task.
+  /// Merges new transcript into the rolling summary (via the selected model's provider) and updates the store. Call from a Task.
   private func runRollingSummaryUpdate(currentSummary: String, newText: String, previousLastID: UUID?) async {
-    guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
-    let model = PromptModel.loadSelectedMeetingSummary().rawValue
+    let model = PromptModel.loadSelectedMeetingSummary()
+    guard model.hasRequiredCredential else { return }
     do {
-      let updated = try await GeminiAPIClient().updateRollingSummary(
-        model: model,
-        currentSummary: currentSummary,
-        newTranscriptText: newText,
-        credential: credential
-      )
+      let updated = try await MeetingListService.updateRollingSummary(
+        currentSummary: currentSummary, newText: newText, model: model)
       await MainActor.run {
         let trimmed = updated.trimmingCharacters(in: .whitespacesAndNewlines)
         LiveMeetingTranscriptStore.shared.updateSummary(trimmed)

@@ -669,90 +669,9 @@ class GeminiAPIClient {
     return text
   }
 
-  /// Updates a rolling meeting summary by merging new transcript content into the existing summary.
-  func updateRollingSummary(
-    model: String,
-    currentSummary: String,
-    newTranscriptText: String,
-    credential: GeminiCredential
-  ) async throws -> String {
-    let prompt: String
-    if currentSummary.isEmpty {
-      prompt = """
-        You are summarizing a live meeting transcript. Below is a new segment of the transcript.
-
-        STRICT FORMAT RULES:
-        1. Use ## headings for sections (e.g. ## Key Points, ## Decisions).
-        2. Use - for every bullet point. Each bullet on its own line.
-        3. Leave a blank line before each heading and between sections.
-        4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
-        5. Write the summary in the same language as the transcript. Output only the Markdown, no preamble.
-
-        Transcript segment:
-        \(newTranscriptText)
-        """
-    } else {
-      prompt = """
-        You are maintaining a rolling summary of a live meeting. Below are the current Markdown summary and new transcript content. \
-        Update the summary to incorporate the new content.
-
-        STRICT FORMAT RULES:
-        1. Use ## headings for sections (e.g. ## Key Points, ## Decisions).
-        2. Use - for every bullet point. Each bullet on its own line.
-        3. Leave a blank line before each heading and between sections.
-        4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
-        5. Preserve important points from the current summary and add or refine with the new content.
-        6. Write the summary in the same language as the transcript. Output only the updated Markdown, no preamble.
-
-        Current summary:
-        \(currentSummary)
-
-        New transcript content:
-        \(newTranscriptText)
-        """
-    }
-    return try await generateText(model: model, prompt: prompt, credential: credential)
-  }
-
-  /// Legacy API-key-only overload.
-  func updateRollingSummary(
-    model: String,
-    currentSummary: String,
-    newTranscriptText: String,
-    apiKey: String
-  ) async throws -> String {
-    try await updateRollingSummary(model: model, currentSummary: currentSummary, newTranscriptText: newTranscriptText, credential: .apiKey(apiKey))
-  }
-
-  /// Generates a final Markdown summary of a full meeting transcript (main points, decisions, action items).
-  func generateMeetingSummary(transcript: String, model: String, credential: GeminiCredential) async throws -> String {
-    let prompt = """
-      You are summarizing a completed meeting transcript.
-
-      STRICT FORMAT RULES:
-      1. Use ## headings for sections (e.g. ## Main Points, ## Key Takeaways, ## Decisions, ## Action Items).
-      2. Use - for every bullet point. Each bullet on its own line.
-      3. Leave a blank line before each heading and between sections.
-      4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
-      5. Include: main points, key takeaways, decisions, action items (if any).
-      6. Write the summary in the same language as the transcript. Output only the Markdown, no preamble.
-
-      Transcript:
-      \(transcript)
-      """
-    return try await generateText(model: model, prompt: prompt, credential: credential)
-  }
-
-  /// Legacy API-key-only overload.
-  func generateMeetingSummary(transcript: String, model: String, apiKey: String) async throws -> String {
-    try await generateMeetingSummary(transcript: transcript, model: model, credential: .apiKey(apiKey))
-  }
-
-  /// Consolidates speaker labels across the full transcript so Speaker A/B/C are consistent.
-  func consolidateSpeakerLabels(transcript: String, model: String, credential: GeminiCredential) async throws -> String {
-    let prompt = AppConstants.liveMeetingSpeakerConsolidationPrompt + "\n" + transcript
-    return try await generateText(model: model, prompt: prompt, credential: credential)
-  }
+  // Meeting summary, rolling summary, and speaker consolidation now route through
+  // `MeetingListService` + `LLMProviderFactory` (provider-agnostic), so a selected Grok/OpenAI model
+  // is no longer forced onto the Gemini endpoint. See `MeetingListService.generateSummaryText` etc.
 
   /// Extracts grounding sources (web URIs + titles) from a Gemini response.
   private func extractGroundingSources(from response: GeminiResponse) -> [GroundingSource] {

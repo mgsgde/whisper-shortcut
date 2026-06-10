@@ -214,9 +214,12 @@ final class MeetingListService: ObservableObject {
     return await generateAndSaveSummary(for: meeting)
   }
 
-  /// Generates a Markdown summary from the meeting transcript via Gemini and saves it. Returns placeholder on error.
+  /// Generates a Markdown summary from the meeting transcript and saves it. Routes to whichever
+  /// provider owns the selected meeting-summary model (Gemini / OpenAI / Grok). Returns "" on error.
   func generateAndSaveSummary(for meeting: MeetingFileInfo) async -> String {
-    guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
+    let model = PromptModel.loadSelectedMeetingSummary()
+    guard model.hasRequiredCredential else {
+      DebugLogger.logWarning("MEETING-LIBRARY: No credential for \(model.rawValue) — cannot generate summary")
       return ""
     }
     let meetingChunks = chunks(for: meeting)
@@ -225,9 +228,8 @@ final class MeetingListService: ObservableObject {
       transcriptText = String(transcriptText.suffix(Self.contextMaxChars))
     }
     guard !transcriptText.isEmpty else { return "" }
-    let model = PromptModel.loadSelectedMeetingSummary().rawValue
     do {
-      let summaryText = try await GeminiAPIClient().generateMeetingSummary(transcript: transcriptText, model: model, credential: credential)
+      let summaryText = try await Self.generateSummaryText(transcript: transcriptText, model: model)
       let trimmed = summaryText.trimmingCharacters(in: .whitespacesAndNewlines)
       if !trimmed.isEmpty {
         saveSummary(trimmed, for: meeting)
@@ -237,6 +239,79 @@ final class MeetingListService: ObservableObject {
       DebugLogger.logError("MEETING-LIBRARY: Generate summary failed: \(error.localizedDescription)")
     }
     return ""
+  }
+
+  // MARK: - Provider-routed generation
+  //
+  // Meeting summary, rolling summary, and speaker consolidation all route to whichever provider owns
+  // the selected meeting-summary model — so a Grok/OpenAI model no longer gets sent to the Gemini
+  // endpoint (which fails). Each call retries transient errors via `withTranscriptionRetry`.
+
+  /// Final post-meeting summary for the given transcript + model.
+  static func generateSummaryText(transcript: String, model: PromptModel) async throws -> String {
+    let provider = LLMProviderFactory.provider(for: model)
+    return try await withTranscriptionRetry(label: "MEETING-SUMMARY") {
+      try await provider.generateText(model: model.rawValue, prompt: AppConstants.meetingSummaryPrompt(transcript: transcript))
+    }
+  }
+
+  /// Rolling (live) summary update for the given model.
+  static func updateRollingSummary(currentSummary: String, newText: String, model: PromptModel) async throws -> String {
+    let provider = LLMProviderFactory.provider(for: model)
+    return try await withTranscriptionRetry(label: "MEETING-ROLLING-SUMMARY") {
+      try await provider.generateText(
+        model: model.rawValue,
+        prompt: AppConstants.meetingRollingSummaryPrompt(currentSummary: currentSummary, newTranscriptText: newText))
+    }
+  }
+
+  /// Consolidates speaker labels across the full transcript for the given model.
+  static func consolidateSpeakerLabels(transcript: String, model: PromptModel) async throws -> String {
+    let provider = LLMProviderFactory.provider(for: model)
+    return try await withTranscriptionRetry(label: "MEETING-CONSOLIDATE") {
+      try await provider.generateText(
+        model: model.rawValue,
+        prompt: AppConstants.liveMeetingSpeakerConsolidationPrompt + "\n" + transcript)
+    }
+  }
+
+  /// Recovers a summary for a meeting identified by its filename stem (e.g. the end-of-meeting
+  /// generation failed on a transient Gemini 503 and never wrote a `.summary.md`). Builds the
+  /// transcript URL from the stem, parses it, and regenerates. Returns "" if the transcript is
+  /// missing/unparseable or generation fails.
+  func generateAndSaveSummary(forStem stem: String) async -> String {
+    let transcriptURL = AppSupportPaths.whisperShortcutApplicationSupportURL()
+      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+      .appendingPathComponent("\(stem).txt")
+    guard let info = Self.parseMeetingFilename(transcriptURL) else {
+      DebugLogger.logWarning("MEETING-LIBRARY: Cannot recover summary — unparseable stem \(stem)")
+      return ""
+    }
+    return await generateAndSaveSummary(for: info)
+  }
+
+  /// Runs an async throwing API op, retrying on transient (retryable) `TranscriptionError`s with
+  /// exponential backoff (2s, 4s, …). Non-retryable errors — or exhausting `maxAttempts` — re-throw.
+  /// Used so a single transient Gemini 503 doesn't permanently lose a meeting summary.
+  static func withTranscriptionRetry<T>(
+    maxAttempts: Int = 4,
+    label: String,
+    _ op: () async throws -> T
+  ) async throws -> T {
+    var attempt = 0
+    while true {
+      attempt += 1
+      do {
+        return try await op()
+      } catch {
+        let retryable = (error as? TranscriptionError)?.isRetryable ?? false
+        guard retryable, attempt < maxAttempts else { throw error }
+        let seconds = pow(2.0, Double(attempt))  // 2, 4, 8
+        DebugLogger.logWarning(
+          "\(label): attempt \(attempt)/\(maxAttempts) failed (\(error.localizedDescription)); retrying in \(Int(seconds))s")
+        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+      }
+    }
   }
 
   // MARK: - Private

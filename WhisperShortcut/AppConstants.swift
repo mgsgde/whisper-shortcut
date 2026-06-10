@@ -217,6 +217,62 @@ Your task:
 Transcript:
 """
 
+  /// Final post-meeting summary prompt (provider-agnostic — used by whichever provider owns the
+  /// selected meeting-summary model).
+  static func meetingSummaryPrompt(transcript: String) -> String {
+    """
+    You are summarizing a completed meeting transcript.
+
+    STRICT FORMAT RULES:
+    1. Use ## headings for sections (e.g. ## Main Points, ## Key Takeaways, ## Decisions, ## Action Items).
+    2. Use - for every bullet point. Each bullet on its own line.
+    3. Leave a blank line before each heading and between sections.
+    4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
+    5. Include: main points, key takeaways, decisions, action items (if any).
+    6. Write the summary in the same language as the transcript. Output only the Markdown, no preamble.
+
+    Transcript:
+    \(transcript)
+    """
+  }
+
+  /// Rolling (live) summary prompt: builds a fresh summary from a segment, or refines an existing one.
+  static func meetingRollingSummaryPrompt(currentSummary: String, newTranscriptText: String) -> String {
+    if currentSummary.isEmpty {
+      return """
+        You are summarizing a live meeting transcript. Below is a new segment of the transcript.
+
+        STRICT FORMAT RULES:
+        1. Use ## headings for sections (e.g. ## Key Points, ## Decisions).
+        2. Use - for every bullet point. Each bullet on its own line.
+        3. Leave a blank line before each heading and between sections.
+        4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
+        5. Write the summary in the same language as the transcript. Output only the Markdown, no preamble.
+
+        Transcript segment:
+        \(newTranscriptText)
+        """
+    }
+    return """
+      You are maintaining a rolling summary of a live meeting. Below are the current Markdown summary and new transcript content. \
+      Update the summary to incorporate the new content.
+
+      STRICT FORMAT RULES:
+      1. Use ## headings for sections (e.g. ## Key Points, ## Decisions).
+      2. Use - for every bullet point. Each bullet on its own line.
+      3. Leave a blank line before each heading and between sections.
+      4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
+      5. Preserve important points from the current summary and add or refine with the new content.
+      6. Write the summary in the same language as the transcript. Output only the updated Markdown, no preamble.
+
+      Current summary:
+      \(currentSummary)
+
+      New transcript content:
+      \(newTranscriptText)
+      """
+  }
+
   // MARK: - Context Derivation
   /// Fallback Gemini API endpoint when the selected Smart Improvement model is invalid. Default model is Gemini 3 Flash.
   static let contextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent"

@@ -105,6 +105,15 @@ class ChatViewModel: ObservableObject {
   /// Meeting stems we've already attempted to backfill a title for this app run, so a missing or
   /// failed summary doesn't trigger a fresh API call every time the meeting is viewed.
   private var attemptedMeetingTitleStems: Set<String> = []
+  /// Meeting stems we've already attempted to recover a missing summary for this app run, so opening
+  /// the Summary tab repeatedly doesn't re-fire generation when the transcript truly has no summary.
+  private var attemptedMeetingSummaryStems: Set<String> = []
+  /// A summary just regenerated in-app for a meeting that ended without one (recovery path). Held in
+  /// memory so the Summary tab re-renders immediately; keyed by stem so it never shows for the wrong meeting.
+  @Published var recoveredMeetingSummary: String?
+  private var recoveredMeetingSummaryStem: String?
+  /// True while a missing meeting summary is being regenerated, so the Summary tab can show progress.
+  @Published private(set) var isRecoveringMeetingSummary: Bool = false
 
   /// In-memory ring buffer of recently closed sessions for Cmd+Shift+T undo.
   /// Only sessions that had at least one message are stored — empty tabs are
@@ -1243,7 +1252,11 @@ class ChatViewModel: ObservableObject {
           !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return }
     attemptedMeetingTitleStems.insert(stem)
-    Task { await generateMeetingTitle(stem: stem, summary: summary) }
+    // Title the open session directly by id — the `allSessions()` stem match used by the live path
+    // can miss the just-opened session, leaving the meeting stuck on its first-message fallback title.
+    let targetId = session.id
+    store.save(session)  // ensure it's persisted so generateAndApplyTitle can load it
+    Task { await generateMeetingTitle(targetId: targetId, summary: summary) }
   }
 
   /// Titles a meeting chat from its final summary. Only sets the title if the session is still
@@ -1251,6 +1264,12 @@ class ChatViewModel: ObservableObject {
   private func generateMeetingTitle(stem: String, summary: String) async {
     guard let target = store.allSessions().first(where: { $0.isMeeting && $0.meetingStem == stem }),
           (target.title?.isEmpty ?? true) else { return }
+    await generateMeetingTitle(targetId: target.id, summary: summary)
+  }
+
+  /// Titles a meeting chat (by session id) from its summary, unless it's already titled.
+  private func generateMeetingTitle(targetId: UUID, summary: String) async {
+    guard store.session(by: targetId)?.title?.isEmpty ?? true else { return }
     let summaryText = summary.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !summaryText.isEmpty else { return }
     let prompt = """
@@ -1260,7 +1279,7 @@ class ChatViewModel: ObservableObject {
       Meeting summary:
       \(String(summaryText.prefix(1200)))
       """
-    await generateAndApplyTitle(targetId: target.id, prompt: prompt, overwriteExisting: false, logLabel: "Meeting")
+    await generateAndApplyTitle(targetId: targetId, prompt: prompt, overwriteExisting: false, logLabel: "Meeting")
   }
 
   // MARK: - Local model messages (slash commands)
@@ -1636,6 +1655,62 @@ class ChatViewModel: ObservableObject {
       .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
       .appendingPathComponent("\(stem).summary.md")
     return try? String(contentsOf: url, encoding: .utf8)
+  }
+
+  /// Summary to show for an ended (non-live) meeting: disk first, then a summary just regenerated
+  /// in-app for this exact stem (recovery path). nil means there's genuinely nothing to show yet.
+  var endedMeetingSummary: String? {
+    if let disk = loadMeetingSummaryFromDisk(),
+       !disk.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      return disk
+    }
+    if recoveredMeetingSummaryStem == session.meetingStem { return recoveredMeetingSummary }
+    return nil
+  }
+
+  /// Recovers a meeting summary that failed to generate at meeting-end (e.g. a transient Gemini 503
+  /// left the meeting with a transcript but no `.summary.md`). Runs when the Summary tab is shown for
+  /// an ENDED meeting whose summary is missing but whose transcript exists. Regenerates at most once
+  /// per stem per app run, then drives the title backfill via `.chatMeetingSummaryReady`.
+  func recoverMeetingSummaryIfNeeded() {
+    guard session.isMeeting,
+          !isCurrentSessionTheActiveMeeting,
+          !isRecoveringMeetingSummary,
+          let stem = session.meetingStem,
+          !attemptedMeetingSummaryStems.contains(stem)
+    else { return }
+    // Already have a summary (on disk or just recovered)? Nothing to do.
+    guard endedMeetingSummary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true else { return }
+    // Need a transcript to summarize.
+    let transcript = loadMeetingTranscriptFromDisk()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard !transcript.isEmpty else { return }
+
+    attemptedMeetingSummaryStems.insert(stem)
+    isRecoveringMeetingSummary = true
+    DebugLogger.log("GEMINI-CHAT: Recovering missing meeting summary for \(stem)")
+    Task { [weak self] in
+      let summary = await MeetingListService.shared.generateAndSaveSummary(forStem: stem)
+      await MainActor.run {
+        guard let self else { return }
+        self.isRecoveringMeetingSummary = false
+        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+          DebugLogger.logWarning("GEMINI-CHAT: Meeting summary recovery produced no text for \(stem)")
+          return
+        }
+        self.recoveredMeetingSummaryStem = stem
+        self.recoveredMeetingSummary = trimmed
+        DebugLogger.logSuccess("GEMINI-CHAT: Recovered meeting summary for \(stem)")
+        // Title the open meeting directly from the recovered summary. The live end-of-meeting path
+        // posts `.chatMeetingSummaryReady` and matches the session via `allSessions()`, which can miss
+        // the session the user just opened — so title it by id here instead.
+        if self.session.meetingStem == stem, (self.session.title?.isEmpty ?? true) {
+          let targetId = self.session.id
+          self.store.save(self.session)  // ensure it's persisted so generateAndApplyTitle can load it
+          Task { await self.generateMeetingTitle(targetId: targetId, summary: trimmed) }
+        }
+      }
+    }
   }
 
   // MARK: - Archive / Restore / Delete
@@ -2465,7 +2540,7 @@ struct ChatView: View {
 
   private var meetingSummaryView: some View {
     let liveSummary = LiveMeetingTranscriptStore.shared.summary
-    let text = liveSummary.isEmpty ? viewModel.loadMeetingSummaryFromDisk() : liveSummary
+    let text = liveSummary.isEmpty ? viewModel.endedMeetingSummary : liveSummary
     return ScrollView {
       VStack(alignment: .leading, spacing: 12) {
         if let text, !text.isEmpty {
@@ -2473,6 +2548,15 @@ struct ChatView: View {
             .font(.system(size: 14))
             .foregroundColor(ChatTheme.primaryText)
             .textSelection(.enabled)
+        } else if viewModel.isRecoveringMeetingSummary {
+          HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Generating summary…")
+              .font(.system(size: 14))
+              .foregroundColor(ChatTheme.secondaryText)
+          }
+          .padding(.top, 40)
+          .frame(maxWidth: .infinity)
         } else {
           Text("No summary yet.")
             .font(.system(size: 14))
@@ -2485,6 +2569,7 @@ struct ChatView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(ChatTheme.windowBackground)
+    .onAppear { viewModel.recoverMeetingSummaryIfNeeded() }
   }
 
   private func noticeBanner(_ message: String) -> some View {

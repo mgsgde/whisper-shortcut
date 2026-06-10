@@ -141,6 +141,35 @@ protocol LLMChatProvider {
   ) async throws -> [String: Any]
 }
 
+extension LLMChatProvider {
+  /// Provider-agnostic single-shot text generation. Routes through `generateStructured` with a
+  /// one-field `{ text }` schema, so features like meeting summaries / speaker consolidation work
+  /// uniformly on Gemini, OpenAI, and Grok without a per-provider endpoint. Returns the generated
+  /// text (empty string if the model omits the field).
+  func generateText(
+    model: String,
+    prompt: String,
+    systemInstruction: String? = nil,
+    thinkingLevel: ThinkingLevel = .default
+  ) async throws -> String {
+    let schema: [String: Any] = [
+      "type": "object",
+      "properties": ["text": ["type": "string"] as [String: Any]],
+      "required": ["text"],
+    ]
+    let contents: [[String: Any]] = [["role": "user", "parts": [["text": prompt]]]]
+    let sys: [String: Any]? = systemInstruction.map { ["parts": [["text": $0]]] }
+    let obj = try await generateStructured(
+      model: model,
+      contents: contents,
+      systemInstruction: sys,
+      schema: schema,
+      schemaName: "text_output",
+      thinkingLevel: thinkingLevel)
+    return (obj["text"] as? String) ?? ""
+  }
+}
+
 // MARK: - Structured Output Schema Adapter
 
 enum StructuredOutputSchema {
