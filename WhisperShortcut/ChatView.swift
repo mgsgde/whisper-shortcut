@@ -8,9 +8,10 @@ import UniformTypeIdentifiers
 @MainActor
 class ChatViewModel: ObservableObject {
   @Published var messages: [ChatMessage] = []
-  /// Bumped when the visible list mutates so `ChatView` clears its local `.scrollPosition`
-  /// binding (see `clearScrollAnchorForListMutation()`). Not used for scroll offset storage.
-  @Published private(set) var scrollAnchorClearCount: UInt = 0
+  /// Fires before the visible list mutates so `ChatView` can clear its local `.scrollPosition`
+  /// binding (see `clearScrollAnchorForListMutation()`). Signal, not state — emitted via
+  /// `PassthroughSubject` and consumed by `.onReceive` in the view.
+  let scrollAnchorClearSignal = PassthroughSubject<Void, Never>()
   @Published var inputText: String = ""
   @Published private(set) var sendingSessionIds: Set<UUID> = []
   /// Sessions whose in-flight request is being superseded by a new user message.
@@ -526,7 +527,7 @@ class ChatViewModel: ObservableObject {
     noticeDismissTask = Task { [weak self] in
       try? await Task.sleep(nanoseconds: 2_500_000_000)
       guard !Task.isCancelled else { return }
-      await MainActor.run { self?.noticeMessage = nil }
+      self?.noticeMessage = nil
     }
   }
 
@@ -642,7 +643,7 @@ class ChatViewModel: ObservableObject {
 
         var finalSources: [GroundingSource] = []
         var finalSupports: [GroundingSupport] = []
-        let tools = await buildToolDeclarations()
+        let tools = buildToolDeclarations()
         let maxToolRounds = 8
         let useGrounding = selectedModel.supportsGrounding
         var toolLoopExhausted = false
@@ -721,11 +722,9 @@ class ChatViewModel: ObservableObject {
         // if the next render wedges the main thread, "final UI update committed" will be
         // absent from the log while "finalizing" is the last line — pinpointing the hang.
         DebugLogger.log("CHAT-SEND: finalizing message sources=\(finalSources.count) supports=\(finalSupports.count) contentLen=\(reply.count) session=\(sessionId)")
-        await MainActor.run {
-          self.updateStreamingMessage(
-            id: placeholderId, sessionId: sessionId,
-            content: reply, sources: finalSources, supports: finalSupports)
-        }
+        self.updateStreamingMessage(
+          id: placeholderId, sessionId: sessionId,
+          content: reply, sources: finalSources, supports: finalSupports)
         DebugLogger.log("CHAT-SEND: final UI update committed session=\(sessionId)")
         let result = (text: reply, sources: finalSources, supports: finalSupports)
         // Strip generated-image markers (multi-MB base64) before the interaction log.
@@ -736,24 +735,20 @@ class ChatViewModel: ObservableObject {
         if let s = store.session(by: sessionId), s.messages.count == 2, !s.isMeeting {
           Task { await generateAITitle(sessionId: sessionId) }
         }
-        await MainActor.run { ReviewPrompter.shared.recordSuccessfulOperation() }
+        ReviewPrompter.shared.recordSuccessfulOperation()
       } catch is CancellationError {
-        let superseded = await MainActor.run { self.supersedingSessionIds.contains(sessionId) }
+        let superseded = self.supersedingSessionIds.contains(sessionId)
         DebugLogger.log("CHAT: Send cancelled (superseded=\(superseded))")
         let partial = markerPrefix + streamed
         if partial.isEmpty || superseded {
-          await MainActor.run {
-            self.removeMessage(id: placeholderId, fromSessionId: sessionId)
-          }
+          self.removeMessage(id: placeholderId, fromSessionId: sessionId)
         } else {
           // The kept partial text only ever reached the store with `persist: false`
           // (per-token updates); save it so a quit right after Stop doesn't restore
           // an empty assistant bubble.
-          await MainActor.run {
-            self.updateStreamingMessage(
-              id: placeholderId, sessionId: sessionId,
-              content: partial, sources: [], supports: [])
-          }
+          self.updateStreamingMessage(
+            id: placeholderId, sessionId: sessionId,
+            content: partial, sources: [], supports: [])
         }
       } catch {
         if sessionId == session.id { errorMessage = friendlyError(error) }
@@ -786,9 +781,9 @@ class ChatViewModel: ObservableObject {
     return true
   }
 
-  private func buildToolDeclarations() async -> [LLMToolDeclaration] {
-    let calendarConnected = await MainActor.run { GoogleAccountOAuthService.shared.isConnected }
-    let trelloConnected = await MainActor.run { TrelloOAuthService.shared.isConnected }
+  private func buildToolDeclarations() -> [LLMToolDeclaration] {
+    let calendarConnected = GoogleAccountOAuthService.shared.isConnected
+    let trelloConnected = TrelloOAuthService.shared.isConnected
     // Image generation renders via the Gemini image model regardless of the chat model,
     // so the tool is offered exactly when a Gemini credential exists.
     let imageGenerationAvailable = GeminiCredentialProvider.shared.hasCredential()
@@ -1129,7 +1124,7 @@ class ChatViewModel: ObservableObject {
   /// No logging here: this runs on every streamed token (via `updateStreamingMessage`),
   /// so a per-call log line would flood the log thousands of times per reply.
   private func clearScrollAnchorForListMutation() {
-    scrollAnchorClearCount &+= 1
+    scrollAnchorClearSignal.send()
   }
 
   /// Appends a message to the session identified by `sessionId`.
@@ -1687,25 +1682,23 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: Recovering missing meeting summary for \(stem)")
     Task { [weak self] in
       let summary = await MeetingListService.shared.generateAndSaveSummary(forStem: stem)
-      await MainActor.run {
-        guard let self else { return }
-        self.isRecoveringMeetingSummary = false
-        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-          DebugLogger.logWarning("GEMINI-CHAT: Meeting summary recovery produced no text for \(stem)")
-          return
-        }
-        self.recoveredMeetingSummaryStem = stem
-        self.recoveredMeetingSummary = trimmed
-        DebugLogger.logSuccess("GEMINI-CHAT: Recovered meeting summary for \(stem)")
-        // Title the open meeting directly from the recovered summary. The live end-of-meeting path
-        // posts `.chatMeetingSummaryReady` and matches the session via `allSessions()`, which can miss
-        // the session the user just opened — so title it by id here instead.
-        if self.session.meetingStem == stem, (self.session.title?.isEmpty ?? true) {
-          let targetId = self.session.id
-          self.store.save(self.session)  // ensure it's persisted so generateAndApplyTitle can load it
-          Task { await self.generateMeetingTitle(targetId: targetId, summary: trimmed) }
-        }
+      guard let self else { return }
+      self.isRecoveringMeetingSummary = false
+      let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty else {
+        DebugLogger.logWarning("GEMINI-CHAT: Meeting summary recovery produced no text for \(stem)")
+        return
+      }
+      self.recoveredMeetingSummaryStem = stem
+      self.recoveredMeetingSummary = trimmed
+      DebugLogger.logSuccess("GEMINI-CHAT: Recovered meeting summary for \(stem)")
+      // Title the open meeting directly from the recovered summary. The live end-of-meeting path
+      // posts `.chatMeetingSummaryReady` and matches the session via `allSessions()`, which can miss
+      // the session the user just opened — so title it by id here instead.
+      if self.session.meetingStem == stem, (self.session.title?.isEmpty ?? true) {
+        let targetId = self.session.id
+        self.store.save(self.session)  // ensure it's persisted so generateAndApplyTitle can load it
+        Task { await self.generateMeetingTitle(targetId: targetId, summary: trimmed) }
       }
     }
   }
@@ -1966,7 +1959,7 @@ struct ChatView: View {
   @State private var previewImageData: Data? = nil
   @State private var scrollActions = ChatScrollActions()
   /// Local `.scrollPosition` binding only — not on the view model so per-frame scroll updates
-  /// do not `@Published`-refresh the whole chat. Cleared when `scrollAnchorClearCount` bumps.
+  /// do not `@Published`-refresh the whole chat. Cleared on `scrollAnchorClearSignal` emissions.
   @State private var scrollPositionID: UUID? = nil
   @State private var scrollAnchorPersistTask: Task<Void, Never>? = nil
   /// Suppresses persisting the scroll anchor while we re-apply it programmatically (during a
@@ -2300,7 +2293,7 @@ struct ChatView: View {
       .onChange(of: scrollPositionID) { _, newValue in
         scheduleScrollAnchorPersist(newValue)
       }
-      .onChange(of: viewModel.scrollAnchorClearCount) { _, _ in
+      .onReceive(viewModel.scrollAnchorClearSignal) { _ in
         scrollPositionID = nil
       }
       .onChange(of: viewModel.currentSessionId) { _, _ in
