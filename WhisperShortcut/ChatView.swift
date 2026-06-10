@@ -109,10 +109,10 @@ class ChatViewModel: ObservableObject {
   /// Meeting stems we've already attempted to recover a missing summary for this app run, so opening
   /// the Summary tab repeatedly doesn't re-fire generation when the transcript truly has no summary.
   private var attemptedMeetingSummaryStems: Set<String> = []
-  /// A summary just regenerated in-app for a meeting that ended without one (recovery path). Held in
-  /// memory so the Summary tab re-renders immediately; keyed by stem so it never shows for the wrong meeting.
-  @Published var recoveredMeetingSummary: String?
-  private var recoveredMeetingSummaryStem: String?
+  /// Bumped after `recoverMeetingSummaryIfNeeded` writes a fresh `.summary.md` to disk so the Summary
+  /// tab re-renders and re-reads via `loadMeetingSummaryFromDisk()`. We don't cache the recovered text
+  /// in memory — disk is the source of truth and the file is tiny.
+  @Published private(set) var summaryRevision: UInt = 0
   /// True while a missing meeting summary is being regenerated, so the Summary tab can show progress.
   @Published private(set) var isRecoveringMeetingSummary: Bool = false
 
@@ -283,9 +283,10 @@ class ChatViewModel: ObservableObject {
                 let stem = note.userInfo?["stem"] as? String,
                 let summary = note.userInfo?["summary"] as? String else { return }
           Task {
-            guard let target = self.store.allSessions().first(where: { $0.isMeeting && $0.meetingStem == stem }),
-                  (target.title?.isEmpty ?? true) else { return }
-            await self.generateMeetingTitle(targetId: target.id, summary: summary)
+            // No title-empty precheck here — `generateMeetingTitle` reads the latest title
+            // post-network via `generateAndApplyTitle`, which is the race-resistant check.
+            guard let targetId = self.store.allSessions().first(where: { $0.isMeeting && $0.meetingStem == stem })?.id else { return }
+            await self.generateMeetingTitle(targetId: targetId, summary: summary)
           }
         }
     }
@@ -1253,10 +1254,17 @@ class ChatViewModel: ObservableObject {
           !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return }
     attemptedMeetingTitleStems.insert(stem)
-    // Title the open session directly by id — the `allSessions()` stem match used by the live path
-    // can miss the just-opened session, leaving the meeting stuck on its first-message fallback title.
+    titleOpenMeetingFromSummary(summary)
+  }
+
+  /// Titles `self.session` from `summary`. Used by the backfill and recovery paths to avoid the
+  /// `allSessions()` stem match used by the live `.chatMeetingSummaryReady` path, which can miss
+  /// the just-opened session and leave the meeting stuck on its first-message fallback title.
+  /// The save here covers the case where `session.title` was set in memory (fallback title) but
+  /// not yet persisted, so `generateAndApplyTitle`'s `store.session(by:)` reads the same row.
+  private func titleOpenMeetingFromSummary(_ summary: String) {
     let targetId = session.id
-    store.save(session)  // ensure it's persisted so generateAndApplyTitle can load it
+    store.save(session)
     Task { await generateMeetingTitle(targetId: targetId, summary: summary) }
   }
 
@@ -1649,23 +1657,23 @@ class ChatViewModel: ObservableObject {
     return try? String(contentsOf: url, encoding: .utf8)
   }
 
-  /// Summary to show for an ended (non-live) meeting: disk first, then a summary just regenerated
-  /// in-app for this exact stem (recovery path). nil means there's genuinely nothing to show yet.
+  /// Summary to show for an ended (non-live) meeting. Reads from disk on every evaluation; the
+  /// recovery path bumps `summaryRevision` after writing the file so SwiftUI re-renders.
   var endedMeetingSummary: String? {
-    if let disk = loadMeetingSummaryFromDisk(),
-       !disk.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      return disk
-    }
-    if recoveredMeetingSummaryStem == session.meetingStem { return recoveredMeetingSummary }
-    return nil
+    guard let disk = loadMeetingSummaryFromDisk()?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !disk.isEmpty else { return nil }
+    return disk
   }
 
   /// Recovers a meeting summary that failed to generate at meeting-end (e.g. a transient Gemini 503
   /// left the meeting with a transcript but no `.summary.md`). Runs when the Summary tab is shown for
   /// an ENDED meeting whose summary is missing but whose transcript exists. Regenerates at most once
-  /// per stem per app run, then drives the title backfill via `.chatMeetingSummaryReady`.
+  /// per stem per app run; on success, also writes a title via `titleOpenMeetingFromSummary`.
+  /// Gated to the main sidebar (`!singleChatOnly`) so the floating Meeting Chat doesn't race the
+  /// main VM on title writes for the same session.
   func recoverMeetingSummaryIfNeeded() {
-    guard session.isMeeting,
+    guard !singleChatOnly,
+          session.isMeeting,
           !isCurrentSessionTheActiveMeeting,
           !isRecoveringMeetingSummary,
           let stem = session.meetingStem,
@@ -1689,16 +1697,14 @@ class ChatViewModel: ObservableObject {
         DebugLogger.logWarning("GEMINI-CHAT: Meeting summary recovery produced no text for \(stem)")
         return
       }
-      self.recoveredMeetingSummaryStem = stem
-      self.recoveredMeetingSummary = trimmed
+      // `generateAndSaveSummary` wrote the file; bump revision so the Summary tab re-reads it.
+      self.summaryRevision &+= 1
       DebugLogger.logSuccess("GEMINI-CHAT: Recovered meeting summary for \(stem)")
-      // Title the open meeting directly from the recovered summary. The live end-of-meeting path
-      // posts `.chatMeetingSummaryReady` and matches the session via `allSessions()`, which can miss
-      // the session the user just opened — so title it by id here instead.
+      // Title write here is intentionally NOT recorded in `attemptedMeetingTitleStems`: if the title
+      // call fails (e.g. transient Gemini 503), `backfillMeetingTitleIfNeeded` gets one more shot
+      // next time this meeting is viewed. Recovery is rare, so granting a single title retry is cheap.
       if self.session.meetingStem == stem, (self.session.title?.isEmpty ?? true) {
-        let targetId = self.session.id
-        self.store.save(self.session)  // ensure it's persisted so generateAndApplyTitle can load it
-        Task { await self.generateMeetingTitle(targetId: targetId, summary: trimmed) }
+        self.titleOpenMeetingFromSummary(trimmed)
       }
     }
   }
@@ -2513,8 +2519,14 @@ struct ChatView: View {
   }
 
   private var meetingSummaryView: some View {
+    // `LiveMeetingTranscriptStore.shared.summary` is the singleton's *current* rolling summary —
+    // it belongs to whichever meeting is recording right now, not necessarily the one this tab is
+    // viewing. Only show it when this tab IS the active meeting; otherwise fall through to the
+    // disk-backed (or just-recovered) ended-meeting summary.
     let liveSummary = LiveMeetingTranscriptStore.shared.summary
-    let text = liveSummary.isEmpty ? viewModel.endedMeetingSummary : liveSummary
+    let text: String? = viewModel.isCurrentSessionTheActiveMeeting && !liveSummary.isEmpty
+      ? liveSummary
+      : viewModel.endedMeetingSummary
     return ScrollView {
       VStack(alignment: .leading, spacing: 12) {
         if let text, !text.isEmpty {
