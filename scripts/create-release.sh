@@ -40,7 +40,15 @@ if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
     exit 1
 fi
 
-# 5. Confirm
+# 5. Run tests
+echo -e "\n${YELLOW}Running tests before release...${NC}"
+bash "$(dirname "$0")/run-tests.sh"
+if [ $? -ne 0 ]; then
+    echo -e "\n${RED}❌ Tests failed. Release aborted.${NC}"
+    exit 1
+fi
+
+# 6. Confirm
 echo ""
 echo -e "Ready to create release:"
 echo -e "  Tag: ${GREEN}$TAG_NAME${NC}"
@@ -54,7 +62,7 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
-# 6. Create and push tag
+# 7. Create and push tag
 echo -e "\n${YELLOW}Creating tag...${NC}"
 git tag "$TAG_NAME"
 
