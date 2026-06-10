@@ -3,6 +3,64 @@ import AppKit
 import Combine
 import UniformTypeIdentifiers
 
+// MARK: - Streaming Buffer
+
+/// Holds the in-flight content for one streaming assistant bubble, separate from the
+/// `messages` array. Token writes go here, not into `ChatViewModel.messages`, so a fast
+/// stream doesn't trigger a per-token `LazyVStack` diff (which historically wedged the main
+/// thread and produced the scroll-anchor-reset flicker on send). Only the bubble that
+/// observes this buffer re-renders per token; the rest of the conversation list is untouched.
+///
+/// Hosts its own ≈30fps throttle so consumers don't need to coordinate one — repeated
+/// `enqueueUpdate` calls within the flush window collapse to a single commit of the most
+/// recent state. Terminal callers use `cancelPending` before committing the final content
+/// into the message itself, so stale flushes can't fire afterwards.
+@MainActor
+final class StreamingBuffer: ObservableObject {
+  @Published private(set) var content: String = ""
+  private var pendingContent: String?
+  private var flushTask: Task<Void, Never>?
+  private static let flushIntervalNs: UInt64 = 33_000_000  // ~30fps
+
+  func enqueueUpdate(_ newContent: String) {
+    pendingContent = newContent
+    guard flushTask == nil else { return }
+    flushTask = Task { @MainActor [weak self] in
+      try? await Task.sleep(nanoseconds: Self.flushIntervalNs)
+      if Task.isCancelled { return }
+      self?.flushPending()
+    }
+  }
+
+  private func flushPending() {
+    flushTask = nil
+    guard let pending = pendingContent else { return }
+    pendingContent = nil
+    content = pending
+  }
+
+  /// Cancels any pending throttled update and applies `newContent` immediately. Use for
+  /// state that must be visible synchronously (e.g. an image-marker fold replacing the
+  /// streamed-text prefix).
+  func setContentImmediate(_ newContent: String) {
+    cancelPending()
+    content = newContent
+  }
+
+  /// Drops any queued flush without applying it. Terminal callers (finalization,
+  /// cancellation) commit content into the message itself afterwards — a stale pending
+  /// flush would overwrite that final state with intermediate token text.
+  func cancelPending() {
+    flushTask?.cancel()
+    flushTask = nil
+    pendingContent = nil
+  }
+
+  deinit {
+    flushTask?.cancel()
+  }
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -129,22 +187,12 @@ class ChatViewModel: ObservableObject {
   /// In-flight send tasks keyed by session ID — multiple sessions can be sending simultaneously.
   private var sendTasks: [UUID: Task<Void, Never>] = [:]
 
-  /// Coalesces per-token streaming UI commits into ≤30fps batches. Without this, a fast stream
-  /// pumps `messages` reassignments at the provider's token rate, triggering a full `LazyVStack`
-  /// diff per token — historically the cause of the main-thread wedge the
-  /// `clearScrollAnchorForListMutation` workaround was added to mitigate. Keyed by session so
-  /// concurrent sends throttle independently.
-  private struct PendingStreamingUpdate {
-    let messageId: UUID
-    let content: String
-    let sources: [GroundingSource]
-    let supports: [GroundingSupport]
-  }
-  private var pendingStreamingUpdates: [UUID: PendingStreamingUpdate] = [:]
-  private var streamingFlushTasks: [UUID: Task<Void, Never>] = [:]
-  /// ~30fps. Fast enough that streaming still feels live, slow enough to keep per-frame
-  /// layout work bounded even on a 100+ token/sec stream.
-  private static let streamingFlushIntervalNs: UInt64 = 33_000_000
+  /// Live streaming bubbles keyed by their placeholder message id. Per-token updates write into
+  /// `buffer.content` (a separate `ObservableObject`), not into `messages`, so a fast stream
+  /// only re-renders the one bubble that observes its buffer — no `LazyVStack` diff, no
+  /// session/messages `@Published` ripple. The dict itself is `@Published`, but it only mutates
+  /// on stream start/end (register/unregister), not per token.
+  @Published private(set) var streamingBuffers: [UUID: StreamingBuffer] = [:]
 
   /// Returns true if the given session has an in-flight request (for tab spinner).
   func isSendingSession(_ id: UUID) -> Bool { sendingSessionIds.contains(id) }
@@ -634,9 +682,6 @@ class ChatViewModel: ObservableObject {
         sendingSessionIds.remove(sessionId)
         supersedingSessionIds.remove(sessionId)
         sendTasks.removeValue(forKey: sessionId)
-        // Belt-and-suspenders: the generic catch path doesn't cancel pending throttle state,
-        // so clear it here so a stale flush can't fire into a session that's already done.
-        self.cancelPendingStreamingUpdate(sessionId: sessionId)
         // `ChatViewModel` is `@MainActor`, so this Task inherits MainActor — no explicit hop needed.
         self.processNextQueued()
       }
@@ -662,6 +707,7 @@ class ChatViewModel: ObservableObject {
       do {
         let placeholder = ChatMessage(id: placeholderId, role: .model, content: "")
         appendMessage(placeholder, toSessionId: sessionId)
+        let streamingBuffer = self.attachStreamingBuffer(for: placeholderId)
 
         var finalSources: [GroundingSource] = []
         var finalSupports: [GroundingSupport] = []
@@ -692,9 +738,7 @@ class ChatViewModel: ObservableObject {
             case .textDelta(let delta):
               roundText += delta
               streamed = Self.stripLeakedThoughtTokens(streamed + delta)
-              self.enqueueStreamingUpdate(
-                id: placeholderId, sessionId: sessionId,
-                content: markerPrefix + streamed, sources: [], supports: [])
+              streamingBuffer.enqueueUpdate(markerPrefix + streamed)
             case .functionCall(let name, let args, let thoughtSignature):
               pendingCalls.append((name, args, thoughtSignature))
             case .finished(let sources, let supports, _):
@@ -721,10 +765,7 @@ class ChatViewModel: ObservableObject {
             let current = markerPrefix + streamed
             markerPrefix = (current.isEmpty ? joined : current + "\n\n" + joined) + "\n\n"
             streamed = ""
-            self.cancelPendingStreamingUpdate(sessionId: sessionId)
-            self.updateStreamingMessage(
-              id: placeholderId, sessionId: sessionId,
-              content: markerPrefix, sources: [], supports: [], persist: false)
+            streamingBuffer.setContentImmediate(markerPrefix)
           }
           currentContents.append(contentsOf: turns)
         }
@@ -745,7 +786,7 @@ class ChatViewModel: ObservableObject {
         // if the next render wedges the main thread, "final UI update committed" will be
         // absent from the log while "finalizing" is the last line — pinpointing the hang.
         DebugLogger.log("CHAT-SEND: finalizing message sources=\(finalSources.count) supports=\(finalSupports.count) contentLen=\(reply.count) session=\(sessionId)")
-        self.cancelPendingStreamingUpdate(sessionId: sessionId)
+        self.detachStreamingBuffer(for: placeholderId)
         self.updateStreamingMessage(
           id: placeholderId, sessionId: sessionId,
           content: reply, sources: finalSources, supports: finalSupports)
@@ -763,19 +804,30 @@ class ChatViewModel: ObservableObject {
       } catch is CancellationError {
         let superseded = self.supersedingSessionIds.contains(sessionId)
         DebugLogger.log("CHAT: Send cancelled (superseded=\(superseded))")
-        self.cancelPendingStreamingUpdate(sessionId: sessionId)
+        self.detachStreamingBuffer(for: placeholderId)
         let partial = markerPrefix + streamed
         if partial.isEmpty || superseded {
           self.removeMessage(id: placeholderId, fromSessionId: sessionId)
         } else {
-          // The kept partial text only ever reached the store with `persist: false`
-          // (per-token updates); save it so a quit right after Stop doesn't restore
-          // an empty assistant bubble.
+          // The partial text only ever lived in the streaming buffer, never in `messages`;
+          // commit it now so the bubble doesn't snap back to empty after detach and a quit
+          // right after Stop restores the kept text rather than an empty assistant bubble.
           self.updateStreamingMessage(
             id: placeholderId, sessionId: sessionId,
             content: partial, sources: [], supports: [])
         }
       } catch {
+        // Same reasoning as the cancellation branch: detach the buffer and commit whatever
+        // streamed before the error so the bubble doesn't render as empty.
+        self.detachStreamingBuffer(for: placeholderId)
+        let partial = markerPrefix + streamed
+        if partial.isEmpty {
+          self.removeMessage(id: placeholderId, fromSessionId: sessionId)
+        } else {
+          self.updateStreamingMessage(
+            id: placeholderId, sessionId: sessionId,
+            content: partial, sources: [], supports: [])
+        }
         if sessionId == session.id { errorMessage = friendlyError(error) }
         DebugLogger.logError("CHAT: \(error.localizedDescription)")
       }
@@ -1136,44 +1188,20 @@ class ChatViewModel: ObservableObject {
     }
   }
 
-  /// Schedules a coalesced UI update for the streaming bubble. Multiple calls within the flush
-  /// window collapse to a single commit of the most recent state — see `pendingStreamingUpdates`
-  /// doc for the why. Per-call updates still reach the API client (history is built from the
-  /// fully-streamed text), so coalescing only affects render frequency, not correctness.
-  private func enqueueStreamingUpdate(
-    id: UUID, sessionId: UUID, content: String,
-    sources: [GroundingSource], supports: [GroundingSupport]
-  ) {
-    pendingStreamingUpdates[sessionId] = PendingStreamingUpdate(
-      messageId: id, content: content, sources: sources, supports: supports)
-    guard streamingFlushTasks[sessionId] == nil else { return }
-    streamingFlushTasks[sessionId] = Task { @MainActor [weak self] in
-      try? await Task.sleep(nanoseconds: Self.streamingFlushIntervalNs)
-      if Task.isCancelled { return }
-      self?.flushPendingStreamingUpdate(sessionId: sessionId)
-    }
+  /// Registers a streaming buffer for `messageId` so the bubble for that message can observe it.
+  /// Returns the new buffer (the same instance stays for the lifetime of the stream — replacing
+  /// the dict entry every token would defeat the @Published-only-on-add/remove guarantee).
+  @discardableResult
+  private func attachStreamingBuffer(for messageId: UUID) -> StreamingBuffer {
+    let buffer = StreamingBuffer()
+    streamingBuffers[messageId] = buffer
+    return buffer
   }
 
-  /// Applies any pending streaming update for `sessionId` immediately. Called by the throttle
-  /// task at flush time; never called directly (terminal paths use
-  /// `cancelPendingStreamingUpdate` and commit their own final content).
-  private func flushPendingStreamingUpdate(sessionId: UUID) {
-    streamingFlushTasks[sessionId] = nil
-    guard let pending = pendingStreamingUpdates.removeValue(forKey: sessionId) else { return }
-    updateStreamingMessage(
-      id: pending.messageId, sessionId: sessionId,
-      content: pending.content, sources: pending.sources,
-      supports: pending.supports, persist: false)
-  }
-
-  /// Drops any queued streaming flush for `sessionId` without applying it. Terminal callers
-  /// (finalization, image-marker fold, cancellation, teardown) commit their own content
-  /// directly afterwards — letting a stale pending flush fire later would overwrite the final
-  /// committed state with intermediate token text.
-  private func cancelPendingStreamingUpdate(sessionId: UUID) {
-    streamingFlushTasks[sessionId]?.cancel()
-    streamingFlushTasks[sessionId] = nil
-    pendingStreamingUpdates[sessionId] = nil
+  /// Removes the buffer for `messageId`. Idempotent; safe to call multiple times.
+  private func detachStreamingBuffer(for messageId: UUID) {
+    streamingBuffers[messageId]?.cancelPending()
+    streamingBuffers.removeValue(forKey: messageId)
   }
 
   /// Clears the `.scrollPosition` anchor before mutating the visible message list.
@@ -2292,11 +2320,10 @@ struct ChatView: View {
           ForEach(viewModel.messages) { message in
             MessageBubbleView(
               message: message,
-              // Streaming = the last model message while a send is in flight. During
-              // streaming we render prose with lightweight SwiftUI `Text`; the heavy
-              // self-sizing NSTextView (SelectableProseText) only renders once the
-              // message is final, to avoid per-token layout thrash wedging the main thread.
-              isStreaming: viewModel.isSending && message.id == viewModel.messages.last?.id,
+              // Streaming bubble = the placeholder whose `StreamingBuffer` is still attached.
+              // The buffer drives its own observed subview, so per-token writes don't ripple
+              // through this ForEach or force a `LazyVStack` diff.
+              streamingBuffer: viewModel.streamingBuffers[message.id],
               onTapAttachedImage: { previewImageData = $0 },
               onRetry: message.id == lastUserMessageId
                 ? { viewModel.retryMessage(id: message.id) } : nil)
@@ -4212,9 +4239,30 @@ func parseUserMessagePastedXML(_ content: String) -> (sections: [UserMessagePast
 
 // MARK: - Message Bubble
 
+/// Renders a streaming assistant bubble whose content is read live from a `StreamingBuffer`.
+/// Crucially, the `@ObservedObject` lives here, not on `MessageBubbleView` — so per-token
+/// writes only invalidate this small subtree, not the whole bubble or list. `fallback` carries
+/// any sources/supports already committed to the message (during a normal stream both are empty
+/// until finalization).
+private struct StreamingModelReplyView: View {
+  @ObservedObject var buffer: StreamingBuffer
+  let fallback: ChatMessage
+
+  var body: some View {
+    ModelReplyView(
+      content: buffer.content,
+      sources: fallback.sources,
+      groundingSupports: fallback.groundingSupports,
+      isStreaming: true)
+  }
+}
+
 private struct MessageBubbleView: View {
   let message: ChatMessage
-  var isStreaming: Bool = false
+  /// Non-nil while this bubble is still streaming — drives content from a separate
+  /// `ObservableObject` so per-token writes don't @Published-ripple through the parent and
+  /// don't force a `LazyVStack` diff. See `StreamingBuffer` doc.
+  var streamingBuffer: StreamingBuffer? = nil
   var onTapAttachedImage: ((Data) -> Void)? = nil
   /// Non-nil only on the last user message: re-sends it and regenerates the response.
   var onRetry: (() -> Void)? = nil
@@ -4282,12 +4330,14 @@ private struct MessageBubbleView: View {
           NSCursor.pop()
         }
       }
+    } else if let buffer = streamingBuffer {
+      StreamingModelReplyView(buffer: buffer, fallback: message)
     } else {
       ModelReplyView(
         content: message.content,
         sources: message.sources,
         groundingSupports: message.groundingSupports,
-        isStreaming: isStreaming)
+        isStreaming: false)
     }
   }
 
