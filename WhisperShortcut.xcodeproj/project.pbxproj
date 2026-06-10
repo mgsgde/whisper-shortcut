@@ -24,6 +24,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		BF1827BF2FD9582800BEE909 /* WhisperShortcut-AppStore.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = file; path = "WhisperShortcut-AppStore.xctestplan"; sourceTree = "<group>"; };
 		BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhisperShortcut.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "WhisperShortcut-AppStore.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BFF9398E2FD94F7C001F505E /* WhisperShortcutTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WhisperShortcutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -54,11 +55,6 @@
 				BF99182C2F697163008AB3ED /* Exceptions for "WhisperShortcut" folder in "WhisperShortcut-AppStore" target */,
 			);
 			path = WhisperShortcut;
-			sourceTree = "<group>";
-		};
-		BFF939822FD94EA4001F505E /* WhisperShortcutTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = WhisperShortcutTests;
 			sourceTree = "<group>";
 		};
 		BFF9398F2FD94F7C001F505E /* WhisperShortcutTests */ = {
@@ -100,8 +96,8 @@
 		BF3C90BD2E3E0CC0001D325B = {
 			isa = PBXGroup;
 			children = (
+				BF1827BF2FD9582800BEE909 /* WhisperShortcut-AppStore.xctestplan */,
 				BF3C90C82E3E0CC0001D325B /* WhisperShortcut */,
-				BFF939822FD94EA4001F505E /* WhisperShortcutTests */,
 				BFF9398F2FD94F7C001F505E /* WhisperShortcutTests */,
 				BFBC35F32E3E129600BAC747 /* Frameworks */,
 				BF3C90C72E3E0CC0001D325B /* Products */,

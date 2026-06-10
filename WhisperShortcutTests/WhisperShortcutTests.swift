@@ -54,3 +54,4 @@ struct LLMProviderRoundtripTests {
         #expect(!reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 }
+
