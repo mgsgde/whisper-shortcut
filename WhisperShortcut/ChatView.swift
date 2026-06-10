@@ -1244,7 +1244,12 @@ class ChatViewModel: ObservableObject {
     if isCurrentSession {
       DebugLogger.logUI(
         "CHAT-LIST: append role=\(message.role) count=\(target.messages.count) session=\(sessionId)")
-      scrollAnchorClearSignal.send()
+      // Deliberately NOT sending `scrollAnchorClearSignal` here: an append leaves every
+      // existing message id intact, so SwiftUI's anchor lookup is trivial — no wedge risk.
+      // Clearing the anchor mid-append was the source of the empty-list flash on Send,
+      // where the ScrollView briefly untethered and the LazyVStack dropped its rendered
+      // children. The wedge fix is still applied on `removeMessage`, `updateStreamingMessage`,
+      // and `retryMessage` — paths where the anchored id may disappear or change.
       session = target
       messages = target.messages
     }

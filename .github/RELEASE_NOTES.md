@@ -1,4 +1,4 @@
-# WhisperShortcut 7.58
+# WhisperShortcut 7.59
 
 ## Installation
 
@@ -6,13 +6,8 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ## What's New
 
-### Transcription
-
-- **Snappier dictation when you pause before pressing Stop.** The 200 ms tail-capture delay is now skipped automatically when the microphone has been quiet for the last ~400 ms — there's no tail to catch, so you get your result that much sooner.
-- **One less duration probe per long recording.** The audio-duration lookup is shared between the chunking decision and the splitter, instead of being run twice.
-
 ### Fixes
 
-- Fixed a small leak where each silently-rejected recording was kept in an in-memory tracking set forever.
+- **No more empty-list flash when sending a new chat message.** In long sessions the message list could briefly clear out the moment you pressed Send, leaving only the typing indicator visible until the response started streaming. Cause: the scroll-anchor reset that protects against a SwiftUI layout wedge was being applied on every list mutation — including plain appends, where it isn't needed. The reset now only runs on the paths where an anchored message could actually disappear (removals, retries, finalization), and the visible list stays put on Send.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.57...v7.58
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.58...v7.59
