@@ -1,4 +1,4 @@
-# WhisperShortcut 7.55
+# WhisperShortcut 7.56
 
 ## Installation
 
@@ -6,20 +6,9 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ## What's New
 
-### Live Meeting
+### AI Chat
 
-- **Stop button fix.** Pressing Stop mid-segment no longer drops captured audio; the segment is transcribed and the spoken tail is preserved.
-- **Rolling summary tuning.** Chunk threshold for live rolling summaries is now centralized in app constants.
+- **Smoother streaming.** Token-by-token replies are batched to ~30fps so long responses stay readable without UI jank.
+- **Per-bubble streaming buffer.** Each assistant message owns its streaming state, keeping multi-turn chat updates isolated and reliable.
 
-### Meeting Chat
-
-- **Live summary scoping.** A live meeting's rolling summary no longer leaks into an ended meeting's chat tab.
-- **Recovery gating.** Summary recovery no longer races the main sidebar when the floating Meeting Chat is open.
-- **Simpler summary cache.** Ended-meeting summaries read from disk directly instead of a redundant in-memory cache.
-
-### Under the hood
-
-- **Meeting library cleanup.** Removed unused meeting-file APIs and collapsed summary URL/save helpers.
-- **Release tooling.** Full test suite now runs before tagging a release.
-
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.54...v7.55
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.55...v7.56
