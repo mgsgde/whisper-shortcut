@@ -969,8 +969,8 @@ class MenuBarController: NSObject {
 
         // Generate summary from the (possibly consolidated) transcript
         var textForSummary = finalTranscript
-        if textForSummary.count > MeetingListService.contextMaxChars {
-          textForSummary = String(textForSummary.suffix(MeetingListService.contextMaxChars))
+        if textForSummary.count > MeetingListService.meetingContextMaxChars {
+          textForSummary = String(textForSummary.suffix(MeetingListService.meetingContextMaxChars))
         }
         do {
           let summary = try await MeetingListService.generateSummaryText(transcript: textForSummary, model: model)

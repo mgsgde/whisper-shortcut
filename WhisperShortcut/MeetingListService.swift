@@ -47,8 +47,9 @@ final class MeetingListService: ObservableObject {
     return timestampFilenameFormatter.date(from: timestamp)
   }
 
-  /// Maximum characters for context sent to the selected provider. Full transcript is still scrollable in UI.
-  static let contextMaxChars = 60_000
+  /// Hard cap on transcript characters sent to the summary model. The full transcript is still
+  /// scrollable in the UI; this just bounds the LLM request size.
+  static let meetingContextMaxChars = 60_000
 
   // MARK: - List
 
@@ -92,17 +93,6 @@ final class MeetingListService: ObservableObject {
     return parsed
   }
 
-  /// Builds a context string from chunks for the chat system instruction.
-  func contextString(for chunks: [LiveMeetingChunk]) -> String {
-    let lines = chunks.map { "\($0.timestampString) \($0.text)" }
-    var text = lines.joined(separator: "\n")
-    if text.count > Self.contextMaxChars {
-      text = String(text.suffix(Self.contextMaxChars))
-    }
-    guard !text.isEmpty else { return "" }
-    return "Use the following meeting transcript to answer the user's questions.\n\n\(text)"
-  }
-
   /// Clears the chunk cache (e.g. when a meeting file changes on disk).
   func invalidateCache(for url: URL? = nil) {
     if let url = url {
@@ -112,106 +102,22 @@ final class MeetingListService: ObservableObject {
     }
   }
 
-  /// Renames a meeting file to a new display name (suffix after timestamp). Returns the new MeetingFileInfo on success, nil on failure.
-  func renameMeeting(_ meeting: MeetingFileInfo, newDisplayName: String) -> MeetingFileInfo? {
-    let sanitized = newDisplayName
-      .replacingOccurrences(of: "/", with: "-")
-      .replacingOccurrences(of: "\\", with: "-")
-      .replacingOccurrences(of: ":", with: "-")
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !sanitized.isEmpty else { return nil }
-    let timestampStem = "Meeting-\(Self.timestampFilenameFormatter.string(from: meeting.date))"
-    let newStem = "\(timestampStem)-\(sanitized)"
-    let dir = meeting.url.deletingLastPathComponent()
-    let newURL = dir.appendingPathComponent("\(newStem).txt")
-    guard newURL != meeting.url else { return meeting }
-    do {
-      let oldSummaryURL = Self.summaryURL(for: meeting)
-      let newSummaryURL = newURL.deletingPathExtension().appendingPathExtension("summary.md")
-      if FileManager.default.fileExists(atPath: newURL.path) {
-        DebugLogger.logWarning("MEETING-LIBRARY: Rename target already exists: \(newURL.lastPathComponent)")
-        return nil
-      }
-      if FileManager.default.fileExists(atPath: oldSummaryURL.path) {
-        if FileManager.default.fileExists(atPath: newSummaryURL.path) {
-          DebugLogger.logWarning("MEETING-LIBRARY: Rename summary target already exists: \(newSummaryURL.lastPathComponent)")
-          return nil
-        }
-      }
-      try FileManager.default.moveItem(at: meeting.url, to: newURL)
-      if FileManager.default.fileExists(atPath: oldSummaryURL.path) {
-        try FileManager.default.moveItem(at: oldSummaryURL, to: newSummaryURL)
-      }
-      invalidateCache(for: meeting.url)
-      refresh()
-      DebugLogger.log("MEETING-LIBRARY: Renamed to \(newStem).txt")
-      return meetings.first { $0.url == newURL }
-    } catch {
-      DebugLogger.logError("MEETING-LIBRARY: Rename failed: \(error.localizedDescription)")
-      return nil
-    }
-  }
-
-  /// Deletes a meeting file from disk. Returns true on success.
-  func deleteMeeting(_ meeting: MeetingFileInfo) -> Bool {
-    do {
-      try FileManager.default.removeItem(at: meeting.url)
-      let summaryURL = Self.summaryURL(for: meeting)
-      try? FileManager.default.removeItem(at: summaryURL)
-      invalidateCache(for: meeting.url)
-      refresh()
-      DebugLogger.log("MEETING-LIBRARY: Deleted \(meeting.url.lastPathComponent)")
-      return true
-    } catch {
-      DebugLogger.logError("MEETING-LIBRARY: Delete failed: \(error.localizedDescription)")
-      return false
-    }
-  }
-
   // MARK: - Summary
 
-  /// URL for the Markdown summary file (same stem as transcript, extension .summary.md).
-  static func summaryURL(for meeting: MeetingFileInfo) -> URL {
-    meeting.url.deletingPathExtension().appendingPathExtension("summary.md")
-  }
-
-  /// URL for summary file next to a transcript file (by path, e.g. when meeting just ended).
+  /// URL for the Markdown summary file next to a transcript file (same stem, `.summary.md` extension).
   static func summaryURL(transcriptFileURL: URL) -> URL {
     transcriptFileURL.deletingPathExtension().appendingPathExtension("summary.md")
   }
 
-  /// Loads summary from disk if the .summary.md file exists.
-  func loadSummary(for meeting: MeetingFileInfo) -> String? {
-    let url = Self.summaryURL(for: meeting)
-    return try? String(contentsOf: url, encoding: .utf8)
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-  }
-
-  /// Saves summary to the meeting's .summary.md file.
-  func saveSummary(_ text: String, for meeting: MeetingFileInfo) {
-    let url = Self.summaryURL(for: meeting)
-    saveSummary(text, to: url)
-  }
-
-  /// Saves summary to the .summary.md file next to the given transcript URL (e.g. when meeting just ended).
+  /// Saves summary to the .summary.md file next to the given transcript URL.
   func saveSummary(_ text: String, transcriptFileURL: URL) {
     let url = Self.summaryURL(transcriptFileURL: transcriptFileURL)
-    saveSummary(text, to: url)
-  }
-
-  private func saveSummary(_ text: String, to url: URL) {
     do {
       try text.write(to: url, atomically: true, encoding: .utf8)
       DebugLogger.log("MEETING-LIBRARY: Saved summary to \(url.lastPathComponent)")
     } catch {
       DebugLogger.logError("MEETING-LIBRARY: Save summary failed: \(error.localizedDescription)")
     }
-  }
-
-  /// Loads summary from file, or generates via Gemini and saves. Returns placeholder on error or no API key.
-  func summary(for meeting: MeetingFileInfo) async -> String {
-    if let loaded = loadSummary(for: meeting), !loaded.isEmpty { return loaded }
-    return await generateAndSaveSummary(for: meeting)
   }
 
   /// Generates a Markdown summary from the meeting transcript and saves it. Routes to whichever
@@ -224,15 +130,15 @@ final class MeetingListService: ObservableObject {
     }
     let meetingChunks = chunks(for: meeting)
     var transcriptText = meetingChunks.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n\n")
-    if transcriptText.count > Self.contextMaxChars {
-      transcriptText = String(transcriptText.suffix(Self.contextMaxChars))
+    if transcriptText.count > Self.meetingContextMaxChars {
+      transcriptText = String(transcriptText.suffix(Self.meetingContextMaxChars))
     }
     guard !transcriptText.isEmpty else { return "" }
     do {
       let summaryText = try await Self.generateSummaryText(transcript: transcriptText, model: model)
       let trimmed = summaryText.trimmingCharacters(in: .whitespacesAndNewlines)
       if !trimmed.isEmpty {
-        saveSummary(trimmed, for: meeting)
+        saveSummary(trimmed, transcriptFileURL: meeting.url)
         return trimmed
       }
     } catch {
