@@ -1368,8 +1368,7 @@ class ChatViewModel: ObservableObject {
   // MARK: - Scroll Position Persistence
 
   /// Per-session id of the message pinned to the top of the chat scroll view. Survives window
-  /// hide/show (incl. the cross-screen resize that recreates the list — see `.id(widthBucket)`),
-  /// tab switches, and relaunch. Keyed by session UUID; pruned to live sessions on load.
+  /// hide/show, tab switches, and relaunch. Keyed by session UUID; pruned to live sessions on load.
   private var scrollAnchors: [UUID: UUID] = [:]
 
   private func loadScrollAnchors() {
@@ -1971,8 +1970,8 @@ struct ChatView: View {
   @State private var scrollPositionID: UUID? = nil
   @State private var scrollAnchorPersistTask: Task<Void, Never>? = nil
   /// Suppresses persisting the scroll anchor while we re-apply it programmatically (during a
-  /// width-bucket recreation or a tab switch), so the transient reset-to-top doesn't clobber the
-  /// saved position before we restore it.
+  /// tab switch), so the transient reset-to-top doesn't clobber the saved position before we
+  /// restore it.
   @State private var suppressAnchorSave: Bool = false
   @State private var hoveredTabId: UUID? = nil
   /// Session id currently being renamed via the context-menu alert.
@@ -2016,7 +2015,7 @@ struct ChatView: View {
           } else if viewModel.isCurrentSessionMeeting && meetingTab == .summary {
             meetingSummaryView
           } else {
-            messageList(scrollActions: scrollActions, containerWidth: geometry.size.width)
+            messageList(scrollActions: scrollActions)
               .overlay(alignment: .bottom) {
                 LinearGradient(
                   colors: [ChatTheme.windowBackground.opacity(0), ChatTheme.windowBackground],
@@ -2217,9 +2216,7 @@ struct ChatView: View {
 
   // MARK: - Message List
 
-  private func messageList(scrollActions: ChatScrollActions, containerWidth: CGFloat) -> some View {
-    /// Rounded to 50pt steps so resize doesn't constantly recreate the list (preserves scroll position for small moves).
-    let widthBucket = (containerWidth / 50).rounded(.down) * 50
+  private func messageList(scrollActions: ChatScrollActions) -> some View {
     let lastUserMessageId = viewModel.messages.last(where: { $0.role == .user })?.id
     return ScrollViewReader { proxy in
       ScrollView {
@@ -2273,7 +2270,6 @@ struct ChatView: View {
         .padding(.horizontal, 24)
         .padding(.top, 16)
         .padding(.bottom, 28)
-        .id(widthBucket)
       }
       .scrollPosition(id: $scrollPositionID, anchor: .top)
       // Typing indicator lives OUTSIDE the LazyVStack as a floating overlay so its
@@ -2306,19 +2302,6 @@ struct ChatView: View {
       }
       .onChange(of: viewModel.scrollAnchorClearCount) { _, _ in
         scrollPositionID = nil
-      }
-      .onChange(of: widthBucket) { _, _ in
-        // The LazyVStack is rebuilt with a new identity on width-bucket change (resize / screen
-        // move — see `.id(widthBucket)`), which resets the scroll to the top. Re-assert the saved
-        // position once the new content has laid out. `scrollPositionID` still holds the
-        // pre-reset value here, so capture it before the reset clobbers it.
-        guard let target = scrollPositionID else { return }
-        suppressAnchorSave = true
-        DispatchQueue.main.async {
-          scrollPositionID = target
-          proxy.scrollTo(target, anchor: .top)
-          suppressAnchorSave = false
-        }
       }
       .onChange(of: viewModel.currentSessionId) { _, _ in
         // Switching tabs swaps the whole message list; restore the new session's position after
