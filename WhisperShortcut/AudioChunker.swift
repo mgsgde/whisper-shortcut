@@ -25,6 +25,18 @@ struct AudioChunk {
     }
 }
 
+/// Bundles the expected total chunk count with the producing stream so callers can
+/// initialize progress UI before any chunk has been exported. The count is exact (derived
+/// from `ceil(duration / chunkDuration)`), not an estimate.
+struct AudioChunkStream {
+    /// Number of chunks the stream will yield (1 on the single-chunk fast path).
+    let expectedCount: Int
+    /// Yields `AudioChunk`s as each is exported. Finishes with `.failure` if a chunk
+    /// export throws; finishes normally otherwise. Cancelling the consumer terminates
+    /// the underlying producer task via `onTermination`.
+    let stream: AsyncThrowingStream<AudioChunk, Error>
+}
+
 /// Errors that can occur during audio chunking.
 enum AudioChunkerError: Error, LocalizedError {
     case invalidAudioFile
@@ -100,53 +112,69 @@ class AudioChunker {
         return duration > AppConstants.chunkingThresholdSeconds
     }
 
-    /// Split an audio file into overlapping chunks.
+    /// Split an audio file into overlapping chunks, streaming each chunk as soon as it
+    /// finishes exporting. Pipelines with the caller's transcription stage: while we're
+    /// exporting chunk N+1, the caller can already be uploading chunks 0..N.
     /// - Parameter fileURL: URL of the source audio file
-    /// - Returns: Array of AudioChunk objects, sorted by index
-    func splitAudio(fileURL: URL) async throws -> [AudioChunk] {
+    /// - Returns: An `AudioChunkStream` bundling the exact expected count with an
+    ///   `AsyncThrowingStream<AudioChunk, Error>` that yields one chunk per successful export.
+    func splitAudioStream(fileURL: URL) async throws -> AudioChunkStream {
         let asset = AVURLAsset(url: fileURL)
-
-        // Load duration
         let duration = try await asset.load(.duration)
         let totalDuration = CMTimeGetSeconds(duration)
 
-        // If audio is short enough, return as single chunk
+        // Single-chunk fast path: no real splitting, just yield the source URL once.
         if totalDuration <= chunkDuration + overlapDuration {
-            return [AudioChunk(url: fileURL, index: 0, startTime: 0, endTime: totalDuration)]
+            let stream = AsyncThrowingStream<AudioChunk, Error> { continuation in
+                continuation.yield(AudioChunk(url: fileURL, index: 0, startTime: 0, endTime: totalDuration))
+                continuation.finish()
+            }
+            return AudioChunkStream(expectedCount: 1, stream: stream)
         }
 
-        // Calculate chunk boundaries
-        var chunks: [AudioChunk] = []
-        var currentStart: TimeInterval = 0
-        var chunkIndex = 0
+        // Boundary count is deterministic — chunks advance by exactly chunkDuration until
+        // the source runs out, so `ceil(totalDuration / chunkDuration)` matches the loop below.
+        let expectedCount = Int((totalDuration / chunkDuration).rounded(.up))
 
-        while currentStart < totalDuration {
-            // Calculate chunk end (with overlap extending into next chunk's territory)
-            let chunkEnd = min(currentStart + chunkDuration, totalDuration)
-
-            // Export this chunk
-            let chunkURL = try await exportChunk(
-                from: asset,
-                sourceURL: fileURL,
-                start: currentStart,
-                end: min(chunkEnd + overlapDuration, totalDuration),
-                index: chunkIndex
-            )
-
-            chunks.append(AudioChunk(
-                url: chunkURL,
-                index: chunkIndex,
-                startTime: currentStart,
-                endTime: chunkEnd
-            ))
-
-            // Move to next chunk (overlap means we step back slightly for context)
-            currentStart = chunkEnd
-            chunkIndex += 1
+        let stream = AsyncThrowingStream<AudioChunk, Error> { continuation in
+            // `Task { ... }` does not propagate parent cancellation automatically, so we
+            // bridge it via `onTermination` below — when the consumer stops iterating
+            // (cancelled, error, or normal completion), the producer is cancelled too.
+            let task = Task {
+                do {
+                    var currentStart: TimeInterval = 0
+                    var chunkIndex = 0
+                    while currentStart < totalDuration {
+                        try Task.checkCancellation()
+                        let chunkEnd = min(currentStart + self.chunkDuration, totalDuration)
+                        let chunkURL = try await self.exportChunk(
+                            from: asset,
+                            sourceURL: fileURL,
+                            start: currentStart,
+                            end: min(chunkEnd + self.overlapDuration, totalDuration),
+                            index: chunkIndex
+                        )
+                        continuation.yield(AudioChunk(
+                            url: chunkURL,
+                            index: chunkIndex,
+                            startTime: currentStart,
+                            endTime: chunkEnd
+                        ))
+                        currentStart = chunkEnd
+                        chunkIndex += 1
+                    }
+                    DebugLogger.logDebug("Split audio into \(chunkIndex) chunks (total: \(String(format: "%.1f", totalDuration))s)")
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
         }
 
-        DebugLogger.logDebug("Split audio into \(chunks.count) chunks (total: \(String(format: "%.1f", totalDuration))s)")
-        return chunks
+        return AudioChunkStream(expectedCount: expectedCount, stream: stream)
     }
 
     /// Export a portion of an audio file to a new file.

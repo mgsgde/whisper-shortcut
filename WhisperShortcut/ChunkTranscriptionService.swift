@@ -83,7 +83,10 @@ class ChunkTranscriptionService {
 
     // MARK: - Public API
 
-    /// Transcribe an audio file using chunking if needed.
+    /// Transcribe an audio file using chunking if needed. Chunk export and transcription
+    /// upload are pipelined via `AudioChunker.splitAudioStream`: chunk N+1 is exported in
+    /// parallel with chunks 0..N already in flight against the API, eliminating the
+    /// "wait for all chunks to be split before any upload" delay on long recordings.
     /// - Parameters:
     ///   - fileURL: URL of the audio file
     ///   - credential: Gemini API credential (API key)
@@ -98,36 +101,23 @@ class ChunkTranscriptionService {
     ) async throws -> String {
         let startTime = CFAbsoluteTimeGetCurrent()
 
-        // Split audio into chunks
-        let chunks: [AudioChunk]
+        let chunkStream: AudioChunkStream
         do {
-            chunks = try await chunker.splitAudio(fileURL: fileURL)
+            chunkStream = try await chunker.splitAudioStream(fileURL: fileURL)
         } catch {
             throw ChunkedTranscriptionError.chunkingFailed(error)
         }
 
-        DebugLogger.log("CHUNK-SERVICE: Split into \(chunks.count) chunks")
+        DebugLogger.log("CHUNK-SERVICE: Streaming split, expected \(chunkStream.expectedCount) chunks")
 
-        // Notify delegate
         await MainActor.run {
-            progressDelegate?.chunkingStarted(totalChunks: chunks.count)
+            progressDelegate?.chunkingStarted(totalChunks: chunkStream.expectedCount)
         }
 
-        // If only one chunk, process directly
-        if chunks.count == 1 {
-            let result = try await transcribeChunk(
-                chunk: chunks[0],
-                credential: credential,
-                model: model,
-                prompt: prompt,
-                totalChunks: 1
-            )
-            return result.text
-        }
-
-        // Transcribe chunks in parallel
-        let transcripts = try await transcribeParallel(
-            chunks: chunks,
+        // Pipelined transcription: producer (chunker) and consumers (transcribe tasks) run
+        // concurrently inside the same task group.
+        let (transcripts, yieldedChunks) = try await transcribeParallel(
+            chunkStream: chunkStream,
             credential: credential,
             model: model,
             prompt: prompt
@@ -141,62 +131,69 @@ class ChunkTranscriptionService {
             progressDelegate?.mergingStarted()
         }
 
-        // Merge transcripts
         let result = TranscriptMerger.merge(transcripts)
 
         let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
         DebugLogger.log("CHUNK-SERVICE: Total transcription time: \(String(format: "%.2f", elapsedTime))s")
 
-        // Cleanup chunk files
-        chunker.cleanup(chunks: chunks)
+        chunker.cleanup(chunks: yieldedChunks)
 
         return result
     }
 
     // MARK: - Parallel Processing
 
+    /// Drives the producer/consumer pipeline. The outer `for try await chunk in stream`
+    /// suspends between exports — while suspended, transcribe tasks already in the group
+    /// run in parallel. After the splitter finishes, the second loop drains results.
     private func transcribeParallel(
-        chunks: [AudioChunk],
+        chunkStream: AudioChunkStream,
         credential: GeminiCredential,
         model: TranscriptionModel,
         prompt: String
-    ) async throws -> [ChunkTranscript] {
-        let totalChunks = chunks.count
-
-        // Use actor for thread-safe accumulation
+    ) async throws -> (transcripts: [ChunkTranscript], chunks: [AudioChunk]) {
+        let totalChunks = chunkStream.expectedCount
         let accumulator = ResultAccumulator()
+        var yieldedChunks: [AudioChunk] = []
 
         try await withThrowingTaskGroup(of: Result<ChunkTranscript, Error>.self) { group in
-            for chunk in chunks {
-                group.addTask { [self] in
-                    // Notify delegate that chunk is now actively processing
-                    await MainActor.run {
-                        self.progressDelegate?.chunkStarted(index: chunk.index)
-                    }
-
-                    do {
-                        let transcript = try await self.transcribeChunk(
-                            chunk: chunk,
-                            credential: credential,
-                            model: model,
-                            prompt: prompt,
-                            totalChunks: totalChunks
-                        )
-                        return .success(transcript)
-                    } catch {
-                        return .failure(ChunkError(index: chunk.index, error: error))
+            // Producer-side: drain the splitter stream and dispatch a transcribe task per
+            // chunk. Splitter errors are wrapped as `chunkingFailed`; cancellation re-throws
+            // as-is. Transcription errors don't surface here — they land in `Result.failure`.
+            do {
+                for try await chunk in chunkStream.stream {
+                    yieldedChunks.append(chunk)
+                    group.addTask { [self] in
+                        await MainActor.run {
+                            self.progressDelegate?.chunkStarted(index: chunk.index)
+                        }
+                        do {
+                            let transcript = try await self.transcribeChunk(
+                                chunk: chunk,
+                                credential: credential,
+                                model: model,
+                                prompt: prompt,
+                                totalChunks: totalChunks
+                            )
+                            return .success(transcript)
+                        } catch {
+                            return .failure(ChunkError(index: chunk.index, error: error))
+                        }
                     }
                 }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw ChunkedTranscriptionError.chunkingFailed(error)
             }
 
-            // Collect results
+            // Drain side: collect results as transcribe tasks complete.
             for try await result in group {
                 let currentCompleted = await accumulator.incrementCompleted()
 
                 switch result {
                 case .success(let transcript):
                     await accumulator.addTranscript(transcript)
-
                     await MainActor.run { [currentCompleted] in
                         self.progressDelegate?.chunkProgressUpdated(
                             completed: currentCompleted,
@@ -211,7 +208,6 @@ class ChunkTranscriptionService {
                 case .failure(let error):
                     if let chunkError = error as? ChunkError {
                         await accumulator.addError(index: chunkError.index, error: chunkError.error)
-
                         await MainActor.run { [currentCompleted] in
                             self.progressDelegate?.chunkProgressUpdated(
                                 completed: currentCompleted,
@@ -228,13 +224,10 @@ class ChunkTranscriptionService {
             }
         }
 
-        // Get final results
         let transcripts = await accumulator.getTranscripts()
         let errors = await accumulator.getErrors()
 
-        // Handle results
         if transcripts.isEmpty {
-            // Check if all errors are cancellation errors - if so, propagate as CancellationError
             let allCancelled = errors.allSatisfy { $0.error is CancellationError }
             if allCancelled {
                 DebugLogger.log("CHUNK-SERVICE: All chunks were cancelled - propagating cancellation")
@@ -244,13 +237,11 @@ class ChunkTranscriptionService {
         }
 
         if !errors.isEmpty {
-            // Partial success - log warning but return what we have
             let failedIndices = errors.map { $0.index }
             DebugLogger.logWarning("CHUNK-SERVICE: Partial success - \(failedIndices.count) chunks failed: \(failedIndices)")
-            // The caller can decide how to handle partial results
         }
 
-        return transcripts.sorted { $0.index < $1.index }
+        return (transcripts.sorted { $0.index < $1.index }, yieldedChunks)
     }
 
     // MARK: - Single Chunk Processing

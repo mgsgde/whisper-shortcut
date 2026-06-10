@@ -66,9 +66,18 @@ final class StreamingBuffer: ObservableObject {
 @MainActor
 class ChatViewModel: ObservableObject {
   @Published var messages: [ChatMessage] = []
-  /// Fires before the visible list mutates so `ChatView` can clear its local `.scrollPosition`
-  /// binding (see `clearScrollAnchorForListMutation()`). Signal, not state — emitted via
-  /// `PassthroughSubject` and consumed by `.onReceive` in the view.
+  /// Send before mutating the visible message list so `ChatView` clears its local
+  /// `.scrollPosition` binding. Signal, not state — emitted via `PassthroughSubject` and
+  /// consumed by `.onReceive` in the view.
+  ///
+  /// With a non-nil anchor id, every mutation of `messages` makes the lazy list re-anchor by
+  /// resolving that id during layout (`LazySubviewPlacements.makeIDPlacementContextIfNeeded`).
+  /// In long sessions that layout pass can fail to converge and wedge the main thread at
+  /// 100% CPU inside a single transaction (observed 2026-06-04: app froze right after
+  /// CHAT-SEND; a `sample` showed every frame resolving the scrollPosition matchingID).
+  /// Clearing the binding removes the id-anchoring work entirely: the scroll offset is
+  /// preserved by the ScrollView's default behavior and the persisted reading position
+  /// (`scrollAnchors`) is untouched — it repopulates on the next user scroll.
   let scrollAnchorClearSignal = PassthroughSubject<Void, Never>()
   @Published var inputText: String = ""
   @Published private(set) var sendingSessionIds: Set<UUID> = []
@@ -190,9 +199,10 @@ class ChatViewModel: ObservableObject {
   /// Live streaming bubbles keyed by their placeholder message id. Per-token updates write into
   /// `buffer.content` (a separate `ObservableObject`), not into `messages`, so a fast stream
   /// only re-renders the one bubble that observes its buffer — no `LazyVStack` diff, no
-  /// session/messages `@Published` ripple. The dict itself is `@Published`, but it only mutates
-  /// on stream start/end (register/unregister), not per token.
-  @Published private(set) var streamingBuffers: [UUID: StreamingBuffer] = [:]
+  /// session/messages `@Published` ripple. Not `@Published`: every attach/detach is paired with
+  /// a `messages` mutation in the same MainActor sync window, so SwiftUI re-reads the dict on
+  /// that re-render — a second emission here would be redundant.
+  private(set) var streamingBuffers: [UUID: StreamingBuffer] = [:]
 
   /// Returns true if the given session has an in-flight request (for tab spinner).
   func isSendingSession(_ id: UUID) -> Bool { sendingSessionIds.contains(id) }
@@ -438,7 +448,7 @@ class ChatViewModel: ObservableObject {
     target.messages.removeSubrange(index...)
     target.lastUpdated = Date()
     store.save(target)
-    clearScrollAnchorForListMutation()
+    scrollAnchorClearSignal.send()
     session = target
     messages = target.messages
     errorMessage = nil
@@ -804,30 +814,13 @@ class ChatViewModel: ObservableObject {
       } catch is CancellationError {
         let superseded = self.supersedingSessionIds.contains(sessionId)
         DebugLogger.log("CHAT: Send cancelled (superseded=\(superseded))")
-        self.detachStreamingBuffer(for: placeholderId)
-        let partial = markerPrefix + streamed
-        if partial.isEmpty || superseded {
-          self.removeMessage(id: placeholderId, fromSessionId: sessionId)
-        } else {
-          // The partial text only ever lived in the streaming buffer, never in `messages`;
-          // commit it now so the bubble doesn't snap back to empty after detach and a quit
-          // right after Stop restores the kept text rather than an empty assistant bubble.
-          self.updateStreamingMessage(
-            id: placeholderId, sessionId: sessionId,
-            content: partial, sources: [], supports: [])
-        }
+        self.commitPartialOrRemove(
+          placeholderId: placeholderId, sessionId: sessionId,
+          partial: markerPrefix + streamed, forceRemove: superseded)
       } catch {
-        // Same reasoning as the cancellation branch: detach the buffer and commit whatever
-        // streamed before the error so the bubble doesn't render as empty.
-        self.detachStreamingBuffer(for: placeholderId)
-        let partial = markerPrefix + streamed
-        if partial.isEmpty {
-          self.removeMessage(id: placeholderId, fromSessionId: sessionId)
-        } else {
-          self.updateStreamingMessage(
-            id: placeholderId, sessionId: sessionId,
-            content: partial, sources: [], supports: [])
-        }
+        self.commitPartialOrRemove(
+          placeholderId: placeholderId, sessionId: sessionId,
+          partial: markerPrefix + streamed, forceRemove: false)
         if sessionId == session.id { errorMessage = friendlyError(error) }
         DebugLogger.logError("CHAT: \(error.localizedDescription)")
       }
@@ -1182,9 +1175,29 @@ class ChatViewModel: ObservableObject {
       store.save(target)
     }
     if isCurrentSession {
-      clearScrollAnchorForListMutation()
+      scrollAnchorClearSignal.send()
       session = target
       messages = target.messages
+    }
+  }
+
+  /// Terminal path for a stream that ended before a clean finalization (cancelled or threw).
+  /// Detaches the streaming buffer and either commits the partial text into the message or
+  /// removes the placeholder entirely. The partial only ever lived in the streaming buffer,
+  /// never in `messages`; committing it now keeps the kept text visible (and persisted across
+  /// a quit-after-Stop) instead of snapping to empty when the bubble swaps to its
+  /// non-streaming render path. `forceRemove` is set on the cancel-superseded path so the
+  /// partial doesn't pollute the history of the replacement request.
+  private func commitPartialOrRemove(
+    placeholderId: UUID, sessionId: UUID, partial: String, forceRemove: Bool
+  ) {
+    detachStreamingBuffer(for: placeholderId)
+    if partial.isEmpty || forceRemove {
+      removeMessage(id: placeholderId, fromSessionId: sessionId)
+    } else {
+      updateStreamingMessage(
+        id: placeholderId, sessionId: sessionId,
+        content: partial, sources: [], supports: [])
     }
   }
 
@@ -1202,22 +1215,6 @@ class ChatViewModel: ObservableObject {
   private func detachStreamingBuffer(for messageId: UUID) {
     streamingBuffers[messageId]?.cancelPending()
     streamingBuffers.removeValue(forKey: messageId)
-  }
-
-  /// Clears the `.scrollPosition` anchor before mutating the visible message list.
-  ///
-  /// With a non-nil anchor id, every mutation of `messages` makes the lazy list re-anchor by
-  /// resolving that id during layout (`LazySubviewPlacements.makeIDPlacementContextIfNeeded`).
-  /// In long sessions that layout pass can fail to converge and wedge the main thread at
-  /// 100% CPU inside a single transaction (observed 2026-06-04: app froze right after
-  /// CHAT-SEND; a `sample` showed every frame resolving the scrollPosition matchingID).
-  /// Clearing the binding removes the id-anchoring work entirely: the scroll offset is
-  /// preserved by the ScrollView's default behavior and the persisted reading position
-  /// (`scrollAnchors`) is untouched — it repopulates on the next user scroll.
-  /// No logging here: this runs on every streamed token (via `updateStreamingMessage`),
-  /// so a per-call log line would flood the log thousands of times per reply.
-  private func clearScrollAnchorForListMutation() {
-    scrollAnchorClearSignal.send()
   }
 
   /// Appends a message to the session identified by `sessionId`.
@@ -1247,7 +1244,7 @@ class ChatViewModel: ObservableObject {
     if isCurrentSession {
       DebugLogger.logUI(
         "CHAT-LIST: append role=\(message.role) count=\(target.messages.count) session=\(sessionId)")
-      clearScrollAnchorForListMutation()
+      scrollAnchorClearSignal.send()
       session = target
       messages = target.messages
     }
@@ -1266,7 +1263,7 @@ class ChatViewModel: ObservableObject {
     target.messages.removeAll { $0.id == id }
     store.save(target)
     if isCurrentSession {
-      clearScrollAnchorForListMutation()
+      scrollAnchorClearSignal.send()
       session = target
       messages = target.messages
     }
