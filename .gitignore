@@ -72,6 +72,10 @@ Carthage/Build/
 Dependencies/
 .accio/
 
+# App Store Connect CLI (asc) — never commit API keys or local asc config
+.asc/
+AuthKey_*.p8
+
 # fastlane
 #
 # It is recommended to not store the screenshots in the git repo.
