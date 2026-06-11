@@ -113,26 +113,43 @@ enum MarkdownParsing {
   }
 
   /// Inserts a paragraph break before — and a space after — a bold section header
-  /// (`**…:**`) that a model glued directly onto surrounding text with no separator,
-  /// e.g. `…frei befahrbar.**Die Sperrung …:**Die Vollsperrung…`. Restricted to bold
-  /// spans that end in `:` (a section-label signal) so ordinary mid-sentence emphasis
-  /// is left alone. Idempotent: only fires where the header touches a non-space char,
-  /// so already-separated headers and re-runs are no-ops.
+  /// that a model glued directly onto surrounding text with no separator. Covers two
+  /// label shapes:
+  ///   A. `**Heading:**` — colon inside the bold span. Example:
+  ///      `…frei befahrbar.**Die Sperrung …:**Die Vollsperrung…`
+  ///   B. `**Heading** *(meta)*:` — colon after an italic parenthetical (the App Store-
+  ///      style metadata shape, e.g. `**Untertitel** *(29 von 30 Zeichen)*:Diktieren…`).
+  /// Both variants require `:` as the section-label signal so ordinary mid-sentence
+  /// emphasis is left alone. Idempotent: only fires where the header touches a non-space
+  /// char, so already-separated headers and re-runs are no-ops.
   static func splitInlineSectionHeadings(_ content: String) -> String {
     // Boundary classes exclude `*` so a bold-italic `***…:***` run is never split apart
     // (a bare `\S` would match its leading/trailing asterisk).
-    // 1. Paragraph break before a header glued to preceding text.
-    let withBreaks = regexReplace(
-      content,
+    var result = content
+    // Variant A — paragraph break before / space after a `**Heading:**` header.
+    result = regexReplace(
+      result,
       pattern: "([^\\s*])(\\*\\*[^*\\n]+:\\*\\*)",
       template: "$1\n\n$2"
     )
-    // 2. Space after a header glued to the following body text.
-    return regexReplace(
-      withBreaks,
+    result = regexReplace(
+      result,
       pattern: "(\\*\\*[^*\\n]+:\\*\\*)([^\\s*])",
       template: "$1 $2"
     )
+    // Variant B — same treatment for `**Heading** *(meta)*:` headers. Restricted to
+    // a single-line bold + single-line italic so multi-line emphasis spans aren't touched.
+    result = regexReplace(
+      result,
+      pattern: "([^\\s*])(\\*\\*[^*\\n]+\\*\\*\\s+\\*[^*\\n]+\\*\\s*:)",
+      template: "$1\n\n$2"
+    )
+    result = regexReplace(
+      result,
+      pattern: "(\\*\\*[^*\\n]+\\*\\*\\s+\\*[^*\\n]+\\*\\s*:)([^\\s])",
+      template: "$1 $2"
+    )
+    return result
   }
 
   /// Inserts blank lines so bold section headers and bullet lists are never collapsed

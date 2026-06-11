@@ -1,4 +1,4 @@
-# WhisperShortcut 7.59
+# WhisperShortcut 7.60
 
 ## Installation
 
@@ -8,6 +8,6 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ### Fixes
 
-- **No more empty-list flash when sending a new chat message.** In long sessions the message list could briefly clear out the moment you pressed Send, leaving only the typing indicator visible until the response started streaming. Cause: the scroll-anchor reset that protects against a SwiftUI layout wedge was being applied on every list mutation — including plain appends, where it isn't needed. The reset now only runs on the paths where an anchored message could actually disappear (removals, retries, finalization), and the visible list stays put on Send.
+- **Cleaner chat formatting for labeled-list answers.** When the model emitted labels in the shape `**Heading** *(meta)*: value` (e.g. App Store-style metadata blocks like `**Untertitel** *(29 von 30 Zeichen)*: …`) with no separator from the preceding value, the renderer was running them into a single line and dropping the post-colon space. Each label now gets its own line and a normal space before its value.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.58...v7.59
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.59...v7.60
