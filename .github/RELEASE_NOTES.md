@@ -1,4 +1,4 @@
-# WhisperShortcut 7.60
+# WhisperShortcut 7.61
 
 ## Installation
 
@@ -6,8 +6,12 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ## What's New
 
+### Diagnostics
+
+- **Save raw assistant responses to disk.** New opt-in toggle in Settings → General (Reset section): when enabled, each final chat reply is written as a `.md` file under Application Support so markdown-rendering bugs can be reproduced from the exact model output. Off by default.
+
 ### Fixes
 
-- **Cleaner chat formatting for labeled-list answers.** When the model emitted labels in the shape `**Heading** *(meta)*: value` (e.g. App Store-style metadata blocks like `**Untertitel** *(29 von 30 Zeichen)*: …`) with no separator from the preceding value, the renderer was running them into a single line and dropping the post-colon space. Each label now gets its own line and a normal space before its value.
+- **Multi-line numbered and bullet lists in chat.** List items that continue on indented lines (e.g. `1. **Heading:**` followed by a wrapped value on the next line) now render as a single bullet instead of falling back to plain text.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.59...v7.60
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.60...v7.61

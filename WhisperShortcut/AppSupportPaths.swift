@@ -42,4 +42,13 @@ enum AppSupportPaths {
     let libraryDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
     return libraryDir.appendingPathComponent("Logs/WhisperShortcut")
   }
+
+  /// Opt-in dump location for raw final assistant responses. Off by default; gated by
+  /// `UserDefaultsKeys.saveRawAssistantResponses`. Files written here are 1:1 model output
+  /// (post image-marker strip) — meant for diagnosing markdown rendering, not telemetry.
+  static func debugRawResponsesURL() -> URL {
+    whisperShortcutApplicationSupportURL()
+      .appendingPathComponent("Debug")
+      .appendingPathComponent("raw-responses")
+  }
 }

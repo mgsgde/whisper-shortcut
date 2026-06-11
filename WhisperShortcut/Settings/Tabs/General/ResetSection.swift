@@ -10,6 +10,8 @@ struct ResetSection: View {
   @ObservedObject var viewModel: SettingsViewModel
   @Binding var showResetToDefaultsConfirmation: Bool
 
+  @AppStorage(UserDefaultsKeys.saveRawAssistantResponses) private var saveRawAssistantResponses = false
+
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
@@ -43,6 +45,20 @@ struct ResetSection: View {
         .pointerCursorOnHover()
       }
       .frame(maxWidth: .infinity, alignment: .leading)
+
+      VStack(alignment: .leading, spacing: 6) {
+        Toggle("Save raw assistant responses to disk", isOn: $saveRawAssistantResponses)
+          .help("Diagnostics: dumps each final chat response as a .md file so markdown-rendering bugs can be reproduced from the exact model output. Off by default.")
+        if saveRawAssistantResponses {
+          Button(action: { openRawResponsesFolderInFinder() }) {
+            Label("Open raw responses folder", systemImage: "folder.badge.gearshape")
+              .font(.callout)
+          }
+          .buttonStyle(.bordered)
+          .pointerCursorOnHover()
+        }
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 
@@ -54,6 +70,12 @@ struct ResetSection: View {
 
   private func openLogsFolderInFinder() {
     let url = AppSupportPaths.logsURL()
+    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    NSWorkspace.shared.open(url)
+  }
+
+  private func openRawResponsesFolderInFinder() {
+    let url = AppSupportPaths.debugRawResponsesURL()
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     NSWorkspace.shared.open(url)
   }

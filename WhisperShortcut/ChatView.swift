@@ -803,9 +803,11 @@ class ChatViewModel: ObservableObject {
         DebugLogger.log("CHAT-SEND: final UI update committed session=\(sessionId)")
         let result = (text: reply, sources: finalSources, supports: finalSupports)
         // Strip generated-image markers (multi-MB base64) before the interaction log.
+        let strippedReply = GeminiAPIClient.stripImageMarkers(result.text)
+        DebugRawResponses.saveIfEnabled(content: strippedReply, model: model)
         ContextLogger.shared.logChat(
           userMessage: content,
-          modelResponse: GeminiAPIClient.stripImageMarkers(result.text),
+          modelResponse: strippedReply,
           model: model)
         if let s = store.session(by: sessionId), s.messages.count == 2, !s.isMeeting {
           Task { await generateAITitle(sessionId: sessionId) }
@@ -3950,13 +3952,27 @@ private struct ModelReplyView: View {
   /// Parses a paragraph block that consists entirely of bullet/numbered-list lines.
   /// Returns individual attributed strings for each bullet item, or nil if not a bullet block.
   private static func parseBulletItems(_ trimmed: String) -> [AttributedString]? {
-    let lines = trimmed.components(separatedBy: .newlines)
-      .map { $0.trimmingCharacters(in: .whitespaces) }
-      .filter { !$0.isEmpty }
-    guard !lines.isEmpty, lines.allSatisfy({ MarkdownParsing.parseBullet($0) != nil }) else { return nil }
+    // Group indented continuation lines under the previous bullet so multi-line list items
+    // (a common pattern in numbered lists like `1. **Heading:**\n   continuation`) are
+    // rendered as a single bullet instead of being rejected by an all-or-nothing check.
+    let rawLines = trimmed.components(separatedBy: .newlines)
+    var groups: [String] = []
+    for line in rawLines {
+      let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+      if trimmedLine.isEmpty { continue }
+      if MarkdownParsing.parseBullet(trimmedLine) != nil {
+        groups.append(trimmedLine)
+      } else if let first = line.first, first.isWhitespace {
+        if groups.isEmpty { return nil }
+        groups[groups.count - 1] += " " + trimmedLine
+      } else {
+        return nil
+      }
+    }
+    guard !groups.isEmpty else { return nil }
     let opts = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-    return lines.compactMap { line in
-      guard let parsed = MarkdownParsing.parseBullet(line) else { return nil }
+    return groups.compactMap { group in
+      guard let parsed = MarkdownParsing.parseBullet(group) else { return nil }
       let rawContent = parsed.trimmingCharacters(in: .whitespaces)
       let content = MarkdownParsing.renderLatexToUnicode(rawContent)
       var contentAttr = MarkdownParsing.inlineAttributedString(content, options: opts)

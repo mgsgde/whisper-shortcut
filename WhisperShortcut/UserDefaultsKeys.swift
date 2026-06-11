@@ -79,6 +79,10 @@ enum UserDefaultsKeys {
   
   // MARK: - Debug (commented out in code, kept for reference)
   static let enableDebugTestMenu = "enableDebugTestMenu"
+  /// When true, the final assistant response of each chat send is written as a `.md`
+  /// file under `AppSupportPaths.debugRawResponsesURL()`. Used to reproduce markdown
+  /// rendering bugs without instrumenting code each time. Off by default.
+  static let saveRawAssistantResponses = "saveRawAssistantResponses"
 
   // MARK: - Live Meeting Settings
   static let meetingTranscriptSectionExpanded = "meetingTranscriptSectionExpanded"
