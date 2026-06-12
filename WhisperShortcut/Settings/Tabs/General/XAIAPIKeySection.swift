@@ -14,7 +14,7 @@ struct XAIAPIKeySection: View {
           subtitle: "Add an xAI API key to use Grok models in the chat window. Get a key from the xAI console (link below)."
         )
         Spacer()
-        APIKeyStatusChip(isConnected: !xaiAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        APIKeyStatusBadge(provider: .xai, key: xaiAPIKey)
       }
 
       HStack(alignment: .center, spacing: 16) {

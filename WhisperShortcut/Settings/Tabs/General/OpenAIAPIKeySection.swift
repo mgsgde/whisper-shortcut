@@ -14,7 +14,7 @@ struct OpenAIAPIKeySection: View {
           subtitle: "Add an OpenAI API key to use OpenAI's transcription models (gpt-4o-transcribe, gpt-4o-mini-transcribe). Get a key from the OpenAI platform (link below)."
         )
         Spacer()
-        APIKeyStatusChip(isConnected: !openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        APIKeyStatusBadge(provider: .openai, key: openAIAPIKey)
       }
 
       HStack(alignment: .center, spacing: 16) {

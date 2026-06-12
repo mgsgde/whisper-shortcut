@@ -20,7 +20,7 @@ struct GoogleAPIKeySection: View {
           subtitle: "Or use a Google API key (billed to your account). Get a key from Google AI Studio (link below)."
         )
         Spacer()
-        APIKeyStatusChip(isConnected: !viewModel.data.googleAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        APIKeyStatusBadge(provider: .google, key: viewModel.data.googleAPIKey)
       }
 
       HStack(alignment: .center, spacing: 16) {
