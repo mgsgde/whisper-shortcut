@@ -1,4 +1,6 @@
-# WhisperShortcut 7.61
+# WhisperShortcut 7.62
+
+A Settings redesign focused on clarity, plus live API‑key verification.
 
 ## Installation
 
@@ -6,12 +8,22 @@ Download the latest `WhisperShortcut.app` from the [releases page](https://githu
 
 ## What's New
 
-### Diagnostics
+### API keys you can trust at a glance
 
-- **Save raw assistant responses to disk.** New opt-in toggle in Settings → General (Reset section): when enabled, each final chat reply is written as a `.md` file under Application Support so markdown-rendering bugs can be reproduced from the exact model output. Off by default.
+- Each API‑key field now shows a live status badge: **Connected**, **Invalid key**, **Checking…**, or **Unverified**.
+- The key is verified directly with the provider (Google, OpenAI, xAI), so a typo or expired key is caught immediately instead of failing later mid‑transcription. Being offline never falsely flags a good key.
+
+### Clearer, calmer Settings
+
+- **Model pickers are now grouped.** Transcription models are split into **Cloud** (needs an API key) and **Offline** (runs on your Mac); chat models are grouped by provider, with image‑generation models in their own section.
+- **Recommended models** are marked with a star right on the tile, and tiles highlight on hover.
+- **The General tab was split** into focused tabs: **General** (API keys + behavior), **Smart Improvement**, and **About** — which also includes a one‑glance overview of every keyboard shortcut.
+- **Native icons** replace emoji throughout Settings for a cleaner, more Mac‑like look.
+- The Settings window **no longer closes when it loses focus** by default (you can switch this back on).
 
 ### Fixes
 
-- **Multi-line numbered and bullet lists in chat.** List items that continue on indented lines (e.g. `1. **Heading:**` followed by a wrapped value on the next line) now render as a single bullet instead of falling back to plain text.
+- Smart Improvement and Meeting Summary no longer offer models that can't do the job (audio‑only or image‑generation models).
+- Reliability fixes for usage‑based improvements and interaction logging (live‑summary safeguards, calendar error hints, hang capture, and Markdown rendering).
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.60...v7.61
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.61...v7.62
