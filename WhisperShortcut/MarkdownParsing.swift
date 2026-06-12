@@ -123,32 +123,22 @@ enum MarkdownParsing {
   /// emphasis is left alone. Idempotent: only fires where the header touches a non-space
   /// char, so already-separated headers and re-runs are no-ops.
   static func splitInlineSectionHeadings(_ content: String) -> String {
+    // No bold markers at all → there is no header to split; skip every pass.
+    guard content.contains("**") else { return content }
+    // Both variants get the same treatment — break the paragraph before a glued header
+    // and add a space after it — so they share one loop over their header-span patterns.
     // Boundary classes exclude `*` so a bold-italic `***…:***` run is never split apart
-    // (a bare `\S` would match its leading/trailing asterisk).
+    // (a bare `\S` would match its leading/trailing asterisk). Variant B keeps a distinct
+    // after-class (`[^\s]`, not `[^\s*]`) so a header followed by inline emphasis still fires.
+    let headerShapes: [(span: String, afterClass: String)] = [
+      ("\\*\\*[^*\\n]+:\\*\\*", "[^\\s*]"),                      // A: `**Heading:**`
+      ("\\*\\*[^*\\n]+\\*\\*\\s+\\*[^*\\n]+\\*\\s*:", "[^\\s]"), // B: `**Heading** *(meta)*:`
+    ]
     var result = content
-    // Variant A — paragraph break before / space after a `**Heading:**` header.
-    result = regexReplace(
-      result,
-      pattern: "([^\\s*])(\\*\\*[^*\\n]+:\\*\\*)",
-      template: "$1\n\n$2"
-    )
-    result = regexReplace(
-      result,
-      pattern: "(\\*\\*[^*\\n]+:\\*\\*)([^\\s*])",
-      template: "$1 $2"
-    )
-    // Variant B — same treatment for `**Heading** *(meta)*:` headers. Restricted to
-    // a single-line bold + single-line italic so multi-line emphasis spans aren't touched.
-    result = regexReplace(
-      result,
-      pattern: "([^\\s*])(\\*\\*[^*\\n]+\\*\\*\\s+\\*[^*\\n]+\\*\\s*:)",
-      template: "$1\n\n$2"
-    )
-    result = regexReplace(
-      result,
-      pattern: "(\\*\\*[^*\\n]+\\*\\*\\s+\\*[^*\\n]+\\*\\s*:)([^\\s])",
-      template: "$1 $2"
-    )
+    for shape in headerShapes {
+      result = regexReplace(result, pattern: "([^\\s*])(\(shape.span))", template: "$1\n\n$2")
+      result = regexReplace(result, pattern: "(\(shape.span))(\(shape.afterClass))", template: "$1 $2")
+    }
     return result
   }
 
