@@ -77,6 +77,16 @@ class MenuBarController: NSObject {
   private var liveMeetingPreferredName: String?
   /// Set to true after showing rate-limit popup once this session so we don't spam.
   private var liveMeetingDidShowRateLimitAlert: Bool = false
+  /// Consecutive rolling-summary failures (e.g. sustained Gemini 503). Reset to 0 on any success.
+  private var liveMeetingConsecutiveSummaryFailures: Int = 0
+  /// True once the rolling-summary circuit-breaker has tripped: we stop scheduling further
+  /// rolling updates for this session (the final summary is still attempted at end). Prevents
+  /// hammering an unavailable model dozens of times during one meeting.
+  private var liveMeetingSummaryCircuitOpen: Bool = false
+  /// Set to true after showing the "summary unavailable" popup once this session so we don't spam.
+  private var liveMeetingDidShowSummaryFailureAlert: Bool = false
+  /// Consecutive rolling-summary failures before the circuit-breaker opens and we notify the user.
+  private let liveMeetingSummaryFailureThreshold = 3
   /// When true, finishLiveMeetingSession will delete the transcript instead of saving.
   private var liveMeetingDiscard: Bool = false
 
@@ -819,6 +829,9 @@ class MenuBarController: NSObject {
     liveMeetingAwaitingFinalChunk = false
     liveMeetingPendingChunks = 0
     liveMeetingDidShowRateLimitAlert = false
+    liveMeetingConsecutiveSummaryFailures = 0
+    liveMeetingSummaryCircuitOpen = false
+    liveMeetingDidShowSummaryFailureAlert = false
     appState = .recording(.liveMeeting)
     if resuming && !existingChunks.isEmpty {
       LiveMeetingTranscriptStore.shared.resumeSession()
@@ -997,6 +1010,14 @@ class MenuBarController: NSObject {
           }
         } catch {
           DebugLogger.logError("LIVE-MEETING: Generate summary failed: \(error.localizedDescription)")
+          // Don't lose the summary silently: the transcript is saved, so tell the user it can be
+          // regenerated from the meeting library (the recovery path handles a transient outage).
+          await MainActor.run {
+            PopupNotificationWindow.showError(
+              "The meeting transcript was saved, but the summary couldn't be generated (the summary model is unavailable). You can regenerate it from the meeting library when the service is back.",
+              title: "Live Meeting – Summary Failed"
+            )
+          }
         }
       }
     }
@@ -1113,6 +1134,11 @@ class MenuBarController: NSObject {
   /// Once `liveMeetingRollingSummaryChunkThreshold` new chunks have arrived since the last
   /// summary update, kick off a rolling summary refresh (async).
   private func triggerRollingSummaryUpdateIfNeeded() {
+    // Circuit-breaker: after repeated failures (e.g. a sustained model outage) we stop firing
+    // rolling updates for the rest of the session instead of retrying every threshold for an hour.
+    // The end-of-meeting summary is still attempted once in finishLiveMeetingSession.
+    guard !liveMeetingSummaryCircuitOpen else { return }
+
     liveMeetingChunksSinceSummary += 1
     guard liveMeetingChunksSinceSummary >= AppConstants.liveMeetingRollingSummaryChunkThreshold else { return }
 
@@ -1151,6 +1177,7 @@ class MenuBarController: NSObject {
         if let url = self.liveMeetingTranscriptURL, !trimmed.isEmpty {
           MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: url)
         }
+        self.liveMeetingConsecutiveSummaryFailures = 0
         DebugLogger.log("LIVE-MEETING-SUMMARY: Rolling summary updated (\(updated.count) chars)")
       }
     } catch {
@@ -1159,6 +1186,22 @@ class MenuBarController: NSObject {
         // Roll back so the next attempt re-summarizes the same range.
         self.liveMeetingLastSummarizedChunkID = previousLastID
         self.liveMeetingChunksSinceSummary = 0
+        self.liveMeetingConsecutiveSummaryFailures += 1
+        // Trip the circuit-breaker after sustained failures: stop hammering the model for the
+        // rest of the session and tell the user once (the final summary is still attempted at end).
+        if self.liveMeetingConsecutiveSummaryFailures >= self.liveMeetingSummaryFailureThreshold
+          && !self.liveMeetingSummaryCircuitOpen {
+          self.liveMeetingSummaryCircuitOpen = true
+          DebugLogger.logWarning(
+            "LIVE-MEETING-SUMMARY: circuit-breaker tripped after \(self.liveMeetingConsecutiveSummaryFailures) consecutive failures — pausing live summary for this session")
+          if !self.liveMeetingDidShowSummaryFailureAlert {
+            self.liveMeetingDidShowSummaryFailureAlert = true
+            PopupNotificationWindow.showError(
+              "The live summary couldn't be updated (the summary model is unavailable). Recording continues normally; a summary will be generated when the meeting ends.",
+              title: "Live Meeting – Summary Paused"
+            )
+          }
+        }
       }
     }
   }
