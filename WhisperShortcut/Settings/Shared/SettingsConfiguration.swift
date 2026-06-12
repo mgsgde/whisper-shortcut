@@ -361,6 +361,13 @@ enum PromptModel: String, CaseIterable {
     return allCases.filter { $0.supportsTextChat }
   }
 
+  /// Chat models suitable for text-only tasks such as Smart Improvement: excludes
+  /// image-generation models (Nano Banana), which return images rather than the text
+  /// analysis these features need.
+  static var textChatModels: [PromptModel] {
+    return chatModels.filter { !$0.generatesImages }
+  }
+
   /// Models eligible for Dictate Prompt: every model that can accept inline audio directly.
   /// Gemini handles audio natively across all variants; OpenAI's GPT-4o Audio Preview handles
   /// it via `input_audio` content parts. Grok and text-only OpenAI models are excluded.

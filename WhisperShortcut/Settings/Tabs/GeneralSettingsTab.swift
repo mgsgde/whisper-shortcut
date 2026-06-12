@@ -235,9 +235,10 @@ struct GeneralSettingsTab: View {
               viewModel.data = d
             }
           ),
-          // Smart Improvement is a text task — offer every text-chat model (Gemini / OpenAI / xAI),
-          // not just the audio-capable Dictate-Prompt subset.
-          availableModels: PromptModel.chatModels,
+          // Smart Improvement is a text task — offer every text-producing chat model
+          // (Gemini / OpenAI / xAI), excluding image-generation models which return images,
+          // not the text analysis this feature needs.
+          availableModels: PromptModel.textChatModels,
           subscriptionMode: improvementSubscriptionMode,
           onModelChanged: {
             UserDefaults.standard.set(

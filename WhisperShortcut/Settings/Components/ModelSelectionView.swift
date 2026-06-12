@@ -52,30 +52,25 @@ struct ModelSelectionView: View {
           .padding(.vertical, 8)
       }
 
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
-        ForEach(models, id: \.self) { model in
-          let isDisabled = (geminiDisabled && model.isGemini) || (openAIDisabled && model.isOpenAI) || (xaiDisabled && model.isXAI)
-          ZStack {
-            Rectangle()
-              .fill(selectedTranscriptionModel == model ? Color.accentColor : Color.clear)
-              .cornerRadius(SettingsConstants.cornerRadius)
+      // Split the flat list into Cloud (needs an API key) and Offline (on-device Whisper)
+      // groups. When only one group is present we render a single plain grid so lists
+      // without offline models (or vice versa) keep their original look.
+      let cloudModels = models.filter { !$0.isOffline }
+      let offlineModels = models.filter { $0.isOffline }
+      let grouped = !cloudModels.isEmpty && !offlineModels.isEmpty
 
-            Text(model.displayName)
-              .font(.system(.body, design: .default))
-              .fontWeight(.medium)
-              .foregroundColor(selectedTranscriptionModel == model ? .white : (isDisabled ? .secondary : .primary))
-          }
-          .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
-          .contentShape(Rectangle())
-          .opacity(isDisabled ? 0.6 : 1)
-          .onTapGesture {
-            if isDisabled { return }
-            selectedTranscriptionModel = model
-            onModelChanged?()
-          }
-          .pointerCursorOnHover()
+      VStack(alignment: .leading, spacing: 0) {
+        if grouped {
+          groupHeader(symbol: "cloud", title: "Cloud", subtitle: "Fast · needs an API key")
+          modelGrid(cloudModels)
+          Divider().padding(.vertical, 10)
+          groupHeader(symbol: "desktopcomputer", title: "Offline", subtitle: "Private · runs on your Mac")
+          modelGrid(offlineModels)
+        } else {
+          modelGrid(models)
         }
       }
+      .padding(grouped ? 10 : 0)
       .background(Color(.controlBackgroundColor))
       .cornerRadius(8)
       .overlay(
@@ -138,6 +133,57 @@ struct ModelSelectionView: View {
         }
       }
     }
+  }
+
+  // MARK: - Group helpers
+
+  @ViewBuilder
+  private func groupHeader(symbol: String, title: String, subtitle: String) -> some View {
+    HStack(spacing: 6) {
+      Image(systemName: symbol)
+        .font(.caption)
+        .foregroundColor(.secondary)
+      Text(title)
+        .font(.callout)
+        .fontWeight(.semibold)
+      Text("· \(subtitle)")
+        .font(.caption)
+        .foregroundColor(.secondary)
+    }
+    .padding(.horizontal, 4)
+    .padding(.bottom, 6)
+  }
+
+  private func modelGrid(_ models: [TranscriptionModel]) -> some View {
+    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
+      ForEach(models, id: \.self) { model in
+        modelCell(model)
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func modelCell(_ model: TranscriptionModel) -> some View {
+    let isDisabled = (geminiDisabled && model.isGemini) || (openAIDisabled && model.isOpenAI) || (xaiDisabled && model.isXAI)
+    ZStack {
+      Rectangle()
+        .fill(selectedTranscriptionModel == model ? Color.accentColor : Color.clear)
+        .cornerRadius(SettingsConstants.cornerRadius)
+
+      Text(model.displayName)
+        .font(.system(.body, design: .default))
+        .fontWeight(.medium)
+        .foregroundColor(selectedTranscriptionModel == model ? .white : (isDisabled ? .secondary : .primary))
+    }
+    .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
+    .contentShape(Rectangle())
+    .opacity(isDisabled ? 0.6 : 1)
+    .onTapGesture {
+      if isDisabled { return }
+      selectedTranscriptionModel = model
+      onModelChanged?()
+    }
+    .pointerCursorOnHover()
   }
 
 }

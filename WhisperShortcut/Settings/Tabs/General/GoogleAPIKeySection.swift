@@ -13,10 +13,14 @@ struct GoogleAPIKeySection: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "🔑 Google API Key",
-        subtitle: "Or use a Google API key (billed to your account). Get a key from Google AI Studio (link below)."
-      )
+      HStack(alignment: .top) {
+        SectionHeader(
+          title: "🔑 Google API Key",
+          subtitle: "Or use a Google API key (billed to your account). Get a key from Google AI Studio (link below)."
+        )
+        Spacer()
+        APIKeyStatusChip(isConnected: !viewModel.data.googleAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
 
       HStack(alignment: .center, spacing: 16) {
         Text("API Key:")

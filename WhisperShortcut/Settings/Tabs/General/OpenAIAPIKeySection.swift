@@ -7,10 +7,14 @@ struct OpenAIAPIKeySection: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "🔑 OpenAI API Key",
-        subtitle: "Add an OpenAI API key to use OpenAI's transcription models (gpt-4o-transcribe, gpt-4o-mini-transcribe). Get a key from the OpenAI platform (link below)."
-      )
+      HStack(alignment: .top) {
+        SectionHeader(
+          title: "🔑 OpenAI API Key",
+          subtitle: "Add an OpenAI API key to use OpenAI's transcription models (gpt-4o-transcribe, gpt-4o-mini-transcribe). Get a key from the OpenAI platform (link below)."
+        )
+        Spacer()
+        APIKeyStatusChip(isConnected: !openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
 
       HStack(alignment: .center, spacing: 16) {
         Text("API Key:")

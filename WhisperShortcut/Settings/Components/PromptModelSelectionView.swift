@@ -92,32 +92,22 @@ struct PromptModelSelectionView: View {
           .padding(.vertical, 4)
       }
 
-      // Model Selection Grid (when subscription + effectiveModel set, only that model is highlighted; others grayed out)
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
-        ForEach(models, id: \.self) { model in
-          let isDisabled = subscriptionMode
-          let isSelected = displayModel == model
-          ZStack {
-            Rectangle()
-              .fill(isSelected ? Color.accentColor : Color.clear)
-              .cornerRadius(SettingsConstants.cornerRadius)
-
-            Text(model.displayName)
-              .font(.system(.body, design: .default))
-              .fontWeight(.medium)
-              .foregroundColor(isSelected ? .white : (isDisabled ? .secondary : .primary))
+      // Model Selection Grid, grouped by provider with image-generation models split out
+      // (Nano Banana generates images, not chat replies). When only one group is present we
+      // render a single plain grid so short lists keep their original look.
+      let groups = modelGroups
+      VStack(alignment: .leading, spacing: 0) {
+        if groups.count > 1 {
+          ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+            if index > 0 { Divider().padding(.vertical, 10) }
+            groupHeader(symbol: group.symbol, title: group.title, subtitle: group.subtitle)
+            modelGrid(group.models)
           }
-          .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
-          .contentShape(Rectangle())
-          .opacity(isDisabled && !isSelected ? 0.6 : 1)
-          .onTapGesture {
-            if isDisabled { return }
-            selectedModel = model
-            onModelChanged?()
-          }
-          .pointerCursorOnHover()
+        } else {
+          modelGrid(models)
         }
       }
+      .padding(groups.count > 1 ? 10 : 0)
       .background(Color(.controlBackgroundColor))
       .cornerRadius(8)
       .overlay(
@@ -169,6 +159,92 @@ struct PromptModelSelectionView: View {
         }
       }
     }
+  }
+
+  // MARK: - Grouping
+
+  private struct ModelGroup {
+    let symbol: String
+    let title: String
+    let subtitle: String?
+    let models: [PromptModel]
+  }
+
+  /// Models split into provider groups (Gemini / Grok / OpenAI), preserving order, with
+  /// image-generation models pulled into their own trailing group. Empty groups are dropped.
+  private var modelGroups: [ModelGroup] {
+    let textModels = models.filter { !$0.generatesImages }
+    let imageModels = models.filter { $0.generatesImages }
+
+    let providerOrder: [(ChatModelProvider, String, String)] = [
+      (.gemini, "sparkles", "Gemini"),
+      (.grok, "bolt.fill", "Grok (xAI)"),
+      (.openai, "brain", "OpenAI"),
+    ]
+
+    var groups: [ModelGroup] = providerOrder.compactMap { provider, symbol, title in
+      let group = textModels.filter { $0.provider == provider }
+      guard !group.isEmpty else { return nil }
+      return ModelGroup(symbol: symbol, title: title, subtitle: nil, models: group)
+    }
+
+    if !imageModels.isEmpty {
+      groups.append(ModelGroup(symbol: "photo", title: "Image generation",
+                               subtitle: "Generates images, not chat replies", models: imageModels))
+    }
+    return groups
+  }
+
+  @ViewBuilder
+  private func groupHeader(symbol: String, title: String, subtitle: String?) -> some View {
+    HStack(spacing: 6) {
+      Image(systemName: symbol)
+        .font(.caption)
+        .foregroundColor(.secondary)
+      Text(title)
+        .font(.callout)
+        .fontWeight(.semibold)
+      if let subtitle {
+        Text("· \(subtitle)")
+          .font(.caption)
+          .foregroundColor(.secondary)
+      }
+    }
+    .padding(.horizontal, 4)
+    .padding(.bottom, 6)
+  }
+
+  private func modelGrid(_ models: [PromptModel]) -> some View {
+    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
+      ForEach(models, id: \.self) { model in
+        modelCell(model)
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func modelCell(_ model: PromptModel) -> some View {
+    let isDisabled = subscriptionMode
+    let isSelected = displayModel == model
+    ZStack {
+      Rectangle()
+        .fill(isSelected ? Color.accentColor : Color.clear)
+        .cornerRadius(SettingsConstants.cornerRadius)
+
+      Text(model.displayName)
+        .font(.system(.body, design: .default))
+        .fontWeight(.medium)
+        .foregroundColor(isSelected ? .white : (isDisabled ? .secondary : .primary))
+    }
+    .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
+    .contentShape(Rectangle())
+    .opacity(isDisabled && !isSelected ? 0.6 : 1)
+    .onTapGesture {
+      if isDisabled { return }
+      selectedModel = model
+      onModelChanged?()
+    }
+    .pointerCursorOnHover()
   }
 
 }
