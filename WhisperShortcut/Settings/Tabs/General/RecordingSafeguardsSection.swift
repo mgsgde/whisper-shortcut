@@ -11,7 +11,8 @@ struct RecordingSafeguardsSection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "🛡️ Recording Safeguards",
+        title: "Recording Safeguards",
+        systemImage: "shield",
         subtitle: "Ask before processing long recordings to avoid accidental API usage"
       )
 

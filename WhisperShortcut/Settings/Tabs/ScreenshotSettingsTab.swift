@@ -25,7 +25,8 @@ struct ScreenshotSettingsTab: View {
   private var keyboardShortcutSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "⌨️ Keyboard Shortcut",
+        title: "Keyboard Shortcut",
+        systemImage: "keyboard",
         subtitle: "Press the shortcut to capture a region of the screen to the clipboard (e.g. to paste into chat)"
       )
 
@@ -50,7 +51,8 @@ struct ScreenshotSettingsTab: View {
   private var saveSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "💾 Save Screenshots",
+        title: "Save Screenshots",
+        systemImage: "square.and.arrow.down",
         subtitle: "Also write each screenshot as a PNG into a folder, so the chat Attach picker finds them right away"
       )
 
@@ -117,7 +119,8 @@ struct ScreenshotSettingsTab: View {
   private var usageSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "📋 How to Use",
+        title: "How to Use",
+        systemImage: "questionmark.circle",
         subtitle: "Capture a screenshot anywhere on your Mac"
       )
 

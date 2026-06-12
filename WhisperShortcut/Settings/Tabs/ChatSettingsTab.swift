@@ -62,7 +62,8 @@ struct ChatSettingsTab: View {
   private var keyboardShortcutSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "⌨️ Keyboard Shortcut",
+        title: "Keyboard Shortcut",
+        systemImage: "keyboard",
         subtitle: "Open the chat window"
       )
 
@@ -107,7 +108,8 @@ struct ChatSettingsTab: View {
   private var windowBehaviorSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "🪟 Window Behavior",
+        title: "Window Behavior",
+        systemImage: "macwindow",
         subtitle: "Control how the chat window behaves"
       )
 
@@ -178,8 +180,11 @@ struct ChatSettingsTab: View {
   private var meetingSummaryModelSection: some View {
     PromptModelSelectionView(
       title: "Meeting Summary Model",
-      subtitle: "Gemini model used for rolling summary during the meeting and for the final summary when the meeting ends",
+      subtitle: "Model used for the rolling summary during the meeting and the final summary when it ends",
       selectedModel: $viewModel.data.selectedMeetingSummaryModel,
+      // Summary generation is a text task routed through any provider — exclude the audio-only
+      // GPT-Audio model (400s on text) and image-generation models that the default list would include.
+      availableModels: PromptModel.textChatModels,
       onModelChanged: {
         Task { await viewModel.saveSettings() }
       }
@@ -191,7 +196,8 @@ struct ChatSettingsTab: View {
   private var meetingSafeguardSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "🛡️ Meeting Safeguard",
+        title: "Meeting Safeguard",
+        systemImage: "shield",
         subtitle: "Ask after this duration to optionally stop the meeting or continue transcribing"
       )
 
@@ -226,7 +232,8 @@ struct ChatSettingsTab: View {
   private var usageSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "📋 How to Use",
+        title: "How to Use",
+        systemImage: "questionmark.circle",
         subtitle: "Chat and live meeting"
       )
 

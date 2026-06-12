@@ -45,7 +45,8 @@ struct ReadAloudSettingsTab: View {
   private var keyboardShortcutSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "⌨️ Keyboard Shortcut",
+        title: "Keyboard Shortcut",
+        systemImage: "keyboard",
         subtitle: "Select text, then press the shortcut to have it read aloud"
       )
 
@@ -102,7 +103,8 @@ struct ReadAloudSettingsTab: View {
 
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "🎙️ Voice",
+        title: "Voice",
+        systemImage: "mic",
         subtitle: "The specific voice \(provider.displayName) uses. Each provider has its own set."
       )
 
@@ -130,7 +132,8 @@ struct ReadAloudSettingsTab: View {
   private var playbackSpeedSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "⏩ Playback Speed",
+        title: "Playback Speed",
+        systemImage: "gauge.with.dots.needle.67percent",
         subtitle: "How fast the audio is played back. Pitch is preserved."
       )
 
@@ -169,7 +172,8 @@ struct ReadAloudSettingsTab: View {
   private var smartRewriteSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "🧠 Smart Rewriting",
+        title: "Smart Rewriting",
+        systemImage: "wand.and.stars",
         subtitle: "Let Gemini decide whether the selection should be read verbatim or rewritten for natural speech"
       )
 
@@ -195,7 +199,8 @@ struct ReadAloudSettingsTab: View {
   private var usageSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "📋 How to Use",
+        title: "How to Use",
+        systemImage: "questionmark.circle",
         subtitle: "Read selected text aloud anywhere on your Mac"
       )
 

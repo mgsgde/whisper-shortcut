@@ -60,7 +60,8 @@ struct SpeechToTextSettingsTab: View {
   private var shortcutsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "⌨️ Toggle Shortcut",
+        title: "Keyboard Shortcut",
+        systemImage: "keyboard",
         subtitle: "Start/Stop Dictation with one shortcut"
       )
 
@@ -85,7 +86,8 @@ struct SpeechToTextSettingsTab: View {
   private var languageSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "🌐 Language",
+        title: "Language",
+        systemImage: "globe",
         subtitle: "Specify the language for Whisper transcription. Auto-detect lets Whisper determine the language automatically."
       )
 
@@ -122,7 +124,8 @@ struct SpeechToTextSettingsTab: View {
   private var modelSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       ModelSelectionView(
-        title: "🎤 Transcription Model",
+        title: "Transcription Model",
+        systemImage: "waveform",
         selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
         geminiDisabled: !GeminiCredentialProvider.shared.hasCredential(),
         openAIDisabled: !KeychainManager.shared.hasValidOpenAIAPIKey(),
@@ -165,7 +168,8 @@ struct SpeechToTextSettingsTab: View {
   private var offlineModelsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "📦 Available Models",
+        title: "Available Models",
+        systemImage: "arrow.down.circle",
         subtitle: "Download and manage offline Whisper models for transcription"
       )
 
@@ -345,7 +349,8 @@ struct SpeechToTextSettingsTab: View {
   private var usageInstructionsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "📋 How to Use",
+        title: "How to Use",
+        systemImage: "questionmark.circle",
         subtitle: "Step-by-step instructions for using dictation mode"
       )
 

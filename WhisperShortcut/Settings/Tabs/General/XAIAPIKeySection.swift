@@ -9,7 +9,8 @@ struct XAIAPIKeySection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       HStack(alignment: .top) {
         SectionHeader(
-          title: "🔑 xAI API Key (Grok)",
+          title: "xAI API Key (Grok)",
+          systemImage: "key.fill",
           subtitle: "Add an xAI API key to use Grok models in the chat window. Get a key from the xAI console (link below)."
         )
         Spacer()

@@ -12,7 +12,8 @@ struct SupportFeedbackSection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "💬 Support & Feedback",
+        title: "Support & Feedback",
+        systemImage: "bubble.left.and.bubble.right",
         subtitle:
           "If you have feedback, if something doesn't work, or if you have suggestions for improvement, feel free to contact me via WhatsApp."
       )

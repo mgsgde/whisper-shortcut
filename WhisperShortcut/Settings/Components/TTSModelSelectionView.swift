@@ -7,18 +7,21 @@ import SwiftUI
 struct TTSModelSelectionView: View {
   @Binding var selectedModel: TTSModel
   let title: String
+  let systemImage: String?
   let subtitle: String
   let models: [TTSModel]
   let onModelChanged: (() -> Void)?
 
   init(
-    title: String = "🗣️ Voice Model",
+    title: String = "Voice Model",
+    systemImage: String? = "speaker.wave.2.fill",
     subtitle: String = "Which provider generates the spoken audio. Pick the specific voice below.",
     selectedModel: Binding<TTSModel>,
     models: [TTSModel] = TTSModel.allCases,
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
+    self.systemImage = systemImage
     self.subtitle = subtitle
     self._selectedModel = selectedModel
     self.models = models
@@ -39,7 +42,7 @@ struct TTSModelSelectionView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(title: title, subtitle: subtitle)
+      SectionHeader(title: title, systemImage: systemImage, subtitle: subtitle)
 
       LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
         ForEach(models, id: \.self) { model in

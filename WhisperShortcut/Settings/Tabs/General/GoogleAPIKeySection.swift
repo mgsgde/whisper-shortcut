@@ -15,7 +15,8 @@ struct GoogleAPIKeySection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       HStack(alignment: .top) {
         SectionHeader(
-          title: "🔑 Google API Key",
+          title: "Google API Key",
+          systemImage: "key.fill",
           subtitle: "Or use a Google API key (billed to your account). Get a key from Google AI Studio (link below)."
         )
         Spacer()

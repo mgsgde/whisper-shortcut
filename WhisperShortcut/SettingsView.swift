@@ -92,8 +92,12 @@ struct SettingsView: View {
           ChatSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .readAloud:
           ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+        case .improvement:
+          ImprovementSettingsTab(viewModel: viewModel)
         case .privacy:
           PrivacyPermissionsTab(viewModel: viewModel)
+        case .about:
+          AboutSettingsTab(viewModel: viewModel)
         }
       }
       .padding(.horizontal, 24)
@@ -117,8 +121,12 @@ struct SettingsView: View {
       return "sparkles"
     case .readAloud:
       return "speaker.wave.2.fill"
+    case .improvement:
+      return "wand.and.stars"
     case .privacy:
       return "lock.shield"
+    case .about:
+      return "info.circle"
     }
   }
 
@@ -136,8 +144,12 @@ struct SettingsView: View {
       return "Model, system prompt, and live meeting settings"
     case .readAloud:
       return "Shortcut and smart-rewrite settings"
+    case .improvement:
+      return "Improve prompts from your usage and manage context data"
     case .privacy:
       return "Permissions, API keys, and what data leaves your Mac"
+    case .about:
+      return "Shortcuts overview, reset, and support"
     }
   }
 

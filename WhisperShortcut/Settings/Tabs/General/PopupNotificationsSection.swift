@@ -11,7 +11,8 @@ struct PopupNotificationsSection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "🔔 Popup Notifications",
+        title: "Popup Notifications",
+        systemImage: "bell",
         subtitle: "Show popup windows with transcription and AI response text"
       )
 

@@ -3,6 +3,8 @@ import SwiftUI
 /// Unified model selection component for Dictate Prompt (GPT-Audio and Gemini multimodal models) and Smart Improvement.
 struct PromptModelSelectionView: View {
   let title: String
+  /// Optional SF Symbol shown next to the section header title.
+  let systemImage: String?
   /// When nil, uses the default Dictate Prompt subtitle.
   let subtitle: String?
   /// When false, renders a small label instead of SectionHeader (e.g. when embedded in another section).
@@ -20,6 +22,7 @@ struct PromptModelSelectionView: View {
 
   init(
     title: String,
+    systemImage: String? = nil,
     subtitle: String? = nil,
     showSectionHeader: Bool = true,
     selectedModel: Binding<PromptModel>,
@@ -30,6 +33,7 @@ struct PromptModelSelectionView: View {
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
+    self.systemImage = systemImage
     self.subtitle = subtitle
     self.showSectionHeader = showSectionHeader
     self._selectedModel = selectedModel
@@ -70,6 +74,7 @@ struct PromptModelSelectionView: View {
       if showSectionHeader {
         SectionHeader(
           title: title,
+          systemImage: systemImage,
           subtitle: effectiveSubtitle
         )
       } else {
@@ -224,27 +229,16 @@ struct PromptModelSelectionView: View {
 
   @ViewBuilder
   private func modelCell(_ model: PromptModel) -> some View {
-    let isDisabled = subscriptionMode
-    let isSelected = displayModel == model
-    ZStack {
-      Rectangle()
-        .fill(isSelected ? Color.accentColor : Color.clear)
-        .cornerRadius(SettingsConstants.cornerRadius)
-
-      Text(model.displayName)
-        .font(.system(.body, design: .default))
-        .fontWeight(.medium)
-        .foregroundColor(isSelected ? .white : (isDisabled ? .secondary : .primary))
-    }
-    .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
-    .contentShape(Rectangle())
-    .opacity(isDisabled && !isSelected ? 0.6 : 1)
-    .onTapGesture {
-      if isDisabled { return }
-      selectedModel = model
-      onModelChanged?()
-    }
-    .pointerCursorOnHover()
+    ModelTile(
+      title: model.displayName,
+      isSelected: displayModel == model,
+      isDisabled: subscriptionMode,
+      isRecommended: model.isRecommended,
+      onTap: {
+        selectedModel = model
+        onModelChanged?()
+      }
+    )
   }
 
 }

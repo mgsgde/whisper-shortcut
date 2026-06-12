@@ -12,7 +12,8 @@ struct KeyboardShortcutsSection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "⌨️ Keyboard Shortcut",
+        title: "Keyboard Shortcut",
+        systemImage: "keyboard",
         subtitle: "Configure keyboard shortcuts for various features"
       )
 

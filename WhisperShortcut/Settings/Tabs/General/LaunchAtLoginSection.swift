@@ -11,7 +11,8 @@ struct LaunchAtLoginSection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "🚀 Startup",
+        title: "Startup",
+        systemImage: "power",
         subtitle: "Automatically start WhisperShortcut when you log in"
       )
 

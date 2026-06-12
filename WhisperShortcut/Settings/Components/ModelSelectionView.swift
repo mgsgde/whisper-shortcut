@@ -4,6 +4,7 @@ import SwiftUI
 struct ModelSelectionView: View {
   @Binding var selectedTranscriptionModel: TranscriptionModel
   let title: String
+  let systemImage: String?
   let models: [TranscriptionModel]
   let onModelChanged: (() -> Void)?
   /// When true, Gemini models are shown as disabled and cannot be selected (e.g. when no API key is set).
@@ -17,6 +18,7 @@ struct ModelSelectionView: View {
 
   init(
     title: String = "Transcription Model",
+    systemImage: String? = nil,
     selectedTranscriptionModel: Binding<TranscriptionModel>,
     models: [TranscriptionModel] = TranscriptionModel.allCases,
     geminiDisabled: Bool = false,
@@ -26,6 +28,7 @@ struct ModelSelectionView: View {
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
+    self.systemImage = systemImage
     self._selectedTranscriptionModel = selectedTranscriptionModel
     self.models = models
     self.geminiDisabled = geminiDisabled
@@ -39,6 +42,7 @@ struct ModelSelectionView: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: title,
+        systemImage: systemImage,
         subtitle: subscriptionMode
           ? "With a subscription, cloud transcription uses Gemini 2.5 Flash. You can also choose an offline Whisper model for local transcription."
           : "Choose the transcription model for speech recognition"
@@ -165,25 +169,16 @@ struct ModelSelectionView: View {
   @ViewBuilder
   private func modelCell(_ model: TranscriptionModel) -> some View {
     let isDisabled = (geminiDisabled && model.isGemini) || (openAIDisabled && model.isOpenAI) || (xaiDisabled && model.isXAI)
-    ZStack {
-      Rectangle()
-        .fill(selectedTranscriptionModel == model ? Color.accentColor : Color.clear)
-        .cornerRadius(SettingsConstants.cornerRadius)
-
-      Text(model.displayName)
-        .font(.system(.body, design: .default))
-        .fontWeight(.medium)
-        .foregroundColor(selectedTranscriptionModel == model ? .white : (isDisabled ? .secondary : .primary))
-    }
-    .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
-    .contentShape(Rectangle())
-    .opacity(isDisabled ? 0.6 : 1)
-    .onTapGesture {
-      if isDisabled { return }
-      selectedTranscriptionModel = model
-      onModelChanged?()
-    }
-    .pointerCursorOnHover()
+    ModelTile(
+      title: model.displayName,
+      isSelected: selectedTranscriptionModel == model,
+      isDisabled: isDisabled,
+      isRecommended: model.isRecommended,
+      onTap: {
+        selectedTranscriptionModel = model
+        onModelChanged?()
+      }
+    )
   }
 
 }

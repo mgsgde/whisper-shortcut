@@ -990,7 +990,9 @@ enum SettingsTab: String, CaseIterable {
   case screenshot = "Screenshot"
   case readAloud = "Read Aloud"
   case chat = "Chat"
+  case improvement = "Smart Improvement"
   case privacy = "Privacy & Permissions"
+  case about = "About"
 }
 
 // MARK: - Read Aloud Playback Speed
@@ -1097,7 +1099,9 @@ struct SettingsDefaults {
   static let selectedPromptModel = PromptModel.gemini35Flash
   static let selectedChatModel = PromptModel.gemini35Flash
   static let chatCloseOnFocusLoss = true
-  static let settingsCloseOnFocusLoss = true
+  // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
+  // API key from a browser) is surprising. Users can opt back in via the Behavior section.
+  static let settingsCloseOnFocusLoss = false
 
   // MARK: - Read Aloud (Chat TTS)
   /// Default Read Aloud TTS model when the user hasn't picked one. User selection is persisted

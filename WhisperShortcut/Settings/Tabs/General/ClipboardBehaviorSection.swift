@@ -11,7 +11,8 @@ struct ClipboardBehaviorSection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "📋 Clipboard Behavior",
+        title: "Clipboard Behavior",
+        systemImage: "doc.on.clipboard",
         subtitle: "Configure what happens after dictation or dictate prompt completes"
       )
 

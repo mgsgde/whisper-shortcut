@@ -43,7 +43,8 @@ struct SpeechToPromptSettingsTab: View {
   private var shortcutsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "⌨️ Keyboard Shortcut",
+        title: "Keyboard Shortcut",
+        systemImage: "keyboard",
         subtitle: "Configure shortcut for toggle prompting mode"
       )
 
@@ -67,7 +68,8 @@ struct SpeechToPromptSettingsTab: View {
   @ViewBuilder
   private var modelSection: some View {
     PromptModelSelectionView(
-      title: "🧠 Model Selection",
+      title: "Model Selection",
+      systemImage: "cpu",
       selectedModel: $viewModel.data.selectedPromptModel,
       subscriptionMode: false,
       onModelChanged: {
@@ -86,7 +88,8 @@ struct SpeechToPromptSettingsTab: View {
   private var screenshotContextSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "🖥️ Screen context",
+        title: "Screen context",
+        systemImage: "menubar.dock.rectangle",
         subtitle: "Optional screenshot sent with voice Dictate Prompt requests"
       )
 
@@ -128,7 +131,8 @@ struct SpeechToPromptSettingsTab: View {
   private var usageInstructionsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "📋 How to Use",
+        title: "How to Use",
+        systemImage: "questionmark.circle",
         subtitle: "Step-by-step instructions for using Dictate Prompt"
       )
 
