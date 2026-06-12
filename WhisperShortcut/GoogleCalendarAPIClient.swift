@@ -158,7 +158,18 @@ actor GoogleCalendarAPIClient {
 
     let bodyData = try JSONSerialization.data(withJSONObject: body)
     // PATCH updates only the supplied fields, leaving the rest of the event intact.
-    let data = try await authorizedRequest(url: url, httpMethod: "PATCH", body: bodyData)
+    let data: Data
+    do {
+      data = try await authorizedRequest(url: url, httpMethod: "PATCH", body: bodyData)
+    } catch CalendarAPIError.notFound {
+      // The id is wrong or the event was deleted. Return actionable guidance so the model
+      // lists events to get a valid id instead of burning tool rounds retrying bad ids.
+      DebugLogger.logWarning("GOOGLE-CALENDAR: updateEvent got 404 for id=\(eventId)")
+      return [
+        "error": "Event not found (404). The event_id is wrong or the event was deleted. Call google_calendar_list_events to get the exact current event_id (verbatim), then retry the update. Do not guess or transform IDs.",
+        "event_id": eventId,
+      ]
+    }
 
     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
       throw CalendarAPIError.invalidResponse
