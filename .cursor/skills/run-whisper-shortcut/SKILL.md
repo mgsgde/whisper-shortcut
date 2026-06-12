@@ -1,0 +1,115 @@
+---
+name: run-whisper-shortcut
+description: Build, launch, drive, and screenshot the WhisperShortcut macOS menu-bar app. Use when asked to run, start, launch, build, screenshot, or visually confirm a change in the real WhisperShortcut app (not just tests). Covers the status menu, Settings window, and Chat window.
+---
+
+# Run WhisperShortcut
+
+WhisperShortcut is a macOS **menu-bar-only** app (`LSUIElement: true` — no Dock icon,
+no main window). Every surface is reached through the status-item menu: Dictate,
+Dictate Prompt, Screenshot, Read Aloud, **Chat**, **Configure** (Settings), Quit.
+
+Because there's no window to "just open," you drive it through
+[`.claude/skills/run-whisper-shortcut/driver.sh`](driver.sh) — a bash harness that
+opens the status menu and clicks items via `osascript`/System Events, and saves PNGs
+via `screencapture`. **This is the primary agent path.** Paths below are relative to
+the project root (`whisper-shortcut/`). This only works on **macOS** with a logged-in
+GUI (Aqua) session — there is no Linux/headless path; it's a native AppKit app.
+
+## Prerequisites
+
+- **macOS + Xcode** (built here with Xcode 26.5). A signing identity is auto-detected;
+  with none it falls back to ad-hoc signing (keychain re-prompts on rebuilds, but it runs).
+- **Two TCC permissions granted to the terminal app that runs the driver** (Terminal,
+  iTerm, VS Code, Cursor, …) — System Settings ▸ Privacy & Security:
+  - **Accessibility** — so System Events can click the menu. Without it, clicks silently no-op.
+  - **Screen Recording** — so `screencapture` can read the display. Without it,
+    `screencapture` prints `could not create image from display`.
+  These are one-time, per-terminal-app grants. You cannot set them from the CLI (the
+  TCC DB is SIP-protected); the user grants them in System Settings, then re-run.
+
+## Build & launch
+
+```bash
+# Rebuild and relaunch (builds AND restarts the running app). ~1–3 min cold.
+bash scripts/rebuild-and-restart.sh
+# or, via the driver (same thing):
+bash .claude/skills/run-whisper-shortcut/driver.sh build
+```
+
+The app bundle lands at `build/DerivedData/Build/Products/Debug/WhisperShortcut.app`.
+If it's already built and you only need it running:
+
+```bash
+bash .claude/skills/run-whisper-shortcut/driver.sh ensure   # launch if not already running
+```
+
+## Run (agent path) — the driver
+
+```bash
+D=.claude/skills/run-whisper-shortcut/driver.sh
+
+bash $D items                      # list status-menu item names (sanity check it's driveable)
+bash $D shot Configure settings    # open Settings, screenshot its window → /tmp/ws-settings.png
+bash $D close                      # close the front window
+bash $D shot Chat chat             # open Chat, screenshot it → /tmp/ws-chat.png
+bash $D close
+bash $D menu menu                  # open the status menu itself, screenshot → /tmp/ws-menu.png
+bash $D quit                       # quit the app
+```
+
+Other commands: `open <MenuItem>` (click an item, no screenshot), `ss [name]`
+(screenshot the front window cropped, or full screen if none). Menu item names are
+exactly: `Dictate`, `Dictate Prompt`, `Screenshot`, `Read Aloud`, `Chat`,
+`Configure`, `Quit WhisperShortcut`. `Configure` opens the window titled **Settings**.
+
+Screenshots go to `/tmp/ws-<name>.png` (override with `WS_SHOT_DIR`). `shot`/`ss`
+**crop to the front WhisperShortcut window** (clean, window-only image); `menu` and a
+windowless `ss` capture the full screen. **Always actually read the PNG** — a blank or
+error frame means a permission is missing or the window didn't open in time.
+
+## Run (human path)
+
+`open build/DerivedData/Build/Products/Debug/WhisperShortcut.app` — a menu-bar icon
+appears (no window). Click it to use the menu manually. Useless for an agent: nothing
+to observe programmatically without the driver.
+
+## Test
+
+`bash scripts/run-tests.sh` runs the `WhisperShortcut-AppStore` XCTest plan — but those
+are **live** LLM/transcription round-trips that need API keys in the Keychain and
+network. Not a hermetic unit suite; skip unless keys are configured.
+
+## Gotchas
+
+- **No window exists until you open one.** `osascript ... count of windows` is 0 at
+  launch. The status item lives in `menu bar 2` of the process (`menu bar 1` is the app
+  menu). The driver clicks `menu bar item 1 of menu bar 2`.
+- **Two separate permissions, two separate failure modes.** Accessibility missing →
+  clicks no-op silently (menu never opens, no error). Screen Recording missing →
+  `screencapture` errors loudly. Diagnose them independently.
+- **AppleScript number→string concatenation inserts commas.** `(x as integer) & " "`
+  yields `464,  , 233` (a coerced list), which breaks `screencapture -R`. Coerce each
+  value `as text` first. The driver already does this; don't "simplify" it back.
+- **`screencapture -R` uses screen *points*, not Retina pixels.** Window
+  position/size from System Events are already in points, so they feed `-R` directly;
+  the saved PNG comes out at 2× (e.g. an 800×684-pt window → 1600×1368 px).
+- **A menu left open blocks the next click.** The driver dismisses with Escape
+  (`key code 53`) after `items`/`menu`; if you script raw osascript, do the same or the
+  next `click` lands on the open menu.
+- **`rebuild-and-restart.sh` kills by exact process name** (`pgrep -x`), not
+  `pkill -f WhisperShortcut` — the latter also matches the script's own path. Don't
+  swap it back.
+- **First launch may pop a Welcome window** (if onboarding isn't complete) or Settings
+  (if no API key is set), instead of going straight to idle. `front_window_bounds`
+  will then crop whatever window is frontmost.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `screencapture: could not create image from display` | Grant **Screen Recording** to your terminal app, then re-run. |
+| Menu never opens, `items` returns nothing / hangs | Grant **Accessibility** to your terminal app. |
+| `screencapture: -R requires a valid rect` | Bounds came back malformed — ensure the window actually opened (raise the `sleep` after `open`), or the `as text` coercion was lost. |
+| `❌ WhisperShortcut is not running` | `bash driver.sh build` (or `ensure` if already built). |
+| Build fails on code signing | Expected without an Apple Development identity — it falls back to ad-hoc and still runs; re-run if the keychain prompt was dismissed. |
