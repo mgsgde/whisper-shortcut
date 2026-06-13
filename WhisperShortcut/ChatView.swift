@@ -1699,13 +1699,15 @@ class ChatViewModel: ObservableObject {
 
   /// Canonical display title for a session row (sidebar + search results).
   static func displayTitle(for session: ChatSession) -> String {
+    // Meetings stay "Meeting" until their summary-based title is generated, so the row never shows
+    // whatever question the user happened to ask first — including legacy sessions still carrying a
+    // stale first-message fallback title (which the backfill/summary path will replace shortly).
+    if meetingTitleNeedsGeneration(session) { return "Meeting" }
     if let t = session.title, !t.isEmpty {
       let stripped = unwrapUserMessageTypedByUser(t)
       let base = stripped.isEmpty ? t : stripped
       return base.replacingOccurrences(of: "\n", with: " ")
     }
-    // Meetings stay "Meeting" until their summary-based title is generated, so the row
-    // never shows whatever question the user happened to ask first.
     if session.isMeeting { return "Meeting" }
     if let firstContent = session.messages.first(where: { $0.role == .user })?.content {
       let cleaned = contentForSessionTitle(firstContent)
@@ -2322,7 +2324,7 @@ struct ChatView: View {
   private func sessionTab(session: ChatSession, width: CGFloat) -> some View {
     let isActive = session.id == viewModel.currentSessionId
     let isProcessing = viewModel.isSendingSession(session.id)
-    let title = session.title.flatMap { $0.isEmpty ? nil : $0 } ?? (session.isMeeting ? "Meeting" : "New chat")
+    let title = ChatViewModel.displayTitle(for: session)
 
     return Button(action: { viewModel.switchToSession(id: session.id) }) {
       HStack(spacing: 5) {
@@ -2431,7 +2433,9 @@ struct ChatView: View {
           Color.clear.frame(height: 1).id("listBottom")
         }
         .scrollTargetLayout()
-        .frame(maxWidth: 720)
+        // Readable line length (measure): ~660 px keeps prose near the 50–75-character
+        // sweet spot at the 16-pt body font; 720 ran ~90 chars and hurt readability.
+        .frame(maxWidth: 660)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 24)
         .padding(.top, 16)
@@ -2646,7 +2650,7 @@ struct ChatView: View {
       .padding(.vertical, 6)
       Divider()
     }
-    .background(ChatTheme.controlBackground)
+    .background(ChatTheme.topBarBackground)
   }
 
   private var meetingTranscriptView: some View {
@@ -3192,7 +3196,8 @@ struct ChatInputAreaView: View {
       .padding(.vertical, 6)
     }
     .frame(maxWidth: 720)
-    .background(ChatTheme.controlBackground)
+    // Composer fill matches the conversation pane (#0C1117); the 1px stroke keeps it delineated.
+    .background(ChatTheme.windowBackground)
     .clipShape(RoundedRectangle(cornerRadius: 14))
     .overlay(
       RoundedRectangle(cornerRadius: 14)
@@ -3724,6 +3729,20 @@ private struct ModelReplyView: View {
     let paragraph = NSMutableParagraphStyle()
     paragraph.lineSpacing = 8
     result.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: result.length))
+
+    // Bullet paragraphs get extra spacing between items plus a hanging indent so wrapped
+    // continuation lines align under the text, not under the "• " marker. Applied only to
+    // lines that begin with the bullet glyph, leaving prose paragraph rhythm untouched.
+    let bulletParagraph = NSMutableParagraphStyle()
+    bulletParagraph.lineSpacing = 8
+    bulletParagraph.paragraphSpacing = 6
+    bulletParagraph.headIndent = 16
+    let full = result.string as NSString
+    full.enumerateSubstrings(in: NSRange(location: 0, length: full.length), options: .byParagraphs) { substring, range, _, _ in
+      if let substring, substring.hasPrefix("• ") {
+        result.addAttribute(.paragraphStyle, value: bulletParagraph, range: range)
+      }
+    }
     return result
   }
 
