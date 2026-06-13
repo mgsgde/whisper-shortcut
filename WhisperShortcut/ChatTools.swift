@@ -138,6 +138,48 @@ enum ChatToolRegistry {
     ],
   ]
 
+  /// Names of the chat-memory tools; ChatView intercepts these in `executeToolCalls`
+  /// (they write the local memory file and reload the UI rather than routing back through the model).
+  static let rememberAboutUserToolName = "remember_about_user"
+  static let forgetAboutUserToolName = "forget_about_user"
+
+  /// Persistent user-memory tools. Always available in chat. The model uses these to remember durable
+  /// facts about the user across sessions; the memory is injected into every chat system prompt.
+  static let memoryFunctionDeclarations: [[String: Any]] = [
+    [
+      "name": rememberAboutUserToolName,
+      "description":
+        "Saves a durable fact about the USER to persistent memory so you remember it in future, separate conversations (e.g. their name, role, employer, language preference, recurring projects, or a stable answer-style preference like 'prefers concise answers'). Call this ONLY when the user shares something lasting and worth remembering long-term, or explicitly asks you to remember it. Do NOT store one-off task details, transient context already visible in this conversation, sensitive data the user did not ask you to keep, or things you merely inferred without confidence. Keep each fact to one short, self-contained sentence.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "fact": [
+            "type": "string",
+            "description":
+              "A single durable fact about the user, phrased as one short standalone sentence (e.g. 'The user is a German-speaking iOS developer.', 'The user prefers concise answers without preamble.').",
+          ]
+        ] as [String: Any],
+        "required": ["fact"],
+      ],
+    ],
+    [
+      "name": forgetAboutUserToolName,
+      "description":
+        "Removes previously remembered facts about the user from persistent memory. Use when the user asks you to forget something, or says a remembered fact is wrong or outdated. Removes every stored fact containing the given text (case-insensitive).",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "matching": [
+            "type": "string",
+            "description":
+              "Text identifying which fact(s) to forget — every stored fact containing this substring is removed (e.g. 'employer', 'concise answers').",
+          ]
+        ] as [String: Any],
+        "required": ["matching"],
+      ],
+    ],
+  ]
+
   static let calendarFunctionDeclarations: [[String: Any]] = [
     [
       "name": "google_calendar_list_events",
@@ -568,7 +610,7 @@ enum ChatToolRegistry {
     calendarConnected: Bool, trelloConnected: Bool, imageGenerationAvailable: Bool,
     meetingContext: Bool
   ) -> [[String: Any]] {
-    var decls = functionDeclarations + appDocsFunctionDeclarations
+    var decls = functionDeclarations + appDocsFunctionDeclarations + memoryFunctionDeclarations
     if imageGenerationAvailable {
       decls += imageFunctionDeclarations
     }

@@ -29,6 +29,10 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
+      ChatMemoryEditor()
+
+      SpacedSectionDivider()
+
       GoogleCalendarConnectionSection()
 
       SpacedSectionDivider()

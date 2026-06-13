@@ -913,6 +913,10 @@ class ChatViewModel: ObservableObject {
         result = await executeRefineMeetingSummaryTool(args: call.args)
       } else if call.name == ChatToolRegistry.correctTranscriptTermToolName {
         result = await executeCorrectTranscriptTermTool(args: call.args)
+      } else if call.name == ChatToolRegistry.rememberAboutUserToolName {
+        result = executeRememberAboutUserTool(args: call.args)
+      } else if call.name == ChatToolRegistry.forgetAboutUserToolName {
+        result = executeForgetAboutUserTool(args: call.args)
       } else {
         result = await ChatToolRegistry.execute(name: call.name, args: call.args)
       }
@@ -1168,6 +1172,12 @@ class ChatViewModel: ObservableObject {
     if let extra = meetingContext, !extra.isEmpty {
       text = "\(text)\n\n---\n\n\(extra)"
     }
+    // Persistent user memory (UserContext/memory.md): durable facts the user told us across sessions.
+    // Injected into every chat request; empty when the user has no memory (then nothing is added).
+    let memory = ChatMemoryStore.shared.loadMemory()
+    if !memory.isEmpty {
+      text += "\n\n---\n\nPersistent memory — durable facts you have remembered about the user. Use them to personalize answers; do not repeat them back verbatim unless relevant.\n\(memory)"
+    }
     if GoogleAccountOAuthService.shared.isConnected {
       text += "\n\nIMPORTANT — you have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks."
     }
@@ -1175,6 +1185,7 @@ class ChatViewModel: ObservableObject {
     if GeminiCredentialProvider.shared.hasCredential() {
       text += "\n\nIMAGE GENERATION: You can create and edit real images via the `generate_image` tool. When the user asks you to draw, create, render, visualize, edit, or annotate an image, ALWAYS call generate_image — never approximate with ASCII art, SVG, or code blocks. To annotate or edit an image the user attached, pass use_attached_image=true with a precise instruction. The finished image appears in the chat automatically."
     }
+    text += "\n\nMEMORY: You can remember durable facts about the user across conversations. When the user shares something lasting and worth remembering (their name, role, employer, language, recurring projects, or a stable preference like 'always answer concisely'), or explicitly asks you to remember something, call `remember_about_user` with one short fact. Use `forget_about_user` when they ask you to forget something or correct an outdated fact. Do NOT store one-off task details or things already visible in this conversation. Briefly acknowledge what you remembered — never dump the whole memory back."
     // Mirrors buildToolDeclarations' meetingContext gating.
     if session.isMeeting {
       text += "\n\nMEETING EDITING: This chat is attached to a meeting. When the user asks to change, refine, reformat, shorten, or correct the meeting SUMMARY, call `refine_meeting_summary` with their instruction — do not just reply with a rewritten summary in chat. When the user points out a misrecognized name or term in the TRANSCRIPT (e.g. 'it's ParkDepot, not Park Depot'), call `correct_transcript_term` with the exact wrong and corrected spelling — this is a literal find-and-replace that keeps the transcript faithful; never rewrite or paraphrase the transcript yourself."
@@ -2015,6 +2026,39 @@ class ChatViewModel: ObservableObject {
       result["summary_updated"] = summaryResult["ok"] != nil
     }
     return result
+  }
+
+  // MARK: - Memory tools (remember / forget durable user facts)
+
+  /// Backs the `remember_about_user` chat tool. Appends one durable fact to persistent memory
+  /// (UserContext/memory.md), deduped. Synchronous — the file is tiny and writes are local.
+  func executeRememberAboutUserTool(args: [String: Any]) -> [String: Any] {
+    guard let fact = (args["fact"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !fact.isEmpty else {
+      return ["error": "Missing required argument: fact"]
+    }
+    let added = ChatMemoryStore.shared.addFact(fact)
+    if added {
+      return ["ok": true, "remembered": fact,
+              "detail": "Saved to persistent memory. Briefly confirm in one sentence; do not list the rest of the memory."]
+    }
+    return ["ok": true, "remembered": fact, "duplicate": true,
+            "detail": "This fact was already remembered — nothing changed. Acknowledge briefly."]
+  }
+
+  /// Backs the `forget_about_user` chat tool. Removes every stored fact containing the given text.
+  func executeForgetAboutUserTool(args: [String: Any]) -> [String: Any] {
+    guard let matching = (args["matching"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !matching.isEmpty else {
+      return ["error": "Missing required argument: matching"]
+    }
+    let removed = ChatMemoryStore.shared.removeFacts(matching: matching)
+    guard removed > 0 else {
+      return ["ok": true, "removed": 0,
+              "detail": "No remembered fact matched \"\(matching)\". Tell the user there was nothing to forget."]
+    }
+    return ["ok": true, "removed": removed,
+            "detail": "Forgot \(removed) fact(s). Confirm briefly."]
   }
 
   // MARK: - Archive / Restore / Delete
