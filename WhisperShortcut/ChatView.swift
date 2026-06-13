@@ -1769,10 +1769,27 @@ class ChatViewModel: ObservableObject {
       // A meeting is running on a different session; treat as stop request
       NotificationCenter.default.post(name: .chatStopLiveMeeting, object: nil)
     } else if isCurrentSessionMeeting {
-      NotificationCenter.default.post(name: .chatResumeMeeting, object: nil)
+      requestResumeMeeting()
     } else {
       NotificationCenter.default.post(name: .chatStartNewMeeting, object: nil)
     }
+  }
+
+  /// Resumes the currently-viewed (ended) meeting. Rehydrates the live store from this
+  /// meeting's on-disk transcript + summary FIRST, so recording continues the same file,
+  /// the prior transcript stays visible, and new chunks' timestamps stay monotonic.
+  /// Guarded: never runs while another meeting is recording (that would clobber its store).
+  func requestResumeMeeting() {
+    guard !isMeetingActive else { return }
+    if let stem = session.meetingStem {
+      let transcript = loadMeetingTranscriptFromDisk() ?? ""
+      let summary = loadMeetingSummaryFromDisk() ?? ""
+      LiveMeetingTranscriptStore.shared.rehydrateForResume(
+        stem: stem,
+        chunks: LiveMeetingTranscriptStore.parseTranscript(transcript),
+        summary: summary.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+    NotificationCenter.default.post(name: .chatResumeMeeting, object: nil)
   }
 
   private func markCurrentSessionAsMeeting() {
@@ -2639,10 +2656,12 @@ struct ChatView: View {
         Spacer()
 
         Button(action: {
-          NotificationCenter.default.post(
-            name: isRecording ? .chatStopLiveMeeting : .chatResumeMeeting,
-            object: nil
-          )
+          if isRecording {
+            NotificationCenter.default.post(name: .chatStopLiveMeeting, object: nil)
+          } else {
+            // Rehydrate this meeting's transcript/summary before resuming (see requestResumeMeeting).
+            viewModel.requestResumeMeeting()
+          }
         }) {
           Text(isRecording ? "Stop" : "Resume")
             .font(.system(size: 11, weight: .medium))

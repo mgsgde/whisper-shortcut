@@ -80,6 +80,40 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     DebugLogger.log("LIVE-MEETING-STORE: Session resumed, data retained (stem: \(self.currentMeetingFilenameStem ?? "nil"), chunks: \(self.chunks.count))")
   }
 
+  /// Re-loads a previously-ended meeting's stem, transcript chunks, and summary into the
+  /// store so resuming genuinely continues THAT meeting: the correct file is appended to,
+  /// the prior transcript stays visible, and new chunks' timestamps continue monotonically.
+  /// Call on the main thread before `startLiveMeeting(resuming:)`.
+  func rehydrateForResume(stem: String, chunks: [LiveMeetingChunk], summary: String) {
+    assert(Thread.isMainThread, "LiveMeetingTranscriptStore.rehydrateForResume must be called on main thread")
+    self.currentMeetingFilenameStem = stem
+    self.chunks = chunks
+    self.summary = summary
+    DebugLogger.log("LIVE-MEETING-STORE: Rehydrated for resume (stem: \(stem), chunks: \(chunks.count))")
+  }
+
+  /// Parses a transcript file (as written by `appendToTranscript`: "[mm:ss] text" blocks
+  /// separated by blank lines) back into chunks. Used to rehydrate a resumed meeting.
+  static func parseTranscript(_ text: String) -> [LiveMeetingChunk] {
+    guard let regex = try? NSRegularExpression(pattern: #"\[(\d{1,2}):(\d{2})\]"#) else { return [] }
+    let ns = text as NSString
+    let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+    var result: [LiveMeetingChunk] = []
+    for (i, m) in matches.enumerated() {
+      let minutes = Int(ns.substring(with: m.range(at: 1))) ?? 0
+      let seconds = Int(ns.substring(with: m.range(at: 2))) ?? 0
+      let start = TimeInterval(minutes * 60 + seconds)
+      let bodyStart = m.range.location + m.range.length
+      let bodyEnd = (i + 1 < matches.count) ? matches[i + 1].range.location : ns.length
+      let body = ns.substring(with: NSRange(location: bodyStart, length: bodyEnd - bodyStart))
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      if !body.isEmpty {
+        result.append(LiveMeetingChunk(startTime: start, text: body))
+      }
+    }
+    return result
+  }
+
   /// Append a transcribed chunk. Call from main thread or from the same place as appendToTranscript.
   func appendChunk(startTime: TimeInterval, text: String) {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -55,9 +55,9 @@ enum ChatTheme {
   /// A touch of letter spacing on body prose. On dark backgrounds light text tends to
   /// bloom/blur ("halation"); a hair of tracking keeps glyphs crisp. Keep it tiny.
   static let bodyTracking: CGFloat = 0.2
-  /// Regular body weight — nudged a hair above `.regular` (0.0) because thin strokes
-  /// shimmer on dark surfaces. Applies only to plain prose; bold/headings set their own.
-  static let bodyRegularNSWeight = NSFont.Weight(rawValue: 0.06)
+  /// Regular body weight for plain prose. Kept at `.regular` (the lighter look preferred
+  /// over a heavier nudge); bold/headings set their own weights.
+  static let bodyRegularNSWeight = NSFont.Weight.regular
 
   /// A/B switch for the prose typeface. `.sans` = San Francisco (default); flip to
   /// `.serif` (New York) or `.rounded` (SF Pro Rounded) to compare legibility in-app.
