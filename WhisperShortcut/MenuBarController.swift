@@ -1093,9 +1093,15 @@ class MenuBarController: NSObject {
 
     let fileURL = meetingsDir.appendingPathComponent(filename)
 
-    FileManager.default.createFile(atPath: fileURL.path, contents: nil)
-
-    DebugLogger.log("LIVE-MEETING: Created transcript file at \(fileURL.path)")
+    // Only create (and thereby truncate) when no file exists yet. On resume the stem is
+    // unchanged, so an unconditional createFile(contents: nil) would WIPE the existing
+    // transcript; keeping the file lets appendToTranscript continue after the old content.
+    if !FileManager.default.fileExists(atPath: fileURL.path) {
+      FileManager.default.createFile(atPath: fileURL.path, contents: nil)
+      DebugLogger.log("LIVE-MEETING: Created transcript file at \(fileURL.path)")
+    } else {
+      DebugLogger.log("LIVE-MEETING: Reusing existing transcript file at \(fileURL.path)")
+    }
     return fileURL
   }
 

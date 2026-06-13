@@ -523,7 +523,15 @@ struct ChatSidebar: View {
       }
     }()
 
+    let isRecording = viewModel.isMeetingActive && viewModel.meetingSessionId == session.id
+
     return HStack(spacing: 8) {
+      if isRecording {
+        Circle()
+          .fill(Color.red)
+          .frame(width: 6, height: 6)
+          .help("Recording")
+      }
       if isRenaming {
         TextField("Title", text: $renameDraft, onCommit: { commitRename() })
           .font(.system(size: 13))

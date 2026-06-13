@@ -2451,9 +2451,14 @@ struct ChatView: View {
       // message list. Inside the list it forced a full LazyVStack/GeometryReader
       // re-layout every frame, which could wedge the main thread when a large
       // grounded reply was finalized (sources appended in one shot). See TypingIndicatorView.
-      .overlay(alignment: .bottomLeading) {
+      .overlay(alignment: .bottom) {
         if viewModel.isSending {
+          // Constrain to the same centered 660px column + 24px gutter as the message
+          // list so the dots align with the conversation text instead of pinning to the
+          // pane's far-left edge in a wide window.
           TypingIndicatorView()
+            .frame(maxWidth: 660, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 24)
             .padding(.bottom, 12)
             .allowsHitTesting(false)
@@ -2658,7 +2663,12 @@ struct ChatView: View {
   }
 
   private var meetingTranscriptView: some View {
-    let liveChunks = LiveMeetingTranscriptStore.shared.chunks
+    // The live store is a singleton owned by whichever meeting is recording right now.
+    // Only show its chunks when THIS tab is that active meeting; otherwise read the
+    // selected session's own transcript from disk. Without this guard every meeting tab
+    // displayed the currently-recording meeting's transcript.
+    let liveChunks = viewModel.isCurrentSessionTheActiveMeeting
+      ? LiveMeetingTranscriptStore.shared.chunks : []
     let diskText = liveChunks.isEmpty ? viewModel.loadMeetingTranscriptFromDisk() : nil
     return ScrollView {
       LazyVStack(alignment: .leading, spacing: 8) {
@@ -3617,8 +3627,9 @@ private struct ModelReplyView: View {
             // Lightweight, fast to re-render every token. Loses clickable links while
             // streaming, but links matter only on the finished, readable message.
             Text(attrStr)
-              .font(.system(size: ChatTheme.bodyFontSize))
+              .font(ChatTheme.bodyFont(size: ChatTheme.bodyFontSize))
               .lineSpacing(ChatTheme.bodyLineSpacing)
+              .tracking(ChatTheme.bodyTracking)
               .foregroundColor(ChatTheme.primaryText)
           } else {
             SelectableProseText(attributed: attrStr)
@@ -3690,7 +3701,7 @@ private struct ModelReplyView: View {
       if text.isEmpty { continue }
 
       var size = baseSize
-      var weight: NSFont.Weight = .regular
+      var weight: NSFont.Weight = ChatTheme.bodyRegularNSWeight
       if let hint = run[ProseFontHint.self] {
         size = hint.size
         weight = NSFont.Weight(hint.weight)
@@ -3705,13 +3716,7 @@ private struct ModelReplyView: View {
       if intent.contains(.code) {
         font = NSFont.monospacedSystemFont(ofSize: size, weight: weight)
       } else {
-        var f = NSFont.systemFont(ofSize: size, weight: weight)
-        if !traits.isEmpty,
-           let descriptor = f.fontDescriptor.withSymbolicTraits(traits) as NSFontDescriptor?,
-           let traited = NSFont(descriptor: descriptor, size: size) {
-          f = traited
-        }
-        font = f
+        font = ChatTheme.bodyNSFont(size: size, weight: weight, traits: traits)
       }
 
       var attrs: [NSAttributedString.Key: Any] = [.font: font]
@@ -3729,10 +3734,11 @@ private struct ModelReplyView: View {
       result.append(NSAttributedString(string: text, attributes: attrs))
     }
 
-    // Match SwiftUI `.lineSpacing`.
+    // Match SwiftUI `.lineSpacing` and `.tracking` (kern) over the whole prose.
     let paragraph = NSMutableParagraphStyle()
     paragraph.lineSpacing = ChatTheme.bodyLineSpacing
     result.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: result.length))
+    result.addAttribute(.kern, value: ChatTheme.bodyTracking, range: NSRange(location: 0, length: result.length))
 
     // Bullet paragraphs get extra spacing between items plus a hanging indent so wrapped
     // continuation lines align under the text, not under the "• " marker. Applied only to
@@ -4412,7 +4418,8 @@ private struct MessageBubbleView: View {
         }
         if !parsed.userText.isEmpty {
           Text(parsed.userText)
-            .font(.system(size: ChatTheme.bodyFontSize))
+            .font(ChatTheme.bodyFont(size: ChatTheme.bodyFontSize))
+            .tracking(ChatTheme.bodyTracking)
             .foregroundColor(ChatTheme.primaryText)
             // Safe here: a single uniform-font Text. The textSelection hang only strikes
             // per-run mixed fonts (see SelectableProseText / MessageBubbleView notes).

@@ -1,4 +1,28 @@
 import SwiftUI
+import AppKit
+
+/// Prose typeface family for the chat. All options are system fonts (no bundled
+/// files), so flipping `ChatTheme.bodyFontDesign` A/B-tests them app-wide instantly.
+enum ChatFontDesign {
+  case sans     // San Francisco (SF Pro) — the macOS system font
+  case serif    // New York (Apple's optically-sized system serif)
+  case rounded  // SF Pro Rounded
+
+  var swiftUI: Font.Design {
+    switch self {
+    case .sans: return .default
+    case .serif: return .serif
+    case .rounded: return .rounded
+    }
+  }
+  var appKit: NSFontDescriptor.SystemDesign {
+    switch self {
+    case .sans: return .default
+    case .serif: return .serif
+    case .rounded: return .rounded
+    }
+  }
+}
 
 /// Fixed appearance for the chat window (dark, no theme switching).
 /// Dark palette with a subtle navy undertone, inspired by deep-blue editor
@@ -28,6 +52,33 @@ enum ChatTheme {
   static let bodyFontSize: CGFloat = 15
   /// Line spacing paired with `bodyFontSize` to hold a ~1.5× line height.
   static let bodyLineSpacing: CGFloat = 7
+  /// A touch of letter spacing on body prose. On dark backgrounds light text tends to
+  /// bloom/blur ("halation"); a hair of tracking keeps glyphs crisp. Keep it tiny.
+  static let bodyTracking: CGFloat = 0.2
+  /// Regular body weight — nudged a hair above `.regular` (0.0) because thin strokes
+  /// shimmer on dark surfaces. Applies only to plain prose; bold/headings set their own.
+  static let bodyRegularNSWeight = NSFont.Weight(rawValue: 0.06)
+
+  /// A/B switch for the prose typeface. `.sans` = San Francisco (default); flip to
+  /// `.serif` (New York) or `.rounded` (SF Pro Rounded) to compare legibility in-app.
+  static let bodyFontDesign: ChatFontDesign = .sans
+
+  /// SwiftUI prose font honoring `bodyFontDesign`. Used on the streaming-text and
+  /// user-bubble paths.
+  static func bodyFont(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+    .system(size: size, weight: weight, design: bodyFontDesign.swiftUI)
+  }
+
+  /// AppKit twin of `bodyFont` for the selectable NSTextView prose path. Applies the
+  /// chosen design, then layers weight and any bold/italic symbolic traits on top.
+  static func bodyNSFont(size: CGFloat, weight: NSFont.Weight = .regular,
+                         traits: NSFontDescriptor.SymbolicTraits = []) -> NSFont {
+    let base = NSFont.systemFont(ofSize: size, weight: weight)
+    var descriptor = base.fontDescriptor
+    if let designed = descriptor.withDesign(bodyFontDesign.appKit) { descriptor = designed }
+    if !traits.isEmpty { descriptor = descriptor.withSymbolicTraits(traits) }
+    return NSFont(descriptor: descriptor, size: size) ?? base
+  }
   /// Secondary text (buttons, captions).
   static var secondaryText: Color { primaryText.opacity(0.65) }
   /// Border opacity (e.g. input stroke). Subtle.
