@@ -2389,7 +2389,7 @@ struct ChatView: View {
     let lastUserMessageId = viewModel.messages.last(where: { $0.role == .user })?.id
     return ScrollViewReader { proxy in
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: 24) {
+        LazyVStack(alignment: .leading, spacing: 20) {
           Color.clear.frame(height: 1).id("listTop")
           if viewModel.messages.isEmpty && !viewModel.isSending {
             emptyStateCommandHints
@@ -3613,8 +3613,8 @@ private struct ModelReplyView: View {
             // Lightweight, fast to re-render every token. Loses clickable links while
             // streaming, but links matter only on the finished, readable message.
             Text(attrStr)
-              .font(.system(size: 16))
-              .lineSpacing(8)
+              .font(.system(size: ChatTheme.bodyFontSize))
+              .lineSpacing(ChatTheme.bodyLineSpacing)
               .foregroundColor(ChatTheme.primaryText)
           } else {
             SelectableProseText(attributed: attrStr)
@@ -3677,7 +3677,7 @@ private struct ModelReplyView: View {
   /// line), the markdown `inlinePresentationIntent` (bold/italic/code/strikethrough), the SwiftUI
   /// `foregroundColor`, and the `link` URL. Body runs fall back to the 16-pt system font / soft white.
   static func makeProseNSAttributedString(_ attr: AttributedString) -> NSAttributedString {
-    let baseSize: CGFloat = 16
+    let baseSize: CGFloat = ChatTheme.bodyFontSize
     let defaultColor = NSColor(ChatTheme.primaryText)
     let result = NSMutableAttributedString()
 
@@ -3725,22 +3725,35 @@ private struct ModelReplyView: View {
       result.append(NSAttributedString(string: text, attributes: attrs))
     }
 
-    // Match SwiftUI `.lineSpacing(8)`.
+    // Match SwiftUI `.lineSpacing`.
     let paragraph = NSMutableParagraphStyle()
-    paragraph.lineSpacing = 8
+    paragraph.lineSpacing = ChatTheme.bodyLineSpacing
     result.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: result.length))
 
     // Bullet paragraphs get extra spacing between items plus a hanging indent so wrapped
     // continuation lines align under the text, not under the "• " marker. Applied only to
     // lines that begin with the bullet glyph, leaving prose paragraph rhythm untouched.
     let bulletParagraph = NSMutableParagraphStyle()
-    bulletParagraph.lineSpacing = 8
+    bulletParagraph.lineSpacing = ChatTheme.bodyLineSpacing
     bulletParagraph.paragraphSpacing = 6
     bulletParagraph.headIndent = 16
+
+    // Paragraphs are separated by a blank line ("\n\n"). At the full body line height that
+    // blank line is a large, airy gap; cap its height so inter-paragraph spacing reads as a
+    // tight, deliberate break instead. Applied to the blank paragraph's enclosing range (the
+    // bare newline) since its own substring range is zero-length.
+    let blankParagraph = NSMutableParagraphStyle()
+    blankParagraph.lineSpacing = 0
+    blankParagraph.maximumLineHeight = 10
+    blankParagraph.minimumLineHeight = 10
+
     let full = result.string as NSString
-    full.enumerateSubstrings(in: NSRange(location: 0, length: full.length), options: .byParagraphs) { substring, range, _, _ in
-      if let substring, substring.hasPrefix("• ") {
+    full.enumerateSubstrings(in: NSRange(location: 0, length: full.length), options: .byParagraphs) { substring, range, enclosingRange, _ in
+      guard let substring else { return }
+      if substring.hasPrefix("• ") {
         result.addAttribute(.paragraphStyle, value: bulletParagraph, range: range)
+      } else if substring.isEmpty {
+        result.addAttribute(.paragraphStyle, value: blankParagraph, range: enclosingRange)
       }
     }
     return result
@@ -3792,7 +3805,7 @@ private struct ModelReplyView: View {
             prose.append(AttributedString("\n"))
           }
           var bullet = AttributedString("• ")
-          bullet.font = .system(size: 16, weight: .regular)
+          bullet.font = .system(size: ChatTheme.bodyFontSize, weight: .regular)
           bullet.foregroundColor = ChatTheme.primaryText.opacity(0.5)
           prose.append(bullet)
           prose.append(item)
@@ -4066,7 +4079,7 @@ private struct ModelReplyView: View {
       let rawContent = parsed.trimmingCharacters(in: .whitespaces)
       let content = MarkdownParsing.renderLatexToUnicode(rawContent)
       var contentAttr = MarkdownParsing.inlineAttributedString(content, options: opts)
-      contentAttr.font = .system(size: 16, weight: .regular)
+      contentAttr.font = .system(size: ChatTheme.bodyFontSize, weight: .regular)
       return contentAttr
     }
   }
@@ -4084,13 +4097,13 @@ private struct ModelReplyView: View {
       let parts = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
       let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
       var headingAttr = MarkdownParsing.inlineAttributedString(title, options: options)
-      headingAttr.font = MarkdownParsing.fontForHeadingLevel(level, baseSize: 16)
-      let headingMetrics = MarkdownParsing.nsHeadingMetrics(level, baseSize: 16)
+      headingAttr.font = MarkdownParsing.fontForHeadingLevel(level, baseSize: ChatTheme.bodyFontSize)
+      let headingMetrics = MarkdownParsing.nsHeadingMetrics(level, baseSize: ChatTheme.bodyFontSize)
       headingAttr[ProseFontHint.self] = ProseFontMetrics(size: headingMetrics.size, weight: headingMetrics.weight.rawValue)
       if !bodyPart.isEmpty {
         headingAttr.append(AttributedString("\n\n"))
         var bodyAttr = MarkdownParsing.inlineAttributedString(bodyPart, options: options)
-        bodyAttr.font = .system(size: 16, weight: .regular)
+        bodyAttr.font = .system(size: ChatTheme.bodyFontSize, weight: .regular)
         headingAttr.append(bodyAttr)
       }
       return headingAttr
@@ -4173,21 +4186,15 @@ private struct CopyReplyButtonView: View {
       NSPasteboard.general.clearContents()
       NSPasteboard.general.setString(text(), forType: .string)
     } label: {
-      HStack(spacing: 5) {
-        Image(systemName: "doc.on.doc")
-          .font(.system(size: 12))
-        Text("Copy")
-          .font(.caption)
-      }
-      .foregroundColor(isHovered ? ChatTheme.primaryText : ChatTheme.secondaryText)
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
-      .frame(minHeight: 28)
-      .contentShape(Rectangle())
-      .background(
-        RoundedRectangle(cornerRadius: 6)
-          .fill(isHovered ? ChatTheme.controlBackground.opacity(0.9) : ChatTheme.controlBackground.opacity(0.5))
-      )
+      Image(systemName: "doc.on.doc")
+        .font(.system(size: 13))
+        .foregroundColor(isHovered ? ChatTheme.primaryText : ChatTheme.secondaryText.opacity(0.75))
+        .frame(width: 28, height: 28)
+        .contentShape(Rectangle())
+        .background(
+          RoundedRectangle(cornerRadius: 6)
+            .fill(isHovered ? ChatTheme.primaryText.opacity(0.08) : Color.clear)
+        )
     }
     .buttonStyle(.plain)
     .onHover { inside in
@@ -4208,21 +4215,15 @@ private struct RetryButtonView: View {
 
   var body: some View {
     Button(action: action) {
-      HStack(spacing: 5) {
-        Image(systemName: "arrow.clockwise")
-          .font(.system(size: 12))
-        Text("Retry")
-          .font(.caption)
-      }
-      .foregroundColor(isHovered ? ChatTheme.primaryText : ChatTheme.secondaryText)
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
-      .frame(minHeight: 28)
-      .contentShape(Rectangle())
-      .background(
-        RoundedRectangle(cornerRadius: 6)
-          .fill(isHovered ? ChatTheme.controlBackground.opacity(0.9) : ChatTheme.controlBackground.opacity(0.5))
-      )
+      Image(systemName: "arrow.clockwise")
+        .font(.system(size: 13))
+        .foregroundColor(isHovered ? ChatTheme.primaryText : ChatTheme.secondaryText.opacity(0.75))
+        .frame(width: 28, height: 28)
+        .contentShape(Rectangle())
+        .background(
+          RoundedRectangle(cornerRadius: 6)
+            .fill(isHovered ? ChatTheme.primaryText.opacity(0.08) : Color.clear)
+        )
     }
     .buttonStyle(.plain)
     .onHover { inside in
@@ -4254,21 +4255,15 @@ private struct ReadAloudButtonView: View {
         )
       }
     } label: {
-      HStack(spacing: 5) {
-        Image(systemName: isTTSActive ? "stop.fill" : "speaker.wave.2")
-          .font(.system(size: 12))
-        Text(isTTSActive ? "Reading…" : "Read Aloud")
-          .font(.caption)
-      }
-      .foregroundColor(isHovered ? ChatTheme.primaryText : ChatTheme.secondaryText)
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
-      .frame(minHeight: 28)
-      .contentShape(Rectangle())
-      .background(
-        RoundedRectangle(cornerRadius: 6)
-          .fill(isHovered ? ChatTheme.controlBackground.opacity(0.9) : ChatTheme.controlBackground.opacity(0.5))
-      )
+      Image(systemName: isTTSActive ? "stop.fill" : "speaker.wave.2")
+        .font(.system(size: 13))
+        .foregroundColor(isTTSActive ? ChatTheme.primaryText : (isHovered ? ChatTheme.primaryText : ChatTheme.secondaryText.opacity(0.75)))
+        .frame(width: 28, height: 28)
+        .contentShape(Rectangle())
+        .background(
+          RoundedRectangle(cornerRadius: 6)
+            .fill(isTTSActive ? ChatTheme.primaryText.opacity(0.08) : (isHovered ? ChatTheme.primaryText.opacity(0.08) : Color.clear))
+        )
     }
     .buttonStyle(.plain)
     .onHover { inside in
@@ -4413,7 +4408,7 @@ private struct MessageBubbleView: View {
         }
         if !parsed.userText.isEmpty {
           Text(parsed.userText)
-            .font(.system(size: 16))
+            .font(.system(size: ChatTheme.bodyFontSize))
             .foregroundColor(ChatTheme.primaryText)
         }
         if !message.attachedImageParts.isEmpty {
@@ -4430,6 +4425,11 @@ private struct MessageBubbleView: View {
       .background(
         RoundedRectangle(cornerRadius: 14)
           .fill(ChatTheme.userBubbleBackground)
+      )
+      // Bubble fill matches the composer/pane (#0C1117); a 1px stroke keeps it delineated.
+      .overlay(
+        RoundedRectangle(cornerRadius: 14)
+          .strokeBorder(ChatTheme.primaryText.opacity(ChatTheme.borderOpacity), lineWidth: 1)
       )
       .onHover { inside in
         if inside {
@@ -4458,7 +4458,7 @@ private struct MessageBubbleView: View {
     let text = parts.filter { !$0.isEmpty }.joined(separator: "\n\n")
     return Group {
       if !text.isEmpty || onRetry != nil {
-        HStack(spacing: 8) {
+        HStack(spacing: 2) {
           if let onRetry {
             RetryButtonView(action: onRetry)
           }
@@ -4480,7 +4480,7 @@ private struct MessageBubbleView: View {
       || !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     return Group {
       if visible {
-        HStack(spacing: 8) {
+        HStack(spacing: 2) {
           // Empty placeholder for TTS so an image-led reply doesn't read "generated image"
           // out loud; the read-aloud handler ignores empty text.
           ReadAloudButtonView(text: {

@@ -17,10 +17,17 @@ enum ChatTheme {
   /// Top navigation/status bar — matches the sidebar's near-black so the chrome
   /// frames the navy conversation pane on all sides.
   static let topBarBackground = sidebarBackground
-  /// User message bubble background. Slightly elevated from window background.
-  static let userBubbleBackground = Color(red: 30/255, green: 37/255, blue: 49/255) // #1E2531
+  /// User message bubble background — matches the conversation pane / composer
+  /// (#0C1117) so "what I typed" reads the same as "where I type"; a 1px stroke
+  /// (applied at the call site) keeps the bubble delineated.
+  static let userBubbleBackground = windowBackground
   /// Primary text (messages, headers). Soft white for comfortable reading.
   static let primaryText = Color(red: 236/255, green: 236/255, blue: 236/255)      // #ECECEC
+  /// Body prose font size — single source of truth for chat messages (prose, bullets,
+  /// user bubble) and the base for relative heading sizes.
+  static let bodyFontSize: CGFloat = 15
+  /// Line spacing paired with `bodyFontSize` to hold a ~1.5× line height.
+  static let bodyLineSpacing: CGFloat = 7
   /// Secondary text (buttons, captions).
   static var secondaryText: Color { primaryText.opacity(0.65) }
   /// Border opacity (e.g. input stroke). Subtle.
