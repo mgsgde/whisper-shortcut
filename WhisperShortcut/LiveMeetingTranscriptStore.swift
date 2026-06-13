@@ -95,7 +95,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// Parses a transcript file (as written by `appendToTranscript`: "[mm:ss] text" blocks
   /// separated by blank lines) back into chunks. Used to rehydrate a resumed meeting.
   static func parseTranscript(_ text: String) -> [LiveMeetingChunk] {
-    guard let regex = try? NSRegularExpression(pattern: #"\[(\d{1,2}):(\d{2})\]"#) else { return [] }
+    guard let regex = try? NSRegularExpression(pattern: #"\[(\d+):(\d{2})\]"#) else { return [] }
     let ns = text as NSString
     let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
     var result: [LiveMeetingChunk] = []

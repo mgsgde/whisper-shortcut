@@ -22,9 +22,6 @@ final class MeetingListService: ObservableObject {
   private static let filenameRegex = try! NSRegularExpression(
     pattern: #"^Meeting-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})(?:-(.+))?\.txt$"#)
 
-  private static let chunkLineRegex = try! NSRegularExpression(
-    pattern: #"^\[(\d{2}):(\d{2})\]\s*(.+)$"#)
-
   private static let displayDateFormatter: DateFormatter = {
     let f = DateFormatter()
     f.dateFormat = "EEEE, d MMM yyyy, HH:mm"
@@ -254,26 +251,6 @@ final class MeetingListService: ObservableObject {
 
   static func parseTranscriptFile(at url: URL) -> [LiveMeetingChunk] {
     guard let content = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-
-    var chunks: [LiveMeetingChunk] = []
-    for line in content.components(separatedBy: .newlines) {
-      let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !trimmed.isEmpty else { continue }
-
-      let lineRange = NSRange(trimmed.startIndex..., in: trimmed)
-      guard let match = chunkLineRegex.firstMatch(in: trimmed, range: lineRange) else { continue }
-
-      guard let minRange = Range(match.range(at: 1), in: trimmed),
-            let secRange = Range(match.range(at: 2), in: trimmed),
-            let textRange = Range(match.range(at: 3), in: trimmed) else { continue }
-
-      let minutes = Int(trimmed[minRange]) ?? 0
-      let seconds = Int(trimmed[secRange]) ?? 0
-      let startTime = TimeInterval(minutes * 60 + seconds)
-      let text = String(trimmed[textRange])
-
-      chunks.append(LiveMeetingChunk(startTime: startTime, text: text))
-    }
-    return chunks
+    return LiveMeetingTranscriptStore.parseTranscript(content)
   }
 }
