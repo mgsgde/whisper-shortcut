@@ -159,6 +159,11 @@ final class GrokChatProvider: LLMChatProvider {
           var functionCallNames: [String: String] = [:]  // item_id → function name
           var currentEventType: String?
           var finishReason: String?
+          // Web-search citations stream as `url_citation` annotations. Collect unique URLs in
+          // first-seen order so the source footer numbering ([1], [2], …) matches Grok's inline
+          // markers, which it appends in citation order.
+          var citationURLs: [String] = []
+          var seenCitationURLs: Set<String> = []
 
           for try await line in bytes.lines {
             try Task.checkCancellation()
@@ -212,24 +217,22 @@ final class GrokChatProvider: LLMChatProvider {
                 DebugLogger.logNetwork("GROK-RESPONSES: function_call added name=\(name) id=\(itemId)")
               }
 
+            case "response.output_text.annotation.added":
+              if let ann = obj["annotation"] as? [String: Any],
+                 (ann["type"] as? String) == "url_citation",
+                 let url = (ann["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                 !url.isEmpty, seenCitationURLs.insert(url).inserted {
+                citationURLs.append(url)
+              }
+
             case "response.completed":
-              if let resp = obj["response"] as? [String: Any] {
-                if let status = resp["status"] as? String {
-                  finishReason = status == "completed" ? "stop" : status
-                }
-                // TEMP instrumentation: dump final response to discover the citation/annotation
-                // shape so GroundingSource mapping can be implemented precisely. Remove after.
-                if let data = try? JSONSerialization.data(withJSONObject: resp),
-                   let json = String(data: data, encoding: .utf8) {
-                  DebugLogger.logNetwork("GROK-RESPONSES-DEBUG: completed payload=\(json.prefix(6000))")
-                }
+              if let resp = obj["response"] as? [String: Any],
+                 let status = resp["status"] as? String {
+                finishReason = status == "completed" ? "stop" : status
               }
 
             default:
-              // TEMP instrumentation: surface any annotation/citation-bearing events.
-              if eventType.contains("annotation") || eventType.contains("citation") {
-                DebugLogger.logNetwork("GROK-RESPONSES-DEBUG: event=\(eventType) payload=\(payload.prefix(2000))")
-              }
+              break
             }
           }
 
@@ -239,8 +242,13 @@ final class GrokChatProvider: LLMChatProvider {
             continuation.yield(.functionCall(name: call.name, args: call.args, thoughtSignature: call.callId))
           }
 
-          DebugLogger.logNetwork("GROK-RESPONSES: stream end, finishReason=\(finishReason ?? "nil")")
-          continuation.yield(.finished(sources: [], supports: [], finishReason: finishReason))
+          let sources = citationURLs.map {
+            GroundingSource(uri: $0, title: Self.citationDisplayTitle(for: $0))
+          }
+          DebugLogger.logNetwork("GROK-RESPONSES: stream end, finishReason=\(finishReason ?? "nil") sources=\(sources.count)")
+          // No `supports`: Grok already writes inline [N] markers into its reply text, so emitting
+          // grounding supports here would render a second, duplicate set of citation markers.
+          continuation.yield(.finished(sources: sources, supports: [], finishReason: finishReason))
           continuation.finish()
         } catch {
           continuation.finish(throwing: error)
@@ -468,5 +476,13 @@ final class GrokChatProvider: LLMChatProvider {
         "xAI account is out of credits or has reached its monthly spending limit. Top up or raise the limit at https://console.x.ai/ to continue.")
     }
     return TranscriptionError.rateLimited(retryAfter: nil)
+  }
+
+  /// Display label for a citation source footer entry. Grok's annotation `title` is just the
+  /// citation number, so we use the URL's host (without a leading "www.") instead, matching how
+  /// the source list reads for Gemini-grounded replies.
+  private static func citationDisplayTitle(for urlString: String) -> String {
+    guard let host = URL(string: urlString)?.host, !host.isEmpty else { return urlString }
+    return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
   }
 }

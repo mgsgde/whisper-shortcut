@@ -809,7 +809,11 @@ class ChatViewModel: ObservableObject {
           userMessage: content,
           modelResponse: strippedReply,
           model: model)
-        if let s = store.session(by: sessionId), s.messages.count == 2, !s.isMeeting {
+        // Title once, after the first real user→model exchange. Counting user messages (rather
+        // than total messages) keeps this working when the chat opens with a local command reply
+        // such as "Model set to Grok 4.3." from `/grok`, which would otherwise push the total past 2.
+        if let s = store.session(by: sessionId), !s.isMeeting,
+           s.messages.filter({ $0.role == .user }).count == 1 {
           Task { await generateAITitle(sessionId: sessionId) }
         }
         ReviewPrompter.shared.recordSuccessfulOperation()
@@ -1324,13 +1328,15 @@ class ChatViewModel: ObservableObject {
   }
 
   private func generateAITitle(sessionId: UUID) async {
+    // Find the first real user message and its model reply. Indices are not assumed to be 0/1:
+    // a chat may open with a local command reply (e.g. "Model set to Grok 4.3." from `/grok`).
     guard let target = store.session(by: sessionId),
-          target.messages.count >= 2,
-          target.messages[0].role == .user,
-          target.messages[1].role == .model else { return }
-    let userText = String(target.messages[0].content.prefix(400))
+          let userIdx = target.messages.firstIndex(where: { $0.role == .user }),
+          let replyIdx = target.messages[(userIdx + 1)...].firstIndex(where: { $0.role == .model })
+    else { return }
+    let userText = String(target.messages[userIdx].content.prefix(400))
     // Strip image markers first — otherwise an image-led reply feeds base64 to the title model.
-    let modelText = String(GeminiAPIClient.stripImageMarkers(target.messages[1].content).prefix(400))
+    let modelText = String(GeminiAPIClient.stripImageMarkers(target.messages[replyIdx].content).prefix(400))
     let prompt = """
       Give this conversation a short title (2–3 words) that captures its core topic. \
       Begin with a single emoji that fits the topic, then one space, then the words. \
