@@ -36,6 +36,20 @@ enum AppSupportPaths {
     ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
   }
 
+  /// Directory holding user-authored context files (system-prompts.md, memory.md).
+  static func userContextURL() -> URL {
+    whisperShortcutApplicationSupportURL().appendingPathComponent("UserContext")
+  }
+
+  /// Creates `url` (and intermediates) if it does not already exist. Best-effort; logging is left
+  /// to callers since failures surface on the subsequent write.
+  static func ensureDirectoryExists(_ url: URL) {
+    let fm = FileManager.default
+    if !fm.fileExists(atPath: url.path) {
+      try? fm.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+  }
+
   /// Returns the daily log directory used by `DebugLogger`. Resolves automatically to the
   /// container path under sandbox and to `~/Library/Logs/WhisperShortcut` otherwise.
   static func logsURL() -> URL {

@@ -26,10 +26,7 @@ final class ChatMemoryStore {
   /// Max characters per fact (longer facts are truncated) — keeps single entries from bloating.
   private let maxFactLength = 300
 
-  private var contextDirectoryURL: URL {
-    AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("UserContext")
-  }
-  private var fileURL: URL { contextDirectoryURL.appendingPathComponent(Self.fileName) }
+  private var fileURL: URL { AppSupportPaths.userContextURL().appendingPathComponent(Self.fileName) }
 
   /// URL of the memory file (e.g. for opening in Finder).
   var memoryFileURL: URL { fileURL }
@@ -47,7 +44,12 @@ final class ChatMemoryStore {
   /// Parsed list of facts (leading "- " stripped, blank lines dropped), oldest first.
   func facts() -> [String] {
     guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { return [] }
-    return content
+    return Self.parseFactLines(content)
+  }
+
+  /// Splits one-fact-per-line text into facts: strips a leading "- "/"-" bullet, trims, drops blanks.
+  private static func parseFactLines(_ text: String) -> [String] {
+    text
       .split(separator: "\n", omittingEmptySubsequences: true)
       .map { line in
         var s = line.trimmingCharacters(in: .whitespaces)
@@ -99,17 +101,7 @@ final class ChatMemoryStore {
   /// Replaces the entire memory with the given multi-line text (one fact per line). Used by the
   /// Settings editor. Re-parses so the on-disk format stays canonical.
   func saveRawText(_ raw: String) {
-    let parsed = raw
-      .split(separator: "\n", omittingEmptySubsequences: true)
-      .map { line -> String in
-        var s = line.trimmingCharacters(in: .whitespaces)
-        if s.hasPrefix("- ") { s.removeFirst(2) }
-        else if s.hasPrefix("-") { s.removeFirst(1) }
-        return s.trimmingCharacters(in: .whitespaces)
-      }
-      .filter { !$0.isEmpty }
-      .prefix(maxFacts)
-    write(Array(parsed))
+    write(Array(Self.parseFactLines(raw).suffix(maxFacts)))
   }
 
   /// Clears all memory.
@@ -121,20 +113,13 @@ final class ChatMemoryStore {
   // MARK: - Private
 
   private func write(_ facts: [String]) {
-    ensureDirectoryExists()
+    AppSupportPaths.ensureDirectoryExists(AppSupportPaths.userContextURL())
     let body = facts.map { "- \($0)" }.joined(separator: "\n")
     do {
       try body.write(to: fileURL, atomically: true, encoding: .utf8)
       NotificationCenter.default.post(name: .chatMemoryDidUpdate, object: nil)
     } catch {
       DebugLogger.logError("CHAT-MEMORY: Failed to write \(Self.fileName): \(error.localizedDescription)")
-    }
-  }
-
-  private func ensureDirectoryExists() {
-    let fm = FileManager.default
-    if !fm.fileExists(atPath: contextDirectoryURL.path) {
-      try? fm.createDirectory(at: contextDirectoryURL, withIntermediateDirectories: true)
     }
   }
 }

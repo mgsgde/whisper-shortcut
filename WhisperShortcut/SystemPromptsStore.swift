@@ -59,9 +59,7 @@ final class SystemPromptsStore {
   static let fileName = "system-prompts.md"
 
   private let queue = DispatchQueue(label: "com.whisper-shortcut.systempromptsstore", qos: .userInitiated)
-  private var contextDirectoryURL: URL {
-    AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("UserContext")
-  }
+  private var contextDirectoryURL: URL { AppSupportPaths.userContextURL() }
 
   private var fileURL: URL {
     contextDirectoryURL.appendingPathComponent(Self.fileName)
@@ -175,10 +173,7 @@ final class SystemPromptsStore {
   // MARK: - Private
 
   private func ensureDirectoryExists() {
-    let fm = FileManager.default
-    if !fm.fileExists(atPath: contextDirectoryURL.path) {
-      try? fm.createDirectory(at: contextDirectoryURL, withIntermediateDirectories: true)
-    }
+    AppSupportPaths.ensureDirectoryExists(contextDirectoryURL)
   }
 
   private func defaultFormattedContent() -> String {
