@@ -1323,7 +1323,9 @@ class ChatViewModel: ObservableObject {
     let modelText = String(GeminiAPIClient.stripImageMarkers(target.messages[1].content).prefix(400))
     let prompt = """
       Give this conversation a short title (2–3 words) that captures its core topic. \
-      Reply with only the title on a single line — no quotes, no punctuation, no explanation.
+      Begin with a single emoji that fits the topic, then one space, then the words. \
+      Reply with only the title on a single line — no quotes, no trailing punctuation, no explanation. \
+      Example: 📊 Quarterly Revenue
 
       User: \(userText)
       Assistant: \(modelText)
@@ -1346,7 +1348,7 @@ class ChatViewModel: ObservableObject {
         "properties": [
           "title": [
             "type": "string",
-            "description": "A short 2–3 word title capturing the core topic. No quotes, no trailing punctuation, no explanation.",
+            "description": "A short title capturing the core topic: a single leading emoji, then one space, then 2–4 words. No quotes, no trailing punctuation, no explanation. Example: 📊 Quarterly Revenue",
           ] as [String: Any],
         ] as [String: Any],
         "required": ["title"],
@@ -1413,7 +1415,9 @@ class ChatViewModel: ObservableObject {
     guard !summaryText.isEmpty else { return }
     let prompt = """
       Give this meeting a short title (2–4 words) that captures its main topic. \
-      Reply with only the title on a single line — no quotes, no punctuation, no explanation.
+      Begin with a single emoji that fits the topic, then one space, then the words. \
+      Reply with only the title on a single line — no quotes, no trailing punctuation, no explanation. \
+      Example: 🤝 Vendor Negotiation
 
       Meeting summary:
       \(String(summaryText.prefix(1200)))
@@ -4410,6 +4414,9 @@ private struct MessageBubbleView: View {
           Text(parsed.userText)
             .font(.system(size: ChatTheme.bodyFontSize))
             .foregroundColor(ChatTheme.primaryText)
+            // Safe here: a single uniform-font Text. The textSelection hang only strikes
+            // per-run mixed fonts (see SelectableProseText / MessageBubbleView notes).
+            .textSelection(.enabled)
         }
         if !message.attachedImageParts.isEmpty {
           Text(message.attachedImageParts.count == 1

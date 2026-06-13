@@ -201,7 +201,7 @@ struct ChatSidebar: View {
     let grouped = grouped(active, by: sortDate)
     let meetingLive = viewModel.isMeetingActive
 
-    sectionDivider
+    sectionGap
     sectionHeaderRow(
       title: "Meetings",
       isCollapsed: meetingsSectionCollapsed,
@@ -298,12 +298,9 @@ struct ChatSidebar: View {
 
   // Hairline divider used to mark the boundary between Chats and Meetings.
   // Symmetric vertical padding keeps the line equidistant from both headers.
-  private var sectionDivider: some View {
-    Rectangle()
-      .fill(ChatTheme.secondaryText.opacity(0.18))
-      .frame(height: 1)
-      .padding(.horizontal, 14)
-      .padding(.vertical, 10)
+  /// Vertical breathing room between the Chats and Meetings sections (no visible line).
+  private var sectionGap: some View {
+    Color.clear.frame(height: 10)
   }
 
   // MARK: - Search field
