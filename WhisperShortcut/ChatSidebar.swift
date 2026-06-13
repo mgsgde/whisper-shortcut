@@ -18,22 +18,21 @@ struct ChatSidebar: View {
   @FocusState private var renameFieldFocused: Bool
   @State private var hoveredResultId: UUID? = nil
 
+  // Global search state — one query, results across both chats and meetings.
+  @State private var searchQuery: String = ""
+  @State private var searchResults: [ChatViewModel.ChatSearchResult] = []
+  @State private var searchTask: Task<Void, Never>? = nil
+
   // Chats section state
   @State private var chatsSectionCollapsed = false
   @State private var chatCollapsedGroups: Set<DateGroup>
   @State private var chatArchivedCollapsed = true
-  @State private var chatSearchQuery: String = ""
-  @State private var chatSearchResults: [ChatViewModel.ChatSearchResult] = []
-  @State private var chatSearchTask: Task<Void, Never>? = nil
 
   // Meetings section state — every date group starts expanded so the user
   // can scroll through history without opening each bucket manually.
   @State private var meetingsSectionCollapsed = false
   @State private var meetingCollapsedGroups: Set<DateGroup> = []
   @State private var meetingArchivedCollapsed = true
-  @State private var meetingSearchQuery: String = ""
-  @State private var meetingSearchResults: [ChatViewModel.ChatSearchResult] = []
-  @State private var meetingSearchTask: Task<Void, Never>? = nil
 
   static let sidebarWidth: CGFloat = 220
 
@@ -44,11 +43,8 @@ struct ChatSidebar: View {
       initialValue: Self.defaultChatCollapsedGroups(for: viewModel.allSessionsList))
   }
 
-  private var isChatSearching: Bool {
-    !chatSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-  }
-  private var isMeetingSearching: Bool {
-    !meetingSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  private var isSearching: Bool {
+    !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   private enum DateGroup: CaseIterable {
@@ -120,18 +116,27 @@ struct ChatSidebar: View {
     VStack(spacing: 0) {
       sidebarHeader
       Divider()
+      searchField(
+        placeholder: "Search chats & meetings",
+        text: $searchQuery,
+        isSearching: isSearching,
+        clearAction: { searchQuery = "" },
+        topPadding: 8)
       ScrollView(.vertical, showsIndicators: true) {
         VStack(spacing: 0) {
-          chatsSection
-          meetingsSection
+          if isSearching {
+            searchResultsView(results: searchResults)
+          } else {
+            chatsSection
+            meetingsSection
+          }
         }
         .padding(.bottom, 8)
       }
     }
     .frame(width: Self.sidebarWidth)
-    .background(ChatTheme.controlBackground)
-    .onChange(of: chatSearchQuery) { _ in scheduleChatSearch() }
-    .onChange(of: meetingSearchQuery) { _ in scheduleMeetingSearch() }
+    .background(ChatTheme.sidebarBackground)
+    .onChange(of: searchQuery) { _ in scheduleSearch() }
   }
 
   // MARK: - Chats section
@@ -155,42 +160,31 @@ struct ChatSidebar: View {
       viewModel.createNewSession()
     }
     if !chatsSectionCollapsed {
-      searchField(
-        placeholder: "Search chats",
-        text: $chatSearchQuery,
-        isSearching: isChatSearching,
-        clearAction: { chatSearchQuery = "" },
-        topPadding: 0)
-
-      if isChatSearching {
-        searchResultsView(results: chatSearchResults)
-      } else {
-        ForEach(Array(grouped.enumerated()), id: \.offset) { index, pair in
-          collapsibleHeader(
-            pair.0.label,
-            isCollapsed: chatCollapsedGroups.contains(pair.0),
-            showDivider: index > 0
-          ) {
-            toggleCollapse(pair.0, in: &chatCollapsedGroups)
-          }
-          if !chatCollapsedGroups.contains(pair.0) {
-            ForEach(pair.1, id: \.id) { session in
-              sidebarRow(session: session)
-            }
+      ForEach(Array(grouped.enumerated()), id: \.offset) { index, pair in
+        collapsibleHeader(
+          pair.0.label,
+          isCollapsed: chatCollapsedGroups.contains(pair.0),
+          showDivider: index > 0
+        ) {
+          toggleCollapse(pair.0, in: &chatCollapsedGroups)
+        }
+        if !chatCollapsedGroups.contains(pair.0) {
+          ForEach(pair.1, id: \.id) { session in
+            sidebarRow(session: session)
           }
         }
-        if !archived.isEmpty {
-          collapsibleHeader(
-            "Archived",
-            isCollapsed: chatArchivedCollapsed,
-            showDivider: !grouped.isEmpty
-          ) {
-            withAnimation(.easeInOut(duration: 0.15)) { chatArchivedCollapsed.toggle() }
-          }
-          if !chatArchivedCollapsed {
-            ForEach(archived, id: \.id) { session in
-              sidebarRow(session: session, isArchived: true)
-            }
+      }
+      if !archived.isEmpty {
+        collapsibleHeader(
+          "Archived",
+          isCollapsed: chatArchivedCollapsed,
+          showDivider: !grouped.isEmpty
+        ) {
+          withAnimation(.easeInOut(duration: 0.15)) { chatArchivedCollapsed.toggle() }
+        }
+        if !chatArchivedCollapsed {
+          ForEach(archived, id: \.id) { session in
+            sidebarRow(session: session, isArchived: true)
           }
         }
       }
@@ -222,16 +216,7 @@ struct ChatSidebar: View {
       viewModel.handleMeetingButtonTap()
     }
     if !meetingsSectionCollapsed {
-      searchField(
-        placeholder: "Search meetings",
-        text: $meetingSearchQuery,
-        isSearching: isMeetingSearching,
-        clearAction: { meetingSearchQuery = "" },
-        topPadding: 0)
-
-      if isMeetingSearching {
-        searchResultsView(results: meetingSearchResults)
-      } else if active.isEmpty && archived.isEmpty {
+      if active.isEmpty && archived.isEmpty {
         Text("No meetings yet")
           .font(.system(size: 12))
           .foregroundColor(ChatTheme.secondaryText)
@@ -412,41 +397,25 @@ struct ChatSidebar: View {
     .onTapGesture { openResult(result) }
   }
 
-  private func scheduleChatSearch() {
-    chatSearchTask?.cancel()
-    let query = chatSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+  private func scheduleSearch() {
+    searchTask?.cancel()
+    let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !query.isEmpty else {
-      chatSearchResults = []
+      searchResults = []
       return
     }
-    chatSearchTask = Task { @MainActor in
+    searchTask = Task { @MainActor in
       try? await Task.sleep(nanoseconds: 200_000_000)
       guard !Task.isCancelled else { return }
-      chatSearchResults = viewModel.search(query).filter { !$0.isMeeting }
-    }
-  }
-
-  private func scheduleMeetingSearch() {
-    meetingSearchTask?.cancel()
-    let query = meetingSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !query.isEmpty else {
-      meetingSearchResults = []
-      return
-    }
-    meetingSearchTask = Task { @MainActor in
-      try? await Task.sleep(nanoseconds: 200_000_000)
-      guard !Task.isCancelled else { return }
-      meetingSearchResults = viewModel.search(query).filter { $0.isMeeting }
+      searchResults = viewModel.search(query)
     }
   }
 
   private func openResult(_ result: ChatViewModel.ChatSearchResult) {
     if let sessionId = result.sessionId {
       viewModel.switchToSession(id: sessionId)
-      chatSearchQuery = ""
-      chatSearchResults = []
-      meetingSearchQuery = ""
-      meetingSearchResults = []
+      searchQuery = ""
+      searchResults = []
     } else if let url = result.meetingURL {
       viewModel.revealMeetingInFinder(url: url)
     }
