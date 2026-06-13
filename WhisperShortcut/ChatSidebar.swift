@@ -1,6 +1,12 @@
 import SwiftUI
 
 // MARK: - Sidebar for Gemini Chat session list
+//
+// Layout: header → single vertical scroll view containing two stacked sections.
+//   • CHATS: search field, date groups (Today expanded by default, the rest
+//     collapsed), Archived (collapsed).
+//   • MEETINGS: search field, date groups (all expanded by default so old
+//     meetings are easy to find by scrolling), Archived (collapsed).
 
 struct ChatSidebar: View {
   @ObservedObject var viewModel: ChatViewModel
@@ -9,32 +15,40 @@ struct ChatSidebar: View {
   @State private var hoveredRowId: UUID? = nil
   @State private var renamingSessionId: UUID? = nil
   @State private var renameDraft: String = ""
-  @State private var collapsedGroups: Set<DateGroup> = []
-  @State private var archivedCollapsed = true
   @FocusState private var renameFieldFocused: Bool
-
-  /// When true, the browse list and search results are scoped to meetings only
-  /// (toggled by the mic button in the search field).
-  @State private var meetingFilterActive = false
-
-  @State private var searchQuery: String = ""
-  @State private var searchResults: [ChatViewModel.ChatSearchResult] = []
   @State private var hoveredResultId: UUID? = nil
-  @State private var searchTask: Task<Void, Never>? = nil
+
+  // Chats section state
+  @State private var chatsSectionCollapsed = false
+  @State private var chatCollapsedGroups: Set<DateGroup>
+  @State private var chatArchivedCollapsed = true
+  @State private var chatSearchQuery: String = ""
+  @State private var chatSearchResults: [ChatViewModel.ChatSearchResult] = []
+  @State private var chatSearchTask: Task<Void, Never>? = nil
+
+  // Meetings section state — every date group starts expanded so the user
+  // can scroll through history without opening each bucket manually.
+  @State private var meetingsSectionCollapsed = false
+  @State private var meetingCollapsedGroups: Set<DateGroup> = []
+  @State private var meetingArchivedCollapsed = true
+  @State private var meetingSearchQuery: String = ""
+  @State private var meetingSearchResults: [ChatViewModel.ChatSearchResult] = []
+  @State private var meetingSearchTask: Task<Void, Never>? = nil
 
   static let sidebarWidth: CGFloat = 220
 
   init(viewModel: ChatViewModel, sidebarVisible: Binding<Bool>) {
     self._viewModel = ObservedObject(wrappedValue: viewModel)
     self._sidebarVisible = sidebarVisible
-    // Default state on first open: keep only the most recent date section
-    // expanded; every other date group starts collapsed (Meetings & Archived
-    // default to collapsed via their own @State above).
-    self._collapsedGroups = State(initialValue: Self.defaultCollapsedGroups(for: viewModel.allSessionsList))
+    self._chatCollapsedGroups = State(
+      initialValue: Self.defaultChatCollapsedGroups(for: viewModel.allSessionsList))
   }
 
-  private var isSearching: Bool {
-    !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  private var isChatSearching: Bool {
+    !chatSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+  private var isMeetingSearching: Bool {
+    !meetingSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   private enum DateGroup: CaseIterable {
@@ -61,14 +75,13 @@ struct ChatSidebar: View {
     return .older
   }
 
-  /// The set of date groups to collapse by default on first open: every group
-  /// except the most recent one that actually contains chats. Mirrors how the
-  /// body filters/orders sessions so the expanded group matches the first one
-  /// rendered. Collapses everything if there are no ungrouped chats.
-  private static func defaultCollapsedGroups(for sessions: [ChatSession]) -> Set<DateGroup> {
+  /// Collapse every chat date group except the most recent one that actually
+  /// contains chats. Mirrors how the body filters/orders sessions so the open
+  /// group matches the first one rendered.
+  private static func defaultChatCollapsedGroups(for sessions: [ChatSession]) -> Set<DateGroup> {
     let present = Set(
       sessions
-        .filter { !$0.archived && !$0.pinned && !$0.isMeeting }
+        .filter { !$0.archived && !$0.isMeeting }
         .map { dateGroup(for: $0.lastUpdated) }
     )
     guard let mostRecent = DateGroup.allCases.first(where: { present.contains($0) }) else {
@@ -77,17 +90,20 @@ struct ChatSidebar: View {
     return Set(DateGroup.allCases).subtracting([mostRecent])
   }
 
-  /// Date a session sorts and groups by. Meetings now live inline among the chats, so
-  /// they bucket by when the meeting actually took place (parsed from `meetingStem`),
-  /// falling back to `lastUpdated`; everything else uses `lastUpdated`.
+  /// Date a session sorts and groups by. Meetings bucket by when the meeting
+  /// took place (parsed from `meetingStem`), falling back to `lastUpdated`;
+  /// chats always use `lastUpdated`.
   private func sortDate(_ session: ChatSession) -> Date {
     if session.isMeeting {
-      return session.meetingStem.flatMap(MeetingListService.date(fromStem:)) ?? session.lastUpdated
+      return session.meetingStem.flatMap(MeetingListService.date(fromStem:))
+        ?? session.lastUpdated
     }
     return session.lastUpdated
   }
 
-  private func grouped(_ sessions: [ChatSession], by date: (ChatSession) -> Date) -> [(DateGroup, [ChatSession])] {
+  private func grouped(_ sessions: [ChatSession], by date: (ChatSession) -> Date)
+    -> [(DateGroup, [ChatSession])]
+  {
     let sorted = sessions.sorted { date($0) > date($1) }
     var groups: [DateGroup: [ChatSession]] = [:]
     for session in sorted {
@@ -104,90 +120,226 @@ struct ChatSidebar: View {
     VStack(spacing: 0) {
       sidebarHeader
       Divider()
-      searchField
-      if isSearching {
-        searchResultsView
-      } else {
-        sessionsScrollView
+      ScrollView(.vertical, showsIndicators: true) {
+        VStack(spacing: 0) {
+          chatsSection
+          meetingsSection
+        }
+        .padding(.bottom, 8)
       }
     }
     .frame(width: Self.sidebarWidth)
     .background(ChatTheme.controlBackground)
-    .onChange(of: searchQuery) { _ in scheduleSearch() }
-    .onChange(of: meetingFilterActive) { _ in if isSearching { scheduleSearch() } }
+    .onChange(of: chatSearchQuery) { _ in scheduleChatSearch() }
+    .onChange(of: meetingSearchQuery) { _ in scheduleMeetingSearch() }
   }
 
-  private var sessionsScrollView: some View {
-    ScrollView(.vertical, showsIndicators: true) {
-        VStack(spacing: 0) {
-          let all = viewModel.allSessionsList
-          // Meeting filter (mic toggle) scopes the whole list, including the archived section.
-          let pool = meetingFilterActive ? all.filter { $0.isMeeting } : all
-          let active = pool.filter { !$0.archived }
-          let archived = pool.filter { $0.archived }
-          let pinned = active.filter { $0.pinned }.sorted { $0.lastUpdated > $1.lastUpdated }
-          let rest = active.filter { !$0.pinned }
-          // Meetings are no longer a separate section — they sit inline in the date
-          // groups (still recognizable by their mic icon), bucketed by sortDate.
-          let grouped = grouped(rest, by: sortDate)
+  // MARK: - Chats section
 
-          if meetingFilterActive && active.isEmpty && archived.isEmpty {
-            Text("No meetings yet")
-              .font(.system(size: 12))
-              .foregroundColor(ChatTheme.secondaryText)
-              .frame(maxWidth: .infinity, alignment: .center)
-              .padding(.top, 24)
+  @ViewBuilder
+  private var chatsSection: some View {
+    let chats = viewModel.allSessionsList.filter { !$0.isMeeting }
+    let active = chats.filter { !$0.archived }
+    let archived = chats.filter { $0.archived }
+    let grouped = grouped(active, by: sortDate)
+
+    sectionHeaderRow(
+      title: "Chats",
+      isCollapsed: chatsSectionCollapsed,
+      toggleCollapse: { chatsSectionCollapsed.toggle() },
+      actionIcon: "square.and.pencil",
+      actionHelp: "New chat",
+      actionTint: ChatTheme.secondaryText,
+      topPadding: 16
+    ) {
+      viewModel.createNewSession()
+    }
+    if !chatsSectionCollapsed {
+      searchField(
+        placeholder: "Search chats",
+        text: $chatSearchQuery,
+        isSearching: isChatSearching,
+        clearAction: { chatSearchQuery = "" },
+        topPadding: 0)
+
+      if isChatSearching {
+        searchResultsView(results: chatSearchResults)
+      } else {
+        ForEach(Array(grouped.enumerated()), id: \.offset) { index, pair in
+          collapsibleHeader(
+            pair.0.label,
+            isCollapsed: chatCollapsedGroups.contains(pair.0),
+            showDivider: index > 0
+          ) {
+            toggleCollapse(pair.0, in: &chatCollapsedGroups)
           }
-
-          if !pinned.isEmpty {
-            sectionHeader("Pinned")
-            ForEach(pinned, id: \.id) { session in
+          if !chatCollapsedGroups.contains(pair.0) {
+            ForEach(pair.1, id: \.id) { session in
               sidebarRow(session: session)
             }
           }
-
-          ForEach(Array(grouped.enumerated()), id: \.offset) { index, pair in
-            collapsibleSectionHeader(pair.0, showDivider: !pinned.isEmpty || index > 0)
-            if !collapsedGroups.contains(pair.0) {
-              ForEach(pair.1, id: \.id) { session in
-                sidebarRow(session: session)
-              }
-            }
+        }
+        if !archived.isEmpty {
+          collapsibleHeader(
+            "Archived",
+            isCollapsed: chatArchivedCollapsed,
+            showDivider: !grouped.isEmpty
+          ) {
+            withAnimation(.easeInOut(duration: 0.15)) { chatArchivedCollapsed.toggle() }
           }
-
-          if !archived.isEmpty {
-            collapsibleHeader(
-              "Archived",
-              isCollapsed: archivedCollapsed,
-              showDivider: !pinned.isEmpty || !grouped.isEmpty
-            ) {
-              withAnimation(.easeInOut(duration: 0.15)) { archivedCollapsed.toggle() }
-            }
-            if !archivedCollapsed {
-              ForEach(archived, id: \.id) { session in
-                sidebarRow(session: session, isArchived: true)
-              }
+          if !chatArchivedCollapsed {
+            ForEach(archived, id: \.id) { session in
+              sidebarRow(session: session, isArchived: true)
             }
           }
         }
-        .padding(.leading, 10)
-        .padding(.bottom, 8)
       }
+    }
   }
 
-  // MARK: - Search
+  // MARK: - Meetings section
 
-  private var searchField: some View {
+  @ViewBuilder
+  private var meetingsSection: some View {
+    let meetings = viewModel.allSessionsList.filter { $0.isMeeting }
+    let active = meetings.filter { !$0.archived }
+    let archived = meetings.filter { $0.archived }
+    let grouped = grouped(active, by: sortDate)
+    let meetingLive = viewModel.isMeetingActive
+
+    sectionDivider
+    sectionHeaderRow(
+      title: "Meetings",
+      isCollapsed: meetingsSectionCollapsed,
+      toggleCollapse: { meetingsSectionCollapsed.toggle() },
+      actionIcon: "square.and.pencil",
+      actionHelp: meetingLive
+        ? "Stop the current meeting recording"
+        : "Start a new live meeting recording",
+      actionTint: ChatTheme.secondaryText,
+      topPadding: 8
+    ) {
+      viewModel.handleMeetingButtonTap()
+    }
+    if !meetingsSectionCollapsed {
+      searchField(
+        placeholder: "Search meetings",
+        text: $meetingSearchQuery,
+        isSearching: isMeetingSearching,
+        clearAction: { meetingSearchQuery = "" },
+        topPadding: 0)
+
+      if isMeetingSearching {
+        searchResultsView(results: meetingSearchResults)
+      } else if active.isEmpty && archived.isEmpty {
+        Text("No meetings yet")
+          .font(.system(size: 12))
+          .foregroundColor(ChatTheme.secondaryText)
+          .frame(maxWidth: .infinity, alignment: .center)
+          .padding(.top, 12)
+          .padding(.bottom, 8)
+      } else {
+        ForEach(Array(grouped.enumerated()), id: \.offset) { index, pair in
+          collapsibleHeader(
+            pair.0.label,
+            isCollapsed: meetingCollapsedGroups.contains(pair.0),
+            showDivider: index > 0
+          ) {
+            toggleCollapse(pair.0, in: &meetingCollapsedGroups)
+          }
+          if !meetingCollapsedGroups.contains(pair.0) {
+            ForEach(pair.1, id: \.id) { session in
+              sidebarRow(session: session)
+            }
+          }
+        }
+        if !archived.isEmpty {
+          collapsibleHeader(
+            "Archived",
+            isCollapsed: meetingArchivedCollapsed,
+            showDivider: !grouped.isEmpty
+          ) {
+            withAnimation(.easeInOut(duration: 0.15)) { meetingArchivedCollapsed.toggle() }
+          }
+          if !meetingArchivedCollapsed {
+            ForEach(archived, id: \.id) { session in
+              sidebarRow(session: session, isArchived: true)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // MARK: - Section header row (Chats / Meetings title + action button)
+
+  private func sectionHeaderRow(
+    title: String,
+    isCollapsed: Bool,
+    toggleCollapse: @escaping () -> Void,
+    actionIcon: String,
+    actionHelp: String,
+    actionTint: Color,
+    topPadding: CGFloat,
+    perform: @escaping () -> Void
+  ) -> some View {
+    HStack(spacing: 8) {
+      Image(systemName: "chevron.right")
+        .font(.system(size: 10, weight: .semibold))
+        .foregroundColor(ChatTheme.secondaryText.opacity(0.7))
+        .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+        .frame(width: 12, alignment: .center)
+      Text(title)
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundColor(ChatTheme.primaryText)
+      Spacer()
+      Button(action: perform) {
+        Image(systemName: actionIcon)
+          .font(.system(size: 13, weight: .medium))
+          .foregroundColor(actionTint)
+      }
+      .buttonStyle(.plain)
+      .help(actionHelp)
+    }
+    .padding(.leading, 12)
+    .padding(.trailing, 12)
+    .padding(.top, topPadding)
+    .padding(.bottom, 8)
+    .contentShape(Rectangle())
+    .onTapGesture {
+      withAnimation(.easeInOut(duration: 0.15)) { toggleCollapse() }
+    }
+  }
+
+  // Hairline divider used to mark the boundary between Chats and Meetings.
+  // Symmetric vertical padding keeps the line equidistant from both headers.
+  private var sectionDivider: some View {
+    Rectangle()
+      .fill(ChatTheme.secondaryText.opacity(0.18))
+      .frame(height: 1)
+      .padding(.horizontal, 14)
+      .padding(.vertical, 10)
+  }
+
+  // MARK: - Search field
+
+  private func searchField(
+    placeholder: String,
+    text: Binding<String>,
+    isSearching: Bool,
+    clearAction: @escaping () -> Void,
+    topPadding: CGFloat
+  ) -> some View {
     HStack(spacing: 6) {
       Image(systemName: "magnifyingglass")
         .font(.system(size: 11))
         .foregroundColor(ChatTheme.secondaryText.opacity(0.7))
-      TextField(meetingFilterActive ? "Search meetings" : "Search chats & meetings", text: $searchQuery)
+      TextField(placeholder, text: text)
         .textFieldStyle(.plain)
         .font(.system(size: 12))
         .foregroundColor(ChatTheme.primaryText)
-      if !searchQuery.isEmpty {
-        Button(action: { searchQuery = "" }) {
+      if isSearching {
+        Button(action: clearAction) {
           Image(systemName: "xmark.circle.fill")
             .font(.system(size: 11))
             .foregroundColor(ChatTheme.secondaryText.opacity(0.6))
@@ -195,36 +347,29 @@ struct ChatSidebar: View {
         .buttonStyle(.plain)
         .help("Clear search")
       }
-      Button(action: { meetingFilterActive.toggle() }) {
-        Image(systemName: "mic.fill")
-          .font(.system(size: 11))
-          .foregroundColor(meetingFilterActive ? Color.accentColor : ChatTheme.secondaryText.opacity(0.6))
-      }
-      .buttonStyle(.plain)
-      .help(meetingFilterActive ? "Showing meetings only — click to show all" : "Show meetings only")
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 6)
     .background(RoundedRectangle(cornerRadius: 8).fill(ChatTheme.windowBackground))
     .padding(.horizontal, 10)
-    .padding(.vertical, 8)
+    .padding(.top, topPadding)
+    .padding(.bottom, 6)
   }
 
-  private var searchResultsView: some View {
-    ScrollView(.vertical, showsIndicators: true) {
-      if searchResults.isEmpty {
-        Text("No results")
-          .font(.system(size: 12))
-          .foregroundColor(ChatTheme.secondaryText)
-          .frame(maxWidth: .infinity, alignment: .center)
-          .padding(.top, 24)
-      } else {
-        VStack(spacing: 0) {
-          ForEach(searchResults) { result in
-            searchResultRow(result)
-          }
-        }
+  // MARK: - Search results
+
+  @ViewBuilder
+  private func searchResultsView(results: [ChatViewModel.ChatSearchResult]) -> some View {
+    if results.isEmpty {
+      Text("No results")
+        .font(.system(size: 12))
+        .foregroundColor(ChatTheme.secondaryText)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.top, 12)
         .padding(.bottom, 8)
+    } else {
+      ForEach(results) { result in
+        searchResultRow(result)
       }
     }
   }
@@ -267,26 +412,41 @@ struct ChatSidebar: View {
     .onTapGesture { openResult(result) }
   }
 
-  private func scheduleSearch() {
-    searchTask?.cancel()
-    let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+  private func scheduleChatSearch() {
+    chatSearchTask?.cancel()
+    let query = chatSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !query.isEmpty else {
-      searchResults = []
+      chatSearchResults = []
       return
     }
-    searchTask = Task { @MainActor in
+    chatSearchTask = Task { @MainActor in
       try? await Task.sleep(nanoseconds: 200_000_000)
       guard !Task.isCancelled else { return }
-      let results = viewModel.search(query)
-      searchResults = meetingFilterActive ? results.filter { $0.isMeeting } : results
+      chatSearchResults = viewModel.search(query).filter { !$0.isMeeting }
+    }
+  }
+
+  private func scheduleMeetingSearch() {
+    meetingSearchTask?.cancel()
+    let query = meetingSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else {
+      meetingSearchResults = []
+      return
+    }
+    meetingSearchTask = Task { @MainActor in
+      try? await Task.sleep(nanoseconds: 200_000_000)
+      guard !Task.isCancelled else { return }
+      meetingSearchResults = viewModel.search(query).filter { $0.isMeeting }
     }
   }
 
   private func openResult(_ result: ChatViewModel.ChatSearchResult) {
     if let sessionId = result.sessionId {
       viewModel.switchToSession(id: sessionId)
-      searchQuery = ""
-      searchResults = []
+      chatSearchQuery = ""
+      chatSearchResults = []
+      meetingSearchQuery = ""
+      meetingSearchResults = []
     } else if let url = result.meetingURL {
       viewModel.revealMeetingInFinder(url: url)
     }
@@ -296,7 +456,9 @@ struct ChatSidebar: View {
 
   private var sidebarHeader: some View {
     HStack {
-      Button(action: { withAnimation(.easeInOut(duration: 0.2)) { sidebarVisible = false } }) {
+      Button(action: {
+        withAnimation(.easeInOut(duration: 0.2)) { sidebarVisible = false }
+      }) {
         Image(systemName: "sidebar.left")
           .font(.system(size: 12, weight: .medium))
           .foregroundColor(ChatTheme.primaryText)
@@ -305,48 +467,13 @@ struct ChatSidebar: View {
       .help("Hide sidebar")
 
       Spacer()
-
-      Button(action: { viewModel.createNewSession() }) {
-        Image(systemName: "square.and.pencil")
-          .font(.system(size: 12, weight: .medium))
-          .foregroundColor(ChatTheme.secondaryText)
-      }
-      .buttonStyle(.plain)
-      .help("New chat")
     }
     .padding(.horizontal, 12)
     .frame(height: 52)
   }
 
-  // MARK: - Section header
+  // MARK: - Collapsible date / archived headers
 
-  private func sectionHeader(_ title: String, showDivider: Bool = false) -> some View {
-    VStack(spacing: 0) {
-      if showDivider {
-        Divider()
-          .padding(.horizontal, 10)
-          .padding(.top, 12)
-      }
-      Text(title.uppercased())
-        .font(.system(size: 9, weight: .bold, design: .default))
-        .tracking(1.2)
-        .foregroundColor(ChatTheme.secondaryText.opacity(0.8))
-        .padding(.leading, 10)
-        .padding(.trailing, 12)
-        .padding(.top, showDivider ? 12 : 14)
-        .padding(.bottom, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-  }
-
-  private func collapsibleSectionHeader(_ group: DateGroup, showDivider: Bool = false) -> some View {
-    collapsibleHeader(group.label, isCollapsed: collapsedGroups.contains(group), showDivider: showDivider) {
-      toggleCollapse(group, in: &collapsedGroups)
-    }
-  }
-
-  /// Animated toggle of a date group's collapsed state, shared by the chat date headers
-  /// and the meeting date sub-headers (each passes its own backing set).
   private func toggleCollapse(_ group: DateGroup, in set: inout Set<DateGroup>) {
     withAnimation(.easeInOut(duration: 0.15)) {
       if set.contains(group) {
@@ -366,21 +493,22 @@ struct ChatSidebar: View {
           .padding(.horizontal, 10)
           .padding(.top, 12)
       }
-      HStack(spacing: 4) {
+      HStack(spacing: 5) {
+        Image(systemName: "chevron.right")
+          .font(.system(size: 8, weight: .bold))
+          .foregroundColor(ChatTheme.secondaryText.opacity(0.55))
+          .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+          .frame(width: 10, alignment: .center)
         Text(label.uppercased())
           .font(.system(size: 9, weight: .bold, design: .default))
           .tracking(1.2)
-          .foregroundColor(ChatTheme.secondaryText.opacity(0.8))
-        Image(systemName: "chevron.right")
-          .font(.system(size: 7, weight: .bold))
-          .foregroundColor(ChatTheme.secondaryText.opacity(0.5))
-          .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+          .foregroundColor(ChatTheme.secondaryText.opacity(0.65))
         Spacer()
       }
-      .padding(.leading, 10)
+      .padding(.leading, 14)
       .padding(.trailing, 12)
-      .padding(.top, showDivider ? 12 : 14)
-      .padding(.bottom, 6)
+      .padding(.top, showDivider ? 10 : 12)
+      .padding(.bottom, 4)
       .contentShape(Rectangle())
       .onTapGesture { toggle() }
     }
@@ -404,65 +532,49 @@ struct ChatSidebar: View {
   private func sidebarRow(session: ChatSession, isArchived: Bool = false) -> some View {
     let isActive = session.id == viewModel.currentSessionId
     let isHovered = hoveredRowId == session.id
-    let isPinned = session.pinned
     let title = ChatViewModel.displayTitle(for: session)
 
-    let rowBg: Color = isActive
-      ? ChatTheme.windowBackground
-      : (isHovered ? ChatTheme.windowBackground.opacity(0.5) : Color.clear)
-
     let isRenaming = renamingSessionId == session.id
-    let isMeetingLive = session.isMeeting && viewModel.isMeetingActive && viewModel.meetingSessionId == session.id
 
-    // The hover button moves the chat one step toward removal, so it's never an
-    // irreversible action by accident: pinned → unpin, active → archive,
-    // archived → delete permanently. Each step gets its own icon so the action is
-    // obvious from the glyph.
+    // System Settings-style selection: solid accent background + white text.
+    let textColor: Color =
+      isActive ? .white : ChatTheme.primaryText
+
+    let rowBg: Color =
+      isActive
+      ? Color.accentColor
+      : (isHovered ? Color.primary.opacity(0.07) : Color.clear)
+
+    // Hover button: active → archive, archived → delete permanently. Each step
+    // is one click away from removal — never an irreversible action by accident.
     let hoverAction: (icon: String, help: String, perform: () -> Void) = {
       if isArchived {
-        return ("xmark", "Delete permanently", { viewModel.deleteSessionPermanently(id: session.id) })
-      } else if isPinned {
-        return ("pin.slash", "Unpin", { viewModel.unpinSession(id: session.id) })
+        return (
+          "xmark", "Delete permanently", { viewModel.deleteSessionPermanently(id: session.id) }
+        )
       } else {
         return ("archivebox", "Archive", { viewModel.archiveSession(id: session.id) })
       }
     }()
 
-    return HStack(spacing: 0) {
-      if isActive {
-        Rectangle()
-          .fill(Color.accentColor)
-          .frame(width: 2)
-      }
-
+    return HStack(spacing: 8) {
       if isRenaming {
         TextField("Title", text: $renameDraft, onCommit: { commitRename() })
-        .font(.system(size: 13))
-        .textFieldStyle(.plain)
-        .padding(.leading, 10)
-        .padding(.vertical, 6)
-        .focused($renameFieldFocused)
-        .onAppear { renameFieldFocused = true }
-        .onChange(of: renameFieldFocused) { focused in
-          // Clicking away (another chat, the composer, etc.) ends the rename and saves it.
-          if !focused && renamingSessionId == session.id { commitRename() }
-        }
-        .onExitCommand { renamingSessionId = nil }
-      } else {
-        HStack(spacing: 6) {
-          if session.isMeeting {
-            Image(systemName: "mic.circle.fill")
-              .font(.system(size: 11))
-              .foregroundColor(isMeetingLive ? .red : ChatTheme.secondaryText.opacity(0.6))
+          .font(.system(size: 13))
+          .textFieldStyle(.plain)
+          .focused($renameFieldFocused)
+          .onAppear { renameFieldFocused = true }
+          .onChange(of: renameFieldFocused) { focused in
+            // Clicking away (another chat, the composer, etc.) ends and saves the rename.
+            if !focused && renamingSessionId == session.id { commitRename() }
           }
-          Text(title)
-            .font(.system(size: 13))
-            .foregroundColor(isActive ? ChatTheme.primaryText : ChatTheme.secondaryText)
-            .lineLimit(1)
-            .truncationMode(.tail)
-        }
-        .padding(.leading, 10)
-        .padding(.vertical, 8)
+          .onExitCommand { renamingSessionId = nil }
+      } else {
+        Text(title)
+          .font(.system(size: 13))
+          .foregroundColor(textColor)
+          .lineLimit(1)
+          .truncationMode(.tail)
       }
 
       Spacer(minLength: 4)
@@ -471,15 +583,19 @@ struct ChatSidebar: View {
         Button(action: hoverAction.perform) {
           Image(systemName: hoverAction.icon)
             .font(.system(size: 10, weight: .medium))
-            .foregroundColor(ChatTheme.secondaryText.opacity(0.6))
+            .foregroundColor(
+              isActive
+                ? Color.white.opacity(0.85)
+                : ChatTheme.secondaryText.opacity(0.6))
         }
         .buttonStyle(.plain)
         .help(hoverAction.help)
-        .padding(.trailing, 8)
       }
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(rowBg)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 6)
+    .background(RoundedRectangle(cornerRadius: 6).fill(rowBg))
+    .padding(.horizontal, 6)
     .contentShape(Rectangle())
     .onTapGesture(count: 2) {
       beginRename(session)
@@ -502,20 +618,22 @@ struct ChatSidebar: View {
         }
         Button("Copy chat") { viewModel.copyChatToClipboard(sessionId: session.id) }
         Divider()
-        Button("Delete chat", role: .destructive) { viewModel.deleteSessionPermanently(id: session.id) }
+        Button("Delete chat", role: .destructive) {
+          viewModel.deleteSessionPermanently(id: session.id)
+        }
       } else {
         Button("Rename\u{2026}") { beginRename(session) }
-        if isPinned {
-          Button("Unpin chat") { viewModel.unpinSession(id: session.id) }
-        } else {
-          Button("Pin chat") { viewModel.pinSession(id: session.id) }
-        }
         Button("Copy chat") { viewModel.copyChatToClipboard(sessionId: session.id) }
         Divider()
         Button("Archive chat") { viewModel.archiveSession(id: session.id) }
-        Button("Archive older chats") { viewModel.archiveOlderSessions(than: session.lastUpdated) }
+          .keyboardShortcut(.delete, modifiers: .command)
+        Button("Archive older chats") {
+          viewModel.archiveOlderSessions(than: session.lastUpdated)
+        }
         Divider()
-        Button("Delete chat", role: .destructive) { viewModel.deleteSessionPermanently(id: session.id) }
+        Button("Delete chat", role: .destructive) {
+          viewModel.deleteSessionPermanently(id: session.id)
+        }
       }
     }
   }

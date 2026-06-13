@@ -1107,6 +1107,30 @@ class ChatViewModel: ObservableObject {
       .first { !$0.isEmpty } ?? ""
   }
 
+  /// The first-message fallback title a meeting may have been wrongly stamped with before we stopped
+  /// titling meetings from chat messages (see `appendMessage`). Mirrors that old logic exactly so we
+  /// can recognise — and discard — such a stale title and let the summary-based titler run. Returns
+  /// nil when there's no first user message to derive one from.
+  static func meetingFirstMessageFallbackTitle(for session: ChatSession) -> String? {
+    guard let firstContent = session.messages.first(where: { $0.role == .user })?.content else { return nil }
+    let oneLine = contentForSessionTitle(firstContent)
+      .replacingOccurrences(of: "\n", with: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !oneLine.isEmpty else { return nil }
+    var title = String(oneLine.prefix(maxSessionTitleLength))
+    if oneLine.count > maxSessionTitleLength { title += "…" }
+    return title
+  }
+
+  /// True when a meeting row has no *real* (summary-derived or manually renamed) title yet — i.e.
+  /// it's empty or still the stale first-message fallback. Only such titles are safe to (re)generate;
+  /// a manual rename never equals the fallback, so it's preserved.
+  static func meetingTitleNeedsGeneration(_ session: ChatSession) -> Bool {
+    guard session.isMeeting else { return false }
+    guard let title = session.title, !title.isEmpty else { return true }
+    return title == meetingFirstMessageFallbackTitle(for: session)
+  }
+
   /// Builds the system instruction: current date, base chat prompt, plus optional meeting context (summary + recent transcript).
   private func buildSystemInstruction() -> [String: Any] {
     var text = SystemPromptsStore.shared.loadChatSystemPrompt()
@@ -1118,12 +1142,21 @@ class ChatViewModel: ObservableObject {
       .map { "- `\($0.command)` — \($0.description)" }
       .joined(separator: "\n")
     text += "\n\nAvailable slash commands in this chat:\n\(commandsList)"
-    // Only inject live meeting context when the current chat IS the active meeting
-    // session — otherwise switching to an unrelated chat would leak meeting content.
-    let meetingContext = meetingContextProvider?()
-      ?? (isCurrentSessionTheActiveMeeting ? LiveMeetingTranscriptStore.shared.meetingContextForChat(lastMinutes: 5) : nil)
+    // Inject meeting context whenever the current chat is a meeting tab:
+    // - live or just-ended (live store still owns this stem): rolling summary + last 5 min;
+    // - past meeting (live store empty or moved on): summary + full transcript from disk.
+    // Regular chats stay free of meeting content.
+    let meetingContext: String? = {
+      if let provided = meetingContextProvider?() { return provided }
+      guard session.isMeeting, let stem = session.meetingStem else { return nil }
+      if LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem == stem {
+        let live = LiveMeetingTranscriptStore.shared.meetingContextForChat(lastMinutes: 5)
+        if !live.isEmpty { return live }
+      }
+      return buildEndedMeetingContext()
+    }()
     if let extra = meetingContext, !extra.isEmpty {
-      text = "\(text)\n\n---\n\n[Meeting context for calibration only — do not reference directly]\n\(extra)"
+      text = "\(text)\n\n---\n\n\(extra)"
     }
     if GoogleAccountOAuthService.shared.isConnected {
       text += "\n\nIMPORTANT — you have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks."
@@ -1232,7 +1265,11 @@ class ChatViewModel: ObservableObject {
       target = s
     }
 
-    let isFirstUserMessage = message.role == .user && target.messages.isEmpty
+    // Meetings are titled from their summary (`generateMeetingTitle`), never from a chat message —
+    // and that summary path only fires while the title is still empty. So we must NOT stamp a
+    // first-message fallback onto a meeting, or it would permanently block the summary-based title
+    // and leave the row showing whatever the user happened to ask first.
+    let isFirstUserMessage = message.role == .user && target.messages.isEmpty && !target.isMeeting
     target.messages.append(message)
     target.lastUpdated = Date()
     if isFirstUserMessage {
@@ -1325,7 +1362,11 @@ class ChatViewModel: ObservableObject {
       let title = Self.cleanTitleResponse((obj["title"] as? String) ?? "")
       guard !title.isEmpty else { return }
       guard var updated = store.session(by: targetId) else { return }
-      if !overwriteExisting, !(updated.title?.isEmpty ?? true) { return }
+      // A stale meeting first-message fallback counts as "untitled" here: it must yield to the
+      // summary-based title even under `overwriteExisting: false` (which only guards manual renames).
+      let isStaleMeetingFallback =
+        updated.isMeeting && updated.title == Self.meetingFirstMessageFallbackTitle(for: updated)
+      if !overwriteExisting, !(updated.title?.isEmpty ?? true), !isStaleMeetingFallback { return }
       updated.title = String(title.prefix(Self.maxSessionTitleLength))
       store.save(updated)
       if updated.id == session.id { session.title = updated.title }
@@ -1343,7 +1384,7 @@ class ChatViewModel: ObservableObject {
   private func backfillMeetingTitleIfNeeded() {
     guard !singleChatOnly,
           session.isMeeting,
-          (session.title?.isEmpty ?? true),
+          Self.meetingTitleNeedsGeneration(session),
           let stem = session.meetingStem,
           !attemptedMeetingTitleStems.contains(stem),
           let summary = loadMeetingSummaryFromDisk(),
@@ -1367,7 +1408,7 @@ class ChatViewModel: ObservableObject {
 
   /// Titles a meeting chat (by session id) from its summary, unless it's already titled.
   private func generateMeetingTitle(targetId: UUID, summary: String) async {
-    guard store.session(by: targetId)?.title?.isEmpty ?? true else { return }
+    guard let target = store.session(by: targetId), Self.meetingTitleNeedsGeneration(target) else { return }
     let summaryText = summary.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !summaryText.isEmpty else { return }
     let prompt = """
@@ -1762,6 +1803,27 @@ class ChatViewModel: ObservableObject {
     return disk
   }
 
+  /// Builds a chat-system meeting context string from the on-disk summary + transcript of the
+  /// current meeting tab. Used when the live store no longer owns this meeting's stem (e.g. user
+  /// reopens a past meeting, or a new live meeting started). Transcript is suffix-capped to
+  /// `MeetingListService.meetingContextMaxChars` to bound request size.
+  private func buildEndedMeetingContext() -> String? {
+    let summaryDisk = loadMeetingSummaryFromDisk()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let transcriptDisk = loadMeetingTranscriptFromDisk()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if summaryDisk.isEmpty && transcriptDisk.isEmpty { return nil }
+    var parts: [String] = []
+    if !summaryDisk.isEmpty {
+      parts.append("Meeting summary:\n\(summaryDisk)")
+    }
+    if !transcriptDisk.isEmpty {
+      let capped = transcriptDisk.count > MeetingListService.meetingContextMaxChars
+        ? String(transcriptDisk.suffix(MeetingListService.meetingContextMaxChars))
+        : transcriptDisk
+      parts.append("Meeting transcript:\n\(capped)")
+    }
+    return "Use the following meeting context to answer the user's questions.\n\n" + parts.joined(separator: "\n\n")
+  }
+
   /// Recovers a meeting summary that failed to generate at meeting-end (e.g. a transient Gemini 503
   /// left the meeting with a transcript but no `.summary.md`). Runs when the Summary tab is shown for
   /// an ENDED meeting whose summary is missing but whose transcript exists. Regenerates at most once
@@ -2135,6 +2197,15 @@ struct ChatView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(ChatTheme.windowBackground)
+    .background(
+      Button("Archive current chat") {
+        viewModel.archiveSession(id: viewModel.currentSessionId)
+      }
+      .keyboardShortcut(.delete, modifiers: .command)
+      .opacity(0)
+      .allowsHitTesting(false)
+      .frame(width: 0, height: 0)
+    )
     .sheet(isPresented: Binding(
       get: { previewImageData != nil },
       set: { if !$0 { previewImageData = nil } }

@@ -24,7 +24,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		BF1827BF2FD9582800BEE909 /* WhisperShortcut-AppStore.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = file; path = "WhisperShortcut-AppStore.xctestplan"; sourceTree = "<group>"; };
+		BF1827BF2FD9582800BEE909 /* WhisperShortcut-AppStore.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = "WhisperShortcut-AppStore.xctestplan"; sourceTree = "<group>"; };
 		BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhisperShortcut.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "WhisperShortcut-AppStore.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BFF9398E2FD94F7C001F505E /* WhisperShortcutTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WhisperShortcutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
