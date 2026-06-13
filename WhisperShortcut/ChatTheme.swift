@@ -49,7 +49,7 @@ enum ChatTheme {
   static let primaryText = Color(red: 236/255, green: 236/255, blue: 236/255)      // #ECECEC
   /// Body prose font size — single source of truth for chat messages (prose, bullets,
   /// user bubble) and the base for relative heading sizes.
-  static let bodyFontSize: CGFloat = 15
+  static let bodyFontSize: CGFloat = 16
   /// Line spacing paired with `bodyFontSize` to hold a ~1.5× line height.
   static let bodyLineSpacing: CGFloat = 7
   /// A touch of letter spacing on body prose. On dark backgrounds light text tends to

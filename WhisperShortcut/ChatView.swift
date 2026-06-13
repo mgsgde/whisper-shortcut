@@ -3169,6 +3169,8 @@ struct ChatInputAreaView: View {
                       .fill(index == highlight ? ChatTheme.primaryText.opacity(0.10) : Color.clear)
                   )
                   .padding(.horizontal, 4)
+                  .contentShape(Rectangle())
+                  .onTapGesture { selectCommand(item.command) }
                   .id(item.command)
                 }
               }
@@ -3183,7 +3185,10 @@ struct ChatInputAreaView: View {
               }
             }
           }
-          .allowsHitTesting(false)
+          // Was `.allowsHitTesting(false)` — that also swallowed scroll gestures, so a list
+          // longer than 260pt couldn't be scrolled with trackpad/wheel (only ↑/↓ auto-scroll
+          // worked). The overlay sits ABOVE the composer in a VStack (no overlap), and rows are
+          // now tap-to-select, so enabling hit testing is safe and makes the popup scrollable.
           .frame(maxWidth: .infinity, alignment: .leading)
           .background(ChatTheme.controlBackground)
           .overlay(
@@ -3222,7 +3227,7 @@ struct ChatInputAreaView: View {
         Button(action: { viewModel.attachFile() }) {
           HStack(spacing: 4) {
             Image(systemName: "paperclip").font(.caption)
-            Text("Attach").font(.caption)
+            Text("/attach").font(.caption)
           }
           .foregroundColor(ChatTheme.secondaryText)
           .padding(.horizontal, 8)
@@ -3241,7 +3246,7 @@ struct ChatInputAreaView: View {
             } else {
               Image(systemName: "camera.viewfinder").font(.caption)
             }
-            Text("Screenshot").font(.caption)
+            Text("/screenshot").font(.caption)
           }
           .foregroundColor(viewModel.screenshotCaptureInProgress ? ChatTheme.secondaryText.opacity(0.6) : ChatTheme.secondaryText)
           .padding(.horizontal, 8)
@@ -3257,7 +3262,7 @@ struct ChatInputAreaView: View {
           Button(action: { viewModel.createNewSession() }) {
             HStack(spacing: 4) {
               Image(systemName: "square.and.pencil").font(.caption)
-              Text("New chat").font(.caption)
+              Text("/new").font(.caption)
             }
             .foregroundColor(ChatTheme.secondaryText)
             .padding(.horizontal, 8)
@@ -3276,7 +3281,7 @@ struct ChatInputAreaView: View {
             Image(systemName: "record.circle")
               .font(.caption)
               .foregroundColor(viewModel.isMeetingActive ? .red : ChatTheme.secondaryText)
-            Text(viewModel.isMeetingActive ? "Stop meeting" : "Meeting")
+            Text("/meeting")
               .font(.caption)
           }
           .foregroundColor(viewModel.isMeetingActive ? .red : ChatTheme.secondaryText)
