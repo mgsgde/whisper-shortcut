@@ -155,6 +155,15 @@ final class MeetingListService: ObservableObject {
     try await generate(prompt: AppConstants.meetingSummaryPrompt(transcript: transcript), model: model, label: "MEETING-SUMMARY")
   }
 
+  /// Refines an existing summary per a user instruction, grounded in the transcript. Provider-routed.
+  static func refineSummaryText(currentSummary: String, transcript: String, instruction: String, model: PromptModel) async throws -> String {
+    try await generate(
+      prompt: AppConstants.meetingSummaryRefinePrompt(
+        currentSummary: currentSummary, transcript: transcript, instruction: instruction),
+      model: model,
+      label: "MEETING-SUMMARY-REFINE")
+  }
+
   /// Rolling (live) summary update for the given model.
   static func updateRollingSummary(currentSummary: String, newText: String, model: PromptModel) async throws -> String {
     try await generate(

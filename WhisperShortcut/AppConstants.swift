@@ -244,6 +244,33 @@ Transcript:
     """
   }
 
+  /// Refines an existing meeting summary per a user instruction, grounded in the full transcript.
+  /// Used by the `refine_meeting_summary` chat tool (provider-agnostic).
+  static func meetingSummaryRefinePrompt(currentSummary: String, transcript: String, instruction: String) -> String {
+    """
+    You are refining the Markdown summary of a completed meeting based on a user instruction.
+
+    STRICT FORMAT RULES:
+    1. Use ## headings for sections (e.g. ## Main Points, ## Key Takeaways, ## Decisions, ## Action Items).
+    2. Use - for every bullet point. Each bullet on its own line.
+    3. Leave a blank line before each heading and between sections.
+    4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
+    5. Write the summary in the same language as the transcript. Output only the Markdown, no preamble.
+
+    Apply the user's instruction below. Stay faithful to the transcript — never invent facts it does
+    not support. Preserve the parts of the current summary the instruction does not ask to change.
+
+    User instruction:
+    \(instruction)
+
+    Current summary:
+    \(currentSummary.isEmpty ? "(none yet)" : currentSummary)
+
+    Full transcript:
+    \(transcript)
+    """
+  }
+
   /// Speaker-consolidation prompt for a full meeting transcript (provider-agnostic — used by
   /// whichever provider owns the selected meeting-summary model).
   static func meetingConsolidationPrompt(transcript: String) -> String {

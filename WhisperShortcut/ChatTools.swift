@@ -87,6 +87,57 @@ enum ChatToolRegistry {
     ]
   ]
 
+  /// Names of the meeting-editing tools; ChatView intercepts these in `executeToolCalls`
+  /// (they need session context — which meeting tab is open — and write the meeting's
+  /// transcript/summary files rather than routing a result back through the model).
+  static let refineMeetingSummaryToolName = "refine_meeting_summary"
+  static let correctTranscriptTermToolName = "correct_transcript_term"
+
+  /// Meeting-editing tools. Declared only when the current chat is a meeting tab, so regular
+  /// chats never see them. Both operate on the meeting this tab is viewing.
+  static let meetingFunctionDeclarations: [[String: Any]] = [
+    [
+      "name": refineMeetingSummaryToolName,
+      "description":
+        "Refines or rewrites the summary of THIS meeting based on the user's instruction (e.g. 'focus more on decisions', 'add an action items section', 'make it shorter', 'you misunderstood X, fix it'). Regenerates the summary from the full transcript with the instruction applied, saves it, and updates the Summary tab. Use ONLY when the user asks to change, refine, correct, reformat, or regenerate the meeting summary — NOT for answering questions about the meeting.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "instruction": [
+            "type": "string",
+            "description":
+              "What to change about the summary, in the user's own words (e.g. 'Focus on decisions and add action items', 'Shorten to the 5 most important points', 'You misunderstood the lockup schedule — correct it').",
+          ]
+        ] as [String: Any],
+        "required": ["instruction"],
+      ],
+    ],
+    [
+      "name": correctTranscriptTermToolName,
+      "description":
+        "Corrects a misrecognized word or proper name throughout THIS meeting's transcript by replacing every exact occurrence of one string with another (e.g. transcription wrote 'Park Depot' but it should be 'ParkDepot'). This is a literal find-and-replace on the transcript text — it does NOT rewrite, rephrase, or summarize the transcript, so the record stays faithful. Use only for fixing transcription errors of names, terms, and acronyms. Confirm the exact spelling with the user if unsure.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "from": [
+            "type": "string",
+            "description": "The exact text as it currently (wrongly) appears in the transcript.",
+          ],
+          "to": [
+            "type": "string",
+            "description": "The corrected text to replace it with.",
+          ],
+          "regenerate_summary": [
+            "type": "boolean",
+            "description":
+              "Set true to also regenerate the summary afterwards so it uses the corrected term (recommended when the term also appears in the summary). Default false.",
+          ],
+        ] as [String: Any],
+        "required": ["from", "to"],
+      ],
+    ],
+  ]
+
   static let calendarFunctionDeclarations: [[String: Any]] = [
     [
       "name": "google_calendar_list_events",
@@ -514,7 +565,8 @@ enum ChatToolRegistry {
   ]
 
   static func allDeclarations(
-    calendarConnected: Bool, trelloConnected: Bool, imageGenerationAvailable: Bool
+    calendarConnected: Bool, trelloConnected: Bool, imageGenerationAvailable: Bool,
+    meetingContext: Bool
   ) -> [[String: Any]] {
     var decls = functionDeclarations + appDocsFunctionDeclarations
     if imageGenerationAvailable {
@@ -525,6 +577,9 @@ enum ChatToolRegistry {
     }
     if trelloConnected {
       decls += trelloFunctionDeclarations
+    }
+    if meetingContext {
+      decls += meetingFunctionDeclarations
     }
     return decls
   }

@@ -862,7 +862,8 @@ class ChatViewModel: ObservableObject {
     return ChatToolRegistry.allDeclarations(
       calendarConnected: calendarConnected,
       trelloConnected: trelloConnected,
-      imageGenerationAvailable: imageGenerationAvailable
+      imageGenerationAvailable: imageGenerationAvailable,
+      meetingContext: session.isMeeting
     ).compactMap { decl in
       guard let name = decl["name"] as? String,
             let desc = decl["description"] as? String,
@@ -903,6 +904,11 @@ class ChatViewModel: ObservableObject {
         let outcome = await executeGenerateImageTool(args: call.args, sessionId: sessionId)
         result = outcome.response
         imageMarkers.append(contentsOf: outcome.markers)
+      } else if call.name == ChatToolRegistry.refineMeetingSummaryToolName {
+        // Intercepted here: operates on THIS chat's meeting files (transcript/summary on disk).
+        result = await executeRefineMeetingSummaryTool(args: call.args)
+      } else if call.name == ChatToolRegistry.correctTranscriptTermToolName {
+        result = await executeCorrectTranscriptTermTool(args: call.args)
       } else {
         result = await ChatToolRegistry.execute(name: call.name, args: call.args)
       }
@@ -1164,6 +1170,10 @@ class ChatViewModel: ObservableObject {
     // Mirrors the gating in buildToolDeclarations: the tool exists iff a Gemini credential does.
     if GeminiCredentialProvider.shared.hasCredential() {
       text += "\n\nIMAGE GENERATION: You can create and edit real images via the `generate_image` tool. When the user asks you to draw, create, render, visualize, edit, or annotate an image, ALWAYS call generate_image — never approximate with ASCII art, SVG, or code blocks. To annotate or edit an image the user attached, pass use_attached_image=true with a precise instruction. The finished image appears in the chat automatically."
+    }
+    // Mirrors buildToolDeclarations' meetingContext gating.
+    if session.isMeeting {
+      text += "\n\nMEETING EDITING: This chat is attached to a meeting. When the user asks to change, refine, reformat, shorten, or correct the meeting SUMMARY, call `refine_meeting_summary` with their instruction — do not just reply with a rewritten summary in chat. When the user points out a misrecognized name or term in the TRANSCRIPT (e.g. 'it's ParkDepot, not Park Depot'), call `correct_transcript_term` with the exact wrong and corrected spelling — this is a literal find-and-replace that keeps the transcript faithful; never rewrite or paraphrase the transcript yourself."
     }
     return ["parts": [["text": text]]]
   }
@@ -1889,6 +1899,116 @@ class ChatViewModel: ObservableObject {
         self.titleOpenMeetingFromSummary(trimmed)
       }
     }
+  }
+
+  // MARK: - Meeting editing tools (refine summary / correct transcript term)
+
+  /// Full transcript text for the current meeting tab, read from disk (the ended-meeting record).
+  private func currentMeetingTranscriptText() -> String {
+    (loadMeetingTranscriptFromDisk() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// URL of the current meeting's transcript file (`{stem}.txt`).
+  private func meetingTranscriptURL(stem: String) -> URL {
+    AppSupportPaths.whisperShortcutApplicationSupportURL()
+      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+      .appendingPathComponent("\(stem).txt")
+  }
+
+  /// Backs the `refine_meeting_summary` chat tool. Regenerates this meeting's summary from its full
+  /// transcript with the user's instruction applied, saves it to disk, and refreshes the Summary tab.
+  /// Only for ended meetings — editing while recording would race the rolling-summary updater.
+  func executeRefineMeetingSummaryTool(args: [String: Any]) async -> [String: Any] {
+    guard let instruction = (args["instruction"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !instruction.isEmpty else {
+      return ["error": "Missing required argument: instruction"]
+    }
+    guard session.isMeeting, let stem = session.meetingStem else {
+      return ["error": "This chat is not a meeting, so there is no summary to refine."]
+    }
+    if isCurrentSessionTheActiveMeeting {
+      return ["error": "The summary can be refined after the meeting has ended. Stop the recording first, then ask again."]
+    }
+    let model = PromptModel.loadSelectedMeetingSummary()
+    guard model.hasRequiredCredential else {
+      return ["error": "No API credential for the meeting-summary model (\(model.rawValue)). Add it in Settings."]
+    }
+    var transcript = currentMeetingTranscriptText()
+    guard !transcript.isEmpty else {
+      return ["error": "This meeting has no transcript to base a summary on."]
+    }
+    if transcript.count > MeetingListService.meetingContextMaxChars {
+      transcript = String(transcript.suffix(MeetingListService.meetingContextMaxChars))
+    }
+    let currentSummary = (loadMeetingSummaryFromDisk() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    do {
+      let refined = try await MeetingListService.refineSummaryText(
+        currentSummary: currentSummary, transcript: transcript, instruction: instruction, model: model)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !refined.isEmpty else {
+        return ["error": "The model returned an empty summary. Try rephrasing the instruction."]
+      }
+      MeetingListService.shared.saveSummary(refined, transcriptFileURL: meetingTranscriptURL(stem: stem))
+      summaryRevision &+= 1
+      DebugLogger.logSuccess("GEMINI-CHAT: Refined meeting summary for \(stem)")
+      return ["ok": true,
+              "detail": "The meeting summary has been updated and is now shown in the Summary tab. Briefly confirm what changed in one sentence — do NOT paste the full summary back."]
+    } catch {
+      DebugLogger.logError("GEMINI-CHAT: Refine summary failed: \(error.localizedDescription)")
+      return ["error": "Failed to refine summary: \(error.localizedDescription)"]
+    }
+  }
+
+  /// Backs the `correct_transcript_term` chat tool. Literal find-and-replace of `from`→`to` across the
+  /// on-disk transcript (no LLM rewrite, so the record stays faithful). Only for ended meetings.
+  func executeCorrectTranscriptTermTool(args: [String: Any]) async -> [String: Any] {
+    guard let from = args["from"] as? String, !from.isEmpty else {
+      return ["error": "Missing required argument: from"]
+    }
+    guard let to = args["to"] as? String else {
+      return ["error": "Missing required argument: to"]
+    }
+    guard from != to else {
+      return ["error": "'from' and 'to' are identical — nothing to change."]
+    }
+    guard session.isMeeting, let stem = session.meetingStem else {
+      return ["error": "This chat is not a meeting, so there is no transcript to correct."]
+    }
+    if isCurrentSessionTheActiveMeeting {
+      return ["error": "The transcript can be corrected after the meeting has ended. Stop the recording first, then ask again."]
+    }
+    let url = meetingTranscriptURL(stem: stem)
+    guard let diskText = try? String(contentsOf: url, encoding: .utf8) else {
+      return ["error": "Could not read the meeting transcript file."]
+    }
+    let occurrences = diskText.components(separatedBy: from).count - 1
+    guard occurrences > 0 else {
+      return ["error": "The text \"\(from)\" was not found in the transcript. Check the exact spelling."]
+    }
+    let updated = diskText.replacingOccurrences(of: from, with: to)
+    do {
+      try updated.write(to: url, atomically: true, encoding: .utf8)
+    } catch {
+      DebugLogger.logError("GEMINI-CHAT: Write corrected transcript failed: \(error.localizedDescription)")
+      return ["error": "Failed to write the corrected transcript: \(error.localizedDescription)"]
+    }
+    MeetingListService.shared.invalidateCache(for: url)
+    summaryRevision &+= 1
+    DebugLogger.logSuccess("GEMINI-CHAT: Corrected transcript term in \(stem) (\(occurrences) occurrence(s))")
+
+    var result: [String: Any] = [
+      "ok": true,
+      "replacements": occurrences,
+      "detail": "Replaced \"\(from)\" with \"\(to)\" in \(occurrences) place(s) in the transcript. Briefly confirm to the user.",
+    ]
+    if ChatToolRegistry.boolArgument(args, "regenerate_summary", default: false) {
+      let summaryResult = await executeRefineMeetingSummaryTool(args: [
+        "instruction":
+          "The transcript term \"\(from)\" was corrected to \"\(to)\". Update the summary to use the corrected term consistently; keep everything else unchanged."
+      ])
+      result["summary_updated"] = summaryResult["ok"] != nil
+    }
+    return result
   }
 
   // MARK: - Archive / Restore / Delete
