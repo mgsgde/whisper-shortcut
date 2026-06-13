@@ -213,13 +213,23 @@ final class GrokChatProvider: LLMChatProvider {
               }
 
             case "response.completed":
-              if let resp = obj["response"] as? [String: Any],
-                 let status = resp["status"] as? String {
-                finishReason = status == "completed" ? "stop" : status
+              if let resp = obj["response"] as? [String: Any] {
+                if let status = resp["status"] as? String {
+                  finishReason = status == "completed" ? "stop" : status
+                }
+                // TEMP instrumentation: dump final response to discover the citation/annotation
+                // shape so GroundingSource mapping can be implemented precisely. Remove after.
+                if let data = try? JSONSerialization.data(withJSONObject: resp),
+                   let json = String(data: data, encoding: .utf8) {
+                  DebugLogger.logNetwork("GROK-RESPONSES-DEBUG: completed payload=\(json.prefix(6000))")
+                }
               }
 
             default:
-              break
+              // TEMP instrumentation: surface any annotation/citation-bearing events.
+              if eventType.contains("annotation") || eventType.contains("citation") {
+                DebugLogger.logNetwork("GROK-RESPONSES-DEBUG: event=\(eventType) payload=\(payload.prefix(2000))")
+              }
             }
           }
 

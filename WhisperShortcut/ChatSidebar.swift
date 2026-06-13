@@ -5,8 +5,8 @@ import SwiftUI
 // Layout: header → single vertical scroll view containing two stacked sections.
 //   • CHATS: search field, date groups (Today expanded by default, the rest
 //     collapsed), Archived (collapsed).
-//   • MEETINGS: search field, date groups (all expanded by default so old
-//     meetings are easy to find by scrolling), Archived (collapsed).
+//   • MEETINGS: search field, date groups (most recent expanded by default, the
+//     rest collapsed), Archived (collapsed).
 
 struct ChatSidebar: View {
   @ObservedObject var viewModel: ChatViewModel
@@ -28,10 +28,10 @@ struct ChatSidebar: View {
   @State private var chatCollapsedGroups: Set<DateGroup>
   @State private var chatArchivedCollapsed = true
 
-  // Meetings section state — every date group starts expanded so the user
-  // can scroll through history without opening each bucket manually.
+  // Meetings section state — like chats, only the most recent date group starts
+  // expanded; the rest are collapsed so the list stays short.
   @State private var meetingsSectionCollapsed = false
-  @State private var meetingCollapsedGroups: Set<DateGroup> = []
+  @State private var meetingCollapsedGroups: Set<DateGroup>
   @State private var meetingArchivedCollapsed = true
 
   static let sidebarWidth: CGFloat = 220
@@ -41,6 +41,8 @@ struct ChatSidebar: View {
     self._sidebarVisible = sidebarVisible
     self._chatCollapsedGroups = State(
       initialValue: Self.defaultChatCollapsedGroups(for: viewModel.allSessionsList))
+    self._meetingCollapsedGroups = State(
+      initialValue: Self.defaultMeetingCollapsedGroups(for: viewModel.allSessionsList))
   }
 
   private var isSearching: Bool {
@@ -71,30 +73,44 @@ struct ChatSidebar: View {
     return .older
   }
 
-  /// Collapse every chat date group except the most recent one that actually
-  /// contains chats. Mirrors how the body filters/orders sessions so the open
-  /// group matches the first one rendered.
-  private static func defaultChatCollapsedGroups(for sessions: [ChatSession]) -> Set<DateGroup> {
-    let present = Set(
-      sessions
-        .filter { !$0.archived && !$0.isMeeting }
-        .map { dateGroup(for: $0.lastUpdated) }
-    )
+  /// Collapse every date group except the most recent one that actually contains
+  /// sessions. Mirrors how the body filters/orders sessions so the open group
+  /// matches the first one rendered.
+  private static func collapsedGroupsExceptMostRecent(present: Set<DateGroup>) -> Set<DateGroup> {
     guard let mostRecent = DateGroup.allCases.first(where: { present.contains($0) }) else {
       return Set(DateGroup.allCases)
     }
     return Set(DateGroup.allCases).subtracting([mostRecent])
   }
 
-  /// Date a session sorts and groups by. Meetings bucket by when the meeting
-  /// took place (parsed from `meetingStem`), falling back to `lastUpdated`;
+  private static func defaultChatCollapsedGroups(for sessions: [ChatSession]) -> Set<DateGroup> {
+    let present = Set(
+      sessions
+        .filter { !$0.archived && !$0.isMeeting }
+        .map { dateGroup(for: $0.lastUpdated) }
+    )
+    return collapsedGroupsExceptMostRecent(present: present)
+  }
+
+  private static func defaultMeetingCollapsedGroups(for sessions: [ChatSession]) -> Set<DateGroup> {
+    let present = Set(
+      sessions
+        .filter { !$0.archived && $0.isMeeting }
+        .map { dateGroup(for: meetingSortDate($0)) }
+    )
+    return collapsedGroupsExceptMostRecent(present: present)
+  }
+
+  /// Date a meeting buckets by: when the meeting took place (parsed from
+  /// `meetingStem`), falling back to `lastUpdated`.
+  private static func meetingSortDate(_ session: ChatSession) -> Date {
+    session.meetingStem.flatMap(MeetingListService.date(fromStem:)) ?? session.lastUpdated
+  }
+
+  /// Date a session sorts and groups by. Meetings bucket by meeting date;
   /// chats always use `lastUpdated`.
   private func sortDate(_ session: ChatSession) -> Date {
-    if session.isMeeting {
-      return session.meetingStem.flatMap(MeetingListService.date(fromStem:))
-        ?? session.lastUpdated
-    }
-    return session.lastUpdated
+    session.isMeeting ? Self.meetingSortDate(session) : session.lastUpdated
   }
 
   private func grouped(_ sessions: [ChatSession], by date: (ChatSession) -> Date)

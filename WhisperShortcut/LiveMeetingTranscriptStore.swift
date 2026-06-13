@@ -92,12 +92,14 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     DebugLogger.log("LIVE-MEETING-STORE: Rehydrated for resume (stem: \(stem), chunks: \(chunks.count))")
   }
 
+  /// Matches a "[mm:ss]" timestamp marker (minutes may exceed two digits for long meetings).
+  private static let timestampRegex = try! NSRegularExpression(pattern: #"\[(\d+):(\d{2})\]"#)
+
   /// Parses a transcript file (as written by `appendToTranscript`: "[mm:ss] text" blocks
   /// separated by blank lines) back into chunks. Used to rehydrate a resumed meeting.
   static func parseTranscript(_ text: String) -> [LiveMeetingChunk] {
-    guard let regex = try? NSRegularExpression(pattern: #"\[(\d+):(\d{2})\]"#) else { return [] }
     let ns = text as NSString
-    let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+    let matches = timestampRegex.matches(in: text, range: NSRange(location: 0, length: ns.length))
     var result: [LiveMeetingChunk] = []
     for (i, m) in matches.enumerated() {
       let minutes = Int(ns.substring(with: m.range(at: 1))) ?? 0
