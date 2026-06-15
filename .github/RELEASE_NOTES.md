@@ -1,6 +1,6 @@
-# WhisperShortcut 7.65
+# WhisperShortcut 7.66
 
-Chat now remembers durable facts about you across conversations.
+Maintenance release that refreshes WhisperShortcut's underlying Swift dependencies to their latest patch versions. No user-facing feature changes.
 
 ## Installation
 
@@ -8,9 +8,9 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### Persistent chat memory
-- Chat can now **remember durable facts about you** — your name, role, language, recurring projects, or stable preferences like "always answer concisely" — and apply them automatically in future, separate conversations.
-- The model saves and forgets facts on its own as you chat (or when you ask it to remember or forget something), and briefly confirms what changed.
-- A new **Memory** section in **Settings → Chat** lets you view, edit, clear, or open the memory file yourself. One fact per line; leave it empty to disable.
+### Dependency updates
+- Updated **swift-asn1** 1.7.0 → 1.7.1 (correct signed-integer encoding, OID initializer fix).
+- Updated **swift-argument-parser** 1.8.1 → 1.8.2 (completion-script and build-warning fixes).
+- These keep the app's cryptography and tooling stack current; no behavior changes for users.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.64...v7.65
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.65...v7.66
