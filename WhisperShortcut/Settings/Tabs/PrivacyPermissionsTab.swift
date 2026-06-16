@@ -47,7 +47,7 @@ struct PrivacyPermissionsTab: View {
         Divider()
         permissionRow(
           name: "Accessibility",
-          description: "Optional. Lets the app paste transcribed text and capture selected text in other apps.",
+          description: "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Off by default; enable auto-paste in Settings → General.",
           required: false,
           status: axStatus,
           actions: defaultActions(for: .accessibility)
@@ -320,7 +320,7 @@ struct PrivacyPermissionsTab: View {
               refresh()
             }
           } label: {
-            Label("Grant", systemImage: "mic")
+            Label("Continue", systemImage: "mic")
               .font(.callout)
           }
           .buttonStyle(.borderedProminent)

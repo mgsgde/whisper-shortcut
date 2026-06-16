@@ -28,17 +28,15 @@ class AccessibilityPermissionManager {
     }
 
     let alert = NSAlert()
-    alert.messageText = "Accessibility Permission Required"
+    alert.messageText = "Enable Accessibility for Auto-Paste"
     alert.informativeText = """
-      The prompt feature requires accessibility permission to function properly.
+      Auto-paste inserts dictated text at your cursor by simulating a ⌘V keystroke, which macOS allows only with Accessibility permission.
 
-      Without this permission, the app cannot capture selected text.
+      Dictation works without this — your text is always copied to the clipboard, so you can paste it manually with ⌘V.
 
-      Click "Open Settings" to grant this permission. In System Settings:
+      To turn on auto-paste, click "Open Settings". In System Settings:
       1. Go to Privacy & Security → Accessibility
       2. Enable WhisperShortcut
-
-      The prompt feature will not work until this permission is granted.
       """
     alert.alertStyle = .informational
     alert.addButton(withTitle: "Open Settings")

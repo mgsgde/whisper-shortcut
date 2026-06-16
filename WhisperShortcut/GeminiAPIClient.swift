@@ -367,6 +367,15 @@ class GeminiAPIClient {
   ) -> AsyncThrowingStream<GeminiStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
+        // Retry transient pre-stream failures (HTTP 503/500/429) with exponential
+        // backoff. We only retry while no event has been yielded yet: the 503 is
+        // raised at the HTTP status check before any content is streamed, so a retry
+        // is safe there. Once we begin consuming the response body we set
+        // `hasYielded` and never retry, since that would duplicate streamed output.
+        var attempt = 0
+        var hasYielded = false
+        while true {
+        attempt += 1
         do {
           let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):streamGenerateContent?alt=sse"
           var request = try self.createRequest(endpoint: endpoint, credential: credential)
@@ -510,6 +519,8 @@ class GeminiAPIClient {
           var inString = false
           var escape = false
           var chunkCount = 0
+          // Past this point we may emit deltas to the UI, so disable retries.
+          hasYielded = true
           for try await byte in bytes {
             try Task.checkCancellation()
             let ch = Character(UnicodeScalar(byte))
@@ -570,8 +581,40 @@ class GeminiAPIClient {
           DebugLogger.logNetwork("GEMINI-CHAT-STREAM: grounding sources=\(aggregatedSources.count) supports=\(aggregatedSupports.count)")
           continuation.yield(.finished(sources: aggregatedSources, supports: aggregatedSupports, finishReason: finishReason))
           continuation.finish()
+          return
         } catch {
+          if Task.isCancelled {
+            continuation.finish(throwing: error)
+            return
+          }
+          // Retry only transient, pre-stream failures (server/unavailable or rate limit).
+          let te = error as? TranscriptionError
+          let isTransient: Bool = {
+            guard let te else { return false }
+            if te.isServerOrUnavailable { return true }
+            switch te {
+            case .rateLimited, .quotaExceeded, .slowDown: return true
+            default: return false
+            }
+          }()
+          if !hasYielded, isTransient, attempt < Constants.maxServerErrorRetryAttempts {
+            // Honor an API-provided retry delay; otherwise exponential backoff for
+            // server errors, and a short fixed delay for everything else.
+            let delay: TimeInterval
+            if let retryAfter = te?.retryAfter {
+              delay = retryAfter + 2.0
+            } else if te?.isServerOrUnavailable ?? false {
+              delay = 2.0 * pow(2.0, Double(attempt - 1))
+            } else {
+              delay = Constants.retryDelaySeconds
+            }
+            DebugLogger.log("GEMINI-CHAT-STREAM-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delay))s: \(error.localizedDescription)")
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            continue
+          }
           continuation.finish(throwing: error)
+          return
+        }
         }
       }
       continuation.onTermination = { @Sendable _ in task.cancel() }

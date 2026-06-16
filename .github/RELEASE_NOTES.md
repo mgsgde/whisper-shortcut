@@ -1,6 +1,6 @@
-# WhisperShortcut 7.66
+# WhisperShortcut 7.67
 
-Maintenance release that refreshes WhisperShortcut's underlying Swift dependencies to their latest patch versions. No user-facing feature changes.
+This release focuses on giving you full control over permissions and startup behavior, plus a more reliable AI chat experience.
 
 ## Installation
 
@@ -8,9 +8,12 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### Dependency updates
-- Updated **swift-asn1** 1.7.0 → 1.7.1 (correct signed-integer encoding, OID initializer fix).
-- Updated **swift-argument-parser** 1.8.1 → 1.8.2 (completion-script and build-warning fixes).
-- These keep the app's cryptography and tooling stack current; no behavior changes for users.
+### Permissions & startup are now fully opt-in
+- **Launch at Login is off by default.** The app no longer registers itself to start at login automatically — turn it on yourself any time in Settings → General.
+- **Accessibility is optional.** It is used only for the optional auto-paste convenience (inserting dictated text at your cursor via a ⌘V keystroke). Auto-paste is now **off by default**, the Accessibility request was removed from onboarding, and dictation works fully without it (your text is always copied to the clipboard).
+- **Clearer permission prompts.** The microphone setup button now reads "Continue", and the in-app descriptions of the Accessibility permission accurately reflect that it is used solely for auto-paste.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.65...v7.66
+### More reliable AI chat
+- Gemini chat streaming now **automatically retries transient failures** (HTTP 503/500/429) with exponential backoff before any output is shown, so temporary server hiccups and rate limits no longer interrupt a response.
+
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.66...v7.67

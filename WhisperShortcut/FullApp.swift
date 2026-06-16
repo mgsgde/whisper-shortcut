@@ -72,19 +72,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       UserDefaults.standard.set(true, forKey: UserDefaultsKeys.contextLoggingEnabled)
     }
 
-    // First-run default: register for Launch at Login. The flag ensures a later
-    // explicit user opt-out is not silently re-enabled on the next launch.
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.hasAppliedLaunchAtLoginDefault) == nil {
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasAppliedLaunchAtLoginDefault)
-      if SMAppService.mainApp.status != .enabled {
-        do {
-          try SMAppService.mainApp.register()
-          DebugLogger.logInfo("LAUNCH: Registered for launch at login (first-run default)")
-        } catch {
-          DebugLogger.logError("LAUNCH: Failed first-run register for launch at login: \(error.localizedDescription)")
-        }
-      }
-    }
+    // Launch at Login is OFF by default and only enabled when the user explicitly
+    // toggles it in Settings → General. The app must never register itself for
+    // auto-launch without user consent (App Store Guideline 2.4.5(iii)).
 
     // Improve from usage auto-run: check if due and start daily timer
     Task { @MainActor in

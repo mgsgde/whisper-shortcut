@@ -1125,7 +1125,11 @@ struct SettingsDefaults {
   static let confirmAboveDuration = ConfirmAboveDuration.fiveMinutes
 
   // MARK: - Auto-Paste Settings
-  static let autoPasteAfterDictation = true
+  // OFF by default: auto-paste is the only feature that needs the Accessibility
+  // permission (it simulates a ⌘V keystroke). Keeping it opt-in means a fresh
+  // install never requires Accessibility, which it must not for its core features
+  // (App Store Guideline 2.4.5). Users enable it explicitly in Settings → General.
+  static let autoPasteAfterDictation = false
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = true

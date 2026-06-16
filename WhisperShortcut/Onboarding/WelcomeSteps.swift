@@ -301,7 +301,7 @@ struct WelcomePermissionsStep: View {
         Text("macOS permissions")
           .font(.title2)
           .fontWeight(.semibold)
-        Text("Microphone access is required for dictation. The other two are optional — grant them now or any time later in Settings → Privacy & Permissions.")
+        Text("Microphone access is required for dictation. Screen Recording is optional — enable it now or any time later in Settings → Privacy & Permissions.")
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -323,7 +323,7 @@ struct WelcomePermissionsStep: View {
                   micStatus = granted ? .granted : .denied
                 }
               } label: {
-                Label("Grant Microphone Access", systemImage: "mic")
+                Label("Continue", systemImage: "mic")
                   .font(.callout)
               }
               .buttonStyle(.borderedProminent)
@@ -337,25 +337,11 @@ struct WelcomePermissionsStep: View {
             }
           }
 
-          OnboardingPermissionRow(
-            icon: "accessibility",
-            title: "Accessibility",
-            required: false,
-            description: "Auto-pastes transcribed text into the app you're using. macOS pre-adds WhisperShortcut to the list — just flip the switch under Privacy → Accessibility. Without it, dictation still works; you just won't get automatic paste-into-app.",
-            status: axStatus,
-            kind: .accessibility
-          ) {
-            if axStatus != .granted {
-              Button {
-                AccessibilityPermissionManager.requestAccessibilityPermission()
-              } label: {
-                Label("Grant Accessibility", systemImage: "accessibility")
-                  .font(.callout)
-              }
-              .buttonStyle(.bordered)
-              .pointerCursorOnHover()
-            }
-          }
+          // Accessibility is intentionally NOT requested during onboarding. It is
+          // only needed for the optional auto-paste feature (⌘V keystroke), which is
+          // off by default. Users can enable it later in Settings → Privacy &
+          // Permissions. Requiring it up front would imply the app needs Accessibility
+          // for core functionality, which it does not (App Store Guideline 2.4.5).
 
           OnboardingPermissionRow(
             icon: "rectangle.inset.filled.and.person.filled",
