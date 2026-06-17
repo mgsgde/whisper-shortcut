@@ -6,14 +6,20 @@ struct ShortcutsOverviewSection: View {
   @ObservedObject var viewModel: SettingsViewModel
 
   private var rows: [(String, ShortcutDefinition?)] {
-    [
+    var items: [(String, ShortcutDefinition?)] = [
       ("Dictate", viewModel.data.toggleDictation),
       ("Dictate Prompt", viewModel.data.togglePrompting),
-      ("Read Aloud", viewModel.data.readAloud),
+    ]
+    // Selection-based Read Aloud uses ⌘C (Accessibility) — omitted from the App Store build.
+    #if !APP_STORE
+    items.append(("Read Aloud", viewModel.data.readAloud))
+    #endif
+    items.append(contentsOf: [
       ("Screenshot", viewModel.data.screenshotCapture),
       ("Chat", viewModel.data.openChat),
       ("Settings", viewModel.data.openSettings),
-    ]
+    ])
+    return items
   }
 
   var body: some View {

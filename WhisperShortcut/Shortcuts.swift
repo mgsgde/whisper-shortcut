@@ -113,7 +113,9 @@ class Shortcuts {
       }
     }
 
-    // Create Read Aloud shortcut (only if enabled)
+    // Create Read Aloud shortcut (only if enabled). Selection-based Read Aloud copies via ⌘C
+    // (Accessibility), so the global shortcut is omitted from the App Store build.
+    #if !APP_STORE
     if config.readAloud.isEnabled {
       readAloudKey = HotKey(
         key: config.readAloud.key, modifiers: config.readAloud.modifiers)
@@ -121,6 +123,7 @@ class Shortcuts {
         self?.delegate?.readAloud()
       }
     }
+    #endif
 
   }
 

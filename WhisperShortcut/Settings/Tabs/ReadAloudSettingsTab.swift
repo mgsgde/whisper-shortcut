@@ -43,6 +43,8 @@ struct ReadAloudSettingsTab: View {
   // MARK: - Keyboard Shortcut Section
   @ViewBuilder
   private var keyboardShortcutSection: some View {
+    // Selection-based Read Aloud copies via ⌘C (Accessibility); its shortcut is hidden in the App Store build.
+    #if !APP_STORE
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Keyboard Shortcut",
@@ -64,6 +66,7 @@ struct ReadAloudSettingsTab: View {
         clearShortcut: viewModel.clearShortcut
       )
     }
+    #endif
   }
 
   // MARK: - Voice Model Section

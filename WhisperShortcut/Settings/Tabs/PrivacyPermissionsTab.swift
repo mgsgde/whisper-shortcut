@@ -44,6 +44,8 @@ struct PrivacyPermissionsTab: View {
           status: micStatus,
           actions: micActions
         )
+        // Accessibility (auto-paste) is omitted from the App Store build.
+        #if !APP_STORE
         Divider()
         permissionRow(
           name: "Accessibility",
@@ -52,6 +54,7 @@ struct PrivacyPermissionsTab: View {
           status: axStatus,
           actions: defaultActions(for: .accessibility)
         )
+        #endif
         Divider()
         permissionRow(
           name: "Screen Recording",
@@ -355,7 +358,9 @@ struct PrivacyPermissionsTab: View {
 
   private func refresh() {
     micStatus = PermissionStatusChecker.status(for: .microphone)
+    #if !APP_STORE
     axStatus = PermissionStatusChecker.status(for: .accessibility)
+    #endif
     screenStatus = PermissionStatusChecker.status(for: .screenRecording)
     hasGeminiKey = KeychainManager.shared.hasValidGoogleAPIKey()
     hasOpenAIKey = KeychainManager.shared.hasValidOpenAIAPIKey()

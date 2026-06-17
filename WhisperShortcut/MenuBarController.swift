@@ -185,10 +185,13 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Screenshot", action: #selector(takeScreenshot),
         shortcut: currentConfig.screenshotCapture, tag: 113))
+    // Selection-based Read Aloud copies via ⌘C (Accessibility) — omitted from the App Store build.
+    #if !APP_STORE
     menu.addItem(
       createMenuItemWithShortcut(
         "Read Aloud", action: #selector(readAloudFromMenu),
         shortcut: currentConfig.readAloud, tag: 114))
+    #endif
     menu.addItem(NSMenuItem.separator())
 
     // Chat window
@@ -443,7 +446,9 @@ class MenuBarController: NSObject {
     let canPrompt = PromptModel.loadPromptModel(
       forKey: UserDefaultsKeys.selectedPromptModel,
       default: SettingsDefaults.selectedPromptModel).hasRequiredCredential
+    #if !APP_STORE
     let canReadAloud = ReadAloudPreferences.model.hasRequiredCredential
+    #endif
     let hasAnyKey = GeminiCredentialProvider.shared.hasCredential()
       || KeychainManager.shared.hasValidOpenAIAPIKey()
       || KeychainManager.shared.hasValidXAIAPIKey()
@@ -481,12 +486,15 @@ class MenuBarController: NSObject {
     )
 
     // Read Aloud item: title toggles to Stop while a TTS phase is active or audio is playing.
+    // Omitted from the App Store build, where the selection-based Read Aloud menu item is absent.
+    #if !APP_STORE
     let isReadAloudActive = isTTSRunning || audioEngine?.isRunning == true
     updateMenuItem(
       menu, tag: 114,
       title: isReadAloudActive ? "Stop Read Aloud" : "Read Aloud",
       enabled: canReadAloud && (!appState.isBusy || isReadAloudActive)
     )
+    #endif
 
     // Handle special case when no API key (any provider) and no offline model is configured
     if !hasAnyKey && !hasOfflineTranscriptionModel, let button = statusItem?.button {
@@ -615,9 +623,19 @@ class MenuBarController: NSObject {
       let promptModel = PromptModel.loadPromptModel(
         forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
       if promptModel.hasRequiredCredential {
-        if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return }
+        // App Store build reads the selection from a screenshot (Screen Recording), not ⌘C
+        // (Accessibility). Mirror the normal Dictate Prompt path's permission handling.
+        if AppConstants.dictatePromptScreenshotExperiment {
+          if PermissionStatusChecker.status(for: .screenRecording) != .granted {
+            DebugLogger.logWarning("MEETING-SEGMENT: Screen Recording missing — prompt segment needs it for the screenshot")
+            Self.showScreenRecordingPermissionError()
+            return
+          }
+        } else {
+          if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return }
+          simulateCopy()
+        }
         DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
-        simulateCopy()
         activeMeetingSegment = .prompt
         audioRecorder.startRecording()
       } else {
@@ -1854,6 +1872,12 @@ class MenuBarController: NSObject {
 
   /// Performs auto-paste if enabled in settings
   private func autoPasteIfEnabled() {
+    #if APP_STORE
+    // Auto-paste synthesizes a ⌘V keystroke, which requires the Accessibility permission Apple
+    // rejects under Guideline 2.4.5. The App Store build omits it; the result stays on the
+    // clipboard for the user to paste manually.
+    return
+    #else
     let autoPasteEnabled = UserDefaults.standard.object(forKey: UserDefaultsKeys.autoPasteAfterDictation) != nil
       ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoPasteAfterDictation)
       : SettingsDefaults.autoPasteAfterDictation
@@ -1869,6 +1893,7 @@ class MenuBarController: NSObject {
         DebugLogger.log("AUTO-PASTE: Pasted transcription at cursor position")
       }
     }
+    #endif
   }
 
   func cleanup() {
@@ -2099,6 +2124,14 @@ extension MenuBarController: ShortcutDelegate {
   @objc func readAloudFromMenu() { triggerReadSelectedTextAloud() }
 
   private func triggerReadSelectedTextAloud() {
+    #if APP_STORE
+    // Reading the current selection aloud copies it via ⌘C (Accessibility), which the App Store
+    // build does not use. Read Aloud remains available inside the Chat window.
+    PopupNotificationWindow.showError(
+      "Read Aloud of selected text isn't available in the App Store version. Use Read Aloud inside the Chat window instead.",
+      title: "Not Available")
+    return
+    #else
     if attemptReadAloudToggleOff() { return }
     if isLiveMeetingActive {
       DebugLogger.logWarning("READ-ALOUD-SHORTCUT: ignoring during live meeting")
@@ -2151,6 +2184,7 @@ extension MenuBarController: ShortcutDelegate {
         showNoTextSelectedForReadAloud()
       }
     }
+    #endif
   }
 
   /// Brief info popup shown when Read Aloud finds no selection. Not an error state (no

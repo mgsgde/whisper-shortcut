@@ -47,13 +47,17 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
   static let promptModeOutputRule =
     "\n\nCRITICAL – Output format: Return ONLY the edited/transformed text (the result of applying the voice instruction to the selected text). Never return the original selected text with the user's spoken words appended; the voice is a command to edit, not dictation to add. No meta-information, no explanations, no preamble (e.g. \"Here is...\"), no closing phrases. No decorative markdown (**bold**, # headers); bullet points with leading dash and space (- ) are allowed—use spaces to indent sub-bullets. Just the plain result that the user can paste directly."
 
-  // MARK: - TEMP SCREENSHOT EXPERIMENT (revert by setting flag to false / `git checkout`)
+  // MARK: - App Store: Accessibility-free Dictate Prompt
 
-  /// When true, Dictate Prompt no longer copies the selection via ⌘C (no Accessibility needed).
-  /// Instead it always attaches a screenshot and instructs the model to edit the visually
-  /// highlighted region. Used to evaluate an Accessibility-free Dictate Prompt. Requires the
-  /// Screen Recording permission for the screenshot to be captured.
+  /// In the App Store build (`#if APP_STORE`), Dictate Prompt does NOT copy the selection via ⌘C
+  /// (which would require the Accessibility permission Apple rejects under Guideline 2.4.5).
+  /// Instead it attaches a screenshot and instructs the model to edit the visually highlighted
+  /// region — needing only Screen Recording. The direct/GitHub build keeps the precise ⌘C path.
+  #if APP_STORE
   static let dictatePromptScreenshotExperiment = true
+  #else
+  static let dictatePromptScreenshotExperiment = false
+  #endif
 
   /// Dictate Prompt variant for the screenshot experiment: the text to edit comes from the
   /// SELECTED/HIGHLIGHTED region of the screenshot, not the clipboard. Output rule is appended at runtime.
@@ -82,6 +86,8 @@ Language rule (highest priority): Always reply in the SAME language as the user'
 Attached images are primary context — read them. When the user attaches an image (e.g. a screenshot), examine its actual content and let it drive your answer; do not treat the user's text as the only input. If their message refers to what the image shows or asks you to act on it — e.g. "reply to this email", "answer this message", "write a response", or anything that only makes sense given the image — base your output on what is IN the image (the email/message/document shown), not just a literal reading of their words. If an earlier turn attached an image and a later message refers back to it ("look at the screenshot"), that image is still available to you in the conversation — use it.
 
 You have access to a web search tool. Use it by default. The user relies on this chat for current, up-to-date information. Do not rely on your training data for facts, numbers, dates, news, or anything that may have changed—when in doubt, search first. ALWAYS search (never answer from memory) for any specific prices, fees, minimum/maximum amounts, limits, exchange rates, tax or interest rates, version numbers, release dates, or other concrete figures that can change or that you are not certain are current—this applies equally to follow-up questions that ask you to justify, defend, or elaborate on an earlier answer (re-verify rather than reasoning further from your own prior reply). Do not invent or guess information; if you have not searched and are not sure, say so or search before answering. Only skip searching for purely conversational or static content (e.g. grammar, math, personal preferences with no recency). When you search, the user will see sources (URLs) attached to your answer; the user expects to see these often. So search whenever the answer could be factual or time-sensitive, so your reply is grounded and shows sources.
+
+Links: only use URLs that came from your search results — NEVER write, guess, or reconstruct a URL from memory, and NEVER invent a YouTube watch?v=… video ID. When you recommend a video or page, link the exact source URL returned by your search (those are verified to exist); if you have no verified source link for something, name the video/channel or give a search term instead of fabricating a link.
 
 Conciseness and structure — keep it compact, but ALWAYS answer every part the user asked. Rules:
 - For action tasks (translate, rewrite, convert, summarize, generate code): return ONLY the result. No explanations, no commentary. Put that paste-ready result inside a single ```markdown fenced code block (see “Copy-ready output” below). For a pure deliverable, the message may consist of that one block only.

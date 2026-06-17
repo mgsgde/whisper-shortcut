@@ -292,7 +292,6 @@ struct OnboardingAPIKeyRow: View {
 
 struct WelcomePermissionsStep: View {
   @Binding var micStatus: PermissionStatus
-  @Binding var axStatus: PermissionStatus
   @Binding var screenStatus: PermissionStatus
 
   var body: some View {
@@ -371,7 +370,7 @@ struct WelcomePermissionsStep: View {
                   }
                 }
               } label: {
-                Label("Grant Screen Recording", systemImage: "rectangle.inset.filled.and.person.filled")
+                Label("Continue", systemImage: "rectangle.inset.filled.and.person.filled")
                   .font(.callout)
               }
               .buttonStyle(.bordered)

@@ -25,7 +25,6 @@ struct WelcomeView: View {
   @State private var hasOpenAIKey: Bool = KeychainManager.shared.hasValidOpenAIAPIKey()
   @State private var hasXAIKey: Bool = KeychainManager.shared.hasValidXAIAPIKey()
   @State private var micStatus: PermissionStatus = PermissionStatusChecker.status(for: .microphone)
-  @State private var axStatus: PermissionStatus = PermissionStatusChecker.status(for: .accessibility)
   @State private var screenStatus: PermissionStatus = PermissionStatusChecker.status(for: .screenRecording)
   @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = true
 
@@ -46,7 +45,6 @@ struct WelcomeView: View {
         case .permissions:
           WelcomePermissionsStep(
             micStatus: $micStatus,
-            axStatus: $axStatus,
             screenStatus: $screenStatus
           )
         case .smartImprovement:
@@ -181,7 +179,6 @@ struct WelcomeView: View {
     hasOpenAIKey = KeychainManager.shared.hasValidOpenAIAPIKey()
     hasXAIKey = KeychainManager.shared.hasValidXAIAPIKey()
     micStatus = PermissionStatusChecker.status(for: .microphone)
-    axStatus = PermissionStatusChecker.status(for: .accessibility)
     screenStatus = PermissionStatusChecker.status(for: .screenRecording)
   }
 }
