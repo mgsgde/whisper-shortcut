@@ -41,6 +41,8 @@ bash ./scripts/rebuild-and-restart.sh --development   # currently a no-op (flag 
 bash ./scripts/rebuild-and-restart.sh --app-store     # App Store scheme
 ```
 
+- `--app-store` builds the **separate** `WhisperShortcut-AppStore` target, which defines the `APP_STORE` compilation condition. Gate App-Store-only behavior with `#if APP_STORE` (e.g. the Accessibility-free Dictate Prompt and the removed auto-paste / selection Read Aloud required for Guideline 2.4.5); the direct/GitHub build keeps the full feature set.
+
 ## 🔗 Gemini API / models
 
 When working with **Gemini models** (transcription, prompt mode, TTS, model IDs, or API issues):  
