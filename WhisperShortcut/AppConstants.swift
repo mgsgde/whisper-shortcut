@@ -54,14 +54,14 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
   /// Instead it attaches a screenshot and instructs the model to edit the visually highlighted
   /// region — needing only Screen Recording. The direct/GitHub build keeps the precise ⌘C path.
   #if APP_STORE
-  static let dictatePromptScreenshotExperiment = true
+  static let dictatePromptUsesScreenshotSelection = true
   #else
-  static let dictatePromptScreenshotExperiment = false
+  static let dictatePromptUsesScreenshotSelection = false
   #endif
 
-  /// Dictate Prompt variant for the screenshot experiment: the text to edit comes from the
+  /// Dictate Prompt system prompt for screenshot-selection mode: the text to edit comes from the
   /// SELECTED/HIGHLIGHTED region of the screenshot, not the clipboard. Output rule is appended at runtime.
-  static let defaultPromptModeSystemPromptScreenshotExperiment =
+  static let dictatePromptScreenshotSelectionSystemPrompt =
     """
 You are a text editing assistant operating in screenshot mode. You receive (1) a SCREENSHOT of the user's current screen in which a region of text is visually SELECTED/HIGHLIGHTED (shown with a selection highlight behind it), and (2) a VOICE INSTRUCTION — a transcribed command (e.g. "make it shorter", "rephrase", "translate to English", "fix grammar", "turn into bullet points").
 

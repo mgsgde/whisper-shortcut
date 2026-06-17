@@ -307,9 +307,9 @@ class SpeechService {
 
   // MARK: - Prompt Modes (Private Implementation)
   private func performPrompt(audioURL: URL, mode: PromptMode) async throws -> String {
-    // Get clipboard context. TEMP SCREENSHOT EXPERIMENT: skipped so the model relies solely on
-    // the highlighted region in the screenshot instead of the ⌘C-copied selection.
-    let clipboardContext = AppConstants.dictatePromptScreenshotExperiment ? nil : getClipboardContext()
+    // Get clipboard context. In screenshot-selection mode (App Store build) this is skipped so the
+    // model relies solely on the highlighted region in the screenshot instead of the ⌘C-copied selection.
+    let clipboardContext = AppConstants.dictatePromptUsesScreenshotSelection ? nil : getClipboardContext()
 
     // Get selected model from settings based on mode
     let selectedPromptModel = getPromptModel()
@@ -338,10 +338,10 @@ class SpeechService {
   /// and appends the strict output rule. All Dictate Prompt paths (Gemini, OpenAI, text)
   /// use this composition.
   private func buildDictatePromptSystemPrompt(logPrefix: String) -> String {
-    // TEMP SCREENSHOT EXPERIMENT: force the screenshot-based prompt (edit the highlighted region).
-    if AppConstants.dictatePromptScreenshotExperiment {
-      DebugLogger.log("\(logPrefix): [SCREENSHOT-EXPERIMENT] Using screenshot-based system prompt")
-      return AppConstants.defaultPromptModeSystemPromptScreenshotExperiment + AppConstants.promptModeOutputRule
+    // Screenshot-selection mode (App Store build): use the screenshot-based prompt (edit the highlighted region).
+    if AppConstants.dictatePromptUsesScreenshotSelection {
+      DebugLogger.log("\(logPrefix): [SCREENSHOT-SELECTION] Using screenshot-based system prompt")
+      return AppConstants.dictatePromptScreenshotSelectionSystemPrompt + AppConstants.promptModeOutputRule
     }
     let trimmed = SystemPromptsStore.shared
       .loadDictatePromptSystemPrompt()
@@ -361,12 +361,17 @@ class SpeechService {
   /// "include screenshot" setting is on and the model accepts images. Empty when
   /// disabled, when the model is audio-only, or when the capture fails.
   private func screenshotPromptParts(modelAcceptsImages: Bool = true) async -> [GeminiChatRequest.GeminiChatPart] {
-    // TEMP SCREENSHOT EXPERIMENT: always include the screenshot regardless of the user setting,
-    // since it is now the sole source of the selected text.
-    let includeScreenshot = AppConstants.dictatePromptScreenshotExperiment || screenshotInPromptModeEnabled()
+    // In screenshot-selection mode (App Store build) always include the screenshot regardless of the
+    // user setting, since it is the sole source of the selected text.
+    let includeScreenshot = AppConstants.dictatePromptUsesScreenshotSelection || screenshotInPromptModeEnabled()
     guard includeScreenshot, modelAcceptsImages else { return [] }
-    guard let data = await ChatWindowManager.shared.captureScreenForPromptMode() else { return [] }
-    let screenshotLabel = AppConstants.dictatePromptScreenshotExperiment
+    guard let data = await ChatWindowManager.shared.captureScreenForPromptMode() else {
+      if AppConstants.dictatePromptUsesScreenshotSelection {
+        DebugLogger.logWarning("PROMPT-MODE: Screenshot capture failed in screenshot-selection mode — request has no selected text to edit")
+      }
+      return []
+    }
+    let screenshotLabel = AppConstants.dictatePromptUsesScreenshotSelection
       ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
       : "Current screen:"
     return [
@@ -579,14 +584,25 @@ class SpeechService {
     // Optional screenshot context. gpt-4o-audio-preview is audio-only and rejects image_url
     // content parts with HTTP 400 ("This model does not support image_url content."), so we
     // skip the screenshot for that model regardless of the user's setting.
-    let screenshotEnabled = screenshotInPromptModeEnabled()
     let modelAcceptsImages = model.supportsImageInput
+    // In screenshot-selection mode the screenshot is the ONLY source of the selected text (clipboard
+    // is skipped). An image-only model like gpt-4o-audio-preview can't receive it, so the request
+    // would carry neither the selection nor a screenshot — fail fast with an actionable message.
+    if AppConstants.dictatePromptUsesScreenshotSelection && !modelAcceptsImages {
+      DebugLogger.logError("PROMPT-MODE-OPENAI: \(model.rawValue) can't accept images — incompatible with screenshot-selection Dictate Prompt")
+      throw TranscriptionError.networkError("This Dictate Prompt model can't read the on-screen selection. Pick a Gemini Dictate Prompt model instead.")
+    }
+    // Force the screenshot in screenshot-selection mode; otherwise honor the user's setting.
+    let screenshotEnabled = AppConstants.dictatePromptUsesScreenshotSelection || screenshotInPromptModeEnabled()
     let screenshotData: Data? = (screenshotEnabled && modelAcceptsImages)
       ? await ChatWindowManager.shared.captureScreenForPromptMode()
       : nil
     if screenshotEnabled && !modelAcceptsImages {
       DebugLogger.log("PROMPT-MODE-OPENAI: Screenshot dropped — \(model.rawValue) does not accept image input.")
     }
+    let screenshotLabel = AppConstants.dictatePromptUsesScreenshotSelection
+      ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
+      : "Current screen:"
 
     // Convert prior conversation history (text-only) into OpenAI messages so the model
     // sees multi-turn context, just like the Gemini path.
@@ -604,7 +620,7 @@ class SpeechService {
     // Build current-turn user message content parts.
     var userContent: [[String: Any]] = []
     if let screenshotData {
-      userContent.append(["type": "text", "text": "Current screen:"])
+      userContent.append(["type": "text", "text": screenshotLabel])
       let base64 = screenshotData.base64EncodedString()
       userContent.append([
         "type": "image_url",

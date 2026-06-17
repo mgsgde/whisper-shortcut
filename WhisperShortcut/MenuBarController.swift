@@ -623,18 +623,7 @@ class MenuBarController: NSObject {
       let promptModel = PromptModel.loadPromptModel(
         forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
       if promptModel.hasRequiredCredential {
-        // App Store build reads the selection from a screenshot (Screen Recording), not ⌘C
-        // (Accessibility). Mirror the normal Dictate Prompt path's permission handling.
-        if AppConstants.dictatePromptScreenshotExperiment {
-          if PermissionStatusChecker.status(for: .screenRecording) != .granted {
-            DebugLogger.logWarning("MEETING-SEGMENT: Screen Recording missing — prompt segment needs it for the screenshot")
-            Self.showScreenRecordingPermissionError()
-            return
-          }
-        } else {
-          if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return }
-          simulateCopy()
-        }
+        if !prepareDictatePromptSelection(logPrefix: "MEETING-SEGMENT") { return }
         DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
         activeMeetingSegment = .prompt
         audioRecorder.startRecording()
@@ -658,22 +647,7 @@ class MenuBarController: NSObject {
       let promptModel = PromptModel.loadPromptModel(
         forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
       if appState.canStartPrompting(hasAPIKey: promptModel.hasRequiredCredential, hasOfflineModel: false) {
-        // TEMP SCREENSHOT EXPERIMENT: Dictate Prompt no longer copies the selection via ⌘C, so it
-        // needs no Accessibility permission. It now reads the selection from a screenshot instead,
-        // which requires Screen Recording. Gate on that (with guidance) so we don't record audio
-        // and then process an empty screenshot when the permission is missing.
-        if AppConstants.dictatePromptScreenshotExperiment {
-          if PermissionStatusChecker.status(for: .screenRecording) != .granted {
-            DebugLogger.logWarning("PROMPT-MODE: Screen Recording missing — Dictate Prompt needs it for the screenshot")
-            Self.showScreenRecordingPermissionError()
-            return
-          }
-        } else {
-          if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-            return
-          }
-          simulateCopy()
-        }
+        if !prepareDictatePromptSelection(logPrefix: "PROMPT-MODE") { return }
         appState = appState.startRecording(.prompt)
         audioRecorder.startRecording()
       } else {
@@ -1841,6 +1815,25 @@ class MenuBarController: NSObject {
   }
   
   /// Simulates Cmd+C to copy the current selection to the clipboard (virtual key 0x08 = 'C').
+  /// Ensures the permission Dictate Prompt needs for the current selection-capture mode is granted,
+  /// preparing the selection as a side effect. In screenshot-selection mode (App Store build) this
+  /// gates on Screen Recording — the selection is read from a screenshot, so we abort before
+  /// recording audio when it's missing. Otherwise it gates on Accessibility and copies the selection
+  /// via ⌘C. Returns false (after showing guidance) when the required permission is missing.
+  private func prepareDictatePromptSelection(logPrefix: String) -> Bool {
+    if AppConstants.dictatePromptUsesScreenshotSelection {
+      if PermissionStatusChecker.status(for: .screenRecording) != .granted {
+        DebugLogger.logWarning("\(logPrefix): Screen Recording missing — Dictate Prompt needs it for the screenshot")
+        Self.showScreenRecordingPermissionError()
+        return false
+      }
+      return true
+    }
+    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return false }
+    simulateCopy()
+    return true
+  }
+
   private func simulateCopy() {
     // Use a private event source so modifier keys physically held (e.g. Option from the
     // global shortcut) do not leak into the synthetic Cmd+C and turn it into Cmd+Option+C.
