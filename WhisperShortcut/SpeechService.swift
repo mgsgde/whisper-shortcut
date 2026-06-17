@@ -307,8 +307,9 @@ class SpeechService {
 
   // MARK: - Prompt Modes (Private Implementation)
   private func performPrompt(audioURL: URL, mode: PromptMode) async throws -> String {
-    // Get clipboard context
-    let clipboardContext = getClipboardContext()
+    // Get clipboard context. TEMP SCREENSHOT EXPERIMENT: skipped so the model relies solely on
+    // the highlighted region in the screenshot instead of the ⌘C-copied selection.
+    let clipboardContext = AppConstants.dictatePromptScreenshotExperiment ? nil : getClipboardContext()
 
     // Get selected model from settings based on mode
     let selectedPromptModel = getPromptModel()
@@ -337,6 +338,11 @@ class SpeechService {
   /// and appends the strict output rule. All Dictate Prompt paths (Gemini, OpenAI, text)
   /// use this composition.
   private func buildDictatePromptSystemPrompt(logPrefix: String) -> String {
+    // TEMP SCREENSHOT EXPERIMENT: force the screenshot-based prompt (edit the highlighted region).
+    if AppConstants.dictatePromptScreenshotExperiment {
+      DebugLogger.log("\(logPrefix): [SCREENSHOT-EXPERIMENT] Using screenshot-based system prompt")
+      return AppConstants.defaultPromptModeSystemPromptScreenshotExperiment + AppConstants.promptModeOutputRule
+    }
     let trimmed = SystemPromptsStore.shared
       .loadDictatePromptSystemPrompt()
       .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -355,10 +361,16 @@ class SpeechService {
   /// "include screenshot" setting is on and the model accepts images. Empty when
   /// disabled, when the model is audio-only, or when the capture fails.
   private func screenshotPromptParts(modelAcceptsImages: Bool = true) async -> [GeminiChatRequest.GeminiChatPart] {
-    guard screenshotInPromptModeEnabled(), modelAcceptsImages else { return [] }
+    // TEMP SCREENSHOT EXPERIMENT: always include the screenshot regardless of the user setting,
+    // since it is now the sole source of the selected text.
+    let includeScreenshot = AppConstants.dictatePromptScreenshotExperiment || screenshotInPromptModeEnabled()
+    guard includeScreenshot, modelAcceptsImages else { return [] }
     guard let data = await ChatWindowManager.shared.captureScreenForPromptMode() else { return [] }
+    let screenshotLabel = AppConstants.dictatePromptScreenshotExperiment
+      ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
+      : "Current screen:"
     return [
-      GeminiChatRequest.GeminiChatPart(text: "Current screen:", inlineData: nil, fileData: nil, url: nil),
+      GeminiChatRequest.GeminiChatPart(text: screenshotLabel, inlineData: nil, fileData: nil, url: nil),
       GeminiChatRequest.GeminiChatPart(
         text: nil,
         inlineData: GeminiChatRequest.GeminiInlineData(mimeType: "image/jpeg", data: data.base64EncodedString()),

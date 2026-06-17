@@ -640,10 +640,22 @@ class MenuBarController: NSObject {
       let promptModel = PromptModel.loadPromptModel(
         forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
       if appState.canStartPrompting(hasAPIKey: promptModel.hasRequiredCredential, hasOfflineModel: false) {
-        if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
-          return
+        // TEMP SCREENSHOT EXPERIMENT: Dictate Prompt no longer copies the selection via ⌘C, so it
+        // needs no Accessibility permission. It now reads the selection from a screenshot instead,
+        // which requires Screen Recording. Gate on that (with guidance) so we don't record audio
+        // and then process an empty screenshot when the permission is missing.
+        if AppConstants.dictatePromptScreenshotExperiment {
+          if PermissionStatusChecker.status(for: .screenRecording) != .granted {
+            DebugLogger.logWarning("PROMPT-MODE: Screen Recording missing — Dictate Prompt needs it for the screenshot")
+            Self.showScreenRecordingPermissionError()
+            return
+          }
+        } else {
+          if !AccessibilityPermissionManager.checkPermissionForPromptUsage() {
+            return
+          }
+          simulateCopy()
         }
-        simulateCopy()
         appState = appState.startRecording(.prompt)
         audioRecorder.startRecording()
       } else {
