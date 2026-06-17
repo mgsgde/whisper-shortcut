@@ -1,6 +1,6 @@
-# WhisperShortcut 7.67
+# WhisperShortcut 7.68
 
-This release focuses on giving you full control over permissions and startup behavior, plus a more reliable AI chat experience.
+This release brings the Mac App Store build into compliance with Apple's review guidelines. **If you use the direct download from this page, nothing changes** — all of its features behave exactly as in 7.67. The changes below apply to the **Mac App Store** build only.
 
 ## Installation
 
@@ -8,12 +8,15 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### Permissions & startup are now fully opt-in
-- **Launch at Login is off by default.** The app no longer registers itself to start at login automatically — turn it on yourself any time in Settings → General.
-- **Accessibility is optional.** It is used only for the optional auto-paste convenience (inserting dictated text at your cursor via a ⌘V keystroke). Auto-paste is now **off by default**, the Accessibility request was removed from onboarding, and dictation works fully without it (your text is always copied to the clipboard).
-- **Clearer permission prompts.** The microphone setup button now reads "Continue", and the in-app descriptions of the Accessibility permission accurately reflect that it is used solely for auto-paste.
+### Mac App Store build is now Accessibility-free
+To meet App Store Guideline 2.4.5, the App Store build no longer uses the macOS Accessibility permission at all:
+- **Dictate Prompt** reads your selected text from a screenshot (Screen Recording permission) instead of copying it with a synthesized ⌘C keystroke.
+- **Auto-paste** is removed in the App Store build; the result is placed on the clipboard for you to paste.
+- **Read Aloud of the current selection** (the menu item / global shortcut) is removed in the App Store build. Read Aloud inside the Chat window is unaffected.
 
-### More reliable AI chat
-- Gemini chat streaming now **automatically retries transient failures** (HTTP 503/500/429) with exponential backoff before any output is shown, so temporary server hiccups and rate limits no longer interrupt a response.
+The direct/GitHub download keeps the full feature set — ⌘C-based Dictate Prompt, auto-paste, and selection Read Aloud all remain.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.66...v7.67
+### Onboarding
+- The Screen Recording permission button now reads **"Continue"** instead of "Grant" (Guideline 5.1.1).
+
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.67...v7.68
