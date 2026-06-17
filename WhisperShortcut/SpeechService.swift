@@ -489,6 +489,14 @@ class SpeechService {
     var userParts: [GeminiChatRequest.GeminiChatPart] = []
     let screenshotParts = await screenshotPromptParts()
     let hadScreenshot = !screenshotParts.isEmpty
+    // In screenshot-selection mode the screenshot is the ONLY source of the selected text
+    // (clipboard is skipped). Fail fast with a user-actionable error when capture returned nothing,
+    // rather than send a screenshot-mode system prompt with no image — the model would otherwise
+    // hallucinate from a non-existent highlight. The togglePrompting permission gate already handles
+    // the common case; this catches grant-but-capture-failed corners.
+    if AppConstants.dictatePromptUsesScreenshotSelection && !hadScreenshot {
+      throw TranscriptionError.networkError("Could not capture a screenshot of the current screen. Check Screen Recording permission in System Settings, then try again.")
+    }
     userParts.append(contentsOf: screenshotParts)
 
     if let context = clipboardContext {

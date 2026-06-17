@@ -2107,6 +2107,11 @@ extension MenuBarController: ShortcutDelegate {
     )
   }
 
+  // Selection-based Read Aloud (HotKey + menu item + everything it needs) copies via ⌘C, which
+  // requires Accessibility. The App Store build omits the menu item, the hotkey wiring, and the
+  // settings row — so these entry points have no caller there. Compile them out too rather than
+  // keep an unreachable error-popup branch.
+  #if !APP_STORE
   /// HotKey entry point: copies the user's selection, then runs Read Aloud on it. Pressing the
   /// shortcut again while a TTS phase is running cancels playback (mirrors the chat read-aloud
   /// stop semantics).
@@ -2117,14 +2122,6 @@ extension MenuBarController: ShortcutDelegate {
   @objc func readAloudFromMenu() { triggerReadSelectedTextAloud() }
 
   private func triggerReadSelectedTextAloud() {
-    #if APP_STORE
-    // Reading the current selection aloud copies it via ⌘C (Accessibility), which the App Store
-    // build does not use. Read Aloud remains available inside the Chat window.
-    PopupNotificationWindow.showError(
-      "Read Aloud of selected text isn't available in the App Store version. Use Read Aloud inside the Chat window instead.",
-      title: "Not Available")
-    return
-    #else
     if attemptReadAloudToggleOff() { return }
     if isLiveMeetingActive {
       DebugLogger.logWarning("READ-ALOUD-SHORTCUT: ignoring during live meeting")
@@ -2177,7 +2174,6 @@ extension MenuBarController: ShortcutDelegate {
         showNoTextSelectedForReadAloud()
       }
     }
-    #endif
   }
 
   /// Brief info popup shown when Read Aloud finds no selection. Not an error state (no
@@ -2204,6 +2200,7 @@ extension MenuBarController: ShortcutDelegate {
       try await speechService.readSelectionAloud(selectedText)
     }
   }
+  #endif
 }
 
 // MARK: - ChunkProgressDelegate (Chunked Transcription Progress)

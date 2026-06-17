@@ -10,7 +10,9 @@ struct PrivacyPermissionsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
 
   @State private var micStatus: PermissionStatus = .notDetermined
+  #if !APP_STORE
   @State private var axStatus: PermissionStatus = .denied
+  #endif
   @State private var screenStatus: PermissionStatus = .notDetermined
   @State private var hasGeminiKey: Bool = false
   @State private var hasOpenAIKey: Bool = false

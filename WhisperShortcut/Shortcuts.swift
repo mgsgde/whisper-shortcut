@@ -7,7 +7,9 @@ protocol ShortcutDelegate: AnyObject {
   func openSettings()
   func openChat()
   func takeScreenshot()
+  #if !APP_STORE
   func readAloud()
+  #endif
 }
 
 // Configurable shortcuts using ShortcutConfigManager

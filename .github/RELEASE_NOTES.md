@@ -1,6 +1,6 @@
-# WhisperShortcut 7.68
+# WhisperShortcut 7.69
 
-This release brings the Mac App Store build into compliance with Apple's review guidelines. **If you use the direct download from this page, nothing changes** — all of its features behave exactly as in 7.67. The changes below apply to the **Mac App Store** build only.
+**If you use the direct download from this page, nothing changes** — all of its features behave exactly as before. The user-facing changes below apply to the **Mac App Store** build only.
 
 ## Installation
 
@@ -8,15 +8,13 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### Mac App Store build is now Accessibility-free
-To meet App Store Guideline 2.4.5, the App Store build no longer uses the macOS Accessibility permission at all:
-- **Dictate Prompt** reads your selected text from a screenshot (Screen Recording permission) instead of copying it with a synthesized ⌘C keystroke.
-- **Auto-paste** is removed in the App Store build; the result is placed on the clipboard for you to paste.
-- **Read Aloud of the current selection** (the menu item / global shortcut) is removed in the App Store build. Read Aloud inside the Chat window is unaffected.
+### Dictate Prompt reliability fix (App Store build)
+In the App Store build, Dictate Prompt reads your selected text from a screenshot. If you picked an audio-only model that can't see images, the request used to go out empty and produce garbage. The app now stops with a clear message asking you to switch to a Gemini Dictate Prompt model.
 
-The direct/GitHub download keeps the full feature set — ⌘C-based Dictate Prompt, auto-paste, and selection Read Aloud all remain.
+### App Store build cleanup
+The selection-based Read Aloud shortcut, menu item, and related settings are now fully compiled out of the App Store build (they rely on the macOS Accessibility permission, which that build does not use). Read Aloud inside the Chat window is unaffected. The direct/GitHub download keeps the full feature set.
 
-### Onboarding
-- The Screen Recording permission button now reads **"Continue"** instead of "Grant" (Guideline 5.1.1).
+### Internal
+Consolidated the Dictate Prompt permission handling and clarified naming around the screenshot-based selection mode.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.67...v7.68
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.68...v7.69
