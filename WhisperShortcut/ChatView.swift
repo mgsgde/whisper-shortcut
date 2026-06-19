@@ -20,7 +20,13 @@ final class StreamingBuffer: ObservableObject {
   @Published private(set) var content: String = ""
   private var pendingContent: String?
   private var flushTask: Task<Void, Never>?
-  private static let flushIntervalNs: UInt64 = 33_000_000  // ~30fps
+  // ~8fps. Each flush mutates `content`, which grows the streaming bubble's height and forces a
+  // ScrollView relayout; with `.scrollPosition(id:)` attached, every relayout runs SwiftUI's
+  // per-frame `findClosestSubview` sweep (coordinate-space conversion over visible subviews) and
+  // re-parses the markdown into blocks. At 30fps over a long reply that sweep can't keep up and
+  // wedges the main thread ≥4s (watchdog hang-20260619-151328.txt). Throttling to ~8fps cuts the
+  // relayout/re-parse passes ~4× while keeping the stream visibly live.
+  private static let flushIntervalNs: UInt64 = 125_000_000  // ~8fps
 
   func enqueueUpdate(_ newContent: String) {
     pendingContent = newContent
@@ -687,8 +693,12 @@ class ChatViewModel: ObservableObject {
         "CHAT-SEND: start session=\(sessionId) msgs=\(sessionMsgCount) contentChars=\(content.count) "
         + "attachedImages=\(attachedParts.count) attachedBytes=\(attachedBytes) "
         + "inFlightSessions=\(sendingSessionIds.count) queued=\(messageQueue.count)")
+      // Breadcrumb for the watchdog: if the main thread wedges during the stream/render, the
+      // captured hang file is tagged with this instead of just a SwiftUI stack.
+      MainThreadWatchdog.shared.note("chat-send streaming session=\(sessionId) msgs=\(sessionMsgCount)")
       defer {
         DebugLogger.log("CHAT-SEND: teardown session=\(sessionId)")
+        MainThreadWatchdog.shared.note("idle")
         sendingSessionIds.remove(sessionId)
         supersedingSessionIds.remove(sessionId)
         sendTasks.removeValue(forKey: sessionId)
@@ -796,6 +806,7 @@ class ChatViewModel: ObservableObject {
         // if the next render wedges the main thread, "final UI update committed" will be
         // absent from the log while "finalizing" is the last line — pinpointing the hang.
         DebugLogger.log("CHAT-SEND: finalizing message sources=\(finalSources.count) supports=\(finalSupports.count) contentLen=\(reply.count) session=\(sessionId)")
+        MainThreadWatchdog.shared.note("chat-send finalizing contentLen=\(reply.count) sources=\(finalSources.count)")
         self.detachStreamingBuffer(for: placeholderId)
         self.updateStreamingMessage(
           id: placeholderId, sessionId: sessionId,
@@ -4067,6 +4078,7 @@ private struct ModelReplyView: View {
     for para in paragraphs {
       let trimmed = para.text.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
+      if Self.shouldSkipGeneratedImagePlaceholder(trimmed, in: content) { continue }
       if let pieces = Self.splitImageMarkerPieces(trimmed) {
         // Generated image(s) — previously only the content-only builder knew about markers,
         // so a grounded reply (sources ⇒ this builder) rendered the raw base64 as text.
@@ -4079,6 +4091,7 @@ private struct ModelReplyView: View {
           case .image(let image):
             blocks.append(.image(image))
           case .text(let text):
+            guard !GeminiAPIClient.isGeneratedImagePlaceholder(text) else { continue }
             var attr = buildSingleParagraphAttributed(text, options: options)
             if i == lastTextIdx {
               appendCitations(to: &attr, indices: para.chunkIndices, sourcesCount: sources.count)
@@ -4146,6 +4159,7 @@ private struct ModelReplyView: View {
     for para in paragraphs {
       let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
+      if Self.shouldSkipGeneratedImagePlaceholder(trimmed, in: content) { continue }
       if let idx = CodeBlockExtractor.placeholderIndex(trimmed), idx < codeBlocks.count {
         let cb = codeBlocks[idx]
         if cb.language == "markdown" && Self.looksLikeStructuredAnswer(cb.code) {
@@ -4159,6 +4173,7 @@ private struct ModelReplyView: View {
           case .image(let image):
             blocks.append(.image(image))
           case .text(let text):
+            guard !GeminiAPIClient.isGeneratedImagePlaceholder(text) else { continue }
             blocks.append(.text(buildSingleParagraphAttributed(text, options: options)))
           }
         }
@@ -4210,6 +4225,13 @@ private struct ModelReplyView: View {
     return headingCount >= 2
   }
 
+  /// Hides the internal `[generated image]` placeholder in the UI when the message still
+  /// carries a renderable ⟦GEMINI_IMG:…⟧ marker (model echo from API history, or its own paragraph).
+  private static func shouldSkipGeneratedImagePlaceholder(_ trimmed: String, in content: String) -> Bool {
+    GeminiAPIClient.isGeneratedImagePlaceholder(trimmed)
+      && GeminiAPIClient.containsImageMarker(in: content)
+  }
+
   /// One ordered piece of a paragraph that mixes ⟦GEMINI_IMG:…⟧ markers with prose.
   private enum ImageMarkerPiece {
     case image(NSImage)
@@ -4234,7 +4256,9 @@ private struct ModelReplyView: View {
       trimmed,
       onText: { segment in
         let before = segment.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !before.isEmpty { pieces.append(.text(before)) }
+        if !before.isEmpty, !GeminiAPIClient.isGeneratedImagePlaceholder(before) {
+          pieces.append(.text(before))
+        }
       },
       onMarker: { markerSegment in
         let key = "\(markerSegment.count)_\(markerSegment.hashValue)" as NSString

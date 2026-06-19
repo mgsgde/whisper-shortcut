@@ -1,4 +1,4 @@
-# WhisperShortcut 7.70
+# WhisperShortcut 7.71
 
 ## Installation
 
@@ -6,7 +6,11 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### Download generated images
-Chat replies that contain an AI-generated image now show a download button in the action row beneath the message. Click it to save the image to disk — the save panel remembers your last-used folder and picks the correct file type (PNG, JPEG, etc.) automatically.
+### Stability: fixes for the app freezing during chat
+This release targets the long-standing issue where the app could freeze (and appear to crash) — most often while a chat reply was streaming.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.69...v7.70
+- **Fixed chat-streaming freeze.** Long replies could pin the main thread as the message list re-laid out on every streamed token. Streaming UI updates are now throttled, which removes the layout/parse storm that wedged the app while keeping the reply visibly live.
+- **Fixed Keychain-related freeze.** Credential checks (e.g. for unconfigured providers) repeatedly hit the system Keychain on the main thread, which could block for seconds. These reads are now cached — including the "no key stored" result — so they no longer stall the UI.
+- **Better freeze diagnostics.** The built-in hang watchdog now tags each captured hang report with what the app was doing at the time, making future issues faster to pinpoint.
+
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.70...v7.71

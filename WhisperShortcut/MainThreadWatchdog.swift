@@ -47,8 +47,20 @@ final class MainThreadWatchdog {
   private var started = false
   /// Mach port for the main thread, captured once at startup. Used to read its stack while hung.
   private var mainThreadMachPort: thread_t = mach_port_t(MACH_PORT_NULL)
+  /// Last activity breadcrumb, owned by `queue`. Written via `note(_:)` from any thread and folded
+  /// into the hang header so a captured stack says *what* the app was doing when it wedged (e.g.
+  /// "chat-send streaming"), not just where in SwiftUI it stalled. Set before risky main-thread
+  /// work; reset to a resting value when it completes.
+  private var breadcrumb = "launch"
 
   private init() {}
+
+  /// Records what the app is about to do (or just finished). Cheap and thread-safe — the hang
+  /// capture (on `queue`) reads the most recent value, which already landed because `queue` keeps
+  /// draining even while the main thread is wedged. Keep messages short and stable.
+  func note(_ activity: String) {
+    queue.async { self.breadcrumb = activity }
+  }
 
   /// Starts the watchdog. Safe to call once, from `applicationDidFinishLaunching`.
   func start() {
@@ -76,7 +88,7 @@ final class MainThreadWatchdog {
         if self.stallStartedAt == nil { self.stallStartedAt = Date() }
         let stalledSeconds = self.interval * Double(missed)
         DebugLogger.logError(
-          "WATCHDOG: main thread unresponsive for ≥\(Int(stalledSeconds))s — capturing sample")
+          "WATCHDOG: main thread unresponsive for ≥\(Int(stalledSeconds))s (activity: \(self.breadcrumb)) — capturing sample")
         self.captureMainThreadStack()
       } else if missed == 1 {
         // First missed ping of a potential stall — remember when it began.
@@ -123,7 +135,7 @@ final class MainThreadWatchdog {
     let stamp = formatter.string(from: Date())
     let outURL = AppSupportPaths.logsURL().appendingPathComponent("hang-\(stamp).txt")
 
-    let header = "WhisperShortcut main-thread hang — \(stamp)\n\n"
+    let header = "WhisperShortcut main-thread hang — \(stamp)\nactivity: \(breadcrumb)\n\n"
     let body = frames.enumerated()
       .map { String(format: "%2d  %@", $0.offset, $0.element) }
       .joined(separator: "\n")
