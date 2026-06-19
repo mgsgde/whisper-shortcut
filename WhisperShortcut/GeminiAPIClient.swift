@@ -913,12 +913,33 @@ class GeminiAPIClient {
 
   /// Decodes the base64 payload from a single `⟦GEMINI_IMG:...⟧` marker.
   static func decodeImageMarkerData(_ marker: String) -> Data? {
+    decodeImageMarker(marker)?.data
+  }
+
+  /// Decodes both the base64 payload and the mime type from a single `⟦GEMINI_IMG:...⟧` marker.
+  static func decodeImageMarker(_ marker: String) -> (data: Data, mimeType: String)? {
     guard marker.hasPrefix(imageMarkerPrefix), marker.hasSuffix(imageMarkerSuffix) else { return nil }
     let inner = String(marker.dropFirst(imageMarkerPrefix.count).dropLast(imageMarkerSuffix.count))
     guard let lastColon = inner.lastIndex(of: ":") else { return nil }
     let base64 = String(inner[inner.startIndex..<lastColon])
-    guard !base64.isEmpty else { return nil }
-    return Data(base64Encoded: base64)
+    let mimeType = String(inner[inner.index(after: lastColon)...])
+    guard !base64.isEmpty, let data = Data(base64Encoded: base64) else { return nil }
+    return (data, mimeType)
+  }
+
+  /// Returns the first inline image (data + mime type) embedded in `content`, if any.
+  static func firstImageMarker(in content: String) -> (data: Data, mimeType: String)? {
+    guard containsImageMarker(in: content) else { return nil }
+    var result: (data: Data, mimeType: String)?
+    walkImageMarkers(
+      content,
+      onText: { _ in },
+      onMarker: { marker in
+        if result == nil { result = decodeImageMarker(String(marker)) }
+      },
+      onUnterminatedMarker: { _ in }
+    )
+    return result
   }
 
   func extractText(from response: GeminiResponse) -> String {

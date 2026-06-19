@@ -4410,6 +4410,71 @@ private struct CopyReplyButtonView: View {
   }
 }
 
+// MARK: - Download Image Button (under model replies that contain an image)
+
+/// Saves the first generated image in a reply to disk via a save panel.
+private struct DownloadImageButtonView: View {
+  /// Resolved on click, not per render — decoding the marker rebuilds a multi-MB Data blob.
+  let image: () -> (data: Data, mimeType: String)?
+  @State private var isHovered = false
+
+  var body: some View {
+    Button {
+      saveImage()
+    } label: {
+      Image(systemName: "square.and.arrow.down")
+        .font(.system(size: 13))
+        .foregroundColor(isHovered ? ChatTheme.primaryText : ChatTheme.secondaryText.opacity(0.75))
+        .frame(width: 28, height: 28)
+        .contentShape(Rectangle())
+        .background(
+          RoundedRectangle(cornerRadius: 6)
+            .fill(isHovered ? ChatTheme.primaryText.opacity(0.08) : Color.clear)
+        )
+    }
+    .buttonStyle(.plain)
+    .onHover { inside in
+      isHovered = inside
+    }
+    .pointerCursorOnHover()
+    .help("Download this image")
+    .accessibilityLabel("Download this image")
+  }
+
+  private func saveImage() {
+    guard let image = image() else { return }
+    let ext = Self.fileExtension(for: image.mimeType)
+    let panel = NSSavePanel()
+    if let contentType = UTType(filenameExtension: ext) {
+      panel.allowedContentTypes = [contentType]
+    }
+    panel.nameFieldStringValue = "generated-image.\(ext)"
+    panel.message = "Save the generated image"
+    if let lastPath = UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAttachDirectoryPath) {
+      panel.directoryURL = URL(fileURLWithPath: lastPath)
+    } else if let screenshotFolder = ScreenshotSaveLocation.resolveFolderURL() {
+      panel.directoryURL = screenshotFolder
+    }
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    do {
+      try image.data.write(to: url)
+      UserDefaults.standard.set(url.deletingLastPathComponent().path, forKey: UserDefaultsKeys.lastAttachDirectoryPath)
+    } catch {
+      DebugLogger.logError("GEMINI-CHAT: Failed to save generated image: \(error.localizedDescription)")
+    }
+  }
+
+  private static func fileExtension(for mimeType: String) -> String {
+    switch mimeType.lowercased() {
+    case "image/jpeg", "image/jpg": return "jpg"
+    case "image/webp": return "webp"
+    case "image/gif": return "gif"
+    case "image/heic": return "heic"
+    default: return "png"
+    }
+  }
+}
+
 // MARK: - Retry Button (under the last user message)
 
 /// Re-sends the message (same text and attachments) and regenerates the response.
@@ -4695,6 +4760,9 @@ private struct MessageBubbleView: View {
             GeminiAPIClient.stripImageMarkers(message.content, placeholder: "")
           })
           CopyReplyButtonView(text: { GeminiAPIClient.stripImageMarkers(message.content) })
+          if hasMarker {
+            DownloadImageButtonView(image: { GeminiAPIClient.firstImageMarker(in: message.content) })
+          }
         }
         .padding(.top, 6)
       }
