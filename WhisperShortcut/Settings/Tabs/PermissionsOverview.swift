@@ -88,57 +88,62 @@ struct PermissionsOverview: View {
 
   // MARK: - Actions (native request first, then deep-link)
 
-  private var micActions: AnyView {
+  /// Fixed width for the right-hand action column so every row's buttons share one trailing edge,
+  /// stack vertically, and never truncate their labels regardless of how the description text wraps.
+  private static let actionColumnWidth: CGFloat = 220
+
+  /// Right-aligned, equal-width button column shared by all permission rows.
+  private func actionStack<Content: View>(@ViewBuilder _ content: () -> Content) -> AnyView {
     AnyView(
-      HStack(spacing: 8) {
-        if micStatus == .notDetermined {
-          Button {
-            PermissionStatusChecker.requestMicrophoneAccess { _ in refresh() }
-          } label: {
-            Label("Grant Access", systemImage: "mic")
-              .font(.callout)
-          }
-          .buttonStyle(.borderedProminent)
-          .pointerCursorOnHover()
-        }
-        openSettingsButton(for: .microphone)
+      VStack(alignment: .trailing, spacing: 8) {
+        content()
       }
+      .frame(width: Self.actionColumnWidth)
     )
+  }
+
+  private var micActions: AnyView {
+    actionStack {
+      if micStatus == .notDetermined {
+        Button {
+          PermissionStatusChecker.requestMicrophoneAccess { _ in refresh() }
+        } label: {
+          actionLabel("Grant Access", systemImage: "mic")
+        }
+        .buttonStyle(.borderedProminent)
+        .pointerCursorOnHover()
+      }
+      openSettingsButton(for: .microphone)
+    }
   }
 
   private var screenActions: AnyView {
-    AnyView(
-      HStack(spacing: 8) {
-        if screenStatus != .granted {
-          Button(action: requestScreenRecording) {
-            Label("Grant Access", systemImage: "rectangle.inset.filled.and.person.filled")
-              .font(.callout)
-          }
-          .buttonStyle(.borderedProminent)
-          .pointerCursorOnHover()
+    actionStack {
+      if screenStatus != .granted {
+        Button(action: requestScreenRecording) {
+          actionLabel("Grant Access", systemImage: "rectangle.inset.filled.and.person.filled")
         }
-        openSettingsButton(for: .screenRecording)
+        .buttonStyle(.borderedProminent)
+        .pointerCursorOnHover()
       }
-    )
+      openSettingsButton(for: .screenRecording)
+    }
   }
 
   private var accessibilityActions: AnyView {
-    AnyView(
-      HStack(spacing: 8) {
-        if axStatus != .granted {
-          Button {
-            AccessibilityPermissionManager.requestAccessibilityAtOptIn()
-            refresh()
-          } label: {
-            Label("Grant Access", systemImage: "accessibility")
-              .font(.callout)
-          }
-          .buttonStyle(.borderedProminent)
-          .pointerCursorOnHover()
+    actionStack {
+      if axStatus != .granted {
+        Button {
+          AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+          refresh()
+        } label: {
+          actionLabel("Grant Access", systemImage: "accessibility")
         }
-        openSettingsButton(for: .accessibility)
+        .buttonStyle(.borderedProminent)
+        .pointerCursorOnHover()
       }
-    )
+      openSettingsButton(for: .accessibility)
+    }
   }
 
   /// Screen Recording has no completion-handler request API: `CGRequestScreenCaptureAccess()`
@@ -160,11 +165,19 @@ struct PermissionsOverview: View {
     Button {
       PermissionStatusChecker.openSystemSettings(for: kind)
     } label: {
-      Label("Open System Settings", systemImage: "arrow.up.right.square")
-        .font(.callout)
+      actionLabel("Open System Settings", systemImage: "arrow.up.right.square")
     }
     .buttonStyle(.bordered)
     .pointerCursorOnHover()
+  }
+
+  /// Shared button label: full-width within the action column, single line, centered — so
+  /// every action button is the same size and reads cleanly without truncation.
+  private func actionLabel(_ title: String, systemImage: String) -> some View {
+    Label(title, systemImage: systemImage)
+      .font(.callout)
+      .lineLimit(1)
+      .frame(maxWidth: .infinity)
   }
 
   /// Quits and relaunches the app in one click — the restart macOS requires for Screen Recording /

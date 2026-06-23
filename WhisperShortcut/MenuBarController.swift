@@ -1231,6 +1231,7 @@ class MenuBarController: NSObject {
     message: String? = nil,
     dismissProcessingFirst: Bool = true,
     retryAction: (() -> Void)? = nil,
+    retryActionTitle: String = "Retry",
     dismissAction: (() -> Void)? = nil,
     topUpURL: URL? = nil
   ) {
@@ -1238,7 +1239,7 @@ class MenuBarController: NSObject {
       PopupNotificationWindow.dismissProcessing()
     }
     appState = appState.showError(shortTitle)
-    PopupNotificationWindow.showError(message ?? shortTitle, title: shortTitle, retryAction: retryAction, dismissAction: dismissAction, topUpURL: topUpURL)
+    PopupNotificationWindow.showError(message ?? shortTitle, title: shortTitle, retryAction: retryAction, retryActionTitle: retryActionTitle, dismissAction: dismissAction, topUpURL: topUpURL)
   }
 
   /// Unified error handler for processing errors (transcription/prompting)
@@ -2027,6 +2028,18 @@ extension MenuBarController: AudioRecorderDelegate {
       DebugLogger.logWarning("MEETING-SEGMENT: Recording failed during meeting segment, clearing segment")
       activeMeetingSegment = nil
     }
+    // Microphone permission denied/restricted: offer a direct jump to the Microphone
+    // privacy pane instead of leaving the user with only "Contact Support".
+    if errorDomain == "WhisperShortcut" && errorCode == 1001 {
+      presentError(
+        shortTitle: "Microphone Access Needed",
+        message: "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
+        dismissProcessingFirst: false,
+        retryAction: { PermissionStatusChecker.openSystemSettings(for: .microphone) },
+        retryActionTitle: "Open Settings"
+      )
+      return
+    }
     presentError(shortTitle: "Recording Error", message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
   }
 }
@@ -2460,6 +2473,19 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
       // Don't abort immediately - just log the error
       // If it's a critical error, the recorder will stop on its own
       if !self.isLiveMeetingActive {
+        return
+      }
+
+      // Microphone permission denied/restricted: offer a direct jump to the Microphone
+      // privacy pane instead of leaving the user with only "Contact Support".
+      let nsError = error as NSError
+      if nsError.domain == "LiveMeetingRecorder" && nsError.code == 2001 {
+        PopupNotificationWindow.showError(
+          "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
+          title: "Microphone Access Needed",
+          retryAction: { PermissionStatusChecker.openSystemSettings(for: .microphone) },
+          retryActionTitle: "Open Settings"
+        )
         return
       }
 
