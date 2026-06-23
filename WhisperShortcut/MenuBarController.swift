@@ -2099,11 +2099,12 @@ extension MenuBarController: ShortcutDelegate {
   private static func showScreenRecordingPermissionError() {
     PermissionStatusChecker.requestScreenRecordingAccess()
     PopupNotificationWindow.showError(
-      "WhisperShortcut needs Screen Recording permission to capture screenshots. Enable it in System Settings → Privacy & Security → Screen Recording, then relaunch the app.",
+      "WhisperShortcut needs Screen Recording permission to capture screenshots. Review it in Privacy & Permissions — then quit and reopen WhisperShortcut for the change to take effect.",
       title: "Screen Recording Permission Needed",
       retryAction: {
-        PermissionStatusChecker.openSystemSettings(for: .screenRecording)
-      }
+        SettingsManager.shared.showPrivacyPermissions()
+      },
+      retryActionTitle: "Review Permissions"
     )
   }
 

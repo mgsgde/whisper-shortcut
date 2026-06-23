@@ -30,11 +30,8 @@ struct SettingsView: View {
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
       setupFloatingWindow()
     }
-    .onReceive(NotificationCenter.default.publisher(for: .privacyTabRequestSwitchToGeneral)) { _ in
-      selectedTab = .general
-    }
     .onReceive(NotificationCenter.default.publisher(for: .openPrivacyPermissionsTab)) { _ in
-      selectedTab = .privacy
+      selectedTab = .permissions
     }
   }
 
@@ -94,8 +91,8 @@ struct SettingsView: View {
           ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
         case .improvement:
           ImprovementSettingsTab(viewModel: viewModel)
-        case .privacy:
-          PrivacyPermissionsTab(viewModel: viewModel)
+        case .permissions:
+          PermissionsTab()
         case .about:
           AboutSettingsTab(viewModel: viewModel)
         }
@@ -123,8 +120,8 @@ struct SettingsView: View {
       return "speaker.wave.2.fill"
     case .improvement:
       return "wand.and.stars"
-    case .privacy:
-      return "lock.shield"
+    case .permissions:
+      return "checkmark.shield"
     case .about:
       return "info.circle"
     }
@@ -146,10 +143,10 @@ struct SettingsView: View {
       return "Shortcut and smart-rewrite settings"
     case .improvement:
       return "Improve prompts from your usage and manage context data"
-    case .privacy:
-      return "Permissions, API keys, and what data leaves your Mac"
+    case .permissions:
+      return "macOS permissions"
     case .about:
-      return "Shortcuts overview, reset, and support"
+      return "Privacy, shortcuts, reset, and support"
     }
   }
 

@@ -15,7 +15,7 @@ struct WelcomeIntroStep: View {
           .font(.title3)
           .foregroundStyle(.secondary)
       }
-      Text("A quick setup: privacy, an API key for your preferred AI provider, and a couple of macOS permissions. Takes about a minute.")
+      Text("A quick setup: privacy, a provider API key — or fully offline Whisper, no key needed — and a couple of macOS permissions. Takes about a minute.")
         .font(.callout)
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
@@ -41,6 +41,8 @@ struct WelcomePrivacyStep: View {
             .foregroundStyle(.secondary)
         }
       }
+      OpenSourceBanner()
+
       VStack(alignment: .leading, spacing: 12) {
         ForEach(PrivacyCopy.promiseBullets, id: \.self) { bullet in
           HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -64,29 +66,16 @@ struct WelcomePrivacyStep: View {
           .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
       )
 
-      HStack(spacing: 12) {
-        Button {
-          if let url = URL(string: AppConstants.privacyPolicyURL) {
-            NSWorkspace.shared.open(url)
-          }
-        } label: {
-          Label("View full privacy policy", systemImage: "doc.text")
-            .font(.callout)
+      Button {
+        if let url = URL(string: AppConstants.privacyPolicyURL) {
+          NSWorkspace.shared.open(url)
         }
-        .buttonStyle(.bordered)
-        .pointerCursorOnHover()
-
-        Button {
-          if let url = URL(string: AppConstants.githubRepositoryURL) {
-            NSWorkspace.shared.open(url)
-          }
-        } label: {
-          Label("View on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
-            .font(.callout)
-        }
-        .buttonStyle(.bordered)
-        .pointerCursorOnHover()
+      } label: {
+        Label("View full privacy policy", systemImage: "doc.text")
+          .font(.callout)
       }
+      .buttonStyle(.bordered)
+      .pointerCursorOnHover()
 
       Spacer()
     }
@@ -94,18 +83,88 @@ struct WelcomePrivacyStep: View {
   }
 }
 
+/// Prominent, tappable "this app is open source" banner with a direct link to
+/// the public repository. Surfaced on the privacy step (and in Settings) so the
+/// open-source nature is obvious at a glance rather than hidden in a small button.
+/// SF Symbols has no GitHub glyph, so the `</>` code symbol stands in — the same
+/// symbol the app already uses for GitHub elsewhere.
+struct OpenSourceBanner: View {
+  private var repoURL: URL? { URL(string: AppConstants.githubRepositoryURL) }
+
+  /// The recognizable "owner/repo" handle, without the scheme/host.
+  private var repoHandle: String {
+    AppConstants.githubRepositoryURL
+      .replacingOccurrences(of: "https://github.com/", with: "")
+      .replacingOccurrences(of: "http://github.com/", with: "")
+  }
+
+  var body: some View {
+    Button {
+      if let repoURL { NSWorkspace.shared.open(repoURL) }
+    } label: {
+      HStack(spacing: 14) {
+        Image(systemName: "chevron.left.forwardslash.chevron.right")
+          .font(.system(size: 22, weight: .semibold))
+          .foregroundStyle(.tint)
+          .frame(width: 30)
+        VStack(alignment: .leading, spacing: 3) {
+          Text(PrivacyCopy.openSourceHeadline)
+            .font(.callout)
+            .fontWeight(.semibold)
+            .foregroundStyle(.primary)
+          Text(PrivacyCopy.openSourceDetail)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+          HStack(spacing: 4) {
+            Image(systemName: "link")
+              .font(.caption2)
+            Text(repoHandle)
+              .font(.caption.monospaced())
+          }
+          .foregroundStyle(.tint)
+          .padding(.top, 1)
+        }
+        Spacer(minLength: 8)
+        Image(systemName: "arrow.up.right")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      }
+      .padding(14)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        RoundedRectangle(cornerRadius: 10)
+          .fill(Color.accentColor.opacity(0.10))
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 10)
+          .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
+      )
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .pointerCursorOnHover()
+    .help("Open the WhisperShortcut source code on GitHub")
+  }
+}
+
 struct WelcomeAPIKeysStep: View {
   @Binding var hasGeminiKey: Bool
   @Binding var hasOpenAIKey: Bool
   @Binding var hasXAIKey: Bool
+  @Binding var offlineReady: Bool
+
+  private var canContinue: Bool {
+    hasGeminiKey || hasOpenAIKey || hasXAIKey || offlineReady
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       VStack(alignment: .leading, spacing: 4) {
-        Text("Add at least one API key")
+        Text("Add a key — or start offline")
           .font(.title2)
           .fontWeight(.semibold)
-        Text("You need a key from at least one AI provider — any single key unlocks every feature. Keys are stored in the macOS Keychain and only sent in requests to that provider.")
+        Text("Any single provider key unlocks every feature and is stored in the macOS Keychain. Or skip the key entirely and dictate fully offline with local Whisper.")
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -144,21 +203,133 @@ struct WelcomeAPIKeysStep: View {
             save: { KeychainManager.shared.saveXAIAPIKey($0) },
             recommended: false
           )
+
+          HStack(spacing: 10) {
+            VStack { Divider() }
+            Text("or")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            VStack { Divider() }
+          }
+          .padding(.vertical, 2)
+
+          OnboardingOfflineRow(offlineReady: $offlineReady)
         }
         .padding(.bottom, 8)
       }
 
-      if !(hasGeminiKey || hasOpenAIKey || hasXAIKey) {
-        Label("Add at least one key to continue.", systemImage: "exclamationmark.circle")
-          .font(.caption)
-          .foregroundStyle(.orange)
-      } else {
+      if canContinue {
         Label("Ready to continue.", systemImage: "checkmark.circle.fill")
           .font(.caption)
           .foregroundStyle(.green)
+      } else {
+        Label("Add a key or download offline Whisper to continue.", systemImage: "exclamationmark.circle")
+          .font(.caption)
+          .foregroundStyle(.orange)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+  }
+}
+
+/// Lets a new user finish setup with no provider key by downloading a local
+/// Whisper model. Dictation then runs fully offline; cloud-only features
+/// (Dictate Prompt, Chat, Read Aloud) still need a key added later in Settings.
+struct OnboardingOfflineRow: View {
+  @Binding var offlineReady: Bool
+  @ObservedObject private var modelManager = ModelManager.shared
+  @State private var downloadError: String?
+
+  private let modelType: OfflineModelType = .whisperBase
+
+  private var isDownloading: Bool { modelManager.downloadingModels.contains(modelType) }
+  private var isAvailable: Bool { modelManager.isModelAvailable(modelType) }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 8) {
+        Image(systemName: "laptopcomputer.and.arrow.down")
+          .foregroundStyle(.tint)
+        Text("Run offline with local Whisper")
+          .font(.callout)
+          .fontWeight(.semibold)
+        Spacer()
+      }
+
+      Text("No key required — audio never leaves your Mac. Dictation works offline; Dictate Prompt, Chat and Read Aloud still need a provider key you can add later in Settings.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      if isAvailable {
+        Label("Whisper Base ready — you can continue.", systemImage: "checkmark.seal.fill")
+          .font(.caption)
+          .foregroundStyle(.green)
+      } else if isDownloading {
+        HStack(spacing: 8) {
+          ProgressView().controlSize(.small)
+          Text("Downloading Whisper Base…")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+      } else {
+        Button(action: download) {
+          Label("Download Whisper Base (≈140 MB)", systemImage: "arrow.down.circle")
+            .font(.callout)
+        }
+        .buttonStyle(.bordered)
+        .pointerCursorOnHover()
+      }
+
+      if let downloadError {
+        Label(downloadError, systemImage: "exclamationmark.triangle.fill")
+          .font(.caption2)
+          .foregroundStyle(.red)
+      }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: 10)
+        .fill(Color(nsColor: .controlBackgroundColor))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 10)
+        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+    )
+    .onAppear(perform: syncReady)
+  }
+
+  private func download() {
+    downloadError = nil
+    Task {
+      do {
+        try await ModelManager.shared.downloadModel(modelType)
+        await MainActor.run { syncReady() }
+      } catch {
+        await MainActor.run {
+          downloadError = "Download failed. Check your connection and try again."
+        }
+        DebugLogger.logError("ONBOARDING: Whisper Base download failed: \(error.localizedDescription)")
+      }
+    }
+  }
+
+  /// Marks offline setup as ready and — only when no cloud key is configured —
+  /// makes the offline model the active transcription backend so the app works
+  /// immediately. A cloud user's higher-quality default is left untouched.
+  private func syncReady() {
+    guard modelManager.isModelAvailable(modelType) else { return }
+    offlineReady = true
+    let hasCloudKey = KeychainManager.shared.hasValidGoogleAPIKey()
+      || KeychainManager.shared.hasValidOpenAIAPIKey()
+      || KeychainManager.shared.hasValidXAIAPIKey()
+    if !hasCloudKey {
+      UserDefaults.standard.set(
+        TranscriptionModel.whisperBase.rawValue,
+        forKey: UserDefaultsKeys.selectedTranscriptionModel)
+      DebugLogger.log("ONBOARDING: offline Whisper Base ready; set as default transcription model")
+    }
   }
 }
 
@@ -292,7 +463,6 @@ struct OnboardingAPIKeyRow: View {
 
 struct WelcomePermissionsStep: View {
   @Binding var micStatus: PermissionStatus
-  @Binding var screenStatus: PermissionStatus
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -300,85 +470,18 @@ struct WelcomePermissionsStep: View {
         Text("macOS permissions")
           .font(.title2)
           .fontWeight(.semibold)
-        Text("Microphone access is required for dictation. Screen Recording is optional — enable it now or any time later in Settings → Privacy & Permissions.")
+        Text("Microphone is required for dictation. Screen Recording is optional — for screenshots in chat and Dictate Prompt. You can change these any time in Settings → Permissions.")
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
 
       ScrollView {
-        VStack(spacing: 14) {
-          OnboardingPermissionRow(
-            icon: "mic.fill",
-            title: "Microphone",
-            required: true,
-            description: "Records what you say. Audio is sent only to the provider you chose, then deleted.",
-            status: micStatus,
-            kind: .microphone
-          ) {
-            if micStatus == .notDetermined {
-              Button {
-                PermissionStatusChecker.requestMicrophoneAccess { granted in
-                  micStatus = granted ? .granted : .denied
-                }
-              } label: {
-                Label("Continue", systemImage: "mic")
-                  .font(.callout)
-              }
-              .buttonStyle(.borderedProminent)
-              .pointerCursorOnHover()
-            }
-            if micStatus == .denied {
-              Text("Enable WhisperShortcut under Privacy → Microphone.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-          }
-
-          // Accessibility is intentionally NOT requested during onboarding. It is
-          // only needed for the optional auto-paste feature (⌘V keystroke), which is
-          // off by default. Users can enable it later in Settings → Privacy &
-          // Permissions. Requiring it up front would imply the app needs Accessibility
-          // for core functionality, which it does not (App Store Guideline 2.4.5).
-
-          OnboardingPermissionRow(
-            icon: "rectangle.inset.filled.and.person.filled",
-            title: "Screen Recording",
-            required: false,
-            description: "Enables screenshot attachments in chat and screen context in Dictate Prompt. You may need to relaunch the app after granting. Everything except screenshot attachments works without it.",
-            status: screenStatus,
-            kind: .screenRecording
-          ) {
-            if screenStatus != .granted {
-              Button {
-                let granted = PermissionStatusChecker.requestScreenRecordingAccess()
-                screenStatus = PermissionStatusChecker.status(for: .screenRecording)
-                if !granted {
-                  // CGRequestScreenCaptureAccess() only shows the native consent prompt on
-                  // the very first request. Once macOS has any record of a decision it
-                  // returns silently with no dialog, so the click feels dead (especially
-                  // when macOS already registered the app from an earlier launch). Re-check
-                  // shortly after and deep-link into System Settings if we still aren't
-                  // granted, so the button always produces a visible next step.
-                  DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    let current = PermissionStatusChecker.status(for: .screenRecording)
-                    screenStatus = current
-                    if current != .granted {
-                      PermissionStatusChecker.openSystemSettings(for: .screenRecording)
-                    }
-                  }
-                }
-              } label: {
-                Label("Continue", systemImage: "rectangle.inset.filled.and.person.filled")
-                  .font(.callout)
-              }
-              .buttonStyle(.bordered)
-              .pointerCursorOnHover()
-            }
-          }
-        }
-        .padding(.bottom, 8)
+        // The same overview used in Settings → Permissions and on permission errors —
+        // one component, one behavior. Accessibility is omitted here on purpose
+        // (App Store Guideline 2.4.5: don't imply the app needs it up front).
+        PermissionsOverview(mode: .onboarding, onMicStatusChange: { micStatus = $0 })
+          .padding(.bottom, 8)
       }
 
       if micStatus == .granted {
@@ -609,7 +712,7 @@ struct WelcomeDoneStep: View {
         )
       }
 
-      Text("You can revisit this tour any time from Settings → Privacy & Permissions.")
+      Text("You can revisit this tour any time from Settings → Privacy.")
         .font(.callout)
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)

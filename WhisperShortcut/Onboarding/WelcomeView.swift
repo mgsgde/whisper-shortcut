@@ -24,8 +24,12 @@ struct WelcomeView: View {
   @State private var hasGeminiKey: Bool = KeychainManager.shared.hasValidGoogleAPIKey()
   @State private var hasOpenAIKey: Bool = KeychainManager.shared.hasValidOpenAIAPIKey()
   @State private var hasXAIKey: Bool = KeychainManager.shared.hasValidXAIAPIKey()
+  /// True once an offline Whisper model is downloaded, which lets a user finish
+  /// setup and dictate with no provider key at all (the key step's other exit).
+  @State private var offlineReady: Bool = ModelManager.shared.isModelAvailable(.whisperBase)
+  /// Gates the permissions step's Continue button. Updated by `PermissionsOverview`'s
+  /// `onMicStatusChange` callback and the periodic refresh below.
   @State private var micStatus: PermissionStatus = PermissionStatusChecker.status(for: .microphone)
-  @State private var screenStatus: PermissionStatus = PermissionStatusChecker.status(for: .screenRecording)
   @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = true
 
   var body: some View {
@@ -40,13 +44,11 @@ struct WelcomeView: View {
           WelcomeAPIKeysStep(
             hasGeminiKey: $hasGeminiKey,
             hasOpenAIKey: $hasOpenAIKey,
-            hasXAIKey: $hasXAIKey
+            hasXAIKey: $hasXAIKey,
+            offlineReady: $offlineReady
           )
         case .permissions:
-          WelcomePermissionsStep(
-            micStatus: $micStatus,
-            screenStatus: $screenStatus
-          )
+          WelcomePermissionsStep(micStatus: $micStatus)
         case .smartImprovement:
           WelcomeSmartImprovementStep(saveUsageData: $saveUsageData)
         case .done:
@@ -150,7 +152,7 @@ struct WelcomeView: View {
   private var canAdvance: Bool {
     switch step {
     case .apiKeys:
-      return hasGeminiKey || hasOpenAIKey || hasXAIKey
+      return hasGeminiKey || hasOpenAIKey || hasXAIKey || offlineReady
     case .permissions:
       return micStatus == .granted
     default:
@@ -178,7 +180,7 @@ struct WelcomeView: View {
     hasGeminiKey = KeychainManager.shared.hasValidGoogleAPIKey()
     hasOpenAIKey = KeychainManager.shared.hasValidOpenAIAPIKey()
     hasXAIKey = KeychainManager.shared.hasValidXAIAPIKey()
+    offlineReady = ModelManager.shared.isModelAvailable(.whisperBase)
     micStatus = PermissionStatusChecker.status(for: .microphone)
-    screenStatus = PermissionStatusChecker.status(for: .screenRecording)
   }
 }

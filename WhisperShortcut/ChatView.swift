@@ -482,12 +482,9 @@ class ChatViewModel: ObservableObject {
         ScreenshotSaveLocation.save(data)
       }
     } else {
-      errorMessage = "Screen capture failed. Opening Screen Recording settings..."
-      DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil, opening Screen Recording settings")
-      SettingsManager.shared.showSettings()
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-        NotificationCenter.default.post(name: .openPrivacyPermissionsTab, object: nil)
-      }
+      errorMessage = "Screen capture failed. Opening Privacy & Permissions..."
+      DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil, opening Privacy & Permissions")
+      SettingsManager.shared.showPrivacyPermissions()
     }
   }
 

@@ -53,7 +53,17 @@ class ChatWindowManager {
   }
 
   /// Pre-fetches SCShareableContent in the background to warm the cache before the user takes a screenshot.
+  ///
+  /// Only runs when Screen Recording is ALREADY granted. `SCShareableContent` triggers the macOS
+  /// Screen Recording consent prompt on first use, so warming the cache on chat-window open would
+  /// pop that prompt before the user ever asks for a screenshot. The preflight check
+  /// (`CGPreflightScreenCaptureAccess`) does not prompt; the real prompt is deferred to the moment
+  /// the user actually captures a screenshot.
   func prefetchShareableContent() {
+    guard PermissionStatusChecker.status(for: .screenRecording) == .granted else {
+      DebugLogger.log("GEMINI-SCREENSHOT: skip prefetch — Screen Recording not granted yet (prompt deferred to first capture)")
+      return
+    }
     Task { @MainActor in
       guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) else { return }
       cachedShareableContent = content

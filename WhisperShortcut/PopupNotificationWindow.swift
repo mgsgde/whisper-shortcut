@@ -80,6 +80,9 @@ class PopupNotificationWindow: NSWindow {
   private var isInfo: Bool = false
   private var errorText: String = ""
   private var retryAction: (() -> Void)?
+  /// Label for the action button driven by `retryAction`. Defaults to "Retry";
+  /// callers whose action isn't a retry (e.g. opening System Settings) override it.
+  private var retryActionTitle: String = "Retry"
   private var dismissAction: (() -> Void)?
   private var signInAction: (() -> Void)?
   private var wasRetried: Bool = false
@@ -87,7 +90,7 @@ class PopupNotificationWindow: NSWindow {
   private var topUpURL: URL?
 
   // MARK: - Initialization
-  init(title: String, text: String, isError: Bool = false, isInfo: Bool = false, isCancelled: Bool = false, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
+  init(title: String, text: String, isError: Bool = false, isInfo: Bool = false, isCancelled: Bool = false, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, retryActionTitle: String = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
     // Create window with specific style for notifications
     super.init(
       contentRect: NSRect(x: 0, y: 0, width: Constants.defaultWindowWidth, height: 100),
@@ -101,6 +104,7 @@ class PopupNotificationWindow: NSWindow {
     self.isInfo = isInfo
     self.errorText = text
     self.retryAction = retryAction
+    self.retryActionTitle = retryActionTitle
     self.dismissAction = dismissAction
     self.signInAction = signInAction
     self.customDisplayDuration = customDisplayDuration
@@ -247,7 +251,7 @@ class PopupNotificationWindow: NSWindow {
     retryButton = PointerCursorButton()
     guard let retryButton = retryButton else { return }
     
-    retryButton.title = "Retry"
+    retryButton.title = retryActionTitle
     retryButton.bezelStyle = .rounded
     retryButton.isBordered = true
     retryButton.wantsLayer = true
@@ -1109,7 +1113,7 @@ extension PopupNotificationWindow {
     popup.show()
   }
 
-  static func showError(_ error: String, title: String = "Error", retryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
+  static func showError(_ error: String, title: String = "Error", retryAction: (() -> Void)? = nil, retryActionTitle: String = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
     guard arePopupNotificationsEnabled else {
       return
     }
@@ -1119,6 +1123,7 @@ extension PopupNotificationWindow {
       text: error,
       isError: true,
       retryAction: retryAction,
+      retryActionTitle: retryActionTitle,
       dismissAction: dismissAction,
       signInAction: signInAction,
       customDisplayDuration: customDisplayDuration,

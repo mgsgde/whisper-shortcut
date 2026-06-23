@@ -1,13 +1,16 @@
 import SwiftUI
 
-/// About Settings Tab — keyboard-shortcut overview, reset-to-defaults, and support/feedback.
-/// Split out of the General tab so destructive reset and "about" info live in their own place.
+/// About Settings Tab — privacy promise, keyboard-shortcut overview, reset-to-defaults, and support.
 struct AboutSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @State private var showResetToDefaultsConfirmation = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
+      PrivacySection()
+
+      SpacedSectionDivider()
+
       ShortcutsOverviewSection(viewModel: viewModel)
 
       SpacedSectionDivider()

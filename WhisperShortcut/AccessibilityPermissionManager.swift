@@ -54,6 +54,26 @@ class AccessibilityPermissionManager {
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasUsedPromptFeature)
   }
 
+  /// The single Accessibility request rule, shared by the opt-in and use-time paths so both
+  /// behave identically: the first time, fire the native prompt (which pre-registers the app
+  /// in the Accessibility list so the user only flips a greyed switch); after a prior denial
+  /// macOS suppresses the prompt, so deep-link into System Settings instead.
+  private static func requestOrDeepLink() {
+    if UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasShownAccessibilityPrompt) {
+      showAccessibilityPermissionDialog()
+    } else {
+      requestAccessibilityPermission()
+    }
+  }
+
+  /// Requests Accessibility the moment the user opts into a feature that needs it (e.g. enabling
+  /// auto-paste), so the system prompt appears now — not as an interruption on first use. No-op
+  /// when already granted.
+  static func requestAccessibilityAtOptIn() {
+    guard !hasAccessibilityPermission() else { return }
+    requestOrDeepLink()
+  }
+
   /// Checks permission when user tries to use the prompt feature, prompting / deep-linking
   /// to System Settings if it's missing.
   static func checkPermissionForPromptUsage() -> Bool {
@@ -64,14 +84,7 @@ class AccessibilityPermissionManager {
       return true
     }
 
-    // First time the permission is needed: fire the native macOS prompt, which also pre-registers
-    // WhisperShortcut in the Accessibility list (greyed-out) so the user only flips a switch.
-    // After a prior denial macOS won't re-prompt, so fall back to our deep-link dialog.
-    if UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasShownAccessibilityPrompt) {
-      showAccessibilityPermissionDialog()
-    } else {
-      requestAccessibilityPermission()
-    }
+    requestOrDeepLink()
     return false
   }
 }

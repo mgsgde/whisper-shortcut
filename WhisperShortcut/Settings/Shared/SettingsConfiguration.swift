@@ -991,7 +991,7 @@ enum SettingsTab: String, CaseIterable {
   case readAloud = "Read Aloud"
   case chat = "Chat"
   case improvement = "Smart Improvement"
-  case privacy = "Privacy & Permissions"
+  case permissions = "Permissions"
   case about = "About"
 }
 

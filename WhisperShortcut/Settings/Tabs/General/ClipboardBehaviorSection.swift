@@ -27,8 +27,9 @@ struct ClipboardBehaviorSection: View {
           .onChange(of: viewModel.data.autoPasteAfterDictation) { _, newValue in
             DebugLogger.log("AUTO-PASTE SETTINGS: Toggle changed to \(newValue), hasAccessibility=\(AccessibilityPermissionManager.hasAccessibilityPermission())")
             if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {
-              DebugLogger.log("AUTO-PASTE SETTINGS: Showing accessibility permission dialog")
-              AccessibilityPermissionManager.showAccessibilityPermissionDialog()
+              DebugLogger.log("AUTO-PASTE SETTINGS: Requesting Accessibility at opt-in")
+              // Request now (native prompt + pre-registration), not deferred to first auto-paste.
+              AccessibilityPermissionManager.requestAccessibilityAtOptIn()
             }
             Task {
               await viewModel.saveSettings()
