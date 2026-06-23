@@ -23,6 +23,10 @@
 #   bash driver.sh ss [name]          # screenshot front WS window (cropped) or full screen
 #   bash driver.sh close              # close the front WS window
 #   bash driver.sh quit               # quit the app
+#   bash driver.sh activate           # bring WhisperShortcut to the foreground
+#   bash driver.sh key <keyCode>      # send a key to the front app (e.g. 124 = right arrow)
+#   bash driver.sh onboarding-reset   # show Welcome again (keeps Keychain + container data)
+#   bash driver.sh onboarding-wipe    # DESTRUCTIVE: delete app container, then relaunch
 #
 # Menu items: Dictate, Dictate Prompt, Screenshot, Read Aloud, Chat, Configure, Quit WhisperShortcut
 # ("Configure" opens Settings; its window is titled "Settings". "Chat" opens the chat window.)
@@ -135,6 +139,36 @@ case "$cmd" in
   quit)
     osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || pkill -x "$APP" || true
     echo "quit"
+    ;;
+  activate)
+    require_running
+    osascript -e "tell application \"$APP\" to activate" >/dev/null
+    sleep 0.3
+    echo "activated"
+    ;;
+  key)
+    require_running
+    [[ -n "${1:-}" ]] || { echo "usage: key <keyCode>  (123=left, 124=right, 53=escape)" >&2; exit 1; }
+    osascript -e "tell application \"System Events\" to key code $1" >/dev/null
+    sleep 0.4
+    echo "key $1"
+    ;;
+  onboarding-reset)
+    defaults write com.magnusgoedde.whispershortcut hasCompletedOnboarding -bool false
+    osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || pkill -x "$APP" || true
+    sleep 1
+    open "$APP_PATH"
+    sleep 2
+    echo "onboarding-reset: Welcome window should be frontmost"
+    ;;
+  onboarding-wipe)
+    echo "⚠️  DESTRUCTIVE: deleting app container (Keychain API keys survive)" >&2
+    osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || pkill -x "$APP" || true
+    sleep 1
+    rm -rf "$HOME/Library/Containers/com.magnusgoedde.whispershortcut"
+    open "$APP_PATH"
+    sleep 2
+    echo "onboarding-wipe: fresh first-run state"
     ;;
   *)
     sed -n '2,40p' "$SCRIPT_DIR/driver.sh"

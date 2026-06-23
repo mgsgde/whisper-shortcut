@@ -169,23 +169,33 @@ struct PermissionsOverview: View {
 
   /// Quits and relaunches the app in one click — the restart macOS requires for Screen Recording /
   /// Accessibility grants to take effect.
+  ///
+  /// `NSWorkspace.openApplication` returns success while the current process is still alive but
+  /// does not spawn a second instance; terminating then leaves nothing running. A short-lived
+  /// detached shell (`sleep` + `open -n`) outlives this process and starts a fresh instance after quit.
   private func relaunchApp() {
-    let url = Bundle.main.bundleURL
-    let config = NSWorkspace.OpenConfiguration()
-    config.createsNewApplicationInstance = true
-    NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
-      if let error = error {
-        DebugLogger.logError("PERMISSIONS: relaunch failed: \(error.localizedDescription)")
-        return
-      }
-      DebugLogger.log("PERMISSIONS: relaunch opened new instance; terminating current process")
-      DispatchQueue.main.async {
-        // Menu-bar apps cancel terminate unless this flag is set (see FullAppDelegate).
-        UserDefaults.standard.set(true, forKey: UserDefaultsKeys.shouldTerminate)
-        UserDefaults.standard.synchronize()
-        NSApp.terminate(nil)
-      }
+    let bundlePath = Bundle.main.bundleURL.path
+    let quotedPath = "'" + bundlePath.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    let command = "( /bin/sleep 0.6 && /usr/bin/open -n \(quotedPath) ) >/dev/null 2>&1 &"
+
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+    process.arguments = ["-c", command]
+    process.standardInput = nil
+    process.standardOutput = nil
+    process.standardError = nil
+
+    do {
+      try process.run()
+    } catch {
+      DebugLogger.logError("PERMISSIONS: relaunch helper failed: \(error.localizedDescription)")
+      return
     }
+
+    DebugLogger.log("PERMISSIONS: relaunch scheduled via open -n in 0.6s; terminating current process")
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.shouldTerminate)
+    UserDefaults.standard.synchronize()
+    NSApp.terminate(nil)
   }
 
   // MARK: - Refresh

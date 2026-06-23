@@ -1,6 +1,6 @@
 ---
 name: run-whisper-shortcut
-description: Build, launch, drive, and screenshot the WhisperShortcut macOS menu-bar app. Use when asked to run, start, launch, build, screenshot, or visually confirm a change in the real WhisperShortcut app (not just tests). Covers the status menu, Settings window, and Chat window.
+description: Build, launch, drive, screenshot, and walk through the WhisperShortcut macOS menu-bar app from a user's perspective. Use when asked to run, start, launch, build, screenshot, test onboarding, cognitive walkthrough, first-run activation, or visually confirm UI changes in the real app (not just tests). Covers Welcome onboarding, status menu, Settings, and Chat.
 ---
 
 # Run WhisperShortcut
@@ -10,11 +10,11 @@ no main window). Every surface is reached through the status-item menu: Dictate,
 Dictate Prompt, Screenshot, Read Aloud, **Chat**, **Configure** (Settings), Quit.
 
 Because there's no window to "just open," you drive it through
-[`.claude/skills/run-whisper-shortcut/driver.sh`](driver.sh) — a bash harness that
-opens the status menu and clicks items via `osascript`/System Events, and saves PNGs
-via `screencapture`. **This is the primary agent path.** Paths below are relative to
-the project root (`whisper-shortcut/`). This only works on **macOS** with a logged-in
-GUI (Aqua) session — there is no Linux/headless path; it's a native AppKit app.
+[`driver.sh`](driver.sh) — a bash harness that opens the status menu and clicks items
+via `osascript`/System Events, and saves PNGs via `screencapture`. **This is the
+primary agent path.** Paths below are relative to the submodule root (`whisper-shortcut/`).
+From the parent workspace, prefix with `cd whisper-shortcut &&`. This only works on
+**macOS** with a logged-in GUI (Aqua) session — there is no Linux/headless path.
 
 ## Prerequisites
 
@@ -34,20 +34,20 @@ GUI (Aqua) session — there is no Linux/headless path; it's a native AppKit app
 # Rebuild and relaunch (builds AND restarts the running app). ~1–3 min cold.
 bash scripts/rebuild-and-restart.sh
 # or, via the driver (same thing):
-bash .claude/skills/run-whisper-shortcut/driver.sh build
+bash .cursor/skills/run-whisper-shortcut/driver.sh build
 ```
 
 The app bundle lands at `build/DerivedData/Build/Products/Debug/WhisperShortcut.app`.
 If it's already built and you only need it running:
 
 ```bash
-bash .claude/skills/run-whisper-shortcut/driver.sh ensure   # launch if not already running
+bash .cursor/skills/run-whisper-shortcut/driver.sh ensure   # launch if not already running
 ```
 
 ## Run (agent path) — the driver
 
 ```bash
-D=.claude/skills/run-whisper-shortcut/driver.sh
+D=.cursor/skills/run-whisper-shortcut/driver.sh
 
 bash $D items                      # list status-menu item names (sanity check it's driveable)
 bash $D shot Configure settings    # open Settings, screenshot its window → /tmp/ws-settings.png
@@ -65,8 +65,69 @@ exactly: `Dictate`, `Dictate Prompt`, `Screenshot`, `Read Aloud`, `Chat`,
 
 Screenshots go to `/tmp/ws-<name>.png` (override with `WS_SHOT_DIR`). `shot`/`ss`
 **crop to the front WhisperShortcut window** (clean, window-only image); `menu` and a
-windowless `ss` capture the full screen. **Always actually read the PNG** — a blank or
-error frame means a permission is missing or the window didn't open in time.
+windowless `ss` capture the full screen. **Always actually read the PNG** with the Read
+tool — a blank or error frame means a permission is missing or the window didn't open in
+time.
+
+## Onboarding & first-run (user-perspective testing)
+
+The Welcome window appears on launch when `hasCompletedOnboarding` is false
+(`UserDefaultsKeys.hasCompletedOnboarding`, bundle `com.magnusgoedde.whispershortcut`).
+Re-open it from Settings ▸ Privacy & Permissions ▸ "Show welcome tour again".
+
+### Reset levels
+
+| Goal | Command | What it keeps |
+| --- | --- | --- |
+| Re-show Welcome (safe) | `bash $D onboarding-reset` | Keychain API keys, app data, preferences |
+| True first-run (destructive) | `bash $D onboarding-wipe` | Keychain only — deletes the app container |
+
+Only use `onboarding-wipe` when you explicitly need a cold install. Warn the user first.
+
+### Walk through Welcome
+
+Welcome listens for **arrow keys** when no text field is focused: `123` = back, `124` =
+forward. Footer **Continue** respects step gating (e.g. API key or offline Whisper before
+permissions).
+
+```bash
+bash $D onboarding-reset
+bash $D activate
+bash $D ss welcome-intro          # screenshot current front window
+bash $D key 124                   # → Privacy
+bash $D ss welcome-privacy
+bash $D key 124                   # → API keys (scroll may hide offline card)
+bash $D ss welcome-apikeys
+# … repeat per step; use key 123 to go back
+```
+
+Scroll inside the Welcome panel: focus the window (`activate`), move the mouse over it,
+then scroll — System Events scroll is flaky; prefer arrow keys for step navigation.
+
+Re-show without relaunch: Settings ▸ Privacy ▸ "Show welcome tour again", or
+`WelcomeWindowController.shared.show()` path via Configure menu.
+
+### Cognitive walkthrough (activation audit)
+
+After UI/onboarding changes, run this checklist and **read every screenshot**:
+
+1. `onboarding-reset` (or `onboarding-wipe` for full cold start).
+2. Count steps and seconds until first successful dictate (or first "ready" state).
+3. Note every friction point (external tabs for API keys, mic permission, model download).
+4. Log findings in plain English for the user.
+
+Report template:
+
+```markdown
+## Walkthrough: [feature]
+- Reset: onboarding-reset | onboarding-wipe
+- Steps to first success: N / ~Xs
+- Blockers: …
+- Screenshots: /tmp/ws-….png
+```
+
+Qualitative walkthrough beats aggregate metrics at low download volume. Pair with skill
+**view-logs-via-bash** (`ONBOARDING:` category) when debugging failures.
 
 ## Run (human path)
 
@@ -102,7 +163,10 @@ network. Not a hermetic unit suite; skip unless keys are configured.
   swap it back.
 - **First launch may pop a Welcome window** (if onboarding isn't complete) or Settings
   (if no API key is set), instead of going straight to idle. `front_window_bounds`
-  will then crop whatever window is frontmost.
+  will then crop whatever window is frontmost. Use `onboarding-reset` + `ss` to test.
+- **Onboarding close = completed.** Closing the Welcome window sets
+  `hasCompletedOnboarding` (see `WelcomeWindowController.windowWillClose`). Use
+  `onboarding-reset` to test again.
 
 ## Troubleshooting
 
