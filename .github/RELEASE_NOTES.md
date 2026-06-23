@@ -1,4 +1,4 @@
-# WhisperShortcut 7.71
+# WhisperShortcut 7.72
 
 ## Installation
 
@@ -6,11 +6,15 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### Stability: fixes for the app freezing during chat
-This release targets the long-standing issue where the app could freeze (and appear to crash) — most often while a chat reply was streaming.
+### Google in chat: fetch your real data on the first turn
+When Google Calendar, Tasks, or Gmail is connected, chat is instructed to call the relevant tools immediately when you ask about email, schedule, tasks, or reminders — instead of saying it lacks access or asking you to paste content.
 
-- **Fixed chat-streaming freeze.** Long replies could pin the main thread as the message list re-laid out on every streamed token. Streaming UI updates are now throttled, which removes the layout/parse storm that wedged the app while keeping the reply visibly live.
-- **Fixed Keychain-related freeze.** Credential checks (e.g. for unconfigured providers) repeatedly hit the system Keychain on the main thread, which could block for seconds. These reads are now cached — including the "no key stored" result — so they no longer stall the UI.
-- **Better freeze diagnostics.** The built-in hang watchdog now tags each captured hang report with what the app was doing at the time, making future issues faster to pinpoint.
+### Permissions: clearer UI and faster fixes
+- **Unified permissions hub** in Settings and onboarding: one consistent layout for Microphone, Screen Recording, and Accessibility, with Privacy folded into About.
+- **Aligned action buttons** on the Permissions screen so labels no longer truncate when descriptions wrap.
+- **Microphone denied?** Recording errors now show an **Open Settings** button that jumps straight to the Microphone privacy pane.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.70...v7.71
+### Reliability
+- **Fixed Quit & Reopen** so the app reliably relaunches after quitting from Settings.
+
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.71...v7.72
