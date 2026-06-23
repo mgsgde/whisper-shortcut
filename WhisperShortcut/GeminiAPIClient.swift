@@ -873,6 +873,12 @@ class GeminiAPIClient {
   /// Format: ⟦GEMINI_IMG:base64data:mimetype⟧
   static let imageMarkerPrefix = "⟦GEMINI_IMG:"
   static let imageMarkerSuffix = "⟧"
+  /// Short stand-in when ⟦GEMINI_IMG:…⟧ markers are stripped (clipboard, API history, logs).
+  static let generatedImagePlaceholder = "[generated image]"
+
+  static func isGeneratedImagePlaceholder(_ text: String) -> Bool {
+    text.trimmingCharacters(in: .whitespacesAndNewlines) == generatedImagePlaceholder
+  }
 
   static func containsImageMarker(in content: String) -> Bool {
     content.contains(imageMarkerPrefix)
@@ -899,7 +905,7 @@ class GeminiAPIClient {
 
   /// Replaces inline image markers with a short placeholder so marker base64 never enters
   /// clipboard/search/TTS pipelines.
-  static func stripImageMarkers(_ content: String, placeholder: String = "[generated image]") -> String {
+  static func stripImageMarkers(_ content: String, placeholder: String = generatedImagePlaceholder) -> String {
     guard containsImageMarker(in: content) else { return content }
     var result = ""
     walkImageMarkers(
