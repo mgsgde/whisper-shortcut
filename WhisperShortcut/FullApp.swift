@@ -104,9 +104,31 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       return .terminateNow
     }
 
+    // Honor system-initiated quits. macOS delivers these as a `kAEQuitApplication`
+    // Apple Event — e.g. the System Settings "<App> will not have access … Quit & Reopen"
+    // dialog after a permission change, `osascript -e 'quit app'`, and logout/restart/shutdown.
+    // Without this branch we'd return .terminateCancel and the system's "Quit & Reopen"
+    // button would silently do nothing (the app never quits, so macOS never relaunches it).
+    if isSystemQuitAppleEvent() {
+      DebugLogger.log("APP-LIFECYCLE: applicationShouldTerminate -> terminateNow (system quit Apple Event)")
+      return .terminateNow
+    }
+
     // LSUIElement apps should continue running in background
     DebugLogger.log("APP-LIFECYCLE: applicationShouldTerminate -> terminateCancel (menu bar app stays alive)")
     return .terminateCancel
+  }
+
+  /// True when the current termination request originated from a system-delivered
+  /// `kAEQuitApplication` Apple Event rather than from our own in-app quit paths
+  /// (which set the `shouldTerminate` flag). Used so menu bar background-survival
+  /// doesn't swallow the OS's "Quit & Reopen" request.
+  private func isSystemQuitAppleEvent() -> Bool {
+    guard let event = NSAppleEventManager.shared().currentAppleEvent else { return false }
+    // FourCharCodes: kCoreEventClass = 'aevt', kAEQuitApplication = 'quit'.
+    let coreEventClass: AEEventClass = 0x6165_7674  // 'aevt'
+    let quitEventID: AEEventID = 0x7175_6974        // 'quit'
+    return event.eventClass == coreEventClass && event.eventID == quitEventID
   }
 
   func applicationWillTerminate(_ notification: Notification) {
