@@ -79,6 +79,42 @@ class KeychainManager: KeychainManaging {
 
   private init() {}
 
+  // MARK: - Test/dev credential injection
+  //
+  // Live roundtrip tests (and headless CI) must reach real provider APIs
+  // without touching the login Keychain. The `xctest` binary is a *different*
+  // signed executable than the trusted app, so any Keychain read from a test
+  // pops the macOS "WhisperShortcut wants to use your confidential
+  // information" ACL prompt. When one of these environment variables is set,
+  // it takes precedence and the Keychain is never queried for that account.
+  //
+  // Set them in the test plan (Configurations ▸ Environment Variables) or pass
+  // them on the xcodebuild command line. Each account accepts the project's
+  // `WHISPERSHORTCUT_*` name first, then the provider's conventional name, so
+  // a key already exported in the shell (OPENAI_API_KEY, XAI_API_KEY, …) is
+  // picked up automatically.
+  //
+  // Gated to DEBUG so the shipped Release build never reads them; GUI launches
+  // don't inherit a shell environment anyway, so this is inert in production.
+  private static let environmentKeyNames: [String: [String]] = [
+    Constants.googleAccountName: ["WHISPERSHORTCUT_GOOGLE_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"],
+    Constants.xaiAccountName: ["WHISPERSHORTCUT_XAI_API_KEY", "XAI_API_KEY"],
+    Constants.openAIAccountName: ["WHISPERSHORTCUT_OPENAI_API_KEY", "OPENAI_API_KEY"],
+  ]
+
+  private func environmentOverride(for accountName: String) -> String? {
+    #if DEBUG
+    guard let varNames = Self.environmentKeyNames[accountName] else { return nil }
+    let env = ProcessInfo.processInfo.environment
+    for name in varNames {
+      if let value = env[name], !value.isEmpty { return value }
+    }
+    return nil
+    #else
+    return nil
+    #endif
+  }
+
   // MARK: - Generic Keychain Operations
 
   private func saveKey(_ apiKey: String, accountName: String) -> Bool {
@@ -109,6 +145,8 @@ class KeychainManager: KeychainManaging {
   }
 
   private func getKey(accountName: String) -> String? {
+    if let injected = environmentOverride(for: accountName) { return injected }
+
     lock.lock()
     if let cached = valueCache[accountName] { lock.unlock(); return cached }
     if knownAbsentAccounts.contains(accountName) { lock.unlock(); return nil }

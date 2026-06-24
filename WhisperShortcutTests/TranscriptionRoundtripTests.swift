@@ -8,7 +8,13 @@ import Foundation
 /// of /v1/audio/transcriptions and /v1/stt), key drift, response-shape
 /// changes, and Gemini's inline-audio request layout.
 ///
-/// A test is skipped when its provider's key is missing.
+/// A test is skipped when its provider's key is missing. Keys resolve from
+/// environment variables first (`WHISPERSHORTCUT_GOOGLE_API_KEY`/`GOOGLE_API_KEY`,
+/// `WHISPERSHORTCUT_XAI_API_KEY`/`XAI_API_KEY`, `WHISPERSHORTCUT_OPENAI_API_KEY`/
+/// `OPENAI_API_KEY`), set in the test plan's Environment Variables or on the
+/// xcodebuild command line, falling back to the Keychain — env injection avoids
+/// the macOS Keychain ACL prompt that the `xctest` binary would otherwise
+/// trigger on every run.
 @Suite("Transcription provider roundtrip (live)")
 struct TranscriptionRoundtripTests {
 
@@ -28,7 +34,7 @@ struct TranscriptionRoundtripTests {
     @Test(
         "OpenAI transcription returns a non-empty reply",
         .enabled(if: KeychainManager.shared.hasValidOpenAIAPIKey(),
-                 "No OpenAI API key in Keychain")
+                 "No OpenAI API key (env WHISPERSHORTCUT_OPENAI_API_KEY or Keychain)")
     )
     func openai() async throws {
         let text = try await SpeechService().transcribe(
@@ -41,7 +47,7 @@ struct TranscriptionRoundtripTests {
     @Test(
         "Grok transcription returns a non-empty reply",
         .enabled(if: KeychainManager.shared.hasValidXAIAPIKey(),
-                 "No xAI API key in Keychain")
+                 "No xAI API key (env WHISPERSHORTCUT_XAI_API_KEY or Keychain)")
     )
     func grok() async throws {
         let text = try await SpeechService().transcribe(
@@ -54,7 +60,7 @@ struct TranscriptionRoundtripTests {
     @Test(
         "Gemini transcription returns a non-empty reply",
         .enabled(if: GeminiCredentialProvider.shared.hasCredential(),
-                 "No Google credential available")
+                 "No Google credential (env WHISPERSHORTCUT_GOOGLE_API_KEY or Keychain)")
     )
     func gemini() async throws {
         let text = try await SpeechService().transcribe(
