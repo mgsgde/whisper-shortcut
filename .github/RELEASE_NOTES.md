@@ -1,4 +1,4 @@
-# WhisperShortcut 7.72
+# WhisperShortcut 7.73
 
 ## Installation
 
@@ -6,15 +6,14 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### Google in chat: fetch your real data on the first turn
-When Google Calendar, Tasks, or Gmail is connected, chat is instructed to call the relevant tools immediately when you ask about email, schedule, tasks, or reminders — instead of saying it lacks access or asking you to paste content.
+### Welcome tour: smoother setup and permission fixes
+- **Floating tour window** stays above Settings and other apps while you grant permissions.
+- **Auto-paste onboarding step** explains the feature and requests Accessibility only when you opt in (App Store–safe).
+- **Resume where you left off** if macOS relaunches the app mid-tour (e.g. after **Quit & Reopen** from a permission dialog).
+- **Done step** shows per-shortcut permission readiness; replay the tour from **Settings → General**.
 
-### Permissions: clearer UI and faster fixes
-- **Unified permissions hub** in Settings and onboarding: one consistent layout for Microphone, Screen Recording, and Accessibility, with Privacy folded into About.
-- **Aligned action buttons** on the Permissions screen so labels no longer truncate when descriptions wrap.
-- **Microphone denied?** Recording errors now show an **Open Settings** button that jumps straight to the Microphone privacy pane.
+### Reliability & polish
+- **Quit & Reopen** from System Settings and other macOS dialogs now works reliably for the menu bar app.
+- **Official GitHub mark** in onboarding and Settings instead of a generic code icon.
 
-### Reliability
-- **Fixed Quit & Reopen** so the app reliably relaunches after quitting from Settings.
-
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.71...v7.72
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.72...v7.73
