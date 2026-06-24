@@ -11,6 +11,20 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Provider API keys come from the gitignored .env at repo root (same file the
+# test-*-models.sh scripts use). Exporting them here means the xctest process
+# inherits them, and KeychainManager's DEBUG env override picks them up — so the
+# live roundtrip tests never touch the login Keychain (no macOS ACL prompt) and
+# no secret ever lands in the committed .xctestplan. Tests for a provider whose
+# key is absent simply skip.
+ENV_FILE="$PROJECT_DIR/.env"
+if [[ -f "$ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  set -a; source "$ENV_FILE"; set +a
+else
+  echo "ℹ️  No .env at repo root — tests will fall back to the Keychain (may prompt)."
+fi
+
 SCHEME="WhisperShortcut-AppStore"
 TEST_PLAN="WhisperShortcut-AppStore"
 RESULT_BUNDLE="/tmp/WhisperShortcutTestResults-$(date +%s).xcresult"
