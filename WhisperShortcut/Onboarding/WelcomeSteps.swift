@@ -640,16 +640,16 @@ struct WelcomeAutoPasteStep: View {
               .foregroundStyle(.secondary)
               .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
-            if axStatus != .granted {
-              Button {
-                PermissionStatusChecker.openSystemSettings(for: .accessibility)
-              } label: {
-                Label("Open System Settings", systemImage: "arrow.up.right.square")
-                  .font(.callout)
-              }
-              .buttonStyle(.bordered)
-              .pointerCursorOnHover()
+            // Always offered (even when granted) so the user can review or change the grant
+            // in System Settings — consistent with the permissions step's per-row button.
+            Button {
+              PermissionStatusChecker.openSystemSettings(for: .accessibility)
+            } label: {
+              Label("Open System Settings", systemImage: "arrow.up.right.square")
+                .font(.callout)
             }
+            .buttonStyle(.bordered)
+            .pointerCursorOnHover()
           }
         }
       }
