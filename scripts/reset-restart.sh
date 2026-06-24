@@ -1,6 +1,8 @@
 #!/bin/bash
-# reset-whisper-defaults.sh
-# Resets WhisperShortcut to factory defaults.
+# reset-restart.sh
+# Resets WhisperShortcut to factory defaults, then rebuilds and restarts the app.
+#
+# Usage: bash scripts/reset-restart.sh
 #
 # What gets reset:
 #   - UserDefaults (all settings: prompts, shortcuts, notifications, etc.)
@@ -14,6 +16,15 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+echo "🔄 Reset → Rebuild & Restart"
+echo "============================"
+echo ""
+
+echo "1️⃣  Resetting to defaults..."
 echo "🎙️ WhisperShortcut Reset to Defaults"
 echo "====================================="
 
@@ -69,9 +80,9 @@ fi
 
 echo ""
 echo "✅ Done. Reset: UserDefaults + UserContext."
-echo ""
-echo "🔄 Next steps:"
-echo "   1. Restart WhisperShortcut to see the changes"
-echo "   2. System prompts and settings will use app defaults"
-echo ""
 echo "💡 Not reset: API key (Keychain), live meeting transcripts (Documents)."
+echo ""
+
+# 2. Rebuild and restart
+echo "2️⃣  Rebuilding and restarting..."
+bash "$SCRIPT_DIR/rebuild-and-restart.sh"

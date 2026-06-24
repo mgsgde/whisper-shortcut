@@ -14,14 +14,8 @@ echo "🔄 Reset → Rebuild & Restart → Logs"
 echo "===================================="
 echo ""
 
-# 1. Reset to defaults
-echo "1️⃣  Resetting to defaults..."
-bash "$SCRIPT_DIR/reset-whisper-defaults.sh"
-echo ""
-
-# 2. Rebuild and restart
-echo "2️⃣  Rebuilding and restarting..."
-bash "$SCRIPT_DIR/rebuild-and-restart.sh"
+# 1–2. Reset and restart
+bash "$SCRIPT_DIR/reset-restart.sh"
 echo ""
 
 # 3. Stream logs (foreground; Ctrl+C to stop)
