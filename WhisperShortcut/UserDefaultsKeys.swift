@@ -62,6 +62,10 @@ enum UserDefaultsKeys {
   static let hasShownAccessibilityPrompt = "hasShownAccessibilityPrompt"
   static let hasAppliedLaunchAtLoginDefault = "hasAppliedLaunchAtLoginDefault"
   static let hasCompletedOnboarding = "hasCompletedOnboarding"
+  /// WelcomeStep.rawValue the onboarding tour is currently on. Persisted so a mid-tour
+  /// restart (e.g. macOS "Quit & Reopen" after granting a permission) resumes on the same
+  /// step instead of starting over. Reset to 0 when onboarding finishes or is dismissed.
+  static let onboardingCurrentStep = "onboardingCurrentStep"
   
   // MARK: - Review Prompter
   static let successfulOperationsCount = "successfulOperationsCount"

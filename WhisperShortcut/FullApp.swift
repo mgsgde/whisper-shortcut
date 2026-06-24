@@ -20,6 +20,12 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
   /// the same clean-shutdown path as a Cmd-Q quit.
   private var signalSources: [DispatchSourceSignal] = []
 
+  /// Set once the app has committed to actually terminating (vs. a menu bar app
+  /// surviving a closed window). Window-close handlers read this to tell a real quit
+  /// — e.g. macOS "Quit & Reopen" — from the user dismissing a window, so onboarding
+  /// progress is preserved across a relaunch instead of being marked complete.
+  private(set) var isTerminating = false
+
   func applicationDidFinishLaunching(_ notification: Notification) {
     let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
@@ -100,6 +106,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     let shouldTerminate = UserDefaults.standard.bool(forKey: UserDefaultsKeys.shouldTerminate)
     if shouldTerminate {
       UserDefaults.standard.set(false, forKey: UserDefaultsKeys.shouldTerminate)  // Reset flag
+      isTerminating = true
       DebugLogger.log("APP-LIFECYCLE: applicationShouldTerminate -> terminateNow (shouldTerminate flag set)")
       return .terminateNow
     }
@@ -110,6 +117,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Without this branch we'd return .terminateCancel and the system's "Quit & Reopen"
     // button would silently do nothing (the app never quits, so macOS never relaunches it).
     if isSystemQuitAppleEvent() {
+      isTerminating = true
       DebugLogger.log("APP-LIFECYCLE: applicationShouldTerminate -> terminateNow (system quit Apple Event)")
       return .terminateNow
     }

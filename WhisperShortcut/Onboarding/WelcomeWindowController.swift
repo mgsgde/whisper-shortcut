@@ -26,6 +26,10 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
   }
 
   func show() {
+    // Rebuild the hosted view so `WelcomeView` re-reads the persisted step on each
+    // presentation: a fresh launch (incl. macOS "Quit & Reopen") resumes mid-tour, while
+    // a finished/dismissed tour has been reset to the intro.
+    window?.contentViewController = NSHostingController(rootView: WelcomeView())
     NSApp.activate(ignoringOtherApps: true)
     window?.makeKeyAndOrderFront(nil)
     window?.center()
@@ -33,13 +37,23 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
 
   func finish() {
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
+    UserDefaults.standard.set(0, forKey: UserDefaultsKeys.onboardingCurrentStep)
     // Keys may have just been entered during onboarding — adapt model selections to them.
     ModelSelectionReconciler.reconcileAll()
     window?.close()
   }
 
   func windowWillClose(_ notification: Notification) {
+    // A real app quit (e.g. macOS "Quit & Reopen" after granting a permission mid-tour)
+    // closes this window too. Don't treat that as completing onboarding — keep the saved
+    // step so the next launch resumes exactly where the user left off.
+    if (NSApplication.shared.delegate as? FullAppDelegate)?.isTerminating == true {
+      return
+    }
+    // User dismissed the window: onboarding is done. Clear progress so a later relaunch
+    // of the tour starts fresh at the intro.
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
+    UserDefaults.standard.set(0, forKey: UserDefaultsKeys.onboardingCurrentStep)
     ModelSelectionReconciler.reconcileAll()
   }
 }

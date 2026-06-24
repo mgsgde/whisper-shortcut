@@ -6,6 +6,7 @@ enum WelcomeStep: Int, CaseIterable {
   case privacy
   case apiKeys
   case permissions
+  case autoPaste
   case smartImprovement
   case done
 
@@ -19,7 +20,11 @@ struct WelcomeView: View {
   private static let keyCodeLeftArrow: UInt16 = 123
   private static let keyCodeRightArrow: UInt16 = 124
 
-  @State private var step: WelcomeStep = .intro
+  /// Resume on the step the user last reached. Persisted in `onboardingCurrentStep` so a
+  /// mid-tour app restart (e.g. macOS "Quit & Reopen" after granting a permission) continues
+  /// where they left off. Defaults to `.intro` for a fresh tour (stored value 0 / unset).
+  @State private var step: WelcomeStep =
+    WelcomeStep(rawValue: UserDefaults.standard.integer(forKey: UserDefaultsKeys.onboardingCurrentStep)) ?? .intro
   @State private var keyDownMonitor: Any?
   @State private var hasGeminiKey: Bool = KeychainManager.shared.hasValidGoogleAPIKey()
   @State private var hasOpenAIKey: Bool = KeychainManager.shared.hasValidOpenAIAPIKey()
@@ -31,6 +36,10 @@ struct WelcomeView: View {
   /// `onMicStatusChange` callback and the periodic refresh below.
   @State private var micStatus: PermissionStatus = PermissionStatusChecker.status(for: .microphone)
   @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = true
+  /// Auto-paste is opt-in (default off). Surfaced here so new users learn the feature exists and
+  /// that it needs Accessibility — the permission is requested only when they enable the toggle.
+  @AppStorage(UserDefaultsKeys.autoPasteAfterDictation) private var autoPasteEnabled =
+    SettingsDefaults.autoPasteAfterDictation
 
   var body: some View {
     VStack(spacing: 0) {
@@ -49,10 +58,12 @@ struct WelcomeView: View {
           )
         case .permissions:
           WelcomePermissionsStep(micStatus: $micStatus)
+        case .autoPaste:
+          WelcomeAutoPasteStep(autoPasteEnabled: $autoPasteEnabled)
         case .smartImprovement:
           WelcomeSmartImprovementStep(saveUsageData: $saveUsageData)
         case .done:
-          WelcomeDoneStep()
+          WelcomeDoneStep(autoPasteEnabled: autoPasteEnabled)
         }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -69,6 +80,10 @@ struct WelcomeView: View {
     .onAppear {
       refreshState()
       installArrowKeyMonitor()
+    }
+    .onChange(of: step) { newStep in
+      // Persist progress so a mid-tour restart resumes here (see `onboardingCurrentStep`).
+      UserDefaults.standard.set(newStep.rawValue, forKey: UserDefaultsKeys.onboardingCurrentStep)
     }
     .onDisappear { removeArrowKeyMonitor() }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
