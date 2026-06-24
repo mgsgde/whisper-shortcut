@@ -16,7 +16,10 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     window.contentViewController = hosting
     window.isReleasedWhenClosed = false
     window.center()
-    window.collectionBehavior = [.fullScreenAuxiliary]
+    // Keep the onboarding window above all other windows (matches the Settings window),
+    // so it never gets buried behind Settings or other apps during the tour.
+    window.level = .floating
+    window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     super.init(window: window)
     window.delegate = self
   }

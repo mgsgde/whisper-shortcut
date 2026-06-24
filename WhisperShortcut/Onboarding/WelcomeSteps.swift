@@ -738,58 +738,61 @@ struct WelcomeSmartImprovementStep: View {
 }
 
 struct WelcomeDoneStep: View {
-  /// Whether the user enabled auto-paste on the auto-paste step. When on, it's confirmed here
-  /// as part of "Also try" so the setup they just chose is reflected on the final screen.
-  var autoPasteEnabled: Bool = false
-
-  private struct FeatureHint: Identifiable {
-    /// Nil for behaviors that aren't triggered by a shortcut (e.g. auto-paste) — rendered with a
-    /// checkmark instead of a key combo.
-    let shortcut: String?
+  /// One shortcut the user can trigger, plus the OS permissions it needs to actually work.
+  /// `requirements` is "all must be granted" — a single missing one makes the row red.
+  private struct ShortcutFeature: Identifiable {
+    let shortcut: String
     let name: String
     let detail: String
+    let requirements: [PermissionKind]
     var id: String { name }
   }
 
   private let shortcuts = ShortcutConfigManager.shared.loadConfiguration()
 
-  private var dictationShortcut: String {
-    shortcuts.startRecording.displayStringWithSeparator
-  }
+  /// Live permission state so each row's green/red status is accurate, and flips the moment the
+  /// user grants a permission and returns (didBecomeActive) without leaving onboarding.
+  @State private var micStatus = PermissionStatusChecker.status(for: .microphone)
+  @State private var axStatus = PermissionStatusChecker.status(for: .accessibility)
 
-  /// Dictation is the hero CTA above; these are the secondary features worth
-  /// discovering. Disabled shortcuts are hidden rather than shown as "Disabled".
-  private var moreFeatures: [FeatureHint] {
-    var hints: [FeatureHint] = []
+  /// Every shortcut the user can use, rendered uniformly. Dictation is just the first row — no
+  /// special hero treatment — so the whole page reads as one consistent list. Disabled shortcuts
+  /// are hidden rather than shown as "Disabled".
+  private var features: [ShortcutFeature] {
+    var list: [ShortcutFeature] = []
+    if shortcuts.startRecording.isEnabled {
+      list.append(
+        ShortcutFeature(
+          shortcut: shortcuts.startRecording.displayString,
+          name: "Dictate",
+          detail: "press and start speaking — your words land as text",
+          requirements: [.microphone]))
+    }
     if shortcuts.startPrompting.isEnabled {
-      hints.append(
-        FeatureHint(
+      list.append(
+        ShortcutFeature(
           shortcut: shortcuts.startPrompting.displayString,
           name: "Dictate Prompt",
-          detail: "select text, speak an instruction — the selection is rewritten in place"))
+          detail: "select text, speak an instruction — the selection is rewritten in place",
+          requirements: [.microphone, .accessibility]))
     }
     if shortcuts.openChat.isEnabled {
-      hints.append(
-        FeatureHint(
+      list.append(
+        ShortcutFeature(
           shortcut: shortcuts.openChat.displayString,
           name: "Chat",
-          detail: "a full conversation window, with screenshots"))
+          detail: "a full conversation window, with screenshots",
+          requirements: []))
     }
     if shortcuts.readAloud.isEnabled {
-      hints.append(
-        FeatureHint(
+      list.append(
+        ShortcutFeature(
           shortcut: shortcuts.readAloud.displayString,
           name: "Read Aloud",
-          detail: "select text anywhere and hear it spoken"))
+          detail: "select text anywhere and hear it spoken",
+          requirements: [.accessibility]))
     }
-    if autoPasteEnabled {
-      hints.append(
-        FeatureHint(
-          shortcut: nil,
-          name: "Auto-paste",
-          detail: "dictated text lands at your cursor automatically — no manual ⌘V"))
-    }
-    return hints
+    return list
   }
 
   var body: some View {
@@ -801,56 +804,120 @@ struct WelcomeDoneStep: View {
         Text("You're ready")
           .font(.largeTitle)
           .fontWeight(.semibold)
-        Text("Press \(dictationShortcut) and start speaking.")
+        Text("Here's everything you can do. Green is ready to use; red still needs a permission.")
           .font(.title3)
           .foregroundStyle(.secondary)
           .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
       }
 
-      if !moreFeatures.isEmpty {
-        VStack(alignment: .leading, spacing: 10) {
-          Text("Also try:")
-            .font(.callout)
-            .fontWeight(.semibold)
-          ForEach(moreFeatures) { hint in
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-              Group {
-                if let shortcut = hint.shortcut {
-                  Text(shortcut)
-                    .font(.system(.callout, design: .monospaced))
-                } else {
-                  Image(systemName: "checkmark.circle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.green)
-                }
-              }
-              .frame(minWidth: 44, alignment: .leading)
-              Text("\(Text(hint.name).fontWeight(.medium)) — \(hint.detail)")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-          }
+      VStack(spacing: 0) {
+        ForEach(Array(features.enumerated()), id: \.element.id) { index, feature in
+          if index > 0 { Divider() }
+          shortcutRow(feature)
         }
-        .padding(16)
-        .frame(maxWidth: 540, alignment: .leading)
-        .background(
-          RoundedRectangle(cornerRadius: 10)
-            .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: 10)
-            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-        )
       }
+      .frame(maxWidth: 560, alignment: .leading)
+      .background(
+        RoundedRectangle(cornerRadius: 10)
+          .fill(Color(nsColor: .controlBackgroundColor))
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 10)
+          .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+      )
 
       Text("You can revisit this tour any time from Settings → Privacy.")
         .font(.callout)
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
-        .frame(maxWidth: 540)
+        .frame(maxWidth: 560)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .onAppear(perform: refreshStatuses)
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      refreshStatuses()
+    }
+  }
+
+  @ViewBuilder
+  private func shortcutRow(_ feature: ShortcutFeature) -> some View {
+    HStack(spacing: 12) {
+      Text(feature.shortcut)
+        .font(.system(.callout, design: .monospaced))
+        .fontWeight(.medium)
+        .frame(minWidth: 52, alignment: .leading)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(feature.name)
+          .font(.callout)
+          .fontWeight(.medium)
+        Text(feature.detail)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Spacer(minLength: 8)
+      statusBadge(for: feature)
+    }
+    .padding(14)
+  }
+
+  /// Green "Ready" when every required permission is granted; otherwise a red, tappable badge
+  /// naming the first missing permission and opening the right System Settings pane.
+  @ViewBuilder
+  private func statusBadge(for feature: ShortcutFeature) -> some View {
+    if let missing = missingRequirement(for: feature) {
+      Button {
+        PermissionStatusChecker.openSystemSettings(for: missing)
+      } label: {
+        badgeContent(
+          icon: "xmark.circle.fill", color: .red, text: "Needs \(permissionName(missing))")
+      }
+      .buttonStyle(.plain)
+      .pointerCursorOnHover()
+      .help("Open System Settings to grant \(permissionName(missing)) access")
+    } else {
+      badgeContent(icon: "checkmark.circle.fill", color: .green, text: "Ready")
+    }
+  }
+
+  private func badgeContent(icon: String, color: Color, text: String) -> some View {
+    HStack(spacing: 4) {
+      Image(systemName: icon)
+        .foregroundStyle(color)
+      Text(text)
+        .foregroundStyle(.secondary)
+    }
+    .font(.caption)
+    .padding(.horizontal, 8)
+    .padding(.vertical, 4)
+    .background(Capsule().fill(color.opacity(0.12)))
+  }
+
+  /// First required permission that isn't granted, or nil when the feature is fully usable.
+  private func missingRequirement(for feature: ShortcutFeature) -> PermissionKind? {
+    feature.requirements.first { status(for: $0) != .granted }
+  }
+
+  private func status(for kind: PermissionKind) -> PermissionStatus {
+    switch kind {
+    case .microphone: return micStatus
+    case .accessibility: return axStatus
+    case .screenRecording: return .granted
+    }
+  }
+
+  private func permissionName(_ kind: PermissionKind) -> String {
+    switch kind {
+    case .microphone: return "Microphone"
+    case .accessibility: return "Accessibility"
+    case .screenRecording: return "Screen Recording"
+    }
+  }
+
+  private func refreshStatuses() {
+    micStatus = PermissionStatusChecker.status(for: .microphone)
+    axStatus = PermissionStatusChecker.status(for: .accessibility)
   }
 }
 

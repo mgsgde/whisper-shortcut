@@ -62,15 +62,6 @@ struct PrivacySection: View {
         }
         .buttonStyle(.bordered)
         .pointerCursorOnHover()
-
-        Button {
-          relaunchWelcomeTour()
-        } label: {
-          Label("Show Welcome Tour again", systemImage: "sparkles")
-            .font(.callout)
-        }
-        .buttonStyle(.bordered)
-        .pointerCursorOnHover()
       }
       .padding(.top, 4)
     }
@@ -97,11 +88,6 @@ struct PrivacySection: View {
         .fixedSize(horizontal: false, vertical: true)
         .textSelection(.enabled)
     }
-  }
-
-  private func relaunchWelcomeTour() {
-    SettingsManager.shared.closeSettings()
-    WelcomeWindowController.shared.show()
   }
 }
 

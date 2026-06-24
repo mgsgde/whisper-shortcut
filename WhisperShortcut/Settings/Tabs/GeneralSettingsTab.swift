@@ -9,6 +9,10 @@ struct GeneralSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
+      welcomeTourSection
+
+      SpacedSectionDivider()
+
       GoogleAPIKeySection(viewModel: viewModel, focusedField: $focusedField)
 
       SpacedSectionDivider()
@@ -46,6 +50,50 @@ struct GeneralSettingsTab: View {
       ClipboardBehaviorSection(viewModel: viewModel)
       #endif
     }
+  }
+
+  // MARK: - Welcome Tour Section
+
+  /// Re-entry point for the first-run guided tour. Kept at the very top of the first tab
+  /// so returning users can always find their way back to the walkthrough.
+  @ViewBuilder
+  private var welcomeTourSection: some View {
+    HStack(spacing: 12) {
+      Image(systemName: "sparkles")
+        .font(.title2)
+        .foregroundColor(.accentColor)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text("Welcome Tour")
+          .font(.callout)
+          .fontWeight(.medium)
+        Text("Replay the guided walkthrough of WhisperShortcut's features.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+      }
+
+      Spacer(minLength: 12)
+
+      Button {
+        SettingsManager.shared.closeSettings()
+        WelcomeWindowController.shared.show()
+      } label: {
+        Label("Show Tour", systemImage: "play.fill")
+          .font(.callout)
+      }
+      .buttonStyle(.borderedProminent)
+      .pointerCursorOnHover()
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
+        .fill(Color(nsColor: .controlBackgroundColor))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
+        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+    )
   }
 
   // MARK: - Window Behavior Section

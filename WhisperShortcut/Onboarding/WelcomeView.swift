@@ -63,7 +63,7 @@ struct WelcomeView: View {
         case .smartImprovement:
           WelcomeSmartImprovementStep(saveUsageData: $saveUsageData)
         case .done:
-          WelcomeDoneStep(autoPasteEnabled: autoPasteEnabled)
+          WelcomeDoneStep()
         }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -142,8 +142,8 @@ struct WelcomeView: View {
         .disabled(!canAdvance)
         .pointerCursorOnHover()
     }
-    .padding(.horizontal, 24)
-    .padding(.vertical, 14)
+    .padding(.horizontal, 40)
+    .padding(.vertical, 20)
   }
 
   private var stepIndicator: some View {
