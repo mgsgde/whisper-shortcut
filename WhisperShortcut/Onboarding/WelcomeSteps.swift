@@ -796,11 +796,11 @@ struct WelcomeDoneStep: View {
   }
 
   var body: some View {
-    VStack(spacing: 24) {
+    VStack(spacing: 18) {
       Image(systemName: "checkmark.seal.fill")
-        .font(.system(size: 64))
+        .font(.system(size: 40))
         .foregroundStyle(.green)
-      VStack(spacing: 10) {
+      VStack(spacing: 8) {
         Text("You're ready")
           .font(.largeTitle)
           .fontWeight(.semibold)
@@ -827,7 +827,7 @@ struct WelcomeDoneStep: View {
           .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
       )
 
-      Text("You can revisit this tour any time from Settings → Privacy.")
+      Text("You can revisit this tour any time from Settings → General.")
         .font(.callout)
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)

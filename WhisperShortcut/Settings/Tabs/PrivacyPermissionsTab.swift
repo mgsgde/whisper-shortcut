@@ -22,7 +22,7 @@ struct PermissionsTab: View {
   }
 }
 
-/// Privacy promise, open-source banner, policy link, and welcome-tour replay.
+/// Privacy promise, open-source banner, and policy link.
 struct PrivacySection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {

@@ -143,7 +143,8 @@ struct WelcomeView: View {
         .pointerCursorOnHover()
     }
     .padding(.horizontal, 40)
-    .padding(.vertical, 20)
+    .padding(.top, 18)
+    .padding(.bottom, 24)
   }
 
   private var stepIndicator: some View {
