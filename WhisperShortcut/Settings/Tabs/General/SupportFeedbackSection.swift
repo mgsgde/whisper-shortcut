@@ -101,8 +101,11 @@ struct SupportFeedbackSection: View {
             viewModel.openGitHub()
           }) {
             HStack(alignment: .center, spacing: 12) {
-              Image(systemName: "chevron.left.forwardslash.chevron.right")
-                .font(.system(size: 18))
+              Image("GitHubMark")
+                .renderingMode(.template)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 18, height: 18)
                 .foregroundColor(.secondary)
                 .opacity(0.85)
 

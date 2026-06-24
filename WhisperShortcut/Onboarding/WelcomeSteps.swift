@@ -86,8 +86,8 @@ struct WelcomePrivacyStep: View {
 /// Prominent, tappable "this app is open source" banner with a direct link to
 /// the public repository. Surfaced on the privacy step (and in Settings) so the
 /// open-source nature is obvious at a glance rather than hidden in a small button.
-/// SF Symbols has no GitHub glyph, so the `</>` code symbol stands in — the same
-/// symbol the app already uses for GitHub elsewhere.
+/// Uses the official GitHub mark (`GitHubMark` asset, rendered as a tintable
+/// template image) — the same symbol the app uses for GitHub elsewhere.
 struct OpenSourceBanner: View {
   private var repoURL: URL? { URL(string: AppConstants.githubRepositoryURL) }
 
@@ -103,8 +103,11 @@ struct OpenSourceBanner: View {
       if let repoURL { NSWorkspace.shared.open(repoURL) }
     } label: {
       HStack(spacing: 14) {
-        Image(systemName: "chevron.left.forwardslash.chevron.right")
-          .font(.system(size: 22, weight: .semibold))
+        Image("GitHubMark")
+          .renderingMode(.template)
+          .resizable()
+          .aspectRatio(contentMode: .fit)
+          .frame(width: 24, height: 24)
           .foregroundStyle(.tint)
           .frame(width: 30)
         VStack(alignment: .leading, spacing: 3) {
@@ -574,6 +577,114 @@ struct OnboardingPermissionRow<Actions: View>: View {
   }
 }
 
+/// Optional onboarding step that introduces auto-paste and its Accessibility requirement.
+/// Default off — the toggle is the opt-in, and only flipping it on requests Accessibility
+/// (App Store Guideline 2.4.5: never imply the app needs Accessibility up front). Never gates
+/// Continue. Mirrors `WelcomeSmartImprovementStep`'s structure for visual consistency.
+struct WelcomeAutoPasteStep: View {
+  @Binding var autoPasteEnabled: Bool
+
+  /// Live Accessibility status so the user sees, on this very page, whether the grant succeeded
+  /// after enabling the toggle. Refreshed on appear and whenever the app reactivates (e.g. after
+  /// returning from the System Settings prompt).
+  @State private var axStatus: PermissionStatus = PermissionStatusChecker.status(for: .accessibility)
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 20) {
+      HStack(spacing: 12) {
+        Image(systemName: "doc.on.clipboard")
+          .font(.system(size: 32))
+          .foregroundStyle(.tint)
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Auto-paste")
+            .font(.title2)
+            .fontWeight(.semibold)
+          Text("Optional — insert dictated text right where you're typing.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+      }
+
+      Text("With auto-paste on, transcriptions and Dictate Prompt results appear at your cursor automatically (a simulated ⌘V) instead of just on the clipboard. macOS allows that only with Accessibility permission, so enabling it asks for that now. Dictation works fine without it — your text is always copied so you can paste manually.")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      VStack(alignment: .leading, spacing: 12) {
+        Toggle(isOn: $autoPasteEnabled) {
+          VStack(alignment: .leading, spacing: 2) {
+            Text("Enable auto-paste")
+              .font(.callout)
+              .fontWeight(.medium)
+            Text("You can change this any time in Settings → General.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+        }
+        .toggleStyle(.switch)
+        .onChange(of: autoPasteEnabled) { newValue in
+          guard newValue else { return }
+          if !AccessibilityPermissionManager.hasAccessibilityPermission() {
+            // Request now (native prompt + pre-registration), matching the Settings opt-in path.
+            AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+          }
+          refreshStatus()
+        }
+
+        if autoPasteEnabled {
+          Divider()
+          HStack(spacing: 8) {
+            WelcomePermissionBadge(status: axStatus)
+            Text(accessibilityHint)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            if axStatus != .granted {
+              Button {
+                PermissionStatusChecker.openSystemSettings(for: .accessibility)
+              } label: {
+                Label("Open System Settings", systemImage: "arrow.up.right.square")
+                  .font(.callout)
+              }
+              .buttonStyle(.bordered)
+              .pointerCursorOnHover()
+            }
+          }
+        }
+      }
+      .padding(14)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        RoundedRectangle(cornerRadius: 10)
+          .fill(Color(nsColor: .controlBackgroundColor))
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 10)
+          .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+      )
+
+      Spacer()
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .onAppear(perform: refreshStatus)
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      refreshStatus()
+    }
+  }
+
+  private var accessibilityHint: String {
+    switch axStatus {
+    case .granted: return "Accessibility granted — auto-paste is ready."
+    default: return "Accessibility needed. Enable WhisperShortcut in System Settings, then return here."
+    }
+  }
+
+  private func refreshStatus() {
+    axStatus = PermissionStatusChecker.status(for: .accessibility)
+  }
+}
+
 struct WelcomeSmartImprovementStep: View {
   @Binding var saveUsageData: Bool
 
@@ -627,8 +738,14 @@ struct WelcomeSmartImprovementStep: View {
 }
 
 struct WelcomeDoneStep: View {
+  /// Whether the user enabled auto-paste on the auto-paste step. When on, it's confirmed here
+  /// as part of "Also try" so the setup they just chose is reflected on the final screen.
+  var autoPasteEnabled: Bool = false
+
   private struct FeatureHint: Identifiable {
-    let shortcut: String
+    /// Nil for behaviors that aren't triggered by a shortcut (e.g. auto-paste) — rendered with a
+    /// checkmark instead of a key combo.
+    let shortcut: String?
     let name: String
     let detail: String
     var id: String { name }
@@ -665,6 +782,13 @@ struct WelcomeDoneStep: View {
           name: "Read Aloud",
           detail: "select text anywhere and hear it spoken"))
     }
+    if autoPasteEnabled {
+      hints.append(
+        FeatureHint(
+          shortcut: nil,
+          name: "Auto-paste",
+          detail: "dictated text lands at your cursor automatically — no manual ⌘V"))
+    }
     return hints
   }
 
@@ -690,9 +814,17 @@ struct WelcomeDoneStep: View {
             .fontWeight(.semibold)
           ForEach(moreFeatures) { hint in
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-              Text(hint.shortcut)
-                .font(.system(.callout, design: .monospaced))
-                .frame(minWidth: 44, alignment: .leading)
+              Group {
+                if let shortcut = hint.shortcut {
+                  Text(shortcut)
+                    .font(.system(.callout, design: .monospaced))
+                } else {
+                  Image(systemName: "checkmark.circle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.green)
+                }
+              }
+              .frame(minWidth: 44, alignment: .leading)
               Text("\(Text(hint.name).fontWeight(.medium)) — \(hint.detail)")
                 .font(.callout)
                 .foregroundStyle(.secondary)
