@@ -472,11 +472,18 @@ class GeminiAPIClient {
           var aggregatedSources: [GroundingSource] = []
           var aggregatedSupports: [GroundingSupport] = []
           var finishReason: String?
-          // Accumulate function call parts across streaming chunks. Chunks are
-          // cumulative: each contains ALL parts so far. A new part may arrive
-          // without its thoughtSignature, which only appears in a later chunk.
-          // We keep the latest snapshot and yield everything after the stream ends.
+          // Accumulate function call parts across streaming chunks. A functionCall
+          // and its thoughtSignature do NOT necessarily arrive together: per the
+          // Gemini thinking docs the signature streams as its own delta ("the last
+          // delta before step.stop"), so the chunk carrying it may not repeat the
+          // functionCall part. Echoing a function call back without its signature
+          // makes Gemini 3 reject the next request with HTTP 400, so we keep the
+          // latest snapshot, preserve any signature already seen, and also pick up
+          // a signature that lands on a later signature-only delta.
           var latestFunctionCallParts: [[String: Any]] = []
+          func signatureOf(_ part: [String: Any]) -> String? {
+            part["thoughtSignature"] as? String ?? part["thought_signature"] as? String
+          }
 
           // Decode one complete top-level JSON object from the stream.
           func processChunk(_ jsonData: Data) {
@@ -495,8 +502,8 @@ class GeminiAPIClient {
                   "GEMINI-CHAT-STREAM: usage prompt=\(usage.promptTokenCount ?? 0) output=\(usage.candidatesTokenCount ?? 0) thoughts=\(usage.thoughtsTokenCount ?? 0) total=\(total)")
               }
             }
-            // Snapshot the function call parts from each cumulative chunk.
-            // The final chunk will have the complete set with all signatures.
+            // Snapshot the function call parts from each chunk, then attach
+            // signatures that stream separately.
             if !functionDeclarations.isEmpty,
                let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                let candidates = obj["candidates"] as? [[String: Any]],
@@ -504,7 +511,24 @@ class GeminiAPIClient {
                let parts = content["parts"] as? [[String: Any]] {
               let fcParts = parts.filter { $0["functionCall"] != nil || $0["function_call"] != nil }
               if !fcParts.isEmpty {
-                latestFunctionCallParts = fcParts
+                // Refresh the snapshot but don't drop a signature we already captured
+                // for the call at this position (a later snapshot can omit it).
+                latestFunctionCallParts = fcParts.enumerated().map { index, part in
+                  var part = part
+                  if signatureOf(part) == nil, index < latestFunctionCallParts.count,
+                     let prev = signatureOf(latestFunctionCallParts[index]) {
+                    part["thoughtSignature"] = prev
+                  }
+                  return part
+                }
+              }
+              // A signature-only delta (no functionCall part) belongs to the most
+              // recent function call still missing one — attach it there.
+              for part in parts where part["functionCall"] == nil && part["function_call"] == nil {
+                guard let sig = signatureOf(part) else { continue }
+                if let index = latestFunctionCallParts.lastIndex(where: { signatureOf($0) == nil }) {
+                  latestFunctionCallParts[index]["thoughtSignature"] = sig
+                }
               }
             }
           }
