@@ -151,7 +151,7 @@ After applying fixes:
 - Iteration mode: apply fixes per cycle, rebuild between cycles. If a rebuild fails, stop the loop.
 - Do **not** commit, push, or cut a release. Hold all changes in the working tree and summarise at the end.
 - Do NOT run Playwright. This command is code-focused, not UX.
-- Do NOT run Xcode tests; the user runs tests manually in Xcode.
+- Skip the test suite during review — it is out of scope for a code review. (If a test run is ever needed, it can be run with `bash scripts/run-tests.sh`.)
 
 ## Related commands
 
