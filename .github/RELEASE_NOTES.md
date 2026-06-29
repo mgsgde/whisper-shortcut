@@ -1,4 +1,4 @@
-# WhisperShortcut 7.73
+# WhisperShortcut 7.74
 
 ## Installation
 
@@ -6,14 +6,15 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### Welcome tour: smoother setup and permission fixes
-- **Floating tour window** stays above Settings and other apps while you grant permissions.
-- **Auto-paste onboarding step** explains the feature and requests Accessibility only when you opt in (App Store–safe).
-- **Resume where you left off** if macOS relaunches the app mid-tour (e.g. after **Quit & Reopen** from a permission dialog).
-- **Done step** shows per-shortcut permission readiness; replay the tour from **Settings → General**.
+### Local LLM for Dictate Prompt
+- **Run Dictate Prompt fully offline** with a local OpenAI-compatible server such as **Ollama** or **LM Studio** — configure the endpoint URL and model ID in Settings.
 
-### Reliability & polish
-- **Quit & Reopen** from System Settings and other macOS dialogs now works reliably for the menu bar app.
-- **Official GitHub mark** in onboarding and Settings instead of a generic code icon.
+### Chat improvements
+- **Better email answers:** Gmail searches no longer fan out into many calls and dead-end without a reply — the chat now searches once, reads only the most relevant messages, and summarizes what it found.
+- **Consistent tone:** replies match your form of address and stay consistent throughout an answer.
+- **Sidebar:** the Today and Yesterday groups are expanded by default.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.72...v7.73
+### Fixes
+- **Gemini 3 chat:** fixed an HTTP 400 that could break tool calls when a function call's thought signature was dropped.
+
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.73...v7.74
