@@ -21,12 +21,7 @@ The throughline is honesty: training data is stale, so every currency recommenda
    - `WhisperShortcut/Settings/Shared/SettingsConfiguration.swift` — `PromptModel` cases (Gemini + Grok + OpenAI chat), `TTSModel` cases, and `SettingsDefaults` (the *default* selections per role: transcription, dictate prompt, chat, meeting summary, smart improvement, TTS).
    - Migration tables — `PromptModel.migrateLegacyPromptRawValue` and `TranscriptionModel.migrateLegacyTranscriptionRawValue`.
 
-2. **Pull the current model index from each provider.** Use WebFetch first; if it returns 403 / hallucinates / is JS-rendered, fall back to WebSearch with the current year. URLs are documented in the **llm-model-docs** skill — read that skill if you have not already in this session.
-   - **OpenAI**: <https://platform.openai.com/docs/models> + per-model pages on developers.openai.com. Also list available IDs programmatically: `GET https://api.openai.com/v1/models` with `Authorization: Bearer $OPENAI_API_KEY`.
-   - **Gemini**: <https://ai.google.dev/gemini-api/docs/models> + programmatic list `GET https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY`.
-   - **Gemini deprecations** (shutdown dates, replacements): <https://ai.google.dev/gemini-api/docs/deprecations> — cross-check every enum slug still in `current` against this table before recommending “no change.”
-   - **xAI**: <https://docs.x.ai/docs/models> + release notes <https://docs.x.ai/docs/release-notes> + retirement notices.
-   - Cross-reference with provider status pages and forums if anything looks off.
+2. **Pull the current model index from each provider.** Use WebFetch first; if it returns 403 / hallucinates / is JS-rendered, fall back to WebSearch with the current year. **All provider doc URLs, programmatic-list endpoints, deprecation pages, and status/forum links live in the `llm-model-docs` skill — read that skill (if you haven't this session) and use its URLs.** Cross-check every enum slug still in `current` against the Gemini deprecations table before recommending "no change."
 
 3. **Build a feature × provider coverage matrix.** This is the heart of the audit. Enumerate every feature the app exposes a model choice for — transcription (Dictate), Dictate Prompt, Chat, Meeting Summary, Smart Improvement, Read Aloud (TTS), and any vision/screenshot path — and for each, fill a row with one cell per provider:
 
@@ -40,11 +35,7 @@ The throughline is honesty: training data is stale, so every currency recommenda
    - Current default (from `SettingsDefaults`) and whether it's still the newest GA model that fits the role.
    - Whether any enum case points at a retired/renamed slug.
 
-   Decide role-fit using the heuristic from the `llm-model-docs` skill:
-   - Transcription default → cheap-fast Flash/Lite tier.
-   - Dictate Prompt / Chat / Meeting Summary → Flash tier (price-performance).
-   - Smart Improvement → Pro or larger Flash with strong reasoning.
-   - TTS → whichever variant is documented as TTS-capable.
+   Decide role-fit using the heuristic in the `llm-model-docs` skill ("Lineup check" section) — don't restate it here.
 
    A feature with fewer than the maximum achievable provider cells filled is a **coverage gap**: a user holding only the missing provider's key cannot use that feature. That's the primary thing this matrix surfaces.
 
