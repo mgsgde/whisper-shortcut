@@ -11,6 +11,13 @@ using the `asc` CLI. This is **separate** from `/release`, which only bumps the
 version and tags a GitHub release (CI builds the notarized Developer-ID DMG, **not**
 the App Store build).
 
+**Order: `/release` first, then `/submit-appstore`.** A given version ships the *same
+code* on both channels, so the GitHub release (version bump, tests, tag, notarized DMG)
+must already exist before you submit that version to the App Store. This command does
+**not** bump the version, run tests, or create a tag — it only ships the App-Store build
+for a version that `/release` has already cut. If the matching tag is missing, it stops
+and tells you to run `/release` first.
+
 App constants (App Store Connect ID `6749648401`, bundle `com.magnusgoedde.whispershortcut`,
 team `Z59J7V26UT`) and the full `asc` submission reference live in the parent
 `app-store-connect` skill — read its "Submit a version for review" section first.
@@ -20,7 +27,11 @@ team `Z59J7V26UT`) and the full `asc` submission reference live in the parent
 1. `asc auth status` shows credentials (API key). If not, point the user to the
    `app-store-connect` skill Prerequisites.
 2. Scheme **`WhisperShortcut-AppStore`** exists (Automatic signing, team `Z59J7V26UT`).
-3. **What's New is set for every active localization** on the target version — App Store
+3. **Matching GitHub release exists.** The version being submitted must already have a git
+   tag `v<X.XX>` and GitHub release, cut by `/release` (which bumps the version, runs
+   tests, builds the notarized DMG, commits, and pushes the tag). Run `/release` **first**;
+   this command never bumps or tags.
+4. **What's New is set for every active localization** on the target version — App Store
    Connect blocks submission otherwise. Verify with
    `asc localizations list --version "VERSION_UUID"`; fill gaps with
    `asc localizations update --version "VERSION_UUID" --locale "<loc>" --whats-new "..."`.
@@ -29,19 +40,27 @@ team `Z59J7V26UT`) and the full `asc` submission reference live in the parent
 
 1. **Resolve version**: read `CFBundleShortVersionString` from `WhisperShortcut/Info.plist`.
    Confirm it matches the App Store version the user intends to submit.
-2. **Validate readiness** (non-mutating):
+2. **Verify the matching GitHub release/tag exists** (`/release` must have already run):
+   ```bash
+   VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' WhisperShortcut/Info.plist)
+   git fetch --tags --quiet && git tag --list "v$VERSION"
+   ```
+   If `v$VERSION` is **not** listed, **stop** and tell the user to run `/release` first (it
+   bumps the version, runs tests, builds the notarized DMG, commits, and pushes the tag).
+   Do **not** bump the version or create the tag from this command.
+3. **Validate readiness** (non-mutating):
    ```bash
    asc validate --app 6749648401 --platform MAC_OS
    ```
    Fix any blockers it reports (missing What's New, screenshots, age rating, encryption)
    before continuing.
-3. **Dry run** — preview the build + upload + submit plan without mutating anything:
+4. **Dry run** — preview the build + upload + submit plan without mutating anything:
    ```bash
    asc publish appstore --app 6749648401 --platform MAC_OS \
      --workspace WhisperShortcut.xcodeproj --scheme WhisperShortcut-AppStore \
      --version "X.XX" --submit --dry-run
    ```
-4. **Upload + attach** (no review submission yet). `asc` archives the App Store scheme,
+5. **Upload + attach** (no review submission yet). `asc` archives the App Store scheme,
    exports it, uploads, waits for Apple to finish processing, then attaches the build to
    the version:
    ```bash
@@ -49,12 +68,12 @@ team `Z59J7V26UT`) and the full `asc` submission reference live in the parent
      --workspace WhisperShortcut.xcodeproj --scheme WhisperShortcut-AppStore \
      --version "X.XX" --wait
    ```
-5. **Submit for review** — only after the user explicitly confirms (export compliance,
+6. **Submit for review** — only after the user explicitly confirms (export compliance,
    final check):
    ```bash
    asc publish appstore --app 6749648401 --platform MAC_OS --version "X.XX" --submit --confirm
    ```
-6. **Report**: version, build number, processing/attach result, and submission state
+7. **Report**: version, build number, processing/attach result, and submission state
    (`asc status --app 6749648401` for the pipeline dashboard).
 
 ## Signing notes
@@ -70,5 +89,8 @@ team `Z59J7V26UT`) and the full `asc` submission reference live in the parent
 
 ## Critical rules
 
+- **Run `/release` first.** This command requires an existing `v<X.XX>` tag/GitHub release
+  for the version and stops if it is missing. It never bumps the version, runs tests, or
+  creates tags.
 - **Ask before `--submit --confirm`** — it sends the build to Apple review.
 - Do not run this to ship a GitHub release — that is `/release`.
