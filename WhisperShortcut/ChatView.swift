@@ -732,8 +732,18 @@ class ChatViewModel: ObservableObject {
         let maxToolRounds = 8
         let useGrounding = selectedModel.supportsGrounding
         var toolLoopExhausted = false
+        // True once any tool call has executed this turn. Lets us tell an
+        // empty final turn that *followed* tool work (model searched, found
+        // nothing relevant, returned no summary) apart from a model that just
+        // said nothing — the two warrant different fallback copy.
+        var executedAnyTools = false
 
         toolLoop: for round in 0..<(maxToolRounds + 1) {
+          // Final round: strip every tool so the model is forced to synthesize an answer from
+          // what it already gathered, instead of firing yet another tool call we'd discard. Without
+          // this, a model that keeps searching (e.g. re-querying Gmail with reworded terms) ends the
+          // loop on an unanswered batch of function calls and the user is shown nothing.
+          let isFinalRound = (round == maxToolRounds)
           var pendingCalls: [(name: String, args: [String: Any], thoughtSignature: String?)] = []
           // Narration the model emits in THIS round; echoed back in the model turn that carries
           // the round's function calls so the re-sent history is faithful (see executeToolCalls).
@@ -742,10 +752,10 @@ class ChatViewModel: ObservableObject {
             model: model,
             contents: currentContents,
             systemInstruction: self.buildSystemInstruction(),
-            tools: tools,
+            tools: isFinalRound ? [] : tools,
             useGrounding: useGrounding,
             thinkingLevel: thinkingLevel,
-            disableBuiltInTools: false,
+            disableBuiltInTools: isFinalRound,
             // Stable per-session key → provider prompt-cache hits across turns
             // (OpenAI prompt_cache_key, Grok x-grok-conv-id). Gemini ignores it.
             cacheKey: sessionId.uuidString)
@@ -764,11 +774,14 @@ class ChatViewModel: ObservableObject {
             }
           }
           if pendingCalls.isEmpty { break toolLoop }
-          if round == maxToolRounds {
+          // Tools were already disabled this round, yet the model still emitted only function
+          // calls and no usable text — nothing left to try, so surface the exhaustion.
+          if isFinalRound {
             DebugLogger.logWarning("CHAT: tool loop exceeded \(maxToolRounds) rounds — stopping")
             toolLoopExhausted = true
             break toolLoop
           }
+          executedAnyTools = true
           let (turns, imageMarkers) = try await executeToolCalls(
             pendingCalls, narration: Self.stripLeakedThoughtTokens(roundText), sessionId: sessionId)
           // Generated images go straight into the streaming bubble: the image shows up the
@@ -793,9 +806,17 @@ class ChatViewModel: ObservableObject {
         // be empty, hiding the failure.
         var reply = markerPrefix + streamed
         if reply.isEmpty {
-          reply = toolLoopExhausted
-            ? "_I tried multiple tool calls but ran out of attempts before finishing. The model may have used invalid IDs — please try again with a more specific request._"
-            : "_(no response)_"
+          if toolLoopExhausted {
+            reply = "_I ran out of tool-call rounds before I could finish. Try narrowing the request — e.g. name a specific sender, subject, or date range._"
+          } else if executedAnyTools {
+            // The model ran tools (e.g. gmail_search) but then ended its turn
+            // with no summary — typically because the results were empty or
+            // unrelated. A bare "(no response)" hides that; say what happened.
+            DebugLogger.logWarning("CHAT: empty final turn after tool calls — surfacing no-results fallback")
+            reply = "_I looked into this with the available tools but didn't find anything relevant to summarize. Try narrowing the request — e.g. name a specific sender, subject, or date range._"
+          } else {
+            reply = "_(no response)_"
+          }
         }
 
         // Final swap: streaming bubble (no sources) -> finalized message WITH grounding
