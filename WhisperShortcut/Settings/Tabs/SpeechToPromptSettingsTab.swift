@@ -15,7 +15,13 @@ struct SpeechToPromptSettingsTab: View {
 
       // Model Selection Section
       modelSection
-      
+
+      // Local server configuration (only when the Local model is selected)
+      if viewModel.data.selectedPromptModel.provider == .local {
+        SpacedSectionDivider()
+        LocalLLMEndpointSection()
+      }
+
       SpacedSectionDivider()
 
       // Screen context for voice Dictate Prompt (same UserDefaults key as before)

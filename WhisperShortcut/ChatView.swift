@@ -882,6 +882,9 @@ class ChatViewModel: ObservableObject {
         errorMessage = "Add your Google API key in Settings or sign in with Google to use Chat."
         return false
       }
+    case .local:
+      // Local server needs no API key; reachability surfaces at request time.
+      break
     }
     return true
   }

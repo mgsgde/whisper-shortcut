@@ -120,9 +120,9 @@ class SpeechService {
   /// base, sending a bare word-list with no transcription instruction when only a Glossary was set.
   private func geminiTranscriptionInstruction(promptOverride: String?) -> String {
     let base = promptOverride ?? buildDictationPrompt()
-    return appendGlossaryHint(to: base.isEmpty ? Self.defaultTranscriptionInstruction : base)
+    let withGlossary = appendGlossaryHint(to: base.isEmpty ? Self.defaultTranscriptionInstruction : base)
+    return withGlossary
   }
-
 
   // MARK: - Cancellation Methods
   func cancelTranscription() {
@@ -314,7 +314,7 @@ class SpeechService {
     // Get selected model from settings based on mode
     let selectedPromptModel = getPromptModel()
 
-    guard selectedPromptModel.supportsDirectAudioInput else {
+    guard selectedPromptModel.supportsDictatePrompt else {
       throw TranscriptionError.networkError("Selected Dictate Prompt model does not accept direct audio input. Pick a Gemini model or OpenAI's GPT-4o Audio.")
     }
 
@@ -325,8 +325,10 @@ class SpeechService {
       return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
     case .openai:
       return try await executePromptWithOpenAI(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
+    case .local:
+      return try await executePromptWithLocal(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
     case .grok:
-      // Defensive: the supportsDirectAudioInput guard above already excludes Grok, but throw
+      // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
       // rather than crash the menu-bar app if a future model/provider change reaches here.
       throw TranscriptionError.networkError("Grok can't process audio directly. Pick a Gemini model or OpenAI's GPT-4o Audio for Dictate Prompt.")
     }
@@ -751,6 +753,102 @@ class SpeechService {
     ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText, model: model.rawValue, hadScreenshot: screenshotData != nil)
 
     DebugLogger.logSuccess("PROMPT-MODE-OPENAI: Completed successfully (\(normalizedText.count) chars)")
+    return normalizedText
+  }
+
+  // MARK: - Local Prompt Mode
+
+  /// Dictate Prompt via a local OpenAI-compatible server (Ollama / LM Studio). Local LLMs are
+  /// text-only, so this runs a two-step flow:
+  ///   1. transcribe the spoken instruction with the user's selected Dictate transcription model
+  ///      (pick offline Whisper there for a fully-offline experience), then
+  ///   2. send `system prompt + clipboard context + instruction` to the local model and collect
+  ///      the rewritten text via the streaming provider.
+  /// No screenshot/image is sent (local text models can't read images in Phase 1).
+  private func executePromptWithLocal(
+    audioURL: URL,
+    clipboardContext: String?,
+    mode: PromptMode,
+    model: PromptModel
+  ) async throws -> String {
+    let modelID = LocalLLMPreferences.modelID
+    DebugLogger.log("PROMPT-MODE-LOCAL: Starting execution endpoint=\(LocalLLMPreferences.chatCompletionsURL) model=\(modelID)")
+
+    // Step 1: transcribe the spoken instruction through the existing transcription pipeline.
+    // Use `performTranscription` directly so we don't disturb the `currentTranscriptionTask` slot
+    // that the public `transcribe` entry point manages.
+    let instruction = try await performTranscription(audioURL: audioURL)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !instruction.isEmpty else {
+      throw TranscriptionError.networkError("Could not transcribe the voice instruction for the local model.")
+    }
+    DebugLogger.log("PROMPT-MODE-LOCAL: Transcribed instruction (\(instruction.count) chars)")
+
+    // Step 2: build the user turn (clipboard context + instruction) and prior history, in the
+    // Gemini-format `contents` the provider expects.
+    var userText = ""
+    if let context = clipboardContext, !context.isEmpty {
+      DebugLogger.log("PROMPT-MODE-LOCAL: Adding clipboard context (length: \(context.count) chars)")
+      userText += """
+      SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):
+
+      \(context)
+
+      """
+    }
+    userText += "VOICE INSTRUCTION:\n\(instruction)"
+
+    var contents: [[String: Any]] = []
+    let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
+    let historyCount = historyContents.count / 2
+    if historyCount > 0 {
+      DebugLogger.log("PROMPT-MODE-LOCAL: Including \(historyCount) previous turns from conversation history")
+    }
+    for content in historyContents {
+      let text = content.parts.compactMap { $0.text }.joined()
+      contents.append(["role": content.role, "parts": [["text": text]]])
+    }
+    contents.append(["role": "user", "parts": [["text": userText]]])
+
+    let systemPrompt = buildDictatePromptSystemPrompt(logPrefix: "PROMPT-MODE-LOCAL")
+    let systemInstruction: [String: Any]? = systemPrompt.isEmpty
+      ? nil : ["parts": [["text": systemPrompt]]]
+
+    let stream = LocalLLMChatProvider.shared.sendChatStream(
+      model: modelID,
+      contents: contents,
+      systemInstruction: systemInstruction,
+      tools: [],
+      useGrounding: false,
+      thinkingLevel: .default,
+      disableBuiltInTools: true,
+      cacheKey: nil
+    )
+    var combined = ""
+    for try await event in stream {
+      try Task.checkCancellation()
+      if case .textDelta(let delta) = event { combined += delta }
+    }
+
+    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(combined)
+    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-LOCAL")
+
+    PromptConversationHistory.shared.append(
+      mode: mode,
+      selectedText: clipboardContext,
+      userInstruction: instruction,
+      modelResponse: normalizedText
+    )
+    ContextLogger.shared.logPrompt(
+      mode: mode,
+      selectedText: clipboardContext,
+      userInstruction: instruction,
+      modelResponse: normalizedText,
+      model: "local:\(modelID)",
+      hadScreenshot: false
+    )
+
+    DebugLogger.logSuccess("PROMPT-MODE-LOCAL: Completed successfully (\(normalizedText.count) chars)")
     return normalizedText
   }
 

@@ -25,6 +25,7 @@ Every slash command follows **`{verb}-{topic}`**. The verb tells the agent _what
 | `/validate-audio-verification`                       | `validate-audio-verification`  | validate |
 | `/improve-context`                                   | —                              | workflow |
 | `/release`                                           | —                              | workflow |
+| `/submit-appstore`                                   | `app-store-connect` (parent)   | workflow |
 
 ### Skills without a slash command (agent-invoked)
 
@@ -37,6 +38,7 @@ These run automatically when their `description:` matches the user's intent — 
 | `push-after-rebuild`                        | Rebuild then commit + push                 |
 | `llm-model-docs`                            | Canonical pointers to OpenAI / Gemini / xAI docs (incl. Gemini TTS) |
 | `gemini-system-prompt-best-practices`       | Apply Google's prompt guidance when editing Gemini system prompts |
+| `run-whisper-shortcut`                      | Build / launch / drive / screenshot the app via `driver.sh` (run, onboarding, walkthrough) |
 
 Note: the rebuild rule lives in `.cursor/rules/index.mdc` with `alwaysApply: true`, so no separate `rebuild-after-change` skill is needed.
 

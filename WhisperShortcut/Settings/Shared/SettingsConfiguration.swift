@@ -5,6 +5,9 @@ enum ChatModelProvider: String, CaseIterable {
   case gemini
   case grok
   case openai
+  /// Local OpenAI-compatible server (Ollama / LM Studio). No API key; endpoint + model id are
+  /// read from UserDefaults via `LocalLLMPreferences`. Runs fully on the user's machine.
+  case local
 
   /// Model selected when the user invokes the bare provider slash-command
   /// (`/gemini`, `/grok`, `/gpt`) with no qualifier, AND when `/model <provider>`
@@ -17,6 +20,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .gemini: return .gemini35Flash
     case .grok:   return .grok43
     case .openai: return .openaiGPT55
+    case .local:  return .localModel
     }
   }
 
@@ -28,6 +32,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .gemini: return "gemini"
     case .grok:   return "grok"
     case .openai: return "gpt"
+    case .local:  return "local"
     }
   }
 }
@@ -74,7 +79,12 @@ enum PromptModel: String, CaseIterable {
   /// Dictate Prompt (the model "hears" the audio directly).
   /// Reference: https://platform.openai.com/docs/guides/audio
   case openaiGPT4oAudio = "gpt-audio"
-  
+
+  // Local model served by an OpenAI-compatible server on the user's machine (Ollama / LM Studio).
+  // The rawValue is a stable sentinel — the *actual* model tag sent to the server is configurable
+  // and read from `LocalLLMPreferences.modelID`, so one enum case covers whatever the user pulled.
+  case localModel = "local-llm"
+
   var displayName: String {
     switch self {
     case .gemini25Flash:
@@ -92,7 +102,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini35Flash:
       return "Gemini 3.5 Flash"
     case .geminiImage:
-      return "Gemini Image (Nano Banana)"
+      return "Gemini Image (Nano Banana 2)"
     case .geminiImagePro:
       return "Gemini Image Pro (Nano Banana Pro)"
     case .grok4:
@@ -109,6 +119,8 @@ enum PromptModel: String, CaseIterable {
       return "OpenAI GPT-5.5"
     case .openaiGPT4oAudio:
       return "OpenAI GPT Audio"
+    case .localModel:
+      return "Local (Ollama / LM Studio)"
     }
   }
 
@@ -138,6 +150,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT5Mini:    return "gpt5mini"
     case .openaiGPT55:       return "gpt55"
     case .openaiGPT4oAudio:  return "gptaudio" // audio-only; excluded from chatModels, never surfaced
+    case .localModel:        return "local"
     }
   }
 
@@ -158,7 +171,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini35Flash:
       return "Google's Gemini 3.5 Flash • Latest GA flagship Flash • Strong on agentic + coding tasks • Multimodal"
     case .geminiImage:
-      return "Google's Gemini Image (Nano Banana) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key"
+      return "Google's Gemini Image (Nano Banana 2) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key"
     case .geminiImagePro:
       return "Google's Gemini Image Pro (Nano Banana Pro) • Studio-quality image generation/editing up to 4K • Best text rendering • Paid (no free tier) • Requires Gemini API key"
     case .grok4:
@@ -175,6 +188,8 @@ enum PromptModel: String, CaseIterable {
       return "OpenAI's GPT-5.5 • Newest flagship (April 2026) • Text + images • Requires OpenAI API key"
     case .openaiGPT4oAudio:
       return "OpenAI's GPT Audio • Accepts inline audio for voice-driven prompts • Requires OpenAI API key"
+    case .localModel:
+      return "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings"
     }
   }
   
@@ -185,7 +200,7 @@ enum PromptModel: String, CaseIterable {
   
   var costLevel: String {
     switch self {
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash, .geminiImage:
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash, .geminiImage, .localModel:
       return "Low"
     case .gemini25Pro, .gemini31Pro, .geminiImagePro:
       return "Medium"
@@ -204,9 +219,20 @@ enum PromptModel: String, CaseIterable {
       return .grok
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
       return .openai
+    case .localModel:
+      return .local
     default:
       return .gemini
     }
+  }
+
+  /// Whether this model can power Dictate Prompt. Two paths qualify:
+  ///   - models that accept audio directly (`supportsDirectAudioInput`), and
+  ///   - local models, which can't hear audio but run a transcribe-first flow (offline STT →
+  ///     local text rewrite). Drives `dictatePromptCapableModels` and the runtime guard in
+  ///     `SpeechService.performPrompt`.
+  var supportsDictatePrompt: Bool {
+    supportsDirectAudioInput || provider == .local
   }
 
   /// True for the OpenAI audio-preview models that accept `input_audio` content parts in
@@ -240,6 +266,8 @@ enum PromptModel: String, CaseIterable {
     case .gemini: return GeminiCredentialProvider.shared.hasCredential()
     case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
     case .grok: return KeychainManager.shared.hasValidXAIAPIKey()
+    // Local server needs no API key — reachability is checked at request time, not here.
+    case .local: return true
     }
   }
 
@@ -249,6 +277,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini: return "Add your Gemini API key in Settings (General tab) to use Dictate Prompt."
     case .openai: return "Add your OpenAI API key in Settings (General tab) to use Dictate Prompt."
     case .grok: return "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings."
+    case .local: return "Set your local server endpoint (Ollama / LM Studio) in Dictate Prompt settings, and make sure it is running."
     }
   }
 
@@ -257,6 +286,9 @@ enum PromptModel: String, CaseIterable {
   var supportsImageInput: Bool {
     switch self {
     case .openaiGPT4oAudio:
+      return false
+    // Local text models in Phase 1 are text-only; no image parts are sent to the local server.
+    case .localModel:
       return false
     default:
       return true
@@ -269,6 +301,11 @@ enum PromptModel: String, CaseIterable {
   var supportsTextChat: Bool {
     switch self {
     case .openaiGPT4oAudio:
+      return false
+    // Phase 1: the local model is wired for Dictate Prompt only. Keeping it out of the chat
+    // model lists (chat window, meeting summary, Smart Improvement) until the chat tool-calling
+    // path is validated separately. Flip to `true` to surface it in Chat.
+    case .localModel:
       return false
     default:
       return true
@@ -304,7 +341,8 @@ enum PromptModel: String, CaseIterable {
       return nil
     // Non-Gemini — ignored by other providers
     case .grok4, .grok4Reasoning, .grok43,
-         .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
+         .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
+         .localModel:
       return nil
     }
   }
@@ -336,6 +374,8 @@ enum PromptModel: String, CaseIterable {
       return nil // Grok models are text-only, no audio transcription
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
+    case .localModel:
+      return nil // local LLM is text-only; STT runs through the separate transcription pipeline
     }
   }
 
@@ -347,8 +387,8 @@ enum PromptModel: String, CaseIterable {
   ///   the Responses API path doesn't apply.
   var supportsGrounding: Bool {
     switch self {
-    case .openaiGPT4oAudio, .geminiImage, .geminiImagePro:
-      // Audio-only and image-generation models have no web-search/grounding path.
+    case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .localModel:
+      // Audio-only, image-generation, and local models have no web-search/grounding path.
       return false
     default:
       return true
@@ -372,7 +412,7 @@ enum PromptModel: String, CaseIterable {
   /// Gemini handles audio natively across all variants; OpenAI's GPT-4o Audio Preview handles
   /// it via `input_audio` content parts. Grok and text-only OpenAI models are excluded.
   static var dictatePromptCapableModels: [PromptModel] {
-    return allCases.filter { $0.supportsDirectAudioInput }
+    return allCases.filter { $0.supportsDictatePrompt }
   }
 
   /// Migrates deprecated in-enum cases; identity today (2.0 removed — use `migrateLegacyPromptRawValue` for UserDefaults).
@@ -1059,6 +1099,32 @@ enum ReadAloudPreferences {
   }
 }
 
+// MARK: - Local LLM Preferences (UserDefaults Accessors)
+/// Centralized read accessors for the local OpenAI-compatible server settings (Ollama / LM Studio),
+/// so `SpeechService` / `LocalLLMChatProvider` don't each coalesce-with-default the same keys.
+enum LocalLLMPreferences {
+  /// Base URL up to `/v1` (no trailing `/chat/completions`). Falls back to the default endpoint.
+  static var endpointBaseURL: String {
+    let v = (UserDefaults.standard.string(forKey: UserDefaultsKeys.localPromptEndpointURL) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    return v.isEmpty ? SettingsDefaults.localEndpointURL : v
+  }
+
+  /// The model tag to request (e.g. an Ollama tag). Falls back to the default model id.
+  static var modelID: String {
+    let v = (UserDefaults.standard.string(forKey: UserDefaultsKeys.localPromptModelID) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    return v.isEmpty ? SettingsDefaults.localModelID : v
+  }
+
+  /// Full chat-completions URL, normalizing a trailing slash on the base URL.
+  static var chatCompletionsURL: String {
+    let base = endpointBaseURL
+    let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
+    return trimmed + "/chat/completions"
+  }
+}
+
 // MARK: - Live Meeting Chunk Interval Options
 enum LiveMeetingChunkInterval: Double, CaseIterable {
   case fifteenSeconds = 15.0
@@ -1141,6 +1207,13 @@ struct SettingsDefaults {
   static let selectedMeetingSummaryModel = PromptModel.gemini35Flash
 
   static let selectedImprovementModel = PromptModel.gemini31Pro
+
+  // MARK: - Local LLM (OpenAI-compatible server, e.g. Ollama / LM Studio)
+  /// Base URL up to and including `/v1`. The provider appends `/chat/completions`. Ollama's
+  /// default OpenAI-compatible endpoint is `http://localhost:11434/v1`.
+  static let localEndpointURL = "http://localhost:11434/v1"
+  /// Default model tag requested from the local server when the user hasn't set one.
+  static let localModelID = "qwen3"
 
   // MARK: - UI State
   static let errorMessage = ""

@@ -290,6 +290,8 @@ enum LLMProviderFactory {
       return GrokChatProvider.shared
     case .openai:
       return OpenAIChatProvider.shared
+    case .local:
+      return LocalLLMChatProvider.shared
     }
   }
 }

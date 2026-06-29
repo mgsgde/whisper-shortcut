@@ -114,7 +114,7 @@ Red flags:
 
 When you want to actively verify (not just inspect a past run), follow this exact recipe:
 
-1. Confirm settings: "Save usage data" on; Smart Improvement model = something strictly stronger than the transcription model (e.g. transcription = Gemini 2.5 Flash Lite, Smart Improvement = Gemini 3.1 Pro Preview). Without asymmetry the test only validates the skip path.
+1. Confirm settings: "Save usage data" on; Smart Improvement model = something strictly stronger than the transcription model (e.g. transcription = Gemini 3.1 Flash Lite, Smart Improvement = Gemini 3.1 Pro Preview). Without asymmetry the test only validates the skip path.
 2. Ask the user to do **5+ dictations** that **repeat a tricky proper noun across at least 2 of them** (e.g. "Kubernetes", a product/tool name they actually use, or a term their STT mis-hears). Recurrence is what makes it a candidate term; a one-off won't be selected. Mixing in one Whisper-offline dictation is great for testing the different-family branch.
 3. Ask the user to trigger Smart Improvement manually.
 4. Run the five Q1–Q5 checks above in order. In Q4, confirm the term you seeded appears in `candidateTerms=… top=[…]` and that a clip was attached with `term=<that term>`.

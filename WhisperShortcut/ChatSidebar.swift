@@ -3,10 +3,10 @@ import SwiftUI
 // MARK: - Sidebar for Gemini Chat session list
 //
 // Layout: header → single vertical scroll view containing two stacked sections.
-//   • CHATS: search field, date groups (Today expanded by default, the rest
-//     collapsed), Archived (collapsed).
-//   • MEETINGS: search field, date groups (most recent expanded by default, the
-//     rest collapsed), Archived (collapsed).
+//   • CHATS: search field, date groups (Today and Yesterday expanded by default,
+//     the rest collapsed), Archived (collapsed).
+//   • MEETINGS: search field, date groups (Today and Yesterday expanded by
+//     default, the rest collapsed), Archived (collapsed).
 
 struct ChatSidebar: View {
   @ObservedObject var viewModel: ChatViewModel
@@ -28,8 +28,8 @@ struct ChatSidebar: View {
   @State private var chatCollapsedGroups: Set<DateGroup>
   @State private var chatArchivedCollapsed = true
 
-  // Meetings section state — like chats, only the most recent date group starts
-  // expanded; the rest are collapsed so the list stays short.
+  // Meetings section state — like chats, Today and Yesterday start expanded; the
+  // rest are collapsed so the list stays short.
   @State private var meetingsSectionCollapsed = false
   @State private var meetingCollapsedGroups: Set<DateGroup>
   @State private var meetingArchivedCollapsed = true
@@ -39,10 +39,8 @@ struct ChatSidebar: View {
   init(viewModel: ChatViewModel, sidebarVisible: Binding<Bool>) {
     self._viewModel = ObservedObject(wrappedValue: viewModel)
     self._sidebarVisible = sidebarVisible
-    self._chatCollapsedGroups = State(
-      initialValue: Self.defaultChatCollapsedGroups(for: viewModel.allSessionsList))
-    self._meetingCollapsedGroups = State(
-      initialValue: Self.defaultMeetingCollapsedGroups(for: viewModel.allSessionsList))
+    self._chatCollapsedGroups = State(initialValue: Self.defaultCollapsedGroups())
+    self._meetingCollapsedGroups = State(initialValue: Self.defaultCollapsedGroups())
   }
 
   private var isSearching: Bool {
@@ -73,32 +71,9 @@ struct ChatSidebar: View {
     return .older
   }
 
-  /// Collapse every date group except the most recent one that actually contains
-  /// sessions. Mirrors how the body filters/orders sessions so the open group
-  /// matches the first one rendered.
-  private static func collapsedGroupsExceptMostRecent(present: Set<DateGroup>) -> Set<DateGroup> {
-    guard let mostRecent = DateGroup.allCases.first(where: { present.contains($0) }) else {
-      return Set(DateGroup.allCases)
-    }
-    return Set(DateGroup.allCases).subtracting([mostRecent])
-  }
-
-  private static func defaultChatCollapsedGroups(for sessions: [ChatSession]) -> Set<DateGroup> {
-    let present = Set(
-      sessions
-        .filter { !$0.archived && !$0.isMeeting }
-        .map { dateGroup(for: $0.lastUpdated) }
-    )
-    return collapsedGroupsExceptMostRecent(present: present)
-  }
-
-  private static func defaultMeetingCollapsedGroups(for sessions: [ChatSession]) -> Set<DateGroup> {
-    let present = Set(
-      sessions
-        .filter { !$0.archived && $0.isMeeting }
-        .map { dateGroup(for: meetingSortDate($0)) }
-    )
-    return collapsedGroupsExceptMostRecent(present: present)
+  /// Collapse every date group except Today and Yesterday.
+  private static func defaultCollapsedGroups() -> Set<DateGroup> {
+    Set([.previous7Days, .previous30Days, .older])
   }
 
   /// Date a meeting buckets by: when the meeting took place (parsed from

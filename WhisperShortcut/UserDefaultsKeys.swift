@@ -107,6 +107,14 @@ enum UserDefaultsKeys {
   // MARK: - Custom Transcription API
   static let customTranscriptionAPIURL = "customTranscriptionAPIURL"
 
+  // MARK: - Local LLM (OpenAI-compatible, e.g. Ollama / LM Studio)
+  /// Base URL of the local OpenAI-compatible server (the part before `/chat/completions`),
+  /// e.g. `http://localhost:11434/v1`. Empty → SettingsDefaults.localEndpointURL.
+  static let localPromptEndpointURL = "localPromptEndpointURL"
+  /// The model tag to request from the local server (e.g. an Ollama tag like `qwen3`).
+  /// Empty → SettingsDefaults.localModelID.
+  static let localPromptModelID = "localPromptModelID"
+
   // MARK: - Read Aloud
   /// When true, selected text is run through a Gemini "rewrite for speech" pass before TTS.
   /// Default: enabled. Stored under SettingsDefaults.readAloudSmartRewriteEnabled.

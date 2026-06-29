@@ -185,6 +185,7 @@ struct PromptModelSelectionView: View {
       (.gemini, "sparkles", "Gemini"),
       (.grok, "bolt.fill", "Grok (xAI)"),
       (.openai, "brain", "OpenAI"),
+      (.local, "desktopcomputer", "Local (Ollama / LM Studio)"),
     ]
 
     var groups: [ModelGroup] = providerOrder.compactMap { provider, symbol, title in

@@ -165,7 +165,7 @@ class ContextDerivation {
         audioAttachments: audioAttachments,
         credential: credential
       )
-    case .openai, .grok:
+    case .openai, .grok, .local:
       analysisResult = try await callTextModelForAnalysis(
         focus: focus,
         primaryText: loaded.primaryText,
@@ -800,6 +800,9 @@ class ContextDerivation {
         throw TranscriptionError.networkError("xAI API key is missing — add it in Settings → General.")
       }
     case .gemini:
+      break
+    case .local:
+      // Local server needs no API key; reachability surfaces at request time.
       break
     }
 

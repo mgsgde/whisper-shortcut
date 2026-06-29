@@ -128,7 +128,7 @@ Produce a single structured report with:
    - `[code]` — code logic fix
    - `[logging]` — `ContextLogger` / `DebugLogger` gap
    - `[ui]` — UI / preset / shortcut suggestion
-4. **Gaps for confident analysis** — e.g. "older `prompt` records have `model: null`; attribution before commit 8c029f4 relies on the macOS log filter."
+4. **Gaps for confident analysis** — e.g. "older `prompt` records have `model: null`; attribution before the `model` field was wired up relies on the macOS log filter."
 
 ---
 
