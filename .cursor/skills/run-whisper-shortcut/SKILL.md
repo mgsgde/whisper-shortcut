@@ -137,9 +137,12 @@ to observe programmatically without the driver.
 
 ## Test
 
-`bash scripts/run-tests.sh` runs the `WhisperShortcut-AppStore` XCTest plan — but those
-are **live** LLM/transcription round-trips that need API keys in the Keychain and
-network. Not a hermetic unit suite; skip unless keys are configured.
+`bash scripts/run-tests.sh` runs the `WhisperShortcut-AppStore` **Swift Testing** plan —
+**live** LLM/transcription round-trips that read API keys from the gitignored `.env`
+(providers without a key skip), not a hermetic unit suite. Because they use Swift Testing,
+the `xcodebuild` summary prints a misleading `** TEST SUCCEEDED ** … Executed 0 tests` —
+judge the run by the script's exit status and the `✔ Test run with N tests … passed` line,
+not the XCTest count.
 
 ## Gotchas
 
