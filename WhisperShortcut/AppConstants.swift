@@ -341,7 +341,10 @@ Transcript:
       3. Leave a blank line before each heading and between sections.
       4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
       5. Preserve important points from the current summary and add or refine with the new content.
-      6. Write the summary in the same language as the transcript. Output only the updated Markdown, no preamble.
+      6. Keep the summary CONCISE and roughly constant in size as the meeting grows: consolidate and \
+      merge related bullets, drop trivia and redundancy, and do not simply append everything. Aim for \
+      the most important points, not an exhaustive log — never exceed ~400 lines of Markdown.
+      7. Write the summary in the same language as the transcript. Output only the updated Markdown, no preamble.
 
       Current summary:
       \(currentSummary)

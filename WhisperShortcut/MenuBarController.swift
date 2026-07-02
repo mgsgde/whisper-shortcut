@@ -87,6 +87,12 @@ class MenuBarController: NSObject {
   private var liveMeetingDidShowSummaryFailureAlert: Bool = false
   /// Consecutive rolling-summary failures before the circuit-breaker opens and we notify the user.
   private let liveMeetingSummaryFailureThreshold = 3
+  /// Single-flight guard: true while a rolling-summary API call is in flight. A summary update can
+  /// take 60–100s+ on a long meeting, but chunks arrive every ~45s — without this guard each
+  /// threshold fired a fresh overlapping call, piling up concurrent requests that raced on
+  /// `liveMeetingLastSummarizedChunkID`. When set, `triggerRollingSummaryUpdateIfNeeded` defers:
+  /// it leaves the chunk counter past the threshold so the next chunk retries once the call returns.
+  private var liveMeetingSummaryUpdateInFlight: Bool = false
   /// When true, finishLiveMeetingSession will delete the transcript instead of saving.
   private var liveMeetingDiscard: Bool = false
 
@@ -836,6 +842,7 @@ class MenuBarController: NSObject {
     liveMeetingConsecutiveSummaryFailures = 0
     liveMeetingSummaryCircuitOpen = false
     liveMeetingDidShowSummaryFailureAlert = false
+    liveMeetingSummaryUpdateInFlight = false
     appState = .recording(.liveMeeting)
     if resuming && !existingChunks.isEmpty {
       LiveMeetingTranscriptStore.shared.resumeSession()
@@ -1152,6 +1159,14 @@ class MenuBarController: NSObject {
     liveMeetingChunksSinceSummary += 1
     guard liveMeetingChunksSinceSummary >= AppConstants.liveMeetingRollingSummaryChunkThreshold else { return }
 
+    // Single-flight: if a previous update is still running (they can take 60–100s+), don't launch a
+    // second concurrent call. Leave the counter at/above threshold so the next chunk retries once the
+    // in-flight call finishes — the accumulated new chunks are then summarized together in one call.
+    guard !liveMeetingSummaryUpdateInFlight else {
+      DebugLogger.log("LIVE-MEETING-SUMMARY: previous update still in flight — deferring")
+      return
+    }
+
     let store = LiveMeetingTranscriptStore.shared
     let result = store.chunkTexts(afterID: liveMeetingLastSummarizedChunkID)
     guard !result.text.isEmpty, let newLastID = result.lastID else { return }
@@ -1161,6 +1176,7 @@ class MenuBarController: NSObject {
     let previousLastID = liveMeetingLastSummarizedChunkID
     liveMeetingLastSummarizedChunkID = newLastID
     liveMeetingChunksSinceSummary = 0
+    liveMeetingSummaryUpdateInFlight = true
 
     Task {
       await runRollingSummaryUpdate(
@@ -1168,6 +1184,7 @@ class MenuBarController: NSObject {
         newText: newText,
         previousLastID: previousLastID
       )
+      await MainActor.run { self.liveMeetingSummaryUpdateInFlight = false }
     }
   }
 

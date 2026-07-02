@@ -97,7 +97,15 @@ final class MainThreadWatchdog {
 
       // Ping the main thread. This block only runs once the main runloop drains, i.e. when
       // the main thread is responsive — so its execution is itself the "alive" signal.
-      DispatchQueue.main.async { [weak self] in
+      //
+      // Post it via CFRunLoop in *both* the common modes and the modal-panel mode rather than
+      // `DispatchQueue.main.async` (which the runloop only services in the default mode). While an
+      // NSAlert `runModal` is up, the main thread is genuinely alive — it's spinning a modal event
+      // loop in `NSModalPanelRunLoopMode`, not wedged — but a default-mode ping never drains, so the
+      // old code reported a benign modal dialog as a multi-minute "hang" (e.g. the Live Meeting
+      // safeguard alert: hang-20260701-131332.txt, "recovered" after 403s). Draining in the modal
+      // mode too lets the ping run during a modal loop, so a modal correctly reads as responsive.
+      let ping: () -> Void = { [weak self] in
         guard let self else { return }
         self.queue.async {
           if self.didSampleThisStall, let start = self.stallStartedAt {
@@ -110,6 +118,10 @@ final class MainThreadWatchdog {
           self.stallStartedAt = nil
         }
       }
+      let mainRunLoop = CFRunLoopGetMain()
+      let modes = [CFRunLoopMode.commonModes.rawValue, "NSModalPanelRunLoopMode" as CFString] as CFArray
+      CFRunLoopPerformBlock(mainRunLoop, modes, ping)
+      CFRunLoopWakeUp(mainRunLoop)
 
       self.scheduleNextCheck()
     }

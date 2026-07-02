@@ -20,19 +20,30 @@ final class StreamingBuffer: ObservableObject {
   @Published private(set) var content: String = ""
   private var pendingContent: String?
   private var flushTask: Task<Void, Never>?
-  // ~8fps. Each flush mutates `content`, which grows the streaming bubble's height and forces a
+  // Each flush mutates `content`, which grows the streaming bubble's height and forces a
   // ScrollView relayout; with `.scrollPosition(id:)` attached, every relayout runs SwiftUI's
   // per-frame `findClosestSubview` sweep (coordinate-space conversion over visible subviews) and
-  // re-parses the markdown into blocks. At 30fps over a long reply that sweep can't keep up and
-  // wedges the main thread ≥4s (watchdog hang-20260619-151328.txt). Throttling to ~8fps cuts the
-  // relayout/re-parse passes ~4× while keeping the stream visibly live.
-  private static let flushIntervalNs: UInt64 = 125_000_000  // ~8fps
+  // re-parses the markdown into blocks. That sweep's cost scales with the bubble's subview count,
+  // so a *fixed* flush rate that's fine for a short reply still wedges the main thread ≥4s once the
+  // reply is long (watchdog hang-20260619-151328.txt at 30fps; hang-20260701-134623.txt still hung
+  // at a fixed ~8fps on a long grounded reply — force-quit, no recovery). So scale the interval with
+  // accumulated length: snappy while short, progressively slower as the sweep gets heavier. We can't
+  // instead detach `.scrollPosition` while streaming — toggling it rebuilds the ScrollView and resets
+  // scroll to top on every send.
+  private static func flushIntervalNs(forLength length: Int) -> UInt64 {
+    switch length {
+    case ..<4_000:  return 125_000_000  // ~8fps   — short reply, stays snappy
+    case ..<12_000: return 250_000_000  // ~4fps
+    default:        return 400_000_000  // ~2.5fps — long reply, sweep is heavy
+    }
+  }
 
   func enqueueUpdate(_ newContent: String) {
     pendingContent = newContent
     guard flushTask == nil else { return }
+    let interval = Self.flushIntervalNs(forLength: newContent.count)
     flushTask = Task { @MainActor [weak self] in
-      try? await Task.sleep(nanoseconds: Self.flushIntervalNs)
+      try? await Task.sleep(nanoseconds: interval)
       if Task.isCancelled { return }
       self?.flushPending()
     }
