@@ -401,6 +401,10 @@ Transcript:
   /// Maximum number of candidate terms (most distinctive-looking first) considered for content-aware
   /// audio selection per run.
   static let audioCandidateMaxTerms: Int = 30
+  /// A leading-capital term counts as "distinctive" for ranking only when it is capitalized in at least
+  /// this fraction of its occurrences. This separates consistently-capitalized nouns/names from function
+  /// words that are only capitalized at sentence start (e.g. German) — without a per-language word list.
+  static let audioCandidateConsistentCapRatio: Double = 0.8
 
   // MARK: - Smart Improvement: thresholds, cooldown, queue
   /// Minimum interactions in a focus's primary mode (last 30 days) for that focus to be analyzed.

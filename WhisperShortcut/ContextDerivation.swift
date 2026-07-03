@@ -295,18 +295,24 @@ class ContextDerivation {
     let totalDocs = refToText.count
     guard totalDocs > 0 else { return [] }
 
-    var docFreq: [String: Int] = [:]     // lowercased term → distinct-transcript count
-    var display: [String: String] = [:]  // lowercased → first-seen original casing
+    var docFreq: [String: Int] = [:]       // lowercased term → distinct-transcript count
+    var display: [String: String] = [:]    // lowercased → first-seen original casing
+    var occurrences: [String: Int] = [:]   // lowercased → total raw occurrences (for casing stats)
+    var upperInitial: [String: Int] = [:]  // lowercased → occurrences with an uppercase first letter
     for text in refToText.values {
       var seen = Set<String>()
       // Alphanumeric tokens so digit-bearing tech terms ("GPT5", "M4Pro") survive — the digit cue
-      // in `hasDistinctiveShape` relies on this. Pure numbers (years, counts) are noise; skip them.
+      // in `isDistinctivelyShaped` relies on this. Pure numbers (years, counts) are noise; skip them.
       for token in text.components(separatedBy: CharacterSet.alphanumerics.inverted)
       where token.count >= 3 && !token.allSatisfy(\.isNumber) {
         let lower = token.lowercased()
-        if !seen.insert(lower).inserted { continue }
-        docFreq[lower, default: 0] += 1
+        // Per-occurrence casing (counted on every occurrence, not deduped) later distinguishes a
+        // consistently-capitalized noun/name from a function word that is only capitalized at
+        // sentence start — see `isDistinctivelyShaped`.
+        occurrences[lower, default: 0] += 1
+        if token.first?.isUppercase == true { upperInitial[lower, default: 0] += 1 }
         if display[lower] == nil { display[lower] = token }
+        if seen.insert(lower).inserted { docFreq[lower, default: 0] += 1 }
       }
     }
 
@@ -319,10 +325,15 @@ class ContextDerivation {
     return docFreq
       .filter { _, freq in freq >= AppConstants.audioCandidateMinFrequency && freq < ambientCutoff }
       .sorted { a, b in
-        // Distinctive-looking terms (proper-noun casing, CamelCase, acronyms, digits) first, then by
-        // recurrence, then alphabetical for stability. The shape cue is language-agnostic.
-        let sa = Self.hasDistinctiveShape(display[a.key] ?? a.key)
-        let sb = Self.hasDistinctiveShape(display[b.key] ?? b.key)
+        // Distinctive-looking terms (proper nouns, consistently-capitalized nouns, CamelCase,
+        // acronyms, digit-bearing tech terms) first, then by recurrence, then alphabetical for
+        // stability. The shape cue is language-agnostic.
+        let sa = Self.isDistinctivelyShaped(display: display[a.key] ?? a.key,
+                                            occurrences: occurrences[a.key] ?? 0,
+                                            upperInitial: upperInitial[a.key] ?? 0)
+        let sb = Self.isDistinctivelyShaped(display: display[b.key] ?? b.key,
+                                            occurrences: occurrences[b.key] ?? 0,
+                                            upperInitial: upperInitial[b.key] ?? 0)
         if sa != sb { return sa }
         if a.value != b.value { return a.value > b.value }
         return a.key < b.key
@@ -331,11 +342,24 @@ class ContextDerivation {
       .compactMap { display[$0.key] }
   }
 
-  /// Language-agnostic structural cue that a token is a name/term rather than a plain word: contains an
-  /// uppercase letter (proper-noun initial or internal CamelCase / acronym) or a digit. Used only to
-  /// RANK candidates, never to exclude them — scripts without letter case just fall back to frequency.
-  private static func hasDistinctiveShape(_ token: String) -> Bool {
-    token.contains { $0.isUppercase || $0.isNumber }
+  /// Language-agnostic structural cue that a token is a name/term rather than a plain function word.
+  /// Used only to RANK candidates, never to exclude them — scripts without letter case just fall back
+  /// to frequency.
+  ///
+  /// Internal uppercase (CamelCase / acronym) or a digit is position-independent evidence and always
+  /// counts. A leading capital, however, is ambiguous in languages that capitalize the first word of a
+  /// sentence (e.g. German): a function word like "und"/"das" is capitalized only when it starts a
+  /// sentence and is lowercase elsewhere, whereas a proper noun / German-style noun / acronym is
+  /// capitalized in (nearly) every occurrence. So a leading capital only qualifies when the term is
+  /// consistently capitalized across its occurrences — deriving the distinction from the data instead
+  /// of a hardcoded per-language stop-word list.
+  private static func isDistinctivelyShaped(display: String, occurrences: Int, upperInitial: Int) -> Bool {
+    // Internal uppercase (past the first character) or any digit — sentence position can't explain these.
+    if display.dropFirst().contains(where: \.isUppercase) { return true }
+    if display.contains(where: \.isNumber) { return true }
+    // Otherwise a leading capital only qualifies if the term is capitalized almost every time it appears.
+    guard occurrences > 0 else { return false }
+    return Double(upperInitial) / Double(occurrences) >= AppConstants.audioCandidateConsistentCapRatio
   }
 
   // MARK: - Log Loading & Sampling
