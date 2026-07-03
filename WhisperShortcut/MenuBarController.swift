@@ -70,9 +70,6 @@ class MenuBarController: NSObject {
   private var liveMeetingSafeguardTimer: Timer?
   /// ID of the last chunk included in the rolling summary. Robust against chunk trimming.
   private var liveMeetingLastSummarizedChunkID: UUID? = nil
-  /// How many chunks have arrived since `liveMeetingLastSummarizedChunkID` was updated.
-  /// We kick off a new rolling-summary call once this reaches the threshold.
-  private var liveMeetingChunksSinceSummary: Int = 0
   /// When non-nil, finishLiveMeetingSession will rename the transcript file to this stem (or timestamp-suffix) before ending.
   private var liveMeetingPreferredName: String?
   /// Set to true after showing rate-limit popup once this session so we don't spam.
@@ -90,8 +87,8 @@ class MenuBarController: NSObject {
   /// Single-flight guard: true while a rolling-summary API call is in flight. A summary update can
   /// take 60–100s+ on a long meeting, but chunks arrive every ~45s — without this guard each
   /// threshold fired a fresh overlapping call, piling up concurrent requests that raced on
-  /// `liveMeetingLastSummarizedChunkID`. When set, `triggerRollingSummaryUpdateIfNeeded` defers:
-  /// it leaves the chunk counter past the threshold so the next chunk retries once the call returns.
+  /// `liveMeetingLastSummarizedChunkID`. When set, an on-demand refresh request is dropped: the
+  /// in-flight call will already fold in every chunk accumulated so far.
   private var liveMeetingSummaryUpdateInFlight: Bool = false
   /// Bumped on every session start. A rolling-summary Task captures the generation it launched under
   /// so a straggler from a previous meeting (its API call can outlive a stop+restart) no-ops instead
@@ -350,6 +347,12 @@ class MenuBarController: NSObject {
       self,
       selector: #selector(chatReadAloudStopFromNotification),
       name: .chatReadAloudStop,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(refreshLiveMeetingSummaryOnDemand),
+      name: .liveMeetingSummaryRefreshRequested,
       object: nil
     )
   }
@@ -855,7 +858,6 @@ class MenuBarController: NSObject {
     } else {
       LiveMeetingTranscriptStore.shared.startSession()
       liveMeetingLastSummarizedChunkID = nil
-      liveMeetingChunksSinceSummary = 0
     }
 
     // Schedule duration safeguard if enabled
@@ -970,7 +972,6 @@ class MenuBarController: NSObject {
     liveMeetingPendingChunks = 0
     liveMeetingTranscriptURL = nil
     liveMeetingLastSummarizedChunkID = nil
-    liveMeetingChunksSinceSummary = 0
     appState = appState.finish()
 
     if let transcriptURL = transcriptURLForPostProcessing {
@@ -1153,22 +1154,30 @@ class MenuBarController: NSObject {
     return String(format: "[%02d:%02d]", minutes, seconds)
   }
 
-  /// Once `liveMeetingRollingSummaryChunkThreshold` new chunks have arrived since the last
-  /// summary update, kick off a rolling summary refresh (async).
-  private func triggerRollingSummaryUpdateIfNeeded() {
+  /// On-demand rolling summary refresh. Called when a consumer actually needs an up-to-date live
+  /// summary — the Summary tab is shown for the active meeting, or the user chats with it — rather
+  /// than on a timer. This folds every transcript chunk accumulated since the last summary into one
+  /// call, so cost is proportional to how often the user looks, not to meeting length. The
+  /// end-of-meeting summary in finishLiveMeetingSession is regenerated from the full transcript and
+  /// does not depend on this.
+  @objc private func refreshLiveMeetingSummaryOnDemand() {
+    DispatchQueue.main.async { [weak self] in self?.refreshRollingSummaryNow() }
+  }
+
+  private func refreshRollingSummaryNow() {
+    // Only meaningful while a meeting is actively recording (the live store owns the current stem).
+    guard case .recording(.liveMeeting) = appState else { return }
+
     // Circuit-breaker: after repeated failures (e.g. a sustained model outage) we stop firing
-    // rolling updates for the rest of the session instead of retrying every threshold for an hour.
-    // The end-of-meeting summary is still attempted once in finishLiveMeetingSession.
+    // rolling updates for the rest of the session instead of retrying for an hour. The
+    // end-of-meeting summary is still attempted once in finishLiveMeetingSession.
     guard !liveMeetingSummaryCircuitOpen else { return }
 
-    liveMeetingChunksSinceSummary += 1
-    guard liveMeetingChunksSinceSummary >= AppConstants.liveMeetingRollingSummaryChunkThreshold else { return }
-
     // Single-flight: if a previous update is still running (they can take 60–100s+), don't launch a
-    // second concurrent call. Leave the counter at/above threshold so the next chunk retries once the
-    // in-flight call finishes — the accumulated new chunks are then summarized together in one call.
+    // second concurrent call. The in-flight call already folds in every chunk accumulated so far, and
+    // the next on-demand request will pick up anything newer.
     guard !liveMeetingSummaryUpdateInFlight else {
-      DebugLogger.log("LIVE-MEETING-SUMMARY: previous update still in flight — deferring")
+      DebugLogger.log("LIVE-MEETING-SUMMARY: previous update still in flight — skipping on-demand refresh")
       return
     }
 
@@ -1180,7 +1189,6 @@ class MenuBarController: NSObject {
     let newText = result.text
     let previousLastID = liveMeetingLastSummarizedChunkID
     liveMeetingLastSummarizedChunkID = newLastID
-    liveMeetingChunksSinceSummary = 0
     liveMeetingSummaryUpdateInFlight = true
     let generation = liveMeetingSessionGeneration
 
@@ -1227,7 +1235,6 @@ class MenuBarController: NSObject {
         guard generation == self.liveMeetingSessionGeneration else { return }
         // Roll back so the next attempt re-summarizes the same range.
         self.liveMeetingLastSummarizedChunkID = previousLastID
-        self.liveMeetingChunksSinceSummary = 0
         self.liveMeetingConsecutiveSummaryFailures += 1
         // Trip the circuit-breaker after sustained failures: stop hammering the model for the
         // rest of the session and tell the user once (the final summary is still attempted at end).
@@ -2448,7 +2455,8 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
         } else {
           await MainActor.run {
             self.appendToTranscript(trimmedText, chunkStartTime: startTime)
-            self.triggerRollingSummaryUpdateIfNeeded()
+            // No rolling-summary call here: the live summary is refreshed on demand (Summary tab
+            // shown / live meeting chatted), so we don't pay for updates nobody looks at.
           }
         }
 

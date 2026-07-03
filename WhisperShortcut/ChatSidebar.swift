@@ -504,13 +504,14 @@ struct ChatSidebar: View {
 
     // Hover button: active → archive, archived → delete permanently. Each step
     // is one click away from removal — never an irreversible action by accident.
+    let kind = session.isMeeting ? "meeting" : "chat"
     let hoverAction: (icon: String, help: String, perform: () -> Void) = {
       if isArchived {
         return (
           "xmark", "Delete permanently", { viewModel.deleteSessionPermanently(id: session.id) }
         )
       } else {
-        return ("archivebox", "Archive", { viewModel.archiveSession(id: session.id) })
+        return ("archivebox", "Archive \(kind)", { viewModel.archiveSession(id: session.id) })
       }
     }()
 
@@ -576,27 +577,41 @@ struct ChatSidebar: View {
     }
     .onHover { over in hoveredRowId = over ? session.id : nil }
     .contextMenu {
+      let kind = session.isMeeting ? "meeting" : "chat"
+      let archiveOlderCutoff = sortDate(session)
       if isArchived {
-        Button("Restore chat") {
+        Button("Restore \(kind)") {
           viewModel.restoreSession(id: session.id)
           viewModel.switchToSession(id: session.id)
         }
-        Button("Copy chat") { viewModel.copyChatToClipboard(sessionId: session.id) }
+        Button("Copy \(kind)") { viewModel.copyChatToClipboard(sessionId: session.id) }
         Divider()
-        Button("Delete chat", role: .destructive) {
+        Button("Delete \(kind)", role: .destructive) {
           viewModel.deleteSessionPermanently(id: session.id)
         }
       } else {
         Button("Rename\u{2026}") { beginRename(session) }
-        Button("Copy chat") { viewModel.copyChatToClipboard(sessionId: session.id) }
+        Button("Copy \(kind)") { viewModel.copyChatToClipboard(sessionId: session.id) }
         Divider()
-        Button("Archive chat") { viewModel.archiveSession(id: session.id) }
+        Button("Archive \(kind)") { viewModel.archiveSession(id: session.id) }
           .keyboardShortcut(.delete, modifiers: .command)
-        Button("Archive older chats") {
-          viewModel.archiveOlderSessions(than: session.lastUpdated)
+        if session.isMeeting {
+          Button("Archive older meetings") {
+            viewModel.archiveOlderMeetings(than: archiveOlderCutoff)
+          }
+          Button("Archive other meetings") {
+            viewModel.archiveOtherMeetings(except: session.id)
+          }
+        } else {
+          Button("Archive older chats") {
+            viewModel.archiveOlderSessions(than: archiveOlderCutoff)
+          }
+          Button("Archive other chats") {
+            viewModel.archiveOtherSessions(except: session.id)
+          }
         }
         Divider()
-        Button("Delete chat", role: .destructive) {
+        Button("Delete \(kind)", role: .destructive) {
           viewModel.deleteSessionPermanently(id: session.id)
         }
       }

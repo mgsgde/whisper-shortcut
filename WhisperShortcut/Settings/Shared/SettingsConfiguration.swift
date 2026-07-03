@@ -1202,7 +1202,10 @@ struct SettingsDefaults {
   static let screenshotSaveEnabled = false
 
   // MARK: - Live Meeting Settings
-  static let liveMeetingChunkInterval = LiveMeetingChunkInterval.thirtySeconds
+  // 60s (rather than 30s) halves the number of chunk-transcription API calls per meeting and
+  // halves how often the diarization prompt is re-sent, at the cost of a slightly less live
+  // transcript. Users who want faster updates can lower it in Chat settings.
+  static let liveMeetingChunkInterval = LiveMeetingChunkInterval.sixtySeconds
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
   static let selectedMeetingSummaryModel = PromptModel.gemini35Flash
 

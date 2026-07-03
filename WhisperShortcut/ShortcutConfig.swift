@@ -425,6 +425,9 @@ extension Notification.Name {
   static let chatEndMeetingWithName = Notification.Name("chatEndMeetingWithName")
   /// Posted after a meeting's final summary is written to disk. userInfo: ["stem": String, "summary": String].
   static let chatMeetingSummaryReady = Notification.Name("chatMeetingSummaryReady")
+  /// Posted by a consumer that needs an up-to-date live summary for the active meeting (Summary tab
+  /// shown, or the live meeting chatted). MenuBarController refreshes the rolling summary on demand.
+  static let liveMeetingSummaryRefreshRequested = Notification.Name("liveMeetingSummaryRefreshRequested")
   /// Posted when user taps Read Aloud under a chat reply. userInfo key: chatReadAloudTextKey (String).
   static let chatReadAloud = Notification.Name("chatReadAloud")
   /// Posted when user taps Stop on the Read Aloud button while TTS is active.

@@ -487,13 +487,43 @@ class ChatSessionStore {
 
   /// Archives all non-archived, non-pinned, non-meeting sessions whose lastUpdated is strictly older than the given date.
   func archiveOlderSessions(than date: Date) {
+    archiveBulk(label: "older chat") { session in
+      !session.archived && !session.pinned && !session.isMeeting && session.lastUpdated < date
+    }
+  }
+
+  /// Archives all non-archived, non-pinned meetings whose meeting date (or lastUpdated) is strictly older than the given date.
+  func archiveOlderMeetings(than date: Date) {
+    archiveBulk(label: "older meeting") { session in
+      session.isMeeting && !session.archived && !session.pinned && Self.meetingSortDate(session) < date
+    }
+  }
+
+  /// Archives all non-archived, non-pinned chats except `keepId`.
+  func archiveOtherSessions(except keepId: UUID) {
+    archiveBulk(label: "other chat") { session in
+      !session.isMeeting && session.id != keepId && !session.archived && !session.pinned
+    }
+  }
+
+  /// Archives all non-archived, non-pinned meetings except `keepId` and any ids in `skipIds`.
+  func archiveOtherMeetings(except keepId: UUID, skipIds: Set<UUID> = []) {
+    archiveBulk(label: "other meeting") { session in
+      session.isMeeting && session.id != keepId && !skipIds.contains(session.id)
+        && !session.archived && !session.pinned
+    }
+  }
+
+  private static func meetingSortDate(_ session: ChatSession) -> Date {
+    session.meetingStem.flatMap(MeetingListService.date(fromStem:)) ?? session.lastUpdated
+  }
+
+  private func archiveBulk(label: String, include: (ChatSession) -> Bool) {
     var file = loadFile()
     var archivedIds: [UUID] = []
-    for i in file.sessions.indices {
-      if !file.sessions[i].archived && !file.sessions[i].pinned && !file.sessions[i].isMeeting && file.sessions[i].lastUpdated < date {
-        file.sessions[i].archived = true
-        archivedIds.append(file.sessions[i].id)
-      }
+    for i in file.sessions.indices where include(file.sessions[i]) {
+      file.sessions[i].archived = true
+      archivedIds.append(file.sessions[i].id)
     }
     guard !archivedIds.isEmpty else { return }
     let archivedSet = Set(archivedIds)
@@ -502,7 +532,7 @@ class ChatSessionStore {
       switchToNextBestSession(in: &file)
     }
     saveSessionsFile(file)
-    DebugLogger.log("GEMINI-CHAT: Archived \(archivedIds.count) older session(s)")
+    DebugLogger.log("GEMINI-CHAT: Archived \(archivedIds.count) \(label)(s)")
   }
 
   /// Restores an archived session (sets archived = false). Appends to tab order if present.

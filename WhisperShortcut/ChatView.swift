@@ -433,6 +433,14 @@ class ChatViewModel: ObservableObject {
     let hasContent = !finalContent.isEmpty || !attachedParts.isEmpty
     guard hasContent else { return }
 
+    // On-demand live summary: when the user chats with the meeting that's recording right now,
+    // request a rolling-summary refresh so later turns carry meeting content older than the last
+    // 5 minutes of transcript. The refresh is async (single-flight), so it benefits the next turn;
+    // this turn still gets the recent transcript plus whatever summary already exists.
+    if isCurrentSessionTheActiveMeeting {
+      NotificationCenter.default.post(name: .liveMeetingSummaryRefreshRequested, object: nil)
+    }
+
     errorMessage = nil
     if isSending {
       supersedeInFlight(
@@ -2129,7 +2137,30 @@ class ChatViewModel: ObservableObject {
     store.archiveOlderSessions(than: date)
     if store.load().id != session.id { switchToCurrentStoreSession() }
     else { refreshRecentSessions() }
-    DebugLogger.log("SIDEBAR: Archived sessions older than \(date)")
+    DebugLogger.log("SIDEBAR: Archived chats older than \(date)")
+  }
+
+  func archiveOlderMeetings(than date: Date) {
+    store.archiveOlderMeetings(than: date)
+    if store.load().id != session.id { switchToCurrentStoreSession() }
+    else { refreshRecentSessions() }
+    DebugLogger.log("SIDEBAR: Archived meetings older than \(date)")
+  }
+
+  func archiveOtherSessions(except keepId: UUID) {
+    store.archiveOtherSessions(except: keepId)
+    if store.load().id != session.id { switchToCurrentStoreSession() }
+    else { refreshRecentSessions() }
+    DebugLogger.log("SIDEBAR: Archived other chats except \(keepId)")
+  }
+
+  func archiveOtherMeetings(except keepId: UUID) {
+    var skipIds: Set<UUID> = []
+    if isMeetingActive, let activeId = meetingSessionId { skipIds.insert(activeId) }
+    store.archiveOtherMeetings(except: keepId, skipIds: skipIds)
+    if store.load().id != session.id { switchToCurrentStoreSession() }
+    else { refreshRecentSessions() }
+    DebugLogger.log("SIDEBAR: Archived other meetings except \(keepId)")
   }
 
   func restoreSession(id: UUID) {
@@ -2440,7 +2471,7 @@ struct ChatView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(ChatTheme.windowBackground)
     .background(
-      Button("Archive current chat") {
+      Button(viewModel.isCurrentSessionMeeting ? "Archive current meeting" : "Archive current chat") {
         viewModel.archiveSession(id: viewModel.currentSessionId)
       }
       .keyboardShortcut(.delete, modifiers: .command)
@@ -3010,7 +3041,15 @@ struct ChatView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(ChatTheme.windowBackground)
-    .onAppear { viewModel.recoverMeetingSummaryIfNeeded() }
+    .onAppear {
+      viewModel.recoverMeetingSummaryIfNeeded()
+      // On-demand live summary: only pay for a rolling-summary update when the user actually opens
+      // the Summary tab of the meeting that's recording right now. MenuBarController folds every
+      // chunk since the last update into one call (single-flight, so rapid re-opens are cheap).
+      if viewModel.isCurrentSessionTheActiveMeeting {
+        NotificationCenter.default.post(name: .liveMeetingSummaryRefreshRequested, object: nil)
+      }
+    }
   }
 
   private func noticeBanner(_ message: String) -> some View {
