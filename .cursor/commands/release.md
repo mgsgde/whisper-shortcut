@@ -82,7 +82,7 @@ The GitHub Actions workflow automatically creates a release when a tag is pushed
 
 ## Scope: GitHub release only — App Store submit is separate
 
-This command + the `release.yml` workflow build and ship only the **notarized Developer-ID DMG** (GitHub Release). They do **not** upload to the Mac App Store. App Store submission (Xcode: Product → Archive → Distribute → Review) is a separate step and can be automated with `asc publish appstore --platform MAC_OS` — see the `app-store-connect` skill's "Submit a version for review" section. (App Store signing uses an *Apple Distribution* cert, distinct from the Developer-ID cert CI uses for the DMG.)
+This command + the `release.yml` workflow build and ship only the **notarized Developer-ID DMG** (GitHub Release). They do **not** upload to the Mac App Store. App Store submission is a separate step, automated by **`/submit-appstore`** (run it *after* `/release` cuts the matching tag). Do **not** use `asc publish appstore` for this macOS app — it assumes an `.ipa` and fails; `/submit-appstore` exports a signed `.pkg` and uploads that instead. (App Store signing uses an *Apple Distribution* cert, distinct from the Developer-ID cert CI uses for the DMG.)
 
 **Release notes format:**
 
