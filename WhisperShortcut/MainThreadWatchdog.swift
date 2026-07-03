@@ -28,6 +28,47 @@ import Foundation
 import AppKit
 import Darwin
 
+/// Thread-safe registry of cancellables the watchdog can abort when it detects a stall.
+///
+/// Kept deliberately separate from any `@MainActor` state (e.g. `ChatViewModel.sendTasks`) so the
+/// watchdog's background queue can cancel without racing the main thread. `Task.cancel()` is safe
+/// to call from any thread; only *reading* the collection needs the lock.
+///
+/// Purpose: defense-in-depth for the chat streaming freeze. The structural fix (streaming bubble
+/// rendered outside the LazyVStack) should prevent the wedge, but if a slow-converging layout
+/// transaction still stalls the main thread, cancelling the in-flight send stops the network stream
+/// (no further token deltas pile onto the wedged bubble) and flags cancellation so that, on
+/// recovery, `commitPartialOrRemove` commits the partial reply and detaches the streaming buffer —
+/// ending the growth loop instead of letting it stream on for minutes (cf. hang-20260701-134623,
+/// which "recovered" only after 46 min).
+final class StallCancellationRegistry {
+  static let shared = StallCancellationRegistry()
+
+  private let lock = NSLock()
+  private var tasks: [UUID: Task<Void, Never>] = [:]
+
+  func register(_ id: UUID, task: Task<Void, Never>) {
+    lock.lock(); defer { lock.unlock() }
+    tasks[id] = task
+  }
+
+  func unregister(_ id: UUID) {
+    lock.lock(); defer { lock.unlock() }
+    tasks[id] = nil
+  }
+
+  /// Cancels every registered task and clears the registry. Returns the count cancelled.
+  @discardableResult
+  func cancelAll() -> Int {
+    lock.lock()
+    let snapshot = tasks
+    tasks.removeAll()
+    lock.unlock()
+    for task in snapshot.values { task.cancel() }
+    return snapshot.count
+  }
+}
+
 final class MainThreadWatchdog {
   static let shared = MainThreadWatchdog()
 
@@ -90,6 +131,16 @@ final class MainThreadWatchdog {
         DebugLogger.logError(
           "WATCHDOG: main thread unresponsive for ≥\(Int(stalledSeconds))s (activity: \(self.breadcrumb)) — capturing sample")
         self.captureMainThreadStack()
+        // Circuit breaker: a stall while a chat reply is streaming is the freeze this registry
+        // exists for. Cancel the in-flight send so the network stream stops feeding the wedged
+        // bubble and the partial reply is committed on recovery. Gated on the breadcrumb so we
+        // never abort unrelated main-thread work that merely happened to stall.
+        if self.breadcrumb.hasPrefix("chat-send streaming") {
+          let cancelled = StallCancellationRegistry.shared.cancelAll()
+          if cancelled > 0 {
+            DebugLogger.logError("WATCHDOG: circuit breaker cancelled \(cancelled) in-flight chat send(s) during stall")
+          }
+        }
       } else if missed == 1 {
         // First missed ping of a potential stall — remember when it began.
         self.stallStartedAt = Date()

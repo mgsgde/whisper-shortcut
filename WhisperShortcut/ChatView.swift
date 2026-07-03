@@ -11,7 +11,8 @@ import UniformTypeIdentifiers
 /// thread and produced the scroll-anchor-reset flicker on send). Only the bubble that
 /// observes this buffer re-renders per token; the rest of the conversation list is untouched.
 ///
-/// Hosts its own ≈30fps throttle so consumers don't need to coordinate one — repeated
+/// Hosts its own length-adaptive throttle (see `flushIntervalNs`) so consumers don't need to
+/// coordinate one — repeated
 /// `enqueueUpdate` calls within the flush window collapse to a single commit of the most
 /// recent state. Terminal callers use `cancelPending` before committing the final content
 /// into the message itself, so stale flushes can't fire afterwards.
@@ -20,16 +21,14 @@ final class StreamingBuffer: ObservableObject {
   @Published private(set) var content: String = ""
   private var pendingContent: String?
   private var flushTask: Task<Void, Never>?
-  // Each flush mutates `content`, which grows the streaming bubble's height and forces a
-  // ScrollView relayout; with `.scrollPosition(id:)` attached, every relayout runs SwiftUI's
-  // per-frame `findClosestSubview` sweep (coordinate-space conversion over visible subviews) and
-  // re-parses the markdown into blocks. That sweep's cost scales with the bubble's subview count,
-  // so a *fixed* flush rate that's fine for a short reply still wedges the main thread ≥4s once the
-  // reply is long (watchdog hang-20260619-151328.txt at 30fps; hang-20260701-134623.txt still hung
-  // at a fixed ~8fps on a long grounded reply — force-quit, no recovery). So scale the interval with
-  // accumulated length: snappy while short, progressively slower as the sweep gets heavier. We can't
-  // instead detach `.scrollPosition` while streaming — toggling it rebuilds the ScrollView and resets
-  // scroll to top on every send.
+  // Each flush mutates `content`, which grows the streaming bubble's height. The structural fix
+  // for the resulting freeze lives in `messageList`: the streaming bubble is rendered OUTSIDE the
+  // `.scrollTargetLayout()` LazyVStack, so its growth no longer forces a lazy placement pass or a
+  // `.scrollPosition(id:)` anchor re-resolution over the history (the two hot frames that wedged the
+  // main thread ≥4s — hang-20260619-151328.txt at 30fps, hang-20260701-134623.txt at ~8fps, and
+  // hang-20260703-093924.txt post-throttle). This throttle is now only a secondary guard against
+  // spending too much of a frame budget re-parsing/re-rendering markdown on a fast stream, so it
+  // still scales the interval with accumulated length: snappy while short, slower once long.
   private static func flushIntervalNs(forLength length: Int) -> UInt64 {
     switch length {
     case ..<4_000:  return 125_000_000  // ~8fps   — short reply, stays snappy
@@ -710,6 +709,7 @@ class ChatViewModel: ObservableObject {
         sendingSessionIds.remove(sessionId)
         supersedingSessionIds.remove(sessionId)
         sendTasks.removeValue(forKey: sessionId)
+        StallCancellationRegistry.shared.unregister(sessionId)
         // `ChatViewModel` is `@MainActor`, so this Task inherits MainActor — no explicit hop needed.
         self.processNextQueued()
       }
@@ -872,6 +872,9 @@ class ChatViewModel: ObservableObject {
       }
     }
     sendTasks[sessionId] = task
+    // Also expose the task to the watchdog so a main-thread stall during streaming can cancel it
+    // (see StallCancellationRegistry). Unregistered in the task's `defer` above.
+    StallCancellationRegistry.shared.register(sessionId, task: task)
   }
 
   private func validateCredential(for model: PromptModel) async -> Bool {
@@ -1311,6 +1314,9 @@ class ChatViewModel: ObservableObject {
   private func attachStreamingBuffer(for messageId: UUID) -> StreamingBuffer {
     let buffer = StreamingBuffer()
     streamingBuffers[messageId] = buffer
+    // Positive marker for freeze verification: while attached, the bubble renders outside the
+    // LazyVStack (see `messageList`), so per-token growth can't relayout the history.
+    DebugLogger.logUI("CHAT-LIST: streaming bubble detached from lazy list id=\(messageId)")
     return buffer
   }
 
@@ -2621,25 +2627,58 @@ struct ChatView: View {
 
   private func messageList(scrollActions: ChatScrollActions) -> some View {
     let lastUserMessageId = viewModel.messages.last(where: { $0.role == .user })?.id
+    // The actively streaming bubble is rendered OUTSIDE the LazyVStack (as a plain sibling
+    // below it) so its per-flush height growth cannot trigger a lazy placement pass or a
+    // scroll-anchor re-resolution over the whole history. Those two together were the freeze:
+    // a growing bubble inside `.scrollTargetLayout()` under `.scrollPosition(id:)` wedged the
+    // main thread in one non-returning layout transaction (hang-20260701-134623 =
+    // ScrollStateRequestTransform.findClosestSubview; hang-20260703-093924 =
+    // LazyVStack.placeSubviews — two hot frames of the same storm). `StreamingBuffer` already
+    // isolates render/diff invalidation, but a child's *height* change propagates to its
+    // container regardless of observation scoping, so isolation alone couldn't stop the relayout.
+    // Detached only when the streaming placeholder is the last message (it always is on the send
+    // path; retry truncates the tail before re-sending); any other case renders inline as before.
+    let detachedStreaming: (message: ChatMessage, buffer: StreamingBuffer)? = {
+      guard let last = viewModel.messages.last,
+            let buffer = viewModel.streamingBuffers[last.id] else { return nil }
+      return (last, buffer)
+    }()
     return ScrollViewReader { proxy in
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: 20) {
-          Color.clear.frame(height: 1).id("listTop")
-          if viewModel.messages.isEmpty && !viewModel.isSending {
-            emptyStateCommandHints
+        VStack(alignment: .leading, spacing: 20) {
+          LazyVStack(alignment: .leading, spacing: 20) {
+            Color.clear.frame(height: 1).id("listTop")
+            if viewModel.messages.isEmpty && !viewModel.isSending {
+              emptyStateCommandHints
+            }
+            ForEach(viewModel.messages) { message in
+              if message.id != detachedStreaming?.message.id {
+                MessageBubbleView(
+                  message: message,
+                  // Non-streaming bubbles only: the streaming placeholder is rendered
+                  // below, outside this lazy list, so per-token growth can't relayout it.
+                  streamingBuffer: viewModel.streamingBuffers[message.id],
+                  onTapAttachedImage: { previewImageData = $0 },
+                  onRetry: message.id == lastUserMessageId
+                    ? { viewModel.retryMessage(id: message.id) } : nil)
+                  .id(message.id)
+              }
+            }
           }
-          ForEach(viewModel.messages) { message in
+          .scrollTargetLayout()
+
+          // Detached streaming bubble: a plain leaf whose height growth only extends the
+          // scroll content downward — no lazy placement, no anchor re-resolution. Keeps its
+          // `.id` so `proxy.scrollTo(lastId)` still works and it re-enters the lazy list
+          // seamlessly at finalize (detach + updateStreamingMessage run in one MainActor step).
+          if let detached = detachedStreaming {
             MessageBubbleView(
-              message: message,
-              // Streaming bubble = the placeholder whose `StreamingBuffer` is still attached.
-              // The buffer drives its own observed subview, so per-token writes don't ripple
-              // through this ForEach or force a `LazyVStack` diff.
-              streamingBuffer: viewModel.streamingBuffers[message.id],
-              onTapAttachedImage: { previewImageData = $0 },
-              onRetry: message.id == lastUserMessageId
-                ? { viewModel.retryMessage(id: message.id) } : nil)
-              .id(message.id)
+              message: detached.message,
+              streamingBuffer: detached.buffer,
+              onTapAttachedImage: { previewImageData = $0 })
+              .id(detached.message.id)
           }
+
           ForEach(viewModel.messageQueue.filter { $0.sessionId == viewModel.currentSessionId }) { queued in
             HStack(alignment: .top, spacing: 6) {
               Spacer()
@@ -2666,7 +2705,6 @@ struct ChatView: View {
           }
           Color.clear.frame(height: 1).id("listBottom")
         }
-        .scrollTargetLayout()
         // Readable line length (measure): ~660 px keeps prose near the 50–75-character
         // sweet spot at the 16-pt body font; 720 ran ~90 chars and hurt readability.
         .frame(maxWidth: 660)

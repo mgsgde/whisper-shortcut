@@ -20,6 +20,7 @@ Every slash command follows **`{verb}-{topic}`**. The verb tells the agent _what
 | `/audit-llm-context [--scope=…] [--fix-tier-1] [--no-subagents]` | `audit-llm-context` | audit |
 | `/audit-llm-models [--provider …] [--role …] [--coverage] migrate` | `llm-model-docs` | audit    |
 | `/analyze-user-interactions [--mode …] [--since …] [--model …]` | `analyze-user-interactions` | analyze  |
+| `/analyze-chat-freeze [--file …] [--since …]`        | `analyze-chat-freeze`          | analyze  |
 | `/review-code [N]`                                   | —                              | review   |
 | `/review-llm-state-of-the-art`                       | `review-llm-state-of-the-art`  | review   |
 | `/validate-audio-verification`                       | `validate-audio-verification`  | validate |
