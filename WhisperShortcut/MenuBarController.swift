@@ -93,6 +93,10 @@ class MenuBarController: NSObject {
   /// `liveMeetingLastSummarizedChunkID`. When set, `triggerRollingSummaryUpdateIfNeeded` defers:
   /// it leaves the chunk counter past the threshold so the next chunk retries once the call returns.
   private var liveMeetingSummaryUpdateInFlight: Bool = false
+  /// Bumped on every session start. A rolling-summary Task captures the generation it launched under
+  /// so a straggler from a previous meeting (its API call can outlive a stop+restart) no-ops instead
+  /// of clearing the in-flight flag — or writing summary/chunk state — for the newer session.
+  private var liveMeetingSessionGeneration = 0
   /// When true, finishLiveMeetingSession will delete the transcript instead of saving.
   private var liveMeetingDiscard: Bool = false
 
@@ -843,6 +847,7 @@ class MenuBarController: NSObject {
     liveMeetingSummaryCircuitOpen = false
     liveMeetingDidShowSummaryFailureAlert = false
     liveMeetingSummaryUpdateInFlight = false
+    liveMeetingSessionGeneration += 1
     appState = .recording(.liveMeeting)
     if resuming && !existingChunks.isEmpty {
       LiveMeetingTranscriptStore.shared.resumeSession()
@@ -1177,19 +1182,26 @@ class MenuBarController: NSObject {
     liveMeetingLastSummarizedChunkID = newLastID
     liveMeetingChunksSinceSummary = 0
     liveMeetingSummaryUpdateInFlight = true
+    let generation = liveMeetingSessionGeneration
 
     Task {
       await runRollingSummaryUpdate(
         currentSummary: currentSummary,
         newText: newText,
-        previousLastID: previousLastID
+        previousLastID: previousLastID,
+        generation: generation
       )
-      await MainActor.run { self.liveMeetingSummaryUpdateInFlight = false }
+      await MainActor.run {
+        // Ignore a straggler from a previous session — clearing the flag here would defeat the
+        // single-flight guard for the meeting that's now running.
+        guard generation == self.liveMeetingSessionGeneration else { return }
+        self.liveMeetingSummaryUpdateInFlight = false
+      }
     }
   }
 
   /// Merges new transcript into the rolling summary (via the selected model's provider) and updates the store. Call from a Task.
-  private func runRollingSummaryUpdate(currentSummary: String, newText: String, previousLastID: UUID?) async {
+  private func runRollingSummaryUpdate(currentSummary: String, newText: String, previousLastID: UUID?, generation: Int) async {
     let model = PromptModel.loadSelectedMeetingSummary()
     guard model.hasRequiredCredential else {
       DebugLogger.logWarning("LIVE-MEETING-SUMMARY: No credential for \(model.rawValue) — skipping rolling summary update")
@@ -1199,6 +1211,8 @@ class MenuBarController: NSObject {
       let updated = try await MeetingListService.updateRollingSummary(
         currentSummary: currentSummary, newText: newText, model: model)
       await MainActor.run {
+        // A straggler from a previous session must not write into the current meeting's state.
+        guard generation == self.liveMeetingSessionGeneration else { return }
         let trimmed = updated.trimmingCharacters(in: .whitespacesAndNewlines)
         LiveMeetingTranscriptStore.shared.updateSummary(trimmed)
         if let url = self.liveMeetingTranscriptURL, !trimmed.isEmpty {
@@ -1210,6 +1224,7 @@ class MenuBarController: NSObject {
     } catch {
       DebugLogger.logError("LIVE-MEETING-SUMMARY: Update failed: \(error.localizedDescription)")
       await MainActor.run {
+        guard generation == self.liveMeetingSessionGeneration else { return }
         // Roll back so the next attempt re-summarizes the same range.
         self.liveMeetingLastSummarizedChunkID = previousLastID
         self.liveMeetingChunksSinceSummary = 0
