@@ -312,6 +312,20 @@ class GeminiAPIClient {
 
             continue  // Always retry after API-requested wait
           }
+
+          // A rate/quota error with no API-provided retry delay is a permanent
+          // block (e.g. a monthly spending-cap 429, RESOURCE_EXHAUSTED). It will
+          // not clear on its own, so retrying just delays the error and burns
+          // more requests against an already-capped project — fail fast instead.
+          if let te = error as? TranscriptionError {
+            switch te {
+            case .rateLimited(nil, _), .quotaExceeded(nil):
+              DebugLogger.log("\(mode)-RETRY: Permanent rate/quota limit (no retryDelay) – not retrying")
+              throw error
+            default:
+              break
+            }
+          }
         }
 
         // For server errors (503/500), allow more retry attempts with longer backoff
@@ -617,8 +631,17 @@ class GeminiAPIClient {
             guard let te else { return false }
             if te.isServerOrUnavailable { return true }
             switch te {
-            case .rateLimited, .quotaExceeded, .slowDown: return true
-            default: return false
+            case .rateLimited(let retryAfter, _), .quotaExceeded(let retryAfter):
+              // Only retry when the API told us the limit is temporary (it
+              // included a retryDelay). A permanent block — e.g. a monthly
+              // spending-cap 429 (RESOURCE_EXHAUSTED with no retryDelay) — will
+              // not clear until the user raises the cap, so retrying just burns
+              // ~9s of doomed requests before the error surfaces. Fail fast.
+              return retryAfter != nil
+            case .slowDown:
+              return true
+            default:
+              return false
             }
           }()
           if !hasYielded, isTransient, attempt < Constants.maxServerErrorRetryAttempts {
