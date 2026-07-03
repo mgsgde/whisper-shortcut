@@ -1,6 +1,6 @@
-# WhisperShortcut 7.75
+# WhisperShortcut 7.76
 
-Stability release focused on long chat replies and Live Meeting summaries.
+Live Meeting cost and reliability release.
 
 ## Installation
 
@@ -8,11 +8,14 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
+### Improvements
+- **Live Meeting uses far fewer API calls.** The default transcription interval is now 60 seconds (fewer chunk requests), and the live summary updates on demand — only when you open the Summary tab or chat with an active meeting — instead of on a fixed timer. The final meeting summary is unchanged.
+- **Easier meeting management from the sidebar.** Improved archive actions for meetings.
+- **Faster, clearer AI errors.** When a provider returns a permanent rate/quota error with no retry hint, WhisperShortcut now fails fast with a clear message instead of retrying for a long time.
+- **Sharper Smart Improvement suggestions.** Capitalized terms are now ranked by how consistently they're capitalized across your usage.
+
 ### Fixes
-- **Fixed a freeze during long streaming chat replies.** As a reply grew, the chat window could stop responding and force a quit. Streaming updates are now paced to the length of the reply, so long answers stay smooth.
-- **Fixed Live Meeting summary slowdowns.** On long meetings the live summary could fall behind and pile up repeated updates. Summary refreshes no longer overlap, and the running summary stays concise instead of growing without bound.
+- **Fixed a chat freeze during streaming replies.** The streaming bubble is now detached from the list layout so long, fast responses no longer wedge the main thread.
+- **More reliable live meeting summaries.** Summary writes are guarded with a per-session token so a straggling update from a previous meeting can no longer write into the current one.
 
-### Internal
-- **Improved hang detection:** freeze diagnostics no longer misreport an open dialog as a hang, making real issues easier to spot.
-
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.74...v7.75
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.75...v7.76
