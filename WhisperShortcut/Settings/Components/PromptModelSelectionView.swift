@@ -185,6 +185,7 @@ struct PromptModelSelectionView: View {
       (.gemini, "sparkles", "Gemini"),
       (.grok, "bolt.fill", "Grok (xAI)"),
       (.openai, "brain", "OpenAI"),
+      (.customOpenAI, "arrow.triangle.branch", "Custom endpoint"),
       (.local, "desktopcomputer", "Local (Ollama / LM Studio)"),
     ]
 

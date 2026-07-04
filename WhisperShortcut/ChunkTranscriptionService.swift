@@ -341,8 +341,10 @@ class ChunkTranscriptionService {
                 if let transcriptionError = error as? TranscriptionError {
                     switch transcriptionError {
                     case .rateLimited(let retryAfter, _), .quotaExceeded(let retryAfter):
-                        // Report to coordinator so all chunks pause
-                        await rateLimitCoordinator.reportRateLimit(retryAfter: retryAfter)
+                        // Only pause other chunks when the error is retryable (transient rate limit).
+                        if transcriptionError.isRetryable {
+                            await rateLimitCoordinator.reportRateLimit(retryAfter: retryAfter)
+                        }
 
                         // If we have a retry delay, this error is retryable
                         if retryAfter != nil && attempt < maxRetries {

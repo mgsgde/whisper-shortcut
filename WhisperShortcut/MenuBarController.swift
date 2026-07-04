@@ -635,7 +635,7 @@ class MenuBarController: NSObject {
       }
       let promptModel = PromptModel.loadPromptModel(
         forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
-      if promptModel.hasRequiredCredential {
+      if promptModel.hasRequiredCredentialForDictatePrompt {
         if !prepareDictatePromptSelection(logPrefix: "MEETING-SEGMENT") { return }
         DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
         activeMeetingSegment = .prompt
@@ -659,7 +659,7 @@ class MenuBarController: NSObject {
     case .none:
       let promptModel = PromptModel.loadPromptModel(
         forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
-      if appState.canStartPrompting(hasAPIKey: promptModel.hasRequiredCredential, hasOfflineModel: false) {
+      if appState.canStartPrompting(hasAPIKey: promptModel.hasRequiredCredentialForDictatePrompt, hasOfflineModel: false) {
         if !prepareDictatePromptSelection(logPrefix: "PROMPT-MODE") { return }
         appState = appState.startRecording(.prompt)
         audioRecorder.startRecording()
@@ -1360,8 +1360,8 @@ class MenuBarController: NSObject {
   
   private func performTranscription(audioURL: URL, duringMeeting: Bool = false) async {
     do {
-      let result = try await speechService.transcribe(audioURL: audioURL)
-      clipboardManager.copyToClipboard(text: result)
+      let result = try await speechService.transcribe(audioURL: audioURL, cancellable: !duringMeeting)
+      clipboardManager.copyTranscriptionToClipboard(text: result)
 
       let transcriptionModel = TranscriptionModel.loadSelected()
       let modelDisplayName = await speechService.getTranscriptionModelInfo()
@@ -1984,6 +1984,8 @@ extension MenuBarController: AudioRecorderDelegate {
         let mins = Int(duration) / 60
         let secs = Int(duration) % 60
         let timeStr = secs > 0 ? "\(mins) min \(secs) s" : "\(mins) min"
+        // Recording has finished; leave "Recording…" before the modal would be misleading.
+        self.appState = self.appState.stopRecording()
         let alert = NSAlert()
         alert.messageText = "Long recording"
         alert.informativeText = "This recording is \(timeStr) long. Process anyway? (API usage may incur costs.)"
@@ -2034,7 +2036,9 @@ extension MenuBarController: AudioRecorderDelegate {
         self.currentTranscriptionAudioURL = audioURL
       }
 
-      self.appState = self.appState.stopRecording()
+      if !self.appState.isProcessing {
+        self.appState = self.appState.stopRecording()
+      }
 
       Task {
         switch recordingMode {
@@ -2445,7 +2449,8 @@ extension MenuBarController: LiveMeetingRecorderDelegate {
         let text = try await speechService.transcribe(
           audioURL: audioURL,
           preferredModel: TranscriptionModel.loadSelectedForMeeting(),
-          promptOverride: AppConstants.liveMeetingDiarizationPrompt
+          promptOverride: AppConstants.liveMeetingDiarizationPrompt,
+          cancellable: false
         )
 
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)

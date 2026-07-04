@@ -37,6 +37,7 @@ class SpeechService {
   weak var chunkProgressDelegate: ChunkProgressDelegate?
 
   // MARK: - Task Tracking for Cancellation
+  private let transcriptionTaskLock = NSLock()
   private var currentTranscriptionTask: Task<String, Error>?
   private var currentPromptTask: Task<String, Error>?
   private var currentTTSTask: Task<Data, Error>?
@@ -127,8 +128,11 @@ class SpeechService {
   // MARK: - Cancellation Methods
   func cancelTranscription() {
     DebugLogger.log("CANCELLATION: Cancelling transcription task")
-    currentTranscriptionTask?.cancel()
+    transcriptionTaskLock.lock()
+    let task = currentTranscriptionTask
     currentTranscriptionTask = nil
+    transcriptionTaskLock.unlock()
+    task?.cancel()
   }
 
   func cancelPrompt() {
@@ -147,17 +151,31 @@ class SpeechService {
   /// - Parameters:
   ///   - preferredModel: If set (e.g. for live meeting), use this model; otherwise use the global Dictate selection.
   ///   - promptOverride: If set, use this prompt instead of the user's dictation prompt.
-  func transcribe(audioURL: URL, preferredModel: TranscriptionModel? = nil, promptOverride: String? = nil) async throws -> String {
+  ///   - cancellable: When false, skips the cancellation slot (e.g. live-meeting chunks).
+  func transcribe(
+    audioURL: URL,
+    preferredModel: TranscriptionModel? = nil,
+    promptOverride: String? = nil,
+    cancellable: Bool = true
+  ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
       try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride)
     }
 
-    currentTranscriptionTask = task
-    // Only clear the slot if this call still owns it — a concurrent newer call may have
-    // overwritten `currentTranscriptionTask` while we were suspended on `task.value`; its
-    // own `defer` will handle the clear.
-    defer { if currentTranscriptionTask == task { currentTranscriptionTask = nil } }
+    if cancellable {
+      transcriptionTaskLock.lock()
+      currentTranscriptionTask = task
+      transcriptionTaskLock.unlock()
+      // Only clear the slot if this call still owns it — a concurrent newer call may have
+      // overwritten `currentTranscriptionTask` while we were suspended on `task.value`; its
+      // own `defer` will handle the clear.
+      defer {
+        transcriptionTaskLock.lock()
+        if currentTranscriptionTask == task { currentTranscriptionTask = nil }
+        transcriptionTaskLock.unlock()
+      }
+    }
 
     return try await task.value
   }
@@ -331,6 +349,8 @@ class SpeechService {
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
       // rather than crash the menu-bar app if a future model/provider change reaches here.
       throw TranscriptionError.networkError("Grok can't process audio directly. Pick a Gemini model or OpenAI's GPT-4o Audio for Dictate Prompt.")
+    case .customOpenAI:
+      throw TranscriptionError.networkError("Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
     }
   }
 

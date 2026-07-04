@@ -24,10 +24,47 @@ final class OpenAIChatProvider: LLMChatProvider {
     disableBuiltInTools: Bool,  // OpenAI doesn't auto-enable built-in tools here; ignored.
     cacheKey: String?
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-    if useGrounding {
+    let useCustom = OpenAIChatPreferences.isCustomEndpointModel(model)
+    if useGrounding && !useCustom {
       return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel, cacheKey: cacheKey)
     }
     return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel, cacheKey: cacheKey)
+  }
+
+  // MARK: - Request credentials
+
+  private static func requireAPIKey(useCustomEndpoint: Bool) throws -> String {
+    if useCustomEndpoint {
+      guard OpenAIChatPreferences.customEndpointBaseURL != nil else {
+        throw TranscriptionError.networkError(
+          "Custom endpoint URL is missing. Set it in Settings → Chat, then select Custom endpoint as the chat model.")
+      }
+      guard let apiKey = OpenAIChatPreferences.resolvedAPIKey else {
+        throw TranscriptionError.networkError(
+          "No API key for the custom endpoint. Add a proxy key in Settings → Chat or an OpenAI key in Settings → General.")
+      }
+      return apiKey
+    }
+    guard let apiKey = KeychainManager.shared.getOpenAIAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !apiKey.isEmpty else {
+      throw TranscriptionError.networkError(
+        "No OpenAI API key configured. Add your OpenAI API key in Settings → General to use OpenAI models.")
+    }
+    return apiKey
+  }
+
+  private static func invalidKeyMessage(useCustomEndpoint: Bool) -> String {
+    if useCustomEndpoint {
+      return "API key is invalid for the custom endpoint. Check Settings → Chat or General."
+    }
+    return "OpenAI API key is invalid. Check the key in Settings → General."
+  }
+
+  private static func chatCompletionsURL(useCustomEndpoint: Bool) -> String {
+    if useCustomEndpoint {
+      return OpenAIChatPreferences.chatCompletionsURL
+    }
+    return "https://api.openai.com/v1/chat/completions"
   }
 
   // MARK: - Responses API (with web_search)
@@ -46,10 +83,7 @@ final class OpenAIChatProvider: LLMChatProvider {
     AsyncThrowingStream { continuation in
       let task = Task {
         do {
-          guard let apiKey = KeychainManager.shared.getOpenAIAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines),
-                !apiKey.isEmpty else {
-            throw TranscriptionError.networkError("No OpenAI API key configured. Add your OpenAI API key in Settings to use OpenAI models.")
-          }
+          let apiKey = try Self.requireAPIKey(useCustomEndpoint: false)
 
           let endpoint = "https://api.openai.com/v1/responses"
           guard let url = URL(string: endpoint) else {
@@ -117,7 +151,7 @@ final class OpenAIChatProvider: LLMChatProvider {
             let text = String(data: errData, encoding: .utf8) ?? ""
             DebugLogger.logError("OPENAI-RESPONSES: HTTP \(http.statusCode) body=\(text.prefix(500))")
             if http.statusCode == 401 {
-              throw TranscriptionError.networkError("OpenAI API key is invalid. Check the key in Settings → General.")
+              throw TranscriptionError.networkError(Self.invalidKeyMessage(useCustomEndpoint: false))
             }
             if http.statusCode == 429 {
               throw TranscriptionError.rateLimited(retryAfter: nil)
@@ -216,12 +250,11 @@ final class OpenAIChatProvider: LLMChatProvider {
     AsyncThrowingStream { continuation in
       let task = Task {
         do {
-          guard let apiKey = KeychainManager.shared.getOpenAIAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines),
-                !apiKey.isEmpty else {
-            throw TranscriptionError.networkError("No OpenAI API key configured. Add your OpenAI API key in Settings to use OpenAI models.")
-          }
+          let useCustom = OpenAIChatPreferences.isCustomEndpointModel(model)
+          let apiKey = try Self.requireAPIKey(useCustomEndpoint: useCustom)
+          let requestModel = OpenAIChatPreferences.resolvedRequestModelID(for: model)
 
-          let endpoint = "https://api.openai.com/v1/chat/completions"
+          let endpoint = Self.chatCompletionsURL(useCustomEndpoint: useCustom)
           guard let url = URL(string: endpoint) else {
             throw TranscriptionError.networkError("Invalid OpenAI endpoint URL")
           }
@@ -247,7 +280,7 @@ final class OpenAIChatProvider: LLMChatProvider {
           }
 
           var body: [String: Any] = [
-            "model": model,
+            "model": requestModel,
             "messages": messages,
             "stream": true,
           ]
@@ -287,7 +320,7 @@ final class OpenAIChatProvider: LLMChatProvider {
 
           request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-          DebugLogger.logNetwork("OPENAI-CHAT-STREAM: POST \(endpoint) model=\(model) messages=\(messages.count) tools=\(tools.count) effort=\(thinkingLevel.openAIReasoningEffort ?? "default")")
+          DebugLogger.logNetwork("OPENAI-CHAT-STREAM: POST \(endpoint) model=\(requestModel) messages=\(messages.count) tools=\(tools.count) effort=\(thinkingLevel.openAIReasoningEffort ?? "default")")
           let (bytes, response) = try await self.session.bytes(for: request)
           guard let http = response as? HTTPURLResponse else {
             throw TranscriptionError.networkError("Invalid response from OpenAI API")
@@ -298,7 +331,7 @@ final class OpenAIChatProvider: LLMChatProvider {
             let text = String(data: errData, encoding: .utf8) ?? ""
             DebugLogger.logError("OPENAI-CHAT-STREAM: HTTP \(http.statusCode) body=\(text.prefix(500))")
             if http.statusCode == 401 {
-              throw TranscriptionError.networkError("OpenAI API key is invalid. Check the key in Settings → General.")
+              throw TranscriptionError.networkError(Self.invalidKeyMessage(useCustomEndpoint: useCustom))
             }
             if http.statusCode == 429 {
               throw TranscriptionError.rateLimited(retryAfter: nil)
@@ -392,14 +425,13 @@ final class OpenAIChatProvider: LLMChatProvider {
     schemaName: String,
     thinkingLevel: ThinkingLevel
   ) async throws -> [String: Any] {
-    guard let apiKey = KeychainManager.shared.getOpenAIAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !apiKey.isEmpty else {
-      throw TranscriptionError.networkError("No OpenAI API key configured. Add your OpenAI API key in Settings to use OpenAI models.")
-    }
+    let useCustom = OpenAIChatPreferences.isCustomEndpointModel(model)
+    let apiKey = try Self.requireAPIKey(useCustomEndpoint: useCustom)
+    let requestModel = OpenAIChatPreferences.resolvedRequestModelID(for: model)
     return try await OpenAICompatibleStructured.generate(
-      endpoint: "https://api.openai.com/v1/chat/completions",
+      endpoint: Self.chatCompletionsURL(useCustomEndpoint: useCustom),
       apiKey: apiKey,
-      model: model,
+      model: requestModel,
       contents: contents,
       systemInstruction: systemInstruction,
       schema: schema,

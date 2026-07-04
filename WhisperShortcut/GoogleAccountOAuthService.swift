@@ -117,15 +117,18 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
 
     if let refreshToken = tokenResponse["refresh_token"] as? String {
       _ = KeychainManager.shared.saveGoogleCalendarRefreshToken(refreshToken)
+    } else if !KeychainManager.shared.hasGoogleCalendarRefreshToken() {
+      DebugLogger.logError("GOOGLE-OAUTH: No refresh_token in token response and none stored — connection cannot persist")
+      throw OAuthError.missingRefreshToken
     } else {
-      DebugLogger.logError("GOOGLE-OAUTH: No refresh_token in token response — re-authorization may be required on next launch")
+      DebugLogger.log("GOOGLE-OAUTH: No refresh_token in token response — reusing existing stored token")
     }
 
     accessToken = tokenResponse["access_token"] as? String
     if let expiresIn = tokenResponse["expires_in"] as? Int {
       accessTokenExpiry = Date().addingTimeInterval(TimeInterval(expiresIn - 60))
     }
-    isConnected = true
+    isConnected = KeychainManager.shared.hasGoogleCalendarRefreshToken()
   }
 
   // MARK: - Token Refresh
@@ -259,6 +262,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
     case noAuthorizationCode
     case tokenExchangeFailed(String)
     case missingAccessToken
+    case missingRefreshToken
     case notConnected
     case refreshTokenRevoked
     case invalidResponse
@@ -272,6 +276,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
       case .noAuthorizationCode: return "No authorization code in callback."
       case .tokenExchangeFailed(let msg): return "Token exchange failed: \(msg)"
       case .missingAccessToken: return "No access token in response."
+      case .missingRefreshToken: return "Google did not grant persistent access. Disconnect in your Google Account settings, then connect again in WhisperShortcut."
       case .notConnected: return "Google is not connected. Open Settings → Chat to connect."
       case .refreshTokenRevoked: return "Google access was revoked. Please connect again in Settings."
       case .invalidResponse: return "Invalid response from Google."

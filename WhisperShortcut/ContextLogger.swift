@@ -254,16 +254,31 @@ class ContextLogger {
 
   private func evictOldestAudioSamplesIfNeeded(reserving newSlots: Int) {
     let urls = audioSampleURLs()
-    let capacity = AppConstants.audioSampleMaxFiles
-    let overflow = urls.count + newSlots - capacity
-    guard overflow > 0 else { return }
-    let toDelete = Array(urls.prefix(overflow))
     let fm = FileManager.default
+    let capacity = AppConstants.audioSampleMaxFiles
+    let byteCap = AppConstants.audioSampleMaxTotalBytes
+
+    let sizes = urls.map { url -> Int in
+      ((try? fm.attributesOfItem(atPath: url.path)) ?? [:])[.size] as? Int ?? 0
+    }
+    var remainingBytes = sizes.reduce(0, +)
+    var remainingCount = urls.count
+
+    // Evict oldest-first until the pool fits under BOTH the file-count and total-byte caps.
+    var evictCount = 0
+    while evictCount < urls.count,
+          remainingCount + newSlots > capacity || remainingBytes > byteCap {
+      remainingBytes -= sizes[evictCount]
+      remainingCount -= 1
+      evictCount += 1
+    }
+    guard evictCount > 0 else { return }
+
     var deleted = 0
-    for url in toDelete {
+    for url in urls.prefix(evictCount) {
       if (try? fm.removeItem(at: url)) != nil { deleted += 1 }
     }
-    DebugLogger.logAudio("AUDIO-VERIFY: pool-trim deleted=\(deleted) remaining=\(max(0, urls.count - deleted)) capacity=\(capacity)")
+    DebugLogger.logAudio("AUDIO-VERIFY: pool-trim deleted=\(deleted) remaining=\(max(0, urls.count - deleted)) capacity=\(capacity) poolBytes=\(remainingBytes) byteCap=\(byteCap)")
   }
 
   private func audioSampleFilename() -> String {

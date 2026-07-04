@@ -893,10 +893,13 @@ class ChatViewModel: ObservableObject {
         return false
       }
     case .openai:
-      let key = (KeychainManager.shared.getOpenAIAPIKey() ?? "")
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !key.isEmpty else {
+      guard KeychainManager.shared.hasValidOpenAIAPIKey() else {
         errorMessage = "Add your OpenAI API key in Settings to use OpenAI models."
+        return false
+      }
+    case .customOpenAI:
+      guard OpenAIChatPreferences.isConfigured else {
+        errorMessage = "Configure your custom endpoint URL and API key in Settings → Chat, then select Custom endpoint as the chat model."
         return false
       }
     case .gemini:

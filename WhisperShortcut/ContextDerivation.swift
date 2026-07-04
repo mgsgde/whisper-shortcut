@@ -31,6 +31,11 @@ class ContextDerivation {
     let primaryEntryCount: Int
     let primaryCharCount: Int
     let secondaryCharCount: Int
+    /// Deterministic recurring-term statistics computed across ALL primary entries in the window
+    /// (dictation / whisperGlossary focuses only; empty otherwise). Unlike the sampled primary
+    /// text, these counts see the full corpus, so recurrence evidence does not depend on a term
+    /// happening to land twice in the sample.
+    let termEvidenceText: String
   }
 
   // MARK: - Structured Output Schema
@@ -86,7 +91,7 @@ class ContextDerivation {
   private var commonFooter: String {
     return """
 
-    EVIDENCE SOURCE (CRITICAL): Only labeled PRIMARY interactions can justify a change. Secondary/background context may help you understand the current prompt or choose wording, but it is NOT evidence for new behavior, terminology, corrections, or style rules. Never count the current prompt, other-mode context, or secondary entries toward evidence count.
+    EVIDENCE SOURCE (CRITICAL): Only labeled PRIMARY interactions can justify a change. Secondary/background context may help you understand the current prompt or choose wording, but it is NOT evidence for new behavior, terminology, corrections, or style rules. Never count the current prompt, other-mode context, or secondary entries toward evidence count. Exception: a "Recurring-term statistics" section, when present, is computed deterministically across ALL primary interactions in the window — its per-term counts ARE primary evidence and satisfy the recurrence threshold for the listed terms.
 
     PATTERN THRESHOLD (CRITICAL): Only modify the prompt based on RECURRING patterns — behaviors, corrections, terms, or style preferences that appear consistently across multiple distinct primary interactions. Single occurrences, one-off quirks, isolated topics, isolated words, or repeated content inside one interaction MUST be ignored, even if they look interesting or specific. A pattern qualifies only when it is supported by at least 2 distinct primary interactions. When in doubt, prefer NO_CHANGE over speculative rules.
 
@@ -96,7 +101,7 @@ class ContextDerivation {
 
     ABSTRACTION REQUIREMENT: If repeated examples point to a broader behavior, express only the broader behavior. Never copy example content into the prompt. For example, repeated multi-step planning entries may justify "preserve action items as concise steps", but must not add the actual tasks, project names, people, tools, dates, or topics from those entries.
 
-    PROMPT BLOAT CONTROL: Prefer NO_CHANGE unless the new rule replaces, merges, shortens, or materially improves an existing generic rule. Do not append niche guidance or make the prompt more specific just because the data contains repeated concrete details. Keep the suggested prompt equal in length or shorter unless a broadly useful recurring behavior clearly requires a new rule.
+    PROMPT BLOAT CONTROL: Prefer NO_CHANGE unless the new rule replaces, merges, shortens, or materially improves an existing generic rule. Do not append niche guidance or make the prompt more specific just because the data contains repeated concrete details. Keep the suggested prompt equal in length or shorter unless a broadly useful recurring behavior clearly requires a new rule. Exception: adding recurring, well-evidenced domain terms, corrections, or glossary vocabulary is a valid reason for the prompt to grow moderately — vocabulary that meets the recurrence threshold should be added, not suppressed for length.
 
     OUTPUT FORMAT (CRITICAL): Respond with a single JSON object with exactly these fields:
     - "decision": "suggest" or "no_change".
@@ -159,17 +164,19 @@ class ContextDerivation {
         focus: focus,
         primaryText: loaded.primaryText,
         secondaryText: loaded.secondaryText,
+        termEvidenceText: loaded.termEvidenceText,
         currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
         currentDictationPrompt: currentDictationPrompt,
         currentWhisperGlossary: currentWhisperGlossary,
         audioAttachments: audioAttachments,
         credential: credential
       )
-    case .openai, .grok, .local:
+    case .openai, .grok, .local, .customOpenAI:
       analysisResult = try await callTextModelForAnalysis(
         focus: focus,
         primaryText: loaded.primaryText,
         secondaryText: loaded.secondaryText,
+        termEvidenceText: loaded.termEvidenceText,
         currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
         currentDictationPrompt: currentDictationPrompt,
         currentWhisperGlossary: currentWhisperGlossary,
@@ -253,16 +260,25 @@ class ContextDerivation {
     DebugLogger.log("AUDIO-VERIFY: focus=\(focus) candidateTerms=\(candidates.count) top=[\(candidates.prefix(15).joined(separator: ", "))]")
 
     let cap = AppConstants.audioSamplesPerRun
+    let byteBudget = AppConstants.audioAttachmentMaxTotalBytes
     let newestFirst = allSamples.reversed().map { ($0, $0.lastPathComponent) }
     var picked: [AudioAttachment] = []
     var usedRefs = Set<String>()
+    var attachedBytes = 0
 
     func attach(url: URL, ref: String, term: String?) {
       guard picked.count < cap, !usedRefs.contains(ref), eligibleRefs.contains(ref),
             let modelRaw = refToModel[ref], let data = try? Data(contentsOf: url) else { return }
+      // Total-size budget: base64 inflates by ~33% and Gemini caps inline_data requests at 20 MB,
+      // so skip clips that would push the raw total past the budget instead of failing the request.
+      guard attachedBytes + data.count <= byteBudget else {
+        DebugLogger.log("AUDIO-VERIFY: focus=\(focus) skip ref=\(ref) reason=size-budget clipBytes=\(data.count) attachedBytes=\(attachedBytes) budget=\(byteBudget)")
+        return
+      }
       usedRefs.insert(ref)
+      attachedBytes += data.count
       picked.append(AudioAttachment(ref: ref, transcriptionModel: modelRaw, candidateTerm: term, base64WAV: data.base64EncodedString()))
-      DebugLogger.log("AUDIO-VERIFY: focus=\(focus) asymmetry ref=\(ref) transcriptionModel=\(modelRaw) smartModel=\(smartModel.rawValue) informative=true term=\(term ?? "—")")
+      DebugLogger.log("AUDIO-VERIFY: focus=\(focus) asymmetry ref=\(ref) transcriptionModel=\(modelRaw) smartModel=\(smartModel.rawValue) informative=true term=\(term ?? "—") clipBytes=\(data.count)")
     }
 
     for term in candidates {
@@ -279,7 +295,7 @@ class ContextDerivation {
       attach(url: url, ref: ref, term: nil)
     }
 
-    DebugLogger.log("AUDIO-VERIFY: focus=\(focus) attach selectedClips=\(picked.count) skippedAsymmetry=\(skippedAsymmetry) skippedUnknownModel=\(skippedUnknownModel) capPerRun=\(cap) candidateTerms=\(candidates.count)")
+    DebugLogger.log("AUDIO-VERIFY: focus=\(focus) attach selectedClips=\(picked.count) attachedBytes=\(attachedBytes) skippedAsymmetry=\(skippedAsymmetry) skippedUnknownModel=\(skippedUnknownModel) capPerRun=\(cap) candidateTerms=\(candidates.count)")
     return picked
   }
 
@@ -292,14 +308,23 @@ class ContextDerivation {
   /// they dictate — and is excluded. This keeps the feature generic across users and languages; there
   /// is no baked-in word list for any one language.
   private func candidateTermsForVerification(refToText: [String: String]) -> [String] {
-    let totalDocs = refToText.count
+    Self.rankedRecurringTerms(texts: Array(refToText.values), maxTerms: AppConstants.audioCandidateMaxTerms)
+      .map(\.display)
+  }
+
+  /// Shared recurring-term extraction over a set of transcripts: most distinctive-looking recurring
+  /// terms first, each with the number of distinct transcripts it appears in. Used both for
+  /// content-aware audio clip selection and for the deterministic term-frequency evidence section
+  /// sent to the analysis model.
+  private static func rankedRecurringTerms(texts: [String], maxTerms: Int) -> [(display: String, docCount: Int)] {
+    let totalDocs = texts.count
     guard totalDocs > 0 else { return [] }
 
     var docFreq: [String: Int] = [:]       // lowercased term → distinct-transcript count
     var display: [String: String] = [:]    // lowercased → first-seen original casing
     var occurrences: [String: Int] = [:]   // lowercased → total raw occurrences (for casing stats)
     var upperInitial: [String: Int] = [:]  // lowercased → occurrences with an uppercase first letter
-    for text in refToText.values {
+    for text in texts {
       var seen = Set<String>()
       // Alphanumeric tokens so digit-bearing tech terms ("GPT5", "M4Pro") survive — the digit cue
       // in `isDistinctivelyShaped` relies on this. Pure numbers (years, counts) are noise; skip them.
@@ -328,18 +353,18 @@ class ContextDerivation {
         // Distinctive-looking terms (proper nouns, consistently-capitalized nouns, CamelCase,
         // acronyms, digit-bearing tech terms) first, then by recurrence, then alphabetical for
         // stability. The shape cue is language-agnostic.
-        let sa = Self.isDistinctivelyShaped(display: display[a.key] ?? a.key,
-                                            occurrences: occurrences[a.key] ?? 0,
-                                            upperInitial: upperInitial[a.key] ?? 0)
-        let sb = Self.isDistinctivelyShaped(display: display[b.key] ?? b.key,
-                                            occurrences: occurrences[b.key] ?? 0,
-                                            upperInitial: upperInitial[b.key] ?? 0)
+        let sa = isDistinctivelyShaped(display: display[a.key] ?? a.key,
+                                       occurrences: occurrences[a.key] ?? 0,
+                                       upperInitial: upperInitial[a.key] ?? 0)
+        let sb = isDistinctivelyShaped(display: display[b.key] ?? b.key,
+                                       occurrences: occurrences[b.key] ?? 0,
+                                       upperInitial: upperInitial[b.key] ?? 0)
         if sa != sb { return sa }
         if a.value != b.value { return a.value > b.value }
         return a.key < b.key
       }
-      .prefix(AppConstants.audioCandidateMaxTerms)
-      .compactMap { display[$0.key] }
+      .prefix(maxTerms)
+      .compactMap { entry in display[entry.key].map { ($0, entry.value) } }
   }
 
   /// Language-agnostic structural cue that a token is a name/term rather than a plain function word.
@@ -387,7 +412,7 @@ class ContextDerivation {
 
     let logFiles = ContextLogger.shared.interactionLogFiles(lastDays: AppConstants.contextTier3Days)
     guard !logFiles.isEmpty else {
-      return FocusedLoadResult(primaryText: "", secondaryText: "", primaryEntryCount: 0, primaryCharCount: 0, secondaryCharCount: 0)
+      return FocusedLoadResult(primaryText: "", secondaryText: "", primaryEntryCount: 0, primaryCharCount: 0, secondaryCharCount: 0, termEvidenceText: "")
     }
 
     var entriesByMode: [String: [InteractionLogEntry]] = [:]
@@ -407,7 +432,7 @@ class ContextDerivation {
     let tier2Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.contextTier2Days, to: now) ?? now
 
     guard let primaryMode = Self.primaryMode(for: focus) else {
-      return FocusedLoadResult(primaryText: "", secondaryText: "", primaryEntryCount: 0, primaryCharCount: 0, secondaryCharCount: 0)
+      return FocusedLoadResult(primaryText: "", secondaryText: "", primaryEntryCount: 0, primaryCharCount: 0, secondaryCharCount: 0, termEvidenceText: "")
     }
 
     let primaryEntries = entriesByMode[primaryMode] ?? []
@@ -452,12 +477,27 @@ class ContextDerivation {
     }
 
     let secondaryText = secondaryParts.joined(separator: "\n\n---\n\n")
+
+    // Full-corpus term evidence for the vocabulary-driven focuses: counts over ALL primary
+    // entries (not the sample), so recurring terms qualify for the ≥2-interactions threshold
+    // even when they don't happen to land twice in the sampled entries.
+    var termEvidenceText = ""
+    if focus == .dictation || focus == .whisperGlossary {
+      let allPrimaryTexts = sortedPrimary.compactMap { $0.result }
+      let stats = Self.rankedRecurringTerms(texts: allPrimaryTexts, maxTerms: AppConstants.contextTermEvidenceMaxTerms)
+      if !stats.isEmpty {
+        let lines = stats.map { "- \($0.display) — \($0.docCount)" }.joined(separator: "\n")
+        termEvidenceText = "Total primary interactions scanned: \(allPrimaryTexts.count)\n\(lines)"
+      }
+    }
+
     return FocusedLoadResult(
       primaryText: primaryText,
       secondaryText: secondaryText,
       primaryEntryCount: primaryEntryCount,
       primaryCharCount: primaryCharCount,
-      secondaryCharCount: secondaryText.count
+      secondaryCharCount: secondaryText.count,
+      termEvidenceText: termEvidenceText
     )
   }
 
@@ -696,6 +736,7 @@ class ContextDerivation {
     focus: GenerationKind,
     primaryText: String,
     secondaryText: String,
+    termEvidenceText: String,
     currentPromptModeSystemPrompt: String?,
     currentDictationPrompt: String?,
     currentWhisperGlossary: String?,
@@ -710,6 +751,7 @@ class ContextDerivation {
       focus: focus,
       primaryText: primaryText,
       secondaryText: secondaryText,
+      termEvidenceText: termEvidenceText,
       currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
       currentDictationPrompt: currentDictationPrompt,
       currentWhisperGlossary: currentWhisperGlossary,
@@ -762,6 +804,7 @@ class ContextDerivation {
     focus: GenerationKind,
     primaryText: String,
     secondaryText: String,
+    termEvidenceText: String,
     currentPromptModeSystemPrompt: String?,
     currentDictationPrompt: String?,
     currentWhisperGlossary: String?,
@@ -788,6 +831,15 @@ class ContextDerivation {
     } else {
       userMessageParts.append("## Primary interactions\n\n(none for the target mode)")
     }
+    if !termEvidenceText.isEmpty {
+      userMessageParts.append("""
+      ## Recurring-term statistics (PRIMARY EVIDENCE — computed across ALL primary interactions in the window, not only the sample above)
+
+      Each line is "term — number of distinct primary interactions containing it", computed deterministically over the full history. A count of 2 or more satisfies the recurrence threshold for that term even if it does not appear twice in the sampled entries above. Still apply the generality filter: prefer stable names, products, and technical vocabulary; skip terms that look like ordinary words despite recurring.
+
+      \(termEvidenceText)
+      """)
+    }
     if !secondaryText.isEmpty {
       userMessageParts.append("## Other-mode context (background only)\n\n\(secondaryText)")
     }
@@ -809,6 +861,7 @@ class ContextDerivation {
     focus: GenerationKind,
     primaryText: String,
     secondaryText: String,
+    termEvidenceText: String,
     currentPromptModeSystemPrompt: String?,
     currentDictationPrompt: String?,
     currentWhisperGlossary: String?,
@@ -818,6 +871,11 @@ class ContextDerivation {
     case .openai:
       guard KeychainManager.shared.hasValidOpenAIAPIKey() else {
         throw TranscriptionError.networkError("OpenAI API key is missing — add it in Settings → General.")
+      }
+    case .customOpenAI:
+      guard OpenAIChatPreferences.isConfigured else {
+        throw TranscriptionError.networkError(
+          "Custom endpoint is not configured — set URL and API key in Settings → Chat.")
       }
     case .grok:
       guard KeychainManager.shared.hasValidXAIAPIKey() else {
@@ -835,6 +893,7 @@ class ContextDerivation {
       focus: focus,
       primaryText: primaryText,
       secondaryText: secondaryText,
+      termEvidenceText: termEvidenceText,
       currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
       currentDictationPrompt: currentDictationPrompt,
       currentWhisperGlossary: currentWhisperGlossary,

@@ -357,9 +357,18 @@ Transcript:
   /// ~3000 chars ≈ ~750 tokens; keeps system instruction small and leaves room for conversation.
   static let contextMaxChars: Int = 3000
 
-  // MARK: - Context Derivation Limits (smaller = faster "Generate with AI", recent data still prioritized by tiered sampling)
-  static let contextDefaultMaxEntriesPerMode: Int = 15
-  static let contextDefaultMaxTotalChars: Int = 25_000
+  // MARK: - Context Derivation Limits (recent data prioritized by tiered sampling)
+  // The per-mode entry cap must be large enough that RECURRING patterns survive sampling: the
+  // analysis prompt only accepts changes evidenced by ≥2 distinct primary interactions, and a
+  // term recurring in ~5% of dictations almost never lands twice in a 15-entry sample. 80 entries
+  // (bounded by the char budget below) makes recurrence statistically visible to the model.
+  static let contextDefaultMaxEntriesPerMode: Int = 80
+  static let contextDefaultMaxTotalChars: Int = 60_000
+
+  /// Maximum number of recurring terms included in the deterministic term-frequency evidence
+  /// section (computed across ALL primary interactions, not just the sampled ones) for the
+  /// dictation and Whisper Glossary focuses.
+  static let contextTermEvidenceMaxTerms: Int = 40
 
   /// Tiered sampling: 50% from last 7 days, 30% from days 8–14, 20% from days 15–30.
   static let contextTier1Days: Int = 7
@@ -377,6 +386,10 @@ Transcript:
   /// age, see `audioSampleRetentionDays`) so candidate terms that appear only in older dictations can
   /// still be verified; this cap only guards against unbounded disk growth, not normal rotation.
   static let audioSampleMaxFiles: Int = 500
+  /// Hard cap on the total on-disk size of the audio sample pool. Long dictations are multi-MB WAVs,
+  /// so a file-count cap alone can let the pool grow to hundreds of MB; the oldest samples are evicted
+  /// until the pool fits under both caps.
+  static let audioSampleMaxTotalBytes: Int = 200_000_000
   /// Audio older than this many days is pruned at the start of each Smart Improvement run. Matches the
   /// text-analysis window (`contextTier3Days`) so audio and text cover the same period.
   static let audioSampleRetentionDays: Int = 30
@@ -384,6 +397,10 @@ Transcript:
   /// are chosen content-aware: one representative clip per recurring candidate term (newest first),
   /// then topped up with the newest clips for freshness.
   static let audioSamplesPerRun: Int = 12
+  /// Total raw-WAV byte budget for the audio clips attached to one analysis request. Base64 inflates
+  /// payloads by ~33% and Gemini caps inline_data requests at 20 MB, so 12 MB raw (~16 MB encoded)
+  /// leaves headroom for the text body. Clips that would exceed the budget are skipped.
+  static let audioAttachmentMaxTotalBytes: Int = 12_000_000
   /// A vocabulary term must appear in at least this many DISTINCT dictation transcripts to become an
   /// audio-verification candidate (filters one-off words).
   static let audioCandidateMinFrequency: Int = 2

@@ -14,11 +14,13 @@ class ClipboardManager {
   }
 
   func copyToClipboard(text: String) {
-    // Format the text before copying
-    let formattedText = formatTranscription(text)
-
     pasteboard.clearContents()
-    pasteboard.setString(formattedText, forType: .string)
+    pasteboard.setString(text, forType: .string)
+  }
+
+  /// Copies dictation transcript text with capitalization and trailing punctuation.
+  func copyTranscriptionToClipboard(text: String) {
+    copyToClipboard(text: formatTranscription(text))
   }
 
   func getClipboardText() -> String? {

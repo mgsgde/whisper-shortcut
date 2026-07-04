@@ -37,6 +37,8 @@ protocol KeychainManaging {
   func getCustomTranscriptionBearerToken() -> String?
   func saveCustomTranscriptionHeaders(_ headers: [[String: String]]) -> Bool
   func getCustomTranscriptionHeaders() -> [[String: String]]
+  func saveCustomOpenAIChatAPIKey(_ apiKey: String) -> Bool
+  func getCustomOpenAIChatAPIKey() -> String?
 }
 
 class KeychainManager: KeychainManaging {
@@ -54,6 +56,7 @@ class KeychainManager: KeychainManaging {
     static let trelloAPIKeyAccountName = "trello-api-key"
     static let customTranscriptionBearerTokenAccountName = "custom-transcription-bearer-token"
     static let customTranscriptionHeadersAccountName = "custom-transcription-headers"
+    static let customOpenAIChatAPIKeyAccountName = "custom-openai-chat-api-key"
   }
 
   // MARK: - In-memory cache
@@ -393,5 +396,17 @@ class KeychainManager: KeychainManaging {
       return []
     }
     return headers
+  }
+
+  // MARK: - Custom OpenAI-compatible Chat Endpoint API Key
+  // Optional override when routing chat through a proxy (OpenRouter, LiteLLM, …). When empty,
+  // OpenAIChatPreferences falls back to the standard OpenAI key from Settings → General.
+
+  func saveCustomOpenAIChatAPIKey(_ apiKey: String) -> Bool {
+    return saveKey(apiKey, accountName: Constants.customOpenAIChatAPIKeyAccountName)
+  }
+
+  func getCustomOpenAIChatAPIKey() -> String? {
+    return getKey(accountName: Constants.customOpenAIChatAPIKeyAccountName)
   }
 }

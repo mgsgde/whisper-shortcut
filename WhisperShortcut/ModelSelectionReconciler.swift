@@ -20,6 +20,7 @@ enum ModelSelectionReconciler {
     switch provider {
     case .gemini: return GeminiCredentialProvider.shared.hasCredential()
     case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
+    case .customOpenAI: return OpenAIChatPreferences.isConfigured
     case .grok: return KeychainManager.shared.hasValidXAIAPIKey()
     // Local server needs no key — treat as "always available" so a user's explicit local
     // selection is never reconciled away.
@@ -108,9 +109,8 @@ enum ModelSelectionReconciler {
     case .gemini: replacement = .gemini31FlashLite
     case .openai: replacement = .openAIGPT4oMiniTranscribe
     case .grok: replacement = .xaiTranscribe
-    // `providerPreference` never includes `.local`, so this is unreachable; leave the
-    // transcription selection untouched rather than substitute a non-transcription model.
-    case .local: return
+    // `providerPreference` never includes `.local` or `.customOpenAI`.
+    case .local, .customOpenAI: return
     }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
     DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue)")

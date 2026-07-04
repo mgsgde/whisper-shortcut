@@ -107,6 +107,12 @@ enum UserDefaultsKeys {
   // MARK: - Custom Transcription API
   static let customTranscriptionAPIURL = "customTranscriptionAPIURL"
 
+  // MARK: - Custom OpenAI-compatible Chat Endpoint (OpenRouter, LiteLLM, self-hosted proxy, …)
+  /// Base URL up to `/v1` (the app appends `/chat/completions`). Empty → official OpenAI API.
+  static let customOpenAIChatEndpointURL = "customOpenAIChatEndpointURL"
+  /// Model tag for the Custom endpoint chat model (e.g. `openai/gpt-4o` on OpenRouter).
+  static let customOpenAIChatModelID = "customOpenAIChatModelID"
+
   // MARK: - Local LLM (OpenAI-compatible, e.g. Ollama / LM Studio)
   /// Base URL of the local OpenAI-compatible server (the part before `/chat/completions`),
   /// e.g. `http://localhost:11434/v1`. Empty → SettingsDefaults.localEndpointURL.

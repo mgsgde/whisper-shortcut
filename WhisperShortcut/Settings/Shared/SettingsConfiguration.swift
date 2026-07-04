@@ -5,6 +5,9 @@ enum ChatModelProvider: String, CaseIterable {
   case gemini
   case grok
   case openai
+  /// User-configured OpenAI-compatible chat proxy (OpenRouter, LiteLLM, …). Endpoint, model id,
+  /// and optional API key are read from `OpenAIChatPreferences`. Selected explicitly in Chat.
+  case customOpenAI
   /// Local OpenAI-compatible server (Ollama / LM Studio). No API key; endpoint + model id are
   /// read from UserDefaults via `LocalLLMPreferences`. Runs fully on the user's machine.
   case local
@@ -20,6 +23,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .gemini: return .gemini35Flash
     case .grok:   return .grok43
     case .openai: return .openaiGPT55
+    case .customOpenAI: return .customOpenAIEndpoint
     case .local:  return .localModel
     }
   }
@@ -32,6 +36,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .gemini: return "gemini"
     case .grok:   return "grok"
     case .openai: return "gpt"
+    case .customOpenAI: return "custom"
     case .local:  return "local"
     }
   }
@@ -80,6 +85,10 @@ enum PromptModel: String, CaseIterable {
   /// Reference: https://platform.openai.com/docs/guides/audio
   case openaiGPT4oAudio = "gpt-audio"
 
+  // OpenAI-compatible chat proxy (OpenRouter, LiteLLM, self-hosted, …). The rawValue is a stable
+  // sentinel — the actual model tag sent to the server is read from `OpenAIChatPreferences.modelID`.
+  case customOpenAIEndpoint = "custom-openai-endpoint"
+
   // Local model served by an OpenAI-compatible server on the user's machine (Ollama / LM Studio).
   // The rawValue is a stable sentinel — the *actual* model tag sent to the server is configurable
   // and read from `LocalLLMPreferences.modelID`, so one enum case covers whatever the user pulled.
@@ -119,6 +128,8 @@ enum PromptModel: String, CaseIterable {
       return "OpenAI GPT-5.5"
     case .openaiGPT4oAudio:
       return "OpenAI GPT Audio"
+    case .customOpenAIEndpoint:
+      return "Custom endpoint (OpenRouter / proxy)"
     case .localModel:
       return "Local (Ollama / LM Studio)"
     }
@@ -150,6 +161,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT5Mini:    return "gpt5mini"
     case .openaiGPT55:       return "gpt55"
     case .openaiGPT4oAudio:  return "gptaudio" // audio-only; excluded from chatModels, never surfaced
+    case .customOpenAIEndpoint: return "custom"
     case .localModel:        return "local"
     }
   }
@@ -188,6 +200,8 @@ enum PromptModel: String, CaseIterable {
       return "OpenAI's GPT-5.5 • Newest flagship (April 2026) • Text + images • Requires OpenAI API key"
     case .openaiGPT4oAudio:
       return "OpenAI's GPT Audio • Accepts inline audio for voice-driven prompts • Requires OpenAI API key"
+    case .customOpenAIEndpoint:
+      return "Your own OpenAI-compatible chat server (OpenRouter, LiteLLM, …) • Configure URL + model in Settings → Chat • Uses /chat/completions only (no web search)"
     case .localModel:
       return "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings"
     }
@@ -200,7 +214,7 @@ enum PromptModel: String, CaseIterable {
   
   var costLevel: String {
     switch self {
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash, .geminiImage, .localModel:
+    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash, .geminiImage, .customOpenAIEndpoint, .localModel:
       return "Low"
     case .gemini25Pro, .gemini31Pro, .geminiImagePro:
       return "Medium"
@@ -219,6 +233,8 @@ enum PromptModel: String, CaseIterable {
       return .grok
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
       return .openai
+    case .customOpenAIEndpoint:
+      return .customOpenAI
     case .localModel:
       return .local
     default:
@@ -259,15 +275,25 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
-  /// Whether the user has the API key this model's provider needs. Used to gate features
-  /// (Dictate Prompt, chat, Smart Improvement) so a single provider key is enough.
+  /// Whether the user has the API key this model's provider needs. Used to gate chat, meeting
+  /// summary, Read Aloud smart rewrite, and Smart Improvement.
   var hasRequiredCredential: Bool {
     switch provider {
     case .gemini: return GeminiCredentialProvider.shared.hasCredential()
     case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
+    case .customOpenAI: return OpenAIChatPreferences.isConfigured
     case .grok: return KeychainManager.shared.hasValidXAIAPIKey()
     // Local server needs no API key — reachability is checked at request time, not here.
     case .local: return true
+    }
+  }
+
+  /// Stricter credential check for Dictate Prompt: OpenAI audio models still hit api.openai.com
+  /// directly, so a proxy-only key is not enough.
+  var hasRequiredCredentialForDictatePrompt: Bool {
+    switch provider {
+    case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
+    default: return hasRequiredCredential
     }
   }
 
@@ -276,6 +302,7 @@ enum PromptModel: String, CaseIterable {
     switch provider {
     case .gemini: return "Add your Gemini API key in Settings (General tab) to use Dictate Prompt."
     case .openai: return "Add your OpenAI API key in Settings (General tab) to use Dictate Prompt."
+    case .customOpenAI: return "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .grok: return "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings."
     case .local: return "Set your local server endpoint (Ollama / LM Studio) in Dictate Prompt settings, and make sure it is running."
     }
@@ -288,7 +315,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT4oAudio:
       return false
     // Local text models in Phase 1 are text-only; no image parts are sent to the local server.
-    case .localModel:
+    case .localModel, .customOpenAIEndpoint:
       return false
     default:
       return true
@@ -342,7 +369,7 @@ enum PromptModel: String, CaseIterable {
     // Non-Gemini — ignored by other providers
     case .grok4, .grok4Reasoning, .grok43,
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
-         .localModel:
+         .customOpenAIEndpoint, .localModel:
       return nil
     }
   }
@@ -374,8 +401,8 @@ enum PromptModel: String, CaseIterable {
       return nil // Grok models are text-only, no audio transcription
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
-    case .localModel:
-      return nil // local LLM is text-only; STT runs through the separate transcription pipeline
+    case .customOpenAIEndpoint, .localModel:
+      return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
     }
   }
 
@@ -387,8 +414,8 @@ enum PromptModel: String, CaseIterable {
   ///   the Responses API path doesn't apply.
   var supportsGrounding: Bool {
     switch self {
-    case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .localModel:
-      // Audio-only, image-generation, and local models have no web-search/grounding path.
+    case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .localModel:
+      // Audio-only, image-generation, proxy, and local models have no web-search/grounding path.
       return false
     default:
       return true
@@ -1099,6 +1126,62 @@ enum ReadAloudPreferences {
   }
 }
 
+// MARK: - Custom OpenAI-compatible Chat Preferences (UserDefaults + Keychain Accessors)
+/// Settings for the explicit **Custom endpoint** chat model (`PromptModel.customOpenAIEndpoint`).
+/// Regular OpenAI models (GPT-5, …) always use api.openai.com regardless of these values.
+enum OpenAIChatPreferences {
+  static let sentinelModelRawValue = PromptModel.customOpenAIEndpoint.rawValue
+
+  /// Non-empty when the user configured a custom base URL in Settings → Chat.
+  static var customEndpointBaseURL: String? {
+    let trimmed = (UserDefaults.standard.string(forKey: UserDefaultsKeys.customOpenAIChatEndpointURL) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+  }
+
+  /// Model tag sent to the proxy (e.g. `openai/gpt-4o` on OpenRouter).
+  static var modelID: String {
+    let v = (UserDefaults.standard.string(forKey: UserDefaultsKeys.customOpenAIChatModelID) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    return v.isEmpty ? SettingsDefaults.customOpenAIChatModelID : v
+  }
+
+  /// API key for the custom endpoint: proxy-specific key if set, otherwise the standard OpenAI key.
+  static var resolvedAPIKey: String? {
+    let custom = KeychainManager.shared.getCustomOpenAIChatAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let custom, !custom.isEmpty { return custom }
+    let standard = KeychainManager.shared.getOpenAIAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let standard, !standard.isEmpty { return standard }
+    return nil
+  }
+
+  /// True when URL + any usable API key are set — required before the Custom endpoint model can run.
+  static var isConfigured: Bool {
+    customEndpointBaseURL != nil && resolvedAPIKey != nil
+  }
+
+  static func isCustomEndpointModel(_ model: String) -> Bool {
+    model == sentinelModelRawValue
+  }
+
+  static func resolvedRequestModelID(for model: String) -> String {
+    isCustomEndpointModel(model) ? modelID : model
+  }
+
+  static var chatCompletionsURL: String {
+    guard let base = customEndpointBaseURL else {
+      return "https://invalid.local/missing-custom-openai-endpoint"
+    }
+    return appendPath("chat/completions", to: base)
+  }
+
+  private static func appendPath(_ pathSuffix: String, to base: String) -> String {
+    let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
+    if trimmed.hasSuffix("/\(pathSuffix)") { return trimmed }
+    return trimmed + "/\(pathSuffix)"
+  }
+}
+
 // MARK: - Local LLM Preferences (UserDefaults Accessors)
 /// Centralized read accessors for the local OpenAI-compatible server settings (Ollama / LM Studio),
 /// so `SpeechService` / `LocalLLMChatProvider` don't each coalesce-with-default the same keys.
@@ -1217,6 +1300,8 @@ struct SettingsDefaults {
   static let localEndpointURL = "http://localhost:11434/v1"
   /// Default model tag requested from the local server when the user hasn't set one.
   static let localModelID = "qwen3"
+  /// Default model tag for the Custom endpoint chat model (OpenRouter-style slug).
+  static let customOpenAIChatModelID = "openai/gpt-4o"
 
   // MARK: - UI State
   static let errorMessage = ""
