@@ -1168,6 +1168,12 @@ enum OpenAIChatPreferences {
     isCustomEndpointModel(model) ? modelID : model
   }
 
+  /// Applies the [OpenInference](https://openinference.de/) URL + GLM 5.2 model preset.
+  static func applyOpenInferencePreset() {
+    UserDefaults.standard.set(SettingsDefaults.openInferenceEndpointURL, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
+    UserDefaults.standard.set(SettingsDefaults.openInferenceModelID, forKey: UserDefaultsKeys.customOpenAIChatModelID)
+  }
+
   static var chatCompletionsURL: String {
     guard let base = customEndpointBaseURL else {
       return "https://invalid.local/missing-custom-openai-endpoint"
@@ -1302,6 +1308,9 @@ struct SettingsDefaults {
   static let localModelID = "qwen3"
   /// Default model tag for the Custom endpoint chat model (OpenRouter-style slug).
   static let customOpenAIChatModelID = "openai/gpt-4o"
+  /// [OpenInference](https://openinference.de/) preset — EU-hosted GLM 5.2, OpenAI-compatible.
+  static let openInferenceEndpointURL = "https://openinference.de/api/v1"
+  static let openInferenceModelID = "zai-org/GLM-5.2"
 
   // MARK: - UI State
   static let errorMessage = ""

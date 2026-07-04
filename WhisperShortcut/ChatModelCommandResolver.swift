@@ -20,6 +20,19 @@ enum ChatModelCommandResolver {
       return .usage(current: currentSelection)
     }
 
+    // OpenInference / custom endpoint aliases before provider-family detection.
+    var normalizedEarly = q.lowercased().replacingOccurrences(of: "-", with: " ")
+    while normalizedEarly.contains("  ") {
+      normalizedEarly = normalizedEarly.replacingOccurrences(of: "  ", with: " ")
+    }
+    if normalizedEarly == "custom"
+      || normalizedEarly.contains("openinference")
+      || normalizedEarly.contains("open inference")
+      || normalizedEarly.contains("glm")
+    {
+      return .applied(model: .customOpenAIEndpoint)
+    }
+
     // Exact rawValue match wins (after migrating removed 2.0 IDs), but only
     // for models eligible for chat — audio-only models live in Dictate Prompt.
     if let exact = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(q)) {
