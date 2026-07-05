@@ -40,8 +40,12 @@ enum PermissionStatusChecker {
         return .notDetermined
       }
     case .accessibility:
-      // AX has no "notDetermined" state surfaced by the API.
-      return AXIsProcessTrusted() ? .granted : .denied
+      // AX has no "notDetermined" state surfaced by the API. Approximate it with "has this
+      // app ever fired the AX prompt": a fresh install then shows "Not requested" instead of
+      // a red "Denied" for something the user was never asked about.
+      if AXIsProcessTrusted() { return .granted }
+      return UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasShownAccessibilityPrompt)
+        ? .denied : .notDetermined
     case .screenRecording:
       // CGPreflightScreenCaptureAccess() doesn't disambiguate denied vs. not-yet-requested.
       // Map "true" to granted and "false" to notDetermined so the UI shows an actionable

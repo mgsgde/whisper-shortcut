@@ -10,8 +10,28 @@ enum WelcomeStep: Int, CaseIterable {
   case smartImprovement
   case done
 
+  /// The steps this build actually shows. The App Store build has no auto-paste (a synthetic
+  /// ⌘V needs the Accessibility permission Apple rejects under Guideline 2.4.5), so its intro
+  /// step is omitted there — never advertise (or prompt for) a feature the build doesn't have.
+  static var activeSteps: [WelcomeStep] {
+    #if APP_STORE
+    return allCases.filter { $0 != .autoPaste }
+    #else
+    return allCases
+    #endif
+  }
+
+  /// Nearest active step for a persisted raw value — tolerates a stored step that this
+  /// build skips (e.g. a tour started in the direct build, resumed in the App Store build).
+  static func resume(from rawValue: Int) -> WelcomeStep {
+    let stored = WelcomeStep(rawValue: rawValue) ?? .intro
+    return activeSteps.last(where: { $0.rawValue <= stored.rawValue }) ?? .intro
+  }
+
   var indexLabel: String {
-    "\(rawValue + 1) of \(WelcomeStep.allCases.count)"
+    let steps = WelcomeStep.activeSteps
+    let position = (steps.firstIndex(of: self) ?? 0) + 1
+    return "\(position) of \(steps.count)"
   }
 }
 
@@ -24,7 +44,7 @@ struct WelcomeView: View {
   /// mid-tour app restart (e.g. macOS "Quit & Reopen" after granting a permission) continues
   /// where they left off. Defaults to `.intro` for a fresh tour (stored value 0 / unset).
   @State private var step: WelcomeStep =
-    WelcomeStep(rawValue: UserDefaults.standard.integer(forKey: UserDefaultsKeys.onboardingCurrentStep)) ?? .intro
+    WelcomeStep.resume(from: UserDefaults.standard.integer(forKey: UserDefaultsKeys.onboardingCurrentStep))
   @State private var keyDownMonitor: Any?
   @State private var hasGeminiKey: Bool = KeychainManager.shared.hasValidGoogleAPIKey()
   @State private var hasOpenAIKey: Bool = KeychainManager.shared.hasValidOpenAIAPIKey()
@@ -149,7 +169,7 @@ struct WelcomeView: View {
 
   private var stepIndicator: some View {
     HStack(spacing: 6) {
-      ForEach(WelcomeStep.allCases, id: \.rawValue) { s in
+      ForEach(WelcomeStep.activeSteps, id: \.rawValue) { s in
         Circle()
           .fill(s.rawValue <= step.rawValue ? Color.accentColor : Color.secondary.opacity(0.3))
           .frame(width: 7, height: 7)
@@ -181,14 +201,16 @@ struct WelcomeView: View {
       WelcomeWindowController.shared.finish()
       return
     }
-    if let next = WelcomeStep(rawValue: step.rawValue + 1) {
-      step = next
+    let steps = WelcomeStep.activeSteps
+    if let idx = steps.firstIndex(of: step), idx + 1 < steps.count {
+      step = steps[idx + 1]
     }
   }
 
   private func goBack() {
-    if let prev = WelcomeStep(rawValue: step.rawValue - 1) {
-      step = prev
+    let steps = WelcomeStep.activeSteps
+    if let idx = steps.firstIndex(of: step), idx > 0 {
+      step = steps[idx - 1]
     }
   }
 

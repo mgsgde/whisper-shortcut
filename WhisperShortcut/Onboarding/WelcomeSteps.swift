@@ -772,12 +772,16 @@ struct WelcomeDoneStep: View {
           requirements: [.microphone]))
     }
     if shortcuts.startPrompting.isEnabled {
+      // The App Store build reads the selection from a screenshot (Screen Recording);
+      // the direct build copies it via a synthetic ⌘C (Accessibility).
+      let selectionRequirement: PermissionKind =
+        AppConstants.dictatePromptUsesScreenshotSelection ? .screenRecording : .accessibility
       list.append(
         ShortcutFeature(
           shortcut: shortcuts.startPrompting.displayString,
           name: "Dictate Prompt",
           detail: "select text, speak an instruction — the selection is rewritten in place",
-          requirements: [.microphone, .accessibility]))
+          requirements: [.microphone, selectionRequirement]))
     }
     if shortcuts.screenshotCapture.isEnabled {
       list.append(
@@ -795,6 +799,9 @@ struct WelcomeDoneStep: View {
           detail: "a full conversation window, with screenshots",
           requirements: []))
     }
+    // Selection-based Read Aloud copies via ⌘C (Accessibility) — the feature is omitted
+    // from the App Store build entirely (no menu item, no hotkey), so don't advertise it.
+    #if !APP_STORE
     if shortcuts.readAloud.isEnabled {
       list.append(
         ShortcutFeature(
@@ -803,6 +810,7 @@ struct WelcomeDoneStep: View {
           detail: "select text anywhere and hear it spoken",
           requirements: [.accessibility]))
     }
+    #endif
     return list
   }
 
