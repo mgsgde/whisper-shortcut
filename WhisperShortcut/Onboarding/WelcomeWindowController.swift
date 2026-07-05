@@ -7,7 +7,7 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
   private init() {
     let hosting = NSHostingController(rootView: WelcomeView())
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 720, height: 540),
+      contentRect: NSRect(x: 0, y: 0, width: 720, height: 640),
       styleMask: [.titled, .closable],
       backing: .buffered,
       defer: false

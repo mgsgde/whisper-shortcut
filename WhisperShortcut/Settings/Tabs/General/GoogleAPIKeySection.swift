@@ -17,7 +17,7 @@ struct GoogleAPIKeySection: View {
         SectionHeader(
           title: "Google API Key",
           systemImage: "key.fill",
-          subtitle: "Or use a Google API key (billed to your account). Get a key from Google AI Studio (link below)."
+          subtitle: "Powers Gemini transcription, Dictate Prompt, Read Aloud, and Chat. Get a key from Google AI Studio (link below)."
         )
         Spacer()
         APIKeyStatusBadge(provider: .google, key: viewModel.data.googleAPIKey)

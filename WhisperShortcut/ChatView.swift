@@ -3379,6 +3379,7 @@ struct ChatInputAreaView: View {
       // Composer: NSTextView with inline screenshot/paste/file attachments.
       ChatComposerTextView(
         controller: composer,
+        placeholder: "Message \(resolvedOpenGeminiModel.displayName)…",
         onSubmit: { submitComposer() },
         onCancel: {
           if viewModel.isSending { viewModel.cancelSend() }
@@ -4469,6 +4470,16 @@ private struct CodeBlockView: View {
   let language: String?
   @State private var copied = false
 
+  /// Languages whose fenced blocks are prose, not code — models often wrap email drafts or
+  /// notes in ```markdown/```text fences. Prose must soft-wrap; clipping it behind an
+  /// indicator-less horizontal scroller silently hides the end of every line.
+  private static let proseLanguages: Set<String> = ["markdown", "md", "text", "txt", "plaintext", "plain"]
+
+  private var wrapsLines: Bool {
+    guard let language else { return false }
+    return Self.proseLanguages.contains(language.lowercased())
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       // Header with language label and copy button
@@ -4500,12 +4511,22 @@ private struct CodeBlockView: View {
       .padding(.vertical, 8)
       .background(Color.black.opacity(0.15))
 
-      // Code content
-      ScrollView(.horizontal, showsIndicators: false) {
+      // Code content: prose blocks wrap like normal text; real code keeps its
+      // line structure and scrolls horizontally (with a visible indicator).
+      if wrapsLines {
         Text(code)
           .font(.system(size: 13, design: .monospaced))
           .foregroundColor(ChatTheme.primaryText.opacity(0.9))
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity, alignment: .leading)
           .padding(14)
+      } else {
+        ScrollView(.horizontal, showsIndicators: true) {
+          Text(code)
+            .font(.system(size: 13, design: .monospaced))
+            .foregroundColor(ChatTheme.primaryText.opacity(0.9))
+            .padding(14)
+        }
       }
     }
     .background(Color.black.opacity(0.25))

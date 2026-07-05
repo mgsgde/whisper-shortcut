@@ -173,7 +173,7 @@ struct WelcomeAPIKeysStep: View {
           .fixedSize(horizontal: false, vertical: true)
       }
 
-      ScrollView {
+      ScrollView(showsIndicators: true) {
         VStack(spacing: 14) {
           OnboardingAPIKeyRow(
             providerName: "Google Gemini",
@@ -206,20 +206,22 @@ struct WelcomeAPIKeysStep: View {
             save: { KeychainManager.shared.saveXAIAPIKey($0) },
             recommended: false
           )
-
-          HStack(spacing: 10) {
-            VStack { Divider() }
-            Text("or")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-            VStack { Divider() }
-          }
-          .padding(.vertical, 2)
-
-          OnboardingOfflineRow(offlineReady: $offlineReady)
         }
         .padding(.bottom, 8)
       }
+
+      // The no-key path stays outside the scroll area so "or start offline" —
+      // promised in the headline — is always visible without scrolling.
+      HStack(spacing: 10) {
+        VStack { Divider() }
+        Text("or")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        VStack { Divider() }
+      }
+      .padding(.vertical, 2)
+
+      OnboardingOfflineRow(offlineReady: $offlineReady)
 
       if canContinue {
         Label("Ready to continue.", systemImage: "checkmark.circle.fill")
@@ -754,6 +756,7 @@ struct WelcomeDoneStep: View {
   /// user grants a permission and returns (didBecomeActive) without leaving onboarding.
   @State private var micStatus = PermissionStatusChecker.status(for: .microphone)
   @State private var axStatus = PermissionStatusChecker.status(for: .accessibility)
+  @State private var screenStatus = PermissionStatusChecker.status(for: .screenRecording)
 
   /// Every shortcut the user can use, rendered uniformly. Dictation is just the first row — no
   /// special hero treatment — so the whole page reads as one consistent list. Disabled shortcuts
@@ -775,6 +778,14 @@ struct WelcomeDoneStep: View {
           name: "Dictate Prompt",
           detail: "select text, speak an instruction — the selection is rewritten in place",
           requirements: [.microphone, .accessibility]))
+    }
+    if shortcuts.screenshotCapture.isEnabled {
+      list.append(
+        ShortcutFeature(
+          shortcut: shortcuts.screenshotCapture.displayString,
+          name: "Screenshot",
+          detail: "capture your screen straight to the clipboard or a folder",
+          requirements: [.screenRecording]))
     }
     if shortcuts.openChat.isEnabled {
       list.append(
@@ -827,11 +838,18 @@ struct WelcomeDoneStep: View {
           .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
       )
 
-      Text("You can revisit this tour any time from Settings → General.")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(.center)
-        .frame(maxWidth: 560)
+      VStack(spacing: 6) {
+        // The app has no Dock icon or main window, so tell first-time users where it lives.
+        Text("WhisperShortcut lives in your menu bar — look for the \(Image(systemName: "mic.fill")) icon at the top of your screen.")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .multilineTextAlignment(.center)
+        Text("You can revisit this tour any time from Settings → General.")
+          .font(.caption)
+          .foregroundStyle(.tertiary)
+          .multilineTextAlignment(.center)
+      }
+      .frame(maxWidth: 560)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .onAppear(perform: refreshStatuses)
@@ -859,7 +877,8 @@ struct WelcomeDoneStep: View {
       Spacer(minLength: 8)
       statusBadge(for: feature)
     }
-    .padding(14)
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
   }
 
   /// Green "Ready" when every required permission is granted; otherwise a red, tappable badge
@@ -903,7 +922,7 @@ struct WelcomeDoneStep: View {
     switch kind {
     case .microphone: return micStatus
     case .accessibility: return axStatus
-    case .screenRecording: return .granted
+    case .screenRecording: return screenStatus
     }
   }
 
@@ -918,6 +937,7 @@ struct WelcomeDoneStep: View {
   private func refreshStatuses() {
     micStatus = PermissionStatusChecker.status(for: .microphone)
     axStatus = PermissionStatusChecker.status(for: .accessibility)
+    screenStatus = PermissionStatusChecker.status(for: .screenRecording)
   }
 }
 

@@ -75,7 +75,7 @@ struct WelcomeView: View {
 
       footerBar
     }
-    .frame(minWidth: 720, minHeight: 540)
+    .frame(minWidth: 720, minHeight: 640)
     .background(Color(nsColor: .windowBackgroundColor))
     .onAppear {
       refreshState()

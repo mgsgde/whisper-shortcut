@@ -578,6 +578,8 @@ final class GeminiComposerController: ObservableObject {
 
 struct ChatComposerTextView: NSViewRepresentable {
   @ObservedObject var controller: GeminiComposerController
+  /// Shown while the composer is empty; reflects the currently selected model.
+  var placeholder: String = "Message Gemini…"
   var onSubmit: () -> Void
   var onCancel: () -> Void
   /// Return true if tab was consumed for slash-command completion.
@@ -631,6 +633,7 @@ struct ChatComposerTextView: NSViewRepresentable {
     tv.autoresizingMask = [.width]
     tv.delegate = context.coordinator
 
+    tv.placeholder = placeholder
     tv.onSubmit = { DispatchQueue.main.async { self.onSubmit() } }
     tv.onCancel = { DispatchQueue.main.async { self.onCancel() } }
     tv.onTabComplete = { self.onTabComplete() }
@@ -692,6 +695,10 @@ struct ChatComposerTextView: NSViewRepresentable {
 
   func updateNSView(_ nsView: NSScrollView, context: Context) {
     context.coordinator.parent = self
+    if let tv = nsView.documentView as? ChatComposerNSTextView, tv.placeholder != placeholder {
+      tv.placeholder = placeholder
+      tv.needsDisplay = true
+    }
   }
 
   final class Coordinator: NSObject, NSTextViewDelegate {
