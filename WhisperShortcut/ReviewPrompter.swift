@@ -33,6 +33,11 @@ final class ReviewPrompter {
 
   static let shared = ReviewPrompter()
 
+  /// Deep link that opens the Mac App Store review sheet for this app. Also used by the
+  /// permanent "Rate WhisperShortcut" menu item — unlike the automatic prompt, that path
+  /// is not subject to Apple's 3×/365d rate limit.
+  static let writeReviewURL = URL(string: "macappstore://apps.apple.com/app/id6749648401?action=write-review")!
+
   private init() {}
 
   // MARK: - Public API

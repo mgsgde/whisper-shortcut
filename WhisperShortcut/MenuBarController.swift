@@ -218,6 +218,8 @@ class MenuBarController: NSObject {
     configureItem.image = nil
     menu.addItem(configureItem)
     menu.addItem(
+      createMenuItem("Rate WhisperShortcut", action: #selector(rateApp), tag: 115))
+    menu.addItem(
       createMenuItem("Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q"))
 
     return menu
@@ -1253,6 +1255,11 @@ class MenuBarController: NSObject {
         }
       }
     }
+  }
+
+  @objc private func rateApp() {
+    NSWorkspace.shared.open(ReviewPrompter.writeReviewURL)
+    DebugLogger.log("REVIEW: User opened App Store write-review page from menu")
   }
 
   @objc private func quitApp() {
