@@ -14,9 +14,9 @@ import AppKit
 /// build-config / scheme split needed.
 ///
 /// Timing: `recordSuccessfulOperation()` never shows the prompt immediately. Instead it
-/// sets a "pending" flag once the threshold is reached; the menu-bar controller then
-/// fires it on the next `menuWillOpen`. This avoids stealing focus from the foreground
-/// app the user was just dictating into.
+/// sets a "pending" flag once the threshold is reached; the prompt then fires the next
+/// time the user focuses this app (status-item menu open or chat window open). This
+/// avoids stealing focus from the foreground app the user was just dictating into.
 final class ReviewPrompter {
 
   // MARK: - Tuning
@@ -33,11 +33,7 @@ final class ReviewPrompter {
 
   static let shared = ReviewPrompter()
 
-  private init() {
-    DispatchQueue.main.async { [weak self] in
-      self?.resetCounterIfAppVersionChanged()
-    }
-  }
+  private init() {}
 
   // MARK: - Public API
 
@@ -69,8 +65,8 @@ final class ReviewPrompter {
     DebugLogger.log("REVIEW: Threshold reached — armed pending prompt, will fire on next menu open")
   }
 
-  /// Called from `NSMenuDelegate.menuWillOpen` on the status-item menu. If a pending
-  /// prompt is armed, shows it now (when the user is already focused on this app).
+  /// Called when the user focuses this app (`menuWillOpen` on the status-item menu,
+  /// or chat window open). If a pending prompt is armed, shows it now.
   @MainActor
   func showPendingPromptIfNeeded() {
     guard UserDefaults.standard.bool(forKey: UserDefaultsKeys.pendingReviewPrompt) else { return }
@@ -171,24 +167,14 @@ final class ReviewPrompter {
     }
   }
 
-  // MARK: - Counter / version housekeeping
+  // MARK: - Counter housekeeping
 
+  // Note: the counter deliberately survives app updates. It used to reset on every
+  // version change, but with a release cadence of ~1 version/day the App Store
+  // auto-update reset it before active users ever reached the threshold — the prompt
+  // effectively never fired. Over-prompting is already guarded by the 30-day cooldown
+  // and Apple's own 3×/365d system limit.
   private func resetCounter() {
     UserDefaults.standard.set(0, forKey: UserDefaultsKeys.successfulOperationsCount)
-  }
-
-  /// Resets the counter when the app version changes so users who already saw (and
-  /// possibly declined) a prompt get a fresh chance after a meaningful update. The
-  /// per-distribution eligibility check (App Store cooldown / GitHub one-shot flag)
-  /// still applies, so this can't bypass either guardrail.
-  private func resetCounterIfAppVersionChanged() {
-    let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-    let stored = UserDefaults.standard.string(forKey: UserDefaultsKeys.lastReviewedAppVersion)
-    guard stored != current else { return }
-    UserDefaults.standard.set(current, forKey: UserDefaultsKeys.lastReviewedAppVersion)
-    if stored != nil {
-      resetCounter()
-      DebugLogger.log("REVIEW: App version changed (\(stored ?? "nil") → \(current)) — counter reset")
-    }
   }
 }

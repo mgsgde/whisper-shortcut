@@ -28,6 +28,12 @@ class ChatWindowManager {
     }
     windowController?.showWindow()
     prefetchShareableContent()
+    // Second firing point for an armed review prompt (besides menuWillOpen): shortcut-only
+    // users may never open the status-item menu, but opening chat means they're focused on
+    // this app, so prompting here can't steal focus from another app.
+    Task { @MainActor in
+      ReviewPrompter.shared.showPendingPromptIfNeeded()
+    }
   }
 
   /// Shows the chat window and switches to the Meeting view (for live meeting).

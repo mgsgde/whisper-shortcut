@@ -70,12 +70,9 @@ enum UserDefaultsKeys {
   // MARK: - Review Prompter
   static let successfulOperationsCount = "successfulOperationsCount"
   static let lastReviewPromptDate = "lastReviewPromptDate"
-  /// App version (CFBundleShortVersionString) at which the counter was last reset.
-  /// On version bump we reset the counter so users get re-prompted after meaningful updates.
-  static let lastReviewedAppVersion = "lastReviewedAppVersion"
   /// True when the counter+cooldown have been satisfied but the prompt hasn't been
-  /// shown yet — we wait for the user to open the menu bar so we don't steal focus
-  /// from whatever app they're working in.
+  /// shown yet — we wait for the user to focus this app (menu bar or chat window)
+  /// so we don't steal focus from whatever app they're working in.
   static let pendingReviewPrompt = "pendingReviewPrompt"
   /// GitHub-distribution one-time "support me on the App Store" popup state.
   /// Set once shown (regardless of choice) so we never nag a second time.
