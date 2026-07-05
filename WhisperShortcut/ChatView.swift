@@ -4837,9 +4837,12 @@ private struct MessageBubbleView: View {
             .font(ChatTheme.bodyFont(size: ChatTheme.bodyFontSize))
             .tracking(ChatTheme.bodyTracking)
             .foregroundColor(ChatTheme.primaryText)
-            // Safe here: a single uniform-font Text. The textSelection hang only strikes
-            // per-run mixed fonts (see SelectableProseText / MessageBubbleView notes).
-            .textSelection(.enabled)
+            // DELIBERATELY no `.textSelection(.enabled)` — even on a single uniform-font
+            // Text, macOS's SelectionOverlay can enter a self-sustaining
+            // setFont:/_invalidateEffectiveFont loop once streaming layout churn kicks it
+            // off (hang-20260704-205531: 97% CPU, survived send cancellation). Invariant:
+            // no SwiftUI .textSelection anywhere in the chat transcript; full-message
+            // copy is provided by userCopyButtonRow.
         }
         if !message.attachedImageParts.isEmpty {
           Text(message.attachedImageParts.count == 1

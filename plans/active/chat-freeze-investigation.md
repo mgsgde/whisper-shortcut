@@ -249,6 +249,20 @@ Rationale in comments: each flush grows bubble → ScrollView relayout → `find
 - Trigger: `.textSelection(.enabled)` on SwiftUI `Text` with per-run markdown fonts or inline `.link`
 - Fixed: plain citation markers; removed selection from `ModelReplyView`; tables not selectable
 - Files: `ChatView.swift` (`ModelReplyView`, `citationMarker`), `MarkdownParsing.swift`
+- **REGRESSED 2026-07-04 via the user bubble** (`hang-20260704-205531.txt`, v7.76, `chat-send
+  streaming`): the user-bubble `Text` had kept `.textSelection(.enabled)` under a "safe: single
+  uniform-font Text" assumption. A live `sample` of the wedged pid (97% CPU, 25+ min) showed the
+  loop is **not** limited to mixed-font runs: `SelectionOverlay.updateNSView` → `setFont:` →
+  `_invalidateEffectiveFont` → `invalidateIntrinsicContentSize` → next transaction, forever, on
+  plain single-font German text — streaming layout churn merely kicks it off, after which it is
+  fully self-sustaining (survived the circuit breaker cancelling the send; the breaker only helps
+  the layout-storm class). Each pass also re-ran lazy placement + ScrollView sizing, so the
+  capture's tail mimicked the streaming-wedge family — corroborate with a live sample, not one
+  watchdog stack. Fixed 2026-07-04: removed `.textSelection` from the user bubble
+  (`MessageBubbleView.bubbleContent`); full-message copy remains via `userCopyButtonRow`.
+- **Invariant: no SwiftUI `.textSelection` anywhere in the chat transcript, uniform font or
+  not.** Use `SelectableProseText` (NSTextView) where selection is required. Settings/onboarding
+  windows are exempt (no layout churn).
 
 ### Keychain on main thread
 

@@ -26,7 +26,7 @@ Read the **top ~6 frames** and the breadcrumb. Known classes (do not re-investig
 |---|---|---|
 | `NSAlert.runModal` / `NSSavePanel.runModal` / `NSApplication runModal` | `launch` or `idle` | **False positive** — a modal event loop, not a wedge. v7.75 pings `NSModalPanelRunLoopMode`, so newer builds shouldn't capture these at all. |
 | `SecItemCopyMatching` under `_AppearanceActionModifier` / `onAppear` | `launch` | **Fixed** (Keychain memoization). Regression only. |
-| `setFont:` / `_invalidateEffectiveFont` loop (SelectionOverlay) | chat | **Fixed** — no `.textSelection` on mixed-font `Text`; prose selection is `SelectableProseText` (NSTextView). Regression only. |
+| `SelectionOverlay.updateNSView` (→ `fontAttributesInRange` / `setFont:` / `_invalidateEffectiveFont`) | chat (incl. `chat-send streaming`) | **Fixed 2026-07-04 (regressed once)** — strikes even on uniform-font plain `Text` (hang-20260704-205531); invariant: **no** SwiftUI `.textSelection` anywhere in the chat transcript; selection only via `SelectableProseText` (NSTextView). Self-sustaining once triggered — the circuit breaker does NOT recover it. If ambiguous vs. the streaming wedge, `sample` the live pid: SelectionOverlay frames dominating = this class. |
 | `LazyVStack.placeSubviews` / `ForEach.IDGenerator.makeID` | `chat-send streaming` | **The resolved freeze** (Jul 3 stack). See §3. |
 | `ScrollStateRequestTransform.findClosestSubview` | `chat-send streaming` | **The resolved freeze** (Jul 1 stack) — same storm, other hot frame. See §3. |
 
