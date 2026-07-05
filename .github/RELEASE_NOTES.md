@@ -1,6 +1,6 @@
-# WhisperShortcut 7.76
+# WhisperShortcut 7.77
 
-Live Meeting cost and reliability release.
+Onboarding, chat readability, and permissions-accuracy release.
 
 ## Installation
 
@@ -9,13 +9,15 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 ## What's New
 
 ### Improvements
-- **Live Meeting uses far fewer API calls.** The default transcription interval is now 60 seconds (fewer chunk requests), and the live summary updates on demand — only when you open the Summary tab or chat with an active meeting — instead of on a fixed timer. The final meeting summary is unchanged.
-- **Easier meeting management from the sidebar.** Improved archive actions for meetings.
-- **Faster, clearer AI errors.** When a provider returns a permanent rate/quota error with no retry hint, WhisperShortcut now fails fast with a clear message instead of retrying for a long time.
-- **Sharper Smart Improvement suggestions.** Capitalized terms are now ranked by how consistently they're capitalized across your usage.
+- **Custom OpenAI-compatible chat endpoint.** Point the chat window at any OpenAI-compatible server (e.g. self-hosted inference), including a ready-made OpenInference preset.
+- **Better onboarding.** The offline Whisper option is now always visible on the API-key step (no more hidden below the scroll), the final "You're ready" overview includes the Screenshot shortcut and tells you where the app lives — in your menu bar — and the window no longer clips its footer buttons.
+- **Chat replies are easier to read.** Prose the model wraps in ```markdown/```text fences (e.g. email drafts) now wraps like normal text instead of being cut off at the right edge; real code keeps its structure with a visible scroll indicator.
+- **The chat composer shows the active model.** The placeholder now reads "Message Gemini 3.5 Flash…" (or Grok/GPT accordingly) instead of always "Message Gemini…".
+- **More honest permission status.** Accessibility shows "Not requested" instead of a red "Denied" until the app has actually asked, and the "You're ready" overview reflects the real Screen Recording status.
 
 ### Fixes
-- **Fixed a chat freeze during streaming replies.** The streaming bubble is now detached from the list layout so long, fast responses no longer wedge the main thread.
-- **More reliable live meeting summaries.** Summary writes are guarded with a per-session token so a straggling update from a previous meeting can no longer write into the current one.
+- **Fixed a chat freeze caused by text selection.** Selecting-enabled message text could enter a self-sustaining font-invalidation loop during streaming and pin the CPU; message copying now goes through the copy buttons.
+- **Transcription clipboard handling fix.** Dictation results land on the clipboard more reliably.
+- **App Store build accuracy.** The App Store variant no longer advertises auto-paste in onboarding (the feature is omitted there) and the final overview names the correct permissions for Dictate Prompt.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.75...v7.76
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.76...v7.77
