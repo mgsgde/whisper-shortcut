@@ -2243,6 +2243,18 @@ extension MenuBarController: AudioRecorderDelegate {
 // MARK: - ShortcutDelegate (Simple Forwarding)
 extension MenuBarController: ShortcutDelegate {
   func toggleDictation() { toggleTranscription() }
+
+  // Push-to-talk state queries: mirror what toggleTranscription/togglePrompting
+  // treat as an active recording, including parallel segments during a live meeting.
+  func isDictationRecordingActive() -> Bool {
+    if isLiveMeetingActive { return activeMeetingSegment == .dictation }
+    return appState.recordingMode == .transcription
+  }
+
+  func isPromptRecordingActive() -> Bool {
+    if isLiveMeetingActive { return activeMeetingSegment == .prompt }
+    return appState.recordingMode == .prompt
+  }
   // togglePrompting is already implemented above
   // openSettings is already implemented above
   func openChat() { openChatWindowFromShortcut() }

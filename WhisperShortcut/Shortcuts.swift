@@ -4,6 +4,8 @@ import HotKey
 protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
+  func isDictationRecordingActive() -> Bool
+  func isPromptRecordingActive() -> Bool
   func openSettings()
   func openChat()
   func takeScreenshot()
@@ -23,6 +25,12 @@ class Shortcuts {
   private var screenshotCaptureKey: HotKey?
   private var readAloudKey: HotKey?
   private var currentConfig: ShortcutConfig
+
+  // Push-to-talk: a press that *started* a recording and is held past this threshold
+  // stops the recording on release. Shorter presses keep the classic toggle behavior.
+  private static let pushToTalkHoldThreshold: TimeInterval = 0.5
+  private var dictationPressStart: Date?
+  private var promptingPressStart: Date?
 
   init() {
     // Load current configuration
@@ -76,7 +84,19 @@ class Shortcuts {
       toggleDictationKey = HotKey(
         key: config.startRecording.key, modifiers: config.startRecording.modifiers)
       toggleDictationKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.toggleDictation()
+        guard let self, let delegate = self.delegate else { return }
+        let wasRecording = delegate.isDictationRecordingActive()
+        delegate.toggleDictation()
+        self.dictationPressStart = wasRecording ? nil : Date()
+      }
+      toggleDictationKey?.keyUpHandler = { [weak self] in
+        guard let self, let pressStart = self.dictationPressStart else { return }
+        self.dictationPressStart = nil
+        if Date().timeIntervalSince(pressStart) >= Self.pushToTalkHoldThreshold,
+          self.delegate?.isDictationRecordingActive() == true {
+          DebugLogger.log("SHORTCUTS: Push-to-talk release — stopping dictation")
+          self.delegate?.toggleDictation()
+        }
       }
     }
 
@@ -84,7 +104,19 @@ class Shortcuts {
       togglePromptingKey = HotKey(
         key: config.startPrompting.key, modifiers: config.startPrompting.modifiers)
       togglePromptingKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.togglePrompting()
+        guard let self, let delegate = self.delegate else { return }
+        let wasRecording = delegate.isPromptRecordingActive()
+        delegate.togglePrompting()
+        self.promptingPressStart = wasRecording ? nil : Date()
+      }
+      togglePromptingKey?.keyUpHandler = { [weak self] in
+        guard let self, let pressStart = self.promptingPressStart else { return }
+        self.promptingPressStart = nil
+        if Date().timeIntervalSince(pressStart) >= Self.pushToTalkHoldThreshold,
+          self.delegate?.isPromptRecordingActive() == true {
+          DebugLogger.log("SHORTCUTS: Push-to-talk release — stopping prompt")
+          self.delegate?.togglePrompting()
+        }
       }
     }
 
@@ -138,6 +170,8 @@ class Shortcuts {
   }
 
   func cleanup() {
+    dictationPressStart = nil
+    promptingPressStart = nil
     toggleDictationKey = nil
     togglePromptingKey = nil
     openSettingsKey = nil
