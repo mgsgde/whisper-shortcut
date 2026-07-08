@@ -282,13 +282,17 @@ class ChunkTranscriptionService {
                     DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) attempt \(attempt)/\(maxRetries)")
                 }
 
-                // Read and encode audio
-                let audioData = try Data(contentsOf: chunk.url)
+                // Read and encode audio (as compact AAC when possible)
+                let audioData: Data
+                let mimeType: String
+                if let aacData = AudioTranscoder.aacData(for: chunk.url) {
+                    audioData = aacData
+                    mimeType = AudioTranscoder.aacMimeType
+                } else {
+                    audioData = try Data(contentsOf: chunk.url)
+                    mimeType = geminiClient.getMimeType(for: chunk.url.pathExtension.lowercased())
+                }
                 let base64Audio = audioData.base64EncodedString()
-
-                // Get MIME type
-                let fileExtension = chunk.url.pathExtension.lowercased()
-                let mimeType = geminiClient.getMimeType(for: fileExtension)
 
                 let endpoint = model.apiEndpoint
                 var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)

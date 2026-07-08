@@ -586,6 +586,7 @@ class MenuBarController: NSObject {
       if selectedModel.hasRequiredCredential || hasOfflineModel {
         DebugLogger.log("MEETING-SEGMENT: Starting dictation segment during meeting")
         activeMeetingSegment = .dictation
+        ConnectionPrewarmer.prewarm(for: selectedModel)
         audioRecorder.startRecording()
       } else {
         PopupNotificationWindow.showError(
@@ -611,6 +612,7 @@ class MenuBarController: NSObject {
 
       if appState.canStartTranscription(hasAPIKey: selectedModel.hasRequiredCredential, hasOfflineModel: hasOfflineModel) {
         appState = appState.startRecording(.transcription)
+        ConnectionPrewarmer.prewarm(for: selectedModel)
         audioRecorder.startRecording()
       } else {
         PopupNotificationWindow.showError(
@@ -641,6 +643,7 @@ class MenuBarController: NSObject {
         if !prepareDictatePromptSelection(logPrefix: "MEETING-SEGMENT") { return }
         DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
         activeMeetingSegment = .prompt
+        ConnectionPrewarmer.prewarm(for: promptModel)
         audioRecorder.startRecording()
       } else {
         PopupNotificationWindow.showError(promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
@@ -664,6 +667,7 @@ class MenuBarController: NSObject {
       if appState.canStartPrompting(hasAPIKey: promptModel.hasRequiredCredentialForDictatePrompt, hasOfflineModel: false) {
         if !prepareDictatePromptSelection(logPrefix: "PROMPT-MODE") { return }
         appState = appState.startRecording(.prompt)
+        ConnectionPrewarmer.prewarm(for: promptModel)
         audioRecorder.startRecording()
       } else {
         PopupNotificationWindow.showError(promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")

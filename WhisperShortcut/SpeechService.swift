@@ -535,9 +535,8 @@ class SpeechService {
 
     // Audio goes after context so the model has the surrounding intent before processing speech.
     let audioSize = getAudioFileSize(at: audioURL)
-    let fileExtension = audioURL.pathExtension.lowercased()
-    let mimeType = geminiClient.getMimeType(for: fileExtension)
     if audioSize > AppConstants.maxFileSizeBytes {
+      let mimeType = geminiClient.getMimeType(for: audioURL.pathExtension.lowercased())
       let fileURI = try await geminiClient.uploadFile(audioURL: audioURL, credential: credential)
       userParts.append(GeminiChatRequest.GeminiChatPart(
         text: nil,
@@ -546,7 +545,15 @@ class SpeechService {
         url: nil
       ))
     } else {
-      let audioData = try Data(contentsOf: audioURL)
+      let audioData: Data
+      let mimeType: String
+      if let aacData = AudioTranscoder.aacData(for: audioURL) {
+        audioData = aacData
+        mimeType = AudioTranscoder.aacMimeType
+      } else {
+        audioData = try Data(contentsOf: audioURL)
+        mimeType = geminiClient.getMimeType(for: audioURL.pathExtension.lowercased())
+      }
       userParts.append(GeminiChatRequest.GeminiChatPart(
         text: nil,
         inlineData: GeminiChatRequest.GeminiInlineData(mimeType: mimeType, data: audioData.base64EncodedString()),
@@ -876,10 +883,16 @@ class SpeechService {
   /// Uses a lightweight transcription call to get the user's voice instruction as text.
   private func transcribeAudioForHistory(audioURL: URL, credential: GeminiCredential) async throws -> String {
     // Use the existing transcription logic but with a simpler prompt
-    let audioData = try Data(contentsOf: audioURL)
+    let audioData: Data
+    let mimeType: String
+    if let aacData = AudioTranscoder.aacData(for: audioURL) {
+      audioData = aacData
+      mimeType = AudioTranscoder.aacMimeType
+    } else {
+      audioData = try Data(contentsOf: audioURL)
+      mimeType = geminiClient.getMimeType(for: audioURL.pathExtension.lowercased())
+    }
     let base64Audio = audioData.base64EncodedString()
-    let fileExtension = audioURL.pathExtension.lowercased()
-    let mimeType = geminiClient.getMimeType(for: fileExtension)
 
     let endpoint = TranscriptionModel.gemini31FlashLite.apiEndpoint
     var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
@@ -1548,16 +1561,20 @@ class SpeechService {
     let inlineStartTime = CFAbsoluteTimeGetCurrent()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using inline audio (file ≤20MB)")
 
-    // Read audio file and convert to base64
+    // Read audio (as compact AAC when possible) and convert to base64
     let encodeStartTime = CFAbsoluteTimeGetCurrent()
-    let audioData = try Data(contentsOf: audioURL)
+    let audioData: Data
+    let mimeType: String
+    if let aacData = AudioTranscoder.aacData(for: audioURL) {
+      audioData = aacData
+      mimeType = AudioTranscoder.aacMimeType
+    } else {
+      audioData = try Data(contentsOf: audioURL)
+      mimeType = geminiClient.getMimeType(for: audioURL.pathExtension.lowercased())
+    }
     let base64Audio = audioData.base64EncodedString()
     let encodeTime = CFAbsoluteTimeGetCurrent() - encodeStartTime
-    DebugLogger.logSpeech("SPEED: Base64 encoding took \(String(format: "%.3f", encodeTime))s (\(String(format: "%.0f", encodeTime * 1000))ms)")
-
-    // Determine MIME type from file extension
-    let fileExtension = audioURL.pathExtension.lowercased()
-    let mimeType = geminiClient.getMimeType(for: fileExtension)
+    DebugLogger.logSpeech("SPEED: Audio encoding took \(String(format: "%.3f", encodeTime))s (\(String(format: "%.0f", encodeTime * 1000))ms)")
 
     // Build the transcription instruction (dictation prompt or default, plus the Glossary).
     let instruction = geminiTranscriptionInstruction(promptOverride: promptOverride)
