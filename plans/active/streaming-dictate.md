@@ -48,7 +48,7 @@ All the building blocks exist:
 ## Non-goals
 
 - No partial-text UI during recording (result still lands in the clipboard as one piece; menu-bar icon behavior unchanged).
-- No provider work beyond Gemini (OpenAI/xAI keep the single-shot path; local Whisper untouched).
+- ~~No provider work beyond Gemini~~ Extended 2026-07-08: streaming covers all cloud STT providers (Gemini, OpenAI, xAI) — usage data showed dictation alternates between OpenAI and Gemini week to week, and the session already routed chunks through the provider-agnostic `SpeechService.transcribe`, so the gate widening was ~3 lines. Still excluded: offline Whisper (whisper.cpp concurrency during recording untested) and self-hosted endpoints.
 - No change to Dictate Prompt mode (audio→prompt is a single multimodal call; chunked transcription doesn't apply).
 
 ## Verification

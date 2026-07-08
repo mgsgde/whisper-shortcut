@@ -4,10 +4,11 @@ import Foundation
 /// user is still speaking, so pressing Stop only leaves the tail chunk to process.
 ///
 /// One session is created per Dictate recording when the selected transcription model is
-/// a cloud Gemini model (`makeIfEligible`). It consumes `ChunkedDictateRecorder`'s chunk
-/// callbacks and transcribes each rotated-out chunk immediately through the regular
-/// `SpeechService.transcribe` pipeline (which brings AAC transcoding, retries, and SPEED
-/// logging for free). `finalTranscript()` joins the per-chunk transcripts in order.
+/// a cloud STT provider — Gemini, OpenAI, or xAI (`makeIfEligible`). It consumes
+/// `ChunkedDictateRecorder`'s chunk callbacks and transcribes each rotated-out chunk
+/// immediately through the regular `SpeechService.transcribe` pipeline, which routes per
+/// provider and brings AAC transcoding (Gemini), retries, and SPEED logging for free.
+/// `finalTranscript()` joins the per-chunk transcripts in order.
 ///
 /// Streaming is an optimization, never a correctness dependency: if anything goes wrong —
 /// a chunk fails, the session is cancelled, a chunk is missing — `finalTranscript()`
@@ -37,12 +38,13 @@ final class DictateStreamingSession {
   }
 
   /// Creates a session when streaming can help: chunked recorder active and the selected
-  /// Dictate model is a cloud Gemini model with a credential. All other providers (OpenAI,
-  /// xAI, offline Whisper, self-hosted) return nil and keep the single-shot path.
+  /// Dictate model is a cloud STT provider (Gemini, OpenAI, xAI) with a credential.
+  /// Offline Whisper (local compute, whisper.cpp concurrency during recording untested)
+  /// and self-hosted endpoints (unknown semantics) return nil and keep the single-shot path.
   static func makeIfEligible(speechService: SpeechService) -> DictateStreamingSession? {
     guard AppConstants.useChunkedDictateRecorder else { return nil }
     let model = TranscriptionModel.loadSelected()
-    guard model.isGemini, model.hasRequiredCredential else { return nil }
+    guard model.isGemini || model.isOpenAI || model.isXAI, model.hasRequiredCredential else { return nil }
     return DictateStreamingSession(speechService: speechService)
   }
 

@@ -50,8 +50,9 @@ class MenuBarController: NSObject {
   private var discardNextRecording = false
 
   /// Per-recording streaming session (slice 2 of plans/active/streaming-dictate.md).
-  /// Non-nil only while a Dictate recording on a Gemini model is active/processing;
-  /// prompt recordings and other providers leave it nil (single-shot path).
+  /// Non-nil only while a Dictate recording on a cloud STT model (Gemini/OpenAI/xAI) is
+  /// active/processing; prompt recordings, offline Whisper, and self-hosted endpoints
+  /// leave it nil (single-shot path).
   private var dictateStreamingSession: DictateStreamingSession?
   private var currentTranscriptionAudioURL: URL?
   private var processedAudioURLs: Set<URL> = []
@@ -292,7 +293,7 @@ class MenuBarController: NSObject {
     }
 
     // Streaming Dictate: route rotated-out chunks into the per-recording session (nil for
-    // prompt recordings and non-Gemini models — the callbacks are then no-ops).
+    // prompt recordings and non-cloud STT models — the callbacks are then no-ops).
     if let chunkedRecorder = audioRecorder as? ChunkedDictateRecorder {
       chunkedRecorder.onChunkFinalized = { [weak self] url, index, isSilent in
         self?.dictateStreamingSession?.addChunk(url: url, index: index, isSilent: isSilent)
