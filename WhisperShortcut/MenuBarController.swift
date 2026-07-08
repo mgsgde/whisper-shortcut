@@ -48,6 +48,11 @@ class MenuBarController: NSObject {
   /// Set when the user hits ✕ on the recording indicator: the next
   /// `audioRecorderDidFinishRecording` discards the audio instead of processing it.
   private var discardNextRecording = false
+
+  /// Per-recording streaming session (slice 2 of plans/active/streaming-dictate.md).
+  /// Non-nil only while a Dictate recording on a Gemini model is active/processing;
+  /// prompt recordings and other providers leave it nil (single-shot path).
+  private var dictateStreamingSession: DictateStreamingSession?
   private var currentTranscriptionAudioURL: URL?
   private var processedAudioURLs: Set<URL> = []
   private var audioEngine: AVAudioEngine?
@@ -284,6 +289,17 @@ class MenuBarController: NSObject {
     // Floating recording indicator (bottom-center pill with live level bars)
     audioRecorder.onLevelSample = { dB in
       RecordingIndicatorManager.shared.updateLevel(dB: dB)
+    }
+
+    // Streaming Dictate: route rotated-out chunks into the per-recording session (nil for
+    // prompt recordings and non-Gemini models — the callbacks are then no-ops).
+    if let chunkedRecorder = audioRecorder as? ChunkedDictateRecorder {
+      chunkedRecorder.onChunkFinalized = { [weak self] url, index, isSilent in
+        self?.dictateStreamingSession?.addChunk(url: url, index: index, isSilent: isSilent)
+      }
+      chunkedRecorder.onFinalChunk = { [weak self] url, index, isSilent in
+        self?.dictateStreamingSession?.addFinalChunk(url: url, index: index, isSilent: isSilent)
+      }
     }
     RecordingIndicatorManager.shared.onCancel = { [weak self] in
       self?.handleIndicatorCancel()
@@ -648,6 +664,7 @@ class MenuBarController: NSObject {
         DebugLogger.log("MEETING-SEGMENT: Starting dictation segment during meeting")
         activeMeetingSegment = .dictation
         ConnectionPrewarmer.prewarm(for: selectedModel)
+        dictateStreamingSession = DictateStreamingSession.makeIfEligible(speechService: speechService)
         audioRecorder.startRecording()
       } else {
         PopupNotificationWindow.showError(
@@ -674,6 +691,7 @@ class MenuBarController: NSObject {
       if appState.canStartTranscription(hasAPIKey: selectedModel.hasRequiredCredential, hasOfflineModel: hasOfflineModel) {
         appState = appState.startRecording(.transcription)
         ConnectionPrewarmer.prewarm(for: selectedModel)
+        dictateStreamingSession = DictateStreamingSession.makeIfEligible(speechService: speechService)
         audioRecorder.startRecording()
       } else {
         PopupNotificationWindow.showError(
@@ -705,6 +723,7 @@ class MenuBarController: NSObject {
         DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
         activeMeetingSegment = .prompt
         ConnectionPrewarmer.prewarm(for: promptModel)
+        discardStreamingSession()  // prompt recordings never stream
         audioRecorder.startRecording()
       } else {
         PopupNotificationWindow.showError(promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
@@ -729,6 +748,7 @@ class MenuBarController: NSObject {
         if !prepareDictatePromptSelection(logPrefix: "PROMPT-MODE") { return }
         appState = appState.startRecording(.prompt)
         ConnectionPrewarmer.prewarm(for: promptModel)
+        discardStreamingSession()  // prompt recordings never stream
         audioRecorder.startRecording()
       } else {
         PopupNotificationWindow.showError(promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
@@ -781,7 +801,15 @@ class MenuBarController: NSObject {
 
   /// Cancels a running transcription (including chunk pipelines) and performs
   /// the shared cleanup transition.
+  /// Cancels and drops the streaming session so no further chunk API calls run and a
+  /// later recording can't accidentally consume stale transcripts.
+  private func discardStreamingSession() {
+    dictateStreamingSession?.cancel()
+    dictateStreamingSession = nil
+  }
+
   private func cancelInFlightTranscription() {
+    discardStreamingSession()
     speechService.cancelTranscription()
     transitionToIdleAndCleanup(cleanupAudioURL: currentTranscriptionAudioURL)
   }
@@ -1431,8 +1459,31 @@ class MenuBarController: NSObject {
   }
   
   private func performTranscription(audioURL: URL, duringMeeting: Bool = false) async {
+    // Capture the session but leave the property set: cancelInFlightTranscription must
+    // still be able to cancel it while we await the chunk transcripts below. Cleared on
+    // exit (identity-checked so a newer recording's session is never clobbered).
+    let streamingSession: DictateStreamingSession? = await MainActor.run { self.dictateStreamingSession }
+    defer {
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        if self.dictateStreamingSession === streamingSession {
+          self.dictateStreamingSession = nil
+        }
+      }
+    }
     do {
-      let result = try await speechService.transcribe(audioURL: audioURL, cancellable: !duringMeeting)
+      let result: String
+      let stopTime = CFAbsoluteTimeGetCurrent()
+      if let streamed = try await streamingSession?.finalTranscript() {
+        result = streamed
+        let waitMs = (CFAbsoluteTimeGetCurrent() - stopTime) * 1000
+        DebugLogger.logSpeech(
+          "SPEED: STREAMING-DICTATE: Transcript ready \(String(format: "%.0f", waitMs))ms after stop")
+      } else {
+        // Single-shot: non-Gemini model, no rotation happened, or a chunk failed —
+        // transcribe the merged WAV exactly as before streaming existed.
+        result = try await speechService.transcribe(audioURL: audioURL, cancellable: !duringMeeting)
+      }
       clipboardManager.copyTranscriptionToClipboard(text: result)
 
       let transcriptionModel = TranscriptionModel.loadSelected()
@@ -2037,6 +2088,7 @@ extension MenuBarController: AudioRecorderDelegate {
       if self.discardNextRecording {
         self.discardNextRecording = false
         DebugLogger.log("AUDIO: Discarding cancelled recording \(audioURL.lastPathComponent)")
+        self.discardStreamingSession()
         self.cleanupAudioFile(at: audioURL)
         self.appState = self.appState.finish()
         return
@@ -2083,6 +2135,7 @@ extension MenuBarController: AudioRecorderDelegate {
         let response = alert.runModal()
         if response != .alertFirstButtonReturn {
           DebugLogger.log("RECORDING-SAFEGUARD: User cancelled processing for long recording (\(timeStr))")
+          self.discardStreamingSession()
           self.cleanupAudioFile(at: audioURL)
           self.appState = self.appState.finish()
           return
@@ -2104,6 +2157,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
         if usesCloudAPI {
           DebugLogger.log("AUDIO: Skipping API call — recording was silent")
+          self.discardStreamingSession()
           // Mirror the explicit-remove pattern used by every other early-return path; without
           // this line the URL stayed in `processedAudioURLs` forever for each silent recording.
           self.processedAudioURLs.remove(audioURL)
@@ -2156,6 +2210,7 @@ extension MenuBarController: AudioRecorderDelegate {
     let errorDomain = (error as NSError).domain
     DebugLogger.logDebug("audioRecorderDidFailWithError called - errorCode: \(errorCode), errorDomain: \(errorDomain), errorDescription: \(error.localizedDescription), appState: \(appState), isEmptyFileError: \(errorCode == 1004)")
     discardNextRecording = false
+    discardStreamingSession()
     if activeMeetingSegment != nil {
       DebugLogger.logWarning("MEETING-SEGMENT: Recording failed during meeting segment, clearing segment")
       activeMeetingSegment = nil

@@ -20,9 +20,15 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   /// recording indicator's level bars (same contract as `AudioRecorder.onLevelSample`).
   var onLevelSample: ((Float) -> Void)?
 
-  /// Slice-2 hook: fires on the main thread whenever a chunk is rotated out mid-recording.
-  /// Unused in slice 1.
-  var onChunkFinalized: ((URL, Int) -> Void)?
+  /// Fires on the main thread whenever a chunk is rotated out mid-recording, with the
+  /// chunk's URL, index, and whether it was fully silent (peak below the threshold).
+  /// DictateStreamingSession consumes this to transcribe chunks while the user speaks.
+  var onChunkFinalized: ((URL, Int, Bool) -> Void)?
+
+  /// Fires on the main thread at stop with the tail chunk (the recording since the last
+  /// rotation), before the merged WAV is delivered to the delegate. Only meaningful when
+  /// at least one rotation happened — single-chunk sessions never call this.
+  var onFinalChunk: ((URL, Int, Bool) -> Void)?
 
   // MARK: - Constants
   private enum Constants {
@@ -64,6 +70,9 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   private var meteringTimer: Timer?
   private var meteringTickCount = 0
   private var peakPowerDuringRecording: Float = -160
+  /// Peak within the current chunk only; reset at rotation. Lets consumers skip
+  /// transcribing fully-silent chunks.
+  private var peakPowerDuringChunk: Float = -160
   private var lastTwoMeterSamples: (Float, Float) = (-160, -160)
   private var meterSampleCount = 0
   private var consecutiveSilenceSamples = 0
@@ -151,9 +160,19 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   }
 
   private func beginSession() {
+    // Remove the previous session's files (chunks aren't individually delivered to the
+    // delegate, so nobody else cleans them up). Any in-flight streaming reads of these
+    // files finished long before a new recording can start.
+    for url in chunkURLs {
+      try? FileManager.default.removeItem(at: url)
+    }
+    if let url = mergedURL {
+      try? FileManager.default.removeItem(at: url)
+    }
     chunkURLs = []
     mergedURL = nil
     peakPowerDuringRecording = -160
+    peakPowerDuringChunk = -160
     lastTwoMeterSamples = (-160, -160)
     meterSampleCount = 0
     meteringTickCount = 0
@@ -217,6 +236,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     recorder.updateMeters()
     let power = recorder.averagePower(forChannel: 0)
     if power > peakPowerDuringRecording { peakPowerDuringRecording = power }
+    if power > peakPowerDuringChunk { peakPowerDuringChunk = power }
     onLevelSample?(power)
 
     meteringTickCount += 1
@@ -246,6 +266,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     guard isSessionActive, let current = activeRecorder else { return }
     let completedURL = current.url
     let completedIndex = chunkURLs.count
+    let completedWasSilent = peakPowerDuringChunk < Self.silenceThresholdDB
     let wasRecorderAActive = isRecorderAActive
 
     do {
@@ -257,11 +278,12 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
       return
     }
 
+    peakPowerDuringChunk = -160
     current.stop()
     chunkURLs.append(completedURL)
     DebugLogger.logAudio(
-      "AUDIO: Rotated dictate chunk \(completedIndex) at silence boundary (\(completedURL.lastPathComponent))")
-    onChunkFinalized?(completedURL, completedIndex)
+      "AUDIO: Rotated dictate chunk \(completedIndex) at silence boundary (silent=\(completedWasSilent), \(completedURL.lastPathComponent))")
+    onChunkFinalized?(completedURL, completedIndex, completedWasSilent)
   }
 
   // MARK: - Final delivery
@@ -301,6 +323,13 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   }
 
   private func finalizeSession(finalChunkURL: URL) {
+    // Hand the tail chunk to the streaming session BEFORE merging, so its transcription
+    // runs in parallel with the merge. Only fires when rotations happened — single-chunk
+    // recordings take the plain path.
+    if !chunkURLs.isEmpty {
+      let tailWasSilent = peakPowerDuringChunk < Self.silenceThresholdDB
+      onFinalChunk?(finalChunkURL, chunkURLs.count, tailWasSilent)
+    }
     chunkURLs.append(finalChunkURL)
     let urls = chunkURLs
 
