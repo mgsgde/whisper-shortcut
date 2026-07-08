@@ -50,6 +50,10 @@ enum AudioTranscoder {
         guard buffer.frameLength > 0 else { break }
         try output.write(from: buffer)
       }
+      // AVAudioFile only finalizes the m4a container (moov atom) on close. Reading the
+      // bytes before closing yields a file audio decoders reject — Gemini 3.1 then answers
+      // "please provide the audio" instead of transcribing.
+      output.close()
 
       let data = try Data(contentsOf: outputURL)
       guard !data.isEmpty else {
