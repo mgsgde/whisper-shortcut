@@ -16,6 +16,19 @@ struct ClipboardBehaviorSection: View {
         subtitle: "Configure what happens after dictation or dictate prompt completes"
       )
 
+      #if APP_STORE
+      // Auto-paste synthesizes ⌘V, which needs the Accessibility permission Apple rejects for
+      // App Store builds (Guideline 2.4.5). Explain the gap instead of hiding the section, so
+      // users don't conclude the feature doesn't exist at all.
+      Text("Auto-paste — inserting dictated text right at your cursor — isn't available in the Mac App Store version, because it requires a system permission that isn't allowed for App Store apps. Your text is always copied to the clipboard, so you can paste it with ⌘V. The direct-download version from whispershortcut.com supports auto-paste.")
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      Link("Get the direct-download version", destination: URL(string: "https://whispershortcut.com")!)
+        .font(.callout)
+        .pointerCursorOnHover()
+      #else
       HStack(alignment: .center, spacing: 16) {
         Text("Auto-paste:")
           .font(.body)
@@ -43,6 +56,7 @@ struct ClipboardBehaviorSection: View {
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
+      #endif
     }
   }
 }

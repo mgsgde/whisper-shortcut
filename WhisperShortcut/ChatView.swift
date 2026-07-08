@@ -3793,12 +3793,28 @@ private enum ProseFontHint: AttributedStringKey {
 /// other but not both: `.textSelection(.enabled)` makes its overlay swallow link clicks. AppKit's
 /// text view handles selection and links natively, sidestepping that limitation.
 private struct SelectableProseText: NSViewRepresentable {
-  let attributed: AttributedString
   private let nsAttributed: NSAttributedString
+  /// true = wrap to the proposed width (prose); false = keep natural line lengths
+  /// (code inside a horizontal scroller).
+  private let wraps: Bool
+  /// true = report the natural text width when it fits the proposal, so short user
+  /// bubbles hug their content instead of stretching to the bubble's max width.
+  private let hugsContentWidth: Bool
 
   init(attributed: AttributedString) {
-    self.attributed = attributed
     self.nsAttributed = ModelReplyView.makeProseNSAttributedString(attributed)
+    self.wraps = true
+    self.hugsContentWidth = false
+  }
+
+  /// Uniform-font plain text (user messages, fenced code blocks).
+  init(plain: String, font: NSFont, color: NSColor, kern: CGFloat = 0,
+       wraps: Bool = true, hugsContentWidth: Bool = false) {
+    var attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+    if kern != 0 { attrs[.kern] = kern }
+    self.nsAttributed = NSAttributedString(string: plain, attributes: attrs)
+    self.wraps = wraps
+    self.hugsContentWidth = hugsContentWidth
   }
 
   func makeCoordinator() -> Coordinator { Coordinator() }
@@ -3808,9 +3824,10 @@ private struct SelectableProseText: NSViewRepresentable {
     // whose viewport-based layout misplaces or blanks glyphs when a LazyVStack recycles the view on
     // scroll (text drifting to the far-right window edge or vanishing entirely). TextKit 1 lays the
     // whole document out up front, so a reused view always redraws at the correct position.
-    let textContainer = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+    let textContainer = NSTextContainer(
+      size: NSSize(width: wraps ? 0 : .greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
     textContainer.lineFragmentPadding = 0
-    textContainer.widthTracksTextView = true
+    textContainer.widthTracksTextView = wraps
     let layoutManager = NSLayoutManager()
     layoutManager.addTextContainer(textContainer)
     let textStorage = NSTextStorage()
@@ -3837,18 +3854,44 @@ private struct SelectableProseText: NSViewRepresentable {
   }
 
   func updateNSView(_ tv: NSTextView, context: Context) {
+    // SwiftUI may hand a recycled NSTextView to a struct with a different wrap mode.
+    if let container = tv.textContainer, container.widthTracksTextView != wraps {
+      container.widthTracksTextView = wraps
+      container.size = NSSize(
+        width: wraps ? tv.frame.width : .greatestFiniteMagnitude,
+        height: .greatestFiniteMagnitude)
+    }
     if tv.textStorage?.isEqual(to: nsAttributed) != true {
       tv.textStorage?.setAttributedString(nsAttributed)
     }
   }
 
   func sizeThatFits(_ proposal: ProposedViewSize, nsView tv: NSTextView, context: Context) -> CGSize? {
+    if !wraps {
+      return Self.cachedNaturalSize(for: nsAttributed)
+    }
     guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
+    if hugsContentWidth {
+      let natural = Self.cachedNaturalSize(for: nsAttributed)
+      if natural.width <= width { return natural }
+    }
     let height = Self.cachedHeight(for: nsAttributed, width: width)
     return CGSize(width: width, height: height)
   }
 
   private static let proseHeightCache = NSCache<NSString, NSNumber>()
+  private static let naturalSizeCache = NSCache<NSString, NSValue>()
+
+  /// Size of the text laid out without any wrapping (widest line × total height).
+  private static func cachedNaturalSize(for ns: NSAttributedString) -> CGSize {
+    let key = cacheKey(ns: ns, width: 0)
+    if let boxed = naturalSizeCache.object(forKey: key) {
+      return boxed.sizeValue
+    }
+    let size = measuredSize(ns, width: .greatestFiniteMagnitude)
+    naturalSizeCache.setObject(NSValue(size: size), forKey: key)
+    return size
+  }
 
   private static func cachedHeight(for ns: NSAttributedString, width: CGFloat) -> CGFloat {
     let key = cacheKey(ns: ns, width: width)
@@ -3878,6 +3921,10 @@ private struct SelectableProseText: NSViewRepresentable {
   }
 
   private static func measuredHeight(_ ns: NSAttributedString, width: CGFloat) -> CGFloat {
+    measuredSize(ns, width: width).height
+  }
+
+  private static func measuredSize(_ ns: NSAttributedString, width: CGFloat) -> CGSize {
     let textStorage = NSTextStorage(attributedString: ns)
     let textContainer = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
     textContainer.lineFragmentPadding = 0
@@ -3885,7 +3932,8 @@ private struct SelectableProseText: NSViewRepresentable {
     layoutManager.addTextContainer(textContainer)
     textStorage.addLayoutManager(layoutManager)
     layoutManager.ensureLayout(for: textContainer)
-    return ceil(layoutManager.usedRect(for: textContainer).height)
+    let used = layoutManager.usedRect(for: textContainer)
+    return CGSize(width: ceil(used.width), height: ceil(used.height))
   }
 
   final class Coordinator: NSObject, NSTextViewDelegate {
@@ -4516,18 +4564,23 @@ private struct CodeBlockView: View {
 
       // Code content: prose blocks wrap like normal text; real code keeps its
       // line structure and scrolls horizontally (with a visible indicator).
+      // Rendered in a selectable NSTextView (never SwiftUI `.textSelection` — see
+      // the SelectionOverlay hang notes on ModelReplyView).
       if wrapsLines {
-        Text(code)
-          .font(.system(size: 13, design: .monospaced))
-          .foregroundColor(ChatTheme.primaryText.opacity(0.9))
+        SelectableProseText(
+          plain: code,
+          font: .monospacedSystemFont(ofSize: 13, weight: .regular),
+          color: NSColor(ChatTheme.primaryText.opacity(0.9)))
           .fixedSize(horizontal: false, vertical: true)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(14)
       } else {
         ScrollView(.horizontal, showsIndicators: true) {
-          Text(code)
-            .font(.system(size: 13, design: .monospaced))
-            .foregroundColor(ChatTheme.primaryText.opacity(0.9))
+          SelectableProseText(
+            plain: code,
+            font: .monospacedSystemFont(ofSize: 13, weight: .regular),
+            color: NSColor(ChatTheme.primaryText.opacity(0.9)),
+            wraps: false)
             .padding(14)
         }
       }
@@ -4818,6 +4871,38 @@ private struct MessageBubbleView: View {
     .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
   }
 
+  /// Whether an attachment can be shown in the full-size preview sheet (`NSImage(data:)`-decodable).
+  private func isPreviewableImage(_ part: AttachedImagePart) -> Bool {
+    if let mime = part.mimeType { return mime.hasPrefix("image/") }
+    return NSImage(data: part.data) != nil
+  }
+
+  /// One attachment filename row. Image parts are tappable and open the same preview sheet used
+  /// for pending/thumbnail screenshots (via `onTapAttachedImage`); non-image parts stay static.
+  @ViewBuilder
+  private func attachedPartLabel(_ part: AttachedImagePart) -> some View {
+    let name = part.filename ?? "attachment"
+    let previewable = isPreviewableImage(part)
+    if previewable, let onTap = onTapAttachedImage {
+      Button {
+        onTap(part.data)
+      } label: {
+        Text(name)
+          .font(.caption)
+          .foregroundColor(ChatTheme.primaryText.opacity(0.6))
+          .underline()
+      }
+      .buttonStyle(.plain)
+      .onHover { inside in
+        if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+      }
+    } else {
+      Text(name)
+        .font(.caption)
+        .foregroundColor(ChatTheme.primaryText.opacity(0.6))
+    }
+  }
+
   @ViewBuilder
   private var bubbleContent: some View {
     if isUser {
@@ -4836,23 +4921,24 @@ private struct MessageBubbleView: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         if !parsed.userText.isEmpty {
-          Text(parsed.userText)
-            .font(ChatTheme.bodyFont(size: ChatTheme.bodyFontSize))
-            .tracking(ChatTheme.bodyTracking)
-            .foregroundColor(ChatTheme.primaryText)
-            // DELIBERATELY no `.textSelection(.enabled)` — even on a single uniform-font
-            // Text, macOS's SelectionOverlay can enter a self-sustaining
-            // setFont:/_invalidateEffectiveFont loop once streaming layout churn kicks it
-            // off (hang-20260704-205531: 97% CPU, survived send cancellation). Invariant:
-            // no SwiftUI .textSelection anywhere in the chat transcript; full-message
-            // copy is provided by userCopyButtonRow.
+          // Selectable NSTextView, DELIBERATELY not SwiftUI `.textSelection(.enabled)` —
+          // even on a single uniform-font Text, macOS's SelectionOverlay can enter a
+          // self-sustaining setFont:/_invalidateEffectiveFont loop once streaming layout
+          // churn kicks it off (hang-20260704-205531: 97% CPU, survived send cancellation).
+          // Invariant: no SwiftUI .textSelection anywhere in the chat transcript.
+          SelectableProseText(
+            plain: parsed.userText,
+            font: ChatTheme.bodyNSFont(size: ChatTheme.bodyFontSize, weight: ChatTheme.bodyRegularNSWeight),
+            color: NSColor(ChatTheme.primaryText),
+            kern: ChatTheme.bodyTracking,
+            hugsContentWidth: true)
         }
         if !message.attachedImageParts.isEmpty {
-          Text(message.attachedImageParts.count == 1
-               ? (message.attachedImageParts[0].filename ?? "1 attachment")
-               : "\(message.attachedImageParts.count) attachments")
-            .font(.caption)
-            .foregroundColor(ChatTheme.primaryText.opacity(0.6))
+          VStack(alignment: .trailing, spacing: 4) {
+            ForEach(Array(message.attachedImageParts.enumerated()), id: \.offset) { _, part in
+              attachedPartLabel(part)
+            }
+          }
         }
       }
       .padding(.horizontal, 16)

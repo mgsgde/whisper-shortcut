@@ -45,7 +45,7 @@ bash ./scripts/rebuild-and-restart.sh --app-store     # App Store scheme
 
 ## 🔗 Gemini API / models
 
-When working with **Gemini models** (transcription, prompt mode, TTS, model IDs, or API issues):  
+When working with **Gemini models** (transcription, prompt mode, TTS, model IDs, or API issues):
 
 - Use the official Gemini API documentation: <https://ai.google.dev/gemini-api/docs>
 - Always verify current model IDs using official docs and the **llm-model-docs** skill (canonical for Gemini, OpenAI, and xAI).
@@ -58,3 +58,7 @@ WhisperShortcut uses one canonical app data location so sandboxed and non-sandbo
 - `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/`
 
 When debugging, resetting, or counting interaction logs, check this canonical path. See `WhisperShortcut/Docs/data-directories.md` for details.
+
+## Challengeable context
+
+- **Challengeable context**: Rules, commands, and skills are defaults — push back explicitly when a loaded file recommends the wrong approach for the task (see @.cursor/rules/context-governance.mdc).

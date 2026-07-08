@@ -177,6 +177,20 @@ final class MeetingListService: ObservableObject {
     try await generate(prompt: AppConstants.meetingConsolidationPrompt(transcript: transcript), model: model, label: "MEETING-CONSOLIDATE")
   }
 
+  /// Counts distinct `Speaker X` labels in a transcript. Consolidation only reconciles labels
+  /// across chunks, so with 0–1 distinct speakers there's nothing to reconcile and the (paid,
+  /// full-transcript-output) consolidation pass can be skipped entirely.
+  static func distinctSpeakerCount(in transcript: String) -> Int {
+    guard let regex = try? NSRegularExpression(pattern: #"Speaker\s+([A-Za-z])\b"#) else { return 0 }
+    let range = NSRange(transcript.startIndex..., in: transcript)
+    var labels = Set<String>()
+    regex.enumerateMatches(in: transcript, range: range) { match, _, _ in
+      guard let match, let r = Range(match.range(at: 1), in: transcript) else { return }
+      labels.insert(transcript[r].uppercased())
+    }
+    return labels.count
+  }
+
   /// Shared "route prompt → provider, with transient-error retry" helper for meeting-summary work.
   private static func generate(prompt: String, model: PromptModel, label: String) async throws -> String {
     let provider = LLMProviderFactory.provider(for: model)

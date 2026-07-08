@@ -43,12 +43,10 @@ struct GeneralSettingsTab: View {
 
       RecordingSafeguardsSection(viewModel: viewModel)
 
-      // Auto-paste synthesizes ⌘V (Accessibility); hidden in the App Store build.
-      #if !APP_STORE
       SpacedSectionDivider()
 
+      // In the App Store build the section explains why auto-paste is unavailable there.
       ClipboardBehaviorSection(viewModel: viewModel)
-      #endif
     }
   }
 

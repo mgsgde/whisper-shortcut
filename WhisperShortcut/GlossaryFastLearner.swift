@@ -131,12 +131,14 @@ final class GlossaryFastLearner {
     }
 
     var pairs: [(typed: String, transcript: String)] = []
+    var addedFolded = Set<String>()
     var decisions: [String] = []
     for candidate in candidates {
       guard pairs.count < maxAdditionsPerMessage else { break }
       let foldedCandidate = fold(candidate)
-      // Already in the glossary → nothing to learn.
-      guard !glossaryTokens.contains(foldedCandidate) else {
+      // Already in the glossary, or a case/diacritic variant was accepted earlier in this
+      // same message ("Grok" then "GROK!!!") → nothing to learn.
+      guard !glossaryTokens.contains(foldedCandidate), !addedFolded.contains(foldedCandidate) else {
         decisions.append("\(candidate):in-glossary")
         continue
       }
@@ -159,6 +161,7 @@ final class GlossaryFastLearner {
       let variantCount = transcriptCounts[best.original, default: 0]
       if candidateCount < variantCount {
         pairs.append((typed: candidate, transcript: best.original))
+        addedFolded.insert(foldedCandidate)
         decisions.append("\(candidate)←\(best.original)(\(candidateCount)vs\(variantCount))")
       } else {
         decisions.append("\(candidate):not-rarer-than-\(best.original)(\(candidateCount)vs\(variantCount))")

@@ -378,6 +378,19 @@ enum PromptModel: String, CaseIterable {
     return provider == .gemini
   }
 
+  /// Cheapest same-provider model for mechanical meeting post-processing (speaker-label
+  /// consolidation). That pass only relabels speakers — it doesn't need the summary model's
+  /// reasoning quality — yet it echoes the whole transcript back as output, where output-token
+  /// price dominates. Staying on the same provider keeps the already-validated credential valid;
+  /// providers without a clearly cheaper sibling fall back to `self`.
+  var speakerConsolidationModel: PromptModel {
+    switch provider {
+    case .gemini: return .gemini31FlashLite
+    case .openai: return .openaiGPT5Mini
+    default: return self
+    }
+  }
+
   // Convert to TranscriptionModel for API endpoint access (for Gemini models)
   var asTranscriptionModel: TranscriptionModel? {
     switch self {

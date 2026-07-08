@@ -157,7 +157,7 @@ final class ReviewPrompter {
       If you enjoy WhisperShortcut, feel free to buy it on the App Store and leave a \
       short review. It really helps me out as a solo developer.
 
-      Best wishes from Karlsruhe, Germany
+      Best wishes from Heidelberg, Germany
       """
     alert.addButton(withTitle: "Open App Store")
     alert.addButton(withTitle: "Maybe Later")

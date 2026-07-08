@@ -1081,23 +1081,31 @@ class MenuBarController: NSObject {
           return
         }
 
-        // Post-processing: consolidate speaker labels across the full transcript
+        // Post-processing: consolidate speaker labels across the full transcript. Skip it when the
+        // transcript has at most one distinct speaker — there is nothing to reconcile, and the pass
+        // echoes the whole transcript back as (paid) output. When it runs, route to the provider's
+        // cheapest model: relabeling is mechanical and doesn't need the summary model's quality.
         var finalTranscript = transcriptText
-        do {
-          let consolidated = try await MeetingListService.consolidateSpeakerLabels(transcript: transcriptText, model: model)
-          let trimmed = consolidated.trimmingCharacters(in: .whitespacesAndNewlines)
-          if !trimmed.isEmpty {
-            finalTranscript = trimmed
-            if let data = trimmed.data(using: .utf8) {
-              try data.write(to: transcriptURL, options: .atomic)
+        if MeetingListService.distinctSpeakerCount(in: transcriptText) >= 2 {
+          do {
+            let consolidated = try await MeetingListService.consolidateSpeakerLabels(
+              transcript: transcriptText, model: model.speakerConsolidationModel)
+            let trimmed = consolidated.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+              finalTranscript = trimmed
+              if let data = trimmed.data(using: .utf8) {
+                try data.write(to: transcriptURL, options: .atomic)
+              }
+              await MainActor.run {
+                MeetingListService.shared.invalidateCache(for: nil)
+              }
+              DebugLogger.log("LIVE-MEETING: Speaker labels consolidated and transcript rewritten")
             }
-            await MainActor.run {
-              MeetingListService.shared.invalidateCache(for: nil)
-            }
-            DebugLogger.log("LIVE-MEETING: Speaker labels consolidated and transcript rewritten")
+          } catch {
+            DebugLogger.logWarning("LIVE-MEETING: Speaker consolidation failed (using raw transcript): \(error.localizedDescription)")
           }
-        } catch {
-          DebugLogger.logWarning("LIVE-MEETING: Speaker consolidation failed (using raw transcript): \(error.localizedDescription)")
+        } else {
+          DebugLogger.log("LIVE-MEETING: Skipping speaker consolidation (<2 distinct speakers)")
         }
 
         // Generate summary from the (possibly consolidated) transcript
