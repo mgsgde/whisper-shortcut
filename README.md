@@ -4,10 +4,14 @@ WhisperShortcut is a macOS menu bar app for voice-first productivity: dictation,
 
 The app is local-first and bring-your-own-key. There is no backend or subscription service in this repository. Cloud features use your Google Gemini API key and, optionally, an xAI API key (for Grok chat and TTS) or an OpenAI API key (for GPT-5.x chat, OpenAI transcription, GPT Audio Dictate Prompt, and OpenAI TTS).
 
+Website: [whispershortcut.com](https://whispershortcut.com)
+
 ## Download
 
-- Download the latest signed `.dmg` from [GitHub Releases](https://github.com/mgsgde/whisper-shortcut/releases).
-- The app is also available on the [Mac App Store](https://apps.apple.com/us/app/whispershortcut/id6749648401).
+**[⬇️ Get WhisperShortcut on the Mac App Store](https://apps.apple.com/us/app/whispershortcut/id6749648401)** — the easiest way to install, with automatic updates.
+
+- Prefer a direct download? Get the latest signed `.dmg` from [GitHub Releases](https://github.com/mgsgde/whisper-shortcut/releases).
+- Learn more at [whispershortcut.com](https://whispershortcut.com).
 - Demo video: [Watch on YouTube](https://www.youtube.com/watch?v=JTa4APF72cY).
 
 ## Features
