@@ -6,7 +6,20 @@ protocol AudioRecorderDelegate: AnyObject {
   func audioRecorderDidFailWithError(_ error: Error)
 }
 
-class AudioRecorder: NSObject {
+/// Common surface of the Dictate recorders so MenuBarController can hold either the
+/// classic single-file AVAudioRecorder (`AudioRecorder`) or the chunk-capable
+/// `ChunkedDictateRecorder` behind `AppConstants.useChunkedDictateRecorder`.
+protocol DictationAudioRecording: AnyObject {
+  var delegate: AudioRecorderDelegate? { get set }
+  var onLevelSample: ((Float) -> Void)? { get set }
+  var hasRecentlyBeenSilent: Bool { get }
+  var lastRecordingWasSilent: Bool { get }
+  func startRecording()
+  func stopRecording()
+  func cleanup()
+}
+
+class AudioRecorder: NSObject, DictationAudioRecording {
   weak var delegate: AudioRecorderDelegate?
 
   private var audioRecorder: AVAudioRecorder?

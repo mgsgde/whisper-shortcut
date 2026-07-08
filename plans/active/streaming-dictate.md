@@ -1,6 +1,8 @@
 # Streaming Dictate — Overlap Transcription with Recording
 
-**Status:** Planned, not started (2026-07-08)
+**Status:** Slice 1 implemented (2026-07-08) — `ChunkedDictateRecorder` behind `AppConstants.useChunkedDictateRecorder`, externally identical behavior (chunks merged to one WAV on stop). Slices 2–3 pending.
+
+**Correction to the original plan:** `LiveMeetingRecorder` is NOT AVAudioEngine-based — it is a double-buffer of two `AVAudioRecorder`s rotated at silence boundaries. Slice 1 therefore copied that proven pattern instead of introducing an engine-based recorder, which removes the recorder-swap risk (mic permission flow, metering, delegate contract all stay on `AVAudioRecorder` semantics) and the meeting-interplay concern (the app already runs multiple concurrent `AVAudioRecorder`s during meeting + dictation segments). Dictate rotation is silence-only (no max-duration cut): continuous speech grows the current chunk, so seams only ever sit inside real pauses.
 **Audience:** LLM implementing the feature end-to-end
 **Goal:** Make Dictate feel near-instant regardless of dictation length by transcribing speech *while the user is still talking*, so pressing Stop only leaves the final tail chunk to process — the pattern that makes Wispr Flow feel fast (their budget: full result ≤700 ms after end of speech).
 
@@ -23,7 +25,7 @@ All the building blocks exist:
 
 | Piece | Existing component | Reuse notes |
 |---|---|---|
-| Silence-boundary chunk capture during recording | `LiveMeetingRecorder.swift` | Double-buffer AVAudioEngine recorder with silence-based chunk finalization. Today it's meeting-only; extract/generalize the chunking capture so Dictate can use it without meeting semantics. |
+| Silence-boundary chunk capture during recording | `ChunkedDictateRecorder.swift` (new, slice 1) | Double-buffer `AVAudioRecorder`s with silence-only rotation, modeled on `LiveMeetingRecorder`. Exposes `onChunkFinalized(url, index)` for slice 2; merges chunks to one WAV on stop in slice 1. |
 | Parallel per-chunk transcription with retry/rate-limit | `ChunkTranscriptionService.swift` | Already transcribes chunks concurrently against Gemini with `RateLimitCoordinator` backoff and per-chunk AAC transcoding. Needs a mode where chunks *arrive over time* (AsyncStream) instead of from a pre-split file — `AudioChunkStream` is already an `AsyncThrowingStream`, so the shape fits. |
 | Transcript joining | `TranscriptMerger.swift` | Handles overlap-aware merging for the >45 s batch path today. |
 | State machine | `AppState.swift` | `.recording(.transcription)` → `.processing(.transcribing)` unchanged; processing phase just gets much shorter. |
@@ -39,7 +41,7 @@ All the building blocks exist:
 
 ## Implementation slices (each independently shippable)
 
-1. **Recorder swap behind a flag** — Dictate records through the engine-based chunk recorder but always delivers one WAV at Stop (no behavior change). Verify metering, silence-skip of tail delay, meeting-segment interplay, permission prompts.
+1. **Recorder swap behind a flag** — ✅ DONE (2026-07-08). Dictate records through `ChunkedDictateRecorder` (flag: `AppConstants.useChunkedDictateRecorder`) but always delivers one WAV at Stop (chunks merged via AVAudioFile concat; single-chunk sessions delivered untouched). Rotation: silence ≥ `dictateChunkSilenceDuration` (1.0s) after `dictateChunkMinDuration` (10s). Log markers: `AUDIO: Rotated dictate chunk`, `AUDIO: Merged N dictate chunks`.
 2. **In-flight chunk transcription** — chunks stream into `ChunkTranscriptionService` during recording; at Stop, tail chunk + `TranscriptMerger` + deliver. Threshold gate + single-shot fallback.
 3. **Tune & instrument** — `SPEED:` logs for per-chunk latency and stop-to-clipboard time; compare against pre-change baseline (`SPEED: [model] API call completed`); tune threshold/max-chunk length from real usage via `analyze-user-interactions`.
 

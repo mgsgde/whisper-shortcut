@@ -183,6 +183,20 @@ Output rules (CRITICAL):
   /// Provides context continuity and helps with transcript merging.
   static let chunkOverlapSeconds: TimeInterval = 2.0
 
+  // MARK: - Streaming Dictate (chunked recorder)
+  /// Records Dictate through ChunkedDictateRecorder (double-buffer, silence-boundary
+  /// rotation — slice 1 of plans/active/streaming-dictate.md). Flip to false to fall back
+  /// to the single-file AVAudioRecorder path.
+  static let useChunkedDictateRecorder = true
+
+  /// Minimum chunk duration before silence-based rotation is allowed. Also the practical
+  /// floor for streaming: dictations shorter than this always stay a single chunk.
+  static let dictateChunkMinDuration: TimeInterval = 10.0
+
+  /// Silence duration (seconds) required to rotate to the next chunk. Shorter than the
+  /// live-meeting value: dictation pauses are briefer than meeting turn-taking.
+  static let dictateChunkSilenceDuration: TimeInterval = 1.0
+
   // MARK: - Prompt Conversation History
   /// Maximum number of previous turns to include in prompt requests.
   /// Higher values provide more context but increase API costs and latency.

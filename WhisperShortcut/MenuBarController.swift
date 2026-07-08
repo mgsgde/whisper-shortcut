@@ -38,7 +38,7 @@ class MenuBarController: NSObject {
   private var feedbackResetTask: Task<Void, Never>?
 
   // MARK: - Services (Injected Dependencies)
-  private let audioRecorder: AudioRecorder
+  private let audioRecorder: DictationAudioRecording
   private let speechService: SpeechService
   private let clipboardManager: ClipboardManager
   private let shortcuts: Shortcuts
@@ -121,7 +121,8 @@ class MenuBarController: NSObject {
   }
 
   init(
-    audioRecorder: AudioRecorder = AudioRecorder(),
+    audioRecorder: DictationAudioRecording = AppConstants.useChunkedDictateRecorder
+      ? ChunkedDictateRecorder() : AudioRecorder(),
     speechService: SpeechService? = nil,
     clipboardManager: ClipboardManager = ClipboardManager(),
     shortcuts: Shortcuts = Shortcuts()
