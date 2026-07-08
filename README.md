@@ -170,4 +170,4 @@ See the App Data Location section in [`privacy.md`](privacy.md#app-data-location
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+GNU Affero General Public License v3.0 (AGPL-3.0). See [LICENSE](LICENSE) for details.
