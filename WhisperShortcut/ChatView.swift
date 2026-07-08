@@ -857,6 +857,9 @@ class ChatViewModel: ObservableObject {
           userMessage: content,
           modelResponse: strippedReply,
           model: model)
+        // Typed chat text is ground-truth spelling: unknown proper nouns that sound like a
+        // differently spelled recent transcript word go straight into the Whisper Glossary.
+        GlossaryFastLearner.shared.learnFromTypedText(content)
         // Title once, after the first real user→model exchange. Counting user messages (rather
         // than total messages) keeps this working when the chat opens with a local command reply
         // such as "Model set to Grok 4.3." from `/grok`, which would otherwise push the total past 2.

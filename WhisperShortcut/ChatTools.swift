@@ -53,6 +53,27 @@ enum ChatToolRegistry {
         "required": ["url"],
       ],
     ],
+    [
+      "name": "remember_dictation_term",
+      "description":
+        "Permanently teaches WhisperShortcut's dictation (speech-to-text) the correct spelling of a name, brand, or technical term by adding it to the user's transcription glossary; every future dictation is conditioned with that glossary. Call this whenever the user corrects how a dictated word was transcribed or defines vocabulary for dictation (e.g. 'When I say Grog I mean Grok', 'My name is spelled Gödde, not Göde', 'Learn the term Nebius'). Nothing is saved without this call — never claim dictation will improve unless you called it. For spelling corrections use THIS tool, not remember_about_user (which stores personal facts, not dictation vocabulary).",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "term": [
+            "type": "string",
+            "description":
+              "The correct spelling exactly as it should appear in transcriptions (e.g. 'Grok', 'Magnus Gödde', 'WhisperShortcut').",
+          ],
+          "misheard_as": [
+            "type": "string",
+            "description":
+              "How dictation currently mis-writes the term, if the user mentioned it (e.g. 'Grog', 'Göde'). Helps the transcription model avoid that specific error.",
+          ],
+        ] as [String: Any],
+        "required": ["term"],
+      ],
+    ],
   ]
 
   /// Name of the image-generation tool; ChatView intercepts this one in `executeToolCalls`
@@ -683,6 +704,18 @@ enum ChatToolRegistry {
       }
       NSWorkspace.shared.open(url)
       return ["ok": true, "url": urlString]
+
+    case "remember_dictation_term":
+      guard let rawTerm = args["term"] as? String,
+            case let term = rawTerm.trimmingCharacters(in: .whitespacesAndNewlines),
+            !term.isEmpty
+      else {
+        return ["error": "Missing required argument: term"]
+      }
+      let misheardAs = (args["misheard_as"] as? String)?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      return GlossaryFastLearner.shared.rememberTerm(
+        term, misheardAs: (misheardAs?.isEmpty ?? true) ? nil : misheardAs)
 
     case "google_calendar_list_events":
       guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
