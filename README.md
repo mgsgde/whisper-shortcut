@@ -1,18 +1,19 @@
 # WhisperShortcut
 
-WhisperShortcut is a macOS menu bar app for voice-first productivity: dictation, voice editing, AI chat, text-to-speech, screenshots, live meeting transcription, and Smart Improvement. Local Whisper dictation works offline.
+**Voice-first AI for your Mac.** Press ⌘1 anywhere, speak, and the transcription lands on your clipboard — ready to paste into any app. Speak an instruction (⌘2) to rewrite whatever you copied, have any selected text read aloud (⌘4), or open an AI chat that works with your Calendar, Gmail, Tasks, and Trello (⌥Space).
 
-The app is local-first and bring-your-own-key. There is no backend or subscription service in this repository. Cloud features use your Google Gemini API key and, optionally, an xAI API key (for Grok chat and TTS) or an OpenAI API key (for GPT-5.x chat, OpenAI transcription, GPT Audio Dictate Prompt, and OpenAI TTS).
+Bring your own API keys — Gemini, and optionally GPT or Grok — or run fully offline with local Whisper. No account, no subscription, no backend. Open source (AGPL-3.0).
 
-Website: [whispershortcut.com](https://whispershortcut.com)
+![Dictating an email with WhisperShortcut: press the shortcut, speak, and the text lands in Apple Mail](docs/assets/demo.gif)
+
+▶️ [Watch the full demo on YouTube](https://www.youtube.com/watch?v=JTa4APF72cY) · Website: [whispershortcut.com](https://whispershortcut.com)
 
 ## Download
 
 **[⬇️ Get WhisperShortcut on the Mac App Store](https://apps.apple.com/us/app/whispershortcut/id6749648401)** — the easiest way to install, with automatic updates.
 
 - Prefer a direct download? Get the latest signed `.dmg` from [GitHub Releases](https://github.com/mgsgde/whisper-shortcut/releases).
-- Learn more at [whispershortcut.com](https://whispershortcut.com).
-- Demo video: [Watch on YouTube](https://www.youtube.com/watch?v=JTa4APF72cY).
+- Cloud features use your Google Gemini API key and, optionally, an xAI API key (Grok chat and TTS) or an OpenAI API key (GPT-5.x chat, transcription, GPT Audio Dictate Prompt, TTS). Offline Whisper needs no key at all.
 
 ## Features
 
