@@ -58,6 +58,9 @@ class PopupNotificationWindow: NSWindow {
     static let horizontalMargin: CGFloat = 18  // Distance from left/right screen edges
     static let verticalMarginTop: CGFloat = 6   // Distance from top screen edge
     static let verticalMarginBottom: CGFloat = 30  // Distance from bottom screen edge
+    // Extra bottom offset for center-bottom so popups sit above the recording
+    // indicator pill (40pt tall at 28pt margin) instead of covering it.
+    static let centerBottomPillClearance: CGFloat = 50
     static let iconAndSpacingWidth: CGFloat = 28  // Icon width + spacing for layout calculations
     static let optimalCharactersPerLine: CGFloat = 85  // Optimal number of characters per line for wider display
   }
@@ -797,7 +800,7 @@ class PopupNotificationWindow: NSWindow {
     case .centerBottom:
       return (
         x: screenFrame.midX - windowWidth / 2,
-        y: screenFrame.minY + verticalMarginBottom
+        y: screenFrame.minY + verticalMarginBottom + Constants.centerBottomPillClearance
       )
     }
   }

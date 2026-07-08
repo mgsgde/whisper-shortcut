@@ -1272,7 +1272,8 @@ struct SettingsDefaults {
 
   // MARK: - Notification Settings
   static let showPopupNotifications = true
-  static let notificationPosition = NotificationPosition.leftTop
+  /// Bottom-center so popups share one feedback spot with the recording indicator pill.
+  static let notificationPosition = NotificationPosition.centerBottom
   static let notificationDuration = NotificationDuration.oneSecond
   static let errorNotificationDuration = NotificationDuration.thirtySeconds
 

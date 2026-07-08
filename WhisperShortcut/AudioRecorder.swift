@@ -16,9 +16,20 @@ class AudioRecorder: NSObject {
   private var peakPowerDuringRecording: Float = -160
   private static let silenceThresholdDB: Float = -45
 
-  /// Rolling pair of the two most recent meter samples (older, newer). At the 0.2s metering
-  /// rate this covers roughly the last 400 ms — enough to tell if the user paused before
-  /// pressing Stop, so the caller can skip the tail-capture delay.
+  /// Metering runs at 20 Hz to drive the live level bars in the recording indicator.
+  private static let meteringInterval: TimeInterval = 0.05
+  /// The silence-tail logic below was tuned for a 0.2s sample cadence, so it only
+  /// consumes every 4th metering sample (0.05s × 4 = 0.2s).
+  private static let silenceSampleDecimation = 4
+  private var meteringTickCount = 0
+
+  /// Called on the main thread with every metering sample (~20 Hz), passing the current
+  /// average power in dB (-160…0). Used to animate the recording indicator's level bars.
+  var onLevelSample: ((Float) -> Void)?
+
+  /// Rolling pair of the two most recent decimated meter samples (older, newer). At the
+  /// effective 0.2s cadence this covers roughly the last 400 ms — enough to tell if the user
+  /// paused before pressing Stop, so the caller can skip the tail-capture delay.
   private var lastTwoMeterSamples: (Float, Float) = (-160, -160)
   private var meterSampleCount: Int = 0
 
@@ -135,6 +146,7 @@ class AudioRecorder: NSObject {
       peakPowerDuringRecording = -160
       lastTwoMeterSamples = (-160, -160)
       meterSampleCount = 0
+      meteringTickCount = 0
       lastRecordingWasSilent = false
 
       guard audioRecorder?.record() ?? false else {
@@ -144,7 +156,9 @@ class AudioRecorder: NSObject {
             NSLocalizedDescriptionKey: "Failed to start recording"
           ])
       }
-      meteringTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+      meteringTimer = Timer.scheduledTimer(
+        withTimeInterval: Self.meteringInterval, repeats: true
+      ) { [weak self] _ in
         self?.sampleMetering()
       }
     } catch {
@@ -157,8 +171,12 @@ class AudioRecorder: NSObject {
     recorder.updateMeters()
     let power = recorder.averagePower(forChannel: 0)
     if power > peakPowerDuringRecording { peakPowerDuringRecording = power }
-    lastTwoMeterSamples = (lastTwoMeterSamples.1, power)
-    meterSampleCount += 1
+    onLevelSample?(power)
+    meteringTickCount += 1
+    if meteringTickCount % Self.silenceSampleDecimation == 0 {
+      lastTwoMeterSamples = (lastTwoMeterSamples.1, power)
+      meterSampleCount += 1
+    }
   }
 
   func stopRecording() {

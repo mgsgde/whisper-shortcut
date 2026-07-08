@@ -16,6 +16,7 @@ class MenuBarController: NSObject {
     didSet {
       DebugLogger.logDebug("APPSTATE: \(oldValue) -> \(appState) (mainThread=\(Thread.isMainThread))")
       updateUI()
+      updateRecordingIndicator()
 
       // Auto-reset feedback states after their duration
       feedbackResetTask?.cancel()
@@ -44,6 +45,9 @@ class MenuBarController: NSObject {
   private let reviewPrompter: ReviewPrompter
   
   // MARK: - State Tracking (Prevent Race Conditions)
+  /// Set when the user hits ✕ on the recording indicator: the next
+  /// `audioRecorderDidFinishRecording` discards the audio instead of processing it.
+  private var discardNextRecording = false
   private var currentTranscriptionAudioURL: URL?
   private var processedAudioURLs: Set<URL> = []
   private var audioEngine: AVAudioEngine?
@@ -275,6 +279,62 @@ class MenuBarController: NSObject {
     audioRecorder.delegate = self
     shortcuts.delegate = self
     speechService.chunkProgressDelegate = self
+
+    // Floating recording indicator (bottom-center pill with live level bars)
+    audioRecorder.onLevelSample = { dB in
+      RecordingIndicatorManager.shared.updateLevel(dB: dB)
+    }
+    RecordingIndicatorManager.shared.onCancel = { [weak self] in
+      self?.handleIndicatorCancel()
+    }
+    RecordingIndicatorManager.shared.onConfirm = { [weak self] in
+      self?.handleIndicatorConfirm()
+    }
+  }
+
+  // MARK: - Recording Indicator
+
+  /// Keeps the floating bottom-center pill in sync with `appState`. The pill only ever
+  /// appears for Dictate / Dictate Prompt recordings; the processing phase is a no-op
+  /// inside the manager unless the pill is already on screen, so TTS, Read Aloud, and
+  /// live-meeting flows never summon it. On success (and every other state) it hides
+  /// immediately — the pasted text is the feedback, lingering UI would cover the
+  /// user's work.
+  private func updateRecordingIndicator() {
+    let indicator = RecordingIndicatorManager.shared
+    switch appState {
+    case .recording(.transcription), .recording(.prompt):
+      indicator.showRecording()
+    case .processing(let mode) where !mode.isTTSContext:
+      indicator.showProcessing()
+    default:
+      indicator.hide()
+    }
+  }
+
+  /// ✕ on the indicator: discard an active recording, or cancel in-flight processing.
+  private func handleIndicatorCancel() {
+    if appState.isRecording {
+      DebugLogger.log("AUDIO: Recording discarded via indicator ✕")
+      discardNextRecording = true
+      RecordingIndicatorManager.shared.hide()
+      audioRecorder.stopRecording()
+      return
+    }
+    if isTranscriptionProcessing {
+      cancelInFlightTranscription()
+      return
+    }
+    if case .processing(.prompting) = appState {
+      speechService.cancelPrompt()
+      transitionToIdleAndCleanup()
+    }
+  }
+
+  /// ✓ on the indicator: same as the stop shortcut — finish recording and process.
+  private func handleIndicatorConfirm() {
+    guard appState.isRecording else { return }
+    stopRecordingAfterTailDelay()
   }
 
   private func setupNotifications() {
@@ -1411,7 +1471,11 @@ class MenuBarController: NSObject {
       
       await MainActor.run {
         PopupNotificationWindow.dismissProcessing()
-        PopupNotificationWindow.showTranscriptionResponse(result, modelInfo: modelInfo)
+        // The recording indicator pill already flashes success for pill-driven flows —
+        // a text popup on top of that would be redundant feedback.
+        if !RecordingIndicatorManager.shared.isVisible {
+          PopupNotificationWindow.showTranscriptionResponse(result, modelInfo: modelInfo)
+        }
         if duringMeeting {
           self.activeMeetingSegment = nil
         } else {
@@ -1485,7 +1549,10 @@ class MenuBarController: NSObject {
 
       await MainActor.run {
         let modelInfo = self.speechService.getPromptModelInfo()
-        PopupNotificationWindow.showPromptResponse(result, modelInfo: modelInfo)
+        // Same redundancy rule as transcription: the pill's success flash suffices.
+        if !RecordingIndicatorManager.shared.isVisible {
+          PopupNotificationWindow.showPromptResponse(result, modelInfo: modelInfo)
+        }
         if duringMeeting {
           self.activeMeetingSegment = nil
         } else {
@@ -1965,6 +2032,15 @@ extension MenuBarController: AudioRecorderDelegate {
         return
       }
 
+      // Cancelled via the recording indicator's ✕ — discard the audio, don't process
+      if self.discardNextRecording {
+        self.discardNextRecording = false
+        DebugLogger.log("AUDIO: Discarding cancelled recording \(audioURL.lastPathComponent)")
+        self.cleanupAudioFile(at: audioURL)
+        self.appState = self.appState.finish()
+        return
+      }
+
       // Meeting segment path: recording finished for a parallel action during live meeting
       if let segment = self.activeMeetingSegment {
         DebugLogger.log("MEETING-SEGMENT: Recording finished for segment \(segment), dispatching pipeline")
@@ -2078,6 +2154,7 @@ extension MenuBarController: AudioRecorderDelegate {
     let errorCode = (error as NSError).code
     let errorDomain = (error as NSError).domain
     DebugLogger.logDebug("audioRecorderDidFailWithError called - errorCode: \(errorCode), errorDomain: \(errorDomain), errorDescription: \(error.localizedDescription), appState: \(appState), isEmptyFileError: \(errorCode == 1004)")
+    discardNextRecording = false
     if activeMeetingSegment != nil {
       DebugLogger.logWarning("MEETING-SEGMENT: Recording failed during meeting segment, clearing segment")
       activeMeetingSegment = nil

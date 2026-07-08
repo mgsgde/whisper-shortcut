@@ -48,6 +48,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // provider's key gets that provider's models by default across every feature.
     ModelSelectionReconciler.reconcileAll()
 
+    migrateNotificationPositionDefault()
+
     // Initialize the full menu bar controller
     menuBarController = MenuBarController()
 
@@ -144,6 +146,23 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Flush debounced session data before terminating
     ChatSessionStore.shared.flushToDisk()
     menuBarController?.cleanup()
+  }
+
+  /// One-shot migration (2026-07): the default notification position moved from
+  /// left-top to center-bottom so popups share one feedback spot with the recording
+  /// indicator pill. Only users still on the old default (or with nothing stored)
+  /// follow; an explicitly chosen other position is preserved.
+  private func migrateNotificationPositionDefault() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: UserDefaultsKeys.didMigrateNotificationPositionToCenterBottom)
+    else { return }
+    defaults.set(true, forKey: UserDefaultsKeys.didMigrateNotificationPositionToCenterBottom)
+    let stored = defaults.string(forKey: UserDefaultsKeys.notificationPosition)
+    if stored == nil || stored == NotificationPosition.leftTop.rawValue {
+      defaults.set(
+        NotificationPosition.centerBottom.rawValue, forKey: UserDefaultsKeys.notificationPosition)
+      DebugLogger.log("MIGRATION: notificationPosition \(stored ?? "unset") → center-bottom")
+    }
   }
 
   /// Catches SIGTERM / SIGINT / SIGHUP so we know *why* the process died and

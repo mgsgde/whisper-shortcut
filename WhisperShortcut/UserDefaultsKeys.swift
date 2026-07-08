@@ -34,6 +34,8 @@ enum UserDefaultsKeys {
   static let notificationPosition = "notificationPosition"
   static let notificationDuration = "notificationDuration"
   static let errorNotificationDuration = "errorNotificationDuration"
+  /// One-shot migration flag: default notification position moved left-top → center-bottom.
+  static let didMigrateNotificationPositionToCenterBottom = "didMigrateNotificationPositionToCenterBottom"
 
   // MARK: - Recording Safeguards
   static let confirmAboveDurationSeconds = "confirmAboveDurationSeconds"
