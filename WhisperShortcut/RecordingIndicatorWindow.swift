@@ -114,7 +114,16 @@ struct RecordingIndicatorView: View {
   let onCancel: () -> Void
   let onConfirm: () -> Void
 
+  /// The pill shrinks while processing — only ✕ and the spinner remain.
+  static func pillSize(for phase: RecordingIndicatorPhase) -> CGSize {
+    switch phase {
+    case .recording: return CGSize(width: 158, height: 40)
+    case .processing: return CGSize(width: 72, height: 40)
+    }
+  }
+
   var body: some View {
+    let size = Self.pillSize(for: model.phase)
     HStack(spacing: 10) {
       switch model.phase {
       case .recording:
@@ -134,7 +143,7 @@ struct RecordingIndicatorView: View {
       }
     }
     .padding(.horizontal, 8)
-    .frame(width: 158, height: 40)
+    .frame(width: size.width, height: size.height)
     .background(Capsule().fill(Color.black.opacity(0.92)))
     .environment(\.colorScheme, .dark)
   }
@@ -171,7 +180,6 @@ final class RecordingIndicatorManager {
   private var panel: RecordingIndicatorPanel?
 
   private enum Constants {
-    static let panelSize = NSSize(width: 158, height: 40)
     static let bottomMargin: CGFloat = 28
     static let fadeDuration: TimeInterval = 0.18
     /// averagePower(dB) range mapped onto bar height 0…1.
@@ -192,8 +200,9 @@ final class RecordingIndicatorManager {
   /// Switches to the spinner. No-op when the pill isn't on screen (e.g. TTS or
   /// file-based processing that didn't start from a pill-visible recording).
   func showProcessing() {
-    guard isVisible else { return }
+    guard isVisible, let panel else { return }
     model.phase = .processing
+    position(panel)
   }
 
   func hide() {
@@ -235,8 +244,9 @@ final class RecordingIndicatorManager {
   }
 
   private func makePanel() -> RecordingIndicatorPanel {
+    let size = currentPanelSize()
     let panel = RecordingIndicatorPanel(
-      contentRect: NSRect(origin: .zero, size: Constants.panelSize),
+      contentRect: NSRect(origin: .zero, size: size),
       styleMask: [.borderless, .nonactivatingPanel],
       backing: .buffered,
       defer: false
@@ -256,18 +266,27 @@ final class RecordingIndicatorManager {
       onConfirm: { [weak self] in self?.onConfirm?() }
     )
     let hostingView = FirstMouseHostingView(rootView: view)
-    hostingView.frame = NSRect(origin: .zero, size: Constants.panelSize)
+    hostingView.frame = NSRect(origin: .zero, size: size)
+    hostingView.autoresizingMask = [.width, .height]
     panel.contentView = hostingView
     return panel
   }
 
+  private func currentPanelSize() -> NSSize {
+    let size = RecordingIndicatorView.pillSize(for: model.phase)
+    return NSSize(width: size.width, height: size.height)
+  }
+
+  /// Centers the panel bottom-center at the size matching the current phase, so the
+  /// clickable window area always matches the visible pill.
   private func position(_ panel: NSPanel) {
     guard let screen = NSScreen.main else { return }
+    let size = currentPanelSize()
     let visible = screen.visibleFrame
     let origin = NSPoint(
-      x: visible.midX - Constants.panelSize.width / 2,
+      x: visible.midX - size.width / 2,
       y: visible.minY + Constants.bottomMargin
     )
-    panel.setFrame(NSRect(origin: origin, size: Constants.panelSize), display: true)
+    panel.setFrame(NSRect(origin: origin, size: size), display: true)
   }
 }
