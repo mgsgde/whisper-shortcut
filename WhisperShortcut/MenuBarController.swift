@@ -1516,6 +1516,22 @@ class MenuBarController: NSObject {
         // transcribe the merged WAV exactly as before streaming existed.
         result = try await speechService.transcribe(audioURL: audioURL, cancellable: !duringMeeting)
       }
+
+      // A shortcut press during processing cancels the job (cancelInFlightTranscription
+      // clears currentTranscriptionAudioURL), but a transcript already in flight can still
+      // arrive afterwards — drop it instead of pasting a cancelled result out of idle.
+      // Same staleness check as the error path below.
+      let wasCancelled: Bool = await MainActor.run {
+        if !duringMeeting, self.currentTranscriptionAudioURL != audioURL {
+          DebugLogger.log(
+            "CANCELLATION: Dropping transcript for cancelled recording \(audioURL.lastPathComponent)")
+          self.processedAudioURLs.remove(audioURL)
+          return true
+        }
+        return false
+      }
+      if wasCancelled { return }
+
       clipboardManager.copyTranscriptionToClipboard(text: result)
 
       let transcriptionModel = TranscriptionModel.loadSelected()
@@ -1751,9 +1767,10 @@ class MenuBarController: NSObject {
     }
   }
 
-  /// Safely removes an audio file, logging any errors
+  /// Safely removes an audio file, logging any errors. Already-gone files are a normal
+  /// outcome (cancel and completion paths can both try to clean the same recording).
   private func cleanupAudioFile(at url: URL?) {
-    guard let url = url else { return }
+    guard let url = url, FileManager.default.fileExists(atPath: url.path) else { return }
     do {
       try FileManager.default.removeItem(at: url)
       DebugLogger.logDebug("Cleaned up audio file: \(url.lastPathComponent)")

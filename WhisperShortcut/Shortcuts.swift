@@ -28,7 +28,9 @@ class Shortcuts {
 
   // Push-to-talk: a press that *started* a recording and is held past this threshold
   // stops the recording on release. Shorter presses keep the classic toggle behavior.
-  private static let pushToTalkHoldThreshold: TimeInterval = 0.5
+  // 1.0s because unhurried toggle-taps run up to ~0.7s — at 0.5s those releases stopped
+  // the just-started recording; genuine push-to-talk holds span the whole utterance.
+  private static let pushToTalkHoldThreshold: TimeInterval = 1.0
   private var dictationPressStart: Date?
   private var promptingPressStart: Date?
 
