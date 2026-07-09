@@ -329,6 +329,13 @@ class SpeechService {
     // model relies solely on the highlighted region in the screenshot instead of the ⌘C-copied selection.
     let clipboardContext = AppConstants.dictatePromptUsesScreenshotSelection ? nil : getClipboardContext()
 
+    // The selected text is user-curated ground-truth spelling (unlike the voice instruction,
+    // which is machine transcription) — feed it to the same instant glossary learning as
+    // typed chat text. Independent of whether the prompt call below succeeds.
+    if let clipboardContext {
+      GlossaryFastLearner.shared.learnFromTypedText(clipboardContext)
+    }
+
     // Get selected model from settings based on mode
     let selectedPromptModel = getPromptModel()
 
