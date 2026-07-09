@@ -1,6 +1,6 @@
-# WhisperShortcut 7.83
+# WhisperShortcut 7.84
 
-Streaming dictate reliability and a cleaner recording UI.
+Read Aloud now uses the same clean bottom-center pill as Dictate.
 
 ## Installation
 
@@ -8,13 +8,10 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### 🎙️ Streaming dictate fix
+### 🔊 Consistent Read Aloud feedback
 
-- **Long recordings no longer freeze**: When a streaming dictate session captured more than 45 seconds of speech without a silence break, the in-flight chunk was split internally — and that background work accidentally drove the global progress UI, pulling the app state out of recording and leaving transcription stuck. Background streaming chunks now transcribe silently without hijacking the state machine.
+- **Read Aloud uses the recording pill**: While speech is being synthesized, Read Aloud now shows the same compact bottom-center pill (spinner + ✕) as Dictate and Dictate Prompt, instead of a separate popup or no feedback at all.
+- **Cancel from the pill**: Click ✕ on the pill to stop synthesis mid-flight.
+- **No overlapping popups**: For longer text, the chunk-progress popup is suppressed in favor of the single pill — one clear indicator. Once playback starts, the pill disappears and the audio itself is the feedback.
 
-### 🎨 Recording UI
-
-- **Compact processing pill**: The bottom-center recording indicator shrinks to a compact size while your audio is being transcribed, so it stays out of the way.
-- **No duplicate popups**: Chunk-processing popups are suppressed when the recording pill is already visible — one clear progress indicator instead of overlapping notifications.
-
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.82...v7.83
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.83...v7.84

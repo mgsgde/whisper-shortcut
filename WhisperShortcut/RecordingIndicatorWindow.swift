@@ -197,12 +197,18 @@ final class RecordingIndicatorManager {
     orderFrontPanel()
   }
 
-  /// Switches to the spinner. No-op when the pill isn't on screen (e.g. TTS or
-  /// file-based processing that didn't start from a pill-visible recording).
-  func showProcessing() {
-    guard isVisible, let panel else { return }
+  /// Switches to the spinner. When the pill is already on screen (Dictate / Dictate
+  /// Prompt hand off from recording) it just shrinks to the processing size. For flows
+  /// with no recording phase (Read Aloud / TTS) pass `summonIfNeeded: true` to pull the
+  /// processing pill up directly. Otherwise it stays a no-op so pill-less flows
+  /// (e.g. file-based processing) don't suddenly grow a pill.
+  func showProcessing(summonIfNeeded: Bool = false) {
     model.phase = .processing
-    position(panel)
+    if isVisible, let panel {
+      position(panel)
+    } else if summonIfNeeded {
+      orderFrontPanel()
+    }
   }
 
   func hide() {

@@ -318,19 +318,22 @@ class MenuBarController: NSObject {
 
   // MARK: - Recording Indicator
 
-  /// Keeps the floating bottom-center pill in sync with `appState`. The pill only ever
-  /// appears for Dictate / Dictate Prompt recordings; the processing phase is a no-op
-  /// inside the manager unless the pill is already on screen, so TTS, Read Aloud, and
-  /// live-meeting flows never summon it. On success (and every other state) it hides
-  /// immediately — the pasted text is the feedback, lingering UI would cover the
-  /// user's work.
+  /// Keeps the floating bottom-center pill in sync with `appState`. It shows the
+  /// recording pill for Dictate / Dictate Prompt, and the compact processing spinner
+  /// for both those flows (handed off from recording) and Read Aloud / TTS synthesis
+  /// (summoned directly, since TTS has no recording phase). Once TTS hands off to
+  /// playback the state is `.speaking`, so the pill hides — the audio itself is the
+  /// feedback. On success (and every other state) it hides immediately — lingering UI
+  /// would cover the user's work. Live-meeting recording stays pill-less.
   private func updateRecordingIndicator() {
     let indicator = RecordingIndicatorManager.shared
     switch appState {
     case .recording(.transcription), .recording(.prompt):
       indicator.showRecording()
-    case .processing(let mode) where !mode.isTTSContext:
-      indicator.showProcessing()
+    case .processing(let mode):
+      // TTS has no recording phase, so summon the processing pill directly;
+      // Dictate / Dictate Prompt already have it on screen from recording.
+      indicator.showProcessing(summonIfNeeded: mode.isTTSContext)
     default:
       indicator.hide()
     }
@@ -347,6 +350,11 @@ class MenuBarController: NSObject {
     }
     if isTranscriptionProcessing {
       cancelInFlightTranscription()
+      return
+    }
+    if isTTSRunning {
+      DebugLogger.log("TTS: Read Aloud synthesis cancelled via indicator ✕")
+      finishReadAloudSession()
       return
     }
     if case .processing(.prompting) = appState {
