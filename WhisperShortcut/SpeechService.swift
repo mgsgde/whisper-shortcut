@@ -152,15 +152,20 @@ class SpeechService {
   ///   - preferredModel: If set (e.g. for live meeting), use this model; otherwise use the global Dictate selection.
   ///   - promptOverride: If set, use this prompt instead of the user's dictation prompt.
   ///   - cancellable: When false, skips the cancellation slot (e.g. live-meeting chunks).
+  ///   - reportsProgress: When false, a chunked transcription (>45s audio) does not drive
+  ///     the global chunk-progress delegate. Background transcriptions (streaming dictate
+  ///     chunks) must pass false — the delegate mutates the app state machine, which
+  ///     belongs to the foreground pipeline only.
   func transcribe(
     audioURL: URL,
     preferredModel: TranscriptionModel? = nil,
     promptOverride: String? = nil,
-    cancellable: Bool = true
+    cancellable: Bool = true,
+    reportsProgress: Bool = true
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
-      try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride)
+      try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride, reportsProgress: reportsProgress)
     }
 
     if cancellable {
@@ -181,7 +186,7 @@ class SpeechService {
   }
 
   // MARK: - Transcription Mode (Private Implementation)
-  private func performTranscription(audioURL: URL, preferredModel: TranscriptionModel? = nil, promptOverride: String? = nil) async throws -> String {
+  private func performTranscription(audioURL: URL, preferredModel: TranscriptionModel? = nil, promptOverride: String? = nil, reportsProgress: Bool = true) async throws -> String {
     let startTime = CFAbsoluteTimeGetCurrent()
     let model = preferredModel ?? TranscriptionModel.loadSelected()
 
@@ -233,7 +238,7 @@ class SpeechService {
     if model.isGemini {
       // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
       try validateAudioFileFormat(at: audioURL)
-      let result = try await transcribeWithGemini(audioURL: audioURL, model: model, promptOverride: promptOverride)
+      let result = try await transcribeWithGemini(audioURL: audioURL, model: model, promptOverride: promptOverride, reportsProgress: reportsProgress)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: [\(model.displayName)] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -1494,7 +1499,7 @@ class SpeechService {
   // MARK: - Gemini API Helpers (delegated to GeminiAPIClient)
 
   // MARK: - Gemini Transcription
-  private func transcribeWithGemini(audioURL: URL, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
+  private func transcribeWithGemini(audioURL: URL, model: TranscriptionModel, promptOverride: String? = nil, reportsProgress: Bool = true) async throws -> String {
     let apiStartTime = CFAbsoluteTimeGetCurrent()
 
     guard let credential = await credentialProvider.getCredential() else {
@@ -1526,7 +1531,7 @@ class SpeechService {
     // Use chunking for long audio (>45s by default)
     if audioDuration > AppConstants.chunkingThresholdSeconds {
       DebugLogger.log("GEMINI-TRANSCRIPTION: Using chunked transcription (duration > \(AppConstants.chunkingThresholdSeconds)s)")
-      result = try await transcribeWithChunking(audioURL: audioURL, audioDuration: audioDuration, credential: credential, model: model, promptOverride: promptOverride)
+      result = try await transcribeWithChunking(audioURL: audioURL, audioDuration: audioDuration, credential: credential, model: model, promptOverride: promptOverride, reportsProgress: reportsProgress)
     }
     // For files >20MB, use Files API (resumable upload); inline base64 otherwise.
     else if audioSize > AppConstants.maxFileSizeBytes {
@@ -1542,9 +1547,9 @@ class SpeechService {
   }
 
   // MARK: - Chunked Transcription
-  private func transcribeWithChunking(audioURL: URL, audioDuration: TimeInterval, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
+  private func transcribeWithChunking(audioURL: URL, audioDuration: TimeInterval, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil, reportsProgress: Bool = true) async throws -> String {
     let chunkService = ChunkTranscriptionService(geminiClient: geminiClient)
-    chunkService.progressDelegate = chunkProgressDelegate
+    chunkService.progressDelegate = reportsProgress ? chunkProgressDelegate : nil
 
     let prompt = geminiTranscriptionInstruction(promptOverride: promptOverride)
 

@@ -58,7 +58,10 @@ final class DictateStreamingSession {
     }
     DebugLogger.logSpeech("STREAMING-DICTATE: Transcribing chunk \(index) in flight (\(url.lastPathComponent))")
     chunkTasks[index] = Task { [speechService] in
-      try await speechService.transcribe(audioURL: url, cancellable: false)
+      // reportsProgress: false — a long chunk (>45s of speech without a silence boundary)
+      // gets chunk-split internally; letting that drive the global progress delegate would
+      // hijack the app state machine away from `.recording` and strand the main pipeline.
+      try await speechService.transcribe(audioURL: url, cancellable: false, reportsProgress: false)
     }
   }
 

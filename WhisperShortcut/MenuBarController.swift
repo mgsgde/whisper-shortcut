@@ -2528,17 +2528,21 @@ extension MenuBarController: ChunkProgressDelegate {
     appState = .processing(.splitting(context: context))
     updateMenuBarIcon()
 
-    // Show persistent processing popup with appropriate message
-    if isTTS {
-      PopupNotificationWindow.showProcessing(
-        "Splitting text into \(totalChunks) chunks...",
-        title: "Processing Long Text"
-      )
-    } else {
-      PopupNotificationWindow.showProcessing(
-        "Splitting audio into \(totalChunks) chunks...",
-        title: "Processing Long Audio"
-      )
+    // The bottom-center pill already shows processing for pill-driven flows — chunk
+    // popups on top would be redundant feedback (same rule as the success popup in
+    // performTranscription). Popups remain for pill-less flows like TTS chunking.
+    if !RecordingIndicatorManager.shared.isVisible {
+      if isTTS {
+        PopupNotificationWindow.showProcessing(
+          "Splitting text into \(totalChunks) chunks...",
+          title: "Processing Long Text"
+        )
+      } else {
+        PopupNotificationWindow.showProcessing(
+          "Splitting audio into \(totalChunks) chunks...",
+          title: "Processing Long Audio"
+        )
+      }
     }
 
     DebugLogger.log("CHUNK-PROGRESS: Started chunking, \(totalChunks) total chunks (TTS: \(isTTS))")
@@ -2556,12 +2560,14 @@ extension MenuBarController: ChunkProgressDelegate {
 
     let isTTS = context == .tts
 
-    // Update processing popup with status grid
-    let statusGrid = generateStatusGrid()
-    PopupNotificationWindow.updateProcessing(
-      title: isTTS ? "Synthesizing Speech" : "Processing Audio",
-      message: statusGrid
-    )
+    // Update processing popup with status grid (pill-less flows only, see chunkingStarted)
+    if !RecordingIndicatorManager.shared.isVisible {
+      let statusGrid = generateStatusGrid()
+      PopupNotificationWindow.updateProcessing(
+        title: isTTS ? "Synthesizing Speech" : "Processing Audio",
+        message: statusGrid
+      )
+    }
 
     DebugLogger.log("CHUNK-PROGRESS: Chunk \(index) started processing")
   }
@@ -2584,12 +2590,14 @@ extension MenuBarController: ChunkProgressDelegate {
 
     let isTTS = context == .tts
 
-    // Update processing popup with status grid
-    let statusGrid = generateStatusGrid()
-    PopupNotificationWindow.updateProcessing(
-      title: isTTS ? "Synthesizing Speech" : "Processing Audio",
-      message: statusGrid
-    )
+    // Update processing popup with status grid (pill-less flows only, see chunkingStarted)
+    if !RecordingIndicatorManager.shared.isVisible {
+      let statusGrid = generateStatusGrid()
+      PopupNotificationWindow.updateProcessing(
+        title: isTTS ? "Synthesizing Speech" : "Processing Audio",
+        message: statusGrid
+      )
+    }
 
     DebugLogger.log("CHUNK-PROGRESS: Chunk \(index) completed (\(text.prefix(50))...)")
   }
@@ -2603,12 +2611,14 @@ extension MenuBarController: ChunkProgressDelegate {
       // Keep as active (will be re-started via chunkStarted)
       DebugLogger.logWarning("CHUNK-PROGRESS: Chunk \(index) failed, retrying...")
 
-      // Update popup to show retry status
-      let statusGrid = generateStatusGrid()
-      PopupNotificationWindow.updateProcessing(
-        title: isTTS ? "Synthesizing Speech" : "Processing Audio",
-        message: "\(statusGrid)\nRetrying chunk \(index + 1)..."
-      )
+      // Update popup to show retry status (pill-less flows only, see chunkingStarted)
+      if !RecordingIndicatorManager.shared.isVisible {
+        let statusGrid = generateStatusGrid()
+        PopupNotificationWindow.updateProcessing(
+          title: isTTS ? "Synthesizing Speech" : "Processing Audio",
+          message: "\(statusGrid)\nRetrying chunk \(index + 1)..."
+        )
+      }
     } else {
       // Mark as permanently failed
       chunkStatuses[index] = .failed
@@ -2616,12 +2626,14 @@ extension MenuBarController: ChunkProgressDelegate {
       appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
       updateMenuBarIcon()
 
-      // Update processing popup
-      let statusGrid = generateStatusGrid()
-      PopupNotificationWindow.updateProcessing(
-        title: isTTS ? "Synthesizing Speech" : "Processing Audio",
-        message: statusGrid
-      )
+      // Update processing popup (pill-less flows only, see chunkingStarted)
+      if !RecordingIndicatorManager.shared.isVisible {
+        let statusGrid = generateStatusGrid()
+        PopupNotificationWindow.updateProcessing(
+          title: isTTS ? "Synthesizing Speech" : "Processing Audio",
+          message: statusGrid
+        )
+      }
 
       DebugLogger.logError("CHUNK-PROGRESS: Chunk \(index) failed: \(error.localizedDescription)")
       // Log to file (replaces CrashLogger)
@@ -2639,16 +2651,11 @@ extension MenuBarController: ChunkProgressDelegate {
 
     let isTTS = context == .tts
 
-    // Update processing popup with appropriate message
-    if isTTS {
+    // Update processing popup with appropriate message (pill-less flows only, see chunkingStarted)
+    if !RecordingIndicatorManager.shared.isVisible {
       PopupNotificationWindow.updateProcessing(
         title: "Almost Done",
-        message: "Merging audio chunks..."
-      )
-    } else {
-      PopupNotificationWindow.updateProcessing(
-        title: "Almost Done",
-        message: "Merging transcription results..."
+        message: isTTS ? "Merging audio chunks..." : "Merging transcription results..."
       )
     }
 
