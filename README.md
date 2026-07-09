@@ -6,7 +6,7 @@ Bring your own API keys — Gemini, and optionally GPT or Grok — or run fully 
 
 ![Dictating an email with WhisperShortcut: press the shortcut, speak, and the text lands in Apple Mail](docs/assets/demo.gif)
 
-▶️ [Watch the full demo on YouTube](https://www.youtube.com/watch?v=JTa4APF72cY) · Website: [whispershortcut.com](https://whispershortcut.com)
+▶️ [Watch the full demo on YouTube](https://youtu.be/gc1s0okfHbU) · Website: [whispershortcut.com](https://whispershortcut.com)
 
 ## Download
 

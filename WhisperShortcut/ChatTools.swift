@@ -225,7 +225,7 @@ enum ChatToolRegistry {
     ],
     [
       "name": "google_calendar_create_event",
-      "description": "Creates a new calendar event (meeting, appointment) with a specific start and end time on Google Calendar. Do NOT use for tasks or to-dos — use google_tasks_create instead. Always confirm details with the user before calling this.",
+      "description": "Creates a new calendar event (meeting, appointment) on Google Calendar. Supports recurring events (e.g. yearly birthdays, weekly standups) via the recurrence parameter, and all-day events via all_day. Do NOT use for tasks or to-dos — use google_tasks_create instead. Always confirm details with the user before calling this.",
       "parameters": [
         "type": "object",
         "properties": [
@@ -235,11 +235,11 @@ enum ChatToolRegistry {
           ],
           "start_iso8601": [
             "type": "string",
-            "description": "Start time in ISO 8601 format (e.g. 2026-04-22T15:00:00+02:00).",
+            "description": "Start time in ISO 8601 format (e.g. 2026-04-22T15:00:00+02:00). For all-day events, a date like 2026-07-09 is sufficient.",
           ],
           "end_iso8601": [
             "type": "string",
-            "description": "End time in ISO 8601 format (e.g. 2026-04-22T15:30:00+02:00).",
+            "description": "End time in ISO 8601 format (e.g. 2026-04-22T15:30:00+02:00). For a single all-day event you may pass the same date as the start; it is treated as a full day.",
           ],
           "time_zone": [
             "type": "string",
@@ -252,6 +252,15 @@ enum ChatToolRegistry {
           "description": [
             "type": "string",
             "description": "Detailed description or notes for the event (e.g. links, agenda, instructions).",
+          ],
+          "all_day": [
+            "type": "boolean",
+            "description": "Set true for an all-day event (no specific time), such as a birthday, holiday, or full-day off. Defaults to false.",
+          ],
+          "recurrence": [
+            "type": "array",
+            "items": ["type": "string"] as [String: Any],
+            "description": "Optional RFC-5545 recurrence rules to make the event repeat. Each entry is an RRULE string. Examples: yearly birthday → [\"RRULE:FREQ=YEARLY\"]; every weekday → [\"RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR\"]; weekly for 10 occurrences → [\"RRULE:FREQ=WEEKLY;COUNT=10\"]; monthly until a date → [\"RRULE:FREQ=MONTHLY;UNTIL=20271231T000000Z\"]. Omit for a one-time event.",
           ],
         ] as [String: Any],
         "required": ["summary", "start_iso8601", "end_iso8601"],
@@ -290,6 +299,15 @@ enum ChatToolRegistry {
           "description": [
             "type": "string",
             "description": "New description/notes (omit to keep unchanged).",
+          ],
+          "all_day": [
+            "type": "boolean",
+            "description": "Set true to make this an all-day event (only meaningful when you also pass new start/end). Omit to leave the event's timing type unchanged.",
+          ],
+          "recurrence": [
+            "type": "array",
+            "items": ["type": "string"] as [String: Any],
+            "description": "RFC-5545 recurrence rules to make the event repeat, e.g. [\"RRULE:FREQ=YEARLY\"] for a yearly birthday or [\"RRULE:FREQ=WEEKLY;BYDAY=MO\"] for every Monday. Pass an empty array to remove recurrence (make it one-time). Omit to leave recurrence unchanged.",
           ],
         ] as [String: Any],
         "required": ["event_id"],
@@ -743,10 +761,13 @@ enum ChatToolRegistry {
       let timeZone = args["time_zone"] as? String ?? TimeZone.current.identifier
       let location = args["location"] as? String
       let description = args["description"] as? String
+      let allDay = args["all_day"] as? Bool ?? false
+      let recurrence = args["recurrence"] as? [String]
       do {
         let result = try await GoogleCalendarAPIClient.shared.createEvent(
           summary: summary, startISO: startISO, endISO: endISO, timeZone: timeZone,
-          location: location, description: description)
+          location: location, description: description,
+          recurrence: recurrence, allDay: allDay)
         DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar create ok, id=\(result["event_id"] ?? "?")")
         return result
       } catch {
@@ -767,7 +788,9 @@ enum ChatToolRegistry {
           endISO: args["end_iso8601"] as? String,
           timeZone: args["time_zone"] as? String,
           location: args["location"] as? String,
-          description: args["description"] as? String)
+          description: args["description"] as? String,
+          recurrence: args["recurrence"] as? [String],
+          allDay: args["all_day"] as? Bool ?? false)
         DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar update ok, id=\(result["event_id"] ?? "?")")
         return result
       } catch {

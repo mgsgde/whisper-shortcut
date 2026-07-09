@@ -73,16 +73,11 @@ actor GoogleCalendarAPIClient {
   // MARK: - Create Event
 
   func createEvent(summary: String, startISO: String, endISO: String, timeZone: String,
-                   location: String? = nil, description: String? = nil) async throws -> [String: Any] {
-    DebugLogger.logNetwork("GOOGLE-CALENDAR: createEvent summary=\(summary) start=\(startISO) end=\(endISO)")
-    // Coerce common near-ISO shapes (missing offset, space instead of `T`, no seconds) into a
-    // strict offset-bearing string rather than rejecting — the model occasionally omits the zone.
-    guard let startISO = normalizeToISO8601(startISO, timeZone: timeZone),
-          let endISO = normalizeToISO8601(endISO, timeZone: timeZone) else {
-      throw CalendarAPIError.invalidDateFormat
-    }
+                   location: String? = nil, description: String? = nil,
+                   recurrence: [String]? = nil, allDay: Bool = false) async throws -> [String: Any] {
+    DebugLogger.logNetwork("GOOGLE-CALENDAR: createEvent summary=\(summary) start=\(startISO) end=\(endISO) allDay=\(allDay) recurrence=\(recurrence ?? [])")
 
-    let dedupKey = "\(summary)|\(startISO)|\(endISO)"
+    let dedupKey = "\(summary)|\(startISO)|\(endISO)|\((recurrence ?? []).joined(separator: ","))"
     let now = Date()
     if let recent = recentCreates[dedupKey], now.timeIntervalSince(recent.at) < dedupWindow {
       DebugLogger.logWarning(
@@ -94,13 +89,13 @@ actor GoogleCalendarAPIClient {
       throw CalendarAPIError.invalidResponse
     }
 
-    var body: [String: Any] = [
-      "summary": summary,
-      "start": ["dateTime": startISO, "timeZone": timeZone],
-      "end": ["dateTime": endISO, "timeZone": timeZone],
-    ]
+    var body: [String: Any] = ["summary": summary]
+    body["start"] = try startEndField(isStart: true, iso: startISO, timeZone: timeZone, allDay: allDay)
+    body["end"] = try startEndField(isStart: false, iso: endISO, timeZone: timeZone, allDay: allDay,
+                                    startISO: startISO)
     if let location { body["location"] = location }
     if let description { body["description"] = description }
+    if let recurrence = normalizedRecurrence(recurrence) { body["recurrence"] = recurrence }
 
     let bodyData = try JSONSerialization.data(withJSONObject: body)
     let data = try await authorizedRequest(url: url, httpMethod: "POST", body: bodyData)
@@ -121,6 +116,14 @@ actor GoogleCalendarAPIClient {
     }
     if let location = json["location"] as? String { result["location"] = location }
     if let description = json["description"] as? String { result["description"] = description }
+    if let recurrence = json["recurrence"] as? [String] { result["recurrence"] = recurrence }
+    if let start = json["start"] as? [String: Any], let startDate = start["date"] as? String {
+      result["start"] = startDate
+      result["all_day"] = true
+    }
+    if let end = json["end"] as? [String: Any], let endDate = end["date"] as? String {
+      result["end"] = endDate
+    }
     if let id = result["event_id"] as? String {
       recentCreates = recentCreates.filter { now.timeIntervalSince($0.value.at) < dedupWindow }
       recentCreates[dedupKey] = (id, now)
@@ -133,22 +136,23 @@ actor GoogleCalendarAPIClient {
 
   func updateEvent(eventId: String, summary: String? = nil, startISO: String? = nil,
                    endISO: String? = nil, timeZone: String? = nil,
-                   location: String? = nil, description: String? = nil) async throws -> [String: Any] {
-    DebugLogger.logNetwork("GOOGLE-CALENDAR: updateEvent id=\(eventId)")
+                   location: String? = nil, description: String? = nil,
+                   recurrence: [String]? = nil, allDay: Bool = false) async throws -> [String: Any] {
+    DebugLogger.logNetwork("GOOGLE-CALENDAR: updateEvent id=\(eventId) allDay=\(allDay) recurrence=\(recurrence ?? [])")
     let tz = timeZone ?? TimeZone.current.identifier
 
     var body: [String: Any] = [:]
     if let summary { body["summary"] = summary }
     if let startISO {
-      guard let normalized = normalizeToISO8601(startISO, timeZone: tz) else { throw CalendarAPIError.invalidDateFormat }
-      body["start"] = ["dateTime": normalized, "timeZone": tz]
+      body["start"] = try startEndField(isStart: true, iso: startISO, timeZone: tz, allDay: allDay)
     }
     if let endISO {
-      guard let normalized = normalizeToISO8601(endISO, timeZone: tz) else { throw CalendarAPIError.invalidDateFormat }
-      body["end"] = ["dateTime": normalized, "timeZone": tz]
+      body["end"] = try startEndField(isStart: false, iso: endISO, timeZone: tz, allDay: allDay,
+                                      startISO: startISO)
     }
     if let location { body["location"] = location }
     if let description { body["description"] = description }
+    if let recurrence = normalizedRecurrence(recurrence) { body["recurrence"] = recurrence }
     guard !body.isEmpty else { throw CalendarAPIError.noFieldsToUpdate }
 
     let encoded = encodedPathComponent(eventId)
@@ -187,6 +191,14 @@ actor GoogleCalendarAPIClient {
     }
     if let location = json["location"] as? String { result["location"] = location }
     if let description = json["description"] as? String { result["description"] = description }
+    if let recurrence = json["recurrence"] as? [String] { result["recurrence"] = recurrence }
+    if let start = json["start"] as? [String: Any], let startDate = start["date"] as? String {
+      result["start"] = startDate
+      result["all_day"] = true
+    }
+    if let end = json["end"] as? [String: Any], let endDate = end["date"] as? String {
+      result["end"] = endDate
+    }
     DebugLogger.logSuccess("GOOGLE-CALENDAR: updated event id=\(result["event_id"] ?? "?")")
     return result
   }
@@ -309,6 +321,87 @@ actor GoogleCalendarAPIClient {
       }
     }
     return nil
+  }
+
+  /// Builds a Google Calendar `start`/`end` object. For timed events it emits
+  /// `{dateTime, timeZone}` after coercing the model's near-ISO string into a strict
+  /// offset-bearing one. For all-day events it emits `{date: "yyyy-MM-dd"}`; the `end`
+  /// date is exclusive per the Calendar API, so a single all-day event whose end is not
+  /// strictly after the start is bumped to the day after the start.
+  private func startEndField(isStart: Bool, iso: String, timeZone: String, allDay: Bool,
+                             startISO: String? = nil) throws -> [String: Any] {
+    if allDay {
+      guard var date = dateOnly(iso, timeZone: timeZone) else { throw CalendarAPIError.invalidDateFormat }
+      if !isStart, let startISO, let startDate = dateOnly(startISO, timeZone: timeZone), date <= startDate {
+        date = addingDay(to: startDate, timeZone: timeZone) ?? date
+      }
+      return ["date": date]
+    }
+    guard let normalized = normalizeToISO8601(iso, timeZone: timeZone) else {
+      throw CalendarAPIError.invalidDateFormat
+    }
+    return ["dateTime": normalized, "timeZone": timeZone]
+  }
+
+  /// Extracts the calendar date ("yyyy-MM-dd") of an instant, interpreted in `timeZone`.
+  private func dateOnly(_ raw: String, timeZone: String) -> String? {
+    let tz = TimeZone(identifier: timeZone) ?? .current
+    guard let date = parseFlexibleDate(raw, timeZone: tz) else { return nil }
+    let out = DateFormatter()
+    out.locale = Locale(identifier: "en_US_POSIX")
+    out.timeZone = tz
+    out.dateFormat = "yyyy-MM-dd"
+    return out.string(from: date)
+  }
+
+  private func addingDay(to dateString: String, timeZone: String) -> String? {
+    let tz = TimeZone(identifier: timeZone) ?? .current
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = tz
+    f.dateFormat = "yyyy-MM-dd"
+    guard let date = f.date(from: dateString) else { return nil }
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = tz
+    guard let next = cal.date(byAdding: .day, value: 1, to: date) else { return nil }
+    return f.string(from: next)
+  }
+
+  private func parseFlexibleDate(_ raw: String, timeZone: TimeZone) -> Date? {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    let iso = ISO8601DateFormatter()
+    iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let d = iso.date(from: trimmed) { return d }
+    iso.formatOptions = [.withInternetDateTime]
+    if let d = iso.date(from: trimmed) { return d }
+    let parser = DateFormatter()
+    parser.locale = Locale(identifier: "en_US_POSIX")
+    parser.timeZone = timeZone
+    for pattern in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm",
+                    "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd"] {
+      parser.dateFormat = pattern
+      if let d = parser.date(from: trimmed) { return d }
+    }
+    return nil
+  }
+
+  /// Normalizes model-supplied recurrence rules into the array of RFC-5545 strings the
+  /// Calendar API expects. Each entry must carry an `RRULE:`/`RDATE:`/`EXDATE:`/`EXRULE:`
+  /// prefix; a bare `FREQ=…` rule is prefixed with `RRULE:`. Returns nil only when the caller
+  /// passed nil (field omitted → recurrence left unchanged). An explicitly empty array yields
+  /// an empty array, which the Calendar API treats as "clear recurrence" on update.
+  private func normalizedRecurrence(_ rules: [String]?) -> [String]? {
+    guard let rules else { return nil }
+    return rules.compactMap { raw in
+      let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty else { return nil }
+      let upperPrefix = trimmed.uppercased()
+      if upperPrefix.hasPrefix("RRULE:") || upperPrefix.hasPrefix("RDATE:")
+        || upperPrefix.hasPrefix("EXDATE:") || upperPrefix.hasPrefix("EXRULE:") {
+        return trimmed
+      }
+      return "RRULE:\(trimmed)"
+    }
   }
 
   private func encodedPathComponent(_ value: String) -> String {
