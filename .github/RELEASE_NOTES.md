@@ -1,6 +1,6 @@
-# WhisperShortcut 7.82
+# WhisperShortcut 7.83
 
-Push-to-talk tuning and fixes: slow taps no longer stop your recording, and cancelled transcriptions stay cancelled.
+Streaming dictate reliability and a cleaner recording UI.
 
 ## Installation
 
@@ -8,14 +8,13 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### 🎙️ Push-to-talk fixes
+### 🎙️ Streaming dictate fix
 
-- **Slow taps no longer misfire**: The hold threshold was raised from 0.5 s to 1 s — an unhurried tap to start dictation (which can easily last 0.6–0.7 s) no longer counts as a push-to-talk hold, so releasing the key can't instantly stop the recording you just started. Genuine press-speak-release holds work as before.
-- **Cancelled recordings stay cancelled**: Cancelling a transcription while it was processing could still paste the late result to the clipboard and flash a success popup. In-flight results for cancelled recordings are now dropped.
-- **Quieter logs**: Cleanup of already-removed recording files no longer logs spurious warnings.
+- **Long recordings no longer freeze**: When a streaming dictate session captured more than 45 seconds of speech without a silence break, the in-flight chunk was split internally — and that background work accidentally drove the global progress UI, pulling the app state out of recording and leaving transcription stuck. Background streaming chunks now transcribe silently without hijacking the state machine.
 
-### 📖 Glossary
+### 🎨 Recording UI
 
-- **Learn from Dictate Prompt selections**: The text you select for Dictate Prompt is user-curated spelling — names and terms in it are now picked up by the instant glossary learner, just like typed chat messages.
+- **Compact processing pill**: The bottom-center recording indicator shrinks to a compact size while your audio is being transcribed, so it stays out of the way.
+- **No duplicate popups**: Chunk-processing popups are suppressed when the recording pill is already visible — one clear progress indicator instead of overlapping notifications.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.81...v7.82
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.82...v7.83
