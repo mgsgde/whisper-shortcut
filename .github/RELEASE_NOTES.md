@@ -1,6 +1,6 @@
-# WhisperShortcut 7.80
+# WhisperShortcut 7.81
 
-Meeting summaries got cheaper and faster, and the new instant glossary learning was polished.
+Push-to-talk dictation: hold a key to record, release to transcribe.
 
 ## Installation
 
@@ -8,17 +8,13 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### 💰 Cheaper, faster meeting summaries
+### 🎙️ Push-to-talk
 
-- The speaker-labeling consolidation pass is now skipped entirely when a meeting has only one speaker — nothing to reconcile, so the whole (paid) step disappears.
-- When it does run, it uses the cheapest suitable model of your provider instead of the full summary model: the pass only relabels speakers, but it echoes the entire transcript back, so output-token price dominates its cost.
+- **Hold the shortcut to dictate**: A short tap of the Dictate or Dictate Prompt shortcut still toggles recording as before — but if you *hold* the shortcut, recording stops the moment you release the keys and transcription starts immediately. One fluid press-speak-release motion.
+- **Hold 🌐 Fn to dictate** *(direct download only)*: Optionally use the Fn (Globe) key as a dedicated push-to-talk key — hold it to record, release to transcribe. Opt-in via Settings → Dictate; requires the Accessibility permission. Accidental taps and fn-used-as-modifier presses (fn+arrow, …) are detected and discarded instead of transcribed.
 
-### 📖 Glossary learning polish
+### ✨ Polish
 
-- Typing the same term in different casings within one message ("Grok" and "GROK!!!") no longer produces duplicate glossary entries.
+- "No speech detected" is now shown as a brief info popup instead of a persistent error popup that covered your work.
 
-### Other changes
-
-- README: leads with a 30-second pitch and the demo GIF; license note updated to AGPL-3.0.
-
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.79...v7.80
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.80...v7.81
