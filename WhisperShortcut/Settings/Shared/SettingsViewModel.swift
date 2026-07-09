@@ -81,6 +81,10 @@ class SettingsViewModel: ObservableObject {
     data.autoPasteAfterDictation = UserDefaults.standard.bool(
       forKey: UserDefaultsKeys.autoPasteAfterDictation, default: SettingsDefaults.autoPasteAfterDictation)
 
+    // Load Fn push-to-talk setting
+    data.holdFnToDictate = UserDefaults.standard.bool(
+      forKey: UserDefaultsKeys.holdFnToDictate, default: SettingsDefaults.holdFnToDictate)
+
     // Load screenshot in prompt mode setting
     data.screenshotInPromptMode = UserDefaults.standard.bool(
       forKey: UserDefaultsKeys.screenshotInPromptMode, default: SettingsDefaults.screenshotInPromptMode)
@@ -271,6 +275,9 @@ class SettingsViewModel: ObservableObject {
 
     // Save auto-paste setting
     UserDefaults.standard.set(data.autoPasteAfterDictation, forKey: UserDefaultsKeys.autoPasteAfterDictation)
+
+    // Save Fn push-to-talk setting
+    UserDefaults.standard.set(data.holdFnToDictate, forKey: UserDefaultsKeys.holdFnToDictate)
 
     // Save screenshot in prompt mode setting
     UserDefaults.standard.set(data.screenshotInPromptMode, forKey: UserDefaultsKeys.screenshotInPromptMode)

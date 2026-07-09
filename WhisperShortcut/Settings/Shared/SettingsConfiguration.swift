@@ -1300,6 +1300,12 @@ struct SettingsDefaults {
   // (App Store Guideline 2.4.5). Users enable it explicitly in Settings → General.
   static let autoPasteAfterDictation = false
 
+  // MARK: - Fn Push-to-Talk
+  // OFF by default for the same reason as auto-paste: observing the Fn key needs global
+  // event monitors, which only work with the Accessibility permission — a fresh install
+  // must not require it (App Store Guideline 2.4.5).
+  static let holdFnToDictate = false
+
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = true
   static let screenshotSaveEnabled = false
@@ -1395,6 +1401,9 @@ struct SettingsData {
 
   // MARK: - Auto-Paste Settings
   var autoPasteAfterDictation: Bool = SettingsDefaults.autoPasteAfterDictation
+
+  // MARK: - Fn Push-to-Talk
+  var holdFnToDictate: Bool = SettingsDefaults.holdFnToDictate
 
   // MARK: - Screenshot Settings
   var screenshotInPromptMode: Bool = SettingsDefaults.screenshotInPromptMode

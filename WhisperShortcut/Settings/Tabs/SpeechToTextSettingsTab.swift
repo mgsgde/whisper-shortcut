@@ -78,6 +78,35 @@ struct SpeechToTextSettingsTab: View {
         findConflict: viewModel.findShortcutConflict,
         clearShortcut: viewModel.clearShortcut
       )
+
+      Text("Tip: You can also hold the shortcut instead of toggling — recording runs while you hold it and is transcribed when you release.")
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      #if !APP_STORE
+      Toggle(isOn: $viewModel.data.holdFnToDictate) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Hold 🌐 Fn to dictate")
+            .font(.callout)
+          Text("Hold the Fn (Globe) key to record, release to transcribe. Requires Accessibility permission. In System Settings → Keyboard, set \"Press 🌐 key to\" to \"Do Nothing\" so macOS doesn't also react to the key.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      .toggleStyle(.switch)
+      .onChange(of: viewModel.data.holdFnToDictate) { _, newValue in
+        DebugLogger.log("SHORTCUTS: Hold-Fn-to-dictate toggled to \(newValue)")
+        if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {
+          // Request now (native prompt + pre-registration), not deferred to the first fn press.
+          AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+        }
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+      #endif
     }
   }
 

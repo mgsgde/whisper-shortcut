@@ -43,6 +43,10 @@ enum UserDefaultsKeys {
   // MARK: - Auto-Paste Settings
   static let autoPasteAfterDictation = "autoPasteAfterDictation"
 
+  // MARK: - Fn Push-to-Talk
+  /// Hold the Fn (Globe) key to record a dictation, release to transcribe.
+  static let holdFnToDictate = "holdFnToDictate"
+
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = "screenshotInPromptMode"
   /// When true, captured screenshots (⌘3 and the in-chat button) are also written

@@ -11,6 +11,10 @@ class MenuBarController: NSObject {
     static let audioTailCaptureDelay: TimeInterval = 0.2  // Delay to capture audio tail and prevent cut-off sentences
   }
 
+  /// Display time for the benign "No speech detected" info popup — long enough to read,
+  /// far shorter than the persistent error-popup duration.
+  private static let noSpeechInfoDuration: TimeInterval = 4
+
   // MARK: - Single Source of Truth
   private var appState: AppState = .idle {
     didSet {
@@ -42,6 +46,7 @@ class MenuBarController: NSObject {
   private let speechService: SpeechService
   private let clipboardManager: ClipboardManager
   private let shortcuts: Shortcuts
+  private let fnPushToTalk = FnPushToTalk()
   private let reviewPrompter: ReviewPrompter
   
   // MARK: - State Tracking (Prevent Race Conditions)
@@ -285,6 +290,7 @@ class MenuBarController: NSObject {
   private func setupDelegates() {
     audioRecorder.delegate = self
     shortcuts.delegate = self
+    fnPushToTalk.delegate = self
     speechService.chunkProgressDelegate = self
 
     // Floating recording indicator (bottom-center pill with live level bars)
@@ -488,6 +494,7 @@ class MenuBarController: NSObject {
 
     // Setup shortcuts
     shortcuts.setup()
+    fnPushToTalk.setup()
   }
 
   // MARK: - UI Updates (Single Method!)
@@ -1403,6 +1410,22 @@ class MenuBarController: NSObject {
       // Log error to file (replaces CrashLogger)
       DebugLogger.logError(error, context: "Processing error for \(mode)", state: self.appState)
 
+      // "No speech detected" is a benign outcome, not a failure — present it exactly like
+      // the local silence precheck: a brief info popup instead of the persistent error
+      // popup, which sat on screen for the full error duration covering the user's work.
+      if let transcriptionError = error as? TranscriptionError,
+        case .noSpeechDetected = transcriptionError
+      {
+        self.cleanupAudioFile(at: audioURL)
+        self.appState = self.appState.finish()
+        PopupNotificationWindow.showInfo(
+          "No speech was detected in your recording. Check that the right microphone is selected and speak clearly.",
+          title: "No speech detected",
+          customDisplayDuration: Self.noSpeechInfoDuration
+        )
+        return
+      }
+
       let (shortTitle, errorMessage): (String, String)
       let transcriptionError: TranscriptionError?
 
@@ -2175,7 +2198,8 @@ extension MenuBarController: AudioRecorderDelegate {
           self.appState = self.appState.finish()
           PopupNotificationWindow.showInfo(
             "Your recording sounded silent. Check that the right microphone is selected and speak a bit louder.",
-            title: "No speech detected"
+            title: "No speech detected",
+            customDisplayDuration: Self.noSpeechInfoDuration
           )
           return
         } else {
@@ -2255,6 +2279,7 @@ extension MenuBarController: ShortcutDelegate {
     if isLiveMeetingActive { return activeMeetingSegment == .prompt }
     return appState.recordingMode == .prompt
   }
+
   // togglePrompting is already implemented above
   // openSettings is already implemented above
   func openChat() { openChatWindowFromShortcut() }
@@ -2423,6 +2448,37 @@ extension MenuBarController: ShortcutDelegate {
     }
   }
   #endif
+}
+
+// MARK: - FnPushToTalkDelegate (Hold Fn to Dictate)
+extension MenuBarController: FnPushToTalkDelegate {
+  func fnPushToTalkStart() -> Bool {
+    // fn-down must never cancel in-flight work or stop a recording the user started
+    // otherwise — it only ever begins a fresh dictation.
+    guard !isTranscriptionProcessing, !isDictationRecordingActive() else { return false }
+    toggleTranscription()
+    return isDictationRecordingActive()
+  }
+
+  func fnPushToTalkFinish() {
+    guard isDictationRecordingActive() else { return }
+    toggleTranscription()
+  }
+
+  func fnPushToTalkDiscard() {
+    guard isDictationRecordingActive() else { return }
+    // During a live meeting the discard flag would strand the active segment (the discard
+    // branch in audioRecorderDidFinishRecording runs before segment cleanup), so let an
+    // accidental tap flow through the normal pipeline — a ~0.3s clip transcribes to nothing.
+    if isLiveMeetingActive {
+      toggleTranscription()
+      return
+    }
+    DebugLogger.log("AUDIO: Discarding Fn push-to-talk recording")
+    discardNextRecording = true
+    RecordingIndicatorManager.shared.hide()
+    audioRecorder.stopRecording()
+  }
 }
 
 // MARK: - ChunkProgressDelegate (Chunked Transcription Progress)
