@@ -1,6 +1,6 @@
-# WhisperShortcut 7.81
+# WhisperShortcut 7.82
 
-Push-to-talk dictation: hold a key to record, release to transcribe.
+Push-to-talk tuning and fixes: slow taps no longer stop your recording, and cancelled transcriptions stay cancelled.
 
 ## Installation
 
@@ -8,13 +8,14 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### 🎙️ Push-to-talk
+### 🎙️ Push-to-talk fixes
 
-- **Hold the shortcut to dictate**: A short tap of the Dictate or Dictate Prompt shortcut still toggles recording as before — but if you *hold* the shortcut, recording stops the moment you release the keys and transcription starts immediately. One fluid press-speak-release motion.
-- **Hold 🌐 Fn to dictate** *(direct download only)*: Optionally use the Fn (Globe) key as a dedicated push-to-talk key — hold it to record, release to transcribe. Opt-in via Settings → Dictate; requires the Accessibility permission. Accidental taps and fn-used-as-modifier presses (fn+arrow, …) are detected and discarded instead of transcribed.
+- **Slow taps no longer misfire**: The hold threshold was raised from 0.5 s to 1 s — an unhurried tap to start dictation (which can easily last 0.6–0.7 s) no longer counts as a push-to-talk hold, so releasing the key can't instantly stop the recording you just started. Genuine press-speak-release holds work as before.
+- **Cancelled recordings stay cancelled**: Cancelling a transcription while it was processing could still paste the late result to the clipboard and flash a success popup. In-flight results for cancelled recordings are now dropped.
+- **Quieter logs**: Cleanup of already-removed recording files no longer logs spurious warnings.
 
-### ✨ Polish
+### 📖 Glossary
 
-- "No speech detected" is now shown as a brief info popup instead of a persistent error popup that covered your work.
+- **Learn from Dictate Prompt selections**: The text you select for Dictate Prompt is user-curated spelling — names and terms in it are now picked up by the instant glossary learner, just like typed chat messages.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.80...v7.81
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.81...v7.82
