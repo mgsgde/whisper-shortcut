@@ -1,6 +1,6 @@
-# WhisperShortcut 7.84
+# WhisperShortcut 7.85
 
-Read Aloud now uses the same clean bottom-center pill as Dictate.
+Google Calendar chat tools now support recurring and all-day events.
 
 ## Installation
 
@@ -8,10 +8,10 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### 🔊 Consistent Read Aloud feedback
+### 📅 Google Calendar — recurrence & all-day events
 
-- **Read Aloud uses the recording pill**: While speech is being synthesized, Read Aloud now shows the same compact bottom-center pill (spinner + ✕) as Dictate and Dictate Prompt, instead of a separate popup or no feedback at all.
-- **Cancel from the pill**: Click ✕ on the pill to stop synthesis mid-flight.
-- **No overlapping popups**: For longer text, the chunk-progress popup is suppressed in favor of the single pill — one clear indicator. Once playback starts, the pill disappears and the audio itself is the feedback.
+- **Recurring events**: Ask chat to create or update repeating calendar entries — yearly birthdays (`RRULE:FREQ=YEARLY`), weekly standups, weekday-only series, and more via standard RFC-5545 recurrence rules.
+- **All-day events**: Birthdays, holidays, and full-day blocks no longer need a start/end time — set `all_day` and pass a date like `2026-07-09`.
+- **Smarter date handling**: Single-day all-day events automatically get the correct exclusive end date per the Google Calendar API.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.83...v7.84
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.84...v7.85
