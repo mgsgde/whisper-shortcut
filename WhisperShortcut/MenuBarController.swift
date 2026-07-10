@@ -2490,6 +2490,22 @@ extension MenuBarController: FnPushToTalkDelegate {
     toggleTranscription()
   }
 
+  func fnPushToTalkIsRecording() -> Bool {
+    return isDictationRecordingActive()
+  }
+
+  // During a live meeting ⌘1 never cancels either — its meeting branch runs first — so fn
+  // mirrors that and falls through to starting a dictation segment.
+  func fnPushToTalkIsProcessing() -> Bool {
+    return !isLiveMeetingActive && isTranscriptionProcessing
+  }
+
+  func fnPushToTalkCancelProcessing() {
+    guard !isLiveMeetingActive, isTranscriptionProcessing else { return }
+    DebugLogger.log("SHORTCUTS: Cancelling in-flight transcription via Fn")
+    cancelInFlightTranscription()
+  }
+
   func fnPushToTalkDiscard() {
     guard isDictationRecordingActive() else { return }
     // During a live meeting the discard flag would strand the active segment (the discard

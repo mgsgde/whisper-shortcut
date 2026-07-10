@@ -44,7 +44,8 @@ enum UserDefaultsKeys {
   static let autoPasteAfterDictation = "autoPasteAfterDictation"
 
   // MARK: - Fn Push-to-Talk
-  /// Hold the Fn (Globe) key to record a dictation, release to transcribe.
+  /// Fn (Globe) key dictation: hold to record and release to transcribe, or tap to
+  /// toggle the recording on and tap again to stop.
   static let holdFnToDictate = "holdFnToDictate"
 
   // MARK: - Screenshot Settings

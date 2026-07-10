@@ -7,12 +7,23 @@ protocol FnPushToTalkDelegate: AnyObject {
   func fnPushToTalkStart() -> Bool
   /// Stop the recording and transcribe (normal stop path, including tail capture).
   func fnPushToTalkFinish()
-  /// Stop the recording and drop the audio (accidental tap / fn used as a modifier).
+  /// Stop the recording and drop the audio (fn used as a modifier during the initial hold).
   func fnPushToTalkDiscard()
+  /// Whether the fn-initiated dictation recording is still running. A toggled recording can be
+  /// stopped elsewhere (menu bar, ⌘-shortcut), in which case the next fn press must start
+  /// fresh instead of trying to stop a recording that no longer exists.
+  func fnPushToTalkIsRecording() -> Bool
+  /// Whether a dictation transcription is currently processing (cancellable via fn tap).
+  func fnPushToTalkIsProcessing() -> Bool
+  /// Cancel the in-flight transcription (same behavior as the dictation shortcut).
+  func fnPushToTalkCancelProcessing()
 }
 
-/// Hold the Fn (Globe) key to dictate: fn-down starts a Dictate recording, releasing the key
-/// stops and transcribes it. Opt-in via Settings → Dictate.
+/// Fn (Globe) key dictation, opt-in via Settings → Dictate. Two gestures share the key:
+/// - Hold: fn-down starts a Dictate recording, releasing the key stops and transcribes it.
+/// - Tap: a short press starts a recording that keeps running after release; the next fn
+///   press stops and transcribes it.
+/// - Tap while transcribing: cancels the in-flight transcription, like the dictation shortcut.
 ///
 /// Fn is a modifier, not a regular key, so it can't be a Carbon hotkey like the other
 /// shortcuts — it's observed through NSEvent flagsChanged monitors instead. Global monitors
@@ -21,16 +32,33 @@ protocol FnPushToTalkDelegate: AnyObject {
 final class FnPushToTalk {
   weak var delegate: FnPushToTalkDelegate?
 
+  /// Lifecycle of an fn-initiated recording.
+  private enum State {
+    /// No fn-initiated recording.
+    case idle
+    /// Fn is down and a recording is running; value is when fn went down. Resolves on
+    /// release into push-to-talk (long hold) or a toggled recording (short tap).
+    case holding(since: Date)
+    /// A tap-started recording is running with fn up, waiting for the stop press.
+    case toggled
+    /// Fn is down again during a toggled recording. Release stops and transcribes; a
+    /// regular key press means fn was a modifier and the recording keeps running.
+    case stopping
+    /// Fn went down while a transcription is processing. Release cancels it (same as the
+    /// dictation shortcut); a regular key press means fn was a modifier and it survives.
+    case cancelling
+  }
+
+  private var state: State = .idle
+
   private var globalFlagsMonitor: Any?
   private var localFlagsMonitor: Any?
   private var globalKeyDownMonitor: Any?
   private var localKeyDownMonitor: Any?
-  /// Non-nil while an fn-initiated recording is running; value is when fn went down.
-  private var pressStart: Date?
 
-  /// Releases shorter than this are treated as accidental taps and discarded instead of
-  /// transcribed — fn is easy to graze, and there's no speech in a fraction of a second.
-  private static let minimumHoldDuration: TimeInterval = 0.35
+  /// Presses shorter than this are taps (toggle the recording on), longer ones are
+  /// push-to-talk holds (release stops and transcribes).
+  private static let maximumTapDuration: TimeInterval = 0.35
 
   static var isEnabled: Bool {
     #if APP_STORE
@@ -67,36 +95,95 @@ final class FnPushToTalk {
   }
 
   private func fnDown() {
-    guard Self.isEnabled, pressStart == nil else { return }
+    guard Self.isEnabled else { return }
+    switch state {
+    case .idle:
+      if delegate?.fnPushToTalkIsProcessing() == true {
+        // Don't cancel yet — if a regular key follows, fn is being used as a modifier and
+        // the transcription must survive. Release decides.
+        state = .cancelling
+        installKeyDownMonitors()
+      } else {
+        startRecording()
+      }
+    case .toggled:
+      if delegate?.fnPushToTalkIsRecording() == true {
+        // Second press of a toggle: don't stop yet — if a regular key follows, fn is being
+        // used as a modifier and the recording must survive. Release decides.
+        state = .stopping
+        installKeyDownMonitors()
+      } else {
+        // The toggled recording was stopped elsewhere; this press starts fresh.
+        state = .idle
+        fnDown()
+      }
+    case .holding, .stopping, .cancelling:
+      break  // Repeated fn-down without a release in between; nothing to do.
+    }
+  }
+
+  private func startRecording() {
     guard delegate?.fnPushToTalkStart() == true else { return }
-    DebugLogger.log("SHORTCUTS: Fn held — push-to-talk recording started")
-    pressStart = Date()
+    DebugLogger.log("SHORTCUTS: Fn down — recording started")
+    state = .holding(since: Date())
     installKeyDownMonitors()
   }
 
   private func fnUp() {
-    guard let start = pressStart else { return }
-    endSession()
-    if Date().timeIntervalSince(start) >= Self.minimumHoldDuration {
-      DebugLogger.log("SHORTCUTS: Fn released — stopping push-to-talk recording")
+    switch state {
+    case .idle, .toggled:
+      break
+    case .holding(let since):
+      removeKeyDownMonitors()
+      if Date().timeIntervalSince(since) < Self.maximumTapDuration {
+        DebugLogger.log("SHORTCUTS: Fn tapped — recording toggled on, tap Fn again to stop")
+        state = .toggled
+      } else {
+        DebugLogger.log("SHORTCUTS: Fn released — stopping push-to-talk recording")
+        state = .idle
+        delegate?.fnPushToTalkFinish()
+      }
+    case .stopping:
+      DebugLogger.log("SHORTCUTS: Fn tapped again — stopping toggled recording")
+      removeKeyDownMonitors()
+      state = .idle
       delegate?.fnPushToTalkFinish()
-    } else {
-      DebugLogger.log("SHORTCUTS: Fn tap too short — discarding recording")
-      delegate?.fnPushToTalkDiscard()
+    case .cancelling:
+      DebugLogger.log("SHORTCUTS: Fn tapped during transcription — cancelling")
+      removeKeyDownMonitors()
+      state = .idle
+      delegate?.fnPushToTalkCancelProcessing()
     }
   }
 
   /// A regular key pressed while fn is held means fn is being used as a modifier
-  /// (fn+arrow, fn+backspace, …) — abort the recording instead of transcribing the accident.
+  /// (fn+arrow, fn+backspace, …).
   private func keyDownDuringHold() {
-    guard pressStart != nil else { return }
-    DebugLogger.log("SHORTCUTS: Key pressed while Fn held — fn is a modifier, discarding recording")
-    endSession()
-    delegate?.fnPushToTalkDiscard()
+    switch state {
+    case .idle, .toggled:
+      break
+    case .holding:
+      // The recording only exists because of this fn press — abort it instead of
+      // transcribing the accident.
+      DebugLogger.log("SHORTCUTS: Key pressed while Fn held — fn is a modifier, discarding recording")
+      removeKeyDownMonitors()
+      state = .idle
+      delegate?.fnPushToTalkDiscard()
+    case .stopping:
+      // The user deliberately toggled this recording on earlier — keep it running.
+      DebugLogger.log("SHORTCUTS: Key pressed while Fn held — fn is a modifier, keeping toggled recording")
+      removeKeyDownMonitors()
+      state = .toggled
+    case .cancelling:
+      // fn+key during processing — don't kill the transcription.
+      DebugLogger.log("SHORTCUTS: Key pressed while Fn held — fn is a modifier, keeping transcription")
+      removeKeyDownMonitors()
+      state = .idle
+    }
   }
 
-  /// keyDown monitors exist only for the duration of an fn hold, so the app never observes
-  /// keystrokes outside of an active push-to-talk session.
+  /// keyDown monitors exist only while fn is physically held, so the app never observes
+  /// keystrokes outside of an active fn press.
   private func installKeyDownMonitors() {
     globalKeyDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) {
       [weak self] _ in
@@ -109,8 +196,7 @@ final class FnPushToTalk {
     }
   }
 
-  private func endSession() {
-    pressStart = nil
+  private func removeKeyDownMonitors() {
     if let monitor = globalKeyDownMonitor {
       NSEvent.removeMonitor(monitor)
       globalKeyDownMonitor = nil
@@ -122,7 +208,7 @@ final class FnPushToTalk {
   }
 
   deinit {
-    endSession()
+    removeKeyDownMonitors()
     if let monitor = globalFlagsMonitor { NSEvent.removeMonitor(monitor) }
     if let monitor = localFlagsMonitor { NSEvent.removeMonitor(monitor) }
   }

@@ -1,6 +1,6 @@
-# WhisperShortcut 7.85
+# WhisperShortcut 7.86
 
-Google Calendar chat tools now support recurring and all-day events.
+The Fn (Globe) key now works as both push-to-talk and a tap toggle.
 
 ## Installation
 
@@ -8,10 +8,10 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### 📅 Google Calendar — recurrence & all-day events
+### 🌐 Fn key — hold or tap to dictate
 
-- **Recurring events**: Ask chat to create or update repeating calendar entries — yearly birthdays (`RRULE:FREQ=YEARLY`), weekly standups, weekday-only series, and more via standard RFC-5545 recurrence rules.
-- **All-day events**: Birthdays, holidays, and full-day blocks no longer need a start/end time — set `all_day` and pass a date like `2026-07-09`.
-- **Smarter date handling**: Single-day all-day events automatically get the correct exclusive end date per the Google Calendar API.
+- **Tap to toggle**: A quick tap of the Fn (Globe) key now starts a recording that keeps running after you let go — tap Fn again to stop and transcribe. The existing hold-to-talk gesture still works: keep Fn held to record, release to transcribe.
+- **Tap to cancel**: While a transcription is processing, tap Fn to cancel it — the same behavior as the dictation shortcut.
+- **Modifier-safe**: If you use Fn as a modifier (Fn+arrow, Fn+delete, …) during a recording or transcription, your recording is preserved instead of being interrupted.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.84...v7.85
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.85...v7.86
