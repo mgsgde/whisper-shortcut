@@ -36,7 +36,7 @@ Task: Apply the instruction TO the selected text. Output must be the edited/tran
 
 Language rule: Preserve the language of the SELECTED TEXT in your output. The language of the VOICE INSTRUCTION is irrelevant — it is a command, not the target language. A "fix grammar" instruction spoken in one language must not change the language of text written in another (only grammar/spelling are fixed). Only switch languages when the instruction explicitly requests translation (e.g. "translate this to English").
 
-Minimal-edit rule: Apply ONLY the change the instruction asks for. Do not rewrite, restructure, add greetings/sign-offs, or invent new content. If the instruction is to "correct" or "fix grammar" (in any language), change ONLY spelling, grammar, and punctuation — keep wording, length, tone, and structure of the original. Never produce a longer or shorter text than necessary for the requested edit.
+Minimal-edit rule: Apply ONLY the change the instruction asks for. Do not rewrite, restructure, add greetings/sign-offs, or invent new content. If the instruction is to "correct" or "fix grammar" (in any language), change ONLY spelling, grammar, and punctuation — keep the original wording, length, tone, REGISTER, casing style, sentence order, and line breaks. Never formalize casual text: a lowercase, chatty message stays lowercase and chatty; never split or merge sentences; never produce a longer or shorter text than necessary for the requested edit. Example — instruction "korrigiere", input "hab das mal ausprobiert, is echt schnell" → "Hab das mal ausprobiert, is echt schnell." (fixed the typo, kept the casual register), NOT "Ich habe das ausprobiert; es ist wirklich sehr schnell."
 
 No fact-checking, no answering: You edit text — you never verify, answer, or alter its factual content. Never change, add, or "fix" dates, numbers, names, times, or claims, and never invent facts that are not in the selected text. If the selected text contains a question (e.g. "…, is that correct?") or an assertion, edit only its language — do NOT answer the question, fact-check it, or fill in the answer. The selected text is the user's own words to be polished and returned, not a query for you to respond to.
 
@@ -71,7 +71,7 @@ Output: Return ONLY the edited/transformed version of the selected text — the 
 
 Language rule: Preserve the language of the selected text. The language of the voice instruction is irrelevant. Only switch languages when the instruction explicitly requests translation.
 
-Minimal-edit rule: Apply ONLY the change the instruction asks for. For "correct"/"fix grammar", change ONLY spelling, grammar, and punctuation — keep wording, length, tone, and structure.
+Minimal-edit rule: Apply ONLY the change the instruction asks for. For "correct"/"fix grammar", change ONLY spelling, grammar, and punctuation — keep wording, length, tone, register, casing style, and structure. Never formalize casual text or split/merge sentences.
 
 No fact-checking, no answering: Edit text only. Never change dates, numbers, names, or claims, and never answer a question contained in the selected text — edit only its language.
 
@@ -106,6 +106,7 @@ Copy-ready output (Whisper Shortcut chat UI):
 - For actual source code or shell commands meant to run or compile, use the real language tag (python, swift, javascript, bash, etc.) instead of markdown.
 - If nothing is meant to be copied verbatim (pure Q&A, conceptual reply, or action confirmations like "task created" / "event created"), omit the markdown paste block.
 - Do not put triple-backtick fences inside the markdown paste block.
+- Paste-ready text must be RAW: never prefix lines with decorative characters (▎, │, >, or similar gutter/quote marks). The content inside the markdown block must be exactly what the user will paste — no added leading glyphs, no quote bars.
 
 When writing code blocks, always specify a language tag (e.g. ```python, ```swift, ```javascript, or ```markdown for paste-ready prose as above). Never use bare ``` without a language identifier.
 
@@ -363,8 +364,10 @@ Transcript:
   }
 
   // MARK: - Context Derivation
-  /// Fallback Gemini API endpoint when the selected Smart Improvement model is invalid. Default model is Gemini 3 Flash Preview.
-  static let contextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent"
+  /// Fallback Gemini API endpoint when the selected Smart Improvement model is invalid. Uses the
+  /// current GA Flash (gemini-3.5-flash); gemini-3-flash-preview is deprecated-pending (Google
+  /// says use gemini-3.5-flash) and would break at its unannounced shutdown.
+  static let contextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"
 
   /// Maximum character length for context when appended to the system prompt.
   /// Truncation is applied at sentence or word boundary so the model always sees complete text.

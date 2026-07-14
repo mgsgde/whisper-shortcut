@@ -89,12 +89,9 @@ enum ChatModelCommandResolver {
       candidates = [.gemini35Flash]
     } else if normalized.contains("3.1") {
       candidates = [.gemini31Pro, .gemini31FlashLite]
-    } else if normalized.contains("2.5") {
-      candidates = [.gemini25Flash, .gemini25FlashLite, .gemini25Pro]
-    } else if normalized.contains("2.0") || padded.contains(" 2 ") {
-      candidates = [.gemini25Flash]
     } else if padded.contains(" 3 ") {
-      candidates = [.gemini3Flash]
+      // Bare "Gemini 3" → the current 3-series flagship Flash.
+      candidates = [.gemini35Flash]
     } else {
       candidates = PromptModel.chatModels
     }
@@ -169,14 +166,14 @@ enum ChatModelCommandResolver {
 
   private static func isFlashLite(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini25FlashLite, .gemini31FlashLite: return true
+    case .gemini31FlashLite: return true
     default: return false
     }
   }
 
   private static func isFlash(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash,
+    case .gemini31FlashLite, .gemini35Flash,
          .geminiImage: return true  // "flash image" → the Flash-tier image model
     default: return false
     }
@@ -184,7 +181,7 @@ enum ChatModelCommandResolver {
 
   private static func isPro(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini25Pro, .gemini31Pro, .geminiImagePro: return true
+    case .gemini31Pro, .geminiImagePro: return true
     default: return false
     }
   }

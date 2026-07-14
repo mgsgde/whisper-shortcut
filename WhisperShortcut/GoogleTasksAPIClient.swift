@@ -71,11 +71,14 @@ actor GoogleTasksAPIClient {
 
     var body: [String: Any] = ["title": title]
     if let notes { body["notes"] = notes }
-    if let due {
-      guard isValidISO8601Date(due) else {
+    if let due, !due.isEmpty {
+      // Google Tasks rejects a bare `yyyy-MM-dd` with 400 "invalid argument" even though it only
+      // stores the date. Models (especially Grok) frequently emit exactly that, causing repeated
+      // failed rounds — normalize to a full RFC 3339 timestamp before sending.
+      guard let normalizedDue = normalizedRFC3339Due(due) else {
         throw TasksAPIError.invalidDateFormat
       }
-      body["due"] = due
+      body["due"] = normalizedDue
     }
 
     let bodyData = try JSONSerialization.data(withJSONObject: body)
@@ -159,12 +162,16 @@ actor GoogleTasksAPIClient {
     }
 
     if !(200..<300).contains(httpResponse.statusCode) {
+      // Log the offending request body on 4xx/5xx — without it, "invalid argument" 400s are
+      // impossible to attribute to a specific field (see recurring Grok tasks_create failures).
+      let bodyString = body.flatMap { String(data: $0, encoding: .utf8) } ?? "<none>"
       if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
          let error = json["error"] as? [String: Any],
          let message = error["message"] as? String {
-        DebugLogger.logError("GOOGLE-TASKS: API error \(httpResponse.statusCode): \(message)")
+        DebugLogger.logError("GOOGLE-TASKS: API error \(httpResponse.statusCode): \(message) | \(httpMethod) request body: \(bodyString.prefix(300))")
         throw TasksAPIError.apiError(message)
       }
+      DebugLogger.logError("GOOGLE-TASKS: API error \(httpResponse.statusCode) | \(httpMethod) request body: \(bodyString.prefix(300))")
       throw TasksAPIError.requestFailed(httpResponse.statusCode)
     }
 
@@ -179,14 +186,20 @@ actor GoogleTasksAPIClient {
 
   // MARK: - Validation
 
-  private func isValidISO8601Date(_ string: String) -> Bool {
+  /// Normalizes the `due` value the model emits into the RFC 3339 date-time Google Tasks requires.
+  /// Full date-times (with or without fractional seconds) pass through unchanged; a bare
+  /// `yyyy-MM-dd` is promoted to midnight UTC (which is all Google stores anyway). Returns nil for
+  /// anything that isn't a recognizable ISO 8601 date, so the caller can reject it up front.
+  private func normalizedRFC3339Due(_ string: String) -> String? {
+    let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    if formatter.date(from: string) != nil { return true }
+    if formatter.date(from: trimmed) != nil { return trimmed }
     formatter.formatOptions = [.withInternetDateTime]
-    if formatter.date(from: string) != nil { return true }
+    if formatter.date(from: trimmed) != nil { return trimmed }
     formatter.formatOptions = [.withFullDate]
-    return formatter.date(from: string) != nil
+    if formatter.date(from: trimmed) != nil { return trimmed + "T00:00:00.000Z" }
+    return nil
   }
 
   // MARK: - Errors

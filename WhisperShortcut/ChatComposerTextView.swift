@@ -236,7 +236,10 @@ final class ChatComposerNSTextView: NSTextView {
     }
 
     // 3) Plain text (existing behavior).
-    if let str = pb.string(forType: .string) {
+    if let rawStr = pb.string(forType: .string) {
+      // Repair UTF-8-as-Latin-1 mojibake from upstream apps (e.g. pasted terminal output where
+      // "ä"/"—" arrive as "Ã¤"/"â€”") before it reaches the composer and the model.
+      let str = TextProcessingUtility.repairMojibakeIfNeeded(rawStr)
       let lineCount = str.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
       if lineCount >= ChatViewModel.pasteThresholdLines
           || str.count >= ChatViewModel.pasteThresholdChars {

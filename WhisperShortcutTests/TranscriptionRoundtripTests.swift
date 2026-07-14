@@ -65,7 +65,7 @@ struct TranscriptionRoundtripTests {
     func gemini() async throws {
         let text = try await SpeechService().transcribe(
             audioURL: Self.sampleAudioURL,
-            preferredModel: .gemini25FlashLite
+            preferredModel: .gemini31FlashLite
         )
         #expect(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }

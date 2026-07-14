@@ -24,6 +24,7 @@ Every slash command follows **`{verb}-{topic}`**. The verb tells the agent _what
 | `/review-code [N]`                                   | —                              | review   |
 | `/review-llm-state-of-the-art`                       | `review-llm-state-of-the-art`  | review   |
 | `/validate-audio-verification`                       | `validate-audio-verification`  | validate |
+| `/competitor-teardown <name\|URL>`                   | `competitor-teardown`          | workflow |
 | `/improve-context`                                   | —                              | workflow |
 | `/release`                                           | —                              | workflow |
 | `/submit-appstore`                                   | `app-store-connect` (parent)   | workflow |

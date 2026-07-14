@@ -44,19 +44,16 @@ enum ChatModelProvider: String, CaseIterable {
 
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
-// GA: gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro, gemini-3.1-flash-lite, gemini-3.5-flash.
-// Preview: gemini-3-flash-preview, gemini-3.1-pro-preview.
-// gemini-3-pro-preview was shut down 2026-03-09 (404) and removed; persisted values forward to
-// gemini-3.1-pro-preview via migrateLegacyPromptRawValue.
+// GA: gemini-3.1-flash-lite, gemini-3.5-flash. Preview: gemini-3.1-pro-preview.
+// Removed and forwarded via migrateLegacyPromptRawValue: gemini-3-pro-preview (shut down
+// 2026-03-09) → gemini-3.1-pro-preview; the Gemini 2.5 family (gemini-2.5-flash / -flash-lite /
+// -pro, shutdown 2026-10-16) → gemini-3.5-flash / gemini-3.1-flash-lite / gemini-3.1-pro-preview;
+// gemini-3-flash-preview (deprecated-pending) → gemini-3.5-flash.
 // Grok model IDs: https://docs.x.ai/docs/models (grok-4-1-fast-non-reasoning was retired 2026-05-15
 // and silently redirects to grok-4.3; the case was removed — see migrateLegacyPromptRawValue).
 // OpenAI model IDs: https://platform.openai.com/docs/models.
 enum PromptModel: String, CaseIterable {
   // Gemini Models (multimodal, direct audio input)
-  case gemini25Flash = "gemini-2.5-flash"
-  case gemini25FlashLite = "gemini-2.5-flash-lite"
-  case gemini25Pro = "gemini-2.5-pro"
-  case gemini3Flash = "gemini-3-flash-preview"
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite"
   case gemini35Flash = "gemini-3.5-flash"
@@ -76,8 +73,11 @@ enum PromptModel: String, CaseIterable {
   case grok43 = "grok-4.3"
 
   // OpenAI Models (chat + Dictate Prompt via Chat Completions API)
-  case openaiGPT5 = "gpt-5"
-  case openaiGPT5Mini = "gpt-5-mini"
+  // The case identifiers keep their historical names while the rawValue tracks the current
+  // vendor slug: `gpt-5` → `gpt-5.4` and `gpt-5-mini` → `gpt-5.4-mini` (newer GA generation,
+  // 2026-03). Persisted `gpt-5`/`gpt-5-mini` selections forward via migrateLegacyPromptRawValue.
+  case openaiGPT5 = "gpt-5.4"
+  case openaiGPT5Mini = "gpt-5.4-mini"
   case openaiGPT55 = "gpt-5.5"
   /// Audio-input chat model (renamed by OpenAI from `gpt-4o-audio-preview` → `gpt-audio`).
   /// Accepts inline `input_audio` content parts, which makes it the counterpart to Gemini for
@@ -96,14 +96,6 @@ enum PromptModel: String, CaseIterable {
 
   var displayName: String {
     switch self {
-    case .gemini25Flash:
-      return "Gemini 2.5 Flash"
-    case .gemini25FlashLite:
-      return "Gemini 2.5 Flash-Lite"
-    case .gemini25Pro:
-      return "Gemini 2.5 Pro"
-    case .gemini3Flash:
-      return "Gemini 3 Flash"
     case .gemini31Pro:
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
@@ -115,15 +107,15 @@ enum PromptModel: String, CaseIterable {
     case .geminiImagePro:
       return "Gemini Image Pro (Nano Banana Pro)"
     case .grok4:
-      return "Grok 4"
+      return "Grok 4.20"
     case .grok4Reasoning:
-      return "Grok 4 Reasoning"
+      return "Grok 4.20 Reasoning"
     case .grok43:
       return "Grok 4.3"
     case .openaiGPT5:
-      return "OpenAI GPT-5"
+      return "OpenAI GPT-5.4"
     case .openaiGPT5Mini:
-      return "OpenAI GPT-5 Mini"
+      return "OpenAI GPT-5.4 Mini"
     case .openaiGPT55:
       return "OpenAI GPT-5.5"
     case .openaiGPT4oAudio:
@@ -145,10 +137,6 @@ enum PromptModel: String, CaseIterable {
   /// May extend a provider-default alias (gemini / grok / gpt) as a prefix — that's intended.
   var shortAlias: String {
     switch self {
-    case .gemini25Flash:     return "gemini25flash"
-    case .gemini25FlashLite: return "gemini25flashlite"
-    case .gemini25Pro:       return "gemini25pro"
-    case .gemini3Flash:      return "gemini3flash"
     case .gemini31Pro:       return "gemini31pro"
     case .gemini31FlashLite: return "gemini31flashlite"
     case .gemini35Flash:     return "gemini35flash"
@@ -157,8 +145,8 @@ enum PromptModel: String, CaseIterable {
     case .grok4:             return "grok4"
     case .grok4Reasoning:    return "grok4reasoning"
     case .grok43:            return "grok43"
-    case .openaiGPT5:        return "gpt5"
-    case .openaiGPT5Mini:    return "gpt5mini"
+    case .openaiGPT5:        return "gpt54"
+    case .openaiGPT5Mini:    return "gpt54mini"
     case .openaiGPT55:       return "gpt55"
     case .openaiGPT4oAudio:  return "gptaudio" // audio-only; excluded from chatModels, never surfaced
     case .customOpenAIEndpoint: return "custom"
@@ -168,14 +156,6 @@ enum PromptModel: String, CaseIterable {
 
   var description: String {
     switch self {
-    case .gemini25Flash:
-      return "Google's Gemini 2.5 Flash model • Fast and efficient • Multimodal audio processing"
-    case .gemini25FlashLite:
-      return "Google's Gemini 2.5 Flash-Lite • Fastest latency • Cost-efficient • Multimodal"
-    case .gemini25Pro:
-      return "Google's Gemini 2.5 Pro model • Strong reasoning and instruction following • Stable (GA)"
-    case .gemini3Flash:
-      return "Google's Gemini 3 Flash model • Latest 3-series • Pro-level intelligence at Flash speed • Multimodal"
     case .gemini31Pro:
       return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
     case .gemini31FlashLite:
@@ -187,15 +167,15 @@ enum PromptModel: String, CaseIterable {
     case .geminiImagePro:
       return "Google's Gemini Image Pro (Nano Banana Pro) • Studio-quality image generation/editing up to 4K • Best text rendering • Paid (no free tier) • Requires Gemini API key"
     case .grok4:
-      return "xAI's Grok 4 • Frontier-class intelligence • Web + X search • Requires xAI API key"
+      return "xAI's Grok 4.20 • Frontier-class intelligence • Web + X search • Requires xAI API key"
     case .grok4Reasoning:
-      return "xAI's Grok 4 Reasoning • Extended thinking for complex tasks • Web + X search • Requires xAI API key"
+      return "xAI's Grok 4.20 Reasoning • Extended thinking for complex tasks • Web + X search • Requires xAI API key"
     case .grok43:
       return "xAI's Grok 4.3 • Flagship • Leading non-hallucination + agentic tool use • 1M context • Web + X search • Requires xAI API key"
     case .openaiGPT5:
-      return "OpenAI's GPT-5 • Flagship reasoning + tool use • Text + images • Requires OpenAI API key"
+      return "OpenAI's GPT-5.4 • Flagship reasoning + tool use • Text + images • Requires OpenAI API key"
     case .openaiGPT5Mini:
-      return "OpenAI's GPT-5 Mini • Cheaper, faster GPT-5 variant • Text + images • Requires OpenAI API key"
+      return "OpenAI's GPT-5.4 Mini • Cheaper, faster GPT-5.4 variant • Text + images • Requires OpenAI API key"
     case .openaiGPT55:
       return "OpenAI's GPT-5.5 • Newest flagship (April 2026) • Text + images • Requires OpenAI API key"
     case .openaiGPT4oAudio:
@@ -214,9 +194,9 @@ enum PromptModel: String, CaseIterable {
   
   var costLevel: String {
     switch self {
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash, .geminiImage, .customOpenAIEndpoint, .localModel:
+    case .gemini31FlashLite, .gemini35Flash, .geminiImage, .customOpenAIEndpoint, .localModel:
       return "Low"
-    case .gemini25Pro, .gemini31Pro, .geminiImagePro:
+    case .gemini31Pro, .geminiImagePro:
       return "Medium"
     case .grok4, .grok4Reasoning, .grok43:
       return "Medium"
@@ -356,13 +336,8 @@ enum PromptModel: String, CaseIterable {
     // Gemini 3.x — thinkingLevel
     case .gemini31Pro:
       return ["thinkingLevel": "high"]
-    case .gemini3Flash, .gemini31FlashLite, .gemini35Flash:
+    case .gemini31FlashLite, .gemini35Flash:
       return ["thinkingLevel": "minimal"]
-    // Gemini 2.5 — thinkingBudget
-    case .gemini25Pro:
-      return ["thinkingBudget": -1]
-    case .gemini25Flash, .gemini25FlashLite:
-      return ["thinkingBudget": 0]
     // Image-generation models — no thinking knob.
     case .geminiImage, .geminiImagePro:
       return nil
@@ -394,14 +369,6 @@ enum PromptModel: String, CaseIterable {
   // Convert to TranscriptionModel for API endpoint access (for Gemini models)
   var asTranscriptionModel: TranscriptionModel? {
     switch self {
-    case .gemini25Flash:
-      return .gemini25Flash
-    case .gemini25FlashLite:
-      return .gemini25FlashLite
-    case .gemini25Pro:
-      return nil // 2.5 Pro not used for transcription in this app
-    case .gemini3Flash:
-      return .gemini3Flash
     case .gemini31Pro:
       return .gemini31Pro
     case .gemini31FlashLite:
@@ -422,7 +389,7 @@ enum PromptModel: String, CaseIterable {
   /// Whether this model supports grounding/search.
   /// - Gemini: `google_search` + `url_context` tools on the standard endpoint.
   /// - Grok: `web_search` tool via the Responses API.
-  /// - OpenAI text chat models: `web_search` tool via the Responses API (gpt-5, gpt-5-mini).
+  /// - OpenAI text chat models: `web_search` tool via the Responses API (gpt-5.4, gpt-5.4-mini).
   /// - `gpt-4o-audio-preview` is audio-only and routes through Chat Completions only, so
   ///   the Responses API path doesn't apply.
   var supportsGrounding: Bool {
@@ -477,9 +444,27 @@ enum PromptModel: String, CaseIterable {
     case "gpt-4o-audio-preview":
       // Renamed by OpenAI to `gpt-audio`; the case's rawValue now matches the new slug.
       return Self.openaiGPT4oAudio.rawValue
+    case "gpt-5":
+      // Superseded by the gpt-5.4 generation (2026-03); forward to the current flagship case.
+      return Self.openaiGPT5.rawValue
+    case "gpt-5-mini":
+      // Superseded by gpt-5.4-mini; forward to the current mini case.
+      return Self.openaiGPT5Mini.rawValue
     case "gemini-3-pro-preview":
       // Shut down by Google 2026-03-09 (now returns 404); forward to the current Pro preview.
       return Self.gemini31Pro.rawValue
+    case "gemini-2.5-flash":
+      // Deprecated, shutdown 2026-10-16; Google's named replacement is gemini-3.5-flash.
+      return Self.gemini35Flash.rawValue
+    case "gemini-2.5-flash-lite":
+      // Deprecated, shutdown 2026-10-16; replacement is the current Flash-Lite.
+      return Self.gemini31FlashLite.rawValue
+    case "gemini-2.5-pro":
+      // Deprecated, shutdown 2026-10-16; replacement is the current Pro preview.
+      return Self.gemini31Pro.rawValue
+    case "gemini-3-flash-preview":
+      // Deprecated-pending; Google says use gemini-3.5-flash.
+      return Self.gemini35Flash.rawValue
     default:
       return raw
     }

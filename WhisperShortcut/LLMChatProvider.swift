@@ -93,7 +93,7 @@ protocol LLMChatProvider {
   /// Streams a chat reply. Returns an async stream of `ChatStreamEvent`.
   ///
   /// - Parameters:
-  ///   - model: The model ID string (e.g. "gemini-3-flash-preview", "grok-3").
+  ///   - model: The model ID string (e.g. "gemini-3.5-flash", "grok-4.3").
   ///   - contents: Conversation history in Gemini's `contents` format (array of role/parts dicts).
   ///     Each provider translates this into its native message format.
   ///   - systemInstruction: System instruction dict in Gemini format, or nil.

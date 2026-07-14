@@ -20,8 +20,8 @@ fi
 
 # Currently referenced in SettingsConfiguration.swift PromptModel + SpeechService.swift transcription paths.
 declare -a CURRENT_CHAT_MODELS=(
-  "gpt-5"
-  "gpt-5-mini"
+  "gpt-5.4"
+  "gpt-5.4-mini"
   "gpt-5.5"
 )
 # gpt-audio (renamed from gpt-4o-audio-preview) requires audio modality — tested separately below.
@@ -36,6 +36,20 @@ declare -a LEGACY_CHAT_MODELS=(
 declare -a CANDIDATE_CHAT_MODELS=(
   "chat-latest"
   "gpt-5-chat-latest"
+  # gpt-5.4 / gpt-5.4-mini were promoted to CURRENT_CHAT_MODELS (2026-07-14 migration: the app's
+  # OpenAI flagship + mini now point at these). The superseded gpt-5 / gpt-5-mini still serve but
+  # are no longer referenced — persisted selections forward via migrateLegacyPromptRawValue.
+  # gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna intentionally NOT listed: as of 2026-07-14 all
+  # three intermittently return 401 "You have insufficient permissions for this operation"
+  # (~1 in 5 calls) on /v1/chat/completions — staged rollout / org gating. Re-add and re-audit
+  # once they serve reliably; do not ship as defaults while 401s would render as "invalid key".
+)
+# Audio-chat candidates (input_audio) — newer generations of gpt-audio.
+# gpt-audio-1.5 is intentionally NOT listed: it intermittently 500s ("model produced invalid
+# content") on this script's degenerate audio-only silent-wav probe, but passes 4/4 with a
+# realistic text+audio payload (verified 2026-07-14). Re-add once the probe sends real speech.
+declare -a CANDIDATE_AUDIO_CHAT_MODELS=(
+  "gpt-audio-mini"
 )
 declare -a CURRENT_TRANSCRIPTION_MODELS=(
   "gpt-4o-transcribe"
@@ -142,6 +156,7 @@ test_audio_chat_model() {
   fi
 }
 for m in "${CURRENT_AUDIO_CHAT_MODELS[@]}"; do test_audio_chat_model "$m" "current"; done
+for m in "${CANDIDATE_AUDIO_CHAT_MODELS[@]}"; do test_audio_chat_model "$m" "candidate"; done
 
 echo ""
 echo "=== OpenAI legacy chat slugs (must 404 — confirms slug was retired by OpenAI) ==="

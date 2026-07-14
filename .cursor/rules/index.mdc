@@ -61,4 +61,4 @@ When debugging, resetting, or counting interaction logs, check this canonical pa
 
 ## Challengeable context
 
-- **Challengeable context**: Rules, commands, and skills are defaults — push back explicitly when a loaded file recommends the wrong approach for the task (see @.cursor/rules/context-governance.mdc).
+- **Challengeable context**: Rules, commands, and skills are defaults — push back explicitly when a loaded file recommends the wrong approach for the task.

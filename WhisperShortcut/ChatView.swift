@@ -740,6 +740,12 @@ class ChatViewModel: ObservableObject {
       // displayed/persisted reply is always `markerPrefix + streamed`.
       var markerPrefix = ""
       var streamed = ""
+      // Gemini 3.x can leak `start_thought`/`end_thought` into the visible answer, but only ever
+      // in its opening region (see `stripLeakedThoughtTokens`). Once the reply has grown past that
+      // zone we stop re-scanning the whole accumulated string on every token — that scan was O(N)
+      // per token (O(N²) over the reply) on the MainActor. Reset when `streamed` restarts after an
+      // image-marker fold, since fresh narration begins there.
+      var thoughtStripSettled = false
       do {
         let placeholder = ChatMessage(id: placeholderId, role: .model, content: "")
         appendMessage(placeholder, toSessionId: sessionId)
@@ -783,7 +789,14 @@ class ChatViewModel: ObservableObject {
             switch event {
             case .textDelta(let delta):
               roundText += delta
-              streamed = Self.stripLeakedThoughtTokens(streamed + delta)
+              streamed += delta
+              // Only strip while still in the marker zone. Once stripped, `streamed` never
+              // re-acquires a start-anchored marker (deltas append at the end), so re-scanning
+              // the whole string every subsequent token is pure waste.
+              if !thoughtStripSettled {
+                streamed = Self.stripLeakedThoughtTokens(streamed)
+                if streamed.utf8.count > 512 { thoughtStripSettled = true }
+              }
               streamingBuffer.enqueueUpdate(markerPrefix + streamed)
             case .functionCall(let name, let args, let thoughtSignature):
               pendingCalls.append((name, args, thoughtSignature))
@@ -814,6 +827,7 @@ class ChatViewModel: ObservableObject {
             let current = markerPrefix + streamed
             markerPrefix = (current.isEmpty ? joined : current + "\n\n" + joined) + "\n\n"
             streamed = ""
+            thoughtStripSettled = false
             streamingBuffer.setContentImmediate(markerPrefix)
           }
           currentContents.append(contentsOf: turns)
@@ -823,7 +837,10 @@ class ChatViewModel: ObservableObject {
         // This happens e.g. when the tool loop exhausts mid-batch (lots of
         // function calls, no narration) — the assistant bubble would otherwise
         // be empty, hiding the failure.
-        var reply = markerPrefix + streamed
+        // Final belt-and-suspenders strip: streaming now stops re-scanning past the marker zone
+        // (see `thoughtStripSettled`), so a marker leaking later would otherwise reach the saved
+        // message. One strip here restores the "user never sees them" guarantee at O(N)-once cost.
+        var reply = Self.stripLeakedThoughtTokens(markerPrefix + streamed)
         if reply.isEmpty {
           if toolLoopExhausted {
             reply = "_I ran out of tool-call rounds before I could finish. Try narrowing the request — e.g. name a specific sender, subject, or date range._"
@@ -873,11 +890,11 @@ class ChatViewModel: ObservableObject {
         DebugLogger.log("CHAT: Send cancelled (superseded=\(superseded))")
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
-          partial: markerPrefix + streamed, forceRemove: superseded)
+          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed), forceRemove: superseded)
       } catch {
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
-          partial: markerPrefix + streamed, forceRemove: false)
+          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed), forceRemove: false)
         if sessionId == session.id { errorMessage = friendlyError(error) }
         DebugLogger.logError("CHAT: \(error.localizedDescription)")
       }
@@ -3963,7 +3980,8 @@ private struct ModelReplyView: View {
   private static let segmentCache = NSCache<NSString, ModelReplySegmentBox>()
 
   private static func cachedSegments(
-    content: String, sources: [GroundingSource], groundingSupports: [GroundingSupport]
+    content: String, sources: [GroundingSource], groundingSupports: [GroundingSupport],
+    store: Bool
   ) -> [ModelReplyRenderSegment] {
     var hasher = Hasher()
     hasher.combine(content)
@@ -3982,12 +4000,17 @@ private struct ModelReplyView: View {
     }
     let blocks = buildReplyBlocks(content: content, sources: sources, groundingSupports: groundingSupports)
     let segments = mergedSegments(from: blocks)
-    segmentCache.setObject(ModelReplySegmentBox(segments), forKey: key)
+    // During streaming each flush produces a new `content` string, so caching would fill the cache
+    // with throwaway keys that are never re-read (the final finalized render caches for real).
+    if store {
+      segmentCache.setObject(ModelReplySegmentBox(segments), forKey: key)
+    }
     return segments
   }
 
   var body: some View {
-    let segments = Self.cachedSegments(content: content, sources: sources, groundingSupports: groundingSupports)
+    let segments = Self.cachedSegments(
+      content: content, sources: sources, groundingSupports: groundingSupports, store: !isStreaming)
     return VStack(alignment: .leading, spacing: 18) {
       ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
         switch segment {

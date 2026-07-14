@@ -695,6 +695,20 @@ enum ChatToolRegistry {
     "error": "Trello is not connected. Open Settings → Chat to connect."
   ]
 
+  /// Wraps a Google Tasks error with an actionable retry hint. When the failure looks like an
+  /// unknown/invalid task list (the model guessed a `task_list_id` instead of listing first), tell
+  /// it to call google_tasks_list_tasklists and retry — so it self-corrects in one round instead
+  /// of re-guessing (observed: repeated 400/404 rounds on Grok turns).
+  private static func tasksErrorWithHint(_ error: Error, taskListId: String) -> String {
+    let message = error.localizedDescription
+    let lowered = message.lowercased()
+    let looksLikeBadList = lowered.contains("not found") || lowered.contains("invalid")
+    if looksLikeBadList && taskListId != "@default" {
+      return "\(message) The task_list_id '\(taskListId)' may be invalid — call google_tasks_list_tasklists to get valid list IDs, then retry with one of those (or omit task_list_id to use the default list)."
+    }
+    return message
+  }
+
   @MainActor
   static func execute(name: String, args: [String: Any]) async -> [String: Any] {
     DebugLogger.log("GEMINI-CHAT-TOOL: execute name=\(name)")
@@ -849,7 +863,7 @@ enum ChatToolRegistry {
         return result
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: tasks create failed: \(error.localizedDescription)")
-        return ["error": error.localizedDescription]
+        return ["error": tasksErrorWithHint(error, taskListId: taskListId)]
       }
 
     case "google_tasks_complete":

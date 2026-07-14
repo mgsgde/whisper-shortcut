@@ -28,7 +28,7 @@ struct LLMProviderRoundtripTests {
     )
     func gemini() async throws {
         let reply = try await GeminiChatProvider.shared.generateText(
-            model: PromptModel.gemini25FlashLite.rawValue,
+            model: PromptModel.gemini31FlashLite.rawValue,
             prompt: Self.prompt
         )
         #expect(!reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

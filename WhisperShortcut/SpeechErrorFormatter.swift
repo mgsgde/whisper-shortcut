@@ -74,7 +74,7 @@ struct SpeechErrorFormatter {
 
         The requested resource was not found. This can happen if the selected model is no longer available.
 
-        Choose a different model in Settings → Dictate (e.g. Gemini 2.5 Flash).
+        Choose a different model in Settings → Dictate (e.g. Gemini 3.1 Flash-Lite).
         """
 
     case .rateLimited(let retryAfter, let topUpURL):

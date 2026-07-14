@@ -1511,6 +1511,34 @@ class MenuBarController: NSObject {
         }
       }
     }
+
+    // Snapshot the recording into the audio-sample pool up front, while the source WAV still
+    // exists. Capturing after transcription raced a rapid subsequent recording's beginSession()/
+    // cleanup(), which deletes the delivered chunk/merged file — ~2% of captures failed with
+    // "no such file". We keep the snapshot only if we log a successful transcription below;
+    // otherwise the defer discards it, so cancelled/failed dictations leave no orphan sample.
+    let transcriptionModelForCapture = TranscriptionModel.loadSelected()
+    let backendTag: String
+    if transcriptionModelForCapture.isOffline {
+      backendTag = "whisper"
+    } else if transcriptionModelForCapture.isOpenAI {
+      backendTag = "openai"
+    } else if transcriptionModelForCapture == .selfHostedTranscription {
+      backendTag = "self-hosted"
+    } else {
+      backendTag = "gemini"
+    }
+    let pendingAudioRef: String? = duringMeeting ? nil : ContextLogger.shared.captureDictationAudio(
+      from: audioURL,
+      backend: backendTag,
+      transcriptionModel: transcriptionModelForCapture.rawValue
+    )
+    var audioRefCommitted = false
+    defer {
+      if let ref = pendingAudioRef, !audioRefCommitted {
+        ContextLogger.shared.deleteAudioSample(named: ref)
+      }
+    }
     do {
       let result: String
       let stopTime = CFAbsoluteTimeGetCurrent()
@@ -1542,29 +1570,15 @@ class MenuBarController: NSObject {
 
       clipboardManager.copyTranscriptionToClipboard(text: result)
 
-      let transcriptionModel = TranscriptionModel.loadSelected()
       let modelDisplayName = await speechService.getTranscriptionModelInfo()
-      let backendTag: String
-      if transcriptionModel.isOffline {
-        backendTag = "whisper"
-      } else if transcriptionModel.isOpenAI {
-        backendTag = "openai"
-      } else if transcriptionModel == .selfHostedTranscription {
-        backendTag = "self-hosted"
-      } else {
-        backendTag = "gemini"
-      }
-      // Only persist audio for single-shot dictation, never for Live Meeting chunks.
-      let audioRef: String? = duringMeeting ? nil : ContextLogger.shared.captureDictationAudio(
-        from: audioURL,
-        backend: backendTag,
-        transcriptionModel: transcriptionModel.rawValue
-      )
+      // Commit the up-front audio snapshot (captured before the transcription await); the defer
+      // now keeps it instead of discarding it.
+      audioRefCommitted = true
       ContextLogger.shared.logTranscription(
         result: result,
         model: modelDisplayName,
-        audioRef: audioRef,
-        transcriptionModel: transcriptionModel.rawValue
+        audioRef: pendingAudioRef,
+        transcriptionModel: transcriptionModelForCapture.rawValue
       )
 
       await MainActor.run {

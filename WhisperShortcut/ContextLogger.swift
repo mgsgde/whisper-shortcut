@@ -13,7 +13,7 @@ struct InteractionLogEntry: Codable {
   let voice: String?
   /// Filename inside `UserContext/audio-samples/` if the dictation audio was retained for Smart Improvement.
   let audioRef: String?
-  /// Stable rawValue of the TranscriptionModel used for this entry (e.g. "whisper-base", "gemini-2.5-flash").
+  /// Stable rawValue of the TranscriptionModel used for this entry (e.g. "whisper-base", "gemini-3.5-flash").
   /// Distinct from `model` (display name) so Smart Improvement can do model-asymmetry comparisons.
   let transcriptionModel: String?
   /// Whether a screenshot was attached to a `prompt`-mode request. Lets analysis distinguish
@@ -212,6 +212,15 @@ class ContextLogger {
       DebugLogger.logError("AUDIO-VERIFY: capture(error) reason=\(error.localizedDescription)")
       return nil
     }
+  }
+
+  /// Deletes a single captured audio sample by its filename (as returned by
+  /// `captureDictationAudio`). Used to discard a sample captured up front when the dictation
+  /// turns out cancelled, stale, or failed, so those samples never linger in the pool.
+  func deleteAudioSample(named filename: String) {
+    guard !filename.isEmpty else { return }
+    let url = audioSamplesDirectoryURL.appendingPathComponent(filename)
+    try? FileManager.default.removeItem(at: url)
   }
 
   /// Removes the entire audio sample pool. Returns the number of files deleted.
