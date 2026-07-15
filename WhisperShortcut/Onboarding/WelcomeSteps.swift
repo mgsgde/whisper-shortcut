@@ -155,10 +155,11 @@ struct WelcomeAPIKeysStep: View {
   @Binding var hasGeminiKey: Bool
   @Binding var hasOpenAIKey: Bool
   @Binding var hasXAIKey: Bool
+  @Binding var hasAnthropicKey: Bool
   @Binding var offlineReady: Bool
 
   private var canContinue: Bool {
-    hasGeminiKey || hasOpenAIKey || hasXAIKey || offlineReady
+    hasGeminiKey || hasOpenAIKey || hasXAIKey || hasAnthropicKey || offlineReady
   }
 
   var body: some View {
@@ -167,7 +168,7 @@ struct WelcomeAPIKeysStep: View {
         Text("Add a key — or start offline")
           .font(.title2)
           .fontWeight(.semibold)
-        Text("Any single provider key unlocks every feature and is stored in the macOS Keychain. Or skip the key entirely and dictate fully offline with local Whisper.")
+        Text("Any single provider key unlocks chat features and is stored in the macOS Keychain. Or skip the key entirely and dictate fully offline with local Whisper.")
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -193,6 +194,17 @@ struct WelcomeAPIKeysStep: View {
             isConfigured: $hasOpenAIKey,
             load: { KeychainManager.shared.getOpenAIAPIKey() ?? "" },
             save: { KeychainManager.shared.saveOpenAIAPIKey($0) },
+            recommended: false
+          )
+          OnboardingAPIKeyRow(
+            providerName: "Anthropic (Claude)",
+            placeholder: "sk-ant-…",
+            linkTitle: "console.anthropic.com",
+            linkURL: URL(string: "https://console.anthropic.com/settings/keys")!,
+            description: "Chat only — Dictate Prompt is not available with Claude.",
+            isConfigured: $hasAnthropicKey,
+            load: { KeychainManager.shared.getAnthropicAPIKey() ?? "" },
+            save: { KeychainManager.shared.saveAnthropicAPIKey($0) },
             recommended: false
           )
           OnboardingAPIKeyRow(
@@ -261,7 +273,7 @@ struct OnboardingOfflineRow: View {
         Spacer()
       }
 
-      Text("No key required — audio never leaves your Mac. Dictation works offline; Dictate Prompt, Chat and Read Aloud still need a provider key you can add later in Settings.")
+      Text("No key required — audio never leaves your Mac. Dictate works offline with Whisper. For offline improve, install Ollama or LM Studio and pick Local in Dictate Prompt settings. Chat and Read Aloud still need a cloud provider key (or a custom endpoint).")
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -329,6 +341,7 @@ struct OnboardingOfflineRow: View {
     let hasCloudKey = KeychainManager.shared.hasValidGoogleAPIKey()
       || KeychainManager.shared.hasValidOpenAIAPIKey()
       || KeychainManager.shared.hasValidXAIAPIKey()
+      || KeychainManager.shared.hasValidAnthropicAPIKey()
     if !hasCloudKey {
       UserDefaults.standard.set(
         TranscriptionModel.whisperBase.rawValue,

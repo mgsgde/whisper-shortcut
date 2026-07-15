@@ -68,7 +68,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
             WelcomeWindowController.shared.show()
           } else if !GeminiCredentialProvider.shared.hasCredential()
                     && !KeychainManager.shared.hasValidOpenAIAPIKey()
-                    && !KeychainManager.shared.hasValidXAIAPIKey() {
+                    && !KeychainManager.shared.hasValidXAIAPIKey()
+                    && !KeychainManager.shared.hasValidAnthropicAPIKey() {
             SettingsManager.shared.showSettings()
           }
         }

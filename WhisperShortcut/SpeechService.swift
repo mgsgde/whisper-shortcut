@@ -395,6 +395,8 @@ class SpeechService {
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
       // rather than crash the menu-bar app if a future model/provider change reaches here.
       throw TranscriptionError.networkError("Grok can't process audio directly. Pick a Gemini model or OpenAI's GPT-4o Audio for Dictate Prompt.")
+    case .anthropic:
+      throw TranscriptionError.networkError("Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
     case .customOpenAI:
       throw TranscriptionError.networkError("Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
     }

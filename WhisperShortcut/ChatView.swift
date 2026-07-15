@@ -268,6 +268,7 @@ class ChatViewModel: ObservableObject {
   static let modelCommandLookup: [String: PromptModel] = {
     var dict = Dictionary(uniqueKeysWithValues: modelCommands.map { ($0.command, $0.model) })
     dict["/openai"] = ChatModelProvider.openai.defaultChatModel // silent alias for /gpt
+    dict["/anthropic"] = ChatModelProvider.anthropic.defaultChatModel // silent alias for /claude
     return dict
   }()
 
@@ -915,6 +916,11 @@ class ChatViewModel: ObservableObject {
     case .openai:
       guard KeychainManager.shared.hasValidOpenAIAPIKey() else {
         errorMessage = "Add your OpenAI API key in Settings to use OpenAI models."
+        return false
+      }
+    case .anthropic:
+      guard KeychainManager.shared.hasValidAnthropicAPIKey() else {
+        errorMessage = "Add your Anthropic API key in Settings to use Claude models."
         return false
       }
     case .customOpenAI:

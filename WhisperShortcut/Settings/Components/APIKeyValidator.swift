@@ -5,6 +5,7 @@ enum APIKeyProvider {
   case google
   case openai
   case xai
+  case anthropic
 }
 
 /// Outcome of a live API-key validation request.
@@ -41,6 +42,11 @@ enum APIKeyValidator {
       guard let url = URL(string: "https://api.x.ai/v1/api-key") else { return .unverified }
       request = URLRequest(url: url)
       request.setValue("Bearer \(trimmed)", forHTTPHeaderField: "Authorization")
+    case .anthropic:
+      guard let url = URL(string: "https://api.anthropic.com/v1/models") else { return .unverified }
+      request = URLRequest(url: url)
+      request.setValue(trimmed, forHTTPHeaderField: "x-api-key")
+      request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
     }
     request.httpMethod = "GET"
     request.timeoutInterval = timeout

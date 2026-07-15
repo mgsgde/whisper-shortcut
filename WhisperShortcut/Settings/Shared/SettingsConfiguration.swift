@@ -5,6 +5,9 @@ enum ChatModelProvider: String, CaseIterable {
   case gemini
   case grok
   case openai
+  /// Anthropic Claude via the Messages API. Chat-only for the first slice (no Dictate Prompt /
+  /// TTS path — Claude has no native audio STT/TTS in this app).
+  case anthropic
   /// User-configured OpenAI-compatible chat proxy (OpenRouter, LiteLLM, …). Endpoint, model id,
   /// and optional API key are read from `OpenAIChatPreferences`. Selected explicitly in Chat.
   case customOpenAI
@@ -13,7 +16,7 @@ enum ChatModelProvider: String, CaseIterable {
   case local
 
   /// Model selected when the user invokes the bare provider slash-command
-  /// (`/gemini`, `/grok`, `/gpt`) with no qualifier, AND when `/model <provider>`
+  /// (`/gemini`, `/grok`, `/gpt`, `/claude`) with no qualifier, AND when `/model <provider>`
   /// is typed with no further narrowing keyword. Single source of truth so the
   /// autocomplete hint, the bare-command dispatch in `ChatView`, and the
   /// no-qualifier branch in `ChatModelCommandResolver` never drift apart —
@@ -23,19 +26,21 @@ enum ChatModelProvider: String, CaseIterable {
     case .gemini: return .gemini35Flash
     case .grok:   return .grok43
     case .openai: return .openaiGPT55
+    case .anthropic: return .claudeSonnet5
     case .customOpenAI: return .customOpenAIEndpoint
     case .local:  return .localModel
     }
   }
 
   /// Slash-command alias for the bare provider command (without the leading "/"), e.g. `/gemini`.
-  /// Named after the model brand for consistency: Gemini / Grok / GPT (not the company "openai").
-  /// `/openai` is kept as a silent alias in `ChatView` for muscle memory; see `modelCommandLookup`.
+  /// Named after the model brand for consistency: Gemini / Grok / GPT / Claude (not the company).
+  /// `/openai` and `/anthropic` are silent aliases in `ChatView`; see `modelCommandLookup`.
   var commandAlias: String {
     switch self {
     case .gemini: return "gemini"
     case .grok:   return "grok"
     case .openai: return "gpt"
+    case .anthropic: return "claude"
     case .customOpenAI: return "custom"
     case .local:  return "local"
     }
@@ -89,6 +94,12 @@ enum PromptModel: String, CaseIterable {
   // sentinel — the actual model tag sent to the server is read from `OpenAIChatPreferences.modelID`.
   case customOpenAIEndpoint = "custom-openai-endpoint"
 
+  // Anthropic Claude (Messages API). Chat-only — no Dictate Prompt / TTS wiring.
+  // Model IDs: https://platform.claude.com/docs/en/about-claude/models/overview (verified 2026-07).
+  case claudeSonnet5 = "claude-sonnet-5"
+  case claudeOpus48 = "claude-opus-4-8"
+  case claudeHaiku45 = "claude-haiku-4-5-20251001"
+
   // Local model served by an OpenAI-compatible server on the user's machine (Ollama / LM Studio).
   // The rawValue is a stable sentinel — the *actual* model tag sent to the server is configurable
   // and read from `LocalLLMPreferences.modelID`, so one enum case covers whatever the user pulled.
@@ -120,6 +131,12 @@ enum PromptModel: String, CaseIterable {
       return "OpenAI GPT-5.5"
     case .openaiGPT4oAudio:
       return "OpenAI GPT Audio"
+    case .claudeSonnet5:
+      return "Claude Sonnet 5"
+    case .claudeOpus48:
+      return "Claude Opus 4.8"
+    case .claudeHaiku45:
+      return "Claude Haiku 4.5"
     case .customOpenAIEndpoint:
       return "Custom endpoint (OpenRouter / proxy)"
     case .localModel:
@@ -149,6 +166,9 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT5Mini:    return "gpt54mini"
     case .openaiGPT55:       return "gpt55"
     case .openaiGPT4oAudio:  return "gptaudio" // audio-only; excluded from chatModels, never surfaced
+    case .claudeSonnet5:     return "claudesonnet5"
+    case .claudeOpus48:      return "claudeopus48"
+    case .claudeHaiku45:     return "claudehaiku45"
     case .customOpenAIEndpoint: return "custom"
     case .localModel:        return "local"
     }
@@ -180,6 +200,12 @@ enum PromptModel: String, CaseIterable {
       return "OpenAI's GPT-5.5 • Newest flagship (April 2026) • Text + images • Requires OpenAI API key"
     case .openaiGPT4oAudio:
       return "OpenAI's GPT Audio • Accepts inline audio for voice-driven prompts • Requires OpenAI API key"
+    case .claudeSonnet5:
+      return "Anthropic's Claude Sonnet 5 • Best speed/intelligence balance • Text + images • Requires Anthropic API key"
+    case .claudeOpus48:
+      return "Anthropic's Claude Opus 4.8 • Flagship for complex agentic work • Text + images • Requires Anthropic API key"
+    case .claudeHaiku45:
+      return "Anthropic's Claude Haiku 4.5 • Fastest, most cost-efficient Claude • Text + images • Requires Anthropic API key"
     case .customOpenAIEndpoint:
       return "Your own OpenAI-compatible chat server (OpenRouter, LiteLLM, …) • Configure URL + model in Settings → Chat • Uses /chat/completions only (no web search)"
     case .localModel:
@@ -194,16 +220,19 @@ enum PromptModel: String, CaseIterable {
   
   var costLevel: String {
     switch self {
-    case .gemini31FlashLite, .gemini35Flash, .geminiImage, .customOpenAIEndpoint, .localModel:
+    case .gemini31FlashLite, .gemini35Flash, .geminiImage, .customOpenAIEndpoint, .localModel,
+         .claudeHaiku45:
       return "Low"
     case .gemini31Pro, .geminiImagePro:
       return "Medium"
     case .grok4, .grok4Reasoning, .grok43:
       return "Medium"
-    case .openaiGPT5, .openaiGPT55, .openaiGPT4oAudio:
+    case .openaiGPT5, .openaiGPT55, .openaiGPT4oAudio, .claudeSonnet5:
       return "Medium"
     case .openaiGPT5Mini:
       return "Low"
+    case .claudeOpus48:
+      return "High"
     }
   }
 
@@ -213,6 +242,8 @@ enum PromptModel: String, CaseIterable {
       return .grok
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
       return .openai
+    case .claudeSonnet5, .claudeOpus48, .claudeHaiku45:
+      return .anthropic
     case .customOpenAIEndpoint:
       return .customOpenAI
     case .localModel:
@@ -263,6 +294,7 @@ enum PromptModel: String, CaseIterable {
     case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
     case .customOpenAI: return OpenAIChatPreferences.isConfigured
     case .grok: return KeychainManager.shared.hasValidXAIAPIKey()
+    case .anthropic: return KeychainManager.shared.hasValidAnthropicAPIKey()
     // Local server needs no API key — reachability is checked at request time, not here.
     case .local: return true
     }
@@ -284,6 +316,7 @@ enum PromptModel: String, CaseIterable {
     case .openai: return "Add your OpenAI API key in Settings (General tab) to use Dictate Prompt."
     case .customOpenAI: return "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .grok: return "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings."
+    case .anthropic: return "Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .local: return "Set your local server endpoint (Ollama / LM Studio) in Dictate Prompt settings, and make sure it is running."
     }
   }
@@ -344,6 +377,7 @@ enum PromptModel: String, CaseIterable {
     // Non-Gemini — ignored by other providers
     case .grok4, .grok4Reasoning, .grok43,
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
+         .claudeSonnet5, .claudeOpus48, .claudeHaiku45,
          .customOpenAIEndpoint, .localModel:
       return nil
     }
@@ -381,6 +415,8 @@ enum PromptModel: String, CaseIterable {
       return nil // Grok models are text-only, no audio transcription
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
+    case .claudeSonnet5, .claudeOpus48, .claudeHaiku45:
+      return nil // Claude is chat-only here; no audio transcription endpoint
     case .customOpenAIEndpoint, .localModel:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
     }
@@ -394,8 +430,10 @@ enum PromptModel: String, CaseIterable {
   ///   the Responses API path doesn't apply.
   var supportsGrounding: Bool {
     switch self {
-    case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .localModel:
-      // Audio-only, image-generation, proxy, and local models have no web-search/grounding path.
+    case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .localModel,
+         .claudeSonnet5, .claudeOpus48, .claudeHaiku45:
+      // Audio-only, image-generation, proxy, local, and Anthropic models have no web-search path
+      // in this app (Claude web search would need a separate Anthropic tool wiring).
       return false
     default:
       return true

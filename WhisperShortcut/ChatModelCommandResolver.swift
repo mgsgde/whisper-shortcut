@@ -51,9 +51,16 @@ enum ChatModelCommandResolver {
 
     // Detect provider family first.
     let hasGrok = normalized.contains("grok")
+    let hasClaude = !hasGrok && (
+      normalized.contains("claude") ||
+      normalized.contains("anthropic") ||
+      normalized.contains("sonnet") ||
+      normalized.contains("opus") ||
+      normalized.contains("haiku")
+    )
     // "gpt"/"openai"/"4o" pull the user toward OpenAI before the generic " 3 "
     // branch can mis-route "gpt 3" to Gemini 3.
-    let hasOpenAI = !hasGrok && (
+    let hasOpenAI = !hasGrok && !hasClaude && (
       normalized.contains("openai") ||
       normalized.contains("gpt") ||
       normalized.contains("4o")
@@ -61,8 +68,8 @@ enum ChatModelCommandResolver {
 
     // Native image generation (Nano Banana) — match before the version branches so "image"
     // or "nano banana" routes to the image model regardless of any "3.1"/"flash" it contains.
-    // Guarded by !grok/!openai so a hypothetical "gpt image" wouldn't get hijacked.
-    let wantsImage = !hasGrok && !hasOpenAI
+    // Guarded by !grok/!openai/!claude so a hypothetical "gpt image" wouldn't get hijacked.
+    let wantsImage = !hasGrok && !hasOpenAI && !hasClaude
       && (padded.contains(" image ") || normalized.contains("nano banana"))
 
     // Detect version family (order matters).
@@ -76,6 +83,16 @@ enum ChatModelCommandResolver {
         candidates = [.grok43]
       } else {
         candidates = [.grok4, .grok4Reasoning, .grok43]
+      }
+    } else if hasClaude {
+      if normalized.contains("opus") {
+        candidates = [.claudeOpus48]
+      } else if normalized.contains("haiku") {
+        candidates = [.claudeHaiku45]
+      } else if normalized.contains("sonnet") {
+        candidates = [.claudeSonnet5]
+      } else {
+        candidates = [.claudeSonnet5, .claudeOpus48, .claudeHaiku45]
       }
     } else if hasOpenAI {
       // openaiGPT4oAudio is Dictate-Prompt only (supportsTextChat=false), so
@@ -142,6 +159,10 @@ enum ChatModelCommandResolver {
       let preferred = ChatModelProvider.openai.defaultChatModel
       if candidates.contains(preferred) { candidates = [preferred] }
     }
+    if (lowered == "claude" || lowered == "anthropic") && candidates.count > 1 {
+      let preferred = ChatModelProvider.anthropic.defaultChatModel
+      if candidates.contains(preferred) { candidates = [preferred] }
+    }
     // Same idea for the image family: an image request without a "pro" qualifier
     // ("image", "nano banana", "gemini image", …) picks the free Flash tier;
     // "image pro" / "nano banana pro" were already narrowed to Pro above.
@@ -189,6 +210,7 @@ enum ChatModelCommandResolver {
   private static func isFast(_ m: PromptModel) -> Bool {
     switch m {
     case .grok43: return true  // grok-4.3 is xAI's "fastest, most intelligent" since 2026-05-06.
+    case .claudeHaiku45: return true
     default: return false
     }
   }

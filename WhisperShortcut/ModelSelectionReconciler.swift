@@ -22,6 +22,7 @@ enum ModelSelectionReconciler {
     case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
     case .customOpenAI: return OpenAIChatPreferences.isConfigured
     case .grok: return KeychainManager.shared.hasValidXAIAPIKey()
+    case .anthropic: return KeychainManager.shared.hasValidAnthropicAPIKey()
     // Local server needs no key — treat as "always available" so a user's explicit local
     // selection is never reconciled away.
     case .local: return true
@@ -109,8 +110,8 @@ enum ModelSelectionReconciler {
     case .gemini: replacement = .gemini31FlashLite
     case .openai: replacement = .openAIGPT4oMiniTranscribe
     case .grok: replacement = .xaiTranscribe
-    // `providerPreference` never includes `.local` or `.customOpenAI`.
-    case .local, .customOpenAI: return
+    // `providerPreference` never includes these; Anthropic has no transcription models here.
+    case .local, .customOpenAI, .anthropic: return
     }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
     DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue)")

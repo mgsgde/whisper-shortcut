@@ -17,6 +17,10 @@ protocol KeychainManaging {
   func getXAIAPIKey() -> String?
   func deleteXAIAPIKey() -> Bool
   func hasValidXAIAPIKey() -> Bool
+  func saveAnthropicAPIKey(_ apiKey: String) -> Bool
+  func getAnthropicAPIKey() -> String?
+  func deleteAnthropicAPIKey() -> Bool
+  func hasValidAnthropicAPIKey() -> Bool
   func saveOpenAIAPIKey(_ apiKey: String) -> Bool
   func getOpenAIAPIKey() -> String?
   func deleteOpenAIAPIKey() -> Bool
@@ -50,6 +54,7 @@ class KeychainManager: KeychainManaging {
     static let accountName = "api-key"
     static let googleAccountName = "google-api-key"
     static let xaiAccountName = "xai-api-key"
+    static let anthropicAccountName = "anthropic-api-key"
     static let openAIAccountName = "openai-api-key"
     static let googleCalendarRefreshTokenAccountName = "google-calendar-refresh-token"
     static let trelloTokenAccountName = "trello-token"
@@ -102,6 +107,7 @@ class KeychainManager: KeychainManaging {
   private static let environmentKeyNames: [String: [String]] = [
     Constants.googleAccountName: ["WHISPERSHORTCUT_GOOGLE_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"],
     Constants.xaiAccountName: ["WHISPERSHORTCUT_XAI_API_KEY", "XAI_API_KEY"],
+    Constants.anthropicAccountName: ["WHISPERSHORTCUT_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"],
     Constants.openAIAccountName: ["WHISPERSHORTCUT_OPENAI_API_KEY", "OPENAI_API_KEY"],
   ]
 
@@ -290,6 +296,25 @@ class KeychainManager: KeychainManaging {
 
   func hasValidXAIAPIKey() -> Bool {
     guard let key = getXAIAPIKey() else { return false }
+    return !key.isEmpty
+  }
+
+  // MARK: - Anthropic API Key Management
+
+  func saveAnthropicAPIKey(_ apiKey: String) -> Bool {
+    return saveKey(apiKey, accountName: Constants.anthropicAccountName)
+  }
+
+  func getAnthropicAPIKey() -> String? {
+    return getKey(accountName: Constants.anthropicAccountName)
+  }
+
+  func deleteAnthropicAPIKey() -> Bool {
+    return deleteKey(accountName: Constants.anthropicAccountName)
+  }
+
+  func hasValidAnthropicAPIKey() -> Bool {
+    guard let key = getAnthropicAPIKey() else { return false }
     return !key.isEmpty
   }
 

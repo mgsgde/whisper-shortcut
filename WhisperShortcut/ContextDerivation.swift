@@ -171,7 +171,7 @@ class ContextDerivation {
         audioAttachments: audioAttachments,
         credential: credential
       )
-    case .openai, .grok, .local, .customOpenAI:
+    case .openai, .grok, .anthropic, .local, .customOpenAI:
       analysisResult = try await callTextModelForAnalysis(
         focus: focus,
         primaryText: loaded.primaryText,
@@ -880,6 +880,10 @@ class ContextDerivation {
     case .grok:
       guard KeychainManager.shared.hasValidXAIAPIKey() else {
         throw TranscriptionError.networkError("xAI API key is missing — add it in Settings → General.")
+      }
+    case .anthropic:
+      guard KeychainManager.shared.hasValidAnthropicAPIKey() else {
+        throw TranscriptionError.networkError("Anthropic API key is missing — add it in Settings → General.")
       }
     case .gemini:
       break
