@@ -150,6 +150,10 @@ final class GlossaryFastLearner {
           && transcript.folded.first == foldedCandidate.first
           && Self.levenshtein(foldedCandidate, transcript.folded,
                               limit: foldedCandidate.count <= 5 ? 1 : 2) != nil
+          // Reject grammatical inflections (e.g. "Hauptanwendungsfall" vs "Hauptanwendungsfälle"):
+          // the transcript word is not a misspelling but the plural/genitive of the same common
+          // word, so learning it just injects a dictionary word that echoes into transcripts.
+          && !Self.isInflectionalVariant(foldedCandidate, transcript.folded)
       }
       guard let best = variants.max(by: {
         transcriptCounts[$0.original, default: 0] < transcriptCounts[$1.original, default: 0]
@@ -221,6 +225,25 @@ final class GlossaryFastLearner {
   /// ("Gödde" and "godde" fold to the same string).
   private func fold(_ word: String) -> String {
     word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+  }
+
+  /// German/English inflectional endings a longer word may add to a shorter stem
+  /// (plural, genitive, feminine plural). Kept short so only genuine grammatical
+  /// tails match — not arbitrary spelling differences.
+  private static let inflectionalEndings: Set<String> = ["e", "n", "en", "s", "es", "er", "ern", "nen"]
+
+  /// True when `a` and `b` (already case/diacritic-folded) are the SAME stem differing only by a
+  /// trailing inflectional ending — a grammatical variant, not a machine misspelling. This is what
+  /// slips a common dictionary word into the glossary: the user types the singular ("Hauptanwendungsfall")
+  /// while transcripts hold the plural ("Hauptanwendungsfälle"), a levenshtein-≤2 near-miss that the
+  /// spell-check guard misses because long German compounds are unknown to NSSpellChecker.
+  /// Genuine name misspellings diverge INSIDE the word ("Gödde"→"Göde", "Nebius"→"Nebbius", "Groq"→"Grok")
+  /// and are therefore not prefix-related, so they pass.
+  private static func isInflectionalVariant(_ a: String, _ b: String) -> Bool {
+    guard a != b else { return false }
+    let (shorter, longer) = a.count <= b.count ? (a, b) : (b, a)
+    guard longer.hasPrefix(shorter) else { return false }
+    return inflectionalEndings.contains(String(longer.dropFirst(shorter.count)))
   }
 
   /// Edit distance if it is ≤ `limit`, else nil.

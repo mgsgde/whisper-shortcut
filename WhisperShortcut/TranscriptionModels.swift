@@ -194,6 +194,15 @@ enum TranscriptionModel: String, CaseIterable {
     return !url.isEmpty
   }
 
+  /// Popup title matching `apiKeyRequiredMessage`. Offline and self-hosted models don't need an
+  /// API key, so titling their popup "API Key Required" contradicted the body ("Download the
+  /// selected Whisper model…") and sent users hunting for a key that wouldn't help.
+  var credentialRequiredTitle: String {
+    if isOffline { return "Model Not Downloaded" }
+    if self == .selfHostedTranscription { return "Endpoint Not Configured" }
+    return "API Key Required"
+  }
+
   /// Actionable message shown when this transcription model can't run for lack of a credential.
   var apiKeyRequiredMessage: String {
     if isGemini {

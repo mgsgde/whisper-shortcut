@@ -10,6 +10,7 @@ struct GoogleAPIKeySection: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @State private var isKeyVisible: Bool = false
+  @State private var keychainSaveError: OSStatus?
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -47,11 +48,19 @@ struct GoogleAPIKeySection: View {
         }
         .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
         .onAppear {
-          viewModel.data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
+          // Only overwrite the field when the read actually returns a stored key. A failed
+          // Keychain read must not blank the binding — the onChange below would then persist
+          // "" and wipe the real key (seen in the wild as "my API keys disappear").
+          if let stored = KeychainManager.shared.getGoogleAPIKey(), !stored.isEmpty {
+            viewModel.data.googleAPIKey = stored
+          }
         }
         .onChange(of: viewModel.data.googleAPIKey) { _, newValue in
           Task {
-            _ = KeychainManager.shared.saveGoogleAPIKey(newValue)
+            let saved = KeychainManager.shared.saveGoogleAPIKey(newValue)
+            await MainActor.run {
+              keychainSaveError = saved ? nil : KeychainManager.shared.lastWriteError(for: .google)
+            }
             ModelSelectionReconciler.reconcileAll()
           }
         }
@@ -64,6 +73,10 @@ struct GoogleAPIKeySection: View {
         .help(isKeyVisible ? "Hide API key" : "Show API key")
 
         Spacer()
+      }
+
+      if let keychainSaveError {
+        KeychainSaveWarning(status: keychainSaveError)
       }
 
       HStack(spacing: 0) {

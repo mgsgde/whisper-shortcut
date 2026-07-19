@@ -4,6 +4,7 @@ struct AnthropicAPIKeySection: View {
   @ObservedObject var viewModel: SettingsViewModel
   @State private var anthropicAPIKey: String = ""
   @State private var isKeyVisible: Bool = false
+  @State private var keychainSaveError: OSStatus?
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -39,10 +40,14 @@ struct AnthropicAPIKeySection: View {
         }
         .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
         .onAppear {
-          anthropicAPIKey = KeychainManager.shared.getAnthropicAPIKey() ?? ""
+          // Don't blank the field on a failed Keychain read — see GoogleAPIKeySection.
+          if let stored = KeychainManager.shared.getAnthropicAPIKey(), !stored.isEmpty {
+            anthropicAPIKey = stored
+          }
         }
         .onChange(of: anthropicAPIKey) { _, newValue in
-          _ = KeychainManager.shared.saveAnthropicAPIKey(newValue)
+          let saved = KeychainManager.shared.saveAnthropicAPIKey(newValue)
+          keychainSaveError = saved ? nil : KeychainManager.shared.lastWriteError(for: .anthropic)
           ModelSelectionReconciler.reconcileAll()
         }
 
@@ -54,6 +59,10 @@ struct AnthropicAPIKeySection: View {
         .help(isKeyVisible ? "Hide API key" : "Show API key")
 
         Spacer()
+      }
+
+      if let keychainSaveError {
+        KeychainSaveWarning(status: keychainSaveError)
       }
 
       HStack(spacing: 0) {

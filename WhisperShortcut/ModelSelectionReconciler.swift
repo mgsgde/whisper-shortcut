@@ -100,10 +100,22 @@ enum ModelSelectionReconciler {
   private static func reconcileTranscription(key: String, fallback: TranscriptionModel) {
     let raw = UserDefaults.standard.string(forKey: key) ?? fallback.rawValue
     let current = TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue(raw)) ?? fallback
-    // Offline Whisper and self-hosted endpoints need no provider key — leave those selections alone.
-    guard current.isGemini || current.isOpenAI || current.isXAI else { return }
+    // Offline Whisper and self-hosted endpoints need no provider key — leave those selections
+    // alone. Exception: an offline model that was never DOWNLOADED is a dead end no API key can
+    // fix (the user keeps hitting "download the model" no matter which key they enter), so once
+    // a cloud key exists we switch to that provider's transcription model.
+    guard current.isGemini || current.isOpenAI || current.isXAI else {
+      if current.isOffline, !current.isOfflineModelAvailable() {
+        replaceTranscriptionSelection(key: key, current: current)
+      }
+      return
+    }
     let currentProvider: ChatModelProvider = current.isGemini ? .gemini : (current.isOpenAI ? .openai : .grok)
     if hasKey(currentProvider) { return }
+    replaceTranscriptionSelection(key: key, current: current)
+  }
+
+  private static func replaceTranscriptionSelection(key: String, current: TranscriptionModel) {
     guard let provider = providerPreference.first(where: { hasKey($0) }) else { return }
     let replacement: TranscriptionModel
     switch provider {

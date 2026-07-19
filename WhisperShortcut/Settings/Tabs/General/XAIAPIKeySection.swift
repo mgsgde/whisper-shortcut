@@ -4,6 +4,7 @@ struct XAIAPIKeySection: View {
   @ObservedObject var viewModel: SettingsViewModel
   @State private var xaiAPIKey: String = ""
   @State private var isKeyVisible: Bool = false
+  @State private var keychainSaveError: OSStatus?
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -39,10 +40,14 @@ struct XAIAPIKeySection: View {
         }
         .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
         .onAppear {
-          xaiAPIKey = KeychainManager.shared.getXAIAPIKey() ?? ""
+          // Don't blank the field on a failed Keychain read — see GoogleAPIKeySection.
+          if let stored = KeychainManager.shared.getXAIAPIKey(), !stored.isEmpty {
+            xaiAPIKey = stored
+          }
         }
         .onChange(of: xaiAPIKey) { _, newValue in
-          _ = KeychainManager.shared.saveXAIAPIKey(newValue)
+          let saved = KeychainManager.shared.saveXAIAPIKey(newValue)
+          keychainSaveError = saved ? nil : KeychainManager.shared.lastWriteError(for: .xai)
           ModelSelectionReconciler.reconcileAll()
         }
 
@@ -54,6 +59,10 @@ struct XAIAPIKeySection: View {
         .help(isKeyVisible ? "Hide API key" : "Show API key")
 
         Spacer()
+      }
+
+      if let keychainSaveError {
+        KeychainSaveWarning(status: keychainSaveError)
       }
 
       HStack(spacing: 0) {

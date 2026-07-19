@@ -686,7 +686,7 @@ class MenuBarController: NSObject {
       } else {
         PopupNotificationWindow.showError(
           selectedModel.apiKeyRequiredMessage,
-          title: "API Key Required"
+          title: selectedModel.credentialRequiredTitle
         )
       }
       return
@@ -713,7 +713,7 @@ class MenuBarController: NSObject {
       } else {
         PopupNotificationWindow.showError(
           selectedModel.apiKeyRequiredMessage,
-          title: "API Key Required"
+          title: selectedModel.credentialRequiredTitle
         )
       }
     default:
@@ -902,7 +902,7 @@ class MenuBarController: NSObject {
     guard meetingModel.hasRequiredCredential else {
       PopupNotificationWindow.showError(
         meetingModel.apiKeyRequiredMessage,
-        title: "API Key Required"
+        title: meetingModel.credentialRequiredTitle
       )
       return
     }

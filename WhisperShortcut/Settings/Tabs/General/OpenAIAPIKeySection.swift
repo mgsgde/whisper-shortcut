@@ -4,6 +4,7 @@ struct OpenAIAPIKeySection: View {
   @ObservedObject var viewModel: SettingsViewModel
   @State private var openAIAPIKey: String = ""
   @State private var isKeyVisible: Bool = false
+  @State private var keychainSaveError: OSStatus?
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -39,10 +40,14 @@ struct OpenAIAPIKeySection: View {
         }
         .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
         .onAppear {
-          openAIAPIKey = KeychainManager.shared.getOpenAIAPIKey() ?? ""
+          // Don't blank the field on a failed Keychain read — see GoogleAPIKeySection.
+          if let stored = KeychainManager.shared.getOpenAIAPIKey(), !stored.isEmpty {
+            openAIAPIKey = stored
+          }
         }
         .onChange(of: openAIAPIKey) { _, newValue in
-          _ = KeychainManager.shared.saveOpenAIAPIKey(newValue)
+          let saved = KeychainManager.shared.saveOpenAIAPIKey(newValue)
+          keychainSaveError = saved ? nil : KeychainManager.shared.lastWriteError(for: .openai)
           ModelSelectionReconciler.reconcileAll()
         }
 
@@ -54,6 +59,10 @@ struct OpenAIAPIKeySection: View {
         .help(isKeyVisible ? "Hide API key" : "Show API key")
 
         Spacer()
+      }
+
+      if let keychainSaveError {
+        KeychainSaveWarning(status: keychainSaveError)
       }
 
       HStack(spacing: 0) {

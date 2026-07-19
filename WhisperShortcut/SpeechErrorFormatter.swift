@@ -87,23 +87,23 @@ struct SpeechErrorFormatter {
           Top up your balance in the Dashboard to continue. Use the "Top up" button below to open the website.
           """
       }
-      let waitMessage = retryAfter.map { "Please wait \(Int($0)) seconds and try again." } ?? "Wait a moment and try again, or set up billing (see below)."
+      let waitMessage = retryAfter.map { "Please wait \(Int($0)) seconds and try again." } ?? "Wait a moment and try again, or check billing (see above)."
       return """
         ⏳ Rate Limit Exceeded
 
-        You have exceeded the rate limit for this API.
+        Your AI provider rejected the request because of usage limits on your API key.
 
-        Common causes when using an API key:
-        • No billing method – Google often requires payment setup for higher limits and for preview models (e.g. Gemini 3 Flash)
-        • Free tier quota or daily limit reached
+        Common causes:
+        • No billing / no credit on the API account — note that ChatGPT, Grok, or Gemini app subscriptions do NOT include API credit; the developer account is billed separately
+        • Free tier quota or daily limit reached (Gemini)
         • Too many requests in a short time
 
-        To resolve (API key / Google AI Studio):
-        1. Open Google AI Studio: https://aistudio.google.com/app/apikey
-        2. Select your project and enable billing for the Gemini API there (or create a paid plan)
-        3. Preview models (Gemini 3 Flash, 3 Pro) often need billing enabled even if other models work
+        Check billing for the provider whose key you are using:
+        • Google: https://aistudio.google.com/app/apikey (preview models like Gemini 3 Flash often need billing enabled)
+        • OpenAI: https://platform.openai.com/settings/organization/billing
+        • xAI: https://console.x.ai
 
-        If you use a backend (Sign in with Google) instead, check your GCP project’s billing in Google Cloud Console.
+        If you use Sign in with Google instead of an API key, check your GCP project’s billing in Google Cloud Console.
 
         \(waitMessage)
         """
@@ -112,14 +112,14 @@ struct SpeechErrorFormatter {
       return """
         💳 Billing Required
 
-        This model or your region requires billing to be enabled for the Gemini API.
+        Your API account has no usable credit, or this model requires billing to be enabled.
 
-        When using an API key:
-        1. Open Google AI Studio: https://aistudio.google.com/app/apikey
-        2. Select the project that owns your API key
-        3. Enable billing (paid plan) for the Gemini API
+        Note: ChatGPT, Grok, or Gemini app subscriptions do NOT include API credit — the developer account is billed separately.
 
-        Preview models (e.g. Gemini 3 Flash) often require billing even when stable models work on the free tier.
+        Set up billing for the provider whose key you are using:
+        • Google: https://aistudio.google.com/app/apikey — enable billing for the project that owns your key (preview models like Gemini 3 Flash often require it)
+        • OpenAI: https://platform.openai.com/settings/organization/billing — add credit
+        • xAI: https://console.x.ai — add credit
         """
 
     case .quotaExceeded(let retryAfter):

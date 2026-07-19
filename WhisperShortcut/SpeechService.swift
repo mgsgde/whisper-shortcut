@@ -1447,7 +1447,13 @@ class SpeechService {
     case 401: throw TranscriptionError.invalidAPIKey
     case 404: throw TranscriptionError.serverError(404)
     case 422: throw TranscriptionError.serverError(422)
-    case 429: throw TranscriptionError.rateLimited(retryAfter: nil)
+    case 429:
+      // OpenAI reports "no credit on the API account" as a 429 with code insufficient_quota.
+      // Surface that as a billing problem, not a rate limit — the fix is topping up, not waiting.
+      if let bodyString = String(data: data, encoding: .utf8), bodyString.contains("insufficient_quota") {
+        throw TranscriptionError.billingRequired
+      }
+      throw TranscriptionError.rateLimited(retryAfter: nil)
     default:
       let bodyString = String(data: data, encoding: .utf8) ?? ""
       DebugLogger.logError("\(logPrefix): HTTP \(httpResponse.statusCode): \(bodyString.prefix(200))")
