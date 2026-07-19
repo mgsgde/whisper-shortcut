@@ -786,6 +786,11 @@ class SpeechService {
       case 401:
         throw TranscriptionError.invalidAPIKey
       case 429:
+        // "No credit on the API account" arrives as 429 insufficient_quota — a billing
+        // problem, not a rate limit (same mapping as the transcription path).
+        if bodyString.contains("insufficient_quota") {
+          throw TranscriptionError.billingRequired
+        }
         throw TranscriptionError.rateLimited(retryAfter: nil)
       default:
         throw TranscriptionError.serverError(http.statusCode)

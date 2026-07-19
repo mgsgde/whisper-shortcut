@@ -244,8 +244,12 @@ class SettingsViewModel: ObservableObject {
       return error
     }
 
-    // Save Google API key
-    if !KeychainManager.shared.saveGoogleAPIKey(data.googleAPIKey) {
+    // Save Google API key. The key field's onChange already persists every edit (including
+    // clearing the field) live, so this write is only a safety net for a non-empty value.
+    // Never write an empty value here: after a failed Keychain read at load,
+    // data.googleAPIKey is "" while the real key is still stored — persisting "" would
+    // wipe it.
+    if !data.googleAPIKey.isEmpty, !KeychainManager.shared.saveGoogleAPIKey(data.googleAPIKey) {
       DebugLogger.logError("SETTINGS: Failed to save Google API key to Keychain")
     }
 
