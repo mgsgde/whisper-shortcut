@@ -1,6 +1,6 @@
-# WhisperShortcut 7.87
+# WhisperShortcut 7.88
 
-API keys no longer vanish, Claude joins the chat, and error messages finally tell you what's actually wrong.
+Hardening follow-ups from the 7.87 review: clearer OpenAI billing errors in Dictate Prompt, a safer Settings save path for Google keys, and help when Accessibility permission looks stuck after switching builds.
 
 ## Installation
 
@@ -8,43 +8,17 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### 🔑 API keys no longer disappear
+### 💳 Dictate Prompt billing errors
 
-- **Non-destructive saving**: Keys are now updated in place in the macOS Keychain. Previously a failed save (locked or damaged login keychain) could silently delete your existing key — seen as "my API keys disappear".
-- **No more silent wipes on tab switch**: A failed Keychain read can no longer blank the key field and overwrite your stored key with an empty value.
-- **Visible errors**: If a key can't be stored, a red warning with the exact Keychain error code now appears under the field — and the key keeps working for the current session.
+- OpenAI's "no credit on the API account" error in **Dictate Prompt** is now shown as **Billing Required** (same as Dictate), instead of a generic rate-limit message.
 
-### 🧭 No more dead ends in model selection
+### 🔑 Safer Google key saving
 
-- If an offline Whisper model is selected but was never downloaded, entering a cloud API key now automatically switches dictation to that provider's model instead of endlessly showing "download the model".
-- The popup for a missing offline model is now titled **"Model Not Downloaded"** instead of the contradictory "API Key Required".
+- The Settings Save button no longer writes an empty Google API key to the Keychain. Intentional clears still work via the key field itself; this closes a remaining wipe path after a failed Keychain read.
 
-### 💳 Clearer billing and rate-limit errors
+### ♿ Accessibility after App Store ↔ GitHub switch
 
-- Rate-limit messages no longer point everyone at Google — they now cover Google, OpenAI, and xAI with the right billing links.
-- OpenAI's "no credit on the API account" error is now shown as **Billing Required** (with a note that a ChatGPT subscription does not include API credit) instead of a generic rate limit.
+- The Accessibility permission dialog now explains the stale-permission case when switching between App Store and GitHub builds (remove the entry with −, then re-add the app).
+- A **Copy Reset Command** button puts `tccutil reset Accessibility com.magnusgoedde.whispershortcut` on the clipboard for Terminal if System Settings alone is not enough.
 
-### 💬 Claude in Chat
-
-- Anthropic is now a first-class chat provider: add your Anthropic API key in Settings → General and pick a Claude model in the chat window.
-
-### 📋 Clipboard paste cue
-
-- After dictation, clipboard-only users (including the App Store build) get an explicit **⌘V** hint so it's clear the text is ready to paste.
-
-### 🎤 Dictation quality
-
-- Glossary terms are now framed as reference-only with a plausibility gate, preventing very short or unclear audio from echoing glossary terms into the transcript.
-- The glossary fast-learner no longer learns grammatical variants (e.g. German plurals) as if they were misspellings.
-- Chatbot-style refusals ("please send the audio") are detected and surfaced as "no speech detected" instead of being pasted.
-
-### 🛠 Fixes & maintenance
-
-- Smart Improvement: dictation audio is captured before transcription starts, fixing a race where rapid consecutive recordings lost ~2% of captures.
-- Dictate Prompt: "korrigiere" instructions preserve register, casing, and line breaks instead of formalizing casual text.
-- Chat: no more decorative line prefixes on paste-ready output; UTF-8 mojibake in pasted text is repaired.
-- Google Tasks: due dates are normalized to RFC 3339, fixing recurring 400 errors.
-- Model updates: OpenAI chat models migrated to gpt-5.4 / gpt-5.4-mini.
-- Onboarding and privacy copy now surface the fully offline Whisper + Ollama setup.
-
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.86...v7.87
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.87...v7.88
