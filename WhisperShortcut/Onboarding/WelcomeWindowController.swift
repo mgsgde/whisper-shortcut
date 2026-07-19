@@ -47,16 +47,13 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
   }
 
   func windowWillClose(_ notification: Notification) {
-    // A real app quit (e.g. macOS "Quit & Reopen" after granting a permission mid-tour)
-    // closes this window too. Don't treat that as completing onboarding — keep the saved
-    // step so the next launch resumes exactly where the user left off.
-    if (NSApplication.shared.delegate as? FullAppDelegate)?.isTerminating == true {
-      return
-    }
-    // User dismissed the window: onboarding is done. Clear progress so a later relaunch
-    // of the tour starts fresh at the intro.
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
-    UserDefaults.standard.set(0, forKey: UserDefaultsKeys.onboardingCurrentStep)
+    // Closing the window does NOT complete onboarding — only the final step's button does
+    // (via `finish()`). Whether the window closes because of an app quit (e.g. macOS
+    // "Quit & Reopen" after granting a permission mid-tour) or because the user dismissed
+    // it, the saved step is kept and the tour reappears on the next launch until it has
+    // been walked through to the end.
+    //
+    // Keys may have been entered before closing — adapt model selections to them.
     ModelSelectionReconciler.reconcileAll()
   }
 }
