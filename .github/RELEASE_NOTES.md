@@ -1,6 +1,6 @@
-# WhisperShortcut 7.88
+# WhisperShortcut 7.89
 
-Hardening follow-ups from the 7.87 review: clearer OpenAI billing errors in Dictate Prompt, a safer Settings save path for Google keys, and help when Accessibility permission looks stuck after switching builds.
+Two new Gemini models — Gemini 3.5 Flash-Lite and Gemini 3.6 Flash — are now available and become the new defaults, both of them cheaper than the models they replace. Also fixes dictation with Gemini 3.1 Pro, which failed on every attempt.
 
 ## Installation
 
@@ -8,17 +8,16 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### 💳 Dictate Prompt billing errors
+### ✨ New Gemini models
 
-- OpenAI's "no credit on the API account" error in **Dictate Prompt** is now shown as **Billing Required** (same as Dictate), instead of a generic rate-limit message.
+- **Gemini 3.5 Flash-Lite** is the new default for **Dictate**. Audio input costs $0.30 per million tokens instead of $0.50 — and since audio dominates a dictation bill, it is cheaper per dictated minute than the model it replaces.
+- **Gemini 3.6 Flash** is the new default for **Dictate Prompt**, **Chat**, and **meeting summaries**. Same input price as Gemini 3.5 Flash, but cheaper output ($7.50 instead of $9.00 per million tokens).
+- Both are selectable in Settings, and in chat via `/gemini35flashlite` and `/gemini36flash`.
+- If you never changed your model selection, you move to the new defaults automatically. If you deliberately picked a different model, your choice is kept.
 
-### 🔑 Safer Google key saving
+### 🐛 Fixes
 
-- The Settings Save button no longer writes an empty Google API key to the Keychain. Intentional clears still work via the key field itself; this closes a remaining wipe path after a failed Keychain read.
+- **Dictation with Gemini 3.1 Pro failed every time.** The transcription request included a thinking parameter that Gemini Pro rejects, so every attempt ended in an API error. The parameter is now chosen per model tier.
+- Onboarding no longer counts as finished when you just close the window — only completing the final step ends the tour.
 
-### ♿ Accessibility after App Store ↔ GitHub switch
-
-- The Accessibility permission dialog now explains the stale-permission case when switching between App Store and GitHub builds (remove the entry with −, then re-add the app).
-- A **Copy Reset Command** button puts `tccutil reset Accessibility com.magnusgoedde.whispershortcut` on the clipboard for Terminal if System Settings alone is not enough.
-
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.87...v7.88
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.88...v7.89
