@@ -244,8 +244,9 @@ class ChatViewModel: ObservableObject {
 
   /// Model-switch slash commands, generated from `PromptModel` so adding a model auto-adds its
   /// alias. Grouped by provider: the provider-default alias (`/gemini`, `/grok`, `/gpt`) first,
-  /// then each of that provider's *non-default* chat models by its `shortAlias` (`/gemini3flash`,
-  /// `/gemini25pro`, `/grok4`, …); the default model is reached via the bare provider command.
+  /// then each of that provider's *non-default* chat models by its `shortAlias`
+  /// (`/gemini35flash`, `/gemini35flashlite`, …); the default model is reached via the bare
+  /// provider command.
   /// Single source for autocomplete, tab-completion, `knownSlashCommands`, dispatch, and the
   /// system-prompt command list — so none can drift. `/openai` is NOT here: it's a silent,
   /// dispatch-only alias for `/gpt` (see `modelCommandLookup`).
@@ -296,14 +297,16 @@ class ChatViewModel: ObservableObject {
     commandsBeforeModels + modelCommands.map { ($0.command, $0.description) } + commandsAfterModels
 
   /// Model-switch commands for display, ordered most-recently-used first (see `recordModelUse`).
-  /// The currently active model is omitted entirely — re-selecting it is a no-op — so the top row
-  /// is the most-recently-used *other* model (one Enter away from toggling back). Never-used models
-  /// keep the canonical provider-grouped order at the bottom.
+  /// The currently active model is pulled out of the recency sort and appended last, labelled
+  /// "Current model" — so the top row is the most-recently-used *other* model (one Enter away
+  /// from toggling back), while the list still shows the complete lineup: a model missing from
+  /// the suggestions reads as "the app dropped it", which it never is. Never-used models keep
+  /// the canonical provider-grouped order at the bottom.
   func recentlyOrderedModelCommands() -> [(command: String, description: String)] {
     let recency = Self.loadModelRecency()
     let current = PromptModel.loadSelectedChatModel()
     let rank: (PromptModel) -> Int = { recency.firstIndex(of: $0.rawValue) ?? Int.max }
-    return Self.modelCommands
+    let others = Self.modelCommands
       .filter { $0.model != current }
       .enumerated()
       .sorted { a, b in
@@ -311,6 +314,10 @@ class ChatViewModel: ObservableObject {
         return ra != rb ? ra < rb : a.offset < b.offset
       }
       .map { ($0.element.command, $0.element.description) }
+    guard let currentEntry = Self.modelCommands.first(where: { $0.model == current }) else {
+      return others
+    }
+    return others + [(currentEntry.command, "Current model — \(current.displayName)")]
   }
 
   /// Commands to show in UI: fixed commands around a recency-sorted model block (and excludes
@@ -1142,7 +1149,7 @@ class ChatViewModel: ObservableObject {
     }
 
     // Model-switch commands (provider-default aliases /gemini /grok /gpt, the per-model short
-    // aliases /gemini3flash /gemini25pro /grok4 …, and the silent /openai alias). Generated from PromptModel,
+    // aliases /gemini35flash /gemini35flashlite …, and the silent /openai alias). Generated from PromptModel,
     // so this one lookup covers every model without per-command branches.
     if let model = Self.modelCommandLookup[lower] {
       inputText = ""
@@ -3182,12 +3189,14 @@ struct ChatInputAreaView: View {
 
   /// Current chat model for display (with migration); syncs with UserDefaults via @AppStorage.
   /// Audio-only models (e.g. `openaiGPT4oAudio`) fall back to the default since they can't
-  /// power text chat.
+  /// power text chat; superseded models resolve to their replacement so the label always
+  /// matches an entry in the picker.
   private var resolvedOpenGeminiModel: PromptModel {
     let migratedRaw = PromptModel.migrateLegacyPromptRawValue(selectedChatModelRaw)
     let resolved = PromptModel(rawValue: migratedRaw)
       .map { PromptModel.migrateIfDeprecated($0) }
       ?? SettingsDefaults.selectedChatModel
+    if let replacement = resolved.chatReplacement { return replacement }
     return resolved.supportsTextChat ? resolved : SettingsDefaults.selectedChatModel
   }
 

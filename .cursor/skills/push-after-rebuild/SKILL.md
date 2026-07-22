@@ -18,4 +18,6 @@ description: When the user wants to push, commit, or "save to git", first rebuil
    ```
 3. **Push** (`git push`). For a release, push the branch first, then the release tag.
 
+**Scope caveat (parent workspace):** when working from the `whisper-shortcut-private` workspace, the parent's `commit-push-by-scope` skill decides *whether* to push — changes under `whisper-shortcut/` are pushed by the user manually. This skill governs only the rebuild gate and the staging rule; it never overrides that decision.
+
 Commit-only requests (no push) and push-only requests (nothing new to commit) still rebuild first.

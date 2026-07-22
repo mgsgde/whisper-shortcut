@@ -54,15 +54,16 @@ When the app freezes (beachball, pinned CPU), the logs go **silent at the freeze
 point** — the last line is *where* it wedged, and `view-logs-via-bash` alone can't
 go further. Switch tools:
 
-1. **Confirm + locate**: `pgrep -x WhisperShortcut`, then `ps -p <pid> -o %cpu,state`.
-   A hung app is state `R` at ~100% CPU (idle is `S` at ~0%).
-2. **Capture the stuck stack**: `sample <pid> 3 -mayDie > /tmp/ws_hang.txt`. Aggregate
-   the hot frames (`grep -oE` the repeated `…Layout` / `…dylib` symbols). All samples
-   inside one runloop-observer transaction with none in event-wait = a single
-   unbounded operation (e.g. a non-converging SwiftUI layout loop), not 60fps churn.
-3. **Correlate** the last log timestamp with the trigger (what was just rendered or
-   inserted), then add `DebugLogger` tripwires around that step so the next
-   occurrence is unambiguous in the log.
+**The app already captured it for you.** `MainThreadWatchdog` writes a symbolicated
+`hang-<YYYYMMDD-HHMMSS>.txt` (with an `activity:` breadcrumb) to the app's Logs directory
+whenever the main thread stalls ≥4s. Use the **analyze-chat-freeze** skill, which reads those
+captures and carries a classification table of known hang families.
+
+1. **Read the newest `hang-*.txt` first** — do not hand-roll a capture when one exists.
+2. Only if no capture exists: `pgrep -x WhisperShortcut`, then
+   `sample <pid> 3 -mayDie > /tmp/ws_hang.txt`.
+3. **Correlate** the last log timestamp with the trigger, then add `DebugLogger` tripwires
+   around that step so the next occurrence is unambiguous.
 4. The app won't self-recover — `kill -9 <pid>` before rebuilding.
 
 ---

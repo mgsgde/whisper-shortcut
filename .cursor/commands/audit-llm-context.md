@@ -27,14 +27,14 @@ Accept these flags:
 
 Follow the method in the skill file:
 
-1. Dispatch parallel subagents if your tool supports them (Claude Code: `Agent` tool with `subagent_type: general-purpose`; in Cursor, sequence them), one per group: commands, rules, skills. Each agent reads its files, spot-verifies claims against the codebase, and reports per-file findings with severity tags + cited `file:line`.
+1. Dispatch parallel subagents if your tool supports them (in Cursor, sequence them instead), one per group: commands, rules, skills. Each agent reads its files, spot-verifies claims against the codebase, and reports per-file findings with severity tags + cited `file:line`.
 2. While they run, the orchestrator does the **cross-cutting checks** that need a global view: redundancy between `.cursor/rules/index.mdc` and `.cursor/skills/`, skill ↔ bash-script overlap, symlink integrity between `.cursor/skills/` and `.claude/skills/`, naming-convention adherence vs `.cursor/commands/README.md`.
 3. Synthesize one tiered report (Tier 1 broken / Tier 2 dedup wins / Tier 3 hygiene) with concrete fixes.
 4. End by asking the user which tier to apply.
 
 ## Constraints
 
-- Suggestions only by default. Do not edit files unless the user says "fix" or "apply" (or `--fix-tier-1` was passed).
+- Suggestions-first (see `index.mdc`); `--fix-tier-1` is the exception that auto-applies broken-reference fixes.
 - Be strict on severity. Most files are fine. Don't pad with ⚪ findings to look thorough.
 - Verify subagent claims with `grep -n` / `Read` before reporting them — they hallucinate line numbers sometimes.
 

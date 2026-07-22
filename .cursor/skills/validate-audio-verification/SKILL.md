@@ -21,7 +21,7 @@ Before drawing any conclusions from logs:
 
 1. The user has "Save usage data" enabled (`UserDefaultsKeys.contextLoggingEnabled` is on, or the key is unset — default is on).
 2. At least one dictation has happened, and ideally the candidate term you care about recurs in ≥2 distinct dictations whose **WAV files are still on disk** (within the retention window).
-3. The Smart Improvement run you are validating is recent — `bash scripts/logs.sh` covers the last ~hour by default; use `-t 24h` if needed.
+3. The Smart Improvement run you are validating is recent — always pass `-t` to `bash scripts/logs.sh` (e.g. `-t 24h`). There is no default window: a bare invocation is a live stream that never exits.
 4. You know which dictation backend was used (Gemini cloud vs. offline Whisper) and which Smart Improvement model is selected (from settings).
 
 If any precondition is missing, validation results are inconclusive — say so explicitly rather than reporting "broken." In particular: a term whose audio was captured **before** the retention model shipped (or older than `audioSampleRetentionDays`) is gone from disk; content-aware selection cannot retroactively verify it even though the text still logs it.

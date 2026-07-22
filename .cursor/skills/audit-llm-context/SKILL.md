@@ -41,7 +41,7 @@ Then proceed to the audit. Findings about "Claude-only feature in a portable ski
 
 ## Method
 
-Dispatch **parallel subagents** if your tool supports them (Claude Code: `Agent` tool with `subagent_type: general-purpose`; in Cursor, sequence the per-group reviews instead since Cursor has no equivalent dispatcher). If the user passed `--no-subagents`, skip dispatch entirely and run the per-group reviews inline in the main context (useful with a narrow `--scope=`). One reviewer per group: commands, rules, skills. The orchestrator (this skill) then synthesizes a cross-cutting view. Why parallel: reading every file in the main context bloats it and slows synthesis; per-group reviews fit comfortably in a single subagent.
+Dispatch **parallel subagents** if your tool supports them (in Cursor, sequence the per-group reviews instead — it has no equivalent dispatcher). If the user passed `--no-subagents`, skip dispatch entirely and run the per-group reviews inline in the main context (useful with a narrow `--scope=`). One reviewer per group: commands, rules, skills. The orchestrator (this skill) then synthesizes a cross-cutting view. Why parallel: reading every file in the main context bloats it and slows synthesis; per-group reviews fit comfortably in a single subagent.
 
 **Each subagent must receive the fetched-doc summary from Step 0** in its prompt — otherwise it will fall back on potentially stale training data when judging frontmatter and conventions.
 
@@ -104,10 +104,10 @@ These need a view across all three groups, so the orchestrator runs them after t
 
 ## Constraints
 
-- **Suggestions only by default.** Do not edit files unless the user explicitly says "fix" or "apply".
+- **Suggestions-first** per `index.mdc` — edit only on "fix" / "apply" / `--fix-tier-1`.
 - **Be strict.** Most files are fine. Don't pad the report with ⚪ findings to look thorough.
 - **Trust but verify subagents.** If a subagent claims "function X is at line N," confirm with a quick `grep -n` before relying on it.
-- **Dispatch in parallel where possible.** In Claude Code, use the `Agent` tool with `subagent_type: general-purpose`. In Cursor (no subagent dispatcher), run the per-group reviews sequentially.
+- **Dispatch in parallel where possible.** In Cursor (no subagent dispatcher), run the per-group reviews sequentially.
 
 ## Output skeleton
 

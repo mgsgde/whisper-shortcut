@@ -25,7 +25,7 @@ enum ChatModelProvider: String, CaseIterable {
     switch self {
     case .gemini: return .gemini36Flash
     case .grok:   return .grok43
-    case .openai: return .openaiGPT55
+    case .openai: return .openaiGPT56Sol
     case .anthropic: return .claudeSonnet5
     case .customOpenAI: return .customOpenAIEndpoint
     case .local:  return .localModel
@@ -79,6 +79,10 @@ enum PromptModel: String, CaseIterable {
   case grok4 = "grok-4.20-0309-non-reasoning"
   case grok4Reasoning = "grok-4.20-0309-reasoning"
   case grok43 = "grok-4.3"
+  /// xAI's current flagship: "the most intelligent and fastest model we've built"
+  /// (https://docs.x.ai/docs/models). Does NOT supersede grok-4.3 — it costs $2.00/$6.00 per 1M
+  /// against 4.3's $1.25/$2.50 and carries a 500k context where 4.3 has 1M, so both stay.
+  case grok45 = "grok-4.5"
 
   // OpenAI Models (chat + Dictate Prompt via Chat Completions API)
   // The case identifiers keep their historical names while the rawValue tracks the current
@@ -87,6 +91,14 @@ enum PromptModel: String, CaseIterable {
   case openaiGPT5 = "gpt-5.4"
   case openaiGPT5Mini = "gpt-5.4-mini"
   case openaiGPT55 = "gpt-5.5"
+  // GPT-5.6 family (2026-07). Priced *identically* to the 5.5/5.4 tiers it mirrors — sol matches
+  // gpt-5.5 at $5/$30 and terra matches gpt-5.4 at $2.50/$15 — which is what makes those two
+  // Pareto-dominated (same price, newer generation). luna is a cheaper tier at $1/$6, above
+  // gpt-5.4-mini ($0.75/$4.50), so mini stays on the frontier.
+  // https://developers.openai.com/api/docs/pricing — verified live via scripts/test-openai-models.sh.
+  case openaiGPT56Sol = "gpt-5.6-sol"
+  case openaiGPT56Terra = "gpt-5.6-terra"
+  case openaiGPT56Luna = "gpt-5.6-luna"
   /// Audio-input chat model (renamed by OpenAI from `gpt-4o-audio-preview` → `gpt-audio`).
   /// Accepts inline `input_audio` content parts, which makes it the counterpart to Gemini for
   /// Dictate Prompt (the model "hears" the audio directly).
@@ -102,6 +114,8 @@ enum PromptModel: String, CaseIterable {
   case claudeSonnet5 = "claude-sonnet-5"
   case claudeOpus48 = "claude-opus-4-8"
   case claudeHaiku45 = "claude-haiku-4-5-20251001"
+  /// Anthropic's most capable widely released model (GA since 2026-06-09), $10/$50 per 1M.
+  case claudeFable5 = "claude-fable-5"
 
   // Local model served by an OpenAI-compatible server on the user's machine (Ollama / LM Studio).
   // The rawValue is a stable sentinel — the *actual* model tag sent to the server is configurable
@@ -130,12 +144,20 @@ enum PromptModel: String, CaseIterable {
       return "Grok 4.20 Reasoning"
     case .grok43:
       return "Grok 4.3"
+    case .grok45:
+      return "Grok 4.5"
     case .openaiGPT5:
       return "OpenAI GPT-5.4"
     case .openaiGPT5Mini:
       return "OpenAI GPT-5.4 Mini"
     case .openaiGPT55:
       return "OpenAI GPT-5.5"
+    case .openaiGPT56Sol:
+      return "OpenAI GPT-5.6 Sol"
+    case .openaiGPT56Terra:
+      return "OpenAI GPT-5.6 Terra"
+    case .openaiGPT56Luna:
+      return "OpenAI GPT-5.6 Luna"
     case .openaiGPT4oAudio:
       return "OpenAI GPT Audio"
     case .claudeSonnet5:
@@ -144,6 +166,8 @@ enum PromptModel: String, CaseIterable {
       return "Claude Opus 4.8"
     case .claudeHaiku45:
       return "Claude Haiku 4.5"
+    case .claudeFable5:
+      return "Claude Fable 5"
     case .customOpenAIEndpoint:
       return "Custom endpoint (OpenRouter / proxy)"
     case .localModel:
@@ -171,13 +195,18 @@ enum PromptModel: String, CaseIterable {
     case .grok4:             return "grok4"
     case .grok4Reasoning:    return "grok4reasoning"
     case .grok43:            return "grok43"
+    case .grok45:            return "grok45"
     case .openaiGPT5:        return "gpt54"
     case .openaiGPT5Mini:    return "gpt54mini"
     case .openaiGPT55:       return "gpt55"
+    case .openaiGPT56Sol:    return "gpt56sol"
+    case .openaiGPT56Terra:  return "gpt56terra"
+    case .openaiGPT56Luna:   return "gpt56luna"
     case .openaiGPT4oAudio:  return "gptaudio" // audio-only; excluded from chatModels, never surfaced
     case .claudeSonnet5:     return "claudesonnet5"
     case .claudeOpus48:      return "claudeopus48"
     case .claudeHaiku45:     return "claudehaiku45"
+    case .claudeFable5:      return "claudefable5"
     case .customOpenAIEndpoint: return "custom"
     case .localModel:        return "local"
     }
@@ -203,6 +232,8 @@ enum PromptModel: String, CaseIterable {
       return "xAI's Grok 4.20 • Frontier-class intelligence • Web + X search • Requires xAI API key"
     case .grok4Reasoning:
       return "xAI's Grok 4.20 Reasoning • Extended thinking for complex tasks • Web + X search • Requires xAI API key"
+    case .grok45:
+      return "xAI's Grok 4.5 • xAI's most intelligent and fastest model • 500k context • Needs an xAI API key"
     case .grok43:
       return "xAI's Grok 4.3 • Flagship • Leading non-hallucination + agentic tool use • 1M context • Web + X search • Requires xAI API key"
     case .openaiGPT5:
@@ -211,12 +242,20 @@ enum PromptModel: String, CaseIterable {
       return "OpenAI's GPT-5.4 Mini • Cheaper, faster GPT-5.4 variant • Text + images • Requires OpenAI API key"
     case .openaiGPT55:
       return "OpenAI's GPT-5.5 • Newest flagship (April 2026) • Text + images • Requires OpenAI API key"
+    case .openaiGPT56Sol:
+      return "OpenAI's GPT-5.6 Sol • Flagship of the newest generation • Same price as GPT-5.5 • Needs an OpenAI API key"
+    case .openaiGPT56Terra:
+      return "OpenAI's GPT-5.6 Terra • Balanced tier of the newest generation • Half the price of Sol • Needs an OpenAI API key"
+    case .openaiGPT56Luna:
+      return "OpenAI's GPT-5.6 Luna • Cheapest of the newest generation • Fast everyday chat • Needs an OpenAI API key"
     case .openaiGPT4oAudio:
       return "OpenAI's GPT Audio • Accepts inline audio for voice-driven prompts • Requires OpenAI API key"
     case .claudeSonnet5:
       return "Anthropic's Claude Sonnet 5 • Best speed/intelligence balance • Text + images • Requires Anthropic API key"
     case .claudeOpus48:
       return "Anthropic's Claude Opus 4.8 • Flagship for complex agentic work • Text + images • Requires Anthropic API key"
+    case .claudeFable5:
+      return "Anthropic's Claude Fable 5 • Most capable Claude • Next-generation intelligence for long-running agents • Needs an Anthropic API key"
     case .claudeHaiku45:
       return "Anthropic's Claude Haiku 4.5 • Fastest, most cost-efficient Claude • Text + images • Requires Anthropic API key"
     case .customOpenAIEndpoint:
@@ -238,31 +277,37 @@ enum PromptModel: String, CaseIterable {
       return "Low"
     case .gemini31Pro, .geminiImagePro:
       return "Medium"
-    case .grok4, .grok4Reasoning, .grok43:
+    case .grok4, .grok4Reasoning, .grok43, .grok45:
       return "Medium"
-    case .openaiGPT5, .openaiGPT55, .openaiGPT4oAudio, .claudeSonnet5:
+    case .openaiGPT5, .openaiGPT55, .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT4oAudio,
+         .claudeSonnet5:
       return "Medium"
-    case .openaiGPT5Mini:
+    case .openaiGPT5Mini, .openaiGPT56Luna:
       return "Low"
-    case .claudeOpus48:
+    case .claudeOpus48, .claudeFable5:
       return "High"
     }
   }
 
   var provider: ChatModelProvider {
+    // Deliberately exhaustive, with no `default:` — a `default: return .gemini` used to mean a
+    // newly added non-Gemini case silently claimed the Gemini credential and endpoint. Let the
+    // compiler force the decision instead.
     switch self {
-    case .grok4, .grok4Reasoning, .grok43:
+    case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash,
+         .geminiImage, .geminiImagePro:
+      return .gemini
+    case .grok4, .grok4Reasoning, .grok43, .grok45:
       return .grok
-    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
+    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
+         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna:
       return .openai
-    case .claudeSonnet5, .claudeOpus48, .claudeHaiku45:
+    case .claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
       return .anthropic
     case .customOpenAIEndpoint:
       return .customOpenAI
     case .localModel:
       return .local
-    default:
-      return .gemini
     }
   }
 
@@ -365,6 +410,41 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
+  /// Chat-lineup pruning: the newer same-provider model that supersedes this one in every
+  /// respect that matters for chat, or `nil` if this model is current. Superseded models stay
+  /// in the enum because other features still use them (Dictate Prompt takes audio-capable
+  /// Gemini models, `speakerConsolidationModel` wants the cheap tier), but every chat-facing
+  /// list (chat window picker, Settings → Chat, meeting summary, Smart Improvement) hides
+  /// them, and a persisted chat selection is rewritten to the replacement on load — staying
+  /// with the same provider so a user with only that provider's key keeps working.
+  /// The bar is *Pareto dominance*, not recency: a model is only listed here when a sibling
+  /// beats it on every axis at once (quality AND speed AND price). A higher version number is
+  /// not enough — Gemini 3.1 Flash-Lite has a 40% cheaper output rate than 3.5 Flash-Lite, and
+  /// GPT-5.4 costs half of GPT-5.5, so all of them stay on the frontier and stay selectable.
+  /// Verified against the published price tables (see the audit notes in `SettingsDefaults`).
+  var chatReplacement: PromptModel? {
+    switch self {
+    // xAI: both 4.20 variants cost exactly what grok-4.3 costs ($1.25/$2.50 per 1M, same 1M
+    // context) while xAI's own docs rank 4.3 above them — dominated on every axis.
+    // https://docs.x.ai/docs/models
+    case .grok4, .grok4Reasoning: return .grok43
+    // OpenAI: gpt-5.6-sol costs exactly what gpt-5.5 costs ($5/$30 per 1M) and gpt-5.6-terra
+    // exactly what gpt-5.4 costs ($2.50/$15) — same price, newer generation, so the 5.5/5.4
+    // pair is dominated. gpt-5.4-mini is NOT: at $0.75/$4.50 it undercuts gpt-5.6-luna ($1/$6),
+    // so it remains the cheapest OpenAI option and stays selectable.
+    // https://developers.openai.com/api/docs/pricing
+    case .openaiGPT55: return .openaiGPT56Sol
+    case .openaiGPT5: return .openaiGPT56Terra
+    default: return nil
+    }
+  }
+
+  /// True when this model is offered in the chat-facing model lists: it must be able to power
+  /// a text chat *and* not be superseded by a newer sibling.
+  var isSelectableInChat: Bool {
+    supportsTextChat && chatReplacement == nil
+  }
+
   /// Gemini-only: the `thinkingConfig` dict to send on chat requests.
   ///
   /// Gemini 3.x models use `thinkingLevel` (`minimal`/`low`/`medium`/`high`). `thinkingBudget`
@@ -388,9 +468,10 @@ enum PromptModel: String, CaseIterable {
     case .geminiImage, .geminiImagePro:
       return nil
     // Non-Gemini — ignored by other providers
-    case .grok4, .grok4Reasoning, .grok43,
+    case .grok4, .grok4Reasoning, .grok43, .grok45,
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
-         .claudeSonnet5, .claudeOpus48, .claudeHaiku45,
+         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna,
+         .claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5,
          .customOpenAIEndpoint, .localModel:
       return nil
     }
@@ -428,11 +509,12 @@ enum PromptModel: String, CaseIterable {
       return .gemini36Flash
     case .geminiImage, .geminiImagePro:
       return nil // image-generation models; not transcription models
-    case .grok4, .grok4Reasoning, .grok43:
+    case .grok4, .grok4Reasoning, .grok43, .grok45:
       return nil // Grok models are text-only, no audio transcription
-    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
+    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
+         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna:
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
-    case .claudeSonnet5, .claudeOpus48, .claudeHaiku45:
+    case .claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
       return nil // Claude is chat-only here; no audio transcription endpoint
     case .customOpenAIEndpoint, .localModel:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
@@ -448,7 +530,7 @@ enum PromptModel: String, CaseIterable {
   var supportsGrounding: Bool {
     switch self {
     case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .localModel,
-         .claudeSonnet5, .claudeOpus48, .claudeHaiku45:
+         .claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
       // Audio-only, image-generation, proxy, local, and Anthropic models have no web-search path
       // in this app (Claude web search would need a separate Anthropic tool wiring).
       return false
@@ -458,9 +540,10 @@ enum PromptModel: String, CaseIterable {
   }
 
   /// All models available for the chat window (all providers). Excludes audio-only
-  /// models such as `openaiGPT4oAudio`, which the OpenAI API rejects on text-only requests.
+  /// models such as `openaiGPT4oAudio`, which the OpenAI API rejects on text-only requests,
+  /// and models superseded by a newer sibling (see `chatReplacement`).
   static var chatModels: [PromptModel] {
-    return allCases.filter { $0.supportsTextChat }
+    return allCases.filter { $0.isSelectableInChat }
   }
 
   /// Chat models suitable for text-only tasks such as Smart Improvement: excludes
@@ -525,18 +608,28 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
+  /// Loads any UserDefaults slot that must hold a chat-capable model (chat window, meeting
+  /// summary, Smart Improvement). On top of `loadPromptModel` it forwards a superseded
+  /// selection to its replacement and persists that, so the value always appears in the
+  /// pickers, which list `chatModels`.
+  static func loadChatSlotModel(forKey key: String, default fallback: PromptModel) -> PromptModel {
+    let loaded = loadPromptModel(forKey: key, default: fallback, validate: { $0.supportsTextChat })
+    guard let replacement = loaded.chatReplacement else { return loaded }
+    UserDefaults.standard.set(replacement.rawValue, forKey: key)
+    return replacement
+  }
+
   /// Loads the model selected for the chat window (Settings → Chat).
   static func loadSelectedChatModel() -> PromptModel {
-    loadPromptModel(
+    loadChatSlotModel(
       forKey: UserDefaultsKeys.selectedChatModel,
-      default: SettingsDefaults.selectedChatModel,
-      validate: { $0.supportsTextChat }
+      default: SettingsDefaults.selectedChatModel
     )
   }
 
   /// Loads the model selected for meeting summary (rolling and final). Settings → Live Meeting → Summary Model.
   static func loadSelectedMeetingSummary() -> PromptModel {
-    loadPromptModel(
+    loadChatSlotModel(
       forKey: UserDefaultsKeys.selectedMeetingSummaryModel,
       default: SettingsDefaults.selectedMeetingSummaryModel
     )

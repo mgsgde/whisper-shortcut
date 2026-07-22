@@ -19,9 +19,9 @@ class ContextDerivation {
 
   /// The user's selected Smart Improvement model (any provider), or the default.
   private var selectedImprovementModel: PromptModel {
-    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
-      ?? SettingsDefaults.selectedImprovementModel.rawValue
-    return PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw)) ?? SettingsDefaults.selectedImprovementModel
+    PromptModel.loadChatSlotModel(
+      forKey: UserDefaultsKeys.selectedImprovementModel,
+      default: SettingsDefaults.selectedImprovementModel)
   }
 
   /// Result of focused load: primary (target mode) and secondary (current prompt + other modes capped).

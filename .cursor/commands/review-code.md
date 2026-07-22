@@ -143,7 +143,6 @@ Things you may still legitimately defer (call them out explicitly, don't silentl
 After applying fixes:
 
 - Rebuild (`bash scripts/rebuild-and-restart.sh`) before reporting completion
-- Do **not** commit unless the user explicitly asks
 
 ## Constraints
 

@@ -5,7 +5,8 @@ description: Research one successful competitor end-to-end (product, pricing, ma
 
 # Competitor Teardown
 
-Input: a competitor name or URL in `$ARGUMENTS`. If none is given, first identify the 3–5
+Input: the competitor name or URL the user passed with the command (`$ARGUMENTS` when running
+under Claude Code; Cursor does not expand it, so read it from the user's message). If none is given, first identify the 3–5
 currently most successful competitors in this app's space (voice dictation / voice-first
 productivity on macOS) via web search — rank by funding, growth reports, and App Store
 presence — and ask the user which one to tear down.
@@ -44,5 +45,4 @@ shipped within a day of that look. Do this deliberately and repeatedly, not acci
   install/trial steps, 3 specific workflows to try, and what to observe (onboarding
   aha-moment, latency feel, error handling, how it earns trust).
 
-Save the report to `plans/research/competitor-<name>-<yyyy-mm-dd>.md` (create the directory
-if missing) so future sessions can diff against it and avoid re-proposing old ideas.
+Save the report to `plans/active/competitor-<name>-<yyyy-mm-dd>.md` so future sessions can diff against it and avoid re-proposing old ideas.

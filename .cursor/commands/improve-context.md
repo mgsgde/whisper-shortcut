@@ -82,7 +82,7 @@ Drop any finding where the info is already documented. Be honest — a session w
 
 For each surviving finding, output a block like:
 
-```
+````
 ### Finding N — <one-line description>
 
 **Friction moment:** <what happened in the conversation — quote/paraphrase briefly>
@@ -96,10 +96,8 @@ For each surviving finding, output a block like:
 ```
 
 <exact text to add, in the file's existing style>
-
 ```
-
-```
+````
 
 Group findings by destination file when there are several for the same file.
 

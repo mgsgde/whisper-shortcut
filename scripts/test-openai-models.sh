@@ -23,6 +23,11 @@ declare -a CURRENT_CHAT_MODELS=(
   "gpt-5.4"
   "gpt-5.4-mini"
   "gpt-5.5"
+  # GPT-5.6 family, added to PromptModel 2026-07-22. sol/terra are priced identically to
+  # gpt-5.5 / gpt-5.4, which is why those two are now hidden from chat (chatReplacement).
+  "gpt-5.6-sol"
+  "gpt-5.6-terra"
+  "gpt-5.6-luna"
 )
 # gpt-audio (renamed from gpt-4o-audio-preview) requires audio modality — tested separately below.
 declare -a CURRENT_AUDIO_CHAT_MODELS=(
@@ -39,10 +44,9 @@ declare -a CANDIDATE_CHAT_MODELS=(
   # gpt-5.4 / gpt-5.4-mini were promoted to CURRENT_CHAT_MODELS (2026-07-14 migration: the app's
   # OpenAI flagship + mini now point at these). The superseded gpt-5 / gpt-5-mini still serve but
   # are no longer referenced — persisted selections forward via migrateLegacyPromptRawValue.
-  # gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna intentionally NOT listed: as of 2026-07-14 all
-  # three intermittently return 401 "You have insufficient permissions for this operation"
-  # (~1 in 5 calls) on /v1/chat/completions — staged rollout / org gating. Re-add and re-audit
-  # once they serve reliably; do not ship as defaults while 401s would render as "invalid key".
+  # gpt-5.6 family promoted to CURRENT_CHAT_MODELS on 2026-07-22 (the 401 staged-rollout gating
+  # seen on 2026-07-14 is gone: 10/10 consecutive 200s each). "gpt-5.6" is an alias for -sol.
+  # gpt-5.5-pro intentionally NOT listed: 404s on this key (10/10, 2026-07-22) — not entitled.
 )
 # Audio-chat candidates (input_audio) — newer generations of gpt-audio.
 # gpt-audio-1.5 is intentionally NOT listed: it intermittently 500s ("model produced invalid

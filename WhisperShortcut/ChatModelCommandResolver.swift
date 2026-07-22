@@ -79,10 +79,13 @@ enum ChatModelCommandResolver {
       // and a bare "image"/"nano banana" defaults to the free Flash tier further down.
       candidates = [.geminiImage, .geminiImagePro]
     } else if hasGrok {
+      // The 4.20 variants are Pareto-dominated by 4.3 and not offered; 4.5 and 4.3 both are.
       if normalized.contains("4.3") {
         candidates = [.grok43]
+      } else if normalized.contains("4.5") {
+        candidates = [.grok45]
       } else {
-        candidates = [.grok4, .grok4Reasoning, .grok43]
+        candidates = [.grok43, .grok45]
       }
     } else if hasClaude {
       if normalized.contains("opus") {
@@ -91,16 +94,24 @@ enum ChatModelCommandResolver {
         candidates = [.claudeHaiku45]
       } else if normalized.contains("sonnet") {
         candidates = [.claudeSonnet5]
+      } else if normalized.contains("fable") {
+        candidates = [.claudeFable5]
       } else {
-        candidates = [.claudeSonnet5, .claudeOpus48, .claudeHaiku45]
+        candidates = [.claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5]
       }
     } else if hasOpenAI {
-      // openaiGPT4oAudio is Dictate-Prompt only (supportsTextChat=false), so
-      // the chat resolver returns only the text-capable OpenAI models.
-      if normalized.contains("5.5") {
-        candidates = [.openaiGPT55]
+      // openaiGPT4oAudio is Dictate-Prompt only (supportsTextChat=false), so the chat resolver
+      // returns only the text-capable OpenAI models.
+      // gpt-5.5 / gpt-5.4 are Pareto-dominated by their same-price 5.6 twins and no longer
+      // offered; "5.5"/"5.4" still resolve, to the model that replaced them.
+      if normalized.contains("5.5") || normalized.contains("sol") {
+        candidates = [.openaiGPT56Sol]
+      } else if normalized.contains("5.4") || normalized.contains("terra") {
+        candidates = [.openaiGPT56Terra]
+      } else if normalized.contains("luna") {
+        candidates = [.openaiGPT56Luna]
       } else {
-        candidates = [.openaiGPT5, .openaiGPT5Mini, .openaiGPT55]
+        candidates = [.openaiGPT5Mini, .openaiGPT56Luna, .openaiGPT56Terra, .openaiGPT56Sol]
       }
     } else if normalized.contains("3.6") {
       candidates = [.gemini36Flash]
@@ -211,7 +222,7 @@ enum ChatModelCommandResolver {
 
   private static func isFast(_ m: PromptModel) -> Bool {
     switch m {
-    case .grok43: return true  // grok-4.3 is xAI's "fastest, most intelligent" since 2026-05-06.
+    case .grok45: return true  // xAI: "the most intelligent and fastest model we've built".
     case .claudeHaiku45: return true
     default: return false
     }
