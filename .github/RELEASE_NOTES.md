@@ -1,6 +1,6 @@
-# WhisperShortcut 7.89
+# WhisperShortcut 7.90
 
-Two new Gemini models — Gemini 3.5 Flash-Lite and Gemini 3.6 Flash — are now available and become the new defaults, both of them cheaper than the models they replace. Also fixes dictation with Gemini 3.1 Pro, which failed on every attempt.
+New frontier chat models from OpenAI, xAI, and Anthropic — GPT-5.6 Sol / Terra / Luna, Grok 4.5, and Claude Fable 5 — plus a cleaner chat model lineup that keeps only the current best option at each price point.
 
 ## Installation
 
@@ -8,16 +8,15 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### ✨ New Gemini models
+### ✨ New chat models
 
-- **Gemini 3.5 Flash-Lite** is the new default for **Dictate**. Audio input costs $0.30 per million tokens instead of $0.50 — and since audio dominates a dictation bill, it is cheaper per dictated minute than the model it replaces.
-- **Gemini 3.6 Flash** is the new default for **Dictate Prompt**, **Chat**, and **meeting summaries**. Same input price as Gemini 3.5 Flash, but cheaper output ($7.50 instead of $9.00 per million tokens).
-- Both are selectable in Settings, and in chat via `/gemini35flashlite` and `/gemini36flash`.
-- If you never changed your model selection, you move to the new defaults automatically. If you deliberately picked a different model, your choice is kept.
+- **OpenAI GPT-5.6 Sol, Terra, and Luna** — newest OpenAI generation. Sol replaces GPT-5.5 as the OpenAI default (same price); Terra and Luna fill the mid and everyday tiers. Selectable in Settings and via `/gpt56sol`, `/gpt56terra`, `/gpt56luna`.
+- **Grok 4.5** — xAI's most intelligent and fastest model (alongside Grok 4.3, which keeps its larger context). Selectable via `/grok45`.
+- **Claude Fable 5** — Anthropic's most capable widely released model. Selectable via `/claudefable5`.
 
-### 🐛 Fixes
+### 🧹 Chat lineup
 
-- **Dictation with Gemini 3.1 Pro failed every time.** The transcription request included a thinking parameter that Gemini Pro rejects, so every attempt ended in an API error. The parameter is now chosen per model tier.
-- Onboarding no longer counts as finished when you just close the window — only completing the final step ends the tour.
+- Older same-price models that the new generation dominates (e.g. GPT-5.5, GPT-5.4) are no longer offered in Chat; existing selections migrate to their replacements automatically.
+- The slash-command model list still shows your **current** model at the bottom (labelled "Current model"), so the lineup always looks complete.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.88...v7.89
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.89...v7.90
