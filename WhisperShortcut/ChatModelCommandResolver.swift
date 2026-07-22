@@ -102,13 +102,15 @@ enum ChatModelCommandResolver {
       } else {
         candidates = [.openaiGPT5, .openaiGPT5Mini, .openaiGPT55]
       }
+    } else if normalized.contains("3.6") {
+      candidates = [.gemini36Flash]
     } else if normalized.contains("3.5") {
-      candidates = [.gemini35Flash]
+      candidates = [.gemini35FlashLite, .gemini35Flash]
     } else if normalized.contains("3.1") {
       candidates = [.gemini31Pro, .gemini31FlashLite]
     } else if padded.contains(" 3 ") {
-      // Bare "Gemini 3" → the current 3-series flagship Flash.
-      candidates = [.gemini35Flash]
+      // Bare "Gemini 3" → the current 3-series default Flash.
+      candidates = [.gemini36Flash]
     } else {
       candidates = PromptModel.chatModels
     }
@@ -187,14 +189,14 @@ enum ChatModelCommandResolver {
 
   private static func isFlashLite(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini31FlashLite: return true
+    case .gemini31FlashLite, .gemini35FlashLite: return true
     default: return false
     }
   }
 
   private static func isFlash(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini31FlashLite, .gemini35Flash,
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash,
          .geminiImage: return true  // "flash image" → the Flash-tier image model
     default: return false
     }

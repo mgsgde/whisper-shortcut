@@ -309,7 +309,7 @@ class ChunkTranscriptionService {
                             ]
                         )
                     ],
-                    generationConfig: .thinkingDisabled
+                    generationConfig: model.geminiTranscriptionGenerationConfig
                 )
 
                 request.httpBody = try JSONEncoder().encode(transcriptionRequest)

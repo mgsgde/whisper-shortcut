@@ -37,6 +37,9 @@ enum UserDefaultsKeys {
   /// One-shot migration flag: default notification position moved left-top → center-bottom.
   static let didMigrateNotificationPositionToCenterBottom = "didMigrateNotificationPositionToCenterBottom"
 
+  /// One-shot migration flag: default Gemini models moved to the 3.5 Flash-Lite / 3.6 Flash tier.
+  static let didMigrateGeminiDefaultsTo36 = "didMigrateGeminiDefaultsTo36"
+
   // MARK: - Recording Safeguards
   static let confirmAboveDurationSeconds = "confirmAboveDurationSeconds"
 

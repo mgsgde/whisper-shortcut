@@ -9,8 +9,8 @@ import Foundation
 
 // MARK: - Transcription Model Enum
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
-// GA (stable IDs, no -preview): gemini-3.1-flash-lite, gemini-3.5-flash.
-// Preview (keep -preview): gemini-3.1-pro-preview.
+// GA (stable IDs, no -preview): gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash,
+// gemini-3.6-flash. Preview (keep -preview): gemini-3.1-pro-preview.
 // Removed and forwarded via migrateLegacyTranscriptionRawValue: gemini-3-pro-preview (shut down
 // 2026-03-09) → gemini-3.1-pro-preview; the Gemini 2.5 family (gemini-2.5-flash / -flash-lite,
 // shutdown 2026-10-16) → gemini-3.5-flash / gemini-3.1-flash-lite; gemini-3-flash-preview
@@ -19,8 +19,10 @@ enum TranscriptionModel: String, CaseIterable {
   // Gemini models (online)
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite"
+  case gemini35FlashLite = "gemini-3.5-flash-lite"
   case gemini35Flash = "gemini-3.5-flash"
-  
+  case gemini36Flash = "gemini-3.6-flash"
+
   // Offline Whisper models
   case whisperTiny = "whisper-tiny"
   case whisperBase = "whisper-base"
@@ -46,8 +48,12 @@ enum TranscriptionModel: String, CaseIterable {
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
       return "Gemini 3.1 Flash-Lite"
+    case .gemini35FlashLite:
+      return "Gemini 3.5 Flash-Lite"
     case .gemini35Flash:
       return "Gemini 3.5 Flash"
+    case .gemini36Flash:
+      return "Gemini 3.6 Flash"
     case .whisperTiny:
       return "Whisper Tiny (Offline)"
     case .whisperBase:
@@ -76,8 +82,12 @@ enum TranscriptionModel: String, CaseIterable {
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent"
     case .gemini31FlashLite:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
+    case .gemini35FlashLite:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent"
     case .gemini35Flash:
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"
+    case .gemini36Flash:
+      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "" // Offline models don't use API endpoints
     case .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
@@ -101,9 +111,10 @@ enum TranscriptionModel: String, CaseIterable {
 
   var isRecommended: Bool {
     switch self {
-    case .gemini31FlashLite, .whisperBase:
+    case .gemini35FlashLite, .whisperBase:
       return true
-    case .gemini31Pro, .gemini35Flash, .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge,
+    case .gemini31Pro, .gemini31FlashLite, .gemini35Flash, .gemini36Flash, .whisperTiny,
+         .whisperSmall, .whisperMedium, .whisperLarge,
          .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe, .selfHostedTranscription:
       return false
     }
@@ -114,7 +125,7 @@ enum TranscriptionModel: String, CaseIterable {
 
   var costLevel: String {
     switch self {
-    case .gemini31FlashLite, .gemini35Flash:
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
       return "Low"
     case .gemini31Pro:
       return "Medium"
@@ -137,8 +148,12 @@ enum TranscriptionModel: String, CaseIterable {
       return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
     case .gemini31FlashLite:
       return "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Ideal for dictation"
+    case .gemini35FlashLite:
+      return "Google's Gemini 3.5 Flash-Lite • Cheapest audio input ($0.30/1M) • Fast, high-throughput"
     case .gemini35Flash:
-      return "Google's Gemini 3.5 Flash • Latest GA flagship Flash • Strong on agentic/coding tasks"
+      return "Google's Gemini 3.5 Flash • Most intelligent Flash • Strong on agentic/coding tasks"
+    case .gemini36Flash:
+      return "Google's Gemini 3.6 Flash • Newest Flash • Balances speed with intelligence"
     case .whisperTiny:
       return "OpenAI Whisper Tiny • Fastest • ~75MB • Offline"
     case .whisperBase:
@@ -160,9 +175,24 @@ enum TranscriptionModel: String, CaseIterable {
     }
   }
   
+  /// `generationConfig` to send with a Gemini transcription request. Which thinking knob is
+  /// legal differs per tier — see `GeminiTranscriptionGenerationConfig` for the verified matrix.
+  var geminiTranscriptionGenerationConfig: GeminiTranscriptionRequest.GeminiTranscriptionGenerationConfig {
+    switch self {
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
+      return .thinkingMinimal
+    // Pro rejects both `thinkingLevel: minimal` and `thinkingBudget: 0` — it only runs in
+    // thinking mode, so any thinkingConfig here is a 400.
+    case .gemini31Pro:
+      return .noThinkingConfig
+    default:
+      return .noThinkingConfig
+    }
+  }
+
   var isGemini: Bool {
     switch self {
-    case .gemini31Pro, .gemini31FlashLite, .gemini35Flash:
+    case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
       return true
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
          .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe, .selfHostedTranscription:
@@ -350,9 +380,9 @@ enum TranscriptionModel: String, CaseIterable {
       return .xaiAudio
     case .selfHostedTranscription:
       return .selfHostedTranscription
-    case .gemini31FlashLite:
+    case .gemini31FlashLite, .gemini35FlashLite:
       return .geminiFlashLite
-    case .gemini35Flash:
+    case .gemini35Flash, .gemini36Flash:
       return .geminiFlash
     case .gemini31Pro:
       return .geminiPro
@@ -384,19 +414,31 @@ struct GeminiTranscriptionRequest: Codable {
     let parts: [GeminiTranscriptionPart]
   }
 
-  /// Minimal `generationConfig` for transcription. Used today only to disable thinking on
-  /// Gemini 3.x models (`thinkingConfig.thinkingBudget = 0`), which otherwise add multi-second
-  /// reasoning overhead to a task that doesn't benefit from it. Ignored by 2.x models.
+  /// Minimal `generationConfig` for transcription: keep thinking off, since reasoning adds
+  /// multi-second latency to a task that doesn't benefit from it.
+  ///
+  /// The knob is model-dependent, and getting it wrong is a hard HTTP 400 (verified 2026-07):
+  ///   - `thinkingBudget: 0` — accepted by 2.5 and 3.1, **rejected by 3.5 / 3.6**
+  ///     ("Request contains an invalid argument").
+  ///   - `thinkingLevel: "minimal"` — accepted by every Flash / Flash-Lite tier from 3.1 on,
+  ///     rejected by Pro ("Thinking level MINIMAL is not supported for this model").
+  ///   - Pro accepts neither, so it gets no `thinkingConfig` at all — it only runs in thinking mode.
+  /// Docs: https://ai.google.dev/gemini-api/docs/thinking
   struct GeminiTranscriptionGenerationConfig: Codable {
     let thinkingConfig: GeminiThinkingConfig?
 
-    static let thinkingDisabled = GeminiTranscriptionGenerationConfig(
-      thinkingConfig: GeminiThinkingConfig(thinkingBudget: 0)
+    /// Flash / Flash-Lite tiers (3.1 through 3.6).
+    static let thinkingMinimal = GeminiTranscriptionGenerationConfig(
+      thinkingConfig: GeminiThinkingConfig(thinkingLevel: "minimal", thinkingBudget: nil)
     )
+
+    /// Pro and any non-Gemini-3 model: send no thinking knob at all.
+    static let noThinkingConfig = GeminiTranscriptionGenerationConfig(thinkingConfig: nil)
   }
 
   struct GeminiThinkingConfig: Codable {
-    let thinkingBudget: Int
+    let thinkingLevel: String?
+    let thinkingBudget: Int?
   }
 
   struct GeminiTranscriptionPart: Codable {

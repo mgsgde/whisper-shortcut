@@ -947,7 +947,8 @@ class SpeechService {
     }
     let base64Audio = audioData.base64EncodedString()
 
-    let endpoint = TranscriptionModel.gemini31FlashLite.apiEndpoint
+    // Audio input dominates the cost here, so track the default (cheapest-audio) Flash-Lite tier.
+    let endpoint = SettingsDefaults.selectedTranscriptionModel.apiEndpoint
     var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
 
     let userParts: [GeminiChatRequest.GeminiChatPart] = [
@@ -1654,7 +1655,7 @@ class SpeechService {
           ]
         )
       ],
-      generationConfig: .thinkingDisabled
+      generationConfig: model.geminiTranscriptionGenerationConfig
     )
 
     var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
@@ -1731,7 +1732,7 @@ class SpeechService {
           ]
         )
       ],
-      generationConfig: .thinkingDisabled
+      generationConfig: model.geminiTranscriptionGenerationConfig
     )
 
     var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)

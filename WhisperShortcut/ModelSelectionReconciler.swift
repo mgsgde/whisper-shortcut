@@ -119,7 +119,7 @@ enum ModelSelectionReconciler {
     guard let provider = providerPreference.first(where: { hasKey($0) }) else { return }
     let replacement: TranscriptionModel
     switch provider {
-    case .gemini: replacement = .gemini31FlashLite
+    case .gemini: replacement = SettingsDefaults.selectedTranscriptionModel
     case .openai: replacement = .openAIGPT4oMiniTranscribe
     case .grok: replacement = .xaiTranscribe
     // `providerPreference` never includes these; Anthropic has no transcription models here.

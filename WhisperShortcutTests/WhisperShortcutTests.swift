@@ -28,7 +28,8 @@ struct LLMProviderRoundtripTests {
     )
     func gemini() async throws {
         let reply = try await GeminiChatProvider.shared.generateText(
-            model: PromptModel.gemini31FlashLite.rawValue,
+            // Track the shipped chat/Dictate Prompt default rather than a pinned tier.
+            model: SettingsDefaults.selectedChatModel.rawValue,
             prompt: Self.prompt
         )
         #expect(!reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

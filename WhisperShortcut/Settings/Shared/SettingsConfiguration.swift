@@ -23,7 +23,7 @@ enum ChatModelProvider: String, CaseIterable {
   /// they all read `defaultChatModel` from here.
   var defaultChatModel: PromptModel {
     switch self {
-    case .gemini: return .gemini35Flash
+    case .gemini: return .gemini36Flash
     case .grok:   return .grok43
     case .openai: return .openaiGPT55
     case .anthropic: return .claudeSonnet5
@@ -49,7 +49,8 @@ enum ChatModelProvider: String, CaseIterable {
 
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
-// GA: gemini-3.1-flash-lite, gemini-3.5-flash. Preview: gemini-3.1-pro-preview.
+// GA: gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash, gemini-3.6-flash.
+// Preview: gemini-3.1-pro-preview.
 // Removed and forwarded via migrateLegacyPromptRawValue: gemini-3-pro-preview (shut down
 // 2026-03-09) → gemini-3.1-pro-preview; the Gemini 2.5 family (gemini-2.5-flash / -flash-lite /
 // -pro, shutdown 2026-10-16) → gemini-3.5-flash / gemini-3.1-flash-lite / gemini-3.1-pro-preview;
@@ -61,7 +62,9 @@ enum PromptModel: String, CaseIterable {
   // Gemini Models (multimodal, direct audio input)
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite"
+  case gemini35FlashLite = "gemini-3.5-flash-lite"
   case gemini35Flash = "gemini-3.5-flash"
+  case gemini36Flash = "gemini-3.6-flash"
 
   // Gemini native image generation/editing ("Nano Banana"). Prompt (+ optional input image) →
   // image out, via a dedicated non-streaming `:generateContent` call with `responseModalities`
@@ -111,8 +114,12 @@ enum PromptModel: String, CaseIterable {
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
       return "Gemini 3.1 Flash-Lite"
+    case .gemini35FlashLite:
+      return "Gemini 3.5 Flash-Lite"
     case .gemini35Flash:
       return "Gemini 3.5 Flash"
+    case .gemini36Flash:
+      return "Gemini 3.6 Flash"
     case .geminiImage:
       return "Gemini Image (Nano Banana 2)"
     case .geminiImagePro:
@@ -156,7 +163,9 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gemini31Pro:       return "gemini31pro"
     case .gemini31FlashLite: return "gemini31flashlite"
+    case .gemini35FlashLite: return "gemini35flashlite"
     case .gemini35Flash:     return "gemini35flash"
+    case .gemini36Flash:     return "gemini36flash"
     case .geminiImage:       return "geminiimage"
     case .geminiImagePro:    return "geminiimagepro"
     case .grok4:             return "grok4"
@@ -180,8 +189,12 @@ enum PromptModel: String, CaseIterable {
       return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
     case .gemini31FlashLite:
       return "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Multimodal"
+    case .gemini35FlashLite:
+      return "Google's Gemini 3.5 Flash-Lite • Fastest, most cost-effective 3.5 model • High throughput • Multimodal"
     case .gemini35Flash:
-      return "Google's Gemini 3.5 Flash • Latest GA flagship Flash • Strong on agentic + coding tasks • Multimodal"
+      return "Google's Gemini 3.5 Flash • Most intelligent Flash • Strong on agentic + coding tasks • Multimodal"
+    case .gemini36Flash:
+      return "Google's Gemini 3.6 Flash • Newest Flash • Balances speed with intelligence • Multimodal"
     case .geminiImage:
       return "Google's Gemini Image (Nano Banana 2) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key"
     case .geminiImagePro:
@@ -220,8 +233,8 @@ enum PromptModel: String, CaseIterable {
   
   var costLevel: String {
     switch self {
-    case .gemini31FlashLite, .gemini35Flash, .geminiImage, .customOpenAIEndpoint, .localModel,
-         .claudeHaiku45:
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .geminiImage,
+         .customOpenAIEndpoint, .localModel, .claudeHaiku45:
       return "Low"
     case .gemini31Pro, .geminiImagePro:
       return "Medium"
@@ -369,7 +382,7 @@ enum PromptModel: String, CaseIterable {
     // Gemini 3.x — thinkingLevel
     case .gemini31Pro:
       return ["thinkingLevel": "high"]
-    case .gemini31FlashLite, .gemini35Flash:
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
       return ["thinkingLevel": "minimal"]
     // Image-generation models — no thinking knob.
     case .geminiImage, .geminiImagePro:
@@ -407,8 +420,12 @@ enum PromptModel: String, CaseIterable {
       return .gemini31Pro
     case .gemini31FlashLite:
       return .gemini31FlashLite
+    case .gemini35FlashLite:
+      return .gemini35FlashLite
     case .gemini35Flash:
       return .gemini35Flash
+    case .gemini36Flash:
+      return .gemini36Flash
     case .geminiImage, .geminiImagePro:
       return nil // image-generation models; not transcription models
     case .grok4, .grok4Reasoning, .grok43:
@@ -1286,9 +1303,13 @@ struct SettingsDefaults {
   static let readAloud: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
-  static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
-  static let selectedPromptModel = PromptModel.gemini35Flash
-  static let selectedChatModel = PromptModel.gemini35Flash
+  // Dictation runs on Flash-Lite: audio input dominates the bill (~32 tokens/s), and 3.5 Flash-Lite
+  // charges $0.30/1M for audio vs $0.50/1M on 3.1 Flash-Lite — cheaper per dictated minute despite
+  // the higher output rate. Chat/Dictate Prompt run on 3.6 Flash: same input price as 3.5 Flash
+  // ($1.50/1M) but $7.50/1M output instead of $9.00. https://ai.google.dev/gemini-api/docs/pricing
+  static let selectedTranscriptionModel = TranscriptionModel.gemini35FlashLite
+  static let selectedPromptModel = PromptModel.gemini36Flash
+  static let selectedChatModel = PromptModel.gemini36Flash
   static let chatCloseOnFocusLoss = true
   // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
   // API key from a browser) is surprising. Users can opt back in via the Behavior section.
@@ -1339,7 +1360,7 @@ struct SettingsDefaults {
   // transcript. Users who want faster updates can lower it in Chat settings.
   static let liveMeetingChunkInterval = LiveMeetingChunkInterval.sixtySeconds
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
-  static let selectedMeetingSummaryModel = PromptModel.gemini35Flash
+  static let selectedMeetingSummaryModel = PromptModel.gemini36Flash
 
   static let selectedImprovementModel = PromptModel.gemini31Pro
 
