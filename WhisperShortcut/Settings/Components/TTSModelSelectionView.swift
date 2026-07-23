@@ -47,26 +47,16 @@ struct TTSModelSelectionView: View {
       LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
         ForEach(models, id: \.self) { model in
           let disabled = isDisabled(model)
-          ZStack {
-            Rectangle()
-              .fill(selectedModel == model ? Color.accentColor : Color.clear)
-              .cornerRadius(SettingsConstants.cornerRadius)
-
-            Text(model.displayName)
-              .font(.system(.body, design: .default))
-              .fontWeight(.medium)
-              .multilineTextAlignment(.center)
-              .foregroundColor(selectedModel == model ? .white : (disabled ? .secondary : .primary))
-          }
-          .frame(maxWidth: .infinity, minHeight: SettingsConstants.modelSelectionHeight)
-          .contentShape(Rectangle())
-          .opacity(disabled ? 0.6 : 1)
-          .onTapGesture {
-            if disabled { return }
-            selectedModel = model
-            onModelChanged?()
-          }
-          .pointerCursorOnHover()
+          ModelTile(
+            title: model.displayName,
+            isSelected: selectedModel == model,
+            isDisabled: disabled,
+            isRecommended: model.isRecommended,
+            onTap: {
+              selectedModel = model
+              onModelChanged?()
+            }
+          )
         }
       }
       .background(Color(.controlBackgroundColor))

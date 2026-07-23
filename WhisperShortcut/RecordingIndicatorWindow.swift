@@ -103,9 +103,7 @@ private struct PillCircleButton: View {
     }
     .buttonStyle(.plain)
     .accessibilityLabel(accessibilityLabel)
-    .onHover { inside in
-      if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-    }
+    .pointerCursorOnHover()
   }
 }
 

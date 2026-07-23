@@ -12,19 +12,23 @@ enum SettingsConstants {
   static let textFieldHeight: CGFloat = 40
 
   // MARK: - Spacing
-  static let topPadding: CGFloat = 30
   static let spacing: CGFloat = 20
   static let sectionSpacing: CGFloat = 24
   static let internalSectionSpacing: CGFloat = 20
   static let modelSpacing: CGFloat = 0
-  static let dividerHeight: CGFloat = 20
-  static let buttonSpacing: CGFloat = 20
-  static let bottomPadding: CGFloat = 20
-  static let horizontalPadding: CGFloat = 50
-  static let verticalPadding: CGFloat = 24
+
+  /// Padding around the scrolling tab content in `SettingsView`.
+  static let horizontalPadding: CGFloat = 24
+  static let topPadding: CGFloat = 20
+  /// Larger than `topPadding` so the last section clears the window edge when scrolled to the bottom.
+  static let bottomPadding: CGFloat = 40
 
   // MARK: - Visual
   static let cornerRadius: CGFloat = 8
+  /// Inset for boxed cards (General/Privacy tabs).
+  static let cardPadding: CGFloat = 16
+  /// Inset for compact list rows inside a card (e.g. the offline model rows).
+  static let rowPadding: CGFloat = 12
   static let textEditorHeight: CGFloat = 240
   static let sectionDividerHeight: CGFloat = 1  // Height for section divider lines
 

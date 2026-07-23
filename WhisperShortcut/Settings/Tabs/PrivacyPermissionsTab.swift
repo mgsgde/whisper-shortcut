@@ -8,6 +8,7 @@ struct PermissionsTab: View {
     VStack(alignment: .leading, spacing: 0) {
       SectionHeader(
         title: "Permissions",
+        systemImage: "lock.shield",
         subtitle: "What WhisperShortcut can access on your Mac. Status reflects what System Settings has granted."
       )
 
@@ -28,6 +29,7 @@ struct PrivacySection: View {
     VStack(alignment: .leading, spacing: 0) {
       SectionHeader(
         title: "Privacy",
+        systemImage: "hand.raised",
         subtitle: "What this app does — and doesn't do — with your data."
       )
 
@@ -65,7 +67,7 @@ struct PrivacySection: View {
       }
       .padding(.top, 4)
     }
-    .padding(16)
+    .padding(SettingsConstants.cardPadding)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)

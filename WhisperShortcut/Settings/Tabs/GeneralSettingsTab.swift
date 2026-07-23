@@ -86,7 +86,7 @@ struct GeneralSettingsTab: View {
       .buttonStyle(.borderedProminent)
       .pointerCursorOnHover()
     }
-    .padding(16)
+    .padding(SettingsConstants.cardPadding)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)

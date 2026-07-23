@@ -27,7 +27,7 @@ struct WelcomeIntroStep: View {
 
 struct WelcomePrivacyStep: View {
   var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
+    VStack(alignment: .leading, spacing: 20) {
       HStack(spacing: 12) {
         Image(systemName: "lock.shield")
           .font(.system(size: 32))
@@ -55,7 +55,7 @@ struct WelcomePrivacyStep: View {
           }
         }
       }
-      .padding(18)
+      .padding(14)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(
         RoundedRectangle(cornerRadius: 10)
@@ -163,15 +163,20 @@ struct WelcomeAPIKeysStep: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      VStack(alignment: .leading, spacing: 4) {
-        Text("Add a key — or start offline")
-          .font(.title2)
-          .fontWeight(.semibold)
-        Text("Any single provider key unlocks chat features and is stored in the macOS Keychain. Or skip the key entirely and dictate fully offline with local Whisper.")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+    VStack(alignment: .leading, spacing: 20) {
+      HStack(spacing: 12) {
+        Image(systemName: "key")
+          .font(.system(size: 32))
+          .foregroundStyle(.tint)
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Add a key — or start offline")
+            .font(.title2)
+            .fontWeight(.semibold)
+          Text("Any single provider key unlocks chat features and is stored in the macOS Keychain. Or skip the key entirely and dictate fully offline with local Whisper.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
 
       ScrollView(showsIndicators: true) {
@@ -416,6 +421,7 @@ struct OnboardingAPIKeyRow: View {
             .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(isVisible ? "Hide key" : "Show key")
         .help(isVisible ? "Hide key" : "Show key")
 
         Button("Save") {
@@ -483,15 +489,20 @@ struct WelcomePermissionsStep: View {
   @Binding var micStatus: PermissionStatus
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      VStack(alignment: .leading, spacing: 4) {
-        Text("macOS permissions")
-          .font(.title2)
-          .fontWeight(.semibold)
-        Text("Microphone is required for dictation. Screen Recording is optional — for screenshots in chat and Dictate Prompt. You can change these any time in Settings → Permissions.")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+    VStack(alignment: .leading, spacing: 20) {
+      HStack(spacing: 12) {
+        Image(systemName: "checkmark.shield")
+          .font(.system(size: 32))
+          .foregroundStyle(.tint)
+        VStack(alignment: .leading, spacing: 4) {
+          Text("macOS permissions")
+            .font(.title2)
+            .fontWeight(.semibold)
+          Text("Microphone is required for dictation. Screen Recording is optional — for screenshots in chat and Dictate Prompt. You can change these any time in Settings → Permissions.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
 
       ScrollView {
@@ -513,82 +524,6 @@ struct WelcomePermissionsStep: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-  }
-}
-
-struct OnboardingPermissionRow<Actions: View>: View {
-  let icon: String
-  let title: String
-  let required: Bool
-  let description: String
-  let status: PermissionStatus
-  let kind: PermissionKind
-  @ViewBuilder let actions: () -> Actions
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(spacing: 8) {
-        Image(systemName: icon)
-          .font(.system(size: 18))
-          .foregroundStyle(.tint)
-          .frame(width: 26)
-        Text(title)
-          .font(.callout)
-          .fontWeight(.semibold)
-        requirementTag
-        Spacer()
-        WelcomePermissionBadge(status: status)
-      }
-
-      Text(description)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
-      HStack(spacing: 8) {
-        actions()
-        settingsButton
-      }
-    }
-    .padding(14)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      RoundedRectangle(cornerRadius: 10)
-        .fill(Color(nsColor: .controlBackgroundColor))
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: 10)
-        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-    )
-  }
-
-  /// Always visible so the user can review or change the permission in System
-  /// Settings at any time — prominent when the permission was denied, since
-  /// System Settings is then the only way to grant it.
-  @ViewBuilder
-  private var settingsButton: some View {
-    let button = Button {
-      PermissionStatusChecker.openSystemSettings(for: kind)
-    } label: {
-      Label("Open System Settings", systemImage: "arrow.up.right.square")
-        .font(.callout)
-    }
-    if status == .denied {
-      button.buttonStyle(.borderedProminent).pointerCursorOnHover()
-    } else {
-      button.buttonStyle(.bordered).pointerCursorOnHover()
-    }
-  }
-
-  private var requirementTag: some View {
-    Text(required ? "Required" : "Optional")
-      .font(.caption2)
-      .fontWeight(.medium)
-      .padding(.horizontal, 6)
-      .padding(.vertical, 2)
-      .background((required ? Color.accentColor : Color.gray).opacity(0.15))
-      .foregroundColor(required ? .accentColor : .secondary)
-      .clipShape(Capsule())
   }
 }
 

@@ -29,6 +29,7 @@ struct LaunchAtLoginSection: View {
           }
         ))
         .toggleStyle(SwitchToggleStyle())
+        .accessibilityLabel("Launch at Login")
 
         Spacer()
       }

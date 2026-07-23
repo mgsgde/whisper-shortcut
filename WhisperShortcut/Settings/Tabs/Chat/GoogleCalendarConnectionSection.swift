@@ -9,6 +9,7 @@ struct GoogleCalendarConnectionSection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Google Account",
+        systemImage: "person.crop.circle",
         subtitle: "Connect your Google account to let Gemini access Calendar, Tasks, and Gmail"
       )
 

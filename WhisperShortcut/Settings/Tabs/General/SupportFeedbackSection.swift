@@ -41,7 +41,7 @@ struct SupportFeedbackSection: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(12)
+            .cornerRadius(SettingsConstants.cornerRadius)
           }
           .buttonStyle(PlainButtonStyle())
           .help("Contact via WhatsApp")
@@ -66,7 +66,7 @@ struct SupportFeedbackSection: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(12)
+            .cornerRadius(SettingsConstants.cornerRadius)
           }
           .buttonStyle(PlainButtonStyle())
           .help("Leave a review on the App Store")
@@ -91,7 +91,7 @@ struct SupportFeedbackSection: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(12)
+            .cornerRadius(SettingsConstants.cornerRadius)
           }
           .buttonStyle(PlainButtonStyle())
           .help(viewModel.data.appStoreLinkCopied ? "App Store link copied to clipboard" : "Copy App Store link to clipboard")
@@ -119,7 +119,7 @@ struct SupportFeedbackSection: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(12)
+            .cornerRadius(SettingsConstants.cornerRadius)
           }
           .buttonStyle(PlainButtonStyle())
           .help("Open the WhisperShortcut repository on GitHub")

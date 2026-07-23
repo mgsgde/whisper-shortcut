@@ -249,7 +249,7 @@ enum SmartImprovementReviewPanel {
         panel.isReleasedWhenClosed = false
         panel.becomesKeyOnlyIfNeeded = false
         panel.hidesOnDeactivate = false
-        panel.minSize = NSSize(width: 760, height: 520)
+        panel.minSize = NSSize(width: 820, height: 600)
 
         let view = SmartImprovementReviewView(
           focusDisplayName: focusDisplayName,

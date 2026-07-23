@@ -276,6 +276,7 @@ struct ChatSidebar: View {
       }
       .buttonStyle(.plain)
       .help(actionHelp)
+      .accessibilityLabel(actionHelp)
     }
     .padding(.leading, 12)
     .padding(.trailing, 12)
@@ -285,6 +286,9 @@ struct ChatSidebar: View {
     .onTapGesture {
       withAnimation(.easeInOut(duration: 0.15)) { toggleCollapse() }
     }
+    .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(.isButton)
+    .accessibilityValue(isCollapsed ? "collapsed" : "expanded")
   }
 
   // Hairline divider used to mark the boundary between Chats and Meetings.
@@ -319,6 +323,7 @@ struct ChatSidebar: View {
         }
         .buttonStyle(.plain)
         .help("Clear search")
+        .accessibilityLabel("Clear search")
       }
     }
     .padding(.horizontal, 8)
@@ -379,7 +384,7 @@ struct ChatSidebar: View {
     .padding(.horizontal, 10)
     .padding(.vertical, 7)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(isHovered ? ChatTheme.windowBackground.opacity(0.5) : Color.clear)
+    .background(isHovered ? Color.primary.opacity(0.07) : Color.clear)
     .contentShape(Rectangle())
     .onHover { over in hoveredResultId = over ? result.id : nil }
     .onTapGesture { openResult(result) }
@@ -422,6 +427,7 @@ struct ChatSidebar: View {
       }
       .buttonStyle(.plain)
       .help("Hide sidebar")
+      .accessibilityLabel("Hide sidebar")
 
       Spacer()
     }
@@ -468,6 +474,9 @@ struct ChatSidebar: View {
       .padding(.bottom, 4)
       .contentShape(Rectangle())
       .onTapGesture { toggle() }
+      .accessibilityElement(children: .combine)
+      .accessibilityAddTraits(.isButton)
+      .accessibilityValue(isCollapsed ? "collapsed" : "expanded")
     }
   }
 
@@ -556,6 +565,7 @@ struct ChatSidebar: View {
         }
         .buttonStyle(.plain)
         .help(hoverAction.help)
+        .accessibilityLabel(hoverAction.help)
       }
     }
     .padding(.horizontal, 10)

@@ -20,6 +20,7 @@ struct TrelloConnectionSection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Trello",
+        systemImage: "checklist",
         subtitle: "Connect your Trello account to let the chat read and edit boards, lists, and cards"
       )
 

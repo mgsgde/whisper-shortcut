@@ -29,6 +29,7 @@ struct ReadAloudSettingsTab: View {
 
       SystemPromptSectionEditor(
         title: "Rewrite prompt",
+        systemImage: "text.badge.star",
         subtitle: "Instructions sent to Gemini when Smart Rewriting is enabled. The model receives the selected text and returns a speech-friendly version.",
         section: .readAloudRewrite,
         defaultContent: AppConstants.defaultReadAloudRewritePrompt
@@ -124,6 +125,7 @@ struct ReadAloudSettingsTab: View {
         }
         .pickerStyle(MenuPickerStyle())
         .frame(width: 320)
+        .accessibilityLabel("Voice")
 
         Spacer()
       }

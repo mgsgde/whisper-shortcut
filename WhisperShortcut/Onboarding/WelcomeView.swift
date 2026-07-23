@@ -154,11 +154,14 @@ struct WelcomeView: View {
       Spacer()
       stepIndicator
       Spacer()
-      if step != .intro {
-        Button("Back", action: goBack)
-          .buttonStyle(.bordered)
-          .pointerCursorOnHover()
-      }
+      // Keep the Back button always rendered so the footer geometry never
+      // changes between steps; hide it visually on the intro step instead.
+      Button("Back", action: goBack)
+        .buttonStyle(.bordered)
+        .opacity(step == .intro ? 0 : 1)
+        .disabled(step == .intro)
+        .accessibilityHidden(step == .intro)
+        .pointerCursorOnHover()
       Button(nextButtonTitle, action: advance)
         .buttonStyle(.borderedProminent)
         .disabled(!canAdvance)

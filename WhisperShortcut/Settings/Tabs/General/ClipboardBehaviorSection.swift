@@ -37,6 +37,7 @@ struct ClipboardBehaviorSection: View {
 
         Toggle("", isOn: $viewModel.data.autoPasteAfterDictation)
           .toggleStyle(SwitchToggleStyle())
+          .accessibilityLabel("Auto-paste")
           .onChange(of: viewModel.data.autoPasteAfterDictation) { _, newValue in
             DebugLogger.log("AUTO-PASTE SETTINGS: Toggle changed to \(newValue), hasAccessibility=\(AccessibilityPermissionManager.hasAccessibilityPermission())")
             if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {

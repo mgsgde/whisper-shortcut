@@ -62,7 +62,6 @@ class PopupNotificationWindow: NSWindow {
     // indicator pill (40pt tall at 28pt margin) instead of covering it.
     static let centerBottomPillClearance: CGFloat = 50
     static let iconAndSpacingWidth: CGFloat = 28  // Icon width + spacing for layout calculations
-    static let optimalCharactersPerLine: CGFloat = 85  // Optimal number of characters per line for wider display
   }
 
   // MARK: - Properties
@@ -1190,6 +1189,22 @@ extension PopupNotificationWindow {
     popup.show()
   }
 
+  /// Replaces the body text of a processing popup, keeping the paragraph
+  /// styling applied at creation time, and resizes the window to fit.
+  private func setProcessingMessage(_ message: String) {
+    let paragraphStyle = NSMutableParagraphStyle()
+    paragraphStyle.lineSpacing = 3
+    paragraphStyle.paragraphSpacing = 6
+    textLabel?.attributedStringValue = NSAttributedString(
+      string: message,
+      attributes: [
+        .font: NSFont.systemFont(ofSize: Constants.textFontSize, weight: .regular),
+        .foregroundColor: NSColor.labelColor,
+        .paragraphStyle: paragraphStyle,
+      ])
+    updateWindowSize()
+  }
+
   /// Update the message of the current processing popup.
   /// - Parameter message: The new message to display
   static func updateProcessingMessage(_ message: String) {
@@ -1199,8 +1214,8 @@ extension PopupNotificationWindow {
       return
     }
 
-    // Update the text label
-    popup.textLabel?.stringValue = message
+    // Update the text label, preserving styling and resizing to fit
+    popup.setProcessingMessage(message)
   }
 
   /// Update both title and message of the current processing popup.
@@ -1214,7 +1229,7 @@ extension PopupNotificationWindow {
     }
 
     popup.titleLabel?.stringValue = title
-    popup.textLabel?.stringValue = message
+    popup.setProcessingMessage(message)
   }
 
   /// Dismiss the current processing popup.

@@ -83,4 +83,11 @@ enum ChatTheme {
   static var secondaryText: Color { primaryText.opacity(0.65) }
   /// Border opacity (e.g. input stroke). Subtle.
   static let borderOpacity: Double = 0.18
+
+  // MARK: - AppKit bridges
+  // The chat window is a fixed dark theme, so AppKit views inside it must not use the
+  // system's appearance-dependent `labelColor`/`secondaryLabelColor` — under a light
+  // system appearance those resolve to near-black on the dark composer.
+  static var primaryNSText: NSColor { NSColor(primaryText) }
+  static var secondaryNSText: NSColor { NSColor(secondaryText) }
 }

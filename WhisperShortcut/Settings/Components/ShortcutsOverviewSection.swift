@@ -26,6 +26,7 @@ struct ShortcutsOverviewSection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Keyboard Shortcuts",
+        systemImage: "keyboard",
         subtitle: "All global shortcuts at a glance. Change them in each feature's tab."
       )
 

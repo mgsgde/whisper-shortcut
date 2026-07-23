@@ -32,6 +32,7 @@ struct SpeechToPromptSettingsTab: View {
       // Dictate Prompt system prompt editor
       SystemPromptSectionEditor(
         title: "System prompt",
+        systemImage: "text.alignleft",
         subtitle: "Instructions sent to the model in Dictate Prompt mode. Edit to customize how voice instructions are applied to text.",
         section: .promptMode,
         defaultContent: AppConstants.defaultPromptModeSystemPrompt
@@ -107,6 +108,7 @@ struct SpeechToPromptSettingsTab: View {
 
         Toggle("", isOn: $viewModel.data.screenshotInPromptMode)
           .toggleStyle(SwitchToggleStyle())
+          .accessibilityLabel("Screenshot context")
           .onChange(of: viewModel.data.screenshotInPromptMode) { _, newValue in
             if newValue {
               Task {
