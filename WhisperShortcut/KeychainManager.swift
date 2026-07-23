@@ -17,6 +17,10 @@ protocol KeychainManaging {
   func getXAIAPIKey() -> String?
   func deleteXAIAPIKey() -> Bool
   func hasValidXAIAPIKey() -> Bool
+  func saveAnthropicAPIKey(_ apiKey: String) -> Bool
+  func getAnthropicAPIKey() -> String?
+  func deleteAnthropicAPIKey() -> Bool
+  func hasValidAnthropicAPIKey() -> Bool
   func saveOpenAIAPIKey(_ apiKey: String) -> Bool
   func getOpenAIAPIKey() -> String?
   func deleteOpenAIAPIKey() -> Bool
@@ -50,6 +54,7 @@ class KeychainManager: KeychainManaging {
     static let accountName = "api-key"
     static let googleAccountName = "google-api-key"
     static let xaiAccountName = "xai-api-key"
+    static let anthropicAccountName = "anthropic-api-key"
     static let openAIAccountName = "openai-api-key"
     static let googleCalendarRefreshTokenAccountName = "google-calendar-refresh-token"
     static let trelloTokenAccountName = "trello-token"
@@ -102,6 +107,7 @@ class KeychainManager: KeychainManaging {
   private static let environmentKeyNames: [String: [String]] = [
     Constants.googleAccountName: ["WHISPERSHORTCUT_GOOGLE_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"],
     Constants.xaiAccountName: ["WHISPERSHORTCUT_XAI_API_KEY", "XAI_API_KEY"],
+    Constants.anthropicAccountName: ["WHISPERSHORTCUT_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"],
     Constants.openAIAccountName: ["WHISPERSHORTCUT_OPENAI_API_KEY", "OPENAI_API_KEY"],
   ]
 
@@ -121,30 +127,60 @@ class KeychainManager: KeychainManaging {
   // MARK: - Generic Keychain Operations
 
   private func saveKey(_ apiKey: String, accountName: String) -> Bool {
-    _ = deleteKey(accountName: accountName)
     guard let data = apiKey.data(using: .utf8) else {
       return false
     }
 
-    let query: [String: Any] = [
+    // Update-in-place first, add only if the item doesn't exist yet. The previous
+    // delete-then-add sequence was destructive: when SecItemAdd failed (locked/broken
+    // login keychain, sandbox denial), the old key was already deleted — observed in the
+    // wild as "my API keys disappear".
+    let match: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: Constants.serviceName,
       kSecAttrAccount as String: accountName,
-      kSecValueData as String: data,
-      kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
     ]
+    var status = SecItemUpdate(match as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+    if status == errSecItemNotFound {
+      var add = match
+      add[kSecValueData as String] = data
+      add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+      status = SecItemAdd(add as CFDictionary, nil)
+    }
 
-    let status = SecItemAdd(query as CFDictionary, nil)
+    lock.lock()
+    // Cache the value even when persisting failed: the key then still works for this
+    // session (the UI warns that it won't survive a restart) instead of vanishing.
+    valueCache[accountName] = apiKey
+    knownPresentAccounts.insert(accountName)
+    knownAbsentAccounts.remove(accountName)
     if status == errSecSuccess {
-      lock.lock()
-      valueCache[accountName] = apiKey
-      knownPresentAccounts.insert(accountName)
-      knownAbsentAccounts.remove(accountName)
-      lock.unlock()
+      lastWriteErrors.removeValue(forKey: accountName)
     } else {
-      DebugLogger.logError("KEYCHAIN: SecItemAdd failed for account \(accountName): status=\(status)")
+      lastWriteErrors[accountName] = status
+    }
+    lock.unlock()
+    if status != errSecSuccess {
+      DebugLogger.logError("KEYCHAIN: save failed for account \(accountName): status=\(status)")
     }
     return status == errSecSuccess
+  }
+
+  /// OSStatus of the most recent failed write per account, cleared on the next successful
+  /// write. Lets the settings UI tell the user their key could NOT be stored (broken login
+  /// keychain etc.) instead of silently losing it.
+  private var lastWriteErrors: [String: OSStatus] = [:]
+
+  func lastWriteError(for provider: APIKeyProvider) -> OSStatus? {
+    let accountName: String
+    switch provider {
+    case .google: accountName = Constants.googleAccountName
+    case .openai: accountName = Constants.openAIAccountName
+    case .xai: accountName = Constants.xaiAccountName
+    case .anthropic: accountName = Constants.anthropicAccountName
+    }
+    lock.lock(); defer { lock.unlock() }
+    return lastWriteErrors[accountName]
   }
 
   private func getKey(accountName: String) -> String? {
@@ -290,6 +326,25 @@ class KeychainManager: KeychainManaging {
 
   func hasValidXAIAPIKey() -> Bool {
     guard let key = getXAIAPIKey() else { return false }
+    return !key.isEmpty
+  }
+
+  // MARK: - Anthropic API Key Management
+
+  func saveAnthropicAPIKey(_ apiKey: String) -> Bool {
+    return saveKey(apiKey, accountName: Constants.anthropicAccountName)
+  }
+
+  func getAnthropicAPIKey() -> String? {
+    return getKey(accountName: Constants.anthropicAccountName)
+  }
+
+  func deleteAnthropicAPIKey() -> Bool {
+    return deleteKey(accountName: Constants.anthropicAccountName)
+  }
+
+  func hasValidAnthropicAPIKey() -> Bool {
+    guard let key = getAnthropicAPIKey() else { return false }
     return !key.isEmpty
   }
 

@@ -60,6 +60,25 @@ struct SystemPromptSectionEditor: View {
         .pointerCursorOnHover()
       }
       .frame(maxWidth: .infinity, alignment: .leading)
+
+      // Surfaced here rather than in onboarding: someone editing a system prompt by hand already
+      // has exactly the intent this shortcut serves, so it teaches the feature at the moment it
+      // is wanted instead of announcing it when the need is still abstract.
+      if let hint = chatEditingHint {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+          Image(systemName: "bubble.left.and.text.bubble.right")
+            .foregroundStyle(.secondary)
+          Text(hint)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+          Button("Open Chat") { ChatWindowManager.shared.show() }
+            .buttonStyle(.link)
+            .font(.footnote)
+            .pointerCursorOnHover()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
     }
     .onAppear { load() }
     .onReceive(NotificationCenter.default.publisher(for: .contextFileDidUpdate)) { _ in
@@ -68,6 +87,21 @@ struct SystemPromptSectionEditor: View {
   }
 
   private var hasChanges: Bool { text != lastSavedText }
+
+  /// Shown only for the sections the chat can actually write — Dictate Prompt via
+  /// `update_app_instructions` and the glossary via `remember_dictation_term`. The remaining
+  /// sections stay silent on purpose: advertising a shortcut that then does nothing is worse
+  /// than not advertising it.
+  private var chatEditingHint: String? {
+    switch section {
+    case .promptMode:
+      return "You can also change this by asking in Chat — e.g. “when I say correct, never translate”. Edits made there land in this text."
+    case .whisperGlossary:
+      return "You can also add terms by asking in Chat — e.g. “Kimi is spelled with one m”."
+    case .dictation, .chat, .readAloudRewrite:
+      return nil
+    }
+  }
 
   private func load() {
     // Treat a missing OR empty section as "not customized" and fall back to the

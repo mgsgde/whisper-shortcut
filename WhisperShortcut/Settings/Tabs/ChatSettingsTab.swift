@@ -37,6 +37,10 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
+      WorkspaceFoldersSection()
+
+      SpacedSectionDivider()
+
       GoogleCalendarConnectionSection()
 
       SpacedSectionDivider()
@@ -99,6 +103,7 @@ struct ChatSettingsTab: View {
       subtitle: "Choose which model powers the chat. Pick **Custom endpoint** for your own OpenAI-compatible URL (configured below). Grok models require an xAI API key (Settings > General).",
       selectedModel: $viewModel.data.selectedChatModel,
       availableModels: PromptModel.chatModels,
+      recommendedModel: SettingsDefaults.selectedChatModel,
       subscriptionMode: false,
       onModelChanged: {
         UserDefaults.standard.set(

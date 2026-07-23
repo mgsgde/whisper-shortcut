@@ -1,11 +1,11 @@
 ---
 name: audit-llm-models
-description: Audit OpenAI, Gemini, and xAI (Grok) model lineups against what this repo uses today, recommend concrete migrations, and prove them with the test scripts. Use for "are we on the latest models?", "what's new in LLMs?", "should we switch to X?".
+description: Audit OpenAI, Gemini, xAI (Grok), and Anthropic model lineups against what this repo uses today, recommend concrete migrations, and prove them with the test scripts. Use for "are we on the latest models?", "what's new in LLMs?", "should we switch to X?".
 ---
 
 # Audit LLM Models
 
-Systematic audit of the current model lineups at OpenAI, Google Gemini, and xAI (Grok) — compare against what this repo uses today and recommend concrete migrations, then **prove the recommendations work** by running the local test scripts. Use this when the user asks "are we on the latest models?", "what's new in LLMs?", "should we switch to X?", or simply runs `/audit-llm-models`.
+Systematic audit of the current model lineups at OpenAI, Google Gemini, xAI (Grok), and Anthropic (Claude) — compare against what this repo uses today and recommend concrete migrations, then **prove the recommendations work** by running the local test scripts. Use this when the user asks "are we on the latest models?", "what's new in LLMs?", "should we switch to X?", or simply runs `/audit-llm-models`.
 
 This command audits along **two axes**:
 
@@ -17,17 +17,17 @@ The throughline is honesty: training data is stale, so every currency recommenda
 ## Workflow
 
 1. **Read the current code state.** Enumerate every model ID this app references — do not assume from memory.
-   - `WhisperShortcut/TranscriptionModels.swift` — `TranscriptionModel` cases (Gemini + OpenAI transcription + offline Whisper + self-hosted).
-   - `WhisperShortcut/Settings/Shared/SettingsConfiguration.swift` — `PromptModel` cases (Gemini + Grok + OpenAI chat), `TTSModel` cases, and `SettingsDefaults` (the *default* selections per role: transcription, dictate prompt, chat, meeting summary, smart improvement, TTS).
+   - `WhisperShortcut/TranscriptionModels.swift` — `TranscriptionModel` cases (Gemini + OpenAI transcription + xAI `grok-stt` + offline Whisper + self-hosted).
+   - `WhisperShortcut/Settings/Shared/SettingsConfiguration.swift` — `PromptModel` cases (Gemini + Grok + OpenAI + Anthropic chat, plus the `local-llm` and `custom-openai-endpoint` sentinels), `TTSModel` cases, and `SettingsDefaults` (the *default* selections per role: transcription, dictate prompt, chat, meeting summary, smart improvement, TTS).
    - Migration tables — `PromptModel.migrateLegacyPromptRawValue` and `TranscriptionModel.migrateLegacyTranscriptionRawValue`.
 
 2. **Pull the current model index from each provider.** Use WebFetch first; if it returns 403 / hallucinates / is JS-rendered, fall back to WebSearch with the current year. **All provider doc URLs, programmatic-list endpoints, deprecation pages, and status/forum links live in the `llm-model-docs` skill — read that skill (if you haven't this session) and use its URLs.** Cross-check every enum slug still in `current` against the Gemini deprecations table before recommending "no change."
 
 3. **Build a feature × provider coverage matrix.** This is the heart of the audit. Enumerate every feature the app exposes a model choice for — transcription (Dictate), Dictate Prompt, Chat, Meeting Summary, Smart Improvement, Read Aloud (TTS), and any vision/screenshot path — and for each, fill a row with one cell per provider:
 
-   | Feature | OpenAI | Gemini | xAI (Grok) | Default today |
-   |---------|--------|--------|------------|---------------|
-   | Read Aloud (TTS) | `gpt-4o-mini-tts` ✅ | `gemini-3.1-flash-tts-preview` ✅ (current) | `grok-voice-tts-1.0` ⚠️ verify access | Gemini |
+   | Feature | OpenAI | Gemini | xAI (Grok) | Anthropic | Default today |
+   |---------|--------|--------|------------|-----------|---------------|
+   | Read Aloud (TTS) | `gpt-4o-mini-tts` ✅ | `gemini-3.1-flash-tts-preview` ✅ (current) | `grok-voice-tts-1.0` ✅ (needs `language` in the body) | — no TTS model | Gemini |
 
    In each provider cell record one of: **offered** (enum already has a case → note the ID), **available-but-missing** (provider ships a capable model the app doesn't offer yet → coverage gap, name the ID), or **none** (provider has no model for this role → not a gap, just note it). Mark the cell `✅`/`gap`/`—` accordingly.
 
@@ -39,14 +39,14 @@ The throughline is honesty: training data is stale, so every currency recommenda
 
    A feature with fewer than the maximum achievable provider cells filled is a **coverage gap**: a user holding only the missing provider's key cannot use that feature. That's the primary thing this matrix surfaces.
 
-4. **Verify with the live API.** Before recommending any model — whether a currency upgrade or a coverage-gap fill — run the relevant test script, and for coverage gaps probe the *new* endpoint/parameters directly with `curl` (a provider's TTS or vision path is often a different endpoint than its chat path, and account entitlement can differ — e.g. xAI TTS may return 403 "Team is not authorized" even though the model is listed). These read `.env` at the repo root (mode 600, gitignored).
+4. **Verify with the live API.** Before recommending any model — whether a currency upgrade or a coverage-gap fill — run the relevant test script, and for coverage gaps probe the *new* endpoint/parameters directly with `curl` (a provider's TTS or vision path is often a different endpoint than its chat path, and account entitlement can differ — e.g. xAI TTS may return 403 "Team is not authorized" even though the model is listed). These read `.env` at the repo root (gitignored; keep it non-world-readable).
    ```
    ./scripts/test-gemini-models.sh
    ./scripts/test-openai-models.sh
    ./scripts/test-grok-models.sh
    ```
-   Each prints `OK` / `FAIL` for three buckets: `current` (must serve), `legacy` (migration safety net — Gemini/Grok must still redirect with 200; OpenAI legacy must 404 to prove retirement), `candidate` (exploratory). If a model you want to recommend isn't in `candidate` yet, **add it there first**, re-run the script, and only recommend it if the script reports OK. Watch for xAI's silent redirects: `grok-test.sh` compares response.model vs requested model and prints `redirected → X` when they differ — that's a signal the slug is dead weight.
-   - **Partial Gemini failure:** If most `[current]` lines are OK and one slug returns **404**, treat it as a **retired enum case** (check deprecations), not a key problem. After removal, move the slug to `LEGACY_RETIRED` in `test-gemini-models.sh` with **must 404** (same pattern as OpenAI `LEGACY_CHAT_MODELS`), or add it there until the enum case is removed.
+   Each prints `OK` / `FAIL` per bucket — `current` (must serve), `legacy` (migration safety net — Gemini/Grok must still redirect with 200; OpenAI legacy must 404 to prove retirement), `legacy-retired` (must 404), and `candidate` (exploratory); the OpenAI script additionally splits out audio-chat and transcription buckets. There is no Anthropic script yet — verify Claude IDs with a direct `curl` to `api.anthropic.com/v1/messages` and say so in the report. If a model you want to recommend isn't in `candidate` yet, **add it there first**, re-run the script, and only recommend it if the script reports OK. Watch for xAI's silent redirects: `test-grok-models.sh` compares response.model vs requested model and prints `redirected → X` when they differ — that's a signal the slug is dead weight.
+   - **Partial Gemini failure:** If most `[current]` lines are OK and one slug returns **404**, treat it as a **retired enum case** (check deprecations), not a key problem. After removal, move the slug to `LEGACY_RETIRED_TEXT_MODELS` in `test-gemini-models.sh` with **must 404** (same pattern as OpenAI `LEGACY_CHAT_MODELS`), or add it there until the enum case is removed.
    - **Uniform Gemini failure:** If every Gemini line fails with the same HTTP code, probe one request and read `error.message` (expired key vs outage) before reporting model failures. Report each provider's script result separately.
 
 5. **Make the recommendations.** Each one must include the exact replacement model ID, the doc URL where you confirmed it, the test-script line that proves it works against the user's API key, and what code change implements it.
@@ -54,7 +54,7 @@ The throughline is honesty: training data is stale, so every currency recommenda
 ## Constraints
 
 - **Never recommend a model you haven't verified live.** Recall is unreliable for model IDs and behavior. If a script can't be run (no key in `.env`), say so and stop — don't fabricate confidence.
-- **No code changes in the analysis pass.** This command produces a report. Apply changes only if the user follows up with "migrate", "apply", "do it", "alles", etc.
+- **No code changes in the analysis pass** (see the suggestions-first rule in `index.mdc`). "migrate" / "alles" is the follow-up that applies them.
 - **Don't conflate Gemini API with Vertex AI.** This app uses `generativelanguage.googleapis.com` (ai.google.dev), not Vertex.
 - **Don't propagate stale code comments.** If a model file's header comment lists IDs that have since changed, flag it in the report — don't trust it as a source.
 
@@ -104,7 +104,6 @@ Actually apply the recommended migrations:
 5. Update the test scripts: move new IDs from `candidate` → `current`, removed IDs from `current` → `legacy` with the right assertion (`must serve via redirect` vs `must 404`).
 6. Build via the always-applied rebuild rule (`bash scripts/rebuild-and-restart.sh`).
 7. Re-run all three test scripts and confirm exit 0 for each (the multi-agent xAI slug is a known false-positive — exclude it from candidates).
-8. Do **not** commit unless the user explicitly asks.
 
 ## Related
 

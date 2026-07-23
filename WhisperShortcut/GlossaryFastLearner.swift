@@ -72,12 +72,34 @@ final class GlossaryFastLearner {
   /// model away from that specific error). Returns the functionResponse payload for the model.
   /// Unlike passive learning this is user intent, so it is not gated on the logging toggle.
   func rememberTerm(_ term: String, misheardAs: String?) -> [String: Any] {
-    let glossary = SystemPromptsStore.shared.loadWhisperGlossary()
+    // Drop the misheard spelling first. This learner adds terms bare (one per line), so whatever
+    // it picked up before the user corrected it — e.g. "Kimmi" — is sitting in the glossary as a
+    // legitimate-looking entry. Leaving it there hands the transcription model both spellings as
+    // correct and the new correction has no effect. Runs even on the already_in_glossary path,
+    // because that is exactly the state a repeated correction lands in.
+    var glossary = SystemPromptsStore.shared.loadWhisperGlossary()
+    var prunedWrongSpelling = false
+    if let wrong = misheardAs, !wrong.isEmpty {
+      let cleaned = removingSpelling(wrong, from: glossary)
+      if cleaned != glossary {
+        glossary = cleaned
+        prunedWrongSpelling = true
+        SystemPromptsStore.shared.updateSection(.whisperGlossary, content: glossary)
+        DebugLogger.log("GLOSSARY-LEARN: chat tool removed competing spelling '\(wrong)'")
+      }
+    }
+
     let glossaryTokens = Set(tokenize(glossary).map(fold))
     let termTokens = tokenize(term).map(fold)
     if !termTokens.isEmpty, termTokens.allSatisfy({ glossaryTokens.contains($0) }) {
       DebugLogger.log("GLOSSARY-LEARN: chat tool — '\(term)' already in glossary")
-      return ["ok": true, "status": "already_in_glossary", "term": term]
+      return [
+        "ok": true, "status": prunedWrongSpelling ? "cleaned_up" : "already_in_glossary",
+        "term": term,
+        "note": prunedWrongSpelling
+          ? "The term was already listed, but the competing spelling was still in the glossary and has now been removed."
+          : "Already listed — no change needed.",
+      ]
     }
     guard glossary.count < glossaryAutoGrowthLimitChars else {
       return [
@@ -93,6 +115,39 @@ final class GlossaryFastLearner {
       "ok": true, "status": "added", "glossary_entry": entry,
       "note": "Saved. All future dictations are conditioned with this term.",
     ]
+  }
+
+  /// Removes a misheard spelling from the glossary text, in both shapes it can appear in: a bare
+  /// line written by this learner, and a member of a comma-separated `Terms: A, B, C` list.
+  /// Lines carrying a `(not "…")` annotation are left untouched — those already encode the right
+  /// answer, and the wrong form inside them is filtered at prompt-build time.
+  private func removingSpelling(_ wrong: String, from glossary: String) -> String {
+    let target = fold(wrong.trimmingCharacters(in: .whitespaces))
+    guard !target.isEmpty else { return glossary }
+
+    let kept = glossary.components(separatedBy: .newlines).compactMap { line -> String? in
+      if line.range(
+        of: #"\((?:not|nicht)\s+"#, options: [.regularExpression, .caseInsensitive]) != nil
+      {
+        return line
+      }
+      // Preserve a leading `Terms:` label so the list keeps its shape when a member is dropped.
+      let labelRange = line.range(
+        of: #"^\s*Terms:\s*"#, options: [.regularExpression, .caseInsensitive])
+      let label = labelRange.map { String(line[$0]) } ?? ""
+      let body = labelRange.map { String(line[$0.upperBound...]) } ?? line
+
+      let members = body.components(separatedBy: ",")
+      let survivors = members.filter { fold($0.trimmingCharacters(in: .whitespaces)) != target }
+      if survivors.count == members.count { return line }
+
+      let rebuilt = survivors
+        .map { $0.trimmingCharacters(in: .whitespaces) }
+        .filter { !$0.isEmpty }
+        .joined(separator: ", ")
+      return rebuilt.isEmpty ? nil : label + rebuilt
+    }
+    return kept.joined(separator: "\n")
   }
 
   // MARK: - Pipeline stages
@@ -150,6 +205,10 @@ final class GlossaryFastLearner {
           && transcript.folded.first == foldedCandidate.first
           && Self.levenshtein(foldedCandidate, transcript.folded,
                               limit: foldedCandidate.count <= 5 ? 1 : 2) != nil
+          // Reject grammatical inflections (e.g. "Hauptanwendungsfall" vs "Hauptanwendungsfälle"):
+          // the transcript word is not a misspelling but the plural/genitive of the same common
+          // word, so learning it just injects a dictionary word that echoes into transcripts.
+          && !Self.isInflectionalVariant(foldedCandidate, transcript.folded)
       }
       guard let best = variants.max(by: {
         transcriptCounts[$0.original, default: 0] < transcriptCounts[$1.original, default: 0]
@@ -221,6 +280,25 @@ final class GlossaryFastLearner {
   /// ("Gödde" and "godde" fold to the same string).
   private func fold(_ word: String) -> String {
     word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+  }
+
+  /// German/English inflectional endings a longer word may add to a shorter stem
+  /// (plural, genitive, feminine plural). Kept short so only genuine grammatical
+  /// tails match — not arbitrary spelling differences.
+  private static let inflectionalEndings: Set<String> = ["e", "n", "en", "s", "es", "er", "ern", "nen"]
+
+  /// True when `a` and `b` (already case/diacritic-folded) are the SAME stem differing only by a
+  /// trailing inflectional ending — a grammatical variant, not a machine misspelling. This is what
+  /// slips a common dictionary word into the glossary: the user types the singular ("Hauptanwendungsfall")
+  /// while transcripts hold the plural ("Hauptanwendungsfälle"), a levenshtein-≤2 near-miss that the
+  /// spell-check guard misses because long German compounds are unknown to NSSpellChecker.
+  /// Genuine name misspellings diverge INSIDE the word ("Gödde"→"Göde", "Nebius"→"Nebbius", "Groq"→"Grok")
+  /// and are therefore not prefix-related, so they pass.
+  private static func isInflectionalVariant(_ a: String, _ b: String) -> Bool {
+    guard a != b else { return false }
+    let (shorter, longer) = a.count <= b.count ? (a, b) : (b, a)
+    guard longer.hasPrefix(shorter) else { return false }
+    return inflectionalEndings.contains(String(longer.dropFirst(shorter.count)))
   }
 
   /// Edit distance if it is ≤ `limit`, else nil.

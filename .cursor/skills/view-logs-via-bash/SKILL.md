@@ -20,6 +20,14 @@ bash scripts/logs.sh [options]
 
 When debugging, check logs first (`-t 5m` / `-t 2m`) and use `-f` to filter by mode or errors (`PROMPT-MODE`, `Speech-to-Text`, `Error`).
 
+## Two gotchas that will silently mislead you
+
+- **Always pass `-t`.** With no `-t`, `logs.sh` takes the `log stream` branch — a live tail that **never exits**. There is no "last hour" default. Running it unbackgrounded blocks until the tool times out.
+- **`-f` is a literal substring match, not a regex.** The script builds `eventMessage CONTAINS "$FILTER"`, so `-f 'A|B|C'` searches for the literal text `A|B|C` and returns **zero lines** — which reads exactly like "the event never happened." For alternation, filter after the fact:
+  ```bash
+  bash scripts/logs.sh -t 30m | grep -E 'WATCHDOG|CHAT-SEND|CHAT-LIST'
+  ```
+
 ## Notes
 
 - `logs.sh` reads the **macOS unified-logging buffer** (`log show`/`log stream`). That buffer rolls over after a while, so for older sessions widen the window (`-t 24h` / `-t 48h`) and don't assume "no output" means it never happened.

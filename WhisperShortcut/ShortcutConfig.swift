@@ -394,6 +394,7 @@ extension Notification.Name {
   static let contextFileDidUpdate = Notification.Name("contextFileDidUpdate")
   /// Posted when the chat memory file (UserContext/memory.md) changes, so the Settings editor reloads.
   static let chatMemoryDidUpdate = Notification.Name("chatMemoryDidUpdate")
+  static let workspaceMapDidUpdate = Notification.Name("workspaceMapDidUpdate")
   /// Posted when user chooses Chat → New Chat (menu or shortcut).
   static let chatNewChat = Notification.Name("chatNewChat")
   /// Posted when user chooses Chat → Capture Screenshot (menu or shortcut).

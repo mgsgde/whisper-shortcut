@@ -19,6 +19,10 @@ struct PromptModelSelectionView: View {
   let subscriptionEffectiveModel: PromptModel?
   /// Models to display. When nil, shows all `PromptModel.allCases`.
   let availableModels: [PromptModel]?
+  /// Model to mark with the "Recommended" star. Defaults to the Dictate Prompt default, so a
+  /// role with a different default (e.g. Chat) must pass its own `SettingsDefaults` value —
+  /// otherwise the star would advertise another role's recommendation.
+  let recommendedModel: PromptModel
 
   init(
     title: String,
@@ -27,6 +31,7 @@ struct PromptModelSelectionView: View {
     showSectionHeader: Bool = true,
     selectedModel: Binding<PromptModel>,
     availableModels: [PromptModel]? = nil,
+    recommendedModel: PromptModel = SettingsDefaults.selectedPromptModel,
     subscriptionMode: Bool = false,
     subscriptionFixedModelDescription: String? = nil,
     subscriptionEffectiveModel: PromptModel? = nil,
@@ -38,6 +43,7 @@ struct PromptModelSelectionView: View {
     self.showSectionHeader = showSectionHeader
     self._selectedModel = selectedModel
     self.availableModels = availableModels
+    self.recommendedModel = recommendedModel
     self.subscriptionMode = subscriptionMode
     self.subscriptionFixedModelDescription = subscriptionFixedModelDescription
     self.subscriptionEffectiveModel = subscriptionEffectiveModel
@@ -139,7 +145,7 @@ struct PromptModelSelectionView: View {
             .foregroundColor(SettingsConstants.costLevelColor(for: displayModel.costLevel))
         }
 
-        if displayModel.isRecommended {
+        if displayModel == recommendedModel {
           HStack {
             Image(systemName: "star.fill")
               .foregroundColor(.yellow)
@@ -185,6 +191,7 @@ struct PromptModelSelectionView: View {
       (.gemini, "sparkles", "Gemini"),
       (.grok, "bolt.fill", "Grok (xAI)"),
       (.openai, "brain", "OpenAI"),
+      (.anthropic, "quote.bubble", "Claude (Anthropic)"),
       (.customOpenAI, "arrow.triangle.branch", "Custom endpoint"),
       (.local, "desktopcomputer", "Local (Ollama / LM Studio)"),
     ]
@@ -235,7 +242,7 @@ struct PromptModelSelectionView: View {
       title: model.displayName,
       isSelected: displayModel == model,
       isDisabled: subscriptionMode,
-      isRecommended: model.isRecommended,
+      isRecommended: model == recommendedModel,
       onTap: {
         selectedModel = model
         onModelChanged?()

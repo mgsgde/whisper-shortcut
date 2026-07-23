@@ -14,7 +14,7 @@ All paths are in the sandbox Logs directory:
 
 - **Captures:** `hang-<YYYYMMDD-HHMMSS>.txt` — each has a header `activity: <breadcrumb>` and a symbolicated main-thread stack. List them; default to the newest (or the `--file` the user named).
 - **Daily log:** `app_<YYYY-MM-DD>.log` for the capture's date — reconstruct the timeline around the hang timestamp.
-- **Live tail (if app is running):** `bash scripts/logs.sh -f 'WATCHDOG|CHAT-SEND|CHAT-LIST' -t 30m` (use the `view-logs-via-bash` skill's flags).
+- **Live tail (if app is running):** `bash scripts/logs.sh -t 30m | grep -E 'WATCHDOG|CHAT-SEND|CHAT-LIST'` — `logs.sh -f` is a literal `CONTAINS` match, so passing the alternation to `-f` returns nothing (see `view-logs-via-bash`).
 
 Print the scope first: which capture, its `activity:` breadcrumb, and the app version from the nearest `APP-LIFECYCLE: launched … version=` line.
 
@@ -25,8 +25,8 @@ Read the **top ~6 frames** and the breadcrumb. Known classes (do not re-investig
 | Top-of-stack signature | Breadcrumb | Verdict |
 |---|---|---|
 | `NSAlert.runModal` / `NSSavePanel.runModal` / `NSApplication runModal` | `launch` or `idle` | **False positive** — a modal event loop, not a wedge. v7.75 pings `NSModalPanelRunLoopMode`, so newer builds shouldn't capture these at all. |
-| `SecItemCopyMatching` under `_AppearanceActionModifier` / `onAppear` | `launch` | **Fixed** (Keychain memoization). Regression only. |
-| `SelectionOverlay.updateNSView` (→ `fontAttributesInRange` / `setFont:` / `_invalidateEffectiveFont`) | chat (incl. `chat-send streaming`) | **Fixed 2026-07-04 (regressed once)** — strikes even on uniform-font plain `Text` (hang-20260704-205531); invariant: **no** SwiftUI `.textSelection` anywhere in the chat transcript; selection only via `SelectableProseText` (NSTextView). Self-sustaining once triggered — the circuit breaker does NOT recover it. If ambiguous vs. the streaming wedge, `sample` the live pid: SelectionOverlay frames dominating = this class. |
+| `SecItemCopyMatching` / `SecurityServer::ClientSession` / `CSSM_DecryptDataFinal` under `securityd` | `launch` **or** `chat-send streaming` | **REGRESSED — investigate.** Keychain memoization fixed the launch case, but captures on 2026-07-19 (`chat-send streaming`) and 2026-07-20 (`launch`) are both main-thread Keychain blocks. Note the breadcrumb alone does not disambiguate: a `chat-send streaming` breadcrumb with `Security` frames on top is **this** class, not the resolved SwiftUI storm below. |
+| `SelectionOverlay.updateNSView` (→ `fontAttributesInRange` / `setFont:` / `_invalidateEffectiveFont`) | chat (incl. `chat-send streaming`) | **Fixed 2026-07-04 (regressed once)** — strikes even on uniform-font plain `Text` (hang-20260704-205531); invariant: **no** SwiftUI `.textSelection` anywhere in the chat transcript; selection only via `SelectableProseText` (NSTextView). (A bare `grep textSelection ChatView.swift` returns legitimate hits — the meeting-transcript view and the notice/error banners use it and are outside the transcript. Don't report those as a regression.) Self-sustaining once triggered — the circuit breaker does NOT recover it. If ambiguous vs. the streaming wedge, `sample` the live pid: SelectionOverlay frames dominating = this class. |
 | `LazyVStack.placeSubviews` / `ForEach.IDGenerator.makeID` | `chat-send streaming` | **The resolved freeze** (Jul 3 stack). See §3. |
 | `ScrollStateRequestTransform.findClosestSubview` | `chat-send streaming` | **The resolved freeze** (Jul 1 stack) — same storm, other hot frame. See §3. |
 

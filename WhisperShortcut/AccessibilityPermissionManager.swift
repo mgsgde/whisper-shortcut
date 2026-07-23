@@ -37,15 +37,28 @@ class AccessibilityPermissionManager {
       To turn on auto-paste, click "Open Settings". In System Settings:
       1. Go to Privacy & Security → Accessibility
       2. Enable WhisperShortcut
+
+      Already listed but still not working? This happens after switching between the App Store and GitHub versions — macOS remembers the old copy. Remove WhisperShortcut from the list with the − button, then add it again. Or click "Copy Reset Command" and run it in Terminal to clear the stale entry.
       """
     alert.alertStyle = .informational
     alert.addButton(withTitle: "Open Settings")
+    alert.addButton(withTitle: "Copy Reset Command")
     alert.addButton(withTitle: "Not Now")
 
     let response = alert.runModal()
 
-    if response == .alertFirstButtonReturn {
+    switch response {
+    case .alertFirstButtonReturn:
       PermissionStatusChecker.openSystemSettings(for: .accessibility)
+    case .alertSecondButtonReturn:
+      // Clears the stale TCC entry left behind by a differently-signed copy (App Store vs
+      // GitHub build). The app cannot run tccutil itself; the user pastes it into Terminal.
+      let pasteboard = NSPasteboard.general
+      pasteboard.clearContents()
+      pasteboard.setString(
+        "tccutil reset Accessibility com.magnusgoedde.whispershortcut", forType: .string)
+    default:
+      break
     }
   }
 

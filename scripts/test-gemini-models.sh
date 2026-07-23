@@ -22,19 +22,24 @@ fi
 
 # Currently referenced in code (TranscriptionModels.swift, SettingsConfiguration.swift PromptModel).
 declare -a CURRENT_TEXT_MODELS=(
-  "gemini-2.5-flash"
-  "gemini-2.5-flash-lite"
-  "gemini-2.5-pro"
-  "gemini-3-flash-preview"
   "gemini-3.1-pro-preview"
   "gemini-3.1-flash-lite"
+  "gemini-3.5-flash-lite"
   "gemini-3.5-flash"
+  "gemini-3.6-flash"
 )
 
 # Legacy / migration targets — slugs we still accept via migrateLegacyTranscriptionRawValue
 # and migrateLegacyPromptRawValue but no longer use in fresh selections.
 declare -a LEGACY_TEXT_MODELS=(
   "gemini-3.1-flash-lite-preview"
+  # Removed from the enum 2026-07-14 (forwarded via migrateLegacy*RawValue). Still SERVE today —
+  # gemini-2.5-* shut down 2026-10-16, gemini-3-flash-preview is deprecated-pending. Expect 200
+  # until those dates, at which point they move to LEGACY_RETIRED_TEXT_MODELS (must 404).
+  "gemini-2.5-flash"
+  "gemini-2.5-flash-lite"
+  "gemini-2.5-pro"
+  "gemini-3-flash-preview"
 )
 
 # Retired by Google — still in enum until migrate; must 404 (see ai.google.dev/gemini-api/docs/deprecations).

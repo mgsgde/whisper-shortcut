@@ -12,7 +12,7 @@ alwaysApply: true
 
 - **State machine**: Single source of truth is `AppState` in `AppState.swift` (`idle`, `recording`, `processing`, `feedback`). Always transition via AppState; never manipulate UI or flags directly.
 - **Orchestration**: `MenuBarController` owns services and shortcuts; `SpeechService` holds the main logic (transcribe, executePrompt, readSelectionAloud/readProseAloud).
-- **Chat**: `LLMChatProvider` abstracts Gemini, Grok, and OpenAI; `ChatToolRegistry` exposes controlled local, Google, and Trello tools (gated on connection); slash commands are typed in the composer. When the user mentions "the chat", "an interaction", or "the logs", they mean this in-app AI Chat and the app's own logs (skill **view-logs-via-bash**) — not any external MCP integration available to the agent.
+- **Chat**: `LLMChatProvider` abstracts Gemini, Grok, OpenAI, Anthropic (Claude), and local/OpenAI-compatible endpoints (Ollama, LM Studio); `LLMProviderFactory` (in `LLMChatProvider.swift`) selects the implementation. `ChatToolRegistry` exposes controlled local, Google, and Trello tools (gated on connection); slash commands are typed in the composer. When the user mentions "the chat", "an interaction", or "the logs", they mean this in-app AI Chat and the app's own logs (skill **view-logs-via-bash**) — not any external MCP integration available to the agent.
 - **Google integration**: `GoogleAccountOAuthService` provides Calendar, Tasks, and Gmail tokens; API clients are actors.
 - **Trello integration**: `TrelloOAuthService` provides board access; `TrelloAPIClient` backs the `trello_*` chat tools (board/list/card read + create/move/update/archive).
 - **Core services**: AudioRecorder, ChunkTTSService, AudioChunker, AudioMerger, ClipboardManager, KeychainManager, LiveMeetingRecorder.
@@ -25,9 +25,10 @@ alwaysApply: true
 - **Trust the build, not the IDE diagnostics**: After `Edit`/`Write` on Swift files, SourceKit often surfaces transient cross-file errors like `Cannot find type 'X' in scope` or `No such module 'HotKey'` even though the actual `xcodebuild` succeeds. Treat these as indexer staleness — do not undo or chase them. Only the exit status of `bash scripts/rebuild-and-restart.sh` is authoritative.
 - **Logging in code**: Use only `DebugLogger` methods; never `print()`, `NSLog()`, or `os_log()`. For **viewing** logs use skill **view-logs-via-bash**. For **debugging or adding instrumentation** (and full flow: repro plan → analyze logs) use skill **debugging-workflow**.
 - **Tests**: Run the suite yourself with `bash scripts/run-tests.sh` when tests are relevant (e.g. before a release). It runs the Swift Testing live provider/transcription roundtrips against OpenAI, Gemini, and Grok using keys from the gitignored `.env` (providers without a key simply skip), then relaunches the app. Run it directly and trust its real exit status. A manual Xcode run is optional, not required.
-- **Commands are slash commands only**: In this project, "commands" are always **typed** by the user: a leading slash plus a keyword (e.g. `/stop`, `/new`, `/model`). Do not implement commands as hotkeys or keyboard shortcuts; use slash commands in the chat/input and reserve hotkeys for system shortcuts (e.g. menu bar actions).
+- **Commands are slash commands only**: In this project, "commands" are always **typed** by the user: a leading slash plus a keyword (e.g. `/new`, `/model`, `/think`). The authoritative list is built in `ChatView` (`commandsBeforeModels`, `commandsAfterModels`, `modelCommandLookup`) — read it there rather than trusting any prose list. Do not implement commands as hotkeys or keyboard shortcuts; use slash commands in the chat/input and reserve hotkeys for system shortcuts (e.g. menu bar actions).
 - **Language**: All user-facing text must be in **English**. This includes UI strings, confirmation dialogs, button labels, tooltips, section titles, default prompts, and examples shown to users. Prefer English for internal docs and comments too, but locale-specific examples and test data may use other languages when intentional.
-- **Plans**: Shared implementation plans and specs live in `plans/`. Read the relevant file in `plans/` before implementing plan-driven work, and do not duplicate plans under `.cursor/` or `.claude/`.
+- **Plans**: Shared implementation plans and specs live in `plans/`, with in-flight work under `plans/active/`. Read the relevant file there before implementing plan-driven work, and do not duplicate plans under `.cursor/` or `.claude/`.
+- **Commands are suggestion-first**: Slash commands (`/review-code`, `/audit-*`, `/analyze-*`, …) produce reports and recommendations. Do not edit files unless the user asks, and never commit or push unless explicitly told to.
 
 ## 🗣️ Communication
 
@@ -61,4 +62,4 @@ When debugging, resetting, or counting interaction logs, check this canonical pa
 
 ## Challengeable context
 
-- **Challengeable context**: Rules, commands, and skills are defaults — push back explicitly when a loaded file recommends the wrong approach for the task (see @.cursor/rules/context-governance.mdc).
+- **Challengeable context**: Rules, commands, and skills are defaults — push back explicitly when a loaded file recommends the wrong approach for the task.

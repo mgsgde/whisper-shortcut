@@ -21,6 +21,8 @@ enum ConnectionPrewarmer {
       prewarm(endpoint: "https://api.openai.com/")
     case .grok:
       prewarm(endpoint: "https://api.x.ai/")
+    case .anthropic:
+      prewarm(endpoint: "https://api.anthropic.com/")
     default:
       break  // custom/local endpoints: unknown or loopback hosts, nothing worth warming
     }

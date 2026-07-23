@@ -75,6 +75,23 @@ struct APIKeyStatusChip: View {
   }
 }
 
+/// Red inline warning shown under an API-key field when the key could not be persisted to
+/// the macOS Keychain (locked/damaged login keychain). The key still works for the current
+/// session because KeychainManager keeps it in its in-memory cache.
+struct KeychainSaveWarning: View {
+  let status: OSStatus
+
+  var body: some View {
+    Label(
+      "Couldn't store the key in the macOS Keychain (error \(status)). It works for this session but will be lost when the app quits — your login keychain may be locked or damaged.",
+      systemImage: "exclamationmark.triangle.fill"
+    )
+    .font(.callout)
+    .foregroundColor(.red)
+    .fixedSize(horizontal: false, vertical: true)
+  }
+}
+
 /// Self-contained badge that validates an API key against its provider and shows the result.
 /// Drop it next to a key field, passing the current key string; it debounces edits, runs a
 /// lightweight validation request, and updates the chip. Network errors show "Unverified",

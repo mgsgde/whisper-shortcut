@@ -37,6 +37,9 @@ enum UserDefaultsKeys {
   /// One-shot migration flag: default notification position moved left-top → center-bottom.
   static let didMigrateNotificationPositionToCenterBottom = "didMigrateNotificationPositionToCenterBottom"
 
+  /// One-shot migration flag: default Gemini models moved to the 3.5 Flash-Lite / 3.6 Flash tier.
+  static let didMigrateGeminiDefaultsTo36 = "didMigrateGeminiDefaultsTo36"
+
   // MARK: - Recording Safeguards
   static let confirmAboveDurationSeconds = "confirmAboveDurationSeconds"
 
@@ -59,6 +62,11 @@ enum UserDefaultsKeys {
   static let screenshotSaveFolderDisplayPath = "screenshotSaveFolderDisplayPath"
   /// Last directory the chat Attach picker landed on; reopened next time (see C2 behavior).
   static let lastAttachDirectoryPath = "lastAttachDirectoryPath"
+
+  // MARK: - Workspace Folders
+  /// Folders the chat may read from, as `[[String: Any]]` entries holding a security-scoped
+  /// bookmark (Data) plus the originally picked path (String). See `WorkspaceFolders`.
+  static let workspaceFolders = "workspaceFolders"
 
   // MARK: - App State
   static let shouldTerminate = "shouldTerminate"

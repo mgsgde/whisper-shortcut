@@ -1090,12 +1090,16 @@ extension PopupNotificationWindow {
     popup.show()
   }
 
-  static func showPromptResponse(_ response: String, modelInfo: String? = nil) {
-    showSuccessNotification(text: response, modelInfo: modelInfo)
+  static func showPromptResponse(
+    _ response: String, modelInfo: String? = nil, title: String = "Text Copied to Clipboard"
+  ) {
+    showSuccessNotification(title: title, text: response, modelInfo: modelInfo)
   }
 
-  static func showTranscriptionResponse(_ transcription: String, modelInfo: String? = nil) {
-    showSuccessNotification(text: transcription, modelInfo: modelInfo)
+  static func showTranscriptionResponse(
+    _ transcription: String, modelInfo: String? = nil, title: String = "Text Copied to Clipboard"
+  ) {
+    showSuccessNotification(title: title, text: transcription, modelInfo: modelInfo)
   }
 
   /// Show an informational popup (ℹ️ icon, auto-dismiss). Use for system messages that are neither success nor error.

@@ -21,6 +21,10 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
+      AnthropicAPIKeySection(viewModel: viewModel)
+
+      SpacedSectionDivider()
+
       OpenAIAPIKeySection(viewModel: viewModel)
 
       SpacedSectionDivider()

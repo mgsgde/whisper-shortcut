@@ -98,6 +98,55 @@ enum TextProcessingUtility {
     return cleaned
   }
   
+  // MARK: - Hallucination Plausibility Gate
+
+  /// Discards transcripts that are impossibly long for the recording duration. Flash-tier Gemini
+  /// models sometimes fail to perceive very short recordings (~1 s) and confabulate
+  /// paragraph-length "transcripts" from the prompt context instead (observed: 0.9 s of audio →
+  /// 538 invented characters). Real speech tops out around 20 characters per second; a generous
+  /// 30 chars/s plus fixed slack for very short clips keeps false positives out. Returns the text
+  /// unchanged when plausible, or "" when discarded — callers already treat empty output as
+  /// "no speech detected".
+  static func discardingImplausibleTranscript(
+    _ text: String, audioDurationSeconds: Double, mode: String
+  ) -> String {
+    guard audioDurationSeconds > 0 else { return text }
+    let maxPlausibleCharacters = Int(audioDurationSeconds * 30.0) + 40
+    guard text.count > maxPlausibleCharacters else { return text }
+    DebugLogger.logError(
+      "\(mode): Discarding implausible transcript (\(text.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, max plausible \(maxPlausibleCharacters)): '\(text.prefix(120))'"
+    )
+    return ""
+  }
+
+  // MARK: - Mojibake Repair
+
+  /// High-signal markers of UTF-8 bytes that were mis-decoded as Windows-1252/Latin-1 by whatever
+  /// app placed the text on the clipboard (e.g. "Ã¤" for "ä", "â€”" for "—"). Real text almost
+  /// never contains these sequences.
+  private static let mojibakeMarkers = ["Ã", "Â", "â€"]
+
+  private static func mojibakeScore(_ text: String) -> Int {
+    mojibakeMarkers.reduce(0) { $0 + text.components(separatedBy: $1).count - 1 }
+  }
+
+  /// Repairs "mojibake" — text whose original UTF-8 bytes were mis-decoded as Windows-1252/Latin-1
+  /// upstream (common with pasted terminal/CLI output). The repair re-encodes the mis-decoded
+  /// characters back to their original bytes and decodes them as UTF-8. It is applied ONLY when the
+  /// tell-tale markers are present AND the round-trip yields strictly fewer markers, so correctly
+  /// encoded text — and text the repair can't improve — is returned untouched.
+  static func repairMojibakeIfNeeded(_ text: String) -> String {
+    let score = mojibakeScore(text)
+    guard score > 0 else { return text }
+    guard let bytes = text.data(using: .windowsCP1252) ?? text.data(using: .isoLatin1),
+          let repaired = String(data: bytes, encoding: .utf8),
+          mojibakeScore(repaired) < score else {
+      return text
+    }
+    DebugLogger.log("MOJIBAKE-REPAIR: Fixed pasted text (\(score) markers → \(mojibakeScore(repaired)))")
+    return repaired
+  }
+
   // MARK: - Text Validation
   static func validateSpeechText(_ text: String, mode: String = "TRANSCRIPTION-MODE") throws {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -118,6 +167,29 @@ enum TextProcessingUtility {
     // Enhanced prompt detection - check for various prompt patterns
     let defaultPrompt = AppConstants.defaultTranscriptionSystemPrompt
     let lowercasedText = trimmedText.lowercased()
+
+    // Assistant-mode leakage: on silent/unintelligible audio the Flash-tier model sometimes
+    // replies as a chatbot ("Bitte geben Sie mir die Audiodatei, den ich transkribieren soll.")
+    // instead of transcribing. These are plausible-length sentences so the length and
+    // chars-per-second gates don't catch them; match the request-for-input phrasing directly and
+    // surface it as "no speech detected" rather than pasting the refusal into the clipboard.
+    if mode.contains("TRANSCRIPTION") {
+      let assistantRefusalPhrases = [
+        "geben sie mir die audiodatei",
+        "gib mir die audiodatei",
+        "den ich transkribieren soll",
+        "die ich transkribieren soll",
+        "text, den ich transkribieren",
+        "please provide the audio",
+        "provide the audio file",
+        "provide the text you",
+        "i can transcribe",
+      ]
+      if assistantRefusalPhrases.contains(where: { lowercasedText.contains($0) }) {
+        DebugLogger.log("PROMPT-DETECTION: Detected assistant-mode refusal in transcription: '\(trimmedText.prefix(80))'")
+        throw TranscriptionError.noSpeechDetected
+      }
+    }
     
     // Check for exact prompt match
     if trimmedText.contains(defaultPrompt) {

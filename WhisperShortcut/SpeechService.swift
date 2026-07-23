@@ -104,14 +104,84 @@ class SpeechService {
   /// instruction so the model actually biases toward these spellings. A bare term list is too weak
   /// a signal for Flash-tier models, especially for near-homophones (e.g. "Claude" vs "Cloud").
   /// Returns `base` unchanged when the Glossary is empty.
+  ///
+  /// The list must be framed strictly as a spelling reference: phrased as "these terms may appear
+  /// in the audio", Flash-tier models compose whole sentences out of the terms on short or silent
+  /// recordings (glossary echo — sub-second audio produced paragraph-length fake transcripts built
+  /// from glossary entries).
   private func appendGlossaryHint(to base: String) -> String {
-    let glossary = SystemPromptsStore.shared.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
+    let glossary = sanitizedGlossaryForInstructionPrompt()
     guard !glossary.isEmpty else { return base }
-    let block = "Known vocabulary — these names and terms may appear in the audio. "
-      + "When you hear one of them, transcribe it with exactly this spelling and capitalization; "
-      + "do not substitute a more common, similar-sounding word.\n" + glossary
+    let block = "Reference vocabulary — correct spellings of names and terms this speaker uses. "
+      + "If, and only if, you clearly hear one of them, transcribe it with exactly this spelling "
+      + "and capitalization instead of a more common, similar-sounding word. This list is a "
+      + "spelling reference only, NOT content: never output a listed term you did not clearly "
+      + "hear, and never append these terms to the transcript. If the audio is silent or "
+      + "unintelligible, return an empty response.\n" + glossary
     DebugLogger.log("GLOSSARY: conditioning transcription with \(glossary.count) chars: \(glossary.prefix(200))")
     return base.isEmpty ? block : base + "\n\n" + block
+  }
+
+  /// The Whisper Glossary with correction annotations (`Term (not "Wrong")`) reduced to just the
+  /// correct term, and phrase-style entries (more than 3 words, e.g. "einen Crawler am Laufen")
+  /// dropped entirely. Both forms are offline-Whisper priming syntax; in an instruction prompt
+  /// they invite verbatim echo into the transcript (Flash-Lite reproduced a 4-word glossary
+  /// phrase instead of the actual audio in every test run). Names and terms of up to 3 words
+  /// ("Cursor CLI", "EnBW AG", "Magnus Gödde") pass through.
+  private func sanitizedGlossaryForInstructionPrompt() -> String {
+    let lines = SystemPromptsStore.shared.loadWhisperGlossary()
+      .components(separatedBy: .newlines)
+
+    // Spellings the user explicitly marked as WRONG (`Kimi (not "Kimmi")`) must never be offered
+    // as reference vocabulary. `GlossaryFastLearner` writes bare terms one per line, so a form it
+    // auto-learned before the user corrected it otherwise sits in the list right next to its own
+    // correction — the model is told both spellings are right and the correction cancels out.
+    // Stripping the annotation is not enough; the rejected form has to be filtered out by name.
+    var rejected = Set<String>()
+    for line in lines {
+      var cursor = Substring(line)
+      while let range = cursor.range(
+        of: #"\((?:not|nicht)\s+[^)]*\)"#, options: [.regularExpression, .caseInsensitive])
+      {
+        let inner = cursor[range]
+          .replacingOccurrences(
+            of: #"^\((?:not|nicht)\s+"#, with: "",
+            options: [.regularExpression, .caseInsensitive])
+          .replacingOccurrences(of: ")", with: "")
+        for form in inner.components(separatedBy: ",") {
+          let cleaned = form.trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
+          if !cleaned.isEmpty { rejected.insert(Self.foldGlossaryTerm(cleaned)) }
+        }
+        cursor = cursor[range.upperBound...]
+      }
+    }
+
+    return lines
+      .flatMap { line -> [String] in
+        // Strip the `(not "…")` annotation BEFORE splitting on commas, so a comma inside the
+        // parenthetical (e.g. `Gödde (not "Godde, Goedde")`) can't shear it into leaking fragments.
+        line.replacingOccurrences(
+          of: #"\s*\((?:not|nicht)\s+[^)]*\)"#,
+          with: "",
+          options: [.regularExpression, .caseInsensitive]
+        )
+        .components(separatedBy: ",")
+        .map { $0.trimmingCharacters(in: .whitespaces) }
+      }
+      .filter { term in
+        // The built-in list is written as `Terms: A, B, C`, so the first element carries the
+        // label — compare without it, or a rejected form in first position slips through.
+        let bare = term.replacingOccurrences(
+          of: #"^Terms:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+        return !bare.isEmpty && bare.split(separator: " ").count <= 3
+          && !rejected.contains(Self.foldGlossaryTerm(bare))
+      }
+      .joined(separator: ", ")
+  }
+
+  /// Case- and diacritic-insensitive comparison form, matching `GlossaryFastLearner.fold`.
+  private static func foldGlossaryTerm(_ word: String) -> String {
+    word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
   }
 
   /// The full transcription instruction shared by every Gemini sub-path (inline, Files API, and
@@ -361,6 +431,8 @@ class SpeechService {
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
       // rather than crash the menu-bar app if a future model/provider change reaches here.
       throw TranscriptionError.networkError("Grok can't process audio directly. Pick a Gemini model or OpenAI's GPT-4o Audio for Dictate Prompt.")
+    case .anthropic:
+      throw TranscriptionError.networkError("Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
     case .customOpenAI:
       throw TranscriptionError.networkError("Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
     }
@@ -750,6 +822,11 @@ class SpeechService {
       case 401:
         throw TranscriptionError.invalidAPIKey
       case 429:
+        // "No credit on the API account" arrives as 429 insufficient_quota — a billing
+        // problem, not a rate limit (same mapping as the transcription path).
+        if bodyString.contains("insufficient_quota") {
+          throw TranscriptionError.billingRequired
+        }
         throw TranscriptionError.rateLimited(retryAfter: nil)
       default:
         throw TranscriptionError.serverError(http.statusCode)
@@ -906,7 +983,8 @@ class SpeechService {
     }
     let base64Audio = audioData.base64EncodedString()
 
-    let endpoint = TranscriptionModel.gemini31FlashLite.apiEndpoint
+    // Audio input dominates the cost here, so track the default (cheapest-audio) Flash-Lite tier.
+    let endpoint = SettingsDefaults.selectedTranscriptionModel.apiEndpoint
     var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
 
     let userParts: [GeminiChatRequest.GeminiChatPart] = [
@@ -1411,7 +1489,13 @@ class SpeechService {
     case 401: throw TranscriptionError.invalidAPIKey
     case 404: throw TranscriptionError.serverError(404)
     case 422: throw TranscriptionError.serverError(422)
-    case 429: throw TranscriptionError.rateLimited(retryAfter: nil)
+    case 429:
+      // OpenAI reports "no credit on the API account" as a 429 with code insufficient_quota.
+      // Surface that as a billing problem, not a rate limit — the fix is topping up, not waiting.
+      if let bodyString = String(data: data, encoding: .utf8), bodyString.contains("insufficient_quota") {
+        throw TranscriptionError.billingRequired
+      }
+      throw TranscriptionError.rateLimited(retryAfter: nil)
     default:
       let bodyString = String(data: data, encoding: .utf8) ?? ""
       DebugLogger.logError("\(logPrefix): HTTP \(httpResponse.statusCode): \(bodyString.prefix(200))")
@@ -1535,9 +1619,9 @@ class SpeechService {
     }
     // For files >20MB, use Files API (resumable upload); inline base64 otherwise.
     else if audioSize > AppConstants.maxFileSizeBytes {
-      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential, model: model, promptOverride: promptOverride)
+      result = try await transcribeWithGeminiFilesAPI(audioURL: audioURL, credential: credential, model: model, promptOverride: promptOverride, audioDuration: audioDuration)
     } else {
-      result = try await transcribeWithGeminiInline(audioURL: audioURL, credential: credential, model: model, promptOverride: promptOverride)
+      result = try await transcribeWithGeminiInline(audioURL: audioURL, credential: credential, model: model, promptOverride: promptOverride, audioDuration: audioDuration)
     }
 
     let apiElapsedTime = CFAbsoluteTimeGetCurrent() - apiStartTime
@@ -1569,7 +1653,7 @@ class SpeechService {
     return CMTimeGetSeconds(duration)
   }
   
-  private func transcribeWithGeminiInline(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
+  private func transcribeWithGeminiInline(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil, audioDuration: TimeInterval) async throws -> String {
     let inlineStartTime = CFAbsoluteTimeGetCurrent()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using inline audio (file ≤20MB)")
 
@@ -1607,7 +1691,7 @@ class SpeechService {
           ]
         )
       ],
-      generationConfig: .thinkingDisabled
+      generationConfig: model.geminiTranscriptionGenerationConfig
     )
 
     var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
@@ -1625,7 +1709,11 @@ class SpeechService {
     DebugLogger.logSpeech("SPEED: [\(model.displayName)] API network request took \(String(format: "%.3f", networkTime))s (\(String(format: "%.0f", networkTime * 1000))ms)")
 
     let transcript = geminiClient.extractText(from: geminiResponse)
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(transcript)
+    // Very short recordings can be imperceptible to Flash-tier models, which then confabulate
+    // long fake transcripts from the prompt context — gate on chars-per-second plausibility.
+    let normalizedText = TextProcessingUtility.discardingImplausibleTranscript(
+      TextProcessingUtility.normalizeTranscriptionText(transcript),
+      audioDurationSeconds: audioDuration, mode: "GEMINI-TRANSCRIPTION")
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
 
     let inlineElapsedTime = CFAbsoluteTimeGetCurrent() - inlineStartTime
@@ -1634,7 +1722,7 @@ class SpeechService {
     return normalizedText
   }
 
-  private func transcribeWithGeminiFilesAPI(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
+  private func transcribeWithGeminiFilesAPI(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil, audioDuration: TimeInterval) async throws -> String {
     let filesAPIStartTime = CFAbsoluteTimeGetCurrent()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using Files API (file >20MB)")
 
@@ -1648,7 +1736,7 @@ class SpeechService {
     // server doesn't misinterpret non-WAV uploads (e.g. mp3/m4a/flac) as WAV.
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = geminiClient.getMimeType(for: fileExtension)
-    let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, mimeType: mimeType, credential: credential, model: model, promptOverride: promptOverride)
+    let result = try await transcribeWithGeminiFileURI(fileURI: fileURI, mimeType: mimeType, credential: credential, model: model, promptOverride: promptOverride, audioDuration: audioDuration)
     
     let filesAPIElapsedTime = CFAbsoluteTimeGetCurrent() - filesAPIStartTime
     DebugLogger.logSpeech("SPEED: Gemini Files API transcription total time: \(String(format: "%.3f", filesAPIElapsedTime))s (\(String(format: "%.0f", filesAPIElapsedTime * 1000))ms)")
@@ -1658,7 +1746,7 @@ class SpeechService {
   
   // File upload is now handled by GeminiAPIClient
   
-  private func transcribeWithGeminiFileURI(fileURI: String, mimeType: String, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil) async throws -> String {
+  private func transcribeWithGeminiFileURI(fileURI: String, mimeType: String, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil, audioDuration: TimeInterval) async throws -> String {
     let fileURIStartTime = CFAbsoluteTimeGetCurrent()
 
     // Build the transcription instruction (dictation prompt or default, plus the Glossary).
@@ -1680,7 +1768,7 @@ class SpeechService {
           ]
         )
       ],
-      generationConfig: .thinkingDisabled
+      generationConfig: model.geminiTranscriptionGenerationConfig
     )
 
     var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
@@ -1698,9 +1786,11 @@ class SpeechService {
     DebugLogger.logSpeech("SPEED: Gemini API network request (FileURI) took \(String(format: "%.3f", networkTime))s (\(String(format: "%.0f", networkTime * 1000))ms)")
 
     let transcript = geminiClient.extractText(from: geminiResponse)
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(transcript)
+    let normalizedText = TextProcessingUtility.discardingImplausibleTranscript(
+      TextProcessingUtility.normalizeTranscriptionText(transcript),
+      audioDurationSeconds: audioDuration, mode: "GEMINI-TRANSCRIPTION")
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
-    
+
     let fileURIElapsedTime = CFAbsoluteTimeGetCurrent() - fileURIStartTime
     DebugLogger.logSpeech("SPEED: Gemini FileURI transcription took \(String(format: "%.3f", fileURIElapsedTime))s (\(String(format: "%.0f", fileURIElapsedTime * 1000))ms)")
     

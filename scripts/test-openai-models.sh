@@ -20,9 +20,14 @@ fi
 
 # Currently referenced in SettingsConfiguration.swift PromptModel + SpeechService.swift transcription paths.
 declare -a CURRENT_CHAT_MODELS=(
-  "gpt-5"
-  "gpt-5-mini"
+  "gpt-5.4"
+  "gpt-5.4-mini"
   "gpt-5.5"
+  # GPT-5.6 family, added to PromptModel 2026-07-22. sol/terra are priced identically to
+  # gpt-5.5 / gpt-5.4, which is why those two are now hidden from chat (chatReplacement).
+  "gpt-5.6-sol"
+  "gpt-5.6-terra"
+  "gpt-5.6-luna"
 )
 # gpt-audio (renamed from gpt-4o-audio-preview) requires audio modality — tested separately below.
 declare -a CURRENT_AUDIO_CHAT_MODELS=(
@@ -36,6 +41,19 @@ declare -a LEGACY_CHAT_MODELS=(
 declare -a CANDIDATE_CHAT_MODELS=(
   "chat-latest"
   "gpt-5-chat-latest"
+  # gpt-5.4 / gpt-5.4-mini were promoted to CURRENT_CHAT_MODELS (2026-07-14 migration: the app's
+  # OpenAI flagship + mini now point at these). The superseded gpt-5 / gpt-5-mini still serve but
+  # are no longer referenced — persisted selections forward via migrateLegacyPromptRawValue.
+  # gpt-5.6 family promoted to CURRENT_CHAT_MODELS on 2026-07-22 (the 401 staged-rollout gating
+  # seen on 2026-07-14 is gone: 10/10 consecutive 200s each). "gpt-5.6" is an alias for -sol.
+  # gpt-5.5-pro intentionally NOT listed: 404s on this key (10/10, 2026-07-22) — not entitled.
+)
+# Audio-chat candidates (input_audio) — newer generations of gpt-audio.
+# gpt-audio-1.5 is intentionally NOT listed: it intermittently 500s ("model produced invalid
+# content") on this script's degenerate audio-only silent-wav probe, but passes 4/4 with a
+# realistic text+audio payload (verified 2026-07-14). Re-add once the probe sends real speech.
+declare -a CANDIDATE_AUDIO_CHAT_MODELS=(
+  "gpt-audio-mini"
 )
 declare -a CURRENT_TRANSCRIPTION_MODELS=(
   "gpt-4o-transcribe"
@@ -142,6 +160,7 @@ test_audio_chat_model() {
   fi
 }
 for m in "${CURRENT_AUDIO_CHAT_MODELS[@]}"; do test_audio_chat_model "$m" "current"; done
+for m in "${CANDIDATE_AUDIO_CHAT_MODELS[@]}"; do test_audio_chat_model "$m" "candidate"; done
 
 echo ""
 echo "=== OpenAI legacy chat slugs (must 404 — confirms slug was retired by OpenAI) ==="

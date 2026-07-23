@@ -23,6 +23,9 @@ declare -a CURRENT_MODELS=(
   "grok-4.20-0309-non-reasoning"
   "grok-4.20-0309-reasoning"
   "grok-4.3"
+  # xAI's flagship. Added to PromptModel 2026-07-22 — it does NOT replace grok-4.3 (pricier,
+  # 500k context vs 1M), both sit on the price/quality frontier.
+  "grok-4.5"
 )
 # Legacy slugs that we accept via migrateLegacyPromptRawValue but no longer expose in fresh
 # selections. xAI silently redirects these to grok-4.3 (per May-15-2026 retirement notice).

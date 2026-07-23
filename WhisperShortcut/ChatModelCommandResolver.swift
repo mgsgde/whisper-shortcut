@@ -51,9 +51,16 @@ enum ChatModelCommandResolver {
 
     // Detect provider family first.
     let hasGrok = normalized.contains("grok")
+    let hasClaude = !hasGrok && (
+      normalized.contains("claude") ||
+      normalized.contains("anthropic") ||
+      normalized.contains("sonnet") ||
+      normalized.contains("opus") ||
+      normalized.contains("haiku")
+    )
     // "gpt"/"openai"/"4o" pull the user toward OpenAI before the generic " 3 "
     // branch can mis-route "gpt 3" to Gemini 3.
-    let hasOpenAI = !hasGrok && (
+    let hasOpenAI = !hasGrok && !hasClaude && (
       normalized.contains("openai") ||
       normalized.contains("gpt") ||
       normalized.contains("4o")
@@ -61,8 +68,8 @@ enum ChatModelCommandResolver {
 
     // Native image generation (Nano Banana) — match before the version branches so "image"
     // or "nano banana" routes to the image model regardless of any "3.1"/"flash" it contains.
-    // Guarded by !grok/!openai so a hypothetical "gpt image" wouldn't get hijacked.
-    let wantsImage = !hasGrok && !hasOpenAI
+    // Guarded by !grok/!openai/!claude so a hypothetical "gpt image" wouldn't get hijacked.
+    let wantsImage = !hasGrok && !hasOpenAI && !hasClaude
       && (padded.contains(" image ") || normalized.contains("nano banana"))
 
     // Detect version family (order matters).
@@ -72,29 +79,49 @@ enum ChatModelCommandResolver {
       // and a bare "image"/"nano banana" defaults to the free Flash tier further down.
       candidates = [.geminiImage, .geminiImagePro]
     } else if hasGrok {
+      // The 4.20 variants are Pareto-dominated by 4.3 and not offered; 4.5 and 4.3 both are.
       if normalized.contains("4.3") {
         candidates = [.grok43]
+      } else if normalized.contains("4.5") {
+        candidates = [.grok45]
       } else {
-        candidates = [.grok4, .grok4Reasoning, .grok43]
+        candidates = [.grok43, .grok45]
+      }
+    } else if hasClaude {
+      if normalized.contains("opus") {
+        candidates = [.claudeOpus48]
+      } else if normalized.contains("haiku") {
+        candidates = [.claudeHaiku45]
+      } else if normalized.contains("sonnet") {
+        candidates = [.claudeSonnet5]
+      } else if normalized.contains("fable") {
+        candidates = [.claudeFable5]
+      } else {
+        candidates = [.claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5]
       }
     } else if hasOpenAI {
-      // openaiGPT4oAudio is Dictate-Prompt only (supportsTextChat=false), so
-      // the chat resolver returns only the text-capable OpenAI models.
-      if normalized.contains("5.5") {
-        candidates = [.openaiGPT55]
+      // openaiGPT4oAudio is Dictate-Prompt only (supportsTextChat=false), so the chat resolver
+      // returns only the text-capable OpenAI models.
+      // gpt-5.5 / gpt-5.4 are Pareto-dominated by their same-price 5.6 twins and no longer
+      // offered; "5.5"/"5.4" still resolve, to the model that replaced them.
+      if normalized.contains("5.5") || normalized.contains("sol") {
+        candidates = [.openaiGPT56Sol]
+      } else if normalized.contains("5.4") || normalized.contains("terra") {
+        candidates = [.openaiGPT56Terra]
+      } else if normalized.contains("luna") {
+        candidates = [.openaiGPT56Luna]
       } else {
-        candidates = [.openaiGPT5, .openaiGPT5Mini, .openaiGPT55]
+        candidates = [.openaiGPT5Mini, .openaiGPT56Luna, .openaiGPT56Terra, .openaiGPT56Sol]
       }
+    } else if normalized.contains("3.6") {
+      candidates = [.gemini36Flash]
     } else if normalized.contains("3.5") {
-      candidates = [.gemini35Flash]
+      candidates = [.gemini35FlashLite, .gemini35Flash]
     } else if normalized.contains("3.1") {
       candidates = [.gemini31Pro, .gemini31FlashLite]
-    } else if normalized.contains("2.5") {
-      candidates = [.gemini25Flash, .gemini25FlashLite, .gemini25Pro]
-    } else if normalized.contains("2.0") || padded.contains(" 2 ") {
-      candidates = [.gemini25Flash]
     } else if padded.contains(" 3 ") {
-      candidates = [.gemini3Flash]
+      // Bare "Gemini 3" → the current 3-series default Flash.
+      candidates = [.gemini36Flash]
     } else {
       candidates = PromptModel.chatModels
     }
@@ -145,6 +172,10 @@ enum ChatModelCommandResolver {
       let preferred = ChatModelProvider.openai.defaultChatModel
       if candidates.contains(preferred) { candidates = [preferred] }
     }
+    if (lowered == "claude" || lowered == "anthropic") && candidates.count > 1 {
+      let preferred = ChatModelProvider.anthropic.defaultChatModel
+      if candidates.contains(preferred) { candidates = [preferred] }
+    }
     // Same idea for the image family: an image request without a "pro" qualifier
     // ("image", "nano banana", "gemini image", …) picks the free Flash tier;
     // "image pro" / "nano banana pro" were already narrowed to Pro above.
@@ -169,14 +200,14 @@ enum ChatModelCommandResolver {
 
   private static func isFlashLite(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini25FlashLite, .gemini31FlashLite: return true
+    case .gemini31FlashLite, .gemini35FlashLite: return true
     default: return false
     }
   }
 
   private static func isFlash(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash,
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash,
          .geminiImage: return true  // "flash image" → the Flash-tier image model
     default: return false
     }
@@ -184,14 +215,15 @@ enum ChatModelCommandResolver {
 
   private static func isPro(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini25Pro, .gemini31Pro, .geminiImagePro: return true
+    case .gemini31Pro, .geminiImagePro: return true
     default: return false
     }
   }
 
   private static func isFast(_ m: PromptModel) -> Bool {
     switch m {
-    case .grok43: return true  // grok-4.3 is xAI's "fastest, most intelligent" since 2026-05-06.
+    case .grok45: return true  // xAI: "the most intelligent and fastest model we've built".
+    case .claudeHaiku45: return true
     default: return false
     }
   }

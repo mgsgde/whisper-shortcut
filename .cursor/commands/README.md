@@ -1,3 +1,9 @@
+---
+name: cursor-commands-naming
+description: Reference doc for the slash-command verb taxonomy in this repo. Not a runnable command.
+disable-model-invocation: true
+---
+
 # Cursor Commands — Naming Convention
 
 Every slash command follows **`{verb}-{topic}`**. The verb tells the agent _what kind of work_ to do; the topic names the domain. Workflow-style commands (one-off operational entry points) may omit the verb prefix.
@@ -24,6 +30,7 @@ Every slash command follows **`{verb}-{topic}`**. The verb tells the agent _what
 | `/review-code [N]`                                   | —                              | review   |
 | `/review-llm-state-of-the-art`                       | `review-llm-state-of-the-art`  | review   |
 | `/validate-audio-verification`                       | `validate-audio-verification`  | validate |
+| `/competitor-teardown <name\|URL>`                   | —                              | workflow |
 | `/improve-context`                                   | —                              | workflow |
 | `/release`                                           | —                              | workflow |
 | `/submit-appstore`                                   | `app-store-connect` (parent)   | workflow |

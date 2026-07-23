@@ -1,8 +1,8 @@
 import SwiftUI
 
-struct OpenAIAPIKeySection: View {
+struct AnthropicAPIKeySection: View {
   @ObservedObject var viewModel: SettingsViewModel
-  @State private var openAIAPIKey: String = ""
+  @State private var anthropicAPIKey: String = ""
   @State private var isKeyVisible: Bool = false
   @State private var keychainSaveError: OSStatus?
 
@@ -10,12 +10,12 @@ struct OpenAIAPIKeySection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       HStack(alignment: .top) {
         SectionHeader(
-          title: "OpenAI API Key",
+          title: "Anthropic API Key (Claude)",
           systemImage: "key.fill",
-          subtitle: "Add an OpenAI API key to use OpenAI's transcription models (gpt-4o-transcribe, gpt-4o-mini-transcribe). Get a key from the OpenAI platform (link below)."
+          subtitle: "Add an Anthropic API key to use Claude models in the chat window. Get a key from the Anthropic Console (link below)."
         )
         Spacer()
-        APIKeyStatusBadge(provider: .openai, key: openAIAPIKey)
+        APIKeyStatusBadge(provider: .anthropic, key: anthropicAPIKey)
       }
 
       HStack(alignment: .center, spacing: 16) {
@@ -27,12 +27,12 @@ struct OpenAIAPIKeySection: View {
 
         ZStack {
           if isKeyVisible {
-            TextField("sk-...", text: $openAIAPIKey)
+            TextField("sk-ant-...", text: $anthropicAPIKey)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
               .frame(height: SettingsConstants.textFieldHeight)
           } else {
-            SecureField("sk-...", text: $openAIAPIKey)
+            SecureField("sk-ant-...", text: $anthropicAPIKey)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
               .frame(height: SettingsConstants.textFieldHeight)
@@ -41,13 +41,13 @@ struct OpenAIAPIKeySection: View {
         .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
         .onAppear {
           // Don't blank the field on a failed Keychain read — see GoogleAPIKeySection.
-          if let stored = KeychainManager.shared.getOpenAIAPIKey(), !stored.isEmpty {
-            openAIAPIKey = stored
+          if let stored = KeychainManager.shared.getAnthropicAPIKey(), !stored.isEmpty {
+            anthropicAPIKey = stored
           }
         }
-        .onChange(of: openAIAPIKey) { _, newValue in
-          let saved = KeychainManager.shared.saveOpenAIAPIKey(newValue)
-          keychainSaveError = saved ? nil : KeychainManager.shared.lastWriteError(for: .openai)
+        .onChange(of: anthropicAPIKey) { _, newValue in
+          let saved = KeychainManager.shared.saveAnthropicAPIKey(newValue)
+          keychainSaveError = saved ? nil : KeychainManager.shared.lastWriteError(for: .anthropic)
           ModelSelectionReconciler.reconcileAll()
         }
 
@@ -72,9 +72,9 @@ struct OpenAIAPIKeySection: View {
           .textSelection(.enabled)
 
         Link(
-          destination: URL(string: "https://platform.openai.com/api-keys")!
+          destination: URL(string: "https://console.anthropic.com/settings/keys")!
         ) {
-          Text("platform.openai.com/api-keys")
+          Text("console.anthropic.com")
             .font(.callout)
             .foregroundColor(.blue)
             .underline()

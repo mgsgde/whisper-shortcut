@@ -21,7 +21,7 @@ Resolve scope in this order, then **print it first** (which capture(s), their br
 ## Primary sources (see skill for exact paths)
 
 - Hang captures + daily logs: `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Logs/WhisperShortcut/`
-- Live log tail: `bash scripts/logs.sh -f 'WATCHDOG|CHAT-SEND|CHAT-LIST' -t 30m`
+- Live log tail: `bash scripts/logs.sh -t 30m | grep -E 'WATCHDOG|CHAT-SEND|CHAT-LIST'` (`-f` is a literal `CONTAINS` match, so alternation must go through `grep`)
 - Background: `plans/active/chat-freeze-investigation.md` (full history + the shipped Resolution).
 
 ## When the user follows up with "fix" / "apply"

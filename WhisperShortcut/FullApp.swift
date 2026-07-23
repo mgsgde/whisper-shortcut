@@ -44,6 +44,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Setup Edit menu for text editing commands
     setupEditMenu()
 
+    // Lift stale model defaults first, so the reconciler below sees the current selections.
+    migrateGeminiModelDefaults()
+
     // Adapt per-feature model selections to the API keys actually present, so a user with a single
     // provider's key gets that provider's models by default across every feature.
     ModelSelectionReconciler.reconcileAll()
@@ -68,7 +71,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
             WelcomeWindowController.shared.show()
           } else if !GeminiCredentialProvider.shared.hasCredential()
                     && !KeychainManager.shared.hasValidOpenAIAPIKey()
-                    && !KeychainManager.shared.hasValidXAIAPIKey() {
+                    && !KeychainManager.shared.hasValidXAIAPIKey()
+                    && !KeychainManager.shared.hasValidAnthropicAPIKey() {
             SettingsManager.shared.showSettings()
           }
         }
@@ -162,6 +166,41 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       defaults.set(
         NotificationPosition.centerBottom.rawValue, forKey: UserDefaultsKeys.notificationPosition)
       DebugLogger.log("MIGRATION: notificationPosition \(stored ?? "unset") → center-bottom")
+    }
+  }
+
+  /// One-shot migration (2026-07): Google shipped Gemini 3.5 Flash-Lite and 3.6 Flash, so the
+  /// defaults moved up a tier — dictation to 3.5 Flash-Lite (audio input $0.30/1M instead of
+  /// $0.50/1M, and audio tokens dominate a dictation bill), chat/prompt/meeting-summary to
+  /// 3.6 Flash (same input price as 3.5 Flash, $7.50/1M output instead of $9.00).
+  ///
+  /// Changing `SettingsDefaults` alone would reach almost nobody: `SettingsViewModel.save()`
+  /// persists every model key on any settings change, and entering an API key is mandatory, so
+  /// essentially every existing install has the old default written out explicitly. This moves
+  /// only the users still sitting on that exact old default; anyone who picked a different model
+  /// deliberately keeps it.
+  private func migrateGeminiModelDefaults() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: UserDefaultsKeys.didMigrateGeminiDefaultsTo36) else { return }
+    defaults.set(true, forKey: UserDefaultsKeys.didMigrateGeminiDefaultsTo36)
+
+    // (key, value that counts as "never chose", replacement)
+    let migrations: [(key: String, previousDefault: String, replacement: String)] = [
+      (UserDefaultsKeys.selectedTranscriptionModel, "gemini-3.1-flash-lite",
+       TranscriptionModel.gemini35FlashLite.rawValue),
+      (UserDefaultsKeys.selectedTranscriptionModelForMeetings, "gemini-3.1-flash-lite",
+       TranscriptionModel.gemini35FlashLite.rawValue),
+      (UserDefaultsKeys.selectedPromptModel, "gemini-3.5-flash", PromptModel.gemini36Flash.rawValue),
+      (UserDefaultsKeys.selectedChatModel, "gemini-3.5-flash", PromptModel.gemini36Flash.rawValue),
+      (UserDefaultsKeys.selectedMeetingSummaryModel, "gemini-3.5-flash",
+       PromptModel.gemini36Flash.rawValue),
+    ]
+
+    for m in migrations {
+      // An unset key already resolves to the new SettingsDefaults value — nothing to write.
+      guard let stored = defaults.string(forKey: m.key), stored == m.previousDefault else { continue }
+      defaults.set(m.replacement, forKey: m.key)
+      DebugLogger.log("MIGRATION: \(m.key) \(stored) → \(m.replacement)")
     }
   }
 

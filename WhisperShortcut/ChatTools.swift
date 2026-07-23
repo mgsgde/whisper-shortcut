@@ -159,6 +159,59 @@ enum ChatToolRegistry {
     ],
   ]
 
+  /// Lets the chat edit the app's own instruction files (the system prompt sections in
+  /// `system-prompts.md`). Deliberately ONE tool with a `section` enum rather than one tool per
+  /// section: at ~29 declared tools a fully-connected user is already at the point where tool
+  /// *selection* is the bottleneck, and several near-identical "write a rule to a file" tools
+  /// would be the worst possible addition. A single call turns the model's job into parameter
+  /// classification, which it does far more reliably than picking between similar tools.
+  static let updateInstructionsToolName = "update_app_instructions"
+
+  /// Per-section ceiling. A system prompt that grows without bound degrades every response in
+  /// that mode, and unlike the glossary the damage is diffuse and hard to attribute. Sized against
+  /// the shipped default: Dictate Prompt is ~3.3k chars, so this leaves room for roughly twenty
+  /// user rules before the model is told to consolidate instead of appending further.
+  static let instructionsSectionLimitChars = 5_000
+
+  /// Sections the chat may edit, mapped from the model-facing enum values. Intentionally starts
+  /// with Dictate Prompt only. `chat` is withheld on purpose: editing its own system prompt is
+  /// the one case with a feedback loop, where the model can degrade itself and then explain why
+  /// that was correct. `whisperGlossary` stays with `remember_dictation_term`, which additionally
+  /// prunes competing spellings.
+  static let editableInstructionSections: [String: SystemPromptSection] = [
+    "dictate_prompt": .promptMode
+  ]
+
+  static let instructionsFunctionDeclarations: [[String: Any]] = [
+    [
+      "name": updateInstructionsToolName,
+      "description":
+        "Reads and edits WhisperShortcut's own behavior instructions — the system prompt that governs a mode of the app — so the user can change how the app behaves by asking, instead of editing Settings. Currently supports the 'dictate_prompt' section (Dictate Prompt / Speech-to-Prompt: the mode that rewrites selected text from a voice instruction). Call this when the user states a lasting preference about HOW that mode should behave (e.g. 'when I say correct, never translate', 'always keep my bullet points', 'stop adding greetings'). ALWAYS call with action='read' first and check whether an existing rule already covers or contradicts the request — then 'replace' or 'remove' that rule rather than appending a second, conflicting one. Use action='append' only for genuinely new rules. This is for BEHAVIOR; for the spelling of a word use remember_dictation_term, and for facts about the user use remember_about_user.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "section": [
+            "type": "string",
+            "enum": ["dictate_prompt"],
+            "description": "Which instruction section to act on.",
+          ],
+          "action": [
+            "type": "string",
+            "enum": ["read", "append", "replace", "remove"],
+            "description":
+              "'read' returns the current instructions (do this first). 'append' adds one rule. 'replace' overwrites the whole section — use when rewriting or restructuring. 'remove' deletes every line containing the given text.",
+          ],
+          "text": [
+            "type": "string",
+            "description":
+              "For 'append': the new rule as one short imperative sentence. For 'replace': the complete new section text. For 'remove': text identifying the line(s) to delete. Omit for 'read'.",
+          ],
+        ] as [String: Any],
+        "required": ["section", "action"],
+      ],
+    ]
+  ]
+
   /// Names of the chat-memory tools; ChatView intercepts these in `executeToolCalls`
   /// (they write the local memory file and reload the UI rather than routing back through the model).
   static let rememberAboutUserToolName = "remember_about_user"
@@ -645,11 +698,136 @@ enum ChatToolRegistry {
     ],
   ]
 
+  /// Read-only access to the folders the user shared in Settings → Chat → Workspace Folders.
+  /// Only offered once at least one folder exists — otherwise every call would answer "no
+  /// folders configured", which just burns a turn.
+  static let workspaceFunctionDeclarations: [[String: Any]] = [
+    [
+      "name": "list_workspace_folders",
+      "description":
+        "Lists the folders on this Mac the user has shared with you. ALWAYS call this first before any other file tool, so you know which roots exist and what they are called. Returns {folders: [{name, path}], count}.",
+      "parameters": [
+        "type": "object",
+        "properties": [:] as [String: Any],
+      ],
+    ],
+    [
+      "name": "list_directory",
+      "description":
+        "Lists the entries of a directory inside a shared workspace folder. Hidden files are omitted. Use this to explore before reading. Returns {path, entries: [{name, type, size_bytes, modified}], count, truncated?}.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "path": [
+            "type": "string",
+            "description":
+              "Directory to list. Absolute ('/Users/me/Notes'), '~'-relative, or relative to a shared folder ('Notes/2026' or just '2026'). Omit or pass '' to list a shared folder's top level.",
+          ],
+          "max_entries": [
+            "type": "integer",
+            "description": "Maximum entries to return (default 200, max 500).",
+          ],
+        ] as [String: Any],
+        "required": ["path"],
+      ],
+    ],
+    [
+      "name": "read_text_file",
+      "description":
+        "Reads a UTF-8 text file inside a shared workspace folder. Binary files are rejected. Long files are truncated — the result says so, and max_bytes can be raised. Returns {path, content, bytes_returned, total_bytes, truncated?}.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "path": [
+            "type": "string",
+            "description":
+              "File to read. Absolute, '~'-relative, or relative to a shared folder.",
+          ],
+          "max_bytes": [
+            "type": "integer",
+            "description": "Maximum bytes to return (default 100000, max 400000).",
+          ],
+        ] as [String: Any],
+        "required": ["path"],
+      ],
+    ],
+    [
+      "name": "search_files",
+      "description":
+        "Finds files inside the shared workspace folders by name, and optionally by content. Dependency and build directories (.git, node_modules, build, …) are skipped. Use this when the user names a file or phrase but not its location. Returns {query, matches: [{path, name, matched, line?, snippet?}], count, files_scanned, truncated?}.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "query": [
+            "type": "string",
+            "description": "Case-insensitive substring to look for in file names (and contents when search_content is true).",
+          ],
+          "path": [
+            "type": "string",
+            "description":
+              "Optional subtree to restrict the search to. Omit to search every shared folder.",
+          ],
+          "search_content": [
+            "type": "boolean",
+            "description":
+              "When true, also scan the beginning of each text file for the query (slower). Default false.",
+          ],
+          "max_results": [
+            "type": "integer",
+            "description": "Maximum matches to return (default 50, max 100).",
+          ],
+        ] as [String: Any],
+        "required": ["query"],
+      ],
+    ],
+    [
+      "name": "remember_file_location",
+      "description":
+        "Records what lives at a path in the user's shared folders, so future conversations know where to look without searching again. Call this whenever you DISCOVER something durable about the layout — e.g. after finding that journal entries live in ~/Notes/Journal, or that a project's specs are in docs/specs. Record directories and stable collections, not one-off files you happened to open. Re-recording a known path replaces its note, so use it to correct yourself too.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "path": [
+            "type": "string",
+            "description":
+              "The directory or file being described, as the user would recognize it (e.g. '~/Notes/Journal').",
+          ],
+          "note": [
+            "type": "string",
+            "description":
+              "One short sentence about what is there and how it is organized (e.g. 'Daily journal entries, one Markdown file per day named YYYY-MM-DD.md').",
+          ],
+        ] as [String: Any],
+        "required": ["path", "note"],
+      ],
+    ],
+    [
+      "name": "forget_file_location",
+      "description":
+        "Removes previously recorded notes about where things live. Use when a note is wrong or outdated, or the user asks you to forget it. Removes every entry whose path or note contains the given text (case-insensitive).",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "matching": [
+            "type": "string",
+            "description": "Text identifying which entries to drop (e.g. 'Journal', '~/Notes').",
+          ]
+        ] as [String: Any],
+        "required": ["matching"],
+      ],
+    ],
+  ]
+
   static func allDeclarations(
     calendarConnected: Bool, trelloConnected: Bool, imageGenerationAvailable: Bool,
-    meetingContext: Bool
+    meetingContext: Bool, workspaceAvailable: Bool
   ) -> [[String: Any]] {
-    var decls = functionDeclarations + appDocsFunctionDeclarations + memoryFunctionDeclarations
+    var decls =
+      functionDeclarations + appDocsFunctionDeclarations + memoryFunctionDeclarations
+      + instructionsFunctionDeclarations
+    if workspaceAvailable {
+      decls += workspaceFunctionDeclarations
+    }
     if imageGenerationAvailable {
       decls += imageFunctionDeclarations
     }
@@ -695,6 +873,20 @@ enum ChatToolRegistry {
     "error": "Trello is not connected. Open Settings → Chat to connect."
   ]
 
+  /// Wraps a Google Tasks error with an actionable retry hint. When the failure looks like an
+  /// unknown/invalid task list (the model guessed a `task_list_id` instead of listing first), tell
+  /// it to call google_tasks_list_tasklists and retry — so it self-corrects in one round instead
+  /// of re-guessing (observed: repeated 400/404 rounds on Grok turns).
+  private static func tasksErrorWithHint(_ error: Error, taskListId: String) -> String {
+    let message = error.localizedDescription
+    let lowered = message.lowercased()
+    let looksLikeBadList = lowered.contains("not found") || lowered.contains("invalid")
+    if looksLikeBadList && taskListId != "@default" {
+      return "\(message) The task_list_id '\(taskListId)' may be invalid — call google_tasks_list_tasklists to get valid list IDs, then retry with one of those (or omit task_list_id to use the default list)."
+    }
+    return message
+  }
+
   @MainActor
   static func execute(name: String, args: [String: Any]) async -> [String: Any] {
     DebugLogger.log("GEMINI-CHAT-TOOL: execute name=\(name)")
@@ -734,6 +926,74 @@ enum ChatToolRegistry {
         .trimmingCharacters(in: .whitespacesAndNewlines)
       return GlossaryFastLearner.shared.rememberTerm(
         term, misheardAs: (misheardAs?.isEmpty ?? true) ? nil : misheardAs)
+
+    case updateInstructionsToolName:
+      guard let sectionKey = args["section"] as? String,
+            let section = editableInstructionSections[sectionKey]
+      else {
+        return [
+          "error":
+            "Unknown section. Editable sections: \(editableInstructionSections.keys.sorted().joined(separator: ", "))."
+        ]
+      }
+      guard let action = (args["action"] as? String)?.lowercased() else {
+        return ["error": "Missing required argument: action"]
+      }
+      let current = SystemPromptsStore.shared.loadSection(section) ?? ""
+      let text = (args["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+      // `read` is the documented first step: it hands the model the current rules so it can spot
+      // a contradiction instead of stacking a second, conflicting rule on top of an existing one.
+      if action == "read" {
+        return ["ok": true, "section": sectionKey, "instructions": current]
+      }
+
+      guard !text.isEmpty else {
+        return ["error": "Action '\(action)' requires the 'text' argument."]
+      }
+
+      let updated: String
+      switch action {
+      case "append":
+        updated = current.isEmpty ? text : current + "\n" + text
+      case "replace":
+        updated = text
+      case "remove":
+        let needle = text.lowercased()
+        let kept = current.components(separatedBy: .newlines)
+          .filter { !$0.lowercased().contains(needle) }
+        let joined = kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        if joined == current.trimmingCharacters(in: .whitespacesAndNewlines) {
+          return [
+            "ok": false, "status": "not_found",
+            "note": "No line contained '\(text)'. Call action='read' and match an existing line.",
+          ]
+        }
+        updated = joined
+      default:
+        return ["error": "Unknown action '\(action)'. Use read, append, replace, or remove."]
+      }
+
+      guard updated.count <= instructionsSectionLimitChars else {
+        return [
+          "error":
+            "That would grow the \(sectionKey) instructions to \(updated.count) characters (limit \(instructionsSectionLimitChars)). Consolidate or remove an existing rule first — an overlong system prompt degrades every response in that mode."
+        ]
+      }
+
+      SystemPromptsStore.shared.updateSection(section, content: updated)
+      // Recorded so a chat-made change is as reviewable and reversible as a Smart Improvement one;
+      // without this the app's behavior could drift with no trace of who changed what.
+      ContextLogger.shared.appendSystemPromptsHistory(
+        section: section, previousLength: current.count, newLength: updated.count,
+        content: updated, model: nil, source: "chat")
+      DebugLogger.log(
+        "INSTRUCTIONS-EDIT: chat \(action) on \(sectionKey) (\(current.count) → \(updated.count) chars)")
+      return [
+        "ok": true, "status": action, "section": sectionKey,
+        "instructions": updated,
+        "note": "Applied immediately. Tell the user briefly what changed; it is editable in Settings and recorded in the prompt history.",
+      ]
 
     case "google_calendar_list_events":
       guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
@@ -849,7 +1109,7 @@ enum ChatToolRegistry {
         return result
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: tasks create failed: \(error.localizedDescription)")
-        return ["error": error.localizedDescription]
+        return ["error": tasksErrorWithHint(error, taskListId: taskListId)]
       }
 
     case "google_tasks_complete":
@@ -1046,6 +1306,55 @@ enum ChatToolRegistry {
       DebugLogger.logSuccess(
         "GEMINI-CHAT-TOOL: returned doc '\(docName)' (\(content.utf8.count) bytes)")
       return ["name": doc.name, "title": doc.title, "content": content]
+
+    // Workspace file tools run detached: a directory walk over a large tree on the main
+    // thread would block the UI and trip the hang watchdog.
+    case "list_workspace_folders":
+      return await Task.detached { WorkspaceFileTools.listFolders() }.value
+
+    case "list_directory":
+      let path = args["path"] as? String ?? ""
+      let maxEntries = intArgument(args, "max_entries", default: 200)
+      return await Task.detached {
+        WorkspaceFileTools.listDirectory(path: path, maxEntries: maxEntries)
+      }.value
+
+    case "read_text_file":
+      guard let path = args["path"] as? String else {
+        return ["error": "Missing required argument: path"]
+      }
+      let maxBytes = intArgument(args, "max_bytes", default: 100_000)
+      return await Task.detached {
+        WorkspaceFileTools.readTextFile(path: path, maxBytes: maxBytes)
+      }.value
+
+    case "search_files":
+      guard let query = args["query"] as? String else {
+        return ["error": "Missing required argument: query"]
+      }
+      let scope = args["path"] as? String
+      let searchContent = boolArgument(args, "search_content", default: false)
+      let maxResults = intArgument(args, "max_results", default: 50)
+      return await Task.detached {
+        WorkspaceFileTools.searchFiles(
+          query: query, path: scope, searchContent: searchContent, maxResults: maxResults)
+      }.value
+
+    case "remember_file_location":
+      guard let path = args["path"] as? String, let note = args["note"] as? String else {
+        return ["error": "Missing required arguments: path and note"]
+      }
+      guard WorkspaceMapStore.shared.remember(path: path, note: note) else {
+        return ["error": "Both path and note must be non-empty."]
+      }
+      return ["ok": true, "path": path]
+
+    case "forget_file_location":
+      guard let matching = args["matching"] as? String else {
+        return ["error": "Missing required argument: matching"]
+      }
+      let removed = WorkspaceMapStore.shared.forget(matching: matching)
+      return ["ok": true, "removed": removed]
 
     default:
       return ["error": "Unknown tool: \(name)"]

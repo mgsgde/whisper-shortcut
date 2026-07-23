@@ -1,6 +1,6 @@
 ---
 name: review-llm-state-of-the-art
-description: Review the app's LLM architecture and interaction design against current provider best practices (OpenAI, Gemini, xAI), then deliver a prioritized "keep / change / later" roadmap with concrete implementation slices.
+description: Review the app's LLM architecture and interaction design against current provider best practices (OpenAI, Gemini, xAI, Anthropic), then deliver a prioritized "keep / change / later" roadmap with concrete implementation slices. Use when the user asks whether the app's LLM setup is still state of the art, modern, up to date, or "how people would build this today".
 ---
 
 # Review LLM State Of The Art
@@ -12,22 +12,12 @@ Goal: produce a high-signal architecture review grounded in the current codebase
 ## Scope and posture
 
 - This is a **review command** first: identify strengths, gaps, and high-impact upgrades.
-- Default output is **suggestions only**. Do not edit files unless the user says "apply", "fix", or "do it".
 - Focus on meaningful product/architecture outcomes, not style nitpicks.
 
 ## Workflow
 
 1. **Map current implementation (repo-first)**
-   - Read the primary LLM paths:
-     - `WhisperShortcut/LLMChatProvider.swift`
-     - `WhisperShortcut/GeminiChatProvider.swift`
-     - `WhisperShortcut/OpenAIChatProvider.swift`
-     - `WhisperShortcut/GrokChatProvider.swift`
-     - `WhisperShortcut/SpeechService.swift`
-     - `WhisperShortcut/AppConstants.swift`
-     - `WhisperShortcut/ChatView.swift`
-     - `WhisperShortcut/Settings/Shared/SettingsConfiguration.swift`
-     - `WhisperShortcut/TranscriptionModels.swift`
+   - Read the primary LLM paths enumerated in the `llm-model-docs` skill (provider files, `SpeechService`, `AppConstants`, `ChatView`, `SettingsConfiguration`, `TranscriptionModels`) — including the Anthropic and local/OpenAI-compatible providers, which are easy to miss.
    - Capture what the app does today: provider abstraction, streaming behavior, tool-use loop, STT/TTS path, structured outputs vs prompt parsing, model defaults, migrations, and guardrails.
 
 2. **Refresh live docs before judging modernity (mandatory)**

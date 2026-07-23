@@ -30,7 +30,6 @@ Default scope includes:
 
 ## Constraints
 
-- Suggestions only by default (no file edits) unless the user explicitly says "apply" / "fix".
 - Major claims must be grounded in live docs, not memory.
 - Keep recommendations practical and high impact; avoid fashion-driven churn.
 

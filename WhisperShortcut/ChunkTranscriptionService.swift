@@ -309,7 +309,7 @@ class ChunkTranscriptionService {
                             ]
                         )
                     ],
-                    generationConfig: .thinkingDisabled
+                    generationConfig: model.geminiTranscriptionGenerationConfig
                 )
 
                 request.httpBody = try JSONEncoder().encode(transcriptionRequest)
@@ -327,7 +327,12 @@ class ChunkTranscriptionService {
 
                 // Extract text
                 let text = geminiClient.extractText(from: response)
-                let normalizedText = TextProcessingUtility.normalizeTranscriptionText(text)
+                // A near-silent trailing chunk can trigger prompt-context confabulation on
+                // Flash-tier models; drop impossibly long output instead of injecting it.
+                let normalizedText = TextProcessingUtility.discardingImplausibleTranscript(
+                    TextProcessingUtility.normalizeTranscriptionText(text),
+                    audioDurationSeconds: chunk.endTime - chunk.startTime,
+                    mode: "CHUNK-\(chunk.index)")
 
                 DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) transcribed (\(normalizedText.count) chars)")
 

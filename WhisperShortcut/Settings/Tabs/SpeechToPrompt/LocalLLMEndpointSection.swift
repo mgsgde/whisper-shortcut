@@ -12,7 +12,7 @@ struct LocalLLMEndpointSection: View {
       SectionHeader(
         title: "Local Server",
         systemImage: "desktopcomputer",
-        subtitle: "Your local OpenAI-compatible server (Ollama, LM Studio, or any /v1/chat/completions backend). Audio is transcribed locally first (use offline Whisper in Dictate for a fully-offline flow), then the local model rewrites it."
+        subtitle: "Fully offline recipe: (1) Dictate → Offline Whisper, (2) Dictate Prompt → Local (this page), (3) keep Ollama or LM Studio running. Audio is transcribed on-device first, then rewritten by your local model — no cloud, no API key."
       )
 
       HStack(alignment: .center, spacing: 16) {

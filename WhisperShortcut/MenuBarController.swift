@@ -560,6 +560,7 @@ class MenuBarController: NSObject {
     let hasAnyKey = GeminiCredentialProvider.shared.hasCredential()
       || KeychainManager.shared.hasValidOpenAIAPIKey()
       || KeychainManager.shared.hasValidXAIAPIKey()
+      || KeychainManager.shared.hasValidAnthropicAPIKey()
 
     // Update status
     menu.item(withTag: 100)?.title = appState.statusText
@@ -685,7 +686,7 @@ class MenuBarController: NSObject {
       } else {
         PopupNotificationWindow.showError(
           selectedModel.apiKeyRequiredMessage,
-          title: "API Key Required"
+          title: selectedModel.credentialRequiredTitle
         )
       }
       return
@@ -712,7 +713,7 @@ class MenuBarController: NSObject {
       } else {
         PopupNotificationWindow.showError(
           selectedModel.apiKeyRequiredMessage,
-          title: "API Key Required"
+          title: selectedModel.credentialRequiredTitle
         )
       }
     default:
@@ -901,7 +902,7 @@ class MenuBarController: NSObject {
     guard meetingModel.hasRequiredCredential else {
       PopupNotificationWindow.showError(
         meetingModel.apiKeyRequiredMessage,
-        title: "API Key Required"
+        title: meetingModel.credentialRequiredTitle
       )
       return
     }
@@ -1511,6 +1512,34 @@ class MenuBarController: NSObject {
         }
       }
     }
+
+    // Snapshot the recording into the audio-sample pool up front, while the source WAV still
+    // exists. Capturing after transcription raced a rapid subsequent recording's beginSession()/
+    // cleanup(), which deletes the delivered chunk/merged file — ~2% of captures failed with
+    // "no such file". We keep the snapshot only if we log a successful transcription below;
+    // otherwise the defer discards it, so cancelled/failed dictations leave no orphan sample.
+    let transcriptionModelForCapture = TranscriptionModel.loadSelected()
+    let backendTag: String
+    if transcriptionModelForCapture.isOffline {
+      backendTag = "whisper"
+    } else if transcriptionModelForCapture.isOpenAI {
+      backendTag = "openai"
+    } else if transcriptionModelForCapture == .selfHostedTranscription {
+      backendTag = "self-hosted"
+    } else {
+      backendTag = "gemini"
+    }
+    let pendingAudioRef: String? = duringMeeting ? nil : ContextLogger.shared.captureDictationAudio(
+      from: audioURL,
+      backend: backendTag,
+      transcriptionModel: transcriptionModelForCapture.rawValue
+    )
+    var audioRefCommitted = false
+    defer {
+      if let ref = pendingAudioRef, !audioRefCommitted {
+        ContextLogger.shared.deleteAudioSample(named: ref)
+      }
+    }
     do {
       let result: String
       let stopTime = CFAbsoluteTimeGetCurrent()
@@ -1542,32 +1571,18 @@ class MenuBarController: NSObject {
 
       clipboardManager.copyTranscriptionToClipboard(text: result)
 
-      let transcriptionModel = TranscriptionModel.loadSelected()
       let modelDisplayName = await speechService.getTranscriptionModelInfo()
-      let backendTag: String
-      if transcriptionModel.isOffline {
-        backendTag = "whisper"
-      } else if transcriptionModel.isOpenAI {
-        backendTag = "openai"
-      } else if transcriptionModel == .selfHostedTranscription {
-        backendTag = "self-hosted"
-      } else {
-        backendTag = "gemini"
-      }
-      // Only persist audio for single-shot dictation, never for Live Meeting chunks.
-      let audioRef: String? = duringMeeting ? nil : ContextLogger.shared.captureDictationAudio(
-        from: audioURL,
-        backend: backendTag,
-        transcriptionModel: transcriptionModel.rawValue
-      )
+      // Commit the up-front audio snapshot (captured before the transcription await); the defer
+      // now keeps it instead of discarding it.
+      audioRefCommitted = true
       ContextLogger.shared.logTranscription(
         result: result,
         model: modelDisplayName,
-        audioRef: audioRef,
-        transcriptionModel: transcriptionModel.rawValue
+        audioRef: pendingAudioRef,
+        transcriptionModel: transcriptionModelForCapture.rawValue
       )
 
-      await MainActor.run {
+      let didAutoPaste = await MainActor.run {
         self.autoPasteIfEnabled()
       }
 
@@ -1579,15 +1594,24 @@ class MenuBarController: NSObject {
       
       await MainActor.run {
         PopupNotificationWindow.dismissProcessing()
-        // The recording indicator pill already flashes success for pill-driven flows —
-        // a text popup on top of that would be redundant feedback.
-        if !RecordingIndicatorManager.shared.isVisible {
-          PopupNotificationWindow.showTranscriptionResponse(result, modelInfo: modelInfo)
+        // When auto-paste ran, the pill fade-out is enough. When text stayed on the clipboard
+        // (App Store build, or auto-paste off / no Accessibility), always show an explicit
+        // ⌘V cue — otherwise users conclude dictation "did nothing" (text is in the clipboard).
+        if didAutoPaste {
+          if !RecordingIndicatorManager.shared.isVisible {
+            PopupNotificationWindow.showTranscriptionResponse(result, modelInfo: modelInfo)
+          }
+        } else {
+          PopupNotificationWindow.showTranscriptionResponse(
+            result, modelInfo: modelInfo, title: "Copied — press ⌘V to paste")
         }
         if duringMeeting {
           self.activeMeetingSegment = nil
         } else {
-          self.appState = self.appState.showSuccess("Transcription copied to clipboard")
+          let successMessage = didAutoPaste
+            ? "Transcription copied to clipboard"
+            : "Copied — press ⌘V to paste"
+          self.appState = self.appState.showSuccess(successMessage)
         }
         self.chunkStatuses = []
         if self.currentTranscriptionAudioURL == audioURL {
@@ -1647,7 +1671,7 @@ class MenuBarController: NSObject {
       let result = try await speechService.executePrompt(audioURL: audioURL, mode: .togglePrompting)
       clipboardManager.copyToClipboard(text: result)
 
-      await MainActor.run {
+      let didAutoPaste = await MainActor.run {
         self.autoPasteIfEnabled()
       }
 
@@ -1657,14 +1681,21 @@ class MenuBarController: NSObject {
 
       await MainActor.run {
         let modelInfo = self.speechService.getPromptModelInfo()
-        // Same redundancy rule as transcription: the pill's success flash suffices.
-        if !RecordingIndicatorManager.shared.isVisible {
-          PopupNotificationWindow.showPromptResponse(result, modelInfo: modelInfo)
+        if didAutoPaste {
+          if !RecordingIndicatorManager.shared.isVisible {
+            PopupNotificationWindow.showPromptResponse(result, modelInfo: modelInfo)
+          }
+        } else {
+          PopupNotificationWindow.showPromptResponse(
+            result, modelInfo: modelInfo, title: "Copied — press ⌘V to paste")
         }
         if duringMeeting {
           self.activeMeetingSegment = nil
         } else {
-          self.appState = self.appState.showSuccess("AI response copied to clipboard")
+          let successMessage = didAutoPaste
+            ? "AI response copied to clipboard"
+            : "Copied — press ⌘V to paste"
+          self.appState = self.appState.showSuccess(successMessage)
         }
         self.processedAudioURLs.remove(audioURL)
       }
@@ -2090,13 +2121,17 @@ class MenuBarController: NSObject {
     cmdUp?.post(tap: .cghidEventTap)
   }
 
-  /// Performs auto-paste if enabled in settings
-  private func autoPasteIfEnabled() {
+  /// Performs auto-paste if enabled in settings.
+  /// - Returns: `true` when a paste keystroke was scheduled; `false` when the result stays on
+  ///   the clipboard for the user to paste manually (App Store build, setting off, or missing
+  ///   Accessibility permission).
+  @discardableResult
+  private func autoPasteIfEnabled() -> Bool {
     #if APP_STORE
     // Auto-paste synthesizes a ⌘V keystroke, which requires the Accessibility permission Apple
     // rejects under Guideline 2.4.5. The App Store build omits it; the result stays on the
     // clipboard for the user to paste manually.
-    return
+    return false
     #else
     let autoPasteEnabled = UserDefaults.standard.object(forKey: UserDefaultsKeys.autoPasteAfterDictation) != nil
       ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoPasteAfterDictation)
@@ -2105,14 +2140,16 @@ class MenuBarController: NSObject {
       guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
         DebugLogger.logWarning("AUTO-PASTE: Skipped — accessibility permission not granted, showing permission dialog")
         AccessibilityPermissionManager.showAccessibilityPermissionDialog()
-        return
+        return false
       }
       // Small delay to ensure clipboard is ready
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
         self?.simulatePaste()
         DebugLogger.log("AUTO-PASTE: Pasted transcription at cursor position")
       }
+      return true
     }
+    return false
     #endif
   }
 

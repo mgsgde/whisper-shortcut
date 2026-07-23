@@ -120,7 +120,10 @@ skill — read its "Submit a version for review" section first.
      --version-id "<VERSION_ID>" --build "<BUILD_ID>" --confirm
    ```
 10. **Report**: version, build number, version state, and review state
-    (`asc review status --app 6749648401`). Release is manual after approval (default).
+    (`asc review status --app 6749648401`). Do **not** claim from memory whether release is
+    manual or automatic — read the version's `releaseType` from `asc versions list`.
+    This app has used `AFTER_APPROVAL` (goes live automatically once Apple approves, no
+    manual step) on every release through 7.89; `MANUAL` would mean the user must release it.
 
 ## Signing notes
 

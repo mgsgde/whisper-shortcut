@@ -5,6 +5,9 @@ enum ChatModelProvider: String, CaseIterable {
   case gemini
   case grok
   case openai
+  /// Anthropic Claude via the Messages API. Chat-only for the first slice (no Dictate Prompt /
+  /// TTS path — Claude has no native audio STT/TTS in this app).
+  case anthropic
   /// User-configured OpenAI-compatible chat proxy (OpenRouter, LiteLLM, …). Endpoint, model id,
   /// and optional API key are read from `OpenAIChatPreferences`. Selected explicitly in Chat.
   case customOpenAI
@@ -13,29 +16,31 @@ enum ChatModelProvider: String, CaseIterable {
   case local
 
   /// Model selected when the user invokes the bare provider slash-command
-  /// (`/gemini`, `/grok`, `/gpt`) with no qualifier, AND when `/model <provider>`
+  /// (`/gemini`, `/grok`, `/gpt`, `/claude`) with no qualifier, AND when `/model <provider>`
   /// is typed with no further narrowing keyword. Single source of truth so the
   /// autocomplete hint, the bare-command dispatch in `ChatView`, and the
   /// no-qualifier branch in `ChatModelCommandResolver` never drift apart —
   /// they all read `defaultChatModel` from here.
   var defaultChatModel: PromptModel {
     switch self {
-    case .gemini: return .gemini35Flash
+    case .gemini: return .gemini36Flash
     case .grok:   return .grok43
-    case .openai: return .openaiGPT55
+    case .openai: return .openaiGPT56Sol
+    case .anthropic: return .claudeSonnet5
     case .customOpenAI: return .customOpenAIEndpoint
     case .local:  return .localModel
     }
   }
 
   /// Slash-command alias for the bare provider command (without the leading "/"), e.g. `/gemini`.
-  /// Named after the model brand for consistency: Gemini / Grok / GPT (not the company "openai").
-  /// `/openai` is kept as a silent alias in `ChatView` for muscle memory; see `modelCommandLookup`.
+  /// Named after the model brand for consistency: Gemini / Grok / GPT / Claude (not the company).
+  /// `/openai` and `/anthropic` are silent aliases in `ChatView`; see `modelCommandLookup`.
   var commandAlias: String {
     switch self {
     case .gemini: return "gemini"
     case .grok:   return "grok"
     case .openai: return "gpt"
+    case .anthropic: return "claude"
     case .customOpenAI: return "custom"
     case .local:  return "local"
     }
@@ -44,22 +49,22 @@ enum ChatModelProvider: String, CaseIterable {
 
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
-// GA: gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro, gemini-3.1-flash-lite, gemini-3.5-flash.
-// Preview: gemini-3-flash-preview, gemini-3.1-pro-preview.
-// gemini-3-pro-preview was shut down 2026-03-09 (404) and removed; persisted values forward to
-// gemini-3.1-pro-preview via migrateLegacyPromptRawValue.
+// GA: gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash, gemini-3.6-flash.
+// Preview: gemini-3.1-pro-preview.
+// Removed and forwarded via migrateLegacyPromptRawValue: gemini-3-pro-preview (shut down
+// 2026-03-09) → gemini-3.1-pro-preview; the Gemini 2.5 family (gemini-2.5-flash / -flash-lite /
+// -pro, shutdown 2026-10-16) → gemini-3.5-flash / gemini-3.1-flash-lite / gemini-3.1-pro-preview;
+// gemini-3-flash-preview (deprecated-pending) → gemini-3.5-flash.
 // Grok model IDs: https://docs.x.ai/docs/models (grok-4-1-fast-non-reasoning was retired 2026-05-15
 // and silently redirects to grok-4.3; the case was removed — see migrateLegacyPromptRawValue).
 // OpenAI model IDs: https://platform.openai.com/docs/models.
 enum PromptModel: String, CaseIterable {
   // Gemini Models (multimodal, direct audio input)
-  case gemini25Flash = "gemini-2.5-flash"
-  case gemini25FlashLite = "gemini-2.5-flash-lite"
-  case gemini25Pro = "gemini-2.5-pro"
-  case gemini3Flash = "gemini-3-flash-preview"
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite"
+  case gemini35FlashLite = "gemini-3.5-flash-lite"
   case gemini35Flash = "gemini-3.5-flash"
+  case gemini36Flash = "gemini-3.6-flash"
 
   // Gemini native image generation/editing ("Nano Banana"). Prompt (+ optional input image) →
   // image out, via a dedicated non-streaming `:generateContent` call with `responseModalities`
@@ -74,11 +79,26 @@ enum PromptModel: String, CaseIterable {
   case grok4 = "grok-4.20-0309-non-reasoning"
   case grok4Reasoning = "grok-4.20-0309-reasoning"
   case grok43 = "grok-4.3"
+  /// xAI's current flagship: "the most intelligent and fastest model we've built"
+  /// (https://docs.x.ai/docs/models). Does NOT supersede grok-4.3 — it costs $2.00/$6.00 per 1M
+  /// against 4.3's $1.25/$2.50 and carries a 500k context where 4.3 has 1M, so both stay.
+  case grok45 = "grok-4.5"
 
   // OpenAI Models (chat + Dictate Prompt via Chat Completions API)
-  case openaiGPT5 = "gpt-5"
-  case openaiGPT5Mini = "gpt-5-mini"
+  // The case identifiers keep their historical names while the rawValue tracks the current
+  // vendor slug: `gpt-5` → `gpt-5.4` and `gpt-5-mini` → `gpt-5.4-mini` (newer GA generation,
+  // 2026-03). Persisted `gpt-5`/`gpt-5-mini` selections forward via migrateLegacyPromptRawValue.
+  case openaiGPT5 = "gpt-5.4"
+  case openaiGPT5Mini = "gpt-5.4-mini"
   case openaiGPT55 = "gpt-5.5"
+  // GPT-5.6 family (2026-07). Priced *identically* to the 5.5/5.4 tiers it mirrors — sol matches
+  // gpt-5.5 at $5/$30 and terra matches gpt-5.4 at $2.50/$15 — which is what makes those two
+  // Pareto-dominated (same price, newer generation). luna is a cheaper tier at $1/$6, above
+  // gpt-5.4-mini ($0.75/$4.50), so mini stays on the frontier.
+  // https://developers.openai.com/api/docs/pricing — verified live via scripts/test-openai-models.sh.
+  case openaiGPT56Sol = "gpt-5.6-sol"
+  case openaiGPT56Terra = "gpt-5.6-terra"
+  case openaiGPT56Luna = "gpt-5.6-luna"
   /// Audio-input chat model (renamed by OpenAI from `gpt-4o-audio-preview` → `gpt-audio`).
   /// Accepts inline `input_audio` content parts, which makes it the counterpart to Gemini for
   /// Dictate Prompt (the model "hears" the audio directly).
@@ -89,6 +109,14 @@ enum PromptModel: String, CaseIterable {
   // sentinel — the actual model tag sent to the server is read from `OpenAIChatPreferences.modelID`.
   case customOpenAIEndpoint = "custom-openai-endpoint"
 
+  // Anthropic Claude (Messages API). Chat-only — no Dictate Prompt / TTS wiring.
+  // Model IDs: https://platform.claude.com/docs/en/about-claude/models/overview (verified 2026-07).
+  case claudeSonnet5 = "claude-sonnet-5"
+  case claudeOpus48 = "claude-opus-4-8"
+  case claudeHaiku45 = "claude-haiku-4-5-20251001"
+  /// Anthropic's most capable widely released model (GA since 2026-06-09), $10/$50 per 1M.
+  case claudeFable5 = "claude-fable-5"
+
   // Local model served by an OpenAI-compatible server on the user's machine (Ollama / LM Studio).
   // The rawValue is a stable sentinel — the *actual* model tag sent to the server is configurable
   // and read from `LocalLLMPreferences.modelID`, so one enum case covers whatever the user pulled.
@@ -96,38 +124,50 @@ enum PromptModel: String, CaseIterable {
 
   var displayName: String {
     switch self {
-    case .gemini25Flash:
-      return "Gemini 2.5 Flash"
-    case .gemini25FlashLite:
-      return "Gemini 2.5 Flash-Lite"
-    case .gemini25Pro:
-      return "Gemini 2.5 Pro"
-    case .gemini3Flash:
-      return "Gemini 3 Flash"
     case .gemini31Pro:
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
       return "Gemini 3.1 Flash-Lite"
+    case .gemini35FlashLite:
+      return "Gemini 3.5 Flash-Lite"
     case .gemini35Flash:
       return "Gemini 3.5 Flash"
+    case .gemini36Flash:
+      return "Gemini 3.6 Flash"
     case .geminiImage:
       return "Gemini Image (Nano Banana 2)"
     case .geminiImagePro:
       return "Gemini Image Pro (Nano Banana Pro)"
     case .grok4:
-      return "Grok 4"
+      return "Grok 4.20"
     case .grok4Reasoning:
-      return "Grok 4 Reasoning"
+      return "Grok 4.20 Reasoning"
     case .grok43:
       return "Grok 4.3"
+    case .grok45:
+      return "Grok 4.5"
     case .openaiGPT5:
-      return "OpenAI GPT-5"
+      return "OpenAI GPT-5.4"
     case .openaiGPT5Mini:
-      return "OpenAI GPT-5 Mini"
+      return "OpenAI GPT-5.4 Mini"
     case .openaiGPT55:
       return "OpenAI GPT-5.5"
+    case .openaiGPT56Sol:
+      return "OpenAI GPT-5.6 Sol"
+    case .openaiGPT56Terra:
+      return "OpenAI GPT-5.6 Terra"
+    case .openaiGPT56Luna:
+      return "OpenAI GPT-5.6 Luna"
     case .openaiGPT4oAudio:
       return "OpenAI GPT Audio"
+    case .claudeSonnet5:
+      return "Claude Sonnet 5"
+    case .claudeOpus48:
+      return "Claude Opus 4.8"
+    case .claudeHaiku45:
+      return "Claude Haiku 4.5"
+    case .claudeFable5:
+      return "Claude Fable 5"
     case .customOpenAIEndpoint:
       return "Custom endpoint (OpenRouter / proxy)"
     case .localModel:
@@ -145,22 +185,28 @@ enum PromptModel: String, CaseIterable {
   /// May extend a provider-default alias (gemini / grok / gpt) as a prefix — that's intended.
   var shortAlias: String {
     switch self {
-    case .gemini25Flash:     return "gemini25flash"
-    case .gemini25FlashLite: return "gemini25flashlite"
-    case .gemini25Pro:       return "gemini25pro"
-    case .gemini3Flash:      return "gemini3flash"
     case .gemini31Pro:       return "gemini31pro"
     case .gemini31FlashLite: return "gemini31flashlite"
+    case .gemini35FlashLite: return "gemini35flashlite"
     case .gemini35Flash:     return "gemini35flash"
+    case .gemini36Flash:     return "gemini36flash"
     case .geminiImage:       return "geminiimage"
     case .geminiImagePro:    return "geminiimagepro"
     case .grok4:             return "grok4"
     case .grok4Reasoning:    return "grok4reasoning"
     case .grok43:            return "grok43"
-    case .openaiGPT5:        return "gpt5"
-    case .openaiGPT5Mini:    return "gpt5mini"
+    case .grok45:            return "grok45"
+    case .openaiGPT5:        return "gpt54"
+    case .openaiGPT5Mini:    return "gpt54mini"
     case .openaiGPT55:       return "gpt55"
+    case .openaiGPT56Sol:    return "gpt56sol"
+    case .openaiGPT56Terra:  return "gpt56terra"
+    case .openaiGPT56Luna:   return "gpt56luna"
     case .openaiGPT4oAudio:  return "gptaudio" // audio-only; excluded from chatModels, never surfaced
+    case .claudeSonnet5:     return "claudesonnet5"
+    case .claudeOpus48:      return "claudeopus48"
+    case .claudeHaiku45:     return "claudehaiku45"
+    case .claudeFable5:      return "claudefable5"
     case .customOpenAIEndpoint: return "custom"
     case .localModel:        return "local"
     }
@@ -168,38 +214,50 @@ enum PromptModel: String, CaseIterable {
 
   var description: String {
     switch self {
-    case .gemini25Flash:
-      return "Google's Gemini 2.5 Flash model • Fast and efficient • Multimodal audio processing"
-    case .gemini25FlashLite:
-      return "Google's Gemini 2.5 Flash-Lite • Fastest latency • Cost-efficient • Multimodal"
-    case .gemini25Pro:
-      return "Google's Gemini 2.5 Pro model • Strong reasoning and instruction following • Stable (GA)"
-    case .gemini3Flash:
-      return "Google's Gemini 3 Flash model • Latest 3-series • Pro-level intelligence at Flash speed • Multimodal"
     case .gemini31Pro:
       return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
     case .gemini31FlashLite:
       return "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Multimodal"
+    case .gemini35FlashLite:
+      return "Google's Gemini 3.5 Flash-Lite • Fastest, most cost-effective 3.5 model • High throughput • Multimodal"
     case .gemini35Flash:
-      return "Google's Gemini 3.5 Flash • Latest GA flagship Flash • Strong on agentic + coding tasks • Multimodal"
+      return "Google's Gemini 3.5 Flash • Most intelligent Flash • Strong on agentic + coding tasks • Multimodal"
+    case .gemini36Flash:
+      return "Google's Gemini 3.6 Flash • Newest Flash • Balances speed with intelligence • Multimodal"
     case .geminiImage:
       return "Google's Gemini Image (Nano Banana 2) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key"
     case .geminiImagePro:
       return "Google's Gemini Image Pro (Nano Banana Pro) • Studio-quality image generation/editing up to 4K • Best text rendering • Paid (no free tier) • Requires Gemini API key"
     case .grok4:
-      return "xAI's Grok 4 • Frontier-class intelligence • Web + X search • Requires xAI API key"
+      return "xAI's Grok 4.20 • Frontier-class intelligence • Web + X search • Requires xAI API key"
     case .grok4Reasoning:
-      return "xAI's Grok 4 Reasoning • Extended thinking for complex tasks • Web + X search • Requires xAI API key"
+      return "xAI's Grok 4.20 Reasoning • Extended thinking for complex tasks • Web + X search • Requires xAI API key"
+    case .grok45:
+      return "xAI's Grok 4.5 • xAI's most intelligent and fastest model • 500k context • Needs an xAI API key"
     case .grok43:
       return "xAI's Grok 4.3 • Flagship • Leading non-hallucination + agentic tool use • 1M context • Web + X search • Requires xAI API key"
     case .openaiGPT5:
-      return "OpenAI's GPT-5 • Flagship reasoning + tool use • Text + images • Requires OpenAI API key"
+      return "OpenAI's GPT-5.4 • Flagship reasoning + tool use • Text + images • Requires OpenAI API key"
     case .openaiGPT5Mini:
-      return "OpenAI's GPT-5 Mini • Cheaper, faster GPT-5 variant • Text + images • Requires OpenAI API key"
+      return "OpenAI's GPT-5.4 Mini • Cheaper, faster GPT-5.4 variant • Text + images • Requires OpenAI API key"
     case .openaiGPT55:
       return "OpenAI's GPT-5.5 • Newest flagship (April 2026) • Text + images • Requires OpenAI API key"
+    case .openaiGPT56Sol:
+      return "OpenAI's GPT-5.6 Sol • Flagship of the newest generation • Same price as GPT-5.5 • Needs an OpenAI API key"
+    case .openaiGPT56Terra:
+      return "OpenAI's GPT-5.6 Terra • Balanced tier of the newest generation • Half the price of Sol • Needs an OpenAI API key"
+    case .openaiGPT56Luna:
+      return "OpenAI's GPT-5.6 Luna • Cheapest of the newest generation • Fast everyday chat • Needs an OpenAI API key"
     case .openaiGPT4oAudio:
       return "OpenAI's GPT Audio • Accepts inline audio for voice-driven prompts • Requires OpenAI API key"
+    case .claudeSonnet5:
+      return "Anthropic's Claude Sonnet 5 • Best speed/intelligence balance • Text + images • Requires Anthropic API key"
+    case .claudeOpus48:
+      return "Anthropic's Claude Opus 4.8 • Flagship for complex agentic work • Text + images • Requires Anthropic API key"
+    case .claudeFable5:
+      return "Anthropic's Claude Fable 5 • Most capable Claude • Next-generation intelligence for long-running agents • Needs an Anthropic API key"
+    case .claudeHaiku45:
+      return "Anthropic's Claude Haiku 4.5 • Fastest, most cost-efficient Claude • Text + images • Requires Anthropic API key"
     case .customOpenAIEndpoint:
       return "Your own OpenAI-compatible chat server (OpenRouter, LiteLLM, …) • Configure URL + model in Settings → Chat • Uses /chat/completions only (no web search)"
     case .localModel:
@@ -214,31 +272,42 @@ enum PromptModel: String, CaseIterable {
   
   var costLevel: String {
     switch self {
-    case .gemini25Flash, .gemini25FlashLite, .gemini3Flash, .gemini31FlashLite, .gemini35Flash, .geminiImage, .customOpenAIEndpoint, .localModel:
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .geminiImage,
+         .customOpenAIEndpoint, .localModel, .claudeHaiku45:
       return "Low"
-    case .gemini25Pro, .gemini31Pro, .geminiImagePro:
+    case .gemini31Pro, .geminiImagePro:
       return "Medium"
-    case .grok4, .grok4Reasoning, .grok43:
+    case .grok4, .grok4Reasoning, .grok43, .grok45:
       return "Medium"
-    case .openaiGPT5, .openaiGPT55, .openaiGPT4oAudio:
+    case .openaiGPT5, .openaiGPT55, .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT4oAudio,
+         .claudeSonnet5:
       return "Medium"
-    case .openaiGPT5Mini:
+    case .openaiGPT5Mini, .openaiGPT56Luna:
       return "Low"
+    case .claudeOpus48, .claudeFable5:
+      return "High"
     }
   }
 
   var provider: ChatModelProvider {
+    // Deliberately exhaustive, with no `default:` — a `default: return .gemini` used to mean a
+    // newly added non-Gemini case silently claimed the Gemini credential and endpoint. Let the
+    // compiler force the decision instead.
     switch self {
-    case .grok4, .grok4Reasoning, .grok43:
+    case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash,
+         .geminiImage, .geminiImagePro:
+      return .gemini
+    case .grok4, .grok4Reasoning, .grok43, .grok45:
       return .grok
-    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
+    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
+         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna:
       return .openai
+    case .claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
+      return .anthropic
     case .customOpenAIEndpoint:
       return .customOpenAI
     case .localModel:
       return .local
-    default:
-      return .gemini
     }
   }
 
@@ -283,6 +352,7 @@ enum PromptModel: String, CaseIterable {
     case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
     case .customOpenAI: return OpenAIChatPreferences.isConfigured
     case .grok: return KeychainManager.shared.hasValidXAIAPIKey()
+    case .anthropic: return KeychainManager.shared.hasValidAnthropicAPIKey()
     // Local server needs no API key — reachability is checked at request time, not here.
     case .local: return true
     }
@@ -304,6 +374,7 @@ enum PromptModel: String, CaseIterable {
     case .openai: return "Add your OpenAI API key in Settings (General tab) to use Dictate Prompt."
     case .customOpenAI: return "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .grok: return "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings."
+    case .anthropic: return "Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .local: return "Set your local server endpoint (Ollama / LM Studio) in Dictate Prompt settings, and make sure it is running."
     }
   }
@@ -339,6 +410,41 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
+  /// Chat-lineup pruning: the newer same-provider model that supersedes this one in every
+  /// respect that matters for chat, or `nil` if this model is current. Superseded models stay
+  /// in the enum because other features still use them (Dictate Prompt takes audio-capable
+  /// Gemini models, `speakerConsolidationModel` wants the cheap tier), but every chat-facing
+  /// list (chat window picker, Settings → Chat, meeting summary, Smart Improvement) hides
+  /// them, and a persisted chat selection is rewritten to the replacement on load — staying
+  /// with the same provider so a user with only that provider's key keeps working.
+  /// The bar is *Pareto dominance*, not recency: a model is only listed here when a sibling
+  /// beats it on every axis at once (quality AND speed AND price). A higher version number is
+  /// not enough — Gemini 3.1 Flash-Lite has a 40% cheaper output rate than 3.5 Flash-Lite, and
+  /// GPT-5.4 costs half of GPT-5.5, so all of them stay on the frontier and stay selectable.
+  /// Verified against the published price tables (see the audit notes in `SettingsDefaults`).
+  var chatReplacement: PromptModel? {
+    switch self {
+    // xAI: both 4.20 variants cost exactly what grok-4.3 costs ($1.25/$2.50 per 1M, same 1M
+    // context) while xAI's own docs rank 4.3 above them — dominated on every axis.
+    // https://docs.x.ai/docs/models
+    case .grok4, .grok4Reasoning: return .grok43
+    // OpenAI: gpt-5.6-sol costs exactly what gpt-5.5 costs ($5/$30 per 1M) and gpt-5.6-terra
+    // exactly what gpt-5.4 costs ($2.50/$15) — same price, newer generation, so the 5.5/5.4
+    // pair is dominated. gpt-5.4-mini is NOT: at $0.75/$4.50 it undercuts gpt-5.6-luna ($1/$6),
+    // so it remains the cheapest OpenAI option and stays selectable.
+    // https://developers.openai.com/api/docs/pricing
+    case .openaiGPT55: return .openaiGPT56Sol
+    case .openaiGPT5: return .openaiGPT56Terra
+    default: return nil
+    }
+  }
+
+  /// True when this model is offered in the chat-facing model lists: it must be able to power
+  /// a text chat *and* not be superseded by a newer sibling.
+  var isSelectableInChat: Bool {
+    supportsTextChat && chatReplacement == nil
+  }
+
   /// Gemini-only: the `thinkingConfig` dict to send on chat requests.
   ///
   /// Gemini 3.x models use `thinkingLevel` (`minimal`/`low`/`medium`/`high`). `thinkingBudget`
@@ -356,19 +462,16 @@ enum PromptModel: String, CaseIterable {
     // Gemini 3.x — thinkingLevel
     case .gemini31Pro:
       return ["thinkingLevel": "high"]
-    case .gemini3Flash, .gemini31FlashLite, .gemini35Flash:
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
       return ["thinkingLevel": "minimal"]
-    // Gemini 2.5 — thinkingBudget
-    case .gemini25Pro:
-      return ["thinkingBudget": -1]
-    case .gemini25Flash, .gemini25FlashLite:
-      return ["thinkingBudget": 0]
     // Image-generation models — no thinking knob.
     case .geminiImage, .geminiImagePro:
       return nil
     // Non-Gemini — ignored by other providers
-    case .grok4, .grok4Reasoning, .grok43,
+    case .grok4, .grok4Reasoning, .grok43, .grok45,
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
+         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna,
+         .claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5,
          .customOpenAIEndpoint, .localModel:
       return nil
     }
@@ -394,26 +497,25 @@ enum PromptModel: String, CaseIterable {
   // Convert to TranscriptionModel for API endpoint access (for Gemini models)
   var asTranscriptionModel: TranscriptionModel? {
     switch self {
-    case .gemini25Flash:
-      return .gemini25Flash
-    case .gemini25FlashLite:
-      return .gemini25FlashLite
-    case .gemini25Pro:
-      return nil // 2.5 Pro not used for transcription in this app
-    case .gemini3Flash:
-      return .gemini3Flash
     case .gemini31Pro:
       return .gemini31Pro
     case .gemini31FlashLite:
       return .gemini31FlashLite
+    case .gemini35FlashLite:
+      return .gemini35FlashLite
     case .gemini35Flash:
       return .gemini35Flash
+    case .gemini36Flash:
+      return .gemini36Flash
     case .geminiImage, .geminiImagePro:
       return nil // image-generation models; not transcription models
-    case .grok4, .grok4Reasoning, .grok43:
+    case .grok4, .grok4Reasoning, .grok43, .grok45:
       return nil // Grok models are text-only, no audio transcription
-    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio:
+    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
+         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna:
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
+    case .claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
+      return nil // Claude is chat-only here; no audio transcription endpoint
     case .customOpenAIEndpoint, .localModel:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
     }
@@ -422,13 +524,15 @@ enum PromptModel: String, CaseIterable {
   /// Whether this model supports grounding/search.
   /// - Gemini: `google_search` + `url_context` tools on the standard endpoint.
   /// - Grok: `web_search` tool via the Responses API.
-  /// - OpenAI text chat models: `web_search` tool via the Responses API (gpt-5, gpt-5-mini).
+  /// - OpenAI text chat models: `web_search` tool via the Responses API (gpt-5.4, gpt-5.4-mini).
   /// - `gpt-4o-audio-preview` is audio-only and routes through Chat Completions only, so
   ///   the Responses API path doesn't apply.
   var supportsGrounding: Bool {
     switch self {
-    case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .localModel:
-      // Audio-only, image-generation, proxy, and local models have no web-search/grounding path.
+    case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .localModel,
+         .claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
+      // Audio-only, image-generation, proxy, local, and Anthropic models have no web-search path
+      // in this app (Claude web search would need a separate Anthropic tool wiring).
       return false
     default:
       return true
@@ -436,9 +540,10 @@ enum PromptModel: String, CaseIterable {
   }
 
   /// All models available for the chat window (all providers). Excludes audio-only
-  /// models such as `openaiGPT4oAudio`, which the OpenAI API rejects on text-only requests.
+  /// models such as `openaiGPT4oAudio`, which the OpenAI API rejects on text-only requests,
+  /// and models superseded by a newer sibling (see `chatReplacement`).
   static var chatModels: [PromptModel] {
-    return allCases.filter { $0.supportsTextChat }
+    return allCases.filter { $0.isSelectableInChat }
   }
 
   /// Chat models suitable for text-only tasks such as Smart Improvement: excludes
@@ -477,26 +582,54 @@ enum PromptModel: String, CaseIterable {
     case "gpt-4o-audio-preview":
       // Renamed by OpenAI to `gpt-audio`; the case's rawValue now matches the new slug.
       return Self.openaiGPT4oAudio.rawValue
+    case "gpt-5":
+      // Superseded by the gpt-5.4 generation (2026-03); forward to the current flagship case.
+      return Self.openaiGPT5.rawValue
+    case "gpt-5-mini":
+      // Superseded by gpt-5.4-mini; forward to the current mini case.
+      return Self.openaiGPT5Mini.rawValue
     case "gemini-3-pro-preview":
       // Shut down by Google 2026-03-09 (now returns 404); forward to the current Pro preview.
       return Self.gemini31Pro.rawValue
+    case "gemini-2.5-flash":
+      // Deprecated, shutdown 2026-10-16; Google's named replacement is gemini-3.5-flash.
+      return Self.gemini35Flash.rawValue
+    case "gemini-2.5-flash-lite":
+      // Deprecated, shutdown 2026-10-16; replacement is the current Flash-Lite.
+      return Self.gemini31FlashLite.rawValue
+    case "gemini-2.5-pro":
+      // Deprecated, shutdown 2026-10-16; replacement is the current Pro preview.
+      return Self.gemini31Pro.rawValue
+    case "gemini-3-flash-preview":
+      // Deprecated-pending; Google says use gemini-3.5-flash.
+      return Self.gemini35Flash.rawValue
     default:
       return raw
     }
   }
 
+  /// Loads any UserDefaults slot that must hold a chat-capable model (chat window, meeting
+  /// summary, Smart Improvement). On top of `loadPromptModel` it forwards a superseded
+  /// selection to its replacement and persists that, so the value always appears in the
+  /// pickers, which list `chatModels`.
+  static func loadChatSlotModel(forKey key: String, default fallback: PromptModel) -> PromptModel {
+    let loaded = loadPromptModel(forKey: key, default: fallback, validate: { $0.supportsTextChat })
+    guard let replacement = loaded.chatReplacement else { return loaded }
+    UserDefaults.standard.set(replacement.rawValue, forKey: key)
+    return replacement
+  }
+
   /// Loads the model selected for the chat window (Settings → Chat).
   static func loadSelectedChatModel() -> PromptModel {
-    loadPromptModel(
+    loadChatSlotModel(
       forKey: UserDefaultsKeys.selectedChatModel,
-      default: SettingsDefaults.selectedChatModel,
-      validate: { $0.supportsTextChat }
+      default: SettingsDefaults.selectedChatModel
     )
   }
 
   /// Loads the model selected for meeting summary (rolling and final). Settings → Live Meeting → Summary Model.
   static func loadSelectedMeetingSummary() -> PromptModel {
-    loadPromptModel(
+    loadChatSlotModel(
       forKey: UserDefaultsKeys.selectedMeetingSummaryModel,
       default: SettingsDefaults.selectedMeetingSummaryModel
     )
@@ -1263,9 +1396,13 @@ struct SettingsDefaults {
   static let readAloud: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
-  static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
-  static let selectedPromptModel = PromptModel.gemini35Flash
-  static let selectedChatModel = PromptModel.gemini35Flash
+  // Dictation runs on Flash-Lite: audio input dominates the bill (~32 tokens/s), and 3.5 Flash-Lite
+  // charges $0.30/1M for audio vs $0.50/1M on 3.1 Flash-Lite — cheaper per dictated minute despite
+  // the higher output rate. Chat/Dictate Prompt run on 3.6 Flash: same input price as 3.5 Flash
+  // ($1.50/1M) but $7.50/1M output instead of $9.00. https://ai.google.dev/gemini-api/docs/pricing
+  static let selectedTranscriptionModel = TranscriptionModel.gemini35FlashLite
+  static let selectedPromptModel = PromptModel.gemini36Flash
+  static let selectedChatModel = PromptModel.gemini36Flash
   static let chatCloseOnFocusLoss = true
   // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
   // API key from a browser) is surprising. Users can opt back in via the Behavior section.
@@ -1316,7 +1453,7 @@ struct SettingsDefaults {
   // transcript. Users who want faster updates can lower it in Chat settings.
   static let liveMeetingChunkInterval = LiveMeetingChunkInterval.sixtySeconds
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
-  static let selectedMeetingSummaryModel = PromptModel.gemini35Flash
+  static let selectedMeetingSummaryModel = PromptModel.gemini36Flash
 
   static let selectedImprovementModel = PromptModel.gemini31Pro
 

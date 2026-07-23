@@ -228,6 +228,7 @@ class ChatViewModel: ObservableObject {
   private static let newChatCommand = "/new"
   static let screenshotCommand = "/screenshot"
   private static let attachCommand = "/attach"
+  private static let folderCommand = "/folder"
   private static let settingsCommand = "/settings"
   private static let pinCommand = "/pin"
   private static let unpinCommand = "/unpin"
@@ -244,8 +245,9 @@ class ChatViewModel: ObservableObject {
 
   /// Model-switch slash commands, generated from `PromptModel` so adding a model auto-adds its
   /// alias. Grouped by provider: the provider-default alias (`/gemini`, `/grok`, `/gpt`) first,
-  /// then each of that provider's *non-default* chat models by its `shortAlias` (`/gemini3flash`,
-  /// `/gemini25pro`, `/grok4`, …); the default model is reached via the bare provider command.
+  /// then each of that provider's *non-default* chat models by its `shortAlias`
+  /// (`/gemini35flash`, `/gemini35flashlite`, …); the default model is reached via the bare
+  /// provider command.
   /// Single source for autocomplete, tab-completion, `knownSlashCommands`, dispatch, and the
   /// system-prompt command list — so none can drift. `/openai` is NOT here: it's a silent,
   /// dispatch-only alias for `/gpt` (see `modelCommandLookup`).
@@ -268,6 +270,7 @@ class ChatViewModel: ObservableObject {
   static let modelCommandLookup: [String: PromptModel] = {
     var dict = Dictionary(uniqueKeysWithValues: modelCommands.map { ($0.command, $0.model) })
     dict["/openai"] = ChatModelProvider.openai.defaultChatModel // silent alias for /gpt
+    dict["/anthropic"] = ChatModelProvider.anthropic.defaultChatModel // silent alias for /claude
     return dict
   }()
 
@@ -277,6 +280,7 @@ class ChatViewModel: ObservableObject {
     ("/new", "Start a new chat (previous chat stays in history)"),
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
     ("/attach", "Open the file picker to attach files (PDF, images, text)"),
+    ("/folder", "Share a folder so the chat can list, read, and search files in it"),
     ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
   ]
   static let commandsAfterModels: [(command: String, description: String)] = [
@@ -295,14 +299,16 @@ class ChatViewModel: ObservableObject {
     commandsBeforeModels + modelCommands.map { ($0.command, $0.description) } + commandsAfterModels
 
   /// Model-switch commands for display, ordered most-recently-used first (see `recordModelUse`).
-  /// The currently active model is omitted entirely — re-selecting it is a no-op — so the top row
-  /// is the most-recently-used *other* model (one Enter away from toggling back). Never-used models
-  /// keep the canonical provider-grouped order at the bottom.
+  /// The currently active model is pulled out of the recency sort and appended last, labelled
+  /// "Current model" — so the top row is the most-recently-used *other* model (one Enter away
+  /// from toggling back), while the list still shows the complete lineup: a model missing from
+  /// the suggestions reads as "the app dropped it", which it never is. Never-used models keep
+  /// the canonical provider-grouped order at the bottom.
   func recentlyOrderedModelCommands() -> [(command: String, description: String)] {
     let recency = Self.loadModelRecency()
     let current = PromptModel.loadSelectedChatModel()
     let rank: (PromptModel) -> Int = { recency.firstIndex(of: $0.rawValue) ?? Int.max }
-    return Self.modelCommands
+    let others = Self.modelCommands
       .filter { $0.model != current }
       .enumerated()
       .sorted { a, b in
@@ -310,6 +316,10 @@ class ChatViewModel: ObservableObject {
         return ra != rb ? ra < rb : a.offset < b.offset
       }
       .map { ($0.element.command, $0.element.description) }
+    guard let currentEntry = Self.modelCommands.first(where: { $0.model == current }) else {
+      return others
+    }
+    return others + [(currentEntry.command, "Current model — \(current.displayName)")]
   }
 
   /// Commands to show in UI: fixed commands around a recency-sorted model block (and excludes
@@ -576,6 +586,56 @@ class ChatViewModel: ObservableObject {
     }
   }
 
+  // MARK: - Workspace folders
+
+  /// Shares folders with the chat from inside the chat, via `/folder` or the toolbar button.
+  ///
+  /// Picking here is what actually grants the sandboxed app access — the panel hands back a
+  /// security-scoped bookmark. Settings → Chat lists and removes them; this is the in-the-moment
+  /// grant, because "let me read that folder" is a thought the user has *while* chatting.
+  func shareFolder() {
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.allowsMultipleSelection = true
+    panel.prompt = "Share"
+    panel.message = "Choose folders the chat may read"
+    guard panel.runModal() == .OK else { return }
+    addWorkspaceFolders(panel.urls)
+  }
+
+  /// Adds folders dropped onto the chat window. A drop is a user-intent gesture, so macOS grants
+  /// the sandbox access to the dropped URL exactly as it does for an open panel — which is what
+  /// makes the bookmark below valid. Non-directories are ignored: dropping a *file* into a chat
+  /// means "attach this", not "share its folder", and silently widening access would be wrong.
+  func addWorkspaceFolders(_ urls: [URL]) {
+    var added: [String] = []
+    var failed: [String] = []
+    for url in urls {
+      var isDirectory: ObjCBool = false
+      guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+        isDirectory.boolValue
+      else { continue }
+      if WorkspaceFolders.addFolder(url) {
+        added.append(url.lastPathComponent)
+      } else {
+        failed.append(url.lastPathComponent)
+      }
+    }
+
+    if !failed.isEmpty {
+      errorMessage = "Could not share: \(failed.joined(separator: ", "))"
+    }
+    guard !added.isEmpty else { return }
+
+    let names = added.map { "`\($0)`" }.joined(separator: ", ")
+    let all = WorkspaceFolders.displayPaths.map { ($0 as NSString).abbreviatingWithTildeInPath }
+    appendModelMessage(
+      "Shared \(names) with this chat. I can now list, read, and search files in: "
+        + all.map { "`\($0)`" }.joined(separator: ", ")
+        + "\n\nManage or remove folders in Settings → Chat → Workspace Folders.")
+  }
+
   private static func mimeType(for url: URL) -> String {
     UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
       ?? "application/octet-stream"
@@ -740,6 +800,12 @@ class ChatViewModel: ObservableObject {
       // displayed/persisted reply is always `markerPrefix + streamed`.
       var markerPrefix = ""
       var streamed = ""
+      // Gemini 3.x can leak `start_thought`/`end_thought` into the visible answer, but only ever
+      // in its opening region (see `stripLeakedThoughtTokens`). Once the reply has grown past that
+      // zone we stop re-scanning the whole accumulated string on every token — that scan was O(N)
+      // per token (O(N²) over the reply) on the MainActor. Reset when `streamed` restarts after an
+      // image-marker fold, since fresh narration begins there.
+      var thoughtStripSettled = false
       do {
         let placeholder = ChatMessage(id: placeholderId, role: .model, content: "")
         appendMessage(placeholder, toSessionId: sessionId)
@@ -783,7 +849,14 @@ class ChatViewModel: ObservableObject {
             switch event {
             case .textDelta(let delta):
               roundText += delta
-              streamed = Self.stripLeakedThoughtTokens(streamed + delta)
+              streamed += delta
+              // Only strip while still in the marker zone. Once stripped, `streamed` never
+              // re-acquires a start-anchored marker (deltas append at the end), so re-scanning
+              // the whole string every subsequent token is pure waste.
+              if !thoughtStripSettled {
+                streamed = Self.stripLeakedThoughtTokens(streamed)
+                if streamed.utf8.count > 512 { thoughtStripSettled = true }
+              }
               streamingBuffer.enqueueUpdate(markerPrefix + streamed)
             case .functionCall(let name, let args, let thoughtSignature):
               pendingCalls.append((name, args, thoughtSignature))
@@ -814,6 +887,7 @@ class ChatViewModel: ObservableObject {
             let current = markerPrefix + streamed
             markerPrefix = (current.isEmpty ? joined : current + "\n\n" + joined) + "\n\n"
             streamed = ""
+            thoughtStripSettled = false
             streamingBuffer.setContentImmediate(markerPrefix)
           }
           currentContents.append(contentsOf: turns)
@@ -823,7 +897,10 @@ class ChatViewModel: ObservableObject {
         // This happens e.g. when the tool loop exhausts mid-batch (lots of
         // function calls, no narration) — the assistant bubble would otherwise
         // be empty, hiding the failure.
-        var reply = markerPrefix + streamed
+        // Final belt-and-suspenders strip: streaming now stops re-scanning past the marker zone
+        // (see `thoughtStripSettled`), so a marker leaking later would otherwise reach the saved
+        // message. One strip here restores the "user never sees them" guarantee at O(N)-once cost.
+        var reply = Self.stripLeakedThoughtTokens(markerPrefix + streamed)
         if reply.isEmpty {
           if toolLoopExhausted {
             reply = "_I ran out of tool-call rounds before I could finish. Try narrowing the request — e.g. name a specific sender, subject, or date range._"
@@ -873,11 +950,11 @@ class ChatViewModel: ObservableObject {
         DebugLogger.log("CHAT: Send cancelled (superseded=\(superseded))")
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
-          partial: markerPrefix + streamed, forceRemove: superseded)
+          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed), forceRemove: superseded)
       } catch {
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
-          partial: markerPrefix + streamed, forceRemove: false)
+          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed), forceRemove: false)
         if sessionId == session.id { errorMessage = friendlyError(error) }
         DebugLogger.logError("CHAT: \(error.localizedDescription)")
       }
@@ -898,6 +975,11 @@ class ChatViewModel: ObservableObject {
     case .openai:
       guard KeychainManager.shared.hasValidOpenAIAPIKey() else {
         errorMessage = "Add your OpenAI API key in Settings to use OpenAI models."
+        return false
+      }
+    case .anthropic:
+      guard KeychainManager.shared.hasValidAnthropicAPIKey() else {
+        errorMessage = "Add your Anthropic API key in Settings to use Claude models."
         return false
       }
     case .customOpenAI:
@@ -927,7 +1009,8 @@ class ChatViewModel: ObservableObject {
       calendarConnected: calendarConnected,
       trelloConnected: trelloConnected,
       imageGenerationAvailable: imageGenerationAvailable,
-      meetingContext: session.isMeeting
+      meetingContext: session.isMeeting,
+      workspaceAvailable: WorkspaceFolders.hasFolders
     ).compactMap { decl in
       guard let name = decl["name"] as? String,
             let desc = decl["description"] as? String,
@@ -1119,7 +1202,7 @@ class ChatViewModel: ObservableObject {
     }
 
     // Model-switch commands (provider-default aliases /gemini /grok /gpt, the per-model short
-    // aliases /gemini3flash /gemini25pro /grok4 …, and the silent /openai alias). Generated from PromptModel,
+    // aliases /gemini35flash /gemini35flashlite …, and the silent /openai alias). Generated from PromptModel,
     // so this one lookup covers every model without per-command branches.
     if let model = Self.modelCommandLookup[lower] {
       inputText = ""
@@ -1128,7 +1211,7 @@ class ChatViewModel: ObservableObject {
     }
 
     if lower == Self.newChatCommand || lower == Self.screenshotCommand
-        || lower == Self.attachCommand
+        || lower == Self.attachCommand || lower == Self.folderCommand
         || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
         || lower == Self.copyCommand {
       inputText = ""
@@ -1140,6 +1223,7 @@ class ChatViewModel: ObservableObject {
         }
       }
       else if lower == Self.attachCommand { attachFile() }
+      else if lower == Self.folderCommand { shareFolder() }
       else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
       else if lower == Self.pinCommand { togglePin() }
       else if lower == Self.unpinCommand { unpin() }
@@ -1238,6 +1322,22 @@ class ChatViewModel: ObservableObject {
     if !memory.isEmpty {
       text += "\n\n---\n\nPersistent memory — durable facts you have remembered about the user. Use them to personalize answers; do not repeat them back verbatim unless relevant.\n\(memory)"
     }
+    // Shared folders + what we've learned about them. The folder list is injected directly rather
+    // than left to `list_workspace_folders`: it is one line per folder and always accurate, and
+    // spending a whole tool round just to learn "which folders exist" delays every file answer.
+    // Mirrors the gating in buildToolDeclarations.
+    let sharedFolders = WorkspaceFolders.displayPaths
+    if !sharedFolders.isEmpty {
+      let list = sharedFolders
+        .map { "- `\(($0 as NSString).abbreviatingWithTildeInPath)`" }
+        .joined(separator: "\n")
+      text += "\n\n---\n\nFILES: The user has shared these folders on their Mac with you:\n\(list)\nYou can read them with `list_directory`, `read_text_file`, and `search_files` — read-only, and nothing outside these folders is reachable. When the user refers to their own notes, documents, or projects, look there instead of saying you have no access."
+      let map = WorkspaceMapStore.shared.loadMap()
+      if !map.isEmpty {
+        text += "\n\nWhat you have learned about where things live:\n\(map)\nTreat this as a starting point, not gospel — verify with a tool call before relying on it, and call `remember_file_location` to correct an entry that turns out to be wrong."
+      }
+      text += "\n\nWhenever you discover something durable about the layout of these folders (what a directory holds, how its files are named), call `remember_file_location` so future conversations start there instead of searching again. Record directories and stable collections, not one-off files. Use `forget_file_location` for entries that are wrong or outdated."
+    }
     if GoogleAccountOAuthService.shared.isConnected {
       text += "\n\nIMPORTANT — you are CONNECTED to the user's own Google account with LIVE access to their Calendar, Tasks, and Gmail through the tools below. When the user asks anything about their email, inbox, messages, calendar, schedule, events, meetings, appointments, tasks, to-dos, or reminders, you MUST call the relevant tool to fetch the real data BEFORE answering — on the very first turn, without waiting to be asked again. NEVER reply that you lack access, cannot see their inbox/calendar, or that they should paste/forward/attach the content: you have direct access, so use it. You have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks."
     }
@@ -1246,6 +1346,7 @@ class ChatViewModel: ObservableObject {
       text += "\n\nIMAGE GENERATION: You can create and edit real images via the `generate_image` tool. When the user asks you to draw, create, render, visualize, edit, or annotate an image, ALWAYS call generate_image — never approximate with ASCII art, SVG, or code blocks. To annotate or edit an image the user attached, pass use_attached_image=true with a precise instruction. The finished image appears in the chat automatically."
     }
     text += "\n\nMEMORY: Use `remember_about_user` to save durable facts the user shares or asks you to keep, and `forget_about_user` to drop ones that are wrong or outdated (the tool descriptions spell out what qualifies). Acknowledge briefly what changed — never dump the whole memory back."
+    text += "\n\nCHANGING THE APP'S BEHAVIOR: The user can reconfigure WhisperShortcut by asking you, instead of opening Settings. Route each kind of request to the right tool: a lasting rule for how Dictate Prompt should rewrite text → `update_app_instructions` (section 'dictate_prompt'); the correct spelling of a name or term for dictation → `remember_dictation_term`; a durable fact about the user → `remember_about_user`. With `update_app_instructions` ALWAYS read first and then replace or remove a conflicting rule instead of appending a contradictory second one — two rules that fight each other degrade the mode in ways the user cannot trace back. Never claim you changed the app's behavior unless the tool call succeeded."
     // Mirrors buildToolDeclarations' meetingContext gating.
     if session.isMeeting {
       text += "\n\nMEETING EDITING: This chat is attached to a meeting. When the user asks to change, refine, reformat, shorten, or correct the meeting SUMMARY, call `refine_meeting_summary` with their instruction — do not just reply with a rewritten summary in chat. When the user points out a misrecognized name or term in the TRANSCRIPT (e.g. 'it's ParkDepot, not Park Depot'), call `correct_transcript_term` with the exact wrong and corrected spelling — this is a literal find-and-replace that keeps the transcript faithful; never rewrite or paraphrase the transcript yourself."
@@ -2419,11 +2520,63 @@ struct ChatView: View {
   @State private var hasTriggeredNewSessionOnAppear: Bool = false
   @AppStorage(UserDefaultsKeys.chatSidebarVisible) private var sidebarVisible: Bool = true
   @State private var meetingTab: MeetingTab = .chat
+  /// True while a folder is being dragged over the window, so the drop target is visible.
+  @State private var isFolderDropTargeted: Bool = false
 
   private enum MeetingTab: String, CaseIterable {
     case chat = "Chat"
     case transcript = "Transcript"
     case summary = "Summary"
+  }
+
+  // MARK: - Folder drop
+
+  /// Resolves dropped items to URLs and hands the directories among them to the view model.
+  /// Returns true whenever the drop carried file URLs at all — returning false would make the
+  /// item snap back, which reads as "broken" even when the user simply dropped a file.
+  private func handleFolderDrop(_ providers: [NSItemProvider]) -> Bool {
+    let fileProviders = providers.filter {
+      $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+    }
+    guard !fileProviders.isEmpty else { return false }
+    Task { @MainActor in
+      var urls: [URL] = []
+      for provider in fileProviders {
+        if let url = await Self.loadFileURL(from: provider) { urls.append(url) }
+      }
+      viewModel.addWorkspaceFolders(urls)
+    }
+    return true
+  }
+
+  private static func loadFileURL(from provider: NSItemProvider) async -> URL? {
+    await withCheckedContinuation { continuation in
+      _ = provider.loadObject(ofClass: URL.self) { url, _ in
+        continuation.resume(returning: url)
+      }
+    }
+  }
+
+  private var folderDropOverlay: some View {
+    ZStack {
+      ChatTheme.windowBackground.opacity(0.85)
+      VStack(spacing: 10) {
+        Image(systemName: "folder.badge.plus")
+          .font(.system(size: 40))
+          .foregroundColor(.accentColor)
+        Text("Drop a folder to share it with the chat")
+          .font(.headline)
+        Text("The chat can then list, read, and search files inside it.")
+          .font(.caption)
+          .foregroundColor(ChatTheme.secondaryText)
+      }
+    }
+    .overlay(
+      RoundedRectangle(cornerRadius: 12)
+        .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+        .padding(8)
+    )
+    .allowsHitTesting(false)
   }
 
   init(meetingContextProvider: (() -> String?)? = nil, createNewSessionOnAppear: Bool = false, store: ChatSessionStore = .shared, singleChatOnly: Bool = false) {
@@ -2476,6 +2629,14 @@ struct ChatView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(ChatTheme.windowBackground)
+    // Dropping a folder anywhere in the window shares it — the macOS-native counterpart to
+    // /folder. The drop gesture itself is what grants the sandbox access to the folder.
+    .onDrop(of: [.fileURL], isTargeted: $isFolderDropTargeted) { providers in
+      handleFolderDrop(providers)
+    }
+    .overlay {
+      if isFolderDropTargeted { folderDropOverlay }
+    }
     .background(
       Button(viewModel.isCurrentSessionMeeting ? "Archive current meeting" : "Archive current chat") {
         viewModel.archiveSession(id: viewModel.currentSessionId)
@@ -3159,12 +3320,14 @@ struct ChatInputAreaView: View {
 
   /// Current chat model for display (with migration); syncs with UserDefaults via @AppStorage.
   /// Audio-only models (e.g. `openaiGPT4oAudio`) fall back to the default since they can't
-  /// power text chat.
+  /// power text chat; superseded models resolve to their replacement so the label always
+  /// matches an entry in the picker.
   private var resolvedOpenGeminiModel: PromptModel {
     let migratedRaw = PromptModel.migrateLegacyPromptRawValue(selectedChatModelRaw)
     let resolved = PromptModel(rawValue: migratedRaw)
       .map { PromptModel.migrateIfDeprecated($0) }
       ?? SettingsDefaults.selectedChatModel
+    if let replacement = resolved.chatReplacement { return replacement }
     return resolved.supportsTextChat ? resolved : SettingsDefaults.selectedChatModel
   }
 
@@ -3408,6 +3571,21 @@ struct ChatInputAreaView: View {
         .buttonStyle(.plain)
         .disabled(viewModel.isSending)
         .help("Attach a file (PDF, image, …) to your next message.")
+        .pointerCursorOnHover()
+
+        Button(action: { viewModel.shareFolder() }) {
+          HStack(spacing: 4) {
+            Image(systemName: "folder").font(.caption)
+            Text("/folder").font(.caption)
+          }
+          .foregroundColor(ChatTheme.secondaryText)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 5)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isSending)
+        .help("Share a folder so the chat can list, read, and search files in it. You can also drop a folder onto this window.")
         .pointerCursorOnHover()
 
         Button(action: { Task { await viewModel.captureScreenshot() } }) {
@@ -3963,7 +4141,8 @@ private struct ModelReplyView: View {
   private static let segmentCache = NSCache<NSString, ModelReplySegmentBox>()
 
   private static func cachedSegments(
-    content: String, sources: [GroundingSource], groundingSupports: [GroundingSupport]
+    content: String, sources: [GroundingSource], groundingSupports: [GroundingSupport],
+    store: Bool
   ) -> [ModelReplyRenderSegment] {
     var hasher = Hasher()
     hasher.combine(content)
@@ -3982,12 +4161,17 @@ private struct ModelReplyView: View {
     }
     let blocks = buildReplyBlocks(content: content, sources: sources, groundingSupports: groundingSupports)
     let segments = mergedSegments(from: blocks)
-    segmentCache.setObject(ModelReplySegmentBox(segments), forKey: key)
+    // During streaming each flush produces a new `content` string, so caching would fill the cache
+    // with throwaway keys that are never re-read (the final finalized render caches for real).
+    if store {
+      segmentCache.setObject(ModelReplySegmentBox(segments), forKey: key)
+    }
     return segments
   }
 
   var body: some View {
-    let segments = Self.cachedSegments(content: content, sources: sources, groundingSupports: groundingSupports)
+    let segments = Self.cachedSegments(
+      content: content, sources: sources, groundingSupports: groundingSupports, store: !isStreaming)
     return VStack(alignment: .leading, spacing: 18) {
       ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
         switch segment {

@@ -50,9 +50,9 @@ class SettingsViewModel: ObservableObject {
       data.whisperLanguage = SettingsDefaults.whisperLanguage
     }
 
-    data.selectedChatModel = PromptModel.loadPromptModel(
+    data.selectedChatModel = PromptModel.loadChatSlotModel(
       forKey: UserDefaultsKeys.selectedChatModel, default: SettingsDefaults.selectedChatModel)
-    data.selectedImprovementModel = PromptModel.loadPromptModel(
+    data.selectedImprovementModel = PromptModel.loadChatSlotModel(
       forKey: UserDefaultsKeys.selectedImprovementModel, default: SettingsDefaults.selectedImprovementModel)
 
     // Load popup notifications setting
@@ -127,7 +127,7 @@ class SettingsViewModel: ObservableObject {
     // fall back to the Dictate model instead of forwarding to the replacement).
     data.selectedTranscriptionModelForMeetings = TranscriptionModel.loadSelectedForMeeting()
 
-    data.selectedMeetingSummaryModel = PromptModel.loadPromptModel(
+    data.selectedMeetingSummaryModel = PromptModel.loadChatSlotModel(
       forKey: UserDefaultsKeys.selectedMeetingSummaryModel,
       default: SettingsDefaults.selectedMeetingSummaryModel)
 
@@ -244,8 +244,12 @@ class SettingsViewModel: ObservableObject {
       return error
     }
 
-    // Save Google API key
-    if !KeychainManager.shared.saveGoogleAPIKey(data.googleAPIKey) {
+    // Save Google API key. The key field's onChange already persists every edit (including
+    // clearing the field) live, so this write is only a safety net for a non-empty value.
+    // Never write an empty value here: after a failed Keychain read at load,
+    // data.googleAPIKey is "" while the real key is still stored — persisting "" would
+    // wipe it.
+    if !data.googleAPIKey.isEmpty, !KeychainManager.shared.saveGoogleAPIKey(data.googleAPIKey) {
       DebugLogger.logError("SETTINGS: Failed to save Google API key to Keychain")
     }
 

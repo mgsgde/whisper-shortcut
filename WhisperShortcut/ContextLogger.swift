@@ -13,7 +13,7 @@ struct InteractionLogEntry: Codable {
   let voice: String?
   /// Filename inside `UserContext/audio-samples/` if the dictation audio was retained for Smart Improvement.
   let audioRef: String?
-  /// Stable rawValue of the TranscriptionModel used for this entry (e.g. "whisper-base", "gemini-2.5-flash").
+  /// Stable rawValue of the TranscriptionModel used for this entry (e.g. "whisper-base", "gemini-3.5-flash").
   /// Distinct from `model` (display name) so Smart Improvement can do model-asymmetry comparisons.
   let transcriptionModel: String?
   /// Whether a screenshot was attached to a `prompt`-mode request. Lets analysis distinguish
@@ -214,6 +214,15 @@ class ContextLogger {
     }
   }
 
+  /// Deletes a single captured audio sample by its filename (as returned by
+  /// `captureDictationAudio`). Used to discard a sample captured up front when the dictation
+  /// turns out cancelled, stale, or failed, so those samples never linger in the pool.
+  func deleteAudioSample(named filename: String) {
+    guard !filename.isEmpty else { return }
+    let url = audioSamplesDirectoryURL.appendingPathComponent(filename)
+    try? FileManager.default.removeItem(at: url)
+  }
+
   /// Removes the entire audio sample pool. Returns the number of files deleted.
   /// Used when wiping all data; Smart Improvement no longer calls this — audio is now retained across
   /// runs and bounded by age (see `pruneExpiredAudioSamples`).
@@ -364,13 +373,16 @@ class ContextLogger {
   }
 
   /// Appends one entry to the unified system prompts history (system-prompts-history.jsonl).
-  func appendSystemPromptsHistory(section: SystemPromptSection, previousLength: Int, newLength: Int, content: String, model: String? = nil) {
+  /// `source` distinguishes who made the change — "auto" for Smart Improvement, "chat" for an
+  /// `update_app_instructions` tool call. Both write the same sections, so without it the history
+  /// can't tell you which writer caused a behavior change.
+  func appendSystemPromptsHistory(section: SystemPromptSection, previousLength: Int, newLength: Int, content: String, model: String? = nil, source: String = "auto") {
     queue.async { [weak self] in
       guard let self else { return }
       let entry = UnifiedSystemPromptHistoryEntry(
         ts: self.iso8601Now(),
         section: section.rawValue,
-        source: "auto",
+        source: source,
         previousLength: previousLength,
         newLength: newLength,
         content: content,

@@ -108,11 +108,9 @@ class AutoPromptImprovementScheduler {
 
   /// Current Smart Improvement model display name (e.g. "Gemini 3 Flash"). Same source as ContextDerivation.
   private func currentImprovementModelDisplayName() -> String? {
-    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedImprovementModel)
-      ?? SettingsDefaults.selectedImprovementModel.rawValue
-    let migratedRaw = PromptModel.migrateLegacyPromptRawValue(raw)
-    guard let model = PromptModel(rawValue: migratedRaw) else { return nil }
-    return model.displayName
+    PromptModel.loadChatSlotModel(
+      forKey: UserDefaultsKeys.selectedImprovementModel,
+      default: SettingsDefaults.selectedImprovementModel).displayName
   }
 
   /// Maps each focus to the interaction `mode` field that counts as its primary signal. Mirrors ContextDerivation.primaryMode.

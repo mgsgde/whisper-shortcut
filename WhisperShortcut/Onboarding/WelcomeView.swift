@@ -49,6 +49,7 @@ struct WelcomeView: View {
   @State private var hasGeminiKey: Bool = KeychainManager.shared.hasValidGoogleAPIKey()
   @State private var hasOpenAIKey: Bool = KeychainManager.shared.hasValidOpenAIAPIKey()
   @State private var hasXAIKey: Bool = KeychainManager.shared.hasValidXAIAPIKey()
+  @State private var hasAnthropicKey: Bool = KeychainManager.shared.hasValidAnthropicAPIKey()
   /// True once an offline Whisper model is downloaded, which lets a user finish
   /// setup and dictate with no provider key at all (the key step's other exit).
   @State private var offlineReady: Bool = ModelManager.shared.isModelAvailable(.whisperBase)
@@ -74,6 +75,7 @@ struct WelcomeView: View {
             hasGeminiKey: $hasGeminiKey,
             hasOpenAIKey: $hasOpenAIKey,
             hasXAIKey: $hasXAIKey,
+            hasAnthropicKey: $hasAnthropicKey,
             offlineReady: $offlineReady
           )
         case .permissions:
@@ -188,7 +190,7 @@ struct WelcomeView: View {
   private var canAdvance: Bool {
     switch step {
     case .apiKeys:
-      return hasGeminiKey || hasOpenAIKey || hasXAIKey || offlineReady
+      return hasGeminiKey || hasOpenAIKey || hasXAIKey || hasAnthropicKey || offlineReady
     case .permissions:
       return micStatus == .granted
     default:
@@ -218,6 +220,7 @@ struct WelcomeView: View {
     hasGeminiKey = KeychainManager.shared.hasValidGoogleAPIKey()
     hasOpenAIKey = KeychainManager.shared.hasValidOpenAIAPIKey()
     hasXAIKey = KeychainManager.shared.hasValidXAIAPIKey()
+    hasAnthropicKey = KeychainManager.shared.hasValidAnthropicAPIKey()
     offlineReady = ModelManager.shared.isModelAvailable(.whisperBase)
     micStatus = PermissionStatusChecker.status(for: .microphone)
   }

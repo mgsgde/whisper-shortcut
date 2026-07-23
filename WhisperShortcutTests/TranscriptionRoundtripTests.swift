@@ -65,7 +65,10 @@ struct TranscriptionRoundtripTests {
     func gemini() async throws {
         let text = try await SpeechService().transcribe(
             audioURL: Self.sampleAudioURL,
-            preferredModel: .gemini25FlashLite
+            // Track the shipped default so this roundtrip always exercises the model users
+            // actually dictate with (past audio-payload bugs passed on one Gemini tier and
+            // failed on another).
+            preferredModel: SettingsDefaults.selectedTranscriptionModel
         )
         #expect(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }

@@ -107,10 +107,18 @@ esac
 # Use macOS unified logging (full path so shell builtin 'log' is not used)
 LOG_CMD_BIN="/usr/bin/log"
 # Build the log command - Filter for ONLY our app's logs using subsystem
-if [[ -n "$FILTER" ]]; then
-    LOG_CMD="$LOG_CMD_BIN stream --predicate 'subsystem == \"com.magnusgoedde.whispershortcut\" AND eventMessage CONTAINS \"$FILTER\"' --style $LOG_STYLE"
+# NOTE: --last is only used when -t was given; otherwise this is a live `stream` that never exits.
+if [[ -n "$TIME_RANGE" ]]; then
+    LOG_SUBCMD="show"
+    LOG_TAIL=" --last $TIME_RANGE"
 else
-    LOG_CMD="$LOG_CMD_BIN stream --predicate 'subsystem == \"com.magnusgoedde.whispershortcut\"' --style $LOG_STYLE"
+    LOG_SUBCMD="stream"
+    LOG_TAIL=""
+fi
+if [[ -n "$FILTER" ]]; then
+    LOG_CMD="$LOG_CMD_BIN $LOG_SUBCMD --predicate 'subsystem == \"com.magnusgoedde.whispershortcut\" AND eventMessage CONTAINS \"$FILTER\"'$LOG_TAIL --style $LOG_STYLE"
+else
+    LOG_CMD="$LOG_CMD_BIN $LOG_SUBCMD --predicate 'subsystem == \"com.magnusgoedde.whispershortcut\"'$LOG_TAIL --style $LOG_STYLE"
 fi
 
 # Clear console only when interactive (avoid failure when piped or no TTY)
@@ -151,7 +159,11 @@ echo -e "  • Use -f 'SPEED:' to see latency/timing (transcription, API calls)"
 echo ""
 
 # Execute the log command
-echo -e "${GREEN}📋 Starting log stream...${NC}"
+if [[ -n "$TIME_RANGE" ]]; then
+    echo -e "${GREEN}📋 Showing logs from the last $TIME_RANGE...${NC}"
+else
+    echo -e "${GREEN}📋 Starting live log stream (no -t given — this will not exit; Ctrl+C to stop)...${NC}"
+fi
 echo ""
 
 if [[ -n "$TIME_RANGE" ]]; then
