@@ -129,8 +129,34 @@ class SpeechService {
   /// phrase instead of the actual audio in every test run). Names and terms of up to 3 words
   /// ("Cursor CLI", "EnBW AG", "Magnus Gödde") pass through.
   private func sanitizedGlossaryForInstructionPrompt() -> String {
-    SystemPromptsStore.shared.loadWhisperGlossary()
+    let lines = SystemPromptsStore.shared.loadWhisperGlossary()
       .components(separatedBy: .newlines)
+
+    // Spellings the user explicitly marked as WRONG (`Kimi (not "Kimmi")`) must never be offered
+    // as reference vocabulary. `GlossaryFastLearner` writes bare terms one per line, so a form it
+    // auto-learned before the user corrected it otherwise sits in the list right next to its own
+    // correction — the model is told both spellings are right and the correction cancels out.
+    // Stripping the annotation is not enough; the rejected form has to be filtered out by name.
+    var rejected = Set<String>()
+    for line in lines {
+      var cursor = Substring(line)
+      while let range = cursor.range(
+        of: #"\((?:not|nicht)\s+[^)]*\)"#, options: [.regularExpression, .caseInsensitive])
+      {
+        let inner = cursor[range]
+          .replacingOccurrences(
+            of: #"^\((?:not|nicht)\s+"#, with: "",
+            options: [.regularExpression, .caseInsensitive])
+          .replacingOccurrences(of: ")", with: "")
+        for form in inner.components(separatedBy: ",") {
+          let cleaned = form.trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
+          if !cleaned.isEmpty { rejected.insert(Self.foldGlossaryTerm(cleaned)) }
+        }
+        cursor = cursor[range.upperBound...]
+      }
+    }
+
+    return lines
       .flatMap { line -> [String] in
         // Strip the `(not "…")` annotation BEFORE splitting on commas, so a comma inside the
         // parenthetical (e.g. `Gödde (not "Godde, Goedde")`) can't shear it into leaking fragments.
@@ -143,9 +169,19 @@ class SpeechService {
         .map { $0.trimmingCharacters(in: .whitespaces) }
       }
       .filter { term in
-        !term.isEmpty && term.split(separator: " ").count <= 3
+        // The built-in list is written as `Terms: A, B, C`, so the first element carries the
+        // label — compare without it, or a rejected form in first position slips through.
+        let bare = term.replacingOccurrences(
+          of: #"^Terms:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+        return !bare.isEmpty && bare.split(separator: " ").count <= 3
+          && !rejected.contains(Self.foldGlossaryTerm(bare))
       }
       .joined(separator: ", ")
+  }
+
+  /// Case- and diacritic-insensitive comparison form, matching `GlossaryFastLearner.fold`.
+  private static func foldGlossaryTerm(_ word: String) -> String {
+    word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
   }
 
   /// The full transcription instruction shared by every Gemini sub-path (inline, Files API, and
