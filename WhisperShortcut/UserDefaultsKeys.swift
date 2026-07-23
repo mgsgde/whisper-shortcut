@@ -40,6 +40,10 @@ enum UserDefaultsKeys {
   /// One-shot migration flag: default Gemini models moved to the 3.5 Flash-Lite / 3.6 Flash tier.
   static let didMigrateGeminiDefaultsTo36 = "didMigrateGeminiDefaultsTo36"
 
+  /// One-shot migration flag: chat / Dictate Prompt / meeting-summary defaults moved 3.6 Flash →
+  /// 3.5 Flash-Lite, and Smart Improvement moved 3.1 Pro → 3.6 Flash (cost).
+  static let didMigrateGeminiDefaultsToFlashLite = "didMigrateGeminiDefaultsToFlashLite"
+
   // MARK: - Recording Safeguards
   static let confirmAboveDurationSeconds = "confirmAboveDurationSeconds"
 

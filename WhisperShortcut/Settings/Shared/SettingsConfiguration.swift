@@ -23,7 +23,7 @@ enum ChatModelProvider: String, CaseIterable {
   /// they all read `defaultChatModel` from here.
   var defaultChatModel: PromptModel {
     switch self {
-    case .gemini: return .gemini36Flash
+    case .gemini: return .gemini35FlashLite
     case .grok:   return .grok43
     case .openai: return .openaiGPT56Sol
     case .anthropic: return .claudeSonnet5
@@ -1396,13 +1396,14 @@ struct SettingsDefaults {
   static let readAloud: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
-  // Dictation runs on Flash-Lite: audio input dominates the bill (~32 tokens/s), and 3.5 Flash-Lite
-  // charges $0.30/1M for audio vs $0.50/1M on 3.1 Flash-Lite — cheaper per dictated minute despite
-  // the higher output rate. Chat/Dictate Prompt run on 3.6 Flash: same input price as 3.5 Flash
-  // ($1.50/1M) but $7.50/1M output instead of $9.00. https://ai.google.dev/gemini-api/docs/pricing
+  // Everything defaults to 3.5 Flash-Lite. Dictation because audio input dominates that bill
+  // (~32 tokens/s) and 3.5 Flash-Lite charges $0.30/1M for audio vs $0.50/1M on 3.1 Flash-Lite;
+  // chat / Dictate Prompt / meeting summary because the Flash tier is roughly 3× the output price
+  // of Flash-Lite and drove the bulk of the app's Gemini spend. Users who want more headroom pick
+  // a bigger model explicitly. https://ai.google.dev/gemini-api/docs/pricing
   static let selectedTranscriptionModel = TranscriptionModel.gemini35FlashLite
-  static let selectedPromptModel = PromptModel.gemini36Flash
-  static let selectedChatModel = PromptModel.gemini36Flash
+  static let selectedPromptModel = PromptModel.gemini35FlashLite
+  static let selectedChatModel = PromptModel.gemini35FlashLite
   static let chatCloseOnFocusLoss = true
   // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
   // API key from a browser) is surprising. Users can opt back in via the Behavior section.
@@ -1453,9 +1454,12 @@ struct SettingsDefaults {
   // transcript. Users who want faster updates can lower it in Chat settings.
   static let liveMeetingChunkInterval = LiveMeetingChunkInterval.sixtySeconds
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
-  static let selectedMeetingSummaryModel = PromptModel.gemini36Flash
+  static let selectedMeetingSummaryModel = PromptModel.gemini35FlashLite
 
-  static let selectedImprovementModel = PromptModel.gemini31Pro
+  /// Smart Improvement runs at most once a week in the background, so its per-run cost barely
+  /// registers — but it does analysis over a whole corpus, which Flash-Lite is weak at. 3.6 Flash
+  /// is the middle ground: far cheaper than 3.1 Pro, still the stronger Flash tier.
+  static let selectedImprovementModel = PromptModel.gemini36Flash
 
   // MARK: - Local LLM (OpenAI-compatible server, e.g. Ollama / LM Studio)
   /// Base URL up to and including `/v1`. The provider appends `/chat/completions`. Ollama's

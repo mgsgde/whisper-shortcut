@@ -46,6 +46,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     // Lift stale model defaults first, so the reconciler below sees the current selections.
     migrateGeminiModelDefaults()
+    migrateGeminiModelDefaultsToFlashLite()
 
     // Adapt per-feature model selections to the API keys actually present, so a user with a single
     // provider's key gets that provider's models by default across every feature.
@@ -198,6 +199,38 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     for m in migrations {
       // An unset key already resolves to the new SettingsDefaults value — nothing to write.
+      guard let stored = defaults.string(forKey: m.key), stored == m.previousDefault else { continue }
+      defaults.set(m.replacement, forKey: m.key)
+      DebugLogger.log("MIGRATION: \(m.key) \(stored) → \(m.replacement)")
+    }
+  }
+
+  /// One-shot migration (2026-07): cost review showed the Flash tier driving the bulk of the
+  /// Gemini bill — 3.5 Flash costs ~3× per output token what Flash-Lite does — so chat, Dictate
+  /// Prompt and the meeting summary drop to 3.5 Flash-Lite, and Smart Improvement drops from
+  /// 3.1 Pro to 3.6 Flash (it analyses a whole corpus once a week, where Flash-Lite is too weak).
+  ///
+  /// Same reasoning as `migrateGeminiModelDefaults`: `SettingsViewModel.save()` writes every model
+  /// key on any settings change, so changing `SettingsDefaults` alone would reach almost nobody.
+  /// Only installs still sitting on the exact previous default move; a deliberate pick is kept.
+  private func migrateGeminiModelDefaultsToFlashLite() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: UserDefaultsKeys.didMigrateGeminiDefaultsToFlashLite) else { return }
+    defaults.set(true, forKey: UserDefaultsKeys.didMigrateGeminiDefaultsToFlashLite)
+
+    // (key, value that counts as "never chose", replacement)
+    let migrations: [(key: String, previousDefault: String, replacement: String)] = [
+      (UserDefaultsKeys.selectedPromptModel, "gemini-3.6-flash",
+       PromptModel.gemini35FlashLite.rawValue),
+      (UserDefaultsKeys.selectedChatModel, "gemini-3.6-flash",
+       PromptModel.gemini35FlashLite.rawValue),
+      (UserDefaultsKeys.selectedMeetingSummaryModel, "gemini-3.6-flash",
+       PromptModel.gemini35FlashLite.rawValue),
+      (UserDefaultsKeys.selectedImprovementModel, "gemini-3.1-pro-preview",
+       PromptModel.gemini36Flash.rawValue),
+    ]
+
+    for m in migrations {
       guard let stored = defaults.string(forKey: m.key), stored == m.previousDefault else { continue }
       defaults.set(m.replacement, forKey: m.key)
       DebugLogger.log("MIGRATION: \(m.key) \(stored) → \(m.replacement)")
