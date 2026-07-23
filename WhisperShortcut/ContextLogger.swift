@@ -373,13 +373,16 @@ class ContextLogger {
   }
 
   /// Appends one entry to the unified system prompts history (system-prompts-history.jsonl).
-  func appendSystemPromptsHistory(section: SystemPromptSection, previousLength: Int, newLength: Int, content: String, model: String? = nil) {
+  /// `source` distinguishes who made the change — "auto" for Smart Improvement, "chat" for an
+  /// `update_app_instructions` tool call. Both write the same sections, so without it the history
+  /// can't tell you which writer caused a behavior change.
+  func appendSystemPromptsHistory(section: SystemPromptSection, previousLength: Int, newLength: Int, content: String, model: String? = nil, source: String = "auto") {
     queue.async { [weak self] in
       guard let self else { return }
       let entry = UnifiedSystemPromptHistoryEntry(
         ts: self.iso8601Now(),
         section: section.rawValue,
-        source: "auto",
+        source: source,
         previousLength: previousLength,
         newLength: newLength,
         content: content,

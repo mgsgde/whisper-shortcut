@@ -37,6 +37,10 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
+      WorkspaceFoldersSection()
+
+      SpacedSectionDivider()
+
       GoogleCalendarConnectionSection()
 
       SpacedSectionDivider()

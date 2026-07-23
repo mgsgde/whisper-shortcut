@@ -63,6 +63,11 @@ enum UserDefaultsKeys {
   /// Last directory the chat Attach picker landed on; reopened next time (see C2 behavior).
   static let lastAttachDirectoryPath = "lastAttachDirectoryPath"
 
+  // MARK: - Workspace Folders
+  /// Folders the chat may read from, as `[[String: Any]]` entries holding a security-scoped
+  /// bookmark (Data) plus the originally picked path (String). See `WorkspaceFolders`.
+  static let workspaceFolders = "workspaceFolders"
+
   // MARK: - App State
   static let shouldTerminate = "shouldTerminate"
   static let hasUsedPromptFeature = "hasUsedPromptFeature"
