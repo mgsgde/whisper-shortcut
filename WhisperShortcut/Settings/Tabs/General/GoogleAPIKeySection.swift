@@ -71,6 +71,7 @@ struct GoogleAPIKeySection: View {
         }
         .buttonStyle(.plain)
         .help(isKeyVisible ? "Hide API key" : "Show API key")
+        .accessibilityLabel(isKeyVisible ? "Hide API key" : "Show API key")
 
         Spacer()
       }
@@ -95,10 +96,6 @@ struct GoogleAPIKeySection: View {
             .textSelection(.enabled)
         }
         .pointerCursorOnHover()
-
-        Text(" 💡")
-          .font(.callout)
-          .foregroundColor(.secondary)
       }
       .fixedSize(horizontal: false, vertical: true)
 

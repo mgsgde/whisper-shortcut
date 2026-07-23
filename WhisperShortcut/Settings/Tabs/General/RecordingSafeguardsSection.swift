@@ -37,6 +37,7 @@ struct RecordingSafeguardsSection: View {
         }
         .pickerStyle(MenuPickerStyle())
         .frame(width: 200)
+        .accessibilityLabel("Ask when recording longer than")
         .onChange(of: viewModel.data.confirmAboveDuration) { _, _ in
           Task {
             await viewModel.saveSettings()

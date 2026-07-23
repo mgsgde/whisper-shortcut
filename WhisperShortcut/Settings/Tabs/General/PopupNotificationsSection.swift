@@ -24,6 +24,7 @@ struct PopupNotificationsSection: View {
 
         Toggle("", isOn: $viewModel.data.showPopupNotifications)
           .toggleStyle(SwitchToggleStyle())
+          .accessibilityLabel("Show Notifications")
           .onChange(of: viewModel.data.showPopupNotifications) { _, _ in
             Task {
               await viewModel.saveSettings()

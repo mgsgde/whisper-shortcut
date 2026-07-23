@@ -110,6 +110,7 @@ struct CustomOpenAIChatEndpointSection: View {
             }
             .buttonStyle(.plain)
             .help(isKeyVisible ? "Hide API key" : "Show API key")
+            .accessibilityLabel(isKeyVisible ? "Hide API key" : "Show API key")
           }
 
           Text("Proxy-specific key (e.g. OpenInference `sk-oi-…`). When empty, the OpenAI API key from Settings → General is used.")

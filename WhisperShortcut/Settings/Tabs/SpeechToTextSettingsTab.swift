@@ -33,6 +33,7 @@ struct SpeechToTextSettingsTab: View {
       // Dictation system prompt editor
       SystemPromptSectionEditor(
         title: "System prompt",
+        systemImage: "text.alignleft",
         subtitle: "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, OpenAI Transcribe and xAI Grok; ignored by offline Whisper (its API accepts no instructions — only the Glossary below). Keep specific terms out of here; put them in the Glossary.",
         section: .dictation,
         defaultContent: AppConstants.defaultTranscriptionSystemPrompt
@@ -43,6 +44,7 @@ struct SpeechToTextSettingsTab: View {
       // Glossary editor
       SystemPromptSectionEditor(
         title: "Glossary",
+        systemImage: "character.book.closed",
         subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider: a conditioning prompt for offline Whisper, appended to the instructions for Gemini, OpenAI Transcribe and xAI Grok. Leave empty for no conditioning.",
         section: .whisperGlossary,
         defaultContent: AppConstants.defaultWhisperGlossary
@@ -215,7 +217,6 @@ struct SpeechToTextSettingsTab: View {
             .id("\(modelType.rawValue)-\(refreshTrigger)") // Force refresh when trigger changes
         }
       }
-      .padding(.top, SettingsConstants.internalSectionSpacing)
     }
   }
 
@@ -314,7 +315,7 @@ struct SpeechToTextSettingsTab: View {
         }
       }
     }
-    .padding(12)
+    .padding(SettingsConstants.rowPadding)
     .background(Color(.controlBackgroundColor))
     .cornerRadius(8)
     .overlay(

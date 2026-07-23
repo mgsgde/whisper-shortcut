@@ -26,6 +26,7 @@ struct ChatSettingsTab: View {
       // Chat system prompt editor
       SystemPromptSectionEditor(
         title: "System prompt",
+        systemImage: "text.alignleft",
         subtitle: "Instructions sent to the model in Chat mode. Edit to customize chat behavior.",
         section: .chat,
         defaultContent: AppConstants.defaultChatSystemPrompt
@@ -148,6 +149,7 @@ struct ChatSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Chunk Interval",
+        systemImage: "timer",
         subtitle: "How often the audio is transcribed and added to the file"
       )
 
@@ -227,6 +229,7 @@ struct ChatSettingsTab: View {
         }
         .pickerStyle(MenuPickerStyle())
         .frame(width: 200)
+        .accessibilityLabel("Ask when meeting longer than")
         .onChange(of: viewModel.data.liveMeetingSafeguardDuration) { _, _ in
           Task { await viewModel.saveSettings() }
         }

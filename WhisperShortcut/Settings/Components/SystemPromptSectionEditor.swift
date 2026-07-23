@@ -5,16 +5,31 @@ import SwiftUI
 /// Provides Save, Revert, and Open File buttons.
 struct SystemPromptSectionEditor: View {
   let title: String
+  let systemImage: String?
   let subtitle: String
   let section: SystemPromptSection
   let defaultContent: String
+
+  init(
+    title: String,
+    systemImage: String? = nil,
+    subtitle: String,
+    section: SystemPromptSection,
+    defaultContent: String
+  ) {
+    self.title = title
+    self.systemImage = systemImage
+    self.subtitle = subtitle
+    self.section = section
+    self.defaultContent = defaultContent
+  }
 
   @State private var text: String = ""
   @State private var lastSavedText: String = ""
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(title: title, subtitle: subtitle)
+      SectionHeader(title: title, systemImage: systemImage, subtitle: subtitle)
 
       TextEditor(text: $text)
         .font(.system(.body, design: .monospaced))

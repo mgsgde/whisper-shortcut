@@ -105,7 +105,7 @@ final class ComposerAttachmentCell: NSTextAttachmentCell {
 
     let attrs: [NSAttributedString.Key: Any] = [
       .font: Self.labelFont,
-      .foregroundColor: NSColor.labelColor,
+      .foregroundColor: ChatTheme.primaryNSText,
       .paragraphStyle: paragraph,
     ]
     let textSize = (label as NSString).size(withAttributes: attrs)
@@ -172,8 +172,8 @@ final class ChatComposerNSTextView: NSTextView {
       height: 24
     )
     let attrs: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: 16),
-      .foregroundColor: NSColor.secondaryLabelColor.withAlphaComponent(0.5),
+      .font: ChatTheme.bodyNSFont(size: ChatTheme.bodyFontSize),
+      .foregroundColor: ChatTheme.secondaryNSText.withAlphaComponent(0.5),
     ]
     (placeholder as NSString).draw(in: rect, withAttributes: attrs)
   }
@@ -248,8 +248,8 @@ final class ChatComposerNSTextView: NSTextView {
       // Always insert as plain text with standard typing attributes so
       // pasted text never inherits foreign fonts, colors, or link styling.
       let attrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: 16),
-        .foregroundColor: NSColor.labelColor,
+        .font: ChatTheme.bodyNSFont(size: ChatTheme.bodyFontSize),
+        .foregroundColor: ChatTheme.primaryNSText,
       ]
       let plain = NSAttributedString(string: str, attributes: attrs)
       insertText(plain, replacementRange: selectedRange())
@@ -343,8 +343,8 @@ final class GeminiComposerController: ObservableObject {
   private func insertAttachment(_ attach: ComposerTextAttachment) {
     guard let tv = textView, let storage = tv.textStorage else { return }
     let baseAttrs: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: 16),
-      .foregroundColor: NSColor.labelColor,
+      .font: ChatTheme.bodyNSFont(size: ChatTheme.bodyFontSize),
+      .foregroundColor: ChatTheme.primaryNSText,
     ]
     let attrStr = NSMutableAttributedString(attachment: attach)
     attrStr.addAttributes(baseAttrs, range: NSRange(location: 0, length: attrStr.length))
@@ -614,12 +614,12 @@ struct ChatComposerTextView: NSViewRepresentable {
     tv.allowsUndo = true
     tv.drawsBackground = false
     tv.backgroundColor = .clear
-    tv.font = NSFont.systemFont(ofSize: 16)
-    tv.textColor = NSColor.labelColor
-    tv.insertionPointColor = NSColor.labelColor
+    tv.font = ChatTheme.bodyNSFont(size: ChatTheme.bodyFontSize)
+    tv.textColor = ChatTheme.primaryNSText
+    tv.insertionPointColor = ChatTheme.primaryNSText
     tv.typingAttributes = [
-      .font: NSFont.systemFont(ofSize: 16),
-      .foregroundColor: NSColor.labelColor,
+      .font: ChatTheme.bodyNSFont(size: ChatTheme.bodyFontSize),
+      .foregroundColor: ChatTheme.primaryNSText,
     ]
     tv.textContainerInset = NSSize(width: 8, height: 10)
     tv.isAutomaticQuoteSubstitutionEnabled = false

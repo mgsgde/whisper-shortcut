@@ -2721,6 +2721,7 @@ struct ChatView: View {
       }
       .buttonStyle(.plain)
       .help("Toggle sidebar")
+      .accessibilityLabel("Toggle sidebar")
 
       ScrollViewReader { proxy in
         ScrollView(.horizontal, showsIndicators: false) {
@@ -2803,6 +2804,8 @@ struct ChatView: View {
         }
         .buttonStyle(.plain)
         .padding(3)
+        .help("Close tab")
+        .accessibilityLabel("Close tab")
       }
     }
     .onHover { isHovered in hoveredTabId = isHovered ? session.id : nil }
@@ -2888,6 +2891,7 @@ struct ChatView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Remove from queue")
+                .accessibilityLabel("Remove from queue")
                 Text(queued.displayContent)
                   .font(.system(size: 14))
                   .foregroundColor(ChatTheme.secondaryText)
@@ -3030,7 +3034,7 @@ struct ChatView: View {
       if let lastId = viewModel.messages.last?.id {
         proxy.scrollTo(lastId, anchor: .bottom)
       } else {
-        proxy.scrollTo(viewModel.isSending ? "typing" : "listBottom", anchor: .bottom)
+        proxy.scrollTo("listBottom", anchor: .bottom)
       }
     }
   }
@@ -3219,9 +3223,16 @@ struct ChatView: View {
     }
   }
 
-  private func noticeBanner(_ message: String) -> some View {
+  /// Transient strip above the composer. Error and notice differ only in icon and tint,
+  /// so they share one implementation.
+  private func banner(
+    _ message: String,
+    icon: String,
+    background: Color,
+    dismiss: @escaping () -> Void
+  ) -> some View {
     HStack(spacing: 8) {
-      Image(systemName: "checkmark.circle.fill")
+      Image(systemName: icon)
         .foregroundColor(.white)
         .font(.footnote)
       Text(message)
@@ -3230,41 +3241,35 @@ struct ChatView: View {
         .fixedSize(horizontal: false, vertical: true)
         .textSelection(.enabled)
       Spacer()
-      Button(action: { viewModel.noticeMessage = nil }) {
+      Button(action: dismiss) {
         Image(systemName: "xmark")
           .font(.footnote.bold())
           .foregroundColor(.white.opacity(0.8))
       }
       .buttonStyle(.plain)
+      .help("Dismiss")
+      .accessibilityLabel("Dismiss")
       .pointerCursorOnHover()
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
-    .background(Color.green.opacity(0.75))
+    .background(background)
+  }
+
+  private func noticeBanner(_ message: String) -> some View {
+    banner(
+      message,
+      icon: "checkmark.circle.fill",
+      background: Color.green.opacity(0.75),
+      dismiss: { viewModel.noticeMessage = nil })
   }
 
   private func errorBanner(_ message: String) -> some View {
-    HStack(spacing: 8) {
-      Image(systemName: "exclamationmark.triangle.fill")
-        .foregroundColor(.white)
-        .font(.footnote)
-      Text(message)
-        .font(.footnote)
-        .foregroundColor(.white)
-        .fixedSize(horizontal: false, vertical: true)
-        .textSelection(.enabled)
-      Spacer()
-      Button(action: { viewModel.errorMessage = nil }) {
-        Image(systemName: "xmark")
-          .font(.footnote.bold())
-          .foregroundColor(.white.opacity(0.8))
-      }
-      .buttonStyle(.plain)
-      .pointerCursorOnHover()
-    }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
-    .background(Color.red.opacity(0.85))
+    banner(
+      message,
+      icon: "exclamationmark.triangle.fill",
+      background: Color.red.opacity(0.85),
+      dismiss: { viewModel.errorMessage = nil })
   }
 
   private func screenshotPreviewSheet(image: NSImage, onDone: @escaping () -> Void) -> some View {
@@ -3304,6 +3309,39 @@ struct ChatInputAreaView: View {
 
   private static let inputMinHeight: CGFloat = 32
   private static let inputMaxHeight: CGFloat = 160
+
+  /// One slash-command button in the row below the composer (/attach, /folder, /screenshot,
+  /// /new, /meeting). They differ only in icon, label, tint and enablement, so they share
+  /// one definition — the visible label doubles as the VoiceOver name.
+  @ViewBuilder
+  private func composerToolbarButton(
+    icon: String,
+    label: String,
+    help: String,
+    tint: Color = ChatTheme.secondaryText,
+    isDisabled: Bool = false,
+    showsProgress: Bool = false,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(action: action) {
+      HStack(spacing: 4) {
+        if showsProgress {
+          ProgressView().controlSize(.mini).frame(width: 10, height: 10)
+        } else {
+          Image(systemName: icon).font(.caption)
+        }
+        Text(label).font(.caption)
+      }
+      .foregroundColor(tint)
+      .padding(.horizontal, 8)
+      .padding(.vertical, 5)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .disabled(isDisabled)
+    .help(help)
+    .pointerCursorOnHover()
+  }
 
   private var inputHeight: CGFloat {
     min(Self.inputMaxHeight, max(Self.inputMinHeight, composer.measuredHeight))
@@ -3558,89 +3596,43 @@ struct ChatInputAreaView: View {
 
       // Toolbar row below composer: action buttons left, model selector + send right
       HStack(spacing: 4) {
-        Button(action: { viewModel.attachFile() }) {
-          HStack(spacing: 4) {
-            Image(systemName: "paperclip").font(.caption)
-            Text("/attach").font(.caption)
-          }
-          .foregroundColor(ChatTheme.secondaryText)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 5)
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(viewModel.isSending)
-        .help("Attach a file (PDF, image, …) to your next message.")
-        .pointerCursorOnHover()
+        composerToolbarButton(
+          icon: "paperclip",
+          label: "/attach",
+          help: "Attach a file (PDF, image, …) to your next message.",
+          isDisabled: viewModel.isSending,
+          action: { viewModel.attachFile() })
 
-        Button(action: { viewModel.shareFolder() }) {
-          HStack(spacing: 4) {
-            Image(systemName: "folder").font(.caption)
-            Text("/folder").font(.caption)
-          }
-          .foregroundColor(ChatTheme.secondaryText)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 5)
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(viewModel.isSending)
-        .help("Share a folder so the chat can list, read, and search files in it. You can also drop a folder onto this window.")
-        .pointerCursorOnHover()
+        composerToolbarButton(
+          icon: "folder",
+          label: "/folder",
+          help: "Share a folder so the chat can list, read, and search files in it. You can also drop a folder onto this window.",
+          isDisabled: viewModel.isSending,
+          action: { viewModel.shareFolder() })
 
-        Button(action: { Task { await viewModel.captureScreenshot() } }) {
-          HStack(spacing: 4) {
-            if viewModel.screenshotCaptureInProgress {
-              ProgressView().controlSize(.mini).frame(width: 10, height: 10)
-            } else {
-              Image(systemName: "camera.viewfinder").font(.caption)
-            }
-            Text("/screenshot").font(.caption)
-          }
-          .foregroundColor(viewModel.screenshotCaptureInProgress ? ChatTheme.secondaryText.opacity(0.6) : ChatTheme.secondaryText)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 5)
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(viewModel.screenshotCaptureInProgress || viewModel.isSending)
-        .help("Capture screen without this window; image will be attached to your next message.")
-        .pointerCursorOnHover()
+        composerToolbarButton(
+          icon: "camera.viewfinder",
+          label: "/screenshot",
+          help: "Capture screen without this window; image will be attached to your next message.",
+          tint: viewModel.screenshotCaptureInProgress ? ChatTheme.secondaryText.opacity(0.6) : ChatTheme.secondaryText,
+          isDisabled: viewModel.screenshotCaptureInProgress || viewModel.isSending,
+          showsProgress: viewModel.screenshotCaptureInProgress,
+          action: { Task { await viewModel.captureScreenshot() } })
 
         if !viewModel.singleChatOnly {
-          Button(action: { viewModel.createNewSession() }) {
-            HStack(spacing: 4) {
-              Image(systemName: "square.and.pencil").font(.caption)
-              Text("/new").font(.caption)
-            }
-            .foregroundColor(ChatTheme.secondaryText)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .help("Start a new chat (previous chat stays in history)")
-          .pointerCursorOnHover()
+          composerToolbarButton(
+            icon: "square.and.pencil",
+            label: "/new",
+            help: "Start a new chat (previous chat stays in history)",
+            action: { viewModel.createNewSession() })
         }
 
-        Button(action: {
-          viewModel.handleMeetingButtonTap()
-        }) {
-          HStack(spacing: 4) {
-            Image(systemName: "record.circle")
-              .font(.caption)
-              .foregroundColor(viewModel.isMeetingActive ? .red : ChatTheme.secondaryText)
-            Text("/meeting")
-              .font(.caption)
-          }
-          .foregroundColor(viewModel.isMeetingActive ? .red : ChatTheme.secondaryText)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 5)
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(viewModel.isMeetingActive ? "Stop the current meeting recording" : "Start a new live meeting recording")
-        .pointerCursorOnHover()
+        composerToolbarButton(
+          icon: "record.circle",
+          label: "/meeting",
+          help: viewModel.isMeetingActive ? "Stop the current meeting recording" : "Start a new live meeting recording",
+          tint: viewModel.isMeetingActive ? .red : ChatTheme.secondaryText,
+          action: { viewModel.handleMeetingButtonTap() })
 
         Spacer()
 
@@ -3703,6 +3695,7 @@ struct ChatInputAreaView: View {
         .buttonStyle(.plain)
         .disabled(!hasContent && !viewModel.isSending)
         .help(viewModel.isSending ? "Stop sending (/stop)" : "Send message")
+        .accessibilityLabel(viewModel.isSending ? "Stop sending" : "Send message")
         .pointerCursorOnHover()
       }
       .padding(.horizontal, 8)
@@ -4692,7 +4685,7 @@ private struct ModelReplyView: View {
     var attr = (try? AttributedString(markdown: latexProcessed, options: fullOptions))
       ?? (try? AttributedString(markdown: latexProcessed, options: inlineOptions))
       ?? AttributedString(latexProcessed)
-    attr.font = .system(size: 16, weight: .regular)
+    attr.font = ChatTheme.bodyFont(size: ChatTheme.bodyFontSize)
     return attr
   }
 
@@ -5126,7 +5119,8 @@ private struct MessageBubbleView: View {
         }
       }
       .padding(.horizontal, 16)
-      .padding(.vertical, 12)
+      // Matches the assistant bubble's vertical inset so the two columns share a rhythm.
+      .padding(.vertical, 14)
       .contentShape(Rectangle())
       .background(
         RoundedRectangle(cornerRadius: 14)

@@ -48,6 +48,9 @@ struct ModelTile: View {
       onTap()
     }
     .pointerCursorOnHover()
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(title)
+    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
   }
 
   private var fillColor: Color {

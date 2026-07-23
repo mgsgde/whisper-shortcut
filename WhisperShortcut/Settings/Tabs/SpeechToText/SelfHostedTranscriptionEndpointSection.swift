@@ -18,6 +18,7 @@ struct SelfHostedTranscriptionEndpointSection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Self-hosted Transcription Endpoint",
+        systemImage: "server.rack",
         subtitle: "For your own OpenAI-compatible /v1/audio/transcriptions server (faster-whisper-server, whisper-asr-webservice, or any proxy). If you want OpenAI's hosted models, use the OpenAI entries in the model picker instead."
       )
 
@@ -86,6 +87,7 @@ struct SelfHostedTranscriptionEndpointSection: View {
         }
         .buttonStyle(.plain)
         .help(isTokenVisible ? "Hide token" : "Show token")
+        .accessibilityLabel(isTokenVisible ? "Hide token" : "Show token")
 
         Spacer()
       }
@@ -102,6 +104,7 @@ struct SelfHostedTranscriptionEndpointSection: View {
         }
         .buttonStyle(.plain)
         .help("Add custom header")
+        .accessibilityLabel("Add custom header")
 
         Spacer()
       }
@@ -141,6 +144,7 @@ struct SelfHostedTranscriptionEndpointSection: View {
           }
           .buttonStyle(.plain)
           .help(header.isValueVisible ? "Hide value" : "Show value")
+          .accessibilityLabel(header.isValueVisible ? "Hide value" : "Show value")
 
           Button(action: { removeHeader(id: header.id) }) {
             Image(systemName: "minus.circle")

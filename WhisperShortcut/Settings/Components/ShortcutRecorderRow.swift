@@ -162,6 +162,7 @@ struct ShortcutRecorderRow: View {
           }
           .buttonStyle(.plain)
           .help("Clear shortcut")
+          .accessibilityLabel("Clear shortcut")
         }
       }
     }

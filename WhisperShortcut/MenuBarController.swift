@@ -229,7 +229,7 @@ class MenuBarController: NSObject {
     // Use a neutral selector and clear image explicitly to avoid AppKit
     // auto-decoration that can reserve an icon column for this row.
     let configureItem = createMenuItemWithShortcut(
-      "Configure", action: #selector(openConfigurationPanel),
+      "Settings…", action: #selector(openConfigurationPanel),
       shortcut: currentConfig.openSettings, tag: 103)
     configureItem.image = nil
     menu.addItem(configureItem)
@@ -265,8 +265,14 @@ class MenuBarController: NSObject {
         item.keyEquivalent = keyChar
         item.keyEquivalentModifierMask = shortcut.modifiers
       } else {
-        // For complex keys, show in title with proper spacing
-        item.title = "\(title)                    \(shortcut.displayString)"
+        // For complex keys, append the shortcut to the title padded to a fixed
+        // width so the shortcut glyphs align in a column across menu rows.
+        let columnWidth = 26
+        let paddedTitle =
+          title.count < columnWidth
+          ? title.padding(toLength: columnWidth, withPad: " ", startingAt: 0)
+          : title + "  "
+        item.title = "\(paddedTitle)\(shortcut.displayString)"
       }
     }
 

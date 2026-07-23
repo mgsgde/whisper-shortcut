@@ -97,9 +97,9 @@ struct SettingsView: View {
           AboutSettingsTab(viewModel: viewModel)
         }
       }
-      .padding(.horizontal, 24)
-      .padding(.top, 20)
-      .padding(.bottom, 40)
+      .padding(.horizontal, SettingsConstants.horizontalPadding)
+      .padding(.top, SettingsConstants.topPadding)
+      .padding(.bottom, SettingsConstants.bottomPadding)
     }
   }
 
