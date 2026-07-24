@@ -1394,6 +1394,7 @@ struct SettingsDefaults {
   static let openChat: ShortcutDefinition? = nil
   static let screenshotCapture: ShortcutDefinition? = nil
   static let readAloud: ShortcutDefinition? = nil
+  static let voiceFeedback: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
   // Everything defaults to 3.5 Flash-Lite. Dictation because audio input dominates that bill
@@ -1492,6 +1493,7 @@ struct SettingsData {
   var openChat: ShortcutDefinition? = SettingsDefaults.openChat
   var screenshotCapture: ShortcutDefinition? = SettingsDefaults.screenshotCapture
   var readAloud: ShortcutDefinition? = SettingsDefaults.readAloud
+  var voiceFeedback: ShortcutDefinition? = SettingsDefaults.voiceFeedback
 
   // MARK: - Read Aloud
   var readAloudSmartRewriteEnabled: Bool = SettingsDefaults.readAloudSmartRewriteEnabled
@@ -1574,6 +1576,7 @@ enum SettingsFocusField: Hashable {
   case toggleChat
   case screenshotCapture
   case readAloudShortcut
+  case voiceFeedbackShortcut
 }
 
 // MARK: - Shortcut Conflict Descriptor

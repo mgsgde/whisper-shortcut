@@ -4,8 +4,10 @@ import HotKey
 protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
+  func toggleVoiceFeedback()
   func isDictationRecordingActive() -> Bool
   func isPromptRecordingActive() -> Bool
+  func isVoiceFeedbackRecordingActive() -> Bool
   func openSettings()
   func openChat()
   func takeScreenshot()
@@ -24,6 +26,7 @@ class Shortcuts {
   private var openChatKey: HotKey?
   private var screenshotCaptureKey: HotKey?
   private var readAloudKey: HotKey?
+  private var voiceFeedbackKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   // Push-to-talk: a press that *started* a recording and is held past this threshold
@@ -33,6 +36,7 @@ class Shortcuts {
   private static let pushToTalkHoldThreshold: TimeInterval = 1.0
   private var dictationPressStart: Date?
   private var promptingPressStart: Date?
+  private var voiceFeedbackPressStart: Date?
 
   init() {
     // Load current configuration
@@ -122,6 +126,26 @@ class Shortcuts {
       }
     }
 
+    if config.voiceFeedback.isEnabled {
+      voiceFeedbackKey = HotKey(
+        key: config.voiceFeedback.key, modifiers: config.voiceFeedback.modifiers)
+      voiceFeedbackKey?.keyDownHandler = { [weak self] in
+        guard let self, let delegate = self.delegate else { return }
+        let wasRecording = delegate.isVoiceFeedbackRecordingActive()
+        delegate.toggleVoiceFeedback()
+        self.voiceFeedbackPressStart = wasRecording ? nil : Date()
+      }
+      voiceFeedbackKey?.keyUpHandler = { [weak self] in
+        guard let self, let pressStart = self.voiceFeedbackPressStart else { return }
+        self.voiceFeedbackPressStart = nil
+        if Date().timeIntervalSince(pressStart) >= Self.pushToTalkHoldThreshold,
+          self.delegate?.isVoiceFeedbackRecordingActive() == true {
+          DebugLogger.log("SHORTCUTS: Push-to-talk release — stopping voice feedback")
+          self.delegate?.toggleVoiceFeedback()
+        }
+      }
+    }
+
     // Create settings shortcut (only if enabled)
     if config.openSettings.isEnabled {
       openSettingsKey = HotKey(
@@ -174,12 +198,14 @@ class Shortcuts {
   func cleanup() {
     dictationPressStart = nil
     promptingPressStart = nil
+    voiceFeedbackPressStart = nil
     toggleDictationKey = nil
     togglePromptingKey = nil
     openSettingsKey = nil
     openChatKey = nil
     screenshotCaptureKey = nil
     readAloudKey = nil
+    voiceFeedbackKey = nil
   }
 
   deinit {

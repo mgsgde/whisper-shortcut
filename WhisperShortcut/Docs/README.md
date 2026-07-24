@@ -21,11 +21,12 @@ Bring your own API keys — Gemini, and optionally GPT or Grok — or run fully 
 - **Dictate Prompt**: Speak an instruction that edits the current clipboard text, for example "make this shorter" or "translate this to English". Supports Gemini and OpenAI audio-input models; optional screenshots can be included with the prompt.
 - **Read Aloud**: Press the shortcut on any selected text to copy it and read it aloud with Gemini, OpenAI, or xAI TTS voices. An optional Smart Rewrite pass cleans up code or markdown before TTS, and playback speed is configurable.
 - **Screenshot**: Capture the screen from the menu bar and optionally attach it to Dictate Prompt or chat, or save captures to a folder.
+- **Voice Feedback**: Press the shortcut and speak a correction or instruction about how the app should work — for example "my name is spelled G-ö-d-d-e" or "stop capitalizing every noun in Dictate Prompt output". The app turns it into a proposed change to your dictation context (transcription prompt, Whisper glossary, Dictate Prompt, or Chat), which you review in a diff window before it is applied. It is the on-demand, spoken counterpart to Smart Improvement's automatic learning.
 - **Chat**: Use a persisted multi-session chat window with Gemini, Grok, or OpenAI models, screenshots, image attachments, slash commands, optional web grounding, and per-session reasoning depth.
 - **Google integrations**: Connect a Google account so chat can work with Calendar, Tasks, and Gmail through controlled local tools.
 - **Trello integration**: Connect Trello so chat can list boards, lists, and cards and create, move, update, or archive cards.
 - **Live Meeting**: Record meetings in chunks, transcribe them as they complete, keep an in-app transcript, and save meeting files locally.
-- **Smart Improvement**: Let the app improve system prompts, user context, and the Whisper glossary from usage logs or a spoken instruction.
+- **Smart Improvement**: Let the app improve system prompts, user context, and the Whisper glossary automatically from usage logs, or on demand from a spoken instruction (see Voice Feedback).
 
 ## Requirements
 
@@ -57,6 +58,7 @@ Default menu bar shortcuts (all configurable in Settings → General):
 | Dictate Prompt | ⌘2 |
 | Screenshot | ⌘3 |
 | Read Aloud | ⌘4 |
+| Voice Feedback | ⌘5 |
 | Chat | ⌥Space |
 | Settings | ⌘0 |
 

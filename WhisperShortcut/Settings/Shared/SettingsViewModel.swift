@@ -33,6 +33,7 @@ class SettingsViewModel: ObservableObject {
     data.openChat = currentConfig.openChat.isEnabled ? currentConfig.openChat : nil
     data.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
     data.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
+    data.voiceFeedback = currentConfig.voiceFeedback.isEnabled ? currentConfig.voiceFeedback : nil
     // Load transcription model preference
     data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
@@ -230,6 +231,9 @@ class SettingsViewModel: ObservableObject {
     ConfigurableShortcutSlot(
       field: .readAloudShortcut, label: "Read Aloud",
       read: { $0.readAloud }, write: { $0.readAloud = $1 }),
+    ConfigurableShortcutSlot(
+      field: .voiceFeedbackShortcut, label: "Voice Feedback",
+      read: { $0.voiceFeedback }, write: { $0.voiceFeedback = $1 }),
   ]
 
   // MARK: - Save Settings
@@ -323,13 +327,23 @@ class SettingsViewModel: ObservableObject {
       ShortcutDefinition(key: template.key, modifiers: template.modifiers, isEnabled: false)
     }
     let factory = ShortcutConfig.default
+    // Break the assembly into locals — a single 6-way `??`/`disable()` literal pushed the
+    // type-checker past its time budget once a 7th shortcut was added.
+    let startRecording = data.toggleDictation ?? disable(factory.startRecording)
+    let startPrompting = data.togglePrompting ?? disable(factory.startPrompting)
+    let openSettings = data.openSettings ?? disable(factory.openSettings)
+    let openChat = data.openChat ?? disable(factory.openChat)
+    let screenshotCapture = data.screenshotCapture ?? disable(factory.screenshotCapture)
+    let readAloud = data.readAloud ?? disable(factory.readAloud)
+    let voiceFeedback = data.voiceFeedback ?? disable(factory.voiceFeedback)
     let newConfig = ShortcutConfig(
-      startRecording: data.toggleDictation ?? disable(factory.startRecording),
-      startPrompting: data.togglePrompting ?? disable(factory.startPrompting),
-      openSettings: data.openSettings ?? disable(factory.openSettings),
-      openChat: data.openChat ?? disable(factory.openChat),
-      screenshotCapture: data.screenshotCapture ?? disable(factory.screenshotCapture),
-      readAloud: data.readAloud ?? disable(factory.readAloud)
+      startRecording: startRecording,
+      startPrompting: startPrompting,
+      openSettings: openSettings,
+      openChat: openChat,
+      screenshotCapture: screenshotCapture,
+      readAloud: readAloud,
+      voiceFeedback: voiceFeedback
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 

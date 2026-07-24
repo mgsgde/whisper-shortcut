@@ -45,6 +45,7 @@ class MenuBarController: NSObject {
   private let audioRecorder: DictationAudioRecording
   private let speechService: SpeechService
   private let clipboardManager: ClipboardManager
+  private let voiceFeedbackService = VoiceFeedbackService()
   private let shortcuts: Shortcuts
   private let fnPushToTalk = FnPushToTalk()
   private let reviewPrompter: ReviewPrompter
@@ -215,6 +216,11 @@ class MenuBarController: NSObject {
         "Read Aloud", action: #selector(readAloudFromMenu),
         shortcut: currentConfig.readAloud, tag: 114))
     #endif
+    // Ordered last so the shortcut digits read 1-2-3-4-5 down the menu.
+    menu.addItem(
+      createMenuItemWithShortcut(
+        "Voice Feedback", action: #selector(toggleVoiceFeedback),
+        shortcut: currentConfig.voiceFeedback, tag: 116))
     menu.addItem(NSMenuItem.separator())
 
     // Chat window
@@ -334,7 +340,7 @@ class MenuBarController: NSObject {
   private func updateRecordingIndicator() {
     let indicator = RecordingIndicatorManager.shared
     switch appState {
-    case .recording(.transcription), .recording(.prompt):
+    case .recording(.transcription), .recording(.prompt), .recording(.voiceFeedback):
       indicator.showRecording()
     case .processing(let mode):
       // TTS has no recording phase, so summon the processing pill directly;
@@ -365,6 +371,11 @@ class MenuBarController: NSObject {
     }
     if case .processing(.prompting) = appState {
       speechService.cancelPrompt()
+      transitionToIdleAndCleanup()
+      return
+    }
+    if case .processing(.contextEditing) = appState {
+      speechService.cancelTranscription()
       transitionToIdleAndCleanup()
     }
   }
@@ -781,6 +792,56 @@ class MenuBarController: NSObject {
     }
   }
 
+  /// Voice Feedback: record a spoken instruction that edits the dictation context.
+  /// Slice 1 transcribes the instruction and shows what was heard; Slice 2 turns it into a
+  /// reviewable change to `system-prompts.md`.
+  @objc internal func toggleVoiceFeedback() {
+    // Voice Feedback is a standalone flow — not a live-meeting segment.
+    if isLiveMeetingActive {
+      DebugLogger.log("VOICE-FEEDBACK: Ignoring — live meeting active")
+      return
+    }
+
+    // Cancel an in-flight context-editing pass.
+    if case .processing(.contextEditing) = appState {
+      speechService.cancelTranscription()
+      transitionToIdleAndCleanup()
+      return
+    }
+
+    switch appState.recordingMode {
+    case .voiceFeedback:
+      stopRecordingAfterTailDelay()
+    case .none:
+      // Two credentials are needed: the transcription model transcribes the spoken instruction,
+      // then the improvement model turns it into a proposed change. Check both up front so the
+      // user isn't told about a missing key only after speaking.
+      let transcriptionModel = TranscriptionModel.loadSelected()
+      let hasOfflineModel = transcriptionModel.isOfflineModelAvailable()
+      guard appState.canStartTranscription(
+        hasAPIKey: transcriptionModel.hasRequiredCredential, hasOfflineModel: hasOfflineModel)
+      else {
+        PopupNotificationWindow.showError(
+          transcriptionModel.apiKeyRequiredMessage, title: transcriptionModel.credentialRequiredTitle)
+        return
+      }
+      let improvementModel = PromptModel.loadPromptModel(
+        forKey: UserDefaultsKeys.selectedImprovementModel,
+        default: SettingsDefaults.selectedImprovementModel)
+      guard improvementModel.hasRequiredCredentialForDictatePrompt else {
+        PopupNotificationWindow.showError(
+          improvementModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
+        return
+      }
+      appState = appState.startRecording(.voiceFeedback)
+      ConnectionPrewarmer.prewarm(for: transcriptionModel)
+      discardStreamingSession()  // voice feedback never streams
+      audioRecorder.startRecording()
+    default:
+      break
+    }
+  }
+
   @objc private func stopCurrentOperation() {
     // Active meeting segment: stop the segment first, keep meeting running.
     // `activeMeetingSegment` stays set so the async `audioRecorderDidFinishRecording`
@@ -843,7 +904,7 @@ class MenuBarController: NSObject {
     switch mode {
     case .transcribing, .splitting, .processingChunks, .merging:
       return true
-    case .prompting, .ttsProcessing:
+    case .prompting, .ttsProcessing, .contextEditing:
       return false
     }
   }
@@ -1456,6 +1517,7 @@ class MenuBarController: NSObject {
         case .transcription: operationName = "Transcription"
         case .prompt: operationName = "Prompt"
         case .liveMeeting: operationName = "Live meeting"
+        case .voiceFeedback: operationName = "Voice Feedback"
         }
         shortTitle = "\(operationName) Error"
         errorMessage = SpeechErrorFormatter.formatForUser(error)
@@ -1485,6 +1547,8 @@ class MenuBarController: NSObject {
           case .liveMeeting:
             // Live meeting chunks are handled separately, no retry needed here
             break
+          case .voiceFeedback:
+            await self.performVoiceFeedback(audioURL: audioURL)
           }
         }
       } : nil
@@ -1735,6 +1799,95 @@ class MenuBarController: NSObject {
           self.processedAudioURLs.remove(audioURL)
         }
       }
+    }
+  }
+
+  /// Voice Feedback pipeline: transcribe the spoken instruction, ask the improvement model to
+  /// turn it into a proposed change to one `system-prompts.md` section, present that in the
+  /// Smart Improvement review modal, and apply it on Accept.
+  private func performVoiceFeedback(audioURL: URL) async {
+    do {
+      let instruction = try await speechService.transcribe(audioURL: audioURL)
+      let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+      DebugLogger.log("VOICE-FEEDBACK: Heard instruction: \(trimmed)")
+
+      guard !trimmed.isEmpty else {
+        cleanupAudioFile(at: audioURL)
+        await MainActor.run {
+          PopupNotificationWindow.showInfo("No speech detected.", title: "Voice Feedback")
+          self.appState = self.appState.finish()
+          self.processedAudioURLs.remove(audioURL)
+        }
+        return
+      }
+
+      let proposal = try await voiceFeedbackService.proposeChange(instruction: trimmed)
+
+      // The instruction text is captured; the audio is no longer needed.
+      cleanupAudioFile(at: audioURL)
+      await MainActor.run { self.processedAudioURLs.remove(audioURL) }
+
+      guard proposal.shouldChange else {
+        DebugLogger.log("VOICE-FEEDBACK: Model returned no_change")
+        await MainActor.run {
+          PopupNotificationWindow.showInfo(
+            "No context change suggested from that feedback.", title: "Voice Feedback")
+          self.appState = self.appState.finish()
+        }
+        return
+      }
+
+      let section = proposal.section
+      let current = SystemPromptsStore.shared.loadSection(section) ?? ""
+
+      // Reviewing is user time, not processing — drop the pill before the modal opens.
+      await MainActor.run { self.appState = self.appState.finish() }
+
+      let edited = await SmartImprovementReviewPanel.present(
+        focusDisplayName: Self.voiceFeedbackFocusName(for: section),
+        originalText: current,
+        suggestedText: proposal.suggestion,
+        rationale: proposal.rationale.isEmpty ? nil : proposal.rationale)
+
+      await MainActor.run {
+        guard let edited = edited,
+          !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+          DebugLogger.log("VOICE-FEEDBACK: Review cancelled — no change applied")
+          return
+        }
+        SystemPromptsStore.shared.updateSection(section, content: edited)
+        ContextLogger.shared.appendSystemPromptsHistory(
+          section: section, previousLength: current.count, newLength: edited.count,
+          content: edited, model: nil, source: "voice-feedback")
+        DebugLogger.log("VOICE-FEEDBACK-CHANGE: Applied change to section \(section.rawValue)")
+        self.appState = self.appState.showSuccess("Context updated")
+      }
+    } catch {
+      if Self.isCancellation(error) {
+        DebugLogger.log("CANCELLATION: Voice feedback task was cancelled (\(type(of: error)))")
+        await MainActor.run {
+          self.appState = self.appState.finish()
+          self.processedAudioURLs.remove(audioURL)
+        }
+        cleanupAudioFile(at: audioURL)
+        return
+      }
+      await handleProcessingError(error: error, audioURL: audioURL, mode: .voiceFeedback)
+      await MainActor.run {
+        self.processedAudioURLs.remove(audioURL)
+      }
+    }
+  }
+
+  /// Human-readable section name for the Voice Feedback review modal title.
+  private static func voiceFeedbackFocusName(for section: SystemPromptSection) -> String {
+    switch section {
+    case .dictation: return "Dictation"
+    case .whisperGlossary: return "Whisper Glossary"
+    case .promptMode: return "Dictate Prompt"
+    case .chat: return "Chat"
+    case .readAloudRewrite: return "Read Aloud"
     }
   }
 
@@ -2251,7 +2404,7 @@ extension MenuBarController: AudioRecorderDelegate {
         let usesCloudAPI: Bool = {
           switch recordingMode {
           case .transcription: return !TranscriptionModel.loadSelected().isOffline
-          case .prompt, .liveMeeting: return true
+          case .prompt, .liveMeeting, .voiceFeedback: return true
           }
         }()
 
@@ -2298,6 +2451,8 @@ extension MenuBarController: AudioRecorderDelegate {
           await self.performTranscription(audioURL: audioURL)
         case .prompt:
           await self.performPrompting(audioURL: audioURL)
+        case .voiceFeedback:
+          await self.performVoiceFeedback(audioURL: audioURL)
         case .liveMeeting:
           DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")
           self.cleanupAudioFile(at: audioURL)
@@ -2346,6 +2501,10 @@ extension MenuBarController: ShortcutDelegate {
   func isPromptRecordingActive() -> Bool {
     if isLiveMeetingActive { return activeMeetingSegment == .prompt }
     return appState.recordingMode == .prompt
+  }
+
+  func isVoiceFeedbackRecordingActive() -> Bool {
+    return appState.recordingMode == .voiceFeedback
   }
 
   // togglePrompting is already implemented above

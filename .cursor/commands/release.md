@@ -10,6 +10,7 @@ Cut a new App Store / GitHub release: bump version, write App Store + GitHub rel
 ## Task
 
 1. **Run tests**: Execute the full test suite; abort the release if any test fails
+1b. **Refresh bundled docs**: Confirm `README.md` reflects every user-facing feature and shortcut added since the last release — both the `## Features` list and the shortcuts table. `README.md` is copied into the app bundle (`scripts/rebuild-and-restart.sh`) and the in-app **Chat answers "what can this app do?" questions from it** via the `read_whisper_shortcut_doc` tool. A feature that is missing here makes the Chat wrongly claim it does not exist (this is exactly how Voice Feedback slipped through). Skim `git log <last-tag>..HEAD` for new features/shortcuts and update README before bumping the version.
 2. **Bump version**: Increment CFBundleShortVersionString in `WhisperShortcut/Info.plist`
 3. **Bump bundle version**: Increment CFBundleVersion in `WhisperShortcut/Info.plist`
 4. **Create GitHub changelog**: Summarize changes since the previous git tag

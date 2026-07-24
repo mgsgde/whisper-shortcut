@@ -110,6 +110,7 @@ struct ShortcutConfig: Codable {
   var openChat: ShortcutDefinition
   var screenshotCapture: ShortcutDefinition
   var readAloud: ShortcutDefinition
+  var voiceFeedback: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
@@ -117,7 +118,8 @@ struct ShortcutConfig: Codable {
     openSettings: ShortcutDefinition(key: .zero, modifiers: [.command], isEnabled: true),
     openChat: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true),
     screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
-    readAloud: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true)
+    readAloud: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true),
+    voiceFeedback: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true)
   )
 }
 
@@ -275,6 +277,7 @@ class ShortcutConfigManager {
     static let openChatKey = "shortcut_open_gemini"
     static let screenshotCaptureKey = "shortcut_screenshot_capture"
     static let readAloudKey = "shortcut_read_aloud"
+    static let voiceFeedbackKey = "shortcut_voice_feedback"
   }
 
   private let userDefaults = UserDefaults.standard
@@ -325,13 +328,16 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.screenshotCaptureKey) ?? ShortcutConfig.default.screenshotCapture
     let readAloud =
       loadShortcut(for: Constants.readAloudKey) ?? ShortcutConfig.default.readAloud
+    let voiceFeedback =
+      loadShortcut(for: Constants.voiceFeedbackKey) ?? ShortcutConfig.default.voiceFeedback
     return ShortcutConfig(
       startRecording: startRecording,
       startPrompting: startPrompting,
       openSettings: openSettings,
       openChat: openChat,
       screenshotCapture: screenshotCapture,
-      readAloud: readAloud
+      readAloud: readAloud,
+      voiceFeedback: voiceFeedback
     )
   }
 
@@ -342,6 +348,7 @@ class ShortcutConfigManager {
     saveShortcut(config.openChat, for: Constants.openChatKey)
     saveShortcut(config.screenshotCapture, for: Constants.screenshotCaptureKey)
     saveShortcut(config.readAloud, for: Constants.readAloudKey)
+    saveShortcut(config.voiceFeedback, for: Constants.voiceFeedbackKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)

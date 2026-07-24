@@ -91,7 +91,7 @@ struct SettingsView: View {
           case .readAloud:
             ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
           case .improvement:
-            ImprovementSettingsTab(viewModel: viewModel)
+            ImprovementSettingsTab(viewModel: viewModel, focusedField: $focusedField)
           case .permissions:
             PermissionsTab()
           case .about:

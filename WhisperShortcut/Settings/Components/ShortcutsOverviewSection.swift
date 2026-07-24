@@ -9,13 +9,15 @@ struct ShortcutsOverviewSection: View {
     var items: [(String, ShortcutDefinition?)] = [
       ("Dictate", viewModel.data.toggleDictation),
       ("Dictate Prompt", viewModel.data.togglePrompting),
+      ("Screenshot", viewModel.data.screenshotCapture),
     ]
     // Selection-based Read Aloud uses ⌘C (Accessibility) — omitted from the App Store build.
     #if !APP_STORE
     items.append(("Read Aloud", viewModel.data.readAloud))
     #endif
+    // Voice Feedback last so the digits read 1-2-3-4-5, matching the status menu.
     items.append(contentsOf: [
-      ("Screenshot", viewModel.data.screenshotCapture),
+      ("Voice Feedback", viewModel.data.voiceFeedback),
       ("Chat", viewModel.data.openChat),
       ("Settings", viewModel.data.openSettings),
     ])

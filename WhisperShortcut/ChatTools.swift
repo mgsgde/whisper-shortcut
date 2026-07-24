@@ -674,7 +674,7 @@ enum ChatToolRegistry {
     [
       "name": "list_whisper_shortcut_docs",
       "description":
-        "Lists the documentation bundled with WhisperShortcut so you can answer questions about the app itself — its features, shortcuts, supported models, settings, data storage, requirements, installation, etc. ALWAYS call this first when the user asks 'How does WhisperShortcut work?', 'What can this app do?', 'How do I configure X?', 'Where are my recordings stored?', or any similar self-referential question. Returns {docs: [{name, title, description}], app_version, build_number}.",
+        "Lists the documentation bundled with WhisperShortcut AND the user's current keyboard shortcuts, so you can answer questions about the app itself — its features, shortcuts, supported models, settings, data storage, requirements, installation, etc. ALWAYS call this first, and NEVER answer from memory, when the user asks anything self-referential about WhisperShortcut: 'How does WhisperShortcut work?', 'What can this app do?', 'Explain feature X', 'Does the app have X?', 'What is the shortcut for X?', 'How do I configure X?', 'Where are my recordings stored?', and the like. Your training data about this app is incomplete and features are added often, so grounding in these docs is required. Then read the relevant doc with read_whisper_shortcut_doc before answering. Returns {docs: [{name, title, description}], shortcuts: [{action, shortcut, enabled}], app_version, build_number}.",
       "parameters": [
         "type": "object",
         "properties": [:] as [String: Any],
@@ -1278,9 +1278,30 @@ enum ChatToolRegistry {
       let docsList: [[String: Any]] = availableDocs.map { doc in
         ["name": doc.name, "title": doc.title, "description": doc.description]
       }
-      DebugLogger.logSuccess("GEMINI-CHAT-TOOL: listed \(docsList.count) bundled docs")
+      // Live shortcut bindings from the user's actual config, so keyboard-shortcut answers can
+      // never go stale against a hardcoded doc table. Feature prose still lives in README.
+      let config = ShortcutConfigManager.shared.loadConfiguration()
+      let shortcutRows: [(String, ShortcutDefinition)] = [
+        ("Dictate", config.startRecording),
+        ("Dictate Prompt", config.startPrompting),
+        ("Screenshot", config.screenshotCapture),
+        ("Read Aloud", config.readAloud),
+        ("Voice Feedback", config.voiceFeedback),
+        ("Chat", config.openChat),
+        ("Settings", config.openSettings),
+      ]
+      let shortcuts: [[String: Any]] = shortcutRows.map { name, def in
+        [
+          "action": name,
+          "shortcut": def.isEnabled ? def.displayStringWithSeparator : "Disabled",
+          "enabled": def.isEnabled,
+        ]
+      }
+      DebugLogger.logSuccess(
+        "GEMINI-CHAT-TOOL: listed \(docsList.count) bundled docs + \(shortcuts.count) live shortcuts")
       return [
         "docs": docsList,
+        "shortcuts": shortcuts,
         "app_version": AppConstants.appVersion,
         "build_number": AppConstants.appBuildNumber,
       ]
