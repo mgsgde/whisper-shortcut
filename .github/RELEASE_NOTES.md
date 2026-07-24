@@ -1,6 +1,6 @@
-# WhisperShortcut 7.92
+# WhisperShortcut 7.93
 
-A polish release: Settings and Chat are now navigable with VoiceOver, and a batch of visual inconsistencies across both windows has been cleaned up.
+Adds **Voice Feedback** — teach the app to transcribe and write the way you want just by speaking — plus cost and accuracy tuning.
 
 ## Installation
 
@@ -8,24 +8,19 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### ♿️ Accessibility
+### 🎓 Voice Feedback (new)
 
-- **Model tiles are selectable with VoiceOver.** Picking a transcription, chat, or voice model was previously impossible without a mouse — the tiles were tappable areas with no button role or name.
-- **Toggles and dropdowns announce what they control.** A dozen switches and pickers in General, Chat, Dictate Prompt, Read Aloud, and Improve had no spoken label.
-- **Every icon-only button now has a name** — the show/hide eye on each API key field, sidebar and tab controls, send/stop, banner dismiss, add-header, and clear-shortcut.
-- **Collapsible sidebar sections** in Chat are exposed as real controls, with their expanded/collapsed state announced.
+- **Correct the app by speaking.** Press the Voice Feedback shortcut (default ⌘5) and say something like *"my name is spelled G-ö-d-d-e"* or *"stop capitalizing every noun in Dictate Prompt output."* The app turns your instruction into a concrete change to the right part of your context — the transcription prompt, the Whisper glossary, Dictate Prompt, or Chat.
+- **You review before anything changes.** The proposed edit is shown in a diff window; nothing is applied until you accept it, and every change is recorded so you can revert it.
+- **Editable shortcut.** Configure it in Settings → Smart Improvement; it also appears in the status menu and the shortcuts overview.
 
-### 🎨 Interface polish
+### 🧠 Smarter, cheaper models
 
-- The **Read Aloud voice picker** now uses the same tiles as every other model picker, so it highlights on hover and shows the recommended star.
-- **Section headers across Settings** carry icons consistently, including the prompt and glossary editors.
-- Fixed a **doubled gap** above the offline model list, unified card padding and button corners, and matched the vertical spacing of your chat bubbles to the assistant's.
-- The **chat composer** no longer draws its text with system colors, which could render it nearly black against the dark composer when macOS was set to light appearance.
-- The **Smart Improvement review window** no longer clips its own content at the smallest size it allows you to drag it to.
-- Removed a stray emoji from the Google API key section.
+- **Lower cost by default.** Gemini models now default to 3.5 Flash-Lite, and thinking levels were tuned so background tasks stop billing unnecessary reasoning tokens.
 
-### 🧹 Maintenance
+### ✅ Accuracy & self-knowledge
 
-- Updated swift-crypto to 4.5.1 and swift-jinja to 2.4.1.
+- **Fewer wrong glossary learns.** The fast glossary learner no longer accepts loose fuzzy matches that could teach the wrong spelling.
+- **The in-app Chat now knows the app.** Ask it "what can this app do?" or "explain feature X" and it answers from the app's real, current features and your actual keyboard shortcuts instead of guessing.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.91...v7.92
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.92...v7.93
