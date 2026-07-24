@@ -34,6 +34,12 @@ final class GlossaryFastLearner {
   private let glossaryAutoGrowthLimitChars = 2_000
   private let minTokenLength = 4
   private let maxCandidatesPerMessage = 12
+  /// A 2-edit fuzzy match is only trusted when the shorter word is at least this long. Below it,
+  /// two edits are enough to turn one real word into an unrelated one ("Kimika"→"Kimi",
+  /// "Margen"→"Machen"), which is how junk enters the glossary. Genuine ASR name-mishearings are
+  /// almost always a SINGLE edit ("Gödde"→"Göde", "Nebius"→"Nebbius", "Groq"→"Grok"), so short
+  /// words require an exact single-edit near-miss.
+  private static let minLengthForTwoEdits = 8
 
   private init() {}
 
@@ -201,10 +207,15 @@ final class GlossaryFastLearner {
       // misspellings of what the user typed. Distance 0 after folding = pure
       // case/diacritic correction.
       let variants = properTranscriptTokens.filter { transcript in
-        transcript.original != candidate
-          && transcript.folded.first == foldedCandidate.first
-          && Self.levenshtein(foldedCandidate, transcript.folded,
-                              limit: foldedCandidate.count <= 5 ? 1 : 2) != nil
+        guard transcript.original != candidate,
+              transcript.folded.first == foldedCandidate.first
+        else { return false }
+        // Trust a 2-edit gap only for long words; short words must be a single-edit near-miss,
+        // otherwise distance-2 matches bridge two genuinely different words ("Kimika"↔"Kimi",
+        // "Margen"↔"Machen") and poison the glossary. Distance 0 (case/diacritic-only) still passes.
+        let shorterLen = min(foldedCandidate.count, transcript.folded.count)
+        let allowedDistance = shorterLen >= Self.minLengthForTwoEdits ? 2 : 1
+        return Self.levenshtein(foldedCandidate, transcript.folded, limit: allowedDistance) != nil
           // Reject grammatical inflections (e.g. "Hauptanwendungsfall" vs "Hauptanwendungsfälle"):
           // the transcript word is not a misspelling but the plural/genitive of the same common
           // word, so learning it just injects a dictionary word that echoes into transcripts.
