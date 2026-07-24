@@ -426,34 +426,13 @@ class GeminiAPIClient {
           if let sys = systemInstruction {
             body["system_instruction"] = sys
           }
-          // Per-model thinking config. Gemini 3.x uses `thinkingLevel` (Pro→high, Flash→minimal);
-          // 2.5 uses `thinkingBudget` (Pro→-1 dynamic, Flash→0 off). Sending `thinkingBudget` to a
-          // 3.x model is the wrong knob and can make it leak raw `start_thought` tokens into the
-          // reply — see `PromptModel.geminiThinkingConfig`. Unknown models get no thinkingConfig
-          // (the model's own default applies).
-          let promptModel = PromptModel(rawValue: model)
-          if promptModel == nil {
-            DebugLogger.logError("GEMINI-CHAT-STREAM: unknown model rawValue \(model), omitting thinkingConfig")
-          }
           var generationConfig: [String: Any] = [
             "temperature": 0.7,
             "topP": 0.95,
             "maxOutputTokens": 8192
           ]
-          // Start from the model's built-in config, then apply a per-session `/think` override.
-          // We reuse the default config's shape to know which knob this model uses: a 3.x model
-          // carries `thinkingLevel` (override the level directly); a 2.5 model carries
-          // `thinkingBudget` (no granular levels, so map minimal→0 off, anything higher→-1 dynamic).
-          var thinkingConfig = promptModel?.geminiThinkingConfig
-          if thinkingLevel != .default, var cfg = thinkingConfig {
-            if cfg["thinkingLevel"] != nil, let level = thinkingLevel.geminiThinkingLevel {
-              cfg["thinkingLevel"] = level
-            } else if cfg["thinkingBudget"] != nil {
-              cfg["thinkingBudget"] = (thinkingLevel == .minimal) ? 0 : -1
-            }
-            thinkingConfig = cfg
-          }
-          if let thinkingConfig {
+          if let thinkingConfig = self.resolvedThinkingConfig(
+            modelRawValue: model, thinkingLevel: thinkingLevel, logPrefix: "GEMINI-CHAT-STREAM") {
             generationConfig["thinkingConfig"] = thinkingConfig
           }
           body["generationConfig"] = generationConfig
@@ -686,6 +665,40 @@ class GeminiAPIClient {
     return extractText(from: response)
   }
 
+  /// Per-model thinking config plus per-call/per-session override — shared by the streaming chat
+  /// path and structured generation so both send the same thinking policy (thinking tokens bill
+  /// at the output rate, so an omitted config silently runs 3.5/3.6 Flash at their `medium`
+  /// default).
+  ///
+  /// Gemini 3.x uses `thinkingLevel` (Pro→high, Flash→minimal); 2.5 uses `thinkingBudget`
+  /// (Pro→-1 dynamic, Flash→0 off). Sending `thinkingBudget` to a 3.x model is the wrong knob
+  /// and can make it leak raw `start_thought` tokens into the reply — see
+  /// `PromptModel.geminiThinkingConfig`. Unknown models get no thinkingConfig (the model's own
+  /// default applies).
+  ///
+  /// The override starts from the model's built-in config and reuses its shape to know which
+  /// knob this model uses: a 3.x model carries `thinkingLevel` (override the level directly);
+  /// a 2.5 model carries `thinkingBudget` (no granular levels, so map minimal→0 off, anything
+  /// higher→-1 dynamic).
+  private func resolvedThinkingConfig(
+    modelRawValue: String, thinkingLevel: ThinkingLevel, logPrefix: String
+  ) -> [String: Any]? {
+    let promptModel = PromptModel(rawValue: modelRawValue)
+    if promptModel == nil {
+      DebugLogger.logError("\(logPrefix): unknown model rawValue \(modelRawValue), omitting thinkingConfig")
+    }
+    var thinkingConfig = promptModel?.geminiThinkingConfig
+    if thinkingLevel != .default, var cfg = thinkingConfig {
+      if cfg["thinkingLevel"] != nil, let level = thinkingLevel.geminiThinkingLevel {
+        cfg["thinkingLevel"] = level
+      } else if cfg["thinkingBudget"] != nil {
+        cfg["thinkingBudget"] = (thinkingLevel == .minimal) ? 0 : -1
+      }
+      thinkingConfig = cfg
+    }
+    return thinkingConfig
+  }
+
   /// Non-streaming structured generation: constrains the model to `schema` via
   /// `generationConfig.responseSchema` + `responseMimeType:"application/json"` and returns the
   /// parsed top-level JSON object. `schema` is the canonical JSON Schema (Gemini accepts the
@@ -696,16 +709,22 @@ class GeminiAPIClient {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     schema: [String: Any],
-    credential: GeminiCredential
+    credential: GeminiCredential,
+    thinkingLevel: ThinkingLevel = .default
   ) async throws -> [String: Any] {
     let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
     var request = try createRequest(endpoint: endpoint, credential: credential)
+    var generationConfig: [String: Any] = [
+      "responseMimeType": "application/json",
+      "responseSchema": schema,
+    ]
+    if let thinkingConfig = resolvedThinkingConfig(
+      modelRawValue: model, thinkingLevel: thinkingLevel, logPrefix: "GEMINI-STRUCTURED") {
+      generationConfig["thinkingConfig"] = thinkingConfig
+    }
     var body: [String: Any] = [
       "contents": contents,
-      "generationConfig": [
-        "responseMimeType": "application/json",
-        "responseSchema": schema,
-      ] as [String: Any],
+      "generationConfig": generationConfig,
     ]
     if let systemInstruction = systemInstruction {
       body["system_instruction"] = systemInstruction

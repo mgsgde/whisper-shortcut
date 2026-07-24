@@ -96,7 +96,7 @@ final class GeminiChatProvider: LLMChatProvider {
     systemInstruction: [String: Any]?,
     schema: [String: Any],
     schemaName: String,  // Gemini doesn't name schemas; ignored.
-    thinkingLevel: ThinkingLevel  // Structured tasks use the model's default thinking; ignored.
+    thinkingLevel: ThinkingLevel
   ) async throws -> [String: Any] {
     guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
       throw TranscriptionError.networkError("No Gemini credential available. Add your Google API key in Settings or sign in with Google.")
@@ -106,6 +106,7 @@ final class GeminiChatProvider: LLMChatProvider {
       contents: contents,
       systemInstruction: systemInstruction,
       schema: schema,
-      credential: credential)
+      credential: credential,
+      thinkingLevel: thinkingLevel)
   }
 }

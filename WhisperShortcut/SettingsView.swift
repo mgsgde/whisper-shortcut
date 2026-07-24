@@ -74,33 +74,50 @@ struct SettingsView: View {
   // MARK: - Content Section
   @ViewBuilder
   private var contentSection: some View {
-    ScrollView {
-      VStack(spacing: SettingsConstants.spacing) {
-        switch selectedTab {
-        case .general:
-          GeneralSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .speechToText:
-          SpeechToTextSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .speechToPrompt:
-          SpeechToPromptSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .screenshot:
-          ScreenshotSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .chat:
-          ChatSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .readAloud:
-          ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-        case .improvement:
-          ImprovementSettingsTab(viewModel: viewModel)
-        case .permissions:
-          PermissionsTab()
-        case .about:
-          AboutSettingsTab(viewModel: viewModel)
+    VStack(spacing: 0) {
+      ScrollView {
+        VStack(spacing: SettingsConstants.spacing) {
+          switch selectedTab {
+          case .general:
+            GeneralSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+          case .speechToText:
+            SpeechToTextSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+          case .speechToPrompt:
+            SpeechToPromptSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+          case .screenshot:
+            ScreenshotSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+          case .chat:
+            ChatSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+          case .readAloud:
+            ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+          case .improvement:
+            ImprovementSettingsTab(viewModel: viewModel)
+          case .permissions:
+            PermissionsTab()
+          case .about:
+            AboutSettingsTab(viewModel: viewModel)
+          }
         }
+        .padding(.horizontal, SettingsConstants.horizontalPadding)
+        .padding(.top, SettingsConstants.topPadding)
+        .padding(.bottom, SettingsConstants.bottomPadding)
       }
-      .padding(.horizontal, SettingsConstants.horizontalPadding)
-      .padding(.top, SettingsConstants.topPadding)
-      .padding(.bottom, SettingsConstants.bottomPadding)
+
+      versionFooter
     }
+  }
+
+  /// Always-visible footer so support / feedback doesn't require opening About.
+  private var versionFooter: some View {
+    HStack {
+      Spacer()
+      Text("Version \(AppConstants.appVersion)")
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .textSelection(.enabled)
+    }
+    .padding(.horizontal, SettingsConstants.horizontalPadding)
+    .padding(.vertical, 8)
   }
 
   // MARK: - Helper Functions

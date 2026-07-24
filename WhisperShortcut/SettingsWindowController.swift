@@ -19,7 +19,9 @@ class SettingsWindowController: NSWindowController {
     static let widthPercentage: CGFloat = 0.75  // 75% of screen width
     static let heightPercentage: CGFloat = 0.70  // 70% of screen height
 
-    static let windowTitle = "Settings"
+    static var windowTitle: String {
+      "Settings — Version \(AppConstants.appVersion)"
+    }
     static let frameAutosaveName = "SettingsWindow"
   }
 

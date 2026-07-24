@@ -910,13 +910,16 @@ class ContextDerivation {
     // Structured output: the provider constrains the reply to the analysis schema and returns a
     // parsed { decision, suggestion, rationale } object — no free-text marker parsing, no
     // built-in code-execution leakage to strip.
+    // `.low` thinking: the "is this a recurring error?" judgment benefits from some reasoning,
+    // but the model default (`medium` on 3.5/3.6 Flash) bills thinking tokens at the output
+    // rate for an unattended background task.
     return try await provider.generateStructured(
       model: model.rawValue,
       contents: contents,
       systemInstruction: systemInstruction,
       schema: Self.analysisSchema,
       schemaName: Self.analysisSchemaName,
-      thinkingLevel: .default
+      thinkingLevel: .low
     )
   }
 

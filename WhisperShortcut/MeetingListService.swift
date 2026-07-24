@@ -150,9 +150,11 @@ final class MeetingListService: ObservableObject {
   // the selected meeting-summary model — so a Grok/OpenAI model no longer gets sent to the Gemini
   // endpoint (which fails). Each call retries transient errors via `withRetry`.
 
-  /// Final post-meeting summary for the given transcript + model.
+  /// Final post-meeting summary for the given transcript + model. `.low` thinking: summarizing
+  /// benefits from some reasoning, but the model default (`medium` on 3.5/3.6 Flash) bills
+  /// thinking tokens at the output rate for little visible gain on this task.
   static func generateSummaryText(transcript: String, model: PromptModel) async throws -> String {
-    try await generate(prompt: AppConstants.meetingSummaryPrompt(transcript: transcript), model: model, label: "MEETING-SUMMARY")
+    try await generate(prompt: AppConstants.meetingSummaryPrompt(transcript: transcript), model: model, label: "MEETING-SUMMARY", thinkingLevel: .low)
   }
 
   /// Refines an existing summary per a user instruction, grounded in the transcript. Provider-routed.
@@ -161,20 +163,25 @@ final class MeetingListService: ObservableObject {
       prompt: AppConstants.meetingSummaryRefinePrompt(
         currentSummary: currentSummary, transcript: transcript, instruction: instruction),
       model: model,
-      label: "MEETING-SUMMARY-REFINE")
+      label: "MEETING-SUMMARY-REFINE",
+      thinkingLevel: .low)
   }
 
-  /// Rolling (live) summary update for the given model.
+  /// Rolling (live) summary update for the given model. Runs repeatedly during a live meeting,
+  /// so it gets the cheapest setting — the final summary re-reads the full transcript anyway.
   static func updateRollingSummary(currentSummary: String, newText: String, model: PromptModel) async throws -> String {
     try await generate(
       prompt: AppConstants.meetingRollingSummaryPrompt(currentSummary: currentSummary, newTranscriptText: newText),
       model: model,
-      label: "MEETING-ROLLING-SUMMARY")
+      label: "MEETING-ROLLING-SUMMARY",
+      thinkingLevel: .minimal)
   }
 
-  /// Consolidates speaker labels across the full transcript for the given model.
+  /// Consolidates speaker labels across the full transcript for the given model. Mechanical
+  /// relabeling that echoes the whole transcript back — thinking would multiply the already
+  /// output-heavy pass, so it stays at `.minimal`.
   static func consolidateSpeakerLabels(transcript: String, model: PromptModel) async throws -> String {
-    try await generate(prompt: AppConstants.meetingConsolidationPrompt(transcript: transcript), model: model, label: "MEETING-CONSOLIDATE")
+    try await generate(prompt: AppConstants.meetingConsolidationPrompt(transcript: transcript), model: model, label: "MEETING-CONSOLIDATE", thinkingLevel: .minimal)
   }
 
   /// Counts distinct `Speaker X` labels in a transcript. Consolidation only reconciles labels
@@ -192,10 +199,10 @@ final class MeetingListService: ObservableObject {
   }
 
   /// Shared "route prompt → provider, with transient-error retry" helper for meeting-summary work.
-  private static func generate(prompt: String, model: PromptModel, label: String) async throws -> String {
+  private static func generate(prompt: String, model: PromptModel, label: String, thinkingLevel: ThinkingLevel) async throws -> String {
     let provider = LLMProviderFactory.provider(for: model)
     return try await withRetry(label: label) {
-      try await provider.generateText(model: model.rawValue, prompt: prompt)
+      try await provider.generateText(model: model.rawValue, prompt: prompt, thinkingLevel: thinkingLevel)
     }
   }
 
