@@ -1,6 +1,6 @@
-# WhisperShortcut 7.93
+# WhisperShortcut 7.94
 
-Adds **Voice Feedback** — teach the app to transcribe and write the way you want just by speaking — plus cost and accuracy tuning.
+Brings **X search back to Grok** — now narrowed to the accounts you trust — plus a calmer chat queue and a real fix for cancelled Dictate Prompts.
 
 ## Installation
 
@@ -8,19 +8,23 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### 🎓 Voice Feedback (new)
+### 𝕏 Grok searches X.com again
 
-- **Correct the app by speaking.** Press the Voice Feedback shortcut (default ⌘5) and say something like *"my name is spelled G-ö-d-d-e"* or *"stop capitalizing every noun in Dictate Prompt output."* The app turns your instruction into a concrete change to the right part of your context — the transcription prompt, the Whisper glossary, Dictate Prompt, or Chat.
-- **You review before anything changes.** The proposed edit is shown in a diff window; nothing is applied until you accept it, and every change is recorded so you can revert it.
-- **Editable shortcut.** Configure it in Settings → Smart Improvement; it also appears in the status menu and the shortcuts overview.
+- **X search is back on for Grok models.** It was dropped once for latency, but its bias toward opinion over fact is exactly the point — reading what people on X actually say is the main reason to pick Grok over Gemini or GPT. xAI runs web and X search side by side and decides per question, so the extra tool only costs a round trip when X is genuinely worth searching.
+- **New `/x` command — restrict it to accounts you trust.** `/x @karpathy @simonw` limits X search to those accounts for the current chat; `/x off` searches all of X again. Set a default under Settings → Chat.
 
-### 🧠 Smarter, cheaper models
+### 💬 Chat
 
-- **Lower cost by default.** Gemini models now default to 3.5 Flash-Lite, and thinking levels were tuned so background tasks stop billing unnecessary reasoning tokens.
+- **Messages sent mid-reply are queued instead of discarded.** Previously a second message replaced the one still generating. Now each is answered in turn, so you can fire off several thoughts in a row without losing an answer.
 
-### ✅ Accuracy & self-knowledge
+### 🎤 Dictate Prompt
 
-- **Fewer wrong glossary learns.** The fast glossary learner no longer accepts loose fuzzy matches that could teach the wrong spelling.
-- **The in-app Chat now knows the app.** Ask it "what can this app do?" or "explain feature X" and it answers from the app's real, current features and your actual keyboard shortcuts instead of guessing.
+- **Cancelling now actually cancels.** Stopping a Dictate Prompt while it was still working left the reply in flight — and it would paste itself into whatever you had focused by the time it arrived. It is now dropped, and the cancelled recording is cleaned up instead of being left on disk.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.92...v7.93
+### 🧹 Under the hood
+
+- Live meeting recording moved into its own `LiveMeetingSession` type: the transcript file, chunk pipeline, and rolling-summary policy now have a single owner instead of 17 loose flags on the menu-bar controller.
+- Dictate and Dictate Prompt share one completion pipeline, so cancellation, staleness, and cleanup can no longer drift apart between them.
+- Chat tools dispatch through one registry entry point, and the OpenAI-compatible providers share their request-shape helpers instead of carrying five hand-written copies.
+
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.93...v7.94
