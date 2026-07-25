@@ -28,6 +28,7 @@ Every slash command follows **`{verb}-{topic}`**. The verb tells the agent _what
 | `/analyze-user-interactions [--mode …] [--since …] [--model …]` | `analyze-user-interactions` | analyze  |
 | `/analyze-chat-freeze [--file …] [--since …]`        | `analyze-chat-freeze`          | analyze  |
 | `/review-code [N]`                                   | —                              | review   |
+| `/review-refactors [target]`                         | `review-refactors`             | review   |
 | `/review-llm-state-of-the-art`                       | `review-llm-state-of-the-art`  | review   |
 | `/validate-audio-verification`                       | `validate-audio-verification`  | validate |
 | `/competitor-teardown <name\|URL>`                   | —                              | workflow |

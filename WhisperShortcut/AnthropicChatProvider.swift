@@ -42,7 +42,7 @@ final class AnthropicChatProvider: LLMChatProvider {
           request.timeoutInterval = 300
 
           let messages = AnthropicMessagesConverter.messages(from: contents)
-          let systemText = Self.systemText(from: systemInstruction)
+          let systemText = GeminiSystemInstruction.text(from: systemInstruction)
 
           var body: [String: Any] = [
             "model": model,
@@ -193,7 +193,7 @@ final class AnthropicChatProvider: LLMChatProvider {
       ],
       "tool_choice": ["type": "tool", "name": toolName],
     ]
-    if let systemText = Self.systemText(from: systemInstruction), !systemText.isEmpty {
+    if let systemText = GeminiSystemInstruction.text(from: systemInstruction), !systemText.isEmpty {
       body["system"] = systemText
     }
     if let effort = thinkingLevel.anthropicEffort,
@@ -228,25 +228,13 @@ final class AnthropicChatProvider: LLMChatProvider {
   // MARK: - Helpers
 
   private static func requireAPIKey() throws -> String {
-    guard let apiKey = KeychainManager.shared.getAnthropicAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !apiKey.isEmpty else {
-      throw TranscriptionError.networkError(
-        "No Anthropic API key configured. Add your Anthropic API key in Settings → General to use Claude models.")
-    }
-    return apiKey
+    try ProviderCredentials.require(.anthropic)
   }
 
   private static func applyCommonHeaders(to request: inout URLRequest, apiKey: String) {
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
     request.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
-  }
-
-  private static func systemText(from systemInstruction: [String: Any]?) -> String? {
-    guard let sys = systemInstruction,
-          let parts = sys["parts"] as? [[String: Any]],
-          let text = parts.first?["text"] as? String, !text.isEmpty else { return nil }
-    return text
   }
 
   private static func mapHTTPError(status: Int, body: String) -> Error {

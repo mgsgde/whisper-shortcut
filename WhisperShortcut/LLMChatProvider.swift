@@ -85,6 +85,46 @@ struct LLMToolDeclaration {
   let parameters: [String: Any]
 }
 
+extension LLMToolDeclaration {
+  /// Chat Completions wants the declaration nested under `function`; the Responses API wants the
+  /// same fields flat on the tool object. Both shapes were previously written out by hand in every
+  /// OpenAI-compatible provider, so a field added to one endpoint's shape silently skipped the other.
+  var chatCompletionsDeclaration: [String: Any] {
+    [
+      "type": "function",
+      "function": [
+        "name": name,
+        "description": description,
+        "parameters": parameters,
+      ] as [String: Any],
+    ]
+  }
+
+  var responsesDeclaration: [String: Any] {
+    [
+      "type": "function",
+      "name": name,
+      "description": description,
+      "parameters": parameters,
+    ]
+  }
+}
+
+// MARK: - System Instruction Extraction
+
+/// Pulls the plain text out of the Gemini-format `systemInstruction` dict that every provider
+/// receives. Providers consume it differently — OpenAI/Grok/local prepend a `system` message,
+/// Anthropic sets a top-level `system` field, the Responses API uses `instructions` — but they all
+/// need the same string out of the same nested shape, which used to be re-derived in five places.
+enum GeminiSystemInstruction {
+  static func text(from systemInstruction: [String: Any]?) -> String? {
+    guard let sys = systemInstruction,
+          let parts = sys["parts"] as? [[String: Any]],
+          let text = parts.first?["text"] as? String, !text.isEmpty else { return nil }
+    return text
+  }
+}
+
 // MARK: - LLM Chat Provider Protocol
 
 /// Abstraction over different LLM chat APIs (Gemini, Grok/xAI, etc.).
@@ -224,12 +264,8 @@ enum OpenAICompatibleStructured {
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
     request.timeoutInterval = 120
 
-    var messages = OpenAIChatCompletionsConverter.messages(from: contents)
-    if let sys = systemInstruction,
-       let parts = sys["parts"] as? [[String: Any]],
-       let text = parts.first?["text"] as? String, !text.isEmpty {
-      messages.insert(["role": "system", "content": text], at: 0)
-    }
+    let messages = OpenAIChatCompletionsConverter.messages(
+      from: contents, systemInstruction: systemInstruction)
 
     var body: [String: Any] = [
       "model": model,
@@ -278,6 +314,280 @@ enum OpenAICompatibleStructured {
   }
 }
 
+// MARK: - OpenAI-Compatible Streaming (shared by OpenAI + Grok + Local)
+
+/// The SSE plumbing behind every OpenAI-compatible streaming provider: issue the POST, map the
+/// HTTP failure, then parse the event stream into `ChatStreamEvent`s.
+///
+/// Three providers post to `/v1/chat/completions` (OpenAI, xAI, and any local Ollama/LM Studio
+/// server) and two post to `/v1/responses` (OpenAI, xAI). Each used to carry its own verbatim copy
+/// of the parser — including the tool-call accumulator, the single most delicate part of the chat
+/// path, where a fix had to be applied identically in three files or the providers silently drifted.
+///
+/// What genuinely differs per provider stays with the provider: the endpoint, the auth headers, the
+/// body knobs (`temperature`, `max_tokens`, `modalities`, …) and the error mapping all arrive
+/// through `Config`.
+enum OpenAICompatibleStream {
+
+  struct Config {
+    let endpoint: String
+    /// Auth and provider-specific headers (`Authorization`, `x-grok-conv-id`, …). `Content-Type`
+    /// and `Accept` are always set.
+    let headers: [String: String]
+    /// Prefix for this provider's `DebugLogger` lines, e.g. `OPENAI-CHAT-STREAM`.
+    let logTag: String
+    /// Maps a non-2xx status + body to the error the user should see. Providers differ sharply
+    /// here — xAI folds "out of credits" into 429, a local server's 404 means "model not pulled".
+    let mapHTTPError: (Int, String) -> Error
+    /// Maps a transport failure (connection refused, host unreachable) before any HTTP status
+    /// exists. Only the local provider needs this; the default rethrows unchanged.
+    var mapTransportError: (Error) -> Error = { $0 }
+    var session: URLSession = LLMHTTPSession.shared
+  }
+
+  /// POSTs `body` and returns the byte stream, or throws the provider-mapped error.
+  private static func openStream(
+    _ config: Config, body: [String: Any]
+  ) async throws -> URLSession.AsyncBytes {
+    guard let url = URL(string: config.endpoint) else {
+      throw TranscriptionError.networkError("Invalid \(config.logTag) endpoint URL")
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+    for (field, value) in config.headers {
+      request.setValue(value, forHTTPHeaderField: field)
+    }
+    request.timeoutInterval = 300
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+    let bytes: URLSession.AsyncBytes
+    let response: URLResponse
+    do {
+      (bytes, response) = try await config.session.bytes(for: request)
+    } catch {
+      throw config.mapTransportError(error)
+    }
+
+    guard let http = response as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response from \(config.logTag) API")
+    }
+    if http.statusCode < 200 || http.statusCode >= 300 {
+      var errData = Data()
+      for try await b in bytes { errData.append(b) }
+      let text = String(data: errData, encoding: .utf8) ?? ""
+      DebugLogger.logError("\(config.logTag): HTTP \(http.statusCode) body=\(text.prefix(500))")
+      throw config.mapHTTPError(http.statusCode, text)
+    }
+    return bytes
+  }
+
+  // MARK: Chat Completions
+
+  /// Streams `/v1/chat/completions` SSE. Tool calls arrive in fragments across many deltas, so they
+  /// are accumulated and emitted once the stream ends.
+  static func chatCompletions(
+    _ config: Config, body: [String: Any]
+  ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
+    AsyncThrowingStream { continuation in
+      let task = Task {
+        do {
+          let bytes = try await openStream(config, body: body)
+
+          // Keyed by the delta's `index` (Int, not String) so emission order survives double-digit
+          // parallel tool calls — a string-keyed dict sorts "10" before "2".
+          var pendingToolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
+          var finishReason: String?
+
+          for try await line in bytes.lines {
+            try Task.checkCancellation()
+            guard line.hasPrefix("data: ") else { continue }
+            let payload = String(line.dropFirst(6))
+            if payload == "[DONE]" { break }
+            guard let data = payload.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let choices = obj["choices"] as? [[String: Any]],
+                  let choice = choices.first else { continue }
+
+            if let reason = choice["finish_reason"] as? String {
+              finishReason = reason
+            }
+            guard let delta = choice["delta"] as? [String: Any] else { continue }
+
+            if let content = delta["content"] as? String, !content.isEmpty {
+              continuation.yield(.textDelta(content))
+            }
+
+            // Merge name/args without clobbering an in-flight accumulator if `name` arrives
+            // mid-stream.
+            if let toolCalls = delta["tool_calls"] as? [[String: Any]] {
+              for tc in toolCalls {
+                let index = tc["index"] as? Int ?? 0
+                let toolID = tc["id"] as? String
+                if let function = tc["function"] as? [String: Any] {
+                  let existing = pendingToolCalls[index]
+                  let updatedName = (function["name"] as? String) ?? existing?.name ?? ""
+                  let updatedId = toolID ?? existing?.id ?? "call_\(index)"
+                  var updatedArgs = existing?.arguments ?? ""
+                  if let argChunk = function["arguments"] as? String {
+                    updatedArgs += argChunk
+                  }
+                  pendingToolCalls[index] = (id: updatedId, name: updatedName, arguments: updatedArgs)
+                } else if let toolID = toolID, pendingToolCalls[index] == nil {
+                  pendingToolCalls[index] = (id: toolID, name: "", arguments: "")
+                }
+              }
+            }
+          }
+
+          // Round-trip `tool_call.id` via `thoughtSignature` so the message loop's tool-response
+          // turn preserves the link.
+          for key in pendingToolCalls.keys.sorted() {
+            guard let tc = pendingToolCalls[key], !tc.name.isEmpty else { continue }
+            let args = parseArguments(tc.arguments)
+            DebugLogger.logNetwork("\(config.logTag): functionCall name=\(tc.name) id=\(tc.id)")
+            continuation.yield(.functionCall(name: tc.name, args: args, thoughtSignature: tc.id))
+          }
+
+          DebugLogger.logNetwork("\(config.logTag): stream end, finishReason=\(finishReason ?? "nil")")
+          continuation.yield(.finished(sources: [], supports: [], finishReason: finishReason))
+          continuation.finish()
+        } catch {
+          continuation.finish(throwing: error)
+        }
+      }
+      continuation.onTermination = { @Sendable _ in task.cancel() }
+    }
+  }
+
+  // MARK: Responses API
+
+  /// Streams `/v1/responses` SSE (`event: <type>` + `data: <json>` pairs).
+  ///
+  /// `collectCitations` gathers `url_citation` annotations into the `finished` event's sources.
+  /// Only providers that do *not* already write inline `[N]` markers into the reply text should
+  /// enable it, otherwise the reply renders two competing sets of citation markers.
+  static func responses(
+    _ config: Config, body: [String: Any], collectCitations: Bool
+  ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
+    AsyncThrowingStream { continuation in
+      let task = Task {
+        do {
+          let bytes = try await openStream(config, body: body)
+
+          var pendingFunctionCalls: [(name: String, args: [String: Any], callId: String)] = []
+          var functionCallNames: [String: String] = [:]  // item_id → function name
+          var currentEventType: String?
+          var finishReason: String?
+          // Unique URLs in first-seen order, so footer numbering ([1], [2], …) matches the
+          // inline markers the model appends in citation order.
+          var citationURLs: [String] = []
+          var seenCitationURLs: Set<String> = []
+
+          for try await line in bytes.lines {
+            try Task.checkCancellation()
+
+            if line.hasPrefix("event: ") {
+              currentEventType = String(line.dropFirst(7))
+              continue
+            }
+
+            guard line.hasPrefix("data: ") else { continue }
+            let payload = String(line.dropFirst(6))
+            guard let data = payload.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+
+            let eventType = currentEventType ?? obj["type"] as? String ?? ""
+            currentEventType = nil
+
+            switch eventType {
+            case "response.output_text.delta":
+              if let delta = obj["delta"] as? String, !delta.isEmpty {
+                continuation.yield(.textDelta(delta))
+              }
+
+            case "response.function_call_arguments.done":
+              // The name arrived earlier on `output_item.added`, keyed by item_id.
+              let argsString = obj["arguments"] as? String ?? "{}"
+              let itemId = obj["item_id"] as? String ?? ""
+              if let existing = functionCallNames[itemId] {
+                pendingFunctionCalls.append(
+                  (name: existing, args: parseArguments(argsString), callId: itemId))
+              }
+
+            case "response.output_item.added":
+              if let item = obj["item"] as? [String: Any],
+                 let type = item["type"] as? String, type == "function_call",
+                 let name = item["name"] as? String,
+                 let itemId = item["id"] as? String {
+                functionCallNames[itemId] = name
+                DebugLogger.logNetwork("\(config.logTag): function_call added name=\(name) id=\(itemId)")
+              }
+
+            case "response.output_text.annotation.added":
+              guard collectCitations else { break }
+              if let ann = obj["annotation"] as? [String: Any],
+                 (ann["type"] as? String) == "url_citation",
+                 let url = (ann["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                 !url.isEmpty, seenCitationURLs.insert(url).inserted {
+                citationURLs.append(url)
+              }
+
+            case "response.completed":
+              if let resp = obj["response"] as? [String: Any],
+                 let status = resp["status"] as? String {
+                finishReason = status == "completed" ? "stop" : status
+              }
+
+            default:
+              break
+            }
+          }
+
+          // Pass callId via thoughtSignature for round-trip.
+          for call in pendingFunctionCalls {
+            DebugLogger.logNetwork("\(config.logTag): functionCall name=\(call.name) callId=\(call.callId)")
+            continuation.yield(.functionCall(name: call.name, args: call.args, thoughtSignature: call.callId))
+          }
+
+          let sources = citationURLs.map {
+            GroundingSource(uri: $0, title: citationDisplayTitle(for: $0))
+          }
+          DebugLogger.logNetwork("\(config.logTag): stream end, finishReason=\(finishReason ?? "nil") sources=\(sources.count)")
+          // No `supports`: these providers write inline [N] markers into the reply text themselves,
+          // so emitting grounding supports would render a second, duplicate set of markers.
+          continuation.yield(.finished(sources: sources, supports: [], finishReason: finishReason))
+          continuation.finish()
+        } catch {
+          continuation.finish(throwing: error)
+        }
+      }
+      continuation.onTermination = { @Sendable _ in task.cancel() }
+    }
+  }
+
+  // MARK: Helpers
+
+  /// Tool-call arguments arrive as a JSON *string*; a malformed one yields no arguments rather
+  /// than failing the whole stream.
+  private static func parseArguments(_ json: String) -> [String: Any] {
+    guard let data = json.data(using: .utf8),
+          let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      return [:]
+    }
+    return parsed
+  }
+
+  /// Display label for a citation footer entry. The providers' annotation `title` is often just the
+  /// citation number, so the URL host (minus a leading "www.") reads better and matches how the
+  /// source list renders for Gemini-grounded replies.
+  private static func citationDisplayTitle(for urlString: String) -> String {
+    guard let host = URL(string: urlString)?.host, !host.isEmpty else { return urlString }
+    return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+  }
+}
+
 // MARK: - Provider Factory
 
 enum LLMProviderFactory {
@@ -321,6 +631,22 @@ enum LLMProviderFactory {
 /// Tool-result turns pair `tool_call_id` positionally against the preceding assistant
 /// turn's `toolCallIds`.
 enum OpenAIChatCompletionsConverter {
+  /// Converts `contents` and prepends the system instruction as the leading `system` message —
+  /// the exact pair of steps every Chat Completions caller performs. Callers that need the
+  /// instruction somewhere other than a message (Anthropic's `system` field, the Responses API's
+  /// `instructions`) use `GeminiSystemInstruction.text(from:)` directly instead.
+  static func messages(
+    from contents: [[String: Any]],
+    systemInstruction: [String: Any]?,
+    stripImages: Bool = false
+  ) -> [[String: Any]] {
+    var messages = self.messages(from: contents, stripImages: stripImages)
+    if let text = GeminiSystemInstruction.text(from: systemInstruction) {
+      messages.insert(["role": "system", "content": text], at: 0)
+    }
+    return messages
+  }
+
   static func messages(
     from contents: [[String: Any]],
     stripImages: Bool = false

@@ -866,30 +866,7 @@ class ContextDerivation {
     currentWhisperGlossary: String?,
     model: PromptModel
   ) async throws -> [String: Any] {
-    switch model.provider {
-    case .openai:
-      guard KeychainManager.shared.hasValidOpenAIAPIKey() else {
-        throw TranscriptionError.networkError("OpenAI API key is missing — add it in Settings → General.")
-      }
-    case .customOpenAI:
-      guard OpenAIChatPreferences.isConfigured else {
-        throw TranscriptionError.networkError(
-          "Custom endpoint is not configured — set URL and API key in Settings → Chat.")
-      }
-    case .grok:
-      guard KeychainManager.shared.hasValidXAIAPIKey() else {
-        throw TranscriptionError.networkError("xAI API key is missing — add it in Settings → General.")
-      }
-    case .anthropic:
-      guard KeychainManager.shared.hasValidAnthropicAPIKey() else {
-        throw TranscriptionError.networkError("Anthropic API key is missing — add it in Settings → General.")
-      }
-    case .gemini:
-      break
-    case .local:
-      // Local server needs no API key; reachability surfaces at request time.
-      break
-    }
+    try ProviderCredentials.verifyConfigured(model.provider)
 
     let systemPrompt = systemPromptForFocus(focus, audioAttached: false)
     let userMessage = buildAnalysisUserMessage(

@@ -554,6 +554,62 @@ class SpeechService {
     return normalizedText
   }
 
+  // MARK: - Dictate Prompt: shared tail
+
+  /// Where a Dictate Prompt path gets the user's spoken instruction for the history record.
+  /// The two cases are mutually exclusive by construction, so no path can accidentally supply
+  /// both or neither.
+  private enum PromptInstructionSource {
+    /// Gemini / OpenAI: transcribed in parallel with the main request, resolved with a timeout.
+    case parallelTranscription(Task<String, Never>)
+    /// Local: the instruction was transcribed up front, so it is already in hand.
+    case known(String)
+  }
+
+  /// The tail every Dictate Prompt path shares once it holds the model's answer: resolve the
+  /// instruction, append the turn to the conversation history, log the interaction, and report
+  /// success. Keeping it in one place means the history record and the interaction log can't
+  /// drift apart per provider — they did before, and only the Gemini path's version was ever
+  /// checked when either changed.
+  private func recordPromptTurn(
+    normalizedText: String,
+    instruction: PromptInstructionSource,
+    mode: PromptMode,
+    clipboardContext: String?,
+    model: String,
+    hadScreenshot: Bool,
+    logPrefix: String
+  ) async {
+    let userInstruction: String
+    switch instruction {
+    case .known(let text):
+      userInstruction = text
+    case .parallelTranscription(let task):
+      // Budget the wait so a slow second transcription never holds up the paste.
+      let result = await awaitWithTimeout(task, timeoutSeconds: 10)
+      if result == nil {
+        DebugLogger.logWarning("\(logPrefix): History transcription timed out, using placeholder")
+      }
+      userInstruction = result ?? Self.voiceInstructionPlaceholder
+    }
+
+    PromptConversationHistory.shared.append(
+      mode: mode,
+      selectedText: clipboardContext,
+      userInstruction: userInstruction,
+      modelResponse: normalizedText
+    )
+    ContextLogger.shared.logPrompt(
+      mode: mode,
+      selectedText: clipboardContext,
+      userInstruction: userInstruction,
+      modelResponse: normalizedText,
+      model: model,
+      hadScreenshot: hadScreenshot
+    )
+    DebugLogger.logSuccess("\(logPrefix): Completed successfully (\(normalizedText.count) chars)")
+  }
+
   // MARK: - Gemini Prompt Mode
   /// Spawns a parallel `Task` that transcribes the recording for the chat-history record,
   /// running alongside the main Dictate Prompt request so it adds no latency. Failures fall back
@@ -607,11 +663,7 @@ class SpeechService {
 
     if let context = clipboardContext {
       DebugLogger.log("PROMPT-MODE-GEMINI: Adding clipboard context to request (length: \(context.count) chars)")
-      let contextText = """
-      SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):
-
-      \(context)
-      """
+      let contextText = "\(AppConstants.clipboardSelectionHeader)\n\n\(context)"
       userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
     } else {
       DebugLogger.log("PROMPT-MODE-GEMINI: No clipboard context to add")
@@ -655,20 +707,14 @@ class SpeechService {
       logPrefix: "PROMPT-MODE-GEMINI"
     )
 
-    let historyResult = await awaitWithTimeout(transcriptionTask, timeoutSeconds: 10)
-    let userInstruction = historyResult ?? Self.voiceInstructionPlaceholder
-    if historyResult == nil {
-      DebugLogger.logWarning("PROMPT-MODE-GEMINI: History transcription timed out, using placeholder")
-    }
-    PromptConversationHistory.shared.append(
+    await recordPromptTurn(
+      normalizedText: normalizedText,
+      instruction: .parallelTranscription(transcriptionTask),
       mode: mode,
-      selectedText: clipboardContext,
-      userInstruction: userInstruction,
-      modelResponse: normalizedText
-    )
-    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText, model: model.rawValue, hadScreenshot: hadScreenshot)
-
-    DebugLogger.logSuccess("PROMPT-MODE-GEMINI: Completed successfully")
+      clipboardContext: clipboardContext,
+      model: model.rawValue,
+      hadScreenshot: hadScreenshot,
+      logPrefix: "PROMPT-MODE-GEMINI")
     return normalizedText
   }
 
@@ -684,10 +730,7 @@ class SpeechService {
     mode: PromptMode,
     model: PromptModel
   ) async throws -> String {
-    guard let apiKey = keychainManager.getOpenAIAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !apiKey.isEmpty else {
-      throw TranscriptionError.networkError("No OpenAI API key configured. Add your OpenAI API key in Settings to use OpenAI's Dictate Prompt models.")
-    }
+    let apiKey = try ProviderCredentials.require(.openAI)
 
     DebugLogger.log("PROMPT-MODE-OPENAI: Starting execution model=\(model.rawValue)")
 
@@ -750,11 +793,7 @@ class SpeechService {
     }
     if let context = clipboardContext {
       DebugLogger.log("PROMPT-MODE-OPENAI: Adding clipboard context (length: \(context.count) chars)")
-      let contextText = """
-      SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):
-
-      \(context)
-      """
+      let contextText = "\(AppConstants.clipboardSelectionHeader)\n\n\(context)"
       userContent.append(["type": "text", "text": contextText])
     }
     // OpenAI's Chat Completions API embeds audio inline (base64). Reject oversized audio up
@@ -853,22 +892,14 @@ class SpeechService {
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(rawText)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-OPENAI")
 
-    // Resolve the parallel transcription with a 10-second budget so logging never blocks
-    // the user (mirrors the Gemini path).
-    let historyTranscriptionResult = await awaitWithTimeout(transcriptionTask, timeoutSeconds: 10)
-    let userInstruction = historyTranscriptionResult ?? Self.voiceInstructionPlaceholder
-    if historyTranscriptionResult == nil {
-      DebugLogger.logWarning("PROMPT-MODE-OPENAI: History transcription timed out, using placeholder")
-    }
-    PromptConversationHistory.shared.append(
+    await recordPromptTurn(
+      normalizedText: normalizedText,
+      instruction: .parallelTranscription(transcriptionTask),
       mode: mode,
-      selectedText: clipboardContext,
-      userInstruction: userInstruction,
-      modelResponse: normalizedText
-    )
-    ContextLogger.shared.logPrompt(mode: mode, selectedText: clipboardContext, userInstruction: userInstruction, modelResponse: normalizedText, model: model.rawValue, hadScreenshot: screenshotData != nil)
-
-    DebugLogger.logSuccess("PROMPT-MODE-OPENAI: Completed successfully (\(normalizedText.count) chars)")
+      clipboardContext: clipboardContext,
+      model: model.rawValue,
+      hadScreenshot: screenshotData != nil,
+      logPrefix: "PROMPT-MODE-OPENAI")
     return normalizedText
   }
 
@@ -905,12 +936,7 @@ class SpeechService {
     var userText = ""
     if let context = clipboardContext, !context.isEmpty {
       DebugLogger.log("PROMPT-MODE-LOCAL: Adding clipboard context (length: \(context.count) chars)")
-      userText += """
-      SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):
-
-      \(context)
-
-      """
+      userText += "\(AppConstants.clipboardSelectionHeader)\n\n\(context)\n\n"
     }
     userText += "VOICE INSTRUCTION:\n\(instruction)"
 
@@ -949,22 +975,14 @@ class SpeechService {
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(combined)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-LOCAL")
 
-    PromptConversationHistory.shared.append(
+    await recordPromptTurn(
+      normalizedText: normalizedText,
+      instruction: .known(instruction),
       mode: mode,
-      selectedText: clipboardContext,
-      userInstruction: instruction,
-      modelResponse: normalizedText
-    )
-    ContextLogger.shared.logPrompt(
-      mode: mode,
-      selectedText: clipboardContext,
-      userInstruction: instruction,
-      modelResponse: normalizedText,
+      clipboardContext: clipboardContext,
       model: "local:\(modelID)",
-      hadScreenshot: false
-    )
-
-    DebugLogger.logSuccess("PROMPT-MODE-LOCAL: Completed successfully (\(normalizedText.count) chars)")
+      hadScreenshot: false,
+      logPrefix: "PROMPT-MODE-LOCAL")
     return normalizedText
   }
 
@@ -1202,10 +1220,7 @@ class SpeechService {
 
   /// OpenAI TTS — `response_format:"pcm"` returns raw s16le 24kHz mono PCM (no header).
   private func synthesizeOpenAITTS(text: String, voice: String, model: TTSModel) async throws -> Data {
-    let token = (keychainManager.getOpenAIAPIKey() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !token.isEmpty else {
-      throw TranscriptionError.networkError("OpenAI API key is missing — add it in Settings → General.")
-    }
+    let token = try ProviderCredentials.require(.openAI)
     guard let url = URL(string: AppConstants.openAISpeechEndpoint) else { throw TranscriptionError.invalidRequest }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -1231,10 +1246,7 @@ class SpeechService {
   /// xAI Grok TTS — `output_format:{codec:"pcm",sample_rate:24000}` returns raw s16le 24kHz mono PCM.
   /// The model id is implied by the endpoint; sending a `model` field returns "Invalid request format".
   private func synthesizeXAITTS(text: String, voice: String, model: TTSModel) async throws -> Data {
-    let token = (keychainManager.getXAIAPIKey() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !token.isEmpty else {
-      throw TranscriptionError.networkError("xAI API key is missing — add it in Settings → General.")
-    }
+    let token = try ProviderCredentials.require(.xAI)
     guard let url = URL(string: AppConstants.xaiTTSEndpoint) else { throw TranscriptionError.invalidRequest }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -1260,10 +1272,7 @@ class SpeechService {
   // MARK: - OpenAI Transcription (cloud)
 
   private func transcribeWithOpenAI(audioURL: URL, modelID: String, dictationHint: String? = nil) async throws -> String {
-    let token = (keychainManager.getOpenAIAPIKey() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !token.isEmpty else {
-      throw TranscriptionError.networkError("OpenAI API key is missing — add it in Settings → General.")
-    }
+    let token = try ProviderCredentials.require(.openAI)
     guard let endpoint = URL(string: AppConstants.openAITranscriptionsEndpoint) else {
       throw TranscriptionError.invalidRequest
     }
@@ -1294,10 +1303,7 @@ class SpeechService {
   /// OpenAI-style multipart (`model`/`language`/`file`) the OpenAI path uses, and xAI ignores the
   /// extra `prompt` field gracefully — verified live — so we reuse the shared helper.
   private func transcribeWithXAI(audioURL: URL, dictationHint: String? = nil) async throws -> String {
-    let token = (keychainManager.getXAIAPIKey() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !token.isEmpty else {
-      throw TranscriptionError.networkError("xAI API key is missing — add it in Settings → General.")
-    }
+    let token = try ProviderCredentials.require(.xAI)
     guard let endpoint = URL(string: AppConstants.xaiSTTEndpoint) else {
       throw TranscriptionError.invalidRequest
     }

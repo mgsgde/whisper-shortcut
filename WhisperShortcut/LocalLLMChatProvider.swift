@@ -27,137 +27,37 @@ final class LocalLLMChatProvider: LLMChatProvider {
     disableBuiltInTools: Bool,  // No built-in tools on local servers; ignored.
     cacheKey: String?  // No server-side prompt cache hint; ignored.
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-    AsyncThrowingStream { continuation in
-      let task = Task {
-        do {
-          let endpoint = LocalLLMPreferences.chatCompletionsURL
-          guard let url = URL(string: endpoint) else {
-            throw TranscriptionError.networkError(
-              "Invalid local endpoint URL: \(endpoint). Set a valid base URL (e.g. http://localhost:11434/v1) in Dictate Prompt settings.")
-          }
+    let endpoint = LocalLLMPreferences.chatCompletionsURL
 
-          var request = URLRequest(url: url)
-          request.httpMethod = "POST"
-          request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-          request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-          request.timeoutInterval = 300
+    // Build OpenAI-format messages from Gemini-format contents (shared translator).
+    let messages = OpenAIChatCompletionsConverter.messages(
+      from: contents, systemInstruction: systemInstruction)
 
-          // Build OpenAI-format messages from Gemini-format contents (shared translator).
-          var messages = OpenAIChatCompletionsConverter.messages(from: contents)
-          if let sys = systemInstruction,
-             let parts = sys["parts"] as? [[String: Any]],
-             let text = parts.first?["text"] as? String, !text.isEmpty {
-            messages.insert(["role": "system", "content": text], at: 0)
-          }
-
-          var body: [String: Any] = [
-            "model": model,
-            "messages": messages,
-            "stream": true,
-          ]
-          if !tools.isEmpty {
-            body["tools"] = tools.map { tool in
-              [
-                "type": "function",
-                "function": [
-                  "name": tool.name,
-                  "description": tool.description,
-                  "parameters": tool.parameters,
-                ] as [String: Any],
-              ]
-            }
-          }
-
-          request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-          DebugLogger.logNetwork("LOCAL-CHAT-STREAM: POST \(endpoint) model=\(model) tools=\(tools.count)")
-          let (bytes, response): (URLSession.AsyncBytes, URLResponse)
-          do {
-            (bytes, response) = try await self.session.bytes(for: request)
-          } catch {
-            throw Self.mapConnectionError(error, endpoint: endpoint)
-          }
-          guard let http = response as? HTTPURLResponse else {
-            throw TranscriptionError.networkError("Invalid response from local LLM server")
-          }
-          if http.statusCode < 200 || http.statusCode >= 300 {
-            var errData = Data()
-            for try await b in bytes { errData.append(b) }
-            let text = String(data: errData, encoding: .utf8) ?? ""
-            DebugLogger.logError("LOCAL-CHAT-STREAM: HTTP \(http.statusCode) body=\(text.prefix(500))")
-            if http.statusCode == 404 {
-              throw TranscriptionError.networkError(
-                "Local server returned 404 for model \"\(model)\". Pull/select the model first (e.g. `ollama pull \(model)`) or fix the model id in Dictate Prompt settings.")
-            }
-            throw TranscriptionError.networkError("Local LLM server error HTTP \(http.statusCode): \(text.prefix(500))")
-          }
-
-          // Parse SSE stream in OpenAI Chat Completions format. Keyed by `index` so emission
-          // order survives double-digit parallel tool calls (mirrors GrokChatProvider).
-          var pendingToolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
-          var finishReason: String?
-
-          for try await line in bytes.lines {
-            try Task.checkCancellation()
-            guard line.hasPrefix("data: ") else { continue }
-            let payload = String(line.dropFirst(6))
-            if payload == "[DONE]" { break }
-            guard let data = payload.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let choices = obj["choices"] as? [[String: Any]],
-                  let choice = choices.first else { continue }
-
-            if let reason = choice["finish_reason"] as? String {
-              finishReason = reason
-            }
-            guard let delta = choice["delta"] as? [String: Any] else { continue }
-
-            if let content = delta["content"] as? String, !content.isEmpty {
-              continuation.yield(.textDelta(content))
-            }
-
-            if let toolCalls = delta["tool_calls"] as? [[String: Any]] {
-              for tc in toolCalls {
-                let index = tc["index"] as? Int ?? 0
-                let toolID = tc["id"] as? String
-                if let function = tc["function"] as? [String: Any] {
-                  let existing = pendingToolCalls[index]
-                  let updatedName = (function["name"] as? String) ?? existing?.name ?? ""
-                  let updatedId = toolID ?? existing?.id ?? "call_\(index)"
-                  var updatedArgs = existing?.arguments ?? ""
-                  if let argChunk = function["arguments"] as? String {
-                    updatedArgs += argChunk
-                  }
-                  pendingToolCalls[index] = (id: updatedId, name: updatedName, arguments: updatedArgs)
-                } else if let toolID = toolID, pendingToolCalls[index] == nil {
-                  pendingToolCalls[index] = (id: toolID, name: "", arguments: "")
-                }
-              }
-            }
-          }
-
-          for key in pendingToolCalls.keys.sorted() {
-            guard let tc = pendingToolCalls[key], !tc.name.isEmpty else { continue }
-            let args: [String: Any]
-            if let data = tc.arguments.data(using: .utf8),
-               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-              args = parsed
-            } else {
-              args = [:]
-            }
-            DebugLogger.logNetwork("LOCAL-CHAT-STREAM: functionCall name=\(tc.name) id=\(tc.id)")
-            continuation.yield(.functionCall(name: tc.name, args: args, thoughtSignature: tc.id))
-          }
-
-          DebugLogger.logNetwork("LOCAL-CHAT-STREAM: stream end, finishReason=\(finishReason ?? "nil")")
-          continuation.yield(.finished(sources: [], supports: [], finishReason: finishReason))
-          continuation.finish()
-        } catch {
-          continuation.finish(throwing: error)
-        }
-      }
-      continuation.onTermination = { @Sendable _ in task.cancel() }
+    var body: [String: Any] = [
+      "model": model,
+      "messages": messages,
+      "stream": true,
+    ]
+    if !tools.isEmpty {
+      body["tools"] = tools.map(\.chatCompletionsDeclaration)
     }
+
+    DebugLogger.logNetwork("LOCAL-CHAT-STREAM: POST \(endpoint) model=\(model) tools=\(tools.count)")
+    // No auth header: local servers don't require one. A refused connection and a 404 both get
+    // an actionable message instead of the opaque default.
+    let config = OpenAICompatibleStream.Config(
+      endpoint: endpoint,
+      headers: [:],
+      logTag: "LOCAL-CHAT-STREAM",
+      mapHTTPError: { status, body in
+        if status == 404 {
+          return TranscriptionError.networkError(
+            "Local server returned 404 for model \"\(model)\". Pull/select the model first (e.g. `ollama pull \(model)`) or fix the model id in Dictate Prompt settings.")
+        }
+        return TranscriptionError.networkError("Local LLM server error HTTP \(status): \(body.prefix(500))")
+      },
+      mapTransportError: { Self.mapConnectionError($0, endpoint: endpoint) })
+    return OpenAICompatibleStream.chatCompletions(config, body: body)
   }
 
   func generateStructured(

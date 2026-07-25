@@ -13,6 +13,34 @@ import Foundation
 // writes. Every action is either a read (clipboard) or an explicit UI effect
 // (clipboard write, open URL) that the user can immediately see.
 
+/// What a tool hands back: the payload round-tripped to the model, plus any side-channel output
+/// that must reach the UI *without* entering the model's context.
+struct ChatToolOutcome {
+  let response: [String: Any]
+  /// ⟦GEMINI_IMG:…⟧ markers rendered straight into the chat bubble. They stay out of `response`
+  /// on purpose — the functionResponse carries only a short status, so megabytes of base64 never
+  /// enter the conversation.
+  var imageMarkers: [String] = []
+}
+
+/// Handlers for tools that cannot run inside the registry because they need one chat session's
+/// state — its attached images, its meeting files on disk, its `@Published` UI properties.
+///
+/// They are registered here rather than special-cased at the call site so that `execute` stays the
+/// single dispatch point for *every* tool. Previously `ChatViewModel` ran its own if/else ladder
+/// over five tool names before falling through to the registry, which meant a new session-scoped
+/// tool had to be added in three places, and a name that didn't match any branch fell through to
+/// the registry and came back as "Unknown tool" instead of failing loudly.
+struct ChatToolContext {
+  typealias Handler = @MainActor (_ args: [String: Any]) async -> ChatToolOutcome
+
+  /// Keyed by tool name; shadows the registry's own handler for that name.
+  var sessionHandlers: [String: Handler] = [:]
+
+  /// No session attached — used by callers that only invoke globally-available tools.
+  static let empty = ChatToolContext()
+}
+
 enum ChatToolRegistry {
 
   /// Base function declarations (always available).
@@ -887,8 +915,21 @@ enum ChatToolRegistry {
     return message
   }
 
+  /// The single dispatch point for every chat tool. Session-scoped handlers registered on
+  /// `context` win over the built-in table; everything else falls through to `executeGlobal`.
   @MainActor
-  static func execute(name: String, args: [String: Any]) async -> [String: Any] {
+  static func execute(
+    name: String, args: [String: Any], context: ChatToolContext = .empty
+  ) async -> ChatToolOutcome {
+    if let handler = context.sessionHandlers[name] {
+      DebugLogger.log("GEMINI-CHAT-TOOL: execute name=\(name) (session-scoped)")
+      return await handler(args)
+    }
+    return ChatToolOutcome(response: await executeGlobal(name: name, args: args))
+  }
+
+  @MainActor
+  private static func executeGlobal(name: String, args: [String: Any]) async -> [String: Any] {
     DebugLogger.log("GEMINI-CHAT-TOOL: execute name=\(name)")
     switch name {
     case "read_clipboard":

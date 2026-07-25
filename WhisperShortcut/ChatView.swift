@@ -1045,30 +1045,15 @@ class ChatViewModel: ObservableObject {
     // bubble (via performSend), NOT back through the model — the functionResponse only
     // carries a short status, so megabytes of base64 never enter the model's context.
     var imageMarkers: [String] = []
+    let context = makeToolContext(sessionId: sessionId)
     for call in calls {
       try Task.checkCancellation()
       DebugLogger.log("CHAT-TOOL-CALL: \(call.name) args=\(Self.compactDescription(call.args))")
-      let result: [String: Any]
-      if call.name == ChatToolRegistry.generateImageToolName {
-        // Intercepted here (not in ChatToolRegistry): needs the session's attached images
-        // and must hand the generated image to the UI rather than into the tool response.
-        let outcome = await executeGenerateImageTool(args: call.args, sessionId: sessionId)
-        result = outcome.response
-        imageMarkers.append(contentsOf: outcome.markers)
-      } else if call.name == ChatToolRegistry.refineMeetingSummaryToolName {
-        // Intercepted here: operates on THIS chat's meeting files (transcript/summary on disk).
-        result = await executeRefineMeetingSummaryTool(args: call.args)
-      } else if call.name == ChatToolRegistry.correctTranscriptTermToolName {
-        result = await executeCorrectTranscriptTermTool(args: call.args)
-      } else if call.name == ChatToolRegistry.rememberAboutUserToolName {
-        result = executeRememberAboutUserTool(args: call.args)
-      } else if call.name == ChatToolRegistry.forgetAboutUserToolName {
-        result = executeForgetAboutUserTool(args: call.args)
-      } else {
-        result = await ChatToolRegistry.execute(name: call.name, args: call.args)
-      }
-      DebugLogger.log("CHAT-TOOL-RESULT: \(call.name) -> \(Self.compactDescription(result))")
-      responseParts.append(["functionResponse": ["name": call.name, "response": result]])
+      let outcome = await ChatToolRegistry.execute(
+        name: call.name, args: call.args, context: context)
+      imageMarkers.append(contentsOf: outcome.imageMarkers)
+      DebugLogger.log("CHAT-TOOL-RESULT: \(call.name) -> \(Self.compactDescription(outcome.response))")
+      responseParts.append(["functionResponse": ["name": call.name, "response": outcome.response]])
     }
     DebugLogger.log("CHAT: executed \(calls.count) tool call(s), continuing stream")
     let turns: [[String: Any]] = [
@@ -1076,6 +1061,36 @@ class ChatViewModel: ObservableObject {
       ["role": "user", "parts": responseParts],
     ]
     return (turns, imageMarkers)
+  }
+
+  /// Registers this session's tool handlers with the registry. Each one needs state the registry
+  /// can't reach — the session's attached images, its meeting files on disk, its `@Published`
+  /// properties — so it lives here; the registry still owns dispatch.
+  @MainActor
+  private func makeToolContext(sessionId: UUID) -> ChatToolContext {
+    ChatToolContext(sessionHandlers: [
+      ChatToolRegistry.generateImageToolName: { [weak self] args in
+        guard let self else { return ChatToolOutcome(response: [:]) }
+        let outcome = await self.executeGenerateImageTool(args: args, sessionId: sessionId)
+        return ChatToolOutcome(response: outcome.response, imageMarkers: outcome.markers)
+      },
+      ChatToolRegistry.refineMeetingSummaryToolName: { [weak self] args in
+        guard let self else { return ChatToolOutcome(response: [:]) }
+        return ChatToolOutcome(response: await self.executeRefineMeetingSummaryTool(args: args))
+      },
+      ChatToolRegistry.correctTranscriptTermToolName: { [weak self] args in
+        guard let self else { return ChatToolOutcome(response: [:]) }
+        return ChatToolOutcome(response: await self.executeCorrectTranscriptTermTool(args: args))
+      },
+      ChatToolRegistry.rememberAboutUserToolName: { [weak self] args in
+        guard let self else { return ChatToolOutcome(response: [:]) }
+        return ChatToolOutcome(response: self.executeRememberAboutUserTool(args: args))
+      },
+      ChatToolRegistry.forgetAboutUserToolName: { [weak self] args in
+        guard let self else { return ChatToolOutcome(response: [:]) }
+        return ChatToolOutcome(response: self.executeForgetAboutUserTool(args: args))
+      },
+    ])
   }
 
   /// Executes the `generate_image` tool: builds a one-turn request for the Gemini image model

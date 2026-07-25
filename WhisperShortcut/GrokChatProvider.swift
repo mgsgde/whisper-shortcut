@@ -63,198 +63,44 @@ final class GrokChatProvider: LLMChatProvider {
     thinkingLevel: ThinkingLevel,
     cacheKey: String?
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-    AsyncThrowingStream { continuation in
-      let task = Task {
-        do {
-          guard let apiKey = KeychainManager.shared.getXAIAPIKey(), !apiKey.isEmpty else {
-            throw TranscriptionError.networkError("No xAI API key configured. Add your xAI API key in Settings to use Grok models.")
-          }
+    do {
+      let endpoint = "https://api.x.ai/v1/responses"
 
-          let endpoint = "https://api.x.ai/v1/responses"
-          guard let url = URL(string: endpoint) else {
-            throw TranscriptionError.networkError("Invalid xAI endpoint URL")
-          }
-
-          var request = URLRequest(url: url)
-          request.httpMethod = "POST"
-          request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-          request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-          request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-          request.timeoutInterval = 300
-          // Per-conversation hint xAI uses to maximize prompt-cache hit rate (docs:
-          // "Use x-grok-conv-id to maximize cache hit rates"). Caching itself is automatic.
-          if let cacheKey = cacheKey {
-            request.setValue(cacheKey, forHTTPHeaderField: "x-grok-conv-id")
-          }
-
-          // Build Responses API input from Gemini-format contents (shared with OpenAI).
-          let input = OpenAIResponsesAPIConverter.input(from: contents)
-
-          // System instruction
-          let instructions: String? = {
-            guard let sys = systemInstruction,
-                  let parts = sys["parts"] as? [[String: Any]],
-                  let text = parts.first?["text"] as? String, !text.isEmpty else { return nil }
-            return text
-          }()
-
-          var body: [String: Any] = [
-            "model": model,
-            "input": input,
-            "stream": true,
-            "temperature": 0.7,
-            "top_p": 0.95,
-            "max_output_tokens": 8192,
-          ]
-          if let instructions = instructions {
-            body["instructions"] = instructions
-          }
-
-          // Tools: web_search + custom function tools.
-          // Only web_search is enabled — x_search (X.com posts) was dropped because
-          // it added latency without improving factual grounding for typical chat
-          // questions and tended to surface opinion over fact.
-          var responsesTools: [[String: Any]] = [
-            ["type": "web_search"],
-          ]
-          for tool in tools {
-            responsesTools.append([
-              "type": "function",
-              "name": tool.name,
-              "description": tool.description,
-              "parameters": tool.parameters,
-            ])
-          }
-          body["tools"] = responsesTools
-
-          // Per-session `/think` override → Responses API nested `reasoning.effort`.
-          if let effort = thinkingLevel.grokReasoningEffort {
-            body["reasoning"] = ["effort": effort]
-          }
-
-          request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-          DebugLogger.logNetwork("GROK-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+\(tools.count)func effort=\(thinkingLevel.grokReasoningEffort ?? "default")")
-          let (bytes, response) = try await self.session.bytes(for: request)
-          guard let http = response as? HTTPURLResponse else {
-            throw TranscriptionError.networkError("Invalid response from xAI API")
-          }
-          if http.statusCode < 200 || http.statusCode >= 300 {
-            var errData = Data()
-            for try await b in bytes { errData.append(b) }
-            let text = String(data: errData, encoding: .utf8) ?? ""
-            DebugLogger.logError("GROK-RESPONSES: HTTP \(http.statusCode) body=\(text.prefix(500))")
-            if http.statusCode == 401 {
-              throw TranscriptionError.networkError("xAI API key is invalid. Check the key in Settings → Chat.")
-            }
-            if http.statusCode == 429 {
-              throw Self.classifyXAI429(body: text)
-            }
-            throw TranscriptionError.networkError("xAI API error HTTP \(http.statusCode): \(text.prefix(500))")
-          }
-
-          // Parse Responses API SSE stream.
-          // Event format: "event: <type>\ndata: <json>\n\n"
-          var pendingFunctionCalls: [(name: String, args: [String: Any], callId: String)] = []
-          var functionCallNames: [String: String] = [:]  // item_id → function name
-          var currentEventType: String?
-          var finishReason: String?
-          // Web-search citations stream as `url_citation` annotations. Collect unique URLs in
-          // first-seen order so the source footer numbering ([1], [2], …) matches Grok's inline
-          // markers, which it appends in citation order.
-          var citationURLs: [String] = []
-          var seenCitationURLs: Set<String> = []
-
-          for try await line in bytes.lines {
-            try Task.checkCancellation()
-
-            if line.hasPrefix("event: ") {
-              currentEventType = String(line.dropFirst(7))
-              continue
-            }
-
-            guard line.hasPrefix("data: ") else { continue }
-            let payload = String(line.dropFirst(6))
-            guard let data = payload.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-
-            let eventType = currentEventType ?? obj["type"] as? String ?? ""
-            currentEventType = nil
-
-            switch eventType {
-            case "response.output_text.delta":
-              if let delta = obj["delta"] as? String, !delta.isEmpty {
-                continuation.yield(.textDelta(delta))
-              }
-
-            case "response.function_call_arguments.done":
-              // Complete function call — collect for emission after stream
-              if let itemId = obj["item_id"] as? String {
-                DebugLogger.logNetwork("GROK-RESPONSES: function_call done itemId=\(itemId)")
-              }
-              let argsString = obj["arguments"] as? String ?? "{}"
-              // We need the function name — it was in the output_item.added event.
-              // Store it via the pending map keyed by item_id.
-              let itemId = obj["item_id"] as? String ?? ""
-              if let existing = functionCallNames[itemId] {
-                let args: [String: Any]
-                if let d = argsString.data(using: .utf8),
-                   let parsed = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
-                  args = parsed
-                } else {
-                  args = [:]
-                }
-                pendingFunctionCalls.append((name: existing, args: args, callId: itemId))
-              }
-
-            case "response.output_item.added":
-              // Track function call names by item ID
-              if let item = obj["item"] as? [String: Any],
-                 let type = item["type"] as? String, type == "function_call",
-                 let name = item["name"] as? String,
-                 let itemId = item["id"] as? String {
-                functionCallNames[itemId] = name
-                DebugLogger.logNetwork("GROK-RESPONSES: function_call added name=\(name) id=\(itemId)")
-              }
-
-            case "response.output_text.annotation.added":
-              if let ann = obj["annotation"] as? [String: Any],
-                 (ann["type"] as? String) == "url_citation",
-                 let url = (ann["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                 !url.isEmpty, seenCitationURLs.insert(url).inserted {
-                citationURLs.append(url)
-              }
-
-            case "response.completed":
-              if let resp = obj["response"] as? [String: Any],
-                 let status = resp["status"] as? String {
-                finishReason = status == "completed" ? "stop" : status
-              }
-
-            default:
-              break
-            }
-          }
-
-          // Emit collected function calls (pass callId via thoughtSignature for round-trip)
-          for call in pendingFunctionCalls {
-            DebugLogger.logNetwork("GROK-RESPONSES: functionCall name=\(call.name) callId=\(call.callId)")
-            continuation.yield(.functionCall(name: call.name, args: call.args, thoughtSignature: call.callId))
-          }
-
-          let sources = citationURLs.map {
-            GroundingSource(uri: $0, title: Self.citationDisplayTitle(for: $0))
-          }
-          DebugLogger.logNetwork("GROK-RESPONSES: stream end, finishReason=\(finishReason ?? "nil") sources=\(sources.count)")
-          // No `supports`: Grok already writes inline [N] markers into its reply text, so emitting
-          // grounding supports here would render a second, duplicate set of citation markers.
-          continuation.yield(.finished(sources: sources, supports: [], finishReason: finishReason))
-          continuation.finish()
-        } catch {
-          continuation.finish(throwing: error)
-        }
+      var body: [String: Any] = [
+        "model": model,
+        "input": OpenAIResponsesAPIConverter.input(from: contents),
+        "stream": true,
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "max_output_tokens": 8192,
+      ]
+      if let instructions = GeminiSystemInstruction.text(from: systemInstruction) {
+        body["instructions"] = instructions
       }
-      continuation.onTermination = { @Sendable _ in task.cancel() }
+
+      // Tools: web_search + x_search + custom function tools.
+      // web_search searches the open web; x_search searches X.com posts.
+      // x_search was dropped once for latency, then brought back on purpose: its
+      // bias toward opinion over fact is exactly the point — reading what people
+      // on X say about a topic is the main reason to pick Grok over Gemini/GPT.
+      // xAI runs both server-side and picks per question, so the extra tool only
+      // costs a round trip when the model actually decides X is worth searching.
+      body["tools"] =
+        [["type": "web_search"] as [String: Any], ["type": "x_search"] as [String: Any]]
+        + tools.map(\.responsesDeclaration)
+
+      // Per-session `/think` override → Responses API nested `reasoning.effort`.
+      if let effort = thinkingLevel.grokReasoningEffort {
+        body["reasoning"] = ["effort": effort]
+      }
+
+      DebugLogger.logNetwork("GROK-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+x_search+\(tools.count)func effort=\(thinkingLevel.grokReasoningEffort ?? "default")")
+      return OpenAICompatibleStream.responses(
+        try Self.streamConfig(endpoint: endpoint, logTag: "GROK-RESPONSES", cacheKey: cacheKey),
+        body: body,
+        collectCitations: true)
+    } catch {
+      return AsyncThrowingStream { $0.finish(throwing: error) }
     }
   }
 
@@ -269,168 +115,67 @@ final class GrokChatProvider: LLMChatProvider {
     thinkingLevel: ThinkingLevel,
     cacheKey: String?
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-    AsyncThrowingStream { continuation in
-      let task = Task {
-        do {
-          guard let apiKey = KeychainManager.shared.getXAIAPIKey(), !apiKey.isEmpty else {
-            throw TranscriptionError.networkError("No xAI API key configured. Add your xAI API key in Settings to use Grok models.")
-          }
+    do {
+      let endpoint = "https://api.x.ai/v1/chat/completions"
 
-          let endpoint = "https://api.x.ai/v1/chat/completions"
-          guard let url = URL(string: endpoint) else {
-            throw TranscriptionError.networkError("Invalid xAI endpoint URL")
-          }
+      // xAI's API is OpenAI-Chat-Completions-compatible, so this is the same translator
+      // OpenAIChatProvider uses.
+      let messages = OpenAIChatCompletionsConverter.messages(
+        from: contents, systemInstruction: systemInstruction)
 
-          var request = URLRequest(url: url)
-          request.httpMethod = "POST"
-          request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-          request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-          request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-          request.timeoutInterval = 300
-          // Per-conversation hint xAI uses to maximize prompt-cache hit rate (docs:
-          // "Use x-grok-conv-id to maximize cache hit rates"). Caching itself is automatic.
-          if let cacheKey = cacheKey {
-            request.setValue(cacheKey, forHTTPHeaderField: "x-grok-conv-id")
-          }
+      var body: [String: Any] = [
+        "model": model,
+        "messages": messages,
+        "stream": true,
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "max_tokens": 8192,
+      ]
 
-          // Build OpenAI-format messages from Gemini-format contents.
-          // xAI's API is OpenAI-Chat-Completions-compatible, so this is the same
-          // translator OpenAIChatProvider uses.
-          var messages = OpenAIChatCompletionsConverter.messages(from: contents)
-
-          // Prepend system message if provided
-          if let sys = systemInstruction,
-             let parts = sys["parts"] as? [[String: Any]],
-             let text = parts.first?["text"] as? String, !text.isEmpty {
-            messages.insert(["role": "system", "content": text], at: 0)
-          }
-
-          var body: [String: Any] = [
-            "model": model,
-            "messages": messages,
-            "stream": true,
-            "temperature": 0.7,
-            "top_p": 0.95,
-            "max_tokens": 8192,
-          ]
-
-          // Add tools in OpenAI format if provided
-          if !tools.isEmpty {
-            let openAITools: [[String: Any]] = tools.map { tool in
-              [
-                "type": "function",
-                "function": [
-                  "name": tool.name,
-                  "description": tool.description,
-                  "parameters": tool.parameters,
-                ] as [String: Any],
-              ]
-            }
-            body["tools"] = openAITools
-          }
-
-          // Per-session `/think` override → Chat Completions top-level `reasoning_effort`.
-          if let effort = thinkingLevel.grokReasoningEffort {
-            body["reasoning_effort"] = effort
-          }
-
-          request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-          DebugLogger.logNetwork("GROK-CHAT-STREAM: POST \(endpoint) model=\(model) effort=\(thinkingLevel.grokReasoningEffort ?? "default")")
-          let (bytes, response) = try await self.session.bytes(for: request)
-          guard let http = response as? HTTPURLResponse else {
-            throw TranscriptionError.networkError("Invalid response from xAI API")
-          }
-          if http.statusCode < 200 || http.statusCode >= 300 {
-            var errData = Data()
-            for try await b in bytes { errData.append(b) }
-            let text = String(data: errData, encoding: .utf8) ?? ""
-            DebugLogger.logError("GROK-CHAT-STREAM: HTTP \(http.statusCode) body=\(text.prefix(500))")
-            if http.statusCode == 401 {
-              throw TranscriptionError.networkError("xAI API key is invalid. Check the key in Settings → Chat.")
-            }
-            if http.statusCode == 429 {
-              throw Self.classifyXAI429(body: text)
-            }
-            throw TranscriptionError.networkError("xAI API error HTTP \(http.statusCode): \(text.prefix(500))")
-          }
-
-          // Parse SSE stream in OpenAI Chat Completions format.
-          // Keyed by the delta's `index` (Int, not String) so emission order survives
-          // double-digit parallel tool calls — a string-keyed dict with lexicographic
-          // sort would put "10" before "2".
-          var pendingToolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
-          var finishReason: String?
-
-          for try await line in bytes.lines {
-            try Task.checkCancellation()
-            guard line.hasPrefix("data: ") else { continue }
-            let payload = String(line.dropFirst(6))
-            if payload == "[DONE]" {
-              break
-            }
-            guard let data = payload.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let choices = obj["choices"] as? [[String: Any]],
-                  let choice = choices.first else { continue }
-
-            if let reason = choice["finish_reason"] as? String {
-              finishReason = reason
-            }
-
-            guard let delta = choice["delta"] as? [String: Any] else { continue }
-
-            // Text content
-            if let content = delta["content"] as? String, !content.isEmpty {
-              continuation.yield(.textDelta(content))
-            }
-
-            // Tool calls (streamed incrementally). Merge name/args without clobbering
-            // any in-flight accumulator if `name` arrives mid-stream.
-            if let toolCalls = delta["tool_calls"] as? [[String: Any]] {
-              for tc in toolCalls {
-                let index = tc["index"] as? Int ?? 0
-                let toolID = tc["id"] as? String
-                if let function = tc["function"] as? [String: Any] {
-                  let existing = pendingToolCalls[index]
-                  let updatedName = (function["name"] as? String) ?? existing?.name ?? ""
-                  let updatedId = toolID ?? existing?.id ?? "call_\(index)"
-                  var updatedArgs = existing?.arguments ?? ""
-                  if let argChunk = function["arguments"] as? String {
-                    updatedArgs += argChunk
-                  }
-                  pendingToolCalls[index] = (id: updatedId, name: updatedName, arguments: updatedArgs)
-                } else if let toolID = toolID, pendingToolCalls[index] == nil {
-                  pendingToolCalls[index] = (id: toolID, name: "", arguments: "")
-                }
-              }
-            }
-          }
-
-          // Emit collected tool calls. Round-trip `tool_call.id` via `thoughtSignature`
-          // so the message-loop's tool-response turn preserves the link.
-          for key in pendingToolCalls.keys.sorted() {
-            guard let tc = pendingToolCalls[key], !tc.name.isEmpty else { continue }
-            let args: [String: Any]
-            if let data = tc.arguments.data(using: .utf8),
-               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-              args = parsed
-            } else {
-              args = [:]
-            }
-            DebugLogger.logNetwork("GROK-CHAT-STREAM: functionCall name=\(tc.name) id=\(tc.id)")
-            continuation.yield(.functionCall(name: tc.name, args: args, thoughtSignature: tc.id))
-          }
-
-          DebugLogger.logNetwork("GROK-CHAT-STREAM: stream end, finishReason=\(finishReason ?? "nil")")
-          continuation.yield(.finished(sources: [], supports: [], finishReason: finishReason))
-          continuation.finish()
-        } catch {
-          continuation.finish(throwing: error)
-        }
+      if !tools.isEmpty {
+        body["tools"] = tools.map(\.chatCompletionsDeclaration)
       }
-      continuation.onTermination = { @Sendable _ in task.cancel() }
+
+      // Per-session `/think` override → Chat Completions top-level `reasoning_effort`.
+      if let effort = thinkingLevel.grokReasoningEffort {
+        body["reasoning_effort"] = effort
+      }
+
+      DebugLogger.logNetwork("GROK-CHAT-STREAM: POST \(endpoint) model=\(model) effort=\(thinkingLevel.grokReasoningEffort ?? "default")")
+      return OpenAICompatibleStream.chatCompletions(
+        try Self.streamConfig(endpoint: endpoint, logTag: "GROK-CHAT-STREAM", cacheKey: cacheKey),
+        body: body)
+    } catch {
+      return AsyncThrowingStream { $0.finish(throwing: error) }
     }
+  }
+
+  // MARK: - Shared request configuration
+
+  /// Auth, cache hint, and xAI's error mapping — identical for both endpoints.
+  private static func streamConfig(
+    endpoint: String, logTag: String, cacheKey: String?
+  ) throws -> OpenAICompatibleStream.Config {
+    let apiKey = try ProviderCredentials.require(.xAI)
+    var headers = ["Authorization": "Bearer \(apiKey)"]
+    // Per-conversation hint xAI uses to maximize prompt-cache hit rate (docs:
+    // "Use x-grok-conv-id to maximize cache hit rates"). Caching itself is automatic.
+    if let cacheKey = cacheKey {
+      headers["x-grok-conv-id"] = cacheKey
+    }
+    return OpenAICompatibleStream.Config(
+      endpoint: endpoint,
+      headers: headers,
+      logTag: logTag,
+      mapHTTPError: { status, body in
+        if status == 401 {
+          return TranscriptionError.networkError(ProviderCredentials.invalidKeyMessage(.xAI))
+        }
+        if status == 429 {
+          return classifyXAI429(body: body)
+        }
+        return TranscriptionError.networkError("xAI API error HTTP \(status): \(body.prefix(500))")
+      })
   }
 
   // MARK: - Structured Output
@@ -443,9 +188,7 @@ final class GrokChatProvider: LLMChatProvider {
     schemaName: String,
     thinkingLevel: ThinkingLevel
   ) async throws -> [String: Any] {
-    guard let apiKey = KeychainManager.shared.getXAIAPIKey(), !apiKey.isEmpty else {
-      throw TranscriptionError.networkError("No xAI API key configured. Add your xAI API key in Settings to use Grok models.")
-    }
+    let apiKey = try ProviderCredentials.require(.xAI)
     return try await OpenAICompatibleStructured.generate(
       endpoint: "https://api.x.ai/v1/chat/completions",
       apiKey: apiKey,
@@ -476,13 +219,5 @@ final class GrokChatProvider: LLMChatProvider {
         "xAI account is out of credits or has reached its monthly spending limit. Top up or raise the limit at https://console.x.ai/ to continue.")
     }
     return TranscriptionError.rateLimited(retryAfter: nil)
-  }
-
-  /// Display label for a citation source footer entry. Grok's annotation `title` is just the
-  /// citation number, so we use the URL's host (without a leading "www.") instead, matching how
-  /// the source list reads for Gemini-grounded replies.
-  private static func citationDisplayTitle(for urlString: String) -> String {
-    guard let host = URL(string: urlString)?.host, !host.isEmpty else { return urlString }
-    return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
   }
 }

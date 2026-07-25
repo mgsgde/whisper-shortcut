@@ -47,6 +47,13 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
   static let promptModeOutputRule =
     "\n\nCRITICAL – Output format: Return ONLY the edited/transformed text (the result of applying the voice instruction to the selected text). Never return the original selected text with the user's spoken words appended; the voice is a command to edit, not dictation to add. No meta-information, no explanations, no preamble (e.g. \"Here is...\"), no closing phrases. No decorative markdown (**bold**, # headers); bullet points with leading dash and space (- ) are allowed—use spaces to indent sub-bullets. Just the plain result that the user can paste directly."
 
+  /// Labels the copied selection in every Dictate Prompt request. It is written into the live
+  /// request by each provider path *and* replayed by `PromptConversationHistory` when prior turns
+  /// are fed back to the model — so the wording has to match in both, or the model sees the current
+  /// turn framed one way and the history framed another.
+  static let clipboardSelectionHeader =
+    "SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):"
+
   // MARK: - App Store: Accessibility-free Dictate Prompt
 
   /// In the App Store build (`#if APP_STORE`), Dictate Prompt does NOT copy the selection via ⌘C

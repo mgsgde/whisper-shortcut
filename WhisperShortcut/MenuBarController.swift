@@ -11,6 +11,27 @@ class MenuBarController: NSObject {
     static let audioTailCaptureDelay: TimeInterval = 0.2  // Delay to capture audio tail and prevent cut-off sentences
   }
 
+  /// Identifies status-menu rows. `NSMenuItem.tag` is the only handle AppKit gives us for
+  /// finding an item again after creation, so the creation site in `createMenu()` and the
+  /// refresh site in `updateMenuItems()` used to be linked by nothing but matching integer
+  /// literals. Naming them makes that link something the compiler checks.
+  ///
+  /// Raw values are the historical tags, kept as-is: they are persisted nowhere, but leaving
+  /// them unchanged keeps this a pure rename.
+  private enum MenuTag: Int {
+    case status = 100
+    case dictate = 101
+    case dictatePrompt = 102
+    case settings = 103
+    case chat = 110
+    case stop = 111
+    case stopSeparator = 112
+    case screenshot = 113
+    case readAloud = 114
+    case rate = 115
+    case voiceFeedback = 116
+  }
+
   /// Display time for the benign "No speech detected" info popup — long enough to read,
   /// far shorter than the persistent error-popup duration.
   private static let noSpeechInfoDuration: TimeInterval = 4
@@ -184,50 +205,50 @@ class MenuBarController: NSObject {
 
     // Status item
     let statusMenuItem = NSMenuItem(title: appState.statusText, action: nil, keyEquivalent: "")
-    statusMenuItem.tag = 100
+    statusMenuItem.tag = MenuTag.status.rawValue
     menu.addItem(statusMenuItem)
 
     menu.addItem(NSMenuItem.separator())
 
     // Central stop button — visible only when any operation is active
-    let stopItem = createMenuItem("Stop", action: #selector(stopCurrentOperation), tag: 111)
+    let stopItem = createMenuItem("Stop", action: #selector(stopCurrentOperation), tag: .stop)
     menu.addItem(stopItem)
     let stopSeparator = NSMenuItem.separator()
-    stopSeparator.tag = 112
+    stopSeparator.tag = MenuTag.stopSeparator.rawValue
     menu.addItem(stopSeparator)
 
     // Recording actions with keyboard shortcuts
     menu.addItem(
       createMenuItemWithShortcut(
         "Dictate", action: #selector(toggleTranscription),
-        shortcut: currentConfig.startRecording, tag: 101))
+        shortcut: currentConfig.startRecording, tag: .dictate))
     menu.addItem(
       createMenuItemWithShortcut(
         "Dictate Prompt", action: #selector(togglePrompting),
-        shortcut: currentConfig.startPrompting, tag: 102))
+        shortcut: currentConfig.startPrompting, tag: .dictatePrompt))
     menu.addItem(
       createMenuItemWithShortcut(
         "Screenshot", action: #selector(takeScreenshot),
-        shortcut: currentConfig.screenshotCapture, tag: 113))
+        shortcut: currentConfig.screenshotCapture, tag: .screenshot))
     // Selection-based Read Aloud copies via ⌘C (Accessibility) — omitted from the App Store build.
     #if !APP_STORE
     menu.addItem(
       createMenuItemWithShortcut(
         "Read Aloud", action: #selector(readAloudFromMenu),
-        shortcut: currentConfig.readAloud, tag: 114))
+        shortcut: currentConfig.readAloud, tag: .readAloud))
     #endif
     // Ordered last so the shortcut digits read 1-2-3-4-5 down the menu.
     menu.addItem(
       createMenuItemWithShortcut(
         "Voice Feedback", action: #selector(toggleVoiceFeedback),
-        shortcut: currentConfig.voiceFeedback, tag: 116))
+        shortcut: currentConfig.voiceFeedback, tag: .voiceFeedback))
     menu.addItem(NSMenuItem.separator())
 
     // Chat window
     menu.addItem(
       createMenuItemWithShortcut(
         "Chat", action: #selector(openChatWindow),
-        shortcut: currentConfig.openChat, tag: 110))
+        shortcut: currentConfig.openChat, tag: .chat))
 
     menu.addItem(NSMenuItem.separator())
 
@@ -236,11 +257,11 @@ class MenuBarController: NSObject {
     // auto-decoration that can reserve an icon column for this row.
     let configureItem = createMenuItemWithShortcut(
       "Settings…", action: #selector(openConfigurationPanel),
-      shortcut: currentConfig.openSettings, tag: 103)
+      shortcut: currentConfig.openSettings, tag: .settings)
     configureItem.image = nil
     menu.addItem(configureItem)
     menu.addItem(
-      createMenuItem("Rate WhisperShortcut", action: #selector(rateApp), tag: 115))
+      createMenuItem("Rate WhisperShortcut", action: #selector(rateApp), tag: .rate))
     menu.addItem(
       createMenuItem("Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q"))
 
@@ -248,20 +269,20 @@ class MenuBarController: NSObject {
   }
 
   private func createMenuItem(
-    _ title: String, action: Selector, keyEquivalent: String = "", tag: Int = 0
+    _ title: String, action: Selector, keyEquivalent: String = "", tag: MenuTag? = nil
   ) -> NSMenuItem {
     let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
     item.target = self
-    item.tag = tag
+    item.tag = tag?.rawValue ?? 0
     return item
   }
 
   private func createMenuItemWithShortcut(
-    _ title: String, action: Selector, shortcut: ShortcutDefinition, tag: Int = 0
+    _ title: String, action: Selector, shortcut: ShortcutDefinition, tag: MenuTag? = nil
   ) -> NSMenuItem {
     let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
     item.target = self
-    item.tag = tag
+    item.tag = tag?.rawValue ?? 0
 
     // Add keyboard shortcut display to the menu item
     if shortcut.isEnabled {
@@ -580,20 +601,20 @@ class MenuBarController: NSObject {
       || KeychainManager.shared.hasValidAnthropicAPIKey()
 
     // Update status
-    menu.item(withTag: 100)?.title = appState.statusText
+    menu.item(withTag: MenuTag.status.rawValue)?.title = appState.statusText
 
     // Show central Stop button only when something is active
     let isAnythingActive = appState.isBusy || isLiveMeetingActive
       || audioEngine?.isRunning == true
-    menu.item(withTag: 111)?.isHidden = !isAnythingActive
-    menu.item(withTag: 112)?.isHidden = !isAnythingActive
+    menu.item(withTag: MenuTag.stop.rawValue)?.isHidden = !isAnythingActive
+    menu.item(withTag: MenuTag.stopSeparator.rawValue)?.isHidden = !isAnythingActive
 
     // During a live meeting, all actions are available as parallel segments
     let meetingAllowsActions = isLiveMeetingActive && activeMeetingSegment == nil
 
     // Update action items based on current state
     updateMenuItem(
-      menu, tag: 101,
+      menu, tag: .dictate,
       title: (appState.recordingMode == .transcription || activeMeetingSegment == .dictation)
         ? "Stop Dictate" : "Dictate",
       enabled: appState.canStartTranscription(hasAPIKey: canTranscribe, hasOfflineModel: false)
@@ -602,7 +623,7 @@ class MenuBarController: NSObject {
         || activeMeetingSegment == .dictation)
 
     updateMenuItem(
-      menu, tag: 102,
+      menu, tag: .dictatePrompt,
       title: (appState.recordingMode == .prompt || activeMeetingSegment == .prompt)
         ? "Stop Dictate Prompt" : "Dictate Prompt",
       enabled: appState.canStartPrompting(hasAPIKey: canPrompt, hasOfflineModel: false)
@@ -616,7 +637,7 @@ class MenuBarController: NSObject {
     #if !APP_STORE
     let isReadAloudActive = isTTSRunning || audioEngine?.isRunning == true
     updateMenuItem(
-      menu, tag: 114,
+      menu, tag: .readAloud,
       title: isReadAloudActive ? "Stop Read Aloud" : "Read Aloud",
       enabled: canReadAloud && (!appState.isBusy || isReadAloudActive)
     )
@@ -630,8 +651,8 @@ class MenuBarController: NSObject {
     }
   }
 
-  private func updateMenuItem(_ menu: NSMenu, tag: Int, title: String, enabled: Bool) {
-    guard let item = menu.item(withTag: tag) else { return }
+  private func updateMenuItem(_ menu: NSMenu, tag: MenuTag, title: String, enabled: Bool) {
+    guard let item = menu.item(withTag: tag.rawValue) else { return }
     item.title = title
     item.isEnabled = enabled
   }

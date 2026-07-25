@@ -154,6 +154,7 @@ After applying fixes:
 
 ## Related commands
 
+- **`/review-refactors`** — when the question is structural rather than "what changed yesterday". This command's bar is deliberately "the diff must delete something today", so it will not propose the larger rework that a genuinely better long-term design sometimes needs. Hand off to `/review-refactors` when the user asks where something could be built much simpler, more elegantly, or better.
 - **`/analyze-user-interactions`** — when the user wants improvements based on what they actually experienced (recurring "korrigiere" misbehaving, hallucinations, format drift, etc.), not on static code review. Mines the local interaction JSONL + macOS log and proposes changes at the right level (`[prompt]` / `[default]` / `[code]` / `[logging]` / `[ui]`). Prefer it whenever the user references real usage ("works badly", "is not doing what I want", "find patterns").
 - **`/audit-llm-context`** — when the review target is the LLM-context files themselves (`.cursor/commands`, `.cursor/rules`, `.cursor/skills`) rather than app source code.
 

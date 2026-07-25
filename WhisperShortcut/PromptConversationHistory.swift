@@ -33,7 +33,7 @@ final class PromptConversationHistory {
     for turn in turnsToUse {
       var userText = ""
       if let selectedText = turn.selectedText, !selectedText.isEmpty {
-        userText += "SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):\n\n\(selectedText)\n\n"
+        userText += "\(AppConstants.clipboardSelectionHeader)\n\n\(selectedText)\n\n"
       }
       userText += "VOICE INSTRUCTION: \(turn.userInstruction)"
 
