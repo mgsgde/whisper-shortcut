@@ -81,7 +81,10 @@ class MenuBarController: NSObject {
   /// active/processing; prompt recordings, offline Whisper, and self-hosted endpoints
   /// leave it nil (single-shot path).
   private var dictateStreamingSession: DictateStreamingSession?
-  private var currentTranscriptionAudioURL: URL?
+  /// Audio URL of the Dictate or Dictate Prompt job currently being processed, outside a live
+  /// meeting. Cancelling clears it, which is how a late-arriving result is recognised as belonging
+  /// to a superseded recording and dropped instead of being pasted out of idle.
+  private var currentJobAudioURL: URL?
   private var processedAudioURLs: Set<URL> = []
   private var audioEngine: AVAudioEngine?
   private var audioPlayerNode: AVAudioPlayerNode?
@@ -370,8 +373,7 @@ class MenuBarController: NSObject {
       return
     }
     if case .processing(.prompting) = appState {
-      speechService.cancelPrompt()
-      transitionToIdleAndCleanup()
+      cancelInFlightPrompt()
       return
     }
     if case .processing(.contextEditing) = appState {
@@ -765,11 +767,10 @@ class MenuBarController: NSObject {
 
     // Check if currently processing prompt - if so, cancel it
     if case .processing(.prompting) = appState {
-      speechService.cancelPrompt()
-      transitionToIdleAndCleanup()
+      cancelInFlightPrompt()
       return
     }
-    
+
     switch appState.recordingMode {
     case .prompt:
       stopRecordingAfterTailDelay()
@@ -870,8 +871,7 @@ class MenuBarController: NSObject {
 
     // Prompt processing
     if case .processing(.prompting) = appState {
-      speechService.cancelPrompt()
-      transitionToIdleAndCleanup()
+      cancelInFlightPrompt()
       return
     }
 
@@ -893,7 +893,19 @@ class MenuBarController: NSObject {
   private func cancelInFlightTranscription() {
     discardStreamingSession()
     speechService.cancelTranscription()
-    transitionToIdleAndCleanup(cleanupAudioURL: currentTranscriptionAudioURL)
+    transitionToIdleAndCleanup(cleanupAudioURL: currentJobAudioURL)
+  }
+
+  /// Cancels a running Dictate Prompt. Reached from both the toggle shortcut and the Stop menu
+  /// item, which is why it is a method rather than two copies.
+  ///
+  /// Passing the URL is what makes the cancellation stick: `transitionToIdleAndCleanup` clears
+  /// `currentJobAudioURL`, so a reply that is already in flight is recognised as stale by
+  /// `runAudioJob` and dropped instead of being pasted into whatever the user has since focused.
+  /// It also removes the recording, which the previous no-argument call left on disk.
+  private func cancelInFlightPrompt() {
+    speechService.cancelPrompt()
+    transitionToIdleAndCleanup(cleanupAudioURL: currentJobAudioURL)
   }
 
   /// True when any transcription pipeline phase is active (single request or chunked).
@@ -1145,11 +1157,9 @@ class MenuBarController: NSObject {
   /// cancellation detection, staleness, `processedAudioURLs` bookkeeping, the `duringMeeting` fork
   /// and the cleanup ordering — is identical and lives in `runAudioJob`.
   ///
-  /// The `Bool` knobs record places where the two hand-written copies had already drifted apart.
-  /// They are preserved exactly as found rather than normalised; each is `true` for transcription
-  /// and `false` for prompting. Whether that divergence is intentional is a separate question from
-  /// this refactor — the point here is that it is now visible in one place instead of buried in
-  /// two 200-line copies.
+  /// The `Bool` knobs record the remaining places where the two hand-written copies had drifted
+  /// apart. Staleness is deliberately no longer one of them: both pipelines now drop a result that
+  /// belongs to a superseded recording.
   private struct AudioJobSpec {
     let mode: AppState.RecordingMode
     /// Used in the cancellation and meeting-segment failure log lines ("Transcription" / "Prompt").
@@ -1166,11 +1176,6 @@ class MenuBarController: NSObject {
     let successMessage: (_ didAutoPaste: Bool) -> String
     /// Transcription dismisses the processing popup before presenting its result; prompting never did.
     var dismissesProcessingBeforeResult = false
-    /// Transcription owns `chunkStatuses` and `currentTranscriptionAudioURL`; prompting tracks neither.
-    var clearsChunkState = false
-    /// Transcription drops results and errors belonging to a superseded recording; prompting has no
-    /// such guard, so a cancelled prompt's late result still reaches the clipboard.
-    var guardsStaleAudioURL = false
     /// On cancellation transcription routes through `transitionToIdleAndCleanup` (which also
     /// dismisses the popup, clears chunk state, drops the URL and removes the file); prompting
     /// finishes the state machine and cleans the file itself.
@@ -1184,6 +1189,7 @@ class MenuBarController: NSObject {
   private func cancelAudioJob(logLabel: String, error: Error, audioURL: URL) async {
     DebugLogger.log("CANCELLATION: \(logLabel) task was cancelled (\(type(of: error)))")
     await MainActor.run {
+      self.chunkStatuses = []
       self.appState = self.appState.finish()
       self.processedAudioURLs.remove(audioURL)
     }
@@ -1203,22 +1209,20 @@ class MenuBarController: NSObject {
     do {
       let result = try await produce()
 
-      // A shortcut press during processing cancels the job (cancelInFlightTranscription clears
-      // currentTranscriptionAudioURL), but a transcript already in flight can still arrive
-      // afterwards — drop it instead of pasting a cancelled result out of idle. Same staleness
-      // check as the error path below.
-      if spec.guardsStaleAudioURL {
-        let wasCancelled: Bool = await MainActor.run {
-          if !duringMeeting, self.currentTranscriptionAudioURL != audioURL {
-            DebugLogger.log(
-              "CANCELLATION: Dropping transcript for cancelled recording \(audioURL.lastPathComponent)")
-            self.processedAudioURLs.remove(audioURL)
-            return true
-          }
-          return false
+      // A shortcut press during processing cancels the job (the cancel paths clear
+      // `currentJobAudioURL`), but a result already in flight can still arrive afterwards — drop it
+      // instead of pasting a cancelled result out of idle. Same staleness check as the error path
+      // below. Meeting segments are exempt: they don't track a URL and can't be cancelled this way.
+      let wasCancelled: Bool = await MainActor.run {
+        if !duringMeeting, self.currentJobAudioURL != audioURL {
+          DebugLogger.log(
+            "CANCELLATION: Dropping \(spec.logLabel.lowercased()) result for cancelled recording \(audioURL.lastPathComponent)")
+          self.processedAudioURLs.remove(audioURL)
+          return true
         }
-        if wasCancelled { return }
+        return false
       }
+      if wasCancelled { return }
 
       spec.copyResult(result)
       await afterCopy(result)
@@ -1252,11 +1256,12 @@ class MenuBarController: NSObject {
         } else {
           self.appState = self.appState.showSuccess(spec.successMessage(didAutoPaste))
         }
-        if spec.clearsChunkState {
-          self.chunkStatuses = []
-          if self.currentTranscriptionAudioURL == audioURL {
-            self.currentTranscriptionAudioURL = nil
-          }
+        // Clearing chunk progress is part of "this job is over", not a per-mode option: whichever
+        // pipeline populated `chunkStatuses` (only long, chunked recordings do), leaving it set
+        // would carry stale progress into whatever the user does next. A no-op when already empty.
+        self.chunkStatuses = []
+        if self.currentJobAudioURL == audioURL {
+          self.currentJobAudioURL = nil
         }
         self.processedAudioURLs.remove(audioURL)
       }
@@ -1283,19 +1288,17 @@ class MenuBarController: NSObject {
         return
       }
 
-      if spec.guardsStaleAudioURL {
-        let isStale: Bool = await MainActor.run {
-          if !duringMeeting, self.currentTranscriptionAudioURL != audioURL {
-            DebugLogger.log(
-              "CANCELLATION: Ignoring \(spec.logLabel.lowercased()) error for stale audio URL \(audioURL.lastPathComponent)")
-            self.processedAudioURLs.remove(audioURL)
-            self.cleanupAudioFile(at: audioURL)
-            return true
-          }
-          return false
+      let isStale: Bool = await MainActor.run {
+        if !duringMeeting, self.currentJobAudioURL != audioURL {
+          DebugLogger.log(
+            "CANCELLATION: Ignoring \(spec.logLabel.lowercased()) error for stale audio URL \(audioURL.lastPathComponent)")
+          self.processedAudioURLs.remove(audioURL)
+          self.cleanupAudioFile(at: audioURL)
+          return true
         }
-        if isStale { return }
+        return false
       }
+      if isStale { return }
 
       if duringMeeting {
         DebugLogger.logError("MEETING-SEGMENT: \(spec.logLabel) failed: \(error.localizedDescription)")
@@ -1309,11 +1312,9 @@ class MenuBarController: NSObject {
       } else {
         await handleProcessingError(error: error, audioURL: audioURL, mode: spec.mode)
         await MainActor.run {
-          if spec.clearsChunkState {
-            self.chunkStatuses = []
-            if self.currentTranscriptionAudioURL == audioURL {
-              self.currentTranscriptionAudioURL = nil
-            }
+          self.chunkStatuses = []
+          if self.currentJobAudioURL == audioURL {
+            self.currentJobAudioURL = nil
           }
           self.processedAudioURLs.remove(audioURL)
         }
@@ -1377,8 +1378,6 @@ class MenuBarController: NSObject {
       },
       successMessage: { $0 ? "Transcription copied to clipboard" : "Copied — press ⌘V to paste" },
       dismissesProcessingBeforeResult: true,
-      clearsChunkState: true,
-      guardsStaleAudioURL: true,
       cancelsViaTransitionToIdle: true)
 
     await runAudioJob(
@@ -1505,6 +1504,9 @@ class MenuBarController: NSObject {
       }
       await handleProcessingError(error: error, audioURL: audioURL, mode: .voiceFeedback)
       await MainActor.run {
+        // A Voice Feedback instruction long enough to be chunked leaves progress behind when the
+        // transcription fails before `mergingStarted` clears it; same tail as the other pipelines.
+        self.chunkStatuses = []
         self.processedAudioURLs.remove(audioURL)
       }
     }
@@ -1582,8 +1584,8 @@ class MenuBarController: NSObject {
       chunkStatuses = []
     }
     if let url = cleanupAudioURL {
-      if currentTranscriptionAudioURL == url {
-        currentTranscriptionAudioURL = nil
+      if currentJobAudioURL == url {
+        currentJobAudioURL = nil
       }
       cleanupAudioFile(at: url)
       processedAudioURLs.remove(url)
@@ -2058,8 +2060,11 @@ extension MenuBarController: AudioRecorderDelegate {
         }
       }
 
-      if recordingMode == .transcription {
-        self.currentTranscriptionAudioURL = audioURL
+      // Both pipelines that can be cancelled mid-processing track their audio URL, so a result
+      // arriving after cancellation can be recognised as stale. Voice Feedback is excluded: it has
+      // no clipboard/paste step, so a late result can't paste into the user's document.
+      if recordingMode == .transcription || recordingMode == .prompt {
+        self.currentJobAudioURL = audioURL
       }
 
       if !self.appState.isProcessing {
