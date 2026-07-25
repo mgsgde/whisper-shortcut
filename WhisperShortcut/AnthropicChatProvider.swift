@@ -19,10 +19,9 @@ final class AnthropicChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    useGrounding: Bool,  // Claude web search not wired in this app; ignored.
-    thinkingLevel: ThinkingLevel,
-    disableBuiltInTools: Bool,  // Claude has no auto-enabled built-ins here; ignored.
-    cacheKey: String?
+    // Only `thinkingLevel` applies: Claude web search isn't wired in this app, there are no
+    // auto-enabled built-ins, and Anthropic caches via explicit cache_control breakpoints.
+    options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     if let attachmentError = Self.validateAttachments(in: contents) {
       return AsyncThrowingStream { $0.finish(throwing: attachmentError) }
@@ -62,14 +61,14 @@ final class AnthropicChatProvider: LLMChatProvider {
               ] as [String: Any]
             }
           }
-          if let effort = thinkingLevel.anthropicEffort,
+          if let effort = options.thinkingLevel.anthropicEffort,
              Self.supportsEffort(model: model) {
             body["output_config"] = ["effort": effort]
           }
 
           request.httpBody = try JSONSerialization.data(withJSONObject: body)
           DebugLogger.logNetwork(
-            "ANTHROPIC-CHAT-STREAM: POST \(Self.messagesURL) model=\(model) messages=\(messages.count) tools=\(tools.count) effort=\(thinkingLevel.anthropicEffort ?? "default")"
+            "ANTHROPIC-CHAT-STREAM: POST \(Self.messagesURL) model=\(model) messages=\(messages.count) tools=\(tools.count) effort=\(options.thinkingLevel.anthropicEffort ?? "default")"
           )
 
           let (bytes, response) = try await self.session.bytes(for: request)

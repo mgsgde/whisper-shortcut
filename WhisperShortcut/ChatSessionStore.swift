@@ -132,8 +132,12 @@ struct ChatSession: Codable {
   /// Per-session reasoning intensity set via `/think`. `.default` keeps each model's built-in
   /// thinking config; other levels override it per provider. Persisted so it survives restarts.
   var thinkingLevel: ThinkingLevel
+  /// Per-session X accounts Grok's `x_search` is restricted to, set via `/x`.
+  /// `nil` = inherit the Settings → Chat default; `[]` = explicitly search all of X even when a
+  /// default is configured. The distinction is what lets `/x off` beat a non-empty default.
+  var xHandles: [String]?
 
-  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil, thinkingLevel: ThinkingLevel = .default) {
+  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil, thinkingLevel: ThinkingLevel = .default, xHandles: [String]? = nil) {
     self.id = id
     self.lastUpdated = lastUpdated
     self.messages = messages
@@ -143,10 +147,12 @@ struct ChatSession: Codable {
     self.isMeeting = isMeeting
     self.meetingStem = meetingStem
     self.thinkingLevel = thinkingLevel
+    self.xHandles = xHandles
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, lastUpdated, messages, title, archived, pinned, isMeeting, meetingStem, thinkingLevel
+    case xHandles
   }
 
   init(from decoder: Decoder) throws {
@@ -160,6 +166,8 @@ struct ChatSession: Codable {
     isMeeting = try c.decodeIfPresent(Bool.self, forKey: .isMeeting) ?? false
     meetingStem = try c.decodeIfPresent(String.self, forKey: .meetingStem)
     thinkingLevel = try c.decodeIfPresent(ThinkingLevel.self, forKey: .thinkingLevel) ?? .default
+    // Absent (every chat written before `/x` existed) stays nil = inherit the Settings default.
+    xHandles = try c.decodeIfPresent([String].self, forKey: .xHandles)
   }
 }
 

@@ -15,18 +15,15 @@ final class GrokChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    useGrounding: Bool,
-    thinkingLevel: ThinkingLevel,
-    disableBuiltInTools: Bool,  // Grok doesn't auto-enable built-in tools here; ignored.
-    cacheKey: String?
+    options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     if let attachmentError = Self.validateAttachments(in: contents) {
       return AsyncThrowingStream { $0.finish(throwing: attachmentError) }
     }
-    if useGrounding {
-      return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel, cacheKey: cacheKey)
+    if options.useGrounding {
+      return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, options: options)
     } else {
-      return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel, cacheKey: cacheKey)
+      return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, options: options)
     }
   }
 
@@ -60,8 +57,7 @@ final class GrokChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    thinkingLevel: ThinkingLevel,
-    cacheKey: String?
+    options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     do {
       let endpoint = "https://api.x.ai/v1/responses"
@@ -86,22 +82,37 @@ final class GrokChatProvider: LLMChatProvider {
       // xAI runs both server-side and picks per question, so the extra tool only
       // costs a round trip when the model actually decides X is worth searching.
       body["tools"] =
-        [["type": "web_search"] as [String: Any], ["type": "x_search"] as [String: Any]]
+        [["type": "web_search"] as [String: Any], Self.xSearchTool(handles: options.xHandles)]
         + tools.map(\.responsesDeclaration)
 
       // Per-session `/think` override → Responses API nested `reasoning.effort`.
-      if let effort = thinkingLevel.grokReasoningEffort {
+      if let effort = options.thinkingLevel.grokReasoningEffort {
         body["reasoning"] = ["effort": effort]
       }
 
-      DebugLogger.logNetwork("GROK-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+x_search+\(tools.count)func effort=\(thinkingLevel.grokReasoningEffort ?? "default")")
+      let handleTag = options.xHandles.isEmpty ? "" : "(\(options.xHandles.count) handles)"
+      DebugLogger.logNetwork("GROK-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+x_search\(handleTag)+\(tools.count)func effort=\(options.thinkingLevel.grokReasoningEffort ?? "default")")
       return OpenAICompatibleStream.responses(
-        try Self.streamConfig(endpoint: endpoint, logTag: "GROK-RESPONSES", cacheKey: cacheKey),
+        try Self.streamConfig(endpoint: endpoint, logTag: "GROK-RESPONSES", cacheKey: options.cacheKey),
         body: body,
         collectCitations: true)
     } catch {
       return AsyncThrowingStream { $0.finish(throwing: error) }
     }
+  }
+
+  /// The `x_search` tool object, optionally narrowed to specific accounts.
+  ///
+  /// `allowed_x_handles` is a hard filter — with it set, Grok cannot see any other account — so an
+  /// empty list must omit the key entirely rather than send `[]`, which would restrict the search
+  /// to no accounts at all. The list is capped by `XSearchHandles.parse`; xAI rejects requests
+  /// carrying more than `XSearchHandles.maxHandles`.
+  static func xSearchTool(handles: [String]) -> [String: Any] {
+    var tool: [String: Any] = ["type": "x_search"]
+    if !handles.isEmpty {
+      tool["allowed_x_handles"] = Array(handles.prefix(XSearchHandles.maxHandles))
+    }
+    return tool
   }
 
   // MARK: - Chat Completions API (without search)
@@ -112,8 +123,7 @@ final class GrokChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    thinkingLevel: ThinkingLevel,
-    cacheKey: String?
+    options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     do {
       let endpoint = "https://api.x.ai/v1/chat/completions"
@@ -137,13 +147,13 @@ final class GrokChatProvider: LLMChatProvider {
       }
 
       // Per-session `/think` override → Chat Completions top-level `reasoning_effort`.
-      if let effort = thinkingLevel.grokReasoningEffort {
+      if let effort = options.thinkingLevel.grokReasoningEffort {
         body["reasoning_effort"] = effort
       }
 
-      DebugLogger.logNetwork("GROK-CHAT-STREAM: POST \(endpoint) model=\(model) effort=\(thinkingLevel.grokReasoningEffort ?? "default")")
+      DebugLogger.logNetwork("GROK-CHAT-STREAM: POST \(endpoint) model=\(model) effort=\(options.thinkingLevel.grokReasoningEffort ?? "default")")
       return OpenAICompatibleStream.chatCompletions(
-        try Self.streamConfig(endpoint: endpoint, logTag: "GROK-CHAT-STREAM", cacheKey: cacheKey),
+        try Self.streamConfig(endpoint: endpoint, logTag: "GROK-CHAT-STREAM", cacheKey: options.cacheKey),
         body: body)
     } catch {
       return AsyncThrowingStream { $0.finish(throwing: error) }

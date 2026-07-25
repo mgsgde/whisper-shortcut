@@ -22,7 +22,7 @@ Bring your own API keys — Gemini, and optionally GPT or Grok — or run fully 
 - **Read Aloud**: Press the shortcut on any selected text to copy it and read it aloud with Gemini, OpenAI, or xAI TTS voices. An optional Smart Rewrite pass cleans up code or markdown before TTS, and playback speed is configurable.
 - **Screenshot**: Capture the screen from the menu bar and optionally attach it to Dictate Prompt or chat, or save captures to a folder.
 - **Voice Feedback**: Press the shortcut and speak a correction or instruction about how the app should work — for example "my name is spelled G-ö-d-d-e" or "stop capitalizing every noun in Dictate Prompt output". The app turns it into a proposed change to your dictation context (transcription prompt, Whisper glossary, Dictate Prompt, or Chat), which you review in a diff window before it is applied. It is the on-demand, spoken counterpart to Smart Improvement's automatic learning.
-- **Chat**: Use a persisted multi-session chat window with Gemini, Grok, or OpenAI models, screenshots, image attachments, slash commands, optional web grounding, and per-session reasoning depth. Grok models additionally search X.com posts, which makes them the best pick for opinions, trends, and breaking social-media chatter.
+- **Chat**: Use a persisted multi-session chat window with Gemini, Grok, or OpenAI models, screenshots, image attachments, slash commands, optional web grounding, and per-session reasoning depth. Grok models additionally search X.com posts, which makes them the best pick for opinions, trends, and breaking social-media chatter — and `/x @handle` narrows that search to the accounts you care about.
 - **Google integrations**: Connect a Google account so chat can work with Calendar, Tasks, and Gmail through controlled local tools.
 - **Trello integration**: Connect Trello so chat can list boards, lists, and cards and create, move, update, or archive cards.
 - **Live Meeting**: Record meetings in chunks, transcribe them as they complete, keep an in-app transcript, and save meeting files locally.
@@ -103,6 +103,7 @@ Core slash commands:
 - `/attach` — open the file picker for PDFs, images, or text
 - `/model` — switch model (e.g. `/model 3.5 flash`)
 - `/think` — set reasoning depth for this chat (`minimal`, `low`, `medium`, `high`, or `default`)
+- `/x` — Grok only: limit X search to specific accounts for this chat (e.g. `/x @karpathy @simonw`); `/x off` searches all of X again. Set a default under Settings → Chat
 - `/settings` — open Settings
 - `/pin` / `/unpin` — keep the window open or close on focus loss
 - `/meeting` — start or stop live meeting recording

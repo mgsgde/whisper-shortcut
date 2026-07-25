@@ -116,6 +116,69 @@ struct ProviderRequestShapeTests {
   }
 }
 
+/// `x_search` account restriction (`/x` in chat, Settings → Chat default).
+///
+/// `allowed_x_handles` is an exclusive filter on xAI's side, so the two failure modes worth
+/// pinning are opposite: sending the key with an empty array would restrict Grok to *no* accounts,
+/// and sending more than the documented cap fails the whole request rather than truncating.
+@Suite("Grok X search handles")
+struct XSearchHandleTests {
+
+  @Test("An empty list omits allowed_x_handles entirely rather than sending []")
+  func emptyHandlesOmitTheKey() {
+    let tool = GrokChatProvider.xSearchTool(handles: [])
+
+    #expect(tool["type"] as? String == "x_search")
+    // `allowed_x_handles: []` would mean "search these zero accounts", not "search all of X".
+    #expect(tool["allowed_x_handles"] == nil)
+    #expect(tool.count == 1)
+  }
+
+  @Test("Handles are sent as a plain string array beside the tool type")
+  func handlesRideOnTheToolObject() {
+    let tool = GrokChatProvider.xSearchTool(handles: ["karpathy", "simonw"])
+
+    #expect(tool["type"] as? String == "x_search")
+    #expect(tool["allowed_x_handles"] as? [String] == ["karpathy", "simonw"])
+  }
+
+  @Test("More handles than xAI accepts are capped, not passed through")
+  func handlesAreCappedAtTheAPILimit() {
+    let many = (1...(XSearchHandles.maxHandles + 5)).map { "user\($0)" }
+
+    let tool = GrokChatProvider.xSearchTool(handles: many)
+
+    #expect((tool["allowed_x_handles"] as? [String])?.count == XSearchHandles.maxHandles)
+  }
+
+  @Test("Pasted input is normalized to bare lowercase handles")
+  func parsingAcceptsWhatUsersActuallyType() {
+    // @-prefixes, commas, mixed case, and a pasted profile URL all reach the wire identically.
+    let (handles, dropped) = XSearchHandles.parse("@Karpathy, simonw https://x.com/levelsio/")
+
+    #expect(handles == ["karpathy", "simonw", "levelsio"])
+    #expect(dropped == 0)
+  }
+
+  @Test("Duplicates collapse and unusable tokens are dropped")
+  func parsingRejectsNonHandles() {
+    // "sixteencharacters" exceeds X's 15-char limit; "a-b" and "" can't be handles at all.
+    let (handles, _) = XSearchHandles.parse("@karpathy KARPATHY a-b sixteencharacters!")
+
+    #expect(handles == ["karpathy"])
+  }
+
+  @Test("Going over the cap is reported, not silently swallowed")
+  func parsingReportsTheOverflow() {
+    let raw = (1...(XSearchHandles.maxHandles + 3)).map { "user\($0)" }.joined(separator: " ")
+
+    let (handles, dropped) = XSearchHandles.parse(raw)
+
+    #expect(handles.count == XSearchHandles.maxHandles)
+    #expect(dropped == 3)
+  }
+}
+
 /// Dispatch tests for the single tool entry point.
 ///
 /// Session-scoped tools (generate_image, the meeting editors, the memory tools) used to be

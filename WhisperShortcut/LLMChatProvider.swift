@@ -125,6 +125,43 @@ enum GeminiSystemInstruction {
   }
 }
 
+// MARK: - Per-Request Options
+
+/// The knobs that ride along with a chat turn without being part of the conversation itself.
+///
+/// Bundled into one value because all five providers take the identical set: every new knob used
+/// to mean five signature edits plus every call site, and each provider had to re-declare the
+/// parameters it ignores just to satisfy the protocol. Defaults describe a plain, ungrounded turn,
+/// so call sites name only what they actually want.
+struct ChatRequestOptions {
+  /// Web-search grounding: Gemini's `google_search` + `url_context`, or the hosted `web_search`
+  /// tool on the Grok/OpenAI Responses API. Anthropic and local models ignore it.
+  var useGrounding: Bool = false
+
+  /// Per-session reasoning intensity (set via `/think`). `.default` keeps the model's built-in
+  /// config; each provider maps the other levels to its native knob.
+  var thinkingLevel: ThinkingLevel = .default
+
+  /// When true the provider sends no built-in tools (e.g. Gemini's `code_execution`). Pure text
+  /// transforms (Read Aloud rewrite, Smart Improvement) set this so the model returns only prose,
+  /// never code or tool output. Ignored by providers that don't auto-enable built-ins.
+  var disableBuiltInTools: Bool = false
+
+  /// Stable per-conversation identifier that improves provider prompt-cache hit rates — OpenAI
+  /// maps it to `prompt_cache_key`, Grok to the `x-grok-conv-id` header. `nil` for one-shot
+  /// transforms with no conversation continuity. Gemini caches implicitly and ignores it.
+  var cacheKey: String? = nil
+
+  /// X accounts to restrict Grok's `x_search` to (`/x` in chat, default in Settings → Chat).
+  /// Empty = search all of X. Grok-only; every other provider ignores it. See `XSearchHandles` —
+  /// this is a hard filter on xAI's side, not a ranking preference.
+  var xHandles: [String] = []
+
+  /// A one-shot text transform: no grounding, no built-in tools, no cache key, model-default
+  /// thinking. Used by Read Aloud's rewrite pass and the Dictate Prompt paths.
+  static let textTransform = ChatRequestOptions(disableBuiltInTools: true)
+}
+
 // MARK: - LLM Chat Provider Protocol
 
 /// Abstraction over different LLM chat APIs (Gemini, Grok/xAI, etc.).
@@ -138,26 +175,14 @@ protocol LLMChatProvider {
   ///     Each provider translates this into its native message format.
   ///   - systemInstruction: System instruction dict in Gemini format, or nil.
   ///   - tools: Tool declarations for function calling.
-  ///   - useGrounding: Whether to enable web search grounding (Gemini-only; ignored by others).
-  ///   - thinkingLevel: Per-session reasoning intensity (set via `/think`). `.default` uses the
-  ///     model's built-in config; each provider maps the other levels to its native knob.
-  ///   - disableBuiltInTools: When true, the provider sends no built-in tools (e.g. Gemini's
-  ///     `code_execution`). Pure text transforms (Read Aloud rewrite, Smart Improvement) set
-  ///     this so the model returns only prose, never code/tool output. Ignored by providers
-  ///     that don't auto-enable built-in tools (OpenAI, Grok).
-  ///   - cacheKey: Stable per-conversation identifier used to improve provider prompt-cache
-  ///     hit rates — OpenAI maps it to the `prompt_cache_key` body field, Grok to the
-  ///     `x-grok-conv-id` HTTP header. Pass `nil` for one-shot transforms with no conversation
-  ///     continuity. Gemini caches implicitly and ignores it.
+  ///   - options: Per-request knobs (grounding, reasoning depth, cache key, X handles). Providers
+  ///     read the ones their API supports and ignore the rest — see `ChatRequestOptions`.
   func sendChatStream(
     model: String,
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    useGrounding: Bool,
-    thinkingLevel: ThinkingLevel,
-    disableBuiltInTools: Bool,
-    cacheKey: String?
+    options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error>
 
   /// Generates a single, non-streaming JSON object constrained to `schema` (a JSON Schema dict).

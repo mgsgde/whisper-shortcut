@@ -14,10 +14,8 @@ final class GeminiChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    useGrounding: Bool,
-    thinkingLevel: ThinkingLevel,
-    disableBuiltInTools: Bool,
-    cacheKey: String?  // Gemini caches implicitly (no per-request key); ignored.
+    // `cacheKey` and `xHandles` don't apply: Gemini caches implicitly and has no X search.
+    options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
@@ -51,11 +49,11 @@ final class GeminiChatProvider: LLMChatProvider {
             model: model,
             contents: contents,
             credential: credential,
-            useGrounding: useGrounding,
+            useGrounding: options.useGrounding,
             systemInstruction: systemInstruction,
             functionDeclarations: geminiFuncDecls,
-            thinkingLevel: thinkingLevel,
-            disableBuiltInTools: disableBuiltInTools)
+            thinkingLevel: options.thinkingLevel,
+            disableBuiltInTools: options.disableBuiltInTools)
           for try await event in stream {
             try Task.checkCancellation()
             // GeminiAPIClient.GeminiStreamEvent → top-level ChatStreamEvent

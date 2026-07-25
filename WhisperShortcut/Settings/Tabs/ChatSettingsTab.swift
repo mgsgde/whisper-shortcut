@@ -19,6 +19,10 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
+      XSearchHandlesSection()
+
+      SpacedSectionDivider()
+
       windowBehaviorSection
 
       SpacedSectionDivider()

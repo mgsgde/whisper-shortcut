@@ -22,10 +22,9 @@ final class LocalLLMChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    useGrounding: Bool,  // No web-search path for local models; ignored.
-    thinkingLevel: ThinkingLevel,  // Local servers don't expose a standard reasoning knob; ignored.
-    disableBuiltInTools: Bool,  // No built-in tools on local servers; ignored.
-    cacheKey: String?  // No server-side prompt cache hint; ignored.
+    // None apply: local servers have no web search, no standard reasoning knob, no built-in
+    // tools, and no server-side prompt-cache hint.
+    options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     let endpoint = LocalLLMPreferences.chatCompletionsURL
 

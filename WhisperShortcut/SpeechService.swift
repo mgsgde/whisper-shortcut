@@ -961,10 +961,7 @@ class SpeechService {
       contents: contents,
       systemInstruction: systemInstruction,
       tools: [],
-      useGrounding: false,
-      thinkingLevel: .default,
-      disableBuiltInTools: true,
-      cacheKey: nil
+      options: .textTransform
     )
     var combined = ""
     for try await event in stream {
@@ -1128,10 +1125,7 @@ class SpeechService {
       contents: contents,
       systemInstruction: systemInstruction,
       tools: [],
-      useGrounding: false,
-      thinkingLevel: .default,
-      disableBuiltInTools: true,
-      cacheKey: nil  // one-shot rewrite transform, no conversation continuity
+      options: .textTransform  // one-shot rewrite transform, no conversation continuity
     )
     var combined = ""
     for try await event in stream {

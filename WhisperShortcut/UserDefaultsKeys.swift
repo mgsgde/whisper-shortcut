@@ -129,6 +129,11 @@ enum UserDefaultsKeys {
   /// Model tag for the Custom endpoint chat model (e.g. `openai/gpt-4o` on OpenRouter).
   static let customOpenAIChatModelID = "customOpenAIChatModelID"
 
+  // MARK: - Grok X search
+  /// Default X accounts new chats restrict Grok's `x_search` to, stored space-separated
+  /// (see `XSearchHandles`). Empty → search all of X. Per-chat override: `/x` in the chat window.
+  static let grokXSearchHandles = "grokXSearchHandles"
+
   // MARK: - Local LLM (OpenAI-compatible, e.g. Ollama / LM Studio)
   /// Base URL of the local OpenAI-compatible server (the part before `/chat/completions`),
   /// e.g. `http://localhost:11434/v1`. Empty → SettingsDefaults.localEndpointURL.

@@ -19,16 +19,13 @@ final class OpenAIChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    useGrounding: Bool,
-    thinkingLevel: ThinkingLevel,
-    disableBuiltInTools: Bool,  // OpenAI doesn't auto-enable built-in tools here; ignored.
-    cacheKey: String?
+    options: ChatRequestOptions  // `disableBuiltInTools` / `xHandles` don't apply here; ignored.
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     let useCustom = OpenAIChatPreferences.isCustomEndpointModel(model)
-    if useGrounding && !useCustom {
-      return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel, cacheKey: cacheKey)
+    if options.useGrounding && !useCustom {
+      return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: options.thinkingLevel, cacheKey: options.cacheKey)
     }
-    return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: thinkingLevel, cacheKey: cacheKey)
+    return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: options.thinkingLevel, cacheKey: options.cacheKey)
   }
 
   // MARK: - Request credentials
