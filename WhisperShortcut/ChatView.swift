@@ -97,11 +97,6 @@ class ChatViewModel: ObservableObject {
   let scrollAnchorClearSignal = PassthroughSubject<Void, Never>()
   @Published var inputText: String = ""
   @Published private(set) var sendingSessionIds: Set<UUID> = []
-  /// Sessions whose in-flight request is being superseded by a new user message.
-  /// The cancel handler uses this to discard the partial assistant placeholder
-  /// entirely (otherwise partial text would persist between the old user message
-  /// and the replacement, polluting the next request's history).
-  private var supersedingSessionIds: Set<UUID> = []
   /// True when the currently visible session has an in-flight request.
   var isSending: Bool { sendingSessionIds.contains(session.id) }
   @Published var errorMessage: String? = nil
@@ -437,8 +432,8 @@ class ChatViewModel: ObservableObject {
 
   /// Sends a message whose content and attachments were already assembled by the inline
   /// composer in document order. Slash commands are filtered out upstream by
-  /// `submitComposer`, so this path only sees real chat content; it queues /
-  /// supersedes / dispatches via `performSend`.
+  /// `submitComposer`, so this path only sees real chat content; it either dispatches via
+  /// `performSend` or appends to the FIFO queue drained by `processNextQueued`.
   func sendComposed(finalContent: String, attachedParts: [AttachedImagePart]) async {
     let hasContent = !finalContent.isEmpty || !attachedParts.isEmpty
     guard hasContent else { return }
@@ -452,10 +447,15 @@ class ChatViewModel: ObservableObject {
     }
 
     errorMessage = nil
-    if isSending {
-      supersedeInFlight(
-        with: QueuedChatMessage(
+    // FIFO: a message sent while the model is still answering waits its turn instead of
+    // killing the running request. The queue is also checked directly because `performSend`
+    // marks the session as sending synchronously but the next drain can still be one
+    // MainActor hop away — without it a fast second Enter could overtake a queued message.
+    if isSending || messageQueue.contains(where: { $0.sessionId == session.id }) {
+      messageQueue.append(
+        QueuedChatMessage(
           sessionId: session.id, content: finalContent, attachedParts: attachedParts))
+      DebugLogger.log("GEMINI-CHAT: Queued composed message, queue size: \(messageQueue.count)")
       return
     }
     performSend(content: finalContent, attachedParts: attachedParts)
@@ -655,9 +655,17 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: /unpin — window is now unpinned (closes on focus loss)")
   }
 
-  /// Cancels the in-flight send request for the currently visible session.
+  /// Stops the currently visible session: cancels the in-flight request *and* drops
+  /// everything still queued for it. Without dropping the queue, Stop would look like a
+  /// no-op — the next queued message would start streaming the moment the current one dies.
   func cancelSend() {
-    sendTasks[session.id]?.cancel()
+    let sid = session.id
+    let dropped = messageQueue.filter { $0.sessionId == sid }.count
+    messageQueue.removeAll { $0.sessionId == sid }
+    if dropped > 0 {
+      DebugLogger.log("GEMINI-CHAT: Stop — dropped \(dropped) queued message(s) for this chat")
+    }
+    sendTasks[sid]?.cancel()
   }
 
   /// Copies the given session's full message history to the clipboard as Markdown.
@@ -722,17 +730,6 @@ class ChatViewModel: ObservableObject {
     return lines.joined(separator: "\n")
   }
 
-  /// Cancels the in-flight send and queues `replacement` to run as soon as the
-  /// cancellation propagates. The old user message stays in history; the partial
-  /// assistant placeholder is dropped so the next request sees a clean turn order.
-  private func supersedeInFlight(with replacement: QueuedChatMessage) {
-    let sid = session.id
-    DebugLogger.log("GEMINI-CHAT: Superseding in-flight request with new message")
-    supersedingSessionIds.insert(sid)
-    messageQueue.insert(replacement, at: 0)
-    sendTasks[sid]?.cancel()
-  }
-
   // MARK: - Send helpers & Queue
 
   /// Core send: appends the user message, calls the API, and drains the next queued message on completion.
@@ -757,8 +754,11 @@ class ChatViewModel: ObservableObject {
     content: String, attachedParts: [AttachedImagePart], toSessionId: UUID? = nil
   ) {
     let sessionId = toSessionId ?? session.id
+    // Marked *before* the Task so `isSending` is true the instant this returns. The Task body
+    // starts one MainActor hop later; a message sent inside that window would otherwise skip
+    // the queue and be dispatched concurrently, out of order.
+    sendingSessionIds.insert(sessionId)
     let task = Task {
-      sendingSessionIds.insert(sessionId)
       // Freeze-relevant state snapshot: a hang during send/stream wedges the main thread and
       // silences later logs, so capture the conditions here while we still can. The watchdog
       // (MainThreadWatchdog) then samples the stack if the main thread stops responding.
@@ -775,7 +775,6 @@ class ChatViewModel: ObservableObject {
         DebugLogger.log("CHAT-SEND: teardown session=\(sessionId)")
         MainThreadWatchdog.shared.note("idle")
         sendingSessionIds.remove(sessionId)
-        supersedingSessionIds.remove(sessionId)
         sendTasks.removeValue(forKey: sessionId)
         StallCancellationRegistry.shared.unregister(sessionId)
         // `ChatViewModel` is `@MainActor`, so this Task inherits MainActor — no explicit hop needed.
@@ -893,6 +892,12 @@ class ChatViewModel: ObservableObject {
           currentContents.append(contentsOf: turns)
         }
 
+        // A cancelled turn must never reach the fallback copy below: cancelling the task makes
+        // the provider's `AsyncThrowingStream` *finish* rather than throw, so the loop above
+        // exits normally with an empty reply and the turn would be persisted as "(no response)".
+        // This check routes cancellation to the `CancellationError` handler instead.
+        try Task.checkCancellation()
+
         // Make sure the user sees *something* if the model produced no text.
         // This happens e.g. when the tool loop exhausts mid-batch (lots of
         // function calls, no narration) — the assistant bubble would otherwise
@@ -946,15 +951,14 @@ class ChatViewModel: ObservableObject {
         }
         ReviewPrompter.shared.recordSuccessfulOperation()
       } catch is CancellationError {
-        let superseded = self.supersedingSessionIds.contains(sessionId)
-        DebugLogger.log("CHAT: Send cancelled (superseded=\(superseded))")
+        DebugLogger.log("CHAT: Send cancelled (partialChars=\(markerPrefix.count + streamed.count))")
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
-          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed), forceRemove: superseded)
+          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed))
       } catch {
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
-          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed), forceRemove: false)
+          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed))
         if sessionId == session.id { errorMessage = friendlyError(error) }
         DebugLogger.logError("CHAT: \(error.localizedDescription)")
       }
@@ -1407,13 +1411,13 @@ class ChatViewModel: ObservableObject {
   /// removes the placeholder entirely. The partial only ever lived in the streaming buffer,
   /// never in `messages`; committing it now keeps the kept text visible (and persisted across
   /// a quit-after-Stop) instead of snapping to empty when the bubble swaps to its
-  /// non-streaming render path. `forceRemove` is set on the cancel-superseded path so the
-  /// partial doesn't pollute the history of the replacement request.
+  /// non-streaming render path. An empty partial leaves nothing worth showing, so the
+  /// placeholder is removed rather than persisted as an empty assistant turn.
   private func commitPartialOrRemove(
-    placeholderId: UUID, sessionId: UUID, partial: String, forceRemove: Bool
+    placeholderId: UUID, sessionId: UUID, partial: String
   ) {
     detachStreamingBuffer(for: placeholderId)
-    if partial.isEmpty || forceRemove {
+    if partial.isEmpty {
       removeMessage(id: placeholderId, fromSessionId: sessionId)
     } else {
       updateStreamingMessage(
