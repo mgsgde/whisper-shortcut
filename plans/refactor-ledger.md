@@ -19,7 +19,11 @@ Status values: `applied` · `deferred` · `rejected` · `superseded`.
 | R5  | Dictate Prompt hand-rolls an OpenAI client that `OpenAIChatProvider` already is | cross-file   | deferred | 1   | `SpeechService.executePromptWithOpenAI` ~90 lines of parallel client    |
 | R6  | Four independent retry/backoff policies                                    | cross-file   | deferred | 1   | `GeminiAPIClient` ×2, `ChunkTTSService`, `SpeechService`; OpenAI/Grok streams don't retry at all |
 | R7  | Provider clone leftovers — `instructions(from:)` ×2, tool-decl encoding ×5  | self-contained | applied | 1   | `cec1b0d`; `GeminiSystemInstruction` + `LLMToolDeclaration` encoders    |
-| R8  | Per-enum UserDefaults loader boilerplate in `SettingsConfiguration`         | self-contained | deferred | 1   | 5 copies of read-raw → migrate → validate → fall back                  |
+| R8  | Per-enum UserDefaults loader boilerplate in `SettingsConfiguration`         | self-contained | deferred | 1   | Subsumed by R11 — do it as part of the slot table, not separately      |
+| R11 | `SettingsViewModel` load/save is a hand-maintained parallel list           | cross-file   | deferred | 2   | 33 settings × 4 places (field, default, load line, save line), 5 load idioms; 7 keys load via a migrating loader but save raw |
+| R12 | `KeychainManager` cloned 7 provider save/get/delete triples               | hot path     | applied  | 2   | `8d31dd0` → `KeychainCredential`; 467 → 264 lines, 38 call sites       |
+| R13 | Four API-key settings sections were 89-line clones                        | self-contained | applied | 2   | `8d31dd0` → `APIKeyEntrySection` + descriptor on `APIKeyProvider`      |
+| R14 | `ModelSelectionView` / `PromptModelSelectionView` duplicate grid scaffolding | self-contained | deferred | 2   | `groupHeader` + `modelGrid` identical modulo element type              |
 
 ### Follow-ups that came out of applying the above
 
@@ -36,16 +40,24 @@ Status values: `applied` · `deferred` · `rejected` · `superseded`.
 | Chat providers (`*ChatProvider`, `LLMChatProvider`) | run 1      | `77b5c96` | R7 applied; layer already in good shape                           |
 | `ChatTools.swift` + `ChatViewModel` tool dispatch | run 1      | `77b5c96` | R2 applied; rest of `ChatView.swift` only skimmed                 |
 | `SpeechService.swift`                            | run 1      | `77b5c96` | Read for R5/R6; nothing applied yet                               |
+| `Settings/` (all 45 files, 7,631 lines)          | run 2      | `b5e98f7` | R13 applied; R11 + R14 found and deferred. Tab views are thin composition — healthy, don't re-flag |
+| `KeychainManager.swift` + `APIKeyProvider`       | run 2      | `b5e98f7` | R12 applied; storage now keyed by `KeychainCredential`            |
 
 ## Not yet swept
 
-- `ChatView.swift` below the view model (lines ~2500–5265: the SwiftUI rendering half)
-- `Settings/` — `SettingsConfiguration.swift` (1,590 lines) and the per-tab views
+- `ChatView.swift` below the view model (lines ~2500–5346: the SwiftUI rendering half). Highest
+  combined signal left: 247 churn / 5,346 lines / 79 fix-commits (counting its old
+  `GeminiChatView.swift` name — the churn stats hide this unless you follow the rename)
 - `PopupNotificationWindow.swift` (1,243), `ContextDerivation.swift` (937), `TranscriptionModels.swift` (937)
-- `Onboarding/`, the TTS chunking path (`ChunkTTSService`), `GeminiAPIClient.swift` (1,152)
+- `Onboarding/` (`WelcomeSteps.swift` 934), the TTS chunking path (`ChunkTTSService`), `GeminiAPIClient.swift` (1,152)
 
 ## Signals checked and cleared (don't re-flag without new evidence)
 
 - `#if APP_STORE` is contained to 7 sites — not scattered.
+- `Settings/Tabs/*` are thin composition of named section views, not scaffolding clones (run 2).
+- `ConfigurableShortcutSlot` (`SettingsViewModel`) and `TTSProvider.voiceUserDefaultsKey` are
+  already the table-driven pattern R11 wants — use them as the model, don't re-flag them.
+- R6 grew from 4 retry policies to 5 (`ChunkTranscriptionService` added one) — re-measure, don't
+  trust the run-1 count.
 - UserDefaults access is disciplined: 217 uses of `UserDefaultsKeys` vs 1 raw string literal.
 - `AppConstants` / `UserDefaultsKeys` are long but flat declarations, not hotspots.
