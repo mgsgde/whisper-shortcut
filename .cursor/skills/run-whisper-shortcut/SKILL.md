@@ -7,7 +7,7 @@ description: Build, launch, drive, screenshot, and walk through the WhisperShort
 
 WhisperShortcut is a macOS **menu-bar-only** app (`LSUIElement: true` — no Dock icon,
 no main window). Every surface is reached through the status-item menu: Dictate,
-Dictate Prompt, Screenshot, Read Aloud, **Chat**, **Configure** (Settings), Quit.
+Dictate Prompt, Screenshot, Read Aloud, **Chat**, **Settings…**, Quit.
 
 Because there's no window to "just open," you drive it through
 [`driver.sh`](driver.sh) — a bash harness that opens the status menu and clicks items
@@ -50,7 +50,7 @@ bash .cursor/skills/run-whisper-shortcut/driver.sh ensure   # launch if not alre
 D=.cursor/skills/run-whisper-shortcut/driver.sh
 
 bash $D items                      # list status-menu item names (sanity check it's driveable)
-bash $D shot Configure settings    # open Settings, screenshot its window → /tmp/ws-settings.png
+bash $D shot "Settings…" settings  # open Settings, screenshot its window → /tmp/ws-settings.png
 bash $D close                      # close the front window
 bash $D shot Chat chat             # open Chat, screenshot it → /tmp/ws-chat.png
 bash $D close
@@ -61,7 +61,12 @@ bash $D quit                       # quit the app
 Other commands: `open <MenuItem>` (click an item, no screenshot), `ss [name]`
 (screenshot the front window cropped, or full screen if none). Menu item names are
 exactly: `Dictate`, `Dictate Prompt`, `Screenshot`, `Read Aloud`, `Chat`,
-`Configure`, `Quit WhisperShortcut`. `Configure` opens the window titled **Settings**.
+`Voice Feedback`, `Copy Last Transcription`, `Recent Transcriptions`, `Settings…`,
+`Rate WhisperShortcut`, `Quit WhisperShortcut`. `Settings…` opens the window titled
+**Settings** — note the trailing **Unicode ellipsis (U+2026), not three periods**, and quote it
+in the shell. This menu has been renamed before (`Configure` → `Settings…`), so run
+`bash $D items` to confirm the live names before scripting against one; a stale name fails with
+`Can't get menu item "…" (-1728)`.
 
 Screenshots go to `/tmp/ws-<name>.png` (override with `WS_SHOT_DIR`). `shot`/`ss`
 **crop to the front WhisperShortcut window** (clean, window-only image); `menu` and a
@@ -105,7 +110,7 @@ Scroll inside the Welcome panel: focus the window (`activate`), move the mouse o
 then scroll — System Events scroll is flaky; prefer arrow keys for step navigation.
 
 Re-show without relaunch: Settings ▸ Privacy ▸ "Show welcome tour again", or
-`WelcomeWindowController.shared.show()` path via Configure menu.
+`WelcomeWindowController.shared.show()` path via the `Settings…` menu item.
 
 ### Cognitive walkthrough (activation audit)
 

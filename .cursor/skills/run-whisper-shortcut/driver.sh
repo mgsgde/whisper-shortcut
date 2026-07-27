@@ -18,7 +18,7 @@
 #   bash driver.sh ensure             # launch the already-built app if not running
 #   bash driver.sh items              # print the status-menu item names
 #   bash driver.sh menu [name]        # open the status menu and screenshot it
-#   bash driver.sh open <MenuItem>    # click a status-menu item (e.g. Configure, Chat)
+#   bash driver.sh open <MenuItem>    # click a status-menu item (e.g. "Settings…", Chat)
 #   bash driver.sh shot <MenuItem> [name]  # open that item's window, then screenshot it
 #   bash driver.sh ss [name]          # screenshot front WS window (cropped) or full screen
 #   bash driver.sh close              # close the front WS window
@@ -28,10 +28,16 @@
 #   bash driver.sh onboarding-reset   # show Welcome again (keeps Keychain + container data)
 #   bash driver.sh onboarding-wipe    # DESTRUCTIVE: delete app container, then relaunch
 #
-# Menu items: Dictate, Dictate Prompt, Screenshot, Read Aloud, Chat, Configure, Quit WhisperShortcut
-# ("Configure" opens Settings; its window is titled "Settings". "Chat" opens the chat window.)
+# Menu items: Dictate, Dictate Prompt, Screenshot, Read Aloud, Voice Feedback,
+#             Copy Last Transcription, Recent Transcriptions, Chat, Settings…,
+#             Rate WhisperShortcut, Quit WhisperShortcut
+# ("Settings…" opens the window titled "Settings" — note the trailing Unicode ellipsis U+2026,
+#  not three periods. Quote it in the shell. "Chat" opens the chat window.)
 #
-# Screenshots land in $WS_SHOT_DIR (default /tmp). `shot Configure settings` → /tmp/ws-settings.png
+# Verify the live list with `driver.sh items` before scripting against a name — the menu has
+# been renamed before ("Configure" → "Settings…").
+#
+# Screenshots land in $WS_SHOT_DIR (default /tmp). `shot "Settings…" settings` → /tmp/ws-settings.png
 
 set -euo pipefail
 
