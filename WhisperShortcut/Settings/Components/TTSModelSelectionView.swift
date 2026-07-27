@@ -44,20 +44,17 @@ struct TTSModelSelectionView: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(title: title, systemImage: systemImage, subtitle: subtitle)
 
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
-        ForEach(models, id: \.self) { model in
-          let disabled = isDisabled(model)
-          ModelTile(
-            title: model.displayName,
-            isSelected: selectedModel == model,
-            isDisabled: disabled,
-            isRecommended: model.isRecommended,
-            onTap: {
-              selectedModel = model
-              onModelChanged?()
-            }
-          )
-        }
+      ModelGrid(models: models) { model in
+        ModelTile(
+          title: model.displayName,
+          isSelected: selectedModel == model,
+          isDisabled: isDisabled(model),
+          isRecommended: model.isRecommended,
+          onTap: {
+            selectedModel = model
+            onModelChanged?()
+          }
+        )
       }
       .background(Color(.controlBackgroundColor))
       .cornerRadius(8)

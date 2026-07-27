@@ -143,27 +143,11 @@ struct ModelSelectionView: View {
 
   @ViewBuilder
   private func groupHeader(symbol: String, title: String, subtitle: String) -> some View {
-    HStack(spacing: 6) {
-      Image(systemName: symbol)
-        .font(.caption)
-        .foregroundColor(.secondary)
-      Text(title)
-        .font(.callout)
-        .fontWeight(.semibold)
-      Text("· \(subtitle)")
-        .font(.caption)
-        .foregroundColor(.secondary)
-    }
-    .padding(.horizontal, 4)
-    .padding(.bottom, 6)
+    ModelGroupHeader(symbol: symbol, title: title, subtitle: subtitle)
   }
 
   private func modelGrid(_ models: [TranscriptionModel]) -> some View {
-    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: SettingsConstants.modelSpacing) {
-      ForEach(models, id: \.self) { model in
-        modelCell(model)
-      }
-    }
+    ModelGrid(models: models) { modelCell($0) }
   }
 
   @ViewBuilder
