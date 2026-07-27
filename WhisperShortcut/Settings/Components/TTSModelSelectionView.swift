@@ -34,9 +34,9 @@ struct TTSModelSelectionView: View {
     case .gemini:
       return !GeminiCredentialProvider.shared.hasCredential()
     case .openai:
-      return !KeychainManager.shared.hasValidOpenAIAPIKey()
+      return !KeychainManager.shared.hasNonEmpty(.openAI)
     case .xai:
-      return !KeychainManager.shared.hasValidXAIAPIKey()
+      return !KeychainManager.shared.hasNonEmpty(.xai)
     }
   }
 

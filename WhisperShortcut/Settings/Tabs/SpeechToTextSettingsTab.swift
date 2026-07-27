@@ -159,8 +159,8 @@ struct SpeechToTextSettingsTab: View {
         systemImage: "waveform",
         selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
         geminiDisabled: !GeminiCredentialProvider.shared.hasCredential(),
-        openAIDisabled: !KeychainManager.shared.hasValidOpenAIAPIKey(),
-        xaiDisabled: !KeychainManager.shared.hasValidXAIAPIKey(),
+        openAIDisabled: !KeychainManager.shared.hasNonEmpty(.openAI),
+        xaiDisabled: !KeychainManager.shared.hasNonEmpty(.xai),
         subscriptionMode: false,
         onModelChanged: {
           UserDefaults.standard.set(
@@ -181,7 +181,7 @@ struct SpeechToTextSettingsTab: View {
           .textSelection(.enabled)
       }
 
-      if viewModel.data.selectedTranscriptionModel.isOpenAI && !KeychainManager.shared.hasValidOpenAIAPIKey() {
+      if viewModel.data.selectedTranscriptionModel.isOpenAI && !KeychainManager.shared.hasNonEmpty(.openAI) {
         Text("Add your OpenAI API key in the General tab to use the OpenAI transcription models.")
           .font(.callout)
           .foregroundColor(.secondary)

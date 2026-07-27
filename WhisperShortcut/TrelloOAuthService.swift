@@ -22,7 +22,7 @@ class TrelloOAuthService: ObservableObject {
   @Published private(set) var isConnected: Bool = false
 
   private init() {
-    isConnected = KeychainManager.shared.hasTrelloToken()
+    isConnected = KeychainManager.shared.has(.trelloToken)
   }
 
   // MARK: - Authorization
@@ -60,7 +60,7 @@ class TrelloOAuthService: ObservableObject {
     guard !token.isEmpty else {
       throw OAuthError.emptyToken
     }
-    guard KeychainManager.shared.saveTrelloToken(token) else {
+    guard KeychainManager.shared.save(token, for: .trelloToken) else {
       throw OAuthError.tokenStoreFailed
     }
     isConnected = true
@@ -72,7 +72,7 @@ class TrelloOAuthService: ObservableObject {
   /// Clears the stored user token. The API key is left intact so reconnecting
   /// does not require re-pasting it.
   func disconnect() {
-    _ = KeychainManager.shared.deleteTrelloToken()
+    _ = KeychainManager.shared.delete(.trelloToken)
     isConnected = false
     DebugLogger.log("TRELLO: Disconnected")
   }
@@ -83,7 +83,7 @@ class TrelloOAuthService: ObservableObject {
   /// not authorized the app yet. Trello tokens do not expire, so this is a
   /// straight Keychain read with no refresh path.
   func getToken() throws -> String {
-    guard let token = KeychainManager.shared.getTrelloToken(), !token.isEmpty else {
+    guard let token = KeychainManager.shared.get(.trelloToken), !token.isEmpty else {
       throw OAuthError.notConnected
     }
     return token

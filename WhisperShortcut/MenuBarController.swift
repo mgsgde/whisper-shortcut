@@ -575,9 +575,9 @@ class MenuBarController: NSObject {
     let canReadAloud = ReadAloudPreferences.model.hasRequiredCredential
     #endif
     let hasAnyKey = GeminiCredentialProvider.shared.hasCredential()
-      || KeychainManager.shared.hasValidOpenAIAPIKey()
-      || KeychainManager.shared.hasValidXAIAPIKey()
-      || KeychainManager.shared.hasValidAnthropicAPIKey()
+      || KeychainManager.shared.hasNonEmpty(.openAI)
+      || KeychainManager.shared.hasNonEmpty(.xai)
+      || KeychainManager.shared.hasNonEmpty(.anthropic)
 
     // Update status
     menu.item(withTag: MenuTag.status.rawValue)?.title = appState.statusText

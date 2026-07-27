@@ -187,8 +187,8 @@ struct WelcomeAPIKeysStep: View {
             linkTitle: "aistudio.google.com/api-keys",
             linkURL: URL(string: "https://aistudio.google.com/api-keys")!,
             isConfigured: $hasGeminiKey,
-            load: { KeychainManager.shared.getGoogleAPIKey() ?? "" },
-            save: { KeychainManager.shared.saveGoogleAPIKey($0) },
+            load: { KeychainManager.shared.get(.google) ?? "" },
+            save: { KeychainManager.shared.save($0, for: .google) },
             recommended: true
           )
           OnboardingAPIKeyRow(
@@ -197,8 +197,8 @@ struct WelcomeAPIKeysStep: View {
             linkTitle: "platform.openai.com/api-keys",
             linkURL: URL(string: "https://platform.openai.com/api-keys")!,
             isConfigured: $hasOpenAIKey,
-            load: { KeychainManager.shared.getOpenAIAPIKey() ?? "" },
-            save: { KeychainManager.shared.saveOpenAIAPIKey($0) },
+            load: { KeychainManager.shared.get(.openAI) ?? "" },
+            save: { KeychainManager.shared.save($0, for: .openAI) },
             recommended: false
           )
           OnboardingAPIKeyRow(
@@ -208,8 +208,8 @@ struct WelcomeAPIKeysStep: View {
             linkURL: URL(string: "https://console.anthropic.com/settings/keys")!,
             description: "Chat only — Dictate Prompt is not available with Claude.",
             isConfigured: $hasAnthropicKey,
-            load: { KeychainManager.shared.getAnthropicAPIKey() ?? "" },
-            save: { KeychainManager.shared.saveAnthropicAPIKey($0) },
+            load: { KeychainManager.shared.get(.anthropic) ?? "" },
+            save: { KeychainManager.shared.save($0, for: .anthropic) },
             recommended: false
           )
           OnboardingAPIKeyRow(
@@ -219,8 +219,8 @@ struct WelcomeAPIKeysStep: View {
             linkURL: URL(string: "https://console.x.ai")!,
             description: "Dictate Prompt is not available with Grok.",
             isConfigured: $hasXAIKey,
-            load: { KeychainManager.shared.getXAIAPIKey() ?? "" },
-            save: { KeychainManager.shared.saveXAIAPIKey($0) },
+            load: { KeychainManager.shared.get(.xai) ?? "" },
+            save: { KeychainManager.shared.save($0, for: .xai) },
             recommended: false
           )
         }
@@ -343,10 +343,10 @@ struct OnboardingOfflineRow: View {
   private func syncReady() {
     guard modelManager.isModelAvailable(modelType) else { return }
     offlineReady = true
-    let hasCloudKey = KeychainManager.shared.hasValidGoogleAPIKey()
-      || KeychainManager.shared.hasValidOpenAIAPIKey()
-      || KeychainManager.shared.hasValidXAIAPIKey()
-      || KeychainManager.shared.hasValidAnthropicAPIKey()
+    let hasCloudKey = KeychainManager.shared.hasNonEmpty(.google)
+      || KeychainManager.shared.hasNonEmpty(.openAI)
+      || KeychainManager.shared.hasNonEmpty(.xai)
+      || KeychainManager.shared.hasNonEmpty(.anthropic)
     if !hasCloudKey {
       UserDefaults.standard.set(
         TranscriptionModel.whisperBase.rawValue,

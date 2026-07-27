@@ -75,10 +75,10 @@ struct SelfHostedTranscriptionEndpointSection: View {
         }
         .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
         .onAppear {
-          bearerToken = KeychainManager.shared.getCustomTranscriptionBearerToken() ?? ""
+          bearerToken = KeychainManager.shared.get(.customTranscriptionBearerToken) ?? ""
         }
         .onChange(of: bearerToken) { _, newValue in
-          _ = KeychainManager.shared.saveCustomTranscriptionBearerToken(newValue)
+          _ = KeychainManager.shared.save(newValue, for: .customTranscriptionBearerToken)
         }
 
         Button(action: { isTokenVisible.toggle() }) {

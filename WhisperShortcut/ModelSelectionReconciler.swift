@@ -19,10 +19,10 @@ enum ModelSelectionReconciler {
   static func hasKey(_ provider: ChatModelProvider) -> Bool {
     switch provider {
     case .gemini: return GeminiCredentialProvider.shared.hasCredential()
-    case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
+    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
     case .customOpenAI: return OpenAIChatPreferences.isConfigured
-    case .grok: return KeychainManager.shared.hasValidXAIAPIKey()
-    case .anthropic: return KeychainManager.shared.hasValidAnthropicAPIKey()
+    case .grok: return KeychainManager.shared.hasNonEmpty(.xai)
+    case .anthropic: return KeychainManager.shared.hasNonEmpty(.anthropic)
     // Local server needs no key — treat as "always available" so a user's explicit local
     // selection is never reconciled away.
     case .local: return true
@@ -32,8 +32,8 @@ enum ModelSelectionReconciler {
   private static func hasKey(_ provider: TTSProvider) -> Bool {
     switch provider {
     case .gemini: return GeminiCredentialProvider.shared.hasCredential()
-    case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
-    case .xai: return KeychainManager.shared.hasValidXAIAPIKey()
+    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
+    case .xai: return KeychainManager.shared.hasNonEmpty(.xai)
     }
   }
 

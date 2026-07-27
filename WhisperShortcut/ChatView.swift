@@ -978,17 +978,17 @@ class ChatViewModel: ObservableObject {
   private func validateCredential(for model: PromptModel) async -> Bool {
     switch model.provider {
     case .grok:
-      guard KeychainManager.shared.hasValidXAIAPIKey() else {
+      guard KeychainManager.shared.hasNonEmpty(.xai) else {
         errorMessage = "Add your xAI API key in Settings to use Grok models."
         return false
       }
     case .openai:
-      guard KeychainManager.shared.hasValidOpenAIAPIKey() else {
+      guard KeychainManager.shared.hasNonEmpty(.openAI) else {
         errorMessage = "Add your OpenAI API key in Settings to use OpenAI models."
         return false
       }
     case .anthropic:
-      guard KeychainManager.shared.hasValidAnthropicAPIKey() else {
+      guard KeychainManager.shared.hasNonEmpty(.anthropic) else {
         errorMessage = "Add your Anthropic API key in Settings to use Claude models."
         return false
       }

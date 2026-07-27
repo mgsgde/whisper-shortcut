@@ -38,9 +38,9 @@ enum ProviderCredentials {
 
     fileprivate var storedKey: String? {
       switch self {
-      case .openAI: return KeychainManager.shared.getOpenAIAPIKey()
-      case .xAI: return KeychainManager.shared.getXAIAPIKey()
-      case .anthropic: return KeychainManager.shared.getAnthropicAPIKey()
+      case .openAI: return KeychainManager.shared.get(.openAI)
+      case .xAI: return KeychainManager.shared.get(.xai)
+      case .anthropic: return KeychainManager.shared.get(.anthropic)
       }
     }
   }

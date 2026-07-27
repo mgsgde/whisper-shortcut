@@ -7,25 +7,36 @@ struct GeneralSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
 
+  // Only the Google key is mirrored on `SettingsViewModel` (its save path runs through
+  // `saveSettings`); the other three are owned by their section and persisted straight to the
+  // Keychain on edit.
+  @State private var xaiKey: String = ""
+  @State private var anthropicKey: String = ""
+  @State private var openAIKey: String = ""
+
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       welcomeTourSection
 
       SpacedSectionDivider()
 
-      GoogleAPIKeySection(viewModel: viewModel, focusedField: $focusedField)
+      APIKeyEntrySection(
+        provider: .google,
+        key: $viewModel.data.googleAPIKey,
+        focusBinding: $focusedField,
+        focusField: .googleAPIKey)
 
       SpacedSectionDivider()
 
-      XAIAPIKeySection(viewModel: viewModel)
+      APIKeyEntrySection(provider: .xai, key: $xaiKey)
 
       SpacedSectionDivider()
 
-      AnthropicAPIKeySection(viewModel: viewModel)
+      APIKeyEntrySection(provider: .anthropic, key: $anthropicKey)
 
       SpacedSectionDivider()
 
-      OpenAIAPIKeySection(viewModel: viewModel)
+      APIKeyEntrySection(provider: .openai, key: $openAIKey)
 
       SpacedSectionDivider()
 

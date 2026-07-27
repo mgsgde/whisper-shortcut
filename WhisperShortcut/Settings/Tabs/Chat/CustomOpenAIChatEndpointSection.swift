@@ -97,10 +97,10 @@ struct CustomOpenAIChatEndpointSection: View {
             }
             .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
             .onAppear {
-              apiKey = KeychainManager.shared.getCustomOpenAIChatAPIKey() ?? ""
+              apiKey = KeychainManager.shared.get(.customOpenAIChatAPIKey) ?? ""
             }
             .onChange(of: apiKey) { _, newValue in
-              _ = KeychainManager.shared.saveCustomOpenAIChatAPIKey(newValue)
+              _ = KeychainManager.shared.save(newValue, for: .customOpenAIChatAPIKey)
               ModelSelectionReconciler.reconcileAll()
             }
 

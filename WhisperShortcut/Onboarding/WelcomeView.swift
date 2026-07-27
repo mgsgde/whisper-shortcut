@@ -46,10 +46,10 @@ struct WelcomeView: View {
   @State private var step: WelcomeStep =
     WelcomeStep.resume(from: UserDefaults.standard.integer(forKey: UserDefaultsKeys.onboardingCurrentStep))
   @State private var keyDownMonitor: Any?
-  @State private var hasGeminiKey: Bool = KeychainManager.shared.hasValidGoogleAPIKey()
-  @State private var hasOpenAIKey: Bool = KeychainManager.shared.hasValidOpenAIAPIKey()
-  @State private var hasXAIKey: Bool = KeychainManager.shared.hasValidXAIAPIKey()
-  @State private var hasAnthropicKey: Bool = KeychainManager.shared.hasValidAnthropicAPIKey()
+  @State private var hasGeminiKey: Bool = KeychainManager.shared.hasNonEmpty(.google)
+  @State private var hasOpenAIKey: Bool = KeychainManager.shared.hasNonEmpty(.openAI)
+  @State private var hasXAIKey: Bool = KeychainManager.shared.hasNonEmpty(.xai)
+  @State private var hasAnthropicKey: Bool = KeychainManager.shared.hasNonEmpty(.anthropic)
   /// True once an offline Whisper model is downloaded, which lets a user finish
   /// setup and dictate with no provider key at all (the key step's other exit).
   @State private var offlineReady: Bool = ModelManager.shared.isModelAvailable(.whisperBase)
@@ -220,10 +220,10 @@ struct WelcomeView: View {
   }
 
   private func refreshState() {
-    hasGeminiKey = KeychainManager.shared.hasValidGoogleAPIKey()
-    hasOpenAIKey = KeychainManager.shared.hasValidOpenAIAPIKey()
-    hasXAIKey = KeychainManager.shared.hasValidXAIAPIKey()
-    hasAnthropicKey = KeychainManager.shared.hasValidAnthropicAPIKey()
+    hasGeminiKey = KeychainManager.shared.hasNonEmpty(.google)
+    hasOpenAIKey = KeychainManager.shared.hasNonEmpty(.openAI)
+    hasXAIKey = KeychainManager.shared.hasNonEmpty(.xai)
+    hasAnthropicKey = KeychainManager.shared.hasNonEmpty(.anthropic)
     offlineReady = ModelManager.shared.isModelAvailable(.whisperBase)
     micStatus = PermissionStatusChecker.status(for: .microphone)
   }

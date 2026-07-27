@@ -216,8 +216,8 @@ enum TranscriptionModel: String, CaseIterable {
   var hasRequiredCredential: Bool {
     if isOffline { return isOfflineModelAvailable() }
     if isGemini { return GeminiCredentialProvider.shared.hasCredential() }
-    if isOpenAI { return KeychainManager.shared.hasValidOpenAIAPIKey() }
-    if isXAI { return KeychainManager.shared.hasValidXAIAPIKey() }
+    if isOpenAI { return KeychainManager.shared.hasNonEmpty(.openAI) }
+    if isXAI { return KeychainManager.shared.hasNonEmpty(.xai) }
     // Self-hosted: usable once the user has configured an endpoint URL.
     let url = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?
       .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

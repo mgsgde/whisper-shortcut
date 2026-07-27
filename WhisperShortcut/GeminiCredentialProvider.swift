@@ -16,13 +16,13 @@ final class GeminiCredentialProvider: GeminiCredentialProviding {
   }
 
   func getCredential() async -> GeminiCredential? {
-    if let key = keychainManager.getGoogleAPIKey(), !key.isEmpty {
+    if let key = keychainManager.get(.google), !key.isEmpty {
       return .apiKey(key)
     }
     return nil
   }
 
   func hasCredential() -> Bool {
-    return keychainManager.hasValidGoogleAPIKey()
+    return keychainManager.hasNonEmpty(.google)
   }
 }

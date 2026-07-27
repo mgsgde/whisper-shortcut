@@ -13,7 +13,7 @@ enum TrelloOAuthConfig {
   /// https://trello.com/power-ups/admin to obtain a personal API key, then
   /// pastes it into the Chat settings. We store it in the Keychain.
   static var apiKey: String {
-    KeychainManager.shared.getTrelloAPIKey() ?? ""
+    KeychainManager.shared.get(.trelloAPIKey) ?? ""
   }
 
   /// Where the user can generate their personal Power-Up API key.

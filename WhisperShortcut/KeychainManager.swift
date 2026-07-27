@@ -1,48 +1,24 @@
 import Foundation
 import Security
 
-// Protocol for dependency injection and testing
+// Protocol for dependency injection and testing.
+//
+// Every credential goes through the same four operations keyed by `KeychainCredential`, so a
+// newly added secret gets the full lifecycle (save/read/delete/presence) for free.
 protocol KeychainManaging {
-  func saveAPIKey(_ apiKey: String) -> Bool
-  func getAPIKey() -> String?
-  func deleteAPIKey() -> Bool
-  func hasAPIKey() -> Bool
-  func saveGoogleAPIKey(_ apiKey: String) -> Bool
-  func getGoogleAPIKey() -> String?
-  func deleteGoogleAPIKey() -> Bool
-  func hasGoogleAPIKey() -> Bool
-  /// Returns true if a non-empty Google API key is stored.
-  func hasValidGoogleAPIKey() -> Bool
-  func saveXAIAPIKey(_ apiKey: String) -> Bool
-  func getXAIAPIKey() -> String?
-  func deleteXAIAPIKey() -> Bool
-  func hasValidXAIAPIKey() -> Bool
-  func saveAnthropicAPIKey(_ apiKey: String) -> Bool
-  func getAnthropicAPIKey() -> String?
-  func deleteAnthropicAPIKey() -> Bool
-  func hasValidAnthropicAPIKey() -> Bool
-  func saveOpenAIAPIKey(_ apiKey: String) -> Bool
-  func getOpenAIAPIKey() -> String?
-  func deleteOpenAIAPIKey() -> Bool
-  func hasValidOpenAIAPIKey() -> Bool
-  func saveGoogleCalendarRefreshToken(_ token: String) -> Bool
-  func getGoogleCalendarRefreshToken() -> String?
-  func deleteGoogleCalendarRefreshToken() -> Bool
-  func hasGoogleCalendarRefreshToken() -> Bool
-  func saveTrelloToken(_ token: String) -> Bool
-  func getTrelloToken() -> String?
-  func deleteTrelloToken() -> Bool
-  func hasTrelloToken() -> Bool
-  func saveTrelloAPIKey(_ apiKey: String) -> Bool
-  func getTrelloAPIKey() -> String?
-  func deleteTrelloAPIKey() -> Bool
-  func hasValidTrelloAPIKey() -> Bool
-  func saveCustomTranscriptionBearerToken(_ token: String) -> Bool
-  func getCustomTranscriptionBearerToken() -> String?
+  func save(_ value: String, for credential: KeychainCredential) -> Bool
+  func get(_ credential: KeychainCredential) -> String?
+  @discardableResult func delete(_ credential: KeychainCredential) -> Bool
+  /// True when an item exists, without reading its data.
+  func has(_ credential: KeychainCredential) -> Bool
+  /// True when a stored value exists *and* is non-empty. Reads the value, so prefer `has` when
+  /// only presence matters.
+  func hasNonEmpty(_ credential: KeychainCredential) -> Bool
+
+  // The custom-transcription headers are the one credential with a shape of its own (a JSON
+  // array), so they keep dedicated accessors on top of the generic string storage.
   func saveCustomTranscriptionHeaders(_ headers: [[String: String]]) -> Bool
   func getCustomTranscriptionHeaders() -> [[String: String]]
-  func saveCustomOpenAIChatAPIKey(_ apiKey: String) -> Bool
-  func getCustomOpenAIChatAPIKey() -> String?
 }
 
 class KeychainManager: KeychainManaging {
@@ -51,17 +27,6 @@ class KeychainManager: KeychainManaging {
   // MARK: - Constants
   private enum Constants {
     static let serviceName = "com.whispershortcut.openai"
-    static let accountName = "api-key"
-    static let googleAccountName = "google-api-key"
-    static let xaiAccountName = "xai-api-key"
-    static let anthropicAccountName = "anthropic-api-key"
-    static let openAIAccountName = "openai-api-key"
-    static let googleCalendarRefreshTokenAccountName = "google-calendar-refresh-token"
-    static let trelloTokenAccountName = "trello-token"
-    static let trelloAPIKeyAccountName = "trello-api-key"
-    static let customTranscriptionBearerTokenAccountName = "custom-transcription-bearer-token"
-    static let customTranscriptionHeadersAccountName = "custom-transcription-headers"
-    static let customOpenAIChatAPIKeyAccountName = "custom-openai-chat-api-key"
   }
 
   // MARK: - In-memory cache
@@ -104,18 +69,12 @@ class KeychainManager: KeychainManaging {
   //
   // Gated to DEBUG so the shipped Release build never reads them; GUI launches
   // don't inherit a shell environment anyway, so this is inert in production.
-  private static let environmentKeyNames: [String: [String]] = [
-    Constants.googleAccountName: ["WHISPERSHORTCUT_GOOGLE_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"],
-    Constants.xaiAccountName: ["WHISPERSHORTCUT_XAI_API_KEY", "XAI_API_KEY"],
-    Constants.anthropicAccountName: ["WHISPERSHORTCUT_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"],
-    Constants.openAIAccountName: ["WHISPERSHORTCUT_OPENAI_API_KEY", "OPENAI_API_KEY"],
-  ]
-
-  private func environmentOverride(for accountName: String) -> String? {
+  //
+  // The variable names live on `KeychainCredential.environmentVariableNames`.
+  private func environmentOverride(for credential: KeychainCredential) -> String? {
     #if DEBUG
-    guard let varNames = Self.environmentKeyNames[accountName] else { return nil }
     let env = ProcessInfo.processInfo.environment
-    for name in varNames {
+    for name in credential.environmentVariableNames {
       if let value = env[name], !value.isEmpty { return value }
     }
     return nil
@@ -124,10 +83,15 @@ class KeychainManager: KeychainManaging {
     #endif
   }
 
-  // MARK: - Generic Keychain Operations
+  // MARK: - Credential Storage
+  //
+  // These four operations are the entire public surface. Each one derives the Keychain account
+  // name from the credential, so the account strings exist in exactly one place
+  // (`KeychainCredential`).
 
-  private func saveKey(_ apiKey: String, accountName: String) -> Bool {
-    guard let data = apiKey.data(using: .utf8) else {
+  func save(_ value: String, for credential: KeychainCredential) -> Bool {
+    let accountName = credential.accountName
+    guard let data = value.data(using: .utf8) else {
       return false
     }
 
@@ -151,7 +115,7 @@ class KeychainManager: KeychainManaging {
     lock.lock()
     // Cache the value even when persisting failed: the key then still works for this
     // session (the UI warns that it won't survive a restart) instead of vanishing.
-    valueCache[accountName] = apiKey
+    valueCache[accountName] = value
     knownPresentAccounts.insert(accountName)
     knownAbsentAccounts.remove(accountName)
     if status == errSecSuccess {
@@ -171,20 +135,14 @@ class KeychainManager: KeychainManaging {
   /// keychain etc.) instead of silently losing it.
   private var lastWriteErrors: [String: OSStatus] = [:]
 
-  func lastWriteError(for provider: APIKeyProvider) -> OSStatus? {
-    let accountName: String
-    switch provider {
-    case .google: accountName = Constants.googleAccountName
-    case .openai: accountName = Constants.openAIAccountName
-    case .xai: accountName = Constants.xaiAccountName
-    case .anthropic: accountName = Constants.anthropicAccountName
-    }
+  func lastWriteError(for credential: KeychainCredential) -> OSStatus? {
     lock.lock(); defer { lock.unlock() }
-    return lastWriteErrors[accountName]
+    return lastWriteErrors[credential.accountName]
   }
 
-  private func getKey(accountName: String) -> String? {
-    if let injected = environmentOverride(for: accountName) { return injected }
+  func get(_ credential: KeychainCredential) -> String? {
+    if let injected = environmentOverride(for: credential) { return injected }
+    let accountName = credential.accountName
 
     lock.lock()
     if let cached = valueCache[accountName] { lock.unlock(); return cached }
@@ -225,7 +183,9 @@ class KeychainManager: KeychainManaging {
     }
   }
 
-  private func deleteKey(accountName: String) -> Bool {
+  @discardableResult
+  func delete(_ credential: KeychainCredential) -> Bool {
+    let accountName = credential.accountName
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: Constants.serviceName,
@@ -240,7 +200,8 @@ class KeychainManager: KeychainManaging {
     return status == errSecSuccess || status == errSecItemNotFound
   }
 
-  private func hasKey(accountName: String) -> Bool {
+  func has(_ credential: KeychainCredential) -> Bool {
+    let accountName = credential.accountName
     lock.lock()
     if knownPresentAccounts.contains(accountName) || valueCache[accountName] != nil {
       lock.unlock(); return true
@@ -269,183 +230,22 @@ class KeychainManager: KeychainManaging {
     return status == errSecSuccess
   }
 
-  // MARK: - API Key Management
 
-  func saveAPIKey(_ apiKey: String) -> Bool {
-    return saveKey(apiKey, accountName: Constants.accountName)
-  }
-
-  func getAPIKey() -> String? {
-    return getKey(accountName: Constants.accountName)
-  }
-
-  func deleteAPIKey() -> Bool {
-    return deleteKey(accountName: Constants.accountName)
-  }
-
-  func hasAPIKey() -> Bool {
-    return hasKey(accountName: Constants.accountName)
-  }
-
-  // MARK: - Google API Key Management
-
-  func saveGoogleAPIKey(_ apiKey: String) -> Bool {
-    return saveKey(apiKey, accountName: Constants.googleAccountName)
-  }
-
-  func getGoogleAPIKey() -> String? {
-    return getKey(accountName: Constants.googleAccountName)
-  }
-
-  func deleteGoogleAPIKey() -> Bool {
-    return deleteKey(accountName: Constants.googleAccountName)
-  }
-
-  func hasGoogleAPIKey() -> Bool {
-    return hasKey(accountName: Constants.googleAccountName)
-  }
-
-  func hasValidGoogleAPIKey() -> Bool {
-    guard let key = getGoogleAPIKey() else { return false }
-    return !key.isEmpty
-  }
-
-  // MARK: - xAI API Key Management
-
-  func saveXAIAPIKey(_ apiKey: String) -> Bool {
-    return saveKey(apiKey, accountName: Constants.xaiAccountName)
-  }
-
-  func getXAIAPIKey() -> String? {
-    return getKey(accountName: Constants.xaiAccountName)
-  }
-
-  func deleteXAIAPIKey() -> Bool {
-    return deleteKey(accountName: Constants.xaiAccountName)
-  }
-
-  func hasValidXAIAPIKey() -> Bool {
-    guard let key = getXAIAPIKey() else { return false }
-    return !key.isEmpty
-  }
-
-  // MARK: - Anthropic API Key Management
-
-  func saveAnthropicAPIKey(_ apiKey: String) -> Bool {
-    return saveKey(apiKey, accountName: Constants.anthropicAccountName)
-  }
-
-  func getAnthropicAPIKey() -> String? {
-    return getKey(accountName: Constants.anthropicAccountName)
-  }
-
-  func deleteAnthropicAPIKey() -> Bool {
-    return deleteKey(accountName: Constants.anthropicAccountName)
-  }
-
-  func hasValidAnthropicAPIKey() -> Bool {
-    guard let key = getAnthropicAPIKey() else { return false }
-    return !key.isEmpty
-  }
-
-  // MARK: - OpenAI API Key Management
-
-  func saveOpenAIAPIKey(_ apiKey: String) -> Bool {
-    return saveKey(apiKey, accountName: Constants.openAIAccountName)
-  }
-
-  func getOpenAIAPIKey() -> String? {
-    return getKey(accountName: Constants.openAIAccountName)
-  }
-
-  func deleteOpenAIAPIKey() -> Bool {
-    return deleteKey(accountName: Constants.openAIAccountName)
-  }
-
-  func hasValidOpenAIAPIKey() -> Bool {
-    guard let key = getOpenAIAPIKey() else { return false }
-    return !key.isEmpty
-  }
-
-  // MARK: - Google Calendar Refresh Token Management
-
-  func saveGoogleCalendarRefreshToken(_ token: String) -> Bool {
-    return saveKey(token, accountName: Constants.googleCalendarRefreshTokenAccountName)
-  }
-
-  func getGoogleCalendarRefreshToken() -> String? {
-    return getKey(accountName: Constants.googleCalendarRefreshTokenAccountName)
-  }
-
-  func deleteGoogleCalendarRefreshToken() -> Bool {
-    return deleteKey(accountName: Constants.googleCalendarRefreshTokenAccountName)
-  }
-
-  func hasGoogleCalendarRefreshToken() -> Bool {
-    return hasKey(accountName: Constants.googleCalendarRefreshTokenAccountName)
-  }
-
-  // MARK: - Trello Token Management
-
-  func saveTrelloToken(_ token: String) -> Bool {
-    return saveKey(token, accountName: Constants.trelloTokenAccountName)
-  }
-
-  func getTrelloToken() -> String? {
-    return getKey(accountName: Constants.trelloTokenAccountName)
-  }
-
-  func deleteTrelloToken() -> Bool {
-    return deleteKey(accountName: Constants.trelloTokenAccountName)
-  }
-
-  func hasTrelloToken() -> Bool {
-    return hasKey(accountName: Constants.trelloTokenAccountName)
-  }
-
-  // MARK: - Trello API Key Management
-  // The API key is the user's own Trello Power-Up key (from
-  // trello.com/power-ups/admin). It is *not* a Trello secret — Trello hands it
-  // out for any Power-Up the user creates — but we keep it in Keychain so it's
-  // not stored in plain UserDefaults.
-
-  func saveTrelloAPIKey(_ apiKey: String) -> Bool {
-    return saveKey(apiKey, accountName: Constants.trelloAPIKeyAccountName)
-  }
-
-  func getTrelloAPIKey() -> String? {
-    return getKey(accountName: Constants.trelloAPIKeyAccountName)
-  }
-
-  func deleteTrelloAPIKey() -> Bool {
-    return deleteKey(accountName: Constants.trelloAPIKeyAccountName)
-  }
-
-  func hasValidTrelloAPIKey() -> Bool {
-    guard let key = getTrelloAPIKey() else { return false }
-    return !key.isEmpty
-  }
-
-  // MARK: - Custom Transcription API Credentials
-
-  func saveCustomTranscriptionBearerToken(_ token: String) -> Bool {
-    return saveKey(token, accountName: Constants.customTranscriptionBearerTokenAccountName)
-  }
-
-  func getCustomTranscriptionBearerToken() -> String? {
-    return getKey(accountName: Constants.customTranscriptionBearerTokenAccountName)
-  }
+  // MARK: - Custom Transcription Headers
+  //
+  // The only credential that isn't a bare string: a JSON array of header dictionaries, stored
+  // as its serialized form.
 
   func saveCustomTranscriptionHeaders(_ headers: [[String: String]]) -> Bool {
     guard let data = try? JSONEncoder().encode(headers),
           let jsonString = String(data: data, encoding: .utf8) else {
       return false
     }
-    return saveKey(jsonString, accountName: Constants.customTranscriptionHeadersAccountName)
+    return save(jsonString, for: .customTranscriptionHeaders)
   }
 
   func getCustomTranscriptionHeaders() -> [[String: String]] {
-    guard let jsonString = getKey(accountName: Constants.customTranscriptionHeadersAccountName),
+    guard let jsonString = get(.customTranscriptionHeaders),
           let data = jsonString.data(using: .utf8),
           let headers = try? JSONDecoder().decode([[String: String]].self, from: data) else {
       return []
@@ -453,15 +253,12 @@ class KeychainManager: KeychainManaging {
     return headers
   }
 
-  // MARK: - Custom OpenAI-compatible Chat Endpoint API Key
-  // Optional override when routing chat through a proxy (OpenRouter, LiteLLM, …). When empty,
-  // OpenAIChatPreferences falls back to the standard OpenAI key from Settings → General.
+  // MARK: - Convenience
 
-  func saveCustomOpenAIChatAPIKey(_ apiKey: String) -> Bool {
-    return saveKey(apiKey, accountName: Constants.customOpenAIChatAPIKeyAccountName)
-  }
-
-  func getCustomOpenAIChatAPIKey() -> String? {
-    return getKey(accountName: Constants.customOpenAIChatAPIKeyAccountName)
+  /// True when the credential is stored *and* non-empty. Most callers care about this rather
+  /// than bare presence — an empty string in the Keychain is not a usable key.
+  func hasNonEmpty(_ credential: KeychainCredential) -> Bool {
+    guard let value = get(credential) else { return false }
+    return !value.isEmpty
   }
 }

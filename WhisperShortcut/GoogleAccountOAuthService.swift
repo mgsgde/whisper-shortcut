@@ -15,7 +15,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
 
   private override init() {
     super.init()
-    isConnected = KeychainManager.shared.hasGoogleCalendarRefreshToken()
+    isConnected = KeychainManager.shared.has(.googleCalendarRefreshToken)
   }
 
   // MARK: - PKCE
@@ -116,8 +116,8 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
     let tokenResponse = try await postTokenRequest(body: body)
 
     if let refreshToken = tokenResponse["refresh_token"] as? String {
-      _ = KeychainManager.shared.saveGoogleCalendarRefreshToken(refreshToken)
-    } else if !KeychainManager.shared.hasGoogleCalendarRefreshToken() {
+      _ = KeychainManager.shared.save(refreshToken, for: .googleCalendarRefreshToken)
+    } else if !KeychainManager.shared.has(.googleCalendarRefreshToken) {
       DebugLogger.logError("GOOGLE-OAUTH: No refresh_token in token response and none stored — connection cannot persist")
       throw OAuthError.missingRefreshToken
     } else {
@@ -128,13 +128,13 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
     if let expiresIn = tokenResponse["expires_in"] as? Int {
       accessTokenExpiry = Date().addingTimeInterval(TimeInterval(expiresIn - 60))
     }
-    isConnected = KeychainManager.shared.hasGoogleCalendarRefreshToken()
+    isConnected = KeychainManager.shared.has(.googleCalendarRefreshToken)
   }
 
   // MARK: - Token Refresh
 
   func refreshAccessToken() async throws -> String {
-    guard let refreshToken = KeychainManager.shared.getGoogleCalendarRefreshToken() else {
+    guard let refreshToken = KeychainManager.shared.get(.googleCalendarRefreshToken) else {
       disconnect()
       throw OAuthError.notConnected
     }
@@ -190,7 +190,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
   // MARK: - Disconnect
 
   func disconnect() {
-    _ = KeychainManager.shared.deleteGoogleCalendarRefreshToken()
+    _ = KeychainManager.shared.delete(.googleCalendarRefreshToken)
     accessToken = nil
     accessTokenExpiry = nil
     isConnected = false

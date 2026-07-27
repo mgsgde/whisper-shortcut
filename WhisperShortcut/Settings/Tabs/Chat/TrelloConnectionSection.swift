@@ -11,7 +11,7 @@ import SwiftUI
 struct TrelloConnectionSection: View {
   @ObservedObject var oauthService = TrelloOAuthService.shared
 
-  @State private var apiKey: String = KeychainManager.shared.getTrelloAPIKey() ?? ""
+  @State private var apiKey: String = KeychainManager.shared.get(.trelloAPIKey) ?? ""
   @State private var token: String = ""
   @State private var awaitingToken: Bool = false
   @State private var errorMessage: String?
@@ -132,7 +132,7 @@ struct TrelloConnectionSection: View {
     guard !trimmedKey.isEmpty else { return }
 
     // Persist API key so TrelloOAuthConfig.apiKey can read it.
-    if !KeychainManager.shared.saveTrelloAPIKey(trimmedKey) {
+    if !KeychainManager.shared.save(trimmedKey, for: .trelloAPIKey) {
       errorMessage = "Failed to save the API key to the Keychain."
       return
     }

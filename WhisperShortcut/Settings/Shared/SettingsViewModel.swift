@@ -133,7 +133,7 @@ class SettingsViewModel: ObservableObject {
       default: SettingsDefaults.selectedMeetingSummaryModel)
 
     // Load Google API key
-    data.googleAPIKey = KeychainManager.shared.getGoogleAPIKey() ?? ""
+    data.googleAPIKey = KeychainManager.shared.get(.google) ?? ""
 
     // Load Launch at Login state
     data.launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -253,7 +253,7 @@ class SettingsViewModel: ObservableObject {
     // Never write an empty value here: after a failed Keychain read at load,
     // data.googleAPIKey is "" while the real key is still stored — persisting "" would
     // wipe it.
-    if !data.googleAPIKey.isEmpty, !KeychainManager.shared.saveGoogleAPIKey(data.googleAPIKey) {
+    if !data.googleAPIKey.isEmpty, !KeychainManager.shared.save(data.googleAPIKey, for: .google) {
       DebugLogger.logError("SETTINGS: Failed to save Google API key to Keychain")
     }
 

@@ -1333,7 +1333,7 @@ class SpeechService {
       throw TranscriptionError.invalidRequest
     }
 
-    let bearerToken = (keychainManager.getCustomTranscriptionBearerToken() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let bearerToken = (keychainManager.get(.customTranscriptionBearerToken) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     let extraHeaders = keychainManager.getCustomTranscriptionHeaders()
     let audioData = try Data(contentsOf: audioURL)
     let fileExtension = audioURL.pathExtension.lowercased()

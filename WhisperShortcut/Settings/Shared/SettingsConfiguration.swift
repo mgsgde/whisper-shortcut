@@ -349,10 +349,10 @@ enum PromptModel: String, CaseIterable {
   var hasRequiredCredential: Bool {
     switch provider {
     case .gemini: return GeminiCredentialProvider.shared.hasCredential()
-    case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
+    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
     case .customOpenAI: return OpenAIChatPreferences.isConfigured
-    case .grok: return KeychainManager.shared.hasValidXAIAPIKey()
-    case .anthropic: return KeychainManager.shared.hasValidAnthropicAPIKey()
+    case .grok: return KeychainManager.shared.hasNonEmpty(.xai)
+    case .anthropic: return KeychainManager.shared.hasNonEmpty(.anthropic)
     // Local server needs no API key — reachability is checked at request time, not here.
     case .local: return true
     }
@@ -362,7 +362,7 @@ enum PromptModel: String, CaseIterable {
   /// directly, so a proxy-only key is not enough.
   var hasRequiredCredentialForDictatePrompt: Bool {
     switch provider {
-    case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
+    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
     default: return hasRequiredCredential
     }
   }
@@ -887,8 +887,8 @@ enum TTSModel: String, CaseIterable {
   var hasRequiredCredential: Bool {
     switch provider {
     case .gemini: return GeminiCredentialProvider.shared.hasCredential()
-    case .openai: return KeychainManager.shared.hasValidOpenAIAPIKey()
-    case .xai: return KeychainManager.shared.hasValidXAIAPIKey()
+    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
+    case .xai: return KeychainManager.shared.hasNonEmpty(.xai)
     }
   }
 
@@ -1294,9 +1294,9 @@ enum OpenAIChatPreferences {
 
   /// API key for the custom endpoint: proxy-specific key if set, otherwise the standard OpenAI key.
   static var resolvedAPIKey: String? {
-    let custom = KeychainManager.shared.getCustomOpenAIChatAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let custom = KeychainManager.shared.get(.customOpenAIChatAPIKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
     if let custom, !custom.isEmpty { return custom }
-    let standard = KeychainManager.shared.getOpenAIAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let standard = KeychainManager.shared.get(.openAI)?.trimmingCharacters(in: .whitespacesAndNewlines)
     if let standard, !standard.isEmpty { return standard }
     return nil
   }

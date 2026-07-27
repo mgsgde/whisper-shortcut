@@ -33,7 +33,7 @@ struct TranscriptionRoundtripTests {
 
     @Test(
         "OpenAI transcription returns a non-empty reply",
-        .enabled(if: KeychainManager.shared.hasValidOpenAIAPIKey(),
+        .enabled(if: KeychainManager.shared.hasNonEmpty(.openAI),
                  "No OpenAI API key (env WHISPERSHORTCUT_OPENAI_API_KEY or Keychain)")
     )
     func openai() async throws {
@@ -46,7 +46,7 @@ struct TranscriptionRoundtripTests {
 
     @Test(
         "Grok transcription returns a non-empty reply",
-        .enabled(if: KeychainManager.shared.hasValidXAIAPIKey(),
+        .enabled(if: KeychainManager.shared.hasNonEmpty(.xai),
                  "No xAI API key (env WHISPERSHORTCUT_XAI_API_KEY or Keychain)")
     )
     func grok() async throws {
