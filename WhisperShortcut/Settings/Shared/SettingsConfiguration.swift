@@ -1481,7 +1481,9 @@ struct SettingsDefaults {
 }
 
 // MARK: - Settings Data Models
-struct SettingsData {
+/// `Equatable` so the settings round-trip test can assert that saving and re-loading the whole
+/// struct is the identity — comparing field by field would silently skip a newly added setting.
+struct SettingsData: Equatable {
   // MARK: - Global Settings
   var googleAPIKey: String = SettingsDefaults.googleAPIKey
   var launchAtLogin: Bool = SettingsDefaults.launchAtLogin

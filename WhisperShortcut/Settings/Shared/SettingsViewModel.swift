@@ -15,6 +15,118 @@ class SettingsViewModel: ObservableObject {
   }
   
 
+  // MARK: - Persisted settings
+
+  /// Every UserDefaults-backed setting, declared once with both halves of its round-trip.
+  ///
+  /// System prompts are deliberately absent — they live in `UserContext/system-prompts.md`
+  /// (see `SystemPromptsStore`), not UserDefaults.
+  ///
+  /// Internal rather than private so `SettingsSlotRoundTripTests` can drive the real table —
+  /// a round-trip test over a copy of the list would lock in nothing.
+  static let slots: [SettingsSlot] = [
+    // Models. These route through migrating loaders, which forward a renamed or superseded
+    // model id to its replacement and persist the rewrite, so a stale selection still appears
+    // in the pickers instead of silently falling back to the default.
+    .custom(\.selectedTranscriptionModel,
+            load: { TranscriptionModel.loadSelected() },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel) }),
+    .custom(\.selectedPromptModel,
+            load: { PromptModel.loadPromptModel(forKey: UserDefaultsKeys.selectedPromptModel,
+                                                default: SettingsDefaults.selectedPromptModel) },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedPromptModel) }),
+    .custom(\.selectedChatModel,
+            load: { PromptModel.loadChatSlotModel(forKey: UserDefaultsKeys.selectedChatModel,
+                                                  default: SettingsDefaults.selectedChatModel) },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedChatModel) }),
+    .custom(\.selectedImprovementModel,
+            load: { PromptModel.loadChatSlotModel(forKey: UserDefaultsKeys.selectedImprovementModel,
+                                                  default: SettingsDefaults.selectedImprovementModel) },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel) }),
+
+    // Whisper language
+    .rawValue(\.whisperLanguage, key: UserDefaultsKeys.whisperLanguage,
+              default: SettingsDefaults.whisperLanguage),
+
+    // Notifications
+    .bool(\.showPopupNotifications, key: UserDefaultsKeys.showPopupNotifications,
+          default: SettingsDefaults.showPopupNotifications),
+    .rawValue(\.notificationPosition, key: UserDefaultsKeys.notificationPosition,
+              default: SettingsDefaults.notificationPosition),
+    .custom(\.notificationDuration,
+            load: { NotificationDuration.loadFromUserDefaults(forKey: UserDefaultsKeys.notificationDuration,
+                                                              default: SettingsDefaults.notificationDuration) },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.notificationDuration) }),
+    .custom(\.errorNotificationDuration,
+            load: { NotificationDuration.loadFromUserDefaults(forKey: UserDefaultsKeys.errorNotificationDuration,
+                                                              default: SettingsDefaults.errorNotificationDuration) },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.errorNotificationDuration) }),
+
+    // Recording safeguard (0 = never)
+    .custom(\.confirmAboveDuration,
+            load: { ConfirmAboveDuration.loadFromUserDefaults() },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.confirmAboveDurationSeconds) }),
+
+    // Dictation behaviour
+    .bool(\.autoPasteAfterDictation, key: UserDefaultsKeys.autoPasteAfterDictation,
+          default: SettingsDefaults.autoPasteAfterDictation),
+    .bool(\.holdFnToDictate, key: UserDefaultsKeys.holdFnToDictate,
+          default: SettingsDefaults.holdFnToDictate),
+
+    // Screenshot. The folder bookmark itself is owned by `ScreenshotSaveLocation` and written
+    // when the user picks a folder, so only the toggle round-trips here.
+    .bool(\.screenshotInPromptMode, key: UserDefaultsKeys.screenshotInPromptMode,
+          default: SettingsDefaults.screenshotInPromptMode),
+    .custom(\.screenshotSaveEnabled,
+            load: { ScreenshotSaveLocation.isEnabled },
+            save: { UserDefaults.standard.set($0, forKey: UserDefaultsKeys.screenshotSaveEnabled) }),
+
+    // Read Aloud
+    .custom(\.readAloudSmartRewriteEnabled,
+            load: { ReadAloudPreferences.smartRewriteEnabled },
+            save: { UserDefaults.standard.set($0, forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled) }),
+    .custom(\.readAloudSpeed,
+            load: { ReadAloudPreferences.speed },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.readAloudSpeed) }),
+    .custom(\.selectedReadAloudModel,
+            load: { TTSModel.loadReadAloudModel(forKey: UserDefaultsKeys.selectedReadAloudModel,
+                                                default: SettingsDefaults.readAloudModel) },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedReadAloudModel) }),
+    // Per-provider Read Aloud voice ("" → that provider's default voice).
+    .string(\.readAloudVoiceGemini, key: UserDefaultsKeys.selectedReadAloudVoiceGemini),
+    .string(\.readAloudVoiceOpenAI, key: UserDefaultsKeys.selectedReadAloudVoiceOpenAI),
+    .string(\.readAloudVoiceXAI, key: UserDefaultsKeys.selectedReadAloudVoiceXAI),
+
+    // Window behaviour
+    .bool(\.chatCloseOnFocusLoss, key: UserDefaultsKeys.chatCloseOnFocusLoss,
+          default: SettingsDefaults.chatCloseOnFocusLoss),
+    .bool(\.settingsCloseOnFocusLoss, key: UserDefaultsKeys.settingsCloseOnFocusLoss,
+          default: SettingsDefaults.settingsCloseOnFocusLoss),
+
+    // Live Meeting
+    .custom(\.liveMeetingChunkInterval,
+            load: {
+              guard let raw = UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingChunkInterval) as? Double,
+                    let parsed = LiveMeetingChunkInterval(rawValue: raw)
+              else { return SettingsDefaults.liveMeetingChunkInterval }
+              return parsed
+            },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.liveMeetingChunkInterval) }),
+    .custom(\.liveMeetingSafeguardDuration,
+            load: { MeetingSafeguardDuration.loadFromUserDefaults() },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds) }),
+    // Routes through the canonical loader so a legacy/renamed meetings value is migrated
+    // (a hand-rolled `TranscriptionModel(rawValue:)` here used to skip that and silently
+    // fall back to the Dictate model instead of forwarding to the replacement).
+    .custom(\.selectedTranscriptionModelForMeetings,
+            load: { TranscriptionModel.loadSelectedForMeeting() },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) }),
+    .custom(\.selectedMeetingSummaryModel,
+            load: { PromptModel.loadChatSlotModel(forKey: UserDefaultsKeys.selectedMeetingSummaryModel,
+                                                  default: SettingsDefaults.selectedMeetingSummaryModel) },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedMeetingSummaryModel) }),
+  ]
+
   // MARK: - Data Loading
 
   private func loadCurrentSettings() {
@@ -34,109 +146,13 @@ class SettingsViewModel: ObservableObject {
     data.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
     data.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
     data.voiceFeedback = currentConfig.voiceFeedback.isEnabled ? currentConfig.voiceFeedback : nil
-    // Load transcription model preference
-    data.selectedTranscriptionModel = TranscriptionModel.loadSelected()
 
-    data.selectedPromptModel = PromptModel.loadPromptModel(
-      forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
+    for slot in Self.slots { slot.load(&data) }
 
-    // System prompts are stored in UserContext/system-prompts.md (see SystemPromptsStore); not loaded from UserDefaults.
-
-    // Load Whisper language setting
-    if let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage),
-      let savedLanguage = WhisperLanguage(rawValue: savedLanguageString)
-    {
-      data.whisperLanguage = savedLanguage
-    } else {
-      data.whisperLanguage = SettingsDefaults.whisperLanguage
-    }
-
-    data.selectedChatModel = PromptModel.loadChatSlotModel(
-      forKey: UserDefaultsKeys.selectedChatModel, default: SettingsDefaults.selectedChatModel)
-    data.selectedImprovementModel = PromptModel.loadChatSlotModel(
-      forKey: UserDefaultsKeys.selectedImprovementModel, default: SettingsDefaults.selectedImprovementModel)
-
-    // Load popup notifications setting
-    data.showPopupNotifications = UserDefaults.standard.bool(
-      forKey: UserDefaultsKeys.showPopupNotifications, default: SettingsDefaults.showPopupNotifications)
-    
-    // Load notification position
-    if let savedPositionString = UserDefaults.standard.string(forKey: UserDefaultsKeys.notificationPosition),
-      let savedPosition = NotificationPosition(rawValue: savedPositionString)
-    {
-      data.notificationPosition = savedPosition
-    } else {
-      data.notificationPosition = SettingsDefaults.notificationPosition
-    }
-    
-    // Load notification durations
-    data.notificationDuration = NotificationDuration.loadFromUserDefaults(
-      forKey: UserDefaultsKeys.notificationDuration, default: SettingsDefaults.notificationDuration)
-    data.errorNotificationDuration = NotificationDuration.loadFromUserDefaults(
-      forKey: UserDefaultsKeys.errorNotificationDuration, default: SettingsDefaults.errorNotificationDuration)
-
-    // Load recording safeguard: confirm above duration (0 = never)
-    data.confirmAboveDuration = ConfirmAboveDuration.loadFromUserDefaults()
-
-    // Load auto-paste setting
-    data.autoPasteAfterDictation = UserDefaults.standard.bool(
-      forKey: UserDefaultsKeys.autoPasteAfterDictation, default: SettingsDefaults.autoPasteAfterDictation)
-
-    // Load Fn push-to-talk setting
-    data.holdFnToDictate = UserDefaults.standard.bool(
-      forKey: UserDefaultsKeys.holdFnToDictate, default: SettingsDefaults.holdFnToDictate)
-
-    // Load screenshot in prompt mode setting
-    data.screenshotInPromptMode = UserDefaults.standard.bool(
-      forKey: UserDefaultsKeys.screenshotInPromptMode, default: SettingsDefaults.screenshotInPromptMode)
-
-    // Load screenshot save-to-folder settings
-    data.screenshotSaveEnabled = ScreenshotSaveLocation.isEnabled
-    data.screenshotSaveFolderDisplayPath = ScreenshotSaveLocation.displayPath
-
-    // Load Read Aloud preferences
-    data.readAloudSmartRewriteEnabled = ReadAloudPreferences.smartRewriteEnabled
-    data.readAloudSpeed = ReadAloudPreferences.speed
-    data.selectedReadAloudModel = TTSModel.loadReadAloudModel(
-      forKey: UserDefaultsKeys.selectedReadAloudModel,
-      default: SettingsDefaults.readAloudModel)
-    // Per-provider Read Aloud voice ("" → that provider's default voice).
-    data.readAloudVoiceGemini = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoiceGemini) ?? ""
-    data.readAloudVoiceOpenAI = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoiceOpenAI) ?? ""
-    data.readAloudVoiceXAI = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedReadAloudVoiceXAI) ?? ""
-
-    // Load Gemini window: close on focus loss
-    data.chatCloseOnFocusLoss = UserDefaults.standard.bool(
-      forKey: UserDefaultsKeys.chatCloseOnFocusLoss, default: SettingsDefaults.chatCloseOnFocusLoss)
-
-    // Load Settings window: close on focus loss
-    data.settingsCloseOnFocusLoss = UserDefaults.standard.bool(
-      forKey: UserDefaultsKeys.settingsCloseOnFocusLoss, default: SettingsDefaults.settingsCloseOnFocusLoss)
-
-    // Load Live Meeting settings
-    if let savedIntervalValue = UserDefaults.standard.object(forKey: UserDefaultsKeys.liveMeetingChunkInterval) as? Double,
-       let savedInterval = LiveMeetingChunkInterval(rawValue: savedIntervalValue) {
-      data.liveMeetingChunkInterval = savedInterval
-    } else {
-      data.liveMeetingChunkInterval = SettingsDefaults.liveMeetingChunkInterval
-    }
-    
-    data.liveMeetingSafeguardDuration = MeetingSafeguardDuration.loadFromUserDefaults()
-
-    // Routes through the canonical loader so a legacy/renamed meetings value is migrated
-    // (the hand-rolled `TranscriptionModel(rawValue:)` here used to skip that and silently
-    // fall back to the Dictate model instead of forwarding to the replacement).
-    data.selectedTranscriptionModelForMeetings = TranscriptionModel.loadSelectedForMeeting()
-
-    data.selectedMeetingSummaryModel = PromptModel.loadChatSlotModel(
-      forKey: UserDefaultsKeys.selectedMeetingSummaryModel,
-      default: SettingsDefaults.selectedMeetingSummaryModel)
-
-    // Load Google API key
-    data.googleAPIKey = KeychainManager.shared.get(.google) ?? ""
-
-    // Load Launch at Login state
-    data.launchAtLogin = SMAppService.mainApp.status == .enabled
+    // Not UserDefaults-backed, so outside the slot table:
+    data.screenshotSaveFolderDisplayPath = ScreenshotSaveLocation.displayPath  // display only
+    data.googleAPIKey = KeychainManager.shared.get(.google) ?? ""              // Keychain
+    data.launchAtLogin = SMAppService.mainApp.status == .enabled               // SMAppService
   }
 
   // MARK: - Validation
@@ -257,68 +273,7 @@ class SettingsViewModel: ObservableObject {
       DebugLogger.logError("SETTINGS: Failed to save Google API key to Keychain")
     }
 
-    // Save model preferences
-    UserDefaults.standard.set(
-      data.selectedTranscriptionModel.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
-    UserDefaults.standard.set(data.selectedPromptModel.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
-    UserDefaults.standard.set(data.selectedChatModel.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
-    UserDefaults.standard.set(
-      data.selectedImprovementModel.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
-
-    // System prompts are stored in UserContext/system-prompts.md (see SystemPromptsStore); not saved to UserDefaults.
-
-    // Save Whisper language setting
-    UserDefaults.standard.set(data.whisperLanguage.rawValue, forKey: UserDefaultsKeys.whisperLanguage)
-
-    // Save popup notifications setting
-    UserDefaults.standard.set(data.showPopupNotifications, forKey: UserDefaultsKeys.showPopupNotifications)
-
-    // Save notification position and duration
-    UserDefaults.standard.set(data.notificationPosition.rawValue, forKey: UserDefaultsKeys.notificationPosition)
-    UserDefaults.standard.set(data.notificationDuration.rawValue, forKey: UserDefaultsKeys.notificationDuration)
-    UserDefaults.standard.set(data.errorNotificationDuration.rawValue, forKey: UserDefaultsKeys.errorNotificationDuration)
-
-    // Save recording safeguard
-    UserDefaults.standard.set(data.confirmAboveDuration.rawValue, forKey: UserDefaultsKeys.confirmAboveDurationSeconds)
-
-    // Save auto-paste setting
-    UserDefaults.standard.set(data.autoPasteAfterDictation, forKey: UserDefaultsKeys.autoPasteAfterDictation)
-
-    // Save Fn push-to-talk setting
-    UserDefaults.standard.set(data.holdFnToDictate, forKey: UserDefaultsKeys.holdFnToDictate)
-
-    // Save screenshot in prompt mode setting
-    UserDefaults.standard.set(data.screenshotInPromptMode, forKey: UserDefaultsKeys.screenshotInPromptMode)
-
-    // Save screenshot save-to-folder toggle (the folder bookmark is written by ScreenshotSaveLocation
-    // when the user picks a folder, not here)
-    UserDefaults.standard.set(data.screenshotSaveEnabled, forKey: UserDefaultsKeys.screenshotSaveEnabled)
-
-    // Save Read Aloud smart rewrite setting
-    UserDefaults.standard.set(data.readAloudSmartRewriteEnabled, forKey: UserDefaultsKeys.readAloudSmartRewriteEnabled)
-
-    // Save Read Aloud playback speed
-    UserDefaults.standard.set(data.readAloudSpeed.rawValue, forKey: UserDefaultsKeys.readAloudSpeed)
-
-    // Save Read Aloud TTS model
-    UserDefaults.standard.set(data.selectedReadAloudModel.rawValue, forKey: UserDefaultsKeys.selectedReadAloudModel)
-
-    // Save per-provider Read Aloud voices
-    UserDefaults.standard.set(data.readAloudVoiceGemini, forKey: UserDefaultsKeys.selectedReadAloudVoiceGemini)
-    UserDefaults.standard.set(data.readAloudVoiceOpenAI, forKey: UserDefaultsKeys.selectedReadAloudVoiceOpenAI)
-    UserDefaults.standard.set(data.readAloudVoiceXAI, forKey: UserDefaultsKeys.selectedReadAloudVoiceXAI)
-
-    // Save Chat window: close on focus loss
-    UserDefaults.standard.set(data.chatCloseOnFocusLoss, forKey: UserDefaultsKeys.chatCloseOnFocusLoss)
-
-    // Save Settings window: close on focus loss
-    UserDefaults.standard.set(data.settingsCloseOnFocusLoss, forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)
-
-    // Save Live Meeting settings
-    UserDefaults.standard.set(data.liveMeetingChunkInterval.rawValue, forKey: UserDefaultsKeys.liveMeetingChunkInterval)
-    UserDefaults.standard.set(data.liveMeetingSafeguardDuration.rawValue, forKey: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds)
-    UserDefaults.standard.set(data.selectedTranscriptionModelForMeetings.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
-    UserDefaults.standard.set(data.selectedMeetingSummaryModel.rawValue, forKey: UserDefaultsKeys.selectedMeetingSummaryModel)
+    for slot in Self.slots { slot.save(data) }
 
     // Save toggle shortcuts. `nil` in SettingsData means "user cleared this
     // shortcut" — we persist a disabled placeholder using the matching
