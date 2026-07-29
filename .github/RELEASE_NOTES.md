@@ -1,6 +1,6 @@
-# WhisperShortcut 7.94
+# WhisperShortcut 7.95
 
-Brings **X search back to Grok** — now narrowed to the accounts you trust — plus a calmer chat queue and a real fix for cancelled Dictate Prompts.
+Programmable keyboards can bind F17 (and other F-keys) on their own, auto-paste can leave your previous clipboard alone, and Read Aloud starts speaking as soon as the first chunk is ready.
 
 ## Installation
 
@@ -8,23 +8,28 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### 𝕏 Grok searches X.com again
+### ⌨️ Shortcuts
 
-- **X search is back on for Grok models.** It was dropped once for latency, but its bias toward opinion over fact is exactly the point — reading what people on X actually say is the main reason to pick Grok over Gemini or GPT. xAI runs web and X search side by side and decides per question, so the extra tool only costs a round trip when X is genuinely worth searching.
-- **New `/x` command — restrict it to accounts you trust.** `/x @karpathy @simonw` limits X search to those accounts for the current chat; `/x off` searches all of X again. Set a default under Settings → Chat.
+- **F1–F20 bind without a modifier.** Use a dedicated QMK/VIA key (e.g. F17) for Dictate — press once to start, press again to stop. Shortcut labels for function keys and Space now show correctly instead of a blank glyph.
 
-### 💬 Chat
+### 📋 Clipboard
 
-- **Messages sent mid-reply are queued instead of discarded.** Previously a second message replaced the one still generating. Now each is answered in turn, so you can fire off several thoughts in a row without losing an answer.
+- **Restore clipboard** (Settings → General → Clipboard Behavior, with Auto-paste on): after the result is pasted, your previous clipboard contents come back. Off by default so a second ⌘V into another window still works when you want it.
+- **Copy Last Transcription** and a **Recent Transcriptions** submenu (last 5) in the menu bar — recover a dictation when paste went to the wrong place or something else overwrote the clipboard.
 
-### 🎤 Dictate Prompt
+### 🔊 Read Aloud
 
-- **Cancelling now actually cancels.** Stopping a Dictate Prompt while it was still working left the reply in flight — and it would paste itself into whatever you had focused by the time it arrived. It is now dropped, and the cancelled recording is cleaned up instead of being left on disk.
+- **Long text starts speaking when the first chunk is ready**, instead of waiting for the full synthesis.
+- **Markdown, links, citation markers, and code fences are stripped** before TTS — especially useful when reading chat replies aloud.
 
-### 🧹 Under the hood
+### 🎤 Dictation quality
 
-- Live meeting recording moved into its own `LiveMeetingSession` type: the transcript file, chunk pipeline, and rolling-summary policy now have a single owner instead of 17 loose flags on the menu-bar controller.
-- Dictate and Dictate Prompt share one completion pipeline, so cancellation, staleness, and cleanup can no longer drift apart between them.
-- Chat tools dispatch through one registry entry point, and the OpenAI-compatible providers share their request-shape helpers instead of carrying five hand-written copies.
+- Whisper Glossary `Term (not "Wrong")` entries act as **homophone tie-breakers**, and rejected spellings can be corrected after transcription.
+- Fast or dense speech is less often discarded as “implausible”; near-silent chunks that only echo the glossary are dropped.
+- Live Meeting no longer flashes a **Processing Audio** popup on every background chunk rotation.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.93...v7.94
+### ⚙️ Settings
+
+- The **Recommended** model star on Chat / Smart Improvement / Dictate Prompt pickers now matches each feature’s real default.
+
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.94...v7.95
