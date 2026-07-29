@@ -57,6 +57,31 @@ struct ClipboardBehaviorSection: View {
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
+
+      HStack(alignment: .center, spacing: 16) {
+        Text("Restore clipboard:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        Toggle("", isOn: $viewModel.data.restoreClipboardAfterPaste)
+          .toggleStyle(SwitchToggleStyle())
+          .accessibilityLabel("Restore clipboard after auto-paste")
+          .disabled(!viewModel.data.autoPasteAfterDictation)
+          .onChange(of: viewModel.data.restoreClipboardAfterPaste) { _, newValue in
+            DebugLogger.log("AUTO-PASTE SETTINGS: Restore clipboard changed to \(newValue)")
+            Task {
+              await viewModel.saveSettings()
+            }
+          }
+
+        Spacer()
+      }
+
+      Text("When enabled, whatever you had copied before dictating is put back on the clipboard right after the text is pasted — so dictation doesn't overwrite your clipboard. Requires auto-paste.")
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       #endif
     }
   }

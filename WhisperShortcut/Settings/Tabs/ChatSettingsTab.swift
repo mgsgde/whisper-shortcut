@@ -204,6 +204,7 @@ struct ChatSettingsTab: View {
       // Summary generation is a text task routed through any provider — exclude the audio-only
       // GPT-Audio model (400s on text) and image-generation models that the default list would include.
       availableModels: PromptModel.textChatModels,
+      recommendedModel: SettingsDefaults.selectedMeetingSummaryModel,
       onModelChanged: {
         Task { await viewModel.saveSettings() }
       }

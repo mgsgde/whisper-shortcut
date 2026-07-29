@@ -200,6 +200,7 @@ struct ImprovementSettingsTab: View {
           // (Gemini / OpenAI / xAI), excluding image-generation models which return images,
           // not the text analysis this feature needs.
           availableModels: PromptModel.textChatModels,
+          recommendedModel: SettingsDefaults.selectedImprovementModel,
           subscriptionMode: improvementSubscriptionMode,
           onModelChanged: {
             UserDefaults.standard.set(

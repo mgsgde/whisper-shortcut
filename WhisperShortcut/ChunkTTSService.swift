@@ -63,12 +63,19 @@ class ChunkTTSService {
     /// - Parameters:
     ///   - text: The text to synthesize
     ///   - model: TTS model to use (for logging only; the request is built by `synthesizeText`)
+    ///   - onChunkReady: Called on the main actor with `(pcm, chunkIndex, totalChunks)` as each
+    ///     chunk becomes playable, strictly **in playback order** — chunk 3 is withheld until
+    ///     chunks 0–2 have been emitted, even though synthesis finishes out of order. Lets the
+    ///     caller start playing the beginning while the tail is still being synthesized: waiting
+    ///     for the merge means waiting for the *slowest* chunk (measured: 27.6 s to first sound
+    ///     for a 4-chunk reply whose first chunk was ready after 18.1 s).
     ///   - synthesizeText: Provider-specific closure that synthesizes one text segment to raw
     ///     PCM. It should throw `TranscriptionError` (e.g. `.rateLimited`) so retry/backoff works.
     /// - Returns: Synthesized audio data (merged PCM)
     func synthesize(
         text: String,
         model: TTSModel,
+        onChunkReady: ((Data, Int, Int) -> Void)? = nil,
         synthesizeText: @escaping (String) async throws -> Data
     ) async throws -> Data {
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -106,6 +113,9 @@ class ChunkTTSService {
             )
             let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
             DebugLogger.logSuccess("TTS-CHUNK-SERVICE: Single chunk synthesis completed in \(String(format: "%.2f", elapsedTime))s (\(result.data.count) bytes)")
+            if let onChunkReady {
+                await MainActor.run { onChunkReady(result.data, 0, 1) }
+            }
             return result.data
         }
 
@@ -113,6 +123,7 @@ class ChunkTTSService {
         DebugLogger.log("TTS-CHUNK-SERVICE: Starting parallel synthesis of \(chunks.count) chunks")
         let audioChunks = try await synthesizeParallel(
             chunks: chunks,
+            onChunkReady: onChunkReady,
             synthesizeText: synthesizeText
         )
 
@@ -138,11 +149,40 @@ class ChunkTTSService {
 
     private func synthesizeParallel(
         chunks: [TextChunk],
+        onChunkReady: ((Data, Int, Int) -> Void)?,
         synthesizeText: @escaping (String) async throws -> Data
     ) async throws -> [AudioChunkData] {
         let totalChunks = chunks.count
 
         DebugLogger.log("TTS-CHUNK-SERVICE: Starting parallel synthesis (total chunks: \(totalChunks))")
+
+        // Playback-order gate for `onChunkReady`: chunks finish out of order, so a finished chunk
+        // is held here until every chunk before it has been emitted. A permanently failed chunk
+        // opens the gate for its successors (see `releasePlayableChunks`) — playing the rest with
+        // a gap beats playing nothing at all.
+        var readyChunks: [Int: Data] = [:]
+        var failedChunkIndices = Set<Int>()
+        var nextChunkToEmit = 0
+
+        /// Emits every chunk that is now contiguous with what has already been emitted.
+        func releasePlayableChunks() async {
+            guard let onChunkReady else { return }
+            var batch: [(Data, Int)] = []
+            while nextChunkToEmit < totalChunks {
+                if let data = readyChunks.removeValue(forKey: nextChunkToEmit) {
+                    batch.append((data, nextChunkToEmit))
+                    nextChunkToEmit += 1
+                } else if failedChunkIndices.contains(nextChunkToEmit) {
+                    nextChunkToEmit += 1
+                } else {
+                    break
+                }
+            }
+            guard !batch.isEmpty else { return }
+            await MainActor.run {
+                for (data, index) in batch { onChunkReady(data, index, totalChunks) }
+            }
+        }
 
         // Use actor for thread-safe accumulation
         let accumulator = ResultAccumulator()
@@ -178,6 +218,8 @@ class ChunkTTSService {
                 switch result {
                 case .success(let audioChunk):
                     await accumulator.addAudioChunk(audioChunk)
+                    readyChunks[audioChunk.index] = audioChunk.data
+                    await releasePlayableChunks()
 
                     DebugLogger.logSuccess("TTS-CHUNK-SERVICE: Chunk \(audioChunk.index + 1)/\(totalChunks) completed successfully (\(audioChunk.data.count) bytes)")
 
@@ -190,6 +232,8 @@ class ChunkTTSService {
                 case .failure(let error):
                     if let chunkError = error as? ChunkError {
                         await accumulator.addError(index: chunkError.index, error: chunkError.error)
+                        failedChunkIndices.insert(chunkError.index)
+                        await releasePlayableChunks()
 
                         DebugLogger.logError("TTS-CHUNK-SERVICE: Chunk \(chunkError.index + 1)/\(totalChunks) failed: \(chunkError.error.localizedDescription)")
 

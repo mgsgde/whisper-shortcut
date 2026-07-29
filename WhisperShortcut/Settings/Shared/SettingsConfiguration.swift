@@ -1439,6 +1439,11 @@ struct SettingsDefaults {
   // (App Store Guideline 2.4.5). Users enable it explicitly in Settings → General.
   static let autoPasteAfterDictation = false
 
+  /// OFF by default: with auto-paste on, the text is already at the cursor, but some users
+  /// still reach for ⌘V afterwards (pasting the same dictation into a second window). Putting
+  /// the old clipboard back would break that, so restoring stays a deliberate choice.
+  static let restoreClipboardAfterPaste = false
+
   // MARK: - Fn Push-to-Talk
   // OFF by default for the same reason as auto-paste: observing the Fn key needs global
   // event monitors, which only work with the Accessibility permission — a fresh install
@@ -1546,6 +1551,7 @@ struct SettingsData: Equatable {
 
   // MARK: - Auto-Paste Settings
   var autoPasteAfterDictation: Bool = SettingsDefaults.autoPasteAfterDictation
+  var restoreClipboardAfterPaste: Bool = SettingsDefaults.restoreClipboardAfterPaste
 
   // MARK: - Fn Push-to-Talk
   var holdFnToDictate: Bool = SettingsDefaults.holdFnToDictate

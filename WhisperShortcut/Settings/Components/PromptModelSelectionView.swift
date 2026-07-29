@@ -19,9 +19,9 @@ struct PromptModelSelectionView: View {
   let subscriptionEffectiveModel: PromptModel?
   /// Models to display. When nil, shows all `PromptModel.allCases`.
   let availableModels: [PromptModel]?
-  /// Model to mark with the "Recommended" star. Defaults to the Dictate Prompt default, so a
-  /// role with a different default (e.g. Chat) must pass its own `SettingsDefaults` value —
-  /// otherwise the star would advertise another role's recommendation.
+  /// Model to mark with the "Recommended" star. Required — every role passes its own
+  /// `SettingsDefaults` value. It used to default to the Dictate Prompt default, which
+  /// silently made Smart Improvement star a model that was not its default.
   let recommendedModel: PromptModel
 
   init(
@@ -31,7 +31,7 @@ struct PromptModelSelectionView: View {
     showSectionHeader: Bool = true,
     selectedModel: Binding<PromptModel>,
     availableModels: [PromptModel]? = nil,
-    recommendedModel: PromptModel = SettingsDefaults.selectedPromptModel,
+    recommendedModel: PromptModel,
     subscriptionMode: Bool = false,
     subscriptionFixedModelDescription: String? = nil,
     subscriptionEffectiveModel: PromptModel? = nil,

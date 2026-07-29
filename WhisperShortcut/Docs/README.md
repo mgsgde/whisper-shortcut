@@ -6,7 +6,7 @@ Bring your own API keys — Gemini, and optionally GPT or Grok — or run fully 
 
 ![Dictating an email with WhisperShortcut: press the shortcut, speak, and the text lands in Apple Mail](docs/assets/demo.gif)
 
-▶️ [Watch the full demo on YouTube](https://youtu.be/gc1s0okfHbU) · Website: [whispershortcut.com](https://whispershortcut.com)
+▶️ [Watch the full demo on YouTube](https://youtu.be/gc1s0okfHbU) · Website: [whispershortcut.com](https://whispershortcut.com) · Made by [Magnus Gödde](https://magnus-goedde.de)
 
 ## Download
 
@@ -18,8 +18,9 @@ Bring your own API keys — Gemini, and optionally GPT or Grok — or run fully 
 ## Features
 
 - **Dictate**: Record speech and copy the transcription to your clipboard. Use Gemini or OpenAI cloud models, a self-hosted transcription endpoint, or local Whisper models offline. Long recordings are split into chunks and processed in parallel.
+- **Copy Last Transcription**: Every dictation result stays available in the menu bar — one entry re-copies the most recent transcription, and a **Recent Transcriptions** submenu holds the last five. Use it when an auto-paste landed in the wrong window, or when a later copy overwrote the clipboard.
 - **Dictate Prompt**: Speak an instruction that edits the current clipboard text, for example "make this shorter" or "translate this to English". Supports Gemini and OpenAI audio-input models; optional screenshots can be included with the prompt.
-- **Read Aloud**: Press the shortcut on any selected text to copy it and read it aloud with Gemini, OpenAI, or xAI TTS voices. An optional Smart Rewrite pass cleans up code or markdown before TTS, and playback speed is configurable.
+- **Read Aloud**: Press the shortcut on any selected text to copy it and read it aloud with Gemini, OpenAI, or xAI TTS voices. Long texts start playing as soon as the first chunk is synthesized while the rest streams in behind it, so you do not wait for the whole text. Markdown and links are stripped before synthesis, an optional Smart Rewrite pass cleans up code or log output, and playback speed is configurable.
 - **Screenshot**: Capture the screen from the menu bar and optionally attach it to Dictate Prompt or chat, or save captures to a folder.
 - **Voice Feedback**: Press the shortcut and speak a correction or instruction about how the app should work — for example "my name is spelled G-ö-d-d-e" or "stop capitalizing every noun in Dictate Prompt output". The app turns it into a proposed change to your dictation context (transcription prompt, Whisper glossary, Dictate Prompt, or Chat), which you review in a diff window before it is applied. It is the on-demand, spoken counterpart to Smart Improvement's automatic learning.
 - **Chat**: Use a persisted multi-session chat window with Gemini, Grok, or OpenAI models, screenshots, image attachments, slash commands, optional web grounding, and per-session reasoning depth. Grok models additionally search X.com posts, which makes them the best pick for opinions, trends, and breaking social-media chatter — and `/x @handle` narrows that search to the accounts you care about.

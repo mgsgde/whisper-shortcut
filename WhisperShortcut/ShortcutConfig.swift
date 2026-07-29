@@ -73,6 +73,14 @@ extension Key: @retroactive Codable {
     case .f10: return "F10"
     case .f11: return "F11"
     case .f12: return "F12"
+    case .f13: return "F13"
+    case .f14: return "F14"
+    case .f15: return "F15"
+    case .f16: return "F16"
+    case .f17: return "F17"
+    case .f18: return "F18"
+    case .f19: return "F19"
+    case .f20: return "F20"
     case .upArrow: return "↑"
     case .downArrow: return "↓"
     case .leftArrow: return "←"
@@ -170,9 +178,11 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
     if modifiers.contains(.control) { parts.append("⌃") }
     if modifiers.contains(.shift) { parts.append("⇧") }
 
-    if let ch = displayCharacter, !ch.isEmpty {
+    if let ch = displayCharacter, Self.isPrintableCharacter(ch) {
       parts.append(ch.uppercased())
-    } else if let layoutChar = Self.layoutAwareCharacter(forCarbonKeyCode: key.carbonKeyCode) {
+    } else if let layoutChar = Self.layoutAwareCharacter(forCarbonKeyCode: key.carbonKeyCode),
+      Self.isPrintableCharacter(layoutChar)
+    {
       parts.append(layoutChar.uppercased())
     } else {
       parts.append(key.displayString)
@@ -218,6 +228,20 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
     hasher.combine(key.carbonKeyCode)
     hasher.combine(modifiers.rawValue)
     hasher.combine(isEnabled)
+  }
+
+  /// Whether a captured character is something we can actually show as the key's label.
+  /// Non-typing keys report placeholders instead of glyphs: `charactersIgnoringModifiers`
+  /// returns AppKit's private-use scalars for function keys (F17 → U+F712), and Space
+  /// returns " ", which renders as an empty shortcut. Rejecting those makes
+  /// `renderShortcut` fall back to `Key.displayString` ("F17", "Space").
+  fileprivate static func isPrintableCharacter(_ text: String) -> Bool {
+    guard !text.isEmpty else { return false }
+    return text.unicodeScalars.allSatisfy { scalar in
+      !CharacterSet.controlCharacters.contains(scalar)
+        && !CharacterSet.whitespacesAndNewlines.contains(scalar)
+        && !(0xE000...0xF8FF).contains(scalar.value)  // Unicode private use area
+    }
   }
 
   // MARK: - Layout-aware character lookup

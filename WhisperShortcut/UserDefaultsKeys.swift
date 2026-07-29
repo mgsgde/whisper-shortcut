@@ -49,6 +49,9 @@ enum UserDefaultsKeys {
 
   // MARK: - Auto-Paste Settings
   static let autoPasteAfterDictation = "autoPasteAfterDictation"
+  /// After auto-paste, put back whatever was on the clipboard before dictation
+  /// ("non-destructive paste"). Only has an effect while auto-paste is on.
+  static let restoreClipboardAfterPaste = "restoreClipboardAfterPaste"
 
   // MARK: - Fn Push-to-Talk
   /// Fn (Globe) key dictation: hold to record and release to transcribe, or tap to

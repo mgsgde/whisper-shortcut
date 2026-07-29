@@ -30,6 +30,8 @@ class MenuBarController: NSObject {
     case readAloud = 114
     case rate = 115
     case voiceFeedback = 116
+    case copyLastTranscription = 117
+    case recentTranscriptions = 118
   }
 
   /// Display time for the benign "No speech detected" info popup — long enough to read,
@@ -106,7 +108,14 @@ class MenuBarController: NSObject {
         audioURL: url,
         preferredModel: TranscriptionModel.loadSelectedForMeeting(),
         promptOverride: AppConstants.liveMeetingDiarizationPrompt,
-        cancellable: false
+        cancellable: false,
+        // A meeting chunk is background bookkeeping, so it must not drive the foreground chunk
+        // pipeline — the same rule streaming dictate chunks already follow. It was doing both
+        // visible halves of that: raising a "Processing Audio" → "Merging transcription
+        // results…" popup pair on every chunk rotation (every 12–60 s, ~40 times in a
+        // 25-minute meeting), and clobbering `appState` with `.processing(.splitting)` on top
+        // of the recording state each time.
+        reportsProgress: false
       )
     },
     cleanUpAudioFile: { [weak self] url in self?.cleanupAudioFile(at: url) },
@@ -226,6 +235,19 @@ class MenuBarController: NSObject {
         shortcut: currentConfig.voiceFeedback, tag: .voiceFeedback))
     menu.addItem(NSMenuItem.separator())
 
+    // Recovering a dictation result. Both rows hide themselves while the history is empty, so a
+    // fresh install doesn't show two dead entries.
+    menu.addItem(
+      createMenuItem(
+        "Copy Last Transcription", action: #selector(copyLastTranscription),
+        tag: .copyLastTranscription))
+    let recentItem = createMenuItem(
+      "Recent Transcriptions", action: nil, tag: .recentTranscriptions)
+    recentItem.submenu = NSMenu()
+    menu.addItem(recentItem)
+
+    menu.addItem(NSMenuItem.separator())
+
     // Chat window
     menu.addItem(
       createMenuItemWithShortcut(
@@ -250,8 +272,9 @@ class MenuBarController: NSObject {
     return menu
   }
 
+  /// `action` is optional so submenu parents (which do nothing when clicked) share this path.
   private func createMenuItem(
-    _ title: String, action: Selector, keyEquivalent: String = "", tag: MenuTag? = nil
+    _ title: String, action: Selector?, keyEquivalent: String = "", tag: MenuTag? = nil
   ) -> NSMenuItem {
     let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
     item.target = self
@@ -622,11 +645,80 @@ class MenuBarController: NSObject {
     )
     #endif
 
+    updateTranscriptionHistoryItems(menu)
+
     // Handle special case when no API key (any provider) and no offline model is configured
     if !hasAnyKey && !hasOfflineTranscriptionModel, let button = statusItem?.button {
       button.image = nil
       button.title = "⚠️"
       button.toolTip = "Add an API key or use an offline model - click to configure"
+    }
+  }
+
+  /// Rebuilds the "Recent Transcriptions" submenu and hides both history rows while there is
+  /// nothing to show. Rebuilt on every menu update rather than on record: the store is written
+  /// from a background queue, and the menu is cheap to regenerate (at most five rows).
+  private func updateTranscriptionHistoryItems(_ menu: NSMenu) {
+    let entries = TranscriptionHistoryStore.shared.entries
+    menu.item(withTag: MenuTag.copyLastTranscription.rawValue)?.isHidden = entries.isEmpty
+
+    guard let recentItem = menu.item(withTag: MenuTag.recentTranscriptions.rawValue) else { return }
+    // A single entry is already covered by "Copy Last Transcription" — a submenu with one row
+    // duplicating the row above it is noise.
+    recentItem.isHidden = entries.count < 2
+    guard !recentItem.isHidden else { return }
+
+    let submenu = recentItem.submenu ?? NSMenu()
+    submenu.removeAllItems()
+    for (index, entry) in entries.enumerated() {
+      let item = NSMenuItem(
+        title: TranscriptionHistoryStore.menuTitle(for: entry),
+        action: #selector(copyTranscriptionFromHistory(_:)), keyEquivalent: "")
+      item.target = self
+      // The index into the newest-first list, resolved on click against the store's current
+      // contents — see `copyTranscriptionFromHistory`.
+      item.tag = index
+      item.toolTip = Self.historyTooltipFormatter.string(from: entry.ts)
+      submenu.addItem(item)
+    }
+    recentItem.submenu = submenu
+  }
+
+  private static let historyTooltipFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .short
+    formatter.timeStyle = .medium
+    return formatter
+  }()
+
+  @objc private func copyLastTranscription() {
+    guard let entry = TranscriptionHistoryStore.shared.mostRecent else {
+      DebugLogger.logWarning("TRANSCRIPTION-HISTORY: Copy requested but history is empty")
+      return
+    }
+    copyHistoryEntry(entry)
+  }
+
+  @objc private func copyTranscriptionFromHistory(_ sender: NSMenuItem) {
+    // Resolve against the live list instead of capturing the text in the menu item: a dictation
+    // that finished while the menu was open would otherwise copy a shifted entry.
+    let entries = TranscriptionHistoryStore.shared.entries
+    guard sender.tag >= 0, sender.tag < entries.count else {
+      DebugLogger.logWarning("TRANSCRIPTION-HISTORY: Entry \(sender.tag) no longer exists")
+      return
+    }
+    copyHistoryEntry(entries[sender.tag])
+  }
+
+  private func copyHistoryEntry(_ entry: TranscriptionHistoryStore.Entry) {
+    clipboardManager.copyToClipboard(text: entry.text)
+    DebugLogger.log("TRANSCRIPTION-HISTORY: Re-copied \(entry.text.count) chars from \(entry.ts)")
+    // No auto-paste here on purpose. This action exists precisely because a paste went somewhere
+    // unintended; putting it on the clipboard and letting the user place it is the whole point.
+    // Only surface the pill from idle — a recording or playback in progress owns the menu bar and
+    // must not be overwritten by a confirmation.
+    if case .idle = appState {
+      appState = appState.showSuccess("Transcription copied — press ⌘V to paste")
     }
   }
 
@@ -1224,6 +1316,9 @@ class MenuBarController: NSObject {
       }
       if wasCancelled { return }
 
+      // Last chance to remember the user's clipboard before the result overwrites it. Dictate
+      // Prompt already captured it before its synthetic ⌘C; this covers plain dictation.
+      await MainActor.run { self.captureClipboardRestorePointIfEnabled() }
       spec.copyResult(result)
       await afterCopy(result)
 
@@ -1268,6 +1363,9 @@ class MenuBarController: NSObject {
 
       cleanupAudioFile(at: audioURL)
     } catch {
+      // Nothing will be pasted, so drop the remembered clipboard — restoring it during some
+      // later job would silently undo whatever the user copied in the meantime.
+      await MainActor.run { self.clipboardManager.discardRestorePoint() }
       if Self.isCancellation(error) {
         if duringMeeting {
           DebugLogger.log("CANCELLATION: \(spec.logLabel) task was cancelled (\(type(of: error)))")
@@ -1398,6 +1496,9 @@ class MenuBarController: NSObject {
           audioURL: audioURL, cancellable: !duringMeeting)
       },
       afterCopy: { result in
+        // Recorded regardless of the interaction-logging toggle (that one gates *persistence*
+        // inside the store) so "Copy Last Transcription" always works for the current session.
+        TranscriptionHistoryStore.shared.record(result)
         let modelDisplayName = await self.speechService.getTranscriptionModelInfo()
         // Commit the up-front audio snapshot (captured before the transcription await); the defer
         // now keeps it instead of discarding it.
@@ -1580,6 +1681,8 @@ class MenuBarController: NSObject {
   /// Dismisses processing popup, optionally cleans up one audio URL and chunk statuses, then transitions to idle.
   private func transitionToIdleAndCleanup(cleanupAudioURL: URL? = nil, clearChunkStatuses: Bool = false) {
     PopupNotificationWindow.dismissProcessing()
+    // A cancelled job never pastes, so any clipboard it remembered must not outlive it.
+    clipboardManager.discardRestorePoint()
     if clearChunkStatuses {
       chunkStatuses = []
     }
@@ -1628,6 +1731,9 @@ class MenuBarController: NSObject {
     // `ttsDidStop` when leaving a TTS-synthesizing state (`isTTSRunning == true`); for the
     // audio-playing path the prior state is `.speaking` and it won't post on its own.
     let transitionWillPostStop = transitionToIdle && isTTSRunning
+    // Whatever brought us here, this session is over: refuse chunks that are still in flight even
+    // when playback itself isn't being torn down (the cancellation paths pass stopPlayback: false).
+    ttsChunkStreamAcceptingChunks = false
     currentReadAloudTask?.cancel()
     if cancelNetworkWork {
       speechService.cancelTTS()
@@ -1655,7 +1761,10 @@ class MenuBarController: NSObject {
       return true
     }
     if audioEngine?.isRunning == true {
-      finishReadAloudSession(cancelNetworkWork: false)
+      // With progressive playback, audio can already be playing while later chunks are still
+      // being synthesized, so Stop has to kill the network work too — unless the stream is
+      // already closed, in which case there is nothing left to cancel.
+      finishReadAloudSession(cancelNetworkWork: !ttsChunkStreamClosed)
       return true
     }
     if case .processing = appState {
@@ -1665,17 +1774,24 @@ class MenuBarController: NSObject {
     return false
   }
 
-  /// Drives the Read Aloud pipeline: sets app state, posts `ttsDidStart`, awaits the producer
-  /// (which may include the Smart Rewrite step), then either hands off to `playTTSAudio` or
-  /// surfaces a formatted error. The producer call runs inside `currentReadAloudTask` so a
-  /// subsequent Stop trigger can cancel it mid-flight.
-  private func beginReadAloudProcessing(producer: @escaping () async throws -> Data) {
+  /// Drives the Read Aloud pipeline: sets app state, posts `ttsDidStart`, and runs the producer,
+  /// which streams synthesized chunks back through the sink it is handed. Playback therefore starts
+  /// on the first chunk instead of after the merge; the producer's returned `Data` is only used as
+  /// a fallback for producers that never emit a chunk. The producer call runs inside
+  /// `currentReadAloudTask` so a subsequent Stop trigger can cancel it mid-flight.
+  private func beginReadAloudProcessing(
+    producer: @escaping (_ onChunkReady: @escaping (Data, Int, Int) -> Void) async throws -> Data
+  ) {
     appState = .processing(.ttsProcessing)
     NotificationCenter.default.post(name: .ttsDidStart, object: nil)
+    beginTTSChunkStream()
 
     currentReadAloudTask = Task { [weak self] in
       do {
-        let audioData = try await producer()
+        // `ChunkTTSService` invokes this on the main actor, in playback order.
+        let audioData = try await producer({ [weak self] pcm, index, total in
+          self?.enqueueTTSChunk(pcm, index: index, totalChunks: total)
+        })
         // Must check on the read-aloud task, not inside MainActor.run (different task context).
         guard !Task.isCancelled else {
           DebugLogger.log("CANCELLATION: Read Aloud producer finished after cancel — skipping playback")
@@ -1692,7 +1808,14 @@ class MenuBarController: NSObject {
         await MainActor.run { [weak self] in
           guard let self else { return }
           PopupNotificationWindow.dismissProcessing()
-          self.playTTSAudio(audioData: audioData)
+          if self.ttsScheduledChunkCount > 0 {
+            // Streaming path: audio is already playing. Just declare the stream finished so the
+            // last buffer's completion can tear the session down.
+            self.closeTTSChunkStream()
+          } else {
+            // No chunk ever arrived (a producer that doesn't stream). Play the merged result.
+            self.playTTSAudio(audioData: audioData)
+          }
         }
       } catch {
         if Self.isCancellation(error) {
@@ -1737,125 +1860,222 @@ class MenuBarController: NSObject {
     // Chat-reply path: the text is LLM-generated prose intended for human reading, so skip the
     // Smart Rewrite Gemini call. The global-selection path keeps the default (true) because a
     // selection can be code/markdown/log-output.
-    beginReadAloudProcessing { [speechService] in
-      try await speechService.readProseAloud(trimmedText)
+    beginReadAloudProcessing { [speechService] onChunkReady in
+      try await speechService.readProseAloud(trimmedText, onChunkReady: onChunkReady)
     }
   }
 
+  // MARK: - Progressive TTS Playback
+
+  /// Raw PCM format every TTS provider returns: s16le, 24 kHz, mono.
+  private static let ttsSampleRate: Double = 24000
+  private static let ttsChannels: UInt32 = 1
+  private static let ttsBitsPerChannel: UInt32 = 16
+
+  /// Buffers handed to the player node so far, and how many of them have finished playing.
+  /// Playback is over when the synthesis side has closed the stream *and* these are equal —
+  /// a count comparison rather than "the last chunk finished", because a failed chunk means the
+  /// final index may never arrive.
+  private var ttsScheduledChunkCount = 0
+  private var ttsDrainedChunkCount = 0
+  /// Set when no further chunks will be enqueued (synthesis finished, failed, or was cancelled).
+  private var ttsChunkStreamClosed = false
+  /// Whether late-arriving chunks may still be scheduled. Cleared by Stop and by stream close, so
+  /// a chunk whose synthesis landed after the user cancelled cannot spin up a fresh engine and
+  /// start talking out of an idle state.
+  private var ttsChunkStreamAcceptingChunks = false
+
+  /// Plays one fully synthesized utterance. Kept as the non-streaming entry point: single-chunk
+  /// syntheses and any future caller that already holds the complete audio land here.
   private func playTTSAudio(audioData: Data) {
-    DebugLogger.log("TTS-PLAYBACK: Starting audio playback (data size: \(audioData.count) bytes)")
+    beginTTSChunkStream()
+    enqueueTTSChunk(audioData, index: 0, totalChunks: 1)
+    closeTTSChunkStream()
+  }
 
-    let sampleRate: Double = 24000
-    let channels: UInt32 = 1
-    let bitsPerChannel: UInt32 = 16
+  /// Resets the per-session chunk bookkeeping. Called before the first chunk of a Read Aloud.
+  private func beginTTSChunkStream() {
+    ttsScheduledChunkCount = 0
+    ttsDrainedChunkCount = 0
+    ttsChunkStreamClosed = false
+    ttsChunkStreamAcceptingChunks = true
+  }
 
+  /// Schedules one synthesized chunk for playback, starting the engine (and the `.speaking` state)
+  /// on the first one. Chunks arrive in playback order — `ChunkTTSService` holds back out-of-order
+  /// completions — so appending them to the player node's queue is all the ordering needed.
+  ///
+  /// Being faster than realtime is what makes this work: synthesis runs at roughly 0.6× the audio
+  /// duration it produces, so the queue stays ahead of the playhead. If it ever doesn't, the node
+  /// drains and the next chunk starts a beat late; a logged gap, not a broken playback.
+  private func enqueueTTSChunk(_ pcm: Data, index: Int, totalChunks: Int) {
+    guard ttsChunkStreamAcceptingChunks else {
+      DebugLogger.log("TTS-PLAYBACK: Dropping chunk \(index) — Read Aloud session already ended")
+      return
+    }
+    guard !pcm.isEmpty else {
+      DebugLogger.logWarning("TTS-PLAYBACK: Chunk \(index) was empty — nothing to schedule")
+      return
+    }
     do {
-      // Gemini TTS returns raw Int16 PCM (s16le, 24kHz, mono), but AVAudioUnitTimePitch
-      // (and other AVAudioUnit effects) require non-interleaved Float32 on their bus —
-      // connecting with an Int16 format raises an Objective-C NSException inside
-      // `engine.connect(...)` that does NOT bridge to Swift's try/catch, leaving the
-      // function silently abandoned and `appState` stuck on `.processing`. Convert up-front
-      // so the entire graph speaks Float32, whether or not the speed node is inserted.
-      guard let audioFormat = AVAudioFormat(
-        commonFormat: .pcmFormatFloat32,
-        sampleRate: sampleRate,
-        channels: channels,
-        interleaved: false
-      ) else {
-        DebugLogger.logError("TTS-PLAYBACK: Failed to create audio format")
-        throw TTSPlaybackError.failedToCreateAudioFormat
+      let buffer = try Self.makeTTSBuffer(from: pcm)
+      let isFirstChunk = ttsScheduledChunkCount == 0
+      if isFirstChunk {
+        try startTTSEngine(format: buffer.format)
+      }
+      guard let playerNode = audioPlayerNode, let token = currentPlaybackToken else {
+        DebugLogger.logWarning("TTS-PLAYBACK: Chunk \(index) arrived without an active player — dropping")
+        return
       }
 
-      let bytesPerFrame = Int(channels * (bitsPerChannel / 8))
-      let frameCount = audioData.count / bytesPerFrame
-
-      guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: AVAudioFrameCount(frameCount)) else {
-        DebugLogger.logError("TTS-PLAYBACK: Failed to create audio buffer")
-        throw TTSPlaybackError.failedToCreateBuffer
-      }
-
-      buffer.frameLength = AVAudioFrameCount(frameCount)
-      let int16ToFloat = 1.0 / Float(Int16.max)
-      audioData.withUnsafeBytes { bytes in
-        guard let baseAddress = bytes.baseAddress else { return }
-        let int16Pointer = baseAddress.assumingMemoryBound(to: Int16.self)
-        if let channelData = buffer.floatChannelData {
-          for i in 0..<frameCount {
-            channelData[0][i] = Float(int16Pointer[i]) * int16ToFloat
-          }
-        }
-      }
-
-      if let existingEngine = audioEngine {
-        existingEngine.stop()
-        audioEngine = nil
-      }
-      if let existingNode = audioPlayerNode {
-        existingNode.stop()
-        audioPlayerNode = nil
-      }
-
-      let engine = AVAudioEngine()
-      let playerNode = AVAudioPlayerNode()
-      engine.attach(playerNode)
-
-      // Insert a time-pitch node when the user has picked a non-1× rate so the audio
-      // plays faster/slower without changing pitch. `rate` is a multiplier where
-      // 1.0 = normal (the API range is 1/32 ... 32, so our 0.75–2.0 picker is safe).
-      let configuredSpeed = ReadAloudPreferences.speed.rawValue
-      if configuredSpeed != 1.0 {
-        let timePitch = AVAudioUnitTimePitch()
-        timePitch.rate = Float(configuredSpeed)
-        engine.attach(timePitch)
-        engine.connect(playerNode, to: timePitch, format: buffer.format)
-        engine.connect(timePitch, to: engine.mainMixerNode, format: buffer.format)
-        timePitchNode = timePitch
-      } else {
-        engine.connect(playerNode, to: engine.mainMixerNode, format: buffer.format)
-        timePitchNode = nil
-      }
-
-      self.audioEngine = engine
-      self.audioPlayerNode = playerNode
-      let token = UUID()
-      currentPlaybackToken = token
-
-      try engine.start()
-
-      playerNode.scheduleBuffer(buffer) {
-        DebugLogger.log("TTS-PLAYBACK: Playback completed")
+      ttsScheduledChunkCount += 1
+      playerNode.scheduleBuffer(buffer) { [weak self] in
         Task { @MainActor in
-          // Discard stale completions from a buffer the user already stopped or replaced.
-          guard self.currentPlaybackToken == token else { return }
-          self.currentPlaybackToken = nil
-          NotificationCenter.default.post(name: .ttsDidStop, object: nil)
-          self.audioPlayerNode?.stop()
-          self.audioEngine?.stop()
-          self.audioEngine = nil
-          self.audioPlayerNode = nil
-          self.timePitchNode = nil
-          // Only flip to completion feedback while still `.speaking` — the user may have
-          // started a recording during playback, whose state must not be clobbered.
-          // The feedback state auto-resets to idle via the `appState` didSet.
-          if case .speaking = self.appState {
-            self.appState = self.appState.showSuccess("Audio playback completed")
-          }
+          guard let self, self.currentPlaybackToken == token else { return }
+          self.ttsDrainedChunkCount += 1
+          DebugLogger.logDebug(
+            "TTS-PLAYBACK: Chunk \(index) finished (\(self.ttsDrainedChunkCount)/\(self.ttsScheduledChunkCount) drained)")
+          self.completeTTSPlaybackIfDrained(token: token)
         }
       }
-      playerNode.play()
-      DebugLogger.logSuccess("TTS-PLAYBACK: Playback started")
-      appState = .speaking
 
+      if isFirstChunk {
+        playerNode.play()
+        PopupNotificationWindow.dismissProcessing()
+        appState = .speaking
+        DebugLogger.logSuccess(
+          "TTS-PLAYBACK: Playback started on chunk 1/\(totalChunks) (\(pcm.count) bytes) — remaining chunks stream in behind it")
+      } else {
+        DebugLogger.log("TTS-PLAYBACK: Queued chunk \(index + 1)/\(totalChunks) (\(pcm.count) bytes)")
+      }
     } catch {
       DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.localizedDescription)")
       finishReadAloudSession(cancelNetworkWork: false, transitionToIdle: false)
-      presentError(shortTitle: SpeechErrorFormatter.shortStatusForUser(error), message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
+      presentError(
+        shortTitle: SpeechErrorFormatter.shortStatusForUser(error),
+        message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
     }
+  }
+
+  /// Declares that no further chunks are coming. Playback teardown waits for this: without it a
+  /// gap between two chunks (queue drained before the next one arrived) would be indistinguishable
+  /// from the end of the utterance and cut the rest off.
+  private func closeTTSChunkStream() {
+    ttsChunkStreamClosed = true
+    ttsChunkStreamAcceptingChunks = false
+    guard let token = currentPlaybackToken else { return }
+    completeTTSPlaybackIfDrained(token: token)
+  }
+
+  /// Ends the Read Aloud session once the stream is closed and every scheduled buffer has played.
+  private func completeTTSPlaybackIfDrained(token: UUID) {
+    guard currentPlaybackToken == token,
+          ttsChunkStreamClosed,
+          ttsScheduledChunkCount > 0,
+          ttsDrainedChunkCount >= ttsScheduledChunkCount
+    else { return }
+
+    DebugLogger.log("TTS-PLAYBACK: Playback completed (\(ttsScheduledChunkCount) chunks)")
+    currentPlaybackToken = nil
+    NotificationCenter.default.post(name: .ttsDidStop, object: nil)
+    audioPlayerNode?.stop()
+    audioEngine?.stop()
+    audioEngine = nil
+    audioPlayerNode = nil
+    timePitchNode = nil
+    // Only flip to completion feedback while still `.speaking` — the user may have started a
+    // recording during playback, whose state must not be clobbered. The feedback state
+    // auto-resets to idle via the `appState` didSet.
+    if case .speaking = appState {
+      appState = appState.showSuccess("Audio playback completed")
+    }
+  }
+
+  /// Converts raw s16le PCM into the Float32 buffer the playback graph expects.
+  ///
+  /// Providers return Int16 PCM, but AVAudioUnitTimePitch (and other AVAudioUnit effects) require
+  /// non-interleaved Float32 on their bus — connecting with an Int16 format raises an
+  /// Objective-C NSException inside `engine.connect(...)` that does NOT bridge to Swift's
+  /// try/catch, leaving the function silently abandoned and `appState` stuck on `.processing`.
+  /// Converting up-front makes the entire graph speak Float32, whether or not the speed node is
+  /// inserted.
+  private static func makeTTSBuffer(from audioData: Data) throws -> AVAudioPCMBuffer {
+    guard let audioFormat = AVAudioFormat(
+      commonFormat: .pcmFormatFloat32,
+      sampleRate: ttsSampleRate,
+      channels: ttsChannels,
+      interleaved: false
+    ) else {
+      DebugLogger.logError("TTS-PLAYBACK: Failed to create audio format")
+      throw TTSPlaybackError.failedToCreateAudioFormat
+    }
+
+    let bytesPerFrame = Int(ttsChannels * (ttsBitsPerChannel / 8))
+    let frameCount = audioData.count / bytesPerFrame
+
+    guard frameCount > 0, let buffer = AVAudioPCMBuffer(
+      pcmFormat: audioFormat, frameCapacity: AVAudioFrameCount(frameCount)
+    ) else {
+      DebugLogger.logError("TTS-PLAYBACK: Failed to create audio buffer")
+      throw TTSPlaybackError.failedToCreateBuffer
+    }
+
+    buffer.frameLength = AVAudioFrameCount(frameCount)
+    let int16ToFloat = 1.0 / Float(Int16.max)
+    audioData.withUnsafeBytes { bytes in
+      guard let baseAddress = bytes.baseAddress else { return }
+      let int16Pointer = baseAddress.assumingMemoryBound(to: Int16.self)
+      if let channelData = buffer.floatChannelData {
+        for i in 0..<frameCount {
+          channelData[0][i] = Float(int16Pointer[i]) * int16ToFloat
+        }
+      }
+    }
+    return buffer
+  }
+
+  /// Tears down any previous engine and builds a fresh one for this playback session.
+  private func startTTSEngine(format: AVAudioFormat) throws {
+    if let existingEngine = audioEngine {
+      existingEngine.stop()
+      audioEngine = nil
+    }
+    if let existingNode = audioPlayerNode {
+      existingNode.stop()
+      audioPlayerNode = nil
+    }
+
+    let engine = AVAudioEngine()
+    let playerNode = AVAudioPlayerNode()
+    engine.attach(playerNode)
+
+    // Insert a time-pitch node when the user has picked a non-1× rate so the audio
+    // plays faster/slower without changing pitch. `rate` is a multiplier where
+    // 1.0 = normal (the API range is 1/32 ... 32, so our 0.75–2.0 picker is safe).
+    let configuredSpeed = ReadAloudPreferences.speed.rawValue
+    if configuredSpeed != 1.0 {
+      let timePitch = AVAudioUnitTimePitch()
+      timePitch.rate = Float(configuredSpeed)
+      engine.attach(timePitch)
+      engine.connect(playerNode, to: timePitch, format: format)
+      engine.connect(timePitch, to: engine.mainMixerNode, format: format)
+      timePitchNode = timePitch
+    } else {
+      engine.connect(playerNode, to: engine.mainMixerNode, format: format)
+      timePitchNode = nil
+    }
+
+    self.audioEngine = engine
+    self.audioPlayerNode = playerNode
+    currentPlaybackToken = UUID()
+
+    try engine.start()
   }
 
   /// Stops all TTS audio playback and cleans up resources
   private func stopTTSPlayback() {
     currentPlaybackToken = nil
+    ttsChunkStreamAcceptingChunks = false
     audioPlayerNode?.stop()
     audioEngine?.stop()
     audioEngine = nil
@@ -1879,6 +2099,9 @@ class MenuBarController: NSObject {
       return true
     }
     if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return false }
+    // Snapshot before the synthetic ⌘C, not after: from here on the pasteboard holds the
+    // user's selection, so a later snapshot would "restore" that instead of what they copied.
+    captureClipboardRestorePointIfEnabled()
     simulateCopy()
     return true
   }
@@ -1912,6 +2135,29 @@ class MenuBarController: NSObject {
     cmdUp?.post(tap: .cghidEventTap)
   }
 
+  /// Non-destructive paste: remembers the current clipboard so `autoPasteIfEnabled()` can put it
+  /// back after the synthetic ⌘V. No-op unless the user turned the setting on.
+  private func captureClipboardRestorePointIfEnabled() {
+    guard Self.restoreClipboardEnabled else { return }
+    clipboardManager.captureRestorePointIfNeeded()
+  }
+
+  private static var restoreClipboardEnabled: Bool {
+    #if APP_STORE
+    return false  // No auto-paste in the App Store build, so there is nothing to restore after.
+    #else
+    return UserDefaults.standard.object(forKey: UserDefaultsKeys.restoreClipboardAfterPaste) != nil
+      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.restoreClipboardAfterPaste)
+      : SettingsDefaults.restoreClipboardAfterPaste
+    #endif
+  }
+
+  /// How long to wait after posting ⌘V before putting the old clipboard back. The receiving app
+  /// reads the pasteboard asynchronously when it handles the keystroke, so restoring immediately
+  /// would race it and paste the *old* contents. Generous enough for slow apps (Electron, remote
+  /// desktops) while still feeling instant.
+  private static let clipboardRestoreDelay: TimeInterval = 0.4
+
   /// Performs auto-paste if enabled in settings.
   /// - Returns: `true` when a paste keystroke was scheduled; `false` when the result stays on
   ///   the clipboard for the user to paste manually (App Store build, setting off, or missing
@@ -1931,15 +2177,38 @@ class MenuBarController: NSObject {
       guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
         DebugLogger.logWarning("AUTO-PASTE: Skipped — accessibility permission not granted, showing permission dialog")
         AccessibilityPermissionManager.showAccessibilityPermissionDialog()
+        // Nothing was pasted, so the result has to stay on the clipboard for the user's own ⌘V.
+        clipboardManager.discardRestorePoint()
         return false
       }
       // Small delay to ensure clipboard is ready
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
         self?.simulatePaste()
-        DebugLogger.log("AUTO-PASTE: Pasted transcription at cursor position")
+        // Log *where* the synthetic ⌘V went. The app can be in the background for minutes
+        // (long dictation while the user works elsewhere), so the receiving app is whatever
+        // happens to be frontmost — and if it has a selection, ⌘V replaces it. Without the
+        // target and payload size on record, a report of "my text was suddenly gone" is
+        // undiagnosable after the fact.
+        let target = NSWorkspace.shared.frontmostApplication
+        let chars = NSPasteboard.general.string(forType: .string)?.count ?? 0
+        DebugLogger.log(
+          "AUTO-PASTE: Pasted \(chars) chars into "
+            + "\(target?.localizedName ?? "unknown") "
+            + "(\(target?.bundleIdentifier ?? "no bundle id"))")
+
+        // Non-destructive paste: give the receiving app time to read the pasteboard, then put
+        // the user's previous clipboard back.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay) { [weak self] in
+          guard let self else { return }
+          if self.clipboardManager.restorePendingSnapshot() {
+            DebugLogger.log("AUTO-PASTE: Restored the clipboard contents from before dictation")
+          }
+        }
       }
       return true
     }
+    // Auto-paste is off: the result stays on the clipboard, so there is nothing to restore.
+    clipboardManager.discardRestorePoint()
     return false
     #endif
   }
@@ -2305,8 +2574,8 @@ extension MenuBarController: ShortcutDelegate {
       showNoTextSelectedForReadAloud()
       return
     }
-    beginReadAloudProcessing { [speechService] in
-      try await speechService.readSelectionAloud(selectedText)
+    beginReadAloudProcessing { [speechService] onChunkReady in
+      try await speechService.readSelectionAloud(selectedText, onChunkReady: onChunkReady)
     }
   }
   #endif
@@ -2378,6 +2647,30 @@ extension MenuBarController: ChunkProgressDelegate {
     return .transcription
   }
 
+  /// Assigns a chunk-progress processing state, but only while the app is still in a processing
+  /// phase. With progressive Read Aloud playback, chunks 2…N finish *after* chunk 1 started
+  /// playing and `appState` moved to `.speaking`; a late `.processingChunks` assignment there
+  /// would drag the menu bar back into a busy state and — worse — make `isTTSRunning` true again,
+  /// so the next Stop press would take the "cancel synthesis" branch instead of stopping audio.
+  private func setChunkProcessingState(_ state: AppState) -> Bool {
+    guard case .processing = appState else { return false }
+    appState = state
+    return true
+  }
+
+  /// Whether the chunk pipeline may raise its progress popups at all.
+  ///
+  /// Two flows must never see them. The bottom-center pill already shows processing for
+  /// pill-driven flows, so a popup on top is redundant feedback (same rule as the success popup
+  /// in `performTranscription`). And a live meeting has no business raising progress UI at all —
+  /// its chunks now pass `reportsProgress: false` so they never reach this delegate, and this
+  /// clause keeps that true for any future caller that forgets, including the meeting-resume
+  /// path. A dictation started *during* a meeting is unaffected: it shows the pill, so the first
+  /// clause already suppressed its popups.
+  private var showsChunkProgressPopups: Bool {
+    !RecordingIndicatorManager.shared.isVisible && !isLiveMeetingActive
+  }
+
   func chunkingStarted(totalChunks: Int) {
     // Initialize all chunks as pending
     chunkStatuses = Array(repeating: .pending, count: totalChunks)
@@ -2392,7 +2685,7 @@ extension MenuBarController: ChunkProgressDelegate {
     // The bottom-center pill already shows processing for pill-driven flows — chunk
     // popups on top would be redundant feedback (same rule as the success popup in
     // performTranscription). Popups remain for pill-less flows like TTS chunking.
-    if !RecordingIndicatorManager.shared.isVisible {
+    if showsChunkProgressPopups {
       if isTTS {
         PopupNotificationWindow.showProcessing(
           "Splitting text into \(totalChunks) chunks...",
@@ -2416,13 +2709,15 @@ extension MenuBarController: ChunkProgressDelegate {
     chunkStatuses[index] = .active
 
     let context = currentChunkContext
-    appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
+    guard setChunkProcessingState(
+      .processing(.processingChunks(statuses: chunkStatuses, context: context)))
+    else { return }
     updateMenuBarIcon()
 
     let isTTS = context == .tts
 
     // Update processing popup with status grid (pill-less flows only, see chunkingStarted)
-    if !RecordingIndicatorManager.shared.isVisible {
+    if showsChunkProgressPopups {
       let statusGrid = generateStatusGrid()
       PopupNotificationWindow.updateProcessing(
         title: isTTS ? "Synthesizing Speech" : "Processing Audio",
@@ -2446,13 +2741,18 @@ extension MenuBarController: ChunkProgressDelegate {
     chunkStatuses[index] = .completed
 
     let context = currentChunkContext
-    appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
+    guard setChunkProcessingState(
+      .processing(.processingChunks(statuses: chunkStatuses, context: context)))
+    else {
+      DebugLogger.logDebug("CHUNK-PROGRESS: Chunk \(index) completed while already playing back")
+      return
+    }
     updateMenuBarIcon()
 
     let isTTS = context == .tts
 
     // Update processing popup with status grid (pill-less flows only, see chunkingStarted)
-    if !RecordingIndicatorManager.shared.isVisible {
+    if showsChunkProgressPopups {
       let statusGrid = generateStatusGrid()
       PopupNotificationWindow.updateProcessing(
         title: isTTS ? "Synthesizing Speech" : "Processing Audio",
@@ -2473,7 +2773,7 @@ extension MenuBarController: ChunkProgressDelegate {
       DebugLogger.logWarning("CHUNK-PROGRESS: Chunk \(index) failed, retrying...")
 
       // Update popup to show retry status (pill-less flows only, see chunkingStarted)
-      if !RecordingIndicatorManager.shared.isVisible {
+      if showsChunkProgressPopups {
         let statusGrid = generateStatusGrid()
         PopupNotificationWindow.updateProcessing(
           title: isTTS ? "Synthesizing Speech" : "Processing Audio",
@@ -2484,11 +2784,16 @@ extension MenuBarController: ChunkProgressDelegate {
       // Mark as permanently failed
       chunkStatuses[index] = .failed
 
-      appState = .processing(.processingChunks(statuses: chunkStatuses, context: context))
+      guard setChunkProcessingState(
+        .processing(.processingChunks(statuses: chunkStatuses, context: context)))
+      else {
+        DebugLogger.logError("CHUNK-PROGRESS: Chunk \(index) failed during playback: \(error.localizedDescription)")
+        return
+      }
       updateMenuBarIcon()
 
       // Update processing popup (pill-less flows only, see chunkingStarted)
-      if !RecordingIndicatorManager.shared.isVisible {
+      if showsChunkProgressPopups {
         let statusGrid = generateStatusGrid()
         PopupNotificationWindow.updateProcessing(
           title: isTTS ? "Synthesizing Speech" : "Processing Audio",
@@ -2507,13 +2812,15 @@ extension MenuBarController: ChunkProgressDelegate {
     chunkStatuses = []
 
     let context = currentChunkContext
-    appState = .processing(.merging(context: context))
+    // Read Aloud reaches the merge step with audio already playing (the merged buffer is only a
+    // fallback there), so this is a no-op in the common TTS case.
+    guard setChunkProcessingState(.processing(.merging(context: context))) else { return }
     updateMenuBarIcon()
 
     let isTTS = context == .tts
 
     // Update processing popup with appropriate message (pill-less flows only, see chunkingStarted)
-    if !RecordingIndicatorManager.shared.isVisible {
+    if showsChunkProgressPopups {
       PopupNotificationWindow.updateProcessing(
         title: "Almost Done",
         message: isTTS ? "Merging audio chunks..." : "Merging transcription results..."
@@ -2531,5 +2838,8 @@ extension MenuBarController: NSMenuDelegate {
   /// is pending.
   func menuWillOpen(_ menu: NSMenu) {
     ReviewPrompter.shared.showPendingPromptIfNeeded()
+    // The history rows are otherwise only refreshed on an `appState` change, which leaves them
+    // stale right after launch (a persisted history exists but nothing has happened yet).
+    updateTranscriptionHistoryItems(menu)
   }
 }

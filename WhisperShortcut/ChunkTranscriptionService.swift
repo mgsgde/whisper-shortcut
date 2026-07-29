@@ -101,7 +101,8 @@ class ChunkTranscriptionService {
         audioDuration: TimeInterval,
         credential: GeminiCredential,
         model: TranscriptionModel,
-        prompt: String
+        prompt: String,
+        glossaryTerms: [String] = []
     ) async throws -> String {
         let startTime = CFAbsoluteTimeGetCurrent()
 
@@ -124,7 +125,8 @@ class ChunkTranscriptionService {
             chunkStream: chunkStream,
             credential: credential,
             model: model,
-            prompt: prompt
+            prompt: prompt,
+            glossaryTerms: glossaryTerms
         )
 
         // Don't flip the menu bar into `.merging` if Stop already fired: the cancel handler
@@ -154,7 +156,8 @@ class ChunkTranscriptionService {
         chunkStream: AudioChunkStream,
         credential: GeminiCredential,
         model: TranscriptionModel,
-        prompt: String
+        prompt: String,
+        glossaryTerms: [String]
     ) async throws -> (transcripts: [ChunkTranscript], chunks: [AudioChunk]) {
         let totalChunks = chunkStream.expectedCount
         let accumulator = ResultAccumulator()
@@ -177,6 +180,7 @@ class ChunkTranscriptionService {
                                 credential: credential,
                                 model: model,
                                 prompt: prompt,
+                                glossaryTerms: glossaryTerms,
                                 totalChunks: totalChunks
                             )
                             return .success(transcript)
@@ -255,6 +259,7 @@ class ChunkTranscriptionService {
         credential: GeminiCredential,
         model: TranscriptionModel,
         prompt: String,
+        glossaryTerms: [String],
         totalChunks: Int
     ) async throws -> ChunkTranscript {
         var lastError: Error?
@@ -328,10 +333,16 @@ class ChunkTranscriptionService {
                 // Extract text
                 let text = geminiClient.extractText(from: response)
                 // A near-silent trailing chunk can trigger prompt-context confabulation on
-                // Flash-tier models; drop impossibly long output instead of injecting it.
-                let normalizedText = TextProcessingUtility.discardingImplausibleTranscript(
-                    TextProcessingUtility.normalizeTranscriptionText(text),
-                    audioDurationSeconds: chunk.endTime - chunk.startTime,
+                // Flash-tier models, in both directions: impossibly long invented output, or
+                // near-empty output made of nothing but the glossary we sent in the prompt.
+                let chunkDuration = chunk.endTime - chunk.startTime
+                let normalizedText = TextProcessingUtility.discardingGlossaryEchoTranscript(
+                    TextProcessingUtility.discardingImplausibleTranscript(
+                        TextProcessingUtility.normalizeTranscriptionText(text),
+                        audioDurationSeconds: chunkDuration,
+                        mode: "CHUNK-\(chunk.index)"),
+                    audioDurationSeconds: chunkDuration,
+                    glossaryTerms: glossaryTerms,
                     mode: "CHUNK-\(chunk.index)")
 
                 DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) transcribed (\(normalizedText.count) chars)")

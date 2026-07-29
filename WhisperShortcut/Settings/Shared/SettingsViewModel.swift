@@ -70,6 +70,8 @@ class SettingsViewModel: ObservableObject {
     // Dictation behaviour
     .bool(\.autoPasteAfterDictation, key: UserDefaultsKeys.autoPasteAfterDictation,
           default: SettingsDefaults.autoPasteAfterDictation),
+    .bool(\.restoreClipboardAfterPaste, key: UserDefaultsKeys.restoreClipboardAfterPaste,
+          default: SettingsDefaults.restoreClipboardAfterPaste),
     .bool(\.holdFnToDictate, key: UserDefaultsKeys.holdFnToDictate,
           default: SettingsDefaults.holdFnToDictate),
 

@@ -78,6 +78,7 @@ struct SpeechToPromptSettingsTab: View {
       title: "Model Selection",
       systemImage: "cpu",
       selectedModel: $viewModel.data.selectedPromptModel,
+      recommendedModel: SettingsDefaults.selectedPromptModel,
       subscriptionMode: false,
       onModelChanged: {
         UserDefaults.standard.set(

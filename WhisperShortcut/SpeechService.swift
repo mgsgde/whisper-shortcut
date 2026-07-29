@@ -110,25 +110,81 @@ class SpeechService {
   /// recordings (glossary echo — sub-second audio produced paragraph-length fake transcripts built
   /// from glossary entries).
   private func appendGlossaryHint(to base: String) -> String {
-    let glossary = sanitizedGlossaryForInstructionPrompt()
-    guard !glossary.isEmpty else { return base }
-    let block = "Reference vocabulary — correct spellings of names and terms this speaker uses. "
-      + "If, and only if, you clearly hear one of them, transcribe it with exactly this spelling "
-      + "and capitalization instead of a more common, similar-sounding word. This list is a "
-      + "spelling reference only, NOT content: never output a listed term you did not clearly "
-      + "hear, and never append these terms to the transcript. If the audio is silent or "
-      + "unintelligible, return an empty response.\n" + glossary
-    DebugLogger.log("GLOSSARY: conditioning transcription with \(glossary.count) chars: \(glossary.prefix(200))")
+    let parsed = parsedGlossary()
+    let glossary = parsed.terms.joined(separator: ", ")
+    guard !glossary.isEmpty || !parsed.corrections.isEmpty else { return base }
+
+    var block = ""
+    if !glossary.isEmpty {
+      block = "Reference vocabulary — correct spellings of names and terms this speaker uses. "
+        + "If, and only if, you clearly hear one of them, transcribe it with exactly this spelling "
+        + "and capitalization instead of a more common, similar-sounding word. This list is a "
+        + "spelling reference only, NOT content: never output a listed term you did not clearly "
+        + "hear, and never append these terms to the transcript. If the audio is silent or "
+        + "unintelligible, return an empty response.\n" + glossary
+    }
+    if let tieBreakers = Self.tieBreakerBlock(for: parsed.corrections) {
+      block = block.isEmpty ? tieBreakers : block + "\n\n" + tieBreakers
+    }
+
+    DebugLogger.log(
+      "GLOSSARY: conditioning transcription with \(glossary.count) chars"
+        + " + \(parsed.corrections.count) tie-breaker(s): \(glossary.prefix(200))")
     return base.isEmpty ? block : base + "\n\n" + block
   }
 
-  /// The Whisper Glossary with correction annotations (`Term (not "Wrong")`) reduced to just the
-  /// correct term, and phrase-style entries (more than 3 words, e.g. "einen Crawler am Laufen")
-  /// dropped entirely. Both forms are offline-Whisper priming syntax; in an instruction prompt
-  /// they invite verbatim echo into the transcript (Flash-Lite reproduced a 4-word glossary
-  /// phrase instead of the actual audio in every test run). Names and terms of up to 3 words
-  /// ("Cursor CLI", "EnBW AG", "Magnus Gödde") pass through.
-  private func sanitizedGlossaryForInstructionPrompt() -> String {
+  /// The `Term (not "Wrong")` pairs, rendered as an explicit override of the reference-vocabulary
+  /// rule above them. Returns nil when the user has annotated nothing.
+  ///
+  /// The reference list on its own cannot settle a near-homophone: it says "only if you clearly
+  /// hear one of them", and for `Claude` /kloːd/ vs `Cloud` /klaʊd/ a Flash-tier model is never
+  /// confident, so it falls back on whichever word carries the stronger language prior — which is
+  /// exactly the one the user rejected. This block is the only place the app tells the model which
+  /// of the two to pick when it cannot decide, so it deliberately drops the "clearly hear" hedge
+  /// for these pairs while keeping the anti-echo guard that the hedge was there for.
+  ///
+  /// The rejected spelling usually remains a legitimate word elsewhere in the same speaker's
+  /// vocabulary ("Google Cloud" is frequent in this corpus even though bare "Cloud" is rejected),
+  /// hence the explicit escape hatch for established compounds.
+  private static func tieBreakerBlock(for corrections: [GlossaryCorrection]) -> String? {
+    guard !corrections.isEmpty else { return nil }
+    let pairs = corrections
+      .map { "- \"\($0.correct)\" — not \"\($0.rejected.joined(separator: "\" / \""))\"" }
+      .joined(separator: "\n")
+    return "Homophone tie-breakers — this refines the rule above for these specific pairs. For "
+      + "this speaker each pair is settled in favour of the FIRST spelling: when what you hear "
+      + "could be either member of a pair, write the first spelling, even though the second is "
+      + "the more common word. Use the second spelling only where the surrounding words make it "
+      + "unmistakable, such as an established product name it forms part of. These are spelling "
+      + "decisions only — never output either form unless you actually heard it.\n" + pairs
+  }
+
+  /// One `Term (not "Wrong")` line from the Whisper Glossary: the spelling the user wants, plus
+  /// every spelling they explicitly rejected for it.
+  private struct GlossaryCorrection {
+    let correct: String
+    let rejected: [String]
+  }
+
+  /// The Whisper Glossary split into the two things a cloud model needs separately: a flat
+  /// reference vocabulary, and the correction pairs the user annotated.
+  private struct ParsedGlossary {
+    /// Terms fit for the reference list — annotations removed, phrase-style entries (more than
+    /// 3 words, e.g. "einen Crawler am Laufen") dropped, rejected spellings filtered out.
+    let terms: [String]
+    /// The annotated pairs, in glossary order.
+    let corrections: [GlossaryCorrection]
+  }
+
+  /// Parses the Whisper Glossary once for both consumers.
+  ///
+  /// Phrase-style entries and the raw `(not "…")` syntax are offline-Whisper priming forms; fed
+  /// verbatim into an instruction prompt they invite echo (Flash-Lite reproduced a 4-word glossary
+  /// phrase instead of the actual audio in every test run), which is why the reference list keeps
+  /// them out. The annotation itself is *not* discarded any more, though: it is the only signal
+  /// that distinguishes a near-homophone pair, and `tieBreakerBlock` renders it in a shape that
+  /// cannot be echoed as content.
+  private func parsedGlossary() -> ParsedGlossary {
     let lines = SystemPromptsStore.shared.loadWhisperGlossary()
       .components(separatedBy: .newlines)
 
@@ -138,8 +194,10 @@ class SpeechService {
     // correction — the model is told both spellings are right and the correction cancels out.
     // Stripping the annotation is not enough; the rejected form has to be filtered out by name.
     var rejected = Set<String>()
+    var corrections: [GlossaryCorrection] = []
     for line in lines {
       var cursor = Substring(line)
+      var lineRejects: [String] = []
       while let range = cursor.range(
         of: #"\((?:not|nicht)\s+[^)]*\)"#, options: [.regularExpression, .caseInsensitive])
       {
@@ -150,23 +208,31 @@ class SpeechService {
           .replacingOccurrences(of: ")", with: "")
         for form in inner.components(separatedBy: ",") {
           let cleaned = form.trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
-          if !cleaned.isEmpty { rejected.insert(Self.foldGlossaryTerm(cleaned)) }
+          if !cleaned.isEmpty {
+            rejected.insert(Self.foldGlossaryTerm(cleaned))
+            lineRejects.append(cleaned)
+          }
         }
         cursor = cursor[range.upperBound...]
       }
+      guard !lineRejects.isEmpty else { continue }
+      let correct = Self.strippingAnnotations(from: line)
+        .replacingOccurrences(
+          of: #"^Terms:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+        .trimmingCharacters(in: .whitespaces)
+      // An annotated entry only earns a tie-breaker if its correct form is itself a term rather
+      // than a phrase — same bar the reference list applies.
+      guard !correct.isEmpty, correct.split(separator: " ").count <= 3 else { continue }
+      corrections.append(GlossaryCorrection(correct: correct, rejected: lineRejects))
     }
 
-    return lines
+    let terms = lines
       .flatMap { line -> [String] in
         // Strip the `(not "…")` annotation BEFORE splitting on commas, so a comma inside the
         // parenthetical (e.g. `Gödde (not "Godde, Goedde")`) can't shear it into leaking fragments.
-        line.replacingOccurrences(
-          of: #"\s*\((?:not|nicht)\s+[^)]*\)"#,
-          with: "",
-          options: [.regularExpression, .caseInsensitive]
-        )
-        .components(separatedBy: ",")
-        .map { $0.trimmingCharacters(in: .whitespaces) }
+        Self.strippingAnnotations(from: line)
+          .components(separatedBy: ",")
+          .map { $0.trimmingCharacters(in: .whitespaces) }
       }
       .filter { term in
         // The built-in list is written as `Terms: A, B, C`, so the first element carries the
@@ -176,12 +242,115 @@ class SpeechService {
         return !bare.isEmpty && bare.split(separator: " ").count <= 3
           && !rejected.contains(Self.foldGlossaryTerm(bare))
       }
-      .joined(separator: ", ")
+
+    return ParsedGlossary(terms: terms, corrections: corrections)
+  }
+
+  private static func strippingAnnotations(from line: String) -> String {
+    line.replacingOccurrences(
+      of: #"\s*\((?:not|nicht)\s+[^)]*\)"#,
+      with: "",
+      options: [.regularExpression, .caseInsensitive])
+  }
+
+  /// The same sanitized glossary the prompt gets, as individual terms — the input to
+  /// `TextProcessingUtility.discardingGlossaryEchoTranscript`, which needs to recognise a
+  /// transcript that is nothing but vocabulary we ourselves put in the prompt.
+  private func glossaryTermsForEchoCheck() -> [String] {
+    parsedGlossary().terms
+      .map {
+        $0.replacingOccurrences(
+          of: #"^\s*Terms:\s*"#, with: "", options: [.regularExpression, .caseInsensitive]
+        ).trimmingCharacters(in: .whitespaces)
+      }
+      .filter { !$0.isEmpty }
   }
 
   /// Case- and diacritic-insensitive comparison form, matching `GlossaryFastLearner.fold`.
   private static func foldGlossaryTerm(_ word: String) -> String {
     word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+  }
+
+  // MARK: - Rejected-Spelling Correction
+
+  /// Rewrites a transcript that came back carrying a spelling the user explicitly rejected in the
+  /// Whisper Glossary (`Claude CLI (not "Cloud CLI")`), as a backstop behind `tieBreakerBlock`.
+  ///
+  /// Prompt conditioning alone does not reliably settle a near-homophone. In four days of this
+  /// user's dictation logs, Flash-Lite returned "Cloud CLI" for spoken "Claude CLI" in every
+  /// attempt after the glossary entry was added — including one dictation where they said both
+  /// words in a single sentence to contrast them and both came out identical.
+  ///
+  /// Deliberately narrow, because a rejected spelling normally stays a legitimate word elsewhere
+  /// in the same speaker's vocabulary:
+  /// - Only multi-word rejected forms are rewritten. Bare "Cloud" is left alone — "Google Cloud",
+  ///   "Sovereign Cloud" and "Cloud-Anbieter" are all frequent in this corpus, and the phrase is
+  ///   what makes the intent unambiguous.
+  /// - A match preceded by another capitalised word is left alone, so "Google Cloud CLI" survives
+  ///   while "die Cloud CLI" is corrected. German capitalises nouns, which makes the preceding
+  ///   token a decent signal for exactly the compounds that must not be touched.
+  ///
+  /// Both rules fail toward changing nothing, i.e. toward the behaviour before this existed.
+  private func correctingRejectedSpellings(in text: String) -> String {
+    guard !text.isEmpty else { return text }
+    let corrections = parsedGlossary().corrections
+    guard !corrections.isEmpty else { return text }
+
+    var result = text
+    for correction in corrections {
+      for rejected in correction.rejected where rejected.contains(" ") {
+        result = Self.replacingRejectedSpelling(
+          rejected, with: correction.correct, in: result)
+      }
+    }
+    if result != text {
+      DebugLogger.log("GLOSSARY-CORRECT: rewrote rejected spelling(s) in transcript")
+    }
+    return result
+  }
+
+  /// Internal rather than private so `RejectedSpellingCorrectionTests` can pin the two guards
+  /// down: both are silent when wrong, one way leaving the misheard word in place and the other
+  /// corrupting a legitimate compound.
+  static func replacingRejectedSpelling(
+    _ rejected: String, with correct: String, in text: String
+  ) -> String {
+    let escaped = NSRegularExpression.escapedPattern(for: rejected)
+    guard let regex = try? NSRegularExpression(pattern: "\\b\(escaped)\\b") else { return text }
+    let source = text as NSString
+    var result = text
+    // Back to front: a replacement only shifts offsets after its own range, so the remaining
+    // (earlier) match ranges stay valid against `result`.
+    for match in regex.matches(
+      in: text, range: NSRange(location: 0, length: source.length)
+    ).reversed() {
+      guard !isPrecededByCapitalizedWord(in: source, before: match.range.location) else { continue }
+      result = (result as NSString).replacingCharacters(in: match.range, with: correct)
+    }
+    return result
+  }
+
+  /// True when the token immediately before `location` begins with an uppercase letter — the
+  /// signal that the rejected spelling sits inside a proper compound ("Google Cloud CLI") rather
+  /// than standing on its own. Punctuation, digits, or the start of the text count as "not
+  /// preceded", so a sentence-initial match is still corrected.
+  private static func isPrecededByCapitalizedWord(in text: NSString, before location: Int) -> Bool {
+    func scalar(at index: Int) -> UnicodeScalar? {
+      UnicodeScalar(text.character(at: index))
+    }
+
+    var index = location - 1
+    while index >= 0, let s = scalar(at: index),
+      CharacterSet.whitespacesAndNewlines.contains(s)
+    {
+      index -= 1
+    }
+    let wordEnd = index
+    while index >= 0, let s = scalar(at: index), CharacterSet.letters.contains(s) {
+      index -= 1
+    }
+    guard wordEnd > index, let first = scalar(at: index + 1) else { return false }
+    return CharacterSet.uppercaseLetters.contains(first)
   }
 
   /// The full transcription instruction shared by every Gemini sub-path (inline, Files API, and
@@ -235,7 +404,11 @@ class SpeechService {
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
-      try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride, reportsProgress: reportsProgress)
+      let transcript = try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride, reportsProgress: reportsProgress)
+      // Applied here rather than per-provider: every path (offline Whisper, Gemini inline /
+      // Files API / chunked, OpenAI, xAI, self-hosted) and both dictation and live meeting
+      // return through this one call.
+      return self.correctingRejectedSpellings(in: transcript)
     }
 
     if cancellable {
@@ -1045,32 +1218,62 @@ class SpeechService {
   /// Reads a user *selection* aloud. The text may be code, markdown, or log output, so it's
   /// first passed through Smart Rewrite (when the user has it on) to produce something more
   /// pleasant to listen to before TTS. Used by the global Read Aloud shortcut.
-  func readSelectionAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
-    try await runReadAloud(text, voiceName: voiceName, applySmartRewrite: true)
+  func readSelectionAloud(
+    _ text: String, voiceName: String? = nil,
+    onChunkReady: ((Data, Int, Int) -> Void)? = nil
+  ) async throws -> Data {
+    try await runReadAloud(
+      text, voiceName: voiceName, applySmartRewrite: true, onChunkReady: onChunkReady)
   }
 
   /// Reads LLM-generated *prose* aloud — already intended for human consumption, so the
   /// Smart Rewrite pre-pass is skipped. Used by the chat reply read-aloud path.
-  func readProseAloud(_ text: String, voiceName: String? = nil) async throws -> Data {
-    try await runReadAloud(text, voiceName: voiceName, applySmartRewrite: false)
+  func readProseAloud(
+    _ text: String, voiceName: String? = nil,
+    onChunkReady: ((Data, Int, Int) -> Void)? = nil
+  ) async throws -> Data {
+    try await runReadAloud(
+      text, voiceName: voiceName, applySmartRewrite: false, onChunkReady: onChunkReady)
   }
 
   /// Runs the optional rewrite-then-TTS pipeline inside a single tracked `Task` stored on
   /// `currentTTSTask` so `cancelTTS()` can abort during the rewrite phase too (otherwise the
   /// rewrite would complete and TTS would start playing after the user already pressed Stop).
-  private func runReadAloud(_ text: String, voiceName: String?, applySmartRewrite: Bool) async throws -> Data {
+  private func runReadAloud(
+    _ text: String, voiceName: String?, applySmartRewrite: Bool,
+    onChunkReady: ((Data, Int, Int) -> Void)? = nil
+  ) async throws -> Data {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { throw TranscriptionError.networkError("Text is empty") }
 
     let task = Task<Data, Error> {
-      let textForTTS = applySmartRewrite ? try await self.maybeRewriteForSpeech(trimmed) : trimmed
+      let spoken = applySmartRewrite ? try await self.maybeRewriteForSpeech(trimmed) : trimmed
       try Task.checkCancellation()
-      return try await self.performTTS(text: textForTTS, voiceName: voiceName)
+      // Always sanitize last, on whatever text is about to be synthesized: the chat path never
+      // runs Smart Rewrite, and even the rewrite model can hand back Markdown.
+      let textForTTS = Self.sanitizedForSpeech(spoken)
+      return try await self.performTTS(
+        text: textForTTS, voiceName: voiceName, onChunkReady: onChunkReady)
     }
     currentTTSTask = task
     // See `transcribe` for the identity-check rationale.
     defer { if currentTTSTask == task { currentTTSTask = nil } }
     return try await task.value
+  }
+
+  /// Markdown/URL-stripped form of the text, or the text unchanged when stripping would leave
+  /// nothing to say (a selection that was entirely a code block or a link list). Silence is a
+  /// worse outcome than a badly-formatted reading, so the fallback keeps the original.
+  private static func sanitizedForSpeech(_ text: String) -> String {
+    let sanitized = SpeechTextSanitizer.plainSpeech(from: text)
+    guard !sanitized.isEmpty else {
+      DebugLogger.logWarning("READ-ALOUD-SANITIZE: Stripping left no speakable text; using original \(text.count) chars")
+      return text
+    }
+    if sanitized.count != text.count {
+      DebugLogger.log("READ-ALOUD-SANITIZE: \(text.count) chars -> \(sanitized.count) chars after removing Markdown and URLs")
+    }
+    return sanitized
   }
 
   /// Runs the Smart Rewrite pass if enabled. Returns the original text on any non-cancellation
@@ -1140,7 +1343,10 @@ class SpeechService {
   /// Multi-provider Read Aloud. Dispatches by the selected model's provider. All three providers
   /// emit raw PCM (s16le 24kHz mono), which is exactly what `MenuBarController.playTTSAudio`
   /// expects, so the returned `Data` is provider-independent.
-  private func performTTS(text: String, voiceName: String? = nil) async throws -> Data {
+  private func performTTS(
+    text: String, voiceName: String? = nil,
+    onChunkReady: ((Data, Int, Int) -> Void)? = nil
+  ) async throws -> Data {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     let model = ReadAloudPreferences.model
     // Caller override (nil for the Read Aloud shortcut) → the user's picked voice for this
@@ -1176,7 +1382,9 @@ class SpeechService {
 
     let chunkService = ChunkTTSService()
     chunkService.progressDelegate = chunkProgressDelegate
-    return try await chunkService.synthesize(text: trimmedText, model: model, synthesizeText: synthesizeChunk)
+    return try await chunkService.synthesize(
+      text: trimmedText, model: model, onChunkReady: onChunkReady,
+      synthesizeText: synthesizeChunk)
   }
 
   // MARK: - Gemini TTS (Generative Language API) — synthesizes one chunk per call.
@@ -1642,7 +1850,8 @@ class SpeechService {
       audioDuration: audioDuration,
       credential: credential,
       model: model,
-      prompt: prompt
+      prompt: prompt,
+      glossaryTerms: glossaryTermsForEchoCheck()
     )
   }
 
@@ -1710,10 +1919,16 @@ class SpeechService {
 
     let transcript = geminiClient.extractText(from: geminiResponse)
     // Very short recordings can be imperceptible to Flash-tier models, which then confabulate
-    // long fake transcripts from the prompt context — gate on chars-per-second plausibility.
-    let normalizedText = TextProcessingUtility.discardingImplausibleTranscript(
-      TextProcessingUtility.normalizeTranscriptionText(transcript),
-      audioDurationSeconds: audioDuration, mode: "GEMINI-TRANSCRIPTION")
+    // from the prompt context — gate on chars-per-second plausibility in both directions:
+    // impossibly long output (invented paragraphs) and near-empty output that is pure glossary
+    // vocabulary (a 6.3 s tail chunk once yielded exactly "sabaki.dance").
+    let normalizedText = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      TextProcessingUtility.discardingImplausibleTranscript(
+        TextProcessingUtility.normalizeTranscriptionText(transcript),
+        audioDurationSeconds: audioDuration, mode: "GEMINI-TRANSCRIPTION"),
+      audioDurationSeconds: audioDuration,
+      glossaryTerms: glossaryTermsForEchoCheck(),
+      mode: "GEMINI-TRANSCRIPTION")
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
 
     let inlineElapsedTime = CFAbsoluteTimeGetCurrent() - inlineStartTime
@@ -1786,9 +2001,13 @@ class SpeechService {
     DebugLogger.logSpeech("SPEED: Gemini API network request (FileURI) took \(String(format: "%.3f", networkTime))s (\(String(format: "%.0f", networkTime * 1000))ms)")
 
     let transcript = geminiClient.extractText(from: geminiResponse)
-    let normalizedText = TextProcessingUtility.discardingImplausibleTranscript(
-      TextProcessingUtility.normalizeTranscriptionText(transcript),
-      audioDurationSeconds: audioDuration, mode: "GEMINI-TRANSCRIPTION")
+    let normalizedText = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      TextProcessingUtility.discardingImplausibleTranscript(
+        TextProcessingUtility.normalizeTranscriptionText(transcript),
+        audioDurationSeconds: audioDuration, mode: "GEMINI-TRANSCRIPTION"),
+      audioDurationSeconds: audioDuration,
+      glossaryTerms: glossaryTermsForEchoCheck(),
+      mode: "GEMINI-TRANSCRIPTION")
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
 
     let fileURIElapsedTime = CFAbsoluteTimeGetCurrent() - fileURIStartTime

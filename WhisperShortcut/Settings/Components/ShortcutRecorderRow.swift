@@ -17,7 +17,9 @@ import SwiftUI
 ///   macOS routes `Shift + printable` to text input rather than to Carbon's
 ///   hotkey handler (binding `Shift+<` would just type `>`); accepting it
 ///   would silently produce a binding that never fires.
-/// - F1–F12 can be bound with any modifier set, including no modifier at all.
+/// - F1–F20 can be bound with any modifier set, including no modifier at all. Bare
+///   function keys are what programmable keyboards (QMK and friends) emit for a
+///   dedicated dictation key, so requiring a modifier would lock those setups out.
 /// - Escape (with no modifiers) cancels recording.
 /// - Unsupported keycodes (no matching `HotKey.Key`) show an inline error and
 ///   keep the recorder open.
@@ -292,7 +294,8 @@ struct ShortcutRecorderRow: View {
     }
 
     // Modifier rule for global Carbon hotkeys:
-    // - F1–F12 are free of modifier requirements (not used in text input).
+    // - F1–F20 are free of modifier requirements (not used in text input). F13–F20 in
+    //   particular are the keycodes programmable keyboards send for a dedicated key.
     // - Everything else needs at least one of ⌘/⌥/⌃. Shift alone is rejected:
     //   macOS routes Shift+<printable> to text input instead of the hotkey
     //   handler (Shift+a = "A", Shift+< = ">"), so Carbon never fires those
@@ -300,7 +303,8 @@ struct ShortcutRecorderRow: View {
     //   shortcuts that never trigger.
     let isFunctionKey: Bool = {
       switch resolvedKey {
-      case .f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10, .f11, .f12:
+      case .f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10, .f11, .f12,
+        .f13, .f14, .f15, .f16, .f17, .f18, .f19, .f20:
         return true
       default:
         return false
@@ -309,7 +313,7 @@ struct ShortcutRecorderRow: View {
     let commandModifiers = mods.intersection([.command, .option, .control])
     if !isFunctionKey, commandModifiers.isEmpty {
       if mods.isEmpty {
-        transientMessage = "At least ⌘/⌥/⌃ required"
+        transientMessage = "Add ⌘/⌥/⌃ — or use an F-key (F1–F20) on its own"
       } else {
         // Shift only — macOS won't route this to a global hotkey.
         transientMessage = "Shift alone won't fire — add ⌘/⌥/⌃"

@@ -103,20 +103,74 @@ enum TextProcessingUtility {
   /// Discards transcripts that are impossibly long for the recording duration. Flash-tier Gemini
   /// models sometimes fail to perceive very short recordings (~1 s) and confabulate
   /// paragraph-length "transcripts" from the prompt context instead (observed: 0.9 s of audio →
-  /// 538 invented characters). Real speech tops out around 20 characters per second; a generous
-  /// 30 chars/s plus fixed slack for very short clips keeps false positives out. Returns the text
-  /// unchanged when plausible, or "" when discarded — callers already treat empty output as
-  /// "no speech detected".
+  /// 538 invented characters, i.e. ~600 chars/s). Returns the text unchanged when plausible, or ""
+  /// when discarded — callers already treat empty output as "no speech detected".
+  ///
+  /// The ceiling has to stay far above real speech, because being wrong here destroys a *correct*
+  /// transcript and reports "no speech detected", which is undiagnosable from the outside.
+  /// Observed false positive at the previous 30 chars/s: recording a WhatsApp voice message played
+  /// back at 2× speed produced four perfectly good transcripts of 957–1017 characters from ~31 s
+  /// of audio (~33 chars/s) — every one of them thrown away, one of them by a single character.
+  /// Anything that speeds speech up lands there: 2×/3× playback, a fast speaker, a dense language.
+  ///
+  /// 60 chars/s is roughly 3–4× normal speech and still leaves an order of magnitude of margin to
+  /// the confabulation signature this gate exists for (the 0.9 s case above stays discarded by 5×).
   static func discardingImplausibleTranscript(
     _ text: String, audioDurationSeconds: Double, mode: String
   ) -> String {
     guard audioDurationSeconds > 0 else { return text }
-    let maxPlausibleCharacters = Int(audioDurationSeconds * 30.0) + 40
+    let maxPlausibleCharacters = Int(audioDurationSeconds * 60.0) + 40
     guard text.count > maxPlausibleCharacters else { return text }
     DebugLogger.logError(
       "\(mode): Discarding implausible transcript (\(text.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, max plausible \(maxPlausibleCharacters)): '\(text.prefix(120))'"
     )
     return ""
+  }
+
+  /// Lower bound of the same gate: discards transcripts that are implausibly *short* for the
+  /// recording **and** made of nothing but glossary terms.
+  ///
+  /// Observed: a 6.3 s tail chunk of a 7-minute dictation came back as exactly `sabaki.dance`
+  /// while the glossary carried both "Sabaki" and "Dance" — the model could not perceive the
+  /// near-silent tail and emitted glossary vocabulary instead of nothing. The upper bound in
+  /// `discardingImplausibleTranscript` cannot catch this: 12 characters are never "too long".
+  ///
+  /// Both conditions must hold, which is what keeps false positives out. A genuine short
+  /// utterance ("Sabaki Dance", 12 chars from 1.5 s) clears the length floor and survives; a
+  /// genuine short answer that is not glossary vocabulary ("Ja.") fails the content test and
+  /// survives. Only "long audio, almost no text, and that text is verbatim glossary" is dropped.
+  /// Returns "" when discarded — callers already treat empty output as "no speech detected".
+  static func discardingGlossaryEchoTranscript(
+    _ text: String, audioDurationSeconds: Double, glossaryTerms: [String], mode: String
+  ) -> String {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty, audioDurationSeconds > 0, !glossaryTerms.isEmpty else { return text }
+
+    // Real speech runs 10–20 chars/s; even slow, pause-heavy dictation stays above 5. Three
+    // chars/s is far enough below that floor that only near-empty output trips it.
+    let minPlausibleCharacters = audioDurationSeconds * 3.0
+    guard Double(trimmed.count) < minPlausibleCharacters else { return text }
+
+    // Content test: every word in the transcript is a glossary term. Split on anything that
+    // isn't a letter or digit so `sabaki.dance`, `Sabaki-Dance` and `Sabaki, Dance` all reduce
+    // to the same two words.
+    let folded = Set(glossaryTerms.flatMap { term in
+      term.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        .map { foldForEchoCheck(String($0)) }
+    })
+    let words = trimmed.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+      .map { foldForEchoCheck(String($0)) }
+    guard !words.isEmpty, words.allSatisfy({ folded.contains($0) }) else { return text }
+
+    DebugLogger.logError(
+      "\(mode): Discarding glossary-echo transcript (\(trimmed.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, min plausible \(String(format: "%.0f", minPlausibleCharacters)), all words are glossary terms): '\(trimmed.prefix(120))'"
+    )
+    return ""
+  }
+
+  /// Case- and diacritic-insensitive comparison form, matching `SpeechService.foldGlossaryTerm`.
+  private static func foldForEchoCheck(_ word: String) -> String {
+    word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
   }
 
   // MARK: - Mojibake Repair
