@@ -60,32 +60,35 @@ final class LiveMeetingSession: NSObject {
   private var transcriptURL: URL?
   private var pendingChunks: Int = 0
   private var safeguardTimer: Timer?
-  /// ID of the last chunk included in the rolling summary. Robust against chunk trimming.
-  private var lastSummarizedChunkID: UUID? = nil
+  /// ID of the last chunk already covered by a live note. Robust against chunk trimming.
+  private var lastNotedChunkID: UUID? = nil
   /// When non-nil, `finish()` renames the transcript file to this stem (or timestamp-suffix) before ending.
   private var preferredName: String?
   /// Set to true after showing the rate-limit popup once this session so we don't spam.
   private var didShowRateLimitAlert: Bool = false
-  /// Consecutive rolling-summary failures (e.g. sustained Gemini 503). Reset to 0 on any success.
-  private var consecutiveSummaryFailures: Int = 0
-  /// True once the rolling-summary circuit-breaker has tripped: we stop scheduling further rolling
-  /// updates for this session (the final summary is still attempted at end). Prevents hammering an
-  /// unavailable model dozens of times during one meeting.
-  private var summaryCircuitOpen: Bool = false
-  /// Set to true after showing the "summary unavailable" popup once this session so we don't spam.
-  private var didShowSummaryFailureAlert: Bool = false
-  /// Consecutive rolling-summary failures before the circuit-breaker opens and we notify the user.
-  private let summaryFailureThreshold = 3
-  /// Single-flight guard: true while a rolling-summary API call is in flight. A summary update can
-  /// take 60–100s+ on a long meeting, but chunks arrive every ~45s — without this guard each
-  /// threshold fired a fresh overlapping call, piling up concurrent requests that raced on
-  /// `lastSummarizedChunkID`. When set, an on-demand refresh request is dropped: the in-flight call
-  /// will already fold in every chunk accumulated so far.
-  private var summaryUpdateInFlight: Bool = false
-  /// Bumped on every session start. A rolling-summary Task captures the generation it launched under
-  /// so a straggler from a previous meeting (its API call can outlive a stop+restart) no-ops instead
-  /// of clearing the in-flight flag — or writing summary/chunk state — for the newer session.
+  /// Consecutive live-note failures (e.g. sustained Gemini 503). Reset to 0 on any success.
+  private var consecutiveNoteFailures: Int = 0
+  /// True once the live-note circuit-breaker has tripped: we stop generating further notes for this
+  /// session (the final summary is still attempted at end). Prevents hammering an unavailable model
+  /// dozens of times during one meeting.
+  private var noteCircuitOpen: Bool = false
+  /// Set to true after showing the "live notes unavailable" popup once this session so we don't spam.
+  private var didShowNoteFailureAlert: Bool = false
+  /// Consecutive live-note failures before the circuit-breaker opens and we notify the user.
+  private let noteFailureThreshold = 3
+  /// Single-flight guard: true while a live-note API call is in flight. Notes are small (a segment
+  /// in, two bullets out) so calls are fast, but a slow response must not let a second call start
+  /// and race on `lastNotedChunkID` — that would either duplicate or skip a segment.
+  private var noteUpdateInFlight: Bool = false
+  /// Bumped on every session start. A live-note Task captures the generation it launched under so a
+  /// straggler from a previous meeting (its API call can outlive a stop+restart) no-ops instead of
+  /// clearing the in-flight flag — or writing note/chunk state — for the newer session.
   private var sessionGeneration = 0
+  /// Minimum new transcript characters before a live note is generated. Below this a segment is
+  /// usually a greeting or a stray sentence and produces a note not worth its API call.
+  private let liveNoteMinChars = 400
+  /// …unless this many chunks have piled up, which happens when people speak in short bursts.
+  private let liveNoteMaxPendingChunks = 4
   /// When true, `finish()` deletes the transcript instead of saving.
   private var discard: Bool = false
 
@@ -122,10 +125,7 @@ final class LiveMeetingSession: NSObject {
     // Transcript is shown in the app's Meeting view; do not open the .txt file in an external app.
 
     // Load chunk interval from settings
-    let savedInterval = UserDefaults.standard.double(
-      forKey: UserDefaultsKeys.liveMeetingChunkInterval)
-    let chunkInterval: TimeInterval =
-      savedInterval > 0 ? savedInterval : SettingsDefaults.liveMeetingChunkInterval.rawValue
+    let chunkInterval = Self.configuredChunkInterval()
 
     // Compute resume offset so new chunks continue from where the previous recording
     // left off, keeping transcript timestamps monotonic.
@@ -149,17 +149,18 @@ final class LiveMeetingSession: NSObject {
     awaitingFinalChunk = false
     pendingChunks = 0
     didShowRateLimitAlert = false
-    consecutiveSummaryFailures = 0
-    summaryCircuitOpen = false
-    didShowSummaryFailureAlert = false
-    summaryUpdateInFlight = false
+    consecutiveNoteFailures = 0
+    noteCircuitOpen = false
+    didShowNoteFailureAlert = false
+    noteUpdateInFlight = false
     sessionGeneration += 1
     if resuming && !existingChunks.isEmpty {
       LiveMeetingTranscriptStore.shared.resumeSession()
-      // Preserve existing summarized state; if nil it falls back to "from start" which is safe.
+      // Everything already on disk has been noted; only new chunks need a note.
+      lastNotedChunkID = existingChunks.last?.id
     } else {
       LiveMeetingTranscriptStore.shared.startSession()
-      lastSummarizedChunkID = nil
+      lastNotedChunkID = nil
     }
 
     // Schedule duration safeguard if enabled
@@ -259,7 +260,8 @@ final class LiveMeetingSession: NSObject {
         try? FileManager.default.removeItem(at: url)
         let summaryURL = url.deletingPathExtension().appendingPathExtension("summary.md")
         try? FileManager.default.removeItem(at: summaryURL)
-        DebugLogger.log("LIVE-MEETING: Discarded transcript and summary files")
+        try? FileManager.default.removeItem(at: MeetingListService.notesURL(transcriptFileURL: url))
+        DebugLogger.log("LIVE-MEETING: Discarded transcript, notes and summary files")
       }
       transcriptURL = nil
       LiveMeetingTranscriptStore.shared.clearForNewMeeting()
@@ -286,7 +288,7 @@ final class LiveMeetingSession: NSObject {
     recorder = nil
     pendingChunks = 0
     transcriptURL = nil
-    lastSummarizedChunkID = nil
+    lastNotedChunkID = nil
     onFinished()
 
     if let transcriptURL = transcriptURLForPostProcessing {
@@ -301,6 +303,7 @@ final class LiveMeetingSession: NSObject {
   /// captured before `finish()` cleared the fields.
   private func runPostProcessing(transcriptURL: URL) {
     let chunksSnapshot = LiveMeetingTranscriptStore.shared.chunks
+    let markers = LiveMeetingTranscriptStore.shared.markerTexts
     Task {
       let transcriptText = chunksSnapshot.map { "\($0.timestampString) \($0.text)" }.joined(
         separator: "\n\n")
@@ -348,7 +351,7 @@ final class LiveMeetingSession: NSObject {
       }
       do {
         let summary = try await MeetingListService.generateSummaryText(
-          transcript: textForSummary, model: model)
+          transcript: textForSummary, markers: markers, model: model)
         let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
           MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
@@ -397,6 +400,14 @@ final class LiveMeetingSession: NSObject {
         try FileManager.default.removeItem(at: newURL)
       }
       try FileManager.default.moveItem(at: url, to: newURL)
+      // The live notes were written under the old stem while the meeting ran; without moving them
+      // too, naming a meeting on the way out would orphan every note it collected.
+      let oldNotes = MeetingListService.notesURL(transcriptFileURL: url)
+      let newNotes = MeetingListService.notesURL(transcriptFileURL: newURL)
+      if FileManager.default.fileExists(atPath: oldNotes.path) {
+        try? FileManager.default.removeItem(at: newNotes)
+        try? FileManager.default.moveItem(at: oldNotes, to: newNotes)
+      }
       transcriptURL = newURL
       MeetingListService.shared.invalidateCache(for: nil)
       DispatchQueue.main.async {
@@ -465,6 +476,9 @@ final class LiveMeetingSession: NSObject {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     if !trimmedText.isEmpty {
       LiveMeetingTranscriptStore.shared.appendChunk(startTime: chunkStartTime, text: trimmedText)
+      // `appendChunk` hops to the main queue, so the new chunk isn't visible yet — evaluate the
+      // note threshold after it lands.
+      DispatchQueue.main.async { [weak self] in self?.refreshLiveNotes() }
     }
   }
 
@@ -474,47 +488,62 @@ final class LiveMeetingSession: NSObject {
     return String(format: "[%02d:%02d]", minutes, seconds)
   }
 
-  // MARK: - Rolling summary
+  // MARK: - Live notes
 
-  /// On-demand rolling summary refresh. Called when a consumer actually needs an up-to-date live
-  /// summary — the Summary tab is shown for the active meeting, or the user chats with it — rather
-  /// than on a timer. This folds every transcript chunk accumulated since the last summary into one
-  /// call, so cost is proportional to how often the user looks, not to meeting length. The
-  /// end-of-meeting summary in `finish()` is regenerated from the full transcript and does not
-  /// depend on this.
-  func refreshRollingSummary() {
+  /// Marks the current moment with a user-written (or default) marker and persists it.
+  /// Called from the global marker hotkey while a meeting is recording.
+  @discardableResult
+  func addMarker(text: String) -> Bool {
+    guard appStateIsRecordingMeeting() else { return false }
+    let store = LiveMeetingTranscriptStore.shared
+    let marker = store.appendMarker(text: text, at: recorder?.currentElapsedTime)
+    persistNotes()
+    DebugLogger.log("LIVE-MEETING-NOTES: Marker set at \(marker.timestampString)")
+    return true
+  }
+
+  /// Generates the next live note when enough new transcript has accumulated.
+  ///
+  /// Called after every transcript append — the note stream is what the user reads during the
+  /// meeting, so it must keep up on its own rather than waiting for someone to open a tab. Pass
+  /// `force: true` to note whatever is pending right now (used when the user asks the chat a
+  /// question, so their turn sees a current note stream).
+  func refreshLiveNotes(force: Bool = false) {
     // Only meaningful while a meeting is actively recording (the live store owns the current stem).
     guard appStateIsRecordingMeeting() else { return }
 
-    // Circuit-breaker: after repeated failures (e.g. a sustained model outage) we stop firing
-    // rolling updates for the rest of the session instead of retrying for an hour. The
-    // end-of-meeting summary is still attempted once in finish().
-    guard !summaryCircuitOpen else { return }
+    // Circuit-breaker: after repeated failures (e.g. a sustained model outage) we stop generating
+    // notes for the rest of the session instead of retrying for an hour. The end-of-meeting summary
+    // is still attempted once in finish().
+    guard !noteCircuitOpen else { return }
 
-    // Single-flight: if a previous update is still running (they can take 60–100s+), don't launch a
-    // second concurrent call. The in-flight call already folds in every chunk accumulated so far, and
-    // the next on-demand request will pick up anything newer.
-    guard !summaryUpdateInFlight else {
-      DebugLogger.log(
-        "LIVE-MEETING-SUMMARY: previous update still in flight — skipping on-demand refresh")
+    // Single-flight: a second concurrent call would race on `lastNotedChunkID` and either duplicate
+    // or skip a segment. Whatever is pending is picked up by the next append.
+    guard !noteUpdateInFlight else { return }
+
+    let store = LiveMeetingTranscriptStore.shared
+    let pending = store.chunks(afterID: lastNotedChunkID)
+    guard let newLastID = pending.last?.id, let firstStart = pending.first?.startTime else { return }
+
+    let segment = pending.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n")
+    guard !segment.isEmpty else { return }
+    if !force && segment.count < liveNoteMinChars && pending.count < liveNoteMaxPendingChunks {
       return
     }
 
-    let store = LiveMeetingTranscriptStore.shared
-    let result = store.chunkTexts(afterID: lastSummarizedChunkID)
-    guard !result.text.isEmpty, let newLastID = result.lastID else { return }
-
-    let currentSummary = store.summary
-    let newText = result.text
-    let previousLastID = lastSummarizedChunkID
-    lastSummarizedChunkID = newLastID
-    summaryUpdateInFlight = true
+    // Only generated notes are context for the model — markers are the user's own words and
+    // repeating them back would just make the model echo them.
+    let recentNotes = store.liveNotes.filter { !$0.isMarker }.suffix(3).flatMap { $0.bullets }
+    let previousLastID = lastNotedChunkID
+    lastNotedChunkID = newLastID
+    noteUpdateInFlight = true
     let generation = sessionGeneration
 
     Task {
-      await runRollingSummaryUpdate(
-        currentSummary: currentSummary,
-        newText: newText,
+      await runLiveNoteUpdate(
+        segment: segment,
+        recentNotes: Array(recentNotes),
+        noteStartTime: firstStart,
         previousLastID: previousLastID,
         generation: generation
       )
@@ -522,61 +551,108 @@ final class LiveMeetingSession: NSObject {
         // Ignore a straggler from a previous session — clearing the flag here would defeat the
         // single-flight guard for the meeting that's now running.
         guard generation == self.sessionGeneration else { return }
-        self.summaryUpdateInFlight = false
+        self.noteUpdateInFlight = false
       }
     }
   }
 
-  /// Merges new transcript into the rolling summary (via the selected model's provider) and updates
-  /// the store. Call from a Task.
-  private func runRollingSummaryUpdate(
-    currentSummary: String, newText: String, previousLastID: UUID?, generation: Int
+  /// Generates one note for the given segment and appends it to the store. Call from a Task.
+  private func runLiveNoteUpdate(
+    segment: String, recentNotes: [String], noteStartTime: TimeInterval, previousLastID: UUID?,
+    generation: Int
   ) async {
     let model = PromptModel.loadSelectedMeetingSummary()
     guard model.hasRequiredCredential else {
       DebugLogger.logWarning(
-        "LIVE-MEETING-SUMMARY: No credential for \(model.rawValue) — skipping rolling summary update")
+        "LIVE-MEETING-NOTES: No credential for \(model.rawValue) — skipping live note")
       return
     }
     do {
-      let updated = try await MeetingListService.updateRollingSummary(
-        currentSummary: currentSummary, newText: newText, model: model)
+      let raw = try await MeetingListService.generateLiveNote(
+        segment: segment, recentNotes: recentNotes, model: model)
+      let bullets = Self.parseBullets(raw)
       await MainActor.run {
         // A straggler from a previous session must not write into the current meeting's state.
         guard generation == self.sessionGeneration else { return }
-        let trimmed = updated.trimmingCharacters(in: .whitespacesAndNewlines)
-        LiveMeetingTranscriptStore.shared.updateSummary(trimmed)
-        if let url = self.transcriptURL, !trimmed.isEmpty {
-          MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: url)
+        self.consecutiveNoteFailures = 0
+        // An empty response is a valid answer: the prompt tells the model to stay silent when a
+        // segment carries nothing worth remembering. The segment still counts as noted.
+        guard !bullets.isEmpty else {
+          DebugLogger.log("LIVE-MEETING-NOTES: Segment produced no note (nothing noteworthy)")
+          return
         }
-        self.consecutiveSummaryFailures = 0
-        DebugLogger.log("LIVE-MEETING-SUMMARY: Rolling summary updated (\(updated.count) chars)")
+        LiveMeetingTranscriptStore.shared.appendNote(
+          LiveMeetingNote(startTime: noteStartTime, bullets: bullets))
+        self.persistNotes()
+        DebugLogger.log("LIVE-MEETING-NOTES: Appended note with \(bullets.count) bullet(s)")
       }
     } catch {
-      DebugLogger.logError("LIVE-MEETING-SUMMARY: Update failed: \(error.localizedDescription)")
+      DebugLogger.logError("LIVE-MEETING-NOTES: Note generation failed: \(error.localizedDescription)")
       await MainActor.run {
         guard generation == self.sessionGeneration else { return }
-        // Roll back so the next attempt re-summarizes the same range.
-        self.lastSummarizedChunkID = previousLastID
-        self.consecutiveSummaryFailures += 1
+        // Roll back so the next attempt covers the same segment.
+        self.lastNotedChunkID = previousLastID
+        self.consecutiveNoteFailures += 1
         // Trip the circuit-breaker after sustained failures: stop hammering the model for the
         // rest of the session and tell the user once (the final summary is still attempted at end).
-        if self.consecutiveSummaryFailures >= self.summaryFailureThreshold
-          && !self.summaryCircuitOpen {
-          self.summaryCircuitOpen = true
+        if self.consecutiveNoteFailures >= self.noteFailureThreshold && !self.noteCircuitOpen {
+          self.noteCircuitOpen = true
           DebugLogger.logWarning(
-            "LIVE-MEETING-SUMMARY: circuit-breaker tripped after \(self.consecutiveSummaryFailures) consecutive failures — pausing live summary for this session"
+            "LIVE-MEETING-NOTES: circuit-breaker tripped after \(self.consecutiveNoteFailures) consecutive failures — pausing live notes for this session"
           )
-          if !self.didShowSummaryFailureAlert {
-            self.didShowSummaryFailureAlert = true
+          if !self.didShowNoteFailureAlert {
+            self.didShowNoteFailureAlert = true
             PopupNotificationWindow.showError(
-              "The live summary couldn't be updated (the summary model is unavailable). Recording continues normally; a summary will be generated when the meeting ends.",
-              title: "Live Meeting – Summary Paused"
+              "Live notes couldn't be generated (the notes model is unavailable). Recording continues normally; a full summary will be generated when the meeting ends.",
+              title: "Live Meeting – Notes Paused"
             )
           }
         }
       }
     }
+  }
+
+  /// Writes the current note list next to the transcript so it survives a restart and a reopen.
+  private func persistNotes() {
+    guard let url = transcriptURL else { return }
+    MeetingListService.shared.saveNotes(
+      LiveMeetingTranscriptStore.shared.liveNotes, transcriptFileURL: url)
+  }
+
+  /// Extracts bullet lines from a live-note response. Models occasionally answer with a bare
+  /// sentence instead of "- …", so an unbulleted single line is accepted as one bullet.
+  static func parseBullets(_ raw: String) -> [String] {
+    let lines = raw.components(separatedBy: .newlines)
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .filter { !$0.isEmpty }
+    let bulleted = lines.compactMap { line -> String? in
+      for marker in ["- ", "* ", "• "] where line.hasPrefix(marker) {
+        let text = String(line.dropFirst(marker.count)).trimmingCharacters(in: .whitespaces)
+        return text.isEmpty ? nil : text
+      }
+      return nil
+    }
+    if !bulleted.isEmpty { return Array(bulleted.prefix(2)) }
+    // No bullet markers: accept a single plain line, but never a whole paragraph dump.
+    guard lines.count == 1, let only = lines.first, only.count <= 300 else { return [] }
+    return [only]
+  }
+
+  // MARK: - Chunk cadence
+
+  /// Switches the recorder between the responsive cadence (chat window on screen, so the note
+  /// stream is being watched) and the configured one. A 60 s chunk means the live view can lag a
+  /// full minute behind the room — fine in the background, far too slow to follow along.
+  func setFastChunking(_ fast: Bool) {
+    guard let recorder else { return }
+    let configured = Self.configuredChunkInterval()
+    let target = fast ? min(configured, AppConstants.liveMeetingFastChunkInterval) : configured
+    recorder.updateMaxChunkDuration(target)
+  }
+
+  private static func configuredChunkInterval() -> TimeInterval {
+    let saved = UserDefaults.standard.double(forKey: UserDefaultsKeys.liveMeetingChunkInterval)
+    return saved > 0 ? saved : SettingsDefaults.liveMeetingChunkInterval.rawValue
   }
 }
 
@@ -622,9 +698,8 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
           DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (silent)")
         } else {
           await MainActor.run {
+            // Appending also evaluates whether the accumulated segment is worth a live note.
             self.appendToTranscript(trimmedText, chunkStartTime: startTime)
-            // No rolling-summary call here: the live summary is refreshed on demand (Summary tab
-            // shown / live meeting chatted), so we don't pay for updates nobody looks at.
           }
         }
 

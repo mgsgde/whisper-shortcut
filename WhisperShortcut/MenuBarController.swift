@@ -487,8 +487,20 @@ class MenuBarController: NSObject {
     )
     NotificationCenter.default.addObserver(
       self,
-      selector: #selector(refreshLiveMeetingSummaryOnDemand),
-      name: .liveMeetingSummaryRefreshRequested,
+      selector: #selector(refreshLiveMeetingNotesOnDemand),
+      name: .liveMeetingNotesRefreshRequested,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(markMeetingMomentFromNotification),
+      name: .liveMeetingMarkerRequested,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(chatWindowVisibilityChanged(_:)),
+      name: .chatWindowVisibilityChanged,
       object: nil
     )
   }
@@ -1086,6 +1098,8 @@ class MenuBarController: NSObject {
     appState = .recording(.liveMeeting)
 
     ChatWindowManager.shared.show(suppressFocusLossClose: true)
+    // `show()` posts the visibility change, but the session had no recorder yet when it fired.
+    liveMeeting.setFastChunking(ChatWindowManager.shared.isWindowOpen())
   }
 
   private func stopLiveMeeting() {
@@ -1109,11 +1123,34 @@ class MenuBarController: NSObject {
     DebugLogger.log("LIVE-MEETING: Opened transcripts folder")
   }
 
-  /// On-demand rolling summary refresh, forwarded to the session. Called when a consumer actually
-  /// needs an up-to-date live summary — the Summary tab is shown for the active meeting, or the
-  /// user chats with it — rather than on a timer.
-  @objc private func refreshLiveMeetingSummaryOnDemand() {
-    DispatchQueue.main.async { [weak self] in self?.liveMeeting.refreshRollingSummary() }
+  /// Brings the live notes up to date immediately, forwarded to the session. Notes normally follow
+  /// the transcript on their own; this fires when the user sends a chat message, so their turn sees
+  /// the freshest note stream rather than one segment behind.
+  @objc private func refreshLiveMeetingNotesOnDemand() {
+    DispatchQueue.main.async { [weak self] in self?.liveMeeting.refreshLiveNotes(force: true) }
+  }
+
+  /// Marker hotkey handler. Flags the current moment of a running meeting; does nothing when no
+  /// meeting is recording. No confirmation UI on purpose — the marker appears in the note stream
+  /// itself, which is the same surface the user is already reading.
+  @objc func markMeetingMoment() {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      if !self.liveMeeting.addMarker(text: AppConstants.liveMeetingDefaultMarkerText) {
+        DebugLogger.log("LIVE-MEETING-NOTES: Marker hotkey ignored — no meeting recording")
+      }
+    }
+  }
+
+  @objc private func markMeetingMomentFromNotification() {
+    markMeetingMoment()
+  }
+
+  /// Chat window shown/hidden: switch the meeting's chunk cadence so the live view keeps up while
+  /// someone is watching, and falls back to the configured (cheaper) interval when nobody is.
+  @objc private func chatWindowVisibilityChanged(_ notification: Notification) {
+    let visible = notification.userInfo?["visible"] as? Bool ?? false
+    DispatchQueue.main.async { [weak self] in self?.liveMeeting.setFastChunking(visible) }
   }
 
   @objc private func rateApp() {
@@ -1447,6 +1484,8 @@ class MenuBarController: NSObject {
       backendTag = "openai"
     } else if transcriptionModelForCapture == .selfHostedTranscription {
       backendTag = "self-hosted"
+    } else if transcriptionModelForCapture == .openRouterTranscription {
+      backendTag = "openrouter"
     } else {
       backendTag = "gemini"
     }

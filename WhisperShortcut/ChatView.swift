@@ -121,6 +121,8 @@ class ChatViewModel: ObservableObject {
       case largePaste
       /// Text captured via Chat shortcut (front-app selection).
       case shortcutSelection
+      /// A line the user picked out of the meeting notes or transcript to ask about.
+      case meetingQuote
     }
 
     let id: UUID
@@ -154,9 +156,11 @@ class ChatViewModel: ObservableObject {
       }
       let hasSelection = content.contains("<pasted_selection>")
       let hasPaste = content.contains("<pasted_content>")
+      let hasQuote = content.contains("<quoted_from_meeting>")
       if hasSelection, hasPaste { return "[Selection] [Pasted content]" }
       if hasSelection { return "[Selection]" }
       if hasPaste { return "[Pasted content]" }
+      if hasQuote { return "[Quote]" }
       return content
     }
   }
@@ -191,8 +195,10 @@ class ChatViewModel: ObservableObject {
   /// writing a fresh `.summary.md` so SwiftUI re-evaluates `meetingSummaryView`, which then re-reads
   /// `endedMeetingSummary` from disk. Disk is the source of truth and the file is tiny.
   @Published private(set) var summaryRevision: UInt = 0
-  /// True while a missing meeting summary is being regenerated, so the Summary tab can show progress.
+  /// True while a missing meeting summary is being regenerated, so the Notes tab can show progress.
   @Published private(set) var isRecoveringMeetingSummary: Bool = false
+  /// Disk-read notes of the ended meeting currently being viewed. See `meetingNotesForDisplay`.
+  private var endedNotesCache: (stem: String, notes: [LiveMeetingNote])?
 
   /// In-memory ring buffer of recently closed sessions for Cmd+Shift+T undo.
   /// Only sessions that had at least one message are stored — empty tabs are
@@ -440,12 +446,11 @@ class ChatViewModel: ObservableObject {
     let hasContent = !finalContent.isEmpty || !attachedParts.isEmpty
     guard hasContent else { return }
 
-    // On-demand live summary: when the user chats with the meeting that's recording right now,
-    // request a rolling-summary refresh so later turns carry meeting content older than the last
-    // 5 minutes of transcript. The refresh is async (single-flight), so it benefits the next turn;
-    // this turn still gets the recent transcript plus whatever summary already exists.
+    // Chatting with the meeting that is recording right now: bring the note stream up to date so
+    // the next turn (and the notes the user is reading) cover the last few seconds too. This turn
+    // already carries the full transcript, so nothing depends on it landing first.
     if isCurrentSessionTheActiveMeeting {
-      NotificationCenter.default.post(name: .liveMeetingSummaryRefreshRequested, object: nil)
+      NotificationCenter.default.post(name: .liveMeetingNotesRefreshRequested, object: nil)
     }
 
     errorMessage = nil
@@ -1336,14 +1341,14 @@ class ChatViewModel: ObservableObject {
       .joined(separator: "\n")
     text += "\n\nAvailable slash commands in this chat:\n\(commandsList)"
     // Inject meeting context whenever the current chat is a meeting tab:
-    // - live or just-ended (live store still owns this stem): rolling summary + last 5 min;
+    // - live or just-ended (live store still owns this stem): live notes + the FULL transcript;
     // - past meeting (live store empty or moved on): summary + full transcript from disk.
     // Regular chats stay free of meeting content.
     let meetingContext: String? = {
       if let provided = meetingContextProvider?() { return provided }
       guard session.isMeeting, let stem = session.meetingStem else { return nil }
       if LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem == stem {
-        let live = LiveMeetingTranscriptStore.shared.meetingContextForChat(lastMinutes: 5)
+        let live = LiveMeetingTranscriptStore.shared.meetingContextForChat()
         if !live.isEmpty { return live }
       }
       return buildEndedMeetingContext()
@@ -2059,7 +2064,8 @@ class ChatViewModel: ObservableObject {
       LiveMeetingTranscriptStore.shared.rehydrateForResume(
         stem: stem,
         chunks: LiveMeetingTranscriptStore.parseTranscript(transcript),
-        summary: summary.trimmingCharacters(in: .whitespacesAndNewlines))
+        summary: summary.trimmingCharacters(in: .whitespacesAndNewlines),
+        notes: MeetingListService.shared.loadNotes(forStem: stem))
     }
     NotificationCenter.default.post(name: .chatResumeMeeting, object: nil)
   }
@@ -2117,6 +2123,109 @@ class ChatViewModel: ObservableObject {
       parts.append("Meeting transcript:\n\(capped)")
     }
     return "Use the following meeting context to answer the user's questions.\n\n" + parts.joined(separator: "\n\n")
+  }
+
+  // MARK: - Meeting notes, quoting, and quick actions
+
+  /// Notes to show for the meeting this tab is viewing. The live store belongs to whichever meeting
+  /// is recording *right now*, so a tab that isn't that meeting reads its own notes from disk —
+  /// without this guard every meeting tab would show the running meeting's notes.
+  var meetingNotesForDisplay: [LiveMeetingNote] {
+    if isCurrentSessionTheActiveMeeting {
+      return LiveMeetingTranscriptStore.shared.liveNotes
+    }
+    guard let stem = session.meetingStem else { return [] }
+    // The chat stream reads this on every layout pass, so an ended meeting's notes are read from
+    // disk once per stem instead of once per frame. They cannot change while the meeting is over.
+    if let cached = endedNotesCache, cached.stem == stem { return cached.notes }
+    let notes = MeetingListService.shared.loadNotes(forStem: stem)
+    endedNotesCache = (stem, notes)
+    return notes
+  }
+
+  /// One line describing exactly what the model can see, shown above the composer.
+  ///
+  /// The chat's knowledge of a meeting used to be invisible — you could not tell whether asking
+  /// about something from 40 minutes ago would work. Now that it always gets the full transcript,
+  /// saying so is what makes the feature usable.
+  var meetingContextDescription: String? {
+    guard session.isMeeting else { return nil }
+    if isCurrentSessionTheActiveMeeting {
+      let store = LiveMeetingTranscriptStore.shared
+      guard !store.chunks.isEmpty else { return "Listening — nothing transcribed yet." }
+      let minutes = max(1, Int(store.elapsedSeconds / 60))
+      let noteCount = store.liveNotes.count
+      let notes = noteCount == 1 ? "1 note" : "\(noteCount) notes"
+      return "Chat sees the full transcript · \(minutes) min so far · \(notes)"
+    }
+    let hasTranscript = !(loadMeetingTranscriptFromDisk() ?? "").isEmpty
+    guard hasTranscript else { return nil }
+    return endedMeetingSummary == nil
+      ? "Chat sees the full transcript of this meeting."
+      : "Chat sees the summary and full transcript of this meeting."
+  }
+
+  /// Puts a line from the notes or transcript into the composer as a quote chip, so the user can
+  /// ask about that exact moment instead of paraphrasing it.
+  func quoteInComposer(_ text: String) {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return }
+    addPastedBlock(trimmed, kind: .meetingQuote)
+    NotificationCenter.default.post(name: .chatFocusInput, object: nil)
+  }
+
+  /// The one-tap questions offered above the composer in a meeting. Each is a full prompt: during a
+  /// meeting there is no time to phrase one, and these four cover nearly every mid-meeting ask.
+  static let meetingQuickActions: [(label: String, prompt: String)] = [
+    (
+      "Catch me up",
+      "Catch me up on this meeting: what has been discussed so far and what do I need to know right now? Five bullets at most."
+    ),
+    (
+      "Action items",
+      "List every action item mentioned so far, with who owns it and any deadline. Only what the transcript actually supports — say so if there are none."
+    ),
+    (
+      "Open questions",
+      "Which questions have been raised in this meeting but not answered yet?"
+    ),
+    (
+      "Decisions",
+      "What has been decided so far in this meeting? Quote the timestamp for each decision."
+    ),
+  ]
+
+  func sendQuickAction(_ prompt: String) {
+    Task { await sendComposed(finalContent: prompt, attachedParts: []) }
+  }
+
+  /// Copies this meeting's raw transcript. The transcript is a thing to paste elsewhere, not a
+  /// thing to read in the app, so it gets a button rather than a tab.
+  func copyMeetingTranscript() {
+    let text: String = {
+      if isCurrentSessionTheActiveMeeting {
+        return LiveMeetingTranscriptStore.shared.fullTranscriptText()
+      }
+      return (loadMeetingTranscriptFromDisk() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }()
+    guard !text.isEmpty else {
+      showNotice("No transcript yet")
+      return
+    }
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
+    showNotice("Transcript copied")
+  }
+
+  /// Reveals the transcript file in Finder — the escape hatch for actually reading the raw record.
+  func revealMeetingTranscript() {
+    guard let stem = session.meetingStem else { return }
+    let url = MeetingListService.transcriptURL(forStem: stem)
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      showNotice("No transcript file yet")
+      return
+    }
+    NSWorkspace.shared.activateFileViewerSelecting([url])
   }
 
   /// Recovers a meeting summary that failed to generate at meeting-end (e.g. a transient Gemini 503
@@ -2581,6 +2690,9 @@ private struct InputTextHeightKey: PreferenceKey {
 
 struct ChatView: View {
   @StateObject private var viewModel: ChatViewModel
+  /// The running meeting's transcript and notes. Observed (not just read) so a note landing during
+  /// the meeting actually redraws the note stream — this view shows it live, in the chat itself.
+  @ObservedObject private var liveStore = LiveMeetingTranscriptStore.shared
   /// Image data to show in the full-size preview sheet (from pending screenshot or from a sent message thumbnail).
   @State private var previewImageData: Data? = nil
   @State private var scrollActions = ChatScrollActions()
@@ -2593,6 +2705,8 @@ struct ChatView: View {
   /// restore it.
   @State private var suppressAnchorSave: Bool = false
   @State private var hoveredTabId: UUID? = nil
+  /// Note the pointer is over, so only that row shows its "Ask" affordance.
+  @State private var hoveredNoteId: UUID? = nil
   /// Session id currently being renamed via the context-menu alert.
   @State private var renamingTabId: UUID? = nil
   @State private var renameDraft: String = ""
@@ -2604,10 +2718,13 @@ struct ChatView: View {
   /// True while a folder is being dragged over the window, so the drop target is visible.
   @State private var isFolderDropTargeted: Bool = false
 
+  /// Two surfaces, not three. The raw transcript used to be a tab of its own, but nobody reads a
+  /// transcript — it gets pasted somewhere else, which is what the Copy button in the bar is for.
+  /// What is left is the notes (the readable record) and the chat, and the chat now shows the notes
+  /// inline anyway, so switching is a choice about density rather than about missing information.
   private enum MeetingTab: String, CaseIterable {
     case chat = "Chat"
-    case transcript = "Transcript"
-    case summary = "Summary"
+    case notes = "Notes"
   }
 
   // MARK: - Folder drop
@@ -2681,10 +2798,8 @@ struct ChatView: View {
           if viewModel.isCurrentSessionTheActiveMeeting || viewModel.isCurrentSessionMeeting {
             meetingRecordingBar
           }
-          if viewModel.isCurrentSessionMeeting && meetingTab == .transcript {
-            meetingTranscriptView
-          } else if viewModel.isCurrentSessionMeeting && meetingTab == .summary {
-            meetingSummaryView
+          if viewModel.isCurrentSessionMeeting && meetingTab == .notes {
+            meetingNotesView
           } else {
             messageList(scrollActions: scrollActions)
               .overlay(alignment: .bottom) {
@@ -2907,6 +3022,52 @@ struct ChatView: View {
 
   // MARK: - Message List
 
+  /// One entry of a meeting chat's stream: either a chat message or a live note taken from the
+  /// room. Regular chats only ever produce `.message`.
+  private enum MeetingStreamItem: Identifiable {
+    case message(ChatMessage)
+    case note(LiveMeetingNote)
+
+    var id: UUID {
+      switch self {
+      case .message(let m): return m.id
+      case .note(let n): return n.id
+      }
+    }
+  }
+
+  /// The chat stream, with the meeting's live notes woven in at the moment they were said.
+  ///
+  /// This is the point of the whole meeting view: you should be able to see what is being discussed
+  /// in the same column where you type, instead of switching to a transcript tab and back. Notes
+  /// are placed by when they happened (meeting start + elapsed offset), so a question you asked at
+  /// minute 12 sits between the notes for minute 11 and minute 13.
+  private var meetingStreamItems: [MeetingStreamItem] {
+    let messages = viewModel.messages
+    guard viewModel.isCurrentSessionMeeting else { return messages.map { .message($0) } }
+    let notes = viewModel.meetingNotesForDisplay
+    guard !notes.isEmpty,
+          let meetingStart = viewModel.currentMeetingStem.flatMap(MeetingListService.date(fromStem:))
+    else { return messages.map { .message($0) } }
+
+    var result: [MeetingStreamItem] = []
+    result.reserveCapacity(messages.count + notes.count)
+    var noteIndex = 0
+    for message in messages {
+      while noteIndex < notes.count,
+            meetingStart.addingTimeInterval(notes[noteIndex].startTime) <= message.timestamp {
+        result.append(.note(notes[noteIndex]))
+        noteIndex += 1
+      }
+      result.append(.message(message))
+    }
+    while noteIndex < notes.count {
+      result.append(.note(notes[noteIndex]))
+      noteIndex += 1
+    }
+    return result
+  }
+
   private func messageList(scrollActions: ChatScrollActions) -> some View {
     let lastUserMessageId = viewModel.messages.last(where: { $0.role == .user })?.id
     // The actively streaming bubble is rendered OUTSIDE the LazyVStack (as a plain sibling
@@ -2933,17 +3094,23 @@ struct ChatView: View {
             if viewModel.messages.isEmpty && !viewModel.isSending {
               emptyStateCommandHints
             }
-            ForEach(viewModel.messages) { message in
-              if message.id != detachedStreaming?.message.id {
-                MessageBubbleView(
-                  message: message,
-                  // Non-streaming bubbles only: the streaming placeholder is rendered
-                  // below, outside this lazy list, so per-token growth can't relayout it.
-                  streamingBuffer: viewModel.streamingBuffers[message.id],
-                  onTapAttachedImage: { previewImageData = $0 },
-                  onRetry: message.id == lastUserMessageId
-                    ? { viewModel.retryMessage(id: message.id) } : nil)
-                  .id(message.id)
+            ForEach(meetingStreamItems) { item in
+              switch item {
+              case .note(let note):
+                inlineNoteBlock(note)
+                  .id(note.id)
+              case .message(let message):
+                if message.id != detachedStreaming?.message.id {
+                  MessageBubbleView(
+                    message: message,
+                    // Non-streaming bubbles only: the streaming placeholder is rendered
+                    // below, outside this lazy list, so per-token growth can't relayout it.
+                    streamingBuffer: viewModel.streamingBuffers[message.id],
+                    onTapAttachedImage: { previewImageData = $0 },
+                    onRetry: message.id == lastUserMessageId
+                      ? { viewModel.retryMessage(id: message.id) } : nil)
+                    .id(message.id)
+                }
               }
             }
           }
@@ -3058,6 +3225,20 @@ struct ChatView: View {
         }
       }
     }
+  }
+
+  /// A live note as it appears between chat bubbles: set apart from the conversation by a left rule
+  /// and muted styling, so it reads as "the room", not as something you or the model said.
+  private func inlineNoteBlock(_ note: LiveMeetingNote) -> some View {
+    HStack(alignment: .top, spacing: 10) {
+      Rectangle()
+        .fill(note.isMarker ? Color.orange.opacity(0.7) : ChatTheme.secondaryText.opacity(0.25))
+        .frame(width: 2)
+      noteRow(note, hovered: hoveredNoteId == note.id)
+    }
+    .padding(.vertical, 2)
+    .contentShape(Rectangle())
+    .onHover { inside in hoveredNoteId = inside ? note.id : nil }
   }
 
   private var emptyStateCommandHints: some View {
@@ -3189,11 +3370,31 @@ struct ChatView: View {
 
         Spacer()
 
+        // The transcript is a thing you paste elsewhere, not a thing you read here — so it gets a
+        // button and a Finder escape hatch instead of a tab of its own.
+        Button(action: { viewModel.copyMeetingTranscript() }) {
+          HStack(spacing: 4) {
+            Image(systemName: "doc.on.doc").font(.system(size: 10))
+            Text("Copy transcript").font(.system(size: 11))
+          }
+          .foregroundColor(ChatTheme.secondaryText)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 3)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Copy the full transcript of this meeting to the clipboard")
+        .accessibilityLabel("Copy transcript")
+        .pointerCursorOnHover()
+        .contextMenu {
+          Button("Show Transcript File in Finder") { viewModel.revealMeetingTranscript() }
+        }
+
         Button(action: {
           if isRecording {
             NotificationCenter.default.post(name: .chatStopLiveMeeting, object: nil)
           } else {
-            // Rehydrate this meeting's transcript/summary before resuming (see requestResumeMeeting).
+            // Rehydrate this meeting's transcript/notes before resuming (see requestResumeMeeting).
             viewModel.requestResumeMeeting()
           }
         }) {
@@ -3213,65 +3414,79 @@ struct ChatView: View {
       Divider()
     }
     .background(ChatTheme.topBarBackground)
+    // Recovery used to depend on the user opening the Summary tab. Chat is the default tab, so a
+    // meeting whose summary failed to generate could sit there forever without anyone asking for
+    // it again; the bar is shown for every meeting, so this is the earliest reliable trigger.
+    .onAppear { viewModel.recoverMeetingSummaryIfNeeded() }
   }
 
-  private var meetingTranscriptView: some View {
-    // The live store is a singleton owned by whichever meeting is recording right now.
-    // Only show its chunks when THIS tab is that active meeting; otherwise read the
-    // selected session's own transcript from disk. Without this guard every meeting tab
-    // displayed the currently-recording meeting's transcript.
-    let liveChunks = viewModel.isCurrentSessionTheActiveMeeting
-      ? LiveMeetingTranscriptStore.shared.chunks : []
-    let diskText = liveChunks.isEmpty ? viewModel.loadMeetingTranscriptFromDisk() : nil
-    return ScrollView {
-      LazyVStack(alignment: .leading, spacing: 8) {
-        if !liveChunks.isEmpty {
-          ForEach(liveChunks) { chunk in
-            HStack(alignment: .top, spacing: 8) {
-              Text(chunk.timestampString)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundColor(ChatTheme.secondaryText)
-              Text(chunk.text)
-                .font(.system(size: 14))
-                .foregroundColor(ChatTheme.primaryText)
-                .textSelection(.enabled)
-            }
+  /// One live note (or marker) as it appears both in the Notes tab and inline in the chat stream.
+  /// Hovering reveals "Ask" — the shortest path from "that bullet is interesting" to a question
+  /// about it, without retyping what was said.
+  private func noteRow(_ note: LiveMeetingNote, hovered: Bool) -> some View {
+    HStack(alignment: .top, spacing: 8) {
+      Text(note.isMarker ? "★" : note.timestampString)
+        .font(.system(size: 12, weight: .medium, design: .monospaced))
+        .foregroundColor(note.isMarker ? .orange : ChatTheme.secondaryText)
+        .frame(minWidth: 46, alignment: .leading)
+
+      VStack(alignment: .leading, spacing: 4) {
+        ForEach(Array(note.bullets.enumerated()), id: \.offset) { _, bullet in
+          HStack(alignment: .top, spacing: 6) {
+            Text("•")
+              .font(.system(size: 13))
+              .foregroundColor(ChatTheme.secondaryText)
+            Text(bullet)
+              .font(.system(size: 13))
+              .foregroundColor(ChatTheme.primaryText)
+              .fixedSize(horizontal: false, vertical: true)
+              .textSelection(.enabled)
           }
-        } else if let text = diskText, !text.isEmpty {
-          Text(text)
-            .font(.system(size: 14))
-            .foregroundColor(ChatTheme.primaryText)
-            .textSelection(.enabled)
-        } else {
-          Text("No transcript yet.")
-            .font(.system(size: 14))
-            .foregroundColor(ChatTheme.secondaryText)
-            .padding(.top, 40)
-            .frame(maxWidth: .infinity)
         }
       }
-      .padding(16)
+
+      Spacer(minLength: 4)
+
+      Button(action: {
+        viewModel.quoteInComposer("\(note.timestampString) \(note.bullets.joined(separator: " "))")
+      }) {
+        Text("Ask")
+          .font(.system(size: 10, weight: .medium))
+          .foregroundColor(ChatTheme.secondaryText)
+          .padding(.horizontal, 6)
+          .padding(.vertical, 2)
+          .overlay(
+            RoundedRectangle(cornerRadius: 4)
+              .stroke(ChatTheme.secondaryText.opacity(0.3), lineWidth: 1))
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .opacity(hovered ? 1 : 0)
+      .help("Quote this note in the composer and ask about it")
+      .accessibilityLabel("Ask about this note")
+      .pointerCursorOnHover()
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(ChatTheme.windowBackground)
   }
 
-  private var meetingSummaryView: some View {
-    // `LiveMeetingTranscriptStore.shared.summary` is the singleton's *current* rolling summary —
-    // it belongs to whichever meeting is recording right now, not necessarily the one this tab is
-    // viewing. Only show it when this tab IS the active meeting; otherwise fall through to the
-    // disk-backed ended-meeting summary (the recovery path writes to disk too).
-    let liveSummary = LiveMeetingTranscriptStore.shared.summary
-    let text: String? = viewModel.isCurrentSessionTheActiveMeeting && !liveSummary.isEmpty
-      ? liveSummary
-      : viewModel.endedMeetingSummary
+  /// The Notes tab: the live note stream while a meeting runs, the final summary once it ended.
+  /// The transcript is deliberately not here — see `MeetingTab`.
+  private var meetingNotesView: some View {
+    let isLive = viewModel.isCurrentSessionTheActiveMeeting
+    let notes = viewModel.meetingNotesForDisplay
+    let summary = isLive ? nil : viewModel.endedMeetingSummary
     return ScrollView {
       VStack(alignment: .leading, spacing: 12) {
-        if let text, !text.isEmpty {
-          Text(text)
+        if let summary, !summary.isEmpty {
+          Text(summary)
             .font(.system(size: 14))
             .foregroundColor(ChatTheme.primaryText)
             .textSelection(.enabled)
+          if !notes.isEmpty {
+            Divider().padding(.vertical, 8)
+            Text("Live notes")
+              .font(.system(size: 11, weight: .semibold))
+              .foregroundColor(ChatTheme.secondaryText)
+          }
         } else if viewModel.isRecoveringMeetingSummary {
           HStack(spacing: 8) {
             ProgressView().controlSize(.small)
@@ -3281,8 +3496,18 @@ struct ChatView: View {
           }
           .padding(.top, 40)
           .frame(maxWidth: .infinity)
-        } else {
-          Text("No summary yet.")
+        }
+
+        if !notes.isEmpty {
+          LazyVStack(alignment: .leading, spacing: 10) {
+            ForEach(notes) { note in
+              noteRow(note, hovered: hoveredNoteId == note.id)
+                .contentShape(Rectangle())
+                .onHover { inside in hoveredNoteId = inside ? note.id : nil }
+            }
+          }
+        } else if summary == nil && !viewModel.isRecoveringMeetingSummary {
+          Text(isLive ? "Listening — notes appear as the meeting goes on." : "No notes for this meeting.")
             .font(.system(size: 14))
             .foregroundColor(ChatTheme.secondaryText)
             .padding(.top, 40)
@@ -3295,12 +3520,6 @@ struct ChatView: View {
     .background(ChatTheme.windowBackground)
     .onAppear {
       viewModel.recoverMeetingSummaryIfNeeded()
-      // On-demand live summary: only pay for a rolling-summary update when the user actually opens
-      // the Summary tab of the meeting that's recording right now. MenuBarController folds every
-      // chunk since the last update into one call (single-flight, so rapid re-opens are cheap).
-      if viewModel.isCurrentSessionTheActiveMeeting {
-        NotificationCenter.default.post(name: .liveMeetingSummaryRefreshRequested, object: nil)
-      }
     }
   }
 
@@ -3380,6 +3599,8 @@ struct ChatView: View {
 struct ChatInputAreaView: View {
   @ObservedObject var viewModel: ChatViewModel
   var onTapScreenshotThumbnail: (Data) -> Void
+  /// Observed so the "what the chat can see" line keeps counting up while the meeting runs.
+  @ObservedObject private var liveStore = LiveMeetingTranscriptStore.shared
 
   @StateObject private var composer = GeminiComposerController()
   /// Highlighted row in the slash-command suggestion overlay (↑/↓ navigation, Enter/Tab to select).
@@ -3659,8 +3880,49 @@ struct ChatInputAreaView: View {
 
   // MARK: - Input Bar (Claude-style: composer on top, toolbar below)
 
+  /// Meeting-only strip above the composer: one-tap questions, and one line saying exactly what the
+  /// model can see. Both exist because a meeting chat is used under time pressure — there is no
+  /// moment to phrase "summarise what I missed", and no way to guess how far back the chat can look.
+  @ViewBuilder
+  private var meetingComposerStrip: some View {
+    if viewModel.isCurrentSessionMeeting {
+      VStack(alignment: .leading, spacing: 6) {
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: 6) {
+            ForEach(ChatViewModel.meetingQuickActions, id: \.label) { action in
+              Button(action: { viewModel.sendQuickAction(action.prompt) }) {
+                Text(action.label)
+                  .font(.system(size: 11))
+                  .foregroundColor(ChatTheme.primaryText)
+                  .padding(.horizontal, 10)
+                  .padding(.vertical, 4)
+                  .background(
+                    Capsule().fill(ChatTheme.controlBackground))
+                  .contentShape(Capsule())
+              }
+              .buttonStyle(.plain)
+              .disabled(viewModel.isSending)
+              .opacity(viewModel.isSending ? 0.5 : 1)
+              .pointerCursorOnHover()
+            }
+          }
+        }
+
+        if let description = viewModel.meetingContextDescription {
+          Text(description)
+            .font(.system(size: 10))
+            .foregroundColor(ChatTheme.secondaryText)
+        }
+      }
+      .padding(.horizontal, 10)
+      .padding(.top, 8)
+    }
+  }
+
   private var inputBar: some View {
     VStack(spacing: 0) {
+      meetingComposerStrip
+
       // Composer: NSTextView with inline screenshot/paste/file attachments.
       ChatComposerTextView(
         controller: composer,

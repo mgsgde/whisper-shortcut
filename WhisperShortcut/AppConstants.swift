@@ -245,6 +245,16 @@ Output rules (CRITICAL):
   /// Subfolder name for live meeting transcripts (under canonical Application Support).
   static let liveMeetingTranscriptDirectory: String = "Meetings"
 
+  /// Chunk length used while the chat window is on screen. The configured interval (60 s by
+  /// default) is right for a meeting recorded in the background, but it means the live view can
+  /// trail the room by a full minute — unusable for following along. When the user is actually
+  /// watching, chunks rotate this fast instead; the configured value still wins if it is shorter.
+  static let liveMeetingFastChunkInterval: TimeInterval = 25
+
+  /// Text stored for a marker set by hotkey. The value of a marker is the timestamp it carries —
+  /// the user cannot type while the meeting runs, which is the whole reason the hotkey exists.
+  static let liveMeetingDefaultMarkerText = "Flagged by me"
+
   /// Transcription prompt for live meeting chunks with speaker diarization.
   static let liveMeetingDiarizationPrompt =
     """
@@ -280,8 +290,20 @@ Transcript:
 
   /// Final post-meeting summary prompt (provider-agnostic — used by whichever provider owns the
   /// selected meeting-summary model).
-  static func meetingSummaryPrompt(transcript: String) -> String {
-    """
+  static func meetingSummaryPrompt(transcript: String, markers: [String] = []) -> String {
+    // Markers are the moments the participant flagged by hotkey while the meeting ran — the one
+    // signal in the transcript that carries explicit human attention, so the summary leans on them.
+    let markerBlock =
+      markers.isEmpty
+      ? ""
+      : """
+
+        The participant flagged these moments as important while the meeting was running. Make sure \
+        the summary covers each of them, and open with a "## Flagged Moments" section listing them:
+        \(markers.map { "- \($0)" }.joined(separator: "\n"))
+        """
+
+    return """
     You are summarizing a completed meeting transcript.
 
     STRICT FORMAT RULES:
@@ -291,6 +313,7 @@ Transcript:
     4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
     5. Include: main points, key takeaways, decisions, action items (if any).
     6. Write the summary in the same language as the transcript. Output only the Markdown, no preamble.
+    \(markerBlock)
 
     Transcript:
     \(transcript)
@@ -330,43 +353,39 @@ Transcript:
     liveMeetingSpeakerConsolidationPrompt + "\n" + transcript
   }
 
-  /// Rolling (live) summary prompt: builds a fresh summary from a segment, or refines an existing one.
-  static func meetingRollingSummaryPrompt(currentSummary: String, newTranscriptText: String) -> String {
-    if currentSummary.isEmpty {
-      return """
-        You are summarizing a live meeting transcript. Below is a new segment of the transcript.
-
-        STRICT FORMAT RULES:
-        1. Use ## headings for sections (e.g. ## Key Points, ## Decisions).
-        2. Use - for every bullet point. Each bullet on its own line.
-        3. Leave a blank line before each heading and between sections.
-        4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
-        5. Write the summary in the same language as the transcript. Output only the Markdown, no preamble.
-
-        Transcript segment:
-        \(newTranscriptText)
+  /// Live-note prompt: one or two bullets covering ONLY the newest segment of a running meeting.
+  ///
+  /// Deliberately not a rolling summary. The model never sees, and never rewrites, the notes it
+  /// wrote before — it only gets the last few lines so it can avoid repeating itself. That keeps
+  /// every call the same small size no matter how long the meeting runs, and keeps earlier notes
+  /// exactly as they were written when that part of the meeting happened.
+  static func meetingLiveNotePrompt(segment: String, recentNotes: [String]) -> String {
+    let context =
+      recentNotes.isEmpty
+      ? "This is the beginning of the meeting."
+      : """
+        Notes already written for the preceding minutes (do NOT repeat these — only note what is new):
+        \(recentNotes.joined(separator: "\n"))
         """
-    }
+
     return """
-      You are maintaining a rolling summary of a live meeting. Below are the current Markdown summary and new transcript content. \
-      Update the summary to incorporate the new content.
+      You are taking live notes during a meeting. Below is the newest segment of the transcript.
 
-      STRICT FORMAT RULES:
-      1. Use ## headings for sections (e.g. ## Key Points, ## Decisions).
-      2. Use - for every bullet point. Each bullet on its own line.
-      3. Leave a blank line before each heading and between sections.
-      4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
-      5. Preserve important points from the current summary and add or refine with the new content.
-      6. Keep the summary CONCISE and roughly constant in size as the meeting grows: consolidate and \
-      merge related bullets, drop trivia and redundancy, and do not simply append everything. Aim for \
-      the most important points, not an exhaustive log — never exceed ~400 lines of Markdown.
-      7. Write the summary in the same language as the transcript. Output only the updated Markdown, no preamble.
+      Write ONE or TWO short bullets capturing what was actually discussed, decided, or asked in \
+      THIS segment — the kind of note a participant would jot down to remember the moment.
 
-      Current summary:
-      \(currentSummary)
+      STRICT RULES:
+      1. Output only bullets, each starting with "- ". No headings, no preamble, no commentary.
+      2. At most 2 bullets. One is better when the segment covers one thing.
+      3. Each bullet is one line, at most ~20 words.
+      4. Only what the segment supports. Never infer, never invent, never speculate.
+      5. If the segment is small talk, noise, or carries nothing worth remembering, output nothing at all.
+      6. Write in the same language as the transcript.
 
-      New transcript content:
-      \(newTranscriptText)
+      \(context)
+
+      Newest transcript segment:
+      \(segment)
       """
   }
 
@@ -481,4 +500,11 @@ Transcript:
   /// xAI (Grok) speech-to-text endpoint. Multipart POST: model=grok-stt, language, format=json, file=@ (file last).
   /// Reference: https://docs.x.ai/developers/model-capabilities/audio/speech-to-text
   static let xaiSTTEndpoint = "https://api.x.ai/v1/stt"
+
+  /// OpenRouter chat-completions endpoint, used for **transcription**.
+  ///
+  /// OpenRouter deliberately has no `/v1/audio/transcriptions`: audio is a content part on a normal
+  /// chat completion (`{"type":"input_audio","input_audio":{"data":…,"format":"m4a"}}`), base64 only,
+  /// no URLs. Reference: https://openrouter.ai/docs/features/multimodal/audio
+  static let openRouterChatCompletionsEndpoint = "https://openrouter.ai/api/v1/chat/completions"
 }

@@ -17,7 +17,7 @@ Bring your own API keys — Gemini, and optionally GPT or Grok — or run fully 
 
 ## Features
 
-- **Dictate**: Record speech and copy the transcription to your clipboard. Use Gemini or OpenAI cloud models, a self-hosted transcription endpoint, or local Whisper models offline. Long recordings are split into chunks and processed in parallel.
+- **Dictate**: Record speech and copy the transcription to your clipboard. Use Gemini, OpenAI, or any audio-capable model on OpenRouter, a self-hosted transcription endpoint, or local Whisper models offline. Temperature and thinking effort are configurable for cloud models. Long recordings are split into chunks and processed in parallel.
 - **Auto-paste**: Optionally paste the result straight at the cursor instead of only copying it (direct-download version only — it needs the Accessibility permission). Turn on **Restore clipboard** alongside it for a non-destructive paste: whatever you had copied before dictating goes back on the clipboard right after the text is pasted.
 - **Copy Last Transcription**: Every dictation result stays available in the menu bar — one entry re-copies the most recent transcription, and a **Recent Transcriptions** submenu holds the last five. Use it when an auto-paste landed in the wrong window, or when a later copy overwrote the clipboard.
 - **Dictate Prompt**: Speak an instruction that edits the current clipboard text, for example "make this shorter" or "translate this to English". Supports Gemini and OpenAI audio-input models; optional screenshots can be included with the prompt.
@@ -27,7 +27,7 @@ Bring your own API keys — Gemini, and optionally GPT or Grok — or run fully 
 - **Chat**: Use a persisted multi-session chat window with Gemini, Grok, or OpenAI models, screenshots, image attachments, slash commands, optional web grounding, and per-session reasoning depth. Grok models additionally search X.com posts, which makes them the best pick for opinions, trends, and breaking social-media chatter — and `/x @handle` narrows that search to the accounts you care about.
 - **Google integrations**: Connect a Google account so chat can work with Calendar, Tasks, and Gmail through controlled local tools.
 - **Trello integration**: Connect Trello so chat can list boards, lists, and cards and create, move, update, or archive cards.
-- **Live Meeting**: Record meetings in chunks, transcribe them as they complete, keep an in-app transcript, and save meeting files locally.
+- **Live Meeting**: Record meetings in chunks, transcribe them as they complete, take live notes into the chat as the meeting goes on, ask the chat about anything said so far, flag moments by shortcut, and save meeting files locally.
 - **Smart Improvement**: Let the app improve system prompts, user context, and the Whisper glossary automatically from usage logs, or on demand from a spoken instruction (see Voice Feedback).
 
 ## Requirements
@@ -37,6 +37,7 @@ Bring your own API keys — Gemini, and optionally GPT or Grok — or run fully 
 - Google Gemini API key for cloud transcription, Dictate Prompt, chat, TTS, Smart Improvement, and live meetings
 - Optional xAI API key for Grok chat models and Grok Voice TTS
 - Optional OpenAI API key for GPT-5.x chat, OpenAI transcription (GPT-4o Transcribe), GPT Audio Dictate Prompt, and GPT-4o mini TTS
+- Optional OpenRouter API key for dictation through any audio-capable model OpenRouter routes to
 - Optional Google account connection for Calendar, Tasks, and Gmail tools
 - Optional Trello Power-Up API key and token for board, list, and card tools
 
@@ -61,6 +62,7 @@ Default menu bar shortcuts (all configurable in Settings → General):
 | Screenshot | ⌘3 |
 | Read Aloud | ⌘4 |
 | Voice Feedback | ⌘5 |
+| Flag Meeting Moment | ⌘6 |
 | Chat | ⌥Space |
 | Settings | ⌘0 |
 
@@ -71,9 +73,16 @@ To change a shortcut, open Settings → General, click **Record** next to it and
 ### Dictation
 
 1. Configure a Dictate shortcut in Settings → Dictate.
-2. Choose a Gemini, OpenAI, self-hosted, or Whisper transcription model.
+2. Choose a Gemini, OpenAI, OpenRouter, self-hosted, or Whisper transcription model.
 3. Press the shortcut, speak, then stop recording.
 4. The transcription is copied to the clipboard and can optionally be pasted automatically.
+
+**Accuracy tuning** (Settings → Dictate, cloud models only):
+
+- **Temperature** — how literally the model reproduces what it heard. `0.0` (the default) is verbatim. The models' own default is `1.0`, which is what the app sent before this setting existed and the most likely source of invented or swapped words.
+- **Thinking effort** (Gemini only) — how long the model may reason before transcribing. `Minimal` is the default; raising it can help with hard audio, accents, and unusual vocabulary. On Flash-Lite the latency cost is close to zero; on Pro it roughly doubles. Gemini 3.1 Pro cannot run below `Low` and is clamped to it.
+
+**OpenRouter**: select the OpenRouter transcription model, then set your API key and a model slug in Settings → Dictate. Any [audio-capable model on OpenRouter](https://openrouter.ai/models?modality=text%2Baudio-%3Etext) works — switching between them is a one-field edit. OpenRouter has no dedicated transcription endpoint, so the audio is sent as a chat message; that means your Dictation system prompt and Glossary apply here, unlike the OpenAI and self-hosted transcription endpoints.
 
 ### Dictate Prompt
 
@@ -120,6 +129,17 @@ Connect Google or Trello in Settings → Chat to unlock the corresponding chat t
 ### Live Meeting
 
 Type `/meeting` in chat to start and stop live meeting recording. Audio is rotated into chunks, transcribed, and appended to the meeting transcript. Saved transcripts live in the app's Application Support folder.
+
+While a meeting runs:
+
+- **Live notes appear in the chat itself.** Every minute or two the app appends one or two bullets covering what was just discussed, woven into the chat stream at the moment it was said — so you can see what is going on in the same column where you type. Earlier notes are never rewritten.
+- **The chat sees the entire transcript**, not just the last few minutes, so you can ask about anything said since the meeting started. A line above the composer says exactly what the chat can currently see.
+- **One-tap questions** above the composer: Catch me up, Action items, Open questions, Decisions.
+- **Ask about a moment**: hover any note and press *Ask* to quote it into the composer instead of retyping it.
+- **Flag a moment** with the meeting-marker shortcut (⌘6 by default, configurable in Settings → Chat). Markers show up in the note stream and the final summary is written around what you flagged.
+- **Copy transcript** in the meeting bar puts the raw transcript on the clipboard; right-click it to reveal the file in Finder.
+
+The meeting view has two tabs: **Chat** and **Notes** (the live notes while recording, the final summary once it ended). Chunks rotate faster while the chat window is on screen so the live view keeps up, and fall back to the configured interval when it is not.
 
 ### Smart Improvement
 

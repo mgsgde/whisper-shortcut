@@ -7,6 +7,40 @@
 
 import Foundation
 
+/// The two request knobs that apply to every cloud transcription, read straight from UserDefaults.
+///
+/// Deliberately not threaded through the call sites: `SpeechService`, `ChunkTranscriptionService`
+/// and the meeting path all build their requests from `TranscriptionModel`, so reading the settings
+/// where the request body is assembled is the only way for all three to stay in agreement.
+enum TranscriptionTuning {
+  static var temperature: Double {
+    guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.transcriptionTemperature),
+          let parsed = TranscriptionTemperature(rawValue: raw)
+    else { return SettingsDefaults.transcriptionTemperature.value }
+    return parsed.value
+  }
+
+  static var thinkingEffort: TranscriptionThinkingEffort {
+    guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.transcriptionThinkingEffort),
+          let parsed = TranscriptionThinkingEffort(rawValue: raw)
+    else { return SettingsDefaults.transcriptionThinkingEffort }
+    return parsed
+  }
+
+  /// Model slug sent to OpenRouter.
+  static var openRouterModelID: String {
+    resolveOpenRouterModelID(
+      UserDefaults.standard.string(forKey: UserDefaultsKeys.openRouterTranscriptionModelID))
+  }
+
+  /// Empty (user cleared the field) falls back to the default rather than sending no model, which
+  /// OpenRouter rejects. Pure so it can be tested without writing to the shared UserDefaults.
+  static func resolveOpenRouterModelID(_ stored: String?) -> String {
+    let trimmed = (stored ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? SettingsDefaults.openRouterTranscriptionModelID : trimmed
+  }
+}
+
 // MARK: - Transcription Model Enum
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
 // GA (stable IDs, no -preview): gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash,
@@ -42,6 +76,13 @@ enum TranscriptionModel: String, CaseIterable {
   // original "Custom Transcription API" feature so existing UserDefaults selections still resolve.
   case selfHostedTranscription = "custom-transcription-api"
 
+  // OpenRouter (cloud, OpenRouter API key required). OpenRouter exposes NO /v1/audio/transcriptions —
+  // audio goes to /api/v1/chat/completions as an `input_audio` content part (verified against
+  // https://openrouter.ai/docs/features/multimodal/audio), which is why this cannot reuse
+  // `.selfHostedTranscription`'s multipart path. The model slug is user-configurable, so one entry
+  // covers every audio-capable model OpenRouter routes to.
+  case openRouterTranscription = "openrouter-transcription"
+
   var displayName: String {
     switch self {
     case .gemini31Pro:
@@ -72,6 +113,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Grok Speech-to-Text"
     case .selfHostedTranscription:
       return "Self-hosted Transcription Endpoint"
+    case .openRouterTranscription:
+      return "OpenRouter"
     }
   }
 
@@ -96,6 +139,8 @@ enum TranscriptionModel: String, CaseIterable {
       return AppConstants.xaiSTTEndpoint
     case .selfHostedTranscription:
       return "" // URL is configured by the user in Settings
+    case .openRouterTranscription:
+      return AppConstants.openRouterChatCompletionsEndpoint
     }
   }
 
@@ -115,7 +160,8 @@ enum TranscriptionModel: String, CaseIterable {
       return true
     case .gemini31Pro, .gemini31FlashLite, .gemini35Flash, .gemini36Flash, .whisperTiny,
          .whisperSmall, .whisperMedium, .whisperLarge,
-         .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe, .selfHostedTranscription:
+         .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe, .selfHostedTranscription,
+         .openRouterTranscription:
       return false
     }
   }
@@ -139,6 +185,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Low"
     case .selfHostedTranscription:
       return "Custom"
+    case .openRouterTranscription:
+      return "Varies"
     }
   }
 
@@ -172,21 +220,38 @@ enum TranscriptionModel: String, CaseIterable {
       return "xAI's Grok Speech-to-Text • Cloud • Requires xAI API key"
     case .selfHostedTranscription:
       return "Send audio to your own OpenAI-compatible /v1/audio/transcriptions endpoint"
+    case .openRouterTranscription:
+      return "Any audio-capable model on OpenRouter • Pick the model slug in Dictate settings • Requires an OpenRouter API key"
     }
   }
   
-  /// `generationConfig` to send with a Gemini transcription request. Which thinking knob is
-  /// legal differs per tier — see `GeminiTranscriptionGenerationConfig` for the verified matrix.
+  /// `generationConfig` to send with a Gemini transcription request: the user's thinking effort and
+  /// temperature, clamped to what this tier actually accepts. Both knobs are read here rather than
+  /// threaded through every call site, so the chunked meeting path picks them up too.
   var geminiTranscriptionGenerationConfig: GeminiTranscriptionRequest.GeminiTranscriptionGenerationConfig {
+    geminiTranscriptionGenerationConfig(
+      temperature: TranscriptionTuning.temperature, effort: TranscriptionTuning.thinkingEffort)
+  }
+
+  /// The same, with the settings passed in — pure, so the per-tier clamping can be tested without
+  /// writing to the shared UserDefaults (which raced the settings round-trip suite).
+  func geminiTranscriptionGenerationConfig(
+    temperature: Double, effort: TranscriptionThinkingEffort
+  ) -> GeminiTranscriptionRequest.GeminiTranscriptionGenerationConfig {
     switch self {
     case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
-      return .thinkingMinimal
-    // Pro rejects both `thinkingLevel: minimal` and `thinkingBudget: 0` — it only runs in
-    // thinking mode, so any thinkingConfig here is a 400.
+      return .init(
+        thinkingConfig: .init(thinkingLevel: effort.geminiValue, thinkingBudget: nil),
+        temperature: temperature)
     case .gemini31Pro:
-      return .noThinkingConfig
+      // Pro rejects `thinkingLevel: minimal` (HTTP 400) and `thinkingBudget: 0` — it only runs in
+      // thinking mode. `minimal` therefore means "as little as this model allows", i.e. `low`.
+      let level = effort == .minimal ? TranscriptionThinkingEffort.low : effort
+      return .init(
+        thinkingConfig: .init(thinkingLevel: level.geminiValue, thinkingBudget: nil),
+        temperature: temperature)
     default:
-      return .noThinkingConfig
+      return .init(thinkingConfig: nil, temperature: temperature)
     }
   }
 
@@ -195,7 +260,8 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
       return true
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe, .selfHostedTranscription:
+         .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe, .selfHostedTranscription,
+         .openRouterTranscription:
       return false
     }
   }
@@ -218,6 +284,7 @@ enum TranscriptionModel: String, CaseIterable {
     if isGemini { return GeminiCredentialProvider.shared.hasCredential() }
     if isOpenAI { return KeychainManager.shared.hasNonEmpty(.openAI) }
     if isXAI { return KeychainManager.shared.hasNonEmpty(.xai) }
+    if self == .openRouterTranscription { return KeychainManager.shared.hasNonEmpty(.openRouter) }
     // Self-hosted: usable once the user has configured an endpoint URL.
     let url = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?
       .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -246,6 +313,9 @@ enum TranscriptionModel: String, CaseIterable {
     }
     if self == .selfHostedTranscription {
       return "Configure your self-hosted transcription endpoint in Dictate settings, or pick a different model."
+    }
+    if self == .openRouterTranscription {
+      return "Add your OpenRouter API key in Dictate settings to transcribe through OpenRouter, or pick a different model."
     }
     return "Download the selected Whisper model in Speech-to-Text settings, or pick a different transcription model."
   }
@@ -365,6 +435,7 @@ enum TranscriptionModel: String, CaseIterable {
     case openAIAudio
     case xaiAudio
     case selfHostedTranscription
+    case openRouterAudio
     case geminiFlashLite
     case geminiFlash
     case geminiPro
@@ -380,6 +451,8 @@ enum TranscriptionModel: String, CaseIterable {
       return .xaiAudio
     case .selfHostedTranscription:
       return .selfHostedTranscription
+    case .openRouterTranscription:
+      return .openRouterAudio
     case .gemini31FlashLite, .gemini35FlashLite:
       return .geminiFlashLite
     case .gemini35Flash, .gemini36Flash:
@@ -395,7 +468,7 @@ enum TranscriptionModel: String, CaseIterable {
   /// information when `self` is strictly in a higher tier.
   func canInformativelyVerify(audioFrom transcriptionModel: TranscriptionModel) -> Bool {
     switch transcriptionModel.asymmetryClass {
-    case .offlineWhisper, .openAIAudio, .xaiAudio, .selfHostedTranscription:
+    case .offlineWhisper, .openAIAudio, .xaiAudio, .selfHostedTranscription, .openRouterAudio:
       return self.isGemini
     default:
       guard self.isGemini else { return false }
@@ -414,26 +487,29 @@ struct GeminiTranscriptionRequest: Codable {
     let parts: [GeminiTranscriptionPart]
   }
 
-  /// Minimal `generationConfig` for transcription: keep thinking off, since reasoning adds
-  /// multi-second latency to a task that doesn't benefit from it.
+  /// `generationConfig` for transcription: how hard the model may think, and how freely it may
+  /// sample. Built by `TranscriptionModel.geminiTranscriptionGenerationConfig`.
   ///
-  /// The knob is model-dependent, and getting it wrong is a hard HTTP 400 (verified 2026-07):
+  /// The thinking knob is model-dependent, and getting it wrong is a hard HTTP 400 (verified against
+  /// the live API with real audio, 2026-07):
   ///   - `thinkingBudget: 0` — accepted by 2.5 and 3.1, **rejected by 3.5 / 3.6**
   ///     ("Request contains an invalid argument").
-  ///   - `thinkingLevel: "minimal"` — accepted by every Flash / Flash-Lite tier from 3.1 on,
-  ///     rejected by Pro ("Thinking level MINIMAL is not supported for this model").
-  ///   - Pro accepts neither, so it gets no `thinkingConfig` at all — it only runs in thinking mode.
+  ///   - `thinkingLevel` — every Flash / Flash-Lite tier from 3.1 on accepts all four levels
+  ///     (`minimal`/`low`/`medium`/`high`) *with audio input*; Pro accepts all but `minimal`
+  ///     ("Thinking level MINIMAL is not supported for this model").
+  ///
+  /// `temperature` is accepted alongside audio on every tier. Omitting it is not neutral: the model
+  /// default is `1.0` (`GET /v1beta/models/{id}` reports `temperature: 1, maxTemperature: 2`), which
+  /// is why it is now always sent.
   /// Docs: https://ai.google.dev/gemini-api/docs/thinking
   struct GeminiTranscriptionGenerationConfig: Codable {
     let thinkingConfig: GeminiThinkingConfig?
+    let temperature: Double?
 
-    /// Flash / Flash-Lite tiers (3.1 through 3.6).
-    static let thinkingMinimal = GeminiTranscriptionGenerationConfig(
-      thinkingConfig: GeminiThinkingConfig(thinkingLevel: "minimal", thinkingBudget: nil)
-    )
-
-    /// Pro and any non-Gemini-3 model: send no thinking knob at all.
-    static let noThinkingConfig = GeminiTranscriptionGenerationConfig(thinkingConfig: nil)
+    init(thinkingConfig: GeminiThinkingConfig?, temperature: Double? = nil) {
+      self.thinkingConfig = thinkingConfig
+      self.temperature = temperature
+    }
   }
 
   struct GeminiThinkingConfig: Codable {

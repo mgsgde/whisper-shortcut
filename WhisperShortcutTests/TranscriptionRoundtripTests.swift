@@ -72,4 +72,20 @@ struct TranscriptionRoundtripTests {
         )
         #expect(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
+
+    @Test(
+        "OpenRouter transcription returns a non-empty reply",
+        .enabled(if: KeychainManager.shared.hasNonEmpty(.openRouter),
+                 "No OpenRouter API key (env WHISPERSHORTCUT_OPENROUTER_API_KEY or Keychain)")
+    )
+    func openRouter() async throws {
+        // The one provider here that is NOT a transcription endpoint: OpenRouter takes audio as an
+        // `input_audio` part on a chat completion, so this roundtrip guards a request shape nothing
+        // else in the suite covers — and one that fails as a 400/402 rather than a bad transcript.
+        let text = try await SpeechService().transcribe(
+            audioURL: Self.sampleAudioURL,
+            preferredModel: .openRouterTranscription
+        )
+        #expect(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
 }

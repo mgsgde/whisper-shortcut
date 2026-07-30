@@ -77,6 +77,8 @@ class ChatWindowController: NSWindowController {
     NSApp.activate(ignoringOtherApps: true)
     window?.makeKeyAndOrderFront(nil)
     NotificationCenter.default.post(name: .chatFocusInput, object: nil)
+    NotificationCenter.default.post(
+      name: .chatWindowVisibilityChanged, object: nil, userInfo: ["visible": true])
   }
 
   /// Temporarily suppresses close-on-focus-loss for the given duration.
@@ -179,5 +181,7 @@ extension ChatWindowController: NSWindowDelegate {
 
   func windowWillClose(_ notification: Notification) {
     removeCmdArrowScrollMonitor()
+    NotificationCenter.default.post(
+      name: .chatWindowVisibilityChanged, object: nil, userInfo: ["visible": false])
   }
 }

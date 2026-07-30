@@ -126,6 +126,19 @@ enum UserDefaultsKeys {
   // MARK: - Custom Transcription API
   static let customTranscriptionAPIURL = "customTranscriptionAPIURL"
 
+  // MARK: - Transcription tuning (Gemini + OpenRouter)
+  /// `generationConfig.temperature` sent with transcription requests. Before this existed nothing
+  /// was sent and every request ran at the model default of 1.0.
+  static let transcriptionTemperature = "transcriptionTemperature"
+  /// `generationConfig.thinkingConfig.thinkingLevel` for transcription.
+  static let transcriptionThinkingEffort = "transcriptionThinkingEffort"
+
+  // MARK: - OpenRouter transcription
+  /// Model slug sent to OpenRouter for dictation (e.g. `google/gemini-3.5-flash-lite`). OpenRouter
+  /// has no `/v1/audio/transcriptions`, so audio goes through chat completions — see
+  /// `SpeechService.transcribeWithOpenRouter`.
+  static let openRouterTranscriptionModelID = "openRouterTranscriptionModelID"
+
   // MARK: - Custom OpenAI-compatible Chat Endpoint (OpenRouter, LiteLLM, self-hosted proxy, …)
   /// Base URL up to `/v1` (the app appends `/chat/completions`). Empty → official OpenAI API.
   static let customOpenAIChatEndpointURL = "customOpenAIChatEndpointURL"

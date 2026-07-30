@@ -119,6 +119,7 @@ struct ShortcutConfig: Codable {
   var screenshotCapture: ShortcutDefinition
   var readAloud: ShortcutDefinition
   var voiceFeedback: ShortcutDefinition
+  var meetingMarker: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
@@ -127,7 +128,8 @@ struct ShortcutConfig: Codable {
     openChat: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true),
     screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
     readAloud: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true),
-    voiceFeedback: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true)
+    voiceFeedback: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
+    meetingMarker: ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: true)
   )
 }
 
@@ -302,6 +304,7 @@ class ShortcutConfigManager {
     static let screenshotCaptureKey = "shortcut_screenshot_capture"
     static let readAloudKey = "shortcut_read_aloud"
     static let voiceFeedbackKey = "shortcut_voice_feedback"
+    static let meetingMarkerKey = "shortcut_meeting_marker"
   }
 
   private let userDefaults = UserDefaults.standard
@@ -354,6 +357,8 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.readAloudKey) ?? ShortcutConfig.default.readAloud
     let voiceFeedback =
       loadShortcut(for: Constants.voiceFeedbackKey) ?? ShortcutConfig.default.voiceFeedback
+    let meetingMarker =
+      loadShortcut(for: Constants.meetingMarkerKey) ?? ShortcutConfig.default.meetingMarker
     return ShortcutConfig(
       startRecording: startRecording,
       startPrompting: startPrompting,
@@ -361,7 +366,8 @@ class ShortcutConfigManager {
       openChat: openChat,
       screenshotCapture: screenshotCapture,
       readAloud: readAloud,
-      voiceFeedback: voiceFeedback
+      voiceFeedback: voiceFeedback,
+      meetingMarker: meetingMarker
     )
   }
 
@@ -373,6 +379,7 @@ class ShortcutConfigManager {
     saveShortcut(config.screenshotCapture, for: Constants.screenshotCaptureKey)
     saveShortcut(config.readAloud, for: Constants.readAloudKey)
     saveShortcut(config.voiceFeedback, for: Constants.voiceFeedbackKey)
+    saveShortcut(config.meetingMarker, for: Constants.meetingMarkerKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)
@@ -457,9 +464,14 @@ extension Notification.Name {
   static let chatEndMeetingWithName = Notification.Name("chatEndMeetingWithName")
   /// Posted after a meeting's final summary is written to disk. userInfo: ["stem": String, "summary": String].
   static let chatMeetingSummaryReady = Notification.Name("chatMeetingSummaryReady")
-  /// Posted by a consumer that needs an up-to-date live summary for the active meeting (Summary tab
-  /// shown, or the live meeting chatted). MenuBarController refreshes the rolling summary on demand.
-  static let liveMeetingSummaryRefreshRequested = Notification.Name("liveMeetingSummaryRefreshRequested")
+  /// Posted by a consumer that wants the live notes brought up to date right now for the active
+  /// meeting (the user just sent a chat message). MenuBarController forwards it to the session.
+  static let liveMeetingNotesRefreshRequested = Notification.Name("liveMeetingNotesRefreshRequested")
+  /// Posted by the marker hotkey to flag the current moment of the running meeting.
+  static let liveMeetingMarkerRequested = Notification.Name("liveMeetingMarkerRequested")
+  /// Posted when the chat window becomes visible or hidden. userInfo["visible"] = Bool. Drives the
+  /// live meeting's chunk cadence — fast while someone is watching, configured otherwise.
+  static let chatWindowVisibilityChanged = Notification.Name("chatWindowVisibilityChanged")
   /// Posted when user taps Read Aloud under a chat reply. userInfo key: chatReadAloudTextKey (String).
   static let chatReadAloud = Notification.Name("chatReadAloud")
   /// Posted when user taps Stop on the Read Aloud button while TTS is active.

@@ -11,6 +11,8 @@ protocol ShortcutDelegate: AnyObject {
   func openSettings()
   func openChat()
   func takeScreenshot()
+  /// Flags the current moment of a running live meeting. No-op when no meeting is recording.
+  func markMeetingMoment()
   #if !APP_STORE
   func readAloud()
   #endif
@@ -27,6 +29,7 @@ class Shortcuts {
   private var screenshotCaptureKey: HotKey?
   private var readAloudKey: HotKey?
   private var voiceFeedbackKey: HotKey?
+  private var meetingMarkerKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   // Push-to-talk: a press that *started* a recording and is held past this threshold
@@ -185,6 +188,15 @@ class Shortcuts {
     }
     #endif
 
+    // Create meeting marker shortcut (only if enabled). The handler is a no-op unless a meeting is
+    // recording, so the binding costs nothing the rest of the time.
+    if config.meetingMarker.isEnabled {
+      meetingMarkerKey = HotKey(
+        key: config.meetingMarker.key, modifiers: config.meetingMarker.modifiers)
+      meetingMarkerKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.markMeetingMoment()
+      }
+    }
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -206,6 +218,7 @@ class Shortcuts {
     screenshotCaptureKey = nil
     readAloudKey = nil
     voiceFeedbackKey = nil
+    meetingMarkerKey = nil
   }
 
   deinit {

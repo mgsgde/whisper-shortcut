@@ -18,6 +18,7 @@ struct ShortcutsOverviewSection: View {
     // Voice Feedback last so the digits read 1-2-3-4-5, matching the status menu.
     items.append(contentsOf: [
       ("Voice Feedback", viewModel.data.voiceFeedback),
+      ("Flag Meeting Moment", viewModel.data.meetingMarker),
       ("Chat", viewModel.data.openChat),
       ("Settings", viewModel.data.openSettings),
     ])

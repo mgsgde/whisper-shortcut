@@ -54,6 +54,10 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
+      meetingMarkerSection
+
+      SpacedSectionDivider()
+
       meetingChunkIntervalSection
 
       SpacedSectionDivider()
@@ -144,6 +148,36 @@ struct ChatSettingsTab: View {
       .onChange(of: viewModel.data.chatCloseOnFocusLoss) { _ in
         Task { await viewModel.saveSettings() }
       }
+    }
+  }
+
+  // MARK: - Meeting Marker Section
+  @ViewBuilder
+  private var meetingMarkerSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Flag Meeting Moment",
+        systemImage: "star",
+        subtitle: "Press this while a meeting is recording to flag the current moment. The marker appears in the live notes and the final summary is written around what you flagged."
+      )
+
+      ShortcutRecorderRow(
+        label: "Flag moment:",
+        shortcut: $viewModel.data.meetingMarker,
+        focusedField: .meetingMarkerShortcut,
+        currentFocus: $focusedField,
+        onChanged: {
+          Task {
+            await viewModel.saveSettings()
+          }
+        },
+        findConflict: viewModel.findShortcutConflict,
+        clearShortcut: viewModel.clearShortcut
+      )
+
+      Text("Does nothing when no meeting is recording.")
+        .font(.caption)
+        .foregroundColor(.secondary)
     }
   }
 

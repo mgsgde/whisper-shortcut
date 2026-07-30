@@ -516,6 +516,15 @@ class SpeechService {
       return result
     }
 
+    // OpenRouter (audio as a chat-completion content part)
+    if model == .openRouterTranscription {
+      try validateAudioFileFormat(at: audioURL)
+      let result = try await transcribeWithOpenRouter(audioURL: audioURL, promptOverride: promptOverride)
+      let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
+      DebugLogger.logSpeech("SPEED: [OpenRouter] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
+      return result
+    }
+
     // Self-hosted OpenAI-compatible endpoint
     if model == .selfHostedTranscription {
       try validateAudioFileFormat(at: audioURL)
@@ -1585,6 +1594,124 @@ class SpeechService {
       }
     }
     throw lastError
+  }
+
+  // MARK: - OpenRouter Transcription (chat completions with an audio part)
+
+  /// Transcribes through OpenRouter.
+  ///
+  /// OpenRouter has no `/v1/audio/transcriptions` — audio is a content part on a normal chat
+  /// completion, base64-encoded, no URLs (https://openrouter.ai/docs/features/multimodal/audio).
+  /// That is why this cannot reuse the multipart helper the OpenAI/self-hosted paths share, and why
+  /// the dictation instruction goes in as the message text rather than a `prompt` field.
+  ///
+  /// The upside for the user is that one entry covers every audio-capable model OpenRouter routes
+  /// to: switching from a Gemini tier to `openai/gpt-audio` is a model slug, not a new provider.
+  private func transcribeWithOpenRouter(audioURL: URL, promptOverride: String?) async throws -> String {
+    let apiKey = (keychainManager.get(.openRouter) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !apiKey.isEmpty else {
+      throw TranscriptionError.networkError("OpenRouter API key is not configured. Add it in Settings → Dictate.")
+    }
+    guard let url = URL(string: AppConstants.openRouterChatCompletionsEndpoint) else {
+      throw TranscriptionError.invalidRequest
+    }
+
+    // Same AAC transcode the Gemini path uses: a raw .wav recording is ~1.5 MB per minute, and this
+    // body is JSON with the audio base64'd inside it.
+    let audioData: Data
+    let format: String
+    if let aacData = AudioTranscoder.aacData(for: audioURL) {
+      audioData = aacData
+      format = "m4a"
+    } else {
+      audioData = try Data(contentsOf: audioURL)
+      format = Self.openRouterAudioFormat(forExtension: audioURL.pathExtension.lowercased())
+    }
+
+    let modelID = TranscriptionTuning.openRouterModelID
+    let instruction = geminiTranscriptionInstruction(promptOverride: promptOverride)
+    DebugLogger.log("OPENROUTER-TRANSCRIPTION: model=\(modelID) format=\(format) bytes=\(audioData.count)")
+
+    let body: [String: Any] = [
+      "model": modelID,
+      // Same reasoning as the Gemini path: this is a reproduce-what-was-said task, so don't let the
+      // model sample alternatives. OpenRouter forwards `temperature` to the underlying provider.
+      "temperature": TranscriptionTuning.temperature,
+      "messages": [
+        [
+          "role": "user",
+          "content": [
+            ["type": "text", "text": instruction],
+            ["type": "input_audio", "input_audio": ["data": audioData.base64EncodedString(), "format": format]],
+          ],
+        ]
+      ],
+    ]
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    // OpenRouter attributes traffic by these two headers; they are optional but make the app
+    // identifiable on the user's OpenRouter dashboard instead of showing up as anonymous calls.
+    request.setValue("https://github.com/mgsgde/whisper-shortcut", forHTTPHeaderField: "HTTP-Referer")
+    request.setValue("WhisperShortcut", forHTTPHeaderField: "X-Title")
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+    let (data, http) = try await Self.performWithRetryOn429(
+      request: request, session: makeTranscriptionURLSession(), logPrefix: "OPENROUTER-TRANSCRIPTION")
+
+    guard (200...299).contains(http.statusCode) else {
+      let message = Self.openRouterErrorMessage(from: data)
+      DebugLogger.logError("OPENROUTER-TRANSCRIPTION: HTTP \(http.statusCode) — \(message ?? "no message")")
+      switch http.statusCode {
+      case 401, 403: throw TranscriptionError.invalidAPIKey
+      // OpenRouter gates audio requests on account balance and answers 402 ("This request requires
+      // at least $0.50 in balance for audio") — verified live. Mapping it to a generic server error
+      // would tell the user "something went wrong" for a problem only they can fix, and only at
+      // https://openrouter.ai/settings/credits.
+      case 402: throw TranscriptionError.billingRequired
+      case 429:
+        let retryAfter = (http.value(forHTTPHeaderField: "Retry-After")).flatMap(TimeInterval.init)
+        throw TranscriptionError.rateLimited(retryAfter: retryAfter)
+      default: throw TranscriptionError.serverError(http.statusCode)
+      }
+    }
+
+    guard
+      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let choices = json["choices"] as? [[String: Any]],
+      let message = choices.first?["message"] as? [String: Any],
+      let content = message["content"] as? String
+    else {
+      throw TranscriptionError.networkError("OpenRouter returned no transcription text")
+    }
+
+    let normalized = TextProcessingUtility.normalizeTranscriptionText(content)
+    try TextProcessingUtility.validateSpeechText(normalized, mode: "TRANSCRIPTION-MODE")
+    return normalized
+  }
+
+  /// Maps a recording's file extension onto one of the format strings OpenRouter documents
+  /// (wav, mp3, aiff, aac, ogg, flac, m4a, pcm16, pcm24). The app records `.wav`.
+  private static func openRouterAudioFormat(forExtension ext: String) -> String {
+    switch ext {
+    case "mp3": return "mp3"
+    case "m4a", "mp4": return "m4a"
+    case "flac": return "flac"
+    case "ogg": return "ogg"
+    case "aiff", "aif": return "aiff"
+    case "aac": return "aac"
+    default: return "wav"
+    }
+  }
+
+  private static func openRouterErrorMessage(from data: Data) -> String? {
+    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+    if let error = json["error"] as? [String: Any], let message = error["message"] as? String {
+      return message
+    }
+    return String(data: data, encoding: .utf8)?.prefix(200).description
   }
 
   // MARK: - OpenAI-Compatible Multipart Helper

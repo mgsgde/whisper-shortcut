@@ -21,15 +21,54 @@ struct LiveMeetingChunk: Identifiable, Sendable {
   }
 }
 
-/// In-memory store for live meeting transcript chunks. Used by the meeting window (live transcript panel)
-/// and for building chat context (summary + last N minutes). Cleared when a new meeting starts.
+/// One append-only live note: what happened in one segment of the meeting, as 1–2 short bullets.
+///
+/// Notes are never rewritten — each covers a fixed span of transcript and is appended once. That is
+/// the whole point: the old rolling summary re-generated the *entire* summary on every update, which
+/// cost more the longer the meeting ran, took 60–100 s per call, and quietly drifted as the model
+/// re-wrote its own earlier wording. Appending is O(1) per segment, reads chronologically, and can
+/// therefore be shown inline in the chat as "what has been discussed".
+struct LiveMeetingNote: Identifiable, Sendable {
+  let id: UUID
+  /// Elapsed seconds from meeting start of the first chunk this note covers.
+  let startTime: TimeInterval
+  let bullets: [String]
+  /// True for a marker the user set by hotkey during the meeting, false for a generated note.
+  let isMarker: Bool
+
+  init(id: UUID = UUID(), startTime: TimeInterval, bullets: [String], isMarker: Bool = false) {
+    self.id = id
+    self.startTime = startTime
+    self.bullets = bullets
+    self.isMarker = isMarker
+  }
+
+  var timestampString: String {
+    let minutes = Int(startTime) / 60
+    let seconds = Int(startTime) % 60
+    return String(format: "[%02d:%02d]", minutes, seconds)
+  }
+
+  /// Plain-text rendering used for chat context and for the clipboard.
+  var plainText: String {
+    bullets.map { "\(timestampString) \($0)" }.joined(separator: "\n")
+  }
+}
+
+/// In-memory store for live meeting transcript chunks and live notes. Used by the meeting view and
+/// for building chat context (live notes + full transcript). Cleared when a new meeting starts.
 final class LiveMeetingTranscriptStore: ObservableObject {
   static let shared = LiveMeetingTranscriptStore()
 
   /// Transcript chunks (newest appended). Bounded by `maxChunks` to limit RAM for long meetings.
   @Published private(set) var chunks: [LiveMeetingChunk] = []
 
-  /// Rolling summary text, updated periodically during the meeting. Empty until first summary update.
+  /// Append-only live notes for the running meeting, oldest first.
+  @Published private(set) var liveNotes: [LiveMeetingNote] = []
+
+  /// Final summary text of an ended (or rehydrated) meeting. No longer written during recording —
+  /// `liveNotes` covers the live case, and writing a partial summary to `.summary.md` mid-meeting
+  /// used to defeat the "regenerate when the summary file is missing" recovery path.
   @Published private(set) var summary: String = ""
 
   /// True while a meeting is recording; false after session ends or before any meeting.
@@ -66,6 +105,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
       self.currentMeetingFilenameStem = Self.generateStem()
     }
     self.chunks = []
+    self.liveNotes = []
     self.summary = ""
     self.isSessionActive = true
     DebugLogger.log("LIVE-MEETING-STORE: Session started, store cleared (stem: \(self.currentMeetingFilenameStem ?? "nil"))")
@@ -84,12 +124,16 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// store so resuming genuinely continues THAT meeting: the correct file is appended to,
   /// the prior transcript stays visible, and new chunks' timestamps continue monotonically.
   /// Call on the main thread before `startLiveMeeting(resuming:)`.
-  func rehydrateForResume(stem: String, chunks: [LiveMeetingChunk], summary: String) {
+  func rehydrateForResume(
+    stem: String, chunks: [LiveMeetingChunk], summary: String, notes: [LiveMeetingNote]
+  ) {
     assert(Thread.isMainThread, "LiveMeetingTranscriptStore.rehydrateForResume must be called on main thread")
     self.currentMeetingFilenameStem = stem
     self.chunks = chunks
     self.summary = summary
-    DebugLogger.log("LIVE-MEETING-STORE: Rehydrated for resume (stem: \(stem), chunks: \(chunks.count))")
+    self.liveNotes = notes
+    DebugLogger.log(
+      "LIVE-MEETING-STORE: Rehydrated for resume (stem: \(stem), chunks: \(chunks.count), notes: \(notes.count))")
   }
 
   /// Matches a "[mm:ss]" timestamp marker (minutes may exceed two digits for long meetings).
@@ -152,6 +196,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     assert(Thread.isMainThread, "LiveMeetingTranscriptStore.clearForNewMeeting must be called on main thread")
     let stem = Self.generateStem()
     self.chunks = []
+    self.liveNotes = []
     self.summary = ""
     self.isSessionActive = false
     self.currentMeetingFilenameStem = stem
@@ -159,64 +204,129 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     DebugLogger.log("LIVE-MEETING-STORE: Cleared for new meeting (stem: \(stem))")
   }
 
-  /// Returns transcript text for chunks from the given index to the end. Used for rolling summary (merge new content).
-  func chunkTexts(fromIndex startIndex: Int) -> String {
-    guard startIndex >= 0, startIndex < chunks.count else { return "" }
-    return chunks[startIndex...]
-      .map { "\($0.timestampString) \($0.text)" }
-      .joined(separator: "\n")
+  /// Returns the chunks appearing strictly after the chunk with the given ID. If `afterID` is nil
+  /// or no longer present (chunk trimming), returns everything.
+  func chunks(afterID: UUID?) -> [LiveMeetingChunk] {
+    guard !chunks.isEmpty else { return [] }
+    guard let afterID, let i = chunks.firstIndex(where: { $0.id == afterID }) else { return chunks }
+    guard i + 1 < chunks.count else { return [] }
+    return Array(chunks[(i + 1)...])
   }
 
-  /// Returns transcript text for chunks appearing strictly after the chunk with the given ID.
-  /// If `afterID` is nil or not found, returns all chunks. Safe across chunk trimming.
-  func chunkTexts(afterID: UUID?) -> (text: String, lastID: UUID?) {
-    guard !chunks.isEmpty else { return ("", nil) }
-    let startIndex: Int
-    if let afterID, let i = chunks.firstIndex(where: { $0.id == afterID }) {
-      startIndex = i + 1
-    } else {
-      startIndex = 0
-    }
-    guard startIndex < chunks.count else { return ("", chunks.last?.id) }
-    let text = chunks[startIndex...]
-      .map { "\($0.timestampString) \($0.text)" }
-      .joined(separator: "\n")
-    return (text, chunks.last?.id)
+  /// The whole transcript accumulated so far, timestamped.
+  func fullTranscriptText() -> String {
+    chunks.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n")
   }
 
-  /// Returns transcript text for the last N minutes (by chunk startTime). Used for chat context.
-  func lastMinutesTranscript(minutes: Int) -> String {
-    let cutoff = chunks.last.map { $0.startTime - TimeInterval(minutes * 60) } ?? 0
-    return chunks
-      .filter { $0.startTime >= cutoff }
-      .map { "\($0.timestampString) \($0.text)" }
-      .joined(separator: "\n")
-  }
+  /// Elapsed meeting time covered by the transcript, in seconds.
+  var elapsedSeconds: TimeInterval { chunks.last?.startTime ?? 0 }
 
-  /// Context string for the meeting chat system instruction: summary (if any) plus recent transcript. Call on main thread.
-  func meetingContextForChat(lastMinutes: Int = 5) -> String {
+  /// Context string for the meeting chat system instruction: the live notes plus the FULL transcript.
+  ///
+  /// This used to be "rolling summary + last 5 minutes", which meant the chat could not answer
+  /// "what did we say about X earlier?" while the meeting was still running — the only thing it knew
+  /// about the first hour was whatever survived into a lossy summary. A 90-minute meeting is on the
+  /// order of 10–15k tokens, so the whole thing fits comfortably; `meetingContextMaxChars` still
+  /// bounds pathological cases by keeping the most recent text. Call on main thread.
+  func meetingContextForChat() -> String {
     var parts: [String] = []
-    if !summary.isEmpty {
-      parts.append("Current meeting summary:\n\(summary)")
+    if !liveNotes.isEmpty {
+      let notes = liveNotes.map { $0.plainText }.joined(separator: "\n")
+      parts.append("Live notes taken so far (chronological):\n\(notes)")
     }
-    let recent = lastMinutesTranscript(minutes: lastMinutes)
-    if !recent.isEmpty {
-      parts.append("Recent transcript (last \(lastMinutes) minutes):\n\(recent)")
+    var transcript = fullTranscriptText()
+    if transcript.count > MeetingListService.meetingContextMaxChars {
+      transcript = String(transcript.suffix(MeetingListService.meetingContextMaxChars))
+    }
+    if !transcript.isEmpty {
+      parts.append("Full transcript of the meeting so far:\n\(transcript)")
     }
     if parts.isEmpty {
       return ""
     }
-    return "Use the following meeting context to answer the user's questions.\n\n" + parts.joined(separator: "\n\n")
+    return """
+      This chat is attached to a meeting that is being transcribed live. Everything said so far is \
+      below — answer the user's questions from it, and quote timestamps like [12:34] when it helps \
+      them find the moment.
+
+      """ + parts.joined(separator: "\n\n")
   }
 
-  /// Snapshot of current chunks (e.g. for display after session ended). Returns a copy.
-  func snapshotChunks() -> [LiveMeetingChunk] {
-    chunks
-  }
+  // MARK: - Live notes
 
-  /// Update the rolling summary (called after a Gemini merge). Main thread.
-  func updateSummary(_ newSummary: String) {
+  /// Appends one generated note. Main thread.
+  func appendNote(_ note: LiveMeetingNote) {
     assert(Thread.isMainThread)
-    summary = newSummary
+    liveNotes.append(note)
   }
+
+  /// Appends a user marker and returns it. Pass the recorder's live elapsed time when available —
+  /// `elapsedSeconds` only knows about transcribed chunks and so trails the actual moment by up to
+  /// one chunk. Notes stay sorted because a marker is always at or after the newest chunk.
+  /// Main thread.
+  @discardableResult
+  func appendMarker(text: String, at elapsed: TimeInterval? = nil) -> LiveMeetingNote {
+    assert(Thread.isMainThread)
+    let startTime = max(elapsed ?? elapsedSeconds, elapsedSeconds)
+    let note = LiveMeetingNote(startTime: startTime, bullets: [text], isMarker: true)
+    liveNotes.append(note)
+    return note
+  }
+
+  /// Markers the user set since the given note, used to bias the final summary.
+  var markerTexts: [String] {
+    liveNotes.filter { $0.isMarker }.flatMap { $0.bullets }
+  }
+
+  // MARK: - Live notes serialization
+  //
+  // Notes live next to the transcript as a plain `.notes.md` file so they survive an app restart,
+  // a resumed meeting, and reopening the meeting weeks later — and so the folder stays readable
+  // without the app.
+
+  /// Renders notes as the Markdown persisted in `<stem>.notes.md`.
+  static func notesMarkdown(_ notes: [LiveMeetingNote]) -> String {
+    notes.map { note in
+      let header = note.isMarker ? "## ★ \(note.timestampString)" : "## \(note.timestampString)"
+      let body = note.bullets.map { "- \($0)" }.joined(separator: "\n")
+      return "\(header)\n\(body)"
+    }.joined(separator: "\n\n") + "\n"
+  }
+
+  private static let noteHeaderRegex = try! NSRegularExpression(
+    pattern: #"^##\s+(★\s+)?\[(\d+):(\d{2})\]\s*$"#)
+
+  /// Parses a `.notes.md` file back into notes. Unrecognized lines are ignored.
+  static func parseNotes(_ text: String) -> [LiveMeetingNote] {
+    var result: [LiveMeetingNote] = []
+    var currentStart: TimeInterval? = nil
+    var currentIsMarker = false
+    var currentBullets: [String] = []
+
+    func flush() {
+      guard let start = currentStart, !currentBullets.isEmpty else { return }
+      result.append(
+        LiveMeetingNote(startTime: start, bullets: currentBullets, isMarker: currentIsMarker))
+      currentBullets = []
+    }
+
+    for rawLine in text.components(separatedBy: .newlines) {
+      let line = rawLine.trimmingCharacters(in: .whitespaces)
+      let range = NSRange(line.startIndex..., in: line)
+      if let match = noteHeaderRegex.firstMatch(in: line, range: range) {
+        flush()
+        let markerRange = match.range(at: 1)
+        currentIsMarker = markerRange.location != NSNotFound
+        let minutes = Range(match.range(at: 2), in: line).flatMap { Int(line[$0]) } ?? 0
+        let seconds = Range(match.range(at: 3), in: line).flatMap { Int(line[$0]) } ?? 0
+        currentStart = TimeInterval(minutes * 60 + seconds)
+      } else if line.hasPrefix("- "), currentStart != nil {
+        let bullet = String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+        if !bullet.isEmpty { currentBullets.append(bullet) }
+      }
+    }
+    flush()
+    return result
+  }
+
 }

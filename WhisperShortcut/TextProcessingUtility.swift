@@ -41,11 +41,38 @@ enum TextProcessingUtility {
     return cleaned
   }
   
+  /// Strips a "here is the transcription…" lead-in the model wrote before the actual words.
+  ///
+  /// The literal prefix list below only catches exact spellings. Models get chattier the more they
+  /// are allowed to think — with the thinking-effort setting raised, real observed answers were
+  /// `**Transcription:**\nTesting 1, 2, 3.` (markdown bold defeats the literal match) and
+  /// `Here is the transcription of the audio you provided: …` (the middle clause defeats it). Both
+  /// would otherwise be pasted into the user's document verbatim.
+  private static let transcriptionPreambleRegex = try! NSRegularExpression(
+    // Markdown emphasis can wrap the label on either side of the colon — the observed answer was
+    // literally `**Transcription:**`, so the trailing `[*_]*` is load-bearing.
+    pattern: #"^\s*[*_#\s]*(?:(?:here|this|below)\s+(?:is|are)\s+)?(?:the\s+)?(?:audio\s+|full\s+|complete\s+)?transcription(?:\s+of\s+[^:\n]{0,80})?\s*:\s*[*_]*\s*"#,
+    options: [.caseInsensitive])
+
+  static func strippingTranscriptionPreamble(_ text: String) -> String {
+    let range = NSRange(text.startIndex..., in: text)
+    guard let match = transcriptionPreambleRegex.firstMatch(in: text, range: range),
+          match.range.length > 0,
+          let stripped = Range(match.range, in: text)
+    else { return text }
+    let result = String(text[stripped.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    // Never hand back an empty transcript: if the preamble was the whole answer, the caller's
+    // validation should see the original and reject it, not silently receive "".
+    guard !result.isEmpty else { return text }
+    DebugLogger.log("PROMPT-CLEANUP: Removed model preamble '\(text[stripped].trimmingCharacters(in: .whitespacesAndNewlines))'")
+    return result
+  }
+
   // MARK: - Text Cleaning
   private static func cleanTranscriptionText(_ text: String) -> String {
-    var cleaned = text
+    var cleaned = strippingTranscriptionPreamble(text)
     let originalLength = cleaned.count
-    
+
     // Remove common prompt remnants that might appear at the beginning
     let promptPrefixes = [
       "convert speech to",

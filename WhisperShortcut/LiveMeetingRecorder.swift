@@ -31,7 +31,9 @@ class LiveMeetingRecorder: NSObject {
   weak var delegate: LiveMeetingRecorderDelegate?
 
   /// Maximum chunk duration (fallback if no silence detected)
-  private let maxChunkDuration: TimeInterval
+  /// Rotation cadence. Mutable so the session can switch to a responsive cadence while the user is
+  /// watching the live view — see `updateMaxChunkDuration`.
+  private var maxChunkDuration: TimeInterval
   /// Minimum chunk duration before silence-based rotation is allowed
   private let minChunkDuration: TimeInterval
   /// How long silence must last to trigger rotation
@@ -128,6 +130,42 @@ class LiveMeetingRecorder: NSObject {
         )
         self.delegate?.liveMeetingRecorder(didFailWithError: error)
       }
+    }
+  }
+
+  /// Seconds elapsed in the meeting right now, continuing across a resume. Unlike the last chunk's
+  /// start time this is accurate to the moment, which is what a marker needs — a marker placed on
+  /// the previous chunk boundary can point up to a whole chunk before what the user reacted to.
+  var currentElapsedTime: TimeInterval {
+    guard let sessionStartTime else { return currentChunkStartTime }
+    return resumeTimeOffset + Date().timeIntervalSince(sessionStartTime)
+  }
+
+  /// Changes the rotation cadence mid-session (see `AppConstants.liveMeetingFastChunkInterval`).
+  ///
+  /// Shortening it reschedules the pending rotation so the change takes effect on the *current*
+  /// chunk rather than a minute later — the point of switching is that someone just started
+  /// watching. Lengthening it applies from the next chunk, since cutting a chunk short gains
+  /// nothing. Both keep the running recorder untouched; only the timer moves.
+  func updateMaxChunkDuration(_ newValue: TimeInterval) {
+    let clamped = max(minChunkDuration, newValue)
+    guard abs(clamped - maxChunkDuration) > 0.5 else { return }
+    let shortened = clamped < maxChunkDuration
+    maxChunkDuration = clamped
+    DebugLogger.logAudio("LIVE-MEETING: Chunk cadence now \(Int(clamped))s")
+    guard isSessionActive, shortened, let wallStart = currentChunkWallStart else { return }
+
+    let elapsed = Date().timeIntervalSince(wallStart)
+    let remaining = clamped - elapsed
+    chunkTimer?.invalidate()
+    if remaining <= 0 {
+      rotateAndDeliver()
+      return
+    }
+    chunkTimer = Timer.scheduledTimer(withTimeInterval: remaining, repeats: false) { [weak self] _ in
+      guard let self, self.isSessionActive else { return }
+      DebugLogger.logAudio("LIVE-MEETING: Max chunk duration reached, rotating")
+      self.rotateAndDeliver()
     }
   }
 

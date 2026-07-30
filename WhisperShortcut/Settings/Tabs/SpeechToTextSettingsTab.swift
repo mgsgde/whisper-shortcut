@@ -19,6 +19,11 @@ struct SpeechToTextSettingsTab: View {
 
       SpacedSectionDivider()
 
+      // Temperature / thinking effort (cloud models only)
+      tuningSection
+
+      SpacedSectionDivider()
+
       // Available Models Section
       offlineModelsSection
 
@@ -190,6 +195,63 @@ struct SpeechToTextSettingsTab: View {
 
       if viewModel.data.selectedTranscriptionModel == .selfHostedTranscription {
         SelfHostedTranscriptionEndpointSection()
+      }
+
+      if viewModel.data.selectedTranscriptionModel == .openRouterTranscription {
+        OpenRouterTranscriptionSection(viewModel: viewModel)
+      }
+    }
+  }
+
+  // MARK: - Transcription Tuning Section
+
+  /// Temperature and thinking effort for cloud transcription.
+  ///
+  /// Both are hidden for offline Whisper and for the OpenAI/xAI/self-hosted endpoints, which take
+  /// neither: `gpt-4o-transcribe` rejects `temperature` outright, and the multipart transcription
+  /// APIs have no notion of thinking.
+  @ViewBuilder
+  private var tuningSection: some View {
+    let model = viewModel.data.selectedTranscriptionModel
+    if model.isGemini || model == .openRouterTranscription {
+      VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+        SectionHeader(
+          title: "Accuracy Tuning",
+          systemImage: "dial.medium",
+          subtitle: "How freely the model may deviate from what it heard, and how long it may think first."
+        )
+
+        Picker("Temperature:", selection: $viewModel.data.transcriptionTemperature) {
+          ForEach(TranscriptionTemperature.allCases, id: \.self) { value in
+            Text(value.displayName).tag(value)
+          }
+        }
+        .pickerStyle(.segmented)
+        .onChange(of: viewModel.data.transcriptionTemperature) { _, _ in
+          Task { await viewModel.saveSettings() }
+        }
+
+        Text("Lower means more literal. 0.0 reproduces what was said; the model's own default is 1.0, which is what earlier versions of this app sent and is the most likely source of invented or swapped words.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        if model.isGemini {
+          Picker("Thinking effort:", selection: $viewModel.data.transcriptionThinkingEffort) {
+            ForEach(TranscriptionThinkingEffort.allCases, id: \.self) { value in
+              Text(value.displayName).tag(value)
+            }
+          }
+          .pickerStyle(.segmented)
+          .onChange(of: viewModel.data.transcriptionThinkingEffort) { _, _ in
+            Task { await viewModel.saveSettings() }
+          }
+
+          Text("More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Gemini 3.1 Pro cannot run below Low and is clamped to it.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
     }
   }

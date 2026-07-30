@@ -1377,6 +1377,57 @@ enum LiveMeetingChunkInterval: Double, CaseIterable {
   }
 }
 
+/// Sampling temperature for transcription requests.
+///
+/// Until this existed the app sent no temperature at all, so every Gemini transcription ran at the
+/// model default of `1.0` (confirmed via `GET /v1beta/models/{id}`: `temperature: 1, maxTemperature: 2`)
+/// — full sampling for a task whose entire job is to reproduce what was said. That is the most likely
+/// mechanical cause of the "invented word" reports, which until now were fought with prompt wording
+/// and plausibility gates alone.
+enum TranscriptionTemperature: String, CaseIterable {
+  case verbatim = "0.0"
+  case low = "0.2"
+  case balanced = "0.5"
+  case modelDefault = "1.0"
+
+  var value: Double { Double(rawValue) ?? 0 }
+
+  var displayName: String {
+    switch self {
+    case .verbatim: return "0.0 · verbatim"
+    case .low: return "0.2"
+    case .balanced: return "0.5"
+    case .modelDefault: return "1.0 · model default"
+    }
+  }
+}
+
+/// How much the model may think before transcribing (`generationConfig.thinkingConfig.thinkingLevel`).
+///
+/// Verified against the live API with real audio (2026-07): every Flash / Flash-Lite tier accepts
+/// all four levels with audio input, and Pro accepts everything except `minimal` (HTTP 400,
+/// "Thinking level MINIMAL is not supported for this model") — `geminiTranscriptionGenerationConfig`
+/// clamps that case. Measured latency on a 1.2 s clip: Flash-Lite is flat across levels (~1.2–1.5 s),
+/// Flash costs a few hundred ms, Pro goes from 3 s to ~5 s at `high`.
+enum TranscriptionThinkingEffort: String, CaseIterable {
+  case minimal
+  case low
+  case medium
+  case high
+
+  /// Value sent as `thinkingLevel`.
+  var geminiValue: String { rawValue }
+
+  var displayName: String {
+    switch self {
+    case .minimal: return "Minimal"
+    case .low: return "Low"
+    case .medium: return "Medium"
+    case .high: return "High"
+    }
+  }
+}
+
 // MARK: - Default Settings Configuration
 struct SettingsDefaults {
   // MARK: - Global Settings
@@ -1395,6 +1446,7 @@ struct SettingsDefaults {
   static let screenshotCapture: ShortcutDefinition? = nil
   static let readAloud: ShortcutDefinition? = nil
   static let voiceFeedback: ShortcutDefinition? = nil
+  static let meetingMarker: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
   // Everything defaults to 3.5 Flash-Lite. Dictation because audio input dominates that bill
@@ -1403,6 +1455,13 @@ struct SettingsDefaults {
   // of Flash-Lite and drove the bulk of the app's Gemini spend. Users who want more headroom pick
   // a bigger model explicitly. https://ai.google.dev/gemini-api/docs/pricing
   static let selectedTranscriptionModel = TranscriptionModel.gemini35FlashLite
+  /// Verbatim by default: transcription should reproduce speech, not sample alternatives.
+  static let transcriptionTemperature = TranscriptionTemperature.verbatim
+  /// Unchanged from what the app has always sent — raising it costs latency on every dictation,
+  /// so it stays the user's call.
+  static let transcriptionThinkingEffort = TranscriptionThinkingEffort.minimal
+  /// Cheapest audio-capable model on OpenRouter's own pricing list (2026-07).
+  static let openRouterTranscriptionModelID = "google/gemini-3.5-flash-lite"
   static let selectedPromptModel = PromptModel.gemini35FlashLite
   static let selectedChatModel = PromptModel.gemini35FlashLite
   static let chatCloseOnFocusLoss = true
@@ -1501,6 +1560,12 @@ struct SettingsData: Equatable {
   var screenshotCapture: ShortcutDefinition? = SettingsDefaults.screenshotCapture
   var readAloud: ShortcutDefinition? = SettingsDefaults.readAloud
   var voiceFeedback: ShortcutDefinition? = SettingsDefaults.voiceFeedback
+  var meetingMarker: ShortcutDefinition? = SettingsDefaults.meetingMarker
+
+  // MARK: - Transcription tuning
+  var transcriptionTemperature: TranscriptionTemperature = SettingsDefaults.transcriptionTemperature
+  var transcriptionThinkingEffort: TranscriptionThinkingEffort = SettingsDefaults.transcriptionThinkingEffort
+  var openRouterTranscriptionModelID: String = SettingsDefaults.openRouterTranscriptionModelID
 
   // MARK: - Read Aloud
   var readAloudSmartRewriteEnabled: Bool = SettingsDefaults.readAloudSmartRewriteEnabled
@@ -1585,6 +1650,7 @@ enum SettingsFocusField: Hashable {
   case screenshotCapture
   case readAloudShortcut
   case voiceFeedbackShortcut
+  case meetingMarkerShortcut
 }
 
 // MARK: - Shortcut Conflict Descriptor

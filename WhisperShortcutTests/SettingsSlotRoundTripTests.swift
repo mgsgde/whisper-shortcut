@@ -24,6 +24,9 @@ struct SettingsSlotRoundTripTests {
     UserDefaultsKeys.selectedChatModel,
     UserDefaultsKeys.selectedImprovementModel,
     UserDefaultsKeys.whisperLanguage,
+    UserDefaultsKeys.transcriptionTemperature,
+    UserDefaultsKeys.transcriptionThinkingEffort,
+    UserDefaultsKeys.openRouterTranscriptionModelID,
     UserDefaultsKeys.showPopupNotifications,
     UserDefaultsKeys.notificationPosition,
     UserDefaultsKeys.notificationDuration,
@@ -77,6 +80,9 @@ struct SettingsSlotRoundTripTests {
     data.selectedChatModel = .grok43
     data.selectedImprovementModel = .claudeSonnet5
     data.whisperLanguage = .de
+    data.transcriptionTemperature = .balanced
+    data.transcriptionThinkingEffort = .high
+    data.openRouterTranscriptionModelID = "probe/openrouter-model"
     data.showPopupNotifications = !SettingsDefaults.showPopupNotifications
     data.notificationPosition = .leftTop
     data.notificationDuration = .sevenSeconds

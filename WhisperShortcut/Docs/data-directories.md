@@ -11,7 +11,7 @@ WhisperShortcut stores user data locally on your Mac. The app intentionally uses
 This path is used for:
 
 - `UserContext/`: interaction logs, user context, system prompts, prompt history, and short-lived Smart Improvement audio verification samples in `UserContext/audio-samples/`.
-- `Meetings/`: saved live meeting transcripts.
+- `Meetings/`: saved live meetings. Each one is up to three files sharing a stem: `<meeting>.txt` (the transcript), `<meeting>.notes.md` (the live notes taken during the meeting), and `<meeting>.summary.md` (the summary written when it ended).
 - `WhisperKit/`: downloaded local Whisper models.
 - Chat/session data and other app support files.
 

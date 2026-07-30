@@ -48,6 +48,14 @@ class SettingsViewModel: ObservableObject {
     .rawValue(\.whisperLanguage, key: UserDefaultsKeys.whisperLanguage,
               default: SettingsDefaults.whisperLanguage),
 
+    // Transcription tuning
+    .rawValue(\.transcriptionTemperature, key: UserDefaultsKeys.transcriptionTemperature,
+              default: SettingsDefaults.transcriptionTemperature),
+    .rawValue(\.transcriptionThinkingEffort, key: UserDefaultsKeys.transcriptionThinkingEffort,
+              default: SettingsDefaults.transcriptionThinkingEffort),
+    .string(\.openRouterTranscriptionModelID, key: UserDefaultsKeys.openRouterTranscriptionModelID,
+            default: SettingsDefaults.openRouterTranscriptionModelID),
+
     // Notifications
     .bool(\.showPopupNotifications, key: UserDefaultsKeys.showPopupNotifications,
           default: SettingsDefaults.showPopupNotifications),
@@ -148,6 +156,7 @@ class SettingsViewModel: ObservableObject {
     data.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
     data.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
     data.voiceFeedback = currentConfig.voiceFeedback.isEnabled ? currentConfig.voiceFeedback : nil
+    data.meetingMarker = currentConfig.meetingMarker.isEnabled ? currentConfig.meetingMarker : nil
 
     for slot in Self.slots { slot.load(&data) }
 
@@ -252,6 +261,9 @@ class SettingsViewModel: ObservableObject {
     ConfigurableShortcutSlot(
       field: .voiceFeedbackShortcut, label: "Voice Feedback",
       read: { $0.voiceFeedback }, write: { $0.voiceFeedback = $1 }),
+    ConfigurableShortcutSlot(
+      field: .meetingMarkerShortcut, label: "Flag Meeting Moment",
+      read: { $0.meetingMarker }, write: { $0.meetingMarker = $1 }),
   ]
 
   // MARK: - Save Settings
@@ -293,6 +305,7 @@ class SettingsViewModel: ObservableObject {
     let screenshotCapture = data.screenshotCapture ?? disable(factory.screenshotCapture)
     let readAloud = data.readAloud ?? disable(factory.readAloud)
     let voiceFeedback = data.voiceFeedback ?? disable(factory.voiceFeedback)
+    let meetingMarker = data.meetingMarker ?? disable(factory.meetingMarker)
     let newConfig = ShortcutConfig(
       startRecording: startRecording,
       startPrompting: startPrompting,
@@ -300,7 +313,8 @@ class SettingsViewModel: ObservableObject {
       openChat: openChat,
       screenshotCapture: screenshotCapture,
       readAloud: readAloud,
-      voiceFeedback: voiceFeedback
+      voiceFeedback: voiceFeedback,
+      meetingMarker: meetingMarker
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 

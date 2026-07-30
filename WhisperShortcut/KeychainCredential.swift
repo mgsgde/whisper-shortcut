@@ -26,6 +26,7 @@ enum KeychainCredential: String, CaseIterable {
   case customTranscriptionBearerToken = "custom-transcription-bearer-token"
   case customTranscriptionHeaders = "custom-transcription-headers"
   case customOpenAIChatAPIKey = "custom-openai-chat-api-key"
+  case openRouter = "openrouter-api-key"
 
   /// Keychain account name this credential is stored under.
   var accountName: String { rawValue }
@@ -39,6 +40,7 @@ enum KeychainCredential: String, CaseIterable {
     case .xai: return ["WHISPERSHORTCUT_XAI_API_KEY", "XAI_API_KEY"]
     case .anthropic: return ["WHISPERSHORTCUT_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"]
     case .openAI: return ["WHISPERSHORTCUT_OPENAI_API_KEY", "OPENAI_API_KEY"]
+    case .openRouter: return ["WHISPERSHORTCUT_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"]
     default: return []
     }
   }

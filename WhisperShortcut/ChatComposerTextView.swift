@@ -49,6 +49,11 @@ final class ComposerAttachmentCell: NSTextAttachmentCell {
       switch bkind {
       case .largePaste: self.label = "Pasted · \(lines) lines"
       case .shortcutSelection: self.label = "Selection · \(lines) lines"
+      // The quote is one short line, so show it instead of a line count — the whole point is
+      // that the user can see which moment they are asking about before they hit send.
+      case .meetingQuote:
+        let oneLine = content.replacingOccurrences(of: "\n", with: " ")
+        self.label = "Quote · \(oneLine.count > 48 ? String(oneLine.prefix(48)) + "…" : oneLine)"
       }
     case .file(_, let mime, let filename):
       self.thumbnail = nil
@@ -562,6 +567,8 @@ final class GeminiComposerController: ObservableObject {
           parts.append("<pasted_content>\n\(content)\n</pasted_content>")
         case .shortcutSelection:
           parts.append("<pasted_selection>\n\(content)\n</pasted_selection>")
+        case .meetingQuote:
+          parts.append("<quoted_from_meeting>\n\(content)\n</quoted_from_meeting>")
         }
       case .screenshot(let d):
         screenshotCounter += 1

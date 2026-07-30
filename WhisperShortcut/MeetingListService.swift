@@ -117,7 +117,40 @@ final class MeetingListService: ObservableObject {
     }
   }
 
-  /// Generates a Markdown summary from the meeting transcript and saves it. Routes to whichever
+  // MARK: - Live notes
+
+  /// URL for the append-only live-notes file next to a transcript file (`.notes.md`).
+  static func notesURL(transcriptFileURL: URL) -> URL {
+    transcriptFileURL.deletingPathExtension().appendingPathExtension("notes.md")
+  }
+
+  static func transcriptURL(forStem stem: String) -> URL {
+    AppSupportPaths.whisperShortcutApplicationSupportURL()
+      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+      .appendingPathComponent("\(stem).txt")
+  }
+
+  /// Persists the full note list for a meeting. Rewrites the whole (small) file — notes are
+  /// append-only, so this is always the complete history.
+  func saveNotes(_ notes: [LiveMeetingNote], transcriptFileURL: URL) {
+    let url = Self.notesURL(transcriptFileURL: transcriptFileURL)
+    guard !notes.isEmpty else { return }
+    do {
+      try LiveMeetingTranscriptStore.notesMarkdown(notes)
+        .write(to: url, atomically: true, encoding: .utf8)
+    } catch {
+      DebugLogger.logError("MEETING-LIBRARY: Save notes failed: \(error.localizedDescription)")
+    }
+  }
+
+  /// Loads persisted live notes for a meeting stem; empty when the meeting has none.
+  func loadNotes(forStem stem: String) -> [LiveMeetingNote] {
+    let url = Self.notesURL(transcriptFileURL: Self.transcriptURL(forStem: stem))
+    guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+    return LiveMeetingTranscriptStore.parseNotes(text)
+  }
+
+  /// Generates Markdown summary from the meeting transcript and saves it. Routes to whichever
   /// provider owns the selected meeting-summary model (Gemini / OpenAI / Grok). Returns "" on error.
   func generateAndSaveSummary(for meeting: MeetingFileInfo) async -> String {
     let model = PromptModel.loadSelectedMeetingSummary()
@@ -153,8 +186,10 @@ final class MeetingListService: ObservableObject {
   /// Final post-meeting summary for the given transcript + model. `.low` thinking: summarizing
   /// benefits from some reasoning, but the model default (`medium` on 3.5/3.6 Flash) bills
   /// thinking tokens at the output rate for little visible gain on this task.
-  static func generateSummaryText(transcript: String, model: PromptModel) async throws -> String {
-    try await generate(prompt: AppConstants.meetingSummaryPrompt(transcript: transcript), model: model, label: "MEETING-SUMMARY", thinkingLevel: .low)
+  static func generateSummaryText(transcript: String, markers: [String] = [], model: PromptModel) async throws -> String {
+    try await generate(
+      prompt: AppConstants.meetingSummaryPrompt(transcript: transcript, markers: markers),
+      model: model, label: "MEETING-SUMMARY", thinkingLevel: .low)
   }
 
   /// Refines an existing summary per a user instruction, grounded in the transcript. Provider-routed.
@@ -167,13 +202,14 @@ final class MeetingListService: ObservableObject {
       thinkingLevel: .low)
   }
 
-  /// Rolling (live) summary update for the given model. Runs repeatedly during a live meeting,
-  /// so it gets the cheapest setting — the final summary re-reads the full transcript anyway.
-  static func updateRollingSummary(currentSummary: String, newText: String, model: PromptModel) async throws -> String {
+  /// One append-only live note for a fresh segment of a running meeting. Sees only the new segment
+  /// plus the last few note lines (so it doesn't repeat itself), which keeps both the request and
+  /// the response tiny — this runs every ~1–2 minutes for the whole meeting.
+  static func generateLiveNote(segment: String, recentNotes: [String], model: PromptModel) async throws -> String {
     try await generate(
-      prompt: AppConstants.meetingRollingSummaryPrompt(currentSummary: currentSummary, newTranscriptText: newText),
+      prompt: AppConstants.meetingLiveNotePrompt(segment: segment, recentNotes: recentNotes),
       model: model,
-      label: "MEETING-ROLLING-SUMMARY",
+      label: "MEETING-LIVE-NOTE",
       thinkingLevel: .minimal)
   }
 
