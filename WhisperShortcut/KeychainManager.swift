@@ -61,14 +61,21 @@ class KeychainManager: KeychainManaging {
   // information" ACL prompt. When one of these environment variables is set,
   // it takes precedence and the Keychain is never queried for that account.
   //
-  // Set them in the test plan (Configurations ▸ Environment Variables) or pass
-  // them on the xcodebuild command line. Each account accepts the project's
-  // `WHISPERSHORTCUT_*` name first, then the provider's conventional name, so
-  // a key already exported in the shell (OPENAI_API_KEY, XAI_API_KEY, …) is
-  // picked up automatically.
+  // Each account accepts the project's `WHISPERSHORTCUT_*` name first, then the provider's
+  // conventional name (OPENAI_API_KEY, XAI_API_KEY, …), and finally the same names read from the
+  // gitignored `.env` at the repo root.
   //
-  // Gated to DEBUG so the shipped Release build never reads them; GUI launches
-  // don't inherit a shell environment anyway, so this is inert in production.
+  // The `.env` fallback is what actually makes this work under `xcodebuild test`. `run-tests.sh`
+  // exports the keys before invoking xcodebuild, but the test host does **not** inherit the calling
+  // shell's environment — measured: with all four keys exported, `ProcessInfo.environment` inside a
+  // test saw none of them. Neither `inheritEnvironmentVariables` in the test plan nor xcodebuild's
+  // `TEST_RUNNER_`-prefixed settings changed that. The failure was silent in the worst way: the live
+  // roundtrip tests are `.enabled(if: hasNonEmpty(...))`, so instead of failing they quietly
+  // *skipped*, and only passed on a developer machine because the keys happened to be in that
+  // machine's login Keychain. On CI or a fresh checkout the provider roundtrips covered nothing.
+  //
+  // Gated to DEBUG so the shipped Release build never reads either source; GUI launches don't
+  // inherit a shell environment anyway, so this is inert in production.
   //
   // The variable names live on `KeychainCredential.environmentVariableNames`.
   private func environmentOverride(for credential: KeychainCredential) -> String? {
@@ -77,11 +84,48 @@ class KeychainManager: KeychainManaging {
     for name in credential.environmentVariableNames {
       if let value = env[name], !value.isEmpty { return value }
     }
+    let dotEnv = Self.dotEnvValues
+    for name in credential.environmentVariableNames {
+      if let value = dotEnv[name], !value.isEmpty { return value }
+    }
     return nil
     #else
     return nil
     #endif
   }
+
+  #if DEBUG
+  /// Key/value pairs from the gitignored `.env` at the repo root, parsed once.
+  ///
+  /// The repo root is derived from this file's compile-time path rather than the working directory,
+  /// which under `xcodebuild test` is not the checkout. Empty when the file is absent — a machine
+  /// without `.env` still falls through to the Keychain, and a test whose provider key is missing
+  /// everywhere still skips rather than failing.
+  private static let dotEnvValues: [String: String] = {
+    let repoRoot = URL(fileURLWithPath: #filePath)   // …/WhisperShortcut/KeychainManager.swift
+      .deletingLastPathComponent()                    // …/WhisperShortcut
+      .deletingLastPathComponent()                    // repo root
+    guard let contents = try? String(contentsOf: repoRoot.appendingPathComponent(".env"), encoding: .utf8)
+    else { return [:] }
+
+    var result: [String: String] = [:]
+    for rawLine in contents.components(separatedBy: .newlines) {
+      let line = rawLine.trimmingCharacters(in: .whitespaces)
+      guard !line.isEmpty, !line.hasPrefix("#"),
+            let separator = line.firstIndex(of: "=") else { continue }
+      let key = String(line[..<separator]).trimmingCharacters(in: .whitespaces)
+      var value = String(line[line.index(after: separator)...]).trimmingCharacters(in: .whitespaces)
+      // Tolerate quoted values — `KEY="sk-..."` is a normal way to write a .env line.
+      if value.count >= 2, (value.hasPrefix("\"") && value.hasSuffix("\""))
+          || (value.hasPrefix("'") && value.hasSuffix("'")) {
+        value = String(value.dropFirst().dropLast())
+      }
+      guard !key.isEmpty, !value.isEmpty else { continue }
+      result[key] = value
+    }
+    return result
+  }()
+  #endif
 
   // MARK: - Credential Storage
   //
