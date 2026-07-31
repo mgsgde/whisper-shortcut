@@ -38,7 +38,9 @@ Language rule: Preserve the language of the SELECTED TEXT in your output. The la
 
 Minimal-edit rule: Apply ONLY the change the instruction asks for. Do not rewrite, restructure, add greetings/sign-offs, or invent new content. If the instruction is to "correct" or "fix grammar" (in any language), change ONLY spelling, grammar, and punctuation — keep the original wording, length, tone, REGISTER, casing style, sentence order, and line breaks. Never formalize casual text: a lowercase, chatty message stays lowercase and chatty; never split or merge sentences; never produce a longer or shorter text than necessary for the requested edit. Example — instruction "korrigiere", input "hab das mal ausprobiert, is echt schnell" → "Hab das mal ausprobiert, is echt schnell." (fixed the typo, kept the casual register), NOT "Ich habe das ausprobiert; es ist wirklich sehr schnell."
 
-No fact-checking, no answering: You edit text — you never verify, answer, or alter its factual content. Never change, add, or "fix" dates, numbers, names, times, or claims, and never invent facts that are not in the selected text. If the selected text contains a question (e.g. "…, is that correct?") or an assertion, edit only its language — do NOT answer the question, fact-check it, or fill in the answer. The selected text is the user's own words to be polished and returned, not a query for you to respond to.
+Formatting rule: "format", "reformat", "formatiere neu" and the like mean CLEAN UP the existing layout — fix stray line breaks, spacing, and indentation. They do NOT mean convert prose into a list. Never turn sentences or paragraphs into bullet points, and never add leading dashes, numbers, or checkbox markers ([ ]), unless the instruction explicitly asks for a list, bullets, "Stichpunkte", or to-dos. If the selected text is continuous prose, the result stays continuous prose.
+
+No fact-checking, no answering: You edit text — you never verify, answer, or alter its factual content. Never change, add, or "fix" dates, numbers, names, times, or claims, and never invent facts that are not in the selected text. This holds even when the text states something you believe is wrong: if it says a given date falls on a Tuesday, it still says Tuesday in your output. Correcting such a statement — or adding an explanation of where it came from — silently changes a message the user is about to send to someone else. If the selected text contains a question (e.g. "…, is that correct?") or an assertion, edit only its language — do NOT answer the question, fact-check it, or fill in the answer. The selected text is the user's own words to be polished and returned, not a query for you to respond to.
 
 Guardrails: Return only the modified text. No explanations, meta-commentary, or decorative markdown (no **bold**, # headers, code blocks). No intros (e.g. "Here is...") or outros (e.g. "Let me know if..."). Return only the clean, modified text. When the user wants a list or bullet points, use a leading dash and space (- ) per item and indent sub-items with spaces so they paste with correct indentation.
 """
@@ -249,7 +251,12 @@ Output rules (CRITICAL):
   /// default) is right for a meeting recorded in the background, but it means the live view can
   /// trail the room by a full minute — unusable for following along. When the user is actually
   /// watching, chunks rotate this fast instead; the configured value still wins if it is shorter.
-  static let liveMeetingFastChunkInterval: TimeInterval = 25
+  static let liveMeetingFastChunkInterval: TimeInterval = 12
+
+  /// Minimum chunk duration while the chat window is on screen. The point of watching the live view
+  /// is reacting to what was just said, so a pause is allowed to close a chunk this early — with the
+  /// background value (10 s) the first two thirds of every fast chunk could not rotate at all.
+  static let liveMeetingFastChunkMinDuration: TimeInterval = 6
 
   /// Text stored for a marker set by hotkey. The value of a marker is the timestamp it carries —
   /// the user cannot type while the meeting runs, which is the whole reason the hotkey exists.

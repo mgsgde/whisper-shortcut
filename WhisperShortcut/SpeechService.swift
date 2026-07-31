@@ -358,10 +358,13 @@ class SpeechService {
   /// vocabulary Glossary appended. Substituting the default *before* appending the Glossary keeps
   /// all three paths identical; previously the chunking path appended the Glossary to an empty
   /// base, sending a bare word-list with no transcription instruction when only a Glossary was set.
-  private func geminiTranscriptionInstruction(promptOverride: String?) -> String {
+  /// `suppressGlossary` drops the vocabulary block for the glossary-echo retry — see
+  /// `transcribeWithGeminiInline`. Without it the retry would offer the model exactly the words it
+  /// just confabulated from.
+  private func geminiTranscriptionInstruction(promptOverride: String?, suppressGlossary: Bool = false) -> String {
     let base = promptOverride ?? buildDictationPrompt()
-    let withGlossary = appendGlossaryHint(to: base.isEmpty ? Self.defaultTranscriptionInstruction : base)
-    return withGlossary
+    let resolved = base.isEmpty ? Self.defaultTranscriptionInstruction : base
+    return suppressGlossary ? resolved : appendGlossaryHint(to: resolved)
   }
 
   // MARK: - Cancellation Methods
@@ -1989,7 +1992,8 @@ class SpeechService {
     return CMTimeGetSeconds(duration)
   }
   
-  private func transcribeWithGeminiInline(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil, audioDuration: TimeInterval) async throws -> String {
+  /// - Parameter suppressGlossary: set by the internal retry below. Callers leave it false.
+  private func transcribeWithGeminiInline(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil, audioDuration: TimeInterval, suppressGlossary: Bool = false) async throws -> String {
     let inlineStartTime = CFAbsoluteTimeGetCurrent()
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using inline audio (file ≤20MB)")
 
@@ -2009,7 +2013,8 @@ class SpeechService {
     DebugLogger.logSpeech("SPEED: Audio encoding took \(String(format: "%.3f", encodeTime))s (\(String(format: "%.0f", encodeTime * 1000))ms)")
 
     // Build the transcription instruction (dictation prompt or default, plus the Glossary).
-    let instruction = geminiTranscriptionInstruction(promptOverride: promptOverride)
+    let instruction = geminiTranscriptionInstruction(
+      promptOverride: promptOverride, suppressGlossary: suppressGlossary)
 
     DebugLogger.log("GEMINI-TRANSCRIPTION: Using prompt: \(instruction.prefix(100))...")
 
@@ -2049,13 +2054,27 @@ class SpeechService {
     // from the prompt context — gate on chars-per-second plausibility in both directions:
     // impossibly long output (invented paragraphs) and near-empty output that is pure glossary
     // vocabulary (a 6.3 s tail chunk once yielded exactly "sabaki.dance").
+    let afterLengthGate = TextProcessingUtility.discardingImplausibleTranscript(
+      TextProcessingUtility.normalizeTranscriptionText(transcript),
+      audioDurationSeconds: audioDuration, mode: "GEMINI-TRANSCRIPTION")
     let normalizedText = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      TextProcessingUtility.discardingImplausibleTranscript(
-        TextProcessingUtility.normalizeTranscriptionText(transcript),
-        audioDurationSeconds: audioDuration, mode: "GEMINI-TRANSCRIPTION"),
+      afterLengthGate,
       audioDurationSeconds: audioDuration,
       glossaryTerms: glossaryTermsForEchoCheck(),
       mode: "GEMINI-TRANSCRIPTION")
+
+    // The glossary-echo gate is right to drop this — 12 characters from 11 s of audio is not
+    // speech — but "right" still left the user with nothing to paste. Seven days of real usage
+    // showed 34 dictations discarded this way, once nine in a row inside two minutes: the user
+    // simply re-recorded by hand until it worked. Do that one retry for them, without the
+    // vocabulary block, so the model is not handed back the very words it just confabulated.
+    if normalizedText.isEmpty, !afterLengthGate.isEmpty, !suppressGlossary {
+      DebugLogger.logWarning(
+        "GEMINI-TRANSCRIPTION: Glossary echo discarded — retrying once without the glossary")
+      return try await transcribeWithGeminiInline(
+        audioURL: audioURL, credential: credential, model: model,
+        promptOverride: promptOverride, audioDuration: audioDuration, suppressGlossary: true)
+    }
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
 
     let inlineElapsedTime = CFAbsoluteTimeGetCurrent() - inlineStartTime
