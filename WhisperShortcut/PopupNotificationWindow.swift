@@ -442,33 +442,13 @@ class PopupNotificationWindow: NSWindow {
     self.hide()
   }
 
+  /// The highest-signal report the app can collect: something just failed, the user is annoyed,
+  /// and the error text is right there to attach. `FeedbackLinks` adds the version and OS so the
+  /// report doesn't need a round-trip before it can be acted on.
   private func openWhatsAppFeedback() {
-    let baseMessage = "Hi! I encountered an error in WhisperShortcut:"
-
-    // Limit error text length to prevent URL issues
-    let maxErrorLength = 500
-    let truncatedError =
-      errorText.count > maxErrorLength
-      ? String(errorText.prefix(maxErrorLength)) + "..."
-      : errorText
-
-    let errorMessage = "\n\nError Details:\n\(truncatedError)"
-    let versionLine = "\n\nApp version: \(AppConstants.appVersion)"
-    let fullMessage = baseMessage + errorMessage + versionLine
-
-    guard
-      let encodedMessage = fullMessage.addingPercentEncoding(
-        withAllowedCharacters: .urlQueryAllowed),
-      let whatsappURL = URL(
-        string: "https://wa.me/\(AppConstants.whatsappSupportNumber)?text=\(encodedMessage)"),
-      whatsappURL.scheme == "https",
-      whatsappURL.host == "wa.me"
-    else {
-      return
-    }
-
-    // Open WhatsApp Web in default browser
-    NSWorkspace.shared.open(whatsappURL)
+    FeedbackLinks.open(
+      .whatsApp,
+      context: "I encountered this error:\n\n\(FeedbackLinks.truncated(errorText, limit: 500))")
   }
 
 

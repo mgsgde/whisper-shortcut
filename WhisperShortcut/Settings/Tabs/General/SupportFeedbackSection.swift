@@ -15,7 +15,7 @@ struct SupportFeedbackSection: View {
         title: "Support & Feedback",
         systemImage: "bubble.left.and.bubble.right",
         subtitle:
-          "If you have feedback, if something doesn't work, or if you have suggestions for improvement, feel free to contact me via WhatsApp."
+          "If you have feedback, if something doesn't work, or if you have suggestions for improvement, message me on WhatsApp or send an email — whichever suits you."
       )
 
       VStack(alignment: .leading, spacing: 20) {
@@ -45,6 +45,33 @@ struct SupportFeedbackSection: View {
           }
           .buttonStyle(PlainButtonStyle())
           .help("Contact via WhatsApp")
+          .pointerCursorOnHover()
+
+          // Sits right under WhatsApp so the alternative is visible in the same glance — someone
+          // without WhatsApp should not have to hunt for a second way to reach the developer.
+          Button(action: {
+            viewModel.openEmailFeedback()
+          }) {
+            HStack(alignment: .center, spacing: 12) {
+              Image(systemName: "envelope.fill")
+                .font(.system(size: 18))
+                .foregroundColor(.blue)
+                .opacity(0.85)
+
+              Text("Email me")
+                .font(.body)
+                .fontWeight(.medium)
+                .textSelection(.enabled)
+
+              Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(SettingsConstants.cornerRadius)
+          }
+          .buttonStyle(PlainButtonStyle())
+          .help("Email the developer")
           .pointerCursorOnHover()
 
           Button(action: {

@@ -231,7 +231,7 @@ struct SpeechToTextSettingsTab: View {
           Task { await viewModel.saveSettings() }
         }
 
-        Text("Lower means more literal. 0.0 reproduces what was said; the model's own default is 1.0, which is what earlier versions of this app sent and is the most likely source of invented or swapped words.")
+        Text("Lower means more literal. WhisperShortcut uses 0.0, which reproduces what was said. Sending no value at all — as versions before 7.96 did — leaves the AI model on its own setting of 1.0, the most likely source of invented or swapped words.")
           .font(.caption)
           .foregroundColor(.secondary)
           .fixedSize(horizontal: false, vertical: true)

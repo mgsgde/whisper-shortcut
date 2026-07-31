@@ -28,6 +28,7 @@ Bring your own API keys — Gemini, and optionally GPT or Grok — or run fully 
 - **Google integrations**: Connect a Google account so chat can work with Calendar, Tasks, and Gmail through controlled local tools.
 - **Trello integration**: Connect Trello so chat can list boards, lists, and cards and create, move, update, or archive cards.
 - **Live Meeting**: Record meetings in chunks, transcribe them as they complete, take live notes into the chat as the meeting goes on, ask the chat about anything said so far, flag moments by shortcut, and save meeting files locally.
+- **Send Feedback**: Reach the developer straight from the app — a **Send Feedback** entry in the menu bar (WhatsApp, email, or a GitHub issue), buttons in Settings → About, a **Contact Support** button on every error popup, and `/feedback` in chat, which attaches the end of the conversation. Every route prefills the app and macOS version, and nothing is sent until you press send.
 - **Smart Improvement**: Let the app improve system prompts, user context, and the Whisper glossary automatically from usage logs, or on demand from a spoken instruction (see Voice Feedback).
 
 ## Requirements
@@ -121,6 +122,8 @@ Core slash commands:
 - `/pin` / `/unpin` — keep the window open or close on focus loss
 - `/meeting` — start or stop live meeting recording
 - `/copy` — copy the chat history as Markdown
+
+`/feedback` opens a message to the developer with the end of the current chat quoted, so a problem you were just discussing does not have to be described twice.
 
 Model shortcuts include `/gemini`, `/grok`, `/gpt`, `/openai`, and per-model aliases such as `/gemini35flash`. Gemini models use your Google API key, Grok models use your xAI API key, and OpenAI models use your OpenAI API key.
 

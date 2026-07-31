@@ -1392,12 +1392,15 @@ enum TranscriptionTemperature: String, CaseIterable {
 
   var value: Double { Double(rawValue) ?? 0 }
 
+  /// Plain values only. `1.0` used to be labelled "model default", which read as "this is the
+  /// setting's default" right next to a control whose actual default is 0.0 — two meanings of the
+  /// word in one picker. The distinction now lives in the explanatory text instead.
   var displayName: String {
     switch self {
     case .verbatim: return "0.0 · verbatim"
     case .low: return "0.2"
     case .balanced: return "0.5"
-    case .modelDefault: return "1.0 · model default"
+    case .modelDefault: return "1.0"
     }
   }
 }

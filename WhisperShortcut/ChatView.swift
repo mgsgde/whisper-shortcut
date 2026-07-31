@@ -236,6 +236,7 @@ class ChatViewModel: ObservableObject {
   private static let modelCommand = "/model"
   private static let meetingCommand = "/meeting"
   private static let copyCommand = "/copy"
+  private static let feedbackCommand = "/feedback"
   static let thinkCommand = "/think"
   static let xHandlesCommand = "/x"
 
@@ -293,6 +294,7 @@ class ChatViewModel: ObservableObject {
     ("/unpin", "Make the window close when losing focus"),
     ("/meeting", "Start or stop live meeting recording"),
     ("/copy", "Copy the entire chat history to clipboard as Markdown"),
+    ("/feedback", "Message the developer, with the end of this chat attached"),
   ]
 
   /// All slash commands in canonical (provider-grouped) order. Used where order is irrelevant —
@@ -691,6 +693,42 @@ class ChatViewModel: ObservableObject {
     NSPasteboard.general.setString(markdown, forType: .string)
     showNotice("Chat copied to clipboard (\(target.messages.count) messages).")
     DebugLogger.log("GEMINI-CHAT: Copied chat (\(target.messages.count) messages, \(markdown.count) chars) to clipboard")
+  }
+
+  /// `/feedback` — opens WhatsApp with the tail of this chat already quoted.
+  ///
+  /// This is the lowest-friction report the app can offer: the user is already typing sentences
+  /// about their problem here, so the alternative is asking them to describe it a second time
+  /// somewhere else. The transcript is *prefilled*, not sent — WhatsApp opens with the text
+  /// visible and the user presses send, so nothing from their chat leaves the machine unseen.
+  func sendFeedbackFromChat() {
+    let excerpt = recentTranscriptForFeedback()
+    let context = excerpt.isEmpty
+      ? nil
+      : "Here is the end of my chat for context:\n\n\(excerpt)"
+    guard FeedbackLinks.open(.whatsApp, context: context) else {
+      showNotice("Couldn't open WhatsApp — use Settings → About for the other contact options.")
+      return
+    }
+    showNotice(
+      excerpt.isEmpty
+        ? "Opened WhatsApp. Edit the message before sending."
+        : "Opened WhatsApp with the end of this chat attached. Edit before sending.")
+  }
+
+  /// The last few turns of this chat, oldest first, clamped to what a URL can carry.
+  private func recentTranscriptForFeedback() -> String {
+    let recent = messages.suffix(6)
+    guard !recent.isEmpty else { return "" }
+    let rendered = recent.map { message -> String in
+      let who = message.role == .user ? "Me" : "Assistant"
+      // One line per turn: a pasted multi-line reply makes the WhatsApp draft unreadable.
+      let body = message.content
+        .replacingOccurrences(of: "\n", with: " ")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      return "\(who): \(FeedbackLinks.truncated(body, limit: 300))"
+    }.joined(separator: "\n")
+    return FeedbackLinks.truncated(rendered, limit: 1200)
   }
 
   private func showNotice(_ text: String) {
@@ -1253,7 +1291,7 @@ class ChatViewModel: ObservableObject {
     if lower == Self.newChatCommand || lower == Self.screenshotCommand
         || lower == Self.attachCommand || lower == Self.folderCommand
         || lower == Self.settingsCommand || lower == Self.pinCommand || lower == Self.unpinCommand
-        || lower == Self.copyCommand {
+        || lower == Self.copyCommand || lower == Self.feedbackCommand {
       inputText = ""
       if lower == Self.newChatCommand {
         if singleChatOnly {
@@ -1268,6 +1306,7 @@ class ChatViewModel: ObservableObject {
       else if lower == Self.pinCommand { togglePin() }
       else if lower == Self.unpinCommand { unpin() }
       else if lower == Self.copyCommand { copyChatToClipboard(sessionId: session.id) }
+      else if lower == Self.feedbackCommand { sendFeedbackFromChat() }
       else { await captureScreenshot() }
       return
     }

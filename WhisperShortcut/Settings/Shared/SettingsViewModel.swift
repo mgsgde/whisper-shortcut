@@ -369,20 +369,15 @@ class SettingsViewModel: ObservableObject {
     data.errorMessage = ""
   }
 
-  // MARK: - WhatsApp Feedback
+  // MARK: - Feedback
   func openWhatsAppFeedback() {
-    let whatsappNumber = AppConstants.whatsappSupportNumber
-    let feedbackMessage = "Hi! I have feedback about WhisperShortcut (Version \(AppConstants.appVersion)):"
+    FeedbackLinks.open(.whatsApp)
+  }
 
-    if let webWhatsappURL = URL(
-      string:
-        "https://wa.me/\(whatsappNumber)?text=\(feedbackMessage.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
-    ) {
-      if NSWorkspace.shared.open(webWhatsappURL) {
-      } else {
-        DebugLogger.logError("FEEDBACK: Failed to open WhatsApp Web from SettingsViewModel")
-      }
-    }
+  /// The fallback for everyone without WhatsApp — regionally common, and blocked outright on many
+  /// managed Macs, in which case the WhatsApp button is a dead end.
+  func openEmailFeedback() {
+    FeedbackLinks.open(.email)
   }
 
   // MARK: - App Store Link

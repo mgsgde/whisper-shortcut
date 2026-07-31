@@ -32,6 +32,7 @@ class MenuBarController: NSObject {
     case voiceFeedback = 116
     case copyLastTranscription = 117
     case recentTranscriptions = 118
+    case sendFeedback = 119
   }
 
   /// Display time for the benign "No speech detected" info popup — long enough to read,
@@ -264,6 +265,24 @@ class MenuBarController: NSObject {
       shortcut: currentConfig.openSettings, tag: .settings)
     configureItem.image = nil
     menu.addItem(configureItem)
+
+    // Feedback sits next to Settings, the macOS convention for it, and offers all three channels
+    // rather than WhatsApp alone — a user without WhatsApp otherwise has no obvious way to reach
+    // the developer at all. A submenu keeps this to one row: the status menu is the app's
+    // most-used surface, and three permanent contact rows in it would read as nagging.
+    let feedbackItem = createMenuItem("Send Feedback", action: nil, tag: .sendFeedback)
+    let feedbackMenu = NSMenu()
+    for channel in FeedbackLinks.Channel.allCases {
+      let item = NSMenuItem(
+        title: channel.menuTitle, action: #selector(sendFeedback(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = channel.rawValue
+      item.toolTip = channel.helpText
+      feedbackMenu.addItem(item)
+    }
+    feedbackItem.submenu = feedbackMenu
+    menu.addItem(feedbackItem)
+
     menu.addItem(
       createMenuItem("Rate WhisperShortcut", action: #selector(rateApp), tag: .rate))
     menu.addItem(
@@ -1151,6 +1170,15 @@ class MenuBarController: NSObject {
   @objc private func chatWindowVisibilityChanged(_ notification: Notification) {
     let visible = notification.userInfo?["visible"] as? Bool ?? false
     DispatchQueue.main.async { [weak self] in self?.liveMeeting.setFastChunking(visible) }
+  }
+
+  /// Opens the picked feedback channel, prefilled. No context to attach here — the user chose this
+  /// from the menu rather than from a failure, so there is nothing specific to quote.
+  @objc private func sendFeedback(_ sender: NSMenuItem) {
+    guard let raw = sender.representedObject as? String,
+          let channel = FeedbackLinks.Channel(rawValue: raw) else { return }
+    FeedbackLinks.open(channel)
+    DebugLogger.log("FEEDBACK: Opened \(channel.rawValue) from the status menu")
   }
 
   @objc private func rateApp() {
