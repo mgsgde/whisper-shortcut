@@ -273,6 +273,28 @@ extension AppState {
     if case .recording(let mode) = self { return mode }
     return nil
   }
+
+  /// Stable, content-free label for outcome signals: which phase the user cancelled out of.
+  /// Chunk phases keep their identity — cancelling during `processingChunks` says something
+  /// different (long audio taking too long) than cancelling a single request.
+  var signalPhase: String {
+    switch self {
+    case .idle: return "idle"
+    case .recording(let mode): return "recording-\(mode)"
+    case .speaking: return "speaking"
+    case .feedback: return "feedback"
+    case .processing(let mode):
+      switch mode {
+      case .transcribing: return "transcribing"
+      case .prompting: return "prompting"
+      case .ttsProcessing: return "ttsProcessing"
+      case .contextEditing: return "contextEditing"
+      case .splitting: return "splitting"
+      case .processingChunks(let statuses, _): return "processingChunks-\(statuses.count)"
+      case .merging: return "merging"
+      }
+    }
+  }
 }
 
 // MARK: - State Transitions

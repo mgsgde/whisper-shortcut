@@ -21,6 +21,44 @@ struct InteractionLogEntry: Codable {
   let hadScreenshot: Bool?
 }
 
+// MARK: - Outcome Signal Entry
+
+/// What a user did *after* an interaction, when that action is a verdict on it.
+///
+/// This is a second, separate stream (`signals-YYYY-MM-DD.jsonl`) rather than a field on
+/// `InteractionLogEntry` for two reasons:
+///
+/// 1. **The verdict arrives later.** A restart or a cancellation happens seconds to minutes after
+///    the interaction row was already appended, and JSONL is append-only. Correlation runs through
+///    `refTs` instead of a rewrite.
+/// 2. **It stays content-free.** Signals carry timings and counts, never transcripts or replies.
+///    That is the property that makes the stream safe to aggregate, summarise, and attach to a bug
+///    report — do not put user text in `detail`.
+struct SignalLogEntry: Codable {
+  let ts: String
+  /// `OutcomeSignal.rawValue`.
+  let kind: String
+  /// `ts` of the interaction this judges; nil when no interaction was logged this launch.
+  let refTs: String?
+  /// Matches `InteractionLogEntry.mode` ("transcription", "prompt", "geminiChat").
+  let mode: String?
+  /// Milliseconds between `refTs` and `ts`, when both are known.
+  let gapMs: Int?
+  /// Small kind-specific facts. Strings only, and never user content.
+  let detail: [String: String]?
+}
+
+/// The behaviours that count as a verdict. Slice 1 covers the dictation loop; chat signals
+/// (`chatStopped`, `chatRetry`) and `modelSwitched` follow in later slices.
+enum OutcomeSignal: String {
+  /// The synthetic ⌘V was actually posted — the result was delivered where the user wanted it.
+  case pasted
+  /// A new dictation started right after one that was never pasted: the transcript was unusable.
+  case dictationRestart
+  /// The user killed a job before a result existed.
+  case cancelledWhileProcessing
+}
+
 // MARK: - System Prompt History Entry
 struct SystemPromptHistoryEntry: Codable {
   let ts: String
@@ -59,6 +97,21 @@ class ContextLogger {
   /// Maximum number of lines kept in history JSONL files that have no date-based rotation
   /// (system-prompts-history.jsonl, user-context-history.jsonl). Oldest lines are trimmed.
   private let historyFileMaxLines = 500
+
+  /// The most recent logged interaction per mode, so a signal can name what it is judging.
+  ///
+  /// Deliberately in-memory only: after a relaunch there is nothing to judge, and a signal with
+  /// `refTs: nil` is more honest than one pointing at a session the user has long left behind.
+  private struct LastInteractionMarker {
+    let ts: String
+    let date: Date
+    /// Set by the `pasted` signal. A result that reached the user's cursor was not a failure,
+    /// so a dictation started afterwards is a new thought rather than a retry.
+    var pasted: Bool
+  }
+  private var lastInteractions: [String: LastInteractionMarker] = [:]
+  /// `lastInteractions` is written from the serial write queue and read from the main thread.
+  private let lastInteractionLock = NSLock()
 
   private lazy var contextDirectoryURL: URL = {
     AppSupportPaths.whisperShortcutApplicationSupportURL()
@@ -170,6 +223,73 @@ class ContextLogger {
       hadScreenshot: nil
     )
     writeEntry(entry)
+  }
+
+  // MARK: - Outcome Signals
+
+  /// Appends one behavioural verdict to `signals-YYYY-MM-DD.jsonl`.
+  ///
+  /// `refTs` and `gapMs` are filled in from the last interaction logged in `mode`, so callers only
+  /// have to say what the user did. Keep `detail` free of user content — see `SignalLogEntry`.
+  func logSignal(_ kind: OutcomeSignal, mode: String?, detail: [String: String]? = nil) {
+    guard isLoggingEnabled else { return }
+
+    var refTs: String?
+    var gapMs: Int?
+    if let mode {
+      lastInteractionLock.lock()
+      if let marker = lastInteractions[mode] {
+        refTs = marker.ts
+        gapMs = Int(Date().timeIntervalSince(marker.date) * 1000)
+      }
+      // A delivered result closes the book on that interaction: nothing that follows should be
+      // read as a retry of it.
+      if kind == .pasted { lastInteractions[mode]?.pasted = true }
+      lastInteractionLock.unlock()
+    }
+
+    let entry = SignalLogEntry(
+      ts: iso8601Now(),
+      kind: kind.rawValue,
+      refTs: refTs,
+      mode: mode,
+      gapMs: gapMs,
+      detail: detail
+    )
+    writeSignal(entry)
+  }
+
+  /// Emits `dictationRestart` when a dictation begins so soon after an unpasted transcript that the
+  /// only plausible reading is "that one was wrong, say it again".
+  ///
+  /// Call this at the moment recording starts, not when it finishes — the restart *is* the verdict.
+  ///
+  /// `autoPasteAvailable` is recorded rather than acted on. In the App Store build auto-paste is
+  /// compiled out, so `pasted` never fires and every back-to-back dictation would look like a
+  /// retry; analysis needs to know which builds it can trust this signal from. Detecting a manual
+  /// ⌘V is not an option — `NSPasteboard.changeCount` reveals that something was *written* to the
+  /// pasteboard, never that the user pasted from it, and a wrong signal is worse than no signal.
+  func noteDictationStart(autoPasteAvailable: Bool) {
+    guard isLoggingEnabled else { return }
+
+    lastInteractionLock.lock()
+    let marker = lastInteractions["transcription"]
+    lastInteractionLock.unlock()
+
+    guard let marker, !marker.pasted else { return }
+    let gap = Date().timeIntervalSince(marker.date)
+    guard gap >= 0, gap <= AppConstants.outcomeSignalRestartWindow else { return }
+
+    logSignal(
+      .dictationRestart,
+      mode: "transcription",
+      detail: ["autoPasteAvailable": autoPasteAvailable ? "true" : "false"]
+    )
+  }
+
+  /// Returns URLs of all signal files from the last N days, sorted by date ascending.
+  func signalLogFiles(lastDays: Int = 30) -> [URL] {
+    logFiles(prefix: "signals-", lastDays: lastDays)
   }
 
   // MARK: - Audio Sample Capture (Smart Improvement verification)
@@ -330,10 +450,11 @@ class ContextLogger {
         for fileURL in contents {
           let filename = fileURL.lastPathComponent
 
-          if filename.hasPrefix("interactions-"), filename.hasSuffix(".jsonl") {
-            // Date-based rotation for daily interaction logs
+          if let prefix = ["interactions-", "signals-"].first(where: { filename.hasPrefix($0) }),
+             filename.hasSuffix(".jsonl") {
+            // Date-based rotation for the daily streams
             let dateString = filename
-              .replacingOccurrences(of: "interactions-", with: "")
+              .replacingOccurrences(of: prefix, with: "")
               .replacingOccurrences(of: ".jsonl", with: "")
             if let fileDate = dateFormatter.date(from: dateString), fileDate < cutoffDate {
               try fm.removeItem(at: fileURL)
@@ -429,11 +550,11 @@ class ContextLogger {
     return f
   }()
 
-  private func interactionLogDate(for url: URL) -> Date? {
+  private func logDate(for url: URL, prefix: String) -> Date? {
     let filename = url.lastPathComponent
-    guard filename.hasPrefix("interactions-"), filename.hasSuffix(".jsonl") else { return nil }
+    guard filename.hasPrefix(prefix), filename.hasSuffix(".jsonl") else { return nil }
     let dateString = filename
-      .replacingOccurrences(of: "interactions-", with: "")
+      .replacingOccurrences(of: prefix, with: "")
       .replacingOccurrences(of: ".jsonl", with: "")
     return Self.interactionLogDateFormatter.date(from: dateString)
   }
@@ -457,6 +578,11 @@ class ContextLogger {
 
   /// Returns URLs of all interaction log files from the last N days, sorted by date ascending.
   func interactionLogFiles(lastDays: Int = 30) -> [URL] {
+    logFiles(prefix: "interactions-", lastDays: lastDays)
+  }
+
+  /// Shared listing for the date-stamped daily JSONL streams (`interactions-`, `signals-`).
+  private func logFiles(prefix: String, lastDays: Int) -> [URL] {
     let fm = FileManager.default
     let cutoffDate = Calendar.current.date(byAdding: .day, value: -lastDays, to: Date()) ?? Date()
 
@@ -464,7 +590,7 @@ class ContextLogger {
       let contents = try fm.contentsOfDirectory(at: contextDirectoryURL, includingPropertiesForKeys: nil)
       return contents
         .filter { url in
-          guard let fileDate = interactionLogDate(for: url) else { return false }
+          guard let fileDate = logDate(for: url, prefix: prefix) else { return false }
           return fileDate >= cutoffDate
         }
         .sorted { $0.lastPathComponent < $1.lastPathComponent }
@@ -609,34 +735,56 @@ class ContextLogger {
   }
 
   private func writeEntry(_ entry: InteractionLogEntry) {
+    // Remember what was just logged so a later signal can name the interaction it judges.
+    // A fresh entry starts unpasted; `logSignal(.pasted)` is what marks it delivered.
+    //
+    // Set synchronously, not inside the async block: auto-paste posts its ⌘V 50 ms after this
+    // call, and if the marker were still queued behind disk I/O the `pasted` flag could land on
+    // nothing — which would turn the user's next dictation into a phantom `dictationRestart`.
+    lastInteractionLock.lock()
+    lastInteractions[entry.mode] = LastInteractionMarker(ts: entry.ts, date: Date(), pasted: false)
+    lastInteractionLock.unlock()
+
     queue.async { [weak self] in
       guard let self else { return }
-      let dateFormatter = DateFormatter()
-      dateFormatter.dateFormat = "yyyy-MM-dd"
-      let dateString = dateFormatter.string(from: Date())
-      let filename = "interactions-\(dateString).jsonl"
-      let fileURL = self.contextDirectoryURL.appendingPathComponent(filename)
+      self.append(entry, toDailyFileWithPrefix: "interactions-", logDescription: "interaction (mode: \(entry.mode))")
+    }
+  }
 
-      do {
-        let data = try JSONEncoder().encode(entry)
-        guard var line = String(data: data, encoding: .utf8) else { return }
-        line += "\n"
+  private func writeSignal(_ entry: SignalLogEntry) {
+    queue.async { [weak self] in
+      guard let self else { return }
+      self.append(entry, toDailyFileWithPrefix: "signals-", logDescription: "signal (\(entry.kind))")
+    }
+  }
 
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-          let handle = try FileHandle(forWritingTo: fileURL)
-          handle.seekToEndOfFile()
-          if let lineData = line.data(using: .utf8) {
-            handle.write(lineData)
-          }
-          try handle.close()
-        } else {
-          try line.write(to: fileURL, atomically: true, encoding: .utf8)
+  /// Appends one JSON line to today's file for a date-stamped stream. Runs on `queue`.
+  private func append<T: Encodable>(_ entry: T, toDailyFileWithPrefix prefix: String, logDescription: String) {
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = "yyyy-MM-dd"
+    let dateString = dateFormatter.string(from: Date())
+    let filename = "\(prefix)\(dateString).jsonl"
+    let fileURL = contextDirectoryURL.appendingPathComponent(filename)
+
+    do {
+      let data = try JSONEncoder().encode(entry)
+      guard var line = String(data: data, encoding: .utf8) else { return }
+      line += "\n"
+
+      if FileManager.default.fileExists(atPath: fileURL.path) {
+        let handle = try FileHandle(forWritingTo: fileURL)
+        handle.seekToEndOfFile()
+        if let lineData = line.data(using: .utf8) {
+          handle.write(lineData)
         }
-
-        DebugLogger.log("USER-CONTEXT: Logged interaction (mode: \(entry.mode))")
-      } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to write log entry: \(error.localizedDescription)")
+        try handle.close()
+      } else {
+        try line.write(to: fileURL, atomically: true, encoding: .utf8)
       }
+
+      DebugLogger.log("USER-CONTEXT: Logged \(logDescription)")
+    } catch {
+      DebugLogger.logError("USER-CONTEXT: Failed to write log entry: \(error.localizedDescription)")
     }
   }
 }

@@ -477,6 +477,13 @@ Transcript:
   /// Maximum number of additional jobs that may queue while a run is in progress.
   static let smartImprovementMaxQueuedJobs: Int = 1
 
+  // MARK: - Outcome Signals
+  /// How soon a new dictation must follow an unpasted transcript to count as a retry rather than a
+  /// new thought. Long enough to read a bad transcript and press again, short enough that a
+  /// deliberate second dictation rarely lands inside it. Tune against real `dictationRestart` data —
+  /// this is a first guess, not a derived value.
+  static let outcomeSignalRestartWindow: TimeInterval = 20.0
+
   // MARK: - Gemini Chat
   /// Hard cap on messages sent per turn. Gemini 2.x has a 1–2M token context window;
   /// this only protects against pathologically long sessions.

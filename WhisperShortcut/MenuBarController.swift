@@ -846,6 +846,11 @@ class MenuBarController: NSObject {
       let hasOfflineModel = selectedModel.isOfflineModelAvailable()
 
       if appState.canStartTranscription(hasAPIKey: selectedModel.hasRequiredCredential, hasOfflineModel: hasOfflineModel) {
+        // A dictation started seconds after an unpasted one is the user telling us the last
+        // transcript was wrong. Recorded here, at the press, because the restart *is* the verdict.
+        // Live-meeting dictation segments deliberately skip this: speaking repeatedly into a
+        // meeting is normal use, not a retry, and would drown the signal.
+        ContextLogger.shared.noteDictationStart(autoPasteAvailable: Self.autoPasteAvailable)
         appState = appState.startRecording(.transcription)
         ConnectionPrewarmer.prewarm(for: selectedModel)
         dictateStreamingSession = DictateStreamingSession.makeIfEligible(speechService: speechService)
@@ -1014,6 +1019,8 @@ class MenuBarController: NSObject {
   }
 
   private func cancelInFlightTranscription() {
+    ContextLogger.shared.logSignal(
+      .cancelledWhileProcessing, mode: "transcription", detail: ["phase": appState.signalPhase])
     discardStreamingSession()
     speechService.cancelTranscription()
     transitionToIdleAndCleanup(cleanupAudioURL: currentJobAudioURL)
@@ -1027,6 +1034,8 @@ class MenuBarController: NSObject {
   /// `runAudioJob` and dropped instead of being pasted into whatever the user has since focused.
   /// It also removes the recording, which the previous no-argument call left on disk.
   private func cancelInFlightPrompt() {
+    ContextLogger.shared.logSignal(
+      .cancelledWhileProcessing, mode: "prompt", detail: ["phase": appState.signalPhase])
     speechService.cancelPrompt()
     transitionToIdleAndCleanup(cleanupAudioURL: currentJobAudioURL)
   }
@@ -1337,6 +1346,16 @@ class MenuBarController: NSObject {
     /// dismisses the popup, clears chunk state, drops the URL and removes the file); prompting
     /// finishes the state machine and cleans the file itself.
     var cancelsViaTransitionToIdle = false
+
+    /// The `InteractionLogEntry.mode` this job writes, so an outcome signal can point at the right
+    /// row. Nil for modes that log no interaction (live meeting, Voice Feedback).
+    var interactionLogMode: String? {
+      switch mode {
+      case .transcription: return "transcription"
+      case .prompt: return "prompt"
+      case .liveMeeting, .voiceFeedback: return nil
+      }
+    }
   }
 
   /// The plain cancellation tail: finish the state machine, drop the URL, remove the file. Shared
@@ -1388,7 +1407,7 @@ class MenuBarController: NSObject {
       await afterCopy(result)
 
       let didAutoPaste = await MainActor.run {
-        self.autoPasteIfEnabled()
+        self.autoPasteIfEnabled(logMode: spec.interactionLogMode)
       }
 
       await MainActor.run { [weak self] in
@@ -2229,18 +2248,30 @@ class MenuBarController: NSObject {
   /// - Returns: `true` when a paste keystroke was scheduled; `false` when the result stays on
   ///   the clipboard for the user to paste manually (App Store build, setting off, or missing
   ///   Accessibility permission).
-  @discardableResult
-  private func autoPasteIfEnabled() -> Bool {
+  /// Whether this build and this user's settings can auto-paste at all.
+  ///
+  /// Separate from `autoPasteIfEnabled()` because outcome signals need to answer the same question
+  /// *before* a job runs: without auto-paste there is no `pasted` signal, which changes how a
+  /// `dictationRestart` has to be read.
+  static var autoPasteAvailable: Bool {
     #if APP_STORE
     // Auto-paste synthesizes a ⌘V keystroke, which requires the Accessibility permission Apple
     // rejects under Guideline 2.4.5. The App Store build omits it; the result stays on the
     // clipboard for the user to paste manually.
     return false
     #else
-    let autoPasteEnabled = UserDefaults.standard.object(forKey: UserDefaultsKeys.autoPasteAfterDictation) != nil
+    return UserDefaults.standard.object(forKey: UserDefaultsKeys.autoPasteAfterDictation) != nil
       ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoPasteAfterDictation)
       : SettingsDefaults.autoPasteAfterDictation
-    if autoPasteEnabled {
+    #endif
+  }
+
+  @discardableResult
+  private func autoPasteIfEnabled(logMode: String?) -> Bool {
+    #if APP_STORE
+    return false
+    #else
+    if Self.autoPasteAvailable {
       guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
         DebugLogger.logWarning("AUTO-PASTE: Skipped — accessibility permission not granted, showing permission dialog")
         AccessibilityPermissionManager.showAccessibilityPermissionDialog()
@@ -2262,6 +2293,16 @@ class MenuBarController: NSObject {
           "AUTO-PASTE: Pasted \(chars) chars into "
             + "\(target?.localizedName ?? "unknown") "
             + "(\(target?.bundleIdentifier ?? "no bundle id"))")
+
+        // The result reached the user's cursor: the strongest available "this worked" signal, and
+        // the one that stops a following dictation from being counted as a retry.
+        ContextLogger.shared.logSignal(
+          .pasted,
+          mode: logMode,
+          detail: [
+            "chars": String(chars),
+            "targetBundleId": target?.bundleIdentifier ?? "unknown",
+          ])
 
         // Non-destructive paste: give the receiving app time to read the pasteboard, then put
         // the user's previous clipboard back.
