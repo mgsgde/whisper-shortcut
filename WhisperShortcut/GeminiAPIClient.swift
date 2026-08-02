@@ -497,8 +497,14 @@ class GeminiAPIClient {
             }
             // Snapshot the function call parts from each chunk, then attach
             // signatures that stream separately.
-            if !functionDeclarations.isEmpty,
-               let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+            //
+            // Deliberately NOT gated on `functionDeclarations` being non-empty: Gemini 3.x keeps
+            // emitting functionCall parts even when the request declares no tools at all (verified
+            // against gemini-3.6-flash — a history full of calls yields another call and zero text).
+            // The chat tool loop relies on that: its final round strips every tool to force a
+            // synthesis, and if we dropped the model's calls there the turn looked empty and the
+            // user got a "found nothing" fallback after a dozen successful tool calls.
+            if let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                let candidates = obj["candidates"] as? [[String: Any]],
                let content = candidates.first?["content"] as? [String: Any],
                let parts = content["parts"] as? [[String: Any]] {
@@ -581,6 +587,10 @@ class GeminiAPIClient {
 
           // Yield accumulated function calls now that the stream is complete
           // and all thoughtSignatures have been received.
+          if functionDeclarations.isEmpty && !latestFunctionCallParts.isEmpty {
+            DebugLogger.logWarning(
+              "GEMINI-CHAT-STREAM: model emitted \(latestFunctionCallParts.count) function call(s) although no tools were declared")
+          }
           for part in latestFunctionCallParts {
             if let fc = part["functionCall"] as? [String: Any] ?? part["function_call"] as? [String: Any],
                let name = fc["name"] as? String {

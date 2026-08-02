@@ -860,14 +860,18 @@ class ChatViewModel: ObservableObject {
         var finalSources: [GroundingSource] = []
         var finalSupports: [GroundingSupport] = []
         let tools = buildToolDeclarations()
-        let maxToolRounds = 8
+        // 8 was too tight for batch work: "move every dateless task to today" spends two rounds
+        // discovering the list and then one per task, because the model emits its edits one call at
+        // a time even though they are independent. Hitting the cap mid-batch leaves the user's data
+        // half-changed with no summary, which is far worse than a few extra round trips.
+        let maxToolRounds = 16
         let useGrounding = selectedModel.supportsGrounding
         var toolLoopExhausted = false
-        // True once any tool call has executed this turn. Lets us tell an
-        // empty final turn that *followed* tool work (model searched, found
-        // nothing relevant, returned no summary) apart from a model that just
-        // said nothing — the two warrant different fallback copy.
-        var executedAnyTools = false
+        // Counts the tool calls executed this turn. Lets us tell an empty final turn that
+        // *followed* tool work (model searched, found nothing relevant, returned no summary) apart
+        // from a model that just said nothing — the two warrant different fallback copy — and lets
+        // the exhaustion copy say how much work actually ran.
+        var executedToolCalls = 0
 
         toolLoop: for round in 0..<(maxToolRounds + 1) {
           // Final round: strip every tool so the model is forced to synthesize an answer from
@@ -917,11 +921,12 @@ class ChatViewModel: ObservableObject {
           // Tools were already disabled this round, yet the model still emitted only function
           // calls and no usable text — nothing left to try, so surface the exhaustion.
           if isFinalRound {
-            DebugLogger.logWarning("CHAT: tool loop exceeded \(maxToolRounds) rounds — stopping")
+            DebugLogger.logWarning(
+              "CHAT: tool loop exceeded \(maxToolRounds) rounds after \(executedToolCalls) call(s) — stopping (final round wanted \(pendingCalls.map(\.name).joined(separator: ", ")))")
             toolLoopExhausted = true
             break toolLoop
           }
-          executedAnyTools = true
+          executedToolCalls += pendingCalls.count
           let (turns, imageMarkers) = try await executeToolCalls(
             pendingCalls, narration: Self.stripLeakedThoughtTokens(roundText), sessionId: sessionId)
           // Generated images go straight into the streaming bubble: the image shows up the
@@ -957,8 +962,12 @@ class ChatViewModel: ObservableObject {
         var reply = Self.stripLeakedThoughtTokens(markerPrefix + streamed)
         if reply.isEmpty {
           if toolLoopExhausted {
-            reply = "_I ran out of tool-call rounds before I could finish. Try narrowing the request — e.g. name a specific sender, subject, or date range._"
-          } else if executedAnyTools {
+            // Say what actually happened: the model kept working and hit the round cap. The old
+            // copy claimed nothing was found, which reads as a failure even though every one of
+            // those calls ran — a create/delete batch had already changed the user's data.
+            let calls = executedToolCalls == 1 ? "1 tool call" : "\(executedToolCalls) tool calls"
+            reply = "_I hit the tool-call round limit after \(calls) and stopped before writing an answer. Anything I already did has taken effect — ask me to recap it, or narrow the request so it needs fewer steps._"
+          } else if executedToolCalls > 0 {
             // The model ran tools (e.g. gmail_search) but then ended its turn
             // with no summary — typically because the results were empty or
             // unrelated. A bare "(no response)" hides that; say what happened.
@@ -1418,7 +1427,7 @@ class ChatViewModel: ObservableObject {
       text += "\n\nWhenever you discover something durable about the layout of these folders (what a directory holds, how its files are named), call `remember_file_location` so future conversations start there instead of searching again. Record directories and stable collections, not one-off files. Use `forget_file_location` for entries that are wrong or outdated."
     }
     if GoogleAccountOAuthService.shared.isConnected {
-      text += "\n\nIMPORTANT — you are CONNECTED to the user's own Google account with LIVE access to their Calendar, Tasks, and Gmail through the tools below. When the user asks anything about their email, inbox, messages, calendar, schedule, events, meetings, appointments, tasks, to-dos, or reminders, you MUST call the relevant tool to fetch the real data BEFORE answering — on the very first turn, without waiting to be asked again. NEVER reply that you lack access, cannot see their inbox/calendar, or that they should paste/forward/attach the content: you have direct access, so use it. You have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks."
+      text += "\n\nIMPORTANT — you are CONNECTED to the user's own Google account with LIVE access to their Calendar, Tasks, and Gmail through the tools below. When the user asks anything about their email, inbox, messages, calendar, schedule, events, meetings, appointments, tasks, to-dos, or reminders, you MUST call the relevant tool to fetch the real data BEFORE answering — on the very first turn, without waiting to be asked again. NEVER reply that you lack access, cannot see their inbox/calendar, or that they should paste/forward/attach the content: you have direct access, so use it. You have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_update, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nTo CHANGE an existing task (due date, title, notes, status) always call google_tasks_update — never delete and re-create it.\nWhen an instruction affects several items (e.g. re-dating five tasks), emit ALL the independent calls together in ONE turn instead of one call per turn — the number of tool rounds per answer is limited, and one-at-a-time editing runs out of rounds before the batch is finished.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks."
     }
     // Mirrors the gating in buildToolDeclarations: the tool exists iff a Gemini credential does.
     if GeminiCredentialProvider.shared.hasCredential() {

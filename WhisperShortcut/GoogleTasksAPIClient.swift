@@ -115,6 +115,70 @@ actor GoogleTasksAPIClient {
     return ["ok": true, "task_id": taskId, "status": json["status"] as? String ?? "completed"]
   }
 
+  // MARK: - Update Task
+
+  /// PATCHes an existing task in place. Without this, "move these tasks to today" forces the model
+  /// into a create+delete pair per task — two tool rounds each, which exhausts the chat tool loop on
+  /// a handful of tasks and loses the task IDs, ordering, and completion history along the way.
+  ///
+  /// Only the fields the caller passes are sent, so a title-only edit never clobbers notes. Passing
+  /// an empty `due` clears the due date (Google Tasks needs an explicit JSON null for that, which is
+  /// unreachable through a plain optional).
+  func updateTask(
+    taskId: String,
+    taskListId: String = "@default",
+    title: String? = nil,
+    notes: String? = nil,
+    due: String? = nil,
+    status: String? = nil
+  ) async throws -> [String: Any] {
+    let encodedList = encodedPathComponent(taskListId)
+    let encodedTask = encodedPathComponent(taskId)
+    let url = URL(string: "\(baseURL)/lists/\(encodedList)/tasks/\(encodedTask)")!
+
+    var body: [String: Any] = [:]
+    if let title, !title.isEmpty { body["title"] = title }
+    if let notes { body["notes"] = notes }
+    if let due {
+      if due.isEmpty {
+        body["due"] = NSNull()
+      } else {
+        // Same `yyyy-MM-dd` normalization as createTask — models emit bare dates constantly.
+        guard let normalizedDue = normalizedRFC3339Due(due) else {
+          throw TasksAPIError.invalidDateFormat
+        }
+        body["due"] = normalizedDue
+      }
+    }
+    if let status, !status.isEmpty {
+      guard status == "needsAction" || status == "completed" else {
+        throw TasksAPIError.apiError("status must be 'needsAction' or 'completed'")
+      }
+      body["status"] = status
+      // Google keeps a stale `completed` timestamp when a task is re-opened unless it is
+      // explicitly cleared, and then rejects the mismatch with a 400.
+      if status == "needsAction" { body["completed"] = NSNull() }
+    }
+    guard !body.isEmpty else {
+      throw TasksAPIError.apiError("Nothing to update — pass at least one of title, notes, due, status")
+    }
+
+    let bodyData = try JSONSerialization.data(withJSONObject: body)
+    let data = try await authorizedRequest(url: url, httpMethod: "PATCH", body: bodyData)
+
+    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw TasksAPIError.invalidResponse
+    }
+
+    var result: [String: Any] = ["ok": true, "task_id": taskId]
+    if let title = json["title"] as? String { result["title"] = title }
+    if let notes = json["notes"] as? String { result["notes"] = notes }
+    if let due = json["due"] as? String { result["due"] = due }
+    if let status = json["status"] as? String { result["status"] = status }
+    if let webViewLink = json["webViewLink"] as? String { result["web_view_link"] = webViewLink }
+    return result
+  }
+
   // MARK: - Delete Task
 
   func deleteTask(taskId: String, taskListId: String = "@default") async throws -> [String: Any] {

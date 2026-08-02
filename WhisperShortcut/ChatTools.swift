@@ -467,6 +467,40 @@ enum ChatToolRegistry {
       ],
     ],
     [
+      "name": "google_tasks_update",
+      "description": "Updates an EXISTING Google Task in place — title, notes, due date, or status. ALWAYS use this to change a task (e.g. 'move these tasks to today', 'rename it', 'add a note'). NEVER delete and re-create a task to change a field: that loses the task's history and burns two tool calls per task. Requires the task_id from google_tasks_list. Only the fields you pass are changed; omitted fields keep their current value.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "task_id": [
+            "type": "string",
+            "description": "The ID of the task to update (from google_tasks_list results).",
+          ],
+          "task_list_id": [
+            "type": "string",
+            "description": "ID of the task list containing the task. Defaults to the primary list if omitted.",
+          ],
+          "title": [
+            "type": "string",
+            "description": "New title. Omit to keep the current title.",
+          ],
+          "notes": [
+            "type": "string",
+            "description": "New notes/details. Replaces the existing notes — pass the full text, not just an addition. Omit to keep the current notes.",
+          ],
+          "due": [
+            "type": "string",
+            "description": "New due date in ISO 8601 format (e.g. 2026-04-23T00:00:00Z). Pass an empty string to remove the due date. Omit to keep the current one.",
+          ],
+          "status": [
+            "type": "string",
+            "description": "Either 'needsAction' (open, use to re-open a completed task) or 'completed'. Omit to keep the current status.",
+          ],
+        ] as [String: Any],
+        "required": ["task_id"],
+      ],
+    ],
+    [
       "name": "google_tasks_complete",
       "description": "Marks a Google Task as completed. Requires the task_id from google_tasks_list.",
       "parameters": [
@@ -1150,6 +1184,26 @@ enum ChatToolRegistry {
         return result
       } catch {
         DebugLogger.logError("GEMINI-CHAT-TOOL: tasks create failed: \(error.localizedDescription)")
+        return ["error": tasksErrorWithHint(error, taskListId: taskListId)]
+      }
+
+    case "google_tasks_update":
+      guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
+      guard let taskId = args["task_id"] as? String else {
+        return ["error": "Missing required argument: task_id"]
+      }
+      let taskListId = args["task_list_id"] as? String ?? "@default"
+      do {
+        let result = try await GoogleTasksAPIClient.shared.updateTask(
+          taskId: taskId,
+          taskListId: taskListId,
+          title: args["title"] as? String,
+          notes: args["notes"] as? String,
+          due: args["due"] as? String,
+          status: args["status"] as? String)
+        return result
+      } catch {
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks update failed: \(error.localizedDescription)")
         return ["error": tasksErrorWithHint(error, taskListId: taskListId)]
       }
 
