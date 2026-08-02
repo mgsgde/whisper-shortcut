@@ -45,18 +45,81 @@ done
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO" || exit 1
 
-CONTEXT_DIR="$HOME/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/UserContext"
+# Overridable so the permission-denied path can be exercised against a fixture without waiting for
+# a real TCC denial — that path is the one that must never fail silently, so it must be testable.
+CONTEXT_DIR="${REVIEW_CONTEXT_DIR:-$HOME/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/UserContext}"
 LEDGER="$REPO/plans/improvement-ledger.md"
 STAMP="$(date +%Y-%m-%d)"
 REVIEW_DIR="$REPO/plans/usage-reviews"
 DIGEST="$REVIEW_DIR/$STAMP-review.md"
 mkdir -p "$REVIEW_DIR"
 
+# Reporting helpers are defined up here, not next to their first use, because the earliest thing
+# that can go wrong (an unreadable container) has to be able to report loudly too.
+AUDIT_MAIL_TO="${AUDIT_MAIL_TO:-mail@magnus-goedde.de}"
+
+notify() {
+  osascript -e "display notification \"$(printf '%s' "$2" | sed 's/"/\\"/g')\" with title \"$1\"" \
+    >/dev/null 2>&1 || true
+}
+
+# report_out <subject> <body-file> — mail it, notify locally if that fails. The Keychain is
+# unreadable while the Mac is locked, which at 08:47 on a Monday is a normal condition.
+report_out() {
+  local subject="$1" body="$2"
+  if python3 "$REPO/scripts/send-report-mail.py" --to "$AUDIT_MAIL_TO" \
+       --subject "$subject" --body-file "$body"; then
+    return 0
+  fi
+  echo "WARN: could not send mail — falling back to a local notification"
+  notify "$subject" "Email failed. Digest: $body"
+}
+
+# fail_out <verdict line> <extra line …> — report a broken run and exit non-zero.
+fail_out() {
+  local verdict="$1"; shift
+  echo "VERDICT: $verdict"   # also to the log — mail and notification can both be unavailable
+  local note; note="$(mktemp -t wsreviewfail)"
+  { echo "VERDICT: $verdict"; echo; for line in "$@"; do echo "$line"; done; } > "$note"
+  report_out "WhisperShortcut usage review FAILED ($STAMP)" "$note"
+  notify "WhisperShortcut usage review FAILED" "$verdict"
+  rm -f "$note"
+  exit 1
+}
+
 echo "=== Usage review started: $(date '+%Y-%m-%d %H:%M:%S') (window: ${DAYS}d) ==="
 
 if [ ! -d "$CONTEXT_DIR" ]; then
   echo "ERROR: no UserContext directory at $CONTEXT_DIR — is 'Save usage data' off? Aborting."
   exit 1
+fi
+
+# ---------------------------------------------------------------- 0. can we actually read it?
+# macOS TCC does not grant a launchd job the file access your Terminal has. When it denies this
+# directory, `opendir` fails, the globs below expand to nothing, the count comes out zero, and the
+# job exits reporting a quiet week — which is the exact failure this whole design is supposed to
+# prevent. The 2026-08-02 model-audit run proved it is not hypothetical: its benchmark died with
+# `PermissionError: Operation not permitted` on system-prompts.md in this same directory.
+#
+# So probe explicitly, and treat "cannot read" as loud failure rather than "no data".
+# Fix when it fires: System Settings → Privacy & Security → Full Disk Access → add /bin/bash.
+TCC_OK=1
+ls "$CONTEXT_DIR" >/dev/null 2>&1 || TCC_OK=0
+if [ "$TCC_OK" -eq 1 ]; then
+  for probe in "$CONTEXT_DIR"/interactions-*.jsonl; do
+    [ -f "$probe" ] || continue
+    head -c 1 "$probe" >/dev/null 2>&1 || TCC_OK=0
+    break
+  done
+fi
+
+if [ "$TCC_OK" -eq 0 ]; then
+  fail_out "usage review BLOCKED — cannot read the app's data directory (macOS permissions)." \
+    "The directory exists but is unreadable from this job, so a zero count here would be a lie," \
+    "not a quiet week: $CONTEXT_DIR" \
+    "" \
+    "Fix: System Settings > Privacy & Security > Full Disk Access > add /bin/bash." \
+    "Then re-run with: bash scripts/usage-review-job.sh"
 fi
 
 # ---------------------------------------------------------------- 1. is there anything to review?
@@ -166,25 +229,6 @@ is read once a week by one person deciding whether to act.
   A quiet week reported honestly is a good outcome, and padding it is how the ledger dies.
 EOF
 
-AUDIT_MAIL_TO="${AUDIT_MAIL_TO:-mail@magnus-goedde.de}"
-
-notify() {
-  osascript -e "display notification \"$(printf '%s' "$2" | sed 's/"/\\"/g')\" with title \"$1\"" \
-    >/dev/null 2>&1 || true
-}
-
-# report_out <subject> <body-file> — mail it, notify locally if that fails. The Keychain is
-# unreadable while the Mac is locked, which at 08:47 on a Monday is a normal condition.
-report_out() {
-  local subject="$1" body="$2"
-  if python3 "$REPO/scripts/send-report-mail.py" --to "$AUDIT_MAIL_TO" \
-       --subject "$subject" --body-file "$body"; then
-    return 0
-  fi
-  echo "WARN: could not send mail — falling back to a local notification"
-  notify "$subject" "Email failed. Digest: $body"
-}
-
 echo "Review pass: model=$REVIEW_MODEL effort=$REVIEW_EFFORT budget=\$$REVIEW_BUDGET_USD"
 claude -p --dangerously-skip-permissions \
   --model "$REVIEW_MODEL" --effort "$REVIEW_EFFORT" --max-budget-usd "$REVIEW_BUDGET_USD" \
@@ -193,21 +237,15 @@ STATUS=$?
 
 if [ $STATUS -ne 0 ] || [ ! -f "$DIGEST" ]; then
   # A job that silently stops running looks exactly like a week with nothing to report. Say it broke.
-  FAIL_NOTE="$(mktemp -t wsreviewfail)"
-  {
-    if [ $STATUS -ne 0 ]; then
-      echo "VERDICT: usage review FAILED — claude exited with status $STATUS."
-    else
-      echo "VERDICT: usage review INCOMPLETE — the pass wrote no digest."
-    fi
-    echo
-    echo "Data was there: $INTERACTIONS interactions, $SIGNALS signals in the last ${DAYS} days."
-    echo "Log: $REPO/build/logs/usage-review.log"
-    echo "Re-run manually with: bash scripts/usage-review-job.sh"
-  } > "$FAIL_NOTE"
-  report_out "WhisperShortcut usage review FAILED ($STAMP)" "$FAIL_NOTE"
-  rm -f "$FAIL_NOTE"
-  exit 1
+  if [ $STATUS -ne 0 ]; then
+    WHY="usage review FAILED — claude exited with status $STATUS."
+  else
+    WHY="usage review INCOMPLETE — the pass wrote no digest."
+  fi
+  fail_out "$WHY" \
+    "Data was there: $INTERACTIONS interactions, $SIGNALS signals in the last ${DAYS} days." \
+    "Log: $REPO/build/logs/usage-review.log" \
+    "Re-run manually with: bash scripts/usage-review-job.sh"
 fi
 
 # One stable path to open the newest digest.
