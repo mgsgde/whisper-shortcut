@@ -98,11 +98,17 @@ fi
 # macOS TCC does not grant a launchd job the file access your Terminal has. When it denies this
 # directory, `opendir` fails, the globs below expand to nothing, the count comes out zero, and the
 # job exits reporting a quiet week — which is the exact failure this whole design is supposed to
-# prevent. The 2026-08-02 model-audit run proved it is not hypothetical: its benchmark died with
-# `PermissionError: Operation not permitted` on system-prompts.md in this same directory.
+# prevent.
+#
+# This is measured, not assumed. A throwaway LaunchAgent probing this directory on 2026-08-02
+# reported `list: DENIED`, `read: DENIED`, `interaction files visible: 0`, while the same commands
+# from a Terminal shell all succeeded. The model-audit job hits the same wall from the other side —
+# its benchmark falls back to a snapshot glossary because it cannot read the container either.
 #
 # So probe explicitly, and treat "cannot read" as loud failure rather than "no data".
 # Fix when it fires: System Settings → Privacy & Security → Full Disk Access → add /bin/bash.
+# (That grants every bash script the same access — a real tradeoff, and the reason this job reports
+# rather than silently working around it.)
 TCC_OK=1
 ls "$CONTEXT_DIR" >/dev/null 2>&1 || TCC_OK=0
 if [ "$TCC_OK" -eq 1 ]; then

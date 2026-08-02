@@ -28,3 +28,17 @@ Neither changes code — they report, and the user decides.
 LaunchAgents: `~/Library/LaunchAgents/com.whispershortcut.{model-audit,usage-review}.plist`.
 Logs: `build/logs/`. Disable one with
 `launchctl unload ~/Library/LaunchAgents/com.whispershortcut.<name>.plist`.
+
+### Both jobs need Full Disk Access
+
+Verified 2026-08-02 with a throwaway LaunchAgent: a launchd job cannot read the app's container
+(`~/Library/Containers/com.magnusgoedde.whispershortcut/…`) — `list: DENIED`, `read: DENIED`,
+`0 files visible` — while the identical commands from a Terminal shell succeed. macOS TCC keys the
+grant to the executable, and launchd's `/bin/bash` does not have it.
+
+Consequence today: the model audit silently benchmarks against a snapshot glossary instead of the
+real one, and the usage review reports a blocked run instead of proposals.
+
+Fix: System Settings → Privacy & Security → Full Disk Access → add `/bin/bash`. This grants every
+bash script the same access, which is why neither job works around it quietly — the usage review
+fails loudly and names the fix instead.
