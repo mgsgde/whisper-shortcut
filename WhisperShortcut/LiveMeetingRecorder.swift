@@ -34,8 +34,9 @@ class LiveMeetingRecorder: NSObject {
   /// Rotation cadence. Mutable so the session can switch to a responsive cadence while the user is
   /// watching the live view — see `updateMaxChunkDuration`.
   private var maxChunkDuration: TimeInterval
-  /// Minimum chunk duration before silence-based rotation is allowed
-  private let minChunkDuration: TimeInterval
+  /// Minimum chunk duration before silence-based rotation is allowed. Mutable for the same reason as
+  /// `maxChunkDuration` — see `updateCadence`.
+  private var minChunkDuration: TimeInterval
   /// How long silence must last to trigger rotation
   private let silenceDuration: TimeInterval
   /// dB threshold below which audio is considered silence
@@ -143,16 +144,21 @@ class LiveMeetingRecorder: NSObject {
 
   /// Changes the rotation cadence mid-session (see `AppConstants.liveMeetingFastChunkInterval`).
   ///
-  /// Shortening it reschedules the pending rotation so the change takes effect on the *current*
-  /// chunk rather than a minute later — the point of switching is that someone just started
-  /// watching. Lengthening it applies from the next chunk, since cutting a chunk short gains
-  /// nothing. Both keep the running recorder untouched; only the timer moves.
-  func updateMaxChunkDuration(_ newValue: TimeInterval) {
+  /// Shortening the maximum reschedules the pending rotation so the change takes effect on the
+  /// *current* chunk rather than a minute later — the point of switching is that someone just
+  /// started watching. Lengthening it applies from the next chunk, since cutting a chunk short
+  /// gains nothing. Both keep the running recorder untouched; only the timer moves.
+  ///
+  /// The minimum moves with it: it gates silence-based rotation, so leaving it at the background
+  /// value would swallow most of the benefit of a short maximum.
+  func updateCadence(maxChunkDuration newValue: TimeInterval, minChunkDuration newMin: TimeInterval) {
+    minChunkDuration = max(1, min(newMin, newValue))
     let clamped = max(minChunkDuration, newValue)
     guard abs(clamped - maxChunkDuration) > 0.5 else { return }
     let shortened = clamped < maxChunkDuration
     maxChunkDuration = clamped
-    DebugLogger.logAudio("LIVE-MEETING: Chunk cadence now \(Int(clamped))s")
+    DebugLogger.logAudio(
+      "LIVE-MEETING: Chunk cadence now max=\(Int(clamped))s min=\(Int(minChunkDuration))s")
     guard isSessionActive, shortened, let wallStart = currentChunkWallStart else { return }
 
     let elapsed = Date().timeIntervalSince(wallStart)
@@ -167,6 +173,24 @@ class LiveMeetingRecorder: NSObject {
       DebugLogger.logAudio("LIVE-MEETING: Max chunk duration reached, rotating")
       self.rotateAndDeliver()
     }
+  }
+
+  /// Closes the current chunk right now and starts the next one, so audio the user just heard can be
+  /// transcribed instead of sitting in a recorder for another cadence interval. Used when they ask
+  /// the meeting chat a question — the answer has to cover what was said seconds ago.
+  ///
+  /// Returns the index of the chunk it cut, so the caller can wait for exactly that chunk's
+  /// transcript rather than for whichever chunk happens to finish next. Nil when there is nothing
+  /// worth cutting: no session, or a chunk so young that the file would hold little more than the
+  /// request itself.
+  @discardableResult
+  func rotateNow(minimumChunkAge: TimeInterval = 1.0) -> Int? {
+    guard isSessionActive, let wallStart = currentChunkWallStart else { return nil }
+    guard Date().timeIntervalSince(wallStart) >= minimumChunkAge else { return nil }
+    let cutIndex = chunkIndex
+    DebugLogger.logAudio("LIVE-MEETING: Rotating on demand (chunk \(cutIndex))")
+    rotateAndDeliver()
+    return cutIndex
   }
 
   /// Stops the current session and delivers the final chunk

@@ -74,6 +74,16 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// True while a meeting is recording; false after session ends or before any meeting.
   @Published private(set) var isSessionActive: Bool = false
 
+  /// True between "stop this meeting" and the session actually being finished. Stopping has to drain
+  /// the last chunk through a transcription round trip, so it is not instant; a UI that only knows
+  /// `isSessionActive` shows "Recording" for those seconds and the stop looks like it did nothing.
+  @Published private(set) var isFinishing: Bool = false
+
+  /// Cuts the audio still sitting in the recorder and waits briefly for its transcript. Installed by
+  /// `MenuBarController`, which owns the session; nil in previews and tests. The meeting chat calls it
+  /// before a turn goes out so a question about the last few seconds can be answered from them.
+  var pendingAudioFlush: (@MainActor () async -> Void)?
+
   /// Current transcript filename without extension (e.g. "Meeting-2026-03-04-201119"). Set by MenuBarController when recording starts; cleared when session ends. Used as default in "End Meeting" name dialog.
   @Published var currentMeetingFilenameStem: String?
 
@@ -108,6 +118,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     self.liveNotes = []
     self.summary = ""
     self.isSessionActive = true
+    self.isFinishing = false
     DebugLogger.log("LIVE-MEETING-STORE: Session started, store cleared (stem: \(self.currentMeetingFilenameStem ?? "nil"))")
   }
 
@@ -117,6 +128,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   func resumeSession() {
     assert(Thread.isMainThread, "LiveMeetingTranscriptStore.resumeSession must be called on main thread")
     self.isSessionActive = true
+    self.isFinishing = false
     DebugLogger.log("LIVE-MEETING-STORE: Session resumed, data retained (stem: \(self.currentMeetingFilenameStem ?? "nil"), chunks: \(self.chunks.count))")
   }
 
@@ -175,17 +187,37 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     }
   }
 
+  /// Call when the user asks to stop: recording has ended but the session is still draining its last
+  /// chunk. `isSessionActive` stays true — the meeting is not over yet — so the UI can say
+  /// "finishing" instead of either lying about recording or claiming the meeting has ended.
+  func beginFinishing() {
+    if Thread.isMainThread {
+      self.isFinishing = true
+    } else {
+      DispatchQueue.main.async { [weak self] in self?.isFinishing = true }
+    }
+    DebugLogger.log("LIVE-MEETING-STORE: Finishing (draining last chunk)")
+  }
+
   /// Call when the meeting session ends. Keeps chunks, summary, and name so the meeting window can keep showing them.
   func endSession() {
     if Thread.isMainThread {
       self.isSessionActive = false
+      self.isFinishing = false
       DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
     } else {
       DispatchQueue.main.async { [weak self] in
         self?.isSessionActive = false
+        self?.isFinishing = false
         DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
       }
     }
+  }
+
+  /// Bridges the meeting chat to the running session's audio flush. No-op when nothing is recording.
+  @MainActor
+  func flushPendingAudio() async {
+    await pendingAudioFlush?()
   }
 
   /// Clears store for a new meeting without starting recording. Used when user taps "New Meeting".
@@ -199,6 +231,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     self.liveNotes = []
     self.summary = ""
     self.isSessionActive = false
+    self.isFinishing = false
     self.currentMeetingFilenameStem = stem
     self.preferredMeetingName = nil
     DebugLogger.log("LIVE-MEETING-STORE: Cleared for new meeting (stem: \(stem))")

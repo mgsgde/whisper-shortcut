@@ -108,7 +108,18 @@ struct SpeechErrorFormatter {
         \(waitMessage)
         """
 
-    case .billingRequired:
+    case .billingRequired(let topUpURL):
+      // When the provider told us unambiguously which balance is empty, say so and let the popup's
+      // "Top up" button do the rest — listing three unrelated dashboards would be noise.
+      if topUpURL != nil {
+        return """
+          💳 Out of Credit
+
+          Your OpenRouter balance is empty, so the request was rejected.
+
+          Add credit to continue. Use the "Top up" button below to open your OpenRouter dashboard.
+          """
+      }
       return """
         💳 Billing Required
 

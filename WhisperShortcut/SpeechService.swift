@@ -266,6 +266,26 @@ class SpeechService {
       .filter { !$0.isEmpty }
   }
 
+  /// The Whisper Glossary as literal terms for `gpt-transcribe`'s `keywords` field: the same
+  /// sanitized reference vocabulary the prompt-based backends get, plus the *correct* half of
+  /// every tie-breaker pair.
+  ///
+  /// The rejected spellings are deliberately left out — `keywords` are hints for what may appear
+  /// in the audio, so feeding it both sides of a near-homophone pair would cancel the correction
+  /// out. Settling a pair the model still gets wrong stays the job of
+  /// `correctingRejectedSpellings`, which runs on the transcript afterwards.
+  private func glossaryKeywords() -> [String] {
+    let parsed = parsedGlossary()
+    var seen = Set<String>()
+    var keywords: [String] = []
+    for term in glossaryTermsForEchoCheck() + parsed.corrections.map(\.correct) {
+      let folded = Self.foldGlossaryTerm(term)
+      guard !folded.isEmpty, seen.insert(folded).inserted else { continue }
+      keywords.append(term)
+    }
+    return keywords
+  }
+
   /// Case- and diacritic-insensitive comparison form, matching `GlossaryFastLearner.fold`.
   private static func foldGlossaryTerm(_ word: String) -> String {
     word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
@@ -490,11 +510,13 @@ class SpeechService {
       return result
     }
 
-    // OpenAI cloud transcription (gpt-4o-transcribe / gpt-4o-mini-transcribe)
+    // OpenAI cloud transcription (gpt-transcribe / gpt-4o-transcribe / gpt-4o-mini-transcribe)
     if model.isOpenAI, let openAIModelID = model.openAIAPIModelID {
       try validateAudioFileFormat(at: audioURL)
       // gpt-4o-transcribe family accepts a full GPT-4o-style instruction via the `prompt`
       // multipart field — pass the user's dictation prompt so OpenAI behaves like Gemini.
+      // `gpt-transcribe` ignores instructions and is fed keywords instead; the shared multipart
+      // helper drops this hint for it.
       let dictationHint = (promptOverride ?? buildDictationPrompt()).trimmingCharacters(in: .whitespacesAndNewlines)
       let result = try await transcribeWithOpenAI(
         audioURL: audioURL,
@@ -647,6 +669,13 @@ class SpeechService {
     }
     return base + AppConstants.promptModeOutputRule
   }
+
+  /// Shown when screenshot-selection mode (App Store build) has no screenshot to send. Shared by
+  /// the Gemini and OpenAI paths: the situation is identical, and only the Gemini copy of this
+  /// check existed — the OpenAI path used to send a screenshot-mode system prompt with no image,
+  /// which is exactly the "edit the highlighted region" instruction with nothing to look at.
+  private static let screenshotSelectionCaptureFailedMessage =
+    "Could not capture a screenshot of the current screen. Check Screen Recording permission in System Settings, then try again."
 
   /// Returns the screenshot parts to prepend to a Dictate Prompt request when the
   /// "include screenshot" setting is on and the model accepts images. Empty when
@@ -842,7 +871,7 @@ class SpeechService {
     // hallucinate from a non-existent highlight. The togglePrompting permission gate already handles
     // the common case; this catches grant-but-capture-failed corners.
     if AppConstants.dictatePromptUsesScreenshotSelection && !hadScreenshot {
-      throw TranscriptionError.networkError("Could not capture a screenshot of the current screen. Check Screen Recording permission in System Settings, then try again.")
+      throw TranscriptionError.networkError(Self.screenshotSelectionCaptureFailedMessage)
     }
     userParts.append(contentsOf: screenshotParts)
 
@@ -949,6 +978,15 @@ class SpeechService {
     if screenshotEnabled && !modelAcceptsImages {
       DebugLogger.log("PROMPT-MODE-OPENAI: Screenshot dropped — \(model.rawValue) does not accept image input.")
     }
+    // Same guard the Gemini path has: in screenshot-selection mode the screenshot is the ONLY
+    // source of the selected text, so a capture that returned nothing means the request would carry
+    // an "edit the highlighted region" instruction with no region to edit — the model then invents
+    // one. The model-can't-take-images case is already rejected above; this catches
+    // permission-granted-but-capture-failed.
+    if AppConstants.dictatePromptUsesScreenshotSelection && screenshotData == nil {
+      DebugLogger.logError("PROMPT-MODE-OPENAI: Screenshot capture failed in screenshot-selection mode")
+      throw TranscriptionError.networkError(Self.screenshotSelectionCaptureFailedMessage)
+    }
     let screenshotLabel = AppConstants.dictatePromptUsesScreenshotSelection
       ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
       : "Current screen:"
@@ -1049,7 +1087,7 @@ class SpeechService {
         // "No credit on the API account" arrives as 429 insufficient_quota — a billing
         // problem, not a rate limit (same mapping as the transcription path).
         if bodyString.contains("insufficient_quota") {
-          throw TranscriptionError.billingRequired
+          throw TranscriptionError.billingRequired()
         }
         throw TranscriptionError.rateLimited(retryAfter: nil)
       default:
@@ -1074,7 +1112,12 @@ class SpeechService {
       throw TranscriptionError.networkError("OpenAI returned no text content")
     }
 
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(rawText)
+    // gpt-audio-1.5 sometimes answers an edit instruction with a JSON edit object rather than the
+    // edited text. Unwrap it before anything else touches the string, or the JSON is what the user
+    // pastes. No-op for the plain-text replies that are the norm.
+    let unwrappedText = TextProcessingUtility.unwrappingJSONEditResponse(
+      rawText, selectedText: clipboardContext)
+    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(unwrappedText)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-OPENAI")
 
     await recordPromptTurn(
@@ -1673,7 +1716,7 @@ class SpeechService {
       // at least $0.50 in balance for audio") — verified live. Mapping it to a generic server error
       // would tell the user "something went wrong" for a problem only they can fix, and only at
       // https://openrouter.ai/settings/credits.
-      case 402: throw TranscriptionError.billingRequired
+      case 402: throw TranscriptionError.billingRequired(topUpURL: OpenRouterOAuthConfig.creditsURL)
       case 429:
         let retryAfter = (http.value(forHTTPHeaderField: "Retry-After")).flatMap(TimeInterval.init)
         throw TranscriptionError.rateLimited(retryAfter: retryAfter)
@@ -1729,6 +1772,9 @@ class SpeechService {
   /// combined with the glossary: instruction-wrapped for instructable models (gpt-4o-transcribe
   /// family, grok-stt), bare for whisper-1 priming. Callers must NOT pass `dictationHint` for
   /// `whisper-1` (224-token limit).
+  ///
+  /// `gpt-transcribe` is the exception both ways — see `isContextFieldStyle` below: it takes
+  /// vocabulary through a dedicated `keywords` field and `dictationHint` is dropped for it.
   private func sendOpenAICompatibleTranscriptionRequest(
     url: URL, fieldName: String,
     modelID: String?,
@@ -1757,7 +1803,23 @@ class SpeechService {
     // follow instructions in `prompt`, so they get the same explicit Glossary instruction block
     // as the Gemini paths — a bare list is too weak a signal there (see appendGlossaryHint).
     let isWhisperStyle = modelID == "whisper-1" || fieldName == "audio_file"
+    // `gpt-transcribe` is a pure ASR model with dedicated context fields, not an instructable
+    // LLM: it takes vocabulary through repeated `keywords` fields and ignores instructions in
+    // `prompt`. Verified live against the API (2026-08-02, German dictation with the domain
+    // terms below):
+    //   - a formatting instruction gpt-4o-transcribe honoured ("write numbers as digits") was
+    //     silently dropped, so `dictationHint` buys nothing here;
+    //   - worse, sending it *hurts* the keyword hints — with the dictation prompt in `prompt`,
+    //     "WhisperShortcut" came back as "Whisper Shortcut" in 2 of 3 runs; keywords alone was
+    //     correct in 5 of 5. Hence the dictation prompt is deliberately not forwarded.
+    //   - the same trait is the reason to prefer it: on silence it returns "", where both
+    //     gpt-4o-transcribe and -mini echo the prompt back as a fake transcript (glossary echo).
+    // Docs: https://developers.openai.com/api/docs/guides/transcription — "Use these inputs only
+    // for context relevant to the audio; don't restate the transcription task."
+    let isContextFieldStyle = modelID == "gpt-transcribe"
+    let contextKeywords = isContextFieldStyle ? glossaryKeywords() : []
     let combinedPrompt: String? = {
+      if isContextFieldStyle { return nil }
       if isWhisperStyle {
         switch (trimmedDictationHint.isEmpty, glossary.isEmpty) {
         case (true, true): return nil
@@ -1773,7 +1835,12 @@ class SpeechService {
     let savedLanguage = WhisperLanguage(rawValue: savedLanguageString ?? WhisperLanguage.auto.rawValue) ?? WhisperLanguage.auto
     let languageCode = savedLanguage.languageCode
 
-    DebugLogger.log("\(logPrefix): POST \(loggableURL(requestURL)) (field: \(fieldName), model: \(modelID ?? "-"), language: \(languageCode ?? "auto"), prompt: \(combinedPrompt == nil ? "none" : "\(combinedPrompt!.count) chars\(trimmedDictationHint.isEmpty ? "" : " (dictation+glossary)")"))")
+    let promptLogValue = isContextFieldStyle
+      ? "n/a (context fields: \(contextKeywords.count) keyword(s))"
+      : (combinedPrompt == nil
+        ? "none"
+        : "\(combinedPrompt!.count) chars\(trimmedDictationHint.isEmpty ? "" : " (dictation+glossary)")")
+    DebugLogger.log("\(logPrefix): POST \(loggableURL(requestURL)) (field: \(fieldName), model: \(modelID ?? "-"), language: \(languageCode ?? "auto"), prompt: \(promptLogValue))")
 
     let boundary = "Boundary-\(UUID().uuidString)"
     var body = Data()
@@ -1789,6 +1856,10 @@ class SpeechService {
       }
       if let language = languageCode {
         appendField("language", language)
+      }
+      // `keywords` is a repeated field — one part per term, not a comma-joined string.
+      for keyword in contextKeywords {
+        appendField("keywords", keyword)
       }
       if let prompt = combinedPrompt {
         appendField("prompt", prompt)
@@ -1831,7 +1902,7 @@ class SpeechService {
       // OpenAI reports "no credit on the API account" as a 429 with code insufficient_quota.
       // Surface that as a billing problem, not a rate limit — the fix is topping up, not waiting.
       if let bodyString = String(data: data, encoding: .utf8), bodyString.contains("insufficient_quota") {
-        throw TranscriptionError.billingRequired
+        throw TranscriptionError.billingRequired()
       }
       throw TranscriptionError.rateLimited(retryAfter: nil)
     default:

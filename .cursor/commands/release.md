@@ -31,7 +31,16 @@ GitHub and App Store ship on different cadences. The live App Store version is o
 
 **Before writing App Store text:**
 
-1. Determine the live App Store version — ask the user if unknown (App Store Connect → sidebar “Ready for Distribution”, or a screenshot).
+1. Determine the live App Store version — **query it, do not ask the user.** `asc` is installed and
+   authenticated (`/opt/homebrew/bin/asc`); the app id is `6749648401`:
+
+   ```bash
+   asc versions list --app 6749648401 | python3 -c "import json,sys; [print(v['attributes']['versionString'], v['attributes']['appStoreState']) for v in json.load(sys.stdin)['data'][:8]]"
+   ```
+
+   `READY_FOR_SALE` means live; the highest such version is the baseline. Note `asc api "/v1/apps/…"`
+   returns non-JSON — use the `versions list` subcommand. Only fall back to asking if `asc` is
+   missing or unauthenticated.
 2. Aggregate **user-facing** changes from `v<APP_STORE_LIVE>..v<CURRENT>` (read intervening `.github/RELEASE_NOTES.md` at each tag if helpful).
 3. If the build submitted to App Store is an older tag than `CURRENT`, scope App Store text to `v<APP_STORE_LIVE>..v<SUBMITTED>` instead.
 4. Omit dev-only changes (test scripts, internal refactors).
@@ -49,7 +58,7 @@ GitHub and App Store ship on different cadences. The live App Store version is o
 4. Increment versions by 1 and save `WhisperShortcut/Info.plist`
 5. Analyze git log since last "update to version" commit / previous git tag
 6. **GitHub release notes:** summarize changes since the previous git tag (`git log` since last `Update to version` commit / `v<PREV>`).
-7. **App Store “What's New”:** summarize **user-facing** changes since the last version **live on App Store Connect** (see [App Store vs GitHub baselines](#app-store-vs-github-baselines) — not the previous git tag unless they match). Ask the user for the live App Store version when it is not stated.
+7. **App Store “What's New”:** summarize **user-facing** changes since the last version **live on App Store Connect** (see [App Store vs GitHub baselines](#app-store-vs-github-baselines) — not the previous git tag unless they match). Get the live App Store version from `asc` (step 1 above) rather than asking.
 8. Save GitHub release notes to `.github/RELEASE_NOTES.md` (used automatically by the workflow) – **IMPORTANT**: Use the resolved repository URL for all links (releases link and changelog link); never use placeholders like `your-repo`
 9. Rebuild and start the app with `bash scripts/rebuild-and-restart.sh`; stop if the build fails
 10. Git add and commit only the files changed for this release command, with message `Update to version X.X` – **Important**: `WhisperShortcut/Info.plist` and `.github/RELEASE_NOTES.md` must be included in the commit

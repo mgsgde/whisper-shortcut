@@ -31,6 +31,10 @@ final class LiveMeetingSession: NSObject {
   /// True while `appState` is `.recording(.liveMeeting)`. The session cannot read `appState`
   /// itself — see the note above.
   private let appStateIsRecordingMeeting: () -> Bool
+  /// The user asked to stop and the session is now draining the last chunk(s). Reported separately
+  /// from `onFinished` because that drain takes a network round trip: without it the owner keeps
+  /// showing "recording" for seconds after the stop, which reads as the stop not having worked.
+  private let onStopping: () -> Void
   /// The session has fully finished (saved or discarded); the owner returns `appState` to idle.
   private let onFinished: () -> Void
 
@@ -38,11 +42,13 @@ final class LiveMeetingSession: NSObject {
     transcribeChunk: @escaping (URL) async throws -> String,
     cleanUpAudioFile: @escaping (URL) -> Void,
     appStateIsRecordingMeeting: @escaping () -> Bool,
+    onStopping: @escaping () -> Void,
     onFinished: @escaping () -> Void
   ) {
     self.transcribeChunk = transcribeChunk
     self.cleanUpAudioFile = cleanUpAudioFile
     self.appStateIsRecordingMeeting = appStateIsRecordingMeeting
+    self.onStopping = onStopping
     self.onFinished = onFinished
     super.init()
   }
@@ -91,6 +97,11 @@ final class LiveMeetingSession: NSObject {
   private let liveNoteMaxPendingChunks = 4
   /// When true, `finish()` deletes the transcript instead of saving.
   private var discard: Bool = false
+  /// Callers of `flushPendingAudio()` waiting for the chunk that flush cut to be transcribed, keyed
+  /// so a timeout can drop its own waiter without disturbing the others.
+  private var flushWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+  /// Index of the chunk the pending flush cut; see `signalFlushCompleted`.
+  private var flushAwaitedChunkIndex: Int?
 
   /// True while this session holds a recorder. Combined with `appState` by the owner to decide
   /// whether a meeting is active.
@@ -198,6 +209,10 @@ final class LiveMeetingSession: NSObject {
     safeguardTimer?.invalidate()
     safeguardTimer = nil
     stopping = true
+    // Tell the UI *now*: the drain below needs a transcription round trip, and until it lands both
+    // the menu bar and the meeting bar would otherwise keep claiming the meeting is recording.
+    LiveMeetingTranscriptStore.shared.beginFinishing()
+    onStopping()
     // AVAudioRecorder delivers its final chunk async via audioRecorderDidFinishRecording,
     // so wait for it before finalizing (prevents a race where post-processing rewrites
     // the transcript file while a late chunk is still being appended).
@@ -289,6 +304,8 @@ final class LiveMeetingSession: NSObject {
     pendingChunks = 0
     transcriptURL = nil
     lastNotedChunkID = nil
+    // The meeting is over, so nothing further will arrive for a waiter to wait on.
+    signalFlushCompleted(completedChunkIndex: nil)
     onFinished()
 
     if let transcriptURL = transcriptURLForPostProcessing {
@@ -647,7 +664,55 @@ final class LiveMeetingSession: NSObject {
     guard let recorder else { return }
     let configured = Self.configuredChunkInterval()
     let target = fast ? min(configured, AppConstants.liveMeetingFastChunkInterval) : configured
-    recorder.updateMaxChunkDuration(target)
+    let minimum = fast
+      ? min(AppConstants.liveMeetingFastChunkMinDuration, AppConstants.liveMeetingChunkMinDuration)
+      : AppConstants.liveMeetingChunkMinDuration
+    recorder.updateCadence(maxChunkDuration: target, minChunkDuration: minimum)
+  }
+
+  // MARK: - Flush on demand
+
+  /// Cuts the audio that is still in the recorder and waits (briefly) for its transcript, so a
+  /// question asked about the last few seconds can actually be answered from them.
+  ///
+  /// Without this the newest chunk is invisible to the chat for up to a full cadence interval: the
+  /// user hears a question in the room, asks about it, and the model is shown a transcript that stops
+  /// before it was asked. The wait is capped because a question must never hang on the network — when
+  /// the cap hits, the turn simply goes out with whatever had landed, and the flushed chunk still
+  /// arrives in the transcript moments later.
+  @MainActor
+  func flushPendingAudio(timeout: TimeInterval = 3.0) async {
+    guard appStateIsRecordingMeeting(), let recorder, let cutIndex = recorder.rotateNow() else {
+      return
+    }
+    DebugLogger.log("LIVE-MEETING: Flushing pending audio (chunk \(cutIndex)) before the user's turn")
+    flushAwaitedChunkIndex = cutIndex
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      let id = UUID()
+      flushWaiters[id] = continuation
+      DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in
+        guard let waiter = self?.flushWaiters.removeValue(forKey: id) else { return }
+        DebugLogger.log("LIVE-MEETING: Flush wait timed out after \(Int(timeout))s")
+        waiter.resume()
+      }
+    }
+  }
+
+  /// Releases everything waiting on `flushPendingAudio()`.
+  ///
+  /// `completedChunkIndex` is the chunk whose pipeline just finished; a chunk older than the flushed
+  /// one does not count, because a slow predecessor finishing first would release the waiter before
+  /// the text it is actually waiting for exists. Pass nil for "nothing further is coming" (the
+  /// session ended, or the delivery arrived after finalization), which always releases.
+  private func signalFlushCompleted(completedChunkIndex: Int?) {
+    guard !flushWaiters.isEmpty else { return }
+    if let awaited = flushAwaitedChunkIndex, let done = completedChunkIndex, done < awaited {
+      return
+    }
+    flushAwaitedChunkIndex = nil
+    let waiters = flushWaiters
+    flushWaiters = [:]
+    waiters.values.forEach { $0.resume() }
   }
 
   private static func configuredChunkInterval() -> TimeInterval {
@@ -672,6 +737,7 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
       DebugLogger.logWarning(
         "LIVE-MEETING: Dropping late chunk \(chunkIndex) (session already finalized)")
       cleanUpAudioFile(audioURL)
+      signalFlushCompleted(completedChunkIndex: nil)
       return
     }
 
@@ -682,6 +748,8 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
     if isSilent {
       DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (silent audio)")
       cleanUpAudioFile(audioURL)
+      // A silent chunk produces no text, but it still settles what a flush was waiting for.
+      signalFlushCompleted(completedChunkIndex: chunkIndex)
       maybeFinishAfterChunkCompletion()
       return
     }
@@ -735,6 +803,9 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
 
       await MainActor.run {
         self.pendingChunks -= 1
+        // Transcribed, empty, or failed — either way this chunk is settled, so a flush waiting on it
+        // may proceed with whatever landed.
+        self.signalFlushCompleted(completedChunkIndex: chunkIndex)
         self.maybeFinishAfterChunkCompletion()
       }
     }

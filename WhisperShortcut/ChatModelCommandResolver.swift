@@ -89,7 +89,9 @@ enum ChatModelCommandResolver {
       }
     } else if hasClaude {
       if normalized.contains("opus") {
-        candidates = [.claudeOpus48]
+        // 4.8 is hidden via chatReplacement (same price as Opus 5, older generation), so a bare
+        // "/model claude opus" resolves to 5.
+        candidates = [.claudeOpus5]
       } else if normalized.contains("haiku") {
         candidates = [.claudeHaiku45]
       } else if normalized.contains("sonnet") {
@@ -97,7 +99,7 @@ enum ChatModelCommandResolver {
       } else if normalized.contains("fable") {
         candidates = [.claudeFable5]
       } else {
-        candidates = [.claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5]
+        candidates = [.claudeSonnet5, .claudeOpus5, .claudeHaiku45, .claudeFable5]
       }
     } else if hasOpenAI {
       // openaiGPT4oAudio is Dictate-Prompt only (supportsTextChat=false), so the chat resolver

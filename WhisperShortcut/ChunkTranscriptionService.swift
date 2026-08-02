@@ -56,6 +56,13 @@ class ChunkTranscriptionService {
     /// Coordinator for global rate limiting across all chunks.
     private let rateLimitCoordinator = RateLimitCoordinator(logPrefix: "CHUNK-RATE-LIMIT")
 
+    /// Per-chunk retry policy, shared with `ChunkTTSService` (see `ChunkRetryPolicy`).
+    private var retryPolicy: ChunkRetryPolicy {
+        ChunkRetryPolicy(
+            maxRetries: maxRetries, retryDelay: retryDelay,
+            coordinator: rateLimitCoordinator, logPrefix: "CHUNK-SERVICE")
+    }
+
     // MARK: - Initialization
 
     init(
@@ -160,7 +167,7 @@ class ChunkTranscriptionService {
         glossaryTerms: [String]
     ) async throws -> (transcripts: [ChunkTranscript], chunks: [AudioChunk]) {
         let totalChunks = chunkStream.expectedCount
-        let accumulator = ResultAccumulator()
+        let accumulator = ChunkResultAccumulator<ChunkTranscript>()
         var yieldedChunks: [AudioChunk] = []
 
         try await withThrowingTaskGroup(of: Result<ChunkTranscript, Error>.self) { group in
@@ -201,7 +208,7 @@ class ChunkTranscriptionService {
 
                 switch result {
                 case .success(let transcript):
-                    await accumulator.addTranscript(transcript)
+                    await accumulator.add(transcript)
                     await MainActor.run { [currentCompleted] in
                         self.progressDelegate?.chunkProgressUpdated(
                             completed: currentCompleted,
@@ -232,8 +239,8 @@ class ChunkTranscriptionService {
             }
         }
 
-        let transcripts = await accumulator.getTranscripts()
-        let errors = await accumulator.getErrors()
+        let transcripts = await accumulator.allValues()
+        let errors = await accumulator.allErrors()
 
         if transcripts.isEmpty {
             let allCancelled = errors.allSatisfy { $0.error is CancellationError }
@@ -262,172 +269,84 @@ class ChunkTranscriptionService {
         glossaryTerms: [String],
         totalChunks: Int
     ) async throws -> ChunkTranscript {
-        var lastError: Error?
-
-        for attempt in 1...maxRetries {
-            do {
-                // Wait if we're in a rate-limited period (global coordination)
-                await rateLimitCoordinator.waitIfNeeded()
-
-                // Check for cancellation after waiting
-                try Task.checkCancellation()
-
-                // Report retry status
-                if attempt > 1 {
-                    let errorToReport = lastError ?? TranscriptionError.networkError("Unknown")
-                    await MainActor.run {
-                        self.progressDelegate?.chunkFailed(
-                            index: chunk.index,
-                            error: errorToReport,
-                            willRetry: true
-                        )
-                        // Re-notify that chunk is starting again (retry)
-                        self.progressDelegate?.chunkStarted(index: chunk.index)
-                    }
-                    DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) attempt \(attempt)/\(maxRetries)")
-                }
-
-                // Read and encode audio (as compact AAC when possible)
-                let audioData: Data
-                let mimeType: String
-                if let aacData = AudioTranscoder.aacData(for: chunk.url) {
-                    audioData = aacData
-                    mimeType = AudioTranscoder.aacMimeType
-                } else {
-                    audioData = try Data(contentsOf: chunk.url)
-                    mimeType = geminiClient.getMimeType(for: chunk.url.pathExtension.lowercased())
-                }
-                let base64Audio = audioData.base64EncodedString()
-
-                let endpoint = model.apiEndpoint
-                var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
-                request.timeoutInterval = Self.chunkResourceTimeout
-
-                let transcriptionRequest = GeminiTranscriptionRequest(
-                    contents: [
-                        GeminiTranscriptionRequest.GeminiTranscriptionContent(
-                            parts: [
-                                .text(prompt.isEmpty
-                                    ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting."
-                                    : prompt),
-                                .inline(mimeType: mimeType, data: base64Audio)
-                            ]
-                        )
-                    ],
-                    generationConfig: model.geminiTranscriptionGenerationConfig
-                )
-
-                request.httpBody = try JSONEncoder().encode(transcriptionRequest)
-
-                // Make request (without GeminiAPIClient's internal retry - we handle it here)
-                let response = try await geminiClient.performRequest(
-                    request,
-                    responseType: GeminiResponse.self,
-                    mode: "CHUNK-\(chunk.index)",
-                    withRetry: false
-                )
-
-                // Report success to coordinator (resets rate limit counter)
-                await rateLimitCoordinator.reportSuccess()
-
-                // Extract text
-                let text = geminiClient.extractText(from: response)
-                // A near-silent trailing chunk can trigger prompt-context confabulation on
-                // Flash-tier models, in both directions: impossibly long invented output, or
-                // near-empty output made of nothing but the glossary we sent in the prompt.
-                let chunkDuration = chunk.endTime - chunk.startTime
-                let normalizedText = TextProcessingUtility.discardingGlossaryEchoTranscript(
-                    TextProcessingUtility.discardingImplausibleTranscript(
-                        TextProcessingUtility.normalizeTranscriptionText(text),
-                        audioDurationSeconds: chunkDuration,
-                        mode: "CHUNK-\(chunk.index)"),
-                    audioDurationSeconds: chunkDuration,
-                    glossaryTerms: glossaryTerms,
-                    mode: "CHUNK-\(chunk.index)")
-
-                DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) transcribed (\(normalizedText.count) chars)")
-
-                return ChunkTranscript(
-                    text: normalizedText,
-                    index: chunk.index,
-                    startTime: chunk.startTime,
-                    endTime: chunk.endTime
-                )
-
-            } catch {
-                lastError = error
-
-                // Check if this is a rate limit or quota error with retry info
-                if let transcriptionError = error as? TranscriptionError {
-                    switch transcriptionError {
-                    case .rateLimited(let retryAfter, _), .quotaExceeded(let retryAfter):
-                        // Only pause other chunks when the error is retryable (transient rate limit).
-                        if transcriptionError.isRetryable {
-                            await rateLimitCoordinator.reportRateLimit(retryAfter: retryAfter)
-                        }
-
-                        // If we have a retry delay, this error is retryable
-                        if retryAfter != nil && attempt < maxRetries {
-                            DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) hit rate limit, will retry after coordinator wait")
-                            continue
-                        }
-
-                    default:
-                        break
-                    }
-
-                    // Non-retryable errors should fail immediately
-                    if !transcriptionError.isRetryable {
-                        throw error
-                    }
-                }
-
-                // Don't retry on last attempt
-                if attempt < maxRetries {
-                    // Use API-provided delay if available, otherwise exponential backoff
-                    let delay: TimeInterval
-                    if let transcriptionError = error as? TranscriptionError,
-                       let retryAfter = transcriptionError.retryAfter {
-                        delay = retryAfter
-                    } else {
-                        delay = retryDelay * pow(2.0, Double(attempt - 1))
-                    }
-                    DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) failed, retrying in \(String(format: "%.1f", delay))s")
-                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        try await retryPolicy.run(
+            label: "Chunk \(chunk.index)",
+            beforeRetry: { error, _ in
+                let errorToReport = error ?? TranscriptionError.networkError("Unknown")
+                await MainActor.run {
+                    self.progressDelegate?.chunkFailed(
+                        index: chunk.index,
+                        error: errorToReport,
+                        willRetry: true
+                    )
+                    // Re-notify that chunk is starting again (retry)
+                    self.progressDelegate?.chunkStarted(index: chunk.index)
                 }
             }
+        ) {
+            // Read and encode audio (as compact AAC when possible)
+            let audioData: Data
+            let mimeType: String
+            if let aacData = AudioTranscoder.aacData(for: chunk.url) {
+                audioData = aacData
+                mimeType = AudioTranscoder.aacMimeType
+            } else {
+                audioData = try Data(contentsOf: chunk.url)
+                mimeType = geminiClient.getMimeType(for: chunk.url.pathExtension.lowercased())
+            }
+            let base64Audio = audioData.base64EncodedString()
+
+            let endpoint = model.apiEndpoint
+            var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
+            request.timeoutInterval = Self.chunkResourceTimeout
+
+            let transcriptionRequest = GeminiTranscriptionRequest(
+                contents: [
+                    GeminiTranscriptionRequest.GeminiTranscriptionContent(
+                        parts: [
+                            .text(prompt.isEmpty
+                                ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting."
+                                : prompt),
+                            .inline(mimeType: mimeType, data: base64Audio)
+                        ]
+                    )
+                ],
+                generationConfig: model.geminiTranscriptionGenerationConfig
+            )
+
+            request.httpBody = try JSONEncoder().encode(transcriptionRequest)
+
+            // Make request (without GeminiAPIClient's internal retry - we handle it here)
+            let response = try await geminiClient.performRequest(
+                request,
+                responseType: GeminiResponse.self,
+                mode: "CHUNK-\(chunk.index)",
+                withRetry: false
+            )
+
+            // Extract text
+            let text = geminiClient.extractText(from: response)
+            // A near-silent trailing chunk can trigger prompt-context confabulation on
+            // Flash-tier models, in both directions: impossibly long invented output, or
+            // near-empty output made of nothing but the glossary we sent in the prompt.
+            let chunkDuration = chunk.endTime - chunk.startTime
+            let normalizedText = TextProcessingUtility.discardingGlossaryEchoTranscript(
+                TextProcessingUtility.discardingImplausibleTranscript(
+                    TextProcessingUtility.normalizeTranscriptionText(text),
+                    audioDurationSeconds: chunkDuration,
+                    mode: "CHUNK-\(chunk.index)"),
+                audioDurationSeconds: chunkDuration,
+                glossaryTerms: glossaryTerms,
+                mode: "CHUNK-\(chunk.index)")
+
+            DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) transcribed (\(normalizedText.count) chars)")
+
+            return ChunkTranscript(
+                text: normalizedText,
+                index: chunk.index,
+                startTime: chunk.startTime,
+                endTime: chunk.endTime
+            )
         }
-
-        throw lastError ?? TranscriptionError.networkError("Chunk transcription failed")
-    }
-}
-
-// MARK: - Helper Types
-
-/// Actor for thread-safe accumulation of transcription results.
-private actor ResultAccumulator {
-    private var transcripts: [ChunkTranscript] = []
-    private var errors: [(index: Int, error: Error)] = []
-    private var completedCount = 0
-
-    func incrementCompleted() -> Int {
-        completedCount += 1
-        return completedCount
-    }
-
-    func addTranscript(_ transcript: ChunkTranscript) {
-        transcripts.append(transcript)
-    }
-
-    func addError(index: Int, error: Error) {
-        errors.append((index: index, error: error))
-    }
-
-    func getTranscripts() -> [ChunkTranscript] {
-        return transcripts
-    }
-
-    func getErrors() -> [(index: Int, error: Error)] {
-        return errors
     }
 }

@@ -10,6 +10,10 @@
 		<true />
 
 		<!-- Network access for Google Gemini API -->
+		<!-- Loopback listener for the OpenRouter OAuth callback (LoopbackOAuthListener). Binds
+		     127.0.0.1 only; OpenRouter does not accept custom URL schemes as callback_url. -->
+		<key>com.apple.security.network.server</key>
+		<true/>
 		<key>com.apple.security.network.client</key>
 		<true />
 

@@ -64,7 +64,13 @@ enum TranscriptionModel: String, CaseIterable {
   case whisperMedium = "whisper-medium"
   case whisperLarge = "whisper-large"
 
-  // OpenAI transcription models (cloud, OpenAI API key required)
+  // OpenAI transcription models (cloud, OpenAI API key required).
+  // `gpt-transcribe` is OpenAI's recommended starting model; the gpt-4o pair is explicitly
+  // "not the recommended starting model for a new transcription integration"
+  // (https://developers.openai.com/api/docs/guides/transcription). All three stay: the gpt-4o
+  // family follows instructions in `prompt` (which gpt-transcribe does not) and mini is the
+  // cheapest tier, so neither is dominated.
+  case openAIGPTTranscribe = "openai-gpt-transcribe"
   case openAIGPT4oTranscribe = "openai-gpt-4o-transcribe"
   case openAIGPT4oMiniTranscribe = "openai-gpt-4o-mini-transcribe"
 
@@ -105,6 +111,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Whisper Medium (Offline)"
     case .whisperLarge:
       return "Whisper Large (Offline)"
+    case .openAIGPTTranscribe:
+      return "GPT Transcribe"
     case .openAIGPT4oTranscribe:
       return "GPT-4o Transcribe"
     case .openAIGPT4oMiniTranscribe:
@@ -133,7 +141,7 @@ enum TranscriptionModel: String, CaseIterable {
       return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "" // Offline models don't use API endpoints
-    case .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
+    case .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
       return AppConstants.openAITranscriptionsEndpoint
     case .xaiTranscribe:
       return AppConstants.xaiSTTEndpoint
@@ -148,6 +156,7 @@ enum TranscriptionModel: String, CaseIterable {
   /// Nil for models that do not route through an OpenAI-compatible endpoint.
   var openAIAPIModelID: String? {
     switch self {
+    case .openAIGPTTranscribe: return "gpt-transcribe"
     case .openAIGPT4oTranscribe: return "gpt-4o-transcribe"
     case .openAIGPT4oMiniTranscribe: return "gpt-4o-mini-transcribe"
     default: return nil
@@ -156,12 +165,12 @@ enum TranscriptionModel: String, CaseIterable {
 
   var isRecommended: Bool {
     switch self {
-    case .gemini35FlashLite, .whisperBase:
+    case .gemini31FlashLite, .whisperBase:
       return true
-    case .gemini31Pro, .gemini31FlashLite, .gemini35Flash, .gemini36Flash, .whisperTiny,
+    case .gemini31Pro, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .whisperTiny,
          .whisperSmall, .whisperMedium, .whisperLarge,
-         .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe, .selfHostedTranscription,
-         .openRouterTranscription:
+         .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
+         .selfHostedTranscription, .openRouterTranscription:
       return false
     }
   }
@@ -177,6 +186,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Medium"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return "Free (Offline)"
+    case .openAIGPTTranscribe:
+      return "Low"
     case .openAIGPT4oTranscribe:
       return "Medium"
     case .openAIGPT4oMiniTranscribe:
@@ -212,6 +223,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "OpenAI Whisper Medium • Best quality • ~1.5GB • Offline"
     case .whisperLarge:
       return "OpenAI Whisper Large v3 • Highest quality • ~3GB • Offline"
+    case .openAIGPTTranscribe:
+      return "OpenAI's current transcription model • $0.0045/min • Glossary sent as keyword hints • Ignores the Dictation prompt"
     case .openAIGPT4oTranscribe:
       return "OpenAI's flagship audio transcription model • High accuracy • Cloud"
     case .openAIGPT4oMiniTranscribe:
@@ -255,91 +268,33 @@ enum TranscriptionModel: String, CaseIterable {
     }
   }
 
-  var isGemini: Bool {
-    switch self {
-    case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
-      return true
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe, .selfHostedTranscription,
-         .openRouterTranscription:
-      return false
-    }
-  }
+  var isGemini: Bool { provider == .google }
 
   /// True for models that route through xAI's hosted /v1/stt endpoint (user pays via xAI API key).
-  var isXAI: Bool {
-    switch self {
-    case .xaiTranscribe:
-      return true
-    default:
-      return false
-    }
-  }
+  var isXAI: Bool { provider == .xai }
 
   /// Whether the user currently has what this transcription model needs to run: the matching
   /// provider API key (Gemini / OpenAI / xAI), a downloaded offline Whisper model, or a configured
   /// self-hosted endpoint. Drives menu enablement so dictation works with any single provider key.
   var hasRequiredCredential: Bool {
-    if isOffline { return isOfflineModelAvailable() }
-    if isGemini { return GeminiCredentialProvider.shared.hasCredential() }
-    if isOpenAI { return KeychainManager.shared.hasNonEmpty(.openAI) }
-    if isXAI { return KeychainManager.shared.hasNonEmpty(.xai) }
-    if self == .openRouterTranscription { return KeychainManager.shared.hasNonEmpty(.openRouter) }
-    // Self-hosted: usable once the user has configured an endpoint URL.
-    let url = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?
-      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    return !url.isEmpty
+    // Offline is the one provider whose answer is per model, not per provider: availability means
+    // "is *this* Whisper file downloaded".
+    if provider == .offline { return isOfflineModelAvailable() }
+    return provider.hasCredential
   }
 
-  /// Popup title matching `apiKeyRequiredMessage`. Offline and self-hosted models don't need an
-  /// API key, so titling their popup "API Key Required" contradicted the body ("Download the
-  /// selected Whisper model…") and sent users hunting for a key that wouldn't help.
-  var credentialRequiredTitle: String {
-    if isOffline { return "Model Not Downloaded" }
-    if self == .selfHostedTranscription { return "Endpoint Not Configured" }
-    return "API Key Required"
-  }
+  /// Popup title matching `apiKeyRequiredMessage`.
+  var credentialRequiredTitle: String { provider.credentialRequiredTitle }
 
   /// Actionable message shown when this transcription model can't run for lack of a credential.
-  var apiKeyRequiredMessage: String {
-    if isGemini {
-      return "Add your Gemini API key in Settings (General tab) to use dictation. For offline use, download a Whisper model in Speech-to-Text settings."
-    }
-    if isOpenAI {
-      return "Add your OpenAI API key in Settings (General tab) to use dictation, or pick a different transcription model in Dictate settings."
-    }
-    if isXAI {
-      return "Add your xAI API key in Settings (General tab) to use dictation, or pick a different transcription model in Dictate settings."
-    }
-    if self == .selfHostedTranscription {
-      return "Configure your self-hosted transcription endpoint in Dictate settings, or pick a different model."
-    }
-    if self == .openRouterTranscription {
-      return "Add your OpenRouter API key in Dictate settings to transcribe through OpenRouter, or pick a different model."
-    }
-    return "Download the selected Whisper model in Speech-to-Text settings, or pick a different transcription model."
-  }
+  var apiKeyRequiredMessage: String { provider.credentialRequiredMessage }
 
   /// True for models that route through OpenAI's *hosted* /v1/audio/transcriptions endpoint
   /// (i.e. user pays via their OpenAI API key). Does NOT include `.selfHostedTranscription`,
   /// which uses the same OpenAI wire format but points at a user-controlled endpoint.
-  var isOpenAI: Bool {
-    switch self {
-    case .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
-      return true
-    default:
-      return false
-    }
-  }
+  var isOpenAI: Bool { provider == .openAI }
 
-  var isOffline: Bool {
-    switch self {
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
-      return true
-    default:
-      return false
-    }
-  }
+  var isOffline: Bool { provider == .offline }
   
   var offlineModelType: OfflineModelType? {
     switch self {
@@ -445,7 +400,7 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
       return .offlineWhisper
-    case .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
+    case .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
       return .openAIAudio
     case .xaiTranscribe:
       return .xaiAudio
@@ -920,7 +875,11 @@ enum TranscriptionError: Error, Equatable {
   case rateLimited(retryAfter: TimeInterval?, topUpURL: URL? = nil)
   case quotaExceeded(retryAfter: TimeInterval?)
   /// Billing must be enabled (e.g. 400 FAILED_PRECONDITION "enable billing" from Gemini API).
-  case billingRequired
+  ///
+  /// `topUpURL` is set when we know exactly where the user tops up — currently OpenRouter, whose
+  /// 402 means "this balance is empty" and nothing else. Providers whose billing errors are
+  /// ambiguous leave it nil and fall back to the list of dashboards in the message.
+  case billingRequired(topUpURL: URL? = nil)
   case serverError(Int)
   case serviceUnavailable
   case slowDown
@@ -982,6 +941,7 @@ enum TranscriptionError: Error, Equatable {
 
   var topUpURL: URL? {
     if case .rateLimited(_, let url) = self { return url }
+    if case .billingRequired(let url) = self { return url }
     return nil
   }
   

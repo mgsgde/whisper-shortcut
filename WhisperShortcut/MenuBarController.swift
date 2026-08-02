@@ -89,9 +89,33 @@ class MenuBarController: NSObject {
   /// to a superseded recording and dropped instead of being pasted out of idle.
   private var currentJobAudioURL: URL?
   private var processedAudioURLs: Set<URL> = []
-  private var audioEngine: AVAudioEngine?
-  private var audioPlayerNode: AVAudioPlayerNode?
-  private var timePitchNode: AVAudioUnitTimePitch?
+
+  /// Owns Read Aloud playback: the audio graph, the chunk queue, and when an utterance is done.
+  /// `appState` and `ttsDidStop` stay here — the session reports its lifecycle through these
+  /// callbacks rather than mutating the app's source of truth (same contract as `LiveMeetingSession`).
+  private lazy var ttsPlayback = TTSPlaybackSession(
+    onPlaybackStarted: { [weak self] in
+      guard let self else { return }
+      PopupNotificationWindow.dismissProcessing()
+      self.appState = .speaking
+    },
+    onPlaybackCompleted: { [weak self] in
+      guard let self else { return }
+      NotificationCenter.default.post(name: .ttsDidStop, object: nil)
+      // Only flip to completion feedback while still `.speaking` — the user may have started a
+      // recording during playback, whose state must not be clobbered. The feedback state
+      // auto-resets to idle via the `appState` didSet.
+      if case .speaking = self.appState {
+        self.appState = self.appState.showSuccess("Audio playback completed")
+      }
+    },
+    onFailure: { [weak self] error in
+      guard let self else { return }
+      self.finishReadAloudSession(cancelNetworkWork: false, transitionToIdle: false)
+      self.presentError(
+        shortTitle: SpeechErrorFormatter.shortStatusForUser(error),
+        message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
+    })
 
   // MARK: - Configuration
   private var currentConfig: ShortcutConfig
@@ -121,8 +145,14 @@ class MenuBarController: NSObject {
     },
     cleanUpAudioFile: { [weak self] url in self?.cleanupAudioFile(at: url) },
     appStateIsRecordingMeeting: { [weak self] in self?.appState.recordingMode == .liveMeeting },
+    onStopping: { [weak self] in
+      guard let self else { return }
+      self.meetingIsFinishing = true
+      self.updateUI()
+    },
     onFinished: { [weak self] in
       guard let self else { return }
+      self.meetingIsFinishing = false
       self.appState = self.appState.finish()
     })
 
@@ -131,6 +161,11 @@ class MenuBarController: NSObject {
     appState.recordingMode == .liveMeeting || liveMeeting.isRecording
   }
 
+  /// True between the stop request and the session actually finishing: the recorder has stopped but
+  /// the last chunk is still being transcribed. `appState` is still `.recording(.liveMeeting)` in that
+  /// window (the session owns when the meeting is over), so this is what keeps the menu bar honest.
+  private var meetingIsFinishing = false
+
   // MARK: - Meeting Segment (parallel action during live meeting)
   private enum MeetingSegment {
     case dictation
@@ -138,6 +173,71 @@ class MenuBarController: NSObject {
   }
   /// When non-nil, an action is running in parallel with the live meeting.
   private var activeMeetingSegment: MeetingSegment?
+  /// True once the active segment has stopped recording and its result is being produced. A segment
+  /// deliberately leaves `appState` alone (the meeting owns it), so its phase is tracked here — it is
+  /// what lets the menu bar show 🔴 while you speak and ⏳ while the text is on its way.
+  private var meetingSegmentIsProcessing = false
+
+  /// Starts a segment's lifecycle and repaints, so the icon and the pill show the dictation rather
+  /// than the meeting underneath it. Repainting is explicit here because a segment never touches
+  /// `appState`, and `appState`'s `didSet` is what normally drives the UI.
+  private func beginMeetingSegment(_ segment: MeetingSegment) {
+    activeMeetingSegment = segment
+    meetingSegmentIsProcessing = false
+    updateUI()
+    updateRecordingIndicator()
+  }
+
+  /// Marks the segment as past its recording phase: the pill becomes a spinner, the icon becomes ⏳.
+  private func markMeetingSegmentProcessing() {
+    guard activeMeetingSegment != nil else { return }
+    meetingSegmentIsProcessing = true
+    updateUI()
+    updateRecordingIndicator()
+  }
+
+  /// Ends the segment's lifecycle and repaints. Every exit path (delivered, cancelled, failed) has to
+  /// clear both flags and refresh the UI; going through one method is what keeps them in step.
+  private func clearMeetingSegment() {
+    activeMeetingSegment = nil
+    meetingSegmentIsProcessing = false
+    updateUI()
+    updateRecordingIndicator()
+  }
+
+  /// What the menu bar and the floating pill show. Normally `appState`, with two exceptions — both
+  /// because a live meeting holds `appState` for its entire duration, which used to make everything
+  /// happening *inside* the meeting invisible:
+  ///
+  /// - a Dictate / Dictate Prompt segment: you could be dictating with the icon still showing 📝 and
+  ///   no pill at all, so nothing on screen said which of the two recordings the next Stop would end;
+  /// - the stop drain: `appState` stays `.recording(.liveMeeting)` until the last chunk is
+  ///   transcribed, so the menu bar claimed "recording" for seconds after the meeting was stopped.
+  private var presentedState: AppState {
+    if let segment = activeMeetingSegment {
+      switch (segment, meetingSegmentIsProcessing) {
+      case (.dictation, false): return .recording(.transcription)
+      case (.dictation, true): return .processing(.transcribing)
+      case (.prompt, false): return .recording(.prompt)
+      case (.prompt, true): return .processing(.prompting)
+      }
+    }
+    if meetingIsFinishing { return .processing(.transcribing) }
+    return appState
+  }
+
+  /// Menu status row and tooltip. Spells out that the meeting keeps running underneath a segment —
+  /// the icon alone would read as "the meeting stopped and I am dictating instead".
+  private var presentedStatusText: String {
+    if let segment = activeMeetingSegment {
+      let what = segment == .dictation ? "Dictating" : "Recording AI prompt"
+      return meetingSegmentIsProcessing
+        ? "⏳ Processing — meeting still recording"
+        : "\(presentedState.icon) \(what) — meeting still recording"
+    }
+    if meetingIsFinishing { return "⏳ Finishing meeting — saving the last seconds…" }
+    return appState.statusText
+  }
 
   /// True when TTS is running in any phase: .ttsProcessing or chunked phases with TTS context. Derived from AppState only.
   private var isTTSRunning: Bool {
@@ -375,22 +475,38 @@ class MenuBarController: NSObject {
 
   // MARK: - Recording Indicator
 
-  /// Keeps the floating bottom-center pill in sync with `appState`. It shows the
+  /// Keeps the floating bottom-center pill in sync with `presentedState`. It shows the
   /// recording pill for Dictate / Dictate Prompt, and the compact processing spinner
   /// for both those flows (handed off from recording) and Read Aloud / TTS synthesis
   /// (summoned directly, since TTS has no recording phase). Once TTS hands off to
   /// playback the state is `.speaking`, so the pill hides — the audio itself is the
   /// feedback. On success (and every other state) it hides immediately — lingering UI
-  /// would cover the user's work. Live-meeting recording stays pill-less.
+  /// would cover the user's work.
+  ///
+  /// The meeting itself stays pill-less: it runs for an hour, and a permanent pill over the user's
+  /// work is not feedback but furniture. A Dictate / Dictate Prompt segment *inside* a meeting does
+  /// show it, via `presentedState` — it is as short-lived as any other dictation, and it was the one
+  /// recording in the app with no on-screen trace at all.
   private func updateRecordingIndicator() {
     let indicator = RecordingIndicatorManager.shared
-    switch appState {
+    // A segment's transcription is deliberately non-cancellable (cancelling would reach into the
+    // meeting's own chunk pipeline), and the processing pill's single control is "Cancel processing".
+    // So the pill leaves with the recording phase rather than staying on screen as a dead button;
+    // the menu bar reports the remaining wait.
+    if activeMeetingSegment != nil, meetingSegmentIsProcessing {
+      indicator.hide()
+      return
+    }
+    switch presentedState {
     case .recording(.transcription), .recording(.prompt), .recording(.voiceFeedback):
       indicator.showRecording()
     case .processing(let mode):
       // TTS has no recording phase, so summon the processing pill directly;
       // Dictate / Dictate Prompt already have it on screen from recording.
-      indicator.showProcessing(summonIfNeeded: mode.isTTSContext)
+      // The meeting's stop drain is not summoned either — the menu bar and the meeting bar
+      // report it, and a pill for it would appear over whatever the user turned to next.
+      let summon = mode.isTTSContext
+      indicator.showProcessing(summonIfNeeded: summon)
     default:
       indicator.hide()
     }
@@ -522,6 +638,13 @@ class MenuBarController: NSObject {
       name: .chatWindowVisibilityChanged,
       object: nil
     )
+
+    // Installed rather than posted as a notification because the caller has to *await* it: the meeting
+    // chat cuts the pending audio chunk and waits for its transcript before sending a question about
+    // the last few seconds. No-ops when no meeting is recording.
+    LiveMeetingTranscriptStore.shared.pendingAudioFlush = { [weak self] in
+      await self?.liveMeeting.flushPendingAudio()
+    }
   }
 
   @objc private func chatReadAloudStopFromNotification() {
@@ -588,23 +711,26 @@ class MenuBarController: NSObject {
     applyCurrentAppearance(to: button)
 
     // Show detailed chunk progress in tooltip during processing
-    if case .processing(.processingChunks(let statuses, _)) = appState {
+    if case .processing(.processingChunks(let statuses, _)) = presentedState {
       let active = statuses.filter { $0 == .active }.count
       let done = statuses.filter { $0 == .completed }.count
       button.toolTip = "Transcribing [\(done)/\(statuses.count)] - \(active) active"
+    } else if activeMeetingSegment != nil || meetingIsFinishing {
+      button.toolTip = presentedStatusText
     } else {
       button.toolTip = appState.tooltip
     }
   }
 
-  /// Renders the current `appState` on the status item button: an SF Symbol template image
-  /// when `appState.symbolName` is set (idle), otherwise the colored emoji from `appState.icon`.
+  /// Renders `presentedState` on the status item button: an SF Symbol template image
+  /// when its `symbolName` is set (idle), otherwise the colored emoji from `icon`.
   private func applyCurrentAppearance(to button: NSStatusBarButton) {
-    if let symbolName = appState.symbolName {
+    let state = presentedState
+    if let symbolName = state.symbolName {
       // mic.fill's stand made it clip against the menu bar bezel intermittently at 15pt.
       // 14pt + scaleProportionallyDown lets AppKit fit any intrinsic image size into the bar.
       let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-      let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: appState.tooltip)?
+      let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: state.tooltip)?
         .withSymbolConfiguration(config)
       image?.isTemplate = true
       button.image = image
@@ -612,7 +738,7 @@ class MenuBarController: NSObject {
       button.title = ""
     } else {
       button.image = nil
-      button.title = appState.icon
+      button.title = state.icon
     }
   }
 
@@ -634,11 +760,11 @@ class MenuBarController: NSObject {
       || KeychainManager.shared.hasNonEmpty(.anthropic)
 
     // Update status
-    menu.item(withTag: MenuTag.status.rawValue)?.title = appState.statusText
+    menu.item(withTag: MenuTag.status.rawValue)?.title = presentedStatusText
 
     // Show central Stop button only when something is active
     let isAnythingActive = appState.isBusy || isLiveMeetingActive
-      || audioEngine?.isRunning == true
+      || ttsPlayback.isPlaying
     menu.item(withTag: MenuTag.stop.rawValue)?.isHidden = !isAnythingActive
     menu.item(withTag: MenuTag.stopSeparator.rawValue)?.isHidden = !isAnythingActive
 
@@ -668,7 +794,7 @@ class MenuBarController: NSObject {
     // Read Aloud item: title toggles to Stop while a TTS phase is active or audio is playing.
     // Omitted from the App Store build, where the selection-based Read Aloud menu item is absent.
     #if !APP_STORE
-    let isReadAloudActive = isTTSRunning || audioEngine?.isRunning == true
+    let isReadAloudActive = isTTSRunning || ttsPlayback.isPlaying
     updateMenuItem(
       menu, tag: .readAloud,
       title: isReadAloudActive ? "Stop Read Aloud" : "Read Aloud",
@@ -760,7 +886,7 @@ class MenuBarController: NSObject {
   }
 
   private func updateBlinking() {
-    if appState.shouldBlink {
+    if presentedState.shouldBlink {
       startBlinking()
     } else {
       stopBlinking()
@@ -819,7 +945,7 @@ class MenuBarController: NSObject {
       let hasOfflineModel = selectedModel.isOfflineModelAvailable()
       if selectedModel.hasRequiredCredential || hasOfflineModel {
         DebugLogger.log("MEETING-SEGMENT: Starting dictation segment during meeting")
-        activeMeetingSegment = .dictation
+        beginMeetingSegment(.dictation)
         ConnectionPrewarmer.prewarm(for: selectedModel)
         dictateStreamingSession = DictateStreamingSession.makeIfEligible(speechService: speechService)
         audioRecorder.startRecording()
@@ -883,7 +1009,7 @@ class MenuBarController: NSObject {
       if promptModel.hasRequiredCredentialForDictatePrompt {
         if !prepareDictatePromptSelection(logPrefix: "MEETING-SEGMENT") { return }
         DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
-        activeMeetingSegment = .prompt
+        beginMeetingSegment(.prompt)
         ConnectionPrewarmer.prewarm(for: promptModel)
         discardStreamingSession()  // prompt recordings never stream
         audioRecorder.startRecording()
@@ -986,7 +1112,7 @@ class MenuBarController: NSObject {
     if isLiveMeetingActive { stopLiveMeeting(); return }
 
     // Read Aloud: TTS network work and/or local playback
-    if isTTSRunning || audioEngine?.isRunning == true {
+    if isTTSRunning || ttsPlayback.isPlaying {
       finishReadAloudSession(cancelNetworkWork: isTTSRunning)
       return
     }
@@ -1166,7 +1292,12 @@ class MenuBarController: NSObject {
       guard let self else { return }
       if !self.liveMeeting.addMarker(text: AppConstants.liveMeetingDefaultMarkerText) {
         DebugLogger.log("LIVE-MEETING-NOTES: Marker hotkey ignored — no meeting recording")
+        return
       }
+      // A marker means "what was just said matters", so cut the chunk it lands in: the flagged moment
+      // reaches the transcript in seconds instead of at the next rotation. Fire-and-forget — nothing
+      // here waits on it.
+      Task { await self.liveMeeting.flushPendingAudio() }
     }
   }
 
@@ -1424,14 +1555,18 @@ class MenuBarController: NSObject {
         // (App Store build, or auto-paste off / no Accessibility), always show an explicit
         // ⌘V cue — otherwise users conclude dictation "did nothing" (text is in the clipboard).
         if didAutoPaste {
-          if !RecordingIndicatorManager.shared.isVisible {
+          // `duringMeeting` is listed explicitly because a segment's pill leaves with its recording
+          // phase (see `updateRecordingIndicator`), so by now it is gone — without this a dictation
+          // inside a meeting would raise a result popup over the meeting view, while the identical
+          // dictation outside one shows nothing but the pasted text.
+          if !RecordingIndicatorManager.shared.isVisible && !duringMeeting {
             spec.presentResult(result, modelInfo, nil)
           }
         } else {
           spec.presentResult(result, modelInfo, "Copied — press ⌘V to paste")
         }
         if duringMeeting {
-          self.activeMeetingSegment = nil
+          self.clearMeetingSegment()
         } else {
           self.appState = self.appState.showSuccess(spec.successMessage(didAutoPaste))
         }
@@ -1454,7 +1589,7 @@ class MenuBarController: NSObject {
         if duringMeeting {
           DebugLogger.log("CANCELLATION: \(spec.logLabel) task was cancelled (\(type(of: error)))")
           await MainActor.run {
-            self.activeMeetingSegment = nil
+            self.clearMeetingSegment()
             self.processedAudioURLs.remove(audioURL)
           }
           cleanupAudioFile(at: audioURL)
@@ -1485,7 +1620,7 @@ class MenuBarController: NSObject {
       if duringMeeting {
         DebugLogger.logError("MEETING-SEGMENT: \(spec.logLabel) failed: \(error.localizedDescription)")
         await MainActor.run {
-          self.activeMeetingSegment = nil
+          self.clearMeetingSegment()
           self.processedAudioURLs.remove(audioURL)
           PopupNotificationWindow.showError(
             SpeechErrorFormatter.formatForUser(error), title: spec.errorTitle)
@@ -1798,10 +1933,6 @@ class MenuBarController: NSObject {
     }
   }
   
-  /// Token for the in-flight TTS playback. Stale `scheduleBuffer` completions check
-  /// this against their captured token and no-op when the user has started a new playback.
-  private var currentPlaybackToken: UUID?
-
   /// Tracks the outer Read Aloud pipeline (rewrite + TTS + playback handoff). `speechService.cancelTTS()`
   /// only aborts the inner TTS network call; cancelling this handle also kills the rewrite stage and
   /// stops a not-yet-started TTS from racing past a user-initiated Stop.
@@ -1819,13 +1950,13 @@ class MenuBarController: NSObject {
     let transitionWillPostStop = transitionToIdle && isTTSRunning
     // Whatever brought us here, this session is over: refuse chunks that are still in flight even
     // when playback itself isn't being torn down (the cancellation paths pass stopPlayback: false).
-    ttsChunkStreamAcceptingChunks = false
+    ttsPlayback.refuseFurtherChunks()
     currentReadAloudTask?.cancel()
     if cancelNetworkWork {
       speechService.cancelTTS()
     }
     if stopPlayback {
-      stopTTSPlayback()
+      ttsPlayback.stop()
     }
     if transitionToIdle {
       transitionToIdleAndCleanup()
@@ -1846,11 +1977,11 @@ class MenuBarController: NSObject {
       finishReadAloudSession()
       return true
     }
-    if audioEngine?.isRunning == true {
+    if ttsPlayback.isPlaying {
       // With progressive playback, audio can already be playing while later chunks are still
       // being synthesized, so Stop has to kill the network work too — unless the stream is
       // already closed, in which case there is nothing left to cancel.
-      finishReadAloudSession(cancelNetworkWork: !ttsChunkStreamClosed)
+      finishReadAloudSession(cancelNetworkWork: !ttsPlayback.isStreamClosed)
       return true
     }
     if case .processing = appState {
@@ -1870,13 +2001,13 @@ class MenuBarController: NSObject {
   ) {
     appState = .processing(.ttsProcessing)
     NotificationCenter.default.post(name: .ttsDidStart, object: nil)
-    beginTTSChunkStream()
+    ttsPlayback.begin()
 
     currentReadAloudTask = Task { [weak self] in
       do {
         // `ChunkTTSService` invokes this on the main actor, in playback order.
         let audioData = try await producer({ [weak self] pcm, index, total in
-          self?.enqueueTTSChunk(pcm, index: index, totalChunks: total)
+          self?.ttsPlayback.enqueue(pcm, index: index, totalChunks: total)
         })
         // Must check on the read-aloud task, not inside MainActor.run (different task context).
         guard !Task.isCancelled else {
@@ -1894,13 +2025,13 @@ class MenuBarController: NSObject {
         await MainActor.run { [weak self] in
           guard let self else { return }
           PopupNotificationWindow.dismissProcessing()
-          if self.ttsScheduledChunkCount > 0 {
+          if self.ttsPlayback.hasScheduledChunks {
             // Streaming path: audio is already playing. Just declare the stream finished so the
             // last buffer's completion can tear the session down.
-            self.closeTTSChunkStream()
+            self.ttsPlayback.closeStream()
           } else {
             // No chunk ever arrived (a producer that doesn't stream). Play the merged result.
-            self.playTTSAudio(audioData: audioData)
+            self.ttsPlayback.play(audioData: audioData)
           }
         }
       } catch {
@@ -1951,224 +2082,6 @@ class MenuBarController: NSObject {
     }
   }
 
-  // MARK: - Progressive TTS Playback
-
-  /// Raw PCM format every TTS provider returns: s16le, 24 kHz, mono.
-  private static let ttsSampleRate: Double = 24000
-  private static let ttsChannels: UInt32 = 1
-  private static let ttsBitsPerChannel: UInt32 = 16
-
-  /// Buffers handed to the player node so far, and how many of them have finished playing.
-  /// Playback is over when the synthesis side has closed the stream *and* these are equal —
-  /// a count comparison rather than "the last chunk finished", because a failed chunk means the
-  /// final index may never arrive.
-  private var ttsScheduledChunkCount = 0
-  private var ttsDrainedChunkCount = 0
-  /// Set when no further chunks will be enqueued (synthesis finished, failed, or was cancelled).
-  private var ttsChunkStreamClosed = false
-  /// Whether late-arriving chunks may still be scheduled. Cleared by Stop and by stream close, so
-  /// a chunk whose synthesis landed after the user cancelled cannot spin up a fresh engine and
-  /// start talking out of an idle state.
-  private var ttsChunkStreamAcceptingChunks = false
-
-  /// Plays one fully synthesized utterance. Kept as the non-streaming entry point: single-chunk
-  /// syntheses and any future caller that already holds the complete audio land here.
-  private func playTTSAudio(audioData: Data) {
-    beginTTSChunkStream()
-    enqueueTTSChunk(audioData, index: 0, totalChunks: 1)
-    closeTTSChunkStream()
-  }
-
-  /// Resets the per-session chunk bookkeeping. Called before the first chunk of a Read Aloud.
-  private func beginTTSChunkStream() {
-    ttsScheduledChunkCount = 0
-    ttsDrainedChunkCount = 0
-    ttsChunkStreamClosed = false
-    ttsChunkStreamAcceptingChunks = true
-  }
-
-  /// Schedules one synthesized chunk for playback, starting the engine (and the `.speaking` state)
-  /// on the first one. Chunks arrive in playback order — `ChunkTTSService` holds back out-of-order
-  /// completions — so appending them to the player node's queue is all the ordering needed.
-  ///
-  /// Being faster than realtime is what makes this work: synthesis runs at roughly 0.6× the audio
-  /// duration it produces, so the queue stays ahead of the playhead. If it ever doesn't, the node
-  /// drains and the next chunk starts a beat late; a logged gap, not a broken playback.
-  private func enqueueTTSChunk(_ pcm: Data, index: Int, totalChunks: Int) {
-    guard ttsChunkStreamAcceptingChunks else {
-      DebugLogger.log("TTS-PLAYBACK: Dropping chunk \(index) — Read Aloud session already ended")
-      return
-    }
-    guard !pcm.isEmpty else {
-      DebugLogger.logWarning("TTS-PLAYBACK: Chunk \(index) was empty — nothing to schedule")
-      return
-    }
-    do {
-      let buffer = try Self.makeTTSBuffer(from: pcm)
-      let isFirstChunk = ttsScheduledChunkCount == 0
-      if isFirstChunk {
-        try startTTSEngine(format: buffer.format)
-      }
-      guard let playerNode = audioPlayerNode, let token = currentPlaybackToken else {
-        DebugLogger.logWarning("TTS-PLAYBACK: Chunk \(index) arrived without an active player — dropping")
-        return
-      }
-
-      ttsScheduledChunkCount += 1
-      playerNode.scheduleBuffer(buffer) { [weak self] in
-        Task { @MainActor in
-          guard let self, self.currentPlaybackToken == token else { return }
-          self.ttsDrainedChunkCount += 1
-          DebugLogger.logDebug(
-            "TTS-PLAYBACK: Chunk \(index) finished (\(self.ttsDrainedChunkCount)/\(self.ttsScheduledChunkCount) drained)")
-          self.completeTTSPlaybackIfDrained(token: token)
-        }
-      }
-
-      if isFirstChunk {
-        playerNode.play()
-        PopupNotificationWindow.dismissProcessing()
-        appState = .speaking
-        DebugLogger.logSuccess(
-          "TTS-PLAYBACK: Playback started on chunk 1/\(totalChunks) (\(pcm.count) bytes) — remaining chunks stream in behind it")
-      } else {
-        DebugLogger.log("TTS-PLAYBACK: Queued chunk \(index + 1)/\(totalChunks) (\(pcm.count) bytes)")
-      }
-    } catch {
-      DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.localizedDescription)")
-      finishReadAloudSession(cancelNetworkWork: false, transitionToIdle: false)
-      presentError(
-        shortTitle: SpeechErrorFormatter.shortStatusForUser(error),
-        message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
-    }
-  }
-
-  /// Declares that no further chunks are coming. Playback teardown waits for this: without it a
-  /// gap between two chunks (queue drained before the next one arrived) would be indistinguishable
-  /// from the end of the utterance and cut the rest off.
-  private func closeTTSChunkStream() {
-    ttsChunkStreamClosed = true
-    ttsChunkStreamAcceptingChunks = false
-    guard let token = currentPlaybackToken else { return }
-    completeTTSPlaybackIfDrained(token: token)
-  }
-
-  /// Ends the Read Aloud session once the stream is closed and every scheduled buffer has played.
-  private func completeTTSPlaybackIfDrained(token: UUID) {
-    guard currentPlaybackToken == token,
-          ttsChunkStreamClosed,
-          ttsScheduledChunkCount > 0,
-          ttsDrainedChunkCount >= ttsScheduledChunkCount
-    else { return }
-
-    DebugLogger.log("TTS-PLAYBACK: Playback completed (\(ttsScheduledChunkCount) chunks)")
-    currentPlaybackToken = nil
-    NotificationCenter.default.post(name: .ttsDidStop, object: nil)
-    audioPlayerNode?.stop()
-    audioEngine?.stop()
-    audioEngine = nil
-    audioPlayerNode = nil
-    timePitchNode = nil
-    // Only flip to completion feedback while still `.speaking` — the user may have started a
-    // recording during playback, whose state must not be clobbered. The feedback state
-    // auto-resets to idle via the `appState` didSet.
-    if case .speaking = appState {
-      appState = appState.showSuccess("Audio playback completed")
-    }
-  }
-
-  /// Converts raw s16le PCM into the Float32 buffer the playback graph expects.
-  ///
-  /// Providers return Int16 PCM, but AVAudioUnitTimePitch (and other AVAudioUnit effects) require
-  /// non-interleaved Float32 on their bus — connecting with an Int16 format raises an
-  /// Objective-C NSException inside `engine.connect(...)` that does NOT bridge to Swift's
-  /// try/catch, leaving the function silently abandoned and `appState` stuck on `.processing`.
-  /// Converting up-front makes the entire graph speak Float32, whether or not the speed node is
-  /// inserted.
-  private static func makeTTSBuffer(from audioData: Data) throws -> AVAudioPCMBuffer {
-    guard let audioFormat = AVAudioFormat(
-      commonFormat: .pcmFormatFloat32,
-      sampleRate: ttsSampleRate,
-      channels: ttsChannels,
-      interleaved: false
-    ) else {
-      DebugLogger.logError("TTS-PLAYBACK: Failed to create audio format")
-      throw TTSPlaybackError.failedToCreateAudioFormat
-    }
-
-    let bytesPerFrame = Int(ttsChannels * (ttsBitsPerChannel / 8))
-    let frameCount = audioData.count / bytesPerFrame
-
-    guard frameCount > 0, let buffer = AVAudioPCMBuffer(
-      pcmFormat: audioFormat, frameCapacity: AVAudioFrameCount(frameCount)
-    ) else {
-      DebugLogger.logError("TTS-PLAYBACK: Failed to create audio buffer")
-      throw TTSPlaybackError.failedToCreateBuffer
-    }
-
-    buffer.frameLength = AVAudioFrameCount(frameCount)
-    let int16ToFloat = 1.0 / Float(Int16.max)
-    audioData.withUnsafeBytes { bytes in
-      guard let baseAddress = bytes.baseAddress else { return }
-      let int16Pointer = baseAddress.assumingMemoryBound(to: Int16.self)
-      if let channelData = buffer.floatChannelData {
-        for i in 0..<frameCount {
-          channelData[0][i] = Float(int16Pointer[i]) * int16ToFloat
-        }
-      }
-    }
-    return buffer
-  }
-
-  /// Tears down any previous engine and builds a fresh one for this playback session.
-  private func startTTSEngine(format: AVAudioFormat) throws {
-    if let existingEngine = audioEngine {
-      existingEngine.stop()
-      audioEngine = nil
-    }
-    if let existingNode = audioPlayerNode {
-      existingNode.stop()
-      audioPlayerNode = nil
-    }
-
-    let engine = AVAudioEngine()
-    let playerNode = AVAudioPlayerNode()
-    engine.attach(playerNode)
-
-    // Insert a time-pitch node when the user has picked a non-1× rate so the audio
-    // plays faster/slower without changing pitch. `rate` is a multiplier where
-    // 1.0 = normal (the API range is 1/32 ... 32, so our 0.75–2.0 picker is safe).
-    let configuredSpeed = ReadAloudPreferences.speed.rawValue
-    if configuredSpeed != 1.0 {
-      let timePitch = AVAudioUnitTimePitch()
-      timePitch.rate = Float(configuredSpeed)
-      engine.attach(timePitch)
-      engine.connect(playerNode, to: timePitch, format: format)
-      engine.connect(timePitch, to: engine.mainMixerNode, format: format)
-      timePitchNode = timePitch
-    } else {
-      engine.connect(playerNode, to: engine.mainMixerNode, format: format)
-      timePitchNode = nil
-    }
-
-    self.audioEngine = engine
-    self.audioPlayerNode = playerNode
-    currentPlaybackToken = UUID()
-
-    try engine.start()
-  }
-
-  /// Stops all TTS audio playback and cleans up resources
-  private func stopTTSPlayback() {
-    currentPlaybackToken = nil
-    ttsChunkStreamAcceptingChunks = false
-    audioPlayerNode?.stop()
-    audioEngine?.stop()
-    audioEngine = nil
-    audioPlayerNode = nil
-    timePitchNode = nil
-  }
-  
   /// Simulates Cmd+C to copy the current selection to the clipboard (virtual key 0x08 = 'C').
   /// Ensures the permission Dictate Prompt needs for the current selection-capture mode is granted,
   /// preparing the selection as a side effect. In screenshot-selection mode (App Store build) this
@@ -2352,7 +2265,13 @@ extension MenuBarController: AudioRecorderDelegate {
         DebugLogger.log("AUDIO: Discarding cancelled recording \(audioURL.lastPathComponent)")
         self.discardStreamingSession()
         self.cleanupAudioFile(at: audioURL)
-        self.appState = self.appState.finish()
+        // Discarding a segment ends the segment, not the meeting: `appState` belongs to the meeting
+        // here, and finishing it would strand a recorder that is still running.
+        if self.activeMeetingSegment != nil {
+          self.clearMeetingSegment()
+        } else {
+          self.appState = self.appState.finish()
+        }
         return
       }
 
@@ -2360,6 +2279,7 @@ extension MenuBarController: AudioRecorderDelegate {
       if let segment = self.activeMeetingSegment {
         DebugLogger.log("MEETING-SEGMENT: Recording finished for segment \(segment), dispatching pipeline")
         self.processedAudioURLs.insert(audioURL)
+        self.markMeetingSegmentProcessing()
         Task {
           switch segment {
           case .dictation:
@@ -2481,7 +2401,7 @@ extension MenuBarController: AudioRecorderDelegate {
     discardStreamingSession()
     if activeMeetingSegment != nil {
       DebugLogger.logWarning("MEETING-SEGMENT: Recording failed during meeting segment, clearing segment")
-      activeMeetingSegment = nil
+      clearMeetingSegment()
     }
     // Microphone permission denied/restricted: offer a direct jump to the Microphone
     // privacy pane instead of leaving the user with only "Contact Support".

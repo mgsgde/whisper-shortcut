@@ -93,17 +93,21 @@ enum PromptModel: String, CaseIterable {
   case openaiGPT55 = "gpt-5.5"
   // GPT-5.6 family (2026-07). Priced *identically* to the 5.5/5.4 tiers it mirrors — sol matches
   // gpt-5.5 at $5/$30 and terra matches gpt-5.4 at $2.50/$15 — which is what makes those two
-  // Pareto-dominated (same price, newer generation). luna is a cheaper tier at $1/$6, above
-  // gpt-5.4-mini ($0.75/$4.50), so mini stays on the frontier.
+  // Pareto-dominated (same price or cheaper, newer generation) — see `chatReplacement` for the
+  // current numbers and for why gpt-5.4-mini survives luna's price cut.
   // https://developers.openai.com/api/docs/pricing — verified live via scripts/test-openai-models.sh.
   case openaiGPT56Sol = "gpt-5.6-sol"
   case openaiGPT56Terra = "gpt-5.6-terra"
   case openaiGPT56Luna = "gpt-5.6-luna"
-  /// Audio-input chat model (renamed by OpenAI from `gpt-4o-audio-preview` → `gpt-audio`).
-  /// Accepts inline `input_audio` content parts, which makes it the counterpart to Gemini for
-  /// Dictate Prompt (the model "hears" the audio directly).
-  /// Reference: https://platform.openai.com/docs/guides/audio
-  case openaiGPT4oAudio = "gpt-audio"
+  /// Audio-input chat model. Accepts inline `input_audio` content parts, which makes it the
+  /// counterpart to Gemini for Dictate Prompt (the model "hears" the audio directly).
+  ///
+  /// Slug history, both handled by `migrateLegacyPromptRawValue`:
+  /// `gpt-4o-audio-preview` → `gpt-audio` (rename) → `gpt-audio-1.5` (deprecation: OpenAI retires
+  /// `gpt-audio` on 2027-01-20 and names 1.5 as the replacement, at identical pricing —
+  /// $32/$64 per 1M audio, $2.50/$10 text).
+  /// Reference: https://developers.openai.com/api/docs/deprecations
+  case openaiGPT4oAudio = "gpt-audio-1.5"
 
   // OpenAI-compatible chat proxy (OpenRouter, LiteLLM, self-hosted, …). The rawValue is a stable
   // sentinel — the actual model tag sent to the server is read from `OpenAIChatPreferences.modelID`.
@@ -112,6 +116,11 @@ enum PromptModel: String, CaseIterable {
   // Anthropic Claude (Messages API). Chat-only — no Dictate Prompt / TTS wiring.
   // Model IDs: https://platform.claude.com/docs/en/about-claude/models/overview (verified 2026-07).
   case claudeSonnet5 = "claude-sonnet-5"
+  /// Anthropic's current Opus. Same $5/$25 per 1M and same 1M context as 4.8, newer generation,
+  /// knowledge cutoff May 2026 vs Jan 2026 — which is why 4.8 is hidden via `chatReplacement`.
+  case claudeOpus5 = "claude-opus-5"
+  /// Superseded by `claudeOpus5`; Anthropic lists it under "Legacy models". Kept as a case so
+  /// persisted selections still resolve and forward.
   case claudeOpus48 = "claude-opus-4-8"
   case claudeHaiku45 = "claude-haiku-4-5-20251001"
   /// Anthropic's most capable widely released model (GA since 2026-06-09), $10/$50 per 1M.
@@ -162,6 +171,8 @@ enum PromptModel: String, CaseIterable {
       return "OpenAI GPT Audio"
     case .claudeSonnet5:
       return "Claude Sonnet 5"
+    case .claudeOpus5:
+      return "Claude Opus 5"
     case .claudeOpus48:
       return "Claude Opus 4.8"
     case .claudeHaiku45:
@@ -169,7 +180,11 @@ enum PromptModel: String, CaseIterable {
     case .claudeFable5:
       return "Claude Fable 5"
     case .customOpenAIEndpoint:
-      return "Custom endpoint (OpenRouter / proxy)"
+      // Names the endpoint that is actually configured. "Custom endpoint (OpenRouter / proxy)" was
+      // 36 characters in a chip that sits next to the composer's slash-command row — it squeezed
+      // those buttons until they hyphenated mid-word ("/at-tach", "/scree-nshot"). Naming the real
+      // target is both shorter and more useful than naming the mechanism.
+      return OpenAIChatPreferences.isOpenRouterEndpoint ? "OpenRouter" : "Custom endpoint"
     case .localModel:
       return "Local (Ollama / LM Studio)"
     }
@@ -204,6 +219,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT56Luna:   return "gpt56luna"
     case .openaiGPT4oAudio:  return "gptaudio" // audio-only; excluded from chatModels, never surfaced
     case .claudeSonnet5:     return "claudesonnet5"
+    case .claudeOpus5:       return "claudeopus5"
     case .claudeOpus48:      return "claudeopus48"
     case .claudeHaiku45:     return "claudehaiku45"
     case .claudeFable5:      return "claudefable5"
@@ -252,6 +268,8 @@ enum PromptModel: String, CaseIterable {
       return "OpenAI's GPT Audio • Accepts inline audio for voice-driven prompts • Requires OpenAI API key"
     case .claudeSonnet5:
       return "Anthropic's Claude Sonnet 5 • Best speed/intelligence balance • Text + images • Requires Anthropic API key"
+    case .claudeOpus5:
+      return "Anthropic's Claude Opus 5 • For complex agentic coding and enterprise work • Text + images • Requires Anthropic API key"
     case .claudeOpus48:
       return "Anthropic's Claude Opus 4.8 • Flagship for complex agentic work • Text + images • Requires Anthropic API key"
     case .claudeFable5:
@@ -284,7 +302,7 @@ enum PromptModel: String, CaseIterable {
       return "Medium"
     case .openaiGPT5Mini, .openaiGPT56Luna:
       return "Low"
-    case .claudeOpus48, .claudeFable5:
+    case .claudeOpus5, .claudeOpus48, .claudeFable5:
       return "High"
     }
   }
@@ -302,7 +320,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna:
       return .openai
-    case .claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
+    case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
       return .anthropic
     case .customOpenAIEndpoint:
       return .customOpenAI
@@ -428,13 +446,25 @@ enum PromptModel: String, CaseIterable {
     // context) while xAI's own docs rank 4.3 above them — dominated on every axis.
     // https://docs.x.ai/docs/models
     case .grok4, .grok4Reasoning: return .grok43
-    // OpenAI: gpt-5.6-sol costs exactly what gpt-5.5 costs ($5/$30 per 1M) and gpt-5.6-terra
-    // exactly what gpt-5.4 costs ($2.50/$15) — same price, newer generation, so the 5.5/5.4
-    // pair is dominated. gpt-5.4-mini is NOT: at $0.75/$4.50 it undercuts gpt-5.6-luna ($1/$6),
-    // so it remains the cheapest OpenAI option and stays selectable.
-    // https://developers.openai.com/api/docs/pricing
+    // OpenAI: gpt-5.6-sol costs exactly what gpt-5.5 costs ($5/$30 per 1M), and gpt-5.6-terra
+    // ($2.00/$12) now *undercuts* gpt-5.4 ($2.50/$15) — newer generation at the same price or
+    // less, so the 5.5/5.4 pair is dominated.
+    //
+    // gpt-5.4-mini is NOT dominated, but the reason has changed and is worth stating precisely:
+    // gpt-5.6-luna is now $0.20/$1.20 with a 1.05M context, i.e. cheaper on BOTH axes than
+    // gpt-5.4-mini ($0.75/$4.50, 400k) and larger. The only axis 5.4-mini still wins is quality
+    // tier — OpenAI places luna at the *nano* rung ("roughly corresponds to the nano model tier
+    // used in earlier GPT-5 families") while 5.4-mini is the *mini* rung ("our strongest mini
+    // model yet"). Different rungs of one price ladder are all frontier points, so both stay.
+    // Prices re-verified 2026-08-02: https://developers.openai.com/api/docs/pricing
     case .openaiGPT55: return .openaiGPT56Sol
     case .openaiGPT5: return .openaiGPT56Terra
+    // Anthropic: claude-opus-5 and claude-opus-4-8 are both $5/$25 per 1M with a 1M context and
+    // 128k max output. Identical on every price and capacity axis, newer generation, later
+    // knowledge cutoff (May 2026 vs Jan 2026) — and Anthropic itself files 4.8 under
+    // "Legacy models". Dominated.
+    // https://platform.claude.com/docs/en/about-claude/models/overview
+    case .claudeOpus48: return .claudeOpus5
     default: return nil
     }
   }
@@ -471,7 +501,7 @@ enum PromptModel: String, CaseIterable {
     case .grok4, .grok4Reasoning, .grok43, .grok45,
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna,
-         .claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5,
+         .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5,
          .customOpenAIEndpoint, .localModel:
       return nil
     }
@@ -514,7 +544,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna:
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
-    case .claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
+    case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
       return nil // Claude is chat-only here; no audio transcription endpoint
     case .customOpenAIEndpoint, .localModel:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
@@ -530,7 +560,7 @@ enum PromptModel: String, CaseIterable {
   var supportsGrounding: Bool {
     switch self {
     case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .localModel,
-         .claudeSonnet5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
+         .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
       // Audio-only, image-generation, proxy, local, and Anthropic models have no web-search path
       // in this app (Claude web search would need a separate Anthropic tool wiring).
       return false
@@ -579,8 +609,10 @@ enum PromptModel: String, CaseIterable {
     case "grok-4-1-fast-non-reasoning":
       // Retired by xAI on 2026-05-15; the slug silently redirected to grok-4.3 (now in enum).
       return Self.grok43.rawValue
-    case "gpt-4o-audio-preview":
-      // Renamed by OpenAI to `gpt-audio`; the case's rawValue now matches the new slug.
+    case "gpt-4o-audio-preview", "gpt-audio":
+      // Two hops on the same case: OpenAI renamed `gpt-4o-audio-preview` → `gpt-audio`, then
+      // deprecated `gpt-audio` (shutdown 2027-01-20) in favour of `gpt-audio-1.5`, which is what
+      // the case's rawValue is now. Both old slugs forward here.
       return Self.openaiGPT4oAudio.rawValue
     case "gpt-5":
       // Superseded by the gpt-5.4 generation (2026-03); forward to the current flagship case.
@@ -1292,14 +1324,80 @@ enum OpenAIChatPreferences {
     return v.isEmpty ? SettingsDefaults.customOpenAIChatModelID : v
   }
 
-  /// API key for the custom endpoint: proxy-specific key if set, otherwise the standard OpenAI key.
-  static var resolvedAPIKey: String? {
-    let custom = KeychainManager.shared.get(.customOpenAIChatAPIKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
-    if let custom, !custom.isEmpty { return custom }
-    let standard = KeychainManager.shared.get(.openAI)?.trimmingCharacters(in: .whitespacesAndNewlines)
-    if let standard, !standard.isEmpty { return standard }
+  /// True when the configured base URL points at OpenRouter rather than a generic proxy.
+  ///
+  /// Load-bearing for credential sharing: OpenRouter is one account, so connecting it in Dictate
+  /// must also authorize chat. Keying that off the URL keeps LiteLLM/OpenInference/self-hosted
+  /// setups on their own key — they are different accounts and must not silently inherit one.
+  static var isOpenRouterEndpoint: Bool {
+    guard let host = customEndpointBaseURL.flatMap({ URL(string: $0) })?.host?.lowercased() else {
+      return false
+    }
+    return host == "openrouter.ai" || host.hasSuffix(".openrouter.ai")
+  }
+
+  /// Which stored credential the custom endpoint ends up using. Surfaced in Settings → Chat so the
+  /// answer to "which key is this actually sending?" is visible instead of inferred.
+  enum ResolvedCredential {
+    case openRouterAccount
+    case proxyKey
+    case openAIKey
+
+    var description: String {
+      switch self {
+      case .openRouterAccount: return "your connected OpenRouter account"
+      case .proxyKey: return "the endpoint-specific key below"
+      case .openAIKey: return "your OpenAI API key from Settings → General"
+      }
+    }
+  }
+
+  /// Decides which credential a custom endpoint should use.
+  ///
+  /// The ordering is not obvious and got this wrong once, with a symptom that read like a bug in
+  /// the sign-in: `customOpenAIChatAPIKey` is **one** slot shared by every custom endpoint
+  /// (OpenInference, LiteLLM, a self-hosted proxy, OpenRouter), but the base URL it belongs to can
+  /// change underneath it. Someone who had configured OpenInference and then switched the URL to
+  /// OpenRouter kept sending their `sk-oi-…` key to openrouter.ai and got "API key is invalid".
+  ///
+  /// So when the endpoint *is* OpenRouter, the OpenRouter credential wins: it is the specific one,
+  /// and the shared slot is by definition holding a key for some *other* endpoint. The shared slot
+  /// still applies as a fallback, for anyone who pasted an OpenRouter key there before this flow
+  /// existed. Pure so the ordering is pinned by tests rather than by clicking through.
+  static func resolveCredential(
+    isOpenRouterEndpoint: Bool,
+    proxyKey: String?,
+    openRouterKey: String?,
+    openAIKey: String?
+  ) -> (key: String, source: ResolvedCredential)? {
+    func usable(_ value: String?) -> String? {
+      let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+      return (trimmed?.isEmpty == false) ? trimmed : nil
+    }
+
+    if isOpenRouterEndpoint {
+      if let key = usable(openRouterKey) { return (key, .openRouterAccount) }
+      if let key = usable(proxyKey) { return (key, .proxyKey) }
+      // Deliberately no OpenAI fallback here: an OpenAI key is never valid at openrouter.ai, and
+      // returning one only turns a clear "not configured" into a confusing 401.
+      return nil
+    }
+
+    if let key = usable(proxyKey) { return (key, .proxyKey) }
+    if let key = usable(openAIKey) { return (key, .openAIKey) }
     return nil
   }
+
+  /// The credential and where it came from, resolved against the Keychain.
+  static var resolvedCredential: (key: String, source: ResolvedCredential)? {
+    resolveCredential(
+      isOpenRouterEndpoint: isOpenRouterEndpoint,
+      proxyKey: KeychainManager.shared.get(.customOpenAIChatAPIKey),
+      openRouterKey: KeychainManager.shared.get(.openRouter),
+      openAIKey: KeychainManager.shared.get(.openAI))
+  }
+
+  static var resolvedAPIKey: String? { resolvedCredential?.key }
 
   /// True when URL + any usable API key are set — required before the Custom endpoint model can run.
   static var isConfigured: Bool {
@@ -1318,6 +1416,13 @@ enum OpenAIChatPreferences {
   static func applyOpenInferencePreset() {
     UserDefaults.standard.set(SettingsDefaults.openInferenceEndpointURL, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
     UserDefaults.standard.set(SettingsDefaults.openInferenceModelID, forKey: UserDefaultsKeys.customOpenAIChatModelID)
+  }
+
+  /// Points chat at OpenRouter. Pairs with the Connect button in Settings → Dictate: once both are
+  /// done there is no key to type anywhere.
+  static func applyOpenRouterPreset() {
+    UserDefaults.standard.set(SettingsDefaults.openRouterChatEndpointURL, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
+    UserDefaults.standard.set(SettingsDefaults.openRouterChatModelID, forKey: UserDefaultsKeys.customOpenAIChatModelID)
   }
 
   static var chatCompletionsURL: String {
@@ -1457,7 +1562,12 @@ struct SettingsDefaults {
   // chat / Dictate Prompt / meeting summary because the Flash tier is roughly 3× the output price
   // of Flash-Lite and drove the bulk of the app's Gemini spend. Users who want more headroom pick
   // a bigger model explicitly. https://ai.google.dev/gemini-api/docs/pricing
-  static let selectedTranscriptionModel = TranscriptionModel.gemini35FlashLite
+  // 3.1 Flash-Lite rather than 3.5: measured 2026-08-02 on the same recordings, 3.1 is faster at
+  // every audio length (35 s dictation: 1.8 s vs 6.6 s median), reproduces glossary terms far more
+  // reliably (95% vs 77% on the maintainer's real glossary), and — when it does confabulate on
+  // silent audio — produces output long enough for `discardingImplausibleTranscript` to catch,
+  // where 3.5's inventions came back at plausible length and passed the gate.
+  static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
   /// Verbatim by default: transcription should reproduce speech, not sample alternatives.
   static let transcriptionTemperature = TranscriptionTemperature.verbatim
   /// Unchanged from what the app has always sent — raising it costs latency on every dictation,
@@ -1540,6 +1650,9 @@ struct SettingsDefaults {
   /// [OpenInference](https://openinference.de/) preset — EU-hosted GLM 5.2, OpenAI-compatible.
   static let openInferenceEndpointURL = "https://openinference.de/api/v1"
   static let openInferenceModelID = "zai-org/GLM-5.2"
+  /// OpenRouter preset — the same account the Dictate tab connects, reused for chat.
+  static let openRouterChatEndpointURL = "https://openrouter.ai/api/v1"
+  static let openRouterChatModelID = "openai/gpt-4o"
 
   // MARK: - UI State
   static let errorMessage = ""

@@ -37,8 +37,8 @@ Bring your own API keys — Gemini, and optionally GPT or Grok — or run fully 
 - Xcode 16.0 or later for development
 - Google Gemini API key for cloud transcription, Dictate Prompt, chat, TTS, Smart Improvement, and live meetings
 - Optional xAI API key for Grok chat models and Grok Voice TTS
-- Optional OpenAI API key for GPT-5.x chat, OpenAI transcription (GPT-4o Transcribe), GPT Audio Dictate Prompt, and GPT-4o mini TTS
-- Optional OpenRouter API key for dictation through any audio-capable model OpenRouter routes to
+- Optional OpenAI API key for GPT-5.x chat, OpenAI transcription (GPT Transcribe, GPT-4o Transcribe), GPT Audio Dictate Prompt, and GPT-4o mini TTS
+- Optional OpenRouter account — connect it with one click during onboarding or in Settings → Dictate (no API key to copy, and the flow creates the account if you do not have one; the same connection also covers chat when the custom endpoint points at OpenRouter), or paste a key manually
 - Optional Google account connection for Calendar, Tasks, and Gmail tools
 - Optional Trello Power-Up API key and token for board, list, and card tools
 
@@ -83,7 +83,31 @@ To change a shortcut, open Settings → General, click **Record** next to it and
 - **Temperature** — how literally the model reproduces what it heard. `0.0` (the default) is verbatim. The models' own default is `1.0`, which is what the app sent before this setting existed and the most likely source of invented or swapped words.
 - **Thinking effort** (Gemini only) — how long the model may reason before transcribing. `Minimal` is the default; raising it can help with hard audio, accents, and unusual vocabulary. On Flash-Lite the latency cost is close to zero; on Pro it roughly doubles. Gemini 3.1 Pro cannot run below `Low` and is clamped to it.
 
-**OpenRouter**: select the OpenRouter transcription model, then set your API key and a model slug in Settings → Dictate. Any [audio-capable model on OpenRouter](https://openrouter.ai/models?modality=text%2Baudio-%3Etext) works — switching between them is a one-field edit. OpenRouter has no dedicated transcription endpoint, so the audio is sent as a chat message; that means your Dictation system prompt and Glossary apply here, unlike the OpenAI and self-hosted transcription endpoints.
+**Which transcription model should I pick?** All of them work; they differ in speed, price, and how they behave on hard audio. Measured on the same recordings in August 2026 — latency is the median of 10 interleaved runs from one machine, so treat it as a ranking, not a guarantee:
+
+| Model | Latency (1.4 s / 8.9 s / 35 s of audio) | Cost per minute | Notable |
+|---|---|---|---|
+| Grok Speech-to-Text | 0.35 s / 0.97 s / 1.45 s | low | Fastest at every length tested |
+| GPT Transcribe | 0.69 s / 0.99 s / 2.04 s | $0.0045 flat | Returns nothing on silence instead of inventing text |
+| GPT-4o Mini Transcribe | 0.76 s / 0.97 s / 1.61 s | ~$0.003 | Cheapest cloud option at OpenAI |
+| GPT-4o Transcribe | 0.72 s / 1.07 s / 2.16 s | ~$0.006 | Follows Dictation-prompt instructions |
+| Gemini 3.1 Flash-Lite | 1.58 s / 1.28 s / 1.83 s | ~$0.001 | Best glossary adherence of the Gemini tiers |
+| Gemini 3.5 Flash-Lite | 1.86 s / 2.97 s / 6.63 s | ~$0.001 | Slowest tested; see the caveat below |
+| Whisper (offline) | depends on your Mac and model size | free | Runs locally, nothing leaves your machine |
+
+Recommendations by what you care about:
+
+- **Lowest latency** — Grok Speech-to-Text, by a clear margin on short and long recordings alike.
+- **Cheapest cloud** — Gemini Flash-Lite, roughly 4× cheaper per minute than GPT Transcribe. Gemini bills audio *and* output tokens, so a long transcript costs more; GPT Transcribe bills only recording length, which makes it easier to predict.
+- **Privacy** — an offline Whisper model. No audio leaves your Mac.
+- **Names and jargon spelled right** — put them in the Glossary first; that matters more than the model. Among the Gemini tiers, 3.1 Flash-Lite reproduced glossary terms noticeably more reliably than 3.5 Flash-Lite in our tests.
+- **A Dictation prompt with formatting rules** — use a Gemini model or GPT-4o Transcribe. GPT Transcribe and Grok are pure speech-to-text and ignore instructions in the prompt.
+
+**A note on silence.** If a recording is silent or unintelligible, some models invent a plausible-sounding sentence built from your Glossary instead of returning nothing. WhisperShortcut filters implausible transcripts, but the filter cannot catch every case: in our tests Gemini 3.5 Flash-Lite produced normal-length invented sentences that passed the filter, while Gemini 3.1 Flash-Lite's inventions were long enough to be caught and GPT Transcribe returned nothing at all. If you often start recording before you start speaking, that is worth knowing when picking a model.
+
+**GPT Transcribe** (OpenAI): OpenAI's current transcription model, billed by audio duration rather than tokens. It is a pure speech-to-text model, so it ignores the Dictation system prompt; your Glossary still applies and is sent as keyword hints, which in testing was the more reliable way to get names and product terms spelled right. Unlike the GPT-4o transcription models, it returns an empty transcript on silence instead of echoing the glossary back.
+
+**OpenRouter**: select the OpenRouter transcription model, then click **Connect OpenRouter Account** in Settings → Dictate. That opens OpenRouter in a browser sheet where you sign in — or create an account, if you do not have one — and approve; the app receives its key directly, so there is nothing to copy and paste. You pay OpenRouter for what you use, and can top up or revoke access from your OpenRouter dashboard at any time. If you already hold a key, "Enter an API key manually instead" still accepts it. The same connection covers chat as well: use the **Use OpenRouter preset** button in Settings → Chat and no key is needed there either. The model list in Settings → Dictate is fetched live from OpenRouter and filtered to models that actually accept audio, with rough prices shown, so there is no slug to look up or memorise — pick one from the menu. New models appear as OpenRouter adds them, without an app update. "Custom slug…" still lets you type anything, for models the list does not cover. OpenRouter has no dedicated transcription endpoint, so the audio is sent as a chat message; that means your Dictation system prompt and Glossary apply here, unlike the OpenAI and self-hosted transcription endpoints.
 
 ### Dictate Prompt
 
@@ -136,13 +160,15 @@ Type `/meeting` in chat to start and stop live meeting recording. Audio is rotat
 While a meeting runs:
 
 - **Live notes appear in the chat itself.** Every minute or two the app appends one or two bullets covering what was just discussed, woven into the chat stream at the moment it was said — so you can see what is going on in the same column where you type. Earlier notes are never rewritten.
-- **The chat sees the entire transcript**, not just the last few minutes, so you can ask about anything said since the meeting started. A line above the composer says exactly what the chat can currently see.
+- **The chat sees the entire transcript**, not just the last few minutes, so you can ask about anything said since the meeting started. A line above the composer says exactly what the chat can currently see. When you send a question, the audio still sitting in the recorder is cut and transcribed first, so the answer covers what was said seconds ago too.
 - **One-tap questions** above the composer: Catch me up, Action items, Open questions, Decisions.
 - **Ask about a moment**: hover any note and press *Ask* to quote it into the composer instead of retyping it.
 - **Flag a moment** with the meeting-marker shortcut (⌘6 by default, configurable in Settings → Chat). Markers show up in the note stream and the final summary is written around what you flagged.
 - **Copy transcript** in the meeting bar puts the raw transcript on the clipboard; right-click it to reveal the file in Finder.
 
-The meeting view has two tabs: **Chat** and **Notes** (the live notes while recording, the final summary once it ended). Chunks rotate faster while the chat window is on screen so the live view keeps up, and fall back to the configured interval when it is not.
+While the meeting runs there is only the chat — the notes are already in it. Once a meeting has ended, its view has two tabs: **Chat** and **Notes**, where Notes holds the final summary. Chunks rotate faster while the chat window is on screen so the live view keeps up, and fall back to the configured interval when it is not.
+
+Dictate and Dictate Prompt keep working during a meeting, and the menu bar shows which of the two recordings is running: 📝 for the meeting, 🔴 / 🤖 while you dictate on top of it. Stopping a meeting is not instant — the last chunk still has to be transcribed — so the meeting bar says **Finishing…** and the menu bar shows ⏳ until the transcript and summary are saved.
 
 ### Smart Improvement
 

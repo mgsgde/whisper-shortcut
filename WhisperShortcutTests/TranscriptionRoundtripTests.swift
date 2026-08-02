@@ -69,6 +69,18 @@ struct TranscriptionRoundtripTests {
     }
 
     @Test(
+        "OpenAI GPT Transcribe returns a non-empty reply",
+        .enabled(if: KeychainManager.shared.hasNonEmpty(.openAI),
+                 "No OpenAI API key (env WHISPERSHORTCUT_OPENAI_API_KEY or Keychain)")
+    )
+    func openAIGPTTranscribe() async throws {
+        // Separate from the gpt-4o roundtrip above because the multipart body differs: this model
+        // takes the glossary through repeated `keywords` parts and gets no `prompt` at all, and
+        // sending a field it rejects is a hard 400 (`keywords` on gpt-4o-transcribe already is).
+        try await Self.expectTranscript(.openAIGPTTranscribe, "OpenAI GPT Transcribe")
+    }
+
+    @Test(
         "Grok transcription returns a non-empty reply",
         .enabled(if: KeychainManager.shared.hasNonEmpty(.xai),
                  "No xAI API key (env WHISPERSHORTCUT_XAI_API_KEY or Keychain)")

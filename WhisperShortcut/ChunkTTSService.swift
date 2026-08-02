@@ -46,6 +46,13 @@ class ChunkTTSService {
     /// Coordinator for global rate limiting across all chunks.
     private let rateLimitCoordinator = RateLimitCoordinator(logPrefix: "TTS-RATE-LIMIT")
 
+    /// Per-chunk retry policy, shared with `ChunkTranscriptionService` (see `ChunkRetryPolicy`).
+    private var retryPolicy: ChunkRetryPolicy {
+        ChunkRetryPolicy(
+            maxRetries: maxRetries, retryDelay: retryDelay,
+            coordinator: rateLimitCoordinator, logPrefix: "TTS-CHUNK-SERVICE")
+    }
+
     // MARK: - Initialization
 
     init(
@@ -185,7 +192,7 @@ class ChunkTTSService {
         }
 
         // Use actor for thread-safe accumulation
-        let accumulator = ResultAccumulator()
+        let accumulator = ChunkResultAccumulator<AudioChunkData>()
 
         try await withThrowingTaskGroup(of: Result<AudioChunkData, Error>.self) { group in
             for chunk in chunks {
@@ -217,7 +224,7 @@ class ChunkTTSService {
 
                 switch result {
                 case .success(let audioChunk):
-                    await accumulator.addAudioChunk(audioChunk)
+                    await accumulator.add(audioChunk)
                     readyChunks[audioChunk.index] = audioChunk.data
                     await releasePlayableChunks()
 
@@ -248,8 +255,8 @@ class ChunkTTSService {
         }
 
         // Get final results
-        let audioChunks = await accumulator.getAudioChunks()
-        let errors = await accumulator.getErrors()
+        let audioChunks = await accumulator.allValues()
+        let errors = await accumulator.allErrors()
 
         DebugLogger.log("TTS-CHUNK-SERVICE: Parallel synthesis complete - \(audioChunks.count) succeeded, \(errors.count) failed")
 
@@ -284,113 +291,27 @@ class ChunkTTSService {
         totalChunks: Int,
         synthesizeText: @escaping (String) async throws -> Data
     ) async throws -> AudioChunkData {
-        var lastError: Error?
-
-        for attempt in 1...maxRetries {
-            do {
-                // Wait if we're in a rate-limited period (global coordination)
-                await rateLimitCoordinator.waitIfNeeded()
-
-                // Check for cancellation after waiting
-                try Task.checkCancellation()
-
-                // Report retry status
-                if attempt > 1 {
-                    DebugLogger.log("TTS-CHUNK-SERVICE: Chunk \(chunk.index) attempt \(attempt)/\(maxRetries)")
-                    // Notify delegate about retry
-                    let errorToReport = lastError ?? TranscriptionError.networkError("Retrying")
-                    await MainActor.run {
-                        progressDelegate?.chunkFailed(index: chunk.index, error: errorToReport, willRetry: true)
-                    }
-                }
-
-                DebugLogger.logDebug("TTS-CHUNK-SERVICE: Making API request for chunk \(chunk.index) (text length: \(chunk.text.count) chars)")
-
-                // Provider-specific synthesis (returns raw PCM s16le 24kHz mono — no WAV header).
-                let audioData = try await synthesizeText(chunk.text)
-
-                await rateLimitCoordinator.reportSuccess()
-                DebugLogger.logSuccess("TTS-CHUNK-SERVICE: Chunk \(chunk.index) synthesized successfully (\(audioData.count) bytes, \(String(format: "%.2f", Double(audioData.count) / 24000.0 / 2.0))s estimated duration)")
-
-                return AudioChunkData(
-                    data: audioData,
-                    index: chunk.index
-                )
-
-            } catch {
-                lastError = error
-
-                // Check if this is a rate limit or quota error with retry info
-                if let transcriptionError = error as? TranscriptionError {
-                    switch transcriptionError {
-                    case .rateLimited(let retryAfter, _), .quotaExceeded(let retryAfter):
-                        // Only pause other chunks when the error is retryable (transient rate limit).
-                        if transcriptionError.isRetryable {
-                            await rateLimitCoordinator.reportRateLimit(retryAfter: retryAfter)
-                        }
-
-                        // If we have a retry delay, this error is retryable
-                        if retryAfter != nil && attempt < maxRetries {
-                            DebugLogger.log("TTS-CHUNK-SERVICE: Chunk \(chunk.index) hit rate limit, will retry after coordinator wait")
-                            continue
-                        }
-
-                    default:
-                        break
-                    }
-
-                    // Non-retryable errors should fail immediately
-                    if !transcriptionError.isRetryable {
-                        throw error
-                    }
-                }
-
-                // Don't retry on last attempt
-                if attempt < maxRetries {
-                    // Use API-provided delay if available, otherwise exponential backoff
-                    let delay: TimeInterval
-                    if let transcriptionError = error as? TranscriptionError,
-                       let retryAfter = transcriptionError.retryAfter {
-                        delay = retryAfter
-                    } else {
-                        delay = retryDelay * pow(2.0, Double(attempt - 1))
-                    }
-                    DebugLogger.log("TTS-CHUNK-SERVICE: Chunk \(chunk.index) failed, retrying in \(String(format: "%.1f", delay))s")
-                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        try await retryPolicy.run(
+            label: "Chunk \(chunk.index)",
+            beforeRetry: { error, _ in
+                // Notify delegate about retry
+                let errorToReport = error ?? TranscriptionError.networkError("Retrying")
+                await MainActor.run {
+                    self.progressDelegate?.chunkFailed(index: chunk.index, error: errorToReport, willRetry: true)
                 }
             }
+        ) {
+            DebugLogger.logDebug("TTS-CHUNK-SERVICE: Making API request for chunk \(chunk.index) (text length: \(chunk.text.count) chars)")
+
+            // Provider-specific synthesis (returns raw PCM s16le 24kHz mono — no WAV header).
+            let audioData = try await synthesizeText(chunk.text)
+
+            DebugLogger.logSuccess("TTS-CHUNK-SERVICE: Chunk \(chunk.index) synthesized successfully (\(audioData.count) bytes, \(String(format: "%.2f", Double(audioData.count) / 24000.0 / 2.0))s estimated duration)")
+
+            return AudioChunkData(
+                data: audioData,
+                index: chunk.index
+            )
         }
-
-        throw lastError ?? TranscriptionError.networkError("Chunk synthesis failed")
-    }
-}
-
-// MARK: - Helper Types
-
-/// Actor for thread-safe accumulation of TTS results.
-private actor ResultAccumulator {
-    private var audioChunks: [AudioChunkData] = []
-    private var errors: [(index: Int, error: Error)] = []
-    private var completedCount = 0
-
-    func incrementCompleted() -> Int {
-        completedCount += 1
-        return completedCount
-    }
-
-    func addAudioChunk(_ audioChunk: AudioChunkData) {
-        audioChunks.append(audioChunk)
-    }
-
-    func addError(index: Int, error: Error) {
-        errors.append((index: index, error: error))
-    }
-
-    func getAudioChunks() -> [AudioChunkData] {
-        return audioChunks
-    }
-
-    func getErrors() -> [(index: Int, error: Error)] {
-        return errors
     }
 }

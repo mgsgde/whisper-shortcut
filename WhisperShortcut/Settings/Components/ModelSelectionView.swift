@@ -56,20 +56,30 @@ struct ModelSelectionView: View {
           .padding(.vertical, 8)
       }
 
-      // Split the flat list into Cloud (needs an API key) and Offline (on-device Whisper)
-      // groups. When only one group is present we render a single plain grid so lists
-      // without offline models (or vice versa) keep their original look.
-      let cloudModels = models.filter { !$0.isOffline }
-      let offlineModels = models.filter { $0.isOffline }
-      let grouped = !cloudModels.isEmpty && !offlineModels.isEmpty
+      // Grouped by `TranscriptionProvider.Group` rather than the old cloud/offline split.
+      //
+      // The split that mattered was never cloud vs. offline — it was **direct vs. routed**.
+      // "Gemini 3.5 Flash-Lite" is a tile here *and* an entry in OpenRouter's own model list below,
+      // and with one undifferentiated "Cloud" block nothing said that the tile bills your Google key
+      // while the router bills your OpenRouter balance. Naming the groups is what removes that.
+      let visibleGroups = Self.groupOrder.compactMap { group -> (TranscriptionProvider.Group, [TranscriptionModel])? in
+        let matching = models.filter { $0.provider.group == group }
+        return matching.isEmpty ? nil : (group, matching)
+      }
+      let grouped = visibleGroups.count > 1
 
       VStack(alignment: .leading, spacing: 0) {
         if grouped {
-          groupHeader(symbol: "cloud", title: "Cloud", subtitle: "Fast · needs an API key")
-          modelGrid(cloudModels)
-          Divider().padding(.vertical, 10)
-          groupHeader(symbol: "desktopcomputer", title: "Offline", subtitle: "Private · runs on your Mac")
-          modelGrid(offlineModels)
+          ForEach(Array(visibleGroups.enumerated()), id: \.offset) { index, entry in
+            if index > 0 {
+              Divider().padding(.vertical, 10)
+            }
+            groupHeader(
+              symbol: Self.symbol(for: entry.0),
+              title: Self.title(for: entry.0),
+              subtitle: Self.subtitle(for: entry.0))
+            modelGrid(entry.1)
+          }
         } else {
           modelGrid(models)
         }
@@ -141,6 +151,54 @@ struct ModelSelectionView: View {
 
   // MARK: - Group helpers
 
+  /// Direct first (what most users want), routed second, offline last.
+  private static let groupOrder: [TranscriptionProvider.Group] = [.direct, .routed, .offline]
+
+  private static func symbol(for group: TranscriptionProvider.Group) -> String {
+    switch group {
+    case .direct: return "cloud"
+    case .routed: return "arrow.triangle.branch"
+    case .offline: return "desktopcomputer"
+    }
+  }
+
+  private static func title(for group: TranscriptionProvider.Group) -> String {
+    switch group {
+    case .direct: return "Direct"
+    case .routed: return "Routed"
+    case .offline: return "Offline"
+    }
+  }
+
+  private static func subtitle(for group: TranscriptionProvider.Group) -> String {
+    switch group {
+    case .direct: return "Billed to that provider's own API key"
+    case .routed: return "One account or your own server · pick the model below"
+    case .offline: return "Private · runs on your Mac"
+    }
+  }
+
+  /// Second line for routed tiles: what the router is actually calling right now.
+  ///
+  /// Without it, "OpenRouter" reads as a model name sitting next to real model names — which is
+  /// exactly the confusion this grouping is meant to end.
+  private static func routedSubtitle(for model: TranscriptionModel) -> String? {
+    switch model.provider {
+    case .openRouter:
+      let slug = TranscriptionTuning.openRouterModelID
+      // Prefer the catalogue's display name; fall back to the raw slug before it loads.
+      let name = OpenRouterModelCatalog.shared.audioModels.first { $0.id == slug }?.name
+      return "→ \(name ?? slug)"
+    case .selfHosted:
+      let url = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      guard let host = URL(string: url)?.host, !host.isEmpty else { return "→ not configured" }
+      return "→ \(host)"
+    case .google, .openAI, .xai, .offline:
+      return nil
+    }
+  }
+
   @ViewBuilder
   private func groupHeader(symbol: String, title: String, subtitle: String) -> some View {
     ModelGroupHeader(symbol: symbol, title: title, subtitle: subtitle)
@@ -155,6 +213,7 @@ struct ModelSelectionView: View {
     let isDisabled = (geminiDisabled && model.isGemini) || (openAIDisabled && model.isOpenAI) || (xaiDisabled && model.isXAI)
     ModelTile(
       title: model.displayName,
+      subtitle: Self.routedSubtitle(for: model),
       isSelected: selectedTranscriptionModel == model,
       isDisabled: isDisabled,
       isRecommended: model.isRecommended,

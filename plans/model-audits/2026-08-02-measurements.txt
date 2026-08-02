@@ -1,0 +1,157 @@
+# Measurements — 2026-08-02
+
+## Model availability (test scripts)
+
+### test-gemini-models.sh
+=== Gemini text-generation models (current enum cases) ===
+gemini-3.1-pro-preview              [current] OK
+gemini-3.1-flash-lite               [current] OK
+gemini-3.5-flash-lite               [current] OK
+gemini-3.5-flash                    [current] OK
+gemini-3.6-flash                    [current] OK
+
+=== Gemini text-generation legacy slugs (migrate-only, must still serve for back-compat) ===
+gemini-3.1-flash-lite-preview       [legacy] OK
+gemini-2.5-flash                    [legacy] OK
+gemini-2.5-flash-lite               [legacy] OK
+gemini-2.5-pro                      [legacy] OK
+gemini-3-flash-preview              [legacy] OK
+
+=== Gemini text-generation retired slugs (must 404 — confirms shutdown; enum cleanup pending) ===
+gemini-3-pro-preview                [legacy-retired] OK (correctly removed by Google; add migrateLegacy* mapping when enum case is removed)
+
+=== Gemini text-generation candidates (migration targets) ===
+gemini-flash-lite-latest            [candidate] OK
+
+=== Gemini TTS models ===
+gemini-3.1-flash-tts-preview        [current] OK
+gemini-2.5-flash-preview-tts        [candidate] OK
+gemini-2.5-pro-preview-tts          [candidate] OK
+---
+Passed: 15  Failed: 0
+
+### test-openai-models.sh
+=== OpenAI chat models (current enum cases, text-only) ===
+gpt-5.4                   [current] OK
+gpt-5.4-mini              [current] OK
+gpt-5.5                   [current] OK
+gpt-5.6-sol               [current] OK
+gpt-5.6-terra             [current] OK
+gpt-5.6-luna              [current] OK
+
+=== OpenAI audio chat models (input_audio required) ===
+gpt-audio-1.5             [current] OK
+gpt-audio-mini            [candidate] OK
+
+=== OpenAI legacy chat slugs (must 404 — confirms slug was retired by OpenAI) ===
+gpt-4o-audio-preview      [legacy] OK (correctly removed by OpenAI; migrateLegacyPromptRawValue handles persisted values)
+gpt-5-chat-latest         [legacy] OK (correctly removed by OpenAI; migrateLegacyPromptRawValue handles persisted values)
+
+=== OpenAI chat candidates (migration targets) ===
+chat-latest               [candidate] OK
+
+=== OpenAI transcription models ===
+gpt-transcribe            [current] OK
+gpt-4o-transcribe         [current] OK
+gpt-4o-mini-transcribe    [current] OK
+---
+Passed: 14  Failed: 0
+
+### test-grok-models.sh
+=== Grok chat models (current enum cases) ===
+grok-4.20-0309-non-reasoning        [current] OK
+grok-4.20-0309-reasoning            [current] OK
+grok-4.3                            [current] OK
+grok-4.5                            [current] OK
+
+=== Grok legacy slugs (must keep serving via redirect for back-compat) ===
+grok-4-1-fast-non-reasoning         [legacy] OK (redirected → grok-4.3)
+
+=== Grok chat candidates ===
+grok-build-0.1                      [candidate] OK
+---
+Passed: 6  Failed: 0
+
+## Transcription benchmark
+# Transcription benchmark
+
+models: gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash, gemini-3.6-flash, gpt-transcribe, gpt-4o-transcribe, gpt-4o-mini-transcribe, grok-stt
+prompt/glossary source: app container (live)
+glossary: 36 terms
+
+## Latency — 1 interleaved rounds, shuffled order, median of successes
+
+### short (1.3 s of audio)
+  grok-stt                 median     338 ms   min    338   max    338   n=1
+  gpt-transcribe           median     646 ms   min    646   max    646   n=1
+  gpt-4o-mini-transcribe   median     676 ms   min    676   max    676   n=1
+  gpt-4o-transcribe        median     921 ms   min    921   max    921   n=1
+  gemini-3.1-flash-lite    median    1225 ms   min   1225   max   1225   n=1
+  gemini-3.5-flash         median    1474 ms   min   1474   max   1474   n=1
+  gemini-3.5-flash-lite    median    2560 ms   min   2560   max   2560   n=1
+  gemini-3.6-flash         median    3327 ms   min   3327   max   3327   n=1
+
+### claude (8.2 s of audio)
+  gpt-4o-mini-transcribe   median     855 ms   min    855   max    855   n=1
+  grok-stt                 median     879 ms   min    879   max    879   n=1
+  gpt-transcribe           median    1010 ms   min   1010   max   1010   n=1
+  gpt-4o-transcribe        median    1067 ms   min   1067   max   1067   n=1
+  gemini-3.5-flash         median    1118 ms   min   1118   max   1118   n=1
+  gemini-3.1-flash-lite    median    1437 ms   min   1437   max   1437   n=1
+  gemini-3.5-flash-lite    median    2930 ms   min   2930   max   2930   n=1
+  gemini-3.6-flash         median    3932 ms   min   3932   max   3932   n=1
+
+### long (21.3 s of audio)
+  grok-stt                 median    1075 ms   min   1075   max   1075   n=1
+  gpt-4o-mini-transcribe   median    1241 ms   min   1241   max   1241   n=1
+  gpt-transcribe           median    1470 ms   min   1470   max   1470   n=1
+  gemini-3.5-flash         median    1605 ms   min   1605   max   1605   n=1
+  gpt-4o-transcribe        median    1906 ms   min   1906   max   1906   n=1
+  gemini-3.1-flash-lite    median    2913 ms   min   2913   max   2913   n=1
+  gemini-3.5-flash-lite    median   15151 ms   min  15151   max  15151   n=1
+  gemini-3.6-flash         median   20346 ms   min  20346   max  20346   n=1
+
+
+## Glossary adherence — 1 runs per case, terms reproduced verbatim
+
+  MISS gpt-4o-mini-transcribe   claude: missing ['WhisperShortcut'] → 'Ich habe gestern mit der Claude CLI im Projekt Whisper Shortcut gearbeitet und d'
+  MISS grok-stt                 claude: missing ['WhisperShortcut', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude CLI im Projekt Whisper Shortcut gearbeitet und d'
+  MISS gpt-4o-transcribe        names: missing ['SMARTBROKER'] → 'Magnus Gödde hat den Termin mit EnBW in Karlsruhe verschoben und danach bei Smar'
+  MISS gpt-4o-mini-transcribe   names: missing ['SMARTBROKER'] → 'Magnus Gödde hat den Termin mit EnBW in Karlsruhe verschoben und danach bei Smar'
+  MISS grok-stt                 names: missing ['Magnus Gödde', 'EnBW', 'SMARTBROKER'] → 'Magnus Götte hat den Termin mit n b w in Karlsruhe verschoben und danach bei Sma'
+  MISS gemini-3.5-flash         tools: missing ['Gemini'] → 'Bitte prüfe im Vault, ob das Event in Heidelberg mit Mini Flash oder mit Grok ge'
+  MISS grok-stt                 tools: missing ['Vault', 'Grok'] → 'Bitte prüfe im WULD, ob das Event in Heidelberg mit Gemini Flash oder mit Gro ge'
+  MISS gemini-3.1-flash-lite    long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt WhisperShortcut die .transkription umg'
+  MISS gemini-3.5-flash-lite    long: missing ['WhisperShortcut', 'Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode Projekt Whisper Shortcut die Transkription umg'
+  MISS gemini-3.5-flash         long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt WhisperShortcut die Transkription umge'
+  MISS gemini-3.6-flash         long: missing ['Magnus Gödde'] → 'his Magnuss Gödde hat gestern im Xcode- 0:02.040Projekt WhisperShortcut die Chun'
+  MISS gpt-4o-transcribe        long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt WhisperShortcut die Kunktranskription '
+  MISS gpt-4o-mini-transcribe   long: missing ['WhisperShortcut', 'Chunk-Transkription', 'Magnus Gödde'] → 'Magnus Göde hat gestern im Xcode-Projekt Whisper Shortcut die Kunk-Transkription'
+  MISS grok-stt                 long: missing ['WhisperShortcut', 'Chunk-Transkription'] → 'Magnus Gödde hat gestern im ex-Code-Projekt Whisper Shortcut die Kung-Transkript'
+
+  gpt-transcribe           17/17 terms (100%)
+  gemini-3.1-flash-lite    16/17 terms (94%)
+  gemini-3.6-flash         16/17 terms (94%)
+  gemini-3.5-flash-lite    15/17 terms (88%)
+  gemini-3.5-flash         15/17 terms (88%)
+  gpt-4o-transcribe        15/17 terms (88%)
+  gpt-4o-mini-transcribe   12/17 terms (71%)
+  grok-stt                 8/17 terms (47%)
+
+## Silence hallucination — 1 runs per duration, scored through the app's gates
+
+  1s gemini-3.1-flash-lite    LEAKS (58 chars)                         'Bitte gib mir die Audiodatei, die ich transkribieren soll.'
+  1s gemini-3.5-flash-lite    LEAKS (12 chars)                         'sabaki.dance'
+  1s gemini-3.5-flash         LEAKS (12 chars)                         'sabaki.dance'
+  1s gemini-3.6-flash         caught by length gate (331 chars)        'Ja, sag mal, hast du da schon deine Sachen eingepackt? Aber '
+  1s gpt-4o-transcribe        LEAKS (18 chars)                         'Ich arbeite daran.'
+  3s gemini-3.1-flash-lite    caught by length gate (573 chars)        'Ich habe heute mit dem Claude Code experimentiert und bin wi'
+  3s gemini-3.5-flash-lite    LEAKS (12 chars)                         'sabaki.dance'
+  3s gemini-3.5-flash         LEAKS (57 chars)                         'Ich habe mir jetzt mal die Domain sabaki.dance gesichert.'
+  3s gemini-3.6-flash         LEAKS (12 chars)                         'sabaki.dance'
+  3s gpt-4o-transcribe        LEAKS (3 chars)                          '"""'
+  8s gemini-3.1-flash-lite    caught by length gate (651 chars)        'Ich habe heute wieder ein bisschen mit Claude Code experimen'
+  8s gemini-3.5-flash-lite    LEAKS (21 chars)                         'Das war sabaki.dance.'
+  8s gemini-3.5-flash         LEAKS (47 chars)                         'Ich habe mir jetzt mal sabaki.dance angeschaut.'
+  8s gemini-3.6-flash         caught by glossary-echo gate (12 chars)  'sabaki.dance'
+  8s gpt-4o-transcribe        LEAKS (34 chars)                         'Ok, dann starten wir jetzt einmal.'

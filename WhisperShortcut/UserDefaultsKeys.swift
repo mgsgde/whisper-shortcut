@@ -44,6 +44,10 @@ enum UserDefaultsKeys {
   /// 3.5 Flash-Lite, and Smart Improvement moved 3.1 Pro → 3.6 Flash (cost).
   static let didMigrateGeminiDefaultsToFlashLite = "didMigrateGeminiDefaultsToFlashLite"
 
+  /// One-shot migration flag: dictation + meeting transcription moved back 3.5 Flash-Lite →
+  /// 3.1 Flash-Lite (speed, glossary adherence, hallucination containment).
+  static let didMigrateTranscriptionTo31FlashLite = "didMigrateTranscriptionTo31FlashLite"
+
   // MARK: - Recording Safeguards
   static let confirmAboveDurationSeconds = "confirmAboveDurationSeconds"
 

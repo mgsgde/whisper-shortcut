@@ -31,16 +31,20 @@ declare -a CURRENT_CHAT_MODELS=(
 )
 # gpt-audio (renamed from gpt-4o-audio-preview) requires audio modality — tested separately below.
 declare -a CURRENT_AUDIO_CHAT_MODELS=(
-  "gpt-audio"
+  # Promoted from candidate 2026-08-02: OpenAI deprecated `gpt-audio` (shutdown 2027-01-20) and
+  # names 1.5 as the replacement, at identical pricing.
+  "gpt-audio-1.5"
 )
 # Legacy slugs we accept via migrateLegacyPromptRawValue but no longer use in fresh selections.
 # Expected behaviour: 404 (model removed). Surfaces upstream renames if a slug suddenly returns 200.
 declare -a LEGACY_CHAT_MODELS=(
   "gpt-4o-audio-preview"
+  # Retired by OpenAI 2026-07-23; replacement gpt-5.6-sol. Kept here so the suite proves the
+  # retirement rather than exiting non-zero on a stale `candidate` entry.
+  "gpt-5-chat-latest"
 )
 declare -a CANDIDATE_CHAT_MODELS=(
   "chat-latest"
-  "gpt-5-chat-latest"
   # gpt-5.4 / gpt-5.4-mini were promoted to CURRENT_CHAT_MODELS (2026-07-14 migration: the app's
   # OpenAI flagship + mini now point at these). The superseded gpt-5 / gpt-5-mini still serve but
   # are no longer referenced — persisted selections forward via migrateLegacyPromptRawValue.
@@ -49,13 +53,16 @@ declare -a CANDIDATE_CHAT_MODELS=(
   # gpt-5.5-pro intentionally NOT listed: 404s on this key (10/10, 2026-07-22) — not entitled.
 )
 # Audio-chat candidates (input_audio) — newer generations of gpt-audio.
-# gpt-audio-1.5 is intentionally NOT listed: it intermittently 500s ("model produced invalid
-# content") on this script's degenerate audio-only silent-wav probe, but passes 4/4 with a
-# realistic text+audio payload (verified 2026-07-14). Re-add once the probe sends real speech.
+# gpt-audio-1.5 graduated to CURRENT_AUDIO_CHAT_MODELS on 2026-08-02: OpenAI deprecated
+# `gpt-audio` and the probe now sends real speech, which was the condition this note asked for.
 declare -a CANDIDATE_AUDIO_CHAT_MODELS=(
   "gpt-audio-mini"
 )
 declare -a CURRENT_TRANSCRIPTION_MODELS=(
+  # OpenAI's recommended starting model since the 2026 audio refresh; added to TranscriptionModel
+  # 2026-08-02. Billed by duration ($0.0045/min) instead of tokens, and it takes vocabulary via
+  # the `keywords` field rather than `prompt` — see sendOpenAICompatibleTranscriptionRequest.
+  "gpt-transcribe"
   "gpt-4o-transcribe"
   "gpt-4o-mini-transcribe"
 )
@@ -133,22 +140,30 @@ for m in "${CURRENT_CHAT_MODELS[@]}"; do test_chat_model "$m" "current"; done
 
 echo ""
 echo "=== OpenAI audio chat models (input_audio required) ==="
+# Audio-chat probe. Uses the committed speech fixture plus a text instruction rather than the
+# silent WAV the other probes use: an audio-only request carrying nothing but digital silence made
+# gpt-audio-1.5 return HTTP 500 "the model produced invalid content" on roughly half of attempts,
+# which is a property of the stimulus, not of the model — the same model answers 3/3 with real
+# speech (verified 2026-08-02). A probe that fails on a healthy model teaches the reader to ignore
+# the suite, so it has to send something a real caller would send.
 test_audio_chat_model() {
   local model="$1"
   local label="$2"
-  local wav="/tmp/oai_audio_${model//[^a-zA-Z0-9]/_}.wav"
-  make_silent_wav "$wav"
+  local wav="$SCRIPT_DIR/../WhisperShortcutTests/sample.wav"
   printf "%-25s [%s] " "$model" "$label"
+  if [[ ! -f "$wav" ]]; then
+    echo "SKIP (speech fixture missing: $wav)"
+    return
+  fi
   local b64
   b64=$(base64 < "$wav" | tr -d '\n')
   local response http_code body
   response=$(curl -sS -w "\n%{http_code}" -X POST "https://api.openai.com/v1/chat/completions" \
     -H "Authorization: Bearer $API_KEY" \
     -H "Content-Type: application/json" \
-    -d "$(printf '{"model":"%s","modalities":["text"],"messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"%s","format":"wav"}}]}],"max_completion_tokens":16}' "$model" "$b64")" 2>/dev/null) || true
+    -d "$(printf '{"model":"%s","modalities":["text"],"messages":[{"role":"user","content":[{"type":"text","text":"Transcribe the audio. Reply with the transcript only."},{"type":"input_audio","input_audio":{"data":"%s","format":"wav"}}]}],"max_completion_tokens":64}' "$model" "$b64")" 2>/dev/null) || true
   http_code=$(echo "$response" | tail -n1)
   body=$(echo "$response" | sed '$d')
-  rm -f "$wav"
   if [[ "$http_code" == "200" ]]; then
     echo "OK"
     ((PASS++)) || true

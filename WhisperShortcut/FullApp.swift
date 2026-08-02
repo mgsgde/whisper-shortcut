@@ -47,6 +47,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Lift stale model defaults first, so the reconciler below sees the current selections.
     migrateGeminiModelDefaults()
     migrateGeminiModelDefaultsToFlashLite()
+    migrateTranscriptionDefaultTo31FlashLite()
 
     // Adapt per-feature model selections to the API keys actually present, so a user with a single
     // provider's key gets that provider's models by default across every feature.
@@ -234,6 +235,42 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       guard let stored = defaults.string(forKey: m.key), stored == m.previousDefault else { continue }
       defaults.set(m.replacement, forKey: m.key)
       DebugLogger.log("MIGRATION: \(m.key) \(stored) → \(m.replacement)")
+    }
+  }
+
+  /// One-shot migration (2026-08): dictation and meeting transcription move back from
+  /// 3.5 Flash-Lite to 3.1 Flash-Lite. Measured on identical recordings, 3.1 wins on all three
+  /// axes that matter for dictation at essentially the same price:
+  ///   - speed: 1.6 s vs 1.9 s (1.4 s of audio), 1.3 s vs 3.0 s (8.9 s), 1.8 s vs 6.6 s (35 s),
+  ///     medians of 10 interleaved runs;
+  ///   - glossary adherence: 95% vs 77% of terms reproduced verbatim, on the maintainer's real
+  ///     35-term glossary — 3.5 turned "Claude CLI" into "Klodklee" and "Vault" into "Vulkan";
+  ///   - hallucination containment: both confabulate a sentence out of glossary vocabulary on
+  ///     silent audio, but 3.1's inventions ran 328–540 characters and were caught by
+  ///     `discardingImplausibleTranscript`, while 3.5 produced plausible-length sentences that
+  ///     passed the gate and would have landed on the clipboard (7 of 9 probes).
+  ///
+  /// This reverses the transcription half of `migrateGeminiModelDefaults`, which moved installs
+  /// 3.1 → 3.5 on the assumption that the cheaper audio-input rate dominated. That still holds for
+  /// price, but the quality and latency gap was not measured at the time and outweighs it.
+  private func migrateTranscriptionDefaultTo31FlashLite() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: UserDefaultsKeys.didMigrateTranscriptionTo31FlashLite) else { return }
+    defaults.set(true, forKey: UserDefaultsKeys.didMigrateTranscriptionTo31FlashLite)
+
+    // Only installs sitting on exactly the value the previous migration wrote are moved; anyone
+    // who picked a different model deliberately keeps it. Same limitation as the migrations
+    // above: a user who chose 3.5 Flash-Lite by hand is indistinguishable from one the earlier
+    // migration put there, and is moved too. Reversible in Settings → Dictate.
+    let keys = [
+      UserDefaultsKeys.selectedTranscriptionModel,
+      UserDefaultsKeys.selectedTranscriptionModelForMeetings,
+    ]
+    for key in keys {
+      guard let stored = defaults.string(forKey: key),
+            stored == TranscriptionModel.gemini35FlashLite.rawValue else { continue }
+      defaults.set(TranscriptionModel.gemini31FlashLite.rawValue, forKey: key)
+      DebugLogger.log("MIGRATION: \(key) \(stored) → \(TranscriptionModel.gemini31FlashLite.rawValue)")
     }
   }
 

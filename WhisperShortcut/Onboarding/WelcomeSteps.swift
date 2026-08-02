@@ -156,10 +156,11 @@ struct WelcomeAPIKeysStep: View {
   @Binding var hasOpenAIKey: Bool
   @Binding var hasXAIKey: Bool
   @Binding var hasAnthropicKey: Bool
+  @Binding var hasOpenRouterKey: Bool
   @Binding var offlineReady: Bool
 
   private var canContinue: Bool {
-    hasGeminiKey || hasOpenAIKey || hasXAIKey || hasAnthropicKey || offlineReady
+    hasGeminiKey || hasOpenAIKey || hasXAIKey || hasAnthropicKey || hasOpenRouterKey || offlineReady
   }
 
   var body: some View {
@@ -172,7 +173,7 @@ struct WelcomeAPIKeysStep: View {
           Text("Add a key — or start offline")
             .font(.title2)
             .fontWeight(.semibold)
-          Text("Any single provider key unlocks chat features and is stored in the macOS Keychain. Or skip the key entirely and dictate fully offline with local Whisper.")
+          Text("Any single provider key unlocks chat features and is stored in the macOS Keychain. Or connect OpenRouter with one click and skip keys entirely — or skip the cloud altogether and dictate offline with local Whisper.")
             .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -181,6 +182,10 @@ struct WelcomeAPIKeysStep: View {
 
       ScrollView(showsIndicators: true) {
         VStack(spacing: 14) {
+          // First because it is the only row a brand-new user can finish without leaving the app,
+          // opening a dashboard, or copying anything — including creating the account itself.
+          OnboardingOpenRouterRow(isConfigured: $hasOpenRouterKey)
+
           OnboardingAPIKeyRow(
             providerName: "Google Gemini",
             placeholder: "AIza…",
@@ -347,12 +352,129 @@ struct OnboardingOfflineRow: View {
       || KeychainManager.shared.hasNonEmpty(.openAI)
       || KeychainManager.shared.hasNonEmpty(.xai)
       || KeychainManager.shared.hasNonEmpty(.anthropic)
+      || KeychainManager.shared.hasNonEmpty(.openRouter)
     if !hasCloudKey {
       UserDefaults.standard.set(
         TranscriptionModel.whisperBase.rawValue,
         forKey: UserDefaultsKeys.selectedTranscriptionModel)
       DebugLogger.log("ONBOARDING: offline Whisper Base ready; set as default transcription model")
     }
+  }
+}
+
+/// One-click OpenRouter sign-in for onboarding.
+///
+/// Every other row here assumes the user already went to a provider dashboard and generated a key.
+/// This one does not: OpenRouter's PKCE flow creates the account, takes the payment details, and
+/// hands the app a key without the user ever seeing one — so it is the only row that can take
+/// somebody from "just installed this" to "dictation works" without leaving the window.
+struct OnboardingOpenRouterRow: View {
+  @Binding var isConfigured: Bool
+  @ObservedObject private var oauthService = OpenRouterOAuthService.shared
+
+  @State private var isAuthorizing = false
+  @State private var errorMessage: String?
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 8) {
+        Text("OpenRouter")
+          .font(.callout)
+          .fontWeight(.semibold)
+        Text("No key needed")
+          .font(.caption2)
+          .fontWeight(.medium)
+          .padding(.horizontal, 6)
+          .padding(.vertical, 2)
+          .background(Color.accentColor.opacity(0.15))
+          .foregroundColor(.accentColor)
+          .clipShape(Capsule())
+        if oauthService.isConnected {
+          Label("Connected", systemImage: "checkmark.seal.fill")
+            .font(.caption)
+            .foregroundStyle(.green)
+        }
+        Spacer()
+        Link("openrouter.ai", destination: URL(string: "https://openrouter.ai")!)
+          .font(.caption)
+          .pointerCursorOnHover()
+      }
+
+      Text("Sign in once and use models from every provider through one account. No account yet? The same flow creates one. You pay OpenRouter directly for what you use.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      HStack(spacing: 8) {
+        if oauthService.isConnected {
+          Button("Disconnect") {
+            oauthService.disconnect()
+            isConfigured = false
+          }
+          Link("Add credits", destination: OpenRouterOAuthConfig.creditsURL)
+            .font(.callout)
+            .pointerCursorOnHover()
+        } else {
+          Button("Connect OpenRouter Account") {
+            connect()
+          }
+          .buttonStyle(.borderedProminent)
+          .disabled(isAuthorizing)
+
+          if isAuthorizing {
+            ProgressView()
+              .controlSize(.small)
+          }
+        }
+        Spacer()
+      }
+
+      if let errorMessage {
+        Text(errorMessage)
+          .font(.caption)
+          .foregroundStyle(.red)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(12)
+    .background(Color.primary.opacity(0.04))
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+    .onAppear {
+      oauthService.refreshConnectionState()
+      isConfigured = oauthService.isConnected
+    }
+  }
+
+  private func connect() {
+    isAuthorizing = true
+    errorMessage = nil
+    Task {
+      do {
+        if try await oauthService.connect() {
+          isConfigured = true
+          // A brand-new user has no other credential, so leaving the default transcription model
+          // selected would send them to a provider they cannot reach. Point Dictate at what they
+          // just connected.
+          adoptOpenRouterAsTranscriptionModelIfNoOtherCredential()
+          ModelSelectionReconciler.reconcileAll()
+        }
+      } catch {
+        errorMessage = error.localizedDescription
+      }
+      isAuthorizing = false
+    }
+  }
+
+  private func adoptOpenRouterAsTranscriptionModelIfNoOtherCredential() {
+    let hasOtherCloudKey = KeychainManager.shared.hasNonEmpty(.google)
+      || KeychainManager.shared.hasNonEmpty(.openAI)
+      || KeychainManager.shared.hasNonEmpty(.xai)
+      || KeychainManager.shared.hasNonEmpty(.anthropic)
+    guard !hasOtherCloudKey else { return }
+    UserDefaults.standard.set(
+      TranscriptionModel.openRouterTranscription.rawValue,
+      forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    DebugLogger.log("ONBOARDING: OpenRouter connected; set as default transcription model")
   }
 }
 

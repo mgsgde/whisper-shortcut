@@ -40,6 +40,13 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
+      // Last of the provider entries because it is the odd one out: no key to paste, so it does not
+      // fit APIKeyEntrySection's shape. Placed here anyway so "where do I add a provider" has one
+      // answer rather than two.
+      OpenRouterConnectionSection()
+
+      SpacedSectionDivider()
+
       KeyboardShortcutsSection(viewModel: viewModel, focusedField: $focusedField)
 
       SpacedSectionDivider()

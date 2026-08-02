@@ -7,10 +7,12 @@ description: Audit OpenAI, Gemini, xAI (Grok), and Anthropic model lineups again
 
 Systematic audit of the current model lineups at OpenAI, Google Gemini, xAI (Grok), and Anthropic (Claude) — compare against what this repo uses today and recommend concrete migrations, then **prove the recommendations work** by running the local test scripts. Use this when the user asks "are we on the latest models?", "what's new in LLMs?", "should we switch to X?", or simply runs `/audit-llm-models`.
 
-This command audits along **two axes**:
+This command audits along **four axes**:
 
 1. **Currency** — for each feature, is the default still the newest GA model that fits the role? (stay current: the user heard about Grok 4.3 from X.com instead of from us — don't let that happen again.)
 2. **Provider coverage** — for each feature, does the app offer a usable model from *every* provider that has one? The goal: **a user who supplies only one provider's API key can still use every feature of the app.** Any feature that is single-provider (e.g. a role where only one provider currently ships a capable model) is a coverage gap — flag it, and if a competing provider ships a capable model, recommend adding it.
+3. **Empirical fitness** — for transcription, *measure* rather than assume: latency, glossary adherence, and silence hallucination, via `scripts/benchmark-transcription.py`. This axis exists because assuming cost the app a default: 3.5 Flash-Lite was made the dictation default in 2026-07 on the (correct) grounds that its audio-input rate is cheaper, and a measurement in 2026-08 showed it was 3.6× slower than 3.1 Flash-Lite on a 35 s dictation, reproduced glossary terms 77% vs 95% of the time, and leaked invented transcripts past the app's plausibility gates that 3.1's did not. **A price table cannot tell you any of that.**
+4. **Pareto pruning** — every model offered must sit on the price/performance frontier. When one model of the same provider is better-or-equal on *every* axis and strictly better on at least one, the loser comes out of the lineup. See "Pareto pruning" below; the rule itself lives in the `llm-model-docs` skill.
 
 The throughline is honesty: training data is stale, so every currency recommendation AND every "provider X now has a capable model for this role" coverage claim MUST be verified against the live API before it ships.
 
@@ -49,7 +51,37 @@ The throughline is honesty: training data is stale, so every currency recommenda
    - **Partial Gemini failure:** If most `[current]` lines are OK and one slug returns **404**, treat it as a **retired enum case** (check deprecations), not a key problem. After removal, move the slug to `LEGACY_RETIRED_TEXT_MODELS` in `test-gemini-models.sh` with **must 404** (same pattern as OpenAI `LEGACY_CHAT_MODELS`), or add it there until the enum case is removed.
    - **Uniform Gemini failure:** If every Gemini line fails with the same HTTP code, probe one request and read `error.message` (expired key vs outage) before reporting model failures. Report each provider's script result separately.
 
-5. **Make the recommendations.** Each one must include the exact replacement model ID, the doc URL where you confirmed it, the test-script line that proves it works against the user's API key, and what code change implements it.
+5. **Benchmark the transcription and Dictate Prompt lineups.** `test-*-models.sh` proves a model *serves*; it says nothing about whether it is a good model to dictate with. Run:
+   ```
+   python3 scripts/benchmark-transcription.py            # latency + glossary + silence, ~15 min
+   python3 scripts/benchmark-transcription.py --suite latency --rounds 10
+   python3 scripts/benchmark-dictate-prompt.py          # rule compliance for audio-chat models
+   python3 scripts/benchmark-dictate-prompt.py --cases edit-not-append --rounds 6
+   ```
+   The second script covers the **Dictate Prompt** path (chat completions with an inline
+   `input_audio` part), which the transcription benchmark cannot see at all. It scores rule
+   compliance rather than accuracy: does the model *apply* the spoken instruction instead of
+   appending it, keep a casual register casual, leave a wrong date alone, avoid turning prose into
+   bullets. Both scripts score output **after** the app's own post-processing, so a number here is
+   what the user would actually get — when you change that post-processing, update the mirrored
+   logic in the script too, or the benchmark starts measuring a build that does not exist.
+   It reads the user's **real** Dictation prompt and Whisper Glossary from the app container, so the numbers reflect their vocabulary, not a synthetic one. Read the method notes in the script's docstring before interpreting output — in particular, latency must come from interleaved shuffled rounds and be reported as a median. A sequential per-model loop produced 2× differences that did not replicate.
+
+   Three things decide a transcription default, in this order:
+   - **Silence hallucination** — how often an invented transcript survives the app's plausibility gates and reaches the clipboard. A model that pastes fiction into the user's document is disqualifying, however fast or cheap it is. The script scores this through reimplementations of both gates in `TextProcessingUtility`.
+   - **Glossary adherence** — percentage of the user's own terms reproduced verbatim. This is what users actually perceive as "accuracy".
+   - **Latency** — median, at several audio lengths. Short-clip and long-clip rankings differ; report both.
+
+   For **Dictate Prompt**, the decisive measure is the `edit-not-append` case: the model must fold the spoken instruction into the text rather than glue it on the end. That single case separated `gpt-audio-1.5` (6/6) from `gpt-audio` and `gpt-audio-mini` (2/6) on 2026-08-02 and is what justified the migration.
+
+   Cost is the tie-breaker, not the lead criterion. When a new transcription or audio-chat model appears, add it to `MODELS` / `DEFAULT_MODELS` in the relevant script (with its request shape) and re-run before recommending it.
+
+6. **Apply the Pareto rule in both directions.** For each provider, lay out the models the app offers with their price, measured/known quality, speed, and context window, and ask: is any of them beaten on *every* axis by a sibling? Only then is it dominated and removed. The two mistakes to avoid, both of which have happened:
+   - Pruning by version number. A newer generation is not domination — Flash-Lite tiers cross on audio-input vs output price, and 3.1 beat 3.5 on speed and adherence while 3.5 was cheaper on audio input.
+   - Never pruning at all. A picker full of superseded models is its own failure; when a model is priced identically to a newer sibling and loses on every measured axis, remove it.
+   Also check the inverse: a frontier model the app simply never added is a violation too.
+
+7. **Make the recommendations.** Each one must include the exact replacement model ID, the doc URL where you confirmed it, the test-script line that proves it works against the user's API key, the benchmark numbers where the role is transcription, and what code change implements it.
 
 ## Constraints
 
@@ -75,6 +107,19 @@ The feature × provider table from workflow step 3. One row per feature, one cel
 ### Coverage gaps
 
 For every cell marked `gap` (provider ships a capable model the app doesn't offer): the feature, the missing provider, the exact model ID to add, the endpoint it uses, doc URL, and the live `curl`/test-script proof that the user's key can actually call it. If a gap can't be closed (provider has no such model, or the account isn't entitled — e.g. xAI TTS 403), say so explicitly so it's a known limitation, not an oversight. **Closing coverage gaps is how we reach the goal: every feature usable with any single provider's key.**
+
+### Transcription benchmark
+
+The table from `scripts/benchmark-transcription.py`: per model, silence leaks (n/total), glossary adherence (%), and median latency at each audio length. State the run parameters (rounds, date) so the next audit can compare like with like. If a suite was skipped, say which and why — a missing number is not a passing grade.
+
+### Pareto check
+
+One row per model the app offers, grouped by provider, with the axes that decide domination (input/output price, measured quality where available, speed, context window). Then two explicit lists:
+
+- **Dominated → remove** — for each, the sibling that beats it on every axis, with the numbers. Implement via `chatReplacement` (chat-facing models) or by deleting the enum case plus a `migrateLegacy*RawValue` entry.
+- **Frontier but missing** — models that belong in the lineup and are not there yet.
+
+If nothing is dominated, say so explicitly. "No pruning needed" is a valid result; silence is not.
 
 ### Recommended migrations
 

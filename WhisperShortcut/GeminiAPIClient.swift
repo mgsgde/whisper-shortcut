@@ -1121,7 +1121,7 @@ class GeminiAPIClient {
       }
       // 400 FAILED_PRECONDITION often means "enable billing" (e.g. free tier not available in region or for preview models)
       if statusCode == 400 && (status == "FAILED_PRECONDITION" || lowerMessage.contains("billing") || lowerMessage.contains("free tier") || lowerMessage.contains("payment")) {
-        return .billingRequired
+        return .billingRequired()
       }
       if lowerMessage.contains("quota") || lowerMessage.contains("exceeded") {
         return .quotaExceeded(retryAfter: retryAfter)

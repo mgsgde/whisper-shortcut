@@ -1,9 +1,11 @@
 import SwiftUI
 
 /// Configuration for the explicit **Custom endpoint** chat model (OpenRouter, OpenInference, LiteLLM, …).
-/// Shown in Settings → Chat. Select **Custom endpoint (OpenRouter / proxy)** in the chat model
+/// Shown in Settings → Chat. Select the custom-endpoint chat model
 /// picker (or `/custom` in chat) to use this URL — regular OpenAI models keep using api.openai.com.
 struct CustomOpenAIChatEndpointSection: View {
+  @ObservedObject private var oauthService = OpenRouterOAuthService.shared
+
   @State private var endpointURL: String = ""
   @State private var modelID: String = ""
   @State private var apiKey: String = ""
@@ -14,7 +16,7 @@ struct CustomOpenAIChatEndpointSection: View {
       SectionHeader(
         title: "Custom OpenAI-compatible Endpoint",
         systemImage: "arrow.triangle.branch",
-        subtitle: "Configure your proxy here, then select **Custom endpoint (OpenRouter / proxy)** as the chat model (or type `/custom` in chat). Regular OpenAI models (GPT-5, …) are unchanged."
+        subtitle: "Configure your proxy here, then pick it as the chat model (or type `/custom` in chat). Regular OpenAI models (GPT-5, …) are unchanged."
       )
 
       HStack(alignment: .center, spacing: 16) {
@@ -113,16 +115,48 @@ struct CustomOpenAIChatEndpointSection: View {
             .accessibilityLabel(isKeyVisible ? "Hide API key" : "Show API key")
           }
 
-          Text("Proxy-specific key (e.g. OpenInference `sk-oi-…`). When empty, the OpenAI API key from Settings → General is used.")
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+          // Always state which credential is in play, not just the empty case. This field is one
+          // slot shared by every custom endpoint, so a key left over from a *different* proxy is
+          // invisible here — and used to be silently preferred, which surfaced as
+          // "API key is invalid for the custom endpoint" right after a successful sign-in.
+          if let source = OpenAIChatPreferences.resolvedCredential?.source {
+            HStack(spacing: 6) {
+              Image(systemName: source == .openRouterAccount ? "checkmark.circle.fill" : "info.circle")
+                .foregroundColor(source == .openRouterAccount ? .green : .secondary)
+              Text("Using \(source.description).")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+          } else {
+            Text("No usable key yet. Enter an endpoint-specific key here, or — for an OpenRouter base URL — connect your account in Settings → General.")
+              .font(.caption)
+              .foregroundColor(.orange)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+
+          if OpenAIChatPreferences.isOpenRouterEndpoint
+            && !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && oauthService.isConnected {
+            Text("This endpoint-specific key is ignored while your OpenRouter account is connected. Clear it if you meant to use it.")
+              .font(.caption)
+              .foregroundColor(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         }
 
         Spacer()
       }
 
       HStack(spacing: 12) {
+        Button("Use OpenRouter preset") {
+          OpenAIChatPreferences.applyOpenRouterPreset()
+          endpointURL = SettingsDefaults.openRouterChatEndpointURL
+          modelID = SettingsDefaults.openRouterChatModelID
+          ModelSelectionReconciler.reconcileAll()
+        }
+        .help("Point chat at OpenRouter. If you connected your account in Settings → Dictate, no key is needed.")
+
         Button("Use OpenInference preset") {
           OpenAIChatPreferences.applyOpenInferencePreset()
           endpointURL = SettingsDefaults.openInferenceEndpointURL

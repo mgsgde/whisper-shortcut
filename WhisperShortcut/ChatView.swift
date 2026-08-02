@@ -180,10 +180,16 @@ class ChatViewModel: ObservableObject {
   @Published private(set) var allSessionsList: [ChatSession] = []
   @Published private(set) var currentSessionId: UUID = UUID()
   @Published private(set) var isMeetingActive: Bool = false
+  /// True between the stop request and the meeting actually being finished (its last chunk still has
+  /// to be transcribed). The bar says "Finishing…" for those seconds instead of "Recording".
+  @Published private(set) var isMeetingFinishing: Bool = false
   @Published private(set) var meetingSessionId: UUID? = nil
   var isCurrentSessionMeeting: Bool { session.isMeeting }
   var isCurrentSessionTheActiveMeeting: Bool { isMeetingActive && meetingSessionId == session.id }
+  /// True when the meeting this tab is showing is the one currently being wrapped up.
+  var isCurrentSessionFinishingMeeting: Bool { isMeetingFinishing && isCurrentSessionTheActiveMeeting }
   private var meetingCancellable: AnyCancellable?
+  private var meetingFinishingCancellable: AnyCancellable?
   private var summaryCancellable: AnyCancellable?
   /// Meeting stems we've already attempted to backfill a title for this app run, so a missing or
   /// failed summary doesn't trigger a fresh API call every time the meeting is viewed.
@@ -353,6 +359,10 @@ class ChatViewModel: ObservableObject {
     allSessionsList = store.allSessions()
     loadScrollAnchors()
     isMeetingActive = LiveMeetingTranscriptStore.shared.isSessionActive
+    isMeetingFinishing = LiveMeetingTranscriptStore.shared.isFinishing
+    meetingFinishingCancellable = LiveMeetingTranscriptStore.shared.$isFinishing
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] in self?.isMeetingFinishing = $0 }
     meetingCancellable = LiveMeetingTranscriptStore.shared.$isSessionActive
       .receive(on: DispatchQueue.main)
       .sink { [weak self] active in
@@ -447,13 +457,6 @@ class ChatViewModel: ObservableObject {
   func sendComposed(finalContent: String, attachedParts: [AttachedImagePart]) async {
     let hasContent = !finalContent.isEmpty || !attachedParts.isEmpty
     guard hasContent else { return }
-
-    // Chatting with the meeting that is recording right now: bring the note stream up to date so
-    // the next turn (and the notes the user is reading) cover the last few seconds too. This turn
-    // already carries the full transcript, so nothing depends on it landing first.
-    if isCurrentSessionTheActiveMeeting {
-      NotificationCenter.default.post(name: .liveMeetingNotesRefreshRequested, object: nil)
-    }
 
     errorMessage = nil
     // FIFO: a message sent while the model is still answering waits its turn instead of
@@ -856,6 +859,18 @@ class ChatViewModel: ObservableObject {
         let placeholder = ChatMessage(id: placeholderId, role: .model, content: "")
         appendMessage(placeholder, toSessionId: sessionId)
         let streamingBuffer = self.attachStreamingBuffer(for: placeholderId)
+
+        // Asking about a live meeting: the newest audio is still inside the recorder, so cut it and
+        // wait (briefly) for its transcript before the request goes out. Without this the model is
+        // shown a transcript that stops up to a full chunk before the question — exactly the moment
+        // the user is asking about. Deliberately after the placeholder: the question and the thinking
+        // indicator are already on screen, so the wait reads as the model working, not as a freeze.
+        // Keyed on `sessionId`, not the on-screen session: a send can target a background tab.
+        if isMeetingActive, meetingSessionId == sessionId {
+          await LiveMeetingTranscriptStore.shared.flushPendingAudio()
+          // Now that the last segment exists, let the note stream cover it too.
+          NotificationCenter.default.post(name: .liveMeetingNotesRefreshRequested, object: nil)
+        }
 
         var finalSources: [GroundingSource] = []
         var finalSupports: [GroundingSupport] = []
@@ -2088,10 +2103,15 @@ class ChatViewModel: ObservableObject {
   /// Translates a meeting-button tap into the right intent based on current session state:
   /// stop the active meeting, resume a finished meeting, or start a fresh one.
   func handleMeetingButtonTap() {
-    if isCurrentSessionTheActiveMeeting {
-      NotificationCenter.default.post(name: .chatStopLiveMeeting, object: nil)
-    } else if isMeetingActive {
-      // A meeting is running on a different session; treat as stop request
+    if isCurrentSessionTheActiveMeeting || isMeetingActive {
+      // Starting and resuming announce themselves (the bar turns red, the window comes up). Stopping
+      // does not: it has to drain the last chunk first, so without a word here a typed `/meeting`
+      // looks like it was swallowed. Only the non-obvious action gets a notice.
+      if isMeetingFinishing {
+        showNotice("Already stopping — saving the last seconds of audio.")
+        return
+      }
+      showNotice("Stopping the meeting — transcribing the last seconds…")
       NotificationCenter.default.post(name: .chatStopLiveMeeting, object: nil)
     } else if isCurrentSessionMeeting {
       requestResumeMeeting()
@@ -2846,7 +2866,10 @@ struct ChatView: View {
           if viewModel.isCurrentSessionTheActiveMeeting || viewModel.isCurrentSessionMeeting {
             meetingRecordingBar
           }
-          if viewModel.isCurrentSessionMeeting && meetingTab == .notes {
+          // The switcher is hidden while the meeting runs (see `meetingRecordingBar`), so a tab left
+          // on Notes from an earlier meeting must not keep the chat hidden behind it.
+          if viewModel.isCurrentSessionMeeting && meetingTab == .notes
+            && !viewModel.isCurrentSessionTheActiveMeeting {
             meetingNotesView
           } else {
             messageList(scrollActions: scrollActions)
@@ -3387,32 +3410,46 @@ struct ChatView: View {
   // MARK: - Error Banner
 
   private var meetingRecordingBar: some View {
-    let isRecording = viewModel.isCurrentSessionTheActiveMeeting
+    let isFinishing = viewModel.isCurrentSessionFinishingMeeting
+    let isRecording = viewModel.isCurrentSessionTheActiveMeeting && !isFinishing
     return VStack(spacing: 0) {
       HStack(spacing: 0) {
+        // Three states, not two. Stopping a meeting has to drain the last chunk through a
+        // transcription round trip, and a bar that keeps saying "Recording" through it made the stop
+        // look like it had failed — the one moment where the user is waiting for confirmation.
         HStack(spacing: 6) {
-          Circle()
-            .fill(isRecording ? Color.red : ChatTheme.secondaryText.opacity(0.4))
-            .frame(width: 7, height: 7)
-          Text(isRecording ? "Recording" : "Ended")
+          if isFinishing {
+            ProgressView().controlSize(.small).scaleEffect(0.6).frame(width: 7, height: 7)
+          } else {
+            Circle()
+              .fill(isRecording ? Color.red : ChatTheme.secondaryText.opacity(0.4))
+              .frame(width: 7, height: 7)
+          }
+          Text(isFinishing ? "Finishing…" : (isRecording ? "Recording" : "Ended"))
             .font(.system(size: 11, weight: .medium))
             .foregroundColor(ChatTheme.secondaryText)
         }
-        .frame(width: 80, alignment: .leading)
+        .frame(width: 90, alignment: .leading)
+        .help(isFinishing ? "Transcribing the last seconds of audio before saving the meeting" : "")
 
-        HStack(spacing: 2) {
-          ForEach(MeetingTab.allCases, id: \.self) { tab in
-            Button(action: { meetingTab = tab }) {
-              Text(tab.rawValue)
-                .font(.system(size: 12, weight: meetingTab == tab ? .semibold : .regular))
-                .foregroundColor(meetingTab == tab ? ChatTheme.primaryText : ChatTheme.secondaryText)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .background(meetingTab == tab ? ChatTheme.windowBackground : Color.clear)
-                .cornerRadius(4)
-                .contentShape(Rectangle())
+        // While the meeting runs, the notes stream inline in the chat, so a switcher to a second
+        // surface holding the same notes is a choice between identical content. It comes back when
+        // the meeting has ended, where Notes carries the summary the chat does not show.
+        if !viewModel.isCurrentSessionTheActiveMeeting {
+          HStack(spacing: 2) {
+            ForEach(MeetingTab.allCases, id: \.self) { tab in
+              Button(action: { meetingTab = tab }) {
+                Text(tab.rawValue)
+                  .font(.system(size: 12, weight: meetingTab == tab ? .semibold : .regular))
+                  .foregroundColor(meetingTab == tab ? ChatTheme.primaryText : ChatTheme.secondaryText)
+                  .padding(.horizontal, 12)
+                  .padding(.vertical, 5)
+                  .background(meetingTab == tab ? ChatTheme.windowBackground : Color.clear)
+                  .cornerRadius(4)
+                  .contentShape(Rectangle())
+              }
+              .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
           }
         }
 
@@ -3438,15 +3475,17 @@ struct ChatView: View {
           Button("Show Transcript File in Finder") { viewModel.revealMeetingTranscript() }
         }
 
+        // Stopping is not instant, so the button reports the wait instead of inviting a second press:
+        // pressing Stop again does nothing, and a control that looks live but isn't reads as broken.
         Button(action: {
           if isRecording {
             NotificationCenter.default.post(name: .chatStopLiveMeeting, object: nil)
-          } else {
+          } else if !isFinishing {
             // Rehydrate this meeting's transcript/notes before resuming (see requestResumeMeeting).
             viewModel.requestResumeMeeting()
           }
         }) {
-          Text(isRecording ? "Stop" : "Resume")
+          Text(isFinishing ? "Stopping…" : (isRecording ? "Stop" : "Resume"))
             .font(.system(size: 11, weight: .medium))
             .foregroundColor(isRecording ? .white : ChatTheme.primaryText)
             .padding(.horizontal, 10)
@@ -3456,6 +3495,8 @@ struct ChatView: View {
             .overlay(isRecording ? nil : RoundedRectangle(cornerRadius: 4).stroke(ChatTheme.secondaryText.opacity(0.3), lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .disabled(isFinishing)
+        .opacity(isFinishing ? 0.5 : 1)
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 6)
@@ -5164,30 +5205,15 @@ private struct CopyReplyButtonView: View {
   /// Resolved on click, not per render — for image-bearing replies the marker strip
   /// rebuilds a multi-MB string, which must not run on every streaming re-render.
   let text: () -> String
-  @State private var isHovered = false
 
   var body: some View {
-    Button {
+    MessageActionButton(
+      systemImage: "doc.on.doc",
+      help: "Copy this reply to the clipboard"
+    ) {
       NSPasteboard.general.clearContents()
       NSPasteboard.general.setString(text(), forType: .string)
-    } label: {
-      Image(systemName: "doc.on.doc")
-        .font(.system(size: 13))
-        .foregroundColor(isHovered ? ChatTheme.primaryText : ChatTheme.secondaryText.opacity(0.75))
-        .frame(width: 28, height: 28)
-        .contentShape(Rectangle())
-        .background(
-          RoundedRectangle(cornerRadius: 6)
-            .fill(isHovered ? ChatTheme.primaryText.opacity(0.08) : Color.clear)
-        )
     }
-    .buttonStyle(.plain)
-    .onHover { inside in
-      isHovered = inside
-    }
-    .pointerCursorOnHover()
-    .help("Copy this reply to the clipboard")
-    .accessibilityLabel("Copy this reply to the clipboard")
   }
 }
 
@@ -5197,29 +5223,13 @@ private struct CopyReplyButtonView: View {
 private struct DownloadImageButtonView: View {
   /// Resolved on click, not per render — decoding the marker rebuilds a multi-MB Data blob.
   let image: () -> (data: Data, mimeType: String)?
-  @State private var isHovered = false
 
   var body: some View {
-    Button {
-      saveImage()
-    } label: {
-      Image(systemName: "square.and.arrow.down")
-        .font(.system(size: 13))
-        .foregroundColor(isHovered ? ChatTheme.primaryText : ChatTheme.secondaryText.opacity(0.75))
-        .frame(width: 28, height: 28)
-        .contentShape(Rectangle())
-        .background(
-          RoundedRectangle(cornerRadius: 6)
-            .fill(isHovered ? ChatTheme.primaryText.opacity(0.08) : Color.clear)
-        )
-    }
-    .buttonStyle(.plain)
-    .onHover { inside in
-      isHovered = inside
-    }
-    .pointerCursorOnHover()
-    .help("Download this image")
-    .accessibilityLabel("Download this image")
+    MessageActionButton(
+      systemImage: "square.and.arrow.down",
+      help: "Download this image",
+      action: saveImage
+    )
   }
 
   private func saveImage() {
@@ -5261,27 +5271,14 @@ private struct DownloadImageButtonView: View {
 /// Re-sends the message (same text and attachments) and regenerates the response.
 private struct RetryButtonView: View {
   let action: () -> Void
-  @State private var isHovered = false
 
   var body: some View {
-    Button(action: action) {
-      Image(systemName: "arrow.clockwise")
-        .font(.system(size: 13))
-        .foregroundColor(isHovered ? ChatTheme.primaryText : ChatTheme.secondaryText.opacity(0.75))
-        .frame(width: 28, height: 28)
-        .contentShape(Rectangle())
-        .background(
-          RoundedRectangle(cornerRadius: 6)
-            .fill(isHovered ? ChatTheme.primaryText.opacity(0.08) : Color.clear)
-        )
-    }
-    .buttonStyle(.plain)
-    .onHover { inside in
-      isHovered = inside
-    }
-    .pointerCursorOnHover()
-    .help("Send this message again and regenerate the response")
-    .accessibilityLabel("Retry this message")
+    MessageActionButton(
+      systemImage: "arrow.clockwise",
+      help: "Send this message again and regenerate the response",
+      accessibilityText: "Retry this message",
+      action: action
+    )
   }
 }
 
@@ -5290,11 +5287,15 @@ private struct RetryButtonView: View {
 private struct ReadAloudButtonView: View {
   /// Resolved on click, not per render — see `CopyReplyButtonView.text`.
   let text: () -> String
-  @State private var isHovered = false
   @State private var isTTSActive = false
 
   var body: some View {
-    Button {
+    MessageActionButton(
+      systemImage: isTTSActive ? "stop.fill" : "speaker.wave.2",
+      isActive: isTTSActive,
+      help: isTTSActive ? "Click to stop" : "Read this reply aloud",
+      accessibilityText: isTTSActive ? "Reading aloud; click to stop" : "Read this reply aloud"
+    ) {
       if isTTSActive {
         NotificationCenter.default.post(name: .chatReadAloudStop, object: nil)
       } else {
@@ -5304,30 +5305,13 @@ private struct ReadAloudButtonView: View {
           userInfo: [Notification.Name.chatReadAloudTextKey: text()]
         )
       }
-    } label: {
-      Image(systemName: isTTSActive ? "stop.fill" : "speaker.wave.2")
-        .font(.system(size: 13))
-        .foregroundColor(isTTSActive ? ChatTheme.primaryText : (isHovered ? ChatTheme.primaryText : ChatTheme.secondaryText.opacity(0.75)))
-        .frame(width: 28, height: 28)
-        .contentShape(Rectangle())
-        .background(
-          RoundedRectangle(cornerRadius: 6)
-            .fill(isTTSActive ? ChatTheme.primaryText.opacity(0.08) : (isHovered ? ChatTheme.primaryText.opacity(0.08) : Color.clear))
-        )
     }
-    .buttonStyle(.plain)
-    .onHover { inside in
-      isHovered = inside
-    }
-    .pointerCursorOnHover()
     .onReceive(NotificationCenter.default.publisher(for: .ttsDidStart)) { _ in
       isTTSActive = true
     }
     .onReceive(NotificationCenter.default.publisher(for: .ttsDidStop)) { _ in
       isTTSActive = false
     }
-    .help(isTTSActive ? "Click to stop" : "Read this reply aloud")
-    .accessibilityLabel(isTTSActive ? "Reading aloud; click to stop" : "Read this reply aloud")
   }
 }
 
