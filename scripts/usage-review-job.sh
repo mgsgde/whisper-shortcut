@@ -101,14 +101,14 @@ fi
 # prevent.
 #
 # This is measured, not assumed. A throwaway LaunchAgent probing this directory on 2026-08-02
-# reported `list: DENIED`, `read: DENIED`, `interaction files visible: 0`, while the same commands
-# from a Terminal shell all succeeded. The model-audit job hits the same wall from the other side —
-# its benchmark falls back to a snapshot glossary because it cannot read the container either.
+# reported `list: DENIED`, `read: DENIED`, `interaction files visible: 0` — and after granting
+# /bin/bash Full Disk Access, `OK / OK / 15`, with `python3` and `wc` children inheriting the grant
+# (which is what matters: claude and python3 do the actual reading, not bash).
 #
-# So probe explicitly, and treat "cannot read" as loud failure rather than "no data".
+# The grant is in place, so this probe should pass. It stays because a revoked grant would
+# otherwise show up as a zero count and be reported as a quiet week — the one failure this whole
+# design exists to rule out. Treat "cannot read" as loud failure, never as "no data".
 # Fix when it fires: System Settings → Privacy & Security → Full Disk Access → add /bin/bash.
-# (That grants every bash script the same access — a real tradeoff, and the reason this job reports
-# rather than silently working around it.)
 TCC_OK=1
 ls "$CONTEXT_DIR" >/dev/null 2>&1 || TCC_OK=0
 if [ "$TCC_OK" -eq 1 ]; then
