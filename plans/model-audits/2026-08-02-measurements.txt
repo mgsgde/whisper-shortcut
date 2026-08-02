@@ -155,3 +155,55 @@ glossary: 36 terms
   8s gemini-3.5-flash         LEAKS (47 chars)                         'Ich habe mir jetzt mal sabaki.dance angeschaut.'
   8s gemini-3.6-flash         caught by glossary-echo gate (12 chars)  'sabaki.dance'
   8s gpt-4o-transcribe        LEAKS (34 chars)                         'Ok, dann starten wir jetzt einmal.'
+
+  gemini-3.1-flash-lite    1/3 invented transcripts reached the clipboard
+  gemini-3.5-flash-lite    3/3 invented transcripts reached the clipboard
+  gemini-3.5-flash         3/3 invented transcripts reached the clipboard
+  gemini-3.6-flash         1/3 invented transcripts reached the clipboard
+  gpt-transcribe           0/3 invented transcripts reached the clipboard
+  gpt-4o-transcribe        3/3 invented transcripts reached the clipboard
+  gpt-4o-mini-transcribe   0/3 invented transcripts reached the clipboard
+  grok-stt                 0/3 invented transcripts reached the clipboard
+
+## Dictate Prompt benchmark
+# Dictate Prompt benchmark
+
+models: gpt-audio, gpt-audio-1.5, gpt-audio-mini
+system prompt source: system-prompts.md (2479 chars)
+rounds: 1 per case
+
+### german-instruction-english-text — spoken: "Korrigiere die Rechtschreibung."
+
+### dont-fix-facts — spoken: "Korrigiere."
+  FAIL gpt-audio        altered the (deliberately wrong) date instead of leaving it alone
+       → 'Der Termin findet am 28. Februar statt, bitte trag ihn dir ein.'
+  FAIL gpt-audio-mini   altered the (deliberately wrong) date instead of leaving it alone
+       → 'Der Termin findet am 30. März statt, bitte trag ihn dir ein.'
+
+### preserve-tone — spoken: "Korrigiere."
+  FAIL gpt-audio        capitalised a deliberately lowercase message
+       → 'Yes!! Endlich läuft der Build durch 🎉 Hat nur 3 Tage gedauert.'
+  FAIL gpt-audio-1.5    capitalised a deliberately lowercase message
+       → 'Yes!! Endlich läuft der Build durch 🎉 Hat nur 3 Tage gedauert'
+  FAIL gpt-audio-mini   capitalised a deliberately lowercase message
+       → 'Yes! Endlich läuft der Build durch 🎉 Hat nur 3 Tage gedauert.'
+
+### edit-not-append — spoken: "Schreib dazu, dass ich später komme."
+  FAIL gpt-audio        appended to the selection instead of editing it
+       → 'Hallo Anna, ich komme morgen gegen neun Uhr vorbei. Ich komme später.'
+
+### correct-casual — spoken: "Korrigiere."
+
+### reformat-prose — spoken: "Formatiere neu."
+
+### dont-answer — spoken: "Korrigiere die Rechtschreibung."
+
+### translate — spoken: "Übersetze das ins Englische."
+
+### shorten — spoken: "Mach das kürzer."
+
+## Summary
+
+  gpt-audio        6/9 rule checks passed (67%)   median 1124 ms
+  gpt-audio-1.5    8/9 rule checks passed (89%)   median 1061 ms
+  gpt-audio-mini   7/9 rule checks passed (78%)   median 913 ms
