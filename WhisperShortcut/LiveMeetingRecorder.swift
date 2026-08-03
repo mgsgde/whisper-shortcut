@@ -44,6 +44,13 @@ class LiveMeetingRecorder: NSObject {
   /// How often to poll audio metering
   private let meteringInterval: TimeInterval
 
+  /// `AVAudioRecorder.record()` and `.stop()` block on CoreAudio's I/O thread and have been
+  /// caught wedging the main thread for seconds (see `ChunkedDictateRecorder`, same fix).
+  /// Serial on purpose: rotation enqueues the new recorder's `record()` before the old one's
+  /// `stop()`, and that order is what keeps capture gap-free.
+  private let audioQueue = DispatchQueue(
+    label: "com.whispershortcut.live-meeting-recorder", qos: .userInitiated)
+
   /// Double-buffer recorders
   private var recorderA: AVAudioRecorder?
   private var recorderB: AVAudioRecorder?
@@ -203,8 +210,11 @@ class LiveMeetingRecorder: NSObject {
     meteringTimer?.invalidate()
     meteringTimer = nil
 
-    if let activeRecorder = activeRecorder, activeRecorder.isRecording {
-      activeRecorder.stop()
+    // Deliberately not gated on `isRecording`: a stop landing in the window before the async
+    // `record()` has flipped that flag must still end the session. Queued behind any in-flight
+    // record()/stop(), so it can never overtake a rotation.
+    if let activeRecorder {
+      audioQueue.async { activeRecorder.stop() }
     }
   }
 
@@ -269,12 +279,27 @@ class LiveMeetingRecorder: NSObject {
     activeRecordingURL = url
     isRecorderAActive = isRecorderA
 
-    let success = recorder.record()
-    if !success {
-      throw LiveMeetingRecorderError.recordingFailed(reason: "Failed to start recording")
+    // State is committed above so `checkSilence` and `rotateAndDeliver` read a consistent
+    // recorder immediately; only the blocking `record()` waits on `audioQueue`. The metering
+    // guard simply skips the handful of ticks before `isRecording` flips true.
+    let startingChunkIndex = chunkIndex
+    audioQueue.async { [weak self] in
+      guard !recorder.record() else {
+        DebugLogger.logAudio("LIVE-MEETING: Started recording chunk \(startingChunkIndex) with recorder \(isRecorderA ? "A" : "B")")
+        return
+      }
+      DispatchQueue.main.async {
+        guard let self, self.activeRecorder === recorder, self.isSessionActive else { return }
+        let error = LiveMeetingRecorderError.recordingFailed(reason: "Failed to start recording")
+        DebugLogger.logError("LIVE-MEETING: Recorder failed to start, tearing down session")
+        self.isSessionActive = false
+        self.chunkTimer?.invalidate()
+        self.chunkTimer = nil
+        self.meteringTimer?.invalidate()
+        self.meteringTimer = nil
+        self.delegate?.liveMeetingRecorder(didFailWithError: error)
+      }
     }
-
-    DebugLogger.logAudio("LIVE-MEETING: Started recording chunk \(chunkIndex) with recorder \(isRecorderA ? "A" : "B")")
   }
 
   private func createRecordingURL(isRecorderA: Bool) -> URL {
@@ -367,25 +392,27 @@ class LiveMeetingRecorder: NSObject {
       chunkTimer = nil
       meteringTimer?.invalidate()
       meteringTimer = nil
-      if wasRecorderAActive {
-        recorderA?.stop()
-      } else {
-        recorderB?.stop()
-      }
+      let stopped = wasRecorderAActive ? recorderA : recorderB
       // Still deliver the completed chunk so in-flight audio isn't silently lost.
       // Mark it final because no further chunks will come (session torn down).
       if let url = completedRecordingURL {
-        DispatchQueue.main.async { [weak self] in
-          self?.delegate?.liveMeetingRecorder(
-            didFinishChunk: url,
-            chunkIndex: completedChunkIndex,
-            startTime: completedChunkStartTime,
-            isSilent: chunkWasSilent,
-            isFinal: true
-          )
-          self?.delegate?.liveMeetingRecorder(didFailWithError: error)
+        // Delivery waits for stop() — it is what closes the WAV, and the delegate reads
+        // the file as soon as it is handed the URL.
+        audioQueue.async { [weak self] in
+          stopped?.stop()
+          DispatchQueue.main.async {
+            self?.delegate?.liveMeetingRecorder(
+              didFinishChunk: url,
+              chunkIndex: completedChunkIndex,
+              startTime: completedChunkStartTime,
+              isSilent: chunkWasSilent,
+              isFinal: true
+            )
+            self?.delegate?.liveMeetingRecorder(didFailWithError: error)
+          }
         }
       } else {
+        audioQueue.async { stopped?.stop() }
         DispatchQueue.main.async { [weak self] in
           self?.delegate?.liveMeetingRecorder(didFailWithError: error)
         }
@@ -393,14 +420,13 @@ class LiveMeetingRecorder: NSObject {
       return
     }
 
-    if wasRecorderAActive {
-      recorderA?.stop()
-    } else {
-      recorderB?.stop()
-    }
-
-    if let url = completedRecordingURL {
-      DispatchQueue.main.async { [weak self] in
+    // Queued behind the new recorder's record(), so the seam stays gap-free. Delivery is
+    // chained after stop() because stop() is what closes the WAV the delegate will read.
+    let stopped = wasRecorderAActive ? recorderA : recorderB
+    audioQueue.async { [weak self] in
+      stopped?.stop()
+      guard let url = completedRecordingURL else { return }
+      DispatchQueue.main.async {
         self?.delegate?.liveMeetingRecorder(
           didFinishChunk: url,
           chunkIndex: completedChunkIndex,
@@ -413,7 +439,8 @@ class LiveMeetingRecorder: NSObject {
   }
 
   private func cleanupRecorder(_ recorder: AVAudioRecorder?) {
-    recorder?.stop()
+    guard let recorder else { return }
+    audioQueue.async { recorder.stop() }
   }
 }
 

@@ -55,6 +55,14 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
         AppConstants.dictateChunkSilenceDuration
           / (meteringInterval * Double(silenceSampleDecimation)))))
 
+  /// `AVAudioRecorder.record()` and `.stop()` both block on CoreAudio's I/O thread —
+  /// `AudioQueueXPC_Bridge::Start` and `AQ::API::Queue::AwaitAllPendingCallbacks` have each
+  /// been caught wedging the main thread for seconds in watchdog hang captures. They run
+  /// here instead. The queue is serial on purpose: rotation enqueues the new recorder's
+  /// `record()` before the old one's `stop()`, and that order is what keeps capture gap-free.
+  private let audioQueue = DispatchQueue(
+    label: "com.whispershortcut.chunked-dictate-recorder", qos: .userInitiated)
+
   // MARK: - State
   private var recorderA: AVAudioRecorder?
   private var recorderB: AVAudioRecorder?
@@ -111,7 +119,10 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     meteringTimer?.invalidate()
     meteringTimer = nil
 
-    guard isSessionActive, let recorder = activeRecorder, recorder.isRecording else { return }
+    // Deliberately not gated on `recorder.isRecording`: a stop that lands in the window
+    // before the async `record()` has flipped that flag must still end the session.
+    // `isSessionActive` is our own state and is the authoritative signal.
+    guard isSessionActive, let recorder = activeRecorder else { return }
     isSessionActive = false
 
     lastRecordingWasSilent = peakPowerDuringRecording < Self.silenceThresholdDB
@@ -119,15 +130,22 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
       "AUDIO: Recording peak \(String(format: "%.1f", peakPowerDuringRecording)) dB, threshold \(Self.silenceThresholdDB) dB, silent=\(lastRecordingWasSilent), chunks=\(chunkURLs.count + 1)"
     )
 
-    recorder.stop()  // final delivery continues in audioRecorderDidFinishRecording
+    // Queued behind any in-flight record()/stop(), so it can never overtake a rotation.
+    // Final delivery continues in audioRecorderDidFinishRecording.
+    audioQueue.async { recorder.stop() }
   }
 
   func cleanup() {
     meteringTimer?.invalidate()
     meteringTimer = nil
     isSessionActive = false
-    recorderA?.stop()
-    recorderB?.stop()
+    // Stops go to audioQueue; the closure's own strong refs keep the recorders alive past
+    // the nil-out below. The files deleted here are already-rotated chunks — never the
+    // recorder's own open file — so the deletion does not race the stop.
+    let live = [recorderA, recorderB].compactMap { $0 }
+    if !live.isEmpty {
+      audioQueue.async { live.forEach { $0.stop() } }
+    }
     recorderA = nil
     recorderB = nil
     activeRecorder = nil
@@ -195,7 +213,10 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     }
   }
 
-  private func startChunkRecorder(isRecorderA: Bool) throws {
+  /// Builds a configured recorder. Allocation is cheap and its failure is the one the
+  /// callers can still recover from, so it stays synchronous and keeps throwing; only the
+  /// blocking `record()` moves to `audioQueue` (see `startChunkRecorder`).
+  private func makeChunkRecorder() throws -> AVAudioRecorder {
     let documentsPath =
       FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
       ?? FileManager.default.temporaryDirectory
@@ -215,18 +236,36 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     let recorder = try AVAudioRecorder(url: url, settings: settings)
     recorder.delegate = self
     recorder.isMeteringEnabled = true
+    return recorder
+  }
 
-    guard recorder.record() else {
-      throw NSError(
-        domain: Constants.errorDomain, code: Constants.recordingFailedCode,
-        userInfo: [NSLocalizedDescriptionKey: "Failed to start recording"])
-    }
+  /// Commits the new recorder as active immediately, then starts it on `audioQueue`.
+  /// Committing first keeps `sampleMetering` and `rotateChunk` reading consistent state
+  /// without having to wait on CoreAudio; the metering guard simply skips the handful of
+  /// ticks before `isRecording` flips true.
+  private func startChunkRecorder(isRecorderA: Bool) throws {
+    let recorder = try makeChunkRecorder()
 
     if isRecorderA { recorderA = recorder } else { recorderB = recorder }
     activeRecorder = recorder
     isRecorderAActive = isRecorderA
     currentChunkWallStart = Date()
     consecutiveSilenceSamples = 0
+
+    audioQueue.async { [weak self] in
+      guard !recorder.record() else { return }
+      DispatchQueue.main.async {
+        guard let self, self.activeRecorder === recorder, self.isSessionActive else { return }
+        let error = NSError(
+          domain: Constants.errorDomain, code: Constants.recordingFailedCode,
+          userInfo: [NSLocalizedDescriptionKey: "Failed to start recording"])
+        DebugLogger.logError("AUDIO: Chunk recorder failed to start: \(error.localizedDescription)")
+        self.meteringTimer?.invalidate()
+        self.meteringTimer = nil
+        self.isSessionActive = false
+        self.delegate?.audioRecorderDidFailWithError(error)
+      }
+    }
   }
 
   // MARK: - Metering & rotation
@@ -279,11 +318,20 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     }
 
     peakPowerDuringChunk = -160
-    current.stop()
     chunkURLs.append(completedURL)
-    DebugLogger.logAudio(
-      "AUDIO: Rotated dictate chunk \(completedIndex) at silence boundary (silent=\(completedWasSilent), \(completedURL.lastPathComponent))")
-    onChunkFinalized?(completedURL, completedIndex, completedWasSilent)
+
+    // `stop()` lands on `audioQueue` behind the new recorder's `record()`, so the seam stays
+    // gap-free. `onChunkFinalized` waits for it to return: stop() is what closes the WAV, and
+    // DictateStreamingSession starts reading that file the moment it is told about it.
+    audioQueue.async { [weak self] in
+      current.stop()
+      DispatchQueue.main.async {
+        guard let self else { return }
+        DebugLogger.logAudio(
+          "AUDIO: Rotated dictate chunk \(completedIndex) at silence boundary (silent=\(completedWasSilent), \(completedURL.lastPathComponent))")
+        self.onChunkFinalized?(completedURL, completedIndex, completedWasSilent)
+      }
+    }
   }
 
   // MARK: - Final delivery

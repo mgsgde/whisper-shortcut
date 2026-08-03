@@ -27,7 +27,7 @@ Status values: `proposed` · `accepted` · `shipped` · `measured` · `rejected`
 
 | ID  | Idea | Evidence | Status | Run | Notes |
 | --- | ---- | -------- | ------ | --- | ----- |
-| _(empty — first run has not happened yet)_ | | | | | |
+| I1 | `[code]` Move `ChunkedDictateRecorder`'s `AVAudioRecorder.record()`/`.stop()` off the main thread — `beginSession()` (start) and `rotateChunk()` (mid-recording rotation) call them synchronously, and both are the culprit in a captured hang | 2 watchdog hangs this week, both ≥4s, both with `ChunkedDictateRecorder` on top of the main-thread stack: `hang-20260728-165723.txt` (`rotateChunk` → `AVAudioRecorder.stop()` → `AQ::API::Queue::AwaitAllPendingCallbacks`) and `hang-20260802-170842.txt` (`beginSession`/`startChunkRecording` → `AVAudioRecorder.record()` → `AudioQueueXPC_Bridge::Start`). Same root cause both times. | shipped | 2026-08-03 | Not in the rejected table. Fits `analyze-chat-freeze`'s "main-thread hang" pattern but is a dictation-recording hang, not a chat one — new variant. Shipped 2026-08-03: `record()`/`stop()` now run on a serial `audioQueue`; state is committed on main first, `onChunkFinalized` waits for `stop()` so the WAV is closed before it is read. Same fix applied to `LiveMeetingRecorder` in the same pass — identical defect (main-thread `record()`/`stop()`, `didFinishChunk` firing before the WAV was closed) in a live path, found by structural sweep, **no captured hang of its own**; meetings rotate far more often than dictations so exposure is higher. `AudioRecorder` has the defect too but is the dead branch of `useChunkedDictateRecorder = true` — deliberately left alone. Verify by absence — no new `hang-*.txt` naming either recorder in the next review window. |
 
 ## Rejected — do not re-propose
 
@@ -39,4 +39,4 @@ Status values: `proposed` · `accepted` · `shipped` · `measured` · `rejected`
 
 | Run | Date | Window reviewed | Signals seen | Entries added |
 | --- | ---- | --------------- | ------------ | ------------- |
-| _(none yet)_ | | | | |
+| 1 | 2026-08-03 | 2026-07-27 → 2026-08-02 (1109 interactions) | 28 (all `pasted`; signal stream only live ~1.5h on 08-02) | I1 |
