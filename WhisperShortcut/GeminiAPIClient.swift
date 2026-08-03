@@ -388,6 +388,11 @@ class GeminiAPIClient {
         // `hasYielded` and never retry, since that would duplicate streamed output.
         var attempt = 0
         var hasYielded = false
+        // Mutable so the YouTube fallback below can re-send the same turn with the video clipped.
+        var effectiveContents = contents
+        var didClipVideoForRetry = false
+        var didStripVideoForRetry = false
+        var lastStatusCode: Int?
         while true {
         attempt += 1
         do {
@@ -396,7 +401,7 @@ class GeminiAPIClient {
           request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
           request.timeoutInterval = Constants.resourceTimeout
 
-          var body: [String: Any] = ["contents": contents]
+          var body: [String: Any] = ["contents": effectiveContents]
           var tools: [[String: Any]] = []
           if useGrounding {
             tools.append(["google_search": [:]])
@@ -450,6 +455,7 @@ class GeminiAPIClient {
             throw TranscriptionError.networkError("Invalid response")
           }
           if http.statusCode < 200 || http.statusCode >= 300 {
+            lastStatusCode = http.statusCode
             var errData = Data()
             for try await b in bytes { errData.append(b) }
             let text = String(data: errData, encoding: .utf8) ?? ""
@@ -613,6 +619,41 @@ class GeminiAPIClient {
           if Task.isCancelled {
             continuation.finish(throwing: error)
             return
+          }
+          // A YouTube video attached without a clip window fails with a bare HTTP 400 once the
+          // video is longer than the model accepts (verified 2026-08-03 against gemini-3.6-flash:
+          // a 19-minute video passes, a 2-hour one is rejected). The API gives no distinguishable
+          // reason — same generic INVALID_ARGUMENT as a malformed request — so the only way to
+          // tell the cases apart is to retry with the opening window clipped. One attempt only.
+          if !hasYielded, lastStatusCode == 400, !didClipVideoForRetry,
+             let clipped = YouTubeVideoLink.clipUnclippedVideoParts(in: effectiveContents) {
+            didClipVideoForRetry = true
+            effectiveContents = clipped
+            if let lastIndex = effectiveContents.indices.last,
+               var parts = effectiveContents[lastIndex]["parts"] as? [[String: Any]] {
+              parts.append(["text": YouTubeVideoLink.fallbackClipNote])
+              effectiveContents[lastIndex]["parts"] = parts
+            }
+            DebugLogger.log(
+              "GEMINI-CHAT-STREAM: HTTP 400 with an unclipped YouTube video — retrying clipped to the first \(YouTubeVideoLink.clipWindowSeconds)s")
+            continue
+          }
+          // Gemini only opens *public* YouTube videos: a private, unlisted, or region-restricted
+          // link comes back as a bare 403 PERMISSION_DENIED. The video was attached automatically
+          // from a link in the user's text, so failing the turn punishes the user for a question
+          // that may have nothing to do with the video. Retry once without it.
+          if !hasYielded, lastStatusCode == 403, !didStripVideoForRetry,
+             let stripped = YouTubeVideoLink.removeVideoParts(in: effectiveContents) {
+            didStripVideoForRetry = true
+            effectiveContents = stripped
+            if let lastIndex = effectiveContents.indices.last,
+               var parts = effectiveContents[lastIndex]["parts"] as? [[String: Any]] {
+              parts.append(["text": YouTubeVideoLink.permissionDeniedNote])
+              effectiveContents[lastIndex]["parts"] = parts
+            }
+            DebugLogger.log(
+              "GEMINI-CHAT-STREAM: HTTP 403 with a YouTube video attached — video is not public, retrying without it")
+            continue
           }
           // Retry only transient, pre-stream failures (server/unavailable or rate limit).
           let te = error as? TranscriptionError

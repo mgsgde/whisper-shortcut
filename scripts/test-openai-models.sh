@@ -52,10 +52,19 @@ declare -a CANDIDATE_CHAT_MODELS=(
   # seen on 2026-07-14 is gone: 10/10 consecutive 200s each). "gpt-5.6" is an alias for -sol.
   # gpt-5.5-pro intentionally NOT listed: 404s on this key (10/10, 2026-07-22) — not entitled.
 )
-# Audio-chat candidates (input_audio) — newer generations of gpt-audio.
-# gpt-audio-1.5 graduated to CURRENT_AUDIO_CHAT_MODELS on 2026-08-02: OpenAI deprecated
-# `gpt-audio` and the probe now sends real speech, which was the condition this note asked for.
+# Audio-chat candidates (input_audio) — newer generations of gpt-audio. Empty since 2026-08-03:
+# gpt-audio-1.5 graduated to CURRENT_AUDIO_CHAT_MODELS on 2026-08-02 (OpenAI deprecated `gpt-audio`
+# and the probe now sends real speech, which was the condition this note asked for), and
+# gpt-audio-mini moved to DEPRECATED_AUDIO_CHAT_MODELS.
 declare -a CANDIDATE_AUDIO_CHAT_MODELS=(
+)
+# Deprecated upstream but still serving — probed to prove they have not been pulled early, NOT as
+# migration targets. Do not promote anything from here.
+# gpt-audio-mini: deprecated 2026-08 with shutdown 2027-01-20 and gpt-audio-1.5 named as the
+# replacement (https://developers.openai.com/api/docs/deprecations). It also scored *below*
+# gpt-audio-1.5 on the Dictate Prompt benchmark (21/27 vs 22/27, 2026-08-03), so its lower latency
+# does not buy anything. When it starts 404ing, move it to LEGACY_CHAT_MODELS.
+declare -a DEPRECATED_AUDIO_CHAT_MODELS=(
   "gpt-audio-mini"
 )
 declare -a CURRENT_TRANSCRIPTION_MODELS=(
@@ -175,7 +184,10 @@ test_audio_chat_model() {
   fi
 }
 for m in "${CURRENT_AUDIO_CHAT_MODELS[@]}"; do test_audio_chat_model "$m" "current"; done
-for m in "${CANDIDATE_AUDIO_CHAT_MODELS[@]}"; do test_audio_chat_model "$m" "candidate"; done
+for m in "${CANDIDATE_AUDIO_CHAT_MODELS[@]:+${CANDIDATE_AUDIO_CHAT_MODELS[@]}}"; do
+  test_audio_chat_model "$m" "candidate"
+done
+for m in "${DEPRECATED_AUDIO_CHAT_MODELS[@]}"; do test_audio_chat_model "$m" "deprecated"; done
 
 echo ""
 echo "=== OpenAI legacy chat slugs (must 404 — confirms slug was retired by OpenAI) ==="

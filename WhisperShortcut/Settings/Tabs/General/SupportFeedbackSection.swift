@@ -9,6 +9,10 @@ import AppKit
 struct SupportFeedbackSection: View {
   @ObservedObject var viewModel: SettingsViewModel
 
+  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = true
+  @State private var usageReport: String?
+  @State private var isBuildingReport = false
+
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
@@ -72,6 +76,51 @@ struct SupportFeedbackSection: View {
           }
           .buttonStyle(PlainButtonStyle())
           .help("Email the developer")
+          .pointerCursorOnHover()
+
+          // Sits with the two contact channels because it is one: a report of how the app behaved
+          // is feedback, just the kind nobody can type from memory. Building it does blocking file
+          // I/O over up to 30 days of JSONL, so it runs off the main thread — this window must not
+          // beachball on a button press.
+          Button(action: {
+            guard !isBuildingReport else { return }
+            isBuildingReport = true
+            Task.detached(priority: .userInitiated) {
+              let report = UsageReport.build()
+              await MainActor.run {
+                isBuildingReport = false
+                usageReport = report
+              }
+            }
+          }) {
+            HStack(alignment: .center, spacing: 12) {
+              Image(systemName: "chart.bar.doc.horizontal")
+                .font(.system(size: 18))
+                .foregroundColor(.purple)
+                .opacity(0.85)
+
+              Text(isBuildingReport ? "Preparing report…" : "Share Usage Report")
+                .font(.body)
+                .fontWeight(.medium)
+                .textSelection(.enabled)
+
+              Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(SettingsConstants.cornerRadius)
+          }
+          .buttonStyle(PlainButtonStyle())
+          .disabled(!saveUsageData || isBuildingReport)
+          .opacity(saveUsageData ? 1 : 0.5)
+          // Disabled rather than hidden when logging is off: a feature nobody can see is a feature
+          // nobody turns the toggle on for.
+          .help(
+            saveUsageData
+              ? "See and share an anonymous summary of how you use the app"
+              : "Turn on \"Save usage data\" in Improvement settings to collect this"
+          )
           .pointerCursorOnHover()
 
           Button(action: {
@@ -175,6 +224,16 @@ struct SupportFeedbackSection: View {
           Spacer()
         }
         .padding(.top, 12)
+      }
+    }
+    .sheet(
+      isPresented: Binding(
+        get: { usageReport != nil },
+        set: { if !$0 { usageReport = nil } }
+      )
+    ) {
+      if let report = usageReport {
+        UsageReportSheet(report: report, onDismiss: { usageReport = nil })
       }
     }
   }

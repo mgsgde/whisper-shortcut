@@ -147,8 +147,10 @@ enum TextProcessingUtility {
   /// - Only unwraps shapes it fully understands. An `edits` array is applied against
   ///   `selectedText`, and only when *every* `find` string actually occurs in it; a single
   ///   unmatched fragment aborts the whole rewrite.
-  /// - Every bail-out returns the input unchanged, so the worst case is the behaviour before
-  ///   this existed.
+  /// - A bail-out on text it does not recognise returns the input unchanged, so the worst case is
+  ///   the behaviour before this existed. The one exception is an `edits` array it cannot apply:
+  ///   that is unmistakably our own protocol, never something the user asked for, so the selection
+  ///   comes back untouched instead — see `abandoningUnapplicableEdits`.
   static func unwrappingJSONEditResponse(_ text: String, selectedText: String?) -> String {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard trimmed.hasPrefix("{"), trimmed.hasSuffix("}"),
@@ -226,16 +228,32 @@ enum TextProcessingUtility {
       let find = (edit["find"] as? String) ?? (edit["original"] as? String)
       let replacement = Self.replacementText(in: edit)
       guard let find, let replacement, result.contains(find) else {
-        return Self.wholeSpanRewrite(edits: edits, selection: selection) ?? {
-          DebugLogger.logError(
-            "PROMPT-JSON-UNWRAP: edit entry did not apply cleanly — leaving the reply untouched")
-          return text
-        }()
+        return Self.wholeSpanRewrite(edits: edits, selection: selection)
+          ?? Self.abandoningUnapplicableEdits(selection: selection)
       }
       result = result.replacingOccurrences(of: find, with: replacement)
     }
     DebugLogger.log("PROMPT-JSON-UNWRAP: applied \(edits.count) edit(s) to the selection")
     return result
+  }
+
+  /// What to paste when the reply is unmistakably our own edit protocol but no reading of it
+  /// applies: the selection, unchanged.
+  ///
+  /// This used to return the raw reply so "the user sees something is off". Measured on
+  /// 2026-08-03, `gpt-audio-1.5` emitted `{"edits": [{"start": 40, "end": 44, "replacement":
+  /// "am"}]}` — a short index-based replacement that `wholeSpanRewrite` correctly refuses — and
+  /// that whole string is what would have replaced the user's paragraph. Both readings tell the
+  /// user the edit failed; only one of them destroys the text they had selected. Offsets are still
+  /// not honoured (see `wholeSpanRewrite`: an observed `end` was 41 characters short), so the
+  /// no-op is the best available outcome.
+  ///
+  /// Only reachable once an `edits` array has been found, i.e. never for JSON the user asked for.
+  private static func abandoningUnapplicableEdits(selection: String) -> String {
+    DebugLogger.logError(
+      "PROMPT-JSON-UNWRAP: edit entry did not apply cleanly — leaving the selection untouched "
+        + "rather than pasting the protocol JSON over it")
+    return selection
   }
 
   private static func replacementText(in edit: [String: Any]) -> String? {

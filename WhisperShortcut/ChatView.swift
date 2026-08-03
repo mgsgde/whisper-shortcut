@@ -219,6 +219,11 @@ class ChatViewModel: ObservableObject {
   /// In-flight send tasks keyed by session ID — multiple sessions can be sending simultaneously.
   private var sendTasks: [UUID: Task<Void, Never>] = [:]
 
+  /// Sessions whose in-flight send the *user* cancelled, with the number of queued messages that
+  /// Stop dropped along with it. Set by `cancelSend`, consumed once by the `CancellationError`
+  /// handler. Absence there means the watchdog cancelled instead — see `OutcomeSignal.chatStopped`.
+  private var userCancelledSessions: [UUID: Int] = [:]
+
   /// Live streaming bubbles keyed by their placeholder message id. Per-token updates write into
   /// `buffer.content` (a separate `ObservableObject`), not into `messages`, so a fast stream
   /// only re-renders the one bubble that observes its buffer — no `LazyVStack` diff, no
@@ -500,6 +505,10 @@ class ChatViewModel: ObservableObject {
     errorMessage = nil
     DebugLogger.log(
       "CHAT: Retry message (contentLen=\(original.content.count), attachments=\(original.attachedImageParts.count)) session=\(sessionId)")
+    // Emitted before the re-send, while `refTs` still points at the answer being rejected: once
+    // `performSend` logs the replacement turn, the marker moves on.
+    ContextLogger.shared.logSignal(
+      .chatRetry, mode: "geminiChat", detail: ["model": Self.openChatModel.rawValue])
     performSend(content: original.content, attachedParts: original.attachedImageParts)
   }
 
@@ -677,6 +686,11 @@ class ChatViewModel: ObservableObject {
     if dropped > 0 {
       DebugLogger.log("GEMINI-CHAT: Stop — dropped \(dropped) queued message(s) for this chat")
     }
+    // Record that *this* cancellation came from the user before triggering it. The watchdog
+    // cancels the very same task through `StallCancellationRegistry`, and by the time
+    // `CancellationError` is caught the two are indistinguishable — so the verdict has to be
+    // stamped here, at the only place that knows a human pressed Stop.
+    userCancelledSessions[sid] = dropped
     sendTasks[sid]?.cancel()
   }
 
@@ -1024,7 +1038,17 @@ class ChatViewModel: ObservableObject {
         }
         ReviewPrompter.shared.recordSuccessfulOperation()
       } catch is CancellationError {
-        DebugLogger.log("CHAT: Send cancelled (partialChars=\(markerPrefix.count + streamed.count))")
+        let partialChars = markerPrefix.count + streamed.count
+        let droppedByUser = self.userCancelledSessions.removeValue(forKey: sessionId)
+        DebugLogger.log("CHAT: Send cancelled (partialChars=\(partialChars))")
+        ContextLogger.shared.logSignal(
+          .chatStopped,
+          mode: "geminiChat",
+          detail: [
+            "reason": droppedByUser != nil ? "user" : "stall",
+            "partialChars": String(partialChars),
+            "dropped": String(droppedByUser ?? 0),
+          ])
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
           partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed))
@@ -2611,6 +2635,18 @@ class ChatViewModel: ObservableObject {
       ? Array(history.suffix(maxMessages))
       : history
     logImagePayloadMeasurement(toSend)
+    // A YouTube link is only a link to every provider except Gemini, which can watch the video
+    // when it arrives as a `file_data` part (its `url_context` tool refuses YouTube). Resolve
+    // which messages get a video part before mapping: the budget is per request and counts from
+    // the newest message backwards, so a session full of links doesn't send a dozen videos.
+    let isGemini = Self.openChatModel.provider == .gemini
+    let videoLinksByMessage = isGemini ? youTubeLinksToAttach(in: toSend) : [:]
+    // Every other provider is blind to the link but perfectly willing to describe the video from
+    // search results — the failure this feature exists to fix. Tell the newest linking turn so the
+    // model says it cannot watch the video instead of confabulating it.
+    let unwatchableLinkMessageID: UUID? = isGemini
+      ? nil
+      : toSend.last { $0.role == .user && !YouTubeVideoLink.detect(in: $0.content).isEmpty }?.id
     // Re-send each user message's attached images on every turn, not just the
     // final one. Otherwise an image is visible to the model only on the turn it
     // was attached and is stripped to text afterwards — so a follow-up like
@@ -2623,9 +2659,28 @@ class ChatViewModel: ObservableObject {
       let text = msg.role == .model
         ? GeminiAPIClient.stripImageMarkers(msg.content)
         : msg.content
-      if msg.role == .user && !msg.attachedImageParts.isEmpty {
+      let videoLinks = videoLinksByMessage[msg.id] ?? []
+      if msg.id == unwatchableLinkMessageID {
         var parts: [[String: Any]] = msg.attachedImageParts.map { part in
           ["inline_data": ["mime_type": part.mimeType ?? "image/png", "data": part.data.base64EncodedString()]]
+        }
+        if !text.isEmpty { parts.append(["text": text]) }
+        parts.append(["text":
+          "[System note: the message above contains a YouTube link. You cannot watch YouTube videos — "
+          + "in this app only Gemini models can. Do not describe the video's contents as if you had seen "
+          + "it. Say plainly that you cannot open the video with this model, offer what you can find about "
+          + "it from other sources, and mention that switching to a Gemini model lets it be analysed.]"])
+        return ["role": msg.role.rawValue, "parts": parts]
+      }
+      if msg.role == .user && (!msg.attachedImageParts.isEmpty || !videoLinks.isEmpty) {
+        var parts: [[String: Any]] = msg.attachedImageParts.map { part in
+          ["inline_data": ["mime_type": part.mimeType ?? "image/png", "data": part.data.base64EncodedString()]]
+        }
+        // Video part first, its note right after: the note explains the clip window, and a model
+        // reads it as a caption for the media directly above it.
+        for link in videoLinks {
+          parts.append(link.geminiVideoPart)
+          parts.append(["text": link.geminiContextNote])
         }
         if !text.isEmpty {
           parts.append(["text": text])
@@ -2634,6 +2689,39 @@ class ChatViewModel: ObservableObject {
       }
       return ["role": msg.role.rawValue, "parts": [["text": text]]]
     }
+  }
+
+  /// Which YouTube links get attached as video parts, keyed by message id.
+  ///
+  /// Videos are the most expensive thing this app can put in a request (~90 tokens per second of
+  /// video, re-sent on every follow-up turn), so the budget is small and spent newest-first: the
+  /// video the user is currently asking about always wins over one from ten turns ago.
+  private func youTubeLinksToAttach(in messages: [ChatMessage]) -> [UUID: [YouTubeVideoLink]] {
+    var result: [UUID: [YouTubeVideoLink]] = [:]
+    var seenVideoIDs = Set<String>()
+    var budget = YouTubeVideoLink.maxVideosPerRequest
+    for msg in messages.reversed() where msg.role == .user {
+      guard budget > 0 else { break }
+      for link in YouTubeVideoLink.detect(in: msg.content) {
+        guard budget > 0 else { break }
+        // The same video re-posted in a later turn is already attached (with that turn's
+        // timestamp) — sending it twice just doubles the token bill.
+        guard seenVideoIDs.insert(link.videoID).inserted else { continue }
+        result[msg.id, default: []].append(link)
+        budget -= 1
+      }
+    }
+    if !result.isEmpty {
+      let attached = result.values.flatMap { $0 }
+      DebugLogger.log(
+        "CHAT-YOUTUBE: attaching \(attached.count) video part(s): "
+        + attached.map { link in
+          link.shouldClipUpFront
+            ? "\(link.videoID)@\(YouTubeVideoLink.formatTimestamp(link.clipRange.start))+\(YouTubeVideoLink.clipWindowSeconds)s"
+            : "\(link.videoID)/full"
+        }.joined(separator: ", "))
+    }
+    return result
   }
 
   /// Measures the image payload re-sent on this turn (images are sent in full on *every*

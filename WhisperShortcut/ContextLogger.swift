@@ -48,8 +48,8 @@ struct SignalLogEntry: Codable {
   let detail: [String: String]?
 }
 
-/// The behaviours that count as a verdict. Slice 1 covers the dictation loop; chat signals
-/// (`chatStopped`, `chatRetry`) and `modelSwitched` follow in later slices.
+/// The behaviours that count as a verdict. Slices 1–2 cover the dictation loop and chat;
+/// `modelSwitched` follows in a later slice.
 enum OutcomeSignal: String {
   /// The synthetic ⌘V was actually posted — the result was delivered where the user wanted it.
   case pasted
@@ -57,6 +57,13 @@ enum OutcomeSignal: String {
   case dictationRestart
   /// The user killed a job before a result existed.
   case cancelledWhileProcessing
+  /// A chat response was cancelled mid-stream. Carries `reason`, because the watchdog
+  /// (`StallCancellationRegistry`) cancels through the same path and that is not a user verdict —
+  /// merging the two would turn every main-thread stall into evidence against the model.
+  case chatStopped
+  /// The user re-sent the same message: an explicit "that answer was not good enough", and the
+  /// strongest negative signal the app can observe.
+  case chatRetry
 }
 
 // MARK: - System Prompt History Entry

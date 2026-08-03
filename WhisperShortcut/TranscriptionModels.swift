@@ -44,13 +44,24 @@ enum TranscriptionTuning {
 // MARK: - Transcription Model Enum
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
 // GA (stable IDs, no -preview): gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash,
-// gemini-3.6-flash. Preview (keep -preview): gemini-3.1-pro-preview.
-// Removed and forwarded via migrateLegacyTranscriptionRawValue: gemini-3-pro-preview (shut down
-// 2026-03-09) → gemini-3.1-pro-preview; the Gemini 2.5 family (gemini-2.5-flash / -flash-lite,
-// shutdown 2026-10-16) → gemini-3.5-flash / gemini-3.1-flash-lite; gemini-3-flash-preview
-// (deprecated-pending, Google says use gemini-3.5-flash) → gemini-3.5-flash.
+// gemini-3.6-flash. Preview (keep -preview): gemini-3.1-pro-preview — present but **not offered for
+// dictation**, see `isSelectableForDictation`.
+// gemini-3.1-flash-lite is GA but *on the deprecation clock*: shutdown 2027-05-07, Google names
+// gemini-3.5-flash-lite as the replacement. We deliberately do not follow that pointer — see the
+// measurement note on `SettingsDefaults.selectedTranscriptionModel`. Revisit by early 2027.
+// Removed and forwarded via migrateLegacyTranscriptionRawValue: both Pro slugs
+// (gemini-3-pro-preview, shut down by Google 2026-03-09, and gemini-3.1-pro-preview, withdrawn
+// 2026-08-03 because it never answers a short dictation) → gemini-3.1-flash-lite; the Gemini 2.5
+// family (gemini-2.5-flash / -flash-lite, shutdown 2026-10-16) → gemini-3.5-flash /
+// gemini-3.1-flash-lite; gemini-3-flash-preview (deprecated-pending, Google says use
+// gemini-3.5-flash) → gemini-3.5-flash.
+// Do not offer a Pro tier for dictation without benchmarking the 1.3 s case first.
 enum TranscriptionModel: String, CaseIterable {
   // Gemini models (online)
+  /// **Not selectable for dictation** — excluded from every picker via `isSelectableForDictation`,
+  /// and persisted selections are migrated away. The case survives only because `PromptModel`
+  /// borrows this enum to resolve its Gemini endpoint (`PromptModel.asTranscriptionModel`), which
+  /// Dictate Prompt and Smart Improvement both depend on. Removing the case would break those.
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite"
   case gemini35FlashLite = "gemini-3.5-flash-lite"
@@ -163,6 +174,30 @@ enum TranscriptionModel: String, CaseIterable {
     }
   }
 
+  /// Whether this model may be offered as a dictation / meeting transcription choice.
+  ///
+  /// Mirrors `PromptModel.isSelectableInChat`: the case stays in the enum so persisted values and
+  /// internal lookups keep resolving, but pickers never show it.
+  ///
+  /// `gemini31Pro` is the only exclusion. Measured 2026-08-03 against the 1.3 s fixture, it returns
+  /// no response at all when sent any real transcription prompt — 4/4, including a 300 s attempt
+  /// that received zero bytes, while a trivial-prompt control answered in ~6 s between the
+  /// failures. Rewording the prompt does not help (an unrelated 436-char instruction fails the same
+  /// way) and neither does streaming. With `SpeechService.Constants.resourceTimeout` at 300 s,
+  /// offering it meant a five-minute freeze for anyone who dictated a short phrase.
+  /// Detail: plans/model-audits/2026-08-03-audit.md.
+  var isSelectableForDictation: Bool {
+    switch self {
+    case .gemini31Pro: return false
+    default: return true
+    }
+  }
+
+  /// Every model a user may actually pick for dictation. Pickers default to this, not `allCases`.
+  static var selectableForDictation: [TranscriptionModel] {
+    allCases.filter { $0.isSelectableForDictation }
+  }
+
   var isRecommended: Bool {
     switch self {
     case .gemini31FlashLite, .whisperBase:
@@ -259,6 +294,8 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini31Pro:
       // Pro rejects `thinkingLevel: minimal` (HTTP 400) and `thinkingBudget: 0` — it only runs in
       // thinking mode. `minimal` therefore means "as little as this model allows", i.e. `low`.
+      // Unreachable while Pro is not selectable for dictation; kept so a future re-add cannot
+      // regress into sending a level the API rejects.
       let level = effort == .minimal ? TranscriptionThinkingEffort.low : effort
       return .init(
         thinkingConfig: .init(thinkingLevel: level.geminiValue, thinkingBudget: nil),
@@ -352,9 +389,17 @@ enum TranscriptionModel: String, CaseIterable {
     case "gemini-3.1-flash-lite-preview":
       // GA replaced the -preview slug; same model, stable ID.
       return TranscriptionModel.gemini31FlashLite.rawValue
-    case "gemini-3-pro-preview":
-      // Shut down by Google 2026-03-09 (now returns 404); forward to the current Pro preview.
-      return TranscriptionModel.gemini31Pro.rawValue
+    case "gemini-3-pro-preview", "gemini-3.1-pro-preview":
+      // No Pro tier is offered for transcription any more, so both Pro slugs land on Flash-Lite.
+      //
+      // gemini-3-pro-preview was shut down by Google 2026-03-09 (404) and used to forward to
+      // gemini-3.1-pro-preview. That target was itself removed on 2026-08-03: measured against the
+      // 1.3 s fixture it returns *nothing* — 4/4 no response, including a 300 s attempt that got
+      // zero bytes, while a trivial-prompt control answered in ~6 s between the failures. Neither
+      // rewording the prompt nor switching to streaming helps, and the app's own request timeout is
+      // 300 s, so leaving it selectable meant a five-minute freeze on any short dictation.
+      // Detail: plans/model-audits/2026-08-03-audit.md.
+      return TranscriptionModel.gemini31FlashLite.rawValue
     case "gemini-2.5-flash":
       // Deprecated, shutdown 2026-10-16; Google's named replacement is gemini-3.5-flash.
       return TranscriptionModel.gemini35Flash.rawValue

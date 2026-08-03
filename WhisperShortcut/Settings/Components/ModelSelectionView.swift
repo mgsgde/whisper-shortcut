@@ -20,7 +20,7 @@ struct ModelSelectionView: View {
     title: String = "Transcription Model",
     systemImage: String? = nil,
     selectedTranscriptionModel: Binding<TranscriptionModel>,
-    models: [TranscriptionModel] = TranscriptionModel.allCases,
+    models: [TranscriptionModel] = TranscriptionModel.selectableForDictation,
     geminiDisabled: Bool = false,
     openAIDisabled: Bool = false,
     xaiDisabled: Bool = false,

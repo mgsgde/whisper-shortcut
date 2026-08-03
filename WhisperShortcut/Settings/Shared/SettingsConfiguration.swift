@@ -91,10 +91,11 @@ enum PromptModel: String, CaseIterable {
   case openaiGPT5 = "gpt-5.4"
   case openaiGPT5Mini = "gpt-5.4-mini"
   case openaiGPT55 = "gpt-5.5"
-  // GPT-5.6 family (2026-07). Priced *identically* to the 5.5/5.4 tiers it mirrors — sol matches
-  // gpt-5.5 at $5/$30 and terra matches gpt-5.4 at $2.50/$15 — which is what makes those two
-  // Pareto-dominated (same price or cheaper, newer generation) — see `chatReplacement` for the
-  // current numbers and for why gpt-5.4-mini survives luna's price cut.
+  // GPT-5.6 family (2026-07). sol matches gpt-5.5 at $5/$30; terra *undercuts* gpt-5.4 at
+  // $2.00/$12 (vs $2.50/$15) — which is what makes those two Pareto-dominated (same price or
+  // cheaper, newer generation). luna is the nano rung at $0.20/$1.20 with 1.05M context — see
+  // `chatReplacement` for why gpt-5.4-mini survives it on tier positioning alone.
+  // Prices verified 2026-08-03.
   // https://developers.openai.com/api/docs/pricing — verified live via scripts/test-openai-models.sh.
   case openaiGPT56Sol = "gpt-5.6-sol"
   case openaiGPT56Terra = "gpt-5.6-terra"
@@ -1557,16 +1558,22 @@ struct SettingsDefaults {
   static let meetingMarker: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
-  // Everything defaults to 3.5 Flash-Lite. Dictation because audio input dominates that bill
-  // (~32 tokens/s) and 3.5 Flash-Lite charges $0.30/1M for audio vs $0.50/1M on 3.1 Flash-Lite;
-  // chat / Dictate Prompt / meeting summary because the Flash tier is roughly 3× the output price
-  // of Flash-Lite and drove the bulk of the app's Gemini spend. Users who want more headroom pick
-  // a bigger model explicitly. https://ai.google.dev/gemini-api/docs/pricing
-  // 3.1 Flash-Lite rather than 3.5: measured 2026-08-02 on the same recordings, 3.1 is faster at
-  // every audio length (35 s dictation: 1.8 s vs 6.6 s median), reproduces glossary terms far more
-  // reliably (95% vs 77% on the maintainer's real glossary), and — when it does confabulate on
-  // silent audio — produces output long enough for `discardingImplausibleTranscript` to catch,
-  // where 3.5's inventions came back at plausible length and passed the gate.
+  // Chat / Dictate Prompt / meeting summary default to 3.5 Flash-Lite because the Flash tier is
+  // roughly 3× the output price of Flash-Lite and drove the bulk of the app's Gemini spend. Users
+  // who want more headroom pick a bigger model explicitly.
+  // https://ai.google.dev/gemini-api/docs/pricing
+  //
+  // Dictation is the exception: it defaults to *3.1* Flash-Lite, not 3.5, even though 3.5 is the
+  // cheaper audio tier ($0.30/1M vs $0.50/1M, and audio input dominates that bill at ~32 tokens/s).
+  // Measured 2026-08-03 against the live app container (36 glossary terms, 3 runs/case, 10
+  // interleaved latency rounds): 3.1 reproduces glossary terms better (94% vs 85%), invents fewer
+  // transcripts from silence (3/9 vs 7/9 leaks), and is faster at every audio length
+  // (1.3 s: 1626 vs 2079 ms · 8.2 s: 1213 vs 2872 ms · 21.3 s: 1591 vs 4961 ms).
+  // Caveat worth keeping in view: 3.1 is *not* leak-free, and every OpenAI/xAI transcription model
+  // measured 0/9 — `discardingImplausibleTranscript` is still load-bearing here.
+  // Numbers: plans/model-audits/2026-08-03-audit.md. Note 3.1 Flash-Lite shuts down 2027-05-07;
+  // Google's named replacement (3.5 Flash-Lite) is the model it beats on every axis above, so the
+  // migration waits for a better Flash-Lite rather than following the pointer.
   static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
   /// Verbatim by default: transcription should reproduce speech, not sample alternatives.
   static let transcriptionTemperature = TranscriptionTemperature.verbatim

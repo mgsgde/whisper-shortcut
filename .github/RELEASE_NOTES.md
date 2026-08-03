@@ -1,6 +1,6 @@
-# WhisperShortcut 7.97
+# WhisperShortcut 7.98
 
-Using OpenRouter no longer involves an API key at all — you sign in once and the app takes care of the rest, for both dictation and chat.
+Chat can watch a YouTube video now, and you can hand the developer a picture of how the app actually behaved for you — without handing over anything you said.
 
 ## Installation
 
@@ -8,33 +8,29 @@ Download the latest build from the [Releases page](https://github.com/mgsgde/whi
 
 ## What's New
 
-### 🔗 Connect OpenRouter with one click
+### 📺 YouTube videos in chat
 
-Connecting a provider used to mean visiting a dashboard, generating a key, and pasting it into Settings. For OpenRouter that step is gone.
+Paste a YouTube link and a Gemini model actually watches the video, instead of guessing from whatever the web says about it.
 
-- **Sign in instead of pasting.** Available in onboarding and in Settings → General. You approve access at OpenRouter — the same flow creates the account if you don't have one — and the app receives its key directly. You never see it, and you pay OpenRouter directly for what you use.
-- **One connection covers dictation and chat.** Press **Use OpenRouter preset** in Settings → Chat and there is no key to enter there either.
-- **Pick models from a list instead of typing slugs.** The list is fetched live from OpenRouter and filtered to models that actually accept audio, with rough prices shown, so new models appear as OpenRouter adds them — no app update needed. A custom slug field remains for anything the list doesn't cover.
-- **Running out of credit now tells you where to top up** instead of failing with a generic billing message.
+- **Link a moment and it looks there.** Add a timestamp (`&t=1h50m10s`) and the model analyses a ten-minute window around it — the sensible way to ask about one passage of a two-hour podcast.
+- **Without a timestamp the whole video is sent.** If it is too long for the model, the opening ten minutes are used and the answer says so, rather than quietly answering about the wrong part.
+- **Gemini only.** Other providers cannot open YouTube links, and the app tells you instead of failing obscurely.
 
-### 🎛️ A clearer transcription model picker
+### 📊 Share Usage Report
 
-The grid used to split into "Cloud" and "Offline", which hid the distinction that actually mattered: a model reached **directly** with that provider's key, versus the same model reached **through a router**. Gemini 3.5 Flash-Lite could appear both as a tile and inside OpenRouter's own model list, with nothing saying which account each one bills.
+A **Share Usage Report** button in Settings → About summarises how the app has actually been working for you: how many dictations and chats, which models, how often a result had to be redone.
 
-Models are now grouped as **Direct**, **Routed** and **Offline**, and routed entries show where they point — for example `OpenRouter → Google: Gemini 3.5 Flash Lite`. The chat model chip is shorter too, so the slash-command row beside the composer no longer gets squeezed.
+It contains **no transcripts, prompts, replies, or audio** — only counts and model names — and the full text is shown to you before anything is sent. Nothing leaves your Mac until you press send.
 
 ### 🐛 Fixes
 
-- Chat could fail with "API key is invalid for the custom endpoint" right after a successful OpenRouter sign-in, because a key left over from a different proxy was preferred over the connected account. The endpoint-specific credential now wins, and Settings → Chat states which one is actually in use.
-- Long, tool-heavy chat turns no longer lose the final answer.
-- Dictation history records whether a dictation actually succeeded, not just what it produced.
-- The usage review says it couldn't read the log instead of reporting a "quiet week".
-- Support and feedback are reachable from where users already are.
+- **Dictate Prompt no longer pastes raw JSON into your document.** The audio model sometimes answers an editing instruction with its internal edit format instead of the edited text. When that format could not be applied, the entire `{"edits": [...]}` string replaced whatever you had selected. Now the selection is left untouched — a failed edit does nothing, instead of destroying the text.
+- **Gemini 3.1 Pro is no longer offered for dictation.** Measured against a 1.3-second recording it returns no response at all — four attempts in a row, one of which waited five minutes for zero bytes — while a control request answered in about six seconds. Rewording the prompt does not help and neither does streaming, so there is nothing to fix on our side. If you had it selected, dictation moves to Gemini 3.1 Flash-Lite automatically. The model stays available for Chat and Dictate Prompt.
+- **Starting and stopping a recording no longer blocks the main thread**, so the menu bar stays responsive while audio devices come up.
 
 ### 🧹 Under the hood
 
-- Transcription providers are a first-class concept now, instead of four hand-maintained boolean checks repeated in three places that had to agree. Stored settings are unchanged.
-- The chunked transcription and text-to-speech pipelines share their retry and result-collection logic instead of keeping two copies of it.
-- Text-to-speech playback and the chat message action buttons moved into types of their own.
+- Monthly model audit: every shipped model ID re-verified against the live provider APIs. Corrected stale GPT-5.6 pricing notes, documented Gemini 3.1 Flash-Lite's 2027-05-07 shutdown and why we are deliberately not following Google's suggested replacement, and moved the deprecated `gpt-audio-mini` out of the migration-candidate list so a future audit cannot promote it.
+- The transcription benchmark now covers the Gemini Pro tier's thinking-level requirements and records why that tier is excluded from dictation.
 
-**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.96...v7.97
+**Full Changelog**: https://github.com/mgsgde/whisper-shortcut/compare/v7.97...v7.98

@@ -1,6 +1,6 @@
 # Privacy Policy for WhisperShortcut
 
-**Last updated:** May 12, 2026
+**Last updated:** August 3, 2026
 
 ## Overview
 
@@ -12,7 +12,7 @@ WhisperShortcut is local-first and bring-your-own-key. The app has no backend se
 
 WhisperShortcut is designed to minimize data collection:
 
-- No analytics or tracking.
+- No analytics or tracking. The app never sends usage data anywhere on its own; the optional Usage Report described below is composed on your Mac, shown to you in full, and leaves your machine only if you press send in your own email or WhatsApp client.
 - No crash reporting operated by us.
 - No data sold to third parties.
 - App data is stored locally on your Mac.
@@ -126,10 +126,25 @@ If you connect Trello, WhisperShortcut can use Trello's API when you ask chat to
 
 Trello uses a manual token flow. Your Trello Power-Up API key and user token are stored in Keychain. You can disconnect Trello in Settings or with the `/disconnect-trello` chat command. Trello's processing and retention are governed by Atlassian/Trello policies and terms.
 
+## What You Can Choose To Send Us
+
+Settings → About has a **Share Usage Report** button. It builds a short summary on your Mac from the interaction logs that "Save usage data" already keeps locally, and shows you the complete text before anything happens. The report leaves your Mac only if you then press send in your own email or WhatsApp client — the app itself never transmits it, and there is no server of ours to receive it.
+
+The report contains counts and timings only:
+
+- How many dictations, Dictate Prompt runs, and chat turns you made, and over how many days.
+- Which transcription and chat models you used, as percentages.
+- How often a dictation result was delivered, redone, or cancelled, and the median time before a redo.
+- How often a screenshot was attached to a Dictate Prompt.
+- The bundle identifiers of the three apps dictated text was pasted into most often.
+- Your app version and macOS version.
+
+It never contains transcripts, spoken instructions, model replies, selected text, audio, file names, or credentials. Because you see the full text first, you can also copy it, edit it, or simply not send it.
+
 ## What We Do Not Collect
 
 - Personal information for analytics or tracking.
-- Usage analytics.
+- Usage analytics collected automatically — the Usage Report above is built only when you ask for it and sent only if you press send.
 - Crash reports operated by us.
 - Audio recordings beyond temporary processing and the short-lived Smart Improvement verification samples described above.
 - Clipboard content except when needed for a user-triggered feature.

@@ -7,6 +7,19 @@ Two deviations from the plan as written, both deliberate:
 - The marker that `refTs` reads from is set **synchronously** at the top of `writeEntry`, not inside its `queue.async` block. Auto-paste posts its ⌘V 50 ms later; with the marker still queued behind disk I/O the `pasted` flag could land on nothing and turn the next dictation into a phantom `dictationRestart`.
 - Live-meeting dictation segments do **not** emit `dictationRestart`. Speaking repeatedly into a meeting is normal use, not a retry, and would drown the signal. They still log interactions and still emit `pasted`.
 
+**Slice 2 implemented (2026-08-03)** — `chatStopped` + `chatRetry` in `OutcomeSignal`, emitted from
+`ChatViewModel.cancelSend()` / the `CancellationError` arm and from `retryMessage(id:)`. The
+user-vs-watchdog split is done with a `userCancelledSessions: [UUID: Int]` dictionary written in
+`cancelSend` and consumed once in the catch arm: by the time `CancellationError` is caught the two
+cancellation sources are indistinguishable, so the verdict has to be stamped at the only place that
+knows a human pressed Stop. `chatAbandoned` remains offline-derived; Slice 3 is open.
+
+Confirmed live: `chatRetry` fires in real use. The first four ever recorded all carried
+`refTs: null`, because the user pressed Retry on an answer from before an app relaunch and the
+marker is in-memory only. That is the documented behaviour, but it means unattributable verdicts
+are **normal after every update**, not an edge case — consumers must handle them (see
+`plans/active/usage-report-sharing.md`, which reports them as a count rather than a rate).
+
 Open before tuning: the 20 s window is a guess. Leave it collecting for a week, then check the `gapMs` distribution in the stream before changing it.
 **Audience:** LLM implementing the feature end-to-end
 **Goal:** Make it possible to tell, from data alone, whether a dictation / Dictate Prompt / chat turn *helped the user*. Today the logs record what happened, never whether it was any good.

@@ -8,7 +8,9 @@ import Foundation
 ///
 /// The interesting half of these tests is the *negative* cases: an over-eager unwrapper that
 /// mangles a legitimate reply is worse than the bug it fixes, because it corrupts edits that were
-/// working fine. Every bail-out must return the input untouched.
+/// working fine. A bail-out on text we do not recognise must return the input untouched; a bail-out
+/// on our *own* edit protocol returns the selection untouched, so the failure is a no-op rather
+/// than JSON pasted over the user's document.
 @Suite("JSON edit-response unwrapping")
 struct JSONEditResponseTests {
 
@@ -94,11 +96,23 @@ struct JSONEditResponseTests {
     @Test("A fragment replacement that cannot be located is NOT used as the whole text")
     func fragmentReplacementBails() {
         // The dangerous case for the fallback above: a short replacement is a fragment of the
-        // text, not a rewrite of it. Returning it would delete everything around it, so the raw
-        // reply is passed through instead.
+        // text, not a rewrite of it. Returning it would delete everything around it, so the edit
+        // is abandoned and the selection comes back untouched.
         let selection = "Hallo Anna, ich wollte dir kurz Bescheid geben, dass ich morgen gegen neun Uhr vorbeikomme und dann bleibe."
         let reply = #"{"edits": [{"start": 40, "end": 55, "replacement": "später"}]}"#
-        #expect(Self.unwrap(reply, selection: selection) == reply)
+        #expect(Self.unwrap(reply, selection: selection) == selection)
+    }
+
+    @Test("An unapplicable edit never pastes the protocol JSON over the selection")
+    func protocolJSONNeverReachesTheDocument() {
+        // Verbatim from the 2026-08-03 Dictate Prompt benchmark: gpt-audio-1.5 answered a
+        // "don't answer, just fix it" case with a two-character index-based edit. Before this the
+        // whole JSON string replaced the user's paragraph.
+        let selection = "Hallo Anna, ich wollte dir kurz Bescheid geben, dass ich morgen bin da."
+        let reply = #"{"edits": [{"start": 40, "end": 44, "replacement": "am"}]}"#
+        let result = Self.unwrap(reply, selection: selection)
+        #expect(result == selection)
+        #expect(!result.contains("\"edits\""))
     }
 
     // MARK: - Must not fire
@@ -127,9 +141,9 @@ struct JSONEditResponseTests {
     func unmatchedFindAborts() {
         let selection = "Hallo Anna, ich komme morgen vorbei."
         let reply = #"{"edits": [{"find": "gegen neun Uhr", "replacement": "später"}]}"#
-        // The fragment does not occur — reconstructing would silently drop the edit, so the raw
-        // reply is passed through and the user sees something is off.
-        #expect(Self.unwrap(reply, selection: selection) == reply)
+        // The fragment does not occur — reconstructing would silently drop the edit, so the edit
+        // is abandoned. The user sees that nothing happened, not a document full of JSON.
+        #expect(Self.unwrap(reply, selection: selection) == selection)
     }
 
     @Test("An edits array without the selection at hand aborts")

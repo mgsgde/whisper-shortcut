@@ -27,6 +27,15 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIXTURES = os.path.join(REPO, "build", "benchmark-fixtures")
 
 # Every cloud transcription model the app can dictate with. Keep in sync with TranscriptionModel.
+#
+# gemini-3.1-pro-preview is deliberately absent. It was added here on 2026-08-03 and the first run
+# exposed why it should never have been in the picker: with any real transcription prompt it returns
+# nothing at all for the 1.3 s case — 4/4, including a 300 s attempt that received zero bytes, while
+# a trivial-prompt control answered in ~6 s between the failures. Streaming and reworded prompts
+# fail identically. `TranscriptionModel.isSelectableForDictation` stopped offering it the same day
+# (the enum case stays — PromptModel resolves its Gemini endpoint through it). Re-add it here (with
+# a `minimal`→`low` thinking-level clamp — Pro 400s on `minimal`) only to check whether Google has
+# fixed it; expect three 90 s timeouts per run until they have.
 MODELS = {
     "gemini-3.1-flash-lite": "gemini",
     "gemini-3.5-flash-lite": "gemini",
@@ -211,10 +220,14 @@ def transcribe(model, wav, prompt, terms):
     kind = MODELS[model]
     if kind == "gemini":
         audio = base64.b64encode(open(wav, "rb").read()).decode()
+        # The app's default effort is `minimal`, which every tier in MODELS accepts. Pro rejects it
+        # with HTTP 400, so the clamp stays here for whoever re-adds Pro to check on Google's fix —
+        # otherwise the run would measure a 400 rather than the model. No shipped tier needs it.
+        level = "low" if "-pro" in model else "minimal"
         body = json.dumps({
             "contents": [{"parts": [{"text": prompt},
                                     {"inline_data": {"mimeType": "audio/wav", "data": audio}}]}],
-            "generationConfig": {"thinkingConfig": {"thinkingLevel": "minimal"}, "temperature": 0.0},
+            "generationConfig": {"thinkingConfig": {"thinkingLevel": level}, "temperature": 0.0},
         }).encode()
         req = urllib.request.Request(
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"

@@ -11,6 +11,29 @@ import Foundation
 @Suite("Transcription provider")
 struct TranscriptionProviderTests {
 
+  @Test("Gemini 3.1 Pro is never offered as a dictation choice, and persisted picks migrate away")
+  func proIsNotSelectableForDictation() {
+    // It returns nothing at all for short audio (2026-08-03 measurement; see isSelectableForDictation),
+    // and the app waits 300 s before giving up — so it must not reach a picker.
+    #expect(!TranscriptionModel.gemini31Pro.isSelectableForDictation)
+    #expect(!TranscriptionModel.selectableForDictation.contains(.gemini31Pro))
+
+    // Everything else stays offerable; this is a one-model exclusion, not a category.
+    #expect(TranscriptionModel.selectableForDictation.count == TranscriptionModel.allCases.count - 1)
+
+    // Both Pro slugs land on the working default, so no one is left stuck on it.
+    for slug in ["gemini-3.1-pro-preview", "gemini-3-pro-preview"] {
+      #expect(
+        TranscriptionModel.migrateLegacyTranscriptionRawValue(slug)
+          == TranscriptionModel.gemini31FlashLite.rawValue, "\(slug)")
+    }
+
+    // The case itself must stay: PromptModel.asTranscriptionModel resolves the Gemini endpoint
+    // through it for Dictate Prompt and Smart Improvement.
+    #expect(PromptModel.gemini31Pro.asTranscriptionModel == .gemini31Pro)
+    #expect(TranscriptionModel.gemini31Pro.apiEndpoint.contains("gemini-3.1-pro-preview"))
+  }
+
   @Test("Routed contains exactly the entries that are not themselves models")
   func routedGroupHoldsOnlyRouters() {
     let routed = Set(

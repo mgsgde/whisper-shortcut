@@ -22,6 +22,9 @@ fi
 
 # Currently referenced in code (TranscriptionModels.swift, SettingsConfiguration.swift PromptModel).
 declare -a CURRENT_TEXT_MODELS=(
+  # Chat / Dictate Prompt only since 2026-08-03: no longer offered as a dictation model because it
+  # never answers short audio (plans/model-audits/2026-08-03-audit.md). The slug itself still
+  # serves — that is exactly why it must stay probed here.
   "gemini-3.1-pro-preview"
   "gemini-3.1-flash-lite"
   "gemini-3.5-flash-lite"

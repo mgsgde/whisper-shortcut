@@ -25,6 +25,8 @@ struct TranscriptionTuningTests {
 
   @Test("Pro is clamped off minimal — the API rejects that level for it")
   func proClampsMinimal() {
+    // Unreachable in the shipped app since 2026-08-03 (Pro is no longer selectable for dictation),
+    // but kept so re-offering it cannot regress into sending a level the API rejects.
     let clamped = TranscriptionModel.gemini31Pro.geminiTranscriptionGenerationConfig(
       temperature: 0.0, effort: .minimal)
     #expect(clamped.thinkingConfig?.thinkingLevel == "low")
