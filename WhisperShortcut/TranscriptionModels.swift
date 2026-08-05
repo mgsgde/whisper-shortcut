@@ -276,6 +276,9 @@ enum TranscriptionModel: String, CaseIterable {
   /// `generationConfig` to send with a Gemini transcription request: the user's thinking effort and
   /// temperature, clamped to what this tier actually accepts. Both knobs are read here rather than
   /// threaded through every call site, so the chunked meeting path picks them up too.
+  ///
+  /// Every tier also gets `maxOutputTokens` — the init supplies it, so a tier added later is capped
+  /// whether or not whoever adds it thinks about billing. See the constant for why that matters.
   var geminiTranscriptionGenerationConfig: GeminiTranscriptionRequest.GeminiTranscriptionGenerationConfig {
     geminiTranscriptionGenerationConfig(
       temperature: TranscriptionTuning.temperature, effort: TranscriptionTuning.thinkingEffort)
@@ -503,12 +506,26 @@ struct GeminiTranscriptionRequest: Codable {
   /// is why it is now always sent.
   /// Docs: https://ai.google.dev/gemini-api/docs/thinking
   struct GeminiTranscriptionGenerationConfig: Codable {
+    /// Hard ceiling on a single transcription response, thinking tokens included.
+    ///
+    /// The app-wide cost fuse (`AppConstants.llmMaxOutputTokens`) applied to transcription; see
+    /// there for why it exists and what it cost to learn. Nothing about transcription wants a
+    /// tighter value than the shared one: meeting chunks cap at 60 s, and even continuous dictation
+    /// would need ~40 minutes of speech to reach 8192 tokens. A transcription that hits this is a
+    /// runaway, not a long dictation.
+    static let maxOutputTokens = AppConstants.llmMaxOutputTokens
+
     let thinkingConfig: GeminiThinkingConfig?
     let temperature: Double?
+    let maxOutputTokens: Int?
 
-    init(thinkingConfig: GeminiThinkingConfig?, temperature: Double? = nil) {
+    init(
+      thinkingConfig: GeminiThinkingConfig?, temperature: Double? = nil,
+      maxOutputTokens: Int? = GeminiTranscriptionGenerationConfig.maxOutputTokens
+    ) {
       self.thinkingConfig = thinkingConfig
       self.temperature = temperature
+      self.maxOutputTokens = maxOutputTokens
     }
   }
 

@@ -767,9 +767,13 @@ class ContextDerivation {
     let body: [String: Any] = [
       "contents": [["role": "user", "parts": userParts]],
       "system_instruction": ["parts": [["text": systemPrompt]]],
+      // Cost fuse (see AppConstants.llmMaxOutputTokens). This path matters more than most: it runs
+      // unattended on the 7-day auto-run timer, against a user-selectable model, with audio
+      // attached — the exact shape of the 2026-08-03 runaway, minus a human watching it.
       "generationConfig": [
         "responseMimeType": "application/json",
         "responseSchema": Self.analysisSchema,
+        "maxOutputTokens": AppConstants.llmMaxOutputTokens,
       ] as [String: Any],
     ]
     request.httpBody = try JSONSerialization.data(withJSONObject: body)

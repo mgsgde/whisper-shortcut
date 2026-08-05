@@ -49,6 +49,36 @@ struct TranscriptionTuningTests {
     #expect(decoded["temperature"] as? Double == 0.0)
   }
 
+  @Test("Every tier caps maxOutputTokens — the cost fuse must not depend on the tier")
+  func everyTierCapsOutputTokens() {
+    // Regression guard for 2026-08-03: gemini-3.1-pro-preview thought its way to 1.39M billed
+    // output tokens (~€14.59) on a 1.3s recording because nothing bounded the response. The 90s
+    // client timeout did not help — aborting the connection does not stop server-side generation.
+    // Asserted over `allCases` rather than a hand-listed set so a tier added later fails here
+    // instead of silently shipping uncapped.
+    for model in TranscriptionModel.allCases {
+      let config = model.geminiTranscriptionGenerationConfig(temperature: 0.0, effort: .minimal)
+      #expect(
+        config.maxOutputTokens
+          == GeminiTranscriptionRequest.GeminiTranscriptionGenerationConfig.maxOutputTokens,
+        "\(model.rawValue) sends an uncapped transcription request")
+    }
+  }
+
+  @Test("maxOutputTokens is actually encoded into the request body")
+  func maxOutputTokensIsEncoded() {
+    // The cap is worthless if it stays Swift-side, so assert on the encoded JSON, not the struct.
+    let config = TranscriptionModel.gemini35FlashLite.geminiTranscriptionGenerationConfig(
+      temperature: 0.0, effort: .minimal)
+    guard let json = try? JSONEncoder().encode(config),
+          let decoded = try? JSONSerialization.jsonObject(with: json) as? [String: Any]
+    else {
+      Issue.record("generationConfig did not encode")
+      return
+    }
+    #expect(decoded["maxOutputTokens"] as? Int == 8192)
+  }
+
   @Test("Non-Gemini backends get no thinking config")
   func nonGeminiHasNoThinkingConfig() {
     for model in [TranscriptionModel.openRouterTranscription, .whisperBase, .openAIGPT4oTranscribe] {

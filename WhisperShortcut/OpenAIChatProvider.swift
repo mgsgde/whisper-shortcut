@@ -79,6 +79,9 @@ final class OpenAIChatProvider: LLMChatProvider {
         "model": model,
         "input": OpenAIResponsesAPIConverter.input(from: contents),
         "stream": true,
+        // Cost fuse — see AppConstants.llmMaxOutputTokens. Reasoning tokens count against this,
+        // which is the point: they bill at the output rate and are invisible in the reply.
+        "max_output_tokens": AppConstants.llmMaxOutputTokens,
       ]
       if let instructions = GeminiSystemInstruction.text(from: systemInstruction) {
         body["instructions"] = instructions
@@ -129,10 +132,18 @@ final class OpenAIChatProvider: LLMChatProvider {
       let messages = OpenAIChatCompletionsConverter.messages(
         from: contents, systemInstruction: systemInstruction, stripImages: stripImages)
 
+      // Cost fuse — see AppConstants.llmMaxOutputTokens. The key differs by endpoint and both
+      // choices are load-bearing: OpenAI *rejects* `max_tokens` on its reasoning models ("Use
+      // 'max_completion_tokens' instead", HTTP 400), while OpenRouter, self-hosted llama.cpp and
+      // the other OpenAI-compatible servers behind `useCustom` only reliably understand the
+      // original `max_tokens`. Sending the wrong one is a hard 400, so it is picked per endpoint
+      // rather than sent as a pair.
+      let maxTokensKey = useCustom ? "max_tokens" : "max_completion_tokens"
       var body: [String: Any] = [
         "model": requestModel,
         "messages": messages,
         "stream": true,
+        maxTokensKey: AppConstants.llmMaxOutputTokens,
       ]
 
       // Stable per-conversation routing hint → higher prompt-cache hit rate. Caching is

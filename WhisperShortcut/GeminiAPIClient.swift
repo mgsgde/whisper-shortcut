@@ -431,10 +431,11 @@ class GeminiAPIClient {
           if let sys = systemInstruction {
             body["system_instruction"] = sys
           }
+          // Cost fuse — see AppConstants.llmMaxOutputTokens.
           var generationConfig: [String: Any] = [
             "temperature": 0.7,
             "topP": 0.95,
-            "maxOutputTokens": 8192
+            "maxOutputTokens": AppConstants.llmMaxOutputTokens
           ]
           if let thinkingConfig = self.resolvedThinkingConfig(
             modelRawValue: model, thinkingLevel: thinkingLevel, logPrefix: "GEMINI-CHAT-STREAM") {
@@ -708,7 +709,8 @@ class GeminiAPIClient {
     let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
     var request = try createRequest(endpoint: endpoint, credential: credential)
     let body: [String: Any] = [
-      "contents": [["role": "user", "parts": [["text": prompt]]]]
+      "contents": [["role": "user", "parts": [["text": prompt]]]],
+      "generationConfig": ["maxOutputTokens": AppConstants.llmMaxOutputTokens],
     ]
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
     let response: GeminiResponse = try await performRequest(
@@ -768,6 +770,7 @@ class GeminiAPIClient {
     var generationConfig: [String: Any] = [
       "responseMimeType": "application/json",
       "responseSchema": schema,
+      "maxOutputTokens": AppConstants.llmMaxOutputTokens,
     ]
     if let thinkingConfig = resolvedThinkingConfig(
       modelRawValue: model, thinkingLevel: thinkingLevel, logPrefix: "GEMINI-STRUCTURED") {

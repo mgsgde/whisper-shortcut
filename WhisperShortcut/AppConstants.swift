@@ -186,6 +186,23 @@ Output rules (CRITICAL):
   // MARK: - Text Validation
   static let minimumTextLength = 1  // Allow single character responses like "Yes", "OK", etc.
 
+  // MARK: - LLM Cost Fuse
+  /// Ceiling on a single LLM response across every provider, thinking tokens included.
+  ///
+  /// This is a cost fuse, not a tuning knob — the number is deliberately far above any real reply
+  /// so it can only ever stop a runaway. A thinking model that never emits an answer keeps
+  /// generating billed output tokens until *some* limit stops it, and neither a client timeout nor
+  /// a request cancellation is that limit: dropping the connection does not stop generation, and
+  /// the run is billed in full.
+  ///
+  /// Learned the expensive way on 2026-08-03: `gemini-3.1-pro-preview` thought its way to 1.39M
+  /// billed output tokens (~€14.59, ~80% of that month's Gemini bill) against a 1.3 s recording,
+  /// across a handful of attempts that each returned zero bytes to the app.
+  ///
+  /// Send this on **every** generation request. A reply that hits it is a runaway, not a long
+  /// answer — it fails loudly (`finishReason: MAX_TOKENS`) and costs cents instead of euros.
+  static let llmMaxOutputTokens = 8192
+
   // MARK: - Audio Chunking
   /// Threshold duration (in seconds) above which audio will be chunked for transcription.
   /// Audio shorter than this will be sent as a single request.

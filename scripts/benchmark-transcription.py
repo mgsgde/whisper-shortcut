@@ -36,6 +36,11 @@ FIXTURES = os.path.join(REPO, "build", "benchmark-fixtures")
 # (the enum case stays — PromptModel resolves its Gemini endpoint through it). Re-add it here (with
 # a `minimal`→`low` thinking-level clamp — Pro 400s on `minimal`) only to check whether Google has
 # fixed it; expect three 90 s timeouts per run until they have.
+#
+# Those timeouts are not free. That first run billed 1.39M output tokens — €14.59, ~80% of the
+# month's entire Gemini spend — because a client timeout does not stop server-side generation.
+# `maxOutputTokens` in `transcribe()` now caps a re-add at cents per call, so check that it is still
+# there before re-adding Pro.
 MODELS = {
     "gemini-3.1-flash-lite": "gemini",
     "gemini-3.5-flash-lite": "gemini",
@@ -227,7 +232,17 @@ def transcribe(model, wav, prompt, terms):
         body = json.dumps({
             "contents": [{"parts": [{"text": prompt},
                                     {"inline_data": {"mimeType": "audio/wav", "data": audio}}]}],
-            "generationConfig": {"thinkingConfig": {"thinkingLevel": level}, "temperature": 0.0},
+            "generationConfig": {
+                "thinkingConfig": {"thinkingLevel": level},
+                "temperature": 0.0,
+                # Cost fuse, mirroring the app (GeminiTranscriptionGenerationConfig.maxOutputTokens).
+                # The `timeout=90` below bounds *this script's* wait, not Google's billing: the
+                # connection drops, generation continues, and the full run is invoiced. That is how
+                # the 2026-08-03 Pro run cost €14.59 for zero returned bytes. 8192 is ~50x the
+                # longest fixture transcript, so it cannot truncate a real measurement — it only
+                # stops a model that is thinking instead of answering.
+                "maxOutputTokens": 8192,
+            },
         }).encode()
         req = urllib.request.Request(
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
