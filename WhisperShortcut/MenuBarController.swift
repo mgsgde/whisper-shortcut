@@ -33,6 +33,7 @@ class MenuBarController: NSObject {
     case copyLastTranscription = 117
     case recentTranscriptions = 118
     case sendFeedback = 119
+    case transcribeCancelledRecording = 120
   }
 
   /// Display time for the benign "No speech detected" info popup — long enough to read,
@@ -346,6 +347,12 @@ class MenuBarController: NSObject {
       "Recent Transcriptions", action: nil, tag: .recentTranscriptions)
     recentItem.submenu = NSMenu()
     menu.addItem(recentItem)
+    // Only present after a cancellation, so it reads as an undo for the action just taken
+    // rather than a permanent row nobody has a use for.
+    menu.addItem(
+      createMenuItem(
+        "Transcribe Cancelled Recording", action: #selector(transcribeCancelledRecording),
+        tag: .transcribeCancelledRecording))
 
     menu.addItem(NSMenuItem.separator())
 
@@ -819,6 +826,12 @@ class MenuBarController: NSObject {
     let entries = TranscriptionHistoryStore.shared.entries
     menu.item(withTag: MenuTag.copyLastTranscription.rawValue)?.isHidden = entries.isEmpty
 
+    // Drops away once the retained file is gone (recovered, or replaced by a newer cancellation).
+    let hasCancelled = cancelledRecordingURL.map {
+      FileManager.default.fileExists(atPath: $0.path)
+    } ?? false
+    menu.item(withTag: MenuTag.transcribeCancelledRecording.rawValue)?.isHidden = !hasCancelled
+
     guard let recentItem = menu.item(withTag: MenuTag.recentTranscriptions.rawValue) else { return }
     // A single entry is already covered by "Copy Last Transcription" — a submenu with one row
     // duplicating the row above it is noise.
@@ -1149,7 +1162,52 @@ class MenuBarController: NSObject {
       .cancelledWhileProcessing, mode: "transcription", detail: ["phase": appState.signalPhase])
     discardStreamingSession()
     speechService.cancelTranscription()
-    transitionToIdleAndCleanup(cleanupAudioURL: currentJobAudioURL)
+    // Keep the audio instead of deleting it: a cancel is one keystroke and can be an accident,
+    // and the recording is the only copy of what the user said. "Transcribe Cancelled Recording"
+    // in the status menu turns an unrecoverable loss into one extra click.
+    retainCancelledRecording(currentJobAudioURL)
+    transitionToIdleAndCleanup(cleanupAudioURL: nil)
+    if let url = currentJobAudioURL {
+      currentJobAudioURL = nil
+      processedAudioURLs.remove(url)
+    }
+  }
+
+  /// The last cancelled dictation, kept on disk so it can still be transcribed. Only ever one:
+  /// this is an undo affordance, not a history, and dictations can be tens of megabytes.
+  private var cancelledRecordingURL: URL?
+
+  private func retainCancelledRecording(_ url: URL?) {
+    guard let url, FileManager.default.fileExists(atPath: url.path) else { return }
+    // Replace any older retained recording so at most one is ever held.
+    if let previous = cancelledRecordingURL, previous != url {
+      cleanupAudioFile(at: previous)
+    }
+    cancelledRecordingURL = url
+    let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? nil
+    DebugLogger.log(
+      "CANCELLATION: Retained cancelled recording \(url.lastPathComponent) (\(size ?? 0) bytes) — recoverable from the status menu")
+  }
+
+  @objc private func transcribeCancelledRecording() {
+    guard let url = cancelledRecordingURL else { return }
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      DebugLogger.logWarning("CANCELLATION: Retained recording \(url.lastPathComponent) is gone")
+      cancelledRecordingURL = nil
+      return
+    }
+    guard case .idle = appState else {
+      PopupNotificationWindow.showInfo(
+        "Finish the current recording first, then try again.", title: "Busy")
+      return
+    }
+    DebugLogger.log("CANCELLATION: Re-transcribing cancelled recording \(url.lastPathComponent)")
+    // Hand ownership back to the normal pipeline, which deletes the file when it is done with it.
+    cancelledRecordingURL = nil
+    processedAudioURLs.insert(url)
+    currentJobAudioURL = url
+    appState = .processing(.transcribing)
+    Task { await self.performTranscription(audioURL: url) }
   }
 
   /// Cancels a running Dictate Prompt. Reached from both the toggle shortcut and the Stop menu

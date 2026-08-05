@@ -344,6 +344,13 @@ struct SpeechErrorFormatter {
 
     case .subscriptionRequired:
       return "Authentication required. Add your API key in Settings (General tab)."
+
+    case .noSelectedText:
+      return """
+        Dictate Prompt edits text you have selected, and nothing was selected.
+
+        Select the text you want changed first, then hold the shortcut and say what to do with it.
+        """
     }
   }
 
@@ -394,6 +401,8 @@ struct SpeechErrorFormatter {
       return "🎤 Voice Requires API Key"
     case .subscriptionRequired:
       return "⚠️ Authentication Required"
+    case .noSelectedText:
+      return "📝 Nothing Selected"
     default:
       return "❌ Error"
     }

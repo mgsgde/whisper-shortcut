@@ -64,6 +64,15 @@ enum OutcomeSignal: String {
   /// The user re-sent the same message: an explicit "that answer was not good enough", and the
   /// strongest negative signal the app can observe.
   case chatRetry
+  /// A Dictate Prompt ran again over the *same* selection with a different instruction — the
+  /// user rephrasing because the first edit missed. The chained case (feeding one result into
+  /// the next instruction) is deliberately excluded: that is normal iterative editing, not a
+  /// verdict. Without this, retry chains are only visible by eyeballing timestamps.
+  case promptRetry
+  /// Dictate Prompt was invoked with nothing selected, so no request was sent. `detail.reason`
+  /// separates "clipboard held no text" from "clipboard was unreachable" — a distinction the
+  /// interaction log could not previously make, since neither wrote a record at all.
+  case promptNoSelection
 }
 
 // MARK: - System Prompt History Entry
@@ -119,6 +128,15 @@ class ContextLogger {
   private var lastInteractions: [String: LastInteractionMarker] = [:]
   /// `lastInteractions` is written from the serial write queue and read from the main thread.
   private let lastInteractionLock = NSLock()
+
+  /// The selection the previous Dictate Prompt ran against, for `promptRetry` detection. Guarded
+  /// by `lastInteractionLock`. Hashed rather than stored: this only ever answers "same text?",
+  /// and keeping user content in a long-lived property is needless exposure.
+  private var lastPromptSelectionHash: Int?
+  private var lastPromptAt: Date?
+  /// Two runs over the same selection further apart than this are a user returning to a document,
+  /// not rephrasing a failed instruction.
+  private static let promptRetryWindow: TimeInterval = 120
 
   private lazy var contextDirectoryURL: URL = {
     AppSupportPaths.whisperShortcutApplicationSupportURL()
@@ -190,6 +208,7 @@ class ContextLogger {
   func logPrompt(mode: PromptMode, selectedText: String?, userInstruction: String, modelResponse: String, model: String? = nil, hadScreenshot: Bool? = nil) {
     guard isLoggingEnabled else { return }
     let modeString = "prompt"
+    noteSelectionForRetryDetection(selectedText)
     let entry = InteractionLogEntry(
       ts: iso8601Now(),
       mode: modeString,
@@ -205,6 +224,34 @@ class ContextLogger {
       hadScreenshot: hadScreenshot
     )
     writeEntry(entry)
+  }
+
+  /// Emits `promptRetry` when this Dictate Prompt targets the same selection as the previous one
+  /// within `promptRetryWindow`, then records the current selection for the next comparison.
+  private func noteSelectionForRetryDetection(_ selectedText: String?) {
+    let trimmed = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let trimmed, !trimmed.isEmpty else {
+      lastInteractionLock.lock()
+      lastPromptSelectionHash = nil
+      lastPromptAt = nil
+      lastInteractionLock.unlock()
+      return
+    }
+
+    let hash = trimmed.hashValue
+    lastInteractionLock.lock()
+    let isRetry =
+      lastPromptSelectionHash == hash
+      && (lastPromptAt.map { Date().timeIntervalSince($0) < Self.promptRetryWindow } ?? false)
+    let gap = lastPromptAt.map { Int(Date().timeIntervalSince($0)) }
+    lastPromptSelectionHash = hash
+    lastPromptAt = Date()
+    lastInteractionLock.unlock()
+
+    guard isRetry else { return }
+    // Logged before the interaction entry it refers to, so `refTs` still points at the attempt
+    // being retried rather than at this one.
+    logSignal(.promptRetry, mode: "prompt", detail: ["secondsSincePrevious": "\(gap ?? 0)"])
   }
 
   /// Logs one chat turn (user message + model response) when "Save usage data" is enabled.

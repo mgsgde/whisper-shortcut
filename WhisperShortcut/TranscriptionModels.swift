@@ -942,6 +942,9 @@ enum TranscriptionError: Error, Equatable {
   case voiceRequiresAPIKey
   /// Backend returned 402: signed-in user has no active subscription.
   case subscriptionRequired
+  /// Dictate Prompt ran with nothing selected. Appended last on purpose: these cases are logged
+  /// by their integer index (`TranscriptionError error 21`), so inserting above renumbers history.
+  case noSelectedText
 
   var title: String {
     switch self {
@@ -971,6 +974,7 @@ enum TranscriptionError: Error, Equatable {
     case .modelNotAvailable: return "Model Not Downloaded"
     case .voiceRequiresAPIKey: return "Voice Requires API Key"
     case .subscriptionRequired: return "Subscription Required"
+    case .noSelectedText: return "Nothing Selected"
     }
   }
 
@@ -1002,7 +1006,7 @@ enum TranscriptionError: Error, Equatable {
     case .quotaExceeded(let retryAfter):
       return retryAfter != nil
     // Non-retryable errors (configuration/permanent issues)
-    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .billingRequired, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest, .voiceRequiresAPIKey, .subscriptionRequired:
+    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .billingRequired, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest, .voiceRequiresAPIKey, .subscriptionRequired, .noSelectedText:
       return false
     }
   }

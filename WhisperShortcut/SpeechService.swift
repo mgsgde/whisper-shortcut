@@ -611,6 +611,19 @@ class SpeechService {
     // model relies solely on the highlighted region in the screenshot instead of the ⌘C-copied selection.
     let clipboardContext = AppConstants.dictatePromptUsesScreenshotSelection ? nil : getClipboardContext()
 
+    // With nothing selected there is no material to edit, and the model reliably "edits" the
+    // instruction instead — a user who said "formuliere Antwort, mein Geburtsdatum ist 15.08.91"
+    // got back that same sentence, tidied up. Refusing here is cheaper and far clearer than
+    // pasting the user's own words back at them. Screenshot-selection builds are exempt: there
+    // the selection lives in the screenshot, so a nil clipboard is the normal case.
+    if !AppConstants.dictatePromptUsesScreenshotSelection, clipboardContext == nil {
+      DebugLogger.log("PROMPT-MODE: No selected text — refusing to send, nothing to edit")
+      ContextLogger.shared.logSignal(
+        .promptNoSelection, mode: "prompt",
+        detail: ["reason": clipboardManager == nil ? "clipboardUnavailable" : "emptySelection"])
+      throw TranscriptionError.noSelectedText
+    }
+
     // The selected text is user-curated ground-truth spelling (unlike the voice instruction,
     // which is machine transcription) — feed it to the same instant glossary learning as
     // typed chat text. Independent of whether the prompt call below succeeds.
@@ -1501,7 +1514,12 @@ class SpeechService {
   }
 
   /// xAI Grok TTS — `output_format:{codec:"pcm",sample_rate:24000}` returns raw s16le 24kHz mono PCM.
-  /// The model id is implied by the endpoint; sending a `model` field returns "Invalid request format".
+  ///
+  /// We deliberately send **no** `model` field: the voice (`voice_id`) is the only selector we need,
+  /// and omitting the model keeps us off xAI's slug churn. `TTSModel.grokVoiceTTS`'s raw value
+  /// (`grok-voice-tts-1.0`) is therefore a *display label only* — it never reaches the wire. Do not
+  /// "fix" this by threading `model.rawValue` into the body: that slug now 404s. Verified
+  /// 2026-08-05 — the live slug is `grok-tts`, and all five shipped voices return 200 without it.
   private func synthesizeXAITTS(text: String, voice: String, model: TTSModel) async throws -> Data {
     let token = try ProviderCredentials.require(.xAI)
     guard let url = URL(string: AppConstants.xaiTTSEndpoint) else { throw TranscriptionError.invalidRequest }

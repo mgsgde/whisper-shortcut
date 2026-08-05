@@ -23,7 +23,9 @@ protocol FnPushToTalkDelegate: AnyObject {
 /// - Hold: fn-down starts a Dictate recording, releasing the key stops and transcribes it.
 /// - Tap: a short press starts a recording that keeps running after release; the next fn
 ///   press stops and transcribes it.
-/// - Tap while transcribing: cancels the in-flight transcription, like the dictation shortcut.
+/// - Tap while transcribing: cancels the in-flight transcription, like the dictation shortcut —
+///   but only once the recording has been in flight longer than `cancelGuardWindow`, so the tap
+///   that starts the next dictation can't destroy the one just finished.
 ///
 /// Fn is a modifier, not a regular key, so it can't be a Carbon hotkey like the other
 /// shortcuts — it's observed through NSEvent flagsChanged monitors instead. Global monitors
@@ -59,6 +61,22 @@ final class FnPushToTalk {
   /// Presses shorter than this are taps (toggle the recording on), longer ones are
   /// push-to-talk holds (release stops and transcribes).
   private static let maximumTapDuration: TimeInterval = 0.35
+
+  /// How long the cancel gesture stays disarmed after a recording is handed off for
+  /// transcription.
+  ///
+  /// Stopping a recording arms the cancel gesture immediately, and a round trip takes ~0.8–2.4s,
+  /// so the tap that a user means as "start my next dictation" lands while the previous one is
+  /// still in flight and destroys it instead. Eight days of logs showed 32 cancellations and
+  /// every one of them fired within 2.2s of the stop tap — half within 300ms, which is below
+  /// the time it takes to see the transcribing state and decide to abort. The gesture was never
+  /// once used for its actual purpose (aborting a transcription that is dragging on), and that
+  /// purpose only arises after a couple of seconds anyway, so disarming it for that window
+  /// costs nothing real.
+  private static let cancelGuardWindow: TimeInterval = 2.0
+
+  /// When the current transcription was handed off, or nil if none is pending.
+  private var transcriptionStartedAt: Date?
 
   static var isEnabled: Bool {
     #if APP_STORE
@@ -99,6 +117,12 @@ final class FnPushToTalk {
     switch state {
     case .idle:
       if delegate?.fnPushToTalkIsProcessing() == true {
+        guard !isWithinCancelGuardWindow else {
+          // The user is almost certainly reaching for the next dictation, not aborting the one
+          // they just finished. Swallow the press so the transcription survives.
+          DebugLogger.log("SHORTCUTS: Fn pressed right after stopping — ignoring, transcription kept")
+          return
+        }
         // Don't cancel yet — if a regular key follows, fn is being used as a modifier and
         // the transcription must survive. Release decides.
         state = .cancelling
@@ -125,6 +149,8 @@ final class FnPushToTalk {
   private func startRecording() {
     guard delegate?.fnPushToTalkStart() == true else { return }
     DebugLogger.log("SHORTCUTS: Fn down — recording started")
+    // A new recording only starts when nothing is processing, so any pending stamp is stale.
+    transcriptionStartedAt = nil
     state = .holding(since: Date())
     installKeyDownMonitors()
   }
@@ -141,19 +167,37 @@ final class FnPushToTalk {
       } else {
         DebugLogger.log("SHORTCUTS: Fn released — stopping push-to-talk recording")
         state = .idle
-        delegate?.fnPushToTalkFinish()
+        finishRecording()
       }
     case .stopping:
       DebugLogger.log("SHORTCUTS: Fn tapped again — stopping toggled recording")
       removeKeyDownMonitors()
       state = .idle
-      delegate?.fnPushToTalkFinish()
+      finishRecording()
     case .cancelling:
       DebugLogger.log("SHORTCUTS: Fn tapped during transcription — cancelling")
       removeKeyDownMonitors()
       state = .idle
+      transcriptionStartedAt = nil
       delegate?.fnPushToTalkCancelProcessing()
     }
+  }
+
+  /// Hands the recording off to transcription and starts the cancel guard window.
+  private func finishRecording() {
+    transcriptionStartedAt = Date()
+    delegate?.fnPushToTalkFinish()
+  }
+
+  /// True while the cancel gesture is still disarmed after a hand-off. Also clears the stamp once
+  /// the window has passed, so a later press takes the normal cancel path.
+  private var isWithinCancelGuardWindow: Bool {
+    guard let startedAt = transcriptionStartedAt else { return false }
+    guard Date().timeIntervalSince(startedAt) < Self.cancelGuardWindow else {
+      transcriptionStartedAt = nil
+      return false
+    }
+    return true
   }
 
   /// A regular key pressed while fn is held means fn is being used as a modifier
