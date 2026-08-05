@@ -530,8 +530,8 @@ Transcript:
   /// `response_format` is `pcm` (s16le, 24 kHz, mono).
   /// Reference: https://platform.openai.com/docs/api-reference/audio/createSpeech
   static let openAISpeechEndpoint = "https://api.openai.com/v1/audio/speech"
-  /// xAI (Grok) text-to-speech endpoint (grok-voice-tts-1.0). Returns raw PCM when
-  /// `output_format.codec` is `pcm` at `sample_rate` 24000.
+  /// xAI (Grok) text-to-speech endpoint. Returns raw PCM when `output_format.codec` is `pcm` at
+  /// `sample_rate` 24000. Takes no `model` field from us — the voice is selected via `voice_id`.
   /// Reference: https://docs.x.ai/developers/model-capabilities/audio/text-to-speech
   static let xaiTTSEndpoint = "https://api.x.ai/v1/tts"
   /// xAI (Grok) speech-to-text endpoint. Multipart POST: model=grok-stt, language, format=json, file=@ (file last).

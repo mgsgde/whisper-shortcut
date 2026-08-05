@@ -8,6 +8,16 @@ description: Hunt for the mid-to-long-term simplest, most elegant design — dee
 Find where this codebase could be **fundamentally** simpler, more elegant, and better for the
 mid-to-long term — then propose it, and apply what the user approves.
 
+**How to invoke:**
+
+- **`/review-refactors`** — no target: triage the repo (churn × size × defect density, minus what
+  the ledger already covers) and pick the 2–3 highest-payback areas.
+- **`/review-refactors <target>`** — a path, type, or feature area: sweep that plus its neighbors.
+
+Both forms report first and edit nothing until the user approves. They reply `apply`,
+`apply R4 and R6`, or `apply all`. Anything tagged **hot path / risk-sensitive** gets a scope
+question before the rework.
+
 The guiding rule: **"it's more code / more work to build" is NOT a valid argument against the
 better design.** Implementation cost has collapsed; the only things that count are the _resulting_
 design's clarity, safety, and maintainability. Argue for the best long-term shape even when the

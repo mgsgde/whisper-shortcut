@@ -26,8 +26,33 @@ Three modes, each with its own schema:
 | Mode | Fields | Purpose |
 |---|---|---|
 | `transcription` | `result, transcriptionModel, model, audioRef, ts` | Dictate (speech-to-text) output |
-| `prompt` | `userInstruction, selectedText, modelResponse, model, ts` | Dictate Prompt edits |
+| `prompt` | `userInstruction, selectedText, modelResponse, model, hadScreenshot, ts` | Dictate Prompt edits |
 | `geminiChat` | `userInstruction, modelResponse, model, ts` | Chat replies |
+
+`hadScreenshot` matters for the Step-3 checks: when `selectedText` is empty it is the only way to
+tell screenshot-grounded output from fabrication. Without it, "No hallucinations" and "Input
+integrity" both return wrong verdicts on Screenshot-mode records.
+
+### Primary: JSONL outcome signals (`signals-YYYY-MM-DD.jsonl`)
+
+Same directory, second stream. This is the user's own **verdict** on an interaction — what they did
+next — and it is the cheapest ≥2-example evidence you will find, so mine it before reaching for
+the macOS log.
+
+```
+…/UserContext/signals-YYYY-MM-DD.jsonl
+```
+
+`SignalLogEntry` (`ContextLogger.swift`): `ts`, `kind`, `refTs`, `mode`, `gapMs`, `detail`.
+Join to an interaction on **`refTs` == the interaction's `ts`**; `gapMs` is the delay between them.
+`kind` is an `OutcomeSignal`: `pasted` (delivered where the user wanted it), `dictationRestart`
+(a new dictation right after one that was never pasted → the transcript was unusable),
+`cancelledWhileProcessing`, `chatStopped`, `chatRetry`.
+
+Read them as verdicts, not events: a `dictationRestart` cluster on one model is a quality signal
+that no amount of reading transcripts will give you, and a `pasted` with a small `gapMs` is the
+strongest evidence an interaction succeeded. `detail` holds only short non-content strings, so it
+is safe to quote in a report.
 
 **Important caveats** when reading these files:
 
@@ -57,12 +82,21 @@ bash scripts/logs.sh -t 7d -f 'TRANSCRIPTION'                       # STT traffi
 ## 2. Procedure
 
 ### Step 1 — Scope
-Confirm with the user (or assume defaults):
-- **Mode(s)** to analyze: `prompt`, `transcription`, `geminiChat`, or all.
-- **Time window**: default last 7 days.
-- **Filter by model**: if the user changed the default mid-window, filter to only interactions on the model they care about. Cross-reference the macOS log to attribute each record to a model.
+Resolve scope in this order, then **print it first** — window, modes, total records, and the
+distinct models actually used — so the user can reject the default before you spend the analysis.
+
+1. **Explicit override.** Honor any flag the user passes:
+   - `--mode <name>` — restrict to `prompt`, `transcription`, or `geminiChat`. Default: all three.
+   - `--since <range>` — time window. Default: last 7 days.
+   - `--model <id>` — only interactions where this model was actually active (cross-reference the
+     macOS log). Useful right after a default-model change.
+2. **Default.** Last 7 days, all three modes, all models, with model attribution cross-referenced
+   from the macOS log.
 
 State your scope assumptions out loud before analyzing.
+
+Example invocations: `/analyze-user-interactions` · `/analyze-user-interactions --mode prompt` ·
+`/analyze-user-interactions --since "2 days" --model gemini-3.5-flash`.
 
 ### Step 2 — Extract structured data
 Parse the JSONL via Python over Bash. Sample one-liner:
@@ -145,6 +179,8 @@ Produce a single structured report with:
 
 ## 4. Linked skills
 
+- **`/review-code`** — static code review instead of a usage-driven one. Use *this* skill when the scope is "behavior the user actually experienced".
+- **`/audit-llm-context`** — checks the LLM-context files themselves for staleness, rather than app behavior.
 - **debugging-workflow** — when a cluster points to a code bug, switch to that skill to add `DebugLogger` instrumentation and run a manual repro.
 - **gemini-system-prompt-best-practices** — when the fix is a system-prompt change, apply Google's official guidelines before editing.
 - **llm-model-docs** — when proposing a default-model change, confirm the target model ID and GA/Preview status.

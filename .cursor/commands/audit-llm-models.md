@@ -21,7 +21,7 @@ The throughline is honesty: training data is stale, so every currency recommenda
 1. **Read the current code state.** Enumerate every model ID this app references — do not assume from memory.
    - `WhisperShortcut/TranscriptionModels.swift` — `TranscriptionModel` cases (Gemini + OpenAI transcription + xAI `grok-stt` + offline Whisper + self-hosted).
    - `WhisperShortcut/Settings/Shared/SettingsConfiguration.swift` — `PromptModel` cases (Gemini + Grok + OpenAI + Anthropic chat, plus the `local-llm` and `custom-openai-endpoint` sentinels), `TTSModel` cases, and `SettingsDefaults` (the *default* selections per role: transcription, dictate prompt, chat, meeting summary, smart improvement, TTS).
-   - Migration tables — `PromptModel.migrateLegacyPromptRawValue` and `TranscriptionModel.migrateLegacyTranscriptionRawValue`.
+   - Migration tables — `PromptModel.migrateLegacyPromptRawValue`, `TranscriptionModel.migrateLegacyTranscriptionRawValue`, and `TTSModel.migrateLegacyReadAloudRawValue` (called from `ModelSelectionReconciler`). Read Aloud is an audited role, so a TTS migration that skips its table silently drops persisted voice-model selections.
 
 2. **Pull the current model index from each provider.** Use WebFetch first; if it returns 403 / hallucinates / is JS-rendered, fall back to WebSearch with the current year. **All provider doc URLs, programmatic-list endpoints, deprecation pages, and status/forum links live in the `llm-model-docs` skill — read that skill (if you haven't this session) and use its URLs.** Cross-check every enum slug still in `current` against the Gemini deprecations table before recommending "no change."
 
@@ -157,7 +157,7 @@ Actually apply the recommended migrations:
 
 ## Example invocations
 
-- `/audit-llm-models` — full survey across all three providers.
+- `/audit-llm-models` — full survey across all four providers.
 - `/audit-llm-models --provider gemini` — focus on one provider.
 - `/audit-llm-models --role transcription` — only look at transcription defaults and candidate Whisper / Gemini Flash-Lite / OpenAI transcribe alternatives.
 - `/audit-llm-models --coverage` — focus on the feature × provider matrix and coverage gaps only: which features are missing a provider, and what to add so any single key unlocks everything.

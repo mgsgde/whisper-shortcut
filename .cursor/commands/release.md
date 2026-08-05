@@ -7,16 +7,8 @@ description: Cut a new App Store / GitHub release — bump version, write releas
 
 Cut a new App Store / GitHub release: bump version, write App Store + GitHub release notes, rebuild, commit, push, tag.
 
-## Task
-
-1. **Run tests**: Execute the full test suite; abort the release if any test fails
-1b. **Refresh bundled docs**: Confirm `README.md` reflects every user-facing feature and shortcut added since the last release — both the `## Features` list and the shortcuts table. `README.md` is copied into the app bundle (`scripts/rebuild-and-restart.sh`) and the in-app **Chat answers "what can this app do?" questions from it** via the `read_whisper_shortcut_doc` tool. A feature that is missing here makes the Chat wrongly claim it does not exist (this is exactly how Voice Feedback slipped through). Skim `git log <last-tag>..HEAD` for new features/shortcuts and update README before bumping the version.
-2. **Bump version**: Increment CFBundleShortVersionString in `WhisperShortcut/Info.plist`
-3. **Bump bundle version**: Increment CFBundleVersion in `WhisperShortcut/Info.plist`
-4. **Create GitHub changelog**: Summarize changes since the previous git tag
-5. **App Store "What's New in This Version" text**: User-facing changes since the last version **live on App Store Connect** (often cumulative across several GitHub releases). **Must be written in English.**
-6. **Create release notes**: Detailed release notes with all changes for GitHub Release
-7. **GitHub release**: Rebuild, commit only the release changes, push the current branch, then create and push a git tag to trigger the release workflow
+The full procedure is the numbered list under [Steps](#steps) — that is the only list; follow it in
+order. The App Store "What's New" text must be written in **English**.
 
 ## App Store vs GitHub baselines
 
@@ -53,27 +45,28 @@ GitHub and App Store ship on different cadences. The live App Store version is o
 ## Steps
 
 1. **Run all tests** with `bash scripts/run-tests.sh` — **stop immediately** if the command fails; do not bump versions, commit, or tag
-2. Read `WhisperShortcut/Info.plist` and determine current versions
-3. **Get repository URL**: Extract git remote URL from `git remote get-url origin` and convert from SSH format (`git@github.com:user/repo.git`) to HTTPS format (`https://github.com/user/repo`)
-4. Increment versions by 1 and save `WhisperShortcut/Info.plist`
-5. Analyze git log since last "update to version" commit / previous git tag
-6. **GitHub release notes:** summarize changes since the previous git tag (`git log` since last `Update to version` commit / `v<PREV>`).
-7. **App Store “What's New”:** summarize **user-facing** changes since the last version **live on App Store Connect** (see [App Store vs GitHub baselines](#app-store-vs-github-baselines) — not the previous git tag unless they match). Get the live App Store version from `asc` (step 1 above) rather than asking.
-8. Save GitHub release notes to `.github/RELEASE_NOTES.md` (used automatically by the workflow) – **IMPORTANT**: Use the resolved repository URL for all links (releases link and changelog link); never use placeholders like `your-repo`
-9. Rebuild and start the app with `bash scripts/rebuild-and-restart.sh`; stop if the build fails
-10. Git add and commit only the files changed for this release command, with message `Update to version X.X` – **Important**: `WhisperShortcut/Info.plist` and `.github/RELEASE_NOTES.md` must be included in the commit
-11. Detect the current branch with `git branch --show-current`
-12. Push the current branch with `git push origin <current-branch>`
-13. Create git tag (format: `v<Version>`, e.g. `v7.51`) on the release commit
-14. Push the tag with `git push origin <tag>`
+2. **Refresh bundled docs.** Confirm `README.md` reflects every user-facing feature and shortcut added since the last release — both the `## Features` list and the shortcuts table. `README.md` is copied into the app bundle (`scripts/rebuild-and-restart.sh`) and the in-app **Chat answers "what can this app do?" questions from it** via the `read_whisper_shortcut_doc` tool. A feature missing here makes the Chat wrongly claim it does not exist — this is exactly how Voice Feedback slipped through. Skim `git log <last-tag>..HEAD` for new features/shortcuts and update README **before** bumping the version
+3. Read `WhisperShortcut/Info.plist` and determine current versions
+4. **Get repository URL**: Extract git remote URL from `git remote get-url origin` and convert from SSH format (`git@github.com:user/repo.git`) to HTTPS format (`https://github.com/user/repo`)
+5. Increment `CFBundleShortVersionString` **and** `CFBundleVersion` by 1 and save `WhisperShortcut/Info.plist`
+6. Analyze git log since last "update to version" commit / previous git tag
+7. **GitHub release notes:** summarize changes since the previous git tag (`git log` since last `Update to version` commit / `v<PREV>`).
+8. **App Store “What's New”:** summarize **user-facing** changes since the last version **live on App Store Connect** (see [App Store vs GitHub baselines](#app-store-vs-github-baselines) — not the previous git tag unless they match). Get the live App Store version from `asc` rather than asking.
+9. Save GitHub release notes to `.github/RELEASE_NOTES.md` (used automatically by the workflow) – **IMPORTANT**: Use the resolved repository URL for all links (releases link and changelog link); never use placeholders like `your-repo`
+10. Rebuild and start the app with `bash scripts/rebuild-and-restart.sh`; stop if the build fails
+11. Git add and commit only the files changed for this release command, with message `Update to version X.X` – **Important**: `WhisperShortcut/Info.plist` and `.github/RELEASE_NOTES.md` must be included in the commit
+12. Detect the current branch with `git branch --show-current`
+13. Push the current branch with `git push origin <current-branch>`
+14. Create git tag (format: `v<Version>`, e.g. `v<PREV+1>`) on the release commit
+15. Push the tag with `git push origin <tag>`
 
 > **Note:** `scripts/create-release.sh` is an *interactive* human helper that does only the read-version → tag → push portion (with confirmation prompts). This command runs the full release flow non-interactively (bump, notes, commit, rebuild, tag), so it creates and pushes the tag directly rather than calling that script.
 
 ## Output
 
-- New version (e.g. "7.51")
-- New bundle version (e.g. "149")
-- **App Store baseline used** (e.g. “7.68 live on App Store; cumulative notes through 7.73”)
+- New version (`<PREV+1>`)
+- New bundle version (`<PREV_BUNDLE+1>`)
+- **App Store baseline used** (`<APP_STORE_LIVE> live on App Store; cumulative notes through <CURRENT>`) — always the value you queried from `asc`, never a remembered one
 - App Store "What's New in This Version" text — cumulative since that baseline, copy-paste-ready for App Store Connect (English; 1–3 short bullets or 1–2 sentences unless the gap spans many releases)
 - GitHub release notes (incremental list of changes since previous tag for `.github/RELEASE_NOTES.md`)
 - Test run result (pass / fail — release aborts on fail)

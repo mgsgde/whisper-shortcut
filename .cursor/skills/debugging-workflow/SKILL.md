@@ -71,6 +71,6 @@ captures and carries a classification table of known hang families.
 ## When to apply
 
 - Bug report / "it doesn't work" / "debug" / "figure out why" → full flow (instrument → rebuild → repro → logs).
-- App froze / beachball / spinning / unresponsive / pinned CPU → section 3 (`sample` the process first).
+- App froze / beachball / spinning / unresponsive / pinned CPU → section 3 (read the newest `hang-*.txt` capture first; only `sample` the process if no capture exists).
 - "Add logging" / "see what's happening" → instrumentation only (optionally rebuild).
 - "View existing logs" only → use **view-logs-via-bash** instead; skip for pure feature work with no bug or visibility request.

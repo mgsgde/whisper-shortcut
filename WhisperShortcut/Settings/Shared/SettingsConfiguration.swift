@@ -889,8 +889,9 @@ enum TTSModel: String, CaseIterable {
     }
   }
 
-  /// API endpoint for this model's provider. For Gemini the model id is in the path; for
-  /// OpenAI and xAI it is passed in the request body.
+  /// API endpoint for this model's provider. For Gemini the model id is in the path; for OpenAI it
+  /// is passed in the request body. **xAI takes no model id at all** — `SpeechService`
+  /// `synthesizeXAITTS` selects the voice with `voice_id` and omits `model`; see the note there.
   var apiEndpoint: String {
     switch provider {
     case .gemini:

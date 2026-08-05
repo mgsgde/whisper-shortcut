@@ -59,7 +59,7 @@ Single-pass `/review-code` uses cycle 1's window. Overlap across cycles is expec
 - Helpers called from one place that obscure the call site → inline
 - Over-engineered abstractions (protocols/types whose only job is to forward) → remove the layer
 - State that's redundant with other state → drop one
-- Comments that just narrate the code → delete (per project rule)
+- Comments that just narrate the code → delete; keep the ones that explain *why*
 
 Treat the simplification pass as **mandatory**, not optional flavor. Even healthy code usually has _something_ worth removing.
 

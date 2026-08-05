@@ -14,8 +14,9 @@ Use this skill **before** doing any of the following:
 
 **Also use proactively** whenever you are working in any of these areas, even if the user did not ask about models:
 
-- Chat providers — `GeminiChatProvider.swift`, `OpenAIChatProvider.swift`, `GrokChatProvider.swift`, `LLMChatProvider.swift`, `ChatModelCommandResolver.swift`.
-- Speech and TTS — `SpeechService.swift`, `TranscriptionModels.swift`.
+- Chat providers — `GeminiChatProvider.swift`, `OpenAIChatProvider.swift`, `GrokChatProvider.swift`, `AnthropicChatProvider.swift`, `LocalLLMChatProvider.swift`, `LLMChatProvider.swift`, `ChatModelCommandResolver.swift`.
+- Speech and TTS — `SpeechService.swift`, `TranscriptionModels.swift`, `TranscriptionProvider.swift`.
+- OpenRouter — `OpenRouterModelCatalog.swift`, `OpenRouterOAuthService.swift`, `OpenRouterOAuthConfig.swift`.
 - Settings UI / defaults — `SettingsConfiguration.swift`, `ChatSettingsTab.swift`, `SpeechToTextSettingsTab.swift`, `SpeechToPromptSettingsTab.swift`.
 
 In those areas, do the **lineup check** (next section) before finishing the task and proactively tell the user if anything looks outdated. The user wants to hear about new GA models from this skill — not from X.com or coincidence.
@@ -80,11 +81,12 @@ For each suggestion, name the **exact replacement model ID**, link the doc URL w
 
 ### OpenAI (Chat, Transcription, TTS)
 
-The app uses these OpenAI endpoints today: `/v1/chat/completions`, `/v1/audio/transcriptions`, `/v1/audio/speech`.
+The app uses these OpenAI endpoints today: `/v1/chat/completions`, **`/v1/responses`**, `/v1/audio/transcriptions`, `/v1/audio/speech`. `OpenAIChatProvider.swift` switches to the Responses API for grounded turns — if you are debugging grounding or tool calls, that is the reference page you want, not chat completions.
 
 - **API reference (all endpoints)**: <https://platform.openai.com/docs/api-reference>
   - Audio / transcription: <https://platform.openai.com/docs/api-reference/audio/createTranscription>
   - Chat completions: <https://platform.openai.com/docs/api-reference/chat>
+  - Responses API (grounding, tools): <https://platform.openai.com/docs/api-reference/responses>
   - TTS: <https://platform.openai.com/docs/api-reference/audio/createSpeech>
 - **Guides**:
   - Speech-to-text: <https://developers.openai.com/api/docs/guides/speech-to-text>
@@ -99,6 +101,11 @@ The app uses these OpenAI endpoints today: `/v1/chat/completions`, `/v1/audio/tr
 
 **Gotchas worth verifying live before relying on them:**
 
+- **`GET /v1/models` is not proof a model is callable.** Deprecated slugs stay in the listing long
+  after inference starts returning `404 model_not_found` with a deprecation message — verified
+  2026-08-05 with `gpt-5-chat-latest` (listed, `GET /v1/models/gpt-5-chat-latest` → 200, but
+  `POST /v1/chat/completions` → 404 "has been deprecated"). Always probe the *inference* endpoint.
+  This is why `test-openai-models.sh` asserts must-404 for `LEGACY_CHAT_MODELS`.
 - `whisper-1` `prompt` field is capped at **224 tokens** (vocabulary hint only).
 - `gpt-4o-transcribe` / `gpt-4o-mini-transcribe` `prompt` field accepts **GPT-4o-style instructions** (no separate `system`/`instructions` field), no documented 224-token cap.
 - `temperature` is **not** supported on `gpt-4o-transcribe` family; `stream` **is**.
@@ -121,11 +128,14 @@ The app uses the **Gemini API** (`generativelanguage.googleapis.com`), **not** V
 
 ### xAI (Grok)
 
-The app uses Grok via the OpenAI-compatible chat completions interface — see `GrokChatProvider.swift`.
+The app uses Grok via the OpenAI-compatible chat completions interface **and** `/v1/responses` for grounded turns — both are in `GrokChatProvider.swift`. It also uses two audio endpoints that are *not* chat: `/v1/stt` (transcription, `model=grok-stt`, multipart) and `/v1/tts` (Read Aloud), both declared in `AppConstants.swift`.
 
 - **Docs home**: <https://docs.x.ai/>
 - **API reference**: <https://docs.x.ai/api>
   - Chat completions: <https://docs.x.ai/docs/api-reference#chat-completions>
+  - Responses API (grounding, tools): <https://docs.x.ai/docs/api-reference#responses>
+  - Speech-to-text: <https://docs.x.ai/developers/model-capabilities/audio/speech-to-text>
+  - Text-to-speech: <https://docs.x.ai/developers/model-capabilities/audio/text-to-speech>
 - **Model index** (IDs, context windows, modalities, pricing): <https://docs.x.ai/docs/models>
 - **Pricing**: <https://docs.x.ai/docs/models#models-and-pricing>
 - **Changelog / model lifecycle**: <https://docs.x.ai/docs/release-notes>
@@ -133,8 +143,10 @@ The app uses Grok via the OpenAI-compatible chat completions interface — see `
 
 **Gotchas worth verifying live before relying on them:**
 
-- Grok model IDs change quickly and xAI retires slugs without notice (the app currently ships `grok-4.20-0309-non-reasoning`, `grok-4.20-0309-reasoning`, `grok-4.3`; `grok-4.5` is live upstream). Confirm the exact ID is still listed on the models page before committing.
+- Grok model IDs change quickly and xAI retires slugs without notice. **Do not trust a lineup written down here** — read the `PromptModel` enum for what we ship and `GET https://api.x.ai/v1/models` for what xAI serves, then confirm on the models page before committing.
 - The OpenAI-compatible endpoint may not support every OpenAI parameter — check the API reference if a feature behaves differently.
+- **The audio endpoints are not in `/v1/models`.** `grok-stt` and the TTS voices do not appear in the model list, so a "missing" slug there proves nothing. Probe `/v1/stt` and `/v1/tts` directly.
+- **`/v1/tts` takes no `model` field in our request** (`SpeechService.synthesizeXAITTS`) — the voice is `voice_id`. Sending a `model` is what the *upstream* API supports (`grok-tts` serves; the older `grok-voice-tts-1.0` 404s). `TTSModel.grokVoiceTTS`'s raw value is therefore a display label, not a wire value — verified 2026-08-05.
 
 ### Anthropic (Claude) — chat only
 
@@ -157,6 +169,29 @@ curl -s -o /dev/null -w '%{http_code}\n' https://api.anthropic.com/v1/messages \
   -H 'content-type: application/json' \
   -d '{"model":"claude-sonnet-5","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}'
 ```
+
+### OpenRouter (chat + transcription proxy)
+
+OpenRouter is a **routed** provider, not a fixed lineup: `OpenRouterModelCatalog.swift` fetches the
+model list at runtime, so there is nothing in an enum to go stale and nothing for a currency audit
+to migrate. What *can* rot is the default model ID
+(`SettingsDefaults.openRouterChatModelID`, `openRouterTranscriptionModelID`) — those are plain
+strings pointing at another provider's slug, so they follow that provider's deprecations.
+
+- **Model list (live)**: <https://openrouter.ai/api/v1/models> — the same feed the catalog reads.
+- **Docs**: <https://openrouter.ai/docs>
+- **Audio input**: <https://openrouter.ai/docs/features/multimodal/audio> — no
+  `/v1/audio/transcriptions`; audio is a base64 `input_audio` content part on a normal chat
+  completion. `AppConstants.swift` documents this at the endpoint constant.
+- Account connect uses PKCE (`OpenRouterOAuthService.swift`), so a user may have no API key at all.
+
+### Local / OpenAI-compatible servers (Ollama, LM Studio)
+
+`LocalLLMChatProvider.swift`, selected via `PromptModel.localModel` (`local-llm`) and
+`customOpenAIEndpoint` (`custom-openai-endpoint`). The model ID is whatever the user's server
+exposes (`SettingsDefaults.localModelID`), so **there is no upstream lineup to audit** — never
+report these as stale or dominated. `supportsTextChat` is deliberately `false` for `localModel`
+(Dictate Prompt only, Phase 1).
 
 ## Forums & status (use when docs disagree with reality)
 

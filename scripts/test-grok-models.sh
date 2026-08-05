@@ -82,6 +82,72 @@ echo ""
 echo "=== Grok chat candidates ==="
 for m in "${CANDIDATE_MODELS[@]}"; do test_model "$m" "candidate"; done
 
+# --- Audio paths -------------------------------------------------------------
+# These are NOT chat completions and do NOT appear in GET /v1/models, so the loops above can
+# never cover them. Both ship: TranscriptionModel.xaiTranscribe and TTSModel.grokVoiceTTS.
+# Each request below mirrors the app's real body — see SpeechService.transcribeWithXAI /
+# synthesizeXAITTS. In particular the TTS check sends NO `model` field, exactly like the app;
+# adding one is what makes this test lie (the `grok-voice-tts-1.0` slug 404s upstream).
+
+test_stt() {
+  printf "%-35s [%s] " "grok-stt" "current"
+  local wav response http_code body
+  wav=$(mktemp -t grokstt).wav
+  # 1 s of silence, 16 kHz mono s16le — enough to prove the endpoint accepts our multipart shape.
+  python3 - "$wav" <<'PY' 2>/dev/null
+import struct, sys, wave
+w = wave.open(sys.argv[1], "wb"); w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+w.writeframes(struct.pack("<" + "h" * 16000, *([0] * 16000))); w.close()
+PY
+  response=$(curl -sS -w "\n%{http_code}" -X POST "https://api.x.ai/v1/stt" \
+    -H "Authorization: Bearer $API_KEY" \
+    -F model=grok-stt -F language=en -F format=json -F "file=@$wav" 2>/dev/null) || true
+  http_code=$(echo "$response" | tail -n1)
+  body=$(echo "$response" | sed '$d')
+  rm -f "$wav"
+  if [[ "$http_code" == "200" ]]; then
+    # Silence must transcribe to an empty string. A non-empty transcript here is a hallucination
+    # signal worth investigating, not a pass.
+    if echo "$body" | grep -q '"text":[ ]*""'; then
+      echo "OK (silence → empty, no hallucination)"
+    else
+      echo "OK (WARN: silence produced text — ${body:0:60})"
+    fi
+    ((PASS++)) || true
+  else
+    echo "FAIL HTTP $http_code ${body:0:80}"
+    ((FAIL++)) || true
+  fi
+}
+
+test_tts() {
+  local voice="$1"
+  printf "%-35s [%s] " "tts voice_id=$voice" "current"
+  local out http_code size
+  out=$(mktemp -t groktts)
+  http_code=$(curl -sS -o "$out" -w "%{http_code}" -X POST "https://api.x.ai/v1/tts" \
+    -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+    -d "$(printf '{"text":"OK","voice_id":"%s","language":"auto","output_format":{"codec":"pcm","sample_rate":24000}}' "$voice")" 2>/dev/null) || true
+  size=$(wc -c < "$out" | tr -d ' ')
+  rm -f "$out"
+  if [[ "$http_code" == "200" && "$size" -gt 1000 ]]; then
+    echo "OK (${size} bytes PCM)"
+    ((PASS++)) || true
+  else
+    echo "FAIL HTTP $http_code (${size} bytes)"
+    ((FAIL++)) || true
+  fi
+}
+
+echo ""
+echo "=== Grok speech-to-text (/v1/stt — TranscriptionModel.xaiTranscribe) ==="
+test_stt
+
+echo ""
+echo "=== Grok text-to-speech (/v1/tts — TTSModel.grokVoiceTTS, all shipped voices) ==="
+# Must match TTSVoice.xaiVoices in SettingsConfiguration.swift.
+for v in eve ara rex sal leo; do test_tts "$v"; done
+
 echo "---"
 echo "Passed: $PASS  Failed: $FAIL"
 exit $(( FAIL > 0 ? 1 : 0 ))

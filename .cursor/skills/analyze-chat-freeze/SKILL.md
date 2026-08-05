@@ -16,7 +16,19 @@ All paths are in the sandbox Logs directory:
 - **Daily log:** `app_<YYYY-MM-DD>.log` for the capture's date — reconstruct the timeline around the hang timestamp.
 - **Live tail (if app is running):** `bash scripts/logs.sh -t 30m | grep -E 'WATCHDOG|CHAT-SEND|CHAT-LIST'` — `logs.sh -f` is a literal `CONTAINS` match, so passing the alternation to `-f` returns nothing (see `view-logs-via-bash`).
 
-Print the scope first: which capture, its `activity:` breadcrumb, and the app version from the nearest `APP-LIFECYCLE: launched … version=` line.
+Print the scope first: which capture, its `activity:` breadcrumb, and the app version from the nearest `APP-LIFECYCLE: launched … version=` line — so the user can redirect before you dig in.
+
+Resolve scope in this order:
+
+1. **Explicit override** — honor any flag the user passes:
+   - `--file <hang-….txt>` — analyze this specific capture only.
+   - `--since <range>` — only captures newer than this.
+2. **Default** — the newest `hang-*.txt`, cross-referenced against that day's `app_YYYY-MM-DD.log`.
+
+Examples: `/analyze-chat-freeze` · `/analyze-chat-freeze --file hang-20260703-093924.txt` ·
+`/analyze-chat-freeze --since "2 days"`.
+
+Background: `plans/active/chat-freeze-investigation.md` holds the full history and the shipped Resolution.
 
 ## 2. Real hang or false positive?
 
@@ -25,7 +37,8 @@ Read the **top ~6 frames** and the breadcrumb. Known classes (do not re-investig
 | Top-of-stack signature | Breadcrumb | Verdict |
 |---|---|---|
 | `NSAlert.runModal` / `NSSavePanel.runModal` / `NSApplication runModal` | `launch` or `idle` | **False positive** — a modal event loop, not a wedge. v7.75 pings `NSModalPanelRunLoopMode`, so newer builds shouldn't capture these at all. |
-| `SecItemCopyMatching` / `SecurityServer::ClientSession` / `CSSM_DecryptDataFinal` under `securityd` | `launch` **or** `chat-send streaming` | **REGRESSED — investigate.** Keychain memoization fixed the launch case, but captures on 2026-07-19 (`chat-send streaming`) and 2026-07-20 (`launch`) are both main-thread Keychain blocks. Note the breadcrumb alone does not disambiguate: a `chat-send streaming` breadcrumb with `Security` frames on top is **this** class, not the resolved SwiftUI storm below. |
+| `SecItemCopyMatching` / `SecurityServer::ClientSession` / `CSSM_DecryptDataFinal` under `securityd` | `launch` **or** `chat-send streaming` | **REGRESSED — investigate.** Keychain memoization fixed the launch case, but captures on 2026-07-19 (`chat-send streaming`) and 2026-07-20 (`launch`) are both main-thread Keychain blocks. Note the breadcrumb alone does not disambiguate: a `chat-send streaming` breadcrumb with `Security` frames on top is **this** class, not the resolved SwiftUI storm below. *(Last reviewed 2026-08-05: no new Keychain capture since 2026-07-20 — treat as open but cold, not as an active regression.)* |
+| `AVAudioRecorder stop` / `AudioQueueStop` / `AwaitAllPendingCallbacks`, or CoreAudio `HALC_ProxyIOContext::StartIOProc` | `idle` (**not** a chat breadcrumb) | **Fixed 2026-08-03 in `b4cc736`** — main-thread audio-recorder start/stop. `record()`/`stop()` now run on a serial per-recorder queue. Captures `hang-20260728-165723` (rotateChunk → stop) and `hang-20260802-170842` (beginSession → StartIOProc) are this class. **This is not a chat hang** — do not apply the §5 chat repro recipe; look at `ChunkedDictateRecorder` / `AudioRecorder`. A *new* capture in this family after `b4cc736` means the serial queue was bypassed. |
 | `SelectionOverlay.updateNSView` (→ `fontAttributesInRange` / `setFont:` / `_invalidateEffectiveFont`) | chat (incl. `chat-send streaming`) | **Fixed 2026-07-04 (regressed once)** — strikes even on uniform-font plain `Text` (hang-20260704-205531); invariant: **no** SwiftUI `.textSelection` anywhere in the chat transcript; selection only via `SelectableProseText` (NSTextView). (A bare `grep textSelection ChatView.swift` returns legitimate hits — the meeting-transcript view and the notice/error banners use it and are outside the transcript. Don't report those as a regression.) Self-sustaining once triggered — the circuit breaker does NOT recover it. If ambiguous vs. the streaming wedge, `sample` the live pid: SelectionOverlay frames dominating = this class. |
 | `LazyVStack.placeSubviews` / `ForEach.IDGenerator.makeID` | `chat-send streaming` | **The resolved freeze** (Jul 3 stack). See §3. |
 | `ScrollStateRequestTransform.findClosestSubview` | `chat-send streaming` | **The resolved freeze** (Jul 1 stack) — same storm, other hot frame. See §3. |
@@ -51,10 +64,14 @@ Reproduce with the recipe in `plans/active/chat-freeze-investigation.md` (4+ gro
 
 Propose the smallest change consistent with the shipped architecture — keep the streaming bubble out of the lazy/anchored layout. Rank alternatives (see the brief's candidate table) only if a minimal change can't localize the cost. Do not commit unless asked.
 
+**When the user follows up with "fix" / "apply":** only act if the triage found a *new real* wedge, not the resolved one. Apply the change, then rebuild via `bash scripts/rebuild-and-restart.sh` (per the always-applied rule in `.cursor/rules/index.mdc`) before reporting completion.
+
 ## Related skills
 
 - **`view-logs-via-bash`** — the `scripts/logs.sh` flags used above.
 - **`debugging-workflow`** — adding `DebugLogger` instrumentation + repro plan for a new variant.
+- **`/review-code`** — static review of the chat code instead of a capture-driven diagnosis.
+- **`/analyze-user-interactions`** — usage-pattern mining when the symptom is behavioral, not a hang.
 
 ## Anti-patterns
 

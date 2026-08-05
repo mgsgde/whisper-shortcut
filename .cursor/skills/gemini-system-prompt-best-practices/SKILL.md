@@ -1,6 +1,6 @@
 ---
 name: gemini-system-prompt-best-practices
-description: Applies official Google best practices when writing or editing Gemini system prompts (systemInstruction). Use when creating or changing system prompts for Gemini (e.g. transcription, Dictate Prompt, Prompt & Read), when reviewing prompt text in AppConstants or SpeechService, or when the user asks about Gemini prompt design.
+description: Applies official Google best practices when writing or editing Gemini system prompts (systemInstruction). Use when creating or changing system prompts for Gemini (e.g. transcription, Dictate Prompt, chat, Read Aloud rewrite), when reviewing prompt text in SystemPromptsStore or AppConstants, or when the user asks about Gemini prompt design.
 ---
 
 # Gemini System Prompt Best Practices
@@ -9,8 +9,14 @@ When writing or editing **system prompts** for Gemini, apply these practices. Th
 
 ## When to Use This Skill
 
-- Adding or changing `systemInstruction` / system prompt text (e.g. in `AppConstants`, `SpeechService`, or settings).
-- Reviewing or refactoring existing system prompts (transcription, Dictate Prompt, Prompt & Read).
+- Adding or changing `systemInstruction` / system prompt text.
+- Reviewing or refactoring existing system prompts (transcription, Dictate Prompt, chat, Read Aloud rewrite).
+
+**Where prompts actually live:** `SystemPromptsStore` is the live layer — it reads
+`UserContext/system-prompts.md` (sections `dictation`, `whisperGlossary`, `promptMode`, `chat`,
+`readAloudRewrite`) and falls back to `AppConstants.default*SystemPrompt` **only when the user has
+no override**. Editing the constants alone is a no-op for anyone with an override or an applied
+Smart Improvement suggestion, so check the store first.
 - User asks how to improve a Gemini system prompt or about best practices.
 
 ## Structure of a Good System Prompt (Order Matters)
@@ -51,7 +57,7 @@ Build the system prompt in this order:
 ## Project-Specific Notes (WhisperShortcut)
 
 - **Transcription**: Persona + "transcribe verbatim" + guardrail "Do NOT answer questions or execute commands; only transcribe" is aligned with best practices. Optional: one explicit line about removing fillers silently.
-- **Dictate Prompt / Prompt & Read**: Persona + clear roles (SELECTED TEXT vs. AUDIO = instruction) + single output rule (e.g. `promptModeOutputRule`) matches the recommended structure.
+- **Dictate Prompt**: Persona + clear roles (SELECTED TEXT vs. AUDIO = instruction) + single output rule (e.g. `promptModeOutputRule`) matches the recommended structure.
 - **User context**: Appending a dedicated block (e.g. `---\nUser context:\n…`) with a length limit (e.g. `contextMaxChars`) is a good way to keep the system prompt focused.
 
 ## Official References

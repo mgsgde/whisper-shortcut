@@ -14,6 +14,21 @@ Goal: produce a high-signal architecture review grounded in the current codebase
 - This is a **review command** first: identify strengths, gaps, and high-impact upgrades.
 - Focus on meaningful product/architecture outcomes, not style nitpicks.
 
+Default scope covers:
+
+- Chat/provider abstraction and tool loop
+- Prompting and structured-output reliability
+- Dictation/transcription and TTS architecture
+- Model currency and migration hygiene
+- Operational quality (logging, failure handling, maintainability)
+
+### Related
+
+- **`/audit-llm-models`** — deep model-lineup and provider-coverage audit. Use it when the question
+  is "are we on the right models"; use *this* skill when the question is "is the architecture right".
+- **`/analyze-user-interactions`** — usage-log-driven failure patterns from real interactions.
+- **`/review-code`** — static code review for regressions and simplification opportunities.
+
 ## Workflow
 
 1. **Map current implementation (repo-first)**
@@ -21,8 +36,8 @@ Goal: produce a high-signal architecture review grounded in the current codebase
    - Capture what the app does today: provider abstraction, streaming behavior, tool-use loop, STT/TTS path, structured outputs vs prompt parsing, model defaults, migrations, and guardrails.
 
 2. **Refresh live docs before judging modernity (mandatory)**
-   - Read `.cursor/skills/llm-model-docs/SKILL.md` and follow its current-doc workflow.
-   - Verify key claims against live docs/forums (OpenAI, Gemini, xAI), especially:
+   - Use the **llm-model-docs** skill and follow its current-doc workflow.
+   - Verify key claims against live docs/forums (OpenAI, Gemini, xAI, Anthropic, and OpenRouter's runtime catalog), especially:
      - structured output/schema enforcement support,
      - chat/tool-calling patterns,
      - speech/transcription/realtime capabilities,

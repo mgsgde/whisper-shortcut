@@ -79,8 +79,9 @@ Expected sequence for one Smart Improvement run (verified against `ContextDeriva
    - `focus=<focus> samplesOnDisk=<n>` — how many samples were available to that focus (marker `AUDIO-VERIFY: focus=… samplesOnDisk=` in `ContextDerivation.swift`).
    - Possibly `focus=<focus> skip reason=smart-model-unknown` (marker in `ContextDerivation.swift`) — then no further per-focus output (skip path).
    - `focus=<focus> candidateTerms=<n> top=[term1, term2, …]` — the recurring candidate terms mined from the transcripts that drive selection (marker `AUDIO-VERIFY: focus=… candidateTerms=` in `ContextDerivation.swift`). `candidateTerms=0` means no recurring distinctive vocabulary was found; selection falls back to newest clips.
-   - For each clip considered/attached: `asymmetry ref=<ref> transcriptionModel=<m> smartModel=<sm> informative=<true|false>`; attached clips also carry `term=<candidate|—>` showing which candidate term the clip was selected to verify (`—` = recency top-up) (marker `AUDIO-VERIFY: focus=… asymmetry ref=` in `ContextDerivation.swift`).
-   - End-of-focus summary: `focus=<focus> attach selectedClips=<n> skippedAsymmetry=<n> skippedUnknownModel=<n> capPerRun=<n> candidateTerms=<n>` (marker `AUDIO-VERIFY: focus=… attach selectedClips=` in `ContextDerivation.swift`). `selectedClips=0` means nothing was attached for that focus.
+   - For each clip considered/attached: `asymmetry ref=<ref> transcriptionModel=<m> smartModel=<sm> informative=<true|false>`; attached clips also carry `term=<candidate|—>` showing which candidate term the clip was selected to verify (`—` = recency top-up) and `clipBytes=<n>` (marker `AUDIO-VERIFY: focus=… asymmetry ref=` in `ContextDerivation.swift`).
+   - Possibly `focus=<focus> skip ref=<ref> reason=size-budget clipBytes=<n> attachedBytes=<n> budget=<n>` — the clip passed the asymmetry rule but did not fit the per-request byte budget (marker in `ContextDerivation.swift`). These clips are dropped **silently from the summary counters**: they raise neither `skippedAsymmetry` nor `skippedUnknownModel`.
+   - End-of-focus summary: `focus=<focus> attach selectedClips=<n> attachedBytes=<n> skippedAsymmetry=<n> skippedUnknownModel=<n> capPerRun=<n> candidateTerms=<n>` (marker `AUDIO-VERIFY: focus=… attach selectedClips=` in `ContextDerivation.swift`). `selectedClips=0` means nothing was attached for that focus.
 4. `run(end) retainedSamples=<n>` — end of run; audio is **kept** for future runs (marker `AUDIO-VERIFY: run(end)` in `AutoPromptImprovementScheduler.swift`).
 
 How to interpret common patterns:
@@ -91,7 +92,8 @@ How to interpret common patterns:
 | `asymmetry … informative=true term=<X>` followed by `selectedClips>0` | Content-aware verification proceeded — happy path, audio for candidate term `<X>` went into the request. |
 | `focus=… skip reason=smart-model-unknown` | The Smart Improvement model wasn't recognized. Check `SettingsConfiguration` and the model raw values. |
 | `focus=… candidateTerms=0` then `selectedClips>0 term=—` only | No recurring distinctive vocabulary; selection fell back to newest clips. Normal early on or for very generic dictations. |
-| `focus=… selectedClips=0 skippedAsymmetry=0 skippedUnknownModel=0` | No candidate clips at all — `samplesOnDisk` was 0 or no on-disk clip matched any candidate term and no eligible newest clip existed. Could be normal (no recent dictation) or a selection bug. |
+| `focus=… skip reason=size-budget` (one or more) | Clips passed the asymmetry rule but exceeded the request byte budget. **Check this before diagnosing the row below** — size-budget drops do not increment any `skipped*` counter, so a run whose clips were all dropped for size looks identical to "no candidates at all". |
+| `focus=… selectedClips=0 skippedAsymmetry=0 skippedUnknownModel=0`, **and no `reason=size-budget` lines** | No candidate clips at all — `samplesOnDisk` was 0 or no on-disk clip matched any candidate term and no eligible newest clip existed. Could be normal (no recent dictation) or a selection bug. |
 | `focus=… selectedClips=<cap> capPerRun=<same cap>` | `audioSamplesPerRun` cap hit (default 12) — more candidate terms than slots. The top terms (by distinct-transcript frequency) were covered; review whether the cap is too tight if an important term was crowded out. |
 
 ### Q5. Is the audio retained correctly afterwards (not wiped, but age-bounded)?
@@ -138,6 +140,13 @@ When summarizing for the user:
 - User asks to verify, validate, or test that Smart Improvement audio verification is working.
 - After any change to the Smart Improvement audio verification flow.
 - When debugging why a Whisper Glossary or dictation system prompt suggestion did or did not appear, and audio verification is in play.
+
+## Related
+
+- **view-logs-via-bash** — the underlying `bash scripts/logs.sh` invocations and their flag gotchas.
+- **debugging-workflow** — when this validation surfaces a real bug and you need to add new
+  `DebugLogger` instrumentation to chase it. This skill itself is **read-only**: do not modify code
+  from it.
 
 ## When to skip
 
