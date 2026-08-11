@@ -86,6 +86,21 @@ enum TranscriptionProvider: String, CaseIterable {
     }
   }
 
+  /// Where a transcription request for this provider goes.
+  ///
+  /// Google is the exception and returns nil: its URL embeds the model id, so only the model can
+  /// finish it (see `TranscriptionModel.apiEndpoint`). Offline and self-hosted have no fixed
+  /// endpoint — one runs locally, the other is whatever URL the user configured.
+  var fixedEndpoint: String? {
+    switch self {
+    case .google: return nil
+    case .openAI: return AppConstants.openAITranscriptionsEndpoint
+    case .xai: return AppConstants.xaiSTTEndpoint
+    case .openRouter: return AppConstants.openRouterChatCompletionsEndpoint
+    case .selfHosted, .offline: return ""
+    }
+  }
+
   /// Actionable message shown when this provider can't run for lack of a credential.
   var credentialRequiredMessage: String {
     switch self {

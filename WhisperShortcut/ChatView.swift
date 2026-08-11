@@ -843,7 +843,7 @@ class ChatViewModel: ObservableObject {
         self.processNextQueued()
       }
       let selectedModel = Self.openChatModel
-      guard await validateCredential(for: selectedModel) else { return }
+      guard validateCredential(for: selectedModel) else { return }
 
       let provider = LLMProviderFactory.provider(for: selectedModel)
       let model = selectedModel.rawValue
@@ -1066,36 +1066,10 @@ class ChatViewModel: ObservableObject {
     StallCancellationRegistry.shared.register(sessionId, task: task)
   }
 
-  private func validateCredential(for model: PromptModel) async -> Bool {
-    switch model.provider {
-    case .grok:
-      guard KeychainManager.shared.hasNonEmpty(.xai) else {
-        errorMessage = "Add your xAI API key in Settings to use Grok models."
-        return false
-      }
-    case .openai:
-      guard KeychainManager.shared.hasNonEmpty(.openAI) else {
-        errorMessage = "Add your OpenAI API key in Settings to use OpenAI models."
-        return false
-      }
-    case .anthropic:
-      guard KeychainManager.shared.hasNonEmpty(.anthropic) else {
-        errorMessage = "Add your Anthropic API key in Settings to use Claude models."
-        return false
-      }
-    case .customOpenAI:
-      guard OpenAIChatPreferences.isConfigured else {
-        errorMessage = "Configure your custom endpoint URL and API key in Settings → Chat, then select Custom endpoint as the chat model."
-        return false
-      }
-    case .gemini:
-      guard await GeminiCredentialProvider.shared.getCredential() != nil else {
-        errorMessage = "Add your Google API key in Settings or sign in with Google to use Chat."
-        return false
-      }
-    case .local:
-      // Local server needs no API key; reachability surfaces at request time.
-      break
+  private func validateCredential(for model: PromptModel) -> Bool {
+    guard model.provider.hasCredential else {
+      errorMessage = model.provider.credentialRequiredMessage
+      return false
     }
     return true
   }
@@ -1464,6 +1438,11 @@ class ChatViewModel: ObservableObject {
         text += "\n\nWhat you have learned about where things live:\n\(map)\nTreat this as a starting point, not gospel — verify with a tool call before relying on it, and call `remember_file_location` to correct an entry that turns out to be wrong."
       }
       text += "\n\nWhenever you discover something durable about the layout of these folders (what a directory holds, how its files are named), call `remember_file_location` so future conversations start there instead of searching again. Record directories and stable collections, not one-off files. Use `forget_file_location` for entries that are wrong or outdated."
+      // AGENTS.md / CLAUDE.md / .cursor/rules — the user's own agent instructions, loaded in full
+      // exactly as Cursor and Claude Code load them. Injected rather than left to a tool call: a
+      // folder is shared *because* its context should shape every answer, and a model that has to
+      // decide to go read the rules first will often simply not.
+      text += WorkspaceContextFiles.contextBlock()
     }
     if GoogleAccountOAuthService.shared.isConnected {
       text += "\n\nIMPORTANT — you are CONNECTED to the user's own Google account with LIVE access to their Calendar, Tasks, and Gmail through the tools below. When the user asks anything about their email, inbox, messages, calendar, schedule, events, meetings, appointments, tasks, to-dos, or reminders, you MUST call the relevant tool to fetch the real data BEFORE answering — on the very first turn, without waiting to be asked again. NEVER reply that you lack access, cannot see their inbox/calendar, or that they should paste/forward/attach the content: you have direct access, so use it. You have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_update, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nTo CHANGE an existing task (due date, title, notes, status) always call google_tasks_update — never delete and re-create it.\nWhen an instruction affects several items (e.g. re-dating five tasks), emit ALL the independent calls together in ONE turn instead of one call per turn — the number of tool rounds per answer is limited, and one-at-a-time editing runs out of rounds before the batch is finished.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks."
@@ -1977,87 +1956,10 @@ class ChatViewModel: ObservableObject {
 
   // MARK: - Search
 
-  /// A single hit from searching chats and meeting transcripts.
-  struct ChatSearchResult: Identifiable {
-    enum Kind { case chat, meeting }
-    let id: UUID
-    let kind: Kind
-    /// Session to open on tap. Nil for an orphan meeting transcript whose session was pruned.
-    let sessionId: UUID?
-    /// Transcript file, used to reveal an orphan meeting in Finder.
-    let meetingURL: URL?
-    let title: String
-    let snippet: String
-    let date: Date
-    let score: Int
-    var isMeeting: Bool { kind == .meeting }
-  }
-
-  private static let maxSearchResults = 50
-
-  /// Searches every chat session (title + message text) and meeting transcript (.txt content),
-  /// returning results ranked by relevance (term-occurrence score) then recency. Multi-word
-  /// queries use AND semantics. A blank query returns an empty list.
+  /// Forwards to `ChatSearch`, which owns the ranking and snippeting. The view model keeps the
+  /// entry point because the sidebar calls it through `@ObservedObject`.
   func search(_ rawQuery: String) -> [ChatSearchResult] {
-    let terms = rawQuery.lowercased()
-      .split(whereSeparator: { $0.isWhitespace })
-      .map(String.init)
-    guard !terms.isEmpty else { return [] }
-
-    let meetingService = MeetingListService.shared
-    meetingService.refresh()
-    let meetingsByStem = Dictionary(
-      meetingService.meetings.map { ($0.meetingId, $0) },
-      uniquingKeysWith: { first, _ in first })
-
-    var results: [ChatSearchResult] = []
-    var coveredStems = Set<String>()
-
-    for session in store.allSessions() {
-      var parts: [String] = []
-      if let t = session.title { parts.append(t) }
-      parts.append(contentsOf: session.messages.map { GeminiAPIClient.stripImageMarkers($0.content) })
-
-      var meetingURL: URL? = nil
-      if session.isMeeting, let stem = session.meetingStem, let meeting = meetingsByStem[stem] {
-        coveredStems.insert(stem)
-        meetingURL = meeting.url
-        parts.append(meetingService.chunks(for: meeting).map { $0.text }.joined(separator: "\n"))
-      }
-
-      let haystack = parts.joined(separator: "\n").lowercased()
-      guard terms.allSatisfy({ haystack.contains($0) }) else { continue }
-
-      let title = Self.displayTitle(for: session)
-      results.append(ChatSearchResult(
-        id: session.id,
-        kind: session.isMeeting ? .meeting : .chat,
-        sessionId: session.id,
-        meetingURL: meetingURL,
-        title: title,
-        snippet: Self.searchSnippet(from: parts, terms: terms, fallback: title),
-        date: session.lastUpdated,
-        score: Self.searchScore(haystack: haystack, title: title.lowercased(), terms: terms)))
-    }
-
-    // Orphan transcripts: file exists but its session was pruned from the 50-session cap.
-    for meeting in meetingService.meetings where !coveredStems.contains(meeting.meetingId) {
-      let transcript = meetingService.chunks(for: meeting).map { $0.text }.joined(separator: "\n")
-      let haystack = (meeting.displayLabel + "\n" + transcript).lowercased()
-      guard terms.allSatisfy({ haystack.contains($0) }) else { continue }
-      results.append(ChatSearchResult(
-        id: UUID(),
-        kind: .meeting,
-        sessionId: nil,
-        meetingURL: meeting.url,
-        title: meeting.displayLabel,
-        snippet: Self.searchSnippet(from: [transcript], terms: terms, fallback: meeting.displayLabel),
-        date: meeting.date,
-        score: Self.searchScore(haystack: haystack, title: meeting.displayLabel.lowercased(), terms: terms)))
-    }
-
-    results.sort { $0.score != $1.score ? $0.score > $1.score : $0.date > $1.date }
-    return Array(results.prefix(Self.maxSearchResults))
+    ChatSearch.run(rawQuery, store: store)
   }
 
   /// Reveals a meeting transcript file in Finder (fallback for orphan transcripts with no session).
@@ -2084,44 +1986,6 @@ class ChatViewModel: ObservableObject {
       }
     }
     return "New chat"
-  }
-
-  /// Relevance score: total term occurrences across the (lowercased) haystack, plus a bonus
-  /// for each term that also appears in the (lowercased) title.
-  private static func searchScore(haystack: String, title: String, terms: [String]) -> Int {
-    var score = 0
-    for term in terms {
-      var idx = haystack.startIndex
-      while let r = haystack.range(of: term, range: idx..<haystack.endIndex) {
-        score += 1
-        idx = r.upperBound
-      }
-      if title.contains(term) { score += 5 }
-    }
-    return score
-  }
-
-  /// Builds a one-line snippet centered on the first matching term, with ellipses for elided context.
-  private static func searchSnippet(from parts: [String], terms: [String], fallback: String) -> String {
-    let flat = parts.joined(separator: " • ")
-      .replacingOccurrences(of: "\n", with: " ")
-      .replacingOccurrences(of: "\r", with: " ")
-    var hit: Range<String.Index>? = nil
-    for term in terms {
-      if let r = flat.range(of: term, options: .caseInsensitive),
-         hit == nil || r.lowerBound < hit!.lowerBound {
-        hit = r
-      }
-    }
-    guard let match = hit else {
-      return String(fallback.trimmingCharacters(in: .whitespacesAndNewlines).prefix(100))
-    }
-    let start = flat.index(match.lowerBound, offsetBy: -40, limitedBy: flat.startIndex) ?? flat.startIndex
-    let end = flat.index(match.lowerBound, offsetBy: 80, limitedBy: flat.endIndex) ?? flat.endIndex
-    var s = String(flat[start..<end]).trimmingCharacters(in: .whitespaces)
-    if start != flat.startIndex { s = "…" + s }
-    if end != flat.endIndex { s += "…" }
-    return s
   }
 
   /// Translates a meeting-button tap into the right intent based on current session state:
@@ -4299,40 +4163,6 @@ private struct ChatInputScrollViewAutohideAnchor: NSViewRepresentable {
   }
 }
 
-// MARK: - Paragraphs with citations at end
-
-/// One paragraph with its character range and grounding chunk indices (for citations at end of paragraph).
-private struct ParagraphWithCitations {
-  let text: String
-  let chunkIndices: [Int]
-}
-
-private enum ParagraphCitationBuilder {
-  /// Splits content by "\n\n" and assigns to each paragraph all chunk indices from supports whose segment overlaps that paragraph. Citations are then rendered at the end of each paragraph.
-  static func buildParagraphs(content: String, supports: [GroundingSupport], sourcesCount: Int) -> [ParagraphWithCitations] {
-    let parts = content.components(separatedBy: "\n\n")
-    var paragraphs: [ParagraphWithCitations] = []
-    var startOffset = 0
-    for part in parts {
-      let endOffset = startOffset + part.count
-      let indices = chunkIndicesForRange(start: startOffset, end: endOffset, supports: supports, sourcesCount: sourcesCount)
-      paragraphs.append(ParagraphWithCitations(text: part, chunkIndices: indices))
-      startOffset = endOffset + 2
-    }
-    return paragraphs
-  }
-
-  private static func chunkIndicesForRange(start: Int, end: Int, supports: [GroundingSupport], sourcesCount: Int) -> [Int] {
-    var set: Set<Int> = []
-    for s in supports {
-      guard s.startIndex < end, s.endIndex > start else { continue }
-      for idx in s.groundingChunkIndices where idx >= 0 && idx < sourcesCount {
-        set.insert(idx)
-      }
-    }
-    return set.sorted()
-  }
-}
 
 // MARK: - Flow Layout (wrapping)
 
@@ -4391,63 +4221,6 @@ private struct FlowLayout: Layout {
   }
 }
 
-// MARK: - Markdown Table / Block types (shared via MarkdownParsing.swift)
-
-private enum ReplyContentBlock {
-  case text(AttributedString)
-  case bulletList([AttributedString]) // each item is one bullet
-  case table(ParsedTable)
-  case separator
-  case codeBlock(String, String?) // code content, optional language
-  case image(NSImage) // inline image (e.g. from Gemini image generation)
-}
-
-// MARK: - Code Block Extraction
-
-/// Extracts fenced code blocks from raw markdown BEFORE splitting by \n\n,
-/// replacing them with placeholder tokens so they survive paragraph splitting.
-private struct CodeBlockExtractor {
-  struct ExtractedCodeBlock {
-    let code: String
-    let language: String?
-  }
-
-  private static let placeholderPrefix = "⟦CODEBLOCK_"
-  private static let placeholderSuffix = "⟧"
-
-  /// Extracts all fenced code blocks, returns (processed text with placeholders, extracted blocks).
-  static func extract(from content: String) -> (String, [ExtractedCodeBlock]) {
-    var blocks: [ExtractedCodeBlock] = []
-    var result = content
-    // Match ```language\n...code...\n``` (multiline, non-greedy)
-    let pattern = "```(\\w*)\\n([\\s\\S]*?)\\n```"
-    guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-      return (content, [])
-    }
-    let nsContent = content as NSString
-    let matches = regex.matches(in: content, range: NSRange(location: 0, length: nsContent.length))
-    // Process matches in reverse order so replacement indices stay valid
-    for match in matches.reversed() {
-      let langRange = match.range(at: 1)
-      let codeRange = match.range(at: 2)
-      let language = langRange.location != NSNotFound ? nsContent.substring(with: langRange) : nil
-      let code = codeRange.location != NSNotFound ? nsContent.substring(with: codeRange) : ""
-      let lang = (language?.isEmpty ?? true) ? nil : language
-      let index = blocks.count
-      blocks.insert(ExtractedCodeBlock(code: code, language: lang), at: 0)
-      let placeholder = "\n\n\(placeholderPrefix)\(index)\(placeholderSuffix)\n\n"
-      result = (result as NSString).replacingCharacters(in: match.range, with: placeholder)
-    }
-    return (result, blocks)
-  }
-
-  /// Checks if a trimmed paragraph is a code block placeholder and returns the index.
-  static func placeholderIndex(_ trimmed: String) -> Int? {
-    guard trimmed.hasPrefix(placeholderPrefix), trimmed.hasSuffix(placeholderSuffix) else { return nil }
-    let inner = trimmed.dropFirst(placeholderPrefix.count).dropLast(placeholderSuffix.count)
-    return Int(inner)
-  }
-}
 
 // MARK: - Model Reply View
 
@@ -4465,19 +4238,6 @@ private final class ModelReplySegmentBox {
   init(_ segments: [ModelReplyRenderSegment]) { self.segments = segments }
 }
 
-/// Carries the intended AppKit font metrics (size + weight) for prose runs whose SwiftUI `.font`
-/// would otherwise be lost when we render the prose in an `NSTextView` (SwiftUI `Font` does not
-/// bridge to `NSFont`). Stamped on headings and the heading rule line; everything else falls back
-/// to the 16-pt body font. A plain Hashable struct so it survives in the segment NSCache.
-private struct ProseFontMetrics: Hashable, Sendable {
-  let size: CGFloat
-  let weight: CGFloat
-}
-
-private enum ProseFontHint: AttributedStringKey {
-  typealias Value = ProseFontMetrics
-  static let name = "chat.proseFontHint"
-}
 
 /// Renders a prose `AttributedString` in a read-only `NSTextView` so the text stays selectable AND
 /// markdown links stay clickable (with a pointing-hand cursor). SwiftUI's `Text` can do one or the
@@ -4647,7 +4407,7 @@ private struct ModelReplyView: View {
   /// until the message is final. See MessageBubbleView call site.
   var isStreaming: Bool = false
 
-  /// Markdown parsing (buildReplyBlocks + mergedSegments) is expensive and would otherwise run on
+  /// Markdown parsing (`ReplyBlockBuilder.buildBlocks` + mergedSegments) is expensive and would otherwise run on
   /// every SwiftUI render of every assistant message — so switching chats re-parses the whole
   /// conversation synchronously on the main thread. Memoize by content + grounding so repeated
   /// renders and chat switches reuse the parsed result.
@@ -4672,7 +4432,8 @@ private struct ModelReplyView: View {
     if let box = segmentCache.object(forKey: key) {
       return box.segments
     }
-    let blocks = buildReplyBlocks(content: content, sources: sources, groundingSupports: groundingSupports)
+    let blocks = ReplyBlockBuilder.buildBlocks(
+      content: content, sources: sources, groundingSupports: groundingSupports)
     let segments = mergedSegments(from: blocks)
     // During streaming each flush produces a new `content` string, so caching would fill the cache
     // with throwaway keys that are never re-read (the final finalized render caches for real).
@@ -4907,307 +4668,6 @@ private struct ModelReplyView: View {
     return segments
   }
 
-  /// A citation marker like " [3]" as PLAIN text — deliberately NO `.link` and NO per-run
-  /// font. An inline `.link` run (or a per-run font that differs from the body font) inside a
-  /// `.textSelection(.enabled)` Text drives SwiftUI's macOS `SelectionOverlay` into a
-  /// non-terminating `setFont:` / `_effectiveFontDidChangeTo:` loop (100% CPU hang). The
-  /// clickable source still lives in `sourcesView`'s chip row, so nothing is lost.
-  private static func citationMarker(_ oneBased: Int) -> AttributedString {
-    AttributedString(" [\(oneBased)]")
-  }
-
-  /// Appends citation markers for every in-range chunk index. `sourcesCount` bounds the indices so
-  /// we never reference a source that doesn't exist.
-  private static func appendCitations(to attr: inout AttributedString, indices: [Int], sourcesCount: Int) {
-    for idx in indices where idx < sourcesCount {
-      attr.append(citationMarker(idx + 1))
-    }
-  }
-
-  private static func buildReplyBlocks(
-    content: String,
-    sources: [GroundingSource],
-    groundingSupports: [GroundingSupport]
-  ) -> [ReplyContentBlock] {
-    let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-    if groundingSupports.isEmpty || sources.isEmpty {
-      return buildContentOnlyBlocks(content: content, options: options)
-    }
-    let paragraphs = ParagraphCitationBuilder.buildParagraphs(
-      content: content, supports: groundingSupports, sourcesCount: sources.count)
-    var blocks: [ReplyContentBlock] = []
-    for para in paragraphs {
-      let trimmed = para.text.trimmingCharacters(in: .whitespacesAndNewlines)
-      if trimmed.isEmpty { continue }
-      if Self.shouldSkipGeneratedImagePlaceholder(trimmed, in: content) { continue }
-      if let pieces = Self.splitImageMarkerPieces(trimmed) {
-        // Generated image(s) — previously only the content-only builder knew about markers,
-        // so a grounded reply (sources ⇒ this builder) rendered the raw base64 as text.
-        // Citations attach to the last text piece; an image-only paragraph drops them.
-        let lastTextIdx = pieces.lastIndex {
-          if case .text = $0 { return true } else { return false }
-        }
-        for (i, piece) in pieces.enumerated() {
-          switch piece {
-          case .image(let image):
-            blocks.append(.image(image))
-          case .text(let text):
-            guard !GeminiAPIClient.isGeneratedImagePlaceholder(text) else { continue }
-            var attr = buildSingleParagraphAttributed(text, options: options)
-            if i == lastTextIdx {
-              appendCitations(to: &attr, indices: para.chunkIndices, sourcesCount: sources.count)
-            }
-            blocks.append(.text(attr))
-          }
-        }
-      } else if MarkdownParsing.isSeparatorParagraph(trimmed) {
-        blocks.append(.separator)
-      } else if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
-        blocks.append(.table(parsed))
-      } else if let bulletItems = parseBulletItems(trimmed) {
-        // Pure bullet block — attach citations to the last item
-        if para.chunkIndices.isEmpty {
-          blocks.append(.bulletList(bulletItems))
-        } else {
-          var items = bulletItems
-          var lastItem = items.removeLast()
-          appendCitations(to: &lastItem, indices: para.chunkIndices, sourcesCount: sources.count)
-          items.append(lastItem)
-          blocks.append(.bulletList(items))
-        }
-      } else if let (headingPart, bulletPart) = splitHeadingAndBullets(trimmed) {
-        // Heading followed by bullets — heading gets citations, bullets rendered separately
-        var headingAttr = buildSingleParagraphAttributed(headingPart, options: options)
-        appendCitations(to: &headingAttr, indices: para.chunkIndices, sourcesCount: sources.count)
-        blocks.append(.text(headingAttr))
-        if let items = parseBulletItems(bulletPart) {
-          blocks.append(.bulletList(items))
-        } else {
-          blocks.append(.text(buildSingleParagraphAttributed(bulletPart, options: options)))
-        }
-      } else {
-        // A model may glue several `**…:**` sections into one \n\n-paragraph with no
-        // separators. Split them here (after citation offsets are already resolved, so
-        // alignment is unaffected) and attach the paragraph's citations to the last part.
-        let subParts = MarkdownParsing.splitInlineSectionHeadings(trimmed)
-          .components(separatedBy: "\n\n")
-          .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-          .filter { !$0.isEmpty }
-        for (i, sub) in subParts.enumerated() {
-          var attrText = buildSingleParagraphAttributed(sub, options: options)
-          if i == subParts.count - 1 {
-            appendCitations(to: &attrText, indices: para.chunkIndices, sourcesCount: sources.count)
-          }
-          blocks.append(.text(attrText))
-        }
-      }
-    }
-    // Strip markers in the fallback too: a message whose only marker failed to decode would
-    // otherwise dump the raw multi-MB base64 into the UI as text.
-    return blocks.isEmpty
-      ? [.text(AttributedString(GeminiAPIClient.stripImageMarkers(content)))]
-      : blocks
-  }
-
-  private static func buildContentOnlyBlocks(
-    content: String,
-    options: AttributedString.MarkdownParsingOptions
-  ) -> [ReplyContentBlock] {
-    // Extract fenced code blocks BEFORE splitting by \n\n
-    let (processed, codeBlocks) = CodeBlockExtractor.extract(from: content)
-    let paragraphs = MarkdownParsing.normalizeMarkdownParagraphBreaks(processed).components(separatedBy: "\n\n")
-    var blocks: [ReplyContentBlock] = []
-    for para in paragraphs {
-      let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
-      if trimmed.isEmpty { continue }
-      if Self.shouldSkipGeneratedImagePlaceholder(trimmed, in: content) { continue }
-      if let idx = CodeBlockExtractor.placeholderIndex(trimmed), idx < codeBlocks.count {
-        let cb = codeBlocks[idx]
-        if cb.language == "markdown" && Self.looksLikeStructuredAnswer(cb.code) {
-          blocks.append(contentsOf: buildContentOnlyBlocks(content: cb.code, options: options))
-        } else {
-          blocks.append(.codeBlock(cb.code, cb.language))
-        }
-      } else if let pieces = Self.splitImageMarkerPieces(trimmed) {
-        for piece in pieces {
-          switch piece {
-          case .image(let image):
-            blocks.append(.image(image))
-          case .text(let text):
-            guard !GeminiAPIClient.isGeneratedImagePlaceholder(text) else { continue }
-            blocks.append(.text(buildSingleParagraphAttributed(text, options: options)))
-          }
-        }
-      } else if MarkdownParsing.isSeparatorParagraph(trimmed) {
-        blocks.append(.separator)
-      } else if MarkdownParsing.looksLikeMarkdownTable(trimmed), let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
-        blocks.append(.table(parsed))
-      } else if let bulletItems = parseBulletItems(trimmed) {
-        DebugLogger.log("BLOCKS: bulletList with \(bulletItems.count) items")
-        blocks.append(.bulletList(bulletItems))
-      } else if let (headingPart, bulletPart) = splitHeadingAndBullets(trimmed) {
-        DebugLogger.log("BLOCKS: split heading+bullets")
-        blocks.append(.text(buildSingleParagraphAttributed(headingPart, options: options)))
-        if let items = parseBulletItems(bulletPart) {
-          blocks.append(.bulletList(items))
-        } else {
-          DebugLogger.log("BLOCKS: bullet part failed parse: \(bulletPart.prefix(80))")
-          blocks.append(.text(buildSingleParagraphAttributed(bulletPart, options: options)))
-        }
-      } else {
-        DebugLogger.log("BLOCKS: text block: \(trimmed.prefix(80))")
-        blocks.append(.text(buildSingleParagraphAttributed(trimmed, options: options)))
-      }
-    }
-    // Strip markers in the fallback too: a message whose only marker failed to decode would
-    // otherwise dump the raw multi-MB base64 into the UI as text.
-    return blocks.isEmpty
-      ? [.text(AttributedString(GeminiAPIClient.stripImageMarkers(content)))]
-      : blocks
-  }
-
-  /// Splits a paragraph that has non-bullet text followed by bullet lines.
-  /// Returns (textPart, bulletPart) if found; nil otherwise.
-  private static func splitHeadingAndBullets(_ trimmed: String) -> (String, String)? {
-    let lines = trimmed.components(separatedBy: "\n")
-    guard lines.count >= 2 else { return nil }
-    // Find the first bullet line
-    guard let bulletStart = lines.firstIndex(where: { MarkdownParsing.parseBullet($0.trimmingCharacters(in: .whitespaces)) != nil }) else { return nil }
-    guard bulletStart > 0 else { return nil }
-    let headingPart = lines[0..<bulletStart].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-    let bulletPart = lines[bulletStart...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !headingPart.isEmpty, !bulletPart.isEmpty else { return nil }
-    return (headingPart, bulletPart)
-  }
-
-  private static func looksLikeStructuredAnswer(_ code: String) -> Bool {
-    let lines = code.components(separatedBy: "\n")
-    let headingCount = lines.filter { $0.hasPrefix("#") }.count
-    return headingCount >= 2
-  }
-
-  /// Hides the internal `[generated image]` placeholder in the UI when the message still
-  /// carries a renderable ⟦GEMINI_IMG:…⟧ marker (model echo from API history, or its own paragraph).
-  private static func shouldSkipGeneratedImagePlaceholder(_ trimmed: String, in content: String) -> Bool {
-    GeminiAPIClient.isGeneratedImagePlaceholder(trimmed)
-      && GeminiAPIClient.containsImageMarker(in: content)
-  }
-
-  /// One ordered piece of a paragraph that mixes ⟦GEMINI_IMG:…⟧ markers with prose.
-  private enum ImageMarkerPiece {
-    case image(NSImage)
-    case text(String)
-  }
-
-  /// Decoded marker images keyed by marker hash. While the post-image narration streams,
-  /// every token invalidates the segment cache and re-parses the paragraph — without this,
-  /// each re-parse base64-decodes the multi-MB marker and re-inits an NSImage on the main
-  /// thread, per token.
-  private static let markerImageCache = NSCache<NSString, NSImage>()
-
-  /// Order-preserving split of a paragraph containing ⟦GEMINI_IMG:…⟧ markers. Streaming can
-  /// glue the model's narration directly onto a marker (`…⟧Ich habe…`), so markers must be
-  /// recognized anywhere in a paragraph — not only when they make up the whole paragraph.
-  /// Returns nil when the paragraph has no marker (caller falls through to normal handling).
-  /// A marker whose base64 fails to decode is dropped (logged) rather than dumped as raw text.
-  private static func splitImageMarkerPieces(_ trimmed: String) -> [ImageMarkerPiece]? {
-    guard GeminiAPIClient.containsImageMarker(in: trimmed) else { return nil }
-    var pieces: [ImageMarkerPiece] = []
-    GeminiAPIClient.walkImageMarkers(
-      trimmed,
-      onText: { segment in
-        let before = segment.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !before.isEmpty, !GeminiAPIClient.isGeneratedImagePlaceholder(before) {
-          pieces.append(.text(before))
-        }
-      },
-      onMarker: { markerSegment in
-        let key = "\(markerSegment.count)_\(markerSegment.hashValue)" as NSString
-        if let cached = markerImageCache.object(forKey: key) {
-          pieces.append(.image(cached))
-        } else if let data = GeminiAPIClient.decodeImageMarkerData(String(markerSegment)),
-                  let image = NSImage(data: data) {
-          markerImageCache.setObject(image, forKey: key)
-          pieces.append(.image(image))
-        } else {
-          DebugLogger.logWarning("BLOCKS: image marker failed base64 decode (\(markerSegment.count) chars)")
-        }
-      },
-      onUnterminatedMarker: { trailing in
-        // Unterminated marker (e.g. truncated stream) — drop it instead of dumping base64.
-        DebugLogger.logWarning("BLOCKS: dropped unterminated image marker (\(trailing.count) chars)")
-      }
-    )
-    return pieces
-  }
-
-  /// Parses a paragraph block that consists entirely of bullet/numbered-list lines.
-  /// Returns individual attributed strings for each bullet item, or nil if not a bullet block.
-  private static func parseBulletItems(_ trimmed: String) -> [AttributedString]? {
-    // Group indented continuation lines under the previous bullet so multi-line list items
-    // (a common pattern in numbered lists like `1. **Heading:**\n   continuation`) are
-    // rendered as a single bullet instead of being rejected by an all-or-nothing check.
-    let rawLines = trimmed.components(separatedBy: .newlines)
-    var groups: [String] = []
-    for line in rawLines {
-      let trimmedLine = line.trimmingCharacters(in: .whitespaces)
-      if trimmedLine.isEmpty { continue }
-      if MarkdownParsing.parseBullet(trimmedLine) != nil {
-        groups.append(trimmedLine)
-      } else if let first = line.first, first.isWhitespace {
-        if groups.isEmpty { return nil }
-        groups[groups.count - 1] += " " + trimmedLine
-      } else {
-        return nil
-      }
-    }
-    guard !groups.isEmpty else { return nil }
-    let opts = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-    return groups.compactMap { group in
-      guard let parsed = MarkdownParsing.parseBullet(group) else { return nil }
-      let rawContent = parsed.trimmingCharacters(in: .whitespaces)
-      let content = MarkdownParsing.renderLatexToUnicode(rawContent)
-      var contentAttr = MarkdownParsing.inlineAttributedString(content, options: opts)
-      contentAttr.font = .system(size: ChatTheme.bodyFontSize, weight: .regular)
-      return contentAttr
-    }
-  }
-
-  private static func buildSingleParagraphAttributed(
-    _ trimmed: String,
-    options: AttributedString.MarkdownParsingOptions
-  ) -> AttributedString {
-    if MarkdownParsing.isSeparatorParagraph(trimmed) {
-      var lineAttr = AttributedString(MarkdownParsing.separatorLineContent)
-      lineAttr.foregroundColor = ChatTheme.primaryText.opacity(0.4)
-      return lineAttr
-    }
-    if let (level, title) = MarkdownParsing.parseATXHeading(trimmed) {
-      let parts = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-      let bodyPart = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
-      var headingAttr = MarkdownParsing.inlineAttributedString(title, options: options)
-      headingAttr.font = MarkdownParsing.fontForHeadingLevel(level, baseSize: ChatTheme.bodyFontSize)
-      let headingMetrics = MarkdownParsing.nsHeadingMetrics(level, baseSize: ChatTheme.bodyFontSize)
-      headingAttr[ProseFontHint.self] = ProseFontMetrics(size: headingMetrics.size, weight: headingMetrics.weight.rawValue)
-      if !bodyPart.isEmpty {
-        headingAttr.append(AttributedString("\n\n"))
-        var bodyAttr = MarkdownParsing.inlineAttributedString(bodyPart, options: options)
-        bodyAttr.font = .system(size: ChatTheme.bodyFontSize, weight: .regular)
-        headingAttr.append(bodyAttr)
-      }
-      return headingAttr
-    }
-    // Bullet lists are now handled at the block level, not here
-    // Convert LaTeX formulas to Unicode before markdown parsing
-    let latexProcessed = MarkdownParsing.renderLatexToUnicode(trimmed)
-    let fullOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
-    let inlineOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-    var attr = (try? AttributedString(markdown: latexProcessed, options: fullOptions))
-      ?? (try? AttributedString(markdown: latexProcessed, options: inlineOptions))
-      ?? AttributedString(latexProcessed)
-    attr.font = ChatTheme.bodyFont(size: ChatTheme.bodyFontSize)
-    return attr
-  }
 
 }
 

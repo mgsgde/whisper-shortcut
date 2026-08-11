@@ -690,32 +690,139 @@ class SpeechService {
   private static let screenshotSelectionCaptureFailedMessage =
     "Could not capture a screenshot of the current screen. Check Screen Recording permission in System Settings, then try again."
 
-  /// Returns the screenshot parts to prepend to a Dictate Prompt request when the
-  /// "include screenshot" setting is on and the model accepts images. Empty when
-  /// disabled, when the model is audio-only, or when the capture fails.
-  private func screenshotPromptParts(modelAcceptsImages: Bool = true) async -> [GeminiChatRequest.GeminiChatPart] {
-    // In screenshot-selection mode (App Store build) always include the screenshot regardless of the
-    // user setting, since it is the sole source of the selected text.
-    let includeScreenshot = AppConstants.dictatePromptUsesScreenshotSelection || screenshotInPromptModeEnabled()
-    guard includeScreenshot, modelAcceptsImages else { return [] }
-    guard let data = await ChatWindowManager.shared.captureScreenForPromptMode() else {
-      if AppConstants.dictatePromptUsesScreenshotSelection {
-        DebugLogger.logWarning("PROMPT-MODE: Screenshot capture failed in screenshot-selection mode — request has no selected text to edit")
-      }
-      return []
+  /// One prior Dictate Prompt turn, flattened to text and stripped of any provider's message shape.
+  struct PromptHistoryTurn {
+    let isUser: Bool
+    let text: String
+  }
+
+  /// The provider-independent content of one Dictate Prompt turn.
+  ///
+  /// The three provider paths each used to decide, in their own words, whether to attach a
+  /// screenshot, what to label it, how to introduce the clipboard selection, and how to flatten the
+  /// conversation history. Those decisions are identical — only the wire format differs. Deciding
+  /// once here and rendering per provider is what stops the next screenshot-mode guard from landing
+  /// in one path only, which is exactly what happened before (see R18: OpenAI shipped without the
+  /// capture-failed check and sent "edit the highlighted region" with no image).
+  ///
+  /// Audio is deliberately **not** part of this. It is the one ingredient the providers genuinely
+  /// disagree about: Gemini falls back to the Files API above 20 MB and uploads AAC, OpenAI can only
+  /// inline wav/mp3 and must reject oversized input, and the local path never sends audio at all.
+  struct DictatePromptEnvelope {
+    /// Captured JPEG, or nil when no screenshot belongs in this request.
+    let screenshot: Data?
+    /// Introduces the screenshot. Only meaningful when `screenshot` is non-nil.
+    let screenshotLabel: String
+    /// Fully formatted, header included — nil when there is no selection to send.
+    let clipboardText: String?
+    let history: [PromptHistoryTurn]
+    let systemPrompt: String
+
+    var hadScreenshot: Bool { screenshot != nil }
+  }
+
+  /// Builds the envelope, applying every guard that used to be copied per provider.
+  ///
+  /// Throws when screenshot-selection mode can't produce a screenshot — in that mode the screenshot
+  /// is the *only* source of the selected text, so a request without one carries an instruction to
+  /// edit a highlight that isn't there, and the model invents one.
+  private func buildPromptEnvelope(
+    mode: PromptMode,
+    clipboardContext: String?,
+    modelAcceptsImages: Bool,
+    supportsScreenshot: Bool,
+    logPrefix: String
+  ) async throws -> DictatePromptEnvelope {
+    let screenshotSelectionMode = AppConstants.dictatePromptUsesScreenshotSelection
+
+    // An audio-only model can't receive the screenshot at all, so in screenshot-selection mode the
+    // request would carry neither the selection nor an image. Reject with something actionable.
+    if screenshotSelectionMode && supportsScreenshot && !modelAcceptsImages {
+      DebugLogger.logError("\(logPrefix): model can't accept images — incompatible with screenshot-selection Dictate Prompt")
+      throw TranscriptionError.networkError(
+        "This Dictate Prompt model can't read the on-screen selection. Pick a Gemini Dictate Prompt model instead.")
     }
-    let screenshotLabel = AppConstants.dictatePromptUsesScreenshotSelection
-      ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
-      : "Current screen:"
-    return [
-      GeminiChatRequest.GeminiChatPart(text: screenshotLabel, inlineData: nil, fileData: nil, url: nil),
-      GeminiChatRequest.GeminiChatPart(
+
+    // In screenshot-selection mode the screenshot always goes, regardless of the user setting,
+    // since it is the sole source of the selected text.
+    let wantsScreenshot = supportsScreenshot
+      && (screenshotSelectionMode || screenshotInPromptModeEnabled())
+    var screenshot: Data?
+    if wantsScreenshot && modelAcceptsImages {
+      screenshot = await ChatWindowManager.shared.captureScreenForPromptMode()
+      if screenshot == nil {
+        if screenshotSelectionMode {
+          DebugLogger.logError("\(logPrefix): Screenshot capture failed in screenshot-selection mode")
+          throw TranscriptionError.networkError(Self.screenshotSelectionCaptureFailedMessage)
+        }
+        DebugLogger.logWarning("\(logPrefix): Screenshot capture returned nothing — sending without it")
+      }
+    } else if wantsScreenshot {
+      DebugLogger.log("\(logPrefix): Screenshot dropped — model does not accept image input.")
+    }
+
+    let clipboardText: String?
+    if let context = clipboardContext, !context.isEmpty {
+      DebugLogger.log("\(logPrefix): Adding clipboard context (length: \(context.count) chars)")
+      clipboardText = "\(AppConstants.clipboardSelectionHeader)\n\n\(context)"
+    } else {
+      DebugLogger.log("\(logPrefix): No clipboard context to add")
+      clipboardText = nil
+    }
+
+    let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
+    if historyContents.count / 2 > 0 {
+      DebugLogger.log("\(logPrefix): Including \(historyContents.count / 2) previous turns from conversation history")
+    }
+    let history = historyContents.map {
+      PromptHistoryTurn(isUser: $0.role != "model", text: $0.parts.compactMap { $0.text }.joined())
+    }
+
+    return DictatePromptEnvelope(
+      screenshot: screenshot,
+      screenshotLabel: screenshotSelectionMode
+        ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
+        : "Current screen:",
+      clipboardText: clipboardText,
+      history: history,
+      systemPrompt: buildDictatePromptSystemPrompt(logPrefix: logPrefix))
+  }
+
+  /// Renders the envelope's current-turn content as Gemini parts. Audio is appended by the caller.
+  private func geminiUserParts(from envelope: DictatePromptEnvelope) -> [GeminiChatRequest.GeminiChatPart] {
+    var parts: [GeminiChatRequest.GeminiChatPart] = []
+    if let screenshot = envelope.screenshot {
+      parts.append(GeminiChatRequest.GeminiChatPart(
+        text: envelope.screenshotLabel, inlineData: nil, fileData: nil, url: nil))
+      parts.append(GeminiChatRequest.GeminiChatPart(
         text: nil,
-        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: "image/jpeg", data: data.base64EncodedString()),
+        inlineData: GeminiChatRequest.GeminiInlineData(
+          mimeType: "image/jpeg", data: screenshot.base64EncodedString()),
         fileData: nil,
-        url: nil
-      ),
-    ]
+        url: nil))
+    }
+    if let clipboardText = envelope.clipboardText {
+      parts.append(GeminiChatRequest.GeminiChatPart(
+        text: clipboardText, inlineData: nil, fileData: nil, url: nil))
+    }
+    return parts
+  }
+
+  /// Renders the envelope's current-turn content as OpenAI content parts. Audio is appended by the
+  /// caller. Replaces the hand-written history mapping that lived in the OpenAI path (R20).
+  private func openAIUserContent(from envelope: DictatePromptEnvelope) -> [[String: Any]] {
+    var content: [[String: Any]] = []
+    if let screenshot = envelope.screenshot {
+      content.append(["type": "text", "text": envelope.screenshotLabel])
+      content.append([
+        "type": "image_url",
+        "image_url": ["url": "data:image/jpeg;base64,\(screenshot.base64EncodedString())"],
+      ])
+    }
+    if let clipboardText = envelope.clipboardText {
+      content.append(["type": "text", "text": clipboardText])
+    }
+    return content
   }
 
   /// Performs a Gemini Dictate Prompt request: prepends history, appends the caller-built
@@ -873,28 +980,13 @@ class SpeechService {
     // transcription so it doesn't keep burning a second API call in the background.
     defer { transcriptionTask.cancel() }
 
-    DebugLogger.log("PROMPT-MODE-GEMINI: Clipboard context: \(clipboardContext != nil ? "present" : "none")")
-
-    var userParts: [GeminiChatRequest.GeminiChatPart] = []
-    let screenshotParts = await screenshotPromptParts()
-    let hadScreenshot = !screenshotParts.isEmpty
-    // In screenshot-selection mode the screenshot is the ONLY source of the selected text
-    // (clipboard is skipped). Fail fast with a user-actionable error when capture returned nothing,
-    // rather than send a screenshot-mode system prompt with no image — the model would otherwise
-    // hallucinate from a non-existent highlight. The togglePrompting permission gate already handles
-    // the common case; this catches grant-but-capture-failed corners.
-    if AppConstants.dictatePromptUsesScreenshotSelection && !hadScreenshot {
-      throw TranscriptionError.networkError(Self.screenshotSelectionCaptureFailedMessage)
-    }
-    userParts.append(contentsOf: screenshotParts)
-
-    if let context = clipboardContext {
-      DebugLogger.log("PROMPT-MODE-GEMINI: Adding clipboard context to request (length: \(context.count) chars)")
-      let contextText = "\(AppConstants.clipboardSelectionHeader)\n\n\(context)"
-      userParts.append(GeminiChatRequest.GeminiChatPart(text: contextText, inlineData: nil, fileData: nil, url: nil))
-    } else {
-      DebugLogger.log("PROMPT-MODE-GEMINI: No clipboard context to add")
-    }
+    let envelope = try await buildPromptEnvelope(
+      mode: mode,
+      clipboardContext: clipboardContext,
+      modelAcceptsImages: true,
+      supportsScreenshot: true,
+      logPrefix: "PROMPT-MODE-GEMINI")
+    var userParts = geminiUserParts(from: envelope)
 
     // Audio goes after context so the model has the surrounding intent before processing speech.
     let audioSize = getAudioFileSize(at: audioURL)
@@ -929,7 +1021,7 @@ class SpeechService {
       model: model,
       mode: mode,
       userParts: userParts,
-      systemPrompt: buildDictatePromptSystemPrompt(logPrefix: "PROMPT-MODE-GEMINI"),
+      systemPrompt: envelope.systemPrompt,
       credential: credential,
       logPrefix: "PROMPT-MODE-GEMINI"
     )
@@ -940,7 +1032,7 @@ class SpeechService {
       mode: mode,
       clipboardContext: clipboardContext,
       model: model.rawValue,
-      hadScreenshot: hadScreenshot,
+      hadScreenshot: envelope.hadScreenshot,
       logPrefix: "PROMPT-MODE-GEMINI")
     return normalizedText
   }
@@ -970,68 +1062,17 @@ class SpeechService {
     // transcription so it doesn't keep burning a second API call in the background.
     defer { transcriptionTask.cancel() }
 
-    let systemPrompt = buildDictatePromptSystemPrompt(logPrefix: "PROMPT-MODE-OPENAI")
+    // gpt-4o-audio-preview is audio-only and rejects image_url content parts with HTTP 400
+    // ("This model does not support image_url content."), so the envelope is told what this model
+    // can take and drops or rejects the screenshot accordingly.
+    let envelope = try await buildPromptEnvelope(
+      mode: mode,
+      clipboardContext: clipboardContext,
+      modelAcceptsImages: model.supportsImageInput,
+      supportsScreenshot: true,
+      logPrefix: "PROMPT-MODE-OPENAI")
+    var userContent = openAIUserContent(from: envelope)
 
-    // Optional screenshot context. gpt-4o-audio-preview is audio-only and rejects image_url
-    // content parts with HTTP 400 ("This model does not support image_url content."), so we
-    // skip the screenshot for that model regardless of the user's setting.
-    let modelAcceptsImages = model.supportsImageInput
-    // In screenshot-selection mode the screenshot is the ONLY source of the selected text (clipboard
-    // is skipped). An image-only model like gpt-4o-audio-preview can't receive it, so the request
-    // would carry neither the selection nor a screenshot — fail fast with an actionable message.
-    if AppConstants.dictatePromptUsesScreenshotSelection && !modelAcceptsImages {
-      DebugLogger.logError("PROMPT-MODE-OPENAI: \(model.rawValue) can't accept images — incompatible with screenshot-selection Dictate Prompt")
-      throw TranscriptionError.networkError("This Dictate Prompt model can't read the on-screen selection. Pick a Gemini Dictate Prompt model instead.")
-    }
-    // Force the screenshot in screenshot-selection mode; otherwise honor the user's setting.
-    let screenshotEnabled = AppConstants.dictatePromptUsesScreenshotSelection || screenshotInPromptModeEnabled()
-    let screenshotData: Data? = (screenshotEnabled && modelAcceptsImages)
-      ? await ChatWindowManager.shared.captureScreenForPromptMode()
-      : nil
-    if screenshotEnabled && !modelAcceptsImages {
-      DebugLogger.log("PROMPT-MODE-OPENAI: Screenshot dropped — \(model.rawValue) does not accept image input.")
-    }
-    // Same guard the Gemini path has: in screenshot-selection mode the screenshot is the ONLY
-    // source of the selected text, so a capture that returned nothing means the request would carry
-    // an "edit the highlighted region" instruction with no region to edit — the model then invents
-    // one. The model-can't-take-images case is already rejected above; this catches
-    // permission-granted-but-capture-failed.
-    if AppConstants.dictatePromptUsesScreenshotSelection && screenshotData == nil {
-      DebugLogger.logError("PROMPT-MODE-OPENAI: Screenshot capture failed in screenshot-selection mode")
-      throw TranscriptionError.networkError(Self.screenshotSelectionCaptureFailedMessage)
-    }
-    let screenshotLabel = AppConstants.dictatePromptUsesScreenshotSelection
-      ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
-      : "Current screen:"
-
-    // Convert prior conversation history (text-only) into OpenAI messages so the model
-    // sees multi-turn context, just like the Gemini path.
-    let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
-    let historyCount = historyContents.count / 2
-    if historyCount > 0 {
-      DebugLogger.log("PROMPT-MODE-OPENAI: Including \(historyCount) previous turns from conversation history")
-    }
-    let historyMessages: [[String: Any]] = historyContents.map { content in
-      let role = content.role == "model" ? "assistant" : "user"
-      let text = content.parts.compactMap { $0.text }.joined()
-      return ["role": role, "content": text]
-    }
-
-    // Build current-turn user message content parts.
-    var userContent: [[String: Any]] = []
-    if let screenshotData {
-      userContent.append(["type": "text", "text": screenshotLabel])
-      let base64 = screenshotData.base64EncodedString()
-      userContent.append([
-        "type": "image_url",
-        "image_url": ["url": "data:image/jpeg;base64,\(base64)"],
-      ])
-    }
-    if let context = clipboardContext {
-      DebugLogger.log("PROMPT-MODE-OPENAI: Adding clipboard context (length: \(context.count) chars)")
-      let contextText = "\(AppConstants.clipboardSelectionHeader)\n\n\(context)"
-      userContent.append(["type": "text", "text": contextText])
-    }
     // OpenAI's Chat Completions API embeds audio inline (base64). Reject oversized audio up
     // front with an actionable error — Gemini falls back to the Files API for >20 MB inputs,
     // but OpenAI's audio-preview endpoint has no equivalent here, so the request would simply
@@ -1062,8 +1103,10 @@ class SpeechService {
     ])
 
     // Assemble messages: system → history → current user turn.
-    var messages: [[String: Any]] = [["role": "system", "content": systemPrompt]]
-    messages.append(contentsOf: historyMessages)
+    var messages: [[String: Any]] = [["role": "system", "content": envelope.systemPrompt]]
+    messages.append(contentsOf: envelope.history.map {
+      ["role": $0.isUser ? "user" : "assistant", "content": $0.text]
+    })
     messages.append(["role": "user", "content": userContent])
 
     let body: [String: Any] = [
@@ -1139,7 +1182,7 @@ class SpeechService {
       mode: mode,
       clipboardContext: clipboardContext,
       model: model.rawValue,
-      hadScreenshot: screenshotData != nil,
+      hadScreenshot: envelope.hadScreenshot,
       logPrefix: "PROMPT-MODE-OPENAI")
     return normalizedText
   }
@@ -1173,29 +1216,29 @@ class SpeechService {
     DebugLogger.log("PROMPT-MODE-LOCAL: Transcribed instruction (\(instruction.count) chars)")
 
     // Step 2: build the user turn (clipboard context + instruction) and prior history, in the
-    // Gemini-format `contents` the provider expects.
+    // Gemini-format `contents` the provider expects. `supportsScreenshot: false` — local text
+    // models can't read images in Phase 1 — which also means the screenshot-selection guards are
+    // correctly skipped rather than re-decided here.
+    let envelope = try await buildPromptEnvelope(
+      mode: mode,
+      clipboardContext: clipboardContext,
+      modelAcceptsImages: false,
+      supportsScreenshot: false,
+      logPrefix: "PROMPT-MODE-LOCAL")
+
     var userText = ""
-    if let context = clipboardContext, !context.isEmpty {
-      DebugLogger.log("PROMPT-MODE-LOCAL: Adding clipboard context (length: \(context.count) chars)")
-      userText += "\(AppConstants.clipboardSelectionHeader)\n\n\(context)\n\n"
+    if let clipboardText = envelope.clipboardText {
+      userText += "\(clipboardText)\n\n"
     }
     userText += "VOICE INSTRUCTION:\n\(instruction)"
 
-    var contents: [[String: Any]] = []
-    let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
-    let historyCount = historyContents.count / 2
-    if historyCount > 0 {
-      DebugLogger.log("PROMPT-MODE-LOCAL: Including \(historyCount) previous turns from conversation history")
-    }
-    for content in historyContents {
-      let text = content.parts.compactMap { $0.text }.joined()
-      contents.append(["role": content.role, "parts": [["text": text]]])
+    var contents: [[String: Any]] = envelope.history.map {
+      ["role": $0.isUser ? "user" : "model", "parts": [["text": $0.text]]]
     }
     contents.append(["role": "user", "parts": [["text": userText]]])
 
-    let systemPrompt = buildDictatePromptSystemPrompt(logPrefix: "PROMPT-MODE-LOCAL")
-    let systemInstruction: [String: Any]? = systemPrompt.isEmpty
-      ? nil : ["parts": [["text": systemPrompt]]]
+    let systemInstruction: [String: Any]? = envelope.systemPrompt.isEmpty
+      ? nil : ["parts": [["text": envelope.systemPrompt]]]
 
     let stream = LocalLLMChatProvider.shared.sendChatStream(
       model: modelID,
@@ -1972,9 +2015,18 @@ class SpeechService {
       }
       lastResponse = (data, http)
       if http.statusCode == 429, attempt < Constants.maxRetryAttempts {
-        let delay = Constants.retryDelaySeconds * pow(2.0, Double(attempt - 1))
+        // A spend-cap 429 never clears on its own, so retrying only delays the billing error the
+        // user has to act on. This rule lived in the three other retry loops and was missing here.
+        let body = String(data: data, encoding: .utf8) ?? ""
+        if RetryBackoff.isPermanentRateLimit(responseBody: body) {
+          DebugLogger.logWarning("\(logPrefix): HTTP 429 is a quota/billing block — not retrying")
+          return (data, http)
+        }
+        let delay = RetryBackoff.delay(
+          attempt: attempt, retryAfter: http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init),
+          base: Constants.retryDelaySeconds, exponential: true)
         DebugLogger.logWarning("\(logPrefix): HTTP 429 (attempt \(attempt)/\(Constants.maxRetryAttempts)), retrying in \(String(format: "%.1f", delay))s")
-        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        await RetryBackoff.sleep(delay)
         continue
       }
       return (data, http)

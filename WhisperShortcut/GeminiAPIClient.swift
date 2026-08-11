@@ -313,18 +313,9 @@ class GeminiAPIClient {
             continue  // Always retry after API-requested wait
           }
 
-          // A rate/quota error with no API-provided retry delay is a permanent
-          // block (e.g. a monthly spending-cap 429, RESOURCE_EXHAUSTED). It will
-          // not clear on its own, so retrying just delays the error and burns
-          // more requests against an already-capped project — fail fast instead.
-          if let te = error as? TranscriptionError {
-            switch te {
-            case .rateLimited(nil, _), .quotaExceeded(nil):
-              DebugLogger.log("\(mode)-RETRY: Permanent rate/quota limit (no retryDelay) – not retrying")
-              throw error
-            default:
-              break
-            }
+          if RetryBackoff.isPermanentRateLimit(error) {
+            DebugLogger.log("\(mode)-RETRY: Permanent rate/quota limit (no retryDelay) – not retrying")
+            throw error
           }
         }
 
@@ -334,14 +325,12 @@ class GeminiAPIClient {
         }
 
         if attempt < maxAttempts {
-          let delay: TimeInterval
-          if let te = error as? TranscriptionError, te.isServerOrUnavailable {
-            delay = 2.0 * pow(2.0, Double(attempt - 1))
-          } else {
-            delay = Constants.retryDelaySeconds
-          }
+          let isServerError = (error as? TranscriptionError)?.isServerOrUnavailable ?? false
+          let delay = RetryBackoff.delay(
+            attempt: attempt, retryAfter: nil,
+            base: isServerError ? 2.0 : Constants.retryDelaySeconds, exponential: isServerError)
           DebugLogger.log("\(mode)-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delay))s: \(error.localizedDescription)")
-          try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+          await RetryBackoff.sleep(delay)
         }
       }
     }
@@ -662,13 +651,10 @@ class GeminiAPIClient {
             guard let te else { return false }
             if te.isServerOrUnavailable { return true }
             switch te {
-            case .rateLimited(let retryAfter, _), .quotaExceeded(let retryAfter):
-              // Only retry when the API told us the limit is temporary (it
-              // included a retryDelay). A permanent block — e.g. a monthly
-              // spending-cap 429 (RESOURCE_EXHAUSTED with no retryDelay) — will
-              // not clear until the user raises the cap, so retrying just burns
-              // ~9s of doomed requests before the error surfaces. Fail fast.
-              return retryAfter != nil
+            case .rateLimited, .quotaExceeded:
+              // Only retry when the API told us the limit is temporary; a permanent block burns
+              // ~9s of doomed requests before the error surfaces. See `isPermanentRateLimit`.
+              return !RetryBackoff.isPermanentRateLimit(te)
             case .slowDown:
               return true
             default:
@@ -676,18 +662,13 @@ class GeminiAPIClient {
             }
           }()
           if !hasYielded, isTransient, attempt < Constants.maxServerErrorRetryAttempts {
-            // Honor an API-provided retry delay; otherwise exponential backoff for
-            // server errors, and a short fixed delay for everything else.
-            let delay: TimeInterval
-            if let retryAfter = te?.retryAfter {
-              delay = retryAfter + 2.0
-            } else if te?.isServerOrUnavailable ?? false {
-              delay = 2.0 * pow(2.0, Double(attempt - 1))
-            } else {
-              delay = Constants.retryDelaySeconds
-            }
+            let isServerError = te?.isServerOrUnavailable ?? false
+            let delay = RetryBackoff.delay(
+              attempt: attempt, retryAfter: te?.retryAfter,
+              base: isServerError ? 2.0 : Constants.retryDelaySeconds,
+              exponential: isServerError, buffer: 2.0)
             DebugLogger.log("GEMINI-CHAT-STREAM-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delay))s: \(error.localizedDescription)")
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            await RetryBackoff.sleep(delay)
             continue
           }
           continuation.finish(throwing: error)

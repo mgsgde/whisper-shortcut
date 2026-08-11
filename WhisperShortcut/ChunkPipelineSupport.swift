@@ -92,15 +92,13 @@ struct ChunkRetryPolicy {
 
         // Don't retry on last attempt
         if attempt < maxRetries {
-          // Use API-provided delay if available, otherwise exponential backoff
-          let delay: TimeInterval
-          if let transcriptionError = error as? TranscriptionError,
-             let retryAfter = transcriptionError.retryAfter {
-            delay = retryAfter
-          } else {
-            delay = retryDelay * pow(2.0, Double(attempt - 1))
-          }
+          let delay = RetryBackoff.delay(
+            attempt: attempt,
+            retryAfter: (error as? TranscriptionError)?.retryAfter,
+            base: retryDelay, exponential: true)
           DebugLogger.log("\(logPrefix): \(label) failed, retrying in \(String(format: "%.1f", delay))s")
+          // Throwing (not `RetryBackoff.sleep`) on purpose: a cancelled chunk must abandon the
+          // pipeline here rather than fall through to another attempt.
           try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
         }
       }

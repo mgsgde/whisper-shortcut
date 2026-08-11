@@ -20,7 +20,7 @@ struct ChatSidebar: View {
 
   // Global search state — one query, results across both chats and meetings.
   @State private var searchQuery: String = ""
-  @State private var searchResults: [ChatViewModel.ChatSearchResult] = []
+  @State private var searchResults: [ChatSearchResult] = []
   @State private var searchTask: Task<Void, Never>? = nil
 
   // Chats section state
@@ -337,7 +337,7 @@ struct ChatSidebar: View {
   // MARK: - Search results
 
   @ViewBuilder
-  private func searchResultsView(results: [ChatViewModel.ChatSearchResult]) -> some View {
+  private func searchResultsView(results: [ChatSearchResult]) -> some View {
     if results.isEmpty {
       Text("No results")
         .font(.system(size: 12))
@@ -352,7 +352,7 @@ struct ChatSidebar: View {
     }
   }
 
-  private func searchResultRow(_ result: ChatViewModel.ChatSearchResult) -> some View {
+  private func searchResultRow(_ result: ChatSearchResult) -> some View {
     let isHovered = hoveredResultId == result.id
     return HStack(alignment: .top, spacing: 6) {
       Image(systemName: result.isMeeting ? "mic.circle.fill" : "bubble.left")
@@ -404,7 +404,7 @@ struct ChatSidebar: View {
     }
   }
 
-  private func openResult(_ result: ChatViewModel.ChatSearchResult) {
+  private func openResult(_ result: ChatSearchResult) {
     if let sessionId = result.sessionId {
       viewModel.switchToSession(id: sessionId)
       searchQuery = ""

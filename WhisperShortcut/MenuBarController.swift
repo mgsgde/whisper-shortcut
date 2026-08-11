@@ -753,7 +753,6 @@ class MenuBarController: NSObject {
     guard let menu = statusItem?.menu else { return }
 
     let selectedTranscriptionModel = TranscriptionModel.loadSelected()
-    let hasOfflineTranscriptionModel = selectedTranscriptionModel.isOfflineModelAvailable()
     let canTranscribe = selectedTranscriptionModel.hasRequiredCredential
     let canPrompt = PromptModel.loadPromptModel(
       forKey: UserDefaultsKeys.selectedPromptModel,
@@ -761,10 +760,7 @@ class MenuBarController: NSObject {
     #if !APP_STORE
     let canReadAloud = ReadAloudPreferences.model.hasRequiredCredential
     #endif
-    let hasAnyKey = GeminiCredentialProvider.shared.hasCredential()
-      || KeychainManager.shared.hasNonEmpty(.openAI)
-      || KeychainManager.shared.hasNonEmpty(.xai)
-      || KeychainManager.shared.hasNonEmpty(.anthropic)
+    let hasAnyKey = ProviderCredentials.anyChatCredentialConfigured
 
     // Update status
     menu.item(withTag: MenuTag.status.rawValue)?.title = presentedStatusText
@@ -811,8 +807,11 @@ class MenuBarController: NSObject {
 
     updateTranscriptionHistoryItems(menu)
 
-    // Handle special case when no API key (any provider) and no offline model is configured
-    if !hasAnyKey && !hasOfflineTranscriptionModel, let button = statusItem?.button {
+    // Handle special case when no API key (any provider) and no usable transcription is configured.
+    // Tested against `canTranscribe`, not just the offline model: a user whose only setup is
+    // OpenRouter or a self-hosted endpoint can dictate perfectly well, and used to be told to
+    // "add an API key" anyway.
+    if !hasAnyKey && !canTranscribe, let button = statusItem?.button {
       button.image = nil
       button.title = "⚠️"
       button.toolTip = "Add an API key or use an offline model - click to configure"

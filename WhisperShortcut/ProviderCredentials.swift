@@ -43,6 +43,13 @@ enum ProviderCredentials {
       case .anthropic: return KeychainManager.shared.get(.anthropic)
       }
     }
+
+    /// Whether a usable key is stored, under exactly the trimming rule `require` applies — so a
+    /// key of pure whitespace can never read as "configured" here and then fail there.
+    fileprivate var hasStoredKey: Bool {
+      guard let key = storedKey?.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+      return !key.isEmpty
+    }
   }
 
   /// The key for `kind`, trimmed and guaranteed non-empty, or a `.networkError` naming the exact
@@ -66,23 +73,86 @@ enum ProviderCredentials {
   }
 
   /// Pre-flight check for callers that only need to fail early and don't hold the key themselves
-  /// (the provider re-resolves it when it builds the request). Providers that carry no Keychain key
-  /// — Gemini, local — pass through; `customOpenAI` validates its endpoint configuration instead.
+  /// (the provider re-resolves it when it builds the request).
   static func verifyConfigured(_ provider: ChatModelProvider) throws {
-    switch provider {
-    case .openai:
-      _ = try require(.openAI)
-    case .grok:
-      _ = try require(.xAI)
-    case .anthropic:
-      _ = try require(.anthropic)
-    case .customOpenAI:
-      guard OpenAIChatPreferences.isConfigured else {
-        throw TranscriptionError.networkError(
-          "Custom endpoint is not configured — set URL and API key in Settings → Chat.")
-      }
-    case .gemini, .local:
-      break
+    guard provider.hasCredential else {
+      throw TranscriptionError.networkError(provider.credentialRequiredMessage)
+    }
+  }
+
+  /// Whether any provider the user must supply a credential for is configured.
+  ///
+  /// Drives the "you have no keys at all" safety nets (the menu's disabled state, the first-run
+  /// fallback that opens Settings). Both used to spell this out as a four-term `||` chain, written
+  /// twice — and neither chain was updated when a provider was added, which is exactly the drift
+  /// this replaces.
+  static var anyChatCredentialConfigured: Bool {
+    ChatModelProvider.allCases.contains { $0.requiresUserSuppliedCredential && $0.hasCredential }
+  }
+}
+
+// MARK: - ChatModelProvider → credential
+
+extension ChatModelProvider {
+
+  /// What it takes to reach this provider. **The only per-provider credential switch in the app** —
+  /// `hasCredential`, `credentialRequiredMessage` and `requiresUserSuppliedCredential` all derive
+  /// from it, so adding a provider means answering this once instead of finding four call sites.
+  enum CredentialRequirement {
+    /// A user-supplied API key in the Keychain.
+    case key(ProviderCredentials.Kind)
+    /// Gemini resolves through `GeminiCredentialProvider` rather than the Keychain directly, so the
+    /// injectable seam the Gemini paths already use stays the only way in.
+    case gemini
+    /// Configured by endpoint (URL + optional key), not by a key alone.
+    case endpoint
+    /// Nothing to configure — reachability surfaces at request time.
+    case none
+  }
+
+  var credentialRequirement: CredentialRequirement {
+    switch self {
+    case .gemini: return .gemini
+    case .openai: return .key(.openAI)
+    case .grok: return .key(.xAI)
+    case .anthropic: return .key(.anthropic)
+    case .customOpenAI: return .endpoint
+    case .local: return .none
+    }
+  }
+
+  /// Whether the user currently has what this provider needs.
+  var hasCredential: Bool {
+    switch credentialRequirement {
+    case .key(let kind): return kind.hasStoredKey
+    case .gemini: return GeminiCredentialProvider.shared.hasCredential()
+    case .endpoint: return OpenAIChatPreferences.isConfigured
+    case .none: return true
+    }
+  }
+
+  /// Actionable message shown when this provider can't run for lack of a credential. Every one of
+  /// them names the Settings tab the field actually lives in — the wording that used to exist only
+  /// on the `ProviderCredentials` side of the split.
+  var credentialRequiredMessage: String {
+    switch credentialRequirement {
+    case .key(let kind):
+      return ProviderCredentials.missingKeyMessage(kind)
+    case .gemini:
+      return "No Google API key configured. Add your Gemini API key in Settings → General to use Gemini models."
+    case .endpoint:
+      return "Custom endpoint is not configured — set URL and API key in Settings → Chat."
+    case .none:
+      return ""
+    }
+  }
+
+  /// True for providers the user has to bring a credential for at all. Excludes `local` (needs
+  /// none) and `customOpenAI` (configured by endpoint), so neither can satisfy an "any key?" check.
+  var requiresUserSuppliedCredential: Bool {
+    switch credentialRequirement {
+    case .key, .gemini: return true
+    case .endpoint, .none: return false
     }
   }
 }

@@ -138,29 +138,14 @@ enum TranscriptionModel: String, CaseIterable {
   }
 
   /// Uses v1beta so Gemini 3 preview models are available (v1 returns 404 for them).
+  ///
+  /// Every provider but Google has one fixed endpoint, so it is declared once on
+  /// `TranscriptionProvider`. Google's embeds the model id — which is exactly this enum's raw
+  /// value, so the five Gemini rows are one template rather than five spelled-out URLs that had to
+  /// be edited by hand whenever a model was added.
   var apiEndpoint: String {
-    switch self {
-    case .gemini31Pro:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent"
-    case .gemini31FlashLite:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
-    case .gemini35FlashLite:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent"
-    case .gemini35Flash:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"
-    case .gemini36Flash:
-      return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent"
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
-      return "" // Offline models don't use API endpoints
-    case .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
-      return AppConstants.openAITranscriptionsEndpoint
-    case .xaiTranscribe:
-      return AppConstants.xaiSTTEndpoint
-    case .selfHostedTranscription:
-      return "" // URL is configured by the user in Settings
-    case .openRouterTranscription:
-      return AppConstants.openRouterChatCompletionsEndpoint
-    }
+    if let fixed = provider.fixedEndpoint { return fixed }
+    return "https://generativelanguage.googleapis.com/v1beta/models/\(rawValue):generateContent"
   }
 
   /// Upstream OpenAI model ID used as the `model` form field on POSTs to /v1/audio/transcriptions.

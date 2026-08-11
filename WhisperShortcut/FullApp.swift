@@ -71,10 +71,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
           let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
           if !hasCompletedOnboarding {
             WelcomeWindowController.shared.show()
-          } else if !GeminiCredentialProvider.shared.hasCredential()
-                    && !KeychainManager.shared.hasNonEmpty(.openAI)
-                    && !KeychainManager.shared.hasNonEmpty(.xai)
-                    && !KeychainManager.shared.hasNonEmpty(.anthropic) {
+          } else if !ProviderCredentials.anyChatCredentialConfigured {
             SettingsManager.shared.showSettings()
           }
         }
