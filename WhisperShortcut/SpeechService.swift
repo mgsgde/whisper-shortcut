@@ -1936,7 +1936,12 @@ class SpeechService {
     var request = URLRequest(url: requestURL)
     request.httpMethod = "POST"
     request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-    request.timeoutInterval = Constants.resourceTimeout
+    // Idle timeout: 60s, not the 300s resourceTimeout this used to copy. Setting
+    // URLRequest.timeoutInterval to 300 overrode the session's 60s request timer
+    // and, combined with HTTP/2 keep-alive, let GPT-Transcribe sit in
+    // `transcribing` for minutes (I2). The Task deadline below is the real
+    // backstop — URLSession timers do not reliably fire on this path.
+    request.timeoutInterval = NetworkDeadline.transcriptionRequestTimeout
     for header in extraHeaders {
       if let k = header["key"], let v = header["value"], !k.isEmpty {
         request.setValue(v, forHTTPHeaderField: k)
@@ -1947,7 +1952,24 @@ class SpeechService {
     }
     request.httpBody = body
 
-    let (data, response) = try await session.data(for: request)
+    let (data, response): (Data, URLResponse)
+    do {
+      (data, response) = try await NetworkDeadline.data(
+        for: request,
+        session: session,
+        timeout: NetworkDeadline.transcriptionRequestTimeout)
+    } catch TranscriptionError.requestTimeout {
+      DebugLogger.logError(
+        "\(logPrefix): stalled round-trip aborted after \(Int(NetworkDeadline.transcriptionRequestTimeout))s (NetworkDeadline)")
+      ContextLogger.shared.logSignal(
+        .requestTimedOut, mode: "transcription",
+        detail: [
+          "phase": "transcribing",
+          "timeoutSeconds": "\(Int(NetworkDeadline.transcriptionRequestTimeout))",
+          "logPrefix": logPrefix
+        ])
+      throw TranscriptionError.requestTimeout
+    }
     guard let httpResponse = response as? HTTPURLResponse else {
       throw TranscriptionError.networkError("Invalid response")
     }
@@ -1992,8 +2014,9 @@ class SpeechService {
 
   /// Shared session used for OpenAI-compatible multipart transcription and the
   /// OpenAI Dictate Prompt path. Reuses the same connection pool as the chat
-  /// providers (`LLMHTTPSession.shared`), which is configured with identical
-  /// 60s/300s timeouts.
+  /// providers (`LLMHTTPSession.shared`). Transcription POSTs do not rely on
+  /// those 60s/300s timers — see `NetworkDeadline` — because they do not fire
+  /// reliably on reused HTTP/2 connections.
   private func makeTranscriptionURLSession() -> URLSession {
     LLMHTTPSession.shared
   }

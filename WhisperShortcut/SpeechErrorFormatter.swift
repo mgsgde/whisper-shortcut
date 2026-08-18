@@ -180,10 +180,10 @@ struct SpeechErrorFormatter {
       return """
         ⏰ Request Timeout
 
-        The server took too long to start responding (over 60 seconds).
+        The transcription service took too long to respond (over 60 seconds).
 
         This usually means:
-        • Google servers are overloaded
+        • The service is overloaded or stalled
         • Your internet connection is very slow
         • The API endpoint is temporarily unavailable
 
@@ -202,7 +202,7 @@ struct SpeechErrorFormatter {
         This usually means:
         • Very large audio file (close to 20MB limit)
         • Slow internet connection during upload/download
-        • Google processing is taking unusually long
+        • The provider is taking unusually long
 
         Solutions:
         • Try with a shorter recording
