@@ -73,6 +73,10 @@ enum OutcomeSignal: String {
   /// separates "clipboard held no text" from "clipboard was unreachable" — a distinction the
   /// interaction log could not previously make, since neither wrote a record at all.
   case promptNoSelection
+  /// A cloud transcription round-trip hit the client deadline instead of returning.
+  /// Distinct from `cancelledWhileProcessing`: the app gave up, the user did not.
+  /// `detail.phase` / `timeoutSeconds` / `logPrefix` identify which path stalled.
+  case requestTimedOut
 }
 
 // MARK: - System Prompt History Entry
