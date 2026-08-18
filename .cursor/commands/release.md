@@ -91,6 +91,10 @@ This command + the `release.yml` workflow build and ship only the **notarized De
 
 Release notes should be formatted in Markdown and may include:
 
+- **Store CTA — always the first line after the title (growth ledger G1):**
+  `**[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.`
+  Keep the `/go/appstore?src=github-release` hop exactly as written — it is how release-note
+  clicks become attributable in the Cloud Run logs (`plans/instrumentation-gaps.md` #1/#7).
 - Installation instructions (with link to releases page: `https://github.com/USER/REPO/releases`)
 - Changes (main section)
 - Full changelog link (format: `https://github.com/USER/REPO/compare/vPREVIOUS...vCURRENT`)

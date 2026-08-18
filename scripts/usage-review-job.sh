@@ -15,6 +15,10 @@
 # app you use daily, unattended and unreviewed, is a liability; proposals are cheap to ignore and
 # code changes are not. The ledger is the deliverable.
 #
+# The container data is copied into build/usage-review-staging/ before the Claude pass runs, and the
+# pass reads only that copy — bash has the Full Disk Access grant, claude's sandboxed Bash tool does
+# not, and a read it is not allowed to make hangs rather than failing. See section 1.
+#
 # Installed via ~/Library/LaunchAgents/com.whispershortcut.usage-review.plist (Mondays 08:47).
 # Costs well under a dollar per run — no web research, one local reading pass.
 
@@ -49,6 +53,8 @@ cd "$REPO" || exit 1
 # a real TCC denial — that path is the one that must never fail silently, so it must be testable.
 CONTEXT_DIR="${REVIEW_CONTEXT_DIR:-$HOME/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/UserContext}"
 LEDGER="$REPO/plans/improvement-ledger.md"
+# The review pass never reads CONTEXT_DIR itself — bash copies the window here first. See section 1.
+STAGING="$REPO/build/usage-review-staging"
 STAMP="$(date +%Y-%m-%d)"
 REVIEW_DIR="$REPO/plans/usage-reviews"
 DIGEST="$REVIEW_DIR/$STAMP-review.md"
@@ -109,6 +115,9 @@ fi
 # otherwise show up as a zero count and be reported as a quiet week — the one failure this whole
 # design exists to rule out. Treat "cannot read" as loud failure, never as "no data".
 # Fix when it fires: System Settings → Privacy & Security → Full Disk Access → add /bin/bash.
+#
+# Probing as bash is the right test since 2026-08-17, because bash is now the ONLY thing that
+# touches the container — see section 1 for why it did not used to be.
 TCC_OK=1
 ls "$CONTEXT_DIR" >/dev/null 2>&1 || TCC_OK=0
 if [ "$TCC_OK" -eq 1 ]; then
@@ -128,24 +137,58 @@ if [ "$TCC_OK" -eq 0 ]; then
     "Then re-run with: bash scripts/usage-review-job.sh"
 fi
 
-# ---------------------------------------------------------------- 1. is there anything to review?
-# Counting first is what keeps this cheap. A week where the user barely touched the app has nothing
-# to say, and spending a Claude session to discover that — every Monday — is how a good habit turns
-# into noise the user mutes.
+# ------------------------------------------------- 1. stage the window, then count what we staged
+# Everything the review pass reads is copied out of the container first, and the pass is pointed at
+# the copy. That is not tidiness — it is the fix for the 2026-08-17 failure.
+#
+# /bin/bash has Full Disk Access, so the loop below reads the container fine. The `claude` child
+# does NOT inherit that: its Bash tool runs commands in a sandboxed zsh, and from a launchd job
+# there is nobody to answer the resulting TCC prompt, so `opendir` stalls and eventually returns
+# "Interrupted system call" instead of a clean denial. The pass cannot tell that apart from a slow
+# disk, so it retried — for 19 hours, spending its entire $3 budget and running out one tool call
+# short of writing its digest.
+#
+# So: bash copies (it can), claude reads the copy (no TCC in the path at all).
+#
+# The staging copy holds real transcripts. It is wiped at the start of every run and lives under
+# build/, which is gitignored — same machine, never committed, never uploaded.
+rm -rf "$STAGING"
+mkdir -p "$STAGING" || fail_out "usage review FAILED — could not create the staging dir $STAGING."
+
+# Counting as we copy is what keeps this cheap. A week where the user barely touched the app has
+# nothing to say, and spending a Claude session to discover that — every Monday — is how a good
+# habit turns into noise the user mutes.
+#
+# errors-*.log is staged too: a failure that aborts before an interaction record exists (e.g.
+# noSpeechDetected) appears nowhere else, and run 2 found a real pattern there.
 INTERACTIONS=0
 SIGNALS=0
-for f in "$CONTEXT_DIR"/interactions-*.jsonl; do
+for f in "$CONTEXT_DIR"/interactions-*.jsonl "$CONTEXT_DIR"/signals-*.jsonl "$CONTEXT_DIR"/errors-*.log; do
   [ -f "$f" ] || continue
   [ -z "$(find "$f" -mtime "-${DAYS}" 2>/dev/null)" ] && continue
-  INTERACTIONS=$((INTERACTIONS + $(wc -l < "$f")))
-done
-for f in "$CONTEXT_DIR"/signals-*.jsonl; do
-  [ -f "$f" ] || continue
-  [ -z "$(find "$f" -mtime "-${DAYS}" 2>/dev/null)" ] && continue
-  SIGNALS=$((SIGNALS + $(wc -l < "$f")))
+  cp "$f" "$STAGING/" || fail_out "usage review FAILED — could not stage $f into $STAGING."
+  case "$(basename "$f")" in
+    interactions-*) INTERACTIONS=$((INTERACTIONS + $(wc -l < "$f"))) ;;
+    signals-*)      SIGNALS=$((SIGNALS + $(wc -l < "$f"))) ;;
+  esac
 done
 
+# A short copy would understate the week just as quietly as a TCC denial did, so verify it rather
+# than trusting cp's exit status alone.
+STAGED_LINES=0
+for f in "$STAGING"/interactions-*.jsonl; do
+  [ -f "$f" ] || continue
+  STAGED_LINES=$((STAGED_LINES + $(wc -l < "$f")))
+done
+if [ "$STAGED_LINES" -ne "$INTERACTIONS" ]; then
+  fail_out "usage review FAILED — staged copy is short: $STAGED_LINES of $INTERACTIONS lines." \
+    "Source: $CONTEXT_DIR" \
+    "Staging: $STAGING" \
+    "The app may have been writing mid-copy. Re-run with: bash scripts/usage-review-job.sh"
+fi
+
 echo "In the last ${DAYS} days: $INTERACTIONS interactions, $SIGNALS outcome signals."
+echo "Staged to $STAGING for the review pass."
 
 MIN_INTERACTIONS="${REVIEW_MIN_INTERACTIONS:-40}"
 if [ "$INTERACTIONS" -lt "$MIN_INTERACTIONS" ]; then
@@ -163,7 +206,7 @@ fi
 # Prompt via temp file, not a nested heredoc in a command substitution: macOS ships bash 3.2, which
 # mis-parses an apostrophe in that position. Same workaround as model-audit-job.sh.
 PROMPT_FILE="$(mktemp -t wsusagereview)"
-trap 'rm -f "$PROMPT_FILE"' EXIT
+trap 'rm -f "$PROMPT_FILE" "${KILLED_MARKER:-}"' EXIT
 cat > "$PROMPT_FILE" <<EOF
 You are the weekly usage-review job for WhisperShortcut (repo: $REPO).
 
@@ -178,8 +221,11 @@ finding is already in there under any status, drop it and move to the next one.
 
 ## Data (all local, none of it is in git)
 
-Interaction logs and the outcome-signal stream:
-    $CONTEXT_DIR
+Everything you need has ALREADY been copied here for you:
+    $STAGING
+
+It holds exactly the files that fall in the review window — nothing to filter by date, no other
+directory to visit.
 
 - interactions-YYYY-MM-DD.jsonl — one record per interaction. Modes: transcription, prompt,
   geminiChat. Schema and caveats are documented in .cursor/skills/analyze-user-interactions/SKILL.md
@@ -189,6 +235,14 @@ Interaction logs and the outcome-signal stream:
   within 20s of an unpasted transcript — it did not work), kind=cancelledWhileProcessing (killed
   before a result existed). Fields: ts, kind, refTs (the interaction it judges), mode, gapMs, detail.
   Design and caveats: plans/active/outcome-signals.md — read it.
+- errors-YYYY-MM-DD.log — failures that aborted before an interaction record existed. These are
+  invisible to the signal stream by construction, so read them; they are the only trace of a
+  dictation that produced nothing at all.
+
+DO NOT read $CONTEXT_DIR directly. That path is unreadable from your Bash tool — the sandbox has
+no Full Disk Access grant, and a read there does not fail cleanly, it HANGS. A previous run burned
+19 hours and its whole budget retrying one directory listing. If a command against that path stalls
+or reports "Interrupted system call", do not retry it: use $STAGING, which is a complete copy.
 
 Review the last $DAYS days. This week: $INTERACTIONS interactions, $SIGNALS signals.
 
@@ -211,9 +265,13 @@ Caveats you must respect:
 
 ## Output
 
-1. Append at most 3 rows to the "Ideas" table in $LEDGER, following the rules stated at the top of
+Write these IN THIS ORDER. The digest comes first because the job treats its absence as a failed
+run — if you are cut off (budget, timeout) after the digest, the week is still reported; if you are
+cut off before it, the whole run is wasted no matter how much analysis you finished.
+
+1. Write a short digest to: $DIGEST
+2. Append at most 3 rows to the "Ideas" table in $LEDGER, following the rules stated at the top of
    that file. Give each a fresh stable ID (I1, I2, …). Add one row to its "Run log" table.
-2. Write a short digest to: $DIGEST
 
 The digest's FIRST line must be a single-line verdict in exactly this form, because the job reads it
 back for the notification and the mail subject:
@@ -236,18 +294,45 @@ is read once a week by one person deciding whether to act.
 EOF
 
 echo "Review pass: model=$REVIEW_MODEL effort=$REVIEW_EFFORT budget=\$$REVIEW_BUDGET_USD"
+
+# The budget cap bounds what a stuck run COSTS, but not how long it runs — the 2026-08-17 run sat
+# there for 19 hours before the cap caught it, which meant a whole day passed before the failure
+# mail arrived. macOS ships no `timeout`, so: run claude in the background and shoot it ourselves.
+# The sentinel distinguishes "we killed it" from "it died on its own", since both surface as a
+# non-zero status.
+REVIEW_TIMEOUT_SECS="${REVIEW_TIMEOUT_SECS:-2700}"
+KILLED_MARKER="$(mktemp -t wsreviewkill)"
+rm -f "$KILLED_MARKER"
+
 claude -p --dangerously-skip-permissions \
   --model "$REVIEW_MODEL" --effort "$REVIEW_EFFORT" --max-budget-usd "$REVIEW_BUDGET_USD" \
-  "$(cat "$PROMPT_FILE")" 2>&1
+  "$(cat "$PROMPT_FILE")" 2>&1 &
+CLAUDE_PID=$!
+
+( sleep "$REVIEW_TIMEOUT_SECS"
+  if kill -0 "$CLAUDE_PID" 2>/dev/null; then
+    : > "$KILLED_MARKER"
+    kill -TERM "$CLAUDE_PID" 2>/dev/null
+    sleep 10
+    kill -KILL "$CLAUDE_PID" 2>/dev/null
+  fi ) &
+WATCHDOG_PID=$!
+
+wait "$CLAUDE_PID"
 STATUS=$?
+kill "$WATCHDOG_PID" 2>/dev/null
+wait "$WATCHDOG_PID" 2>/dev/null
 
 if [ $STATUS -ne 0 ] || [ ! -f "$DIGEST" ]; then
   # A job that silently stops running looks exactly like a week with nothing to report. Say it broke.
-  if [ $STATUS -ne 0 ]; then
+  if [ -f "$KILLED_MARKER" ]; then
+    WHY="usage review TIMED OUT — killed after ${REVIEW_TIMEOUT_SECS}s without finishing."
+  elif [ $STATUS -ne 0 ]; then
     WHY="usage review FAILED — claude exited with status $STATUS."
   else
     WHY="usage review INCOMPLETE — the pass wrote no digest."
   fi
+  rm -f "$KILLED_MARKER"
   fail_out "$WHY" \
     "Data was there: $INTERACTIONS interactions, $SIGNALS signals in the last ${DAYS} days." \
     "Log: $REPO/build/logs/usage-review.log" \

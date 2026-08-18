@@ -13,23 +13,35 @@ This directory is the shared source of truth for implementation plans and specs 
 
 - `refactor-ledger.md` — running record for `/review-refactors`.
 - `improvement-ledger.md` — usage-driven product proposals, written by the weekly usage-review job.
+- `growth-ledger.md` — growth/strategy verdicts (bottleneck, recommendation, falsifier), written by the growth-review job.
+- `loop-ledger.md` — meta-proposals about the loop machinery itself, written by the agent-loops job.
+- `agent-loops.md` — the architecture of all these loops: roles, autonomy policy, cross-repo coordination with sabaki.dance.
+- `instrumentation-gaps.md` — the register of measurement gaps that blind the loops; gap fixes rank above features.
+- `implementer-queue.md` — input queue of the autonomous implementer; **you** set `Flag=BUILD`, no agent may.
+- `implementer-log.md` — one row per implementer run; its Outcome column grades the automation's own falsifier.
 
 ## Scheduled jobs that write here
 
-Both run **locally** via launchd, not as cloud routines, because both need something that only
-exists on this Mac: API keys and the audio pipeline for one, the app's usage logs for the other.
-Neither changes code — they report, and the user decides.
+All run **locally** via launchd, not as cloud routines, because each needs something that only
+exists on this Mac: API keys and the audio pipeline, the app's usage logs, or the `asc`/`gh`
+Keychain auth. None changes code — they report, and the user decides. Their shared
+architecture, autonomy policy, and cross-repo coordination: `plans/agent-loops.md`.
 
 | Job | When | Script | Writes | Notification |
 |---|---|---|---|---|
 | Model audit | Wednesdays 09:17 | `scripts/model-audit-job.sh` | `plans/model-audits/` | mail, macOS notification fallback |
 | Usage review | Mondays 08:47 | `scripts/usage-review-job.sh` | `plans/improvement-ledger.md` + `plans/usage-reviews/` | mail, macOS notification fallback |
+| Growth review | Saturdays 09:07 (11-day gate → biweekly) | `scripts/growth-review-job.sh` | `plans/growth-ledger.md` + `plans/growth-reviews/` | mail, macOS notification fallback |
+| Agent-loops review | 6th of month 10:17 | `scripts/agent-loops-job.sh` | `plans/loop-ledger.md` + `plans/loop-reviews/` | mail, macOS notification fallback |
 
-LaunchAgents: `~/Library/LaunchAgents/com.whispershortcut.{model-audit,usage-review}.plist`.
+LaunchAgents: `~/Library/LaunchAgents/com.whispershortcut.{model-audit,usage-review,growth-review,agent-loops}.plist`.
 Logs: `build/logs/`. Disable one with
 `launchctl unload ~/Library/LaunchAgents/com.whispershortcut.<name>.plist`.
 
-### Both jobs need Full Disk Access — granted 2026-08-02
+### Usage review and model audit need Full Disk Access — granted 2026-08-02
+
+(The growth and agent-loops jobs read only the repo, `asc`, and `gh` — no container access,
+no Full Disk Access dependency.)
 
 A launchd job cannot read the app's container (`~/Library/Containers/com.magnusgoedde.whispershortcut/…`)
 by default. macOS TCC keys the grant to the executable, and launchd's `/bin/bash` does not have it

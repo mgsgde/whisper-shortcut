@@ -1,0 +1,176 @@
+# The self-improvement loops — who does what
+
+WhisperShortcut is improved by a family of scheduled, agent-run loops. This page is their
+single source of truth: the goal they serve, who does what, what each may write, and how
+this repo's loop machinery coordinates with sabaki.dance's (`~/sabaki.dance.v3`), which
+runs the same architecture and learned most of these lessons first.
+
+## The goal (North Star)
+
+> **Paying customers.** App Store proceeds, and the funnel that feeds them:
+> App Store impressions → product-page views → downloads → activated users → ratings/reviews.
+> GitHub stars and website traffic are distribution levers, not the goal.
+
+Every loop ranks its proposals against the **current bottleneck** named in the latest
+`plans/growth-reviews/` verdict. A proposal that pulls effort away from the bottleneck ranks
+last, however good it looks locally.
+
+## The loops
+
+| Role | Skill / job | Sees | Rewarded for | Writes | Cadence |
+| ---- | ----------- | ---- | ------------ | ------ | ------- |
+| **Usage** | `usage-review-job.sh` (`analyze-user-interactions`) | Local interaction logs + outcome signals | Recurring failures with counts | `plans/improvement-ledger.md` + digest | Mon 08:47 weekly |
+| **Models** | `model-audit-job.sh` (`audit-llm-models`) | Live provider lineups vs shipped defaults, benchmarks | Pareto-justified migrations | `plans/model-audits/` | Wed 09:17 monthly |
+| **Strategy/Growth** | `growth-review-job.sh` (`review-growth`) | App Store Connect, GitHub, git effort, competitors | Naming the ONE binding constraint toward revenue | `plans/growth-ledger.md` + digest | Sat 09:07, effectively biweekly |
+| **Architect** | `agent-loops-job.sh` (`review-agent-loops`) | The loops' own ledgers, hit rates, blind spots, outside best practices, Sabaki's loop docs | The loops finding more true things per run | `plans/loop-ledger.md` + digest | 6th of month, 10:17 |
+| **Implementer** | `run-implementer.sh` (`implement-proposal`) — **rung 2** | One flagged queue row + its source ledger entry | A gated, reviewed branch you can dogfood | Code on a branch, `plans/implementer-{queue,log}.md` | On demand (`BUILD` flag + manual invocation) |
+
+## Shared conventions (kept identical with sabaki.dance — do not drift)
+
+These are the lessons Sabaki's loops paid for; both repos apply them the same way, and the
+Architect loop checks for drift on every run:
+
+- **The proposer is never the judge.** Loops write proposals with falsifiers; reality (a
+  metric two weeks later) and the user decide. No loop evaluates its own output with the
+  context that produced it.
+- **Strategy outranks.** Loops read the latest growth verdict first and rank against its
+  bottleneck. Without that, four loops each produce a locally sensible backlog and together
+  build the wrong thing efficiently.
+- **Grade before proposing.** Every run opens by grading its own previous output against
+  reality (`git log`, release history), never against the ledger's claim.
+- **The deploy gate.** A falsifier may only be graded once the change is confirmed live
+  for the population being measured — a released App Store/GitHub version for customer
+  metrics, a rebuilt local app for the developer's own usage metrics. Built-but-not-live
+  is `TOO EARLY`, never `NO EFFECT`: writing off an undeployed change plants a false
+  lesson in a ledger that is never cleaned up, and the loop then learns from it. Sabaki's
+  meta-log calls this its most expensive failure mode.
+- **Instrumentation gaps rank above features** and live in one register with statuses —
+  `plans/instrumentation-gaps.md` — not in per-run prose.
+- **"Build nothing this cycle" is a valid verdict** for every loop, and the honest one
+  whenever the bottleneck is not the thing that loop can move.
+- **Loud failure.** A loop that cannot read its data or write its digest reports a FAILED
+  run by mail — silence must never be distinguishable from a quiet week.
+
+## Autonomy policy
+
+All **scheduled** jobs sit at **rung 0 — report-only**: they read anything, write reports and
+ledger rows, and never touch code, prompts, defaults, settings, commits, or pushes. The full
+ladder (rungs 0–4, promotion criteria, kill-switch requirements) is defined in
+`~/sabaki.dance.v3/docs/agent-autonomy-policy.md` and applies here unchanged.
+
+One capability is above rung 0:
+
+| Capability | Rung | Gate that holds it there |
+| ---------- | ---- | ------------------------ |
+| Implementer: build a flagged queue row → gated branch | **2** | The *runner* re-runs every gate (scope allowlist, clean tree, main-checkout pollution, `xcodebuild`, full test plan); a **different model** reviews the diff; `IMPLEMENTER_ENABLED` kill switch read at run time; nothing is pushed or released; only rows a human flagged `BUILD` are eligible |
+
+Reversibility is what earns it that rung: everything it produces is a local branch. Reverting
+is deleting a branch, and nothing reaches a user before you merge *and* cut a release yourself.
+
+The rule that outranks every finding, from the same policy:
+
+> **An agent may tighten a gate, never loosen one.** Adding a check, raising an evidence
+> bar, demanding a falsifier: propose freely. Removing a falsifier, relaxing a threshold,
+> lowering a sample floor: a human change, in its own commit.
+
+And its corollary for the Architect loop specifically: it proposes changes to the loop
+machinery, it never applies them unattended — an agent that edits the criteria it is judged
+by will eventually make itself look successful.
+
+## The Implementer (rung 2) — how it runs
+
+Ported from sabaki.dance's `specs/2026-08-18-autonomous-implementer-design.md` on 2026-08-18.
+The shape is theirs; three things differ because this repo is a sandboxed macOS app, not a
+web service (see the divergence table below).
+
+```
+plans/implementer-queue.md          ← YOU set Flag=BUILD (no agent may)
+        │
+scripts/implementer/run-implementer.sh
+        │ 1. kill switch, lock, main-branch check, pick topmost BUILD/OPEN row
+        │ 2. worktree .claude/worktrees/implementer-<slug> on branch implementer/<slug>
+        │    build agent (cursor-agent) runs .cursor/skills/implement-proposal/SKILL.md
+        │ 3. gates re-run BY THE RUNNER: scope allowlist · clean tree · pollution check ·
+        │    xcodebuild · full test plan   (an agent cannot skip what it does not control)
+        │ 4. a DIFFERENT model reviews the diff → APPROVE | BLOCK (one rework cycle, then stop)
+        │ 5. queue row + ledger line committed ON THE BRANCH, so bookkeeping travels with code
+        │ 6. mail + notification: how to dogfood it, how to approve it
+        ▼
+YOU run the branch build for a while → merge → release when you decide
+```
+
+**Operating it**
+
+```bash
+bash scripts/implementer/install-implementer.sh    # once: ~/.config/whispershortcut-implementer/env
+bash scripts/implementer/run-implementer.sh --dry-run
+bash scripts/implementer/run-implementer.sh
+```
+
+**The rules that keep it honest** — all mirrored from Sabaki, all enforced in the script:
+
+- **Builder ≠ judge.** The model that wrote the code never decides it is fine — the same
+  proposer-is-never-the-judge rule the loops run on, applied to code. Cursor builds (large,
+  cheap quota), Claude judges (scarce, high-judgment). The split is config, so the scout/meta
+  loops may propose adjusting it; they may never propose removing the review step.
+- **Measurable-on-ship-day.** A row whose falsifier cannot be measured when it ships is not
+  eligible; the build must add the instrumentation in the same branch, or the proposal goes to
+  `plans/instrumentation-gaps.md` first.
+- **Flagging is human.** No loop and no agent may set `BUILD`. Loops propose into ledgers.
+- **Demotion falsifier:** ≥2 of any 5 consecutive runs needing structural rework → back to
+  rung 1. Tracked in `plans/implementer-log.md`, graded from its Outcome column.
+- **Promotion is earned:** 5 clean merges before `IMPLEMENTER_SELF_PICK=1` is even offered, and
+  you flip it, not the runner.
+
+## Why these run locally (launchd, not cloud routines)
+
+Same reason as ever (see `plans/README.md`): the inputs only exist on this Mac — usage
+JSONL in the sandboxed container, API keys in `.env`, `asc`/`gh` auth in the Keychain.
+A cloud routine would see an empty repo and report a quiet week.
+
+## Cross-repo coordination with sabaki.dance
+
+Both repos run the same loop architecture; the transfer channel is the **Architect loop**,
+not ad-hoc copying:
+
+- `review-agent-loops` here **reads** Sabaki's loop state read-only:
+  `~/sabaki.dance.v3/docs/{loop-architecture,agent-autonomy-policy,loop-meta-log,ai-stack-log,product-loop-log,elon-log}.md`
+  and `scripts/routines/README.md`. Its report ends with a **Transfer** section: lessons to
+  import here (as proposals in `plans/loop-ledger.md`) and lessons to export (as a
+  paste-ready block for `~/sabaki.dance.v3/docs/loop-meta-log.md` — it never writes into
+  the other repo).
+- Sabaki's `/improve-loop` may read this repo's `plans/{agent-loops.md,loop-ledger.md}` the
+  same way. Symmetric, read-only, human applies.
+
+Deliberate divergences (infrastructure, not architecture — do not "fix" these toward
+Sabaki):
+
+| | sabaki.dance | whisper-shortcut | Why |
+| --- | --- | --- | --- |
+| Scheduler/host | systemd timers on the minipc | launchd on this Mac | The data (usage logs, Keychain auth for `asc`/`gh`, audio pipeline) only exists here |
+| Agent runner | `cursor-agent`, model `auto` (Cursor pool) | `claude -p`, opus/sonnet (Max subscription) | Different billing pools; both pin models + budget caps in the job script |
+| Ledger writes | paste-ready block, human pastes (a dirty tree breaks the minipc's deploy pull) | job appends directly (local working copy, user reviews via git diff) | Same auditability, one less manual step |
+| "Live" check | `deployment-status.ts` against `/api/version` | App Store version (`asc versions list`) / GitHub release for customer metrics; rebuilt local app for own-usage metrics | Different deploy targets, same deploy gate |
+| Implementer review surface | Branch deployed to a gated dev instance with sanitized prod data | The built app itself — you run the branch build (dogfood-as-review) | No server, no database; the app *is* the artifact |
+| Implementer test gate | `npm run test:web` in the worktree | `xcodebuild test`, which requires killing the running app — the runner relaunches the user's **main** build afterwards, never the branch build | An unattended run must never swap the app the user works in |
+
+## Operating
+
+```bash
+# Manual runs (from whisper-shortcut/)
+bash scripts/growth-review-job.sh            # strategy/growth review now
+bash scripts/agent-loops-job.sh              # meta review now
+bash scripts/growth-review-job.sh --dry-run  # check plumbing without a Claude pass
+
+# Status
+launchctl list | grep whispershortcut
+ls plans/growth-reviews/ plans/loop-reviews/
+
+# Disable a loop
+launchctl unload ~/Library/LaunchAgents/com.whispershortcut.growth-review.plist
+launchctl unload ~/Library/LaunchAgents/com.whispershortcut.agent-loops.plist
+```
+
+Every job mails its digest (macOS notification as fallback) and reports failures loudly —
+a loop that silently stops running looks exactly like a quiet week, and that is the one
+failure mode this design exists to rule out.
