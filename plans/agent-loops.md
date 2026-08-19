@@ -143,9 +143,11 @@ The two ways that stops being true, both worth re-checking rather than assuming:
 
 1. **An `ANTHROPIC_API_KEY` entering the environment** flips all four jobs from quota to dollars
    at once. The per-job caps then bind at $33 per full cycle — designed, but no longer free.
-2. **Cursor on-demand spending** being enabled in the dashboard lets an implementer run bill past
-   the subscription. Nothing in this repo can see that setting; keep on-demand off, or a $0 hard
-   limit, and the runs stop at the included quota instead of charging.
+2. **Cursor on-demand spending** being enabled in the dashboard would let an implementer run bill
+   past the subscription. Nothing in this repo can see that setting. **Checked 2026-08-19: it is
+   Disabled, with no monthly limit set** — so a run that exhausts the included quota stops rather
+   than charging, and the plan (Pro+, $60/mo) is the ceiling. Re-check if the plan changes; that
+   is the single setting standing between this machinery and an unbounded bill.
 
 ## Why these run locally (launchd, not cloud routines)
 
