@@ -78,6 +78,22 @@ PUSH_PR="${IMPLEMENTER_PUSH_PR:-0}"
 # could hold, and "flag ten rows and let it work" is exactly the shape of an unforeseen bill.
 # Counted in a file, not in the script, so the cap survives a crash mid-run.
 MAX_RUNS_PER_MONTH="${IMPLEMENTER_MAX_RUNS_PER_MONTH:-10}"
+# The only part of this machinery that spends the app's own provider keys was the live
+# transcription roundtrips in the test gate. Off by default: they cost real money per run, and
+# what they protect against (a provider changing its API shape) is not what a code change to
+# THIS repo usually breaks. Everything else in the plan is offline logic and still runs.
+# Set IMPLEMENTER_LIVE_TESTS=1 for a change that touches a provider request path.
+LIVE_TESTS="${IMPLEMENTER_LIVE_TESTS:-0}"
+if [[ "$LIVE_TESTS" == "1" ]]; then
+    TEST_SKIP_ARGS=()
+else
+    # Both suites carry "(live)" in their @Suite name — that is the convention to look for when
+    # adding one. Anything else in the plan stubs URLProtocol and costs nothing.
+    TEST_SKIP_ARGS=(
+        -skip-testing:WhisperShortcutTests/TranscriptionRoundtripTests
+        -skip-testing:WhisperShortcutTests/LLMProviderRoundtripTests
+    )
+fi
 MAIL_TO="${AUDIT_MAIL_TO:-mail@magnus-goedde.de}"
 
 case "$SCOPE" in
@@ -305,12 +321,13 @@ log "gate: xcodebuild (Debug)…"
 # Gate: the full test plan. xcodebuild test needs the app stopped (a running instance can take
 # the SIGTERM during XCTest bootstrap), so this kills it — and restore_user_app puts YOUR build
 # back afterwards, never the branch build.
-log "gate: test plan (live roundtrips; kills the running app for the duration)…"
+log "gate: test plan (live roundtrips: ${LIVE_TESTS} — kills the running app for the duration)…"
 pkill -f "WhisperShortcut.app" 2>/dev/null || true
 sleep 1
 ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
   xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
     -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
+    "${TEST_SKIP_ARGS[@]}" \
     -derivedDataPath "${WT_DIR}/build/DerivedData-AppStore" ) \
     >"${RUN_DIR}/tests.log" 2>&1 \
     || { tail -40 "${RUN_DIR}/tests.log"; fail_run "GATE FAILED: test plan"; }
@@ -379,6 +396,7 @@ EOF
         ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
           xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
             -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
+            "${TEST_SKIP_ARGS[@]}" \
             -derivedDataPath "${WT_DIR}/build/DerivedData-AppStore" ) \
             >"${RUN_DIR}/tests-2.log" 2>&1 || { tail -40 "${RUN_DIR}/tests-2.log"; fail_run "GATE FAILED: test plan (after rework)"; }
         restore_user_app

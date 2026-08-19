@@ -151,11 +151,22 @@ changes, re-measure it rather than editing the prose.
 
 **The one surface that cannot be a subscription** is the app's own provider keys in `.env`
 (Gemini / OpenAI / xAI). Those are pay-per-use accounts by design — "bring your own API keys" is
-what the product *is*, and the same keys pay for everyday dictation. The machinery touches them in
-exactly two places: the implementer's test gate (5 requests × 1.24 s ≈ under a cent per run) and
-the monthly model audit (~400 short requests ≈ a few cents). Both are bounded by cadence and by the
-10-runs/month implementer cap. There is no way to route these through a subscription; the honest
-answer is that they cost cents, not that they cost nothing.
+what the product *is*, and the same keys pay for everyday dictation.
+
+Since 2026-08-19 the machinery touches them in exactly **one** place:
+
+| Job | Requests | Bounded by | Measured cost |
+| --- | --- | --- | --- |
+| Monthly model audit | **128** = 8 models × (10 latency + 3 glossary + 3 silence), each on a 1.24 s clip | the model list and the round counts in `benchmark-transcription.py` — both literals in the repo, not a loop over live data | a few cents |
+| Implementer test gate | **0** | `IMPLEMENTER_LIVE_TESTS=0` skips both `(live)` suites; the remaining 213 tests stub `URLProtocol` and run in 0.75 s | **$0** |
+
+The count is fixed, not data-dependent: no job iterates over a growing corpus, retries in a loop,
+or scales with usage. A month cannot cost more than a month unless someone edits those literals.
+The honest answer is that this surface costs cents, not that it costs nothing.
+
+**Adding a live test later re-opens it.** Both current live suites carry `(live)` in their
+`@Suite` name; a new one must be added to `TEST_SKIP_ARGS` in the runner, or the implementer
+starts spending per run again.
 
 Re-check rather than assume:
 2. **Cursor on-demand spending** being enabled in the dashboard would let an implementer run bill

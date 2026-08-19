@@ -47,8 +47,16 @@ decides. You never push, never release, never touch anything outside this worktr
 ```bash
 xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -configuration Debug \
   -derivedDataPath build/DerivedData build      # must succeed
-bash scripts/run-tests.sh                        # full plan; live LLM roundtrips
+xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
+  -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
+  -skip-testing:WhisperShortcutTests/TranscriptionRoundtripTests \
+  -skip-testing:WhisperShortcutTests/LLMProviderRoundtripTests
 ```
+
+The two skipped suites are the only ones that spend real money on the app's provider keys; the
+runner skips them too unless `IMPLEMENTER_LIVE_TESTS=1`. Do not run `scripts/run-tests.sh` — it
+runs them. If your change touches a provider request path, say so in the notes so the human can
+re-run the gate with live tests on.
 
 Trust the build, not IDE diagnostics: SourceKit shows transient cross-file "Cannot find type"
 errors that `xcodebuild` does not.

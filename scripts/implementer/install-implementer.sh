@@ -30,6 +30,10 @@ IMPLEMENTER_REVIEW_MODEL=opus
 
 IMPLEMENTER_TIMEOUT_SECONDS=7200   # hard cap for ONE build-agent phase
 IMPLEMENTER_MAX_RUNS_PER_MONTH=10  # cumulative brake; counter in runs-YYYY-MM next to this file
+
+# Live transcription roundtrips in the test gate spend the app's own provider keys (real money,
+# ~1 cent a run). Off by default; set to 1 for a change that touches a provider request path.
+IMPLEMENTER_LIVE_TESTS=0
 IMPLEMENTER_SCOPE=app              # app | app-docs (see run-implementer.sh)
 
 # Push the branch and open a PR — the approval surface (merge = approval), same as
