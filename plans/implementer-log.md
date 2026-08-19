@@ -17,4 +17,4 @@ is yours to make, never the runner's.
 
 | Date | Queue # | Branch | Review | Gates | Outcome |
 | ---- | ------- | ------ | ------ | ----- | ------- |
-| 2026-08-18 | 1 | `implementer/q1-20260818` | APPROVE (Opus, 1st pass) | build+tests green | **MERGED** (clean — no rework) |
+| 2026-08-18 | 1 | `implementer/q1-20260818` | APPROVE (Opus, 1st pass) | build+tests green | **MERGED** (clean — no rework) · [PR #45](https://github.com/mgsgde/whisper-shortcut/pull/45) |
