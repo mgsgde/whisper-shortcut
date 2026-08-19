@@ -22,6 +22,20 @@
 # the script, not requests in a prompt — an agent cannot skip what it does not control.
 set -uo pipefail
 
+# --- Subscription-only guard ---------------------------------------------------------------
+# The Claude CLI bills per token when ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN) is set, and
+# falls back to the Max subscription when it is not. Absence was true when this was written but
+# nothing kept it true — a key exported in a shell profile would have flipped every scheduled job
+# to paid without a word. So the keys are dropped here rather than trusted to be missing.
+# Deliberate policy: this machinery runs on the subscription or it does not run.
+for _v in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN; do
+  if [ -n "$(eval "echo \${$_v:-}")" ]; then
+    echo "NOTE: unsetting $_v for this run — scheduled jobs run on the subscription, never per-token."
+    unset "$_v"
+  fi
+done
+
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 QUEUE_REL="plans/implementer-queue.md"

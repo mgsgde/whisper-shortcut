@@ -139,10 +139,25 @@ changes, re-measure it rather than editing the prose.
 
 **Total real-dollar exposure of the whole loop system: well under $1/month** at current cadences.
 
-The two ways that stops being true, both worth re-checking rather than assuming:
+**Two of the three billing surfaces are now closed by construction, not by luck:**
 
-1. **An `ANTHROPIC_API_KEY` entering the environment** flips all four jobs from quota to dollars
-   at once. The per-job caps then bind at $33 per full cycle — designed, but no longer free.
+1. **Claude: enforced.** Every job unsets `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` before
+   invoking the CLI, so it authenticates against the subscription even if a key is exported in a
+   shell profile. Absence used to be merely true; it is now guaranteed. Policy: this machinery
+   runs on the subscription or it does not run. The `--max-budget-usd` caps stay as a second
+   line, but nothing should ever reach them.
+2. **Cursor: capped.** On-demand spending is Disabled (verified below), so the plan price is the
+   ceiling.
+
+**The one surface that cannot be a subscription** is the app's own provider keys in `.env`
+(Gemini / OpenAI / xAI). Those are pay-per-use accounts by design — "bring your own API keys" is
+what the product *is*, and the same keys pay for everyday dictation. The machinery touches them in
+exactly two places: the implementer's test gate (5 requests × 1.24 s ≈ under a cent per run) and
+the monthly model audit (~400 short requests ≈ a few cents). Both are bounded by cadence and by the
+10-runs/month implementer cap. There is no way to route these through a subscription; the honest
+answer is that they cost cents, not that they cost nothing.
+
+Re-check rather than assume:
 2. **Cursor on-demand spending** being enabled in the dashboard would let an implementer run bill
    past the subscription. Nothing in this repo can see that setting. **Checked 2026-08-19: it is
    Disabled, with no monthly limit set** — so a run that exhausts the included quota stops rather

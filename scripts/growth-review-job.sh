@@ -24,6 +24,20 @@
 set -uo pipefail
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
+# --- Subscription-only guard ---------------------------------------------------------------
+# The Claude CLI bills per token when ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN) is set, and
+# falls back to the Max subscription when it is not. Absence was true when this was written but
+# nothing kept it true — a key exported in a shell profile would have flipped every scheduled job
+# to paid without a word. So the keys are dropped here rather than trusted to be missing.
+# Deliberate policy: this machinery runs on the subscription or it does not run.
+for _v in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN; do
+  if [ -n "$(eval "echo \${$_v:-}")" ]; then
+    echo "NOTE: unsetting $_v for this run — scheduled jobs run on the subscription, never per-token."
+    unset "$_v"
+  fi
+done
+
+
 # Cost controls for the unattended pass. Opus, same reasoning as model-audit-job.sh: the
 # CLI authenticates against a Claude Max subscription, so this consumes rate-limit
 # capacity, not dollars, and the whole value of a strategy verdict is judgement quality.
