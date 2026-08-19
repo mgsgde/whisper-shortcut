@@ -218,8 +218,22 @@ struct SmartImprovementReviewView: View {
 
 // MARK: - Modal presentation
 
+/// Turns "the window closed" into "the user cancelled".
+///
+/// The panel is `.closable`, so the red button, Escape and ⌘W can all dismiss it without ever
+/// running Accept or Cancel. Without this, `NSApp.stopModal()` is never called: the window is
+/// gone but the modal session keeps spinning, and every other window in the app stops
+/// responding while nothing is on screen to explain why. Reported 2026-08-19 after a Voice
+/// Feedback proposal was dismissed instead of answered.
+private final class ReviewPanelCloseObserver: NSObject, NSWindowDelegate {
+  private let onClose: () -> Void
+  init(onClose: @escaping () -> Void) { self.onClose = onClose }
+  func windowWillClose(_ notification: Notification) { onClose() }
+}
+
 enum SmartImprovementReviewPanel {
-  /// Presents the review UI in a modal panel. Returns the edited text if the user clicked Accept, nil if Cancel.
+  /// Presents the review UI in a modal panel. Returns the edited text if the user clicked Accept,
+  /// nil if the user cancelled **or dismissed the window any other way**.
   static func present(
     focusDisplayName: String,
     index: Int? = nil,
@@ -274,10 +288,27 @@ enum SmartImprovementReviewPanel {
         panel.title = view.windowTitle
         panel.contentViewController = hosting
 
+        // Dismissing the window is a cancel, not a way to wedge the app. Held strongly for the
+        // duration of the modal session — NSWindow.delegate is weak.
+        let closeObserver = ReviewPanelCloseObserver {
+          DebugLogger.log("REVIEW-PANEL: window dismissed without Accept/Cancel — treating as cancel")
+          resumeOnce(returning: nil)
+          NSApp.stopModal()
+        }
+        panel.delegate = closeObserver
+
         panel.center()
         panel.makeKeyAndOrderFront(nil)
         NSApp.runModal(for: panel)
+        // Detach before the final close, or `panel.close()` re-enters the observer and calls
+        // stopModal on whatever modal session happens to be running next.
+        panel.delegate = nil
+        withExtendedLifetime(closeObserver) {}
         panel.close()
+
+        // Belt and braces: if the panel went away without any path resuming the continuation,
+        // an awaiting caller would hang forever. Resuming twice is a no-op by construction.
+        resumeOnce(returning: nil)
       }
     }
   }

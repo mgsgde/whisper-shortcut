@@ -71,6 +71,10 @@ class MenuBarController: NSObject {
   private let speechService: SpeechService
   private let clipboardManager: ClipboardManager
   private let voiceFeedbackService = VoiceFeedbackService()
+  /// Text the user had selected when Voice Feedback started, if any. Optional context: a spoken
+  /// "the spelling of X is X" is transcribed identically on both sides and teaches nothing, so
+  /// the selection is where a correct spelling can actually come from. Cleared after each run.
+  private var voiceFeedbackSelection: String?
   private let shortcuts: Shortcuts
   private let fnPushToTalk = FnPushToTalk()
   private let reviewPrompter: ReviewPrompter
@@ -1098,6 +1102,7 @@ class MenuBarController: NSObject {
           improvementModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
         return
       }
+      captureVoiceFeedbackSelection()
       appState = appState.startRecording(.voiceFeedback)
       ConnectionPrewarmer.prewarm(for: transcriptionModel)
       discardStreamingSession()  // voice feedback never streams
@@ -1834,7 +1839,13 @@ class MenuBarController: NSObject {
         return
       }
 
-      let proposal = try await voiceFeedbackService.proposeChange(instruction: trimmed)
+      let selection = await MainActor.run { () -> String? in
+        let s = self.voiceFeedbackSelection
+        self.voiceFeedbackSelection = nil  // one run, one selection
+        return s
+      }
+      let proposal = try await voiceFeedbackService.proposeChange(
+        instruction: trimmed, selectedText: selection)
 
       // The instruction text is captured; the audio is no longer needed.
       cleanupAudioFile(at: audioURL)
@@ -2160,6 +2171,40 @@ class MenuBarController: NSObject {
     captureClipboardRestorePointIfEnabled()
     simulateCopy()
     return true
+  }
+
+  /// Best-effort snapshot of the current selection for Voice Feedback.
+  ///
+  /// Deliberately silent and non-blocking: Voice Feedback works perfectly well without a
+  /// selection, so this never prompts for Accessibility permission and never shows an error when
+  /// nothing is selected — unlike Read Aloud, where the selection IS the input. Polls
+  /// `NSPasteboard.changeCount` rather than sleeping a fixed interval, because "nothing was
+  /// copied" and "the app was slow to copy" are otherwise indistinguishable, and mistaking the
+  /// first for the second would feed the user's unrelated clipboard to the model.
+  private func captureVoiceFeedbackSelection() {
+    voiceFeedbackSelection = nil
+    guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
+      DebugLogger.log("VOICE-FEEDBACK: No Accessibility permission — proceeding without a selection")
+      return
+    }
+    captureClipboardRestorePointIfEnabled()
+    let before = NSPasteboard.general.changeCount
+    simulateCopy()
+    Task { @MainActor [weak self] in
+      let deadline = Date().addingTimeInterval(0.5)
+      while Date() < deadline {
+        try? await Task.sleep(for: .milliseconds(15))
+        guard NSPasteboard.general.changeCount != before else { continue }
+        let text = NSPasteboard.general.string(forType: .string)?
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let text, !text.isEmpty {
+          self?.voiceFeedbackSelection = text
+          DebugLogger.log("VOICE-FEEDBACK: Captured selection (\(text.count) chars)")
+        }
+        return
+      }
+      DebugLogger.log("VOICE-FEEDBACK: No selection copied — proceeding with the spoken instruction only")
+    }
   }
 
   private func simulateCopy() {
