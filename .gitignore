@@ -148,3 +148,8 @@ developer-id-cert.p12
 # Python bytecode from scripts/
 __pycache__/
 *.pyc
+
+# Business data belongs in the PRIVATE parent repo (see plans/README.md)
+plans/growth-ledger.md
+plans/growth-reviews/
+plans/usage-reviews/

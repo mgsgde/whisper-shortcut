@@ -12,7 +12,7 @@ runs the same architecture and learned most of these lessons first.
 > GitHub stars and website traffic are distribution levers, not the goal.
 
 Every loop ranks its proposals against the **current bottleneck** named in the latest
-`plans/growth-reviews/` verdict. A proposal that pulls effort away from the bottleneck ranks
+`../business/growth-reviews/` verdict. A proposal that pulls effort away from the bottleneck ranks
 last, however good it looks locally.
 
 ## The loops
@@ -21,7 +21,7 @@ last, however good it looks locally.
 | ---- | ----------- | ---- | ------------ | ------ | ------- |
 | **Usage** | `usage-review-job.sh` (`analyze-user-interactions`) | Local interaction logs + outcome signals | Recurring failures with counts | `plans/improvement-ledger.md` + digest | Mon 08:47 weekly |
 | **Models** | `model-audit-job.sh` (`audit-llm-models`) | Live provider lineups vs shipped defaults, benchmarks | Pareto-justified migrations | `plans/model-audits/` | Wed 09:17 monthly |
-| **Strategy/Growth** | `growth-review-job.sh` (`review-growth`) | App Store Connect, GitHub, git effort, competitors | Naming the ONE binding constraint toward revenue | `plans/growth-ledger.md` + digest | Sat 09:07, effectively biweekly |
+| **Strategy/Growth** | `growth-review-job.sh` (`review-growth`) | App Store Connect, GitHub, git effort, competitors | Naming the ONE binding constraint toward revenue | `../business/growth-ledger.md` + digest | Sat 09:07, effectively biweekly |
 | **Architect** | `agent-loops-job.sh` (`review-agent-loops`) | The loops' own ledgers, hit rates, blind spots, outside best practices, Sabaki's loop docs | The loops finding more true things per run | `plans/loop-ledger.md` + digest | 6th of month, 10:17 |
 | **Implementer** | `run-implementer.sh` (`implement-proposal`) — **rung 2** | One flagged queue row + its source ledger entry | A gated, reviewed branch you can dogfood | Code on a branch, `plans/implementer-{queue,log}.md` | On demand (`BUILD` flag + manual invocation) |
 
@@ -164,7 +164,7 @@ bash scripts/growth-review-job.sh --dry-run  # check plumbing without a Claude p
 
 # Status
 launchctl list | grep whispershortcut
-ls plans/growth-reviews/ plans/loop-reviews/
+ls ../business/growth-reviews/ plans/loop-reviews/
 
 # Disable a loop
 launchctl unload ~/Library/LaunchAgents/com.whispershortcut.growth-review.plist

@@ -15,11 +15,11 @@ decides. You never push, never release, never touch anything outside this worktr
 ## 1. Context first
 
 - Read the queue row's **source ledger entry** (`plans/improvement-ledger.md`,
-  `plans/growth-ledger.md`, `plans/loop-ledger.md`) — the one-liner in the queue is a pointer,
+  `../business/growth-ledger.md`, `plans/loop-ledger.md`) — the one-liner in the queue is a pointer,
   not the full intent. It carries the evidence, the counts, and the reasoning.
 - Read the repo rules that apply: `AGENTS.md` and `.cursor/rules/index.mdc` (always), plus the
   skill for the area you are touching (e.g. `debugging-workflow` when adding instrumentation).
-- Read the current bottleneck in the newest `plans/growth-reviews/` digest. If the proposal
+- Read the current bottleneck in the newest `../business/growth-reviews/` digest. If the proposal
   conflicts with it, implement it as specified anyway — but say so in the reviewer notes.
 
 ## 2. Build

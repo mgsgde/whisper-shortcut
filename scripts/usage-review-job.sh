@@ -56,8 +56,15 @@ LEDGER="$REPO/plans/improvement-ledger.md"
 # The review pass never reads CONTEXT_DIR itself — bash copies the window here first. See section 1.
 STAGING="$REPO/build/usage-review-staging"
 STAMP="$(date +%Y-%m-%d)"
-REVIEW_DIR="$REPO/plans/usage-reviews"
+# Digests quote real transcript fragments — private parent repo only, never the public app repo.
+BUSINESS_DIR="${WS_BUSINESS_DIR:-$REPO/../business}"
+REVIEW_DIR="$BUSINESS_DIR/usage-reviews"
 DIGEST="$REVIEW_DIR/$STAMP-review.md"
+if [ ! -d "$BUSINESS_DIR" ]; then
+  echo "ERROR: no private business dir at $BUSINESS_DIR — usage digests quote real transcripts"
+  echo "and must never land in the public app repo. Aborting."
+  exit 1
+fi
 mkdir -p "$REVIEW_DIR"
 
 # Reporting helpers are defined up here, not next to their first use, because the earliest thing

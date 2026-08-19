@@ -37,7 +37,7 @@ For every loop in `plans/agent-loops.md` (usage-review, model-audit, growth-revi
 this one):
 
 - **Proposal funnel:** parse its ledger (`plans/improvement-ledger.md`,
-  `plans/growth-ledger.md`, `plans/model-audits/`, `plans/loop-ledger.md`) and count per
+  `../business/growth-ledger.md`, `plans/model-audits/`, `plans/loop-ledger.md`) and count per
   status: proposed / accepted / shipped / measured / rejected. **Hit rate = worked /
   (worked + written off).** Near 100 % is not good news — it means the loop only proposes
   the obvious. Around a third means it is actually reaching.

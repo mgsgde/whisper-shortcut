@@ -5,7 +5,7 @@
 # Runs the review-growth skill headlessly: pulls real business metrics (App Store Connect
 # via asc, GitHub via gh, git effort, a light competitor pass), names the ONE bottleneck
 # toward paying customers, grades the previous run's recommendation, and appends an entry
-# to plans/growth-ledger.md. Then it says so, by mail with a macOS notification fallback.
+# to ../business/growth-ledger.md. Then it says so, by mail with a macOS notification fallback.
 #
 # It runs locally and not as a cloud routine because its inputs only exist here: asc and gh
 # authenticate through this Mac's Keychain, and the usage digests it cross-reads are mined
@@ -47,10 +47,18 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO" || exit 1
 
 STAMP="$(date +%Y-%m-%d)"
-REVIEW_DIR="$REPO/plans/growth-reviews"
+# Business data lives in the PRIVATE parent repo, never in this public one.
+# See plans/README.md "What must never be committed here".
+BUSINESS_DIR="${WS_BUSINESS_DIR:-$REPO/../business}"
+REVIEW_DIR="$BUSINESS_DIR/growth-reviews"
 DIGEST="$REVIEW_DIR/$STAMP-review.md"
-LEDGER="$REPO/plans/growth-ledger.md"
+LEDGER="$BUSINESS_DIR/growth-ledger.md"
 SKILL="$REPO/.cursor/skills/review-growth/SKILL.md"
+if [ ! -d "$BUSINESS_DIR" ]; then
+  echo "ERROR: no private business dir at $BUSINESS_DIR — this job writes revenue data and"
+  echo "must never write it into the public app repo. Aborting."
+  exit 1
+fi
 mkdir -p "$REVIEW_DIR"
 
 AUDIT_MAIL_TO="${AUDIT_MAIL_TO:-mail@magnus-goedde.de}"

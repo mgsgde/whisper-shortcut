@@ -23,8 +23,8 @@ The North Star (from `plans/agent-loops.md`):
 
 Then grade the previous run before producing anything new:
 
-1. Read the latest entry in `plans/growth-ledger.md` and the newest digest in
-   `plans/growth-reviews/`.
+1. Read the latest entry in `../business/growth-ledger.md` and the newest digest in
+   `../business/growth-reviews/`.
 2. For its recommendation: was it acted on? Check reality (`git log --oneline
    --since="<that run's date>"`, App Store version history via `asc versions list --app
    6749648401`), not the ledger's claim.
@@ -62,7 +62,7 @@ data warehouse. Compare the last 30 days against the 30 before where the source 
    recommendation of comparable size — say so.
 4. **Where effort actually went:** `git log --oneline --since="3 weeks ago"` — cluster
    commits into 3–5 themes with rough share. This is what "alignment" is judged against.
-5. **Product health, don't recompute it:** read the newest `plans/usage-reviews/LATEST.md`
+5. **Product health, don't recompute it:** read the newest `../business/usage-reviews/LATEST.md`
    and open entries in `plans/improvement-ledger.md`. Note honestly: local usage logs are
    the developer's own usage, not customers' — they measure product quality, not demand.
 6. **Competitors** (light touch): one WebSearch pass for pricing/positioning moves by the
@@ -96,12 +96,12 @@ Output, in this order, short:
    was right.
 
 Then append one dated entry (goal, ~10 key numbers, bottleneck, recommendation, falsifier,
-grade of the previous entry) to `plans/growth-ledger.md`, following the rules at the top of
+grade of the previous entry) to `../business/growth-ledger.md`, following the rules at the top of
 that file.
 
 ## Ground rules
 
-- **Report-only** except `plans/growth-ledger.md` and the digest. No code, no metadata
+- **Report-only** except `../business/growth-ledger.md` and the digest. No code, no metadata
   changes in App Store Connect (`asc` is used strictly read-only), no commits, no pushes.
 - **One bottleneck.** Secondary observations get at most one line each at the end.
 - **"Change nothing, keep going" is a valid verdict** when the data says the current

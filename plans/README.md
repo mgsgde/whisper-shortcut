@@ -13,12 +13,38 @@ This directory is the shared source of truth for implementation plans and specs 
 
 - `refactor-ledger.md` — running record for `/review-refactors`.
 - `improvement-ledger.md` — usage-driven product proposals, written by the weekly usage-review job.
-- `growth-ledger.md` — growth/strategy verdicts (bottleneck, recommendation, falsifier), written by the growth-review job.
 - `loop-ledger.md` — meta-proposals about the loop machinery itself, written by the agent-loops job.
 - `agent-loops.md` — the architecture of all these loops: roles, autonomy policy, cross-repo coordination with sabaki.dance.
 - `instrumentation-gaps.md` — the register of measurement gaps that blind the loops; gap fixes rank above features.
 - `implementer-queue.md` — input queue of the autonomous implementer; **you** set `Flag=BUILD`, no agent may.
 - `implementer-log.md` — one row per implementer run; its Outcome column grades the automation's own falsifier.
+
+## What must never be committed here — this repo is PUBLIC
+
+`mgsgde/whisper-shortcut` is a public, open-source repository. The code is meant to be
+public; **the business is not.** Anything about how the product earns money lives in the
+private parent repo (`whisper-shortcut-private/business/`), never here:
+
+| Belongs in `../business/` (private) | Stays here (public) |
+| --- | --- |
+| Revenue, proceeds, purchase counts, price strategy | The loop machinery: scripts, skills, architecture |
+| Funnel metrics: impressions, product-page views, conversion | Technical ledgers: refactor, model audits, implementer queue/log |
+| Competitive positioning and pricing decisions | The instrumentation-gap register (technical) |
+| Usage-review digests — they quote real transcript fragments | `improvement-ledger.md` (product proposals, no numbers) |
+
+The loop jobs enforce this: `growth-review-job.sh` and `usage-review-job.sh` abort with an
+error if `../business/` is missing rather than falling back to a path in this repo, and
+`.gitignore` refuses the moved paths so they cannot drift back in.
+
+**Why the split runs this way.** The machinery being public is fine, arguably good — it is
+part of what the project *is*. The numbers being public hands competitors a free read on
+what works and what does not, and the usage digests contain the developer's own dictated
+text. Publishing revenue can be a deliberate build-in-public choice; it must never be an
+accident of where a file happened to land.
+
+*(Learned the hard way on 2026-08-18: the first growth ledger, with a full revenue history,
+was committed and pushed here before anyone asked the question. Moved out the same day —
+but note that a push is not undoable, only followed by a better decision.)*
 
 ## Scheduled jobs that write here
 
@@ -30,8 +56,8 @@ architecture, autonomy policy, and cross-repo coordination: `plans/agent-loops.m
 | Job | When | Script | Writes | Notification |
 |---|---|---|---|---|
 | Model audit | Wednesdays 09:17 | `scripts/model-audit-job.sh` | `plans/model-audits/` | mail, macOS notification fallback |
-| Usage review | Mondays 08:47 | `scripts/usage-review-job.sh` | `plans/improvement-ledger.md` + `plans/usage-reviews/` | mail, macOS notification fallback |
-| Growth review | Saturdays 09:07 (11-day gate → biweekly) | `scripts/growth-review-job.sh` | `plans/growth-ledger.md` + `plans/growth-reviews/` | mail, macOS notification fallback |
+| Usage review | Mondays 08:47 | `scripts/usage-review-job.sh` | `plans/improvement-ledger.md` + `../business/usage-reviews/` (private) | mail, macOS notification fallback |
+| Growth review | Saturdays 09:07 (11-day gate → biweekly) | `scripts/growth-review-job.sh` | `../business/growth-ledger.md` + `../business/growth-reviews/` (private) | mail, macOS notification fallback |
 | Agent-loops review | 6th of month 10:17 | `scripts/agent-loops-job.sh` | `plans/loop-ledger.md` + `plans/loop-reviews/` | mail, macOS notification fallback |
 
 LaunchAgents: `~/Library/LaunchAgents/com.whispershortcut.{model-audit,usage-review,growth-review,agent-loops}.plist`.

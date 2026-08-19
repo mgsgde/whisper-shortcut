@@ -28,8 +28,12 @@ QUEUE_REL="plans/implementer-queue.md"
 LEDGER_REL="plans/implementer-log.md"
 QUEUE_FILE="${REPO_ROOT}/${QUEUE_REL}"
 
-log()  { printf '\033[0;34m[implementer]\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m[implementer]\033[0m %s\n' "$*"; }
+# Diagnostics go to STDERR on purpose: several helpers below have their stdout captured
+# (a review verdict, a gate result), and a log line landing in that capture is silent
+# corruption. Run 1 died exactly there — the reviewer said APPROVE, the capture read
+# "[implementer]gate:review…APPROVE" and the runner called it an unusable verdict.
+log()  { printf '\033[0;34m[implementer]\033[0m %s\n' "$*" >&2; }
+warn() { printf '\033[1;33m[implementer]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[0;31m[implementer] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 DRY_RUN=0
@@ -226,15 +230,17 @@ run_build_agent 1 || fail_run "build agent exited non-zero (timeout or error) �
 
 # --- Runner-enforced gates -----------------------------------------------------------------
 CHANGED_FILES=""
+BASE=""
 run_static_gates() {
     local commits dirty out_of_scope main_after new_paths overlap
-    commits=$(git -C "$WT_DIR" rev-list --count "main..${BRANCH}")
+    BASE=$(git -C "$WT_DIR" merge-base main "$BRANCH") || { echo "GATE FAILED: no merge-base"; return 1; }
+    commits=$(git -C "$WT_DIR" rev-list --count "${BASE}..${BRANCH}")
     [[ "$commits" -gt 0 ]] || { echo "GATE FAILED: the agent committed nothing"; return 1; }
 
     dirty=$(git -C "$WT_DIR" status --porcelain | grep -v -E '^\?\? IMPLEMENTER_NOTES\.md$' | grep -v -E '^\?\? \.env$' || true)
     [[ -z "$dirty" ]] || { echo "$dirty" | sed 's/^/    /'; echo "GATE FAILED: uncommitted or stray files in the worktree"; return 1; }
 
-    CHANGED_FILES=$(git -C "$WT_DIR" diff --name-only "main..${BRANCH}")
+    CHANGED_FILES=$(git -C "$WT_DIR" diff --name-only "${BASE}..${BRANCH}")
 
     # Pollution check. The main checkout is shared with parallel sessions, so only paths that
     # changed there AND appear in the agent's diff are attributable to the agent.
@@ -256,8 +262,7 @@ run_static_gates() {
     return 0
 }
 
-GATE_OUT=$(run_static_gates) || fail_run "$(echo "$GATE_OUT" | tail -1) — details: ${RUN_DIR}"
-[[ -n "$GATE_OUT" ]] && echo "$GATE_OUT"
+run_static_gates || fail_run "static gates failed (see the GATE FAILED line above) — details: ${RUN_DIR}"
 
 # Gate: it must build. Worktree-local derivedDataPath, so this never disturbs your own build.
 log "gate: xcodebuild (Debug)…"
@@ -290,7 +295,7 @@ if [[ "$REVIEW_AGENT" != "none" ]]; then
         local attempt="$1"
         local diff_file="${RUN_DIR}/diff-${attempt}.patch"
         local out="${RUN_DIR}/review-${attempt}.md"
-        git -C "$WT_DIR" diff "main..${BRANCH}" >"$diff_file"
+        git -C "$WT_DIR" diff "${BASE}..${BRANCH}" >"$diff_file"
         log "gate: review by ${REVIEW_AGENT}/${REVIEW_MODEL} (attempt ${attempt})…"
         claude -p --model "$REVIEW_MODEL" --dangerously-skip-permissions "$(cat <<EOF
 You are the REVIEW gate of the autonomous implementer for WhisperShortcut (repo: ${REPO_ROOT}).
@@ -333,7 +338,7 @@ EOF
     if [[ "$VERDICT" == "BLOCK" ]]; then
         warn "reviewer BLOCKED the first attempt — one rework cycle"
         run_build_agent 2 "${RUN_DIR}/review-1.md" || fail_run "build agent failed during rework"
-        GATE_OUT=$(run_static_gates) || fail_run "$(echo "$GATE_OUT" | tail -1) (after rework)"
+        run_static_gates || fail_run "static gates failed after rework (see above)"
         log "gate: xcodebuild (after rework)…"
         ( cd "$WT_DIR" && xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut \
             -configuration Debug -derivedDataPath "${WT_DIR}/build/DerivedData" build ) \
