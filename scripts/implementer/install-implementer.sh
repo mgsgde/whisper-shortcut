@@ -28,7 +28,8 @@ IMPLEMENTER_BUILD_MODEL=auto       # cursor-agent model (auto = quota-friendly r
 IMPLEMENTER_REVIEW_AGENT=claude    # claude | none (none = skip the review gate)
 IMPLEMENTER_REVIEW_MODEL=opus
 
-IMPLEMENTER_TIMEOUT_SECONDS=7200   # hard cap for one build-agent phase
+IMPLEMENTER_TIMEOUT_SECONDS=7200   # hard cap for ONE build-agent phase
+IMPLEMENTER_MAX_RUNS_PER_MONTH=10  # cumulative brake; counter in runs-YYYY-MM next to this file
 IMPLEMENTER_SCOPE=app              # app | app-docs (see run-implementer.sh)
 
 # Push the branch and open a PR — the approval surface (merge = approval), same as

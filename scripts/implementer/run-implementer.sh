@@ -60,6 +60,10 @@ REVIEW_MODEL="${IMPLEMENTER_REVIEW_MODEL:-opus}"
 TIMEOUT_SECONDS="${IMPLEMENTER_TIMEOUT_SECONDS:-7200}"
 SCOPE="${IMPLEMENTER_SCOPE:-app}"
 PUSH_PR="${IMPLEMENTER_PUSH_PR:-0}"
+# Cumulative brake. The per-run timeout bounds ONE run; nothing bounded how many runs a month
+# could hold, and "flag ten rows and let it work" is exactly the shape of an unforeseen bill.
+# Counted in a file, not in the script, so the cap survives a crash mid-run.
+MAX_RUNS_PER_MONTH="${IMPLEMENTER_MAX_RUNS_PER_MONTH:-10}"
 MAIL_TO="${AUDIT_MAIL_TO:-mail@magnus-goedde.de}"
 
 case "$SCOPE" in
@@ -88,6 +92,15 @@ trap 'rmdir "$LOCK_DIR" 2>/dev/null' EXIT
 CURRENT_BRANCH=$(git -C "$REPO_ROOT" symbolic-ref --short HEAD 2>/dev/null)
 [[ "$CURRENT_BRANCH" == "main" ]] || die "main checkout is on '${CURRENT_BRANCH}', expected main"
 
+# --- Monthly run budget -------------------------------------------------------------------
+COUNTER_FILE="${HOME}/.config/whispershortcut-implementer/runs-$(date +%Y-%m)"
+RUNS_THIS_MONTH=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+if [[ "$RUNS_THIS_MONTH" -ge "$MAX_RUNS_PER_MONTH" ]]; then
+    die "monthly run budget exhausted: ${RUNS_THIS_MONTH}/${MAX_RUNS_PER_MONTH} runs in $(date +%Y-%m).
+Each run spends build-agent quota and a few live API calls in the test gate. Raise it with
+IMPLEMENTER_MAX_RUNS_PER_MONTH in ${CONFIG_FILE}, or wait for the month to roll over."
+fi
+
 # --- Pick the topmost eligible queue row ---------------------------------------------------
 [[ -f "$QUEUE_FILE" ]] || die "queue file missing: ${QUEUE_FILE}"
 ROW=$(grep -E '^\| *[0-9]+ *\|' "$QUEUE_FILE" | awk -F'|' '
@@ -112,6 +125,10 @@ if [[ "$DRY_RUN" == "1" ]]; then
     exit 0
 fi
 mkdir -p "$RUN_DIR"
+# Counted before the agent starts: a run that dies halfway still spent quota, and a counter
+# that only increments on success would let a crash loop run unbounded.
+echo $((RUNS_THIS_MONTH + 1)) >"$COUNTER_FILE"
+log "monthly budget: run $((RUNS_THIS_MONTH + 1)) of ${MAX_RUNS_PER_MONTH}"
 
 # --- Reporting helpers ---------------------------------------------------------------------
 notify() {

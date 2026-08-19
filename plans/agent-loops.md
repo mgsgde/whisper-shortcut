@@ -122,6 +122,31 @@ bash scripts/implementer/run-implementer.sh
 - **Promotion is earned:** 5 clean merges before `IMPLEMENTER_SELF_PICK=1` is even offered, and
   you flip it, not the runner.
 
+## What this machinery costs
+
+Measured 2026-08-19. The point of this section is that no line here is a guess — if a number
+changes, re-measure it rather than editing the prose.
+
+| Surface | Billed as | Per run | Brake |
+| --- | --- | --- | --- |
+| The four scheduled Claude jobs | **Max subscription** — no `ANTHROPIC_API_KEY` anywhere, so they spend rate-limit capacity, not dollars | $0 | `--max-budget-usd` (3–10) is a backstop that only binds if an API key ever enters the environment |
+| Implementer build agent | **Cursor subscription**, model `auto` (the Auto/Composer pool, not the API pool) | quota only | 120-min per-run timeout · **10 runs/month** (`IMPLEMENTER_MAX_RUNS_PER_MONTH`) |
+| Implementer review pass | Max subscription (Opus) | $0 | one rework cycle, then the run stops |
+| Implementer test gate | **Real dollars** — the live roundtrip tests use the provider keys in `.env` | 5 requests × 1.24 s audio ≈ **under $0.01** | gated per credential; tests skip when a key is absent |
+| Monthly model audit | Real dollars, same keys | ~400 short transcription requests ≈ **a few cents** | monthly cadence |
+| Voice Feedback selection | Real dollars, user's Gemini key | ≤2000 chars ≈ 500 extra tokens ≈ **$0.00005** | the 2000-char cap in `VoiceFeedbackService` |
+| `web-traffic-report.sh` | **$0 marginal** — Cloud Logging *reads* are free; Cloud Run was already writing those logs | $0 | `--limit 20000` |
+
+**Total real-dollar exposure of the whole loop system: well under $1/month** at current cadences.
+
+The two ways that stops being true, both worth re-checking rather than assuming:
+
+1. **An `ANTHROPIC_API_KEY` entering the environment** flips all four jobs from quota to dollars
+   at once. The per-job caps then bind at $33 per full cycle — designed, but no longer free.
+2. **Cursor on-demand spending** being enabled in the dashboard lets an implementer run bill past
+   the subscription. Nothing in this repo can see that setting; keep on-demand off, or a $0 hard
+   limit, and the runs stop at the included quota instead of charging.
+
 ## Why these run locally (launchd, not cloud routines)
 
 Same reason as ever (see `plans/README.md`): the inputs only exist on this Mac — usage
