@@ -24,6 +24,7 @@ last, however good it looks locally.
 | **Strategy/Growth** | `growth-review-job.sh` (`review-growth`) | App Store Connect, GitHub, git effort, competitors | Naming the ONE binding constraint toward revenue | `../business/growth-ledger.md` + digest | Sat 09:07, effectively biweekly |
 | **Architect** | `agent-loops-job.sh` (`review-agent-loops`) | The loops' own ledgers, hit rates, blind spots, outside best practices, Sabaki's loop docs | The loops finding more true things per run | `plans/loop-ledger.md` + digest | 6th of month, 10:17 |
 | **Implementer** | `run-implementer.sh` (`implement-proposal`) — **rung 2** | One flagged queue row + its source ledger entry | A gated, reviewed branch you can dogfood | Code on a branch, `plans/implementer-{queue,log}.md` | On demand (`BUILD` flag + manual invocation) |
+| **Sales** | parent `scripts/sales/scout-job.sh` (`run-sales-agent`) — scout **rung 0**; poster **rung 3** | Public HN/Reddit/GitHub/App Store conversations | Disclosed drafts that route people to the store; customer-voice feedback | `../sales/ops/` (private parent — queue, digests, feedback). Never the public app repo | Daily 08:17 scout, 15:05 poster |
 
 ## Shared conventions (kept identical with sabaki.dance — do not drift)
 
@@ -53,19 +54,17 @@ Architect loop checks for drift on every run:
 
 ## Autonomy policy
 
-All **scheduled** jobs sit at **rung 0 — report-only**: they read anything, write reports and
-ledger rows, and never touch code, prompts, defaults, settings, commits, or pushes. The full
-ladder (rungs 0–4, promotion criteria, kill-switch requirements) is defined in
+Scheduled **review** jobs sit at **rung 0 — report-only**: they read anything, write reports
+and ledger rows, and never touch code, prompts, defaults, settings, commits, or pushes. The
+full ladder (rungs 0–4, promotion criteria, kill-switch requirements) is defined in
 `~/sabaki.dance.v3/docs/agent-autonomy-policy.md` and applies here unchanged.
 
-One capability is above rung 0:
+Two capabilities are above rung 0:
 
 | Capability | Rung | Gate that holds it there |
 | ---------- | ---- | ------------------------ |
-| Implementer: build a flagged queue row → gated branch | **2** | The *runner* re-runs every gate (scope allowlist, clean tree, main-checkout pollution, `xcodebuild`, full test plan); a **different model** reviews the diff; `IMPLEMENTER_ENABLED` kill switch read at run time; nothing is pushed or released; only rows a human flagged `BUILD` are eligible |
-
-Reversibility is what earns it that rung: everything it produces is a local branch. Reverting
-is deleting a branch, and nothing reaches a user before you merge *and* cut a release yourself.
+| Implementer: build a flagged queue row → gated branch | **2** | The *runner* re-runs every gate (scope allowlist, clean tree, main-checkout pollution, `xcodebuild`, full test plan); a **different model** reviews the diff; `IMPLEMENTER_ENABLED` kill switch read at run time; nothing is pushed or released; only rows a human flagged `BUILD` are eligible. Reversibility: everything it produces is a local branch. |
+| Sales poster: comment on a public thread or App Store review | **3** | Morning digest is the preview; 15:05 posts PREVIEWED rows whose veto window elapsed (`SALES_VETO_HOURS`, default 7). `../scripts/sales/veto.sh S-001` stops a row. Kill switch `SALES_POST_ENABLED` (default 0). A comment to a stranger is irreversible, so this capability does not promote to rung 4. |
 
 The rule that outranks every finding, from the same policy:
 
@@ -215,13 +214,22 @@ bash scripts/growth-review-job.sh            # strategy/growth review now
 bash scripts/agent-loops-job.sh              # meta review now
 bash scripts/growth-review-job.sh --dry-run  # check plumbing without a Claude pass
 
+# Sales agent (from the private parent repo)
+bash ../scripts/sales/install.sh             # once: config + launchd
+bash ../scripts/sales/scout-job.sh --dry-run
+bash ../scripts/sales/scout-job.sh --force
+bash ../scripts/sales/veto.sh S-001          # before 15:05
+bash ../scripts/sales/poster-job.sh --once --id S-001
+
 # Status
 launchctl list | grep whispershortcut
-ls ../business/growth-reviews/ plans/loop-reviews/
+ls ../business/growth-reviews/ plans/loop-reviews/ ../sales/ops/digests/
 
 # Disable a loop
 launchctl unload ~/Library/LaunchAgents/com.whispershortcut.growth-review.plist
 launchctl unload ~/Library/LaunchAgents/com.whispershortcut.agent-loops.plist
+launchctl unload ~/Library/LaunchAgents/com.whispershortcut.sales-scout.plist
+launchctl unload ~/Library/LaunchAgents/com.whispershortcut.sales-poster.plist
 ```
 
 Every job mails its digest (macOS notification as fallback) and reports failures loudly —

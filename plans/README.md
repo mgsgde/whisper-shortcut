@@ -59,9 +59,11 @@ architecture, autonomy policy, and cross-repo coordination: `plans/agent-loops.m
 | Usage review | Mondays 08:47 | `scripts/usage-review-job.sh` | `plans/improvement-ledger.md` + `../business/usage-reviews/` (private) | mail, macOS notification fallback |
 | Growth review | Saturdays 09:07 (11-day gate → biweekly) | `scripts/growth-review-job.sh` | `../business/growth-ledger.md` + `../business/growth-reviews/` (private) | mail, macOS notification fallback |
 | Agent-loops review | 6th of month 10:17 | `scripts/agent-loops-job.sh` | `plans/loop-ledger.md` + `plans/loop-reviews/` | mail, macOS notification fallback |
+| Sales scout | Daily 08:17 | parent `scripts/sales/scout-job.sh` | `../sales/ops/` (private) | mail, macOS notification fallback |
+| Sales poster | Daily 15:05 | parent `scripts/sales/poster-job.sh` | queue status in `../sales/ops/queue.jsonl` | mail on activity; `SALES_POST_ENABLED=0` by default |
 
-LaunchAgents: `~/Library/LaunchAgents/com.whispershortcut.{model-audit,usage-review,growth-review,agent-loops}.plist`.
-Logs: `build/logs/`. Disable one with
+LaunchAgents: `~/Library/LaunchAgents/com.whispershortcut.{model-audit,usage-review,growth-review,agent-loops,sales-scout,sales-poster}.plist`.
+App-loop logs: `build/logs/`. Sales-agent logs: `../sales/ops/logs/`. Disable one with
 `launchctl unload ~/Library/LaunchAgents/com.whispershortcut.<name>.plist`.
 
 ### Usage review and model audit need Full Disk Access — granted 2026-08-02

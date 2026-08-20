@@ -33,11 +33,12 @@ scripts/ plans/`), and did the number it predicted move? Verdicts: `APPLIED+WORK
 
 ## 2. Measure each loop — counts, not impressions
 
-For every loop in `plans/agent-loops.md` (usage-review, model-audit, growth-review, and
-this one):
+For every loop in `plans/agent-loops.md` (usage-review, model-audit, growth-review,
+sales-scout, implementer, and this one):
 
 - **Proposal funnel:** parse its ledger (`plans/improvement-ledger.md`,
-  `../business/growth-ledger.md`, `plans/model-audits/`, `plans/loop-ledger.md`) and count per
+  `../business/growth-ledger.md`, `plans/model-audits/`, `plans/loop-ledger.md`,
+  `../sales/ops/queue.jsonl` for sales) and count per
   status: proposed / accepted / shipped / measured / rejected. **Hit rate = worked /
   (worked + written off).** Near 100 % is not good news — it means the loop only proposes
   the obvious. Around a third means it is actually reaching.
