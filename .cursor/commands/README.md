@@ -54,6 +54,9 @@ Each is invocable as `/<name>` **and** auto-invoked when its `description:` matc
 | `/push-after-rebuild`                                | workflow | Rebuild, then commit + push                |
 | `/llm-model-docs`                                    | workflow | Canonical provider doc pointers + lineup check |
 | `/gemini-system-prompt-best-practices`               | workflow | Google prompt guidance for `systemInstruction` |
+| `/review-growth`                                     | review   | App Store / GitHub growth bottleneck + ledger |
+| `/review-agent-loops`                                | review   | Meta-loop over usage/model/growth/implementer |
+| `/implement-proposal`                                | workflow | Headless BUILD playbook (not for interactive use) |
 
 ## Inventory — defined as commands (`.cursor/commands/<name>.md`)
 

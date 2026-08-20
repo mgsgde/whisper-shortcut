@@ -1,6 +1,6 @@
 ---
 name: review-refactors
-description: Hunt for the mid-to-long-term simplest, most elegant design — deep structural simplifications, not surface cleanups. Explicitly discounts "that's more code / more work to build" as an objection, so it argues for the best long-term shape even when it means large rework. Given no target it triages the repo itself (churn, defect density, size, crusted code, centrality) and picks the highest-payback hotspots. Produces a tiered, blast-radius-tagged proposal list; applies only what the user approves. Use when the user asks where the code could be built simpler/more elegantly/better, wants refactoring opportunities, wants technical debt reduced, or wants duplication removed across files.
+description: Hunt for the mid-to-long-term simplest, most elegant design — deep structural simplifications, not surface cleanups. Explicitly discounts "that's more code / more work to build" as an objection, so it argues for the best long-term shape even when it means large rework. Given no target it triages the repo itself (churn, defect density, size, crusted code, centrality) and picks the highest-payback hotspots. Produces a tiered, blast-radius-tagged proposal list; applies only what the user approves. Use when the user asks where the code could be built simpler/more elegantly/better, wants refactoring opportunities, wants technical debt reduced, or wants duplication removed across files. Scope is WhisperShortcut Swift ONLY — for web/ workspace tooling, use the parent review-refactors skill.
 ---
 
 # Review Refactors

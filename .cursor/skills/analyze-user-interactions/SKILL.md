@@ -47,12 +47,13 @@ the macOS log.
 Join to an interaction on **`refTs` == the interaction's `ts`**; `gapMs` is the delay between them.
 `kind` is an `OutcomeSignal`: `pasted` (delivered where the user wanted it), `dictationRestart`
 (a new dictation right after one that was never pasted → the transcript was unusable),
-`cancelledWhileProcessing`, `chatStopped`, `chatRetry`.
+`cancelledWhileProcessing`, `chatStopped`, `chatRetry`, `promptRetry`, `promptNoSelection`,
+`requestTimedOut`.
 
 Read them as verdicts, not events: a `dictationRestart` cluster on one model is a quality signal
 that no amount of reading transcripts will give you, and a `pasted` with a small `gapMs` is the
-strongest evidence an interaction succeeded. `detail` holds only short non-content strings, so it
-is safe to quote in a report.
+strongest evidence an interaction succeeded. `detail` is a `[String: String]?` map of short
+non-content strings, so it is safe to quote in a report.
 
 **Important caveats** when reading these files:
 

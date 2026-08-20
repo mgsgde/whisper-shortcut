@@ -108,7 +108,7 @@ After the report, ask the user **which findings to apply** (e.g. "apply 1, 3, 5"
 When applying:
 
 - Use `Edit` for additions to existing files; `Write` only for genuinely new skill/command files.
-- For new skills, create `.cursor/skills/<name>/SKILL.md` (and a matching `.cursor/commands/<name>.md` entrypoint if users will invoke it via slash command).
+- For new skills, create `.cursor/skills/<name>/SKILL.md` only (one name, one file — never also a same-named `.cursor/commands/<name>.md`; Claude Code merges commands into skills and the skill wins, leaving the command unreachable). Use a command file instead only when there is no skill and nothing else will reuse the playbook.
 - After applying, briefly confirm what was changed (file paths, one-line summary).
 - Then nudge the user: `/improve-context` is additive-biased. Recommend running **`/audit-llm-context`** periodically (every ~10 cycles or ~3–4 weeks) to compensate — it's the pruning counterpart that catches stale and bloated context.
 

@@ -11,7 +11,7 @@ Audio verification has many places where it can silently degrade to text-only be
 
 This skill is the inspection procedure. It does **not** add logging — it assumes the `AUDIO-VERIFY:` logging contract is in place in `ContextDerivation.swift` and the dictation capture path.
 
-**Audio retention model (current):** audio is **retained across Smart Improvement runs**, not wiped after each one. It is pruned by age at the start of each run (`audioSampleRetentionDays`, default 30 — matching the text-analysis window), and bounded by a large safety cap (`audioSampleMaxFiles`, default 500). Selection is **content-aware**: per focus, one representative clip is chosen for each recurring candidate term mined from the dictation transcripts (newest clip containing it), then the newest clips top up to the per-run cap. This is what lets a term mis-heard across the whole history (e.g. "Claude" → "Cloud") get its audio in front of the verifier.
+**Audio retention model (current):** audio is **retained across Smart Improvement runs**, not wiped after each one. It is pruned by age at the start of each run (`audioSampleRetentionDays`, default 30 — matching the text-analysis window), and bounded by both a file-count safety cap (`audioSampleMaxFiles`, default 500) **and** a total-bytes cap (`audioSampleMaxTotalBytes`, default 200_000_000). In practice the byte cap fires far more often than the file-count cap. Selection is **content-aware**: per focus, one representative clip is chosen for each recurring candidate term mined from the dictation transcripts (newest clip containing it), then the newest clips top up to the per-run cap. This is what lets a term mis-heard across the whole history (e.g. "Claude" → "Cloud") get its audio in front of the verifier.
 
 ---
 
@@ -45,7 +45,7 @@ Expect one line per dictation. Acceptable outcomes:
 Red flags:
 - `capture(error) reason=…` lines (marker `AUDIO-VERIFY: capture(error)` in `ContextLogger.swift`) — investigate the reason.
 - No `AUDIO-VERIFY: capture(...)` lines at all despite a dictation: the capture hook is not wired or is upstream of the dictation completion.
-- `pool-trim deleted=… remaining=… capacity=…` (marker `AUDIO-VERIFY: pool-trim` in `ContextLogger.swift`) — eviction firing only when the large safety cap (default 500) is hit. Rare in normal use; informational, not a red flag.
+- `pool-trim deleted=… remaining=… capacity=… poolBytes=… byteCap=…` (marker `AUDIO-VERIFY: pool-trim` in `ContextLogger.swift`) — eviction when either the file-count cap (default 500) **or** the byte cap (default 200MB) is hit. Byte-cap eviction is common under heavy Dictate use; informational, not a red flag.
 
 ### Q2. Are the WAV files actually on disk?
 
