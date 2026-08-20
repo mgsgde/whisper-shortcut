@@ -79,10 +79,13 @@ enum PromptModel: String, CaseIterable {
   case grok4 = "grok-4.20-0309-non-reasoning"
   case grok4Reasoning = "grok-4.20-0309-reasoning"
   case grok43 = "grok-4.3"
-  /// xAI's current flagship: "the most intelligent and fastest model we've built"
-  /// (https://docs.x.ai/docs/models). Does NOT supersede grok-4.3 — it costs $2.00/$6.00 per 1M
-  /// against 4.3's $1.25/$2.50 and carries a 500k context where 4.3 has 1M, so both stay.
+  /// Previous flagship; same $2/$6 and 500k context as `grok-4.6`, which xAI now ranks above it —
+  /// hidden from chat pickers via `chatReplacement`.
   case grok45 = "grok-4.5"
+  /// xAI's current flagship: same price/context as 4.5 ($2.00/$6.00, 500k), newer and preferred
+  /// per https://docs.x.ai/docs/models. Does NOT supersede grok-4.3 — that stays for the cheaper
+  /// $1.25/$2.50 / 1M-context rung.
+  case grok46 = "grok-4.6"
 
   // OpenAI Models (chat + Dictate Prompt via Chat Completions API)
   // The case identifiers keep their historical names while the rawValue tracks the current
@@ -156,6 +159,8 @@ enum PromptModel: String, CaseIterable {
       return "Grok 4.3"
     case .grok45:
       return "Grok 4.5"
+    case .grok46:
+      return "Grok 4.6"
     case .openaiGPT5:
       return "OpenAI GPT-5.4"
     case .openaiGPT5Mini:
@@ -212,6 +217,7 @@ enum PromptModel: String, CaseIterable {
     case .grok4Reasoning:    return "grok4reasoning"
     case .grok43:            return "grok43"
     case .grok45:            return "grok45"
+    case .grok46:            return "grok46"
     case .openaiGPT5:        return "gpt54"
     case .openaiGPT5Mini:    return "gpt54mini"
     case .openaiGPT55:       return "gpt55"
@@ -250,7 +256,9 @@ enum PromptModel: String, CaseIterable {
     case .grok4Reasoning:
       return "xAI's Grok 4.20 Reasoning • Extended thinking for complex tasks • Web + X search • Requires xAI API key"
     case .grok45:
-      return "xAI's Grok 4.5 • xAI's most intelligent and fastest model • 500k context • Needs an xAI API key"
+      return "xAI's Grok 4.5 • Previous flagship • 500k context • Needs an xAI API key"
+    case .grok46:
+      return "xAI's Grok 4.6 • xAI's most intelligent and fastest model • 500k context • Needs an xAI API key"
     case .grok43:
       return "xAI's Grok 4.3 • Flagship • Leading non-hallucination + agentic tool use • 1M context • Web + X search • Requires xAI API key"
     case .openaiGPT5:
@@ -296,7 +304,7 @@ enum PromptModel: String, CaseIterable {
       return "Low"
     case .gemini31Pro, .geminiImagePro:
       return "Medium"
-    case .grok4, .grok4Reasoning, .grok43, .grok45:
+    case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46:
       return "Medium"
     case .openaiGPT5, .openaiGPT55, .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT4oAudio,
          .claudeSonnet5:
@@ -316,7 +324,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash,
          .geminiImage, .geminiImagePro:
       return .gemini
-    case .grok4, .grok4Reasoning, .grok43, .grok45:
+    case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46:
       return .grok
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna:
@@ -447,6 +455,8 @@ enum PromptModel: String, CaseIterable {
     // context) while xAI's own docs rank 4.3 above them — dominated on every axis.
     // https://docs.x.ai/docs/models
     case .grok4, .grok4Reasoning: return .grok43
+    // Same $2/$6 and 500k context as 4.5; xAI ranks 4.6 as the current flagship → dominate 4.5.
+    case .grok45: return .grok46
     // OpenAI: gpt-5.6-sol costs exactly what gpt-5.5 costs ($5/$30 per 1M), and gpt-5.6-terra
     // ($2.00/$12) now *undercuts* gpt-5.4 ($2.50/$15) — newer generation at the same price or
     // less, so the 5.5/5.4 pair is dominated.
@@ -499,7 +509,7 @@ enum PromptModel: String, CaseIterable {
     case .geminiImage, .geminiImagePro:
       return nil
     // Non-Gemini — ignored by other providers
-    case .grok4, .grok4Reasoning, .grok43, .grok45,
+    case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46,
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna,
          .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5,
@@ -540,7 +550,7 @@ enum PromptModel: String, CaseIterable {
       return .gemini36Flash
     case .geminiImage, .geminiImagePro:
       return nil // image-generation models; not transcription models
-    case .grok4, .grok4Reasoning, .grok43, .grok45:
+    case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46:
       return nil // Grok models are text-only, no audio transcription
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna:

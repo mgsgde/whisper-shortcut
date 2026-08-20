@@ -79,13 +79,17 @@ enum ChatModelCommandResolver {
       // and a bare "image"/"nano banana" defaults to the free Flash tier further down.
       candidates = [.geminiImage, .geminiImagePro]
     } else if hasGrok {
-      // The 4.20 variants are Pareto-dominated by 4.3 and not offered; 4.5 and 4.3 both are.
+      // 4.20 variants are Pareto-dominated by 4.3; 4.5 is dominated by 4.6. Offer 4.3 (cheap/1M)
+      // and 4.6 (flagship).
       if normalized.contains("4.3") {
         candidates = [.grok43]
+      } else if normalized.contains("4.6") {
+        candidates = [.grok46]
       } else if normalized.contains("4.5") {
+        // Persisted/legacy phrasing — migrateIfDeprecated forwards via chatReplacement.
         candidates = [.grok45]
       } else {
-        candidates = [.grok43, .grok45]
+        candidates = [.grok43, .grok46]
       }
     } else if hasClaude {
       if normalized.contains("opus") {
@@ -224,7 +228,7 @@ enum ChatModelCommandResolver {
 
   private static func isFast(_ m: PromptModel) -> Bool {
     switch m {
-    case .grok45: return true  // xAI: "the most intelligent and fastest model we've built".
+    case .grok46: return true  // xAI: current flagship; same "fastest" claim as former 4.5.
     case .claudeHaiku45: return true
     default: return false
     }
