@@ -16,10 +16,6 @@ struct GeneralSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      welcomeTourSection
-
-      SpacedSectionDivider()
-
       APIKeyEntrySection(
         provider: .google,
         key: $viewModel.data.googleAPIKey,
@@ -72,50 +68,6 @@ struct GeneralSettingsTab: View {
     }
   }
 
-  // MARK: - Welcome Tour Section
-
-  /// Re-entry point for the first-run guided tour. Kept at the very top of the first tab
-  /// so returning users can always find their way back to the walkthrough.
-  @ViewBuilder
-  private var welcomeTourSection: some View {
-    HStack(spacing: 12) {
-      Image(systemName: "sparkles")
-        .font(.title2)
-        .foregroundColor(.accentColor)
-
-      VStack(alignment: .leading, spacing: 2) {
-        Text("Welcome Tour")
-          .font(.callout)
-          .fontWeight(.medium)
-        Text("Replay the guided walkthrough of WhisperShortcut's features.")
-          .font(.caption)
-          .foregroundColor(.secondary)
-      }
-
-      Spacer(minLength: 12)
-
-      Button {
-        SettingsManager.shared.closeSettings()
-        WelcomeWindowController.shared.show()
-      } label: {
-        Label("Show Tour", systemImage: "play.fill")
-          .font(.callout)
-      }
-      .buttonStyle(.borderedProminent)
-      .pointerCursorOnHover()
-    }
-    .padding(SettingsConstants.cardPadding)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
-        .fill(Color(nsColor: .controlBackgroundColor))
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
-        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-    )
-  }
-
   // MARK: - Window Behavior Section
   @ViewBuilder
   private var windowBehaviorSection: some View {
@@ -128,9 +80,9 @@ struct GeneralSettingsTab: View {
 
       Toggle(isOn: $viewModel.data.settingsCloseOnFocusLoss) {
         VStack(alignment: .leading, spacing: 2) {
-          Text("Close window when losing focus")
+          Text("Close when clicking outside")
             .font(.callout)
-          Text("Automatically closes the Settings window when it loses focus.")
+          Text("Closes Settings as soon as another app or window is focused. Turn this off if you follow API-key links — the browser would otherwise dismiss Settings.")
             .font(.caption)
             .foregroundColor(.secondary)
         }

@@ -772,8 +772,19 @@ class MenuBarController: NSObject {
     // Show central Stop button only when something is active
     let isAnythingActive = appState.isBusy || isLiveMeetingActive
       || ttsPlayback.isPlaying
-    menu.item(withTag: MenuTag.stop.rawValue)?.isHidden = !isAnythingActive
-    menu.item(withTag: MenuTag.stopSeparator.rawValue)?.isHidden = !isAnythingActive
+    // When the matching action already reads "Stop Dictate" / "Stop Read Aloud", a second
+    // generic Stop row is the same action twice. Keep the generic Stop for processing
+    // (the action item has flipped back to start) and for a live meeting with no nested
+    // recording, where no action item covers "end this".
+    let actionAlreadyStops =
+      appState.recordingMode == .transcription
+      || appState.recordingMode == .prompt
+      || activeMeetingSegment == .dictation
+      || activeMeetingSegment == .prompt
+      || isTTSRunning || ttsPlayback.isPlaying
+    let showCentralStop = isAnythingActive && !actionAlreadyStops
+    menu.item(withTag: MenuTag.stop.rawValue)?.isHidden = !showCentralStop
+    menu.item(withTag: MenuTag.stopSeparator.rawValue)?.isHidden = !showCentralStop
 
     // During a live meeting, all actions are available as parallel segments
     let meetingAllowsActions = isLiveMeetingActive && activeMeetingSegment == nil

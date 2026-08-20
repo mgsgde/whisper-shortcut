@@ -3,9 +3,14 @@ import SwiftUI
 /// Modern Settings view with sidebar navigation (macOS System Settings style).
 struct SettingsView: View {
   @StateObject private var viewModel = SettingsViewModel()
-  @State private var selectedTab: SettingsTab = .general
+  @AppStorage(UserDefaultsKeys.settingsSelectedTab) private var selectedTabRaw: String =
+    SettingsTab.general.rawValue
   @Environment(\.dismiss) private var dismiss
   @FocusState private var focusedField: SettingsFocusField?
+
+  private var selectedTab: SettingsTab {
+    SettingsTab(rawValue: selectedTabRaw) ?? .general
+  }
 
   var body: some View {
     NavigationSplitView {
@@ -31,38 +36,34 @@ struct SettingsView: View {
       setupFloatingWindow()
     }
     .onReceive(NotificationCenter.default.publisher(for: .openPrivacyPermissionsTab)) { _ in
-      selectedTab = .permissions
+      selectedTabRaw = SettingsTab.permissions.rawValue
     }
   }
 
   // MARK: - Sidebar
   @ViewBuilder
   private var sidebar: some View {
-    List(SettingsTab.allCases, id: \.self, selection: $selectedTab) { tab in
+    List(SettingsTab.allCases, id: \.self, selection: Binding<SettingsTab?>(
+      get: { selectedTab },
+      set: { if let tab = $0 { selectedTabRaw = tab.rawValue } }
+    )) { tab in
       NavigationLink(value: tab) {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
           Image(systemName: iconName(for: tab))
-            .font(.title2)
+            .font(.body)
             .foregroundColor(.accentColor)
-            .frame(width: 24, height: 24)
+            .frame(width: 20, height: 20)
 
-          VStack(alignment: .leading, spacing: 2) {
-            Text(tab.rawValue)
-              .font(.body)
-              .fontWeight(.medium)
-
-            Text(description(for: tab))
-              .font(.caption)
-              .foregroundColor(.secondary)
-              .lineLimit(2)
-          }
+          Text(tab.rawValue)
+            .font(.body)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
       }
+      .help(description(for: tab))
       .pointerCursorOnHover()
     }
     .listStyle(.sidebar)
-    .frame(minWidth: 240, idealWidth: 280, maxWidth: 320)
+    .frame(minWidth: 210, idealWidth: 220, maxWidth: 260)
   }
 
   // MARK: - Detail View
@@ -163,7 +164,7 @@ struct SettingsView: View {
     case .permissions:
       return "macOS permissions"
     case .about:
-      return "Privacy, shortcuts, reset, and support"
+      return "Privacy, welcome tour, shortcuts, reset, and support"
     }
   }
 

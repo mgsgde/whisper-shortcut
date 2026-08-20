@@ -19,11 +19,13 @@ class SettingsWindowController: NSWindowController {
     static let widthPercentage: CGFloat = 0.75  // 75% of screen width
     static let heightPercentage: CGFloat = 0.70  // 70% of screen height
 
-    static var windowTitle: String {
-      "Settings — Version \(AppConstants.appVersion)"
-    }
+    static let windowTitle = "Settings"
     static let frameAutosaveName = "SettingsWindow"
   }
+
+  /// Center only on first open. Recenter-on-every-show fights the autosaved frame
+  /// and makes the window jump after the user positioned it.
+  private var needsDefaultFrame: Bool = false
 
   init() {
     // Create SwiftUI hosting window
@@ -45,6 +47,8 @@ class SettingsWindowController: NSWindowController {
     window.contentViewController = hostingController
 
     super.init(window: window)
+    shouldCascadeWindows = false
+    needsDefaultFrame = !Self.hasStoredFrame()
     window.delegate = self
   }
 
@@ -98,36 +102,17 @@ class SettingsWindowController: NSWindowController {
     window.setFrameAutosaveName(Constants.frameAutosaveName)
   }
 
-  private func centerWindowOnScreen() {
-    guard let screen = NSScreen.main?.visibleFrame else { return }
-
-    let currentFrame = window?.frame ?? NSRect.zero
-    let newX = screen.midX - currentFrame.width / 2
-    let newY = screen.midY - currentFrame.height / 2
-
-    let newFrame = NSRect(
-      x: newX,
-      y: newY,
-      width: currentFrame.width,
-      height: currentFrame.height
-    )
-
-    window?.setFrame(newFrame, display: true, animate: true)
+  private static func hasStoredFrame() -> Bool {
+    UserDefaults.standard.string(forKey: "NSWindow Frame \(Constants.frameAutosaveName)") != nil
   }
 
   func showWindow() {
-    // For LSUIElement apps, we can't change activation policy
-    // Just activate and show the window
     NSApp.activate(ignoringOtherApps: true)
-
-    // Show window with proper focus
-    window?.makeKeyAndOrderFront(nil)
-
-    // Ensure proper positioning and sizing
-    DispatchQueue.main.async { [weak self] in
-      self?.centerWindowOnScreen()
-      self?.window?.makeKeyAndOrderFront(nil)
+    if needsDefaultFrame {
+      window?.center()
+      needsDefaultFrame = false
     }
+    window?.makeKeyAndOrderFront(nil)
   }
 }
 
