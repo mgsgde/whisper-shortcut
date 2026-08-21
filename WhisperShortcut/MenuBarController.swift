@@ -2525,20 +2525,11 @@ extension MenuBarController: AudioRecorderDelegate {
 extension MenuBarController: ShortcutDelegate {
   func toggleDictation() { toggleTranscription() }
 
-  // Push-to-talk state queries: mirror what toggleTranscription/togglePrompting
-  // treat as an active recording, including parallel segments during a live meeting.
+  /// Whether a dictation recording is running — mirrors what `toggleTranscription` treats as
+  /// active, including a parallel segment during a live meeting. Used by the Fn toggle.
   func isDictationRecordingActive() -> Bool {
     if isLiveMeetingActive { return activeMeetingSegment == .dictation }
     return appState.recordingMode == .transcription
-  }
-
-  func isPromptRecordingActive() -> Bool {
-    if isLiveMeetingActive { return activeMeetingSegment == .prompt }
-    return appState.recordingMode == .prompt
-  }
-
-  func isVoiceFeedbackRecordingActive() -> Bool {
-    return appState.recordingMode == .voiceFeedback
   }
 
   // togglePrompting is already implemented above

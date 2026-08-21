@@ -86,11 +86,6 @@ struct SpeechToTextSettingsTab: View {
         clearShortcut: viewModel.clearShortcut
       )
 
-      Text("Tip: You can also hold the shortcut instead of toggling — recording runs while you hold it and is transcribed when you release.")
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
       #if !APP_STORE
       Toggle(isOn: $viewModel.data.fnKeyDictation) {
         VStack(alignment: .leading, spacing: 2) {
