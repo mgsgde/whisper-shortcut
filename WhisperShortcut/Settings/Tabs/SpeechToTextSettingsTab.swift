@@ -92,19 +92,19 @@ struct SpeechToTextSettingsTab: View {
         .fixedSize(horizontal: false, vertical: true)
 
       #if !APP_STORE
-      Toggle(isOn: $viewModel.data.holdFnToDictate) {
+      Toggle(isOn: $viewModel.data.fnKeyDictation) {
         VStack(alignment: .leading, spacing: 2) {
-          Text("Hold 🌐 Fn to dictate")
+          Text("Use 🌐 Fn to dictate")
             .font(.callout)
-          Text("Hold the Fn (Globe) key to record, release to transcribe — or tap it briefly to start and tap again to stop. Requires Accessibility permission. In System Settings → Keyboard, set \"Press 🌐 key to\" to \"Do Nothing\" so macOS doesn't also react to the key.")
+          Text("Press the Fn (Globe) key to start recording, press it again to stop and transcribe. Requires Accessibility permission. In System Settings → Keyboard, set \"Press 🌐 key to\" to \"Do Nothing\" so macOS doesn't also react to the key.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
       }
       .toggleStyle(.switch)
-      .onChange(of: viewModel.data.holdFnToDictate) { _, newValue in
-        DebugLogger.log("SHORTCUTS: Hold-Fn-to-dictate toggled to \(newValue)")
+      .onChange(of: viewModel.data.fnKeyDictation) { _, newValue in
+        DebugLogger.log("SHORTCUTS: Fn-key dictation toggled to \(newValue)")
         if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {
           // Request now (native prompt + pre-registration), not deferred to the first fn press.
           AccessibilityPermissionManager.requestAccessibilityAtOptIn()

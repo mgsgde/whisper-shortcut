@@ -1634,11 +1634,11 @@ struct SettingsDefaults {
   /// the old clipboard back would break that, so restoring stays a deliberate choice.
   static let restoreClipboardAfterPaste = false
 
-  // MARK: - Fn Push-to-Talk
+  // MARK: - Fn Key Dictation
   // OFF by default for the same reason as auto-paste: observing the Fn key needs global
   // event monitors, which only work with the Accessibility permission — a fresh install
   // must not require it (App Store Guideline 2.4.5).
-  static let holdFnToDictate = false
+  static let fnKeyDictation = false
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = true
@@ -1752,8 +1752,8 @@ struct SettingsData: Equatable {
   var autoPasteAfterDictation: Bool = SettingsDefaults.autoPasteAfterDictation
   var restoreClipboardAfterPaste: Bool = SettingsDefaults.restoreClipboardAfterPaste
 
-  // MARK: - Fn Push-to-Talk
-  var holdFnToDictate: Bool = SettingsDefaults.holdFnToDictate
+  // MARK: - Fn Key Dictation
+  var fnKeyDictation: Bool = SettingsDefaults.fnKeyDictation
 
   // MARK: - Screenshot Settings
   var screenshotInPromptMode: Bool = SettingsDefaults.screenshotInPromptMode

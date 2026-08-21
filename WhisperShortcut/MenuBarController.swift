@@ -76,7 +76,7 @@ class MenuBarController: NSObject {
   /// the selection is where a correct spelling can actually come from. Cleared after each run.
   private var voiceFeedbackSelection: String?
   private let shortcuts: Shortcuts
-  private let fnPushToTalk = FnPushToTalk()
+  private let fnDictationToggle = FnDictationToggle()
   private let reviewPrompter: ReviewPrompter
   
   // MARK: - State Tracking (Prevent Race Conditions)
@@ -458,7 +458,7 @@ class MenuBarController: NSObject {
   private func setupDelegates() {
     audioRecorder.delegate = self
     shortcuts.delegate = self
-    fnPushToTalk.delegate = self
+    fnDictationToggle.delegate = self
     speechService.chunkProgressDelegate = self
 
     // Floating recording indicator (bottom-center pill with live level bars)
@@ -707,7 +707,7 @@ class MenuBarController: NSObject {
 
     // Setup shortcuts
     shortcuts.setup()
-    fnPushToTalk.setup()
+    fnDictationToggle.setup()
   }
 
   // MARK: - UI Updates (Single Method!)
@@ -2711,9 +2711,9 @@ extension MenuBarController: ShortcutDelegate {
   #endif
 }
 
-// MARK: - FnPushToTalkDelegate (Hold Fn to Dictate)
-extension MenuBarController: FnPushToTalkDelegate {
-  func fnPushToTalkStart() -> Bool {
+// MARK: - FnDictationToggleDelegate (Fn Key Dictation)
+extension MenuBarController: FnDictationToggleDelegate {
+  func fnDictationStart() -> Bool {
     // fn-down must never cancel in-flight work or stop a recording the user started
     // otherwise — it only ever begins a fresh dictation.
     guard !isTranscriptionProcessing, !isDictationRecordingActive() else { return false }
@@ -2721,28 +2721,28 @@ extension MenuBarController: FnPushToTalkDelegate {
     return isDictationRecordingActive()
   }
 
-  func fnPushToTalkFinish() {
+  func fnDictationStop() {
     guard isDictationRecordingActive() else { return }
     toggleTranscription()
   }
 
-  func fnPushToTalkIsRecording() -> Bool {
+  func fnDictationIsRecording() -> Bool {
     return isDictationRecordingActive()
   }
 
   // During a live meeting ⌘1 never cancels either — its meeting branch runs first — so fn
   // mirrors that and falls through to starting a dictation segment.
-  func fnPushToTalkIsProcessing() -> Bool {
+  func fnDictationIsProcessing() -> Bool {
     return !isLiveMeetingActive && isTranscriptionProcessing
   }
 
-  func fnPushToTalkCancelProcessing() {
+  func fnDictationCancelProcessing() {
     guard !isLiveMeetingActive, isTranscriptionProcessing else { return }
     DebugLogger.log("SHORTCUTS: Cancelling in-flight transcription via Fn")
     cancelInFlightTranscription()
   }
 
-  func fnPushToTalkDiscard() {
+  func fnDictationDiscard() {
     guard isDictationRecordingActive() else { return }
     // During a live meeting the discard flag would strand the active segment (the discard
     // branch in audioRecorderDidFinishRecording runs before segment cleanup), so let an
@@ -2751,7 +2751,7 @@ extension MenuBarController: FnPushToTalkDelegate {
       toggleTranscription()
       return
     }
-    DebugLogger.log("AUDIO: Discarding Fn push-to-talk recording")
+    DebugLogger.log("AUDIO: Discarding Fn dictation recording")
     discardNextRecording = true
     RecordingIndicatorManager.shared.hide()
     audioRecorder.stopRecording()

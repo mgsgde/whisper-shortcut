@@ -57,10 +57,11 @@ enum UserDefaultsKeys {
   /// ("non-destructive paste"). Only has an effect while auto-paste is on.
   static let restoreClipboardAfterPaste = "restoreClipboardAfterPaste"
 
-  // MARK: - Fn Push-to-Talk
-  /// Fn (Globe) key dictation: hold to record and release to transcribe, or tap to
-  /// toggle the recording on and tap again to stop.
-  static let holdFnToDictate = "holdFnToDictate"
+  // MARK: - Fn Key Dictation
+  /// Fn (Globe) key dictation: press to start the recording, press again to stop and
+  /// transcribe. The raw value predates the removal of the hold-to-talk gesture and is kept
+  /// so the opt-in of existing installs survives.
+  static let fnKeyDictation = "holdFnToDictate"
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = "screenshotInPromptMode"
