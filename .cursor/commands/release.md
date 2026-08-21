@@ -23,16 +23,9 @@ GitHub and App Store ship on different cadences. The live App Store version is o
 
 **Before writing App Store text:**
 
-1. Determine the live App Store version — **query it, do not ask the user.** `asc` is installed and
-   authenticated (`/opt/homebrew/bin/asc`); the app id is `6749648401`:
-
-   ```bash
-   asc versions list --app 6749648401 | python3 -c "import json,sys; [print(v['attributes']['versionString'], v['attributes']['appStoreState']) for v in json.load(sys.stdin)['data'][:8]]"
-   ```
-
-   `READY_FOR_SALE` means live; the highest such version is the baseline. Note `asc api "/v1/apps/…"`
-   returns non-JSON — use the `versions list` subcommand. Only fall back to asking if `asc` is
-   missing or unauthenticated.
+1. Determine the live App Store version by following **Resolve the live App Store baseline** in the
+   `app-store-connect` skill — **query it, do not ask the user.** That section owns the command and
+   the state string; `/submit-appstore` reads the same baseline for `--copy-metadata-from`.
 2. Aggregate **user-facing** changes from `v<APP_STORE_LIVE>..v<CURRENT>` (read intervening `.github/RELEASE_NOTES.md` at each tag if helpful).
 3. If the build submitted to App Store is an older tag than `CURRENT`, scope App Store text to `v<APP_STORE_LIVE>..v<SUBMITTED>` instead.
 4. Omit dev-only changes (test scripts, internal refactors).
@@ -57,17 +50,29 @@ GitHub and App Store ship on different cadences. The live App Store version is o
 11. Git add and commit only the files changed for this release command, with message `Update to version X.X` – **Important**: `WhisperShortcut/Info.plist` and `.github/RELEASE_NOTES.md` must be included in the commit
 12. Detect the current branch with `git branch --show-current`
 13. Push the current branch with `git push origin <current-branch>`
-14. Create git tag (format: `v<Version>`, e.g. `v<PREV+1>`) on the release commit
-15. Push the tag with `git push origin <tag>`
+14. **Create and push the tag with the script — do not run `git tag` / `git push` by hand:**
 
-> **Note:** `scripts/create-release.sh` is an *interactive* human helper that does only the read-version → tag → push portion (with confirmation prompts). This command runs the full release flow non-interactively (bump, notes, commit, rebuild, tag), so it creates and pushes the tag directly rather than calling that script.
+    ```bash
+    bash scripts/create-release.sh --tag "v<Version>" --yes --skip-tests --allow-dirty
+    ```
+
+    Each flag is deliberate: `--yes` because this flow is non-interactive, `--skip-tests` because
+    step 1 already ran them against this tree, `--allow-dirty` because step 11 commits only the
+    release files and unrelated work may still be in the tree (the script still refuses to tag if
+    `Info.plist` or `RELEASE_NOTES.md` are uncommitted). Stop if it exits non-zero.
+
+> **Why the script and not `git tag`:** it refuses a tag that already exists, refuses a tag that
+> does not match `Info.plist` (`/submit-appstore` looks the build up by `v$VERSION`, so a mismatch
+> breaks App Store submission later), and deletes the local tag again if the push fails. Spelling
+> the two git commands out here loses all three. `bash scripts/create-release.sh` with no arguments
+> is the same script in its interactive mode, for a human cutting a release by hand.
 
 ## Output
 
 - New version (`<PREV+1>`)
 - New bundle version (`<PREV_BUNDLE+1>`)
 - **App Store baseline used** (`<APP_STORE_LIVE> live on App Store; cumulative notes through <CURRENT>`) — always the value you queried from `asc`, never a remembered one
-- App Store "What's New in This Version" text — cumulative since that baseline, copy-paste-ready for App Store Connect (English; 1–3 short bullets or 1–2 sentences unless the gap spans many releases)
+- App Store "What's New in This Version" text — cumulative since that baseline, copy-paste-ready for App Store Connect (English; 1–3 short bullets or 1–2 sentences unless the gap spans many releases). **English only** — `/submit-appstore` step 7 translates it into the other configured locales, so keep the bullets short enough to survive translation
 - GitHub release notes (incremental list of changes since previous tag for `.github/RELEASE_NOTES.md`)
 - Test run result (pass / fail — release aborts on fail)
 - Confirmation of rebuilt app, commit, branch push, created tag, and tag push
@@ -85,7 +90,7 @@ The GitHub Actions workflow automatically creates a release when a tag is pushed
 
 ## Scope: GitHub release only — App Store submit is separate
 
-This command + the `release.yml` workflow build and ship only the **notarized Developer-ID DMG** (GitHub Release). They do **not** upload to the Mac App Store. App Store submission is a separate step, automated by **`/submit-appstore`** (run it *after* `/release` cuts the matching tag). Do **not** use `asc publish appstore` for this macOS app — it assumes an `.ipa` and fails; `/submit-appstore` exports a signed `.pkg` and uploads that instead. (App Store signing uses an *Apple Distribution* cert, distinct from the Developer-ID cert CI uses for the DMG.)
+This command + the `release.yml` workflow build and ship only the **notarized Developer-ID DMG** (GitHub Release). They do **not** upload to the Mac App Store. App Store submission is a separate step, automated by **`/submit-appstore`** (run it *after* `/release` cuts the matching tag). That command owns the packaging and signing rules — the `.pkg`/`.ipa` trap and the App Store certs are documented there, not here.
 
 **Release notes format:**
 
