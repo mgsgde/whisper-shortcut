@@ -3265,47 +3265,78 @@ struct ChatView: View {
   }
 
   private var emptyStateCommandHints: some View {
-    let suggestions = viewModel.commandSuggestionsForDisplay
     let config = ShortcutConfigManager.shared.loadConfiguration()
     let shortcuts: [(shortcut: String, description: String)] = [
-      (config.startRecording.displayStringWithSeparator, "Speech-to-Text"),
-      (config.startPrompting.displayStringWithSeparator, "Speech-to-Prompt"),
+      (config.startRecording.displayStringWithSeparator, "Dictate"),
+      (config.startPrompting.displayStringWithSeparator, "Dictate Prompt"),
       (config.openChat.displayStringWithSeparator, "Chat"),
       (config.openSettings.displayStringWithSeparator, "Settings"),
-      (config.screenshotCapture.displayStringWithSeparator, "Screenshot to Clipboard"),
     ]
-    return VStack(alignment: .leading, spacing: 20) {
-      VStack(alignment: .leading, spacing: 12) {
-        Text("Commands")
-          .font(.headline)
+    var starters: [(command: String, title: String, icon: String)] = [
+      ("/screenshot", "Screenshot", "camera.viewfinder"),
+      ("/folder", "Share folder", "folder"),
+      ("/meeting", "Start meeting", "record.circle"),
+      ("/settings", "Settings", "gear"),
+    ]
+    if viewModel.singleChatOnly {
+      starters = starters.filter { $0.command != "/meeting" }
+    }
+    return VStack(alignment: .leading, spacing: 22) {
+      VStack(alignment: .leading, spacing: 6) {
+        Text("Ask anything")
+          .font(.title2)
           .fontWeight(.semibold)
+          .foregroundColor(ChatTheme.primaryText)
+        Text("Type a message, or press / for commands.")
+          .font(.callout)
           .foregroundColor(ChatTheme.secondaryText)
-        VStack(alignment: .leading, spacing: 8) {
-          ForEach(suggestions, id: \.command) { item in
-            Text("\(item.command) — \(item.description)")
-              .font(.system(size: 15))
-              .foregroundColor(ChatTheme.secondaryText)
+      }
+
+      HStack(spacing: 8) {
+        ForEach(starters, id: \.command) { item in
+          Button {
+            Task { await viewModel.sendMessage(userInput: item.command) }
+          } label: {
+            Label(item.title, systemImage: item.icon)
+              .font(.callout)
+              .foregroundColor(ChatTheme.primaryText)
+              .padding(.horizontal, 10)
+              .padding(.vertical, 7)
+              .background(ChatTheme.controlBackground)
+              .clipShape(RoundedRectangle(cornerRadius: 8))
           }
+          .buttonStyle(.plain)
+          .help(item.command)
+          .pointerCursorOnHover()
+          .accessibilityLabel(item.title)
         }
       }
-      Divider()
-        .opacity(0.5)
-      VStack(alignment: .leading, spacing: 12) {
-        Text("Keyboard Shortcuts")
-          .font(.headline)
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Shortcuts")
+          .font(.caption)
           .fontWeight(.semibold)
           .foregroundColor(ChatTheme.secondaryText)
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
           ForEach(shortcuts, id: \.shortcut) { item in
-            Text("\(item.shortcut)  \(item.description)")
-              .font(.system(size: 15))
-              .foregroundColor(ChatTheme.secondaryText)
+            HStack(spacing: 10) {
+              Text(item.shortcut)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(ChatTheme.primaryText)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(ChatTheme.controlBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+              Text(item.description)
+                .font(.callout)
+                .foregroundColor(ChatTheme.secondaryText)
+            }
           }
         }
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.vertical, 16)
+    .padding(.top, 24)
   }
 
   private func scrollToTop(proxy: ScrollViewProxy) {
@@ -3667,22 +3698,21 @@ struct ChatInputAreaView: View {
     action: @escaping () -> Void
   ) -> some View {
     Button(action: action) {
-      HStack(spacing: 4) {
+      Group {
         if showsProgress {
-          ProgressView().controlSize(.mini).frame(width: 10, height: 10)
+          ProgressView().controlSize(.mini).frame(width: 12, height: 12)
         } else {
-          Image(systemName: icon).font(.caption)
+          Image(systemName: icon).font(.system(size: 13))
         }
-        Text(label).font(.caption)
       }
       .foregroundColor(tint)
-      .padding(.horizontal, 8)
-      .padding(.vertical, 5)
+      .frame(width: 28, height: 28)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     .disabled(isDisabled)
     .help(help)
+    .accessibilityLabel(label)
     .pointerCursorOnHover()
   }
 

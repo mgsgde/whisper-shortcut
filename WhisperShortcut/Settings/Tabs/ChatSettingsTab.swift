@@ -137,9 +137,9 @@ struct ChatSettingsTab: View {
 
       Toggle(isOn: $viewModel.data.chatCloseOnFocusLoss) {
         VStack(alignment: .leading, spacing: 2) {
-          Text("Close window when losing focus")
+          Text("Close when clicking outside")
             .font(.callout)
-          Text("Automatically closes the chat window when it loses focus.")
+          Text("Closes Chat when another app is focused. Pin the window with /pin if you want it to stay open.")
             .font(.caption)
             .foregroundColor(.secondary)
         }

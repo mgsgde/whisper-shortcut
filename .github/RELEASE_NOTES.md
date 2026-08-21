@@ -1,4 +1,4 @@
-# WhisperShortcut 7.99
+# WhisperShortcut 8.00
 
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
@@ -6,10 +6,9 @@ Prefer a direct download? Grab the signed `.dmg` from the [releases page](https:
 
 ## Changes
 
-- **Dictation no longer freezes on a stalled request.** A transcription that stopped responding could sit for minutes with the menu bar stuck on "transcribing", and the only way out was to notice it and cancel by hand. It now fails after 60 seconds with a clear "Request Timeout" message, keeps your audio, and offers a retry.
-- **A dismissed review window no longer locks the app.** Closing the Smart Improvement / Voice Feedback proposal window with the red button, Escape or ⌘W left the app unresponsive with nothing on screen. Dismissing it now simply counts as "not now".
-- **Voice Feedback reads your selection.** Select a name, press the shortcut and say "remember how this is spelled" — the glossary now takes the spelling from your selection instead of from how the transcription heard it, which is what makes teaching a spelling by voice work at all.
-- **A stray Fn keypress can no longer discard a finished dictation.**
-- **Every model response is capped**, so a thinking model cannot spend your API budget without ever answering.
+- **A new chat no longer greets you with a wall of slash commands.** Empty chats now show a short prompt, a few starter actions, and your shortcuts. Press `/` when you want the full command list.
+- **Settings is easier to scan and stays where you put it.** The window title no longer clips the version number, the sidebar uses short labels like System Settings, it reopens on the last pane you used, and it no longer jumps back to the center of the screen. The Welcome Tour lives under About so General starts at your API keys.
+- **The menu bar no longer offers two Stop rows while you dictate.** Stop Dictate is enough; the extra Stop still appears when you need it for processing or a live meeting.
+- **Chat composer actions are icon-only**, matching ChatGPT and Claude, and sidebar chat titles wrap to two lines instead of cutting off.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.98...v7.99
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v7.99...v8.00
