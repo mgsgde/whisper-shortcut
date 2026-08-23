@@ -34,7 +34,7 @@ struct ChatSidebar: View {
   @State private var meetingCollapsedGroups: Set<DateGroup>
   @State private var meetingArchivedCollapsed = true
 
-  static let sidebarWidth: CGFloat = 220
+  static let sidebarWidth: CGFloat = 268
 
   init(viewModel: ChatViewModel, sidebarVisible: Binding<Bool>) {
     self._viewModel = ObservedObject(wrappedValue: viewModel)
@@ -151,6 +151,14 @@ struct ChatSidebar: View {
       viewModel.createNewSession()
     }
     if !chatsSectionCollapsed {
+      if active.isEmpty && archived.isEmpty {
+        Text("No chats yet")
+          .font(.system(size: 12))
+          .foregroundColor(ChatTheme.secondaryText)
+          .frame(maxWidth: .infinity, alignment: .center)
+          .padding(.top, 12)
+          .padding(.bottom, 8)
+      } else {
       ForEach(Array(grouped.enumerated()), id: \.offset) { index, pair in
         collapsibleHeader(
           pair.0.label,
@@ -178,6 +186,7 @@ struct ChatSidebar: View {
             sidebarRow(session: session, isArchived: true)
           }
         }
+      }
       }
     }
   }
@@ -548,8 +557,9 @@ struct ChatSidebar: View {
         Text(title)
           .font(.system(size: 13))
           .foregroundColor(textColor)
-          .lineLimit(1)
+          .lineLimit(2)
           .truncationMode(.tail)
+          .help(title)
       }
 
       Spacer(minLength: 4)

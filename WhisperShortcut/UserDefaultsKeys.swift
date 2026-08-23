@@ -13,6 +13,9 @@ enum UserDefaultsKeys {
 
   // MARK: - Settings Window
   static let settingsCloseOnFocusLoss = "settingsCloseOnFocusLoss"
+  /// Last Settings sidebar pane (`SettingsTab.rawValue`). Restored on next open, matching
+  /// the macOS HIG recommendation for multi-pane settings windows.
+  static let settingsSelectedTab = "settingsSelectedTab"
 
   // MARK: - Model Settings
   static let selectedTranscriptionModel = "selectedTranscriptionModel"
