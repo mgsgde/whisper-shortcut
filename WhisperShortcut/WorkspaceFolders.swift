@@ -13,9 +13,27 @@ enum WorkspaceFolders {
   /// One configured root: the resolved URL plus the path shown in Settings. The two differ
   /// once a bookmark is resolved through a symlink or a moved folder, so keep both — the
   /// URL for I/O, the display path for the UI and for removing the entry again.
-  struct Root {
+  struct Root: Equatable {
     let url: URL
     let displayPath: String
+  }
+
+  /// Which of the configured folders one chat may use.
+  ///
+  /// Granting a folder is permanent and global — that is what a security-scoped bookmark is — so
+  /// this is the per-chat narrowing on top of it, set by `/workspace`. It is not a security
+  /// boundary (the user already granted every folder in the list); it exists so a chat about one
+  /// project is not answered out of another, and so a search does not walk a whole home directory
+  /// when the question is about one notes folder.
+  enum Scope: Equatable {
+    case all
+    /// Only these display paths, as stored in Settings.
+    case only([String])
+    /// No file access and no context files in this chat.
+    case off
+    /// Exactly these roots, bypassing the stored bookmarks. The seam the file-tool tests use to
+    /// run against a throwaway directory; nothing in the app constructs it.
+    case explicit([Root])
   }
 
   enum AccessError: Error, LocalizedError {
@@ -44,6 +62,16 @@ enum WorkspaceFolders {
   /// to call from SwiftUI body evaluation.
   static var displayPaths: [String] {
     storedEntries.compactMap { $0[pathKey] as? String }
+  }
+
+  /// The subset of `displayPaths` one chat may use. Same cheapness guarantee.
+  static func displayPaths(scope: Scope) -> [String] {
+    switch scope {
+    case .all: return displayPaths
+    case .off: return []
+    case .only(let allowed): return displayPaths.filter { allowed.contains($0) }
+    case .explicit(let roots): return roots.map { $0.displayPath }
+    }
   }
 
   // MARK: - Configuration
@@ -83,6 +111,17 @@ enum WorkspaceFolders {
   }
 
   // MARK: - Resolution
+
+  /// Resolved roots one chat may use. Filtering happens *after* resolution so a narrowed scope
+  /// never suppresses the stale-bookmark bookkeeping in `roots()`.
+  static func roots(scope: Scope) -> [Root] {
+    switch scope {
+    case .all: return roots()
+    case .off: return []
+    case .only(let allowed): return roots().filter { allowed.contains($0.displayPath) }
+    case .explicit(let roots): return roots
+    }
+  }
 
   /// Resolves every stored bookmark, refreshing stale ones and dropping dead ones.
   ///
@@ -135,8 +174,8 @@ enum WorkspaceFolders {
   /// unambiguously). Anything that lands outside every root is rejected — including escapes
   /// via `..` or via a symlink pointing out of the workspace, which is why both sides are
   /// symlink-resolved before being compared.
-  static func locate(_ rawPath: String) throws -> (target: URL, root: Root) {
-    let roots = roots()
+  static func locate(_ rawPath: String, scope: Scope = .all) throws -> (target: URL, root: Root) {
+    let roots = roots(scope: scope)
     guard !roots.isEmpty else { throw AccessError.noFolders }
 
     let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)

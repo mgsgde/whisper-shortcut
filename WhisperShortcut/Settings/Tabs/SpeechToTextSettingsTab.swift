@@ -242,7 +242,7 @@ struct SpeechToTextSettingsTab: View {
             Task { await viewModel.saveSettings() }
           }
 
-          Text("More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Gemini 3.1 Pro cannot run below Low and is clamped to it.")
+          Text("More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Gemini 3.1 Pro and Gemini 3.7 Flash cannot run below Low and are clamped to it.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)

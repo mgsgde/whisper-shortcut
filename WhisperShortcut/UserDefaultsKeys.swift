@@ -51,6 +51,12 @@ enum UserDefaultsKeys {
   /// 3.1 Flash-Lite (speed, glossary adherence, hallucination containment).
   static let didMigrateTranscriptionTo31FlashLite = "didMigrateTranscriptionTo31FlashLite"
 
+  /// One-shot migration flag: Smart Improvement default moved 3.6 Flash → 3.7 Flash.
+  static let didMigrateImprovementTo37Flash = "didMigrateImprovementTo37Flash"
+
+  /// One-shot migration flag: chat-window default moved 3.5 Flash-Lite → 3.7 Flash.
+  static let didMigrateChatDefaultTo37Flash = "didMigrateChatDefaultTo37Flash"
+
   // MARK: - Recording Safeguards
   static let confirmAboveDurationSeconds = "confirmAboveDurationSeconds"
 
@@ -82,6 +88,9 @@ enum UserDefaultsKeys {
   /// Folders the chat may read from, as `[[String: Any]]` entries holding a security-scoped
   /// bookmark (Data) plus the originally picked path (String). See `WorkspaceFolders`.
   static let workspaceFolders = "workspaceFolders"
+  /// Whether the chat may create and change files in those folders. Off unless the user turns it
+  /// on in Settings → Chat → Workspace Folders. See `WorkspaceWriteAccess`.
+  static let chatWorkspaceWriteEnabled = "chatWorkspaceWriteEnabled"
 
   // MARK: - App State
   static let shouldTerminate = "shouldTerminate"

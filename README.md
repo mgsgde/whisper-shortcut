@@ -82,7 +82,7 @@ To change a shortcut, open Settings → General, click **Record** next to it and
 **Accuracy tuning** (Settings → Dictate, cloud models only):
 
 - **Temperature** — how literally the model reproduces what it heard. `0.0` (the default) is verbatim. The models' own default is `1.0`, which is what the app sent before this setting existed and the most likely source of invented or swapped words.
-- **Thinking effort** (Gemini only) — how long the model may reason before transcribing. `Minimal` is the default; raising it can help with hard audio, accents, and unusual vocabulary. On Flash-Lite the latency cost is close to zero; on Pro it roughly doubles. Gemini 3.1 Pro cannot run below `Low` and is clamped to it.
+- **Thinking effort** (Gemini only) — how long the model may reason before transcribing. `Minimal` is the default; raising it can help with hard audio, accents, and unusual vocabulary. On Flash-Lite the latency cost is close to zero; on Pro it roughly doubles. Gemini 3.1 Pro and Gemini 3.7 Flash cannot run below `Low` and are clamped to it.
 
 **Which transcription model should I pick?** All of them work; they differ in speed, price, and how they behave on hard audio. Measured on the same recordings in August 2026 — latency is the median of 10 interleaved runs from one machine, so treat it as a ranking, not a guarantee:
 
@@ -140,6 +140,8 @@ Core slash commands:
 - `/new` — start a new chat
 - `/screenshot` — attach a screenshot to your next message
 - `/attach` — open the file picker for PDFs, images, or text
+- `/folder` — share a folder so the chat can list, read, and search files in it (dropping a folder onto the chat window does the same)
+- `/workspace` — limit this chat to one of the shared folders (e.g. `/workspace notes`); `all` restores every folder, `off` drops file access for this chat
 - `/model` — switch model (e.g. `/model 3.5 flash`)
 - `/think` — set reasoning depth for this chat (`minimal`, `low`, `medium`, `high`, or `default`)
 - `/x` — Grok only: limit X search to specific accounts for this chat (e.g. `/x @karpathy @simonw`); `/x off` searches all of X again. Set a default under Settings → Chat
@@ -153,6 +155,24 @@ Core slash commands:
 Model shortcuts include `/gemini`, `/grok`, `/gpt`, `/openai`, and per-model aliases such as `/gemini35flash`. Gemini models use your Google API key, Grok models use your xAI API key, and OpenAI models use your OpenAI API key.
 
 Connect Google or Trello in Settings → Chat to unlock the corresponding chat tools.
+
+#### Workspace folders and context files
+
+A folder shared with `/folder`, by dropping it on the chat window, or in Settings → Chat → Workspace Folders stays shared for every chat until you remove it. Inside it the chat can list directories, read text files, and search by name or content — read-only, and nothing outside those folders is reachable.
+
+If a shared folder contains the agent-context files you already keep for other AI tools, they are loaded into every message of every chat automatically, the same way Cursor and Claude Code load them:
+
+- `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or `.cursorrules` at the folder's top level
+- rules under `.agents/rules/`, `.cursor/rules/`, and `.claude/rules/`
+- each skill's `SKILL.md` under `.cursor/skills/`, `.agents/skills/`, and `.claude/skills/`
+
+Point the chat at a notes folder that describes who you are and how you want to be helped, and it works from that context without being asked. Anything reachable under more than one of those paths — `CLAUDE.md` symlinked to `AGENTS.md`, `.cursor/skills` and `.claude/skills` both pointing at `.agents/skills`, or plain copies — is loaded exactly once. Whatever those files reference — a dossier folder, other notes — is not preloaded; the chat opens it with its file tools when a question calls for it.
+
+A folder stays shared for every chat, which is usually what you want — but not always. `/workspace notes` limits the current chat to the folder whose path matches "notes": only its files are searchable and only its context files are loaded. `/workspace` on its own reports what the chat is using and lists the alternatives, `/workspace all` restores every folder, and `/workspace off` turns file access and context files off for this chat. The setting belongs to the chat and survives restarts; other chats are unaffected. It cannot grant a new folder — macOS only lets a sandboxed app take one through the picker or a drop.
+
+By default the chat can only read. Turn on **Let the chat create and change files in these folders** in Settings → Chat → Workspace Folders and it can also write: create a file, append to one, or replace an exact piece of text in one. It cannot delete or rename anything, it refuses to write into `.git`, `node_modules`, or credential directories, and before it replaces or edits a file the previous content is copied into the app's `WorkspaceBackups` folder and kept for 30 days. While the switch is off the write tools do not exist for the model, so it says so instead of pretending to have saved something.
+
+Hidden entries are visible to the file tools, so dot-directories like `.cursor`, `.claude`, or a personal `.ai` folder can be explored and read. Caches, build output, version-control internals, and credential directories (`.git`, `node_modules`, `.ssh`, …) are skipped.
 
 ### Live Meeting
 

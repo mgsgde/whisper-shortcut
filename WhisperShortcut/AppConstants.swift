@@ -421,9 +421,8 @@ Transcript:
 
   // MARK: - Context Derivation
   /// Fallback Gemini API endpoint when the selected Smart Improvement model is invalid. Matches
-  /// the Smart Improvement default (gemini-3.6-flash), which is GA and cheaper per output token
-  /// than gemini-3.5-flash.
-  static let contextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent"
+  /// the Smart Improvement default (gemini-3.7-flash), which is GA and the current Flash workhorse.
+  static let contextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent"
 
   /// Maximum character length for context when appended to the system prompt.
   /// Truncation is applied at sentence or word boundary so the model always sees complete text.

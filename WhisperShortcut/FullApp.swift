@@ -48,6 +48,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     migrateGeminiModelDefaults()
     migrateGeminiModelDefaultsToFlashLite()
     migrateTranscriptionDefaultTo31FlashLite()
+    migrateImprovementDefaultTo37Flash()
+    migrateChatDefaultTo37Flash()
 
     // Adapt per-feature model selections to the API keys actually present, so a user with a single
     // provider's key gets that provider's models by default across every feature.
@@ -269,6 +271,41 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       defaults.set(TranscriptionModel.gemini31FlashLite.rawValue, forKey: key)
       DebugLogger.log("MIGRATION: \(key) \(stored) → \(TranscriptionModel.gemini31FlashLite.rawValue)")
     }
+  }
+
+  /// One-shot migration (2026-08): Smart Improvement moves from 3.6 Flash to 3.7 Flash.
+  /// Google shipped 3.7 as the current Flash workhorse on 2026-08-13 — more capable than 3.6
+  /// and cheaper through 2026 ($0.75/$3.75 vs $1.50/$7.50 per 1M). Dictate Prompt and meeting
+  /// summary stay on Flash-Lite; the chat-window default is migrated separately.
+  ///
+  /// Same reasoning as the earlier Gemini migrations: `SettingsViewModel.save()` writes every
+  /// model key on any settings change, so changing `SettingsDefaults` alone would reach almost
+  /// nobody. Only installs still sitting on the exact previous default move.
+  private func migrateImprovementDefaultTo37Flash() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: UserDefaultsKeys.didMigrateImprovementTo37Flash) else { return }
+    defaults.set(true, forKey: UserDefaultsKeys.didMigrateImprovementTo37Flash)
+
+    guard let stored = defaults.string(forKey: UserDefaultsKeys.selectedImprovementModel),
+          stored == PromptModel.gemini36Flash.rawValue else { return }
+    defaults.set(PromptModel.gemini37Flash.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
+    DebugLogger.log(
+      "MIGRATION: \(UserDefaultsKeys.selectedImprovementModel) \(stored) → \(PromptModel.gemini37Flash.rawValue)")
+  }
+
+  /// One-shot migration (2026-08): chat-window default moves 3.5 Flash-Lite → 3.7 Flash.
+  /// Only the chat slot; Dictate Prompt and meeting summary stay on Flash-Lite. Same
+  /// "still sitting on the previous default" rule as the other Gemini migrations.
+  private func migrateChatDefaultTo37Flash() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: UserDefaultsKeys.didMigrateChatDefaultTo37Flash) else { return }
+    defaults.set(true, forKey: UserDefaultsKeys.didMigrateChatDefaultTo37Flash)
+
+    guard let stored = defaults.string(forKey: UserDefaultsKeys.selectedChatModel),
+          stored == PromptModel.gemini35FlashLite.rawValue else { return }
+    defaults.set(PromptModel.gemini37Flash.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
+    DebugLogger.log(
+      "MIGRATION: \(UserDefaultsKeys.selectedChatModel) \(stored) → \(PromptModel.gemini37Flash.rawValue)")
   }
 
   /// Catches SIGTERM / SIGINT / SIGHUP so we know *why* the process died and

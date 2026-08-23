@@ -8,6 +8,7 @@ import SwiftUI
 /// outside these folders is readable, in either build.
 struct WorkspaceFoldersSection: View {
   @State private var folderPaths: [String] = WorkspaceFolders.displayPaths
+  @State private var writeEnabled: Bool = WorkspaceWriteAccess.isEnabled
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -15,7 +16,7 @@ struct WorkspaceFoldersSection: View {
         title: "Workspace Folders",
         systemImage: "folder",
         subtitle:
-          "Folders the chat may read — list files, open text files, and search them. Read-only; nothing outside these folders is accessible."
+          "Folders the chat may read — and, if you enable writing below, edit. Nothing outside these folders is accessible."
       )
 
       if folderPaths.isEmpty {
@@ -62,6 +63,19 @@ struct WorkspaceFoldersSection: View {
       .font(.caption)
       .foregroundColor(.secondary)
       .fixedSize(horizontal: false, vertical: true)
+
+      if !folderPaths.isEmpty {
+        Toggle("Let the chat create and change files in these folders", isOn: $writeEnabled)
+          .onChange(of: writeEnabled) { WorkspaceWriteAccess.isEnabled = $0 }
+          .pointerCursorOnHover()
+
+        Text(
+          "Off by default — the chat can only read. With it on, the chat can create files, append to them, and replace exact pieces of text. It cannot delete or rename anything, it will not write into `.git` or dependency folders, and the previous content of every changed file is kept for 30 days in the app's WorkspaceBackups folder."
+        )
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      }
 
       // Only meaningful once something is shared — an empty map with no folders is noise.
       if !folderPaths.isEmpty {
