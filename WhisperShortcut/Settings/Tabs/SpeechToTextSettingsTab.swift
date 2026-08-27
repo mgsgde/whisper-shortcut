@@ -35,11 +35,21 @@ struct SpeechToTextSettingsTab: View {
         SpacedSectionDivider()
       }
 
-      // Dictation system prompt editor
+      // Dictation system prompt editor.
+      //
+      // The subtitle used to name "OpenAI Transcribe" among the models that use this prompt. That
+      // was wrong for `gpt-transcribe`, which the request builder deliberately does not forward it
+      // to — so anyone dictating with it kept every filler word while the editor above claimed
+      // otherwise. The list now names only models that act on it, and the banner below states the
+      // exception for whichever model is actually selected.
+      if let ignoredReason = viewModel.data.selectedTranscriptionModel.systemPromptIgnoredReason {
+        systemPromptIgnoredBanner(ignoredReason)
+      }
+
       SystemPromptSectionEditor(
         title: "System prompt",
         systemImage: "text.alignleft",
-        subtitle: "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, OpenAI Transcribe and xAI Grok; ignored by offline Whisper (its API accepts no instructions — only the Glossary below). Keep specific terms out of here; put them in the Glossary.",
+        subtitle: "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter and self-hosted endpoints. GPT Transcribe and offline Whisper ignore it — they take vocabulary from the Glossary below instead. Keep specific terms out of here; put them in the Glossary.",
         section: .dictation,
         defaultContent: AppConstants.defaultTranscriptionSystemPrompt
       )
@@ -50,7 +60,7 @@ struct SpeechToTextSettingsTab: View {
       SystemPromptSectionEditor(
         title: "Glossary",
         systemImage: "character.book.closed",
-        subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider: a conditioning prompt for offline Whisper, appended to the instructions for Gemini, OpenAI Transcribe and xAI Grok. Leave empty for no conditioning.",
+        subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Leave empty for no conditioning.",
         section: .whisperGlossary,
         defaultContent: AppConstants.defaultWhisperGlossary
       )
@@ -455,4 +465,24 @@ struct SpeechToTextSettingsTab: View {
       .foregroundColor(.secondary)
     }
   }
+
+  // MARK: - System prompt applicability
+
+  /// Stated where the prompt is edited, not in the model picker: the picker is where you choose a
+  /// model, this is where you would otherwise sit and wonder why the rule you just typed does
+  /// nothing.
+  @ViewBuilder
+  private func systemPromptIgnoredBanner(_ reason: String) -> some View {
+    HStack(alignment: .top, spacing: 6) {
+      Image(systemName: "exclamationmark.triangle.fill")
+        .foregroundColor(.orange)
+        .font(.caption)
+      Text(reason)
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(.bottom, 4)
+  }
+
 }

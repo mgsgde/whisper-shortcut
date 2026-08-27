@@ -1877,7 +1877,9 @@ class SpeechService {
     //     gpt-4o-transcribe and -mini echo the prompt back as a fake transcript (glossary echo).
     // Docs: https://developers.openai.com/api/docs/guides/transcription — "Use these inputs only
     // for context relevant to the audio; don't restate the transcription task."
-    let isContextFieldStyle = modelID == "gpt-transcribe"
+    // Resolved through the enum rather than a literal so this and `honorsSystemPrompt`, which
+    // tells the user the same fact in Settings, cannot drift apart.
+    let isContextFieldStyle = modelID == TranscriptionModel.openAIGPTTranscribe.openAIAPIModelID
     let contextKeywords = isContextFieldStyle ? glossaryKeywords() : []
     let combinedPrompt: String? = {
       if isContextFieldStyle { return nil }

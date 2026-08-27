@@ -324,6 +324,44 @@ enum TranscriptionModel: String, CaseIterable {
   var isOpenAI: Bool { provider == .openAI }
 
   var isOffline: Bool { provider == .offline }
+
+  /// Whether this model actually acts on the dictation **system prompt**.
+  ///
+  /// The Settings editor presents one "System prompt" for every model, so a model that silently
+  /// drops it makes the app lie: the prompt's first rule is "Remove disfluencies silently", and a
+  /// user on `gpt-transcribe` gets every "ähm" back with no indication why. `SpeechToTextSettingsTab`
+  /// says so out loud instead, and this property is what it asks.
+  ///
+  /// Two families answer false, for opposite reasons:
+  /// - `.openAIGPTTranscribe` is a pure ASR model with dedicated context fields. It ignores
+  ///   instructions in `prompt`, and forwarding them *hurts* — measured 2026-08-02, with the
+  ///   dictation prompt attached "WhisperShortcut" degraded to "Whisper Shortcut" in 2 of 3 runs
+  ///   against 5 of 5 correct on keywords alone. `sendOpenAICompatibleTranscriptionRequest`
+  ///   therefore drops it on purpose; the vocabulary still arrives, as `keywords`.
+  /// - Offline Whisper's API accepts no instructions at all, only the Glossary as priming text.
+  ///
+  /// Not consulted by the request builders — they key off the wire-level model id, which is the
+  /// distinction that matters there. Keep this in agreement with `isContextFieldStyle` in
+  /// `SpeechService` (both resolve `.openAIGPTTranscribe` through `openAIAPIModelID`).
+  var honorsSystemPrompt: Bool {
+    switch self {
+    case .openAIGPTTranscribe: return false
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge: return false
+    default: return true
+    }
+  }
+
+  /// Why `honorsSystemPrompt` is false, phrased for the Settings tab. Nil when it is true.
+  var systemPromptIgnoredReason: String? {
+    switch self {
+    case .openAIGPTTranscribe:
+      return "\(displayName) ignores the system prompt below — it is a pure speech-recognition model, not an instructable one. Filler-word removal, punctuation and formatting rules have no effect; your Glossary still applies, as keyword hints. Pick a Gemini model or GPT-4o Transcribe if you want the prompt honoured."
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
+      return "Offline Whisper ignores the system prompt below — its API accepts no instructions. Only the Glossary reaches it, as conditioning text."
+    default:
+      return nil
+    }
+  }
   
   var offlineModelType: OfflineModelType? {
     switch self {
