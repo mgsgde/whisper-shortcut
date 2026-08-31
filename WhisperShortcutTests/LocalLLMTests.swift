@@ -67,4 +67,39 @@ struct LocalLLMTests {
     let raw = "Use <b>bold</b> here."
     #expect(LocalLLMChatProvider.strippingReasoningBlocks(raw) == raw)
   }
+
+  // MARK: - Request body
+
+  /// Ollama is the default endpoint and does not read `chat_template_kwargs`; its documented
+  /// switch is `reasoning_effort`. Sending only the former left thinking on for exactly the
+  /// setup most users have, which costs seconds of first-token latency.
+  @Test("Thinking is switched off in both spellings the servers understand")
+  func sendsBothThinkingSwitches() {
+    let body = LocalLLMChatProvider.requestBody(
+      model: "llama3.2", messages: [], stream: true, maxTokens: 4096)
+
+    #expect(body["reasoning_effort"] as? String == "none")
+    #expect((body["chat_template_kwargs"] as? [String: Bool])?["enable_thinking"] == false)
+  }
+
+  /// The prewarm exists to prime the server's prompt cache, and a cache hit needs the same
+  /// rendered prefix both times. Any field that steers chat-template rendering must therefore be
+  /// identical between the warm-up body and the real one — only transport-level fields may differ.
+  @Test("Prewarm and real request agree on everything that shapes the prompt")
+  func prewarmBodyMatchesRealBody() {
+    let messages: [[String: Any]] = [["role": "system", "content": "You edit text."]]
+    let real = LocalLLMChatProvider.requestBody(
+      model: "llama3.2", messages: messages, stream: true, maxTokens: 4096)
+    let warm = LocalLLMChatProvider.requestBody(
+      model: "llama3.2", messages: messages, stream: false, maxTokens: 1)
+
+    #expect(real["reasoning_effort"] as? String == warm["reasoning_effort"] as? String)
+    #expect(
+      (real["chat_template_kwargs"] as? [String: Bool])
+        == (warm["chat_template_kwargs"] as? [String: Bool]))
+    #expect(real["model"] as? String == warm["model"] as? String)
+    // The two that are allowed to differ, so a future field lands in the block above by default.
+    #expect(real["stream"] as? Bool == true)
+    #expect(warm["stream"] as? Bool == false)
+  }
 }

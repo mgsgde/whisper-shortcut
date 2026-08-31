@@ -65,6 +65,15 @@ struct LocalLLMEndpointSection: View {
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+
+          // The app warms the model when you press the shortcut, which hides the load behind the
+          // recording. Ollama still evicts it after five idle minutes, and that eviction is the
+          // difference between a reply that starts instantly and one that waits out a reload —
+          // so the setting that removes it entirely belongs where people configure this.
+          Text("Speed tip: Ollama unloads an idle model after 5 minutes, and the next dictation pays to reload it. Start the server with `OLLAMA_KEEP_ALIVE=-1` to keep it resident.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
 
         Spacer()
