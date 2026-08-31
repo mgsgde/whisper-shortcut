@@ -30,13 +30,23 @@ enum ConnectionPrewarmer {
     }
   }
 
-  /// Loads the local model into RAM while the user is still speaking.
+  /// Loads the local model into RAM *and* primes its prompt cache while the user is still speaking.
   ///
-  /// Over loopback there is no TCP/TLS handshake worth saving — the cold start that hurts is the
-  /// *model load*. Ollama evicts a model after five idle minutes and LM Studio loads on demand, so
-  /// the first Dictate Prompt of a session otherwise waits out several seconds of weight loading,
-  /// and it waits for it *after* transcription, at the very end of the critical path. A one-token
-  /// request issued at record start moves that load in parallel with speaking and Whisper.
+  /// Two costs sit in front of the first token of a local reply, and both can be paid during the
+  /// recording instead of after it:
+  ///
+  /// 1. **The weights.** Over loopback there is no TCP/TLS handshake worth saving — the cold start
+  ///    that hurts is the model load. Ollama evicts a model after five idle minutes and LM Studio
+  ///    loads on demand, so the first Dictate Prompt of a session otherwise waits it out, at the
+  ///    very end of the critical path.
+  /// 2. **The prefill.** The Dictate Prompt system prompt is well over a thousand tokens, and every
+  ///    request pays to process it before emitting anything. llama.cpp and Ollama cache the KV
+  ///    state of a shared prefix between requests, so sending the *real* system prompt here — not a
+  ///    throwaway "hi" — means the cache the actual request hits is already the right one, from the
+  ///    first request of the session rather than the second.
+  ///
+  /// Conversation history and the user turn are deliberately left out: they change per request, so
+  /// they would only extend the primed prefix past its useful common part.
   ///
   /// Fire-and-forget: the reply is discarded, and a failure here says nothing the real request
   /// won't say better a moment later (with a message pointing at the settings), so it is logged
@@ -46,6 +56,8 @@ enum ConnectionPrewarmer {
     let model = LocalLLMPreferences.modelID
     guard let url = URL(string: endpoint) else { return }
 
+    let systemPrompt = SpeechService.buildDictatePromptSystemPrompt(logPrefix: "PREWARM")
+
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -54,7 +66,10 @@ enum ConnectionPrewarmer {
     request.timeoutInterval = 120
     let body: [String: Any] = [
       "model": model,
-      "messages": [["role": "user", "content": "hi"]],
+      "messages": [
+        ["role": "system", "content": systemPrompt],
+        ["role": "user", "content": "hi"],
+      ],
       "max_tokens": 1,
       "stream": false,
     ]
@@ -66,7 +81,8 @@ enum ConnectionPrewarmer {
       do {
         _ = try await LLMHTTPSession.shared.data(for: request)
         let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
-        DebugLogger.log("PREWARM: local model \(model) ready in \(String(format: "%.0f", elapsedMs))ms")
+        DebugLogger.log(
+          "PREWARM: local model \(model) ready in \(String(format: "%.0f", elapsedMs))ms (primed \(systemPrompt.count)-char system prompt)")
       } catch {
         DebugLogger.logWarning("PREWARM: local model \(model) warm-up failed: \(error.localizedDescription)")
       }

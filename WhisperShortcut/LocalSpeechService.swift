@@ -191,16 +191,24 @@ actor LocalSpeechService {
   
   // MARK: - DecodingOptions Builder
   
+  /// Fallback decodes cost a full re-run of the window each, and WhisperKit's default of 5 makes
+  /// the worst case six times the normal one. Dictation is interactive — a user staring at the menu
+  /// bar notices that far more than the rare marginal decode the last three attempts would have
+  /// rescued. Two still covers the common case (temperature 0.0 → 0.2 → 0.4).
+  private static let temperatureFallbackCount = 2
+
   private func buildDecodingOptions(language: String?, promptTokens: [Int]?) -> DecodingOptions {
     if let language = language {
       return DecodingOptions(
         language: language,
+        temperatureFallbackCount: Self.temperatureFallbackCount,
         skipSpecialTokens: true,
         promptTokens: promptTokens
       )
     } else {
       return DecodingOptions(
         language: nil,
+        temperatureFallbackCount: Self.temperatureFallbackCount,
         detectLanguage: true,
         skipSpecialTokens: true,
         promptTokens: promptTokens

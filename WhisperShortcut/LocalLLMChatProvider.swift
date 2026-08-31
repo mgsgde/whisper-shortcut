@@ -39,6 +39,9 @@ final class LocalLLMChatProvider: LLMChatProvider {
       // vLLM read this; servers that don't know the field ignore it (unknown JSON keys are
       // dropped), so the `<think>` stripper below stays the backstop rather than the only defense.
       "chat_template_kwargs": ["enable_thinking": false],
+      // Bounds a model that repeats itself forever instead of finishing. Set high enough that real
+      // rewrites never reach it; the caller warns when a reply stops here.
+      "max_tokens": AppConstants.localPromptMaxOutputTokens,
     ]
     if !tools.isEmpty {
       body["tools"] = tools.map(\.chatCompletionsDeclaration)

@@ -230,6 +230,14 @@ Output rules (CRITICAL):
   /// live-meeting value: dictation pauses are briefer than meeting turn-taking.
   static let dictateChunkSilenceDuration: TimeInterval = 1.0
 
+  // MARK: - Local Dictate Prompt
+  /// Output ceiling for the local Dictate Prompt request.
+  ///
+  /// A backstop against a small model that loops instead of answering, not a budget: Dictate Prompt
+  /// legitimately rewrites whole documents, so the cap sits far above real replies (~3000 words)
+  /// and `PROMPT-MODE-LOCAL` warns when a reply actually hits it rather than truncating in silence.
+  static let localPromptMaxOutputTokens: Int = 4096
+
   // MARK: - Prompt Conversation History
   /// Maximum number of previous turns to include in prompt requests.
   /// Higher values provide more context but increase API costs and latency.
