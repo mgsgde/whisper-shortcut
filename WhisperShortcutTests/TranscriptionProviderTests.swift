@@ -101,4 +101,36 @@ struct TranscriptionProviderTests {
       #expect(provider.credentialRequiredTitle == "API Key Required", "\(provider.rawValue)")
     }
   }
+
+  @Test("Only models that act on the dictation prompt claim to, and gpt-transcribe says so")
+  func systemPromptApplicabilityIsHonest() {
+    // The Settings editor shows one "System prompt" for every model. Two families drop it, and
+    // until 2026-08-27 the editor's subtitle named "OpenAI Transcribe" among the models that use
+    // it — so anyone dictating with gpt-transcribe kept every filler word while the UI promised
+    // they would be removed. Pinned here because the fix lives in a subtitle string, which nothing
+    // else would catch.
+    #expect(!TranscriptionModel.openAIGPTTranscribe.honorsSystemPrompt)
+    for offline in [TranscriptionModel.whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge] {
+      #expect(!offline.honorsSystemPrompt, "\(offline.rawValue)")
+    }
+
+    // The instructable ones must keep honouring it — this is a two-model-family exception, not a
+    // general disclaimer.
+    for instructable in [TranscriptionModel.gemini31FlashLite, .gemini35Flash, .gemini37Flash,
+                         .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
+                         .openRouterTranscription, .selfHostedTranscription] {
+      #expect(instructable.honorsSystemPrompt, "\(instructable.rawValue)")
+    }
+
+    // A reason exists exactly when the prompt is dropped, so the banner can never render empty or
+    // be silently skipped for a model that needs it.
+    for model in TranscriptionModel.allCases {
+      #expect((model.systemPromptIgnoredReason != nil) == !model.honorsSystemPrompt, "\(model.rawValue)")
+    }
+
+    // The wire-level switch in SpeechService keys off this id; if the raw value ever moves, the
+    // request builder and this property stop agreeing and the UI starts lying again.
+    #expect(TranscriptionModel.openAIGPTTranscribe.openAIAPIModelID == "gpt-transcribe")
+  }
+
 }

@@ -349,7 +349,7 @@ struct SpeechErrorFormatter {
       return """
         Dictate Prompt edits text you have selected, and nothing was selected.
 
-        Select the text you want changed first, then hold the shortcut and say what to do with it.
+        Select the text you want changed first, then press the shortcut and say what to do with it.
         """
     }
   }

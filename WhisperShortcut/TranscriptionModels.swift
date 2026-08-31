@@ -44,7 +44,7 @@ enum TranscriptionTuning {
 // MARK: - Transcription Model Enum
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
 // GA (stable IDs, no -preview): gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash,
-// gemini-3.6-flash. Preview (keep -preview): gemini-3.1-pro-preview — present but **not offered for
+// gemini-3.6-flash, gemini-3.7-flash. Preview (keep -preview): gemini-3.1-pro-preview — present but **not offered for
 // dictation**, see `isSelectableForDictation`.
 // gemini-3.1-flash-lite is GA but *on the deprecation clock*: shutdown 2027-05-07, Google names
 // gemini-3.5-flash-lite as the replacement. We deliberately do not follow that pointer — see the
@@ -67,6 +67,7 @@ enum TranscriptionModel: String, CaseIterable {
   case gemini35FlashLite = "gemini-3.5-flash-lite"
   case gemini35Flash = "gemini-3.5-flash"
   case gemini36Flash = "gemini-3.6-flash"
+  case gemini37Flash = "gemini-3.7-flash"
 
   // Offline Whisper models
   case whisperTiny = "whisper-tiny"
@@ -116,6 +117,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Gemini 3.5 Flash"
     case .gemini36Flash:
       return "Gemini 3.6 Flash"
+    case .gemini37Flash:
+      return "Gemini 3.7 Flash"
     case .whisperTiny:
       return "Whisper Tiny (Offline)"
     case .whisperBase:
@@ -220,8 +223,8 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini31FlashLite, .whisperBase:
       return true
-    case .gemini31Pro, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .whisperTiny,
-         .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo,
+    case .gemini31Pro, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
+         .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo,
          .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
          .selfHostedTranscription, .openRouterTranscription:
       return false
@@ -233,7 +236,7 @@ enum TranscriptionModel: String, CaseIterable {
 
   var costLevel: String {
     switch self {
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash:
       return "Low"
     case .gemini31Pro:
       return "Medium"
@@ -264,9 +267,11 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini35FlashLite:
       return "Google's Gemini 3.5 Flash-Lite • Cheapest audio input ($0.30/1M) • Fast, high-throughput"
     case .gemini35Flash:
-      return "Google's Gemini 3.5 Flash • Most intelligent Flash • Strong on agentic/coding tasks"
+      return "Google's Gemini 3.5 Flash • Legacy Flash • Strong on agentic/coding tasks"
     case .gemini36Flash:
-      return "Google's Gemini 3.6 Flash • Newest Flash • Balances speed with intelligence"
+      return "Google's Gemini 3.6 Flash • Previous-generation Flash • Balances speed with intelligence"
+    case .gemini37Flash:
+      return "Google's Gemini 3.7 Flash • Newest Flash • Most capable workhorse for coding and agents"
     case .whisperTiny:
       return "OpenAI Whisper Tiny • Fastest • ~75MB • Offline"
     case .whisperBase:
@@ -315,11 +320,10 @@ enum TranscriptionModel: String, CaseIterable {
       return .init(
         thinkingConfig: .init(thinkingLevel: effort.geminiValue, thinkingBudget: nil),
         temperature: temperature)
-    case .gemini31Pro:
-      // Pro rejects `thinkingLevel: minimal` (HTTP 400) and `thinkingBudget: 0` — it only runs in
-      // thinking mode. `minimal` therefore means "as little as this model allows", i.e. `low`.
-      // Unreachable while Pro is not selectable for dictation; kept so a future re-add cannot
-      // regress into sending a level the API rejects.
+    case .gemini31Pro, .gemini37Flash:
+      // Pro and 3.7 Flash reject `thinkingLevel: minimal` (HTTP 400) and `thinkingBudget: 0` —
+      // they only run in thinking mode. `minimal` therefore means "as little as this model
+      // allows", i.e. `low`. Verified live for 3.7 Flash on 2026-08-23.
       let level = effort == .minimal ? TranscriptionThinkingEffort.low : effort
       return .init(
         thinkingConfig: .init(thinkingLevel: level.geminiValue, thinkingBudget: nil),
@@ -356,6 +360,44 @@ enum TranscriptionModel: String, CaseIterable {
   var isOpenAI: Bool { provider == .openAI }
 
   var isOffline: Bool { provider == .offline }
+
+  /// Whether this model actually acts on the dictation **system prompt**.
+  ///
+  /// The Settings editor presents one "System prompt" for every model, so a model that silently
+  /// drops it makes the app lie: the prompt's first rule is "Remove disfluencies silently", and a
+  /// user on `gpt-transcribe` gets every "ähm" back with no indication why. `SpeechToTextSettingsTab`
+  /// says so out loud instead, and this property is what it asks.
+  ///
+  /// Two families answer false, for opposite reasons:
+  /// - `.openAIGPTTranscribe` is a pure ASR model with dedicated context fields. It ignores
+  ///   instructions in `prompt`, and forwarding them *hurts* — measured 2026-08-02, with the
+  ///   dictation prompt attached "WhisperShortcut" degraded to "Whisper Shortcut" in 2 of 3 runs
+  ///   against 5 of 5 correct on keywords alone. `sendOpenAICompatibleTranscriptionRequest`
+  ///   therefore drops it on purpose; the vocabulary still arrives, as `keywords`.
+  /// - Offline Whisper's API accepts no instructions at all, only the Glossary as priming text.
+  ///
+  /// Not consulted by the request builders — they key off the wire-level model id, which is the
+  /// distinction that matters there. Keep this in agreement with `isContextFieldStyle` in
+  /// `SpeechService` (both resolve `.openAIGPTTranscribe` through `openAIAPIModelID`).
+  var honorsSystemPrompt: Bool {
+    switch self {
+    case .openAIGPTTranscribe: return false
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge: return false
+    default: return true
+    }
+  }
+
+  /// Why `honorsSystemPrompt` is false, phrased for the Settings tab. Nil when it is true.
+  var systemPromptIgnoredReason: String? {
+    switch self {
+    case .openAIGPTTranscribe:
+      return "\(displayName) ignores the system prompt below — it is a pure speech-recognition model, not an instructable one. Filler-word removal, punctuation and formatting rules have no effect; your Glossary still applies, as keyword hints. Pick a Gemini model or GPT-4o Transcribe if you want the prompt honoured."
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
+      return "Offline Whisper ignores the system prompt below — its API accepts no instructions. Only the Glossary reaches it, as conditioning text."
+    default:
+      return nil
+    }
+  }
   
   var offlineModelType: OfflineModelType? {
     switch self {
@@ -493,7 +535,7 @@ enum TranscriptionModel: String, CaseIterable {
       return .openRouterAudio
     case .gemini31FlashLite, .gemini35FlashLite:
       return .geminiFlashLite
-    case .gemini35Flash, .gemini36Flash:
+    case .gemini35Flash, .gemini36Flash, .gemini37Flash:
       return .geminiFlash
     case .gemini31Pro:
       return .geminiPro
@@ -530,11 +572,11 @@ struct GeminiTranscriptionRequest: Codable {
   ///
   /// The thinking knob is model-dependent, and getting it wrong is a hard HTTP 400 (verified against
   /// the live API with real audio, 2026-07):
-  ///   - `thinkingBudget: 0` — accepted by 2.5 and 3.1, **rejected by 3.5 / 3.6**
+  ///   - `thinkingBudget: 0` — accepted by 2.5 and 3.1, **rejected by 3.5 / 3.6 / 3.7**
   ///     ("Request contains an invalid argument").
-  ///   - `thinkingLevel` — every Flash / Flash-Lite tier from 3.1 on accepts all four levels
-  ///     (`minimal`/`low`/`medium`/`high`) *with audio input*; Pro accepts all but `minimal`
-  ///     ("Thinking level MINIMAL is not supported for this model").
+  ///   - `thinkingLevel` — Flash / Flash-Lite through 3.6 accept all four levels
+  ///     (`minimal`/`low`/`medium`/`high`) *with audio input*; Pro and 3.7 Flash accept all
+  ///     but `minimal` ("Thinking level MINIMAL is not supported for this model").
   ///
   /// `temperature` is accepted alongside audio on every tier. Omitting it is not neutral: the model
   /// default is `1.0` (`GET /v1beta/models/{id}` reports `temperature: 1, maxTemperature: 2`), which

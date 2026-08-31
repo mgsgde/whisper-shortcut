@@ -250,12 +250,15 @@ class ChatViewModel: ObservableObject {
   private static let feedbackCommand = "/feedback"
   static let thinkCommand = "/think"
   static let xHandlesCommand = "/x"
+  static let workspaceCommand = "/workspace"
 
   /// Slash commands that take an inline argument (e.g. `/model 3.1 flash`, `/think high`).
   /// The autocomplete completes them inline instead of dispatching, and the composer strips
   /// the whole line (not just the token) so multi-word args leave no residue. Single source so
   /// the three call sites in `ChatInputAreaView` can't drift.
-  static let argumentCommands: Set<String> = [modelCommand, thinkCommand, xHandlesCommand]
+  static let argumentCommands: Set<String> = [
+    modelCommand, thinkCommand, xHandlesCommand, workspaceCommand,
+  ]
 
   /// Model-switch slash commands, generated from `PromptModel` so adding a model auto-adds its
   /// alias. Grouped by provider: the provider-default alias (`/gemini`, `/grok`, `/gpt`) first,
@@ -295,6 +298,7 @@ class ChatViewModel: ObservableObject {
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
     ("/attach", "Open the file picker to attach files (PDF, images, text)"),
     ("/folder", "Share a folder so the chat can list, read, and search files in it"),
+    ("/workspace", "Limit this chat to one shared folder, e.g. /workspace notes (`all` = every folder, `off` = none)"),
     ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
   ]
   static let commandsAfterModels: [(command: String, description: String)] = [
@@ -888,7 +892,7 @@ class ChatViewModel: ObservableObject {
 
         var finalSources: [GroundingSource] = []
         var finalSupports: [GroundingSupport] = []
-        let tools = buildToolDeclarations()
+        let tools = buildToolDeclarations(for: sendingSession)
         // 8 was too tight for batch work: "move every dateless task to today" spends two rounds
         // discovering the list and then one per task, because the model emits its edits one call at
         // a time even though they are independent. Hitting the cap mid-batch leaves the user's data
@@ -915,7 +919,7 @@ class ChatViewModel: ObservableObject {
           let stream = provider.sendChatStream(
             model: model,
             contents: currentContents,
-            systemInstruction: self.buildSystemInstruction(),
+            systemInstruction: self.buildSystemInstruction(for: sendingSession),
             tools: isFinalRound ? [] : tools,
             options: ChatRequestOptions(
               useGrounding: useGrounding,
@@ -1074,7 +1078,10 @@ class ChatViewModel: ObservableObject {
     return true
   }
 
-  private func buildToolDeclarations() -> [LLMToolDeclaration] {
+  /// Tool declarations for a specific chat session. A send can target a background tab, so
+  /// meeting/workspace gates must follow that session — not whichever one is on screen.
+  private func buildToolDeclarations(for target: ChatSession? = nil) -> [LLMToolDeclaration] {
+    let s = target ?? session
     let calendarConnected = GoogleAccountOAuthService.shared.isConnected
     let trelloConnected = TrelloOAuthService.shared.isConnected
     // Image generation renders via the Gemini image model regardless of the chat model,
@@ -1084,8 +1091,9 @@ class ChatViewModel: ObservableObject {
       calendarConnected: calendarConnected,
       trelloConnected: trelloConnected,
       imageGenerationAvailable: imageGenerationAvailable,
-      meetingContext: session.isMeeting,
-      workspaceAvailable: WorkspaceFolders.hasFolders
+      meetingContext: s.isMeeting,
+      workspaceAvailable: !WorkspaceFolders.displayPaths(scope: workspaceScope(for: s)).isEmpty,
+      workspaceWritable: WorkspaceWriteAccess.isEnabled
     ).compactMap { decl in
       guard let name = decl["name"] as? String,
             let desc = decl["description"] as? String,
@@ -1139,7 +1147,11 @@ class ChatViewModel: ObservableObject {
   /// properties — so it lives here; the registry still owns dispatch.
   @MainActor
   private func makeToolContext(sessionId: UUID) -> ChatToolContext {
-    ChatToolContext(sessionHandlers: [
+    // Same background-session rule as `/x` and thinkingLevel: scope follows the sending chat.
+    let target = sessionId == session.id ? session : (store.session(by: sessionId) ?? session)
+    return ChatToolContext(
+      workspaceScope: workspaceScope(for: target),
+      sessionHandlers: [
       ChatToolRegistry.generateImageToolName: { [weak self] args in
         guard let self else { return ChatToolOutcome(response: [:]) }
         let outcome = await self.executeGenerateImageTool(args: args, sessionId: sessionId)
@@ -1301,6 +1313,16 @@ class ChatViewModel: ObservableObject {
       return
     }
 
+    // /workspace command (narrow this chat to a subset of the shared folders)
+    if lower == Self.workspaceCommand || lower.hasPrefix(Self.workspaceCommand + " ") {
+      inputText = ""
+      let arg = lower == Self.workspaceCommand
+        ? ""
+        : String(lower.dropFirst(Self.workspaceCommand.count + 1)).trimmingCharacters(in: .whitespaces)
+      handleWorkspaceCommand(argument: arg)
+      return
+    }
+
     // Model-switch commands (provider-default aliases /gemini /grok /gpt, the per-model short
     // aliases /gemini35flash /gemini35flashlite …, and the silent /openai alias). Generated from PromptModel,
     // so this one lookup covers every model without per-command branches.
@@ -1391,7 +1413,9 @@ class ChatViewModel: ObservableObject {
   }
 
   /// Builds the system instruction: current date, base chat prompt, plus optional meeting context (summary + recent transcript).
-  private func buildSystemInstruction() -> [String: Any] {
+  /// Pass the sending session when a background tab is the target — workspace/meeting gates follow that chat.
+  private func buildSystemInstruction(for target: ChatSession? = nil) -> [String: Any] {
+    let s = target ?? session
     var text = SystemPromptsStore.shared.loadChatSystemPrompt()
     let formatter = DateFormatter()
     formatter.dateFormat = "EEEE, MMMM d, yyyy"
@@ -1407,7 +1431,7 @@ class ChatViewModel: ObservableObject {
     // Regular chats stay free of meeting content.
     let meetingContext: String? = {
       if let provided = meetingContextProvider?() { return provided }
-      guard session.isMeeting, let stem = session.meetingStem else { return nil }
+      guard s.isMeeting, let stem = s.meetingStem else { return nil }
       if LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem == stem {
         let live = LiveMeetingTranscriptStore.shared.meetingContextForChat()
         if !live.isEmpty { return live }
@@ -1427,7 +1451,8 @@ class ChatViewModel: ObservableObject {
     // than left to `list_workspace_folders`: it is one line per folder and always accurate, and
     // spending a whole tool round just to learn "which folders exist" delays every file answer.
     // Mirrors the gating in buildToolDeclarations.
-    let sharedFolders = WorkspaceFolders.displayPaths
+    let workspaceScope = workspaceScope(for: s)
+    let sharedFolders = WorkspaceFolders.displayPaths(scope: workspaceScope)
     if !sharedFolders.isEmpty {
       let list = sharedFolders
         .map { "- `\(($0 as NSString).abbreviatingWithTildeInPath)`" }
@@ -1442,7 +1467,12 @@ class ChatViewModel: ObservableObject {
       // exactly as Cursor and Claude Code load them. Injected rather than left to a tool call: a
       // folder is shared *because* its context should shape every answer, and a model that has to
       // decide to go read the rules first will often simply not.
-      text += WorkspaceContextFiles.contextBlock()
+      if WorkspaceWriteAccess.isEnabled {
+        text += "\n\nYou can also CHANGE files in these folders: `write_text_file` creates one, `append_to_file` adds to the end of one, `edit_text_file` replaces an exact piece of text. Reach for `append_to_file` and `edit_text_file` before `write_text_file` with overwrite — they cannot lose text the user wrote. Read a file before editing it, and say plainly what you changed. There is no delete and no rename tool; if the user wants a file removed, tell them to do it in Finder."
+      } else {
+        text += "\n\nYou can only READ these folders. If the user asks you to write, edit, or save something into them, say that file editing is off and that they can turn it on in Settings → Chat → Workspace Folders. Never claim to have written a file."
+      }
+      text += WorkspaceContextFiles.contextBlock(roots: WorkspaceFolders.roots(scope: workspaceScope))
     }
     if GoogleAccountOAuthService.shared.isConnected {
       text += "\n\nIMPORTANT — you are CONNECTED to the user's own Google account with LIVE access to their Calendar, Tasks, and Gmail through the tools below. When the user asks anything about their email, inbox, messages, calendar, schedule, events, meetings, appointments, tasks, to-dos, or reminders, you MUST call the relevant tool to fetch the real data BEFORE answering — on the very first turn, without waiting to be asked again. NEVER reply that you lack access, cannot see their inbox/calendar, or that they should paste/forward/attach the content: you have direct access, so use it. You have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_update, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nTo CHANGE an existing task (due date, title, notes, status) always call google_tasks_update — never delete and re-create it.\nWhen an instruction affects several items (e.g. re-dating five tasks), emit ALL the independent calls together in ONE turn instead of one call per turn — the number of tool rounds per answer is limited, and one-at-a-time editing runs out of rounds before the batch is finished.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks."
@@ -1454,7 +1484,7 @@ class ChatViewModel: ObservableObject {
     text += "\n\nMEMORY: Use `remember_about_user` to save durable facts the user shares or asks you to keep, and `forget_about_user` to drop ones that are wrong or outdated (the tool descriptions spell out what qualifies). Acknowledge briefly what changed — never dump the whole memory back."
     text += "\n\nCHANGING THE APP'S BEHAVIOR: The user can reconfigure WhisperShortcut by asking you, instead of opening Settings. Route each kind of request to the right tool: a lasting rule for how Dictate Prompt should rewrite text → `update_app_instructions` (section 'dictate_prompt'); the correct spelling of a name or term for dictation → `remember_dictation_term`; a durable fact about the user → `remember_about_user`. With `update_app_instructions` ALWAYS read first and then replace or remove a conflicting rule instead of appending a contradictory second one — two rules that fight each other degrade the mode in ways the user cannot trace back. Never claim you changed the app's behavior unless the tool call succeeded."
     // Mirrors buildToolDeclarations' meetingContext gating.
-    if session.isMeeting {
+    if s.isMeeting {
       text += "\n\nMEETING EDITING: This chat is attached to a meeting. When the user asks to change, refine, reformat, shorten, or correct the meeting SUMMARY, call `refine_meeting_summary` with their instruction — do not just reply with a rewritten summary in chat. When the user points out a misrecognized name or term in the TRANSCRIPT (e.g. 'it's ParkDepot, not Park Depot'), call `correct_transcript_term` with the exact wrong and corrected spelling — this is a literal find-and-replace that keeps the transcript faithful; never rewrite or paraphrase the transcript yourself."
     }
     return ["parts": [["text": text]]]
@@ -1747,7 +1777,7 @@ class ChatViewModel: ObservableObject {
     switch outcome {
     case .usage(let cur):
       appendModelMessage(
-        "Current model: **\(cur.displayName)**. Example: `/model 3.1 flash lite` or `/model 2.5 pro`."
+        "Current model: **\(cur.displayName)**. Example: `/model 3.1 flash lite` or `/model 3.7 flash`."
       )
     case .applied(let model):
       switchToModel(model)
@@ -1755,7 +1785,7 @@ class ChatViewModel: ObservableObject {
       let list = candidates.map { "• **\($0.displayName)**" }.joined(separator: "\n")
       appendModelMessage("Multiple matches. Be more specific:\n\(list)")
     case .noMatch(let query):
-      appendModelMessage("No model matched \"\(query)\". Try a version and variant, e.g. `3.1 flash lite` or `2.5 pro`.")
+      appendModelMessage("No model matched \"\(query)\". Try a version and variant, e.g. `3.1 flash lite` or `3.7 flash`.")
     }
     DebugLogger.log("GEMINI-CHAT: /model argument=\(argument) outcome=\(outcome)")
   }
@@ -1838,6 +1868,81 @@ class ChatViewModel: ObservableObject {
   /// which is why this is an optional check rather than an `isEmpty` fallback.
   private func effectiveXHandles(for session: ChatSession) -> [String] {
     session.xHandles ?? XSearchHandles.defaultHandles
+  }
+
+  /// The folders this chat may read. `nil` = every shared folder; `[]` = none. A selection that
+  /// no longer matches anything (the folder was removed in Settings) resolves to no folders
+  /// rather than silently falling back to all of them.
+  private func workspaceScope(for session: ChatSession) -> WorkspaceFolders.Scope {
+    guard let selected = session.workspaceFolders else { return .all }
+    return selected.isEmpty ? .off : .only(selected)
+  }
+
+  /// `/workspace` narrows this chat to a subset of the folders the user already shared. It cannot
+  /// grant a new one: macOS only hands a sandboxed app a folder through a real user gesture, so
+  /// adding stays with `/folder` and drag-and-drop. Narrowing matters because a shared home
+  /// directory makes every search slower and pulls in context from projects the chat was not
+  /// asked about.
+  @MainActor
+  private func handleWorkspaceCommand(argument: String) {
+    let shared = WorkspaceFolders.displayPaths
+    let abbreviate: (String) -> String = { ($0 as NSString).abbreviatingWithTildeInPath }
+    guard !shared.isEmpty else {
+      appendModelMessage(
+        "No folders are shared yet. Use `/folder`, or drop a folder onto this window, to grant access — macOS only allows that through the picker or a drop.")
+      return
+    }
+    let list = shared.map { "- `\(abbreviate($0))`" }.joined(separator: "\n")
+    let usage =
+      "Narrow with `/workspace <name>`, restore every folder with `/workspace all`, or drop file access entirely with `/workspace off`.\n\nShared folders:\n\(list)"
+
+    guard !argument.isEmpty else {
+      let active = WorkspaceFolders.displayPaths(scope: workspaceScope(for: session))
+      let state: String
+      if active.isEmpty {
+        state = session.workspaceFolders?.isEmpty == false
+          ? "This chat is pinned to a folder that is no longer shared, so it currently has **no file access**."
+          : "File access is **off** in this chat."
+      } else if active.count == shared.count {
+        state = "This chat can use **all \(shared.count) shared folders**."
+      } else {
+        state = "This chat is limited to **\(active.map(abbreviate).joined(separator: ", "))**."
+      }
+      appendModelMessage("\(state)\n\n\(usage)")
+      return
+    }
+
+    if ["all", "every", "clear", "reset"].contains(argument) {
+      session.workspaceFolders = nil
+      appendModelMessage("This chat can use **all \(shared.count) shared folders** again.")
+      DebugLogger.log("GEMINI-CHAT: /workspace all session=\(session.id)")
+      return
+    }
+    if ["off", "none", "no"].contains(argument) {
+      session.workspaceFolders = []
+      appendModelMessage(
+        "File access is **off** for this chat — no folders, and no context files from them. Turn it back on with `/workspace all`.")
+      DebugLogger.log("GEMINI-CHAT: /workspace off session=\(session.id)")
+      return
+    }
+
+    let needle = argument.lowercased()
+    let matches = shared.filter { path in
+      if needle == "~" || needle == "home" { return path == NSHomeDirectory() }
+      return (path as NSString).lastPathComponent.lowercased().contains(needle)
+        || abbreviate(path).lowercased().contains(needle)
+    }
+    guard !matches.isEmpty else {
+      appendModelMessage("No shared folder matches \"\(argument)\".\n\n\(usage)")
+      return
+    }
+    session.workspaceFolders = matches
+    let named = matches.map { "**\(abbreviate($0))**" }.joined(separator: ", ")
+    appendModelMessage(
+      matches.count == shared.count
+        ? "That matches every shared folder, so this chat still uses all of them."
+        : "This chat now uses \(named) only — its files and its context files. `/workspace all` restores the rest.")
+    DebugLogger.log("GEMINI-CHAT: /workspace matched=\(matches.count) session=\(session.id)")
   }
 
   /// Recently-used chat models, most recent first (PromptModel rawValues). See `chatModelRecency`.
@@ -3847,8 +3952,16 @@ struct ChatInputAreaView: View {
   /// everything else is sent in document order.
   private func submitComposer() {
     if let command = highlightedSuggestionCommand() {
-      selectCommand(command)
-      return
+      // A command typed out in full dispatches on Enter even while the overlay still shows it.
+      // Completing "/workspace" to "/workspace " appends a space and nothing else, which reads as
+      // "the command is broken" — and every argument command's bare form is a real status query.
+      // Prefix matches still complete inline, so "/mo" ⏎ becomes "/model " as before.
+      let typedInFull =
+        ChatViewModel.argumentCommands.contains(command) && lastWord.lowercased() == command
+      if !typedInFull {
+        selectCommand(command)
+        return
+      }
     }
     let output = composer.serialize()
     let typed = output.typedText

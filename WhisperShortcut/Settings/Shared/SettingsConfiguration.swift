@@ -23,7 +23,7 @@ enum ChatModelProvider: String, CaseIterable {
   /// they all read `defaultChatModel` from here.
   var defaultChatModel: PromptModel {
     switch self {
-    case .gemini: return .gemini35FlashLite
+    case .gemini: return .gemini37Flash
     case .grok:   return .grok43
     case .openai: return .openaiGPT56Sol
     case .anthropic: return .claudeSonnet5
@@ -49,7 +49,8 @@ enum ChatModelProvider: String, CaseIterable {
 
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
-// GA: gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash, gemini-3.6-flash.
+// GA: gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash, gemini-3.6-flash,
+// gemini-3.7-flash (shipped 2026-08-13; https://ai.google.dev/gemini-api/docs/models).
 // Preview: gemini-3.1-pro-preview.
 // Removed and forwarded via migrateLegacyPromptRawValue: gemini-3-pro-preview (shut down
 // 2026-03-09) → gemini-3.1-pro-preview; the Gemini 2.5 family (gemini-2.5-flash / -flash-lite /
@@ -65,6 +66,7 @@ enum PromptModel: String, CaseIterable {
   case gemini35FlashLite = "gemini-3.5-flash-lite"
   case gemini35Flash = "gemini-3.5-flash"
   case gemini36Flash = "gemini-3.6-flash"
+  case gemini37Flash = "gemini-3.7-flash"
 
   // Gemini native image generation/editing ("Nano Banana"). Prompt (+ optional input image) →
   // image out, via a dedicated non-streaming `:generateContent` call with `responseModalities`
@@ -147,6 +149,8 @@ enum PromptModel: String, CaseIterable {
       return "Gemini 3.5 Flash"
     case .gemini36Flash:
       return "Gemini 3.6 Flash"
+    case .gemini37Flash:
+      return "Gemini 3.7 Flash"
     case .geminiImage:
       return "Gemini Image (Nano Banana 2)"
     case .geminiImagePro:
@@ -211,6 +215,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini35FlashLite: return "gemini35flashlite"
     case .gemini35Flash:     return "gemini35flash"
     case .gemini36Flash:     return "gemini36flash"
+    case .gemini37Flash:     return "gemini37flash"
     case .geminiImage:       return "geminiimage"
     case .geminiImagePro:    return "geminiimagepro"
     case .grok4:             return "grok4"
@@ -244,9 +249,11 @@ enum PromptModel: String, CaseIterable {
     case .gemini35FlashLite:
       return "Google's Gemini 3.5 Flash-Lite • Fastest, most cost-effective 3.5 model • High throughput • Multimodal"
     case .gemini35Flash:
-      return "Google's Gemini 3.5 Flash • Most intelligent Flash • Strong on agentic + coding tasks • Multimodal"
+      return "Google's Gemini 3.5 Flash • Legacy Flash • Strong on agentic + coding tasks • Multimodal"
     case .gemini36Flash:
-      return "Google's Gemini 3.6 Flash • Newest Flash • Balances speed with intelligence • Multimodal"
+      return "Google's Gemini 3.6 Flash • Previous-generation Flash • Balances speed with intelligence • Multimodal"
+    case .gemini37Flash:
+      return "Google's Gemini 3.7 Flash • Newest Flash • Most capable workhorse for coding and agents • Multimodal"
     case .geminiImage:
       return "Google's Gemini Image (Nano Banana 2) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key"
     case .geminiImagePro:
@@ -299,8 +306,8 @@ enum PromptModel: String, CaseIterable {
   
   var costLevel: String {
     switch self {
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .geminiImage,
-         .customOpenAIEndpoint, .localModel, .claudeHaiku45:
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
+         .geminiImage, .customOpenAIEndpoint, .localModel, .claudeHaiku45:
       return "Low"
     case .gemini31Pro, .geminiImagePro:
       return "Medium"
@@ -322,7 +329,7 @@ enum PromptModel: String, CaseIterable {
     // compiler force the decision instead.
     switch self {
     case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash,
-         .geminiImage, .geminiImagePro:
+         .gemini37Flash, .geminiImage, .geminiImagePro:
       return .gemini
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46:
       return .grok
@@ -503,6 +510,10 @@ enum PromptModel: String, CaseIterable {
     // Gemini 3.x — thinkingLevel
     case .gemini31Pro:
       return ["thinkingLevel": "high"]
+    case .gemini37Flash:
+      // Live-verified 2026-08-23: gemini-3.7-flash rejects thinkingLevel MINIMAL
+      // ("Thinking level MINIMAL is not supported for this model"). `low` is the floor.
+      return ["thinkingLevel": "low"]
     case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
       return ["thinkingLevel": "minimal"]
     // Image-generation models — no thinking knob.
@@ -548,6 +559,8 @@ enum PromptModel: String, CaseIterable {
       return .gemini35Flash
     case .gemini36Flash:
       return .gemini36Flash
+    case .gemini37Flash:
+      return .gemini37Flash
     case .geminiImage, .geminiImagePro:
       return nil // image-generation models; not transcription models
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46:
@@ -670,6 +683,16 @@ enum PromptModel: String, CaseIterable {
       return Self.gemini35Flash.rawValue
     default:
       return raw
+    }
+  }
+
+  /// True when the live Gemini API rejects `thinkingLevel: minimal` with HTTP 400.
+  /// Verified for 3.1 Pro (2026-07) and 3.7 Flash (2026-08-23:
+  /// "Thinking level MINIMAL is not supported for this model").
+  var geminiRejectsMinimalThinking: Bool {
+    switch self {
+    case .gemini31Pro, .gemini37Flash: return true
+    default: return false
     }
   }
 
@@ -1548,11 +1571,12 @@ enum TranscriptionTemperature: String, CaseIterable {
 
 /// How much the model may think before transcribing (`generationConfig.thinkingConfig.thinkingLevel`).
 ///
-/// Verified against the live API with real audio (2026-07): every Flash / Flash-Lite tier accepts
-/// all four levels with audio input, and Pro accepts everything except `minimal` (HTTP 400,
-/// "Thinking level MINIMAL is not supported for this model") — `geminiTranscriptionGenerationConfig`
-/// clamps that case. Measured latency on a 1.2 s clip: Flash-Lite is flat across levels (~1.2–1.5 s),
-/// Flash costs a few hundred ms, Pro goes from 3 s to ~5 s at `high`.
+/// Verified against the live API with real audio (2026-07): every Flash / Flash-Lite tier through
+/// 3.6 accepts all four levels with audio input. Pro and 3.7 Flash accept everything except
+/// `minimal` (HTTP 400, "Thinking level MINIMAL is not supported for this model") —
+/// `geminiTranscriptionGenerationConfig` clamps those cases. Measured latency on a 1.2 s clip:
+/// Flash-Lite is flat across levels (~1.2–1.5 s), Flash costs a few hundred ms, Pro goes from
+/// 3 s to ~5 s at `high`.
 enum TranscriptionThinkingEffort: String, CaseIterable {
   case minimal
   case low
@@ -1593,9 +1617,9 @@ struct SettingsDefaults {
   static let meetingMarker: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
-  // Chat / Dictate Prompt / meeting summary default to 3.5 Flash-Lite because the Flash tier is
-  // roughly 3× the output price of Flash-Lite and drove the bulk of the app's Gemini spend. Users
-  // who want more headroom pick a bigger model explicitly.
+  // Chat defaults to 3.7 Flash — the current Gemini workhorse (GA 2026-08-13). Dictate Prompt
+  // and meeting summary stay on 3.5 Flash-Lite because those run more often and Flash is
+  // roughly 3× the output price of Flash-Lite.
   // https://ai.google.dev/gemini-api/docs/pricing
   //
   // Dictation is the exception: it defaults to *3.1* Flash-Lite, not 3.5, even though 3.5 is the
@@ -1618,7 +1642,7 @@ struct SettingsDefaults {
   /// Cheapest audio-capable model on OpenRouter's own pricing list (2026-07).
   static let openRouterTranscriptionModelID = "google/gemini-3.5-flash-lite"
   static let selectedPromptModel = PromptModel.gemini35FlashLite
-  static let selectedChatModel = PromptModel.gemini35FlashLite
+  static let selectedChatModel = PromptModel.gemini37Flash
   static let chatCloseOnFocusLoss = true
   // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
   // API key from a browser) is surprising. Users can opt back in via the Behavior section.
@@ -1658,11 +1682,11 @@ struct SettingsDefaults {
   /// the old clipboard back would break that, so restoring stays a deliberate choice.
   static let restoreClipboardAfterPaste = false
 
-  // MARK: - Fn Push-to-Talk
+  // MARK: - Fn Key Dictation
   // OFF by default for the same reason as auto-paste: observing the Fn key needs global
   // event monitors, which only work with the Accessibility permission — a fresh install
   // must not require it (App Store Guideline 2.4.5).
-  static let holdFnToDictate = false
+  static let fnKeyDictation = false
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = true
@@ -1677,9 +1701,10 @@ struct SettingsDefaults {
   static let selectedMeetingSummaryModel = PromptModel.gemini35FlashLite
 
   /// Smart Improvement runs at most once a week in the background, so its per-run cost barely
-  /// registers — but it does analysis over a whole corpus, which Flash-Lite is weak at. 3.6 Flash
-  /// is the middle ground: far cheaper than 3.1 Pro, still the stronger Flash tier.
-  static let selectedImprovementModel = PromptModel.gemini36Flash
+  /// registers — but it does analysis over a whole corpus, which Flash-Lite is weak at. 3.7 Flash
+  /// is the current workhorse (GA 2026-08-13): more capable than 3.6 and cheaper through 2026
+  /// ($0.75/$3.75 per 1M intro vs 3.6's $1.50/$7.50). https://ai.google.dev/gemini-api/docs/models
+  static let selectedImprovementModel = PromptModel.gemini37Flash
 
   // MARK: - Local LLM (OpenAI-compatible server, e.g. Ollama / LM Studio)
   /// Base URL up to and including `/v1`. The provider appends `/chat/completions`. Ollama's
@@ -1776,8 +1801,8 @@ struct SettingsData: Equatable {
   var autoPasteAfterDictation: Bool = SettingsDefaults.autoPasteAfterDictation
   var restoreClipboardAfterPaste: Bool = SettingsDefaults.restoreClipboardAfterPaste
 
-  // MARK: - Fn Push-to-Talk
-  var holdFnToDictate: Bool = SettingsDefaults.holdFnToDictate
+  // MARK: - Fn Key Dictation
+  var fnKeyDictation: Bool = SettingsDefaults.fnKeyDictation
 
   // MARK: - Screenshot Settings
   var screenshotInPromptMode: Bool = SettingsDefaults.screenshotInPromptMode

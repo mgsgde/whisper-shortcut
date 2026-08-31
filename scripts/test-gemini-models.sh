@@ -30,6 +30,7 @@ declare -a CURRENT_TEXT_MODELS=(
   "gemini-3.5-flash-lite"
   "gemini-3.5-flash"
   "gemini-3.6-flash"
+  "gemini-3.7-flash"
 )
 
 # Legacy / migration targets — slugs we still accept via migrateLegacyTranscriptionRawValue

@@ -119,6 +119,8 @@ enum ChatModelCommandResolver {
       } else {
         candidates = [.openaiGPT5Mini, .openaiGPT56Luna, .openaiGPT56Terra, .openaiGPT56Sol]
       }
+    } else if normalized.contains("3.7") {
+      candidates = [.gemini37Flash]
     } else if normalized.contains("3.6") {
       candidates = [.gemini36Flash]
     } else if normalized.contains("3.5") {
@@ -127,7 +129,7 @@ enum ChatModelCommandResolver {
       candidates = [.gemini31Pro, .gemini31FlashLite]
     } else if padded.contains(" 3 ") {
       // Bare "Gemini 3" → the current 3-series default Flash.
-      candidates = [.gemini36Flash]
+      candidates = [.gemini37Flash]
     } else {
       candidates = PromptModel.chatModels
     }
@@ -214,7 +216,7 @@ enum ChatModelCommandResolver {
   private static func isFlash(_ m: PromptModel) -> Bool {
     switch m {
     case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash,
-         .geminiImage: return true  // "flash image" → the Flash-tier image model
+         .gemini37Flash, .geminiImage: return true  // "flash image" → the Flash-tier image model
     default: return false
     }
   }

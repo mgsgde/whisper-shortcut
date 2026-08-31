@@ -724,7 +724,12 @@ class GeminiAPIClient {
     var thinkingConfig = promptModel?.geminiThinkingConfig
     if thinkingLevel != .default, var cfg = thinkingConfig {
       if cfg["thinkingLevel"] != nil, let level = thinkingLevel.geminiThinkingLevel {
-        cfg["thinkingLevel"] = level
+        // 3.1 Pro and 3.7 Flash reject MINIMAL (HTTP 400). Clamp to the model's floor.
+        if promptModel?.geminiRejectsMinimalThinking == true && level == "minimal" {
+          cfg["thinkingLevel"] = "low"
+        } else {
+          cfg["thinkingLevel"] = level
+        }
       } else if cfg["thinkingBudget"] != nil {
         cfg["thinkingBudget"] = (thinkingLevel == .minimal) ? 0 : -1
       }

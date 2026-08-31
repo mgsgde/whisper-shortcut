@@ -67,14 +67,9 @@ enum WorkspaceContextFiles {
 
   // MARK: - Public
 
-  /// The rendered context-file section, or `""` when no shared folder holds any such file.
+  /// The rendered context-file section for the given roots, or `""` when none hold such a file.
   /// The returned string already starts with its own separator, ready to append to the system
   /// instruction.
-  static func contextBlock() -> String {
-    contextBlock(roots: WorkspaceFolders.roots())
-  }
-
-  /// Testable core: same behaviour for an explicit set of roots.
   static func contextBlock(roots: [WorkspaceFolders.Root]) -> String {
     guard !roots.isEmpty else {
       cached = nil

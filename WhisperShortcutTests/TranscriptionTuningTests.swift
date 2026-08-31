@@ -36,6 +36,18 @@ struct TranscriptionTuningTests {
     #expect(unclamped.thinkingConfig?.thinkingLevel == "high")
   }
 
+  @Test("3.7 Flash is clamped off minimal — the API rejects that level for it")
+  func flash37ClampsMinimal() {
+    // Live-verified 2026-08-23: gemini-3.7-flash returns HTTP 400 for thinkingLevel MINIMAL.
+    let clamped = TranscriptionModel.gemini37Flash.geminiTranscriptionGenerationConfig(
+      temperature: 0.0, effort: .minimal)
+    #expect(clamped.thinkingConfig?.thinkingLevel == "low")
+
+    let unclamped = TranscriptionModel.gemini37Flash.geminiTranscriptionGenerationConfig(
+      temperature: 0.0, effort: .high)
+    #expect(unclamped.thinkingConfig?.thinkingLevel == "high")
+  }
+
   @Test("Temperature is always encoded — omitting it means the model default of 1.0")
   func temperatureIsEncoded() {
     let config = TranscriptionModel.gemini35FlashLite.geminiTranscriptionGenerationConfig(

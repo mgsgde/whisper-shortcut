@@ -34,6 +34,10 @@ struct ChatToolOutcome {
 struct ChatToolContext {
   typealias Handler = @MainActor (_ args: [String: Any]) async -> ChatToolOutcome
 
+  /// Which shared folders the file tools may reach in this chat (`/workspace`). Carried on the
+  /// context rather than held in a global so two chat windows can run different scopes at once.
+  var workspaceScope: WorkspaceFolders.Scope = .all
+
   /// Keyed by tool name; shadows the registry's own handler for that name.
   var sessionHandlers: [String: Handler] = [:]
 
@@ -776,7 +780,7 @@ enum ChatToolRegistry {
     [
       "name": "list_directory",
       "description":
-        "Lists the entries of a directory inside a shared workspace folder. Hidden files are omitted. Use this to explore before reading. Returns {path, entries: [{name, type, size_bytes, modified}], count, truncated?}.",
+        "Lists the entries of a directory inside a shared workspace folder. Hidden entries ARE listed, including dot-directories such as `.cursor`, `.claude` and `.ai` where users keep context files; only caches, version-control internals and credential stores are omitted. Use this to explore before reading. Returns {path, entries: [{name, type, size_bytes, modified}], count, truncated?}.",
       "parameters": [
         "type": "object",
         "properties": [
@@ -816,7 +820,7 @@ enum ChatToolRegistry {
     [
       "name": "search_files",
       "description":
-        "Finds files inside the shared workspace folders by name, and optionally by content. Dependency and build directories (.git, node_modules, build, …) are skipped. Use this when the user names a file or phrase but not its location. Returns {query, matches: [{path, name, matched, line?, snippet?}], count, files_scanned, truncated?}.",
+        "Finds files inside the shared workspace folders by name, and optionally by content. Hidden files and dot-directories are searched too; only dependency, build, version-control and credential directories (.git, node_modules, build, .ssh, …) are skipped. Use this when the user names a file or phrase but not its location. Returns {query, matches: [{path, name, matched, line?, snippet?}], count, files_scanned, truncated?}.",
       "parameters": [
         "type": "object",
         "properties": [
@@ -880,15 +884,96 @@ enum ChatToolRegistry {
     ],
   ]
 
+  /// Write tools. Held in their own array because they are gated on a separate opt-in
+  /// (`WorkspaceWriteAccess`): sharing a folder grants reading, and changing files in it is a
+  /// decision the user makes once, explicitly, in Settings.
+  static let workspaceWriteFunctionDeclarations: [[String: Any]] = [
+    [
+      "name": "write_text_file",
+      "description":
+        "Creates a text file inside a shared workspace folder, or replaces one with overwrite=true. Missing parent directories are created. The previous content of a replaced file is backed up automatically. Prefer edit_text_file for changing part of an existing file — it is far harder to lose text that way. Returns {ok, path, bytes_written, created, previous_version_backed_up_to?}.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "path": [
+            "type": "string",
+            "description":
+              "File to write. Absolute, '~'-relative, or relative to a shared folder ('notes/todo.md').",
+          ],
+          "content": [
+            "type": "string",
+            "description": "The complete text content of the file.",
+          ],
+          "overwrite": [
+            "type": "boolean",
+            "description":
+              "Replace the file if it already exists (default false). Only pass true when the user asked for the file to be rewritten.",
+          ],
+        ] as [String: Any],
+        "required": ["path", "content"],
+      ],
+    ],
+    [
+      "name": "append_to_file",
+      "description":
+        "Appends text to the end of a file inside a shared workspace folder, creating it if it does not exist. A newline is inserted first when the file does not already end with one. This is the safe way to add to a running note, log, or to-do list — nothing existing can be lost. Returns {ok, path, bytes_appended, total_bytes}.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "path": [
+            "type": "string",
+            "description": "File to append to. Absolute, '~'-relative, or relative to a shared folder.",
+          ],
+          "content": [
+            "type": "string",
+            "description": "Text to add at the end of the file.",
+          ],
+        ] as [String: Any],
+        "required": ["path", "content"],
+      ],
+    ],
+    [
+      "name": "edit_text_file",
+      "description":
+        "Replaces an exact piece of text in a file inside a shared workspace folder. Read the file first and match the text character for character, including indentation. The text must appear exactly once unless replace_all is true — an ambiguous match is refused rather than guessed. The previous content is backed up automatically. Returns {ok, path, replacements, total_bytes, previous_version_backed_up_to}.",
+      "parameters": [
+        "type": "object",
+        "properties": [
+          "path": [
+            "type": "string",
+            "description": "File to edit. Absolute, '~'-relative, or relative to a shared folder.",
+          ],
+          "find": [
+            "type": "string",
+            "description":
+              "The exact existing text to replace. Include enough surrounding context to make it unique.",
+          ],
+          "replace": [
+            "type": "string",
+            "description": "The text to put in its place. Pass an empty string to delete the matched text.",
+          ],
+          "replace_all": [
+            "type": "boolean",
+            "description": "Replace every occurrence instead of requiring a unique match (default false).",
+          ],
+        ] as [String: Any],
+        "required": ["path", "find", "replace"],
+      ],
+    ],
+  ]
+
   static func allDeclarations(
     calendarConnected: Bool, trelloConnected: Bool, imageGenerationAvailable: Bool,
-    meetingContext: Bool, workspaceAvailable: Bool
+    meetingContext: Bool, workspaceAvailable: Bool, workspaceWritable: Bool
   ) -> [[String: Any]] {
     var decls =
       functionDeclarations + appDocsFunctionDeclarations + memoryFunctionDeclarations
       + instructionsFunctionDeclarations
     if workspaceAvailable {
       decls += workspaceFunctionDeclarations
+      if workspaceWritable {
+        decls += workspaceWriteFunctionDeclarations
+      }
     }
     if imageGenerationAvailable {
       decls += imageFunctionDeclarations
@@ -959,11 +1044,15 @@ enum ChatToolRegistry {
       DebugLogger.log("GEMINI-CHAT-TOOL: execute name=\(name) (session-scoped)")
       return await handler(args)
     }
-    return ChatToolOutcome(response: await executeGlobal(name: name, args: args))
+    return ChatToolOutcome(
+      response: await executeGlobal(
+        name: name, args: args, workspaceScope: context.workspaceScope))
   }
 
   @MainActor
-  private static func executeGlobal(name: String, args: [String: Any]) async -> [String: Any] {
+  private static func executeGlobal(
+    name: String, args: [String: Any], workspaceScope: WorkspaceFolders.Scope = .all
+  ) async -> [String: Any] {
     DebugLogger.log("GEMINI-CHAT-TOOL: execute name=\(name)")
     switch name {
     case "read_clipboard":
@@ -1426,13 +1515,14 @@ enum ChatToolRegistry {
     // Workspace file tools run detached: a directory walk over a large tree on the main
     // thread would block the UI and trip the hang watchdog.
     case "list_workspace_folders":
-      return await Task.detached { WorkspaceFileTools.listFolders() }.value
+      return await Task.detached { WorkspaceFileTools.listFolders(scope: workspaceScope) }.value
 
     case "list_directory":
       let path = args["path"] as? String ?? ""
       let maxEntries = intArgument(args, "max_entries", default: 200)
       return await Task.detached {
-        WorkspaceFileTools.listDirectory(path: path, maxEntries: maxEntries)
+        WorkspaceFileTools.listDirectory(
+          path: path, maxEntries: maxEntries, scope: workspaceScope)
       }.value
 
     case "read_text_file":
@@ -1441,19 +1531,50 @@ enum ChatToolRegistry {
       }
       let maxBytes = intArgument(args, "max_bytes", default: 100_000)
       return await Task.detached {
-        WorkspaceFileTools.readTextFile(path: path, maxBytes: maxBytes)
+        WorkspaceFileTools.readTextFile(path: path, maxBytes: maxBytes, scope: workspaceScope)
       }.value
 
     case "search_files":
       guard let query = args["query"] as? String else {
         return ["error": "Missing required argument: query"]
       }
-      let scope = args["path"] as? String
+      let subPath = args["path"] as? String
       let searchContent = boolArgument(args, "search_content", default: false)
       let maxResults = intArgument(args, "max_results", default: 50)
       return await Task.detached {
         WorkspaceFileTools.searchFiles(
-          query: query, path: scope, searchContent: searchContent, maxResults: maxResults)
+          query: query, path: subPath, searchContent: searchContent, maxResults: maxResults,
+          scope: workspaceScope)
+      }.value
+
+    case "write_text_file":
+      guard let path = args["path"] as? String, let content = args["content"] as? String else {
+        return ["error": "Missing required arguments: path and content"]
+      }
+      let overwrite = boolArgument(args, "overwrite", default: false)
+      return await Task.detached {
+        WorkspaceWriteTools.writeTextFile(
+          path: path, content: content, overwrite: overwrite, scope: workspaceScope)
+      }.value
+
+    case "append_to_file":
+      guard let path = args["path"] as? String, let content = args["content"] as? String else {
+        return ["error": "Missing required arguments: path and content"]
+      }
+      return await Task.detached {
+        WorkspaceWriteTools.appendToFile(path: path, content: content, scope: workspaceScope)
+      }.value
+
+    case "edit_text_file":
+      guard let path = args["path"] as? String, let find = args["find"] as? String,
+        let replace = args["replace"] as? String
+      else {
+        return ["error": "Missing required arguments: path, find and replace"]
+      }
+      let replaceAll = boolArgument(args, "replace_all", default: false)
+      return await Task.detached {
+        WorkspaceWriteTools.editTextFile(
+          path: path, find: find, replace: replace, replaceAll: replaceAll, scope: workspaceScope)
       }.value
 
     case "remember_file_location":

@@ -136,8 +136,13 @@ struct ChatSession: Codable {
   /// `nil` = inherit the Settings → Chat default; `[]` = explicitly search all of X even when a
   /// default is configured. The distinction is what lets `/x off` beat a non-empty default.
   var xHandles: [String]?
+  /// Per-session narrowing of the shared workspace folders, set via `/workspace`.
+  /// `nil` = every shared folder (the default); `[]` = no file access and no context files in
+  /// this chat; a non-empty list = only those display paths. Same nil-vs-empty distinction as
+  /// `xHandles`, and for the same reason: `/workspace off` has to beat the global default.
+  var workspaceFolders: [String]?
 
-  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil, thinkingLevel: ThinkingLevel = .default, xHandles: [String]? = nil) {
+  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil, thinkingLevel: ThinkingLevel = .default, xHandles: [String]? = nil, workspaceFolders: [String]? = nil) {
     self.id = id
     self.lastUpdated = lastUpdated
     self.messages = messages
@@ -148,11 +153,12 @@ struct ChatSession: Codable {
     self.meetingStem = meetingStem
     self.thinkingLevel = thinkingLevel
     self.xHandles = xHandles
+    self.workspaceFolders = workspaceFolders
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, lastUpdated, messages, title, archived, pinned, isMeeting, meetingStem, thinkingLevel
-    case xHandles
+    case xHandles, workspaceFolders
   }
 
   init(from decoder: Decoder) throws {
@@ -168,6 +174,8 @@ struct ChatSession: Codable {
     thinkingLevel = try c.decodeIfPresent(ThinkingLevel.self, forKey: .thinkingLevel) ?? .default
     // Absent (every chat written before `/x` existed) stays nil = inherit the Settings default.
     xHandles = try c.decodeIfPresent([String].self, forKey: .xHandles)
+    // Absent (every chat written before `/workspace` existed) stays nil = all shared folders.
+    workspaceFolders = try c.decodeIfPresent([String].self, forKey: .workspaceFolders)
   }
 }
 
