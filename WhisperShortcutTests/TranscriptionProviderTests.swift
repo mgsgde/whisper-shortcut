@@ -18,8 +18,16 @@ struct TranscriptionProviderTests {
     #expect(!TranscriptionModel.gemini31Pro.isSelectableForDictation)
     #expect(!TranscriptionModel.selectableForDictation.contains(.gemini31Pro))
 
-    // Everything else stays offerable; this is a one-model exclusion, not a category.
-    #expect(TranscriptionModel.selectableForDictation.count == TranscriptionModel.allCases.count - 1)
+    // Everything else stays offerable, except the two Whisper sizes turbo supersedes — those are
+    // hidden unless the user already has them on disk, so the count is expressed as the exclusion
+    // set rather than a bare number.
+    let hidden = Set(
+      TranscriptionModel.allCases.filter { !$0.isSelectableForDictation })
+    #expect(hidden.subtracting([.whisperMedium, .whisperLarge]) == [.gemini31Pro])
+    #expect(!TranscriptionModel.selectableForDictation.contains(.whisperMedium))
+    #expect(!TranscriptionModel.selectableForDictation.contains(.whisperLarge))
+    // Turbo replaces them and is offered whether or not it is downloaded.
+    #expect(TranscriptionModel.selectableForDictation.contains(.whisperLargeTurbo))
 
     // Both Pro slugs land on the working default, so no one is left stuck on it.
     for slug in ["gemini-3.1-pro-preview", "gemini-3-pro-preview"] {

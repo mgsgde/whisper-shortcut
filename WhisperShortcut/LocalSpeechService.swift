@@ -7,6 +7,7 @@
 
 import Foundation
 import AVFoundation
+import CoreML
 import WhisperKit
 
 actor LocalSpeechService {
@@ -40,15 +41,31 @@ actor LocalSpeechService {
     
     DebugLogger.log("LOCAL-SPEECH: Using model path: \(modelPath.path)")
     
-    // Initialize WhisperKit with the specific model folder
+    // Initialize WhisperKit with the specific model folder.
+    //
+    // `computeOptions` is the load-time decision, not a speed knob: leaving the audio encoder on
+    // WhisperKit's `.cpuAndNeuralEngine` default makes the first load of a large model wait on a
+    // CoreML→ANE compile that took over 14 minutes here without finishing. See
+    // `OfflineModelType.usesNeuralEngine`.
+    let encoderCompute: MLComputeUnits = modelType.usesNeuralEngine ? .cpuAndNeuralEngine : .cpuAndGPU
     let config = WhisperKitConfig(
-      modelFolder: modelPath.path
+      modelFolder: modelPath.path,
+      computeOptions: ModelComputeOptions(
+        melCompute: .cpuAndGPU,
+        audioEncoderCompute: encoderCompute,
+        textDecoderCompute: encoderCompute,
+        prefillCompute: .cpuOnly)
     )
+    DebugLogger.log(
+      "LOCAL-SPEECH: Compute units — encoder/decoder: \(modelType.usesNeuralEngine ? "CPU+ANE" : "CPU+GPU")")
+    let loadStart = CFAbsoluteTimeGetCurrent()
     
     do {
       whisperKit = try await WhisperKit(config)
       currentModelType = modelType
-      DebugLogger.logSuccess("LOCAL-SPEECH: Model initialized successfully")
+      let elapsed = CFAbsoluteTimeGetCurrent() - loadStart
+      DebugLogger.logSuccess(
+        "LOCAL-SPEECH: Model initialized successfully in \(String(format: "%.1f", elapsed))s")
     } catch {
       // Check if error is related to missing or incomplete model files
       let errorMessage = error.localizedDescription

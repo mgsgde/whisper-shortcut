@@ -279,7 +279,7 @@ struct SpeechToTextSettingsTab: View {
 
       // Available Models List
       VStack(spacing: 12) {
-        ForEach(OfflineModelType.allCases, id: \.self) { modelType in
+        ForEach(OfflineModelType.offerable, id: \.self) { modelType in
           offlineModelRow(for: modelType)
             .id("\(modelType.rawValue)-\(refreshTrigger)") // Force refresh when trigger changes
         }
@@ -314,6 +314,10 @@ struct SpeechToTextSettingsTab: View {
                   .font(.caption)
                   .foregroundColor(.secondary)
               }
+            } else if modelType.isSuperseded {
+              Text("Superseded by Large v3 Turbo")
+                .font(.caption)
+                .foregroundColor(.secondary)
             } else if modelType.isQuickStart {
               // Not a second "Recommended": this is the small download for trying offline out,
               // and saying so keeps it findable without competing with the actual recommendation.

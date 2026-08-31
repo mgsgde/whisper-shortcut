@@ -56,6 +56,42 @@ enum OfflineModelType: String, CaseIterable {
     return self == .whisperBase
   }
 
+  /// Superseded by turbo and no longer offered.
+  ///
+  /// Medium is the same download size as turbo while being clearly less accurate, and large-v3 is
+  /// twice the download and several times slower for the same transcript. Neither has a case where
+  /// it is the better pick, and a six-entry list where two entries are traps is worse than a
+  /// four-entry list. They stay in the enum — a user who already downloaded one keeps using it,
+  /// keeps seeing it in the list, and can delete it to get the disk space back.
+  var isSuperseded: Bool {
+    switch self {
+    case .whisperMedium, .whisperLarge: return true
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperLargeTurbo: return false
+    }
+  }
+
+  /// What the model list offers: everything current, plus any superseded model still on disk.
+  static var offerable: [OfflineModelType] {
+    allCases.filter { !$0.isSuperseded || ModelManager.shared.isModelAvailable($0) }
+  }
+
+  /// Whether this model's encoder may go to the Neural Engine.
+  ///
+  /// It may not, for the large models. WhisperKit defaults the audio encoder to
+  /// `.cpuAndNeuralEngine`, which makes CoreML compile the model for the ANE the first time it is
+  /// loaded — and for large-v3-turbo that compile is *pathological*: measured 2026-08-31,
+  /// `ANECompilerService` sat at 100 % CPU for over 14 minutes without finishing, across nine load
+  /// attempts, none of which ever reported a loaded model. On the GPU the same model loads in
+  /// seconds with no compile step at all.
+  ///
+  /// The small models compile in moments and keep the ANE, where it costs less power.
+  var usesNeuralEngine: Bool {
+    switch self {
+    case .whisperTiny, .whisperBase: return true
+    case .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo: return false
+    }
+  }
+
   /// Offline models ordered worst to best transcript. Used to pick a sensible model on this Mac
   /// without asking the user which Whisper size means what — Offline Mode walks it from the end.
   static var byAccuracy: [OfflineModelType] {

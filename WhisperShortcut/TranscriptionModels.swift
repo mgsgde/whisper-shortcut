@@ -183,6 +183,11 @@ enum TranscriptionModel: String, CaseIterable {
   var isSelectableForDictation: Bool {
     switch self {
     case .gemini31Pro: return false
+    // Whisper Medium and Large v3 are superseded by turbo (see `OfflineModelType.isSuperseded`).
+    // Unlike the Gemini exclusions these are not broken, only dominated, so a user who already
+    // downloaded one keeps it offered — hiding a model that is on disk and working would take a
+    // working setup away to make a point.
+    case .whisperMedium, .whisperLarge: return isOfflineModelAvailable()
     default: return true
     }
   }
