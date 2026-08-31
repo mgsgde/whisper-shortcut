@@ -86,6 +86,7 @@ jobs:
             -scheme WhisperShortcut \
             -configuration Release \
             -archivePath $RUNNER_TEMP/WhisperShortcut.xcarchive \
+            -skipPackagePluginValidation \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
             DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }}

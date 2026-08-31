@@ -8,7 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		BF31AC7C2EEB2B8200C1DEA3 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */; };
+		BFA8E0012F08A10100E00004 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00002 /* MLXLLM */; };
+		BFA8E0012F08A10100E00005 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00003 /* MLXLMCommon */; };
 		BF9918252F697163008AB3ED /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = BF99181E2F697163008AB3ED /* WhisperKit */; };
+		BFA8E0012F08A10100E00008 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00006 /* MLXLLM */; };
+		BFA8E0012F08A10100E00009 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00007 /* MLXLMCommon */; };
 		BF9918262F697163008AB3ED /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BF99181C2F697163008AB3ED /* HotKey */; };
 		BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BFBC35F42E3E129600BAC747 /* HotKey */; };
 /* End PBXBuildFile section */
@@ -70,6 +74,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				BF31AC7C2EEB2B8200C1DEA3 /* WhisperKit in Frameworks */,
+				BFA8E0012F08A10100E00004 /* MLXLLM in Frameworks */,
+				BFA8E0012F08A10100E00005 /* MLXLMCommon in Frameworks */,
 				BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -79,6 +85,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				BF9918252F697163008AB3ED /* WhisperKit in Frameworks */,
+				BFA8E0012F08A10100E00008 /* MLXLLM in Frameworks */,
+				BFA8E0012F08A10100E00009 /* MLXLMCommon in Frameworks */,
 				BF9918262F697163008AB3ED /* HotKey in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -143,6 +151,8 @@
 			packageProductDependencies = (
 				BFBC35F42E3E129600BAC747 /* HotKey */,
 				BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */,
+				BFA8E0012F08A10100E00002 /* MLXLLM */,
+				BFA8E0012F08A10100E00003 /* MLXLMCommon */,
 			);
 			productName = WhisperShortcut;
 			productReference = BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */;
@@ -167,6 +177,8 @@
 			packageProductDependencies = (
 				BF99181C2F697163008AB3ED /* HotKey */,
 				BF99181E2F697163008AB3ED /* WhisperKit */,
+				BFA8E0012F08A10100E00006 /* MLXLLM */,
+				BFA8E0012F08A10100E00007 /* MLXLMCommon */,
 			);
 			productName = WhisperShortcut;
 			productReference = BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */;
@@ -230,6 +242,7 @@
 			packageReferences = (
 				BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */,
 				BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */,
+				BFA8E0012F08A10100E00001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BF3C90C72E3E0CC0001D325B /* Products */;
@@ -675,6 +688,14 @@
 				kind = branch;
 			};
 		};
+		BFA8E0012F08A10100E00001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.31.3;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -697,6 +718,26 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */;
 			productName = HotKey;
+		};
+		BFA8E0012F08A10100E00002 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		BFA8E0012F08A10100E00003 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
+		};
+		BFA8E0012F08A10100E00006 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		BFA8E0012F08A10100E00007 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
