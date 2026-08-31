@@ -68,6 +68,44 @@ struct LocalLLMTests {
     #expect(LocalLLMChatProvider.strippingReasoningBlocks(raw) == raw)
   }
 
+  // MARK: - Selection source
+
+  /// The App Store build reads the Dictate Prompt selection off a screenshot. A local model is
+  /// text-only, so it received the "edit the highlighted region" system prompt with no image and
+  /// — because screenshot mode skips the clipboard — no text either, and duly "edited" the voice
+  /// instruction. The selection source has to follow the model, not the build.
+  @Test("A local model never takes its selection from a screenshot")
+  func localModelAlwaysUsesClipboard() {
+    #expect(PromptModel.localModel.dictatePromptUsesScreenshotSelection == false)
+  }
+
+  /// The other side of the same rule: models that *can* see an image still follow the build, so
+  /// this fix does not quietly turn the App Store build's screenshot flow off for everyone.
+  @Test("Image-capable models still follow the build's selection mode")
+  func geminiFollowsBuildSelectionMode() {
+    #expect(
+      PromptModel.gemini31FlashLite.dictatePromptUsesScreenshotSelection
+        == AppConstants.dictatePromptUsesScreenshotSelection)
+  }
+
+  /// The system prompt is what actually reaches the model, so pin that too. Not by keyword — the
+  /// clipboard prompt mentions a screenshot legitimately, as optional context for *how* to edit —
+  /// but by which of the two prompts is chosen: only the screenshot one says the text to edit IS
+  /// the highlighted region, and that is the instruction a local model cannot satisfy.
+  @Test("The clipboard selection does not get the screenshot-selection system prompt")
+  func clipboardSelectionGetsTheClipboardSystemPrompt() {
+    let screenshotPrompt =
+      AppConstants.dictatePromptScreenshotSelectionSystemPrompt + AppConstants.promptModeOutputRule
+
+    let forClipboard = SpeechService.buildDictatePromptSystemPrompt(
+      logPrefix: "TEST", usesScreenshotSelection: false)
+    let forScreenshot = SpeechService.buildDictatePromptSystemPrompt(
+      logPrefix: "TEST", usesScreenshotSelection: true)
+
+    #expect(forClipboard != screenshotPrompt)
+    #expect(forScreenshot == screenshotPrompt)
+  }
+
   // MARK: - Request body
 
   /// Ollama is the default endpoint and does not read `chat_template_kwargs`; its documented

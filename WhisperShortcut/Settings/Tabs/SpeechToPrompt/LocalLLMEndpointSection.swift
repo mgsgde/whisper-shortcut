@@ -15,6 +15,17 @@ struct LocalLLMEndpointSection: View {
         subtitle: "Fully offline recipe: (1) Dictate → Offline Whisper, (2) Dictate Prompt → Local (this page), (3) keep Ollama or LM Studio running. Audio is transcribed on-device first, then rewritten by your local model — no cloud, no API key."
       )
 
+      // Every other Dictate Prompt model in this build reads the selection off a screenshot. A
+      // local text model can't see one, so it uses the clipboard — and copying for the user needs
+      // the Accessibility permission this build does without. Say so here, or the first run looks
+      // like the feature ignoring the selection.
+      if AppConstants.dictatePromptUsesScreenshotSelection {
+        Text("Copy the text you want edited (⌘C) before you start dictating — the local model reads your clipboard, not the screen.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
       HStack(alignment: .center, spacing: 16) {
         Text("Endpoint:")
           .font(.body)

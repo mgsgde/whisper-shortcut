@@ -62,7 +62,11 @@ enum ConnectionPrewarmer {
     let model = LocalLLMPreferences.modelID
     guard let url = URL(string: endpoint) else { return }
 
-    let systemPrompt = SpeechService.buildDictatePromptSystemPrompt(logPrefix: "PREWARM")
+    // `false` because this warms the *local* model, and a local text model always takes its
+    // selection from the clipboard. Priming with the screenshot prompt would prime a prefix the
+    // real request never sends.
+    let systemPrompt = SpeechService.buildDictatePromptSystemPrompt(
+      logPrefix: "PREWARM", usesScreenshotSelection: false)
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
