@@ -30,35 +30,45 @@ stops being the only local option and stops being the one we recommend.
 
 ---
 
-## The dependency blocker (read this first)
+## The dependency question — resolved 2026-08-31: no WhisperKit upgrade needed
 
-**Adding MLX to the project as it stands will fail SPM resolution.** This is the single fact that
-decides the shape and the order of the work.
+An earlier draft of this plan opened with a blocker: WhisperKit as pinned constrains
+`swift-transformers` to `<1.2.0`, while the MLX quick start asks for `>=1.3.0`, and the ranges do
+not intersect. That would have made a WhisperKit upgrade step 0 — a risky change on the code path
+of the app's core feature.
 
-| Package | Constraint on `swift-transformers` | Effective range |
-|---|---|---|
-| WhisperKit, as pinned today (rev `2870b46b`) | `.upToNextMinor(from: "1.1.2")` | `>=1.1.2, <1.2.0` |
-| `mlx-swift-lm` HuggingFace integration | `from: "1.3.0"` | `>=1.3.0, <2.0.0` |
+**It does not apply.** `mlx-swift-lm` 3.x declares exactly two package dependencies:
 
-The ranges do not intersect. Currently resolved: `swift-transformers 1.1.9`.
+```swift
+.package(url: "https://github.com/ml-explore/mlx-swift", .upToNextMinor(from: "0.31.6")),
+.package(url: "https://github.com/swiftlang/swift-syntax.git", "602.0.0" ..< "604.0.0"),
+```
 
-**The way out:** upstream WhisperKit has been restructured into
-[`argmaxinc/argmax-oss-swift`](https://github.com/argmaxinc/argmax-oss-swift) (the `argmaxinc/WhisperKit`
-URL redirects there). Its current `main` **no longer depends on `swift-transformers` at all** — the
-dependency list is `swift-argument-parser` plus optional server packages, and the package now ships
-`ArgmaxCore` / `WhisperKit` / `TTSKit` / `SpeakerKit` targets. Upgrading removes the clash outright
-rather than negotiating around it.
+**`swift-transformers` is not among them.** `MLXLLM` depends on `MLXLMCommon` plus MLX products;
+`MLXLMCommon` depends on MLX products alone. Decoupling from tokenizer and downloader packages *is*
+the 3.x breaking change the package README calls out. The `swift-transformers from "1.3.0"` line in
+its quick start is a dependency of **the example app**, chosen there to satisfy the `MLXHuggingFace`
+convenience macros — not a constraint `mlx-swift-lm` imposes on consumers.
 
-That upgrade is **its own slice with its own risk**, and it touches the code path the app's core
-feature runs on. It is not a footnote to the MLX work; it is step 0. Do not start MLX before it is
-green, and do not bundle the two into one commit series — if offline dictation regresses, we need to
-know which change did it.
+So the integration path is the first of the three the package documents: implement `Downloader`,
+`Tokenizer` and `TokenizerLoader` ourselves. The docs describe these as "only a few properties and
+methods [with] trivial mappings to the concrete implementation" and ship a worked `Downloader`
+example. We already have `swift-transformers 1.1.9` resolved with its `Hub` and `Tokenizers`
+products — WhisperKit consumes both — so the adapters can be written against the version already in
+the graph, and nothing needs to move.
 
-The alternative — an MLX integration path that avoids `swift-transformers` — is worth one hour of
-investigation before committing to the upgrade. `mlx-swift-lm` states it "integrates with a variety
-of tokenizer and downloader packages through protocol conformance" with three integration styles of
-differing convenience. If a custom-downloader conformance sidesteps the constraint, step 0 becomes
-optional. **Verify this first; it may save the whole upgrade.**
+```swift
+let model = try await loadModel(from: downloader, using: tokenizerLoader,
+                                id: "mlx-community/Qwen3-4B-4bit")
+let session = ChatSession(model)
+```
+
+Avoid the `MLXHuggingFace` product for a second reason too: its target pulls `MLXFoundationModels`
+under a **default-on** trait, and that surface needs the macOS 27 SDK. Depending on `MLXLLM` +
+`MLXLMCommon` only sidesteps both the trait and the tokenizer-package question.
+
+**Caveat on this finding:** it is read off the dependency graph, not off a successful build. Nothing
+has been compiled. The first task below is the cheap experiment that turns it into fact.
 
 ---
 
@@ -133,10 +143,18 @@ macOS 27 SDK. We only want `MLXLLM` + `MLXLMCommon`.
 
 Each slice ships on its own and leaves the app working.
 
-**Slice 0 — unblock the dependency.** Either prove an MLX integration path that avoids
-`swift-transformers`, or upgrade WhisperKit to `argmax-oss-swift`. Gate: offline dictation with
-Turbo works exactly as before, `run-tests.sh` green, load timings unchanged (compare the existing
-`SPEED: Whisper transcription` lines — we already log what a regression would look like).
+**Slice 0 — prove the graph resolves.** Add `mlx-swift-lm` with **only** `MLXLLM` and `MLXLMCommon`,
+change no other dependency, and build both schemes. Gate: SPM resolves with `swift-transformers`
+still at 1.1.9, `rebuild-and-restart.sh` **and** `--app-store` both succeed, `run-tests.sh` green,
+and offline dictation with Turbo is unchanged (compare the existing `SPEED: Whisper transcription`
+lines — we already log what a regression would look like). Also record the `.pkg` size before and
+after; this is the cheapest moment to learn what MLX costs in download size.
+
+If resolution unexpectedly fails, the fallback is the WhisperKit upgrade to
+[`argmaxinc/argmax-oss-swift`](https://github.com/argmaxinc/argmax-oss-swift) — its current `main`
+dropped `swift-transformers` entirely — but that touches the core feature's code path and gets its
+own slice and its own gate. Do not bundle it with MLX work; if offline dictation regresses we need
+to know which change did it.
 
 **Slice 1 — the provider, with a hardcoded model.** `MLXChatProvider` behind `LLMChatProvider`,
 one model, model path resolved manually. No UI. Gate: Dictate Prompt end-to-end through MLX, and
@@ -182,10 +200,12 @@ in-app Chat answers "what can this app do?" from it.
 
 ## Open questions
 
-1. Does an MLX integration path exist that avoids `swift-transformers` entirely? (Decides whether
-   Slice 0 is a one-hour spike or a WhisperKit upgrade.)
-2. What does the `argmax-oss-swift` upgrade cost in API changes to `LocalSpeechService` and
-   `ModelManager`?
+1. ~~Does an MLX integration path exist that avoids `swift-transformers` entirely?~~ **Answered
+   2026-08-31: yes** — see [the dependency section](#the-dependency-question--resolved-2026-08-31-no-whisperkit-upgrade-needed).
+   The WhisperKit upgrade drops out of the plan unless Slice 0 surprises us.
+2. How much of `Tokenizer` / `TokenizerLoader` does `swift-transformers` 1.1.9 satisfy? The
+   `Downloader` mapping is shown in the docs and looks trivial; the tokenizer side is unexamined
+   and is now the main unknown in Slice 1.
 3. Which models make the catalogue? Route through the `llm-model-docs` / `audit-llm-models` skill
    rather than guessing — the Whisper list got good by being opinionated and short.
 4. Is MLX measurably faster than the local HTTP path for a Dictate Prompt rewrite? Slice 1 answers
