@@ -390,7 +390,11 @@ enum TranscriptionModel: String, CaseIterable {
   var honorsSystemPrompt: Bool {
     switch self {
     case .openAIGPTTranscribe: return false
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge: return false
+    // Provider-wide, not model-by-model: the hand-kept list here and in
+    // `systemPromptIgnoredReason` both missed `whisperLargeTurbo` when it was added, which is how
+    // the recommended offline model ended up presented as prompt-honouring. No offline model can
+    // take an instruction, so the provider is the right granularity.
+    case _ where provider == .offline: return false
     default: return true
     }
   }
@@ -400,7 +404,10 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .openAIGPTTranscribe:
       return "\(displayName) ignores the system prompt below — it is a pure speech-recognition model, not an instructable one. Filler-word removal, punctuation and formatting rules have no effect; your Glossary still applies, as keyword hints. Pick a Gemini model or GPT-4o Transcribe if you want the prompt honoured."
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
+    // Provider-wide rather than case-by-case: this list was spelled out per model and
+    // `whisperLargeTurbo` was added to the enum without being added here, so the newest — and
+    // recommended — offline model was the one showing an inert prompt editor with no warning.
+    case _ where provider == .offline:
       return "Offline Whisper ignores the system prompt below — its API accepts no instructions. Only the Glossary reaches it, as conditioning text."
     default:
       return nil

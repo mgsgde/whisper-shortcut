@@ -6,6 +6,9 @@ struct SpeechToTextSettingsTab: View {
   @FocusState.Binding var focusedField: SettingsFocusField?
   @ObservedObject var modelManager = ModelManager.shared
   @State private var refreshTrigger = UUID() // Trigger to force view refresh
+  /// Collapsed by default when the selected model ignores the system prompt — it is still there
+  /// for the user who switches back to a cloud model, just not in the way of the field that works.
+  @State private var showIgnoredSystemPrompt = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -35,35 +38,38 @@ struct SpeechToTextSettingsTab: View {
         SpacedSectionDivider()
       }
 
-      // Dictation system prompt editor.
+      // The two text editors, ordered by what the *selected* model actually reads.
       //
-      // The subtitle used to name "OpenAI Transcribe" among the models that use this prompt. That
-      // was wrong for `gpt-transcribe`, which the request builder deliberately does not forward it
-      // to — so anyone dictating with it kept every filler word while the editor above claimed
-      // otherwise. The list now names only models that act on it, and the banner below states the
-      // exception for whichever model is actually selected.
+      // For offline Whisper and GPT Transcribe the system prompt is inert — the model's API takes
+      // no instructions — while the Glossary is the only lever there is. Showing the dead editor
+      // first, full size, taught users to tune a field that does nothing; a banner saying so was
+      // not enough, because the layout said the opposite. So when the prompt is ignored, the
+      // Glossary moves up and the prompt collapses behind a disclosure, still editable for
+      // whenever a cloud model is selected again.
       if let ignoredReason = viewModel.data.selectedTranscriptionModel.systemPromptIgnoredReason {
+        glossaryEditor
+
+        SpacedSectionDivider()
+
+        DisclosureGroup(isExpanded: $showIgnoredSystemPrompt) {
+          systemPromptEditor
+            .padding(.top, SettingsConstants.internalSectionSpacing)
+        } label: {
+          Label(
+            "System prompt — not used by \(viewModel.data.selectedTranscriptionModel.displayName)",
+            systemImage: "text.alignleft"
+          )
+          .font(.headline)
+        }
+
         systemPromptIgnoredBanner(ignoredReason)
+      } else {
+        systemPromptEditor
+
+        SpacedSectionDivider()
+
+        glossaryEditor
       }
-
-      SystemPromptSectionEditor(
-        title: "System prompt",
-        systemImage: "text.alignleft",
-        subtitle: "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter and self-hosted endpoints. GPT Transcribe and offline Whisper ignore it — they take vocabulary from the Glossary below instead. Keep specific terms out of here; put them in the Glossary.",
-        section: .dictation,
-        defaultContent: AppConstants.defaultTranscriptionSystemPrompt
-      )
-
-      SpacedSectionDivider()
-
-      // Glossary editor
-      SystemPromptSectionEditor(
-        title: "Glossary",
-        systemImage: "character.book.closed",
-        subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Leave empty for no conditioning.",
-        section: .whisperGlossary,
-        defaultContent: AppConstants.defaultWhisperGlossary
-      )
 
       SpacedSectionDivider()
 
@@ -72,6 +78,30 @@ struct SpeechToTextSettingsTab: View {
     }
   }
   
+  // MARK: - Prompt and Glossary Editors
+
+  @ViewBuilder
+  private var systemPromptEditor: some View {
+    SystemPromptSectionEditor(
+      title: "System prompt",
+      systemImage: "text.alignleft",
+      subtitle: "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter and self-hosted endpoints. GPT Transcribe and offline Whisper ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary.",
+      section: .dictation,
+      defaultContent: AppConstants.defaultTranscriptionSystemPrompt
+    )
+  }
+
+  @ViewBuilder
+  private var glossaryEditor: some View {
+    SystemPromptSectionEditor(
+      title: "Glossary",
+      systemImage: "character.book.closed",
+      subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning.",
+      section: .whisperGlossary,
+      defaultContent: AppConstants.defaultWhisperGlossary
+    )
+  }
+
   // MARK: - Shortcuts Section
   @ViewBuilder
   private var shortcutsSection: some View {
