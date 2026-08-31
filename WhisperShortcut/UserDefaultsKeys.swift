@@ -179,6 +179,8 @@ enum UserDefaultsKeys {
   /// The model tag to request from the local server (e.g. an Ollama tag like `qwen3`).
   /// Empty → SettingsDefaults.localModelID.
   static let localPromptModelID = "localPromptModelID"
+  /// Slice 1 measurement switch: in-process MLX instead of the local HTTP server. No Settings UI.
+  static let useInProcessMLX = "useInProcessMLX"
 
   // MARK: - Read Aloud
   /// When true, selected text is run through a Gemini "rewrite for speech" pass before TTS.

@@ -10,9 +10,13 @@
 		BF31AC7C2EEB2B8200C1DEA3 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */; };
 		BFA8E0012F08A10100E00004 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00002 /* MLXLLM */; };
 		BFA8E0012F08A10100E00005 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00003 /* MLXLMCommon */; };
+		BFA8E0012F08A10100E00013 /* Hub in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00011 /* Hub */; };
+		BFA8E0012F08A10100E00014 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00012 /* Tokenizers */; };
 		BF9918252F697163008AB3ED /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = BF99181E2F697163008AB3ED /* WhisperKit */; };
 		BFA8E0012F08A10100E00008 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00006 /* MLXLLM */; };
 		BFA8E0012F08A10100E00009 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00007 /* MLXLMCommon */; };
+		BFA8E0012F08A10100E00017 /* Hub in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00015 /* Hub */; };
+		BFA8E0012F08A10100E00018 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00016 /* Tokenizers */; };
 		BF9918262F697163008AB3ED /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BF99181C2F697163008AB3ED /* HotKey */; };
 		BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BFBC35F42E3E129600BAC747 /* HotKey */; };
 /* End PBXBuildFile section */
@@ -76,6 +80,8 @@
 				BF31AC7C2EEB2B8200C1DEA3 /* WhisperKit in Frameworks */,
 				BFA8E0012F08A10100E00004 /* MLXLLM in Frameworks */,
 				BFA8E0012F08A10100E00005 /* MLXLMCommon in Frameworks */,
+				BFA8E0012F08A10100E00013 /* Hub in Frameworks */,
+				BFA8E0012F08A10100E00014 /* Tokenizers in Frameworks */,
 				BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -87,6 +93,8 @@
 				BF9918252F697163008AB3ED /* WhisperKit in Frameworks */,
 				BFA8E0012F08A10100E00008 /* MLXLLM in Frameworks */,
 				BFA8E0012F08A10100E00009 /* MLXLMCommon in Frameworks */,
+				BFA8E0012F08A10100E00017 /* Hub in Frameworks */,
+				BFA8E0012F08A10100E00018 /* Tokenizers in Frameworks */,
 				BF9918262F697163008AB3ED /* HotKey in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -153,6 +161,8 @@
 				BF31AC7B2EEB2B8200C1DEA3 /* WhisperKit */,
 				BFA8E0012F08A10100E00002 /* MLXLLM */,
 				BFA8E0012F08A10100E00003 /* MLXLMCommon */,
+				BFA8E0012F08A10100E00011 /* Hub */,
+				BFA8E0012F08A10100E00012 /* Tokenizers */,
 			);
 			productName = WhisperShortcut;
 			productReference = BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */;
@@ -179,6 +189,8 @@
 				BF99181E2F697163008AB3ED /* WhisperKit */,
 				BFA8E0012F08A10100E00006 /* MLXLLM */,
 				BFA8E0012F08A10100E00007 /* MLXLMCommon */,
+				BFA8E0012F08A10100E00015 /* Hub */,
+				BFA8E0012F08A10100E00016 /* Tokenizers */,
 			);
 			productName = WhisperShortcut;
 			productReference = BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */;
@@ -243,6 +255,7 @@
 				BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */,
 				BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */,
 				BFA8E0012F08A10100E00001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				BFA8E0012F08A10100E00010 /* XCRemoteSwiftPackageReference "swift-transformers" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BF3C90C72E3E0CC0001D325B /* Products */;
@@ -696,6 +709,14 @@
 				minimumVersion = 3.31.3;
 			};
 		};
+		BFA8E0012F08A10100E00010 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers.git";
+			requirement = {
+				kind = exactVersion;
+				version = 1.1.9;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -738,6 +759,26 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BFA8E0012F08A10100E00001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
 			productName = MLXLMCommon;
+		};
+		BFA8E0012F08A10100E00011 /* Hub */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00010 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Hub;
+		};
+		BFA8E0012F08A10100E00012 /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00010 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
+		BFA8E0012F08A10100E00015 /* Hub */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00010 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Hub;
+		};
+		BFA8E0012F08A10100E00016 /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00010 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

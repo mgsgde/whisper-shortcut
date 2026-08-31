@@ -1525,6 +1525,12 @@ enum LocalLLMPreferences {
     return v.isEmpty ? SettingsDefaults.localEndpointURL : v
   }
 
+  /// Slice 1: hidden switch to route Dictate Prompt through in-process MLX instead of HTTP.
+  /// `defaults write com.magnusgoedde.whispershortcut useInProcessMLX -bool true`
+  static var useInProcessMLX: Bool {
+    UserDefaults.standard.bool(forKey: UserDefaultsKeys.useInProcessMLX)
+  }
+
   /// The model tag to request (e.g. an Ollama tag). Falls back to the default model id.
   static var modelID: String {
     let v = (UserDefaults.standard.string(forKey: UserDefaultsKeys.localPromptModelID) ?? "")

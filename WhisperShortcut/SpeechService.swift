@@ -1219,7 +1219,12 @@ class SpeechService {
     model: PromptModel
   ) async throws -> String {
     let modelID = LocalLLMPreferences.modelID
-    DebugLogger.log("PROMPT-MODE-LOCAL: Starting execution endpoint=\(LocalLLMPreferences.chatCompletionsURL) model=\(modelID)")
+    let useMLX = LocalLLMPreferences.useInProcessMLX
+    if useMLX {
+      DebugLogger.log("PROMPT-MODE-LOCAL: Starting execution provider=mlx model=\(MLXChatProvider.hardcodedModelID)")
+    } else {
+      DebugLogger.log("PROMPT-MODE-LOCAL: Starting execution endpoint=\(LocalLLMPreferences.chatCompletionsURL) model=\(modelID)")
+    }
 
     // The local path is two local models in series, and until these timings existed there was no
     // way to tell which of them the user was actually waiting on.
@@ -1263,13 +1268,19 @@ class SpeechService {
       ? nil : ["parts": [["text": envelope.systemPrompt]]]
 
     let requestTime = CFAbsoluteTimeGetCurrent()
-    let stream = LocalLLMChatProvider.shared.sendChatStream(
-      model: modelID,
-      contents: contents,
-      systemInstruction: systemInstruction,
-      tools: [],
-      options: .textTransform
-    )
+    let stream = useMLX
+      ? MLXChatProvider.shared.sendChatStream(
+        model: MLXChatProvider.hardcodedModelID,
+        contents: contents,
+        systemInstruction: systemInstruction,
+        tools: [],
+        options: .textTransform)
+      : LocalLLMChatProvider.shared.sendChatStream(
+        model: modelID,
+        contents: contents,
+        systemInstruction: systemInstruction,
+        tools: [],
+        options: .textTransform)
     var combined = ""
     var firstTokenTime: CFAbsoluteTime?
     var finishReason: String?
@@ -1289,11 +1300,12 @@ class SpeechService {
     // Time to first token is prompt processing; everything after it is generation. They respond to
     // completely different fixes — a primed prompt cache versus a smaller model — so they are
     // logged apart.
+    let speedTag = useMLX ? "mlx:\(MLXChatProvider.hardcodedModelID)" : "local:\(modelID)"
     let now = CFAbsoluteTimeGetCurrent()
     let prefillTime = (firstTokenTime ?? now) - requestTime
     let generationTime = now - (firstTokenTime ?? now)
     DebugLogger.logSpeech(
-      "SPEED: [local:\(modelID)] transcription \(String(format: "%.2f", transcriptionTime))s + prefill \(String(format: "%.2f", prefillTime))s + generation \(String(format: "%.2f", generationTime))s = \(String(format: "%.2f", now - startTime))s total (\(combined.count) chars)")
+      "SPEED: [\(speedTag)] transcription \(String(format: "%.2f", transcriptionTime))s + prefill \(String(format: "%.2f", prefillTime))s + generation \(String(format: "%.2f", generationTime))s = \(String(format: "%.2f", now - startTime))s total (\(combined.count) chars)")
 
     // The cap exists to bound a model that loops instead of answering; hitting it on real work
     // would mean silently handing back a truncated document, so say so.
@@ -1317,7 +1329,7 @@ class SpeechService {
       instruction: .known(instruction),
       mode: mode,
       clipboardContext: clipboardContext,
-      model: "local:\(modelID)",
+      model: useMLX ? "mlx:\(MLXChatProvider.hardcodedModelID)" : "local:\(modelID)",
       hadScreenshot: false,
       logPrefix: "PROMPT-MODE-LOCAL")
     return normalizedText
