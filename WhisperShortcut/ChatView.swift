@@ -3913,7 +3913,15 @@ struct ChatInputAreaView: View {
   private var filteredCommandSuggestions: [(command: String, description: String)] {
     guard lastWord.hasPrefix("/") else { return [] }
     let prefix = lastWord.lowercased()
-    return viewModel.commandSuggestionsForDisplay.filter { $0.command.lowercased().hasPrefix(prefix) }
+    let matches = viewModel.commandSuggestionsForDisplay.filter { $0.command.lowercased().hasPrefix(prefix) }
+    // Bare "/" used to dump every model slug. Keep actions + provider aliases
+    // (`/gemini`, `/gpt`, `/claude`…); require 3+ characters before listing per-model IDs.
+    guard prefix.count < 3 else { return matches }
+    let providerAliases = Set(ChatModelProvider.allCases.map { "/\($0.commandAlias)" })
+    let actionCommands = Set(
+      (ChatViewModel.commandsBeforeModels + ChatViewModel.commandsAfterModels).map(\.command)
+    )
+    return matches.filter { actionCommands.contains($0.command) || providerAliases.contains($0.command) }
   }
 
   /// The command for the currently highlighted suggestion row, or nil when the overlay isn't

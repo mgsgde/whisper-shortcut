@@ -112,23 +112,27 @@ struct RecordingIndicatorView: View {
   let onCancel: () -> Void
   let onConfirm: () -> Void
 
-  /// The pill shrinks while processing — only ✕ and the spinner remain.
+  /// The pill grows with a status word so the user can tell listening from transcribing
+  /// without decoding icons (Wispr Flow Bar / Superwhisper parity).
   static func pillSize(for phase: RecordingIndicatorPhase) -> CGSize {
     switch phase {
-    case .recording: return CGSize(width: 158, height: 40)
-    case .processing: return CGSize(width: 72, height: 40)
+    case .recording: return CGSize(width: 218, height: 40)
+    case .processing: return CGSize(width: 168, height: 40)
     }
   }
 
   var body: some View {
     let size = Self.pillSize(for: model.phase)
-    HStack(spacing: 10) {
+    HStack(spacing: 8) {
       switch model.phase {
       case .recording:
         PillCircleButton(
           symbolName: "xmark", foreground: .white, background: Color(white: 0.28),
           accessibilityLabel: "Discard recording", action: onCancel)
         LevelBarsView(levels: model.levels)
+        Text("Listening")
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundColor(.white)
         PillCircleButton(
           symbolName: "checkmark", foreground: .black, background: .white,
           accessibilityLabel: "Stop and process", action: onConfirm)
@@ -137,13 +141,17 @@ struct RecordingIndicatorView: View {
           symbolName: "xmark", foreground: .white, background: Color(white: 0.28),
           accessibilityLabel: "Cancel processing", action: onCancel)
         SpinnerView()
-          .frame(maxWidth: .infinity)
+        Text("Transcribing")
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundColor(.white)
       }
     }
     .padding(.horizontal, 8)
     .frame(width: size.width, height: size.height)
     .background(Capsule().fill(Color.black.opacity(0.92)))
     .environment(\.colorScheme, .dark)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(model.phase == .recording ? "Listening" : "Transcribing")
   }
 }
 

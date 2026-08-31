@@ -127,12 +127,7 @@ struct ImprovementSettingsTab: View {
             .toggleStyle(.switch)
             .help("When enabled, interaction logs (dictation, dictate prompt, chat) are stored so \"Improve from usage\" can suggest better prompts. On by default.")
 
-          HStack(alignment: .center, spacing: 12) {
-            Text("Improve from usage")
-              .font(.callout)
-              .fontWeight(.medium)
-            Spacer(minLength: 16)
-            Button(action: {
+          Button(action: {
               guard !isImprovementRunning else { return }
               isImprovementRunning = true
               queuedJobCount = 0
@@ -148,7 +143,6 @@ struct ImprovementSettingsTab: View {
             .disabled(isImprovementRunning || !saveUsageData)
             .help("Improve prompts and context from your usage")
             .pointerCursorOnHover()
-          }
 
           Text("Runs in the background using your interaction logs. Enable \"Save usage data\" to collect logs. You can switch to another tab; you'll be notified when it's done.")
             .font(.caption)

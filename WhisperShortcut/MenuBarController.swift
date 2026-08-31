@@ -1426,6 +1426,14 @@ class MenuBarController: NSObject {
     PopupNotificationWindow.showError(message ?? shortTitle, title: shortTitle, retryAction: retryAction, retryActionTitle: retryActionTitle, dismissAction: dismissAction, topUpURL: topUpURL)
   }
 
+  /// Accidental hotkey taps and near-silent recordings are misses, not failures.
+  private static func isBenignNoResult(_ error: TranscriptionError) -> Bool {
+    switch error {
+    case .noSpeechDetected, .textTooShort: return true
+    default: return false
+    }
+  }
+
   /// Unified error handler for processing errors (transcription/prompting)
   /// - Parameters:
   ///   - error: The error that occurred
@@ -1436,24 +1444,26 @@ class MenuBarController: NSObject {
       // Dismiss any processing popup before showing error
       PopupNotificationWindow.dismissProcessing()
 
-      // Log error to file (replaces CrashLogger)
-      DebugLogger.logError(error, context: "Processing error for \(mode)", state: self.appState)
-
-      // "No speech detected" is a benign outcome, not a failure — present it exactly like
-      // the local silence precheck: a brief info popup instead of the persistent error
-      // popup, which sat on screen for the full error duration covering the user's work.
+      // Silence / too-short speech is a benign miss, not a failure. Logging it as ERROR
+      // filled errors-*.log with `TranscriptionError error 21` (noSpeechDetected) on
+      // accidental hotkey taps, and the persistent error popup plus clipboard overwrite
+      // covered the user's work. Same presentation as the local silence precheck.
       if let transcriptionError = error as? TranscriptionError,
-        case .noSpeechDetected = transcriptionError
+        Self.isBenignNoResult(transcriptionError)
       {
+        DebugLogger.log("AUDIO: Benign no-result — \(transcriptionError)")
         self.cleanupAudioFile(at: audioURL)
         self.appState = self.appState.finish()
         PopupNotificationWindow.showInfo(
-          "No speech was detected in your recording. Check that the right microphone is selected and speak clearly.",
-          title: "No speech detected",
+          "Nothing to transcribe. Check the microphone and try again.",
+          title: "Didn't catch that",
           customDisplayDuration: Self.noSpeechInfoDuration
         )
         return
       }
+
+      // Log error to file (replaces CrashLogger)
+      DebugLogger.logError(error, context: "Processing error for \(mode)", state: self.appState)
 
       let (shortTitle, errorMessage): (String, String)
       let transcriptionError: TranscriptionError?
@@ -2535,8 +2545,8 @@ extension MenuBarController: AudioRecorderDelegate {
           self.appState = self.appState.stopRecording()
           self.appState = self.appState.finish()
           PopupNotificationWindow.showInfo(
-            "Your recording sounded silent. Check that the right microphone is selected and speak a bit louder.",
-            title: "No speech detected",
+            "Nothing to transcribe. Check the microphone and try again.",
+            title: "Didn't catch that",
             customDisplayDuration: Self.noSpeechInfoDuration
           )
           return
