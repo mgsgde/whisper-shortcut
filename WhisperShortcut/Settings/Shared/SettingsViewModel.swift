@@ -157,6 +157,7 @@ class SettingsViewModel: ObservableObject {
     data.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
     data.voiceFeedback = currentConfig.voiceFeedback.isEnabled ? currentConfig.voiceFeedback : nil
     data.meetingMarker = currentConfig.meetingMarker.isEnabled ? currentConfig.meetingMarker : nil
+    data.addToGlossary = currentConfig.addToGlossary.isEnabled ? currentConfig.addToGlossary : nil
 
     for slot in Self.slots { slot.load(&data) }
 
@@ -264,6 +265,9 @@ class SettingsViewModel: ObservableObject {
     ConfigurableShortcutSlot(
       field: .meetingMarkerShortcut, label: "Flag Meeting Moment",
       read: { $0.meetingMarker }, write: { $0.meetingMarker = $1 }),
+    ConfigurableShortcutSlot(
+      field: .addToGlossaryShortcut, label: "Add Selection to Glossary",
+      read: { $0.addToGlossary }, write: { $0.addToGlossary = $1 }),
   ]
 
   // MARK: - Save Settings
@@ -306,6 +310,7 @@ class SettingsViewModel: ObservableObject {
     let readAloud = data.readAloud ?? disable(factory.readAloud)
     let voiceFeedback = data.voiceFeedback ?? disable(factory.voiceFeedback)
     let meetingMarker = data.meetingMarker ?? disable(factory.meetingMarker)
+    let addToGlossary = data.addToGlossary ?? disable(factory.addToGlossary)
     let newConfig = ShortcutConfig(
       startRecording: startRecording,
       startPrompting: startPrompting,
@@ -314,7 +319,8 @@ class SettingsViewModel: ObservableObject {
       screenshotCapture: screenshotCapture,
       readAloud: readAloud,
       voiceFeedback: voiceFeedback,
-      meetingMarker: meetingMarker
+      meetingMarker: meetingMarker,
+      addToGlossary: addToGlossary
     )
     ShortcutConfigManager.shared.saveConfiguration(newConfig)
 

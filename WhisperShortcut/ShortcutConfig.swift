@@ -120,6 +120,9 @@ struct ShortcutConfig: Codable {
   var readAloud: ShortcutDefinition
   var voiceFeedback: ShortcutDefinition
   var meetingMarker: ShortcutDefinition
+  /// Appends the current selection to the Glossary. Continues the ⌘-digit run of the other
+  /// actions; ⌘7 was the first free one.
+  var addToGlossary: ShortcutDefinition
 
   static let `default` = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
@@ -129,7 +132,8 @@ struct ShortcutConfig: Codable {
     screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
     readAloud: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true),
     voiceFeedback: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
-    meetingMarker: ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: true)
+    meetingMarker: ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: true),
+    addToGlossary: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true)
   )
 }
 
@@ -305,6 +309,7 @@ class ShortcutConfigManager {
     static let readAloudKey = "shortcut_read_aloud"
     static let voiceFeedbackKey = "shortcut_voice_feedback"
     static let meetingMarkerKey = "shortcut_meeting_marker"
+    static let addToGlossaryKey = "shortcut_add_to_glossary"
   }
 
   private let userDefaults = UserDefaults.standard
@@ -359,6 +364,8 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.voiceFeedbackKey) ?? ShortcutConfig.default.voiceFeedback
     let meetingMarker =
       loadShortcut(for: Constants.meetingMarkerKey) ?? ShortcutConfig.default.meetingMarker
+    let addToGlossary =
+      loadShortcut(for: Constants.addToGlossaryKey) ?? ShortcutConfig.default.addToGlossary
     return ShortcutConfig(
       startRecording: startRecording,
       startPrompting: startPrompting,
@@ -367,7 +374,8 @@ class ShortcutConfigManager {
       screenshotCapture: screenshotCapture,
       readAloud: readAloud,
       voiceFeedback: voiceFeedback,
-      meetingMarker: meetingMarker
+      meetingMarker: meetingMarker,
+      addToGlossary: addToGlossary
     )
   }
 
@@ -380,6 +388,7 @@ class ShortcutConfigManager {
     saveShortcut(config.readAloud, for: Constants.readAloudKey)
     saveShortcut(config.voiceFeedback, for: Constants.voiceFeedbackKey)
     saveShortcut(config.meetingMarker, for: Constants.meetingMarkerKey)
+    saveShortcut(config.addToGlossary, for: Constants.addToGlossaryKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)

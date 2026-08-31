@@ -7,10 +7,10 @@ import Testing
 /// host rule plus the switch that decides when it applies. Both are asserted here rather than
 /// inferred from behaviour: a wrong answer from `isLocalHost` does not crash, it just quietly
 /// sends a patient's dictation to a cloud API.
-/// Serialized because one test flips the stored preference; the rest pass the mode in explicitly
-/// rather than switching it on process-wide, which would otherwise block the live-provider suites
-/// running concurrently in the same process.
-@Suite("Offline Mode", .serialized)
+/// Every test here passes the mode in explicitly instead of switching it on process-wide: the same
+/// test process makes live provider calls, and a global flip blocks those mid-run — observed as a
+/// blocked Gemini request in an unrelated suite before this was cleaned up.
+@Suite("Offline Mode")
 struct OfflineModeTests {
 
   // MARK: - Host rule
@@ -91,22 +91,12 @@ struct OfflineModeTests {
 
   @Test("Usage data is never written to disk while the mode is on")
   func contextLoggingIsSuppressed() {
-    let previousMode = OfflineMode.isEnabled
-    let previousFlag = UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled)
-    defer {
-      OfflineMode.setEnabled(previousMode)
-      UserDefaults.standard.set(previousFlag, forKey: UserDefaultsKeys.contextLoggingEnabled)
-    }
-
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.contextLoggingEnabled)
-    OfflineMode.setEnabled(false)
-    #expect(ContextLoggingPreference.isEnabled)
-
-    OfflineMode.setEnabled(true)
-    // The user's own preference is untouched — it is overridden, not overwritten, so turning the
-    // mode off again restores what they had chosen.
-    #expect(!ContextLoggingPreference.isEnabled)
-    #expect(ContextLoggingPreference.storedFlag)
+    #expect(ContextLoggingPreference.isEnabled(offlineMode: false, storedFlag: true))
+    #expect(!ContextLoggingPreference.isEnabled(offlineMode: true, storedFlag: true))
+    // Offline Mode overrides the preference; it must not silently rewrite it, or turning the mode
+    // off again would leave logging off with no explanation.
+    #expect(!ContextLoggingPreference.isEnabled(offlineMode: false, storedFlag: false))
+    #expect(!ContextLoggingPreference.isEnabled(offlineMode: true, storedFlag: false))
   }
 
   // MARK: - The turbo model

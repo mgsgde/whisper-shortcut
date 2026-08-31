@@ -151,7 +151,13 @@ final class OfflineModeURLProtocol: URLProtocol {
 enum ContextLoggingPreference {
 
   static var isEnabled: Bool {
-    guard !OfflineMode.isEnabled else { return false }
+    isEnabled(offlineMode: OfflineMode.isEnabled, storedFlag: storedFlag)
+  }
+
+  /// The rule with both inputs passed in. Tests use this instead of switching the real mode on:
+  /// the test process also makes live provider calls, and a global flip blocks those mid-run.
+  static func isEnabled(offlineMode: Bool, storedFlag: Bool) -> Bool {
+    guard !offlineMode else { return false }
     return storedFlag
   }
 

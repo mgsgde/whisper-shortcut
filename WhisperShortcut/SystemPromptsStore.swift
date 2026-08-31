@@ -96,6 +96,80 @@ final class SystemPromptsStore {
       ?? AppConstants.defaultWhisperGlossary
   }
 
+  // MARK: - Glossary Append
+
+  /// What happened when a term was offered to the Glossary. The caller turns this into the popup
+  /// the user sees, so every outcome carries the term it is talking about.
+  enum GlossaryAppendResult: Equatable {
+    case added(String)
+    case duplicate(String)
+    /// The selection was not a term: empty, a whole sentence, or an implausible length.
+    case notATerm(String)
+    /// Adding would push the conditioning text past what Whisper reads (see `glossaryCharBudget`).
+    case budgetExceeded(String)
+
+    var termIfAny: String? {
+      switch self {
+      case .added(let t), .duplicate(let t), .notATerm(let t), .budgetExceeded(let t): return t
+      }
+    }
+  }
+
+  /// Whisper conditions on at most 224 tokens and silently drops the rest, so an unbounded
+  /// glossary quietly stops working from somewhere in the middle. ~1200 characters is a
+  /// conservative stand-in for that budget (German compounds tokenize badly), and refusing a term
+  /// with a message beats appending one that will never be read.
+  static let glossaryCharBudget = 1_200
+
+  /// The longest a selection may be and still be a vocabulary entry rather than prose.
+  private static let maxTermCharacters = 60
+  private static let maxTermWords = 5
+
+  /// Adds a user-selected spelling to the Glossary, if it is a term and not already there.
+  ///
+  /// Deliberately dumb: no model, no fuzzy matching, no network. The user has told the app the
+  /// correct spelling by selecting it — the app's job is to store it verbatim, which is also what
+  /// makes this usable in Offline Mode, where every model-driven learning path is switched off.
+  func appendToWhisperGlossary(_ raw: String) -> GlossaryAppendResult {
+    let term = Self.normaliseTerm(raw)
+    guard !term.isEmpty, term.count <= Self.maxTermCharacters,
+      term.split(separator: " ").count <= Self.maxTermWords
+    else {
+      return .notATerm(term.isEmpty ? raw.trimmingCharacters(in: .whitespacesAndNewlines) : term)
+    }
+
+    let existing = loadWhisperGlossary()
+    if Self.glossaryContains(term, in: existing) { return .duplicate(term) }
+    guard existing.count + term.count + 2 <= Self.glossaryCharBudget else {
+      return .budgetExceeded(term)
+    }
+
+    let updated = existing.isEmpty ? term : existing + ", " + term
+    updateSection(.whisperGlossary, content: updated)
+    DebugLogger.log("GLOSSARY: Added \"\(term)\" (\(updated.count) chars total)")
+    return .added(term)
+  }
+
+  /// Trims the selection to what belongs in a vocabulary list: no surrounding whitespace, no
+  /// trailing sentence punctuation, no internal line breaks. Everything else is left alone —
+  /// capitalisation and internal punctuation are part of the spelling the user is asserting.
+  static func normaliseTerm(_ raw: String) -> String {
+    let collapsed = raw.components(separatedBy: .whitespacesAndNewlines)
+      .filter { !$0.isEmpty }
+      .joined(separator: " ")
+    return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?\"'()[]"))
+  }
+
+  /// Case- and separator-insensitive membership test. The glossary is comma-separated by
+  /// convention but users write one term per line too, so both are treated as separators.
+  static func glossaryContains(_ term: String, in glossary: String) -> Bool {
+    let needle = term.lowercased()
+    return glossary
+      .components(separatedBy: CharacterSet(charactersIn: ",\n"))
+      .map { normaliseTerm($0).lowercased() }
+      .contains(needle)
+  }
+
   /// Read Aloud rewrite prompt. Returns default if section missing or empty.
   func loadReadAloudRewritePrompt() -> String {
     (loadSection(.readAloudRewrite)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }

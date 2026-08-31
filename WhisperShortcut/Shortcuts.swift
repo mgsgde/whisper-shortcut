@@ -5,6 +5,7 @@ protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
   func toggleVoiceFeedback()
+  func addSelectionToGlossary()
   func openSettings()
   func openChat()
   func takeScreenshot()
@@ -31,6 +32,7 @@ class Shortcuts {
   private var screenshotCaptureKey: HotKey?
   private var readAloudKey: HotKey?
   private var voiceFeedbackKey: HotKey?
+  private var addToGlossaryKey: HotKey?
   private var meetingMarkerKey: HotKey?
   private var currentConfig: ShortcutConfig
 
@@ -95,6 +97,14 @@ class Shortcuts {
         key: config.startPrompting.key, modifiers: config.startPrompting.modifiers)
       togglePromptingKey?.keyDownHandler = { [weak self] in
         self?.delegate?.togglePrompting()
+      }
+    }
+
+    if config.addToGlossary.isEnabled {
+      addToGlossaryKey = HotKey(
+        key: config.addToGlossary.key, modifiers: config.addToGlossary.modifiers)
+      addToGlossaryKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.addSelectionToGlossary()
       }
     }
 
@@ -172,6 +182,7 @@ class Shortcuts {
     screenshotCaptureKey = nil
     readAloudKey = nil
     voiceFeedbackKey = nil
+    addToGlossaryKey = nil
     meetingMarkerKey = nil
   }
 

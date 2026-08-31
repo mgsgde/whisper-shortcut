@@ -1615,6 +1615,7 @@ struct SettingsDefaults {
   static let readAloud: ShortcutDefinition? = nil
   static let voiceFeedback: ShortcutDefinition? = nil
   static let meetingMarker: ShortcutDefinition? = nil
+  static let addToGlossary: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
   // Chat defaults to 3.7 Flash — the current Gemini workhorse (GA 2026-08-13). Dictate Prompt
@@ -1744,6 +1745,7 @@ struct SettingsData: Equatable {
   var readAloud: ShortcutDefinition? = SettingsDefaults.readAloud
   var voiceFeedback: ShortcutDefinition? = SettingsDefaults.voiceFeedback
   var meetingMarker: ShortcutDefinition? = SettingsDefaults.meetingMarker
+  var addToGlossary: ShortcutDefinition? = SettingsDefaults.addToGlossary
 
   // MARK: - Transcription tuning
   var transcriptionTemperature: TranscriptionTemperature = SettingsDefaults.transcriptionTemperature
@@ -1833,6 +1835,7 @@ enum SettingsFocusField: Hashable {
   case screenshotCapture
   case readAloudShortcut
   case voiceFeedbackShortcut
+  case addToGlossaryShortcut
   case meetingMarkerShortcut
 }
 

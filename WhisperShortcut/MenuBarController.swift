@@ -34,6 +34,7 @@ class MenuBarController: NSObject {
     case recentTranscriptions = 118
     case sendFeedback = 119
     case transcribeCancelledRecording = 120
+    case addToGlossary = 121
   }
 
   /// Display time for the benign "No speech detected" info popup — long enough to read,
@@ -339,6 +340,14 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Voice Feedback", action: #selector(toggleVoiceFeedback),
         shortcut: currentConfig.voiceFeedback, tag: .voiceFeedback))
+    // Selection-based like Read Aloud: copies via ⌘C, so it needs Accessibility and is absent
+    // from the App Store build.
+    #if !APP_STORE
+    menu.addItem(
+      createMenuItemWithShortcut(
+        "Add Selection to Glossary", action: #selector(addSelectionToGlossary),
+        shortcut: currentConfig.addToGlossary, tag: .addToGlossary))
+    #endif
     menu.addItem(NSMenuItem.separator())
 
     // Recovering a dictation result. Both rows hide themselves while the history is empty, so a
@@ -2232,6 +2241,55 @@ class MenuBarController: NSObject {
         return
       }
       DebugLogger.log("VOICE-FEEDBACK: No selection copied — proceeding with the spoken instruction only")
+    }
+  }
+
+  /// Appends whatever the user has selected to the Glossary.
+  ///
+  /// The deliberate non-feature here is intelligence: no model, no fuzzy matching against past
+  /// transcripts, no diff window. The user has already decided what the correct spelling is by
+  /// selecting it, so the app stores it verbatim. That is what makes this the one glossary path
+  /// that still works in Offline Mode, where every model-driven learning route is switched off.
+  @objc internal func addSelectionToGlossary() {
+    guard AccessibilityPermissionManager.checkPermissionForPromptUsage() else { return }
+    captureClipboardRestorePointIfEnabled()
+    let before = NSPasteboard.general.changeCount
+    simulateCopy()
+
+    Task { @MainActor in
+      let deadline = Date().addingTimeInterval(0.5)
+      while Date() < deadline {
+        try? await Task.sleep(for: .milliseconds(15))
+        guard NSPasteboard.general.changeCount != before else { continue }
+        let selection = NSPasteboard.general.string(forType: .string) ?? ""
+        self.reportGlossaryAppend(SystemPromptsStore.shared.appendToWhisperGlossary(selection))
+        _ = self.clipboardManager.restorePendingSnapshot()
+        return
+      }
+      DebugLogger.log("GLOSSARY: Nothing copied — no selection to add")
+      PopupNotificationWindow.showInfo(
+        "Select the correctly spelled term first, then press the shortcut again.",
+        title: "Nothing Selected")
+    }
+  }
+
+  private func reportGlossaryAppend(_ result: SystemPromptsStore.GlossaryAppendResult) {
+    switch result {
+    case .added(let term):
+      PopupNotificationWindow.showInfo("\"\(term)\" added to your Glossary.", title: "Glossary")
+    case .duplicate(let term):
+      PopupNotificationWindow.showInfo("\"\(term)\" is already in your Glossary.", title: "Glossary")
+    case .notATerm(let text):
+      PopupNotificationWindow.showInfo(
+        "Select a single term — a name or a piece of jargon — not a sentence. The Glossary is a "
+          + "spelling reference, and a whole sentence in it makes every dictation worse.",
+        title: "Not a Glossary Term")
+      DebugLogger.log("GLOSSARY: Rejected selection of \(text.count) chars")
+    case .budgetExceeded(let term):
+      PopupNotificationWindow.showInfo(
+        "Your Glossary is full — Whisper only reads the first ~224 tokens of it, so \"\(term)\" "
+          + "would never be used. Remove terms you no longer need in Settings → Dictate.",
+        title: "Glossary Full")
     }
   }
 

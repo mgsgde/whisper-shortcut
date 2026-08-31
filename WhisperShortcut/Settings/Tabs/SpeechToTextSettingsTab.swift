@@ -100,6 +100,25 @@ struct SpeechToTextSettingsTab: View {
       section: .whisperGlossary,
       defaultContent: AppConstants.defaultWhisperGlossary
     )
+
+    #if !APP_STORE
+    VStack(alignment: .leading, spacing: 8) {
+      ShortcutRecorderRow(
+        label: "Add Selection to Glossary:",
+        shortcut: $viewModel.data.addToGlossary,
+        focusedField: .addToGlossaryShortcut,
+        currentFocus: $focusedField,
+        onChanged: { Task { await viewModel.saveSettings() } },
+        findConflict: viewModel.findShortcutConflict,
+        clearShortcut: viewModel.clearShortcut
+      )
+      Text("Select a correctly spelled term anywhere — in your practice software, a document, an email — and press the shortcut to append it here. No model is involved, so this is also the way to grow the Glossary while Offline Mode is on.")
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(.top, SettingsConstants.internalSectionSpacing)
+    #endif
   }
 
   // MARK: - Shortcuts Section
