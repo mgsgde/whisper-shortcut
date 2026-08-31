@@ -598,7 +598,29 @@ enum PromptModel: String, CaseIterable {
   /// Gemini handles audio natively across all variants; OpenAI's GPT-4o Audio Preview handles
   /// it via `input_audio` content parts. Grok and text-only OpenAI models are excluded.
   static var dictatePromptCapableModels: [PromptModel] {
-    return allCases.filter { $0.supportsDictatePrompt }
+    return allCases.filter { $0.supportsDictatePrompt }.filter(\.isSelectableUnderOfflineMode)
+  }
+
+  /// Whether this model may be offered for Dictate Prompt while Offline Mode is on: only the ones
+  /// that talk to a server the user runs. The custom OpenAI-compatible endpoint qualifies
+  /// conditionally — its URL is whatever the user typed, so the same host rule the network guard
+  /// uses decides.
+  ///
+  /// Applied to Dictate Prompt only. Chat, meeting summary and Smart Improvement have no on-device
+  /// model in this build (`localModel.supportsTextChat` is false), so narrowing their lists would
+  /// leave an empty picker rather than an offline option — those features simply do not work in
+  /// Offline Mode, like Read Aloud.
+  var isSelectableUnderOfflineMode: Bool {
+    guard OfflineMode.isEnabled else { return true }
+    switch provider {
+    case .local:
+      return true
+    case .customOpenAI:
+      guard let base = OpenAIChatPreferences.customEndpointBaseURL else { return false }
+      return OfflineMode.allows(URL(string: base))
+    case .gemini, .openai, .grok, .anthropic:
+      return false
+    }
   }
 
   /// Migrates deprecated in-enum cases; identity today (2.0 removed — use `migrateLegacyPromptRawValue` for UserDefaults).
@@ -1248,7 +1270,9 @@ enum SettingsTab: String, CaseIterable {
   case readAloud = "Read Aloud"
   case chat = "Chat"
   case improvement = "Smart Improvement"
-  case permissions = "Permissions"
+  // The raw value is both the sidebar label and the persisted selection; a stored "Permissions"
+  // from an older build simply falls back to General once (`SettingsTab(rawValue:) ?? .general`).
+  case permissions = "Privacy & Permissions"
   case about = "About"
 }
 

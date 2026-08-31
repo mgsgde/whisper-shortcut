@@ -10,6 +10,17 @@ enum LLMHTTPSession {
     let config = URLSessionConfiguration.default
     config.timeoutIntervalForRequest = 60
     config.timeoutIntervalForResource = 300
+    OfflineModeURLProtocol.install(on: config)
+    return URLSession(configuration: config)
+  }()
+
+  /// Session for the non-LLM integrations (Google, Trello, the OpenRouter catalog and OAuth
+  /// exchanges, API-key validation). They used `URLSession.shared`, which cannot carry the
+  /// Offline Mode guard — a session the app configures itself can. Default timeouts are kept:
+  /// these are short REST calls, not the long-running model requests `shared` is tuned for.
+  static let integrations: URLSession = {
+    let config = URLSessionConfiguration.default
+    OfflineModeURLProtocol.install(on: config)
     return URLSession(configuration: config)
   }()
 }

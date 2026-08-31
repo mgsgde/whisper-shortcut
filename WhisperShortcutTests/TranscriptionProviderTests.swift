@@ -59,7 +59,10 @@ struct TranscriptionProviderTests {
   @Test("Every Whisper model is offline, and nothing else is")
   func offlineGroupIsWhisperOnly() {
     let offline = Set(TranscriptionModel.allCases.filter { $0.provider == .offline })
-    #expect(offline == [.whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge])
+    #expect(
+      offline == [
+        .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo,
+      ])
 
     for model in offline {
       #expect(model.provider.group == .offline, "\(model.rawValue)")

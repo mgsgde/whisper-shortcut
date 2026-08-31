@@ -173,11 +173,7 @@ final class VoiceFeedbackService {
   /// Recent interactions, included only so the model can resolve references like "you just got X
   /// wrong". Gated on the usage-logging preference; returns nil when logging is off or empty.
   private func recentInteractionsBlock() -> String? {
-    let enabled =
-      UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil
-      ? true
-      : UserDefaults.standard.bool(forKey: UserDefaultsKeys.contextLoggingEnabled)
-    guard enabled else { return nil }
+    guard ContextLoggingPreference.isEnabled else { return nil }
 
     let files = ContextLogger.shared.interactionLogFiles(lastDays: 3)
     let decoder = JSONDecoder()

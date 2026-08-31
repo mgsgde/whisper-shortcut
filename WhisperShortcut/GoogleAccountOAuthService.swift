@@ -228,7 +228,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
       .joined(separator: "&")
     request.httpBody = bodyString.data(using: .utf8)
 
-    let (data, response) = try await URLSession.shared.data(for: request)
+    let (data, response) = try await LLMHTTPSession.integrations.data(for: request)
 
     guard let httpResponse = response as? HTTPURLResponse else {
       throw OAuthError.invalidResponse

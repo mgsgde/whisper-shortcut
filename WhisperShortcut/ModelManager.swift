@@ -17,7 +17,9 @@ enum OfflineModelType: String, CaseIterable {
   case whisperSmall = "whisper-small"
   case whisperMedium = "whisper-medium"
   case whisperLarge = "whisper-large"
-  
+  /// large-v3-turbo (the 2024-09-30 release): large-v3's encoder with a 4-layer decoder.
+  case whisperLargeTurbo = "whisper-large-turbo"
+
   var displayName: String {
     switch self {
     case .whisperTiny: return "Whisper Tiny"
@@ -25,6 +27,7 @@ enum OfflineModelType: String, CaseIterable {
     case .whisperSmall: return "Whisper Small"
     case .whisperMedium: return "Whisper Medium"
     case .whisperLarge: return "Whisper Large"
+    case .whisperLargeTurbo: return "Whisper Large v3 Turbo"
     }
   }
   
@@ -35,12 +38,26 @@ enum OfflineModelType: String, CaseIterable {
     case .whisperSmall: return 460
     case .whisperMedium: return 1500
     case .whisperLarge: return 3000  // full large-v3 ~3 GB; compressed variant exists at ~947 MB
+    case .whisperLargeTurbo: return 1600  // full turbo ~1.6 GB; compressed variant exists at ~632 MB
     }
   }
   
+  /// The starter model in the download list — small enough that the first offline dictation is
+  /// seconds away rather than a gigabyte away. It is NOT the accuracy recommendation; see
+  /// `mostAccurate`, which is what Offline Mode reaches for.
   var isRecommended: Bool {
     return self == .whisperBase
   }
+
+  /// Offline models ordered worst to best transcript. Used to pick a sensible model on this Mac
+  /// without asking the user which Whisper size means what — Offline Mode walks it from the end.
+  static var byAccuracy: [OfflineModelType] {
+    [.whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo]
+  }
+
+  /// The on-device model to use when the transcript has to be right. Turbo rather than
+  /// `large-v3`: same accuracy, roughly half the download and several times faster.
+  static var mostAccurate: OfflineModelType { .whisperLargeTurbo }
   
   // Map to WhisperKit model name (HuggingFace: openai_whisper-{name})
   var whisperKitModelName: String {
@@ -50,6 +67,10 @@ enum OfflineModelType: String, CaseIterable {
     case .whisperSmall: return "small"
     case .whisperMedium: return "medium"
     case .whisperLarge: return "large-v3"
+    // The HuggingFace repo (argmaxinc/whisperkit-coreml) names turbo by its release date;
+    // `large-v3_turbo` there is the older v2-era conversion, so the dated variant is the one
+    // that corresponds to OpenAI's large-v3-turbo.
+    case .whisperLargeTurbo: return "large-v3-v20240930_turbo"
     }
   }
 }

@@ -239,7 +239,7 @@ actor GoogleCalendarAPIClient {
       request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     }
 
-    let (data, response) = try await URLSession.shared.data(for: request)
+    let (data, response) = try await LLMHTTPSession.integrations.data(for: request)
 
     guard let httpResponse = response as? HTTPURLResponse else {
       throw CalendarAPIError.invalidResponse
@@ -251,7 +251,7 @@ actor GoogleCalendarAPIClient {
 
       var retryRequest = request
       retryRequest.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
-      let (retryData, retryResponse) = try await URLSession.shared.data(for: retryRequest)
+      let (retryData, retryResponse) = try await LLMHTTPSession.integrations.data(for: retryRequest)
 
       guard let retryHTTP = retryResponse as? HTTPURLResponse else {
         throw CalendarAPIError.invalidResponse

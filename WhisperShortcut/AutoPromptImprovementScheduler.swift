@@ -16,6 +16,19 @@ class AutoPromptImprovementScheduler {
   /// If a run is already in progress, enqueues this job and notifies the user.
   /// - Parameter fromAutoRun: When true (e.g. launch/daily timer), suppresses popups for "no eligible data"; when false (user tapped "Improve from usage"), shows them.
   func runImprovementNow(fromAutoRun: Bool = false) async {
+    // Smart Improvement reads the interaction log — transcripts, prompts, replies — and sends it
+    // to Gemini. That is precisely what Offline Mode forbids, and the network guard would only
+    // fail it halfway through, so it never starts.
+    guard !OfflineMode.isEnabled else {
+      DebugLogger.log("SMART-IMPROVEMENT: Offline Mode is on, skipping run")
+      if !fromAutoRun {
+        PopupNotificationWindow.showInfo(
+          "Smart Improvement analyses your usage log with a cloud model, so it is off while Offline Mode is on.",
+          title: "Smart Improvement"
+        )
+      }
+      return
+    }
     guard GeminiCredentialProvider.shared.hasCredential() else { return }
 
     // Cooldown gate: throttle manual triggers.

@@ -162,7 +162,7 @@ struct SettingsView: View {
     case .improvement:
       return "Improve prompts from your usage and manage context data"
     case .permissions:
-      return "macOS permissions"
+      return "Offline Mode and macOS permissions"
     case .about:
       return "Privacy, welcome tour, shortcuts, reset, and support"
     }

@@ -18,6 +18,7 @@ Bring your own API keys — Gemini, and optionally GPT or Grok — or run fully 
 ## Features
 
 - **Dictate**: Record speech and copy the transcription to your clipboard. Use Gemini, OpenAI, or any audio-capable model on OpenRouter, a self-hosted transcription endpoint, or local Whisper models offline. Temperature and thinking effort are configurable for cloud models. Long recordings are split into chunks and processed in parallel.
+- **Offline Mode**: One switch (Settings → Privacy & Permissions, also offered during onboarding) that makes the app device-local: dictation runs on an on-device Whisper model, every request to the internet is blocked at the network layer, and no transcript, prompt or audio sample is written to the usage log. Requests to your own machine or local network still work, so a Whisper server or Ollama on your network stays available, and downloading a Whisper model from Hugging Face still works (it carries no content of yours). Dictate Prompt keeps working through a local Ollama or LM Studio server. Chat, Read Aloud, Smart Improvement and the Google and Trello integrations have no on-device equivalent and stop working while it is on. Built for regulated dictation — patient findings, case notes — where "the recording never leaves this device" has to hold whatever else is configured.
 - **Auto-paste**: Optionally paste the result straight at the cursor instead of only copying it (direct-download version only — it needs the Accessibility permission). Turn on **Restore clipboard** alongside it for a non-destructive paste: whatever you had copied before dictating goes back on the clipboard right after the text is pasted.
 - **Copy Last Transcription**: Every dictation result stays available in the menu bar — one entry re-copies the most recent transcription, and a **Recent Transcriptions** submenu holds the last five. Use it when an auto-paste landed in the wrong window, or when a later copy overwrote the clipboard.
 - **Dictate Prompt**: Speak an instruction that edits the current clipboard text, for example "make this shorter" or "translate this to English". Supports Gemini and OpenAI audio-input models; optional screenshots can be included with the prompt.
@@ -95,6 +96,8 @@ To change a shortcut, open Settings → General, click **Record** next to it and
 | Gemini 3.1 Flash-Lite | 1.58 s / 1.28 s / 1.83 s | ~$0.001 | Best glossary adherence of the Gemini tiers |
 | Gemini 3.5 Flash-Lite | 1.86 s / 2.97 s / 6.63 s | ~$0.001 | Slowest tested; see the caveat below |
 | Whisper (offline) | depends on your Mac and model size | free | Runs locally, nothing leaves your machine |
+
+**Which offline Whisper model?** Tiny and Base are fast and small (75–140 MB) but make mistakes a dictation you intend to keep will have to be corrected for. **Whisper Large v3 Turbo** (~1.6 GB) is the one to download when the transcript matters: same accuracy as Large v3, roughly half the download and several times faster, and it is what Offline Mode selects. Put names and jargon in the Glossary either way — that matters more than model size.
 
 Recommendations by what you care about:
 
@@ -219,6 +222,8 @@ Core files:
 ## Data And Privacy
 
 WhisperShortcut stores settings, chat sessions, meeting transcripts, usage logs, short-lived Smart Improvement audio samples, and downloaded models on your Mac. API keys, OAuth refresh tokens, and Trello tokens are stored in Keychain.
+
+With **Offline Mode** on (Settings → Privacy & Permissions), no request may leave your Mac and the usage log is not written at all — no transcripts, prompts, replies or audio samples on disk. Note that auto-paste needs the Accessibility permission and is therefore only available in the direct-download build, not the App Store one.
 
 WhisperShortcut uses one canonical app data location so sandboxed and non-sandboxed builds see the same files:
 

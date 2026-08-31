@@ -74,6 +74,10 @@ enum TranscriptionModel: String, CaseIterable {
   case whisperSmall = "whisper-small"
   case whisperMedium = "whisper-medium"
   case whisperLarge = "whisper-large"
+  /// large-v3-turbo: large-v3's encoder with a 4-layer decoder instead of 32. Half the download
+  /// and several times faster than `whisperLarge` at the same accuracy, which makes it — not
+  /// `large-v3` — the on-device model to reach for when the transcript has to be right.
+  case whisperLargeTurbo = "whisper-large-turbo"
 
   // OpenAI transcription models (cloud, OpenAI API key required).
   // `gpt-transcribe` is OpenAI's recommended starting model; the gpt-4o pair is explicitly
@@ -122,6 +126,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Whisper Medium (Offline)"
     case .whisperLarge:
       return "Whisper Large (Offline)"
+    case .whisperLargeTurbo:
+      return "Whisper Large v3 Turbo (Offline)"
     case .openAIGPTTranscribe:
       return "GPT Transcribe"
     case .openAIGPT4oTranscribe:
@@ -179,8 +185,35 @@ enum TranscriptionModel: String, CaseIterable {
   }
 
   /// Every model a user may actually pick for dictation. Pickers default to this, not `allCases`.
+  ///
+  /// Offline Mode narrows it to what runs on this Mac. Showing a cloud model there would offer a
+  /// choice the network guard then refuses — the picker and `OfflineModeURLProtocol` have to agree
+  /// on what is possible, and this is the side that can explain itself.
   static var selectableForDictation: [TranscriptionModel] {
-    allCases.filter { $0.isSelectableForDictation }
+    selectableForDictation(offlineMode: OfflineMode.isEnabled)
+  }
+
+  /// The same list with the mode passed in, so the narrowing can be tested without switching the
+  /// real mode on process-wide.
+  static func selectableForDictation(offlineMode: Bool) -> [TranscriptionModel] {
+    let selectable = allCases.filter { $0.isSelectableForDictation }
+    guard offlineMode else { return selectable }
+    return selectable.filter(\.runsOnThisMac)
+  }
+
+  /// Whether running this model sends nothing to the internet. Offline Whisper always qualifies;
+  /// a self-hosted endpoint qualifies when the user pointed it at their own machine or network,
+  /// which is the same rule the network guard applies.
+  var runsOnThisMac: Bool {
+    switch provider {
+    case .offline:
+      return true
+    case .selfHosted:
+      let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL) ?? ""
+      return OfflineMode.allows(URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)))
+    case .google, .openAI, .xai, .openRouter:
+      return false
+    }
   }
 
   var isRecommended: Bool {
@@ -188,7 +221,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini31FlashLite, .whisperBase:
       return true
     case .gemini31Pro, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .whisperTiny,
-         .whisperSmall, .whisperMedium, .whisperLarge,
+         .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo,
          .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
          .selfHostedTranscription, .openRouterTranscription:
       return false
@@ -204,7 +237,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Low"
     case .gemini31Pro:
       return "Medium"
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
+         .whisperLargeTurbo:
       return "Free (Offline)"
     case .openAIGPTTranscribe:
       return "Low"
@@ -243,6 +277,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "OpenAI Whisper Medium • Best quality • ~1.5GB • Offline"
     case .whisperLarge:
       return "OpenAI Whisper Large v3 • Highest quality • ~3GB • Offline"
+    case .whisperLargeTurbo:
+      return "OpenAI Whisper Large v3 Turbo • Large-v3 accuracy at a fraction of the time • ~1.6GB • Offline"
     case .openAIGPTTranscribe:
       return "OpenAI's current transcription model • $0.0045/min • Glossary sent as keyword hints • Ignores the Dictation prompt"
     case .openAIGPT4oTranscribe:
@@ -328,7 +364,20 @@ enum TranscriptionModel: String, CaseIterable {
     case .whisperSmall: return .whisperSmall
     case .whisperMedium: return .whisperMedium
     case .whisperLarge: return .whisperLarge
+    case .whisperLargeTurbo: return .whisperLargeTurbo
     default: return nil
+    }
+  }
+
+  /// The dictation selection that runs a given on-device model. Inverse of `offlineModelType`.
+  static func forOfflineModel(_ type: OfflineModelType) -> TranscriptionModel {
+    switch type {
+    case .whisperTiny: return .whisperTiny
+    case .whisperBase: return .whisperBase
+    case .whisperSmall: return .whisperSmall
+    case .whisperMedium: return .whisperMedium
+    case .whisperLarge: return .whisperLarge
+    case .whisperLargeTurbo: return .whisperLargeTurbo
     }
   }
   
@@ -431,7 +480,8 @@ enum TranscriptionModel: String, CaseIterable {
 
   var asymmetryClass: AsymmetryClass {
     switch self {
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
+         .whisperLargeTurbo:
       return .offlineWhisper
     case .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
       return .openAIAudio

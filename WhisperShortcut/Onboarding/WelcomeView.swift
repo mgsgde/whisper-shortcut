@@ -55,7 +55,9 @@ struct WelcomeView: View {
   @State private var hasOpenRouterKey: Bool = KeychainManager.shared.hasNonEmpty(.openRouter)
   /// True once an offline Whisper model is downloaded, which lets a user finish
   /// setup and dictate with no provider key at all (the key step's other exit).
-  @State private var offlineReady: Bool = ModelManager.shared.isModelAvailable(.whisperBase)
+  @State private var offlineReady: Bool = OfflineModelType.byAccuracy.contains {
+    ModelManager.shared.isModelAvailable($0)
+  }
   /// Gates the permissions step's Continue button. Updated by `PermissionsOverview`'s
   /// `onMicStatusChange` callback and the periodic refresh below.
   @State private var micStatus: PermissionStatus = PermissionStatusChecker.status(for: .microphone)
@@ -230,7 +232,9 @@ struct WelcomeView: View {
     hasXAIKey = KeychainManager.shared.hasNonEmpty(.xai)
     hasAnthropicKey = KeychainManager.shared.hasNonEmpty(.anthropic)
     hasOpenRouterKey = KeychainManager.shared.hasNonEmpty(.openRouter)
-    offlineReady = ModelManager.shared.isModelAvailable(.whisperBase)
+    // Any downloaded model unblocks the step — in Offline Mode the row downloads the accurate
+    // model rather than Base, and a user who already has Small has nothing left to do here.
+    offlineReady = OfflineModelType.byAccuracy.contains { ModelManager.shared.isModelAvailable($0) }
     micStatus = PermissionStatusChecker.status(for: .microphone)
   }
 }

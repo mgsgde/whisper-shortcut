@@ -81,12 +81,9 @@ final class TranscriptionHistoryStore {
 
   // MARK: - Persistence
 
-  /// Mirrors `ContextLogger.isLoggingEnabled` (default on when the key was never written).
-  private var persistenceAllowed: Bool {
-    UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil
-      ? true
-      : UserDefaults.standard.bool(forKey: UserDefaultsKeys.contextLoggingEnabled)
-  }
+  /// Same gate as `ContextLogger`: the "Save usage data" preference, and Offline Mode over it.
+  /// In Offline Mode the last transcripts stay in memory for the menu but are never written out.
+  private var persistenceAllowed: Bool { ContextLoggingPreference.isEnabled }
 
   /// Called on `queue`.
   private func persistIfAllowed() {

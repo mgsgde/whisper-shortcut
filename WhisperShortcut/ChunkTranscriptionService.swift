@@ -79,6 +79,7 @@ class ChunkTranscriptionService {
             let config = URLSessionConfiguration.default
             config.timeoutIntervalForRequest = 60.0
             config.timeoutIntervalForResource = Self.chunkResourceTimeout
+            OfflineModeURLProtocol.install(on: config)
             let session = URLSession(configuration: config)
             self.geminiClient = GeminiAPIClient(session: session)
         }

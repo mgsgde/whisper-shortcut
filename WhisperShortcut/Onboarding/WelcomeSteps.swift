@@ -26,6 +26,11 @@ struct WelcomeIntroStep: View {
 }
 
 struct WelcomePrivacyStep: View {
+  /// Offered during onboarding, not only in Settings: someone setting the app up for a medical
+  /// practice or a law office has to make this decision *before* the next step asks them for a
+  /// cloud API key, and a switch they have to go looking for afterwards is one they may not find.
+  @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
+
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
       HStack(spacing: 12) {
@@ -43,43 +48,82 @@ struct WelcomePrivacyStep: View {
       }
       OpenSourceBanner()
 
-      VStack(alignment: .leading, spacing: 12) {
-        ForEach(PrivacyCopy.promiseBullets, id: \.self) { bullet in
-          HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-              .foregroundStyle(.green)
-            Text(bullet)
-              .font(.callout)
-              .textSelection(.enabled)
-              .fixedSize(horizontal: false, vertical: true)
+      // Scrolls like the API-key step: four privacy bullets plus the Offline Mode card is more
+      // than the 640 pt window shows, and a clipped switch is a switch nobody finds.
+      ScrollView(showsIndicators: true) {
+        VStack(alignment: .leading, spacing: 20) {
+          VStack(alignment: .leading, spacing: 12) {
+            ForEach(PrivacyCopy.promiseBullets, id: \.self) { bullet in
+              HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: "checkmark.circle.fill")
+                  .foregroundStyle(.green)
+                Text(bullet)
+                  .font(.callout)
+                  .textSelection(.enabled)
+                  .fixedSize(horizontal: false, vertical: true)
+              }
+            }
           }
-        }
-      }
-      .padding(14)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(
-        RoundedRectangle(cornerRadius: 10)
-          .fill(Color(nsColor: .controlBackgroundColor))
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 10)
-          .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-      )
+          .padding(14)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(
+            RoundedRectangle(cornerRadius: 10)
+              .fill(Color(nsColor: .controlBackgroundColor))
+          )
+          .overlay(
+            RoundedRectangle(cornerRadius: 10)
+              .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+          )
 
-      Button {
-        if let url = URL(string: AppConstants.privacyPolicyURL) {
-          NSWorkspace.shared.open(url)
-        }
-      } label: {
-        Label("View full privacy policy", systemImage: "doc.text")
-          .font(.callout)
-      }
-      .buttonStyle(.bordered)
-      .pointerCursorOnHover()
+          offlineModeCard
 
-      Spacer()
+          Button {
+            if let url = URL(string: AppConstants.privacyPolicyURL) {
+              NSWorkspace.shared.open(url)
+            }
+          } label: {
+            Label("View full privacy policy", systemImage: "doc.text")
+              .font(.callout)
+          }
+          .buttonStyle(.bordered)
+          .pointerCursorOnHover()
+        }
+        .padding(.trailing, 4)
+      }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+  }
+
+  @ViewBuilder
+  private var offlineModeCard: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Toggle("Offline Mode — nothing leaves this Mac", isOn: $offlineMode)
+        .toggleStyle(.switch)
+        .font(.callout)
+        .fontWeight(.semibold)
+        .onChange(of: offlineMode) { isOn in
+          ModelSelectionReconciler.reconcileAll()
+          DebugLogger.log("OFFLINE-MODE: \(isOn ? "enabled" : "disabled") during onboarding")
+        }
+      Text(
+        offlineMode
+          ? "On-device Whisper only. No cloud request, no usage log on disk — you can skip the API key step and download a model instead. Changeable later in Settings → Privacy & Permissions."
+          : "Turn this on for regulated dictation — patient findings, case notes — where the recording may not leave the device. You can also decide later in Settings → Privacy & Permissions."
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: 10)
+        .fill(Color(nsColor: .controlBackgroundColor))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 10)
+        .stroke(offlineMode ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: 1)
+    )
   }
 }
 
@@ -267,7 +311,12 @@ struct OnboardingOfflineRow: View {
   @ObservedObject private var modelManager = ModelManager.shared
   @State private var downloadError: String?
 
-  private let modelType: OfflineModelType = .whisperBase
+  /// Base is the fast way into offline dictation — 140 MB and a transcript within a minute of
+  /// deciding. Offline Mode is a different situation: it is chosen because the transcript matters
+  /// and there is no cloud model to fall back on, so it gets the accurate model instead.
+  private var modelType: OfflineModelType {
+    OfflineMode.isEnabled ? OfflineModelType.mostAccurate : .whisperBase
+  }
 
   private var isDownloading: Bool { modelManager.downloadingModels.contains(modelType) }
   private var isAvailable: Bool { modelManager.isModelAvailable(modelType) }
@@ -289,19 +338,21 @@ struct OnboardingOfflineRow: View {
         .fixedSize(horizontal: false, vertical: true)
 
       if isAvailable {
-        Label("Whisper Base ready — you can continue.", systemImage: "checkmark.seal.fill")
+        Label("\(modelType.displayName) ready — you can continue.", systemImage: "checkmark.seal.fill")
           .font(.caption)
           .foregroundStyle(.green)
       } else if isDownloading {
         HStack(spacing: 8) {
           ProgressView().controlSize(.small)
-          Text("Downloading Whisper Base…")
+          Text("Downloading \(modelType.displayName)…")
             .font(.caption)
             .foregroundStyle(.secondary)
         }
       } else {
         Button(action: download) {
-          Label("Download Whisper Base (≈140 MB)", systemImage: "arrow.down.circle")
+          Label(
+            "Download \(modelType.displayName) (≈\(modelType.estimatedSizeMB) MB)",
+            systemImage: "arrow.down.circle")
             .font(.callout)
         }
         .buttonStyle(.bordered)

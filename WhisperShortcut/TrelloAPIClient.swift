@@ -222,7 +222,7 @@ actor TrelloAPIClient {
     request.httpMethod = httpMethod
     request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-    let (data, response) = try await URLSession.shared.data(for: request)
+    let (data, response) = try await LLMHTTPSession.integrations.data(for: request)
     guard let http = response as? HTTPURLResponse else {
       throw TrelloAPIError.invalidResponse
     }

@@ -135,7 +135,8 @@ extension TranscriptionModel {
       return .openRouter
     case .selfHostedTranscription:
       return .selfHosted
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge:
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
+         .whisperLargeTurbo:
       return .offline
     }
   }

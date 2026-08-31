@@ -181,12 +181,9 @@ class ContextLogger {
 
   // MARK: - Logging Guard
 
-  private var isLoggingEnabled: Bool {
-    // Default to true if key doesn't exist (for backward compatibility)
-    UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil
-      ? true
-      : UserDefaults.standard.bool(forKey: UserDefaultsKeys.contextLoggingEnabled)
-  }
+  /// The stored "Save usage data" preference, plus Offline Mode, which overrides it — see
+  /// `ContextLoggingPreference`.
+  private var isLoggingEnabled: Bool { ContextLoggingPreference.isEnabled }
 
   // MARK: - Public Logging Methods
 

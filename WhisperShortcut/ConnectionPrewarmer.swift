@@ -32,6 +32,10 @@ enum ConnectionPrewarmer {
     guard let url = URL(string: endpoint), let host = url.host,
       let hostURL = URL(string: "https://\(host)/")
     else { return }
+    // In Offline Mode the request would be refused by the guard anyway; not sending it means the
+    // app makes no connection to a provider at all, which is the claim the mode has to be able
+    // to make when someone watches the traffic.
+    guard !OfflineMode.isEnabled || OfflineMode.allows(hostURL) else { return }
 
     var request = URLRequest(url: hostURL)
     request.httpMethod = "HEAD"

@@ -148,7 +148,7 @@ enum APIKeyValidator {
     request.timeoutInterval = timeout
 
     do {
-      let (_, response) = try await URLSession.shared.data(for: request)
+      let (_, response) = try await LLMHTTPSession.integrations.data(for: request)
       guard let http = response as? HTTPURLResponse else { return .unverified }
       switch http.statusCode {
       case 200...299:

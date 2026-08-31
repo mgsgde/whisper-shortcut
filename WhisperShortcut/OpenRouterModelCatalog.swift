@@ -55,7 +55,7 @@ final class OpenRouterModelCatalog: ObservableObject {
     do {
       var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/models")!)
       request.timeoutInterval = 15
-      let (data, response) = try await URLSession.shared.data(for: request)
+      let (data, response) = try await LLMHTTPSession.integrations.data(for: request)
 
       guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
         throw OpenRouterCatalogError.badStatus((response as? HTTPURLResponse)?.statusCode ?? -1)

@@ -44,6 +44,14 @@ enum ModelSelectionReconciler {
   // MARK: - Entry point
 
   static func reconcileAll() {
+    // Offline Mode inverts this type's job: instead of following the keys the user has, the
+    // selections that can run locally are pulled back onto this Mac. Without it the reconciler
+    // actively fights the mode — an OpenAI key entered for something else is enough for it to
+    // rewrite dictation to a cloud model, the exact failure the mode exists to make impossible.
+    if OfflineMode.isEnabled {
+      reconcileForOfflineMode()
+      return
+    }
     reconcilePromptSelection(key: UserDefaultsKeys.selectedChatModel,
                              candidates: PromptModel.chatModels,
                              fallback: SettingsDefaults.selectedChatModel)
@@ -61,6 +69,51 @@ enum ModelSelectionReconciler {
                            fallback: SettingsDefaults.selectedTranscriptionModel)
     reconcileTranscription(key: UserDefaultsKeys.selectedTranscriptionModelForMeetings,
                            fallback: SettingsDefaults.selectedTranscriptionModel)
+  }
+
+  // MARK: - Offline Mode
+
+  /// Moves the selections that *have* an on-device equivalent — dictation, meeting transcription,
+  /// Dictate Prompt — onto this Mac. Read Aloud, Chat, meeting summary and Smart Improvement are
+  /// deliberately left alone: nothing in this build runs them locally, so there is nothing to move
+  /// them to. They stay selected and fail at the network guard, which is the honest outcome.
+  private static func reconcileForOfflineMode() {
+    for key in [
+      UserDefaultsKeys.selectedTranscriptionModel,
+      UserDefaultsKeys.selectedTranscriptionModelForMeetings,
+    ] {
+      let raw = UserDefaults.standard.string(forKey: key)
+        ?? SettingsDefaults.selectedTranscriptionModel.rawValue
+      let current = TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue(raw))
+        ?? SettingsDefaults.selectedTranscriptionModel
+      guard !current.runsOnThisMac else { continue }
+      let replacement = offlineTranscriptionReplacement()
+      UserDefaults.standard.set(replacement.rawValue, forKey: key)
+      DebugLogger.log(
+        "MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (Offline Mode)")
+    }
+
+    // Only Dictate Prompt is moved. Chat, meeting summary and Smart Improvement have no on-device
+    // model in this build (the local model is wired for Dictate Prompt only), so there is nothing
+    // to move them to — like Read Aloud, they stay selected and fail at the guard.
+    let promptKey = UserDefaultsKeys.selectedPromptModel
+    let raw = UserDefaults.standard.string(forKey: promptKey) ?? SettingsDefaults.selectedPromptModel.rawValue
+    let current = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw))
+      ?? SettingsDefaults.selectedPromptModel
+    // A custom OpenAI-compatible endpoint may already point at the user's own server; the network
+    // guard is what decides, so leave that choice alone.
+    guard current.provider != .local, current.provider != .customOpenAI else { return }
+    UserDefaults.standard.set(PromptModel.localModel.rawValue, forKey: promptKey)
+    DebugLogger.log(
+      "MODEL-RECONCILE: \(promptKey): \(current.rawValue) → \(PromptModel.localModel.rawValue) (Offline Mode)")
+  }
+
+  /// The best on-device model the user has actually downloaded, or the accuracy pick if none is —
+  /// pointing at a model that still needs downloading is a solvable dead end (Settings offers the
+  /// button), whereas silently selecting Tiny would quietly degrade every transcript.
+  private static func offlineTranscriptionReplacement() -> TranscriptionModel {
+    let downloaded = OfflineModelType.byAccuracy.last { ModelManager.shared.isModelAvailable($0) }
+    return TranscriptionModel.forOfflineModel(downloaded ?? OfflineModelType.mostAccurate)
   }
 
   // MARK: - PromptModel-backed features (chat, dictate prompt, improvement, meeting summary)

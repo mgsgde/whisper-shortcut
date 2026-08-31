@@ -45,11 +45,7 @@ final class GlossaryFastLearner {
 
   /// Follows the same "Save usage data" toggle as ContextLogger: the transcripts this
   /// feature matches against only exist when interaction logging is enabled.
-  private var isEnabled: Bool {
-    UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil
-      ? true
-      : UserDefaults.standard.bool(forKey: UserDefaultsKeys.contextLoggingEnabled)
-  }
+  private var isEnabled: Bool { ContextLoggingPreference.isEnabled }
 
   /// Entry point. Call with text the user typed themselves (chat composer).
   /// Safe to call from any thread; all work is deferred off the caller.

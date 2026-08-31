@@ -121,6 +121,11 @@ enum UserDefaultsKeys {
   static let selectedTranscriptionModelForMeetings = "selectedTranscriptionModelForMeetings"
   static let selectedMeetingSummaryModel = "selectedMeetingSummaryModel"
 
+  // MARK: - Offline Mode
+  /// Device-local-only operation: on-device models only, no cloud request, no usage log on
+  /// disk. See `OfflineMode`.
+  static let offlineModeEnabled = "offlineModeEnabled"
+
   // MARK: - Context Settings
   static let contextLoggingEnabled = "userContextLoggingEnabled"
   static let contextInPromptEnabled = "userContextInPromptEnabled"
