@@ -125,6 +125,23 @@ struct OfflineModeTests {
     #expect(OfflineModelType.byAccuracy.last == OfflineModelType.mostAccurate)
   }
 
+  /// Exactly one on-device model may wear the star, and both enums have to name the same one —
+  /// they are rendered in two different pickers, and a disagreement means the app recommends two
+  /// different models depending on where you look.
+  @Test("One on-device model is recommended, and both enums agree on which")
+  func recommendationIsSingleAndConsistent() {
+    let recommendedTypes = OfflineModelType.allCases.filter(\.isRecommended)
+    #expect(recommendedTypes == [.whisperLargeTurbo])
+
+    let recommendedModels = TranscriptionModel.allCases.filter { $0.isOffline && $0.isRecommended }
+    #expect(recommendedModels == [.whisperLargeTurbo])
+
+    // The quick-start label is a separate slot, never a second recommendation.
+    let quickStart = OfflineModelType.allCases.filter(\.isQuickStart)
+    #expect(quickStart == [.whisperBase])
+    #expect(!OfflineModelType.whisperBase.isRecommended)
+  }
+
   /// Every on-device model must round-trip through both directions of the mapping, or Offline
   /// Mode's reconciler could select a `TranscriptionModel` that resolves to a different file.
   @Test("Offline model mapping round-trips in both directions")

@@ -463,14 +463,15 @@ class SpeechService {
         throw TranscriptionError.networkError("Invalid offline model type")
       }
 
-      // Check if model is available before attempting to use it
-      if !ModelManager.shared.isModelAvailable(offlineModelType) {
-        throw TranscriptionError.modelNotAvailable(offlineModelType)
-      }
-
-      // Use the selected model: initialize if not ready, or re-initialize if a different model is loaded (e.g. pre-loaded Large but user selected Base)
+      // Make the model usable rather than refusing the dictation: download it if it is missing,
+      // then load it. The recording is already captured at this point, so waiting costs the user
+      // nothing but time — whereas the old "Model Not Downloaded" error threw the recording away
+      // and sent them to Settings to press a button.
       if await !LocalSpeechService.shared.isLoaded(modelType: offlineModelType) {
-        try await LocalSpeechService.shared.initializeModel(offlineModelType)
+        defer { Task { @MainActor in PopupNotificationWindow.dismissProcessing() } }
+        try await ModelManager.shared.ensureReady(offlineModelType) { status in
+          PopupNotificationWindow.showOrUpdateProcessing(status, title: "Offline Dictation")
+        }
       }
       try Task.checkCancellation()
 

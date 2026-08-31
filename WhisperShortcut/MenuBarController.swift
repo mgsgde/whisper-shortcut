@@ -690,19 +690,11 @@ class MenuBarController: NSObject {
     let selectedModel = TranscriptionModel.loadSelected()
     speechService.setModel(selectedModel)
 
-    // Pre-initialize offline models in the background if available
-    if selectedModel.isOffline,
-       let offlineModelType = selectedModel.offlineModelType,
-       ModelManager.shared.isModelAvailable(offlineModelType) {
-      DebugLogger.log("MENU-BAR: Pre-loading offline model \(offlineModelType.displayName) in background")
-      Task {
-        do {
-          try await LocalSpeechService.shared.initializeModel(offlineModelType)
-          DebugLogger.logSuccess("MENU-BAR: Successfully pre-loaded offline model \(offlineModelType.displayName)")
-        } catch {
-          DebugLogger.logError("MENU-BAR: Failed to pre-load offline model \(offlineModelType.displayName): \(error.localizedDescription)")
-        }
-      }
+    // Get the selected offline model ready in the background — download included. The expensive
+    // part is CoreML compiling the model for the Neural Engine, and that has to happen while the
+    // user is not waiting on it, not after they have already spoken.
+    if selectedModel.isOffline, let offlineModelType = selectedModel.offlineModelType {
+      prepareOfflineModelInBackground(offlineModelType, reason: "launch")
     }
 
     // Setup shortcuts
@@ -1958,6 +1950,31 @@ class MenuBarController: NSObject {
   @objc private func modelChanged(_ notification: Notification) {
     if let newModel = notification.object as? TranscriptionModel {
       speechService.setModel(newModel)
+      // Picking an offline model is the user saying they want to dictate with it. Downloading it
+      // then and there is what every comparable app does; making them find a Download button in a
+      // second section is how you end up dictating into a model that is not there.
+      if newModel.isOffline, let offlineModelType = newModel.offlineModelType {
+        prepareOfflineModelInBackground(offlineModelType, reason: "selection")
+      }
+    }
+  }
+
+  /// Downloads (if needed) and loads an offline model without blocking anything. Failures are
+  /// logged only: the user did not ask for a download to happen right now, and the dictation path
+  /// reports properly if the model is still missing when it matters.
+  private func prepareOfflineModelInBackground(_ type: OfflineModelType, reason: String) {
+    Task { @MainActor in
+      let alreadyThere = ModelManager.shared.isModelAvailable(type)
+      DebugLogger.log(
+        "MENU-BAR: Preparing offline model \(type.displayName) in background (\(reason), "
+          + "\(alreadyThere ? "downloaded" : "needs download"))")
+      do {
+        try await ModelManager.shared.ensureReady(type)
+        DebugLogger.logSuccess("MENU-BAR: Offline model \(type.displayName) ready")
+      } catch {
+        DebugLogger.logError(
+          "MENU-BAR: Could not prepare \(type.displayName): \(error.localizedDescription)")
+      }
     }
   }
 
@@ -2484,15 +2501,9 @@ extension MenuBarController: AudioRecorderDelegate {
       Task {
         switch recordingMode {
         case .transcription:
-          let model = TranscriptionModel.loadSelected()
-          if model.isOffline, await !LocalSpeechService.shared.isReady() {
-            await MainActor.run {
-              PopupNotificationWindow.showProcessing(
-                "Initializing \(model.displayName)... The first time can take several minutes.",
-                title: "Loading Whisper Model"
-              )
-            }
-          }
+          // No pre-emptive popup here any more: `ModelManager.ensureReady` reports what is
+          // actually happening (downloading N%, preparing, transcribing) from inside the
+          // transcription path, instead of one static "can take several minutes" line.
           await self.performTranscription(audioURL: audioURL)
         case .prompt:
           await self.performPrompting(audioURL: audioURL)

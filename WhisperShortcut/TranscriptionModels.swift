@@ -221,10 +221,13 @@ enum TranscriptionModel: String, CaseIterable {
 
   var isRecommended: Bool {
     switch self {
-    case .gemini31FlashLite, .whisperBase:
+    // The offline recommendation is turbo, not Base: same accuracy as large-v3 at half the
+    // download and several times the speed, which makes it the one to take for dictation you
+    // intend to keep. Base remains the quick way to try offline at 140 MB.
+    case .gemini31FlashLite, .whisperLargeTurbo:
       return true
     case .gemini31Pro, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
-         .whisperTiny, .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo,
+         .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
          .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
          .selfHostedTranscription, .openRouterTranscription:
       return false

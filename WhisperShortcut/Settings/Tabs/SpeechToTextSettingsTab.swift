@@ -314,6 +314,12 @@ struct SpeechToTextSettingsTab: View {
                   .font(.caption)
                   .foregroundColor(.secondary)
               }
+            } else if modelType.isQuickStart {
+              // Not a second "Recommended": this is the small download for trying offline out,
+              // and saying so keeps it findable without competing with the actual recommendation.
+              Text("Smallest download")
+                .font(.caption)
+                .foregroundColor(.secondary)
             }
           }
 
@@ -324,9 +330,14 @@ struct SpeechToTextSettingsTab: View {
                 Image(systemName: "arrow.down.circle.fill")
                   .foregroundColor(.blue)
                   .font(.caption)
-                Text("Downloading...")
-                  .font(.caption)
-                  .foregroundColor(.secondary)
+                // A gigabyte-scale download with no number reads as a hang; show how far it is.
+                let fraction = modelManager.downloadProgress[modelType]
+                Text(
+                  fraction.map { "Downloading… \(Int($0 * 100))%" } ?? "Downloading…"
+                )
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .monospacedDigit()
               } else {
                 Image(systemName: isAvailable ? "checkmark.circle.fill" : "circle")
                   .foregroundColor(isAvailable ? .green : .secondary)
@@ -354,13 +365,24 @@ struct SpeechToTextSettingsTab: View {
 
         // Action Button
         if isDownloading {
-          // Download in progress
+          // Download in progress — determinate where WhisperKit reports a fraction, so the row
+          // says how far along a multi-gigabyte download is instead of spinning indefinitely.
           HStack(spacing: 8) {
-            ProgressView()
-              .scaleEffect(0.8)
-            Text("Downloading...")
-              .font(.caption)
-              .foregroundColor(.secondary)
+            if let fraction = modelManager.downloadProgress[modelType] {
+              ProgressView(value: fraction)
+                .progressViewStyle(.linear)
+                .frame(width: 90)
+              Text("\(Int(fraction * 100))%")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .monospacedDigit()
+            } else {
+              ProgressView()
+                .scaleEffect(0.8)
+              Text("Downloading…")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            }
           }
         } else if isAvailable {
           // Delete button

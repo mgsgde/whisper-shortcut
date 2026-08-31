@@ -42,10 +42,17 @@ enum OfflineModelType: String, CaseIterable {
     }
   }
   
-  /// The starter model in the download list — small enough that the first offline dictation is
-  /// seconds away rather than a gigabyte away. It is NOT the accuracy recommendation; see
-  /// `mostAccurate`, which is what Offline Mode reaches for.
+  /// The model the list recommends: the one a user who does not want to research Whisper sizes
+  /// should take. That is turbo — large-v3 accuracy at half its download and several times its
+  /// speed. Base was recommended before turbo existed; a 140 MB model that mishears names is the
+  /// wrong default for dictation you intend to keep.
   var isRecommended: Bool {
+    return self == .whisperLargeTurbo
+  }
+
+  /// Shown instead of the star on the model that is merely the fastest way to *try* offline
+  /// dictation. Keeps Base findable for a metered connection without implying it is the best pick.
+  var isQuickStart: Bool {
     return self == .whisperBase
   }
 
@@ -80,6 +87,14 @@ class ModelManager: ObservableObject {
   static let shared = ModelManager()
   
   @Published var downloadingModels: Set<OfflineModelType> = []
+  /// Fraction downloaded per model, 0…1, while a download is running. Drives the progress bar in
+  /// Settings and the text in the dictation popup — a 1.6 GB download with no progress reads as a
+  /// hang, which is exactly how the first turbo download was experienced.
+  @Published var downloadProgress: [OfflineModelType: Double] = [:]
+
+  /// In-flight `ensureReady` work per model, so a dictation that starts while Settings is already
+  /// downloading joins that download instead of starting a second one.
+  private var readyTasks: [OfflineModelType: Task<Void, Error>] = [:]
   
   private let fileManager = FileManager.default
   
@@ -140,9 +155,22 @@ class ModelManager: ObservableObject {
     return true
   }
 
-  /// WhisperKit requires AudioEncoder.mlmodelc to load; treat model as available only if present.
+  /// The compiled CoreML components WhisperKit loads. Checking only `AudioEncoder.mlmodelc` (what
+  /// this did before) reported a half-finished download as ready: the 2026-08-31 case got as far
+  /// as recording, then failed inside WhisperKit with "Unable to load model …
+  /// TextDecoderContextPrefill.mlmodelc", which the error mapping turned into a "Model Not
+  /// Downloaded" popup for a model the UI was showing as downloaded.
+  ///
+  /// `TextDecoderContextPrefill` is deliberately NOT required: it is the prefill cache, and not
+  /// every variant in the repo ships it. A model missing it still loads on most paths, and the
+  /// case where it does not is handled by the self-heal in `ensureReady` rather than by declaring
+  /// every such model unavailable.
+  private static let requiredComponents = [
+    "AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "MelSpectrogram.mlmodelc",
+  ]
+
   private func hasRequiredWhisperKitFiles(at modelPath: URL) -> Bool {
-    findFile(named: "AudioEncoder.mlmodelc", in: modelPath)
+    Self.requiredComponents.allSatisfy { findFile(named: $0, in: modelPath) }
   }
 
   private func findFile(named filename: String, in directory: URL) -> Bool {
@@ -157,17 +185,78 @@ class ModelManager: ObservableObject {
     return false
   }
   
+  // MARK: - Ready to use
+
+  /// Makes `type` usable: downloads it if it is missing or incomplete, then loads it into
+  /// `LocalSpeechService`. Callers can transcribe as soon as this returns.
+  ///
+  /// This is the single answer to "the model is not there yet". Before it existed, selecting a
+  /// model, downloading it, and loading it were three separate user actions with three separate
+  /// failure popups — and dictating before all three were done silently produced a cloud
+  /// transcription instead (see `ModelSelectionReconciler`).
+  ///
+  /// `onProgress` receives user-facing status lines; it is called on the main actor.
+  @MainActor
+  func ensureReady(_ type: OfflineModelType, onProgress: ((String) -> Void)? = nil) async throws {
+    if let existing = readyTasks[type] {
+      // Someone (Settings, a previous dictation, the launch pre-load) is already on it.
+      try await existing.value
+      return
+    }
+    let task = Task<Void, Error> { try await self.makeReady(type, onProgress: onProgress) }
+    readyTasks[type] = task
+    defer { readyTasks[type] = nil }
+    try await task.value
+  }
+
+  @MainActor
+  private func makeReady(_ type: OfflineModelType, onProgress: ((String) -> Void)?) async throws {
+    if !isModelAvailable(type) {
+      try await downloadModel(type) { fraction in
+        onProgress?("Downloading \(type.displayName) — \(Int(fraction * 100))%")
+      }
+    }
+
+    onProgress?(Self.preparingMessage(for: type))
+    do {
+      try await LocalSpeechService.shared.initializeModel(type)
+    } catch {
+      // A download that stopped early passes the folder check but fails to load. Rather than
+      // telling the user to delete and re-download by hand — the state they cannot distinguish
+      // from a bug — purge it and fetch it once more.
+      DebugLogger.logWarning(
+        "MODEL-MANAGER: \(type.displayName) failed to load (\(error.localizedDescription)); re-downloading once")
+      try? deleteModel(type)
+      await LocalSpeechService.shared.unloadModel()
+      onProgress?("The previous download was incomplete — fetching \(type.displayName) again…")
+      try await downloadModel(type) { fraction in
+        onProgress?("Downloading \(type.displayName) — \(Int(fraction * 100))%")
+      }
+      onProgress?(Self.preparingMessage(for: type))
+      try await LocalSpeechService.shared.initializeModel(type)
+    }
+  }
+
+  /// The wait after a download is CoreML compiling the model for the Neural Engine. It happens
+  /// once per model and is minutes for the large ones, so it is worth naming rather than showing
+  /// a spinner that looks stuck.
+  private static func preparingMessage(for type: OfflineModelType) -> String {
+    "Preparing \(type.displayName) for this Mac — one-time step, can take a few minutes."
+  }
+
   // MARK: - Download Model
-  func downloadModel(_ type: OfflineModelType) async throws {
+  func downloadModel(_ type: OfflineModelType, onProgress: ((Double) -> Void)? = nil) async throws {
     // Add model to downloading set on main actor
     await MainActor.run {
       downloadingModels.insert(type)
+      downloadProgress[type] = 0
     }
     
     // Use defer to ensure we always remove from downloading set, even on error
     defer {
       Task { @MainActor in
         downloadingModels.remove(type)
+        downloadProgress[type] = nil
       }
     }
     
@@ -203,7 +292,14 @@ class ModelManager: ObservableObject {
       // Download the model using WhisperKit's download method
       let downloadedModelPath = try await WhisperKit.download(
         variant: modelName,
-        downloadBase: whisperKitDir
+        downloadBase: whisperKitDir,
+        progressCallback: { progress in
+          let fraction = progress.fractionCompleted
+          Task { @MainActor in
+            ModelManager.shared.downloadProgress[type] = fraction
+            onProgress?(fraction)
+          }
+        }
       )
       
       DebugLogger.log("MODEL-MANAGER: Download completed to: \(downloadedModelPath.path)")

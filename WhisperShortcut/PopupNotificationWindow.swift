@@ -92,7 +92,7 @@ class PopupNotificationWindow: NSWindow {
   private var topUpURL: URL?
 
   // MARK: - Initialization
-  init(title: String, text: String, isError: Bool = false, isInfo: Bool = false, isCancelled: Bool = false, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, retryActionTitle: String = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
+  init(title: String, text: String, isError: Bool = false, isInfo: Bool = false, isCancelled: Bool = false, isProcessing: Bool = false, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, retryActionTitle: String = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
     // Create window with specific style for notifications
     super.init(
       contentRect: NSRect(x: 0, y: 0, width: Constants.defaultWindowWidth, height: 100),
@@ -115,7 +115,7 @@ class PopupNotificationWindow: NSWindow {
     setupWindow()
     setupContentView()
     setupCloseButton()
-    setupIcon(isError: isError, isInfo: isInfo, isCancelled: isCancelled)
+    setupIcon(isError: isError, isInfo: isInfo, isCancelled: isCancelled, isProcessing: isProcessing)
     setupLabels(title: title, text: text, modelInfo: modelInfo)
     setupScrollView()
     if isError {
@@ -317,13 +317,17 @@ class PopupNotificationWindow: NSWindow {
     hide()
   }
 
-  private func setupIcon(isError: Bool, isInfo: Bool = false, isCancelled: Bool = false) {
+  private func setupIcon(
+    isError: Bool, isInfo: Bool = false, isCancelled: Bool = false, isProcessing: Bool = false
+  ) {
     // Icon selection based on notification type
     let iconText: String
     if isCancelled {
       iconText = "⏸️"  // Pause icon for cancelled operations
     } else if isInfo {
       iconText = "ℹ️"  // Info icon for informational messages
+    } else if isProcessing {
+      iconText = "⏳"  // Work in progress — a green checkmark on "Loading…" reads as "done"
     } else if isError {
       iconText = ""  // No icon for errors (WhatsApp icon is shown instead)
     } else {
@@ -1157,7 +1161,8 @@ extension PopupNotificationWindow {
       title: title,
       text: message,
       isError: false,
-      isCancelled: false
+      isCancelled: false,
+      isProcessing: true
     )
 
     // Disable auto-hide for processing popups
@@ -1183,6 +1188,18 @@ extension PopupNotificationWindow {
         .paragraphStyle: paragraphStyle,
       ])
     updateWindowSize()
+  }
+
+  /// Show a processing popup, or update the one already on screen.
+  ///
+  /// `showProcessing` tears the window down and builds a new one, which flickers when called for
+  /// every progress tick of a download. Progress reporting wants this instead.
+  static func showOrUpdateProcessing(_ message: String, title: String = "Processing") {
+    if processingPopup != nil {
+      updateProcessingMessage(message)
+    } else {
+      showProcessing(message, title: title)
+    }
   }
 
   /// Update the message of the current processing popup.

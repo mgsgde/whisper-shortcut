@@ -97,7 +97,9 @@ To change a shortcut, open Settings → General, click **Record** next to it and
 | Gemini 3.5 Flash-Lite | 1.86 s / 2.97 s / 6.63 s | ~$0.001 | Slowest tested; see the caveat below |
 | Whisper (offline) | depends on your Mac and model size | free | Runs locally, nothing leaves your machine |
 
-**Which offline Whisper model?** Tiny and Base are fast and small (75–140 MB) but make mistakes a dictation you intend to keep will have to be corrected for. **Whisper Large v3 Turbo** (~1.6 GB) is the one to download when the transcript matters: same accuracy as Large v3, roughly half the download and several times faster, and it is what Offline Mode selects. Put names and jargon in the Glossary either way — that matters more than model size.
+**Which offline Whisper model?** **Whisper Large v3 Turbo** (~1.6 GB) is the recommended one: same accuracy as Large v3, roughly half the download and several times faster. Base (140 MB) is the smallest download if you just want to try offline dictation; Tiny and Base both make mistakes a transcript you intend to keep will have to be corrected for. Put names and jargon in the Glossary either way — that matters more than model size.
+
+**You do not have to manage the download.** Selecting an offline model downloads it and loads it in the background, with progress shown in the model list. If you dictate before it is ready, the recording is kept and transcribed as soon as the model is — the app never quietly falls back to a cloud model you did not pick. The first time a model is loaded, macOS compiles it for the Neural Engine, which takes a few minutes for the large ones and happens once; after that, loading is seconds.
 
 Recommendations by what you care about:
 

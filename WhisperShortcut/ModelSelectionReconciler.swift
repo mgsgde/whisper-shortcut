@@ -154,15 +154,15 @@ enum ModelSelectionReconciler {
     let raw = UserDefaults.standard.string(forKey: key) ?? fallback.rawValue
     let current = TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue(raw)) ?? fallback
     // Offline Whisper and self-hosted endpoints need no provider key — leave those selections
-    // alone. Exception: an offline model that was never DOWNLOADED is a dead end no API key can
-    // fix (the user keeps hitting "download the model" no matter which key they enter), so once
-    // a cloud key exists we switch to that provider's transcription model.
-    guard current.isGemini || current.isOpenAI || current.isXAI else {
-      if current.isOffline, !current.isOfflineModelAvailable() {
-        replaceTranscriptionSelection(key: key, current: current)
-      }
-      return
-    }
+    // alone, unconditionally.
+    //
+    // There used to be an exception here: an offline model that was not downloaded yet was
+    // treated as a dead end and replaced with a cloud model as soon as any API key existed. That
+    // turned "I chose on-device Whisper" into "my audio goes to OpenAI" without a word to the
+    // user — observed on 2026-08-31, where three dictations after a failed offline attempt were
+    // silently transcribed by GPT Transcribe. A missing model is no longer a dead end either:
+    // selecting one downloads it, and dictating waits for it (`ModelManager.ensureReady`).
+    guard current.isGemini || current.isOpenAI || current.isXAI else { return }
     let currentProvider: ChatModelProvider = current.isGemini ? .gemini : (current.isOpenAI ? .openai : .grok)
     if hasKey(currentProvider) { return }
     replaceTranscriptionSelection(key: key, current: current)
