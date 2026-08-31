@@ -1516,10 +1516,18 @@ enum LocalLLMPreferences {
     return v.isEmpty ? SettingsDefaults.localModelID : v
   }
 
-  /// Full chat-completions URL, normalizing a trailing slash on the base URL.
-  static var chatCompletionsURL: String {
-    let base = endpointBaseURL
+  /// Full chat-completions URL for the configured endpoint.
+  static var chatCompletionsURL: String { chatCompletionsURL(forBase: endpointBaseURL) }
+
+  /// Normalizes a trailing slash and appends the path only when it isn't already there.
+  ///
+  /// Idempotent on purpose: Ollama's own docs print the full `/v1/chat/completions` URL, so users
+  /// paste that into the endpoint field as often as the bare base. Appending unconditionally
+  /// produced `.../chat/completions/chat/completions`, and that 404 was then reported to the user
+  /// as "model not pulled" — sending them to `ollama pull` for a URL problem.
+  static func chatCompletionsURL(forBase base: String) -> String {
     let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
+    if trimmed.hasSuffix("/chat/completions") { return trimmed }
     return trimmed + "/chat/completions"
   }
 }
@@ -1712,7 +1720,11 @@ struct SettingsDefaults {
   /// default OpenAI-compatible endpoint is `http://localhost:11434/v1`.
   static let localEndpointURL = "http://localhost:11434/v1"
   /// Default model tag requested from the local server when the user hasn't set one.
-  static let localModelID = "qwen3"
+  ///
+  /// A non-reasoning instruct model on purpose: Dictate Prompt rewrites text, and a hybrid model
+  /// like `qwen3` spends its first seconds thinking before the first token appears — the one thing
+  /// the user is waiting on. Small enough to stay resident on an 8 GB Mac.
+  static let localModelID = "llama3.2"
   /// Default model tag for the Custom endpoint chat model (OpenRouter-style slug).
   static let customOpenAIChatModelID = "openai/gpt-4o"
   /// [OpenInference](https://openinference.de/) preset — EU-hosted GLM 5.2, OpenAI-compatible.

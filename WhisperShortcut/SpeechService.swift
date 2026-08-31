@@ -664,7 +664,10 @@ class SpeechService {
   /// Loads the user's Dictate Prompt system prompt (or the built-in default when empty)
   /// and appends the strict output rule. All Dictate Prompt paths (Gemini, OpenAI, text)
   /// use this composition.
-  private func buildDictatePromptSystemPrompt(logPrefix: String) -> String {
+  /// Static because the prewarmer needs it too: priming a local server's prompt cache means
+  /// sending the exact system prompt the real request will send, and that has to be reachable
+  /// without a `SpeechService` instance or a recording in flight.
+  static func buildDictatePromptSystemPrompt(logPrefix: String) -> String {
     // Screenshot-selection mode (App Store build): use the screenshot-based prompt (edit the highlighted region).
     if AppConstants.dictatePromptUsesScreenshotSelection {
       DebugLogger.log("\(logPrefix): [SCREENSHOT-SELECTION] Using screenshot-based system prompt")
@@ -786,7 +789,7 @@ class SpeechService {
         : "Current screen:",
       clipboardText: clipboardText,
       history: history,
-      systemPrompt: buildDictatePromptSystemPrompt(logPrefix: logPrefix))
+      systemPrompt: Self.buildDictatePromptSystemPrompt(logPrefix: logPrefix))
   }
 
   /// Renders the envelope's current-turn content as Gemini parts. Audio is appended by the caller.
@@ -1206,11 +1209,16 @@ class SpeechService {
     let modelID = LocalLLMPreferences.modelID
     DebugLogger.log("PROMPT-MODE-LOCAL: Starting execution endpoint=\(LocalLLMPreferences.chatCompletionsURL) model=\(modelID)")
 
+    // The local path is two local models in series, and until these timings existed there was no
+    // way to tell which of them the user was actually waiting on.
+    let startTime = CFAbsoluteTimeGetCurrent()
+
     // Step 1: transcribe the spoken instruction through the existing transcription pipeline.
     // Use `performTranscription` directly so we don't disturb the `currentTranscriptionTask` slot
     // that the public `transcribe` entry point manages.
     let instruction = try await performTranscription(audioURL: audioURL)
       .trimmingCharacters(in: .whitespacesAndNewlines)
+    let transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
     guard !instruction.isEmpty else {
       throw TranscriptionError.networkError("Could not transcribe the voice instruction for the local model.")
     }
@@ -1241,6 +1249,7 @@ class SpeechService {
     let systemInstruction: [String: Any]? = envelope.systemPrompt.isEmpty
       ? nil : ["parts": [["text": envelope.systemPrompt]]]
 
+    let requestTime = CFAbsoluteTimeGetCurrent()
     let stream = LocalLLMChatProvider.shared.sendChatStream(
       model: modelID,
       contents: contents,
@@ -1249,12 +1258,45 @@ class SpeechService {
       options: .textTransform
     )
     var combined = ""
+    var firstTokenTime: CFAbsoluteTime?
+    var finishReason: String?
     for try await event in stream {
       try Task.checkCancellation()
-      if case .textDelta(let delta) = event { combined += delta }
+      switch event {
+      case .textDelta(let delta):
+        if firstTokenTime == nil { firstTokenTime = CFAbsoluteTimeGetCurrent() }
+        combined += delta
+      case .finished(_, _, let reason):
+        finishReason = reason
+      case .functionCall:
+        break  // no tools are sent on this path
+      }
     }
 
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(combined)
+    // Time to first token is prompt processing; everything after it is generation. They respond to
+    // completely different fixes — a primed prompt cache versus a smaller model — so they are
+    // logged apart.
+    let now = CFAbsoluteTimeGetCurrent()
+    let prefillTime = (firstTokenTime ?? now) - requestTime
+    let generationTime = now - (firstTokenTime ?? now)
+    DebugLogger.logSpeech(
+      "SPEED: [local:\(modelID)] transcription \(String(format: "%.2f", transcriptionTime))s + prefill \(String(format: "%.2f", prefillTime))s + generation \(String(format: "%.2f", generationTime))s = \(String(format: "%.2f", now - startTime))s total (\(combined.count) chars)")
+
+    // The cap exists to bound a model that loops instead of answering; hitting it on real work
+    // would mean silently handing back a truncated document, so say so.
+    if finishReason == "length" {
+      DebugLogger.logWarning(
+        "PROMPT-MODE-LOCAL: Reply hit the \(AppConstants.localPromptMaxOutputTokens)-token output cap and may be truncated")
+    }
+
+    // Hybrid models (qwen3, deepseek-r1, …) can put their reasoning in the reply text itself, and
+    // this text goes straight to the user's clipboard.
+    let reply = LocalLLMChatProvider.strippingReasoningBlocks(combined)
+    if reply.count != combined.count {
+      DebugLogger.log("PROMPT-MODE-LOCAL: Stripped reasoning block(s) (\(combined.count - reply.count) chars)")
+    }
+
+    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(reply)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-LOCAL")
 
     await recordPromptTurn(
