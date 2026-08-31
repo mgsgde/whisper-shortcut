@@ -61,7 +61,7 @@ struct LocalLLMEndpointSection: View {
               UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.localPromptModelID)
             }
 
-          Text("Model tag served locally (e.g. an Ollama tag like `qwen3`). Pull it first: `ollama pull <model>`. Default: \(SettingsDefaults.localModelID)")
+          Text("Model tag served locally (e.g. an Ollama tag). Pull it first: `ollama pull <model>`. Prefer a plain instruct model — reasoning models spend their first seconds thinking before any text appears. Default: \(SettingsDefaults.localModelID)")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)

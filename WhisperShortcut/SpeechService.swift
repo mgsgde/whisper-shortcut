@@ -1253,7 +1253,14 @@ class SpeechService {
       if case .textDelta(let delta) = event { combined += delta }
     }
 
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(combined)
+    // Hybrid models (qwen3, deepseek-r1, …) can put their reasoning in the reply text itself, and
+    // this text goes straight to the user's clipboard.
+    let reply = LocalLLMChatProvider.strippingReasoningBlocks(combined)
+    if reply.count != combined.count {
+      DebugLogger.log("PROMPT-MODE-LOCAL: Stripped reasoning block(s) (\(combined.count - reply.count) chars)")
+    }
+
+    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(reply)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-LOCAL")
 
     await recordPromptTurn(
