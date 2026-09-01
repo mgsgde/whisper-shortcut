@@ -608,16 +608,22 @@ class SpeechService {
 
   // MARK: - Prompt Modes (Private Implementation)
   private func performPrompt(audioURL: URL, mode: PromptMode) async throws -> String {
-    // Get clipboard context. In screenshot-selection mode (App Store build) this is skipped so the
-    // model relies solely on the highlighted region in the screenshot instead of the ⌘C-copied selection.
-    let clipboardContext = AppConstants.dictatePromptUsesScreenshotSelection ? nil : getClipboardContext()
+    // Which model runs decides where the selection comes from, so it has to be known first: a
+    // local text model reads the clipboard even in the App Store build, because a screenshot
+    // reaches it as nothing at all.
+    let selectedPromptModel = getPromptModel()
+    let usesScreenshotSelection = selectedPromptModel.dictatePromptUsesScreenshotSelection
+
+    // Get clipboard context. In screenshot-selection mode this is skipped so the model relies
+    // solely on the highlighted region in the screenshot instead of the ⌘C-copied selection.
+    let clipboardContext = usesScreenshotSelection ? nil : getClipboardContext()
 
     // With nothing selected there is no material to edit, and the model reliably "edits" the
     // instruction instead — a user who said "formuliere Antwort, mein Geburtsdatum ist 15.08.91"
     // got back that same sentence, tidied up. Refusing here is cheaper and far clearer than
-    // pasting the user's own words back at them. Screenshot-selection builds are exempt: there
+    // pasting the user's own words back at them. Screenshot-selection runs are exempt: there
     // the selection lives in the screenshot, so a nil clipboard is the normal case.
-    if !AppConstants.dictatePromptUsesScreenshotSelection, clipboardContext == nil {
+    if !usesScreenshotSelection, clipboardContext == nil {
       DebugLogger.log("PROMPT-MODE: No selected text — refusing to send, nothing to edit")
       ContextLogger.shared.logSignal(
         .promptNoSelection, mode: "prompt",
@@ -631,9 +637,6 @@ class SpeechService {
     if let clipboardContext {
       GlossaryFastLearner.shared.learnFromTypedText(clipboardContext)
     }
-
-    // Get selected model from settings based on mode
-    let selectedPromptModel = getPromptModel()
 
     guard selectedPromptModel.supportsDictatePrompt else {
       throw TranscriptionError.networkError("Selected Dictate Prompt model does not accept direct audio input. Pick a Gemini model or OpenAI's GPT-4o Audio.")
@@ -667,9 +670,14 @@ class SpeechService {
   /// Static because the prewarmer needs it too: priming a local server's prompt cache means
   /// sending the exact system prompt the real request will send, and that has to be reachable
   /// without a `SpeechService` instance or a recording in flight.
-  static func buildDictatePromptSystemPrompt(logPrefix: String) -> String {
-    // Screenshot-selection mode (App Store build): use the screenshot-based prompt (edit the highlighted region).
-    if AppConstants.dictatePromptUsesScreenshotSelection {
+  /// `usesScreenshotSelection` comes from the model, not the build: a local text model reads the
+  /// clipboard even in the App Store build, and telling it to read a highlighted region of a
+  /// screenshot it never receives is how it ends up "editing" the instruction instead.
+  static func buildDictatePromptSystemPrompt(
+    logPrefix: String, usesScreenshotSelection: Bool
+  ) -> String {
+    // Screenshot-selection mode: use the screenshot-based prompt (edit the highlighted region).
+    if usesScreenshotSelection {
       DebugLogger.log("\(logPrefix): [SCREENSHOT-SELECTION] Using screenshot-based system prompt")
       return AppConstants.dictatePromptScreenshotSelectionSystemPrompt + AppConstants.promptModeOutputRule
     }
@@ -735,9 +743,10 @@ class SpeechService {
     clipboardContext: String?,
     modelAcceptsImages: Bool,
     supportsScreenshot: Bool,
+    usesScreenshotSelection: Bool,
     logPrefix: String
   ) async throws -> DictatePromptEnvelope {
-    let screenshotSelectionMode = AppConstants.dictatePromptUsesScreenshotSelection
+    let screenshotSelectionMode = usesScreenshotSelection
 
     // An audio-only model can't receive the screenshot at all, so in screenshot-selection mode the
     // request would carry neither the selection nor an image. Reject with something actionable.
@@ -789,7 +798,8 @@ class SpeechService {
         : "Current screen:",
       clipboardText: clipboardText,
       history: history,
-      systemPrompt: Self.buildDictatePromptSystemPrompt(logPrefix: logPrefix))
+      systemPrompt: Self.buildDictatePromptSystemPrompt(
+        logPrefix: logPrefix, usesScreenshotSelection: screenshotSelectionMode))
   }
 
   /// Renders the envelope's current-turn content as Gemini parts. Audio is appended by the caller.
@@ -989,6 +999,7 @@ class SpeechService {
       clipboardContext: clipboardContext,
       modelAcceptsImages: true,
       supportsScreenshot: true,
+      usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
       logPrefix: "PROMPT-MODE-GEMINI")
     var userParts = geminiUserParts(from: envelope)
 
@@ -1074,6 +1085,7 @@ class SpeechService {
       clipboardContext: clipboardContext,
       modelAcceptsImages: model.supportsImageInput,
       supportsScreenshot: true,
+      usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
       logPrefix: "PROMPT-MODE-OPENAI")
     var userContent = openAIUserContent(from: envelope)
 
@@ -1233,6 +1245,7 @@ class SpeechService {
       clipboardContext: clipboardContext,
       modelAcceptsImages: false,
       supportsScreenshot: false,
+      usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
       logPrefix: "PROMPT-MODE-LOCAL")
 
     var userText = ""

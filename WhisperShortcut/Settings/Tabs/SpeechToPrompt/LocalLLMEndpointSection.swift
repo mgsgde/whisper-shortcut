@@ -15,6 +15,17 @@ struct LocalLLMEndpointSection: View {
         subtitle: "Fully offline recipe: (1) Dictate → Offline Whisper, (2) Dictate Prompt → Local (this page), (3) keep Ollama or LM Studio running. Audio is transcribed on-device first, then rewritten by your local model — no cloud, no API key."
       )
 
+      // Every other Dictate Prompt model in this build reads the selection off a screenshot. A
+      // local text model can't see one, so it uses the clipboard — and copying for the user needs
+      // the Accessibility permission this build does without. Say so here, or the first run looks
+      // like the feature ignoring the selection.
+      if AppConstants.dictatePromptUsesScreenshotSelection {
+        Text("Copy the text you want edited (⌘C) before you start dictating — the local model reads your clipboard, not the screen.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
       HStack(alignment: .center, spacing: 16) {
         Text("Endpoint:")
           .font(.body)
@@ -62,6 +73,15 @@ struct LocalLLMEndpointSection: View {
             }
 
           Text("Model tag served locally (e.g. an Ollama tag). Pull it first: `ollama pull <model>`. Prefer a plain instruct model — reasoning models spend their first seconds thinking before any text appears. Default: \(SettingsDefaults.localModelID)")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+          // The app warms the model when you press the shortcut, which hides the load behind the
+          // recording. Ollama still evicts it after five idle minutes, and that eviction is the
+          // difference between a reply that starts instantly and one that waits out a reload —
+          // so the setting that removes it entirely belongs where people configure this.
+          Text("Speed tip: Ollama unloads an idle model after 5 minutes, and the next dictation pays to reload it. Start the server with `OLLAMA_KEEP_ALIVE=-1` to keep it resident.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)

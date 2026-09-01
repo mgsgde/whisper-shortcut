@@ -24,6 +24,12 @@ enum ConnectionPrewarmer {
     case .anthropic:
       prewarm(endpoint: "https://api.anthropic.com/")
     case .local:
+      // The local path is transcribe-first: the spoken instruction goes through the selected
+      // *transcription* model before the local LLM sees anything, so that request is step one of
+      // the critical path, not a parallel extra like it is on the cloud paths. Warming only the
+      // prompt model would leave the step the user actually waits on first cold. No-ops for
+      // offline Whisper (empty endpoint — it is preloaded at launch and on selection instead).
+      prewarm(for: TranscriptionModel.loadSelected())
       warmLocalModel()
     default:
       break  // custom endpoints: unknown hosts, nothing worth warming
@@ -56,7 +62,11 @@ enum ConnectionPrewarmer {
     let model = LocalLLMPreferences.modelID
     guard let url = URL(string: endpoint) else { return }
 
-    let systemPrompt = SpeechService.buildDictatePromptSystemPrompt(logPrefix: "PREWARM")
+    // `false` because this warms the *local* model, and a local text model always takes its
+    // selection from the clipboard. Priming with the screenshot prompt would prime a prefix the
+    // real request never sends.
+    let systemPrompt = SpeechService.buildDictatePromptSystemPrompt(
+      logPrefix: "PREWARM", usesScreenshotSelection: false)
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -64,15 +74,16 @@ enum ConnectionPrewarmer {
     // Generous: loading a large model from a cold page cache can take tens of seconds, and giving
     // up early would abandon exactly the wait this is meant to absorb.
     request.timeoutInterval = 120
-    let body: [String: Any] = [
-      "model": model,
-      "messages": [
+    // Built by the provider, not here: priming a prompt cache only works if the server renders the
+    // same prefix for the warm-up as for the real request, and two hand-written bodies drift.
+    let body = LocalLLMChatProvider.requestBody(
+      model: model,
+      messages: [
         ["role": "system", "content": systemPrompt],
         ["role": "user", "content": "hi"],
       ],
-      "max_tokens": 1,
-      "stream": false,
-    ]
+      stream: false,
+      maxTokens: 1)
     guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return }
     request.httpBody = httpBody
 

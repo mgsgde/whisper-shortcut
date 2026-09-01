@@ -354,6 +354,22 @@ enum PromptModel: String, CaseIterable {
     supportsDirectAudioInput || provider == .local
   }
 
+  /// Whether this model's Dictate Prompt selection is read from a screenshot rather than the
+  /// clipboard.
+  ///
+  /// Build-wide in principle (`AppConstants.dictatePromptUsesScreenshotSelection`), but never for
+  /// a local model: those are text-only, so a screenshot reaches them as nothing at all. That
+  /// combination used to send the "edit the highlighted region" system prompt with no image *and*
+  /// no clipboard — an instruction to read something the model was never given, which is why the
+  /// App Store build's local Dictate Prompt answered with the instruction tidied up.
+  ///
+  /// Reading the pasteboard needs no Accessibility permission; only the synthetic ⌘C does. So the
+  /// local path uses the clipboard in every build, and in the App Store build the user copies for
+  /// themselves.
+  var dictatePromptUsesScreenshotSelection: Bool {
+    AppConstants.dictatePromptUsesScreenshotSelection && provider != .local
+  }
+
   /// True for the OpenAI audio-preview models that accept `input_audio` content parts in
   /// Chat Completions requests — i.e. the OpenAI counterpart to Gemini's native audio handling
   /// in Dictate Prompt.

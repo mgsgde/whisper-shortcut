@@ -30,19 +30,9 @@ final class LocalLLMChatProvider: LLMChatProvider {
     let messages = OpenAIChatCompletionsConverter.messages(
       from: contents, systemInstruction: systemInstruction)
 
-    var body: [String: Any] = [
-      "model": model,
-      "messages": messages,
-      "stream": true,
-      // Dictate Prompt is a one-shot text rewrite — reasoning buys nothing and costs seconds of
-      // first-token latency on hybrid models (qwen3, deepseek-r1, …). llama.cpp, LM Studio and
-      // vLLM read this; servers that don't know the field ignore it (unknown JSON keys are
-      // dropped), so the `<think>` stripper below stays the backstop rather than the only defense.
-      "chat_template_kwargs": ["enable_thinking": false],
-      // Bounds a model that repeats itself forever instead of finishing. Set high enough that real
-      // rewrites never reach it; the caller warns when a reply stops here.
-      "max_tokens": AppConstants.localPromptMaxOutputTokens,
-    ]
+    var body = Self.requestBody(
+      model: model, messages: messages, stream: true,
+      maxTokens: AppConstants.localPromptMaxOutputTokens)
     if !tools.isEmpty {
       body["tools"] = tools.map(\.chatCompletionsDeclaration)
     }
@@ -63,6 +53,39 @@ final class LocalLLMChatProvider: LLMChatProvider {
       },
       mapTransportError: { Self.mapConnectionError($0, endpoint: endpoint) })
     return OpenAICompatibleStream.chatCompletions(config, body: body)
+  }
+
+  /// The request body for a local chat-completions call — used by the real request *and* by
+  /// `ConnectionPrewarmer`'s warm-up.
+  ///
+  /// One builder on purpose. The prewarm exists to prime the server's prompt cache, and a cache
+  /// hit needs the server to render the *same* prefix both times. Every field below that steers
+  /// chat-template rendering therefore has to appear in both bodies, and a second hand-written
+  /// dictionary is exactly how that silently stops being true.
+  static func requestBody(
+    model: String, messages: [[String: Any]], stream: Bool, maxTokens: Int
+  ) -> [String: Any] {
+    [
+      "model": model,
+      "messages": messages,
+      "stream": stream,
+      // Dictate Prompt is a one-shot text rewrite — reasoning buys nothing and costs seconds of
+      // first-token latency on hybrid models (qwen3, deepseek-r1, …). Two spellings, because the
+      // servers disagree: Ollama documents `reasoning_effort` ("none" → `think: false`) and does
+      // *not* read `chat_template_kwargs`, while llama.cpp, LM Studio and vLLM read
+      // `chat_template_kwargs`. Ollama is our default endpoint, so sending only the latter left
+      // thinking on for exactly the setup most users have.
+      //
+      // Safe on non-reasoning models: Ollama rejects a thinking request only when the value is
+      // *true* (`server/routes.go`), so `"none"` is accepted by `llama3.2` as well. Unknown JSON
+      // keys are dropped elsewhere, so the `<think>` stripper stays a backstop rather than the
+      // only defense.
+      "reasoning_effort": "none",
+      "chat_template_kwargs": ["enable_thinking": false],
+      // Bounds a model that repeats itself forever instead of finishing. Set high enough that real
+      // rewrites never reach it; the caller warns when a reply stops here.
+      "max_tokens": maxTokens,
+    ]
   }
 
   func generateStructured(
