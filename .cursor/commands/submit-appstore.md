@@ -66,10 +66,14 @@ skill — read its "Submit a version for review" section first.
    ```
    If `v$VERSION` is **not** listed, **stop** and tell the user to run `/release` first.
 3. **Archive** the App Store scheme (the project's `CFBundleVersion` is authoritative for
-   the build number):
+   the build number). `-skipPackagePluginValidation` is required since MLX joined the graph:
+   `mlx-swift` ships a Linux-only CudaBuild plugin that no-ops on macOS, and Xcode refuses an
+   unvalidated plugin rather than ignoring it. `rebuild-and-restart.sh`, `run-tests.sh` and
+   `release.yml` all pass the same flag — this command must not be the one that forgets it:
    ```bash
    xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
      -configuration Release -destination 'generic/platform=macOS' -allowProvisioningUpdates \
+     -skipPackagePluginValidation \
      archive -archivePath ".asc/artifacts/WhisperShortcut-AppStore-$VERSION.xcarchive"
    ```
 4. **Export a signed `.pkg`** from the archive:

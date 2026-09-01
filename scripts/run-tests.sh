@@ -71,12 +71,16 @@ sleep 1
 
 cd "$PROJECT_DIR"
 
+# Serialize: Shortcut display calls TISCopyCurrentKeyboardLayoutInputSource,
+# which HIToolbox aborts if two threads hit it at once.
 xcodebuild test \
   -scheme "$SCHEME" \
   -testPlan "$TEST_PLAN" \
   -destination 'platform=macOS' \
   -derivedDataPath "$DERIVED_DATA" \
-  -resultBundlePath "$RESULT_BUNDLE"
+  -resultBundlePath "$RESULT_BUNDLE" \
+  -skipPackagePluginValidation \
+  -parallel-testing-enabled NO
 
 echo ""
 echo "✅ All tests passed."

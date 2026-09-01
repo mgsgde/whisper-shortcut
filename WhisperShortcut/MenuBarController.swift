@@ -591,6 +591,13 @@ class MenuBarController: NSObject {
 
     NotificationCenter.default.addObserver(
       self,
+      selector: #selector(promptModelChanged),
+      name: .promptModelChanged,
+      object: nil
+    )
+
+    NotificationCenter.default.addObserver(
+      self,
       selector: #selector(rateLimitWaiting(_:)),
       name: .rateLimitWaiting,
       object: nil
@@ -705,6 +712,13 @@ class MenuBarController: NSObject {
     // would make that impossible — the delete would silently undo itself.
     if selectedModel.isOffline, let offlineModelType = selectedModel.offlineModelType {
       prepareOfflineModelInBackground(offlineModelType, reason: "launch", downloadIfMissing: false)
+    }
+
+    let selectedPrompt = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedPromptModel,
+      default: SettingsDefaults.selectedPromptModel)
+    if let mlxType = selectedPrompt.localMLXModelType {
+      prepareMLXModelInBackground(mlxType, reason: "launch")
     }
 
     // Setup shortcuts
@@ -1979,6 +1993,13 @@ class MenuBarController: NSObject {
     }
   }
 
+  @objc private func promptModelChanged(_ notification: Notification) {
+    guard let newModel = notification.object as? PromptModel,
+          let mlxType = newModel.localMLXModelType
+    else { return }
+    prepareMLXModelInBackground(mlxType, reason: "selection")
+  }
+
   /// Loads an offline model in the background, downloading it first only when asked to.
   ///
   /// `downloadIfMissing` is the difference between the two callers: choosing a model is a request
@@ -2005,6 +2026,28 @@ class MenuBarController: NSObject {
       } catch {
         DebugLogger.logError(
           "MENU-BAR: Could not prepare \(type.displayName): \(error.localizedDescription)")
+      }
+    }
+  }
+
+  /// Downloads (if needed) and loads an in-process MLX model without blocking anything.
+  private func prepareMLXModelInBackground(_ type: LocalLLMModelType, reason: String) {
+    Task { @MainActor in
+      let alreadyThere = LocalLLMModelManager.shared.isModelAvailable(type)
+      DebugLogger.log(
+        "MENU-BAR: Preparing MLX model \(type.displayName) in background (\(reason), "
+          + "\(alreadyThere ? "downloaded" : "needs download"))")
+      do {
+        // Silent, like the offline-Whisper twin above: the user did not ask for a multi-gigabyte
+        // download to start right now, and the Dictate Prompt and Chat paths both report progress
+        // properly when the model is still missing at the moment it actually matters.
+        try await LocalLLMModelManager.shared.ensureReady(type)
+        DebugLogger.logSuccess("MENU-BAR: MLX model \(type.displayName) ready")
+      } catch is CancellationError {
+        DebugLogger.log("MENU-BAR: MLX prepare cancelled for \(type.displayName)")
+      } catch {
+        DebugLogger.logError(
+          "MENU-BAR: Could not prepare MLX \(type.displayName): \(error.localizedDescription)")
       }
     }
   }

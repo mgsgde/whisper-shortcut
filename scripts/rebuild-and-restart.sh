@@ -59,14 +59,20 @@ if [[ "$APP_STORE" == true ]]; then
     echo "   Create a separate Xcode target + scheme named 'WhisperShortcut-AppStore' first."
     exit 1
   fi
+  # mlx-swift ships a Linux-only CudaBuild plugin that no-ops on macOS;
+  # Xcode still refuses unknown plugins unless we skip validation.
   xcodebuild -project WhisperShortcut.xcodeproj -scheme "$SCHEME" -configuration Debug \
     -derivedDataPath "$DERIVED_DATA" \
+    -skipPackagePluginValidation \
     "${SIGN_ARGS[@]}" \
     build
 else
   echo "🔨 Building WhisperShortcut (configuration: Debug)..."
+  # mlx-swift ships a Linux-only CudaBuild plugin that no-ops on macOS;
+  # Xcode still refuses unknown plugins unless we skip validation.
   xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -configuration Debug \
     -derivedDataPath "$DERIVED_DATA" \
+    -skipPackagePluginValidation \
     "${SIGN_ARGS[@]}" \
     build
 fi

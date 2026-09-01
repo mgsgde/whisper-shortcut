@@ -117,7 +117,7 @@ extension ChatModelProvider {
     case .grok: return .key(.xAI)
     case .anthropic: return .key(.anthropic)
     case .customOpenAI: return .endpoint
-    case .local: return .none
+    case .local, .localMLX: return .none
     }
   }
 

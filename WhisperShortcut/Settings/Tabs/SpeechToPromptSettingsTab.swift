@@ -84,6 +84,9 @@ struct SpeechToPromptSettingsTab: View {
         UserDefaults.standard.set(
           viewModel.data.selectedPromptModel.rawValue,
           forKey: UserDefaultsKeys.selectedPromptModel)
+        NotificationCenter.default.post(
+          name: .promptModelChanged,
+          object: viewModel.data.selectedPromptModel)
         Task {
           await viewModel.saveSettings()
         }

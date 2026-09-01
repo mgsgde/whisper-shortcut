@@ -642,6 +642,8 @@ enum LLMProviderFactory {
       return OpenAIChatProvider.shared
     case .local:
       return LocalLLMChatProvider.shared
+    case .localMLX:
+      return MLXChatProvider.shared
     }
   }
 }

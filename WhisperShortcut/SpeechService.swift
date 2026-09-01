@@ -649,7 +649,9 @@ class SpeechService {
       return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
     case .openai:
       return try await executePromptWithOpenAI(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
-    case .local:
+    // Both run on this Mac and share `executePromptWithLocal`; the model id and the provider are
+    // the only difference, and that is decided inside.
+    case .local, .localMLX:
       return try await executePromptWithLocal(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
     case .grok:
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
@@ -1218,8 +1220,19 @@ class SpeechService {
     mode: PromptMode,
     model: PromptModel
   ) async throws -> String {
-    let modelID = LocalLLMPreferences.modelID
-    DebugLogger.log("PROMPT-MODE-LOCAL: Starting execution endpoint=\(LocalLLMPreferences.chatCompletionsURL) model=\(modelID)")
+    // Two shapes of "local" share this path: an in-process MLX model and an OpenAI-compatible
+    // server. What differs is only the model id we ask for — MLX takes the picker's own rawValue
+    // and resolves the weights itself, the server takes the tag the user typed — and how the
+    // timings are labelled. Everything between is identical, which is why the provider protocol
+    // is the seam and there is no second copy of this function.
+    let useMLX = model.provider == .localMLX
+    let requestModel = useMLX ? model.rawValue : LocalLLMPreferences.modelID
+    let modelLabel = useMLX ? (model.localMLXModelType?.huggingFaceID ?? model.rawValue) : requestModel
+    let providerTag = useMLX ? "mlx" : "local"
+    DebugLogger.log(
+      useMLX
+        ? "PROMPT-MODE-LOCAL: Starting execution provider=mlx model=\(modelLabel)"
+        : "PROMPT-MODE-LOCAL: Starting execution endpoint=\(LocalLLMPreferences.chatCompletionsURL) model=\(modelLabel)")
 
     // The local path is two local models in series, and until these timings existed there was no
     // way to tell which of them the user was actually waiting on.
@@ -1263,13 +1276,12 @@ class SpeechService {
       ? nil : ["parts": [["text": envelope.systemPrompt]]]
 
     let requestTime = CFAbsoluteTimeGetCurrent()
-    let stream = LocalLLMChatProvider.shared.sendChatStream(
-      model: modelID,
+    let stream = LLMProviderFactory.provider(for: model).sendChatStream(
+      model: requestModel,
       contents: contents,
       systemInstruction: systemInstruction,
       tools: [],
-      options: .textTransform
-    )
+      options: .textTransform)
     var combined = ""
     var firstTokenTime: CFAbsoluteTime?
     var finishReason: String?
@@ -1289,11 +1301,12 @@ class SpeechService {
     // Time to first token is prompt processing; everything after it is generation. They respond to
     // completely different fixes — a primed prompt cache versus a smaller model — so they are
     // logged apart.
+    let speedTag = "\(providerTag):\(modelLabel)"
     let now = CFAbsoluteTimeGetCurrent()
     let prefillTime = (firstTokenTime ?? now) - requestTime
     let generationTime = now - (firstTokenTime ?? now)
     DebugLogger.logSpeech(
-      "SPEED: [local:\(modelID)] transcription \(String(format: "%.2f", transcriptionTime))s + prefill \(String(format: "%.2f", prefillTime))s + generation \(String(format: "%.2f", generationTime))s = \(String(format: "%.2f", now - startTime))s total (\(combined.count) chars)")
+      "SPEED: [\(speedTag)] transcription \(String(format: "%.2f", transcriptionTime))s + prefill \(String(format: "%.2f", prefillTime))s + generation \(String(format: "%.2f", generationTime))s = \(String(format: "%.2f", now - startTime))s total (\(combined.count) chars)")
 
     // The cap exists to bound a model that loops instead of answering; hitting it on real work
     // would mean silently handing back a truncated document, so say so.
@@ -1317,7 +1330,7 @@ class SpeechService {
       instruction: .known(instruction),
       mode: mode,
       clipboardContext: clipboardContext,
-      model: "local:\(modelID)",
+      model: speedTag,
       hadScreenshot: false,
       logPrefix: "PROMPT-MODE-LOCAL")
     return normalizedText

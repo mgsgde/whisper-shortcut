@@ -23,6 +23,7 @@ struct PromptModelSelectionView: View {
   /// `SettingsDefaults` value. It used to default to the Dictate Prompt default, which
   /// silently made Smart Improvement star a model that was not its default.
   let recommendedModel: PromptModel
+  @ObservedObject private var mlxManager = LocalLLMModelManager.shared
 
   init(
     title: String,
@@ -126,6 +127,26 @@ struct PromptModelSelectionView: View {
           .stroke(Color(.separatorColor), lineWidth: 1)
       )
 
+      if let downloading = LocalLLMModelType.offerable.first(where: { mlxManager.downloadingModels.contains($0) }) {
+        HStack {
+          let fraction = mlxManager.downloadProgress[downloading] ?? 0
+          Text(fraction > 0 ? "Downloading \(downloading.displayName)… \(Int(fraction * 100))%" : "Starting \(downloading.displayName)…")
+            .font(.callout)
+            .foregroundColor(.secondary)
+          Spacer()
+          Button("Cancel") {
+            mlxManager.cancelDownload(downloading)
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .pointerCursorOnHover()
+        }
+      }
+
+      if models.contains(where: { $0.localMLXModelType != nil }) {
+        LocalLLMModelsSection()
+      }
+
       // Model Details (use displayModel so subscription shows the fixed model's description and cost)
       VStack(alignment: .leading, spacing: 8) {
         Text(displayModel.description)
@@ -187,19 +208,20 @@ struct PromptModelSelectionView: View {
     let textModels = models.filter { !$0.generatesImages }
     let imageModels = models.filter { $0.generatesImages }
 
-    let providerOrder: [(ChatModelProvider, String, String)] = [
-      (.gemini, "sparkles", "Gemini"),
-      (.grok, "bolt.fill", "Grok (xAI)"),
-      (.openai, "brain", "OpenAI"),
-      (.anthropic, "quote.bubble", "Claude (Anthropic)"),
-      (.customOpenAI, "arrow.triangle.branch", "Custom endpoint"),
-      (.local, "desktopcomputer", "Local (Ollama / LM Studio)"),
+    let providerOrder: [(ChatModelProvider, String, String, String?)] = [
+      (.gemini, "sparkles", "Gemini", nil),
+      (.grok, "bolt.fill", "Grok (xAI)", nil),
+      (.openai, "brain", "OpenAI", nil),
+      (.anthropic, "quote.bubble", "Claude (Anthropic)", nil),
+      (.customOpenAI, "arrow.triangle.branch", "Custom endpoint", nil),
+      (.localMLX, "desktopcomputer", "Offline", "Private · runs on your Mac"),
+      (.local, "server.rack", "Local Server", "Bring your own Ollama / LM Studio"),
     ]
 
-    var groups: [ModelGroup] = providerOrder.compactMap { provider, symbol, title in
+    var groups: [ModelGroup] = providerOrder.compactMap { provider, symbol, title, subtitle in
       let group = textModels.filter { $0.provider == provider }
       guard !group.isEmpty else { return nil }
-      return ModelGroup(symbol: symbol, title: title, subtitle: nil, models: group)
+      return ModelGroup(symbol: symbol, title: title, subtitle: subtitle, models: group)
     }
 
     if !imageModels.isEmpty {
@@ -222,14 +244,31 @@ struct PromptModelSelectionView: View {
   private func modelCell(_ model: PromptModel) -> some View {
     ModelTile(
       title: model.displayName,
+      subtitle: mlxTileSubtitle(for: model),
       isSelected: displayModel == model,
       isDisabled: subscriptionMode,
+      // The star means "recommended for *this* picker", which is what `recommendedModel` is for.
+      // Letting an MLX model carry its own catalogue star put a second star into Smart
+      // Improvement and meeting-summary pickers, whose recommendation is a cloud model — the
+      // exact confusion the `recommendedModel` doc above was introduced to end. The catalogue's
+      // own star lives in `LocalLLMModelsSection`, where it means "best offline model".
       isRecommended: model == recommendedModel,
       onTap: {
         selectedModel = model
         onModelChanged?()
       }
     )
+  }
+
+  private func mlxTileSubtitle(for model: PromptModel) -> String? {
+    guard let type = model.localMLXModelType else { return nil }
+    if mlxManager.downloadingModels.contains(type) {
+      if let fraction = mlxManager.downloadProgress[type] {
+        return "Downloading… \(Int(fraction * 100))%"
+      }
+      return "Downloading…"
+    }
+    return mlxManager.isModelAvailable(type) ? nil : "Not downloaded"
   }
 
 }
