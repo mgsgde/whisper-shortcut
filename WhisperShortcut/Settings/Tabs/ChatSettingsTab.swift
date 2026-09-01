@@ -118,6 +118,9 @@ struct ChatSettingsTab: View {
         UserDefaults.standard.set(
           viewModel.data.selectedChatModel.rawValue,
           forKey: UserDefaultsKeys.selectedChatModel)
+        NotificationCenter.default.post(
+          name: .promptModelChanged,
+          object: viewModel.data.selectedChatModel)
         Task {
           await viewModel.saveSettings()
         }

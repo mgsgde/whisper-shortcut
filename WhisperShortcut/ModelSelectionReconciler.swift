@@ -23,9 +23,9 @@ enum ModelSelectionReconciler {
     case .customOpenAI: return OpenAIChatPreferences.isConfigured
     case .grok: return KeychainManager.shared.hasNonEmpty(.xai)
     case .anthropic: return KeychainManager.shared.hasNonEmpty(.anthropic)
-    // Local server needs no key — treat as "always available" so a user's explicit local
+    // Local server and in-process MLX need no key — treat as "always available" so a user's explicit local
     // selection is never reconciled away.
-    case .local: return true
+    case .local, .localMLX: return true
     }
   }
 
@@ -44,6 +44,7 @@ enum ModelSelectionReconciler {
   // MARK: - Entry point
 
   static func reconcileAll() {
+    LocalLLMPreferences.migrateHiddenMLXFlagIfNeeded()
     // Offline Mode inverts this type's job: instead of following the keys the user has, the
     // selections that can run locally are pulled back onto this Mac. Without it the reconciler
     // actively fights the mode — an OpenAI key entered for something else is enough for it to
@@ -93,19 +94,30 @@ enum ModelSelectionReconciler {
         "MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (Offline Mode)")
     }
 
-    // Only Dictate Prompt is moved. Chat, meeting summary and Smart Improvement have no on-device
-    // model in this build (the local model is wired for Dictate Prompt only), so there is nothing
-    // to move them to — like Read Aloud, they stay selected and fail at the guard.
+    // Dictate Prompt moves to an on-device MLX model when possible. Chat can use the same MLX
+    // models; meeting summary, Smart Improvement and Read Aloud have no on-device equivalent and
+    // stay selected, failing at the network guard.
     let promptKey = UserDefaultsKeys.selectedPromptModel
     let raw = UserDefaults.standard.string(forKey: promptKey) ?? SettingsDefaults.selectedPromptModel.rawValue
     let current = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw))
       ?? SettingsDefaults.selectedPromptModel
     // A custom OpenAI-compatible endpoint may already point at the user's own server; the network
-    // guard is what decides, so leave that choice alone.
-    guard current.provider != .local, current.provider != .customOpenAI else { return }
-    UserDefaults.standard.set(PromptModel.localModel.rawValue, forKey: promptKey)
+    // guard is what decides, so leave that choice alone. In-process MLX and the HTTP local server
+    // already run on this Mac — leave those alone too.
+    guard current.provider != .localMLX, current.provider != .local,
+          current.provider != .customOpenAI else { return }
+    let replacement = offlinePromptReplacement()
+    UserDefaults.standard.set(replacement.rawValue, forKey: promptKey)
     DebugLogger.log(
-      "MODEL-RECONCILE: \(promptKey): \(current.rawValue) → \(PromptModel.localModel.rawValue) (Offline Mode)")
+      "MODEL-RECONCILE: \(promptKey): \(current.rawValue) → \(replacement.rawValue) (Offline Mode)")
+  }
+
+  /// Prefer a downloaded MLX model; otherwise the recommended catalogue default.
+  private static func offlinePromptReplacement() -> PromptModel {
+    let downloaded = LocalLLMModelType.byPreference.last {
+      LocalLLMModelManager.shared.isModelAvailable($0)
+    }
+    return PromptModel.forLocalLLMModel(downloaded ?? LocalLLMModelType.defaultModel)
   }
 
   /// The best on-device model the user has actually downloaded, or the accuracy pick if none is —

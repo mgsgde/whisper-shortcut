@@ -14,6 +14,8 @@ enum ChatModelProvider: String, CaseIterable {
   /// Local OpenAI-compatible server (Ollama / LM Studio). No API key; endpoint + model id are
   /// read from UserDefaults via `LocalLLMPreferences`. Runs fully on the user's machine.
   case local
+  /// In-process MLX LLM (no server). Model catalogue and downloads mirror offline Whisper.
+  case localMLX
 
   /// Model selected when the user invokes the bare provider slash-command
   /// (`/gemini`, `/grok`, `/gpt`, `/claude`) with no qualifier, AND when `/model <provider>`
@@ -29,6 +31,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .anthropic: return .claudeSonnet5
     case .customOpenAI: return .customOpenAIEndpoint
     case .local:  return .localModel
+    case .localMLX: return .localMLXQwen34BInstruct
     }
   }
 
@@ -43,6 +46,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .anthropic: return "claude"
     case .customOpenAI: return "custom"
     case .local:  return "local"
+    case .localMLX: return "mlx"
     }
   }
 }
@@ -135,7 +139,37 @@ enum PromptModel: String, CaseIterable {
   // Local model served by an OpenAI-compatible server on the user's machine (Ollama / LM Studio).
   // The rawValue is a stable sentinel — the *actual* model tag sent to the server is configurable
   // and read from `LocalLLMPreferences.modelID`, so one enum case covers whatever the user pulled.
+  // Local model served by an OpenAI-compatible server on the user's machine (Ollama / LM Studio).
+  // The rawValue is a stable sentinel — the *actual* model tag sent to the server is configurable
+  // and read from `LocalLLMPreferences.modelID`, so one enum case covers whatever the user pulled.
   case localModel = "local-llm"
+
+  // In-process MLX models (no server). One enum case per catalogue entry; weights download like
+  // offline Whisper and route through `MLXChatProvider`.
+  case localMLXQwen34BInstruct = "local-mlx-qwen3-4b-instruct-2507"
+  case localMLXQwen38B = "local-mlx-qwen3-8b"
+
+  /// Maps a catalogue entry to its picker / settings enum case.
+  static func forLocalLLMModel(_ type: LocalLLMModelType) -> PromptModel {
+    switch type {
+    case .qwen34BInstruct2507: return .localMLXQwen34BInstruct
+    case .qwen38B: return .localMLXQwen38B
+    }
+  }
+
+  /// Inverse of `forLocalLLMModel`; nil for cloud / HTTP-local models.
+  var localMLXModelType: LocalLLMModelType? {
+    switch self {
+    case .localMLXQwen34BInstruct: return .qwen34BInstruct2507
+    case .localMLXQwen38B: return .qwen38B
+    default: return nil
+    }
+  }
+
+  /// Every in-process MLX model offered in Dictate Prompt / Chat pickers.
+  static var localMLXModels: [PromptModel] {
+    LocalLLMModelType.offerable.map(\.promptModel)
+  }
 
   var displayName: String {
     switch self {
@@ -196,7 +230,11 @@ enum PromptModel: String, CaseIterable {
       // target is both shorter and more useful than naming the mechanism.
       return OpenAIChatPreferences.isOpenRouterEndpoint ? "OpenRouter" : "Custom endpoint"
     case .localModel:
-      return "Local (Ollama / LM Studio)"
+      return "Local Server (Ollama / LM Studio)"
+    case .localMLXQwen34BInstruct:
+      return "Qwen3 4B Instruct (Offline)"
+    case .localMLXQwen38B:
+      return "Qwen3 8B (Offline)"
     }
   }
 
@@ -237,6 +275,8 @@ enum PromptModel: String, CaseIterable {
     case .claudeFable5:      return "claudefable5"
     case .customOpenAIEndpoint: return "custom"
     case .localModel:        return "local"
+    case .localMLXQwen34BInstruct: return "mlx4b"
+    case .localMLXQwen38B:   return "mlx8b"
     }
   }
 
@@ -296,6 +336,10 @@ enum PromptModel: String, CaseIterable {
       return "Your own OpenAI-compatible chat server (OpenRouter, LiteLLM, …) • Configure URL + model in Settings → Chat • Uses /chat/completions only (no web search)"
     case .localModel:
       return "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings"
+    case .localMLXQwen34BInstruct:
+      return "mlx-community/Qwen3-4B-Instruct-2507-4bit • Recommended offline LLM • In-process MLX, no server • ~2.3 GB • Offline"
+    case .localMLXQwen38B:
+      return "mlx-community/Qwen3-8B-4bit • Larger offline LLM • In-process MLX, no server • ~4.5 GB • Offline"
     }
   }
   
@@ -309,6 +353,8 @@ enum PromptModel: String, CaseIterable {
     case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
          .geminiImage, .customOpenAIEndpoint, .localModel, .claudeHaiku45:
       return "Low"
+    case .localMLXQwen34BInstruct, .localMLXQwen38B:
+      return "Free (Offline)"
     case .gemini31Pro, .geminiImagePro:
       return "Medium"
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46:
@@ -342,6 +388,8 @@ enum PromptModel: String, CaseIterable {
       return .customOpenAI
     case .localModel:
       return .local
+    case .localMLXQwen34BInstruct, .localMLXQwen38B:
+      return .localMLX
     }
   }
 
@@ -351,7 +399,7 @@ enum PromptModel: String, CaseIterable {
   ///     local text rewrite). Drives `dictatePromptCapableModels` and the runtime guard in
   ///     `SpeechService.performPrompt`.
   var supportsDictatePrompt: Bool {
-    supportsDirectAudioInput || provider == .local
+    supportsDirectAudioInput || provider == .local || provider == .localMLX
   }
 
   /// Whether this model's Dictate Prompt selection is read from a screenshot rather than the
@@ -367,7 +415,7 @@ enum PromptModel: String, CaseIterable {
   /// local path uses the clipboard in every build, and in the App Store build the user copies for
   /// themselves.
   var dictatePromptUsesScreenshotSelection: Bool {
-    AppConstants.dictatePromptUsesScreenshotSelection && provider != .local
+    AppConstants.dictatePromptUsesScreenshotSelection && provider != .local && provider != .localMLX
   }
 
   /// True for the OpenAI audio-preview models that accept `input_audio` content parts in
@@ -403,8 +451,8 @@ enum PromptModel: String, CaseIterable {
     case .customOpenAI: return OpenAIChatPreferences.isConfigured
     case .grok: return KeychainManager.shared.hasNonEmpty(.xai)
     case .anthropic: return KeychainManager.shared.hasNonEmpty(.anthropic)
-    // Local server needs no API key — reachability is checked at request time, not here.
-    case .local: return true
+    // Local server and in-process MLX need no API key — reachability is checked at request time.
+    case .local, .localMLX: return true
     }
   }
 
@@ -426,6 +474,7 @@ enum PromptModel: String, CaseIterable {
     case .grok: return "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings."
     case .anthropic: return "Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .local: return "Set your local server endpoint (Ollama / LM Studio) in Dictate Prompt settings, and make sure it is running."
+    case .localMLX: return "Select an offline MLX model above. It downloads automatically when you pick it or dictate with it."
     }
   }
 
@@ -436,7 +485,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT4oAudio:
       return false
     // Local text models in Phase 1 are text-only; no image parts are sent to the local server.
-    case .localModel, .customOpenAIEndpoint:
+    case .localModel, .customOpenAIEndpoint, .localMLXQwen34BInstruct, .localMLXQwen38B:
       return false
     default:
       return true
@@ -450,11 +499,12 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .openaiGPT4oAudio:
       return false
-    // Phase 1: the local model is wired for Dictate Prompt only. Keeping it out of the chat
-    // model lists (chat window, meeting summary, Smart Improvement) until the chat tool-calling
-    // path is validated separately. Flip to `true` to surface it in Chat.
+    // In-process MLX models power Dictate Prompt and Chat. The HTTP local server stays
+    // Dictate-Prompt-only until its chat tool-calling path is validated separately.
     case .localModel:
       return false
+    case .localMLXQwen34BInstruct, .localMLXQwen38B:
+      return true
     default:
       return true
     }
@@ -540,7 +590,7 @@ enum PromptModel: String, CaseIterable {
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna,
          .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5,
-         .customOpenAIEndpoint, .localModel:
+         .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct, .localMLXQwen38B:
       return nil
     }
   }
@@ -586,7 +636,7 @@ enum PromptModel: String, CaseIterable {
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
     case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
       return nil // Claude is chat-only here; no audio transcription endpoint
-    case .customOpenAIEndpoint, .localModel:
+    case .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct, .localMLXQwen38B:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
     }
   }
@@ -600,6 +650,7 @@ enum PromptModel: String, CaseIterable {
   var supportsGrounding: Bool {
     switch self {
     case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .localModel,
+         .localMLXQwen34BInstruct, .localMLXQwen38B,
          .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
       // Audio-only, image-generation, proxy, local, and Anthropic models have no web-search path
       // in this app (Claude web search would need a separate Anthropic tool wiring).
@@ -635,14 +686,12 @@ enum PromptModel: String, CaseIterable {
   /// conditionally — its URL is whatever the user typed, so the same host rule the network guard
   /// uses decides.
   ///
-  /// Applied to Dictate Prompt only. Chat, meeting summary and Smart Improvement have no on-device
-  /// model in this build (`localModel.supportsTextChat` is false), so narrowing their lists would
-  /// leave an empty picker rather than an offline option — those features simply do not work in
-  /// Offline Mode, like Read Aloud.
+    /// Applied to Dictate Prompt only. Chat and Smart Improvement follow `supportsTextChat`.
+    /// When Offline Mode is on, only on-device providers qualify.
   var isSelectableUnderOfflineMode: Bool {
     guard OfflineMode.isEnabled else { return true }
     switch provider {
-    case .local:
+    case .local, .localMLX:
       return true
     case .customOpenAI:
       guard let base = OpenAIChatPreferences.customEndpointBaseURL else { return false }
@@ -1525,8 +1574,19 @@ enum LocalLLMPreferences {
     return v.isEmpty ? SettingsDefaults.localEndpointURL : v
   }
 
-  /// Slice 1: hidden switch to route Dictate Prompt through in-process MLX instead of HTTP.
-  /// `defaults write com.magnusgoedde.whispershortcut useInProcessMLX -bool true`
+  /// Migrates the Slice 1 hidden `useInProcessMLX` flag to an explicit picker selection.
+  static func migrateHiddenMLXFlagIfNeeded() {
+    guard UserDefaults.standard.bool(forKey: UserDefaultsKeys.useInProcessMLX) else { return }
+    UserDefaults.standard.set(
+      PromptModel.localMLXQwen34BInstruct.rawValue,
+      forKey: UserDefaultsKeys.selectedPromptModel)
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.useInProcessMLX)
+    DebugLogger.log(
+      "LOCAL-LLM: Migrated hidden useInProcessMLX → \(PromptModel.localMLXQwen34BInstruct.rawValue)")
+  }
+
+  /// Slice 1 legacy: hidden switch, no longer the primary MLX path. Kept only for migration.
+  @available(*, deprecated, message: "Select an offline MLX model in the model picker instead.")
   static var useInProcessMLX: Bool {
     UserDefaults.standard.bool(forKey: UserDefaultsKeys.useInProcessMLX)
   }

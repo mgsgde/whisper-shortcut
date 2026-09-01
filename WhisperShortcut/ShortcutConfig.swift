@@ -433,6 +433,8 @@ extension Notification.Name {
   /// the HotKey instances from the current config.
   static let shortcutRecordingStopped = Notification.Name("shortcutRecordingStopped")
   static let modelChanged = Notification.Name("modelChanged")
+  /// Posted when the Dictate Prompt / Chat prompt model selection changes.
+  static let promptModelChanged = Notification.Name("promptModelChanged")
   /// Posted when API is rate limited and waiting. userInfo contains "waitTime" (TimeInterval)
   static let rateLimitWaiting = Notification.Name("rateLimitWaiting")
   /// Posted when rate limit wait is complete

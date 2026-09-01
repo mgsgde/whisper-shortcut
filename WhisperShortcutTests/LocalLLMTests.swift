@@ -74,7 +74,34 @@ struct LocalLLMTests {
   /// text-only, so it received the "edit the highlighted region" system prompt with no image and
   /// — because screenshot mode skips the clipboard — no text either, and duly "edited" the voice
   /// instruction. The selection source has to follow the model, not the build.
-  @Test("A local model never takes its selection from a screenshot")
+  @Test("MLX catalogue defaults to Instruct-2507 and maps to PromptModel")
+  func mlxCatalogueDefaultsAndMapping() {
+    #expect(LocalLLMModelType.defaultModel == .qwen34BInstruct2507)
+    #expect(LocalLLMModelType.qwen34BInstruct2507.huggingFaceID
+      == "mlx-community/Qwen3-4B-Instruct-2507-4bit")
+    #expect(LocalLLMModelType.qwen38B.huggingFaceID == "mlx-community/Qwen3-8B-4bit")
+    #expect(LocalLLMModelType.qwen34BInstruct2507.isRecommended)
+    #expect(!LocalLLMModelType.qwen38B.isRecommended)
+
+    #expect(
+      PromptModel.forLocalLLMModel(.qwen34BInstruct2507) == .localMLXQwen34BInstruct)
+    #expect(PromptModel.localMLXQwen34BInstruct.localMLXModelType == .qwen34BInstruct2507)
+    #expect(PromptModel.localMLXQwen38B.localMLXModelType == .qwen38B)
+  }
+
+  @Test("Offline MLX models use the clipboard, not screenshot selection")
+  func mlxModelAlwaysUsesClipboard() {
+    #expect(PromptModel.localMLXQwen34BInstruct.dictatePromptUsesScreenshotSelection == false)
+    #expect(PromptModel.localMLXQwen38B.dictatePromptUsesScreenshotSelection == false)
+  }
+
+  @Test("MLX models route through MLXChatProvider")
+  func mlxProviderFactory() {
+    #expect(LLMProviderFactory.provider(for: .localMLXQwen34BInstruct) === MLXChatProvider.shared)
+    #expect(LLMProviderFactory.provider(for: .localModel) === LocalLLMChatProvider.shared)
+  }
+
+  @Test("A local HTTP server model never takes its selection from a screenshot")
   func localModelAlwaysUsesClipboard() {
     #expect(PromptModel.localModel.dictatePromptUsesScreenshotSelection == false)
   }

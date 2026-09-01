@@ -187,19 +187,20 @@ struct PromptModelSelectionView: View {
     let textModels = models.filter { !$0.generatesImages }
     let imageModels = models.filter { $0.generatesImages }
 
-    let providerOrder: [(ChatModelProvider, String, String)] = [
-      (.gemini, "sparkles", "Gemini"),
-      (.grok, "bolt.fill", "Grok (xAI)"),
-      (.openai, "brain", "OpenAI"),
-      (.anthropic, "quote.bubble", "Claude (Anthropic)"),
-      (.customOpenAI, "arrow.triangle.branch", "Custom endpoint"),
-      (.local, "desktopcomputer", "Local (Ollama / LM Studio)"),
+    let providerOrder: [(ChatModelProvider, String, String, String?)] = [
+      (.gemini, "sparkles", "Gemini", nil),
+      (.grok, "bolt.fill", "Grok (xAI)", nil),
+      (.openai, "brain", "OpenAI", nil),
+      (.anthropic, "quote.bubble", "Claude (Anthropic)", nil),
+      (.customOpenAI, "arrow.triangle.branch", "Custom endpoint", nil),
+      (.localMLX, "desktopcomputer", "Offline", "Private · runs on your Mac"),
+      (.local, "server.rack", "Local Server", "Bring your own Ollama / LM Studio"),
     ]
 
-    var groups: [ModelGroup] = providerOrder.compactMap { provider, symbol, title in
+    var groups: [ModelGroup] = providerOrder.compactMap { provider, symbol, title, subtitle in
       let group = textModels.filter { $0.provider == provider }
       guard !group.isEmpty else { return nil }
-      return ModelGroup(symbol: symbol, title: title, subtitle: nil, models: group)
+      return ModelGroup(symbol: symbol, title: title, subtitle: subtitle, models: group)
     }
 
     if !imageModels.isEmpty {
@@ -224,12 +225,17 @@ struct PromptModelSelectionView: View {
       title: model.displayName,
       isSelected: displayModel == model,
       isDisabled: subscriptionMode,
-      isRecommended: model == recommendedModel,
+      isRecommended: tileShowsRecommendedStar(for: model),
       onTap: {
         selectedModel = model
         onModelChanged?()
       }
     )
+  }
+
+  private func tileShowsRecommendedStar(for model: PromptModel) -> Bool {
+    if let mlx = model.localMLXModelType { return mlx.isRecommended }
+    return model == recommendedModel
   }
 
 }

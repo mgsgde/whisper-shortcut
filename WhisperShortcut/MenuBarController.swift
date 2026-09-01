@@ -591,6 +591,13 @@ class MenuBarController: NSObject {
 
     NotificationCenter.default.addObserver(
       self,
+      selector: #selector(promptModelChanged),
+      name: .promptModelChanged,
+      object: nil
+    )
+
+    NotificationCenter.default.addObserver(
+      self,
       selector: #selector(rateLimitWaiting(_:)),
       name: .rateLimitWaiting,
       object: nil
@@ -704,6 +711,13 @@ class MenuBarController: NSObject {
     // user is not waiting on it, not after they have already spoken.
     if selectedModel.isOffline, let offlineModelType = selectedModel.offlineModelType {
       prepareOfflineModelInBackground(offlineModelType, reason: "launch")
+    }
+
+    let selectedPrompt = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedPromptModel,
+      default: SettingsDefaults.selectedPromptModel)
+    if let mlxType = selectedPrompt.localMLXModelType {
+      prepareMLXModelInBackground(mlxType, reason: "launch")
     }
 
     // Setup shortcuts
@@ -1978,7 +1992,14 @@ class MenuBarController: NSObject {
     }
   }
 
-  /// Downloads (if needed) and loads an offline model without blocking anything. Failures are
+  @objc private func promptModelChanged(_ notification: Notification) {
+    guard let newModel = notification.object as? PromptModel,
+          let mlxType = newModel.localMLXModelType
+    else { return }
+    prepareMLXModelInBackground(mlxType, reason: "selection")
+  }
+
+  /// Downloads (if needed) and loads an offline Whisper model without blocking anything. Failures are
   /// logged only: the user did not ask for a download to happen right now, and the dictation path
   /// reports properly if the model is still missing when it matters.
   private func prepareOfflineModelInBackground(_ type: OfflineModelType, reason: String) {
@@ -1993,6 +2014,23 @@ class MenuBarController: NSObject {
       } catch {
         DebugLogger.logError(
           "MENU-BAR: Could not prepare \(type.displayName): \(error.localizedDescription)")
+      }
+    }
+  }
+
+  /// Downloads (if needed) and loads an in-process MLX model without blocking anything.
+  private func prepareMLXModelInBackground(_ type: LocalLLMModelType, reason: String) {
+    Task { @MainActor in
+      let alreadyThere = LocalLLMModelManager.shared.isModelAvailable(type)
+      DebugLogger.log(
+        "MENU-BAR: Preparing MLX model \(type.displayName) in background (\(reason), "
+          + "\(alreadyThere ? "downloaded" : "needs download"))")
+      do {
+        try await LocalLLMModelManager.shared.ensureReady(type)
+        DebugLogger.logSuccess("MENU-BAR: MLX model \(type.displayName) ready")
+      } catch {
+        DebugLogger.logError(
+          "MENU-BAR: Could not prepare MLX \(type.displayName): \(error.localizedDescription)")
       }
     }
   }

@@ -651,6 +651,8 @@ class SpeechService {
       return try await executePromptWithOpenAI(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
     case .local:
       return try await executePromptWithLocal(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
+    case .localMLX:
+      return try await executePromptWithLocal(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
     case .grok:
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
       // rather than crash the menu-bar app if a future model/provider change reaches here.
@@ -1218,10 +1220,20 @@ class SpeechService {
     mode: PromptMode,
     model: PromptModel
   ) async throws -> String {
-    let modelID = LocalLLMPreferences.modelID
-    let useMLX = LocalLLMPreferences.useInProcessMLX
+    let useMLX = model.provider == .localMLX
+    let mlxType = model.localMLXModelType
+    let modelID = useMLX ? (mlxType?.huggingFaceID ?? "") : LocalLLMPreferences.modelID
+
     if useMLX {
-      DebugLogger.log("PROMPT-MODE-LOCAL: Starting execution provider=mlx model=\(MLXChatProvider.hardcodedModelID)")
+      guard let mlxType else {
+        throw TranscriptionError.networkError("Invalid offline MLX model selection.")
+      }
+      DebugLogger.log("PROMPT-MODE-LOCAL: Starting execution provider=mlx model=\(modelID)")
+      defer { Task { @MainActor in PopupNotificationWindow.dismissProcessing() } }
+      try await LocalLLMModelManager.shared.ensureReady(mlxType) { status in
+        PopupNotificationWindow.showOrUpdateProcessing(status, title: "Offline Dictate Prompt")
+      }
+      try Task.checkCancellation()
     } else {
       DebugLogger.log("PROMPT-MODE-LOCAL: Starting execution endpoint=\(LocalLLMPreferences.chatCompletionsURL) model=\(modelID)")
     }
@@ -1270,7 +1282,7 @@ class SpeechService {
     let requestTime = CFAbsoluteTimeGetCurrent()
     let stream = useMLX
       ? MLXChatProvider.shared.sendChatStream(
-        model: MLXChatProvider.hardcodedModelID,
+        model: modelID,
         contents: contents,
         systemInstruction: systemInstruction,
         tools: [],
@@ -1300,7 +1312,7 @@ class SpeechService {
     // Time to first token is prompt processing; everything after it is generation. They respond to
     // completely different fixes — a primed prompt cache versus a smaller model — so they are
     // logged apart.
-    let speedTag = useMLX ? "mlx:\(MLXChatProvider.hardcodedModelID)" : "local:\(modelID)"
+    let speedTag = useMLX ? "mlx:\(modelID)" : "local:\(modelID)"
     let now = CFAbsoluteTimeGetCurrent()
     let prefillTime = (firstTokenTime ?? now) - requestTime
     let generationTime = now - (firstTokenTime ?? now)
@@ -1329,7 +1341,7 @@ class SpeechService {
       instruction: .known(instruction),
       mode: mode,
       clipboardContext: clipboardContext,
-      model: useMLX ? "mlx:\(MLXChatProvider.hardcodedModelID)" : "local:\(modelID)",
+      model: useMLX ? "mlx:\(modelID)" : "local:\(modelID)",
       hadScreenshot: false,
       logPrefix: "PROMPT-MODE-LOCAL")
     return normalizedText

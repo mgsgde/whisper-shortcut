@@ -31,6 +31,9 @@ enum ConnectionPrewarmer {
       // offline Whisper (empty endpoint — it is preloaded at launch and on selection instead).
       prewarm(for: TranscriptionModel.loadSelected())
       warmLocalModel()
+    case .localMLX:
+      prewarm(for: TranscriptionModel.loadSelected())
+      warmMLXModel(for: model)
     default:
       break  // custom endpoints: unknown hosts, nothing worth warming
     }
@@ -96,6 +99,23 @@ enum ConnectionPrewarmer {
           "PREWARM: local model \(model) ready in \(String(format: "%.0f", elapsedMs))ms (primed \(systemPrompt.count)-char system prompt)")
       } catch {
         DebugLogger.logWarning("PREWARM: local model \(model) warm-up failed: \(error.localizedDescription)")
+      }
+    }
+  }
+
+  /// Loads the selected MLX model into RAM while the user is still speaking.
+  private static func warmMLXModel(for model: PromptModel) {
+    guard let mlxType = model.localMLXModelType else { return }
+    Task.detached(priority: .utility) {
+      let startTime = CFAbsoluteTimeGetCurrent()
+      do {
+        try await LocalLLMModelManager.shared.ensureReady(mlxType)
+        let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+        DebugLogger.log(
+          "PREWARM: MLX model \(mlxType.huggingFaceID) ready in \(String(format: "%.0f", elapsedMs))ms")
+      } catch {
+        DebugLogger.logWarning(
+          "PREWARM: MLX model \(mlxType.huggingFaceID) warm-up failed: \(error.localizedDescription)")
       }
     }
   }
