@@ -113,6 +113,8 @@ enum ConnectionPrewarmer {
         let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
         DebugLogger.log(
           "PREWARM: MLX model \(mlxType.huggingFaceID) ready in \(String(format: "%.0f", elapsedMs))ms")
+      } catch is CancellationError {
+        DebugLogger.log("PREWARM: MLX model \(mlxType.huggingFaceID) warm-up cancelled")
       } catch {
         DebugLogger.logWarning(
           "PREWARM: MLX model \(mlxType.huggingFaceID) warm-up failed: \(error.localizedDescription)")

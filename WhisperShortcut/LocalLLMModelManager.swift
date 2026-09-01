@@ -112,7 +112,10 @@ final class LocalLLMModelManager: ObservableObject {
     return nil
   }
 
-  private static let requiredFileNames = ["config.json"]
+  /// `tokenizer.json` is required because Hub snapshot can finish `config.json` + the
+  /// `.safetensors` shard and still be cancelled before the tokenizer lands. Treating that
+  /// half-repo as "available" made Delete appear and the first load fail.
+  private static let requiredFileNames = ["config.json", "tokenizer.json"]
 
   private func hasRequiredMLXFiles(at directory: URL) -> Bool {
     guard Self.requiredFileNames.allSatisfy({
@@ -236,18 +239,24 @@ final class LocalLLMModelManager: ObservableObject {
         }
       }
 
+      // Hub 1.1.9's snapshot returns the repo URL when `Task.isCancelled` after a file,
+      // instead of throwing. Catch that before we treat a partial tree as success.
+      try Task.checkCancellation()
+
       guard hasRequiredMLXFiles(at: dir) || isModelAvailable(type) else {
         throw LocalLLMModelError.downloadFailed(
           "Model downloaded but required files are missing. Please try again.")
       }
 
       DebugLogger.logSuccess("LOCAL-LLM-MANAGER: \(type.displayName) downloaded successfully")
-    } catch is CancellationError {
-      DebugLogger.log("LOCAL-LLM-MANAGER: Download cancelled for \(type.huggingFaceID)")
-      throw CancellationError()
-    } catch let error as LocalLLMModelError {
-      throw error
     } catch {
+      if Self.isCancellation(error) {
+        DebugLogger.log("LOCAL-LLM-MANAGER: Download cancelled for \(type.huggingFaceID)")
+        throw CancellationError()
+      }
+      if let error = error as? LocalLLMModelError {
+        throw error
+      }
       DebugLogger.logError("LOCAL-LLM-MANAGER: Download failed: \(error.localizedDescription)")
       throw LocalLLMModelError.downloadFailed(error.localizedDescription)
     }
@@ -294,6 +303,17 @@ enum LocalLLMModelError: LocalizedError {
     case .downloadFailed(let message): return "Download failed: \(message)"
     case .fileError(let message): return "File error: \(message)"
     }
+  }
+}
+
+extension LocalLLMModelManager {
+  /// Hub's per-file downloader cancels the URLSession with `URLError.cancelled`; Swift
+  /// concurrency uses `CancellationError`. Both must stay silent in the Settings UI.
+  fileprivate static func isCancellation(_ error: Error) -> Bool {
+    if error is CancellationError { return true }
+    if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+    let nsError = error as NSError
+    return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
   }
 }
 

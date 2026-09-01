@@ -2028,6 +2028,8 @@ class MenuBarController: NSObject {
       do {
         try await LocalLLMModelManager.shared.ensureReadyWithUI(type, title: "Offline MLX")
         DebugLogger.logSuccess("MENU-BAR: MLX model \(type.displayName) ready")
+      } catch is CancellationError {
+        DebugLogger.log("MENU-BAR: MLX prepare cancelled for \(type.displayName)")
       } catch {
         DebugLogger.logError(
           "MENU-BAR: Could not prepare MLX \(type.displayName): \(error.localizedDescription)")
