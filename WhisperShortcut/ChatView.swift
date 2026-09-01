@@ -873,6 +873,9 @@ class ChatViewModel: ObservableObject {
       // per token (O(N²) over the reply) on the MainActor. Reset when `streamed` restarts after an
       // image-marker fold, since fresh narration begins there.
       var thoughtStripSettled = false
+      // Consecutive in-place-status ignores (same trailing sentence, not appended).
+      // Three of these must stop the stream even though `streamed` stayed at one copy.
+      var duplicateStatusStreak = 0
       do {
         let placeholder = ChatMessage(id: placeholderId, role: .model, content: "")
         appendMessage(placeholder, toSessionId: sessionId)
@@ -933,8 +936,15 @@ class ChatViewModel: ObservableObject {
             try Task.checkCancellation()
             switch event {
             case .textDelta(let delta):
-              roundText += delta
-              streamed += delta
+              roundText = ChatStreamLoopGuard.mergeDelta(streamed: roundText, delta: delta)
+              let merge = ChatStreamLoopGuard.merge(streamed: streamed, delta: delta)
+              streamed = merge.text
+              let trimmedDelta = delta.trimmingCharacters(in: .whitespacesAndNewlines)
+              if merge.kind == .ignored, !trimmedDelta.isEmpty {
+                duplicateStatusStreak += 1
+              } else if merge.kind != .ignored {
+                duplicateStatusStreak = 0
+              }
               // Only strip while still in the marker zone. Once stripped, `streamed` never
               // re-acquires a start-anchored marker (deltas append at the end), so re-scanning
               // the whole string every subsequent token is pure waste.
@@ -943,6 +953,19 @@ class ChatViewModel: ObservableObject {
                 if streamed.utf8.count > 512 { thoughtStripSettled = true }
               }
               streamingBuffer.enqueueUpdate(markerPrefix + streamed)
+              // Gemini can repeat the same status sentence for minutes. Stop only this
+              // stream so the good prefix is kept. Do NOT call `cancelSend()` — that
+              // also drops the session queue, which would discard the "1 queued" turn.
+              // Breaking `toolLoop` releases the AsyncThrowingStream iterator; Gemini's
+              // `onTermination` cancels the URLSession task the same way a consumer stop
+              // does, then we finalize the partial normally (queue still drains).
+              if ChatStreamLoopGuard.shouldStop(streamed: streamed, ignoredStreak: duplicateStatusStreak) {
+                DebugLogger.logWarning(
+                  "CHAT: stream loop detected — stopping this reply without dropping the queue (chars=\(streamed.count))")
+                streamed = ChatStreamLoopGuard.appendStopNotice(to: streamed)
+                streamingBuffer.setContentImmediate(markerPrefix + streamed)
+                break toolLoop
+              }
             case .functionCall(let name, let args, let thoughtSignature):
               pendingCalls.append((name, args, thoughtSignature))
             case .finished(let sources, let supports, _):
@@ -974,6 +997,7 @@ class ChatViewModel: ObservableObject {
             markerPrefix = (current.isEmpty ? joined : current + "\n\n" + joined) + "\n\n"
             streamed = ""
             thoughtStripSettled = false
+            duplicateStatusStreak = 0
             streamingBuffer.setContentImmediate(markerPrefix)
           }
           currentContents.append(contentsOf: turns)
