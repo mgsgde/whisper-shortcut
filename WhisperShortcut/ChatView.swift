@@ -945,6 +945,10 @@ class ChatViewModel: ObservableObject {
         // from a model that just said nothing — the two warrant different fallback copy — and lets
         // the exhaustion copy say how much work actually ran.
         var executedToolCalls = 0
+        // Remembers the read-only calls this turn already made, so a model that keeps re-issuing
+        // the same fruitless lookup is answered from the cache and told it is repeating itself,
+        // instead of burning another provider round trip per repeat (see ChatToolTurnMemo).
+        let toolMemo = ChatToolTurnMemo()
 
         toolLoop: for round in 0..<(maxToolRounds + 1) {
           // Final round: strip every tool so the model is forced to synthesize an answer from
@@ -1025,7 +1029,8 @@ class ChatViewModel: ObservableObject {
           }
           executedToolCalls += pendingCalls.count
           let (turns, imageMarkers) = try await executeToolCalls(
-            pendingCalls, narration: Self.stripLeakedThoughtTokens(roundText), sessionId: sessionId)
+            pendingCalls, narration: Self.stripLeakedThoughtTokens(roundText), sessionId: sessionId,
+            memo: toolMemo)
           // Generated images go straight into the streaming bubble: the image shows up the
           // moment the tool finishes, and the model's follow-up narration streams below it.
           // The marker becomes part of the persisted message content (rendered inline);
@@ -1182,7 +1187,8 @@ class ChatViewModel: ObservableObject {
   private func executeToolCalls(
     _ calls: [(name: String, args: [String: Any], thoughtSignature: String?)],
     narration: String,
-    sessionId: UUID
+    sessionId: UUID,
+    memo: ChatToolTurnMemo
   ) async throws -> (turns: [[String: Any]], imageMarkers: [String]) {
     var callParts: [[String: Any]] = calls.map { call in
       var part: [String: Any] = ["functionCall": ["name": call.name, "args": call.args]]
@@ -1219,11 +1225,20 @@ class ChatViewModel: ObservableObject {
         }
       }
       DebugLogger.log("CHAT-TOOL-CALL: \(call.name) args=\(Self.compactDescription(call.args))")
-      let outcome = await ChatToolRegistry.execute(
-        name: call.name, args: call.args, context: context)
-      imageMarkers.append(contentsOf: outcome.imageMarkers)
-      DebugLogger.log("CHAT-TOOL-RESULT: \(call.name) -> \(Self.compactDescription(outcome.response))")
-      responseParts.append(["functionResponse": ["name": call.name, "response": outcome.response]])
+      let response: [String: Any]
+      if let cached = memo.cachedResponse(name: call.name, args: call.args) {
+        // Identical read-only call, same turn: the answer cannot have changed, and re-running it
+        // would hide from the model that it is going in circles.
+        DebugLogger.log("CHAT-TOOL-REPEAT: \(call.name) served from this turn's cache")
+        response = cached
+      } else {
+        let outcome = await ChatToolRegistry.execute(
+          name: call.name, args: call.args, context: context)
+        imageMarkers.append(contentsOf: outcome.imageMarkers)
+        response = memo.record(name: call.name, args: call.args, response: outcome.response)
+      }
+      DebugLogger.log("CHAT-TOOL-RESULT: \(call.name) -> \(Self.compactDescription(response))")
+      responseParts.append(["functionResponse": ["name": call.name, "response": response]])
     }
     DebugLogger.log("CHAT: executed \(calls.count) tool call(s), continuing stream")
     let turns: [[String: Any]] = [
