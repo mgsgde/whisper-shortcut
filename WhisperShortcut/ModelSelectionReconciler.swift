@@ -188,7 +188,7 @@ enum ModelSelectionReconciler {
     case .openai: replacement = .openAIGPT4oMiniTranscribe
     case .grok: replacement = .xaiTranscribe
     // `providerPreference` never includes these; Anthropic has no transcription models here.
-    case .local, .customOpenAI, .anthropic: return
+    case .local, .localMLX, .customOpenAI, .anthropic: return
     }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
     DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue)")
