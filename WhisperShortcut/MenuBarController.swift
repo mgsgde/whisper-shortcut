@@ -2026,7 +2026,7 @@ class MenuBarController: NSObject {
         "MENU-BAR: Preparing MLX model \(type.displayName) in background (\(reason), "
           + "\(alreadyThere ? "downloaded" : "needs download"))")
       do {
-        try await LocalLLMModelManager.shared.ensureReady(type)
+        try await LocalLLMModelManager.shared.ensureReadyWithUI(type, title: "Offline MLX")
         DebugLogger.logSuccess("MENU-BAR: MLX model \(type.displayName) ready")
       } catch {
         DebugLogger.logError(

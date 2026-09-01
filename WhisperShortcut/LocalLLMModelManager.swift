@@ -76,6 +76,7 @@ final class LocalLLMModelManager: ObservableObject {
   @Published var downloadProgress: [LocalLLMModelType: Double] = [:]
 
   private var readyTasks: [LocalLLMModelType: Task<Void, Error>] = [:]
+  private var downloadTasks: [LocalLLMModelType: Task<Void, Error>] = [:]
   private let loader = MLXModelLoader()
   private let fileManager = FileManager.default
 
@@ -93,13 +94,22 @@ final class LocalLLMModelManager: ObservableObject {
   }
 
   func resolveModelPath(for type: LocalLLMModelType) -> URL? {
-    let repoPath = hubDirectory
-      .appendingPathComponent("models")
-      .appendingPathComponent(type.huggingFaceID)
-    guard fileManager.fileExists(atPath: repoPath.path),
-          hasRequiredMLXFiles(at: repoPath)
-    else { return nil }
-    return repoPath
+    let models = hubDirectory.appendingPathComponent("models")
+    var candidates = [models.appendingPathComponent(type.huggingFaceID)]
+    let parts = type.huggingFaceID.split(separator: "/").map(String.init)
+    if parts.count == 2 {
+      candidates.append(models.appendingPathComponent(parts[0]).appendingPathComponent(parts[1]))
+    }
+    for repoPath in candidates {
+      if hasRequiredMLXFiles(at: repoPath) { return repoPath }
+      let snapshots = repoPath.appendingPathComponent("snapshots")
+      guard let hashes = try? fileManager.contentsOfDirectory(atPath: snapshots.path) else { continue }
+      for hash in hashes {
+        let snap = snapshots.appendingPathComponent(hash)
+        if hasRequiredMLXFiles(at: snap) { return snap }
+      }
+    }
+    return nil
   }
 
   private static let requiredFileNames = ["config.json"]
@@ -135,6 +145,15 @@ final class LocalLLMModelManager: ObservableObject {
     try await task.value
   }
 
+  /// Same progress popup Dictate Prompt uses, so Chat and a picker tap are not a silent hang.
+  @MainActor
+  func ensureReadyWithUI(_ type: LocalLLMModelType, title: String) async throws {
+    defer { PopupNotificationWindow.dismissProcessing() }
+    try await ensureReady(type) { status in
+      PopupNotificationWindow.showOrUpdateProcessing(status, title: title)
+    }
+  }
+
   @MainActor
   private func makeReady(_ type: LocalLLMModelType, onProgress: ((String) -> Void)?) async throws {
     if !isModelAvailable(type) {
@@ -149,9 +168,39 @@ final class LocalLLMModelManager: ObservableObject {
 
   // MARK: - Download
 
+  func cancelDownload(_ type: LocalLLMModelType) {
+    downloadTasks[type]?.cancel()
+    readyTasks[type]?.cancel()
+    Task { @MainActor in
+      downloadingModels.remove(type)
+      downloadProgress[type] = nil
+    }
+    DebugLogger.log("LOCAL-LLM-MANAGER: Cancelled download for \(type.huggingFaceID)")
+  }
+
   func downloadModel(
     _ type: LocalLLMModelType,
     onProgress: ((Double) -> Void)? = nil
+  ) async throws {
+    if let existing = downloadTasks[type] {
+      try await existing.value
+      return
+    }
+    let task = Task<Void, Error> {
+      try await self.performDownload(type, onProgress: onProgress)
+    }
+    downloadTasks[type] = task
+    defer { downloadTasks[type] = nil }
+    try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
+  }
+
+  private func performDownload(
+    _ type: LocalLLMModelType,
+    onProgress: ((Double) -> Void)?
   ) async throws {
     await MainActor.run {
       downloadingModels.insert(type)
@@ -170,12 +219,15 @@ final class LocalLLMModelManager: ObservableObject {
     DebugLogger.log("LOCAL-LLM-MANAGER: Starting download for \(type.huggingFaceID)")
 
     let downloader = TransformersHubDownloader(api: HubApi(downloadBase: hubDirectory))
+    // Files only. Instantiating weights is `MLXModelLoader.container` so RAM is paid once.
+    let filePatterns = ["*.safetensors", "*.json", "*.jinja"]
 
     do {
-      _ = try await loadModel(
-        from: downloader,
-        using: TransformersTokenizerLoader(),
-        id: type.huggingFaceID
+      let dir = try await downloader.download(
+        id: type.huggingFaceID,
+        revision: nil,
+        matching: filePatterns,
+        useLatest: false
       ) { progress in
         let fraction = progress.fractionCompleted
         Task { @MainActor in
@@ -184,12 +236,15 @@ final class LocalLLMModelManager: ObservableObject {
         }
       }
 
-      guard isModelAvailable(type) else {
+      guard hasRequiredMLXFiles(at: dir) || isModelAvailable(type) else {
         throw LocalLLMModelError.downloadFailed(
           "Model downloaded but required files are missing. Please try again.")
       }
 
       DebugLogger.logSuccess("LOCAL-LLM-MANAGER: \(type.displayName) downloaded successfully")
+    } catch is CancellationError {
+      DebugLogger.log("LOCAL-LLM-MANAGER: Download cancelled for \(type.huggingFaceID)")
+      throw CancellationError()
     } catch let error as LocalLLMModelError {
       throw error
     } catch {
@@ -297,4 +352,10 @@ actor MLXModelLoader {
 
 extension LocalLLMModelManager {
   fileprivate var hubDirectoryForLoader: URL { hubDirectory }
+
+  /// The one in-process container. Chat and Dictate Prompt both go through here
+  /// so Qwen 4B is never instantiated twice.
+  func container(for type: LocalLLMModelType) async throws -> ModelContainer {
+    try await loader.container(for: type)
+  }
 }

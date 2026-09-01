@@ -1796,6 +1796,7 @@ class ChatViewModel: ObservableObject {
   private func switchToModel(_ model: PromptModel) {
     UserDefaults.standard.set(model.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
     Self.recordModelUse(model)
+    NotificationCenter.default.post(name: .promptModelChanged, object: model)
     appendModelMessage("Model set to **\(model.displayName)**.")
     DebugLogger.log("GEMINI-CHAT: switchToModel \(model.displayName)")
   }
@@ -4176,6 +4177,7 @@ struct ChatInputAreaView: View {
             Button(action: {
               selectedChatModelRaw = model.rawValue
               ChatViewModel.recordModelUse(model) // keep autocomplete recency in sync with the picker
+              NotificationCenter.default.post(name: .promptModelChanged, object: model)
             }) {
               Text(model.displayName)
             }

@@ -23,6 +23,7 @@ struct PromptModelSelectionView: View {
   /// `SettingsDefaults` value. It used to default to the Dictate Prompt default, which
   /// silently made Smart Improvement star a model that was not its default.
   let recommendedModel: PromptModel
+  @ObservedObject private var mlxManager = LocalLLMModelManager.shared
 
   init(
     title: String,
@@ -126,6 +127,26 @@ struct PromptModelSelectionView: View {
           .stroke(Color(.separatorColor), lineWidth: 1)
       )
 
+      if let downloading = LocalLLMModelType.offerable.first(where: { mlxManager.downloadingModels.contains($0) }) {
+        HStack {
+          let fraction = mlxManager.downloadProgress[downloading] ?? 0
+          Text(fraction > 0 ? "Downloading \(downloading.displayName)… \(Int(fraction * 100))%" : "Starting \(downloading.displayName)…")
+            .font(.callout)
+            .foregroundColor(.secondary)
+          Spacer()
+          Button("Cancel") {
+            mlxManager.cancelDownload(downloading)
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .pointerCursorOnHover()
+        }
+      }
+
+      if models.contains(where: { $0.localMLXModelType != nil }) {
+        LocalLLMModelsSection()
+      }
+
       // Model Details (use displayModel so subscription shows the fixed model's description and cost)
       VStack(alignment: .leading, spacing: 8) {
         Text(displayModel.description)
@@ -223,6 +244,7 @@ struct PromptModelSelectionView: View {
   private func modelCell(_ model: PromptModel) -> some View {
     ModelTile(
       title: model.displayName,
+      subtitle: mlxTileSubtitle(for: model),
       isSelected: displayModel == model,
       isDisabled: subscriptionMode,
       isRecommended: tileShowsRecommendedStar(for: model),
@@ -236,6 +258,17 @@ struct PromptModelSelectionView: View {
   private func tileShowsRecommendedStar(for model: PromptModel) -> Bool {
     if let mlx = model.localMLXModelType { return mlx.isRecommended }
     return model == recommendedModel
+  }
+
+  private func mlxTileSubtitle(for model: PromptModel) -> String? {
+    guard let type = model.localMLXModelType else { return nil }
+    if mlxManager.downloadingModels.contains(type) {
+      if let fraction = mlxManager.downloadProgress[type] {
+        return "Downloading… \(Int(fraction * 100))%"
+      }
+      return "Downloading…"
+    }
+    return mlxManager.isModelAvailable(type) ? nil : "Not downloaded"
   }
 
 }

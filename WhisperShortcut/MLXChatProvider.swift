@@ -6,8 +6,6 @@ import MLXLMCommon
 final class MLXChatProvider: LLMChatProvider {
   static let shared = MLXChatProvider()
 
-  private let loader = MLXModelLoader()
-
   private init() {}
 
   func sendChatStream(
@@ -34,7 +32,8 @@ final class MLXChatProvider: LLMChatProvider {
     return AsyncThrowingStream { continuation in
       let task = Task {
         do {
-          let container = try await self.loader.container(for: mlxType)
+          try await LocalLLMModelManager.shared.ensureReadyWithUI(mlxType, title: "Offline Chat")
+          let container = try await LocalLLMModelManager.shared.container(for: mlxType)
           var parameters = GenerateParameters()
           parameters.maxTokens = AppConstants.localPromptMaxOutputTokens
           let session = MLXLMCommon.ChatSession(
