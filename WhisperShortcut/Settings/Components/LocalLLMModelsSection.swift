@@ -38,7 +38,9 @@ struct LocalLLMModelsSection: View {
   private func row(for modelType: LocalLLMModelType) -> some View {
     let isDownloading = manager.downloadingModels.contains(modelType)
     let isAvailable = !isDownloading && manager.isModelAvailable(modelType)
-    let modelSize = manager.getModelSize(modelType)
+    // Only when it is going to be shown: `getModelSize` enumerates the whole model directory —
+    // gigabytes of shards — and this body re-runs on every download-progress tick.
+    let modelSize = isAvailable ? manager.getModelSize(modelType) : nil
 
     VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .center, spacing: 12) {

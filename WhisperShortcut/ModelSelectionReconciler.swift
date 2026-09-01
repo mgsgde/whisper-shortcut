@@ -12,6 +12,11 @@ import Foundation
 /// key and are left untouched.
 ///
 /// Run it at launch, after an API key is entered, and when settings load.
+/// `@MainActor` because every caller already is — the app delegate's startup path, the settings
+/// view model, the onboarding window — and because reconciling now has to ask
+/// `LocalLLMModelManager` which models are on disk. Reaching that state from a nonisolated static
+/// was the kind of access the compiler only started rejecting once the manager gained isolation.
+@MainActor
 enum ModelSelectionReconciler {
 
   // MARK: - Key availability

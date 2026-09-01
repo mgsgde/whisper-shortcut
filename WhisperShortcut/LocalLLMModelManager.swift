@@ -40,11 +40,9 @@ enum LocalLLMModelType: String, CaseIterable {
     }
   }
 
+  /// Derived, not a second list: two hand-maintained copies of one number drift.
   var estimatedSizeLabel: String {
-    switch self {
-    case .qwen34BInstruct2507: return "~2.3 GB"
-    case .qwen38B: return "~4.5 GB"
-    }
+    String(format: "~%.1f GB", Double(estimatedSizeMB) / 1000)
   }
 
   var isRecommended: Bool {
@@ -66,9 +64,33 @@ enum LocalLLMModelType: String, CaseIterable {
   }
 }
 
+// MARK: - Paths
+
+/// Where MLX weights live on disk.
+///
+/// Free-standing on purpose: the `@MainActor` manager and the `MLXModelLoader` actor both need it,
+/// and reaching across that boundary for a path forced a `fileprivate` accessor whose only job was
+/// to smuggle a URL out of one isolation domain into the other.
+enum MLXModelPaths {
+  /// Hub cache root — same layout swift-transformers uses for snapshots.
+  static var hubDirectory: URL {
+    AppSupportPaths.whisperShortcutApplicationSupportURL()
+      .appendingPathComponent("MLXModels")
+      .appendingPathComponent("hub")
+  }
+}
+
 // MARK: - Manager
 
 /// Downloads MLX weights into Application Support and owns the loaded in-process model.
+///
+/// `@MainActor` on the whole type, not method by method. `readyTasks` and `downloadTasks` are
+/// touched by the settings UI, the prewarmer, the reconciler and the Dictate Prompt path; isolating
+/// only some of those methods left the two dictionaries racing. One isolation domain also deletes
+/// every hand-written hop the `@Published` properties needed. Nothing heavy runs here as a result:
+/// downloading and instantiating weights happen inside `await`s that suspend, and the weights
+/// themselves live in `MLXModelLoader`, which is its own actor.
+@MainActor
 final class LocalLLMModelManager: ObservableObject {
   static let shared = LocalLLMModelManager()
 
@@ -84,14 +106,7 @@ final class LocalLLMModelManager: ObservableObject {
 
   // MARK: - Paths
 
-  private var mlxRootDirectory: URL {
-    AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("MLXModels")
-  }
-
-  /// Hub cache root — same layout swift-transformers uses for snapshots.
-  private var hubDirectory: URL {
-    mlxRootDirectory.appendingPathComponent("hub")
-  }
+  private var hubDirectory: URL { MLXModelPaths.hubDirectory }
 
   func resolveModelPath(for type: LocalLLMModelType) -> URL? {
     let models = hubDirectory.appendingPathComponent("models")
@@ -136,7 +151,6 @@ final class LocalLLMModelManager: ObservableObject {
 
   // MARK: - Ready to use
 
-  @MainActor
   func ensureReady(_ type: LocalLLMModelType, onProgress: ((String) -> Void)? = nil) async throws {
     if let existing = readyTasks[type] {
       try await existing.value
@@ -149,7 +163,6 @@ final class LocalLLMModelManager: ObservableObject {
   }
 
   /// Same progress popup Dictate Prompt uses, so Chat and a picker tap are not a silent hang.
-  @MainActor
   func ensureReadyWithUI(_ type: LocalLLMModelType, title: String) async throws {
     defer { PopupNotificationWindow.dismissProcessing() }
     try await ensureReady(type) { status in
@@ -157,7 +170,6 @@ final class LocalLLMModelManager: ObservableObject {
     }
   }
 
-  @MainActor
   private func makeReady(_ type: LocalLLMModelType, onProgress: ((String) -> Void)?) async throws {
     if !isModelAvailable(type) {
       try await downloadModel(type) { fraction in
@@ -174,10 +186,8 @@ final class LocalLLMModelManager: ObservableObject {
   func cancelDownload(_ type: LocalLLMModelType) {
     downloadTasks[type]?.cancel()
     readyTasks[type]?.cancel()
-    Task { @MainActor in
-      downloadingModels.remove(type)
-      downloadProgress[type] = nil
-    }
+    downloadingModels.remove(type)
+    downloadProgress[type] = nil
     DebugLogger.log("LOCAL-LLM-MANAGER: Cancelled download for \(type.huggingFaceID)")
   }
 
@@ -205,16 +215,11 @@ final class LocalLLMModelManager: ObservableObject {
     _ type: LocalLLMModelType,
     onProgress: ((Double) -> Void)?
   ) async throws {
-    await MainActor.run {
-      downloadingModels.insert(type)
-      downloadProgress[type] = 0
-    }
-
+    downloadingModels.insert(type)
+    downloadProgress[type] = 0
     defer {
-      Task { @MainActor in
-        downloadingModels.remove(type)
-        downloadProgress[type] = nil
-      }
+      downloadingModels.remove(type)
+      downloadProgress[type] = nil
     }
 
     try fileManager.createDirectory(at: hubDirectory, withIntermediateDirectories: true)
@@ -233,8 +238,8 @@ final class LocalLLMModelManager: ObservableObject {
         useLatest: false
       ) { progress in
         let fraction = progress.fractionCompleted
-        Task { @MainActor in
-          LocalLLMModelManager.shared.downloadProgress[type] = fraction
+        Task { @MainActor [weak self] in
+          self?.downloadProgress[type] = fraction
           onProgress?(fraction)
         }
       }
@@ -265,10 +270,19 @@ final class LocalLLMModelManager: ObservableObject {
   // MARK: - Delete
 
   func deleteModel(_ type: LocalLLMModelType) throws {
+    // Cancel first. Deleting the files under a running download left the download re-creating
+    // what Delete had just removed, and the button looked like it had done nothing.
+    cancelDownload(type)
     guard let modelPath = resolveModelPath(for: type) else {
       throw LocalLLMModelError.fileError("Model not found")
     }
-    try fileManager.removeItem(at: modelPath)
+    // Delete the repo, not just the snapshot. `resolveModelPath` may land on
+    // `…/<repo>/snapshots/<hash>`, and removing only that leaves the rest of the repo directory —
+    // gigabytes that Settings then reports as reclaimed while the disk says otherwise.
+    let target = modelPath.deletingLastPathComponent().lastPathComponent == "snapshots"
+      ? modelPath.deletingLastPathComponent().deletingLastPathComponent()
+      : modelPath
+    try fileManager.removeItem(at: target)
     Task { await loader.unloadIfLoaded(type) }
     DebugLogger.log("LOCAL-LLM-MANAGER: Deleted \(type.displayName)")
   }
@@ -334,8 +348,8 @@ actor MLXModelLoader {
 
     let task = Task {
       DebugLogger.log("MLX: loading \(type.huggingFaceID)")
-      let hubDir = LocalLLMModelManager.shared.hubDirectoryForLoader
-      let downloader = TransformersHubDownloader(api: HubApi(downloadBase: hubDir))
+      let downloader = TransformersHubDownloader(
+        api: HubApi(downloadBase: MLXModelPaths.hubDirectory))
       let context = try await loadModel(
         from: downloader,
         using: TransformersTokenizerLoader(),
@@ -371,8 +385,6 @@ actor MLXModelLoader {
 }
 
 extension LocalLLMModelManager {
-  fileprivate var hubDirectoryForLoader: URL { hubDirectory }
-
   /// The one in-process container. Chat and Dictate Prompt both go through here
   /// so Qwen 4B is never instantiated twice.
   func container(for type: LocalLLMModelType) async throws -> ModelContainer {

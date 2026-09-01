@@ -2026,7 +2026,10 @@ class MenuBarController: NSObject {
         "MENU-BAR: Preparing MLX model \(type.displayName) in background (\(reason), "
           + "\(alreadyThere ? "downloaded" : "needs download"))")
       do {
-        try await LocalLLMModelManager.shared.ensureReadyWithUI(type, title: "Offline MLX")
+        // Silent, like the offline-Whisper twin above: the user did not ask for a multi-gigabyte
+        // download to start right now, and the Dictate Prompt and Chat paths both report progress
+        // properly when the model is still missing at the moment it actually matters.
+        try await LocalLLMModelManager.shared.ensureReady(type)
         DebugLogger.logSuccess("MENU-BAR: MLX model \(type.displayName) ready")
       } catch is CancellationError {
         DebugLogger.log("MENU-BAR: MLX prepare cancelled for \(type.displayName)")

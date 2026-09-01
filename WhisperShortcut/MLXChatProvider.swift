@@ -15,13 +15,23 @@ final class MLXChatProvider: LLMChatProvider {
     tools: [LLMToolDeclaration],
     options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-    _ = tools
+    // None apply: an in-process model has no web search, no server-side prompt cache, and no
+    // reasoning knob of its own — thinking is switched off through the chat template below.
     _ = options
+    // Tools are accepted by the protocol but cannot be honoured here yet: this provider never
+    // emits `.functionCall`. Chat offers these models, so say so once per request instead of
+    // letting a web-search or workspace tool vanish without a trace.
+    if !tools.isEmpty {
+      DebugLogger.logWarning(
+        "MLX-CHAT-STREAM: ignoring \(tools.count) tool(s) — in-process MLX has no tool-calling path yet")
+    }
+
     let systemText = Self.plainText(from: systemInstruction)
     let messages = Self.chatMessages(from: contents)
-    guard let mlxType = LocalLLMModelType.allCases.first(where: { $0.huggingFaceID == model })
-      ?? PromptModel(rawValue: model)?.localMLXModelType
-    else {
+    // One key space: `model` is always a `PromptModel` rawValue, the same string every other
+    // provider receives. Accepting a Hugging Face id here as well meant two callers could pass
+    // two different spellings of the same model and only one of them would ever be wrong.
+    guard let mlxType = PromptModel(rawValue: model)?.localMLXModelType else {
       return AsyncThrowingStream { continuation in
         continuation.finish(
           throwing: TranscriptionError.networkError(
@@ -32,7 +42,10 @@ final class MLXChatProvider: LLMChatProvider {
     return AsyncThrowingStream { continuation in
       let task = Task {
         do {
-          try await LocalLLMModelManager.shared.ensureReadyWithUI(mlxType, title: "Offline Chat")
+          // Readiness lives here, not in the callers: every path that reaches this provider needs
+          // the weights on disk and in RAM, and the title stays neutral because both Chat and
+          // Dictate Prompt come through. A 2.3 GB first download must not look like a hang.
+          try await LocalLLMModelManager.shared.ensureReadyWithUI(mlxType, title: "Offline Model")
           let container = try await LocalLLMModelManager.shared.container(for: mlxType)
           var parameters = GenerateParameters()
           parameters.maxTokens = AppConstants.localPromptMaxOutputTokens

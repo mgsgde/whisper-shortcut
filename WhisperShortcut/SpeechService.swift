@@ -649,9 +649,9 @@ class SpeechService {
       return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
     case .openai:
       return try await executePromptWithOpenAI(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
-    case .local:
-      return try await executePromptWithLocal(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
-    case .localMLX:
+    // Both run on this Mac and share `executePromptWithLocal`; the model id and the provider are
+    // the only difference, and that is decided inside.
+    case .local, .localMLX:
       return try await executePromptWithLocal(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
     case .grok:
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
@@ -1220,23 +1220,19 @@ class SpeechService {
     mode: PromptMode,
     model: PromptModel
   ) async throws -> String {
+    // Two shapes of "local" share this path: an in-process MLX model and an OpenAI-compatible
+    // server. What differs is only the model id we ask for — MLX takes the picker's own rawValue
+    // and resolves the weights itself, the server takes the tag the user typed — and how the
+    // timings are labelled. Everything between is identical, which is why the provider protocol
+    // is the seam and there is no second copy of this function.
     let useMLX = model.provider == .localMLX
-    let mlxType = model.localMLXModelType
-    let modelID = useMLX ? (mlxType?.huggingFaceID ?? "") : LocalLLMPreferences.modelID
-
-    if useMLX {
-      guard let mlxType else {
-        throw TranscriptionError.networkError("Invalid offline MLX model selection.")
-      }
-      DebugLogger.log("PROMPT-MODE-LOCAL: Starting execution provider=mlx model=\(modelID)")
-      defer { Task { @MainActor in PopupNotificationWindow.dismissProcessing() } }
-      try await LocalLLMModelManager.shared.ensureReady(mlxType) { status in
-        PopupNotificationWindow.showOrUpdateProcessing(status, title: "Offline Dictate Prompt")
-      }
-      try Task.checkCancellation()
-    } else {
-      DebugLogger.log("PROMPT-MODE-LOCAL: Starting execution endpoint=\(LocalLLMPreferences.chatCompletionsURL) model=\(modelID)")
-    }
+    let requestModel = useMLX ? model.rawValue : LocalLLMPreferences.modelID
+    let modelLabel = useMLX ? (model.localMLXModelType?.huggingFaceID ?? model.rawValue) : requestModel
+    let providerTag = useMLX ? "mlx" : "local"
+    DebugLogger.log(
+      useMLX
+        ? "PROMPT-MODE-LOCAL: Starting execution provider=mlx model=\(modelLabel)"
+        : "PROMPT-MODE-LOCAL: Starting execution endpoint=\(LocalLLMPreferences.chatCompletionsURL) model=\(modelLabel)")
 
     // The local path is two local models in series, and until these timings existed there was no
     // way to tell which of them the user was actually waiting on.
@@ -1280,19 +1276,12 @@ class SpeechService {
       ? nil : ["parts": [["text": envelope.systemPrompt]]]
 
     let requestTime = CFAbsoluteTimeGetCurrent()
-    let stream = useMLX
-      ? MLXChatProvider.shared.sendChatStream(
-        model: modelID,
-        contents: contents,
-        systemInstruction: systemInstruction,
-        tools: [],
-        options: .textTransform)
-      : LocalLLMChatProvider.shared.sendChatStream(
-        model: modelID,
-        contents: contents,
-        systemInstruction: systemInstruction,
-        tools: [],
-        options: .textTransform)
+    let stream = LLMProviderFactory.provider(for: model).sendChatStream(
+      model: requestModel,
+      contents: contents,
+      systemInstruction: systemInstruction,
+      tools: [],
+      options: .textTransform)
     var combined = ""
     var firstTokenTime: CFAbsoluteTime?
     var finishReason: String?
@@ -1312,7 +1301,7 @@ class SpeechService {
     // Time to first token is prompt processing; everything after it is generation. They respond to
     // completely different fixes — a primed prompt cache versus a smaller model — so they are
     // logged apart.
-    let speedTag = useMLX ? "mlx:\(modelID)" : "local:\(modelID)"
+    let speedTag = "\(providerTag):\(modelLabel)"
     let now = CFAbsoluteTimeGetCurrent()
     let prefillTime = (firstTokenTime ?? now) - requestTime
     let generationTime = now - (firstTokenTime ?? now)
@@ -1341,7 +1330,7 @@ class SpeechService {
       instruction: .known(instruction),
       mode: mode,
       clipboardContext: clipboardContext,
-      model: useMLX ? "mlx:\(modelID)" : "local:\(modelID)",
+      model: speedTag,
       hadScreenshot: false,
       logPrefix: "PROMPT-MODE-LOCAL")
     return normalizedText

@@ -97,8 +97,11 @@ struct LocalLLMTests {
 
   @Test("MLX models route through MLXChatProvider")
   func mlxProviderFactory() {
-    #expect(LLMProviderFactory.provider(for: .localMLXQwen34BInstruct) === MLXChatProvider.shared)
-    #expect(LLMProviderFactory.provider(for: .localModel) === LocalLLMChatProvider.shared)
+    // `is`, not `===`: `LLMChatProvider` is not class-constrained, so identity comparison does
+    // not compile. The claim under test is which provider handles the model anyway, not which
+    // instance of it.
+    #expect(LLMProviderFactory.provider(for: .localMLXQwen34BInstruct) is MLXChatProvider)
+    #expect(LLMProviderFactory.provider(for: .localModel) is LocalLLMChatProvider)
   }
 
   @Test("A local HTTP server model never takes its selection from a screenshot")

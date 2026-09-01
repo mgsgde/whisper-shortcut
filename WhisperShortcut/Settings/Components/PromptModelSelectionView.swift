@@ -247,17 +247,17 @@ struct PromptModelSelectionView: View {
       subtitle: mlxTileSubtitle(for: model),
       isSelected: displayModel == model,
       isDisabled: subscriptionMode,
-      isRecommended: tileShowsRecommendedStar(for: model),
+      // The star means "recommended for *this* picker", which is what `recommendedModel` is for.
+      // Letting an MLX model carry its own catalogue star put a second star into Smart
+      // Improvement and meeting-summary pickers, whose recommendation is a cloud model — the
+      // exact confusion the `recommendedModel` doc above was introduced to end. The catalogue's
+      // own star lives in `LocalLLMModelsSection`, where it means "best offline model".
+      isRecommended: model == recommendedModel,
       onTap: {
         selectedModel = model
         onModelChanged?()
       }
     )
-  }
-
-  private func tileShowsRecommendedStar(for model: PromptModel) -> Bool {
-    if let mlx = model.localMLXModelType { return mlx.isRecommended }
-    return model == recommendedModel
   }
 
   private func mlxTileSubtitle(for model: PromptModel) -> String? {

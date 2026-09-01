@@ -139,9 +139,6 @@ enum PromptModel: String, CaseIterable {
   // Local model served by an OpenAI-compatible server on the user's machine (Ollama / LM Studio).
   // The rawValue is a stable sentinel — the *actual* model tag sent to the server is configurable
   // and read from `LocalLLMPreferences.modelID`, so one enum case covers whatever the user pulled.
-  // Local model served by an OpenAI-compatible server on the user's machine (Ollama / LM Studio).
-  // The rawValue is a stable sentinel — the *actual* model tag sent to the server is configurable
-  // and read from `LocalLLMPreferences.modelID`, so one enum case covers whatever the user pulled.
   case localModel = "local-llm"
 
   // In-process MLX models (no server). One enum case per catalogue entry; weights download like
@@ -686,8 +683,8 @@ enum PromptModel: String, CaseIterable {
   /// conditionally — its URL is whatever the user typed, so the same host rule the network guard
   /// uses decides.
   ///
-    /// Applied to Dictate Prompt only. Chat and Smart Improvement follow `supportsTextChat`.
-    /// When Offline Mode is on, only on-device providers qualify.
+  /// Applied to Dictate Prompt only. Chat and Smart Improvement follow `supportsTextChat`.
+  /// When Offline Mode is on, only on-device providers qualify.
   var isSelectableUnderOfflineMode: Bool {
     guard OfflineMode.isEnabled else { return true }
     switch provider {
@@ -1583,12 +1580,6 @@ enum LocalLLMPreferences {
     UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.useInProcessMLX)
     DebugLogger.log(
       "LOCAL-LLM: Migrated hidden useInProcessMLX → \(PromptModel.localMLXQwen34BInstruct.rawValue)")
-  }
-
-  /// Slice 1 legacy: hidden switch, no longer the primary MLX path. Kept only for migration.
-  @available(*, deprecated, message: "Select an offline MLX model in the model picker instead.")
-  static var useInProcessMLX: Bool {
-    UserDefaults.standard.bool(forKey: UserDefaultsKeys.useInProcessMLX)
   }
 
   /// The model tag to request (e.g. an Ollama tag). Falls back to the default model id.
