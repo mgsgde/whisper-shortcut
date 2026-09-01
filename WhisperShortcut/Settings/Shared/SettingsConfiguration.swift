@@ -334,9 +334,9 @@ enum PromptModel: String, CaseIterable {
     case .localModel:
       return "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings"
     case .localMLXQwen34BInstruct:
-      return "mlx-community/Qwen3-4B-Instruct-2507-4bit • Recommended offline LLM • In-process MLX, no server • ~2.3 GB • Offline"
+      return "mlx-community/Qwen3-4B-Instruct-2507-4bit • In-process MLX, no server to install • ~2.3 GB • Offline • Slower to answer than the same model on a local Ollama server"
     case .localMLXQwen38B:
-      return "mlx-community/Qwen3-8B-4bit • Larger offline LLM • In-process MLX, no server • ~4.5 GB • Offline"
+      return "mlx-community/Qwen3-8B-4bit • Larger offline LLM • In-process MLX, no server to install • ~4.5 GB • Offline • Tight on 8 GB Macs that also hold Whisper Turbo"
     }
   }
   

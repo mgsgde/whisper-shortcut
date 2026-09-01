@@ -208,5 +208,48 @@ in-app Chat answers "what can this app do?" from it.
    and is now the main unknown in Slice 1.
 3. Which models make the catalogue? Route through the `llm-model-docs` / `audit-llm-models` skill
    rather than guessing — the Whisper list got good by being opinionated and short.
-4. Is MLX measurably faster than the local HTTP path for a Dictate Prompt rewrite? Slice 1 answers
-   this, and it is the slice that should be allowed to kill the feature.
+4. ~~Is MLX measurably faster than the local HTTP path for a Dictate Prompt rewrite?~~ **Measured
+   2026-09-01 — no.** See [Slice 1 result](#slice-1-result-measured-2026-09-01).
+
+
+---
+
+## Slice 1 result (measured 2026-09-01)
+
+Reproduce with `LocalLLMBenchmarkTests`: `TEST_RUNNER_WHISPERSHORTCUT_BENCH_LOCAL_LLM=1`, and
+`TEST_RUNNER_WHISPERSHORTCUT_BENCH_OLLAMA_MODEL` to point both sides at the same model. Numbers
+below are `qwen3:4b-instruct` on Ollama against `mlx-community/Qwen3-4B-Instruct-2507-4bit`, one
+realistic Dictate Prompt turn, warm (the second request of a session — the common case).
+
+| | prefill | generation | total |
+|---|---|---|---|
+| MLX, best of four runs | 3.01s | 0.94s | **3.95s** |
+| MLX, worst | 12.49s | 4.21s | **16.70s** |
+| Ollama | 0.37–0.89s | 0.91–0.98s | **1.02–1.80s** |
+
+**Generation is not the problem.** In the cleanest run MLX produced 164 characters in 0.94s against
+Ollama's 136 in 0.98s — per character MLX is marginally *faster*. An early reading that generation
+was 4× slower was an artifact of measuring while Ollama held a model resident.
+
+**Prefill is the whole gap, and it did not yield to the obvious fix.** MLX rebuilds a `ChatSession`
+per request, so the thousand-token system prompt is prefilled every time; Ollama keeps the KV cache
+of the shared prefix in its own process. mlx-swift-lm's prefix cache (`saveCache(to:)` +
+`ChatSession(_:instructions:cache:)`) was implemented and measured: **3.85s with it against 3.01s
+without**, inside the run-to-run spread. The reason is concrete — the cache for this prompt is a
+**75 MB** `.safetensors` file, and deserializing it costs about what re-prefilling costs. That
+mechanism exists to restore a long shared context across launches, not to pass KV state between two
+requests in one process. Reverted; the finding is a comment where the next person would try it.
+
+Closing the gap needs the KV state held **in memory** across requests. `ChatSession` takes the
+cache `consuming` and mutates it while generating, so that is an architecture change around session
+lifetime, not a patch.
+
+**The other finding is variance.** MLX ranged 3.95s–16.70s across runs and once spent 71.95s in a
+cold generation; Ollama stayed within 1.02–1.80s. MLX degraded roughly fourfold while Ollama held a
+model resident. For a menu-bar app that also keeps Whisper Turbo's 1.6 GB in memory, that
+sensitivity weighs as much as the mean — and argues for the `MLX.GPU.set(cacheLimit:)` that is
+still unset.
+
+**Recommendation.** Ship MLX as the no-server convenience option, not as the recommended model —
+the picker's star currently sits on Qwen3 4B and has not earned it at 3.95s against 1.29s. Anyone
+running Ollama is measurably better off there. Revisit if the in-memory KV path becomes available.

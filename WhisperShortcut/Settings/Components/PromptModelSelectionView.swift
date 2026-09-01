@@ -214,8 +214,8 @@ struct PromptModelSelectionView: View {
       (.openai, "brain", "OpenAI", nil),
       (.anthropic, "quote.bubble", "Claude (Anthropic)", nil),
       (.customOpenAI, "arrow.triangle.branch", "Custom endpoint", nil),
-      (.localMLX, "desktopcomputer", "Offline", "Private · runs on your Mac"),
-      (.local, "server.rack", "Local Server", "Bring your own Ollama / LM Studio"),
+      (.localMLX, "desktopcomputer", "Offline", "Runs on your Mac · nothing to install"),
+      (.local, "server.rack", "Local Server", "Your own Ollama / LM Studio · fastest local option"),
     ]
 
     var groups: [ModelGroup] = providerOrder.compactMap { provider, symbol, title, subtitle in

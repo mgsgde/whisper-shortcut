@@ -10,7 +10,7 @@ struct LocalLLMModelsSection: View {
       SectionHeader(
         title: "Available Models",
         systemImage: "arrow.down.circle",
-        subtitle: "Download and manage offline MLX models for Dictate Prompt and Chat"
+        subtitle: "Download and manage offline MLX models for Dictate Prompt and Chat. No server to install — but if you already run Ollama or LM Studio, the Local Server option answers faster."
       )
 
       Text("Offline MLX models run on your Mac with no server. They download from Hugging Face and stay cached locally.")
@@ -55,7 +55,9 @@ struct LocalLLMModelsSection: View {
                 Image(systemName: "star.fill")
                   .foregroundColor(.yellow)
                   .font(.caption)
-                Text("Recommended")
+                // "Best of these", not "recommended": the star picks between the two MLX models,
+                // and MLX as a whole is the convenience option rather than the fast one.
+                Text("Best of these")
                   .font(.caption)
                   .foregroundColor(.secondary)
               }
