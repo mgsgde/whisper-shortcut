@@ -5,7 +5,6 @@ protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
   func toggleVoiceFeedback()
-  func addSelectionToGlossary()
   func openSettings()
   func openChat()
   func takeScreenshot()
@@ -13,6 +12,9 @@ protocol ShortcutDelegate: AnyObject {
   func markMeetingMoment()
   #if !APP_STORE
   func readAloud()
+  /// Appends the current selection to the Glossary. Selection-based like Read Aloud, so it shares
+  /// its build gate: the synthetic ⌘C needs Accessibility, which the App Store build cannot ask for.
+  func addSelectionToGlossary()
   #endif
 }
 
@@ -32,7 +34,9 @@ class Shortcuts {
   private var screenshotCaptureKey: HotKey?
   private var readAloudKey: HotKey?
   private var voiceFeedbackKey: HotKey?
+  #if !APP_STORE
   private var addToGlossaryKey: HotKey?
+  #endif
   private var meetingMarkerKey: HotKey?
   private var currentConfig: ShortcutConfig
 
@@ -100,6 +104,7 @@ class Shortcuts {
       }
     }
 
+    #if !APP_STORE
     if config.addToGlossary.isEnabled {
       addToGlossaryKey = HotKey(
         key: config.addToGlossary.key, modifiers: config.addToGlossary.modifiers)
@@ -107,6 +112,7 @@ class Shortcuts {
         self?.delegate?.addSelectionToGlossary()
       }
     }
+    #endif
 
     if config.voiceFeedback.isEnabled {
       voiceFeedbackKey = HotKey(
@@ -182,7 +188,9 @@ class Shortcuts {
     screenshotCaptureKey = nil
     readAloudKey = nil
     voiceFeedbackKey = nil
+    #if !APP_STORE
     addToGlossaryKey = nil
+    #endif
     meetingMarkerKey = nil
   }
 

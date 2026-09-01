@@ -699,11 +699,12 @@ class MenuBarController: NSObject {
     let selectedModel = TranscriptionModel.loadSelected()
     speechService.setModel(selectedModel)
 
-    // Get the selected offline model ready in the background — download included. The expensive
-    // part is CoreML compiling the model for the Neural Engine, and that has to happen while the
-    // user is not waiting on it, not after they have already spoken.
+    // Warm the selected offline model in the background so the first dictation does not wait for
+    // the load. Deliberately does NOT download: deleting a model in Settings while it stays
+    // selected is a legitimate way to reclaim gigabytes, and re-fetching it on the next launch
+    // would make that impossible — the delete would silently undo itself.
     if selectedModel.isOffline, let offlineModelType = selectedModel.offlineModelType {
-      prepareOfflineModelInBackground(offlineModelType, reason: "launch")
+      prepareOfflineModelInBackground(offlineModelType, reason: "launch", downloadIfMissing: false)
     }
 
     // Setup shortcuts
@@ -1973,17 +1974,28 @@ class MenuBarController: NSObject {
       // then and there is what every comparable app does; making them find a Download button in a
       // second section is how you end up dictating into a model that is not there.
       if newModel.isOffline, let offlineModelType = newModel.offlineModelType {
-        prepareOfflineModelInBackground(offlineModelType, reason: "selection")
+        prepareOfflineModelInBackground(offlineModelType, reason: "selection", downloadIfMissing: true)
       }
     }
   }
 
-  /// Downloads (if needed) and loads an offline model without blocking anything. Failures are
-  /// logged only: the user did not ask for a download to happen right now, and the dictation path
-  /// reports properly if the model is still missing when it matters.
-  private func prepareOfflineModelInBackground(_ type: OfflineModelType, reason: String) {
+  /// Loads an offline model in the background, downloading it first only when asked to.
+  ///
+  /// `downloadIfMissing` is the difference between the two callers: choosing a model is a request
+  /// for it, so that path fetches it; starting the app is not, so that path only warms what is
+  /// already on disk. Failures are logged and not surfaced — nobody asked for this to happen right
+  /// now, and the dictation path reports properly if the model is still missing when it matters.
+  private func prepareOfflineModelInBackground(
+    _ type: OfflineModelType, reason: String, downloadIfMissing: Bool
+  ) {
     Task { @MainActor in
       let alreadyThere = ModelManager.shared.isModelAvailable(type)
+      guard alreadyThere || downloadIfMissing else {
+        DebugLogger.log(
+          "MENU-BAR: \(type.displayName) is selected but not downloaded — leaving it that way "
+            + "(\(reason)); the next dictation will offer to fetch it")
+        return
+      }
       DebugLogger.log(
         "MENU-BAR: Preparing offline model \(type.displayName) in background (\(reason), "
           + "\(alreadyThere ? "downloaded" : "needs download"))")
@@ -2254,6 +2266,7 @@ class MenuBarController: NSObject {
     }
   }
 
+  #if !APP_STORE
   /// Appends whatever the user has selected to the Glossary.
   ///
   /// The deliberate non-feature here is intelligence: no model, no fuzzy matching against past
@@ -2302,6 +2315,7 @@ class MenuBarController: NSObject {
         title: "Glossary Full")
     }
   }
+  #endif
 
   private func simulateCopy() {
     // Use a private event source so modifier keys physically held (e.g. Option from the
