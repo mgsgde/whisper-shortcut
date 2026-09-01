@@ -29,6 +29,17 @@ SCHEME="WhisperShortcut-AppStore"
 TEST_PLAN="WhisperShortcut-AppStore"
 RESULT_BUNDLE="/tmp/WhisperShortcutTestResults-$(date +%s).xcresult"
 
+# Build into a derived-data directory of our own, inside this checkout.
+#
+# Without it, xcodebuild uses the shared ~/Library/Developer/Xcode/DerivedData, which every other
+# checkout and every parallel agent session also builds into — and a build starting there cancels
+# one already running: five consecutive runs died with "** BUILD INTERRUPTED **" on 2026-09-01
+# while two other worktrees were building. It is not the app's derived data either
+# (`build/DerivedData`, written by rebuild-and-restart.sh): sharing that would let a rebuild in
+# THIS checkout interrupt a test run in the same way. Costs one cold build per checkout; `build/`
+# is gitignored.
+DERIVED_DATA="$PROJECT_DIR/build/DerivedData-tests"
+
 # The app the user actually runs day-to-day is the default WhisperShortcut build
 # produced by rebuild-and-restart.sh (fixed derivedData path). We relaunch it once
 # tests finish so the user isn't left without a running app — see the EXIT trap below.
@@ -66,6 +77,7 @@ xcodebuild test \
   -scheme "$SCHEME" \
   -testPlan "$TEST_PLAN" \
   -destination 'platform=macOS' \
+  -derivedDataPath "$DERIVED_DATA" \
   -resultBundlePath "$RESULT_BUNDLE" \
   -skipPackagePluginValidation \
   -parallel-testing-enabled NO
