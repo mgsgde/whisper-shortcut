@@ -1,4 +1,5 @@
 import Foundation
+import MLXLMCommon
 
 /// Fires a throwaway HTTPS request to the cloud provider's host the moment recording
 /// starts, so TCP + TLS setup happens while the user is still speaking instead of adding
@@ -110,9 +111,29 @@ enum ConnectionPrewarmer {
       let startTime = CFAbsoluteTimeGetCurrent()
       do {
         try await LocalLLMModelManager.shared.ensureReady(mlxType)
+
+        // Prime the prompt cache too, not just the weights. Measured, the first request of a
+        // session spends ~8s prefilling the Dictate Prompt system prompt, and every request after
+        // it ~0.6s. Paying that during the recording is the same trade the Ollama path already
+        // makes in `warmLocalModel` — and it is the difference between the first rewrite of a
+        // session feeling broken and feeling instant.
+        //
+        // The exact prompt the real request will send: a prefix cache is only reused when the
+        // prefix matches, so priming a different one would prime nothing.
+        let container = try await LocalLLMModelManager.shared.container(for: mlxType)
+        var parameters = GenerateParameters()
+        parameters.maxTokens = AppConstants.localPromptMaxOutputTokens
+        _ = await MLXPromptCache.shared.session(
+          container: container,
+          modelID: mlxType.huggingFaceID,
+          systemPrompt: SpeechService.buildDictatePromptSystemPrompt(
+            logPrefix: "PREWARM", usesScreenshotSelection: false),
+          parameters: parameters,
+          additionalContext: ["enable_thinking": false])
+
         let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
         DebugLogger.log(
-          "PREWARM: MLX model \(mlxType.huggingFaceID) ready in \(String(format: "%.0f", elapsedMs))ms")
+          "PREWARM: MLX model \(mlxType.huggingFaceID) ready in \(String(format: "%.0f", elapsedMs))ms (weights + prompt cache)")
       } catch is CancellationError {
         DebugLogger.log("PREWARM: MLX model \(mlxType.huggingFaceID) warm-up cancelled")
       } catch {

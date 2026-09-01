@@ -250,6 +250,38 @@ model resident. For a menu-bar app that also keeps Whisper Turbo's 1.6 GB in mem
 sensitivity weighs as much as the mean — and argues for the `MLX.GPU.set(cacheLimit:)` that is
 still unset.
 
-**Recommendation.** Ship MLX as the no-server convenience option, not as the recommended model —
-the picker's star currently sits on Qwen3 4B and has not earned it at 3.95s against 1.29s. Anyone
-running Ollama is measurably better off there. Revisit if the in-memory KV path becomes available.
+**Recommendation at the time.** Ship MLX as the no-server convenience option, not as the
+recommended model. *Superseded — see below.*
+
+---
+
+## Slice 1, second result (measured 2026-09-01, in-memory KV cache)
+
+The in-memory path was built. Warm, same model, same conditions:
+
+| | prefill | generation | total |
+|---|---|---|---|
+| MLX before | 3.01s | 0.94s | 3.95s |
+| **MLX after** | **0.60s** | 0.79s | **1.39s** |
+| Ollama | 0.36s | 1.15s | 1.51s |
+
+Prefill fell 5×, into Ollama's range, and since generation was already marginally ahead (5.9ms per
+character against 7.1ms) **MLX is now the faster of the two on a warm request**.
+
+What changed, in `MLXPromptCache`: the package's file-based prefix cache is used **once** — prefill,
+`saveCache` to a temp file, `loadPromptCache` back, delete — and what survives between requests is
+the layer state in memory. Sharing those arrays is safe for a reason read out of the framework
+rather than assumed: after a `state` restore `offset == keys.dim(2)`, so `KVCacheSimple.update`
+always takes its reallocating branch on the first token, builds new buffers with `concatenated`,
+and writes only into those. The snapshot arrays are read, never written. Only the cache *objects*
+are mutated, so each request gets fresh ones wrapping the shared arrays. Reconstruction is limited
+to `KVCacheSimple`; anything else falls back to a per-request session.
+
+Priming costs ~8.4s once per app session. `ConnectionPrewarmer.warmMLXModel` now pays it during the
+recording, alongside the weights — the same trade `warmLocalModel` already makes for Ollama.
+
+**Recommendation now.** MLX is a legitimate default for local Dictate Prompt: no server to install,
+and warm latency at or below a local Ollama server. The 8.04 wording ("slower than a local server")
+and the plan text above are superseded and should be corrected in the next release. Still open:
+`MLX.GPU.set(cacheLimit:)` is unset, and the earlier runs showed MLX degrading under memory
+pressure — that sensitivity has not been re-measured since this change.
