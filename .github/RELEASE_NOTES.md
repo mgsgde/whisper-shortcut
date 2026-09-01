@@ -1,22 +1,19 @@
-# WhisperShortcut 8.03
+# WhisperShortcut 8.04
 
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
-This release adds an in-process local LLM for Chat and Dictate Prompt: pick an offline model, it downloads itself, and it runs on your Mac with no server to install. If you already run Ollama or LM Studio, keep using it — measured on the same model, the server answers noticeably faster.
+A correction release. 8.03 introduced the in-process offline model and called it the recommended way to run a local LLM. Then we measured it, and that claim did not hold — so this release says what the feature actually is.
 
-## Offline Chat and Dictate Prompt on MLX
+## What the offline model is, and is not
 
-- **Qwen3 4B Instruct** downloads in the app and runs in-process via MLX, next to Whisper Turbo. About 2.3 GB. Chat and Dictate Prompt share one copy in RAM.
-- **Qwen3 8B** is offered as a second offline tile (~4.5 GB). Better quality, but tight on 8 GB Macs that already hold Whisper Turbo.
-- **Downloads look like Speech-to-Text.** Progress in the picker, an Available Models list with percent, Delete, and Cancel. Cancel aborts the Hugging Face transfer; it is not shown as a failed download.
-- **Ollama and LM Studio stay available, and stay the faster choice.** On the same model, a warm rewrite took about 1.3s through a local Ollama server against about 4s in-process. The difference is prompt processing, which the server avoids by keeping its cache in memory between requests. MLX is the option for people who would rather not run a server at all.
+- **It is the option with nothing to install.** Pick Qwen3 4B Instruct or Qwen3 8B, it downloads itself, and it runs on your Mac. No server, no port, no `ollama serve`.
+- **It is not the fastest way to run a local model.** On the same model, a warm Dictate Prompt rewrite took about 1.3 s through a local Ollama server against about 4 s in-process, and the in-process path varied more from run to run. If you already run Ollama or LM Studio, the Local Server option remains the better pick — and the app now says so where you choose.
+- The difference is prompt processing. A server keeps the cache of your system prompt in memory between requests; the in-process path rebuilds it every time. The framework's prefix cache was tried for this and removed again: restoring its 75 MB cache file costs about what re-processing the prompt costs.
 
-## Chat no longer writes a looping novel
-
-- If Gemini (or any streamed chat model) starts repeating the same sentence, the stream stops after the third copy, the answer so far is kept, and a queued follow-up still sends. Stop still cancels the in-flight turn.
+Settings, the model list, and the model descriptions were reworded accordingly. Nothing about how the feature works has changed.
 
 ## Installation
 
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.02...v8.03
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.03...v8.04
