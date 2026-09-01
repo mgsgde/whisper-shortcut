@@ -49,6 +49,14 @@ final class MLXChatProvider: LLMChatProvider {
           let container = try await LocalLLMModelManager.shared.container(for: mlxType)
           var parameters = GenerateParameters()
           parameters.maxTokens = AppConstants.localPromptMaxOutputTokens
+          // A fresh session per request, which means the system prompt is prefilled every time.
+          // mlx-swift-lm's prefix cache was tried here and reverted: for this prompt it writes a
+          // 75 MB `.safetensors` file, and restoring that costs about what re-prefilling costs —
+          // measured 3.85s with the cache against 3.01s without, inside the run-to-run spread.
+          // That mechanism is built for restoring a long shared context across launches, not for
+          // per-request reuse inside one process. Closing the gap to Ollama needs the KV state
+          // held in memory across requests, which `ChatSession`'s consuming ownership of the
+          // cache does not currently allow. See `LocalLLMBenchmarkTests`.
           let session = MLXLMCommon.ChatSession(
             container,
             instructions: systemText,
