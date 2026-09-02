@@ -1,29 +1,17 @@
-# WhisperShortcut 8.06
+# WhisperShortcut 8.07
 
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
-Stop during a stuck transcription now really stops. Retry after a failed dictation pastes the result. Offline Mode can read text aloud with on-device macOS voices.
+The App Store build now includes Correct, Format, and Rephrase. Offline Read Aloud finishes cleanly when there is nothing to speak.
 
-## Dictate
+## Fixes
 
-- **Stop cancels the request.** Pressing Stop while a transcription is in flight cancels the provider call instead of leaving it running in the background.
-- **Retry works again.** After a failed dictation, Retry re-runs the same audio and pastes the transcript instead of silently dropping it.
-- **A failed dictation no longer overwrites your clipboard** with the error text. The popup still shows what went wrong.
-- **Correct, Format, and Rephrase** are in the menu under Dictate Prompt, so you do not have to speak those verbs through speech-to-text.
-
-## Offline Mode
-
-- **Read Aloud works offline** using on-device macOS voices. Turning Offline Mode on selects that voice automatically.
-- **Onboarding picks the model it just downloaded**, so the first dictation does not fail with "model not downloaded".
-- Offline-only setups no longer force Settings open on every launch.
-
-## Chat
-
-- **Claude (Anthropic)** is documented as a chat provider — Settings, `/claude`, and the in-app Chat all agree.
-- Creating or deleting a calendar event, changing a Trello card, or opening a URL now asks first.
+- **Correct, Format, and Rephrase work in the App Store build.** Those menu items were already listed; their handlers had sat behind a gate meant only for selection-based Read Aloud, so the Mac App Store target did not compile.
+- **Offline Read Aloud no longer hangs on empty text.** On-device macOS voices now finish instead of waiting forever when there is nothing to say.
+- **Google sign-in refuses a broken login token.** If the random generator fails, the app no longer continues with an all-zero state.
 
 ## Installation
 
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.05...v8.06
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.06...v8.07
