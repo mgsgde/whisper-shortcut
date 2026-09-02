@@ -1684,7 +1684,10 @@ class ChatViewModel: ObservableObject {
     }
   }
 
-  static func isTruncatedFinishReason(_ reason: String?) -> Bool {
+  /// `nonisolated`: a pure predicate over the provider's finish reason, with no view-model state
+  /// behind it. Inheriting `ChatViewModel`'s `@MainActor` isolation only made it uncallable from
+  /// the synchronous test context.
+  nonisolated static func isTruncatedFinishReason(_ reason: String?) -> Bool {
     guard let reason else { return false }
     let lower = reason.lowercased()
     return lower == "length" || lower == "max_tokens" || lower.contains("max_token")

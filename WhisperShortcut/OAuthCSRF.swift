@@ -9,7 +9,13 @@ import Foundation
 enum OAuthCSRF {
   static func makeState() -> String {
     var bytes = [UInt8](repeating: 0, count: 32)
-    _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+    // Never fall through to the all-zero buffer: a predictable `state` is the same as none, and
+    // this is the value the callback check is trusted against. UUIDs are not a CSPRNG but they
+    // are unpredictable enough to be a safe last resort, and this branch should never run.
+    if SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) != errSecSuccess {
+      DebugLogger.logError("OAUTH-CSRF: SecRandomCopyBytes failed — falling back to UUID state")
+      return UUID().uuidString + UUID().uuidString
+    }
     return Data(bytes).base64EncodedString()
       .replacingOccurrences(of: "+", with: "-")
       .replacingOccurrences(of: "/", with: "_")

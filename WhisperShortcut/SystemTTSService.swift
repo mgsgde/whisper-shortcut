@@ -71,7 +71,11 @@ final class SystemTTSService: NSObject {
   /// `AVSpeechSynthesizer.write` is started on the main queue (it wants a run loop) but the
   /// continuation lives off the main actor so the write callback cannot deadlock behind it.
   func synthesizePCM(text: String, voiceIdentifier: String) async throws -> Data {
-    try await withTaskCancellationHandler {
+    // `write` is only guaranteed to deliver the terminating empty buffer for an utterance it
+    // actually speaks. Nothing to say means the continuation would never resume, and Read Aloud
+    // would hang instead of finishing quietly.
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return Data() }
+    return try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in
         DispatchQueue.main.async {
           self.beginWrite(text: text, voiceIdentifier: voiceIdentifier, continuation: continuation)

@@ -190,8 +190,14 @@ enum ModelSelectionReconciler {
   /// pointing at a model that still needs downloading is a solvable dead end (Settings offers the
   /// button), whereas silently selecting Tiny would quietly degrade every transcript.
   private static func offlineTranscriptionReplacement() -> TranscriptionModel {
-    let downloaded = OfflineModelType.byAccuracy.last { ModelManager.shared.isModelAvailable($0) }
-    return TranscriptionModel.forOfflineModel(downloaded ?? OfflineModelType.mostAccurate)
+    offlineTranscriptionReplacement(
+      downloaded: OfflineModelType.byAccuracy.last { ModelManager.shared.isModelAvailable($0) })
+  }
+
+  /// The pure half of the decision above, split out so it can be tested without `ModelManager`
+  /// and the on-disk model store.
+  static func offlineTranscriptionReplacement(downloaded: OfflineModelType?) -> TranscriptionModel {
+    TranscriptionModel.forOfflineModel(downloaded ?? OfflineModelType.mostAccurate)
   }
 
   // MARK: - PromptModel-backed features (chat, dictate prompt, improvement, meeting summary)
@@ -200,7 +206,7 @@ enum ModelSelectionReconciler {
     let raw = UserDefaults.standard.string(forKey: key) ?? fallback.rawValue
     let current = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw)) ?? fallback
     if let mlx = current.localMLXModelType, !mlx.isOfferable {
-      let replacement = preferredPromptModel(among: candidates)
+      let replacement = preferredPromptModel(among: candidates, hasKey: { hasKey($0) })
         ?? PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
       UserDefaults.standard.set(replacement.rawValue, forKey: key)
       DebugLogger.log(
@@ -208,13 +214,19 @@ enum ModelSelectionReconciler {
       return
     }
     if hasKey(current.provider) { return }
-    guard let replacement = preferredPromptModel(among: candidates) else { return }
+    guard let replacement = preferredPromptModel(among: candidates, hasKey: { hasKey($0) }) else { return }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
     DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (no key for \(current.provider))")
   }
 
-  private static func preferredPromptModel(among candidates: [PromptModel]) -> PromptModel? {
-    for provider in providerPreference where hasKey(provider) {
+  /// `hasKey` is passed in rather than read here, so the ordering rule can be tested without the
+  /// Keychain. No default argument: those are evaluated outside this type's `@MainActor`
+  /// isolation, which `hasKey` cannot be called from.
+  static func preferredPromptModel(
+    among candidates: [PromptModel],
+    hasKey hasKeyForProvider: (ChatModelProvider) -> Bool
+  ) -> PromptModel? {
+    for provider in providerPreference where hasKeyForProvider(provider) {
       // Prefer the provider's canonical default if the feature allows it, else its first candidate.
       if candidates.contains(provider.defaultChatModel) { return provider.defaultChatModel }
       if let first = candidates.first(where: { $0.provider == provider }) { return first }
@@ -254,16 +266,21 @@ enum ModelSelectionReconciler {
     replaceTranscriptionSelection(key: key, current: current)
   }
 
+  /// Which transcription model stands in for a given chat provider, or `nil` when that provider
+  /// has none. Split out of `replaceTranscriptionSelection` so the table can be tested directly.
+  static func transcriptionReplacement(for provider: ChatModelProvider) -> TranscriptionModel? {
+    switch provider {
+    case .gemini: return SettingsDefaults.selectedTranscriptionModel
+    case .openai: return .openAIGPT4oMiniTranscribe
+    case .grok: return .xaiTranscribe
+    // `providerPreference` never includes these; Anthropic has no transcription models here.
+    case .local, .localMLX, .customOpenAI, .anthropic: return nil
+    }
+  }
+
   private static func replaceTranscriptionSelection(key: String, current: TranscriptionModel) {
     guard let provider = providerPreference.first(where: { hasKey($0) }) else { return }
-    let replacement: TranscriptionModel
-    switch provider {
-    case .gemini: replacement = SettingsDefaults.selectedTranscriptionModel
-    case .openai: replacement = .openAIGPT4oMiniTranscribe
-    case .grok: replacement = .xaiTranscribe
-    // `providerPreference` never includes these; Anthropic has no transcription models here.
-    case .local, .localMLX, .customOpenAI, .anthropic: return
-    }
+    guard let replacement = transcriptionReplacement(for: provider) else { return }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
     DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue)")
   }

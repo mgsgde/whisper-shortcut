@@ -3,7 +3,10 @@ import Testing
 
 /// Decision helpers only — the Keychain / UserDefaults wiring stays out of this suite
 /// so CI never touches the login Keychain.
+/// `@MainActor` because `ModelSelectionReconciler` is — the helpers below are pure, but they
+/// inherit the type's isolation.
 @Suite("ModelSelectionReconciler (pure helpers)")
+@MainActor
 struct ModelSelectionReconcilerTests {
 
   private let chatCandidates: [PromptModel] = [
