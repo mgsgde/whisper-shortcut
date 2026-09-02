@@ -26,7 +26,7 @@ enum ChatModelProvider: String, CaseIterable {
   var defaultChatModel: PromptModel {
     switch self {
     case .gemini: return .gemini37Flash
-    case .grok:   return .grok43
+    case .grok:   return .grok46
     case .openai: return .openaiGPT56Sol
     case .anthropic: return .claudeSonnet5
     case .customOpenAI: return .customOpenAIEndpoint
@@ -302,9 +302,9 @@ enum PromptModel: String, CaseIterable {
     case .grok45:
       return "xAI's Grok 4.5 • Previous flagship • 500k context • Needs an xAI API key"
     case .grok46:
-      return "xAI's Grok 4.6 • xAI's most intelligent and fastest model • 500k context • Needs an xAI API key"
+      return "xAI's Grok 4.6 • Flagship • Most intelligent and fastest model • 500k context • Needs an xAI API key"
     case .grok43:
-      return "xAI's Grok 4.3 • Flagship • Leading non-hallucination + agentic tool use • 1M context • Web + X search • Requires xAI API key"
+      return "xAI's Grok 4.3 • Cheaper 1M-context option • Leading non-hallucination + agentic tool use • Web + X search • Requires xAI API key"
     case .openaiGPT5:
       return "OpenAI's GPT-5.4 • Flagship reasoning + tool use • Text + images • Requires OpenAI API key"
     case .openaiGPT5Mini:

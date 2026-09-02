@@ -1114,7 +1114,7 @@ class ChatViewModel: ObservableObject {
         GlossaryFastLearner.shared.learnFromTypedText(content)
         // Title once, after the first real user→model exchange. Counting user messages (rather
         // than total messages) keeps this working when the chat opens with a local command reply
-        // such as "Model set to Grok 4.3." from `/grok`, which would otherwise push the total past 2.
+        // such as "Model set to Grok 4.6." from `/grok`, which would otherwise push the total past 2.
         if let s = store.session(by: sessionId), !s.isMeeting,
            s.messages.filter({ $0.role == .user }).count == 1 {
           Task { await generateAITitle(sessionId: sessionId) }
@@ -1791,7 +1791,7 @@ class ChatViewModel: ObservableObject {
 
   private func generateAITitle(sessionId: UUID) async {
     // Find the first real user message and its model reply. Indices are not assumed to be 0/1:
-    // a chat may open with a local command reply (e.g. "Model set to Grok 4.3." from `/grok`).
+    // a chat may open with a local command reply (e.g. "Model set to Grok 4.6." from `/grok`).
     guard let target = store.session(by: sessionId),
           let userIdx = target.messages.firstIndex(where: { $0.role == .user }),
           let replyIdx = target.messages[(userIdx + 1)...].firstIndex(where: { $0.role == .model })
