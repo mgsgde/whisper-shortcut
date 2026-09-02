@@ -266,7 +266,7 @@ The in-memory path was built. Warm, same model, same conditions:
 | Ollama | 0.36s | 1.15s | 1.51s |
 
 Prefill fell 5×, into Ollama's range, and since generation was already marginally ahead (5.9ms per
-character against 7.1ms) **MLX is now the faster of the two on a warm request**.
+character against 7.1ms) MLX is the faster of the two **on a quiet machine**.
 
 What changed, in `MLXPromptCache`: the package's file-based prefix cache is used **once** — prefill,
 `saveCache` to a temp file, `loadPromptCache` back, delete — and what survives between requests is
@@ -280,8 +280,23 @@ to `KVCacheSimple`; anything else falls back to a per-request session.
 Priming costs ~8.4s once per app session. `ConnectionPrewarmer.warmMLXModel` now pays it during the
 recording, alongside the weights — the same trade `warmLocalModel` already makes for Ollama.
 
-**Recommendation now.** MLX is a legitimate default for local Dictate Prompt: no server to install,
-and warm latency at or below a local Ollama server. The 8.04 wording ("slower than a local server")
-and the plan text above are superseded and should be corrected in the next release. Still open:
-`MLX.GPU.set(cacheLimit:)` is unset, and the earlier runs showed MLX degrading under memory
-pressure — that sensitivity has not been re-measured since this change.
+---
+
+## Slice 1, third result (measured 2026-09-02, variance under memory pressure)
+
+Re-ran `LocalLLMBenchmarkTests` with Ollama holding a model resident — the condition that
+previously 4×'d MLX — after the in-memory cache shipped:
+
+| | MLX total | Ollama total |
+|---|---|---|
+| machine free | 1.39s | 1.51s |
+| other model resident | **4.13s** | 1.80s |
+
+MLX prefill rose from 0.60s to 3.08s; Ollama only from 0.36s to 0.71s. The cache closed the gap
+on a quiet machine. It did not close the sensitivity to memory pressure.
+
+**Recommendation now.** Ship the cache — the 5× prefill win on a quiet machine is real, and the
+no-server convenience claim was always true. Do **not** claim the in-process path is as fast as
+a local server: that is one measurement, not the distribution. User-facing copy says "no server
+to install"; the catalogue star stays "Best of these" (4B vs 8B). Still open:
+`MLX.GPU.set(cacheLimit:)`.

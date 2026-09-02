@@ -10,7 +10,7 @@ struct LocalLLMModelsSection: View {
       SectionHeader(
         title: "Available Models",
         systemImage: "arrow.down.circle",
-        subtitle: "Download and manage offline MLX models for Dictate Prompt and Chat. They run in the app itself — no server to install, and no slower than one."
+        subtitle: "Download and manage offline MLX models for Dictate Prompt and Chat. They run in the app itself — no server to install."
       )
 
       Text("Offline MLX models run on your Mac with no server. They download from Hugging Face and stay cached locally.")
@@ -55,7 +55,9 @@ struct LocalLLMModelsSection: View {
                 Image(systemName: "star.fill")
                   .foregroundColor(.yellow)
                   .font(.caption)
-                Text("Recommended")
+                // "Best of these", not "recommended": the star picks between the two MLX models.
+                // A quiet machine can match a local server; under memory pressure it does not.
+                Text("Best of these")
                   .font(.caption)
                   .foregroundColor(.secondary)
               }
