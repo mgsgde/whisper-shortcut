@@ -2900,6 +2900,18 @@ extension MenuBarController: ShortcutDelegate {
     )
   }
 
+  // Dictate Prompt presets. Both builds have Dictate Prompt (the App Store one takes its text
+  // from the clipboard rather than the selection), and the menu items are added unconditionally,
+  // so these must NOT sit inside the `#if !APP_STORE` block below.
+  @objc private func startPromptCorrect() { startPrompting(preset: .correct) }
+  @objc private func startPromptFormat() { startPrompting(preset: .format) }
+  @objc private func startPromptRephrase() { startPrompting(preset: .rephrase) }
+
+  private func startPrompting(preset: DictatePromptPreset) {
+    DictatePromptPreset.pending = preset
+    togglePrompting()
+  }
+
   // Selection-based Read Aloud (HotKey + menu item + everything it needs) copies via ⌘C, which
   // requires Accessibility. The App Store build omits the menu item, the hotkey wiring, and the
   // settings row — so these entry points have no caller there. Compile them out too rather than
@@ -2913,15 +2925,6 @@ extension MenuBarController: ShortcutDelegate {
   /// Menu-item entry point: AppKit requires `@objc` for menu selectors. Same behavior as the
   /// HotKey path.
   @objc func readAloudFromMenu() { triggerReadSelectedTextAloud() }
-
-  @objc private func startPromptCorrect() { startPrompting(preset: .correct) }
-  @objc private func startPromptFormat() { startPrompting(preset: .format) }
-  @objc private func startPromptRephrase() { startPrompting(preset: .rephrase) }
-
-  private func startPrompting(preset: DictatePromptPreset) {
-    DictatePromptPreset.pending = preset
-    togglePrompting()
-  }
 
   private func triggerReadSelectedTextAloud() {
     if attemptReadAloudToggleOff() { return }
