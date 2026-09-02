@@ -137,18 +137,77 @@ struct OfflineWhisperBenchmarkTests {
     try Self.makeSpeech(sentenceCount: 5, at: probe)
     let probeSeconds = try Self.duration(of: probe)
 
-    await LocalSpeechService.shared.unloadModel()
-    let reloadStart = CFAbsoluteTimeGetCurrent()
-    try await LocalSpeechService.shared.initializeModel(type)
-    let reload = CFAbsoluteTimeGetCurrent() - reloadStart
+    // Three arms, each from a freshly reloaded model, isolating what does and does not absorb the
+    // per-load penalty on the first decode:
+    //   none      — the penalty itself, measured on a clip whose warm cost is known
+    //   recording — a real 16 kHz speech clip first, the format the recorder produces
+    //   synth     — an AVSpeechSynthesizer clip first (22 kHz float), the one the reverted
+    //               `warmUpInference` used; its transcript length is printed, because a warm-up
+    //               that decodes to nothing tests nothing
+    let warmClip = workDir.appendingPathComponent("warm-recording.wav")
+    try Self.makeSpeech(sentenceCount: 1, at: warmClip)
+    let synthClip = workDir.appendingPathComponent("warm-synth.wav")
+    let haveSynthClip = await Self.writeSynthesizedClip(at: synthClip)
 
-    let probeStart = CFAbsoluteTimeGetCurrent()
-    _ = try await LocalSpeechService.shared.transcribe(audioURL: probe, language: "de")
-    let probeDecode = CFAbsoluteTimeGetCurrent() - probeStart
+    for arm in ["none", "recording", "synth"] {
+      if arm == "synth" && !haveSynthClip { continue }
 
-    print(
-      "BENCH-OFFLINE reload loadS=\(String(format: "%.2f", reload)) "
-        + "audioS=\(String(format: "%.2f", probeSeconds)) "
-        + "firstDecodeS=\(String(format: "%.2f", probeDecode))")
+      await LocalSpeechService.shared.unloadModel()
+      let reloadStart = CFAbsoluteTimeGetCurrent()
+      try await LocalSpeechService.shared.initializeModel(type)
+      let reload = CFAbsoluteTimeGetCurrent() - reloadStart
+
+      var warmSeconds = 0.0
+      var warmChars = 0
+      if arm != "none" {
+        let clip = arm == "recording" ? warmClip : synthClip
+        let warmStart = CFAbsoluteTimeGetCurrent()
+        let warmText = (try? await LocalSpeechService.shared.transcribe(audioURL: clip, language: "de")) ?? ""
+        warmSeconds = CFAbsoluteTimeGetCurrent() - warmStart
+        warmChars = warmText.count
+      }
+
+      let probeStart = CFAbsoluteTimeGetCurrent()
+      _ = try await LocalSpeechService.shared.transcribe(audioURL: probe, language: "de")
+      let probeDecode = CFAbsoluteTimeGetCurrent() - probeStart
+
+      print(
+        "BENCH-OFFLINE reload warm=\(arm) "
+          + "loadS=\(String(format: "%.2f", reload)) "
+          + "warmS=\(String(format: "%.2f", warmSeconds)) warmChars=\(warmChars) "
+          + "probeAudioS=\(String(format: "%.2f", probeSeconds)) "
+          + "probeDecodeS=\(String(format: "%.2f", probeDecode))")
+    }
+  }
+
+  /// The clip the reverted product warm-up produced: a system voice at its native rate, not the
+  /// recorder's 16 kHz. Written here rather than in the app so the experiment can compare it
+  /// against a real recording without shipping either.
+  private static func writeSynthesizedClip(at url: URL) async -> Bool {
+    let synthesizer = AVSpeechSynthesizer()
+    let utterance = AVSpeechUtterance(
+      string: "Dies ist eine Aufwärmung des Modells, der Text wird sofort verworfen.")
+    utterance.voice = AVSpeechSynthesisVoice(language: "de-DE")
+    return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+      var file: AVAudioFile?
+      var finished = false
+      synthesizer.write(utterance) { buffer in
+        guard !finished, let pcm = buffer as? AVAudioPCMBuffer else { return }
+        guard pcm.frameLength > 0 else {
+          finished = true
+          continuation.resume(returning: file != nil)
+          return
+        }
+        do {
+          if file == nil {
+            file = try AVAudioFile(forWriting: url, settings: pcm.format.settings)
+          }
+          try file?.write(from: pcm)
+        } catch {
+          finished = true
+          continuation.resume(returning: false)
+        }
+      }
+    }
   }
 }

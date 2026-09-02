@@ -99,13 +99,29 @@ Three things fall out, and two of them contradict what this plan assumed before 
    in-flight chunks cannot pile up behind the speaker on this class of hardware. `whisper-large` on
    a weaker Mac is where that assumption needs re-checking; the benchmark takes
    `WHISPERSHORTCUT_BENCH_OFFLINE_MODEL` for exactly that.
-3. **The first decode after every model load costs ~+3 s** (7.29 s vs 4.25 s warm for the same
-   clip), and the penalty returns after each unload rather than being paid once per process. A
-   throwaway warm-up inference was built and measured against it — silence (6 ms), a noise buffer
-   (10 ms), a noise file through the real path (86 ms), a short English utterance (0.85 s) and ten
-   seconds of German speech (1.58 s) — and **none of them absorbed it**: the following real decode
-   stayed at 7.5–8.4 s. The warm-up was reverted rather than shipped. What that penalty actually is
-   remains open; it is worth ~3 s per cold dictation, so it is worth someone's afternoon.
+3. **The first decode that produces text after every model load costs ~4 s extra**, and the penalty
+   returns after each unload rather than being paid once per process. It *is* absorbable — three
+   arms from a freshly reloaded model, same probe clip:
+
+   | warm-up first | its own cost | probe decode |
+   |---|---|---|
+   | none | — | 8.13 s |
+   | a real 16 kHz recording (80 chars out) | 6.42 s | 4.21 s |
+   | an `AVSpeechSynthesizer` clip (69 chars out) | 6.20 s | 4.05 s |
+
+   An earlier round concluded the opposite and was wrong: those warm-ups (silence 6 ms, a noise
+   buffer 10 ms, a noise file 86 ms, synthesized speech 0.85–1.58 s) produced no text, and a decode
+   that emits no tokens does no work and warms nothing. The transcript was discarded without being
+   checked — the experiment tested a broken clip, not the hypothesis. **Any warm-up must assert
+   that it decoded something.**
+
+   Exploiting it is a trade, because the warm-up costs the ~6 s it absorbs: run inside the
+   recording window it is free only for recordings longer than roughly 12 s (weights load first,
+   then the warm-up), and for shorter ones it delays the real transcript by a couple of seconds,
+   since `LocalSpeechService` is an actor and the real call queues behind it. The alternative is to
+   stop creating the cold state at all — keep the *selected* offline model loaded instead of idle-
+   unloading it after five minutes (F13), which removes the load *and* the penalty for every
+   dictation at the cost of ~1.6 GB resident. Whether that is acceptable depends on the machine.
 
 Cold path for a 25 s dictation, end to end: ~5 s load + ~7.3 s first decode ≈ **12 s**, against
 ~4.3 s warm. The preload below removes the first half of that reliably; the second half is item 3.
