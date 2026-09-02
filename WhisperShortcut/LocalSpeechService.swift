@@ -22,7 +22,8 @@ actor LocalSpeechService {
   /// Same threshold `AudioRecorder` uses (−45 dB). Duplicated because that type is not shared
   /// with this actor; do not invent a second VAD.
   private static let silenceThresholdDB: Float = -45
-  /// Matches typical Ollama `keep_alive` so Whisper Turbo is not held for the app's lifetime.
+  /// Matches typical Ollama `keep_alive` so Whisper Turbo is not held for the app's lifetime —
+  /// but only for a model that is no longer selected, see `unloadIfNotSelected`.
   private static let idleUnloadAfter: TimeInterval = 5 * 60
   
   private init() {}
@@ -136,8 +137,27 @@ actor LocalSpeechService {
     idleUnloadTask = Task {
       try? await Task.sleep(for: .seconds(Self.idleUnloadAfter))
       guard !Task.isCancelled else { return }
-      await self.unloadModel(reason: "idle")
+      await self.unloadIfNotSelected()
     }
+  }
+
+  /// The idle unload skips the model the user is actually dictating with.
+  ///
+  /// Measured on an M1 Pro with Turbo, a reload costs ~5 s for the weights plus ~4 s on the first
+  /// decode that produces text — and dictations in the deployment this was measured for are minutes
+  /// apart, so a five-minute idle window fired before nearly every one of them. Paying nine seconds
+  /// per dictation to hand back memory the user is about to need again is the wrong trade; the
+  /// memory-pressure source still unloads when the system genuinely wants the RAM back, and
+  /// `SpeechService.setModel` unloads as soon as the selection moves to a cloud model, so this only
+  /// ever keeps the model that is one keystroke away from being used.
+  private func unloadIfNotSelected() {
+    guard let current = currentModelType else { return }
+    if TranscriptionModel.loadSelected().offlineModelType == current {
+      DebugLogger.log(
+        "LOCAL-SPEECH: Keeping \(current.displayName) loaded — it is the selected dictation model")
+      return
+    }
+    unloadModel(reason: "idle")
   }
   
   // MARK: - Transcribe Audio
