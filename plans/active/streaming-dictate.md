@@ -210,6 +210,37 @@ speaker.
 WAV; the fallback semantics (chunk failure or missing chunk → single-shot; cancellation → no
 result at all) are untouched; `dictateChunkMinDuration` stays at 10 s.
 
+**Measured end to end (2026-09-02), and it found a bug.** `OfflineWhisperBenchmarkTests`
+`streamingVersusOneShot` drives the real `DictateStreamingSession` / `SpeechService` /
+`LocalSpeechService` with pre-cut chunks handed over **in real time** — each only after its own
+audio duration has elapsed, which is when the recorder would have rotated it out. It stands in for
+the microphone and for `ChunkedDictateRecorder`'s silence detection, nothing else.
+
+73 s of German dictation, five chunks, 14 s tail, M1 Pro / Turbo:
+
+| run | after Stop, streamed | after Stop, one-shot | ratio |
+|---|---|---|---|
+| 1 | *fell back* | 24.7 s | — |
+| 2 | 5.89 s | 18.75 s | 3.2× |
+| 3 | 13.08 s | 20.57 s | 1.6× |
+| 4 | 5.02 s | 16.89 s | 3.4× |
+
+Streaming wins every time it runs, but the spread is wide — the decode competes with whatever else
+the Mac is doing — so read the range, not a single number.
+
+**Run 1 is the interesting one.** A chunk failed with `fileError("WhisperKit not initialized")`,
+which made the session discard every chunk's work and fall back to the merged WAV: correct output,
+streaming benefit silently gone. The cause is a check-then-use race — `SpeechService` asks
+`isLoaded` and then calls `transcribe`, two hops into the actor, and the memory-pressure source can
+unload in between. Before slice 4 that was nearly unreachable (one decode per dictation, started
+right after the check); slice 4 makes it one call per chunk across the whole recording. Fixed by
+reloading inside the actor (`lastLoadedModelType`), where check and decode cannot be separated.
+
+Two instrumentation defects fell out of the same run and are fixed: the fallback logged
+`error.localizedDescription`, which renders every `TranscriptionError` payload as "The operation
+couldn't be completed" — the one log line nobody could act on — and the benchmark's `print`
+diagnostics were lost to stdout buffering whenever the test failed.
+
 **Ship-day falsifier** (queue row 3) — dictate ≥20 s offline with at least one pause, then:
 
 ```bash

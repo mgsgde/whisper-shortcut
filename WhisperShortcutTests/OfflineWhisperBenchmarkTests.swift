@@ -74,8 +74,9 @@ struct OfflineWhisperBenchmarkTests {
 
   /// One `say` run per target length. The voice is fixed so repeated runs on different Macs
   /// compare like with like.
-  private static func makeSpeech(sentenceCount: Int, at url: URL) throws {
-    let text = (0..<sentenceCount).map { sentences[$0 % sentences.count] }.joined(separator: " ")
+  private static func makeSpeech(sentenceCount: Int, at url: URL, startingAt offset: Int = 0) throws {
+    let text = (0..<sentenceCount).map { sentences[($0 + offset) % sentences.count] }
+      .joined(separator: " ")
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/say")
     process.arguments = [
@@ -254,6 +255,135 @@ struct OfflineWhisperBenchmarkTests {
         }
       }
     }
+  }
+
+  /// Slice 4's actual claim, end to end: does transcribing chunks *while the user speaks* make the
+  /// wait after Stop the tail chunk's decode instead of the whole dictation's?
+  ///
+  /// This drives the real `DictateStreamingSession` through the real `SpeechService` and
+  /// `LocalSpeechService`. The only thing it stands in for is the microphone and
+  /// `ChunkedDictateRecorder`'s silence detection: chunks are pre-cut and handed to the session
+  /// **in real time** — each one is delivered only after its own audio duration has elapsed, which
+  /// is when the recorder would have rotated it out. Feeding them all at once would let every
+  /// decode run before "Stop" and measure nothing.
+  ///
+  /// So it answers "does the pipeline turn a rotated chunk into a finished transcript before Stop",
+  /// not "does the recorder rotate at the right moments" — that second half needs a real dictation
+  /// with real pauses.
+  @Test(
+    "Streaming leaves only the tail chunk after Stop",
+    .enabled(if: isEnabled, "Set WHISPERSHORTCUT_BENCH_OFFLINE_WHISPER=1 to run (loads ~1.6 GB)")
+  )
+  func streamingVersusOneShot() async throws {
+    // Unbuffered: on the failure path the host exits before a buffered stdout is flushed, which
+    // silently swallows exactly the diagnostics you need.
+    setvbuf(stdout, nil, _IONBF, 0)
+    func step(_ label: String) { print("BENCH-STREAMING-STEP \(label)") }
+    let type = Self.modelType
+    #expect(ModelManager.shared.isModelAvailable(type), "Download \(type.displayName) first")
+
+    let defaults = UserDefaults.standard
+    let previousSelection = defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    defaults.set(
+      TranscriptionModel.forOfflineModel(type).rawValue,
+      forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    defer {
+      if let previousSelection {
+        defaults.set(previousSelection, forKey: UserDefaultsKeys.selectedTranscriptionModel)
+      } else {
+        defaults.removeObject(forKey: UserDefaultsKeys.selectedTranscriptionModel)
+      }
+    }
+
+    let workDir = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("offline-whisper-streaming-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: workDir) }
+
+    // Five chunks of three sentences each ≈ 15 s per chunk, ≈ 73 s total — a long dictation with
+    // four pauses, the shape where streaming is supposed to pay.
+    var chunkURLs: [URL] = []
+    var chunkSeconds: [Double] = []
+    for index in 0..<5 {
+      let url = workDir.appendingPathComponent("chunk-\(index).wav")
+      try Self.makeSpeech(sentenceCount: 3, at: url, startingAt: index * 3)
+      chunkURLs.append(url)
+      chunkSeconds.append(try Self.duration(of: url))
+      step("made chunk \(index)")
+    }
+    let totalSeconds = chunkSeconds.reduce(0, +)
+    // Arm B's clip is synthesised in one go rather than stitched from the chunk files: writing a
+    // WAV with AVAudioFile fails inside this sandboxed test host, and it is not needed. The
+    // sentence sequence is identical by construction — chunk i covers sentences 3i…3i+2 and the
+    // full clip covers 0…14, both indexing the same array modulo its length — so both arms decode
+    // the same words in the same order. Only the prosody at the five joins differs, which changes
+    // the audio but not the token count that dominates decode cost.
+    let merged = workDir.appendingPathComponent("merged.wav")
+    try Self.makeSpeech(sentenceCount: 15, at: merged)
+    let mergedSeconds = try Self.duration(of: merged)
+    step("full clip made")
+
+    // Weights warm for both arms: the load is `ConnectionPrewarmer`'s job and would otherwise land
+    // on whichever arm runs first.
+    try await LocalSpeechService.shared.initializeModel(type)
+    step("model ready")
+    _ = try await LocalSpeechService.shared.transcribe(audioURL: chunkURLs[0], language: "de")
+    step("warm decode done")
+
+    // ---- Arm A: streaming, chunks arriving in real time ----
+    let speechService = SpeechService()
+    let selected = TranscriptionModel.loadSelected()
+    print(
+      "BENCH-STREAMING-GATE selected=\(selected.rawValue) isOffline=\(selected.isOffline) "
+        + "offlineType=\(selected.offlineModelType?.rawValue ?? "nil") "
+        + "downloaded=\(selected.isOfflineModelAvailable()) "
+        + "chunkedRecorder=\(AppConstants.useChunkedDictateRecorder) "
+        + "isEligible=\(DictateStreamingSession.isEligible(model: selected, hasCredential: selected.hasRequiredCredential, offlineModelDownloaded: selected.isOfflineModelAvailable()))")
+    let session = try #require(
+      DictateStreamingSession.makeIfEligible(speechService: speechService),
+      "the gate should admit a downloaded offline model — this is slice 4")
+
+    for index in 0..<(chunkURLs.count - 1) {
+      // The recorder would hand this chunk over only once it had been spoken.
+      try await Task.sleep(for: .seconds(chunkSeconds[index]))
+      session.addChunk(url: chunkURLs[index], index: index, isSilent: false)
+    }
+    try await Task.sleep(for: .seconds(chunkSeconds[chunkURLs.count - 1]))
+
+    // Stop.
+    let stopTime = CFAbsoluteTimeGetCurrent()
+    session.addFinalChunk(url: chunkURLs[chunkURLs.count - 1], index: chunkURLs.count - 1, isSilent: false)
+    let streamedText = try await session.finalTranscript()
+    let streamedAfterStop = CFAbsoluteTimeGetCurrent() - stopTime
+
+    // ---- Arm B: one-shot on the merged WAV, the pre-slice-4 behaviour ----
+    let oneShotStart = CFAbsoluteTimeGetCurrent()
+    let oneShotText = try await speechService.transcribe(audioURL: merged, cancellable: false)
+    let oneShotAfterStop = CFAbsoluteTimeGetCurrent() - oneShotStart
+
+    print(
+      "BENCH-STREAMING chunkedAudioS=\(String(format: "%.1f", totalSeconds)) "
+        + "oneShotAudioS=\(String(format: "%.1f", mergedSeconds)) "
+        + "chunks=\(chunkURLs.count) tailS=\(String(format: "%.1f", chunkSeconds.last ?? 0)) "
+        + "streamedAfterStopS=\(String(format: "%.2f", streamedAfterStop)) "
+        + "oneShotAfterStopS=\(String(format: "%.2f", oneShotAfterStop)) "
+        + "speedup=\(String(format: "%.1f", oneShotAfterStop / max(streamedAfterStop, 0.001)))x")
+    print("BENCH-STREAMING-TEXT streamed: \(streamedText ?? "<nil — fell back to single-shot>")")
+    print("BENCH-STREAMING-TEXT oneshot : \(oneShotText)")
+
+    // The falsifier from plans/implementer-queue.md row 3, as an assertion rather than a log line:
+    // a nil transcript means the session gave up and the merged-WAV fallback would have run, and a
+    // wait that is not clearly shorter than one-shot means streaming bought nothing.
+    let streamed = try #require(streamedText, "streaming fell back to single-shot")
+    #expect(!streamed.isEmpty)
+    // Strictly faster, not a fixed multiple. Measured on an M1 Pro across four runs: 3.2x, 3.4x,
+    // 1.6x, and once a fallback (see below) — the spread is wide because the decode competes with
+    // whatever else the Mac is doing, and a hard 2x gate turns this benchmark into a coin flip.
+    // The claim being defended is "the wait after Stop is the tail, not the whole dictation"; the
+    // printed ratio is the number to read, this is the floor under it.
+    #expect(
+      streamedAfterStop < oneShotAfterStop,
+      "stop-to-transcript \(streamedAfterStop)s should beat the one-shot \(oneShotAfterStop)s")
   }
 
   /// The clip the reverted product warm-up produced: a system voice at its native rate, not the

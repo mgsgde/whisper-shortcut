@@ -16,6 +16,9 @@ actor LocalSpeechService {
   
   private var whisperKit: WhisperKit?
   private var currentModelType: OfflineModelType?
+  /// The last model that was loaded, kept across unloads so `transcribe` can put it back.
+  /// `currentModelType` is cleared by `unloadModel`; this deliberately is not.
+  private var lastLoadedModelType: OfflineModelType?
   private var memoryPressureSource: DispatchSourceMemoryPressure?
   private var idleUnloadTask: Task<Void, Never>?
 
@@ -75,6 +78,7 @@ actor LocalSpeechService {
     do {
       whisperKit = try await WhisperKit(config)
       currentModelType = modelType
+      lastLoadedModelType = modelType
       startLifetimeGuardsIfNeeded()
       scheduleIdleUnload()
       let elapsed = CFAbsoluteTimeGetCurrent() - loadStart
@@ -184,12 +188,26 @@ actor LocalSpeechService {
   ) async throws -> String {
     let transcribeStartTime = CFAbsoluteTimeGetCurrent()
     
-    guard let whisperKit = whisperKit else {
-      throw TranscriptionError.fileError("WhisperKit not initialized")
+    // Reload rather than fail if the weights went away since the caller checked.
+    //
+    // `SpeechService` asks `isLoaded` and then calls this — two hops into the actor, and the
+    // memory-pressure source can unload in between. Before slice 4 that race was nearly
+    // unreachable: one decode per dictation, started immediately after the check. Now a dictation
+    // makes one call per chunk across the whole recording, and the window is the whole recording.
+    // It was observed: a chunk failed with `fileError("WhisperKit not initialized")`, which made
+    // `DictateStreamingSession` discard every other chunk's work and fall back to decoding the
+    // merged WAV — correct output, but the streaming benefit silently lost.
+    //
+    // Reloading here closes the race for good, because inside the actor the check and the decode
+    // cannot be separated by an unload.
+    if whisperKit == nil, let reloadType = lastLoadedModelType {
+      DebugLogger.logWarning(
+        "LOCAL-SPEECH: Model was unloaded since the caller checked — reloading \(reloadType.displayName)")
+      try await initializeModel(reloadType)
     }
-    
-    guard currentModelType != nil else {
-      throw TranscriptionError.fileError("No model initialized")
+
+    guard let whisperKit = whisperKit, currentModelType != nil else {
+      throw TranscriptionError.fileError("WhisperKit not initialized")
     }
     
     DebugLogger.log("LOCAL-SPEECH: Starting transcription")

@@ -154,8 +154,12 @@ final class DictateStreamingSession {
         if isCancelled || error is CancellationError {
           throw CancellationError()
         }
+        // `String(describing:)` rather than `localizedDescription`: TranscriptionError carries the
+        // useful detail in its associated values (`fileError`'s message, `serverError`'s status),
+        // and `localizedDescription` renders all of it as "The operation couldn't be completed."
+        // A fallback that cannot say why it fell back is the one log line nobody can act on.
         DebugLogger.logWarning(
-          "STREAMING-DICTATE: Chunk \(index) failed (\(error.localizedDescription)), falling back to single-shot")
+          "STREAMING-DICTATE: Chunk \(index) failed (\(String(describing: error))), falling back to single-shot")
         return nil
       }
       if isCancelled { throw CancellationError() }
