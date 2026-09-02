@@ -136,6 +136,42 @@ five-minute idle unload and the memory-pressure unload: the first dictation afte
 and it should be measured (recipe above) before slice 4 is built at all. It never downloads a
 missing model and never touches the network — Offline Mode's guarantee is unchanged.
 
+## VAD chunking measured, and shipped (2026-09-02)
+
+Before slice 4, the cheaper question: WhisperKit can already parallelise a *finished* file.
+`DecodingOptions.chunkingStrategy = .vad` cuts audio longer than one 30 s window at voice-activity
+boundaries and hands the pieces to `concurrentWorkerCount` workers (16 on macOS); the app passed
+nil, so windows were walked in sequence. Measured with
+`OfflineWhisperBenchmarkTests.chunkingStrategyComparison` (M1 Pro / 16 GB, Turbo, warm model, two
+runs per arm, `say`-synthesised German):
+
+| audio | sequential | `.vad` | chars (seq vs vad) |
+|---|---|---|---|
+| 68.2 s | 10.03 s / 10.20 s | 8.92 s / 9.25 s | 1011 vs 1011 |
+| 127.1 s | 18.83 s / 18.36 s | 17.25 s | 1881 vs 1880 |
+
+**~7–10 % faster, transcript unchanged** — no seam damage on this material, and no coverage risk:
+`VADAudioChunker.chunkAll` splits in the middle of the longest silence and still covers the whole
+array, so nothing is dropped. It is inert below 30 s (a single window is not chunkable), which is
+most dictations. Shipped as the default in `LocalSpeechService.transcribe`.
+
+The number is small for a reason worth writing down, because it also bounds slice 4's alternative:
+**CoreML serialises on the GPU, so 16 "concurrent workers" do not buy 16×** — what overlaps is
+CPU-side work around the decode, not the decode itself. Parallelism inside one finished file is
+therefore not the lever. Moving the work *before* Stop is, which is exactly slice 4: the decode
+still costs rtf ≈ 0.15, it just no longer happens while the user waits.
+
+Two incidental findings from the run:
+
+- The benchmark's documented invocation never ran anything. `WHISPERSHORTCUT_BENCH_OFFLINE_WHISPER`
+  does not reach the sandboxed macOS test host from the command line (the `TEST_RUNNER_` prefix is a
+  simulator mechanism), and a Swift Testing `-only-testing` selector needs its trailing `()`. Both
+  failure modes report **"0 tests in 1 suite passed"** — green, and meaningless. The corrected recipe
+  is in the suite's doc comment; the flag has to come from the test plan.
+- The model was unloaded out from under the last arm ("WhisperKit not initialized") inside a 108 s
+  test process — far short of the five-minute idle timer, so the memory-pressure source fired. Worth
+  knowing before slice 4 keeps the model resident *and* decodes during recording on a 16 GB Mac.
+
 ## Non-goals
 
 - No partial-text UI during recording (result still lands in the clipboard as one piece; menu-bar icon behavior unchanged).

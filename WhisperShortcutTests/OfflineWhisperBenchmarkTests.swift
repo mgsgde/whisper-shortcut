@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import AVFoundation
+import WhisperKit
 @testable import WhisperShortcut_AppStore
 
 /// Slice 4's gate from `plans/active/streaming-dictate.md`: is offline Whisper's decode fast
@@ -15,13 +16,23 @@ import AVFoundation
 /// Opt-in via `WHISPERSHORTCUT_BENCH_OFFLINE_WHISPER=1`. It loads ~1.6 GB and takes minutes, which
 /// is exactly what `run-tests.sh` must never do — `/release` gates on that suite.
 ///
-/// The flag has to be passed **twice**, because a plain export does not reach the test host and the
-/// suite then silently reports as passed in 0.001 s:
+/// **Passing the flag on the command line does not work** (corrected 2026-09-02, after three runs
+/// that reported "0 tests" and passed in 0.001 s). Neither a plain export nor the
+/// `TEST_RUNNER_`-prefixed twin reaches this sandboxed macOS test host; the prefix is a
+/// simulator-runner mechanism. The variable has to come from the **test plan**, and the
+/// `-only-testing` selector needs the trailing `()` that Swift Testing function IDs carry —
+/// without it nothing matches and the run still reports success:
 ///
-///     WHISPERSHORTCUT_BENCH_OFFLINE_WHISPER=1 TEST_RUNNER_WHISPERSHORTCUT_BENCH_OFFLINE_WHISPER=1 \
-///       xcodebuild test -scheme WhisperShortcut-AppStore -testPlan WhisperShortcut-AppStore \
-///       -destination 'platform=macOS' -derivedDataPath build/DerivedData-tests \
-///       -only-testing:WhisperShortcutTests/OfflineWhisperBenchmarkTests
+///     # 1. add the variable to the plan's configuration options
+///     #    ("environmentVariableEntries": [{"key": "WHISPERSHORTCUT_BENCH_OFFLINE_WHISPER",
+///     #                                     "value": "1"}])
+///     # 2. run, and restore the plan afterwards — it is checked in
+///     xcodebuild test -scheme WhisperShortcut-AppStore -testPlan WhisperShortcut-AppStore \
+///       -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData-tests \
+///       -skipPackagePluginValidation -skipMacroValidation \
+///       '-only-testing:WhisperShortcutTests/OfflineWhisperBenchmarkTests/realtimeFactor()'
+///
+/// A run reporting "0 tests in 1 suite passed" is that mistake, not a green benchmark.
 ///
 /// Baseline, M1 Pro / 16 GB, Turbo, 2026-09-02: cold load 3.7–6.1 s; decode ~12 ms per output
 /// character (4.25 s for 24.5 s of speech, 12.66 s for 68 s), i.e. rtf ≈ 0.18 on dense speech; the
@@ -177,6 +188,71 @@ struct OfflineWhisperBenchmarkTests {
           + "warmS=\(String(format: "%.2f", warmSeconds)) warmChars=\(warmChars) "
           + "probeAudioS=\(String(format: "%.2f", probeSeconds)) "
           + "probeDecodeS=\(String(format: "%.2f", probeDecode))")
+    }
+  }
+
+  /// Does WhisperKit's VAD chunking make a long dictation land sooner?
+  ///
+  /// The app decodes with `chunkingStrategy: nil` today, which walks the audio one 30 s window
+  /// after another. `.vad` instead cuts at voice-activity boundaries and hands the pieces to
+  /// `concurrentWorkerCount` workers (16 on macOS), so windows that are currently serialised
+  /// overlap. It changes nothing for a dictation under 30 s — one window is not chunkable — so
+  /// this measures only the lengths where it could matter.
+  ///
+  /// Two things have to hold before it can ship, and this test prints both:
+  ///   - **speed**: `decodeS` for `.vad` clearly below sequential on the same clip, outside the
+  ///     ~20 % run-to-run spread the suite above already documented (hence two repeats per arm)
+  ///   - **quality**: chunks decode independently, so cross-chunk conditioning is lost and seams
+  ///     can drop or duplicate words. The transcripts are printed in full; a shorter `.vad`
+  ///     transcript is the falsifier, not a rounding difference.
+  @Test(
+    "VAD chunking vs sequential windows on long dictations",
+    .enabled(if: isEnabled, "Set WHISPERSHORTCUT_BENCH_OFFLINE_WHISPER=1 to run (loads ~1.6 GB)")
+  )
+  func chunkingStrategyComparison() async throws {
+    let type = Self.modelType
+    #expect(ModelManager.shared.isModelAvailable(type), "Download \(type.displayName) first")
+
+    let workDir = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("offline-whisper-chunking-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: workDir) }
+
+    try await LocalSpeechService.shared.initializeModel(type)
+
+    // One decode before the arms so the ~4 s first-decode-after-load penalty is spent outside
+    // the comparison rather than landing on whichever arm happens to run first.
+    let warm = workDir.appendingPathComponent("warm.wav")
+    try Self.makeSpeech(sentenceCount: 2, at: warm)
+    _ = try await LocalSpeechService.shared.transcribe(audioURL: warm, language: "de")
+
+    // 14 sentences ≈ 60 s (two windows), 26 ≈ 110 s (four): chunking cannot help below one
+    // window, and the gain should grow with the number of windows if it is real parallelism.
+    for (label, sentenceCount) in [("long", 14), ("longer", 26)] {
+      let audioURL = workDir.appendingPathComponent("\(label).wav")
+      try Self.makeSpeech(sentenceCount: sentenceCount, at: audioURL)
+      let audioSeconds = try Self.duration(of: audioURL)
+
+      for repeatIndex in 0..<2 {
+        for strategy: ChunkingStrategy? in [nil, .vad] {
+          let start = CFAbsoluteTimeGetCurrent()
+          let text = try await LocalSpeechService.shared.transcribe(
+            audioURL: audioURL, language: "de", chunkingStrategy: strategy)
+          let decode = CFAbsoluteTimeGetCurrent() - start
+
+          print(
+            "BENCH-CHUNKING \(label) run=\(repeatIndex) "
+              + "strategy=\(strategy?.rawValue ?? "sequential") "
+              + "audioS=\(String(format: "%.2f", audioSeconds)) "
+              + "decodeS=\(String(format: "%.2f", decode)) "
+              + "rtf=\(String(format: "%.3f", decode / audioSeconds)) "
+              + "chars=\(text.count)")
+          if repeatIndex == 0 {
+            print("BENCH-CHUNKING-TEXT \(label) \(strategy?.rawValue ?? "sequential"): \(text)")
+          }
+          #expect(!text.isEmpty)
+        }
+      }
     }
   }
 

@@ -161,7 +161,27 @@ actor LocalSpeechService {
   }
   
   // MARK: - Transcribe Audio
-  func transcribe(audioURL: URL, language: String? = nil, prompt: String? = nil) async throws -> String {
+  /// - Parameter chunkingStrategy: `.vad` lets WhisperKit split audio longer than one 30 s window
+  ///   at voice-activity boundaries and hand the pieces to `concurrentWorkerCount` workers (16 on
+  ///   macOS) instead of walking the windows in sequence. Inert below 30 s — a single window is
+  ///   not chunkable — and it never drops audio: `VADAudioChunker` cuts in the middle of the
+  ///   longest silence and still covers the whole array.
+  ///
+  ///   On by default because it was measured, not assumed (M1 Pro / 16 GB, Turbo, 2026-09-02,
+  ///   `OfflineWhisperBenchmarkTests.chunkingStrategyComparison`, two runs per arm):
+  ///
+  ///   | audio | sequential | `.vad` | chars |
+  ///   |---|---|---|---|
+  ///   | 68.2 s | 10.03 / 10.20 s | 8.92 / 9.25 s | 1011 vs 1011 |
+  ///   | 127.1 s | 18.83 / 18.36 s | 17.25 s | 1881 vs 1880 |
+  ///
+  ///   So ~7–10 %, with the transcript unchanged — worth taking, but an order of magnitude short
+  ///   of what streaming would give, because CoreML serialises on the GPU and 16 "workers" do not
+  ///   buy 16× (see `plans/active/streaming-dictate.md` slice 4). Pass nil to compare.
+  func transcribe(
+    audioURL: URL, language: String? = nil, prompt: String? = nil,
+    chunkingStrategy: ChunkingStrategy? = .vad
+  ) async throws -> String {
     let transcribeStartTime = CFAbsoluteTimeGetCurrent()
     
     guard let whisperKit = whisperKit else {
@@ -216,7 +236,8 @@ actor LocalSpeechService {
     // Build DecodingOptions
     // When language is nil we want auto-detect: must set detectLanguage: true explicitly,
     // because DecodingOptions defaults detectLanguage to !usePrefillPrompt (false when prefill is true).
-    let decodeOptions = buildDecodingOptions(language: language, promptTokens: promptTokens)
+    let decodeOptions = buildDecodingOptions(
+      language: language, promptTokens: promptTokens, chunkingStrategy: chunkingStrategy)
     
     // Transcribe (with fallback retry if prompt causes empty result)
     let decodeStart = CFAbsoluteTimeGetCurrent()
@@ -227,7 +248,8 @@ actor LocalSpeechService {
     // Fallback: if prompt was used and result is empty, retry without prompt (WhisperKit #372)
     if usedPrompt && isEmptyResult(transcriptionResults) {
       DebugLogger.logWarning("LOCAL-SPEECH: Prompt caused empty result; retrying without prompt")
-      let fallbackOptions = buildDecodingOptions(language: language, promptTokens: nil)
+      let fallbackOptions = buildDecodingOptions(
+        language: language, promptTokens: nil, chunkingStrategy: chunkingStrategy)
       transcriptionResults = try await performWhisperTranscription(
         whisperKit: whisperKit, audioURL: audioURL, decodeOptions: fallbackOptions
       )
@@ -313,13 +335,16 @@ actor LocalSpeechService {
   /// rescued. Two still covers the common case (temperature 0.0 → 0.2 → 0.4).
   private static let temperatureFallbackCount = 2
 
-  private func buildDecodingOptions(language: String?, promptTokens: [Int]?) -> DecodingOptions {
+  private func buildDecodingOptions(
+    language: String?, promptTokens: [Int]?, chunkingStrategy: ChunkingStrategy?
+  ) -> DecodingOptions {
     if let language = language {
       return DecodingOptions(
         language: language,
         temperatureFallbackCount: Self.temperatureFallbackCount,
         skipSpecialTokens: true,
-        promptTokens: promptTokens
+        promptTokens: promptTokens,
+        chunkingStrategy: chunkingStrategy
       )
     } else {
       return DecodingOptions(
@@ -327,7 +352,8 @@ actor LocalSpeechService {
         temperatureFallbackCount: Self.temperatureFallbackCount,
         detectLanguage: true,
         skipSpecialTokens: true,
-        promptTokens: promptTokens
+        promptTokens: promptTokens,
+        chunkingStrategy: chunkingStrategy
       )
     }
   }
