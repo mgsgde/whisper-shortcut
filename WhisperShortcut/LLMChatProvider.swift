@@ -168,9 +168,24 @@ struct ChatRequestOptions {
   /// this is a hard filter on xAI's side, not a ranking preference.
   var xHandles: [String] = []
 
+  /// Whether this request's system prompt is stable enough that a provider may keep the prefill
+  /// of it across requests.
+  ///
+  /// Only the in-process MLX provider acts on it, and only because priming a prefix is expensive:
+  /// seconds of generation, and tens of megabytes held per distinct prompt. That pays when the
+  /// same prompt really does come back — Dictate Prompt and the Read Aloud rewrite send a fixed
+  /// one — and is a straight loss otherwise.
+  ///
+  /// Chat must leave this false. `ChatView.buildSystemInstruction` folds in today's date, the
+  /// live meeting transcript, persistent memory and the workspace map, so the prompt differs on
+  /// nearly every message; caching it would prime a prefix per message and never reuse one.
+  var reusablePromptPrefix: Bool = false
+
   /// A one-shot text transform: no grounding, no built-in tools, no cache key, model-default
-  /// thinking. Used by Read Aloud's rewrite pass and the Dictate Prompt paths.
-  static let textTransform = ChatRequestOptions(disableBuiltInTools: true)
+  /// thinking, and a system prompt that repeats. Used by Read Aloud's rewrite pass and the
+  /// Dictate Prompt paths.
+  static let textTransform = ChatRequestOptions(
+    disableBuiltInTools: true, reusablePromptPrefix: true)
 }
 
 // MARK: - LLM Chat Provider Protocol
